@@ -10,28 +10,42 @@ import 'package:quick_animaker_v2/src/ui/timeline_tab_host.dart';
 
 /// THE frame-axis baseline, and the guard for the round that follows.
 ///
-/// A row's box is `renderedFrameCount * cellWidth`, so anything that moves
-/// either term re-lays-out every visible row: a ZOOM step moves the cell
-/// width, and GROWING the cut moves the frame count. Two complaints, one
-/// root — and the fix is to stop tying the row's box to the content.
+/// ZOOM is geometry-bound. A row's box is `renderedFrameCount * cellWidth`,
+/// so moving the cell width re-lays-out every visible row and everything
+/// inside it — measured at 24 layers, ~25 render objects per row, and
+/// freezing the row box (a probe that pinned the box at a constant width)
+/// took the step down 23%.
+///
+/// GROW is NOT. It reads like a geometry cost and is not one: creating a
+/// drawing INSIDE the cut, where the render extent does not move at all,
+/// costs the same as creating past the cut end (measured 43.5 vs 39.4ms,
+/// 48.9 vs 41.2ms — the inside case is if anything dearer). What both pay
+/// for is the SESSION NOTIFY rebuilding the panel's chrome. An earlier
+/// "1.9ms inside the cut" reading came from a harness with no session
+/// subscription, so it never included the rebuild at all.
 ///
 /// SCROLL is measured alongside for a reason. It is cheap TODAY precisely
-/// because of the thing that makes the other two expensive: the rows ride
-/// inside the scrolled content, so a scroll is a layer translation rather
-/// than a repaint. A viewport-sized row inverts that unless the translation
-/// is preserved, and then the round would have traded a fast scroll for a
-/// fast zoom. Reading all three in ONE run is what makes that visible.
+/// because of the thing that makes zoom expensive: the rows ride inside the
+/// scrolled content, so a scroll is a layer translation rather than a
+/// repaint. A viewport-sized row inverts that unless the translation is
+/// preserved, and then the round would have traded a fast scroll for a fast
+/// zoom. Reading all three in ONE run is what makes that visible.
 ///
 /// Read the RATIOS, not the absolutes (verify-discipline): this is a debug
-/// build and other work shares the machine.
+/// build and other work shares the machine — the first baseline recorded
+/// here (zoom 112 / grow 88) was measured with a parallel test run on the
+/// same box and reads ~50% high against a quiet one.
 ///
-/// Baseline recorded 2026-07-25, 24 layers x 200 frames:
-///   zoom 112.19ms | grow 88.43ms | scroll 8.05ms/step
+/// Recorded 2026-07-25 on a quiet machine, 24 layers x 200 frames, master
+/// vs the chrome-gating round, alternating runs:
+///   before  zoom 71.9 / 71.1ms | grow 47.3 / 50.4ms | scroll 6.9 / 6.5ms
+///   after   zoom 71.1 / 73.7ms | grow 36.3 / 37.2ms | scroll 6.1 / 6.3ms
+/// Widget rebuilds per notify, which are deterministic: 1201 -> 774.
 ///
-/// Growth is measured PAST the cut end on purpose. Filling a gap inside the
-/// cut costs 1.9ms because the geometry does not move, and growth is free
-/// too while the cut is still shorter than the viewport — the render extent
-/// floors at what fills the screen. Only a cut longer than the window pays.
+/// Growth is measured past the cut end because that is where the geometry
+/// DOES move, so the two costs can still be told apart: growth is free while
+/// the cut is shorter than the viewport (the render extent floors at what
+/// fills the screen), and only a cut longer than the window moves it.
 void main() {
   testWidgets('frame axis: zoom / grow / scroll', (tester) async {
     tester.view.physicalSize = const Size(1600, 1000);

@@ -211,9 +211,25 @@ class TimelineRowCellsPainter extends CustomPainter {
       ? TimelineCellExposureState.uncovered
       : _stateAt(frameIndex);
 
+  /// Resolved models for the cells of the CURRENT paint pass; null outside
+  /// one. Every cell is asked for twice per pass — once by the substrate
+  /// (through [resolvedCellStyleFor]) and once by the ink — and each
+  /// resolution is five exposure lookups plus a name lookup. The pass is the
+  /// exact lifetime this may live for: the layer and the cel revision cannot
+  /// move inside one paint, and holding it longer would serve stale cells.
+  Map<int, TimelineRowCellModel>? _passModels;
+
   /// The resolved per-cell model — THE probe surface for tests (glyphs,
   /// dim/ghost flags, exposure states live here, not in widget trees).
   TimelineRowCellModel cellModelAt(int frameIndex) {
+    final pass = _passModels;
+    if (pass == null) {
+      return _resolveCellModelAt(frameIndex);
+    }
+    return pass[frameIndex] ??= _resolveCellModelAt(frameIndex);
+  }
+
+  TimelineRowCellModel _resolveCellModelAt(int frameIndex) {
     final exposureState = _stateAt(frameIndex);
     final ghost = timelineIndexIsGhost(layer, frameIndex);
     final outsidePlaybackRange = frameIndex >= playbackFrameCount;
@@ -383,6 +399,15 @@ class TimelineRowCellsPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    _passModels = {};
+    try {
+      _paint(canvas, size);
+    } finally {
+      _passModels = null;
+    }
+  }
+
+  void _paint(Canvas canvas, Size size) {
     // Self-windowing (UI-R15): only the cells under the live viewport
     // record — a scroll is a repaint of this thin pass, never a rebuild.
     final window = visibleFrameWindow();
