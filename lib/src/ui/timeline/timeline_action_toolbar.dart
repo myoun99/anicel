@@ -99,6 +99,45 @@ Future<void> showTimelineFpsDialog(
 /// │ [cut group]. Menu items reuse the retired toolbar buttons' key strings
 /// so tests only gain a menu-open tap. The exposure ± buttons are GONE —
 /// block edge grips replaced them outright (session APIs kept for grips).
+/// Builds its group ONCE and hands the same widget back until [rebuildKey]
+/// moves.
+///
+/// The toolbar's layer and cut groups render nothing that changes: literal
+/// labels, fixed icons, unconditional enablement, and flyout entries built
+/// lazily at OPEN time. They rebuilt anyway, because the enablement-sensitive
+/// FRAME group next to them makes the whole toolbar rebuild — measured at 24
+/// layers, that dragged 144 widgets through every notify that landed a cel.
+///
+/// CONTRACT: the builder may only read values that cannot change while
+/// [rebuildKey] holds still. Lazily-read state is free (a flyout opens with
+/// fresh values through the stable session); anything RENDERED must be in the
+/// key. Inherited widgets stay live either way — dependencies are tracked per
+/// element, so a theme change still rebuilds the cached subtree.
+class _StaticCommandGroup extends StatefulWidget {
+  const _StaticCommandGroup({required this.builder, this.rebuildKey});
+
+  final WidgetBuilder builder;
+  final Object? rebuildKey;
+
+  @override
+  State<_StaticCommandGroup> createState() => _StaticCommandGroupState();
+}
+
+class _StaticCommandGroupState extends State<_StaticCommandGroup> {
+  Widget? _cached;
+
+  @override
+  void didUpdateWidget(covariant _StaticCommandGroup oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.rebuildKey != widget.rebuildKey) {
+      _cached = null;
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) => _cached ??= widget.builder(context);
+}
+
 class TimelineActionToolbar extends StatelessWidget {
   const TimelineActionToolbar({
     super.key,
@@ -544,30 +583,40 @@ class TimelineActionToolbar extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Row(
-                key: const ValueKey<String>('timeline-toolbar-layer-group'),
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SplitIconButton(
-                    buttonKey: 'timeline-toolbar-add-layer-button',
-                    menuKey: 'timeline-toolbar-add-layer-menu',
-                    icon: Icons.add,
-                    tooltip: 'Add layer',
-                    accent: true,
-                    onPressed: onAddLayer,
-                    entriesBuilder: _addLayerEntries,
-                  ),
-                  const SizedBox(width: 4),
-                  PanelFlyoutButton(
-                    key: const ValueKey<String>('timeline-layer-menu-button'),
-                    label: 'Layer',
-                    tooltip: 'Layer commands',
-                    entriesBuilder: _layerEntries,
-                  ),
-                  // R27 #6: the layer BLEND dropdown left this toolbar for
-                  // the layer LABEL's rightmost column (user placement) —
-                  // per-row reading, PS/CSP style. See LayerBlendModeChip.
-                ],
+              // Static (see [_StaticCommandGroup]): both buttons print fixed
+              // labels and build their entries at open time. The key is the
+              // hidden-section mask because the Layer flyout's show/hide
+              // checkmarks read `hiddenSections` from THIS closure.
+              _StaticCommandGroup(
+                rebuildKey: hiddenSections.fold<int>(
+                  0,
+                  (mask, section) => mask | (1 << section.index),
+                ),
+                builder: (context) => Row(
+                  key: const ValueKey<String>('timeline-toolbar-layer-group'),
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    SplitIconButton(
+                      buttonKey: 'timeline-toolbar-add-layer-button',
+                      menuKey: 'timeline-toolbar-add-layer-menu',
+                      icon: Icons.add,
+                      tooltip: 'Add layer',
+                      accent: true,
+                      onPressed: onAddLayer,
+                      entriesBuilder: _addLayerEntries,
+                    ),
+                    const SizedBox(width: 4),
+                    PanelFlyoutButton(
+                      key: const ValueKey<String>('timeline-layer-menu-button'),
+                      label: 'Layer',
+                      tooltip: 'Layer commands',
+                      entriesBuilder: _layerEntries,
+                    ),
+                    // R27 #6: the layer BLEND dropdown left this toolbar for
+                    // the layer LABEL's rightmost column (user placement) —
+                    // per-row reading, PS/CSP style. See LayerBlendModeChip.
+                  ],
+                ),
               ),
               _groupDivider(context),
               Row(
@@ -651,7 +700,11 @@ class TimelineActionToolbar extends StatelessWidget {
                 ],
               ),
               _groupDivider(context),
-              CutCommandGroup(session: session),
+              // Static too: a New-cut split button and a Cut flyout, both
+              // fixed-label and lazily-built.
+              _StaticCommandGroup(
+                builder: (context) => CutCommandGroup(session: session),
+              ),
             ],
           ),
         ),
