@@ -12,7 +12,6 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_exposure_comma_drag_h
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_exposure_comma_drag_policy.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_cells_row.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_row_edit_chrome.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_run_end_handles.dart';
 
 import 'timeline_row_chrome_probe.dart';
