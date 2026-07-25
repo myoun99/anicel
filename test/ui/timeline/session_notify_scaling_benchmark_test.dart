@@ -531,4 +531,145 @@ void main() {
       await teardown(tester, session);
     }
   });
+
+  /// THE SIZE THE USER ACTUALLY WORKS AT — 100 layers, 1000 frames.
+  ///
+  /// Everything above tops out at 24 layers x 48 frames on the row axis and
+  /// 6 x 96 on the frame axis, which says nothing about a real cut. This is
+  /// the baseline to compare against when someone reports lag on a real
+  /// project, so that the answer starts from a number instead of a guess.
+  ///
+  /// Drawings land every 4th frame — a hold-heavy sheet, not one cel per
+  /// frame. Warmed up and run in BOTH orders (the first size measured
+  /// otherwise wears the whole tree's JIT and reads slower than the biggest
+  /// project, inverting the trend this exists to show).
+  ///
+  /// What it does NOT cover: `flutter test` never rasterizes, so the GPU
+  /// share is absent; the X-sheet and the storyboard are not measured here.
+  testWidgets('a REAL-SIZE project: 100 layers x 1000 frames', (tester) async {
+    tester.view.physicalSize = const Size(1600, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    Future<EditorSessionManager> buildSized({
+      required int layers,
+      required int frames,
+      required int every,
+      required ValueNotifier<double> zoom,
+    }) async {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      for (var i = 0; i < layers; i += 1) {
+        session.addLayer();
+      }
+      for (final layer in session.layers.toList()) {
+        session.selectLayer(layer.id);
+        for (var frame = 0; frame < frames; frame += every) {
+          session.selectFrameIndex(frame);
+          if (session.canCreateDrawingAtCurrentFrame) {
+            session.createDrawingAtCurrentFrame();
+          }
+        }
+      }
+      session.selectFrameIndex(0);
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ListenableBuilder(
+              listenable: session,
+              builder: (context, _) => TimelineTabHost(
+                session: session,
+                orientation: TimelineOrientation.horizontal,
+                onOrientationChanged: (_) {},
+                pixelsPerFrame: zoom.value,
+                pixelsPerFrameListenable: zoom,
+                onPixelsPerFrameChanged: (value) => zoom.value = value,
+                showSeconds: false,
+                onShowSecondsChanged: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      return session;
+    }
+
+    final warmZoom = ValueNotifier<double>(24);
+    final warm = await buildSized(
+      layers: 2,
+      frames: 8,
+      every: 1,
+      zoom: warmZoom,
+    );
+    for (var i = 0; i < 4; i += 1) {
+      warmZoom.value = 24 + i.toDouble();
+      await tester.pump();
+      warm.selectFrameIndex(i);
+      await tester.pump();
+    }
+    await teardown(tester, warm);
+    warmZoom.dispose();
+
+    // ignore: avoid_print
+    print('--- REAL-SIZE project (warmed, both orders; ratios, not absolutes)');
+    for (final size in const [
+      (layers: 24, frames: 48, every: 1, label: 'benchmarked  24L x   48f'),
+      (layers: 100, frames: 1000, every: 4, label: 'REAL SIZE   100L x 1000f'),
+      (layers: 100, frames: 1000, every: 4, label: 'REAL SIZE   (2nd pass)  '),
+      (layers: 24, frames: 48, every: 1, label: 'benchmarked  (2nd pass)  '),
+    ]) {
+      final zoom = ValueNotifier<double>(24);
+      final session = await buildSized(
+        layers: size.layers,
+        frames: size.frames,
+        every: size.every,
+        zoom: zoom,
+      );
+
+      final zoomWatch = Stopwatch();
+      for (var round = 0; round < 6; round += 1) {
+        zoom.value = 24 + (round + 1) * 2;
+        zoomWatch.start();
+        await tester.pump();
+        zoomWatch.stop();
+      }
+      final seekWatch = Stopwatch();
+      for (var round = 0; round < 6; round += 1) {
+        session.selectFrameIndex(round * 3);
+        seekWatch.start();
+        await tester.pump();
+        seekWatch.stop();
+      }
+      final createWatch = Stopwatch();
+      session.selectLayer(session.layers.first.id);
+      await tester.pump();
+      for (var round = 0; round < 6; round += 1) {
+        session.selectFrameIndex(size.frames + round);
+        session.createDrawingAtCurrentFrame();
+        createWatch.start();
+        await tester.pump();
+        createWatch.stop();
+      }
+
+      String per(Stopwatch watch) =>
+          (watch.elapsedMicroseconds / 6000).toStringAsFixed(1);
+      // ignore: avoid_print
+      print(
+        '${size.label}: zoom ${per(zoomWatch)}ms | seek ${per(seekWatch)}ms '
+        '| create ${per(createWatch)}ms',
+      );
+      expect(zoomWatch.elapsedMicroseconds, greaterThan(0));
+
+      await teardown(tester, session);
+      zoom.dispose();
+    }
+    // ignore: avoid_print
+    print(
+      'READ IT AS: both axes are viewport-capped, so the real size should sit '
+      'level with the benchmarked one. A REAL SIZE column that runs away from '
+      'the benchmarked column is the regression.',
+    );
+  }, timeout: const Timeout(Duration(minutes: 15)));
 }
