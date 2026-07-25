@@ -8,6 +8,7 @@ import 'autosave_settings_section.dart';
 import 'input_settings_dialog.dart' show InputSettingsSection;
 import 'language_settings_dialog.dart' show LanguageSettingsSection;
 import 'system_status_section.dart';
+import '../text/app_strings.dart';
 
 /// SAVE-1: the unified Preferences dialog — Input, Autosave, Audio,
 /// Language, Accent Colors and System (the runtime-path report) as
@@ -44,14 +45,17 @@ class _PreferencesDialog extends StatefulWidget {
 class _PreferencesDialogState extends State<_PreferencesDialog> {
   late PreferencesSection _section = widget.initialSection;
 
-  static String _labelOf(PreferencesSection section) => switch (section) {
-    PreferencesSection.input => 'Input',
-    PreferencesSection.autosave => 'Autosave',
-    PreferencesSection.audio => 'Audio',
-    PreferencesSection.language => 'Language',
-    PreferencesSection.accent => 'Accent Colors',
-    PreferencesSection.system => 'System',
-  };
+  static String _labelOf(PreferencesSection section) {
+    final strings = AppText.strings;
+    return switch (section) {
+      PreferencesSection.input => strings.prefsInput,
+      PreferencesSection.autosave => strings.prefsAutosave,
+      PreferencesSection.audio => strings.prefsAudio,
+      PreferencesSection.language => strings.prefsLanguage,
+      PreferencesSection.accent => strings.prefsAccent,
+      PreferencesSection.system => strings.prefsSystem,
+    };
+  }
 
   Widget _bodyOf(PreferencesSection section) => switch (section) {
     PreferencesSection.input => InputSettingsSection(session: widget.session),
@@ -71,7 +75,7 @@ class _PreferencesDialogState extends State<_PreferencesDialog> {
     const sections = PreferencesSection.values;
     return AppWindow(
       windowKey: const ValueKey<String>('preferences-dialog'),
-      title: 'Preferences',
+      title: AppText.strings.prefsTitle,
       titleIcon: Icons.tune_outlined,
       onClose: () => Navigator.of(context).pop(),
       width: 720,
@@ -88,7 +92,7 @@ class _PreferencesDialogState extends State<_PreferencesDialog> {
       body: _bodyOf(_section),
       actions: [
         AppWindowAction(
-          label: 'Close',
+          label: AppText.strings.commonClose,
           actionKey: const ValueKey<String>('preferences-close'),
           emphasis: AppWindowActionEmphasis.primary,
           onPressed: () => Navigator.of(context).pop(),

@@ -237,6 +237,59 @@ class AppStrings {
   String get convertLinkedCutNothing => _s('convertLinkedCutNothing');
   String get convertLinkedCutUndoNote => _s('convertLinkedCutUndoNote');
 
+  // --- Preferences ---
+  String get prefsTitle => _s('prefsTitle');
+  String get prefsInput => _s('prefsInput');
+  String get prefsAutosave => _s('prefsAutosave');
+  String get prefsAudio => _s('prefsAudio');
+  String get prefsLanguage => _s('prefsLanguage');
+  String get prefsAccent => _s('prefsAccent');
+  String get prefsSystem => _s('prefsSystem');
+
+  // --- Accent colours ---
+  String get accentTitle => _s('accentTitle');
+  String get accent1Label => _s('accent1Label');
+  String get accent1Help => _s('accent1Help');
+  String get accent2Label => _s('accent2Label');
+  String get accent2AutoLabel => _s('accent2AutoLabel');
+  String get accent2AutoHelp => _s('accent2AutoHelp');
+  String get accent2AutoHint => _s('accent2AutoHint');
+  String get accent2CustomHint => _s('accent2CustomHint');
+
+  // --- Sheet info ---
+  String get sheetInfoTitle => _s('sheetInfoTitle');
+  String get sheetFieldTitle => _s('sheetFieldTitle');
+  String get sheetFieldEpisode => _s('sheetFieldEpisode');
+  String get sheetFieldScene => _s('sheetFieldScene');
+  String get sheetFieldCut => _s('sheetFieldCut');
+  String get sheetFieldTime => _s('sheetFieldTime');
+  String get sheetFieldName => _s('sheetFieldName');
+  String get sheetFieldSheet => _s('sheetFieldSheet');
+  String get sheetTitleHint => _s('sheetTitleHint');
+  String get sheetArtist => _s('sheetArtist');
+  String get sheetVisibleBoxes => _s('sheetVisibleBoxes');
+  String get sheetNotation => _s('sheetNotation');
+  String get sheetExposureBar => _s('sheetExposureBar');
+  String get sheetExposureBarHelp => _s('sheetExposureBarHelp');
+  String get sheetExposureBarN => _s('sheetExposureBarN');
+  String get sheetSeEmptyFill => _s('sheetSeEmptyFill');
+
+  // --- The instruction vocabulary and its events ---
+  String get instructionsTitle => _s('instructionsTitle');
+  String get instructionEditTooltip => _s('instructionEditTooltip');
+  String get instructionDeleteTooltip => _s('instructionDeleteTooltip');
+  String get instructionAddButton => _s('instructionAddButton');
+  String get instructionDefTitle => _s('instructionDefTitle');
+  String get instructionDefNameLabel => _s('instructionDefNameLabel');
+  String get instructionEventEditTitle => _s('instructionEventEditTitle');
+  String get instructionEventAddTitle => _s('instructionEventAddTitle');
+  String get instructionMarkLabel => _s('instructionMarkLabel');
+  String get instructionNameLabel => _s('instructionNameLabel');
+  String get instructionStartLabel => _s('instructionStartLabel');
+  String get instructionEndLabel => _s('instructionEndLabel');
+  String get instructionMemoLabel => _s('instructionMemoLabel');
+  String get instructionEditSetButton => _s('instructionEditSetButton');
+
   // --- Timeline toolbar prompts ---
   String get setCommasTitle => _s('setCommasTitle');
   String get setCommasField => _s('setCommasField');
@@ -381,6 +434,53 @@ class AppStrings {
         'Nothing to link — the cuts are already fully linked or share no '
         'drawing layers.',
     'convertLinkedCutUndoNote': 'Undo restores both cuts.',
+    'prefsTitle': 'Preferences',
+    'prefsInput': 'Input',
+    'prefsAutosave': 'Autosave',
+    'prefsAudio': 'Audio',
+    'prefsLanguage': 'Language',
+    'prefsAccent': 'Accent colors',
+    'prefsSystem': 'System',
+    'accentTitle': 'Accent colors',
+    'accent1Label': 'Accent 1',
+    'accent1Help': 'Selection, playhead, active toggles.',
+    'accent2Label': 'Accent 2',
+    'accent2AutoLabel': 'Accent 2 follows the complement',
+    'accent2AutoHelp':
+        'Repeat patterns and selected key diamonds use accent 2.',
+    'accent2AutoHint': 'Automatic: the complement of accent 1.',
+    'accent2CustomHint': 'Custom accent 2.',
+    'sheetInfoTitle': 'Sheet info',
+    'sheetFieldTitle': 'Title',
+    'sheetFieldEpisode': 'Episode',
+    'sheetFieldScene': 'Scene',
+    'sheetFieldCut': 'Cut',
+    'sheetFieldTime': 'Time',
+    'sheetFieldName': 'Name',
+    'sheetFieldSheet': 'Sheet',
+    'sheetTitleHint': 'Project name when empty',
+    'sheetArtist': 'Artist',
+    'sheetVisibleBoxes': 'Visible boxes',
+    'sheetNotation': 'Notation',
+    'sheetExposureBar': 'Exposure hold bar',
+    'sheetExposureBarHelp':
+        'Draw the hold bar from the (N+1)th comma of N+ holds',
+    'sheetExposureBarN': 'N (industry standard 3)',
+    'sheetSeEmptyFill': 'Gray out empty SE stretches',
+    'instructionsTitle': 'Instructions',
+    'instructionEditTooltip': 'Edit instruction',
+    'instructionDeleteTooltip': 'Delete instruction',
+    'instructionAddButton': 'Add instruction',
+    'instructionDefTitle': 'Instruction',
+    'instructionDefNameLabel': 'Name (FI, PAN, …)',
+    'instructionEventEditTitle': 'Edit instruction',
+    'instructionEventAddTitle': 'Add instruction',
+    'instructionMarkLabel': 'Instruction (mark)',
+    'instructionNameLabel': 'Name (blank = instruction name)',
+    'instructionStartLabel': 'Start name (A)',
+    'instructionEndLabel': 'End name (B)',
+    'instructionMemoLabel': 'Memo (timesheet memo band)',
+    'instructionEditSetButton': 'Edit instructions…',
     'setCommasTitle': 'Set commas',
     'setCommasField': 'Exposure frames',
     'projectFpsTitle': 'Project frame rate',
@@ -508,6 +608,51 @@ class AppStrings {
         'リンクするものがありません — 既に完全にリンク済みか、共有できる'
         '作画レイヤーがありません。',
     'convertLinkedCutUndoNote': '元に戻すと両方のカットが復元されます。',
+    'prefsTitle': '環境設定',
+    'prefsInput': '入力',
+    'prefsAutosave': '自動保存',
+    'prefsAudio': 'オーディオ',
+    'prefsLanguage': '言語',
+    'prefsAccent': 'アクセントカラー',
+    'prefsSystem': 'システム',
+    'accentTitle': 'アクセントカラー',
+    'accent1Label': 'アクセント1',
+    'accent1Help': '選択・再生ヘッド・オンの状態に使われます。',
+    'accent2Label': 'アクセント2',
+    'accent2AutoLabel': 'アクセント2を補色に追従',
+    'accent2AutoHelp': 'リピート範囲と選択キーのひし形がアクセント2を使います。',
+    'accent2AutoHint': '自動：アクセント1の補色。',
+    'accent2CustomHint': 'アクセント2を個別指定。',
+    'sheetInfoTitle': 'シート情報',
+    'sheetFieldTitle': 'タイトル',
+    'sheetFieldEpisode': '話数',
+    'sheetFieldScene': 'シーン',
+    'sheetFieldCut': 'カット',
+    'sheetFieldTime': 'タイム',
+    'sheetFieldName': '作画者',
+    'sheetFieldSheet': 'シート',
+    'sheetTitleHint': '空欄ならプロジェクト名',
+    'sheetArtist': '作画者',
+    'sheetVisibleBoxes': '表示する枠',
+    'sheetNotation': '表記',
+    'sheetExposureBar': '止めの引き伸ばし線',
+    'sheetExposureBarHelp': 'N コマ以上の止めで (N+1) コマ目から線を引く',
+    'sheetExposureBarN': 'N（業界標準は3）',
+    'sheetSeEmptyFill': 'セリフのない区間をグレーで塗る',
+    'instructionsTitle': '指示記号',
+    'instructionEditTooltip': '指示記号を編集',
+    'instructionDeleteTooltip': '指示記号を削除',
+    'instructionAddButton': '指示記号を追加',
+    'instructionDefTitle': '指示記号',
+    'instructionDefNameLabel': '名前（FI、PAN など）',
+    'instructionEventEditTitle': '指示の編集',
+    'instructionEventAddTitle': '指示の追加',
+    'instructionMarkLabel': '指示（記号）',
+    'instructionNameLabel': '名前（空欄なら記号名）',
+    'instructionStartLabel': '始点名（A）',
+    'instructionEndLabel': '終点名（B）',
+    'instructionMemoLabel': 'メモ（タイムシートのメモ欄）',
+    'instructionEditSetButton': '指示記号を編集…',
     'shortcutCategory.Navigation': 'ナビゲーション',
     'shortcutCategory.Playback': '再生',
     'shortcutCategory.Edit': '編集',
@@ -673,6 +818,51 @@ class AppStrings {
         '링크할 것이 없습니다 — 이미 완전히 링크됐거나 공유할 그리기 '
         '레이어가 없습니다.',
     'convertLinkedCutUndoNote': '실행 취소하면 두 컷 모두 복원됩니다.',
+    'prefsTitle': '환경설정',
+    'prefsInput': '입력',
+    'prefsAutosave': '자동 저장',
+    'prefsAudio': '오디오',
+    'prefsLanguage': '언어',
+    'prefsAccent': '강조 색상',
+    'prefsSystem': '시스템',
+    'accentTitle': '강조 색상',
+    'accent1Label': '강조색 1',
+    'accent1Help': '선택·플레이헤드·켜진 토글에 쓰입니다.',
+    'accent2Label': '강조색 2',
+    'accent2AutoLabel': '강조색 2를 보색으로 자동',
+    'accent2AutoHelp': '반복 구간과 선택된 키 다이아몬드가 강조색 2를 씁니다.',
+    'accent2AutoHint': '자동: 강조색 1의 보색.',
+    'accent2CustomHint': '강조색 2 직접 지정.',
+    'sheetInfoTitle': '시트 정보',
+    'sheetFieldTitle': '제목',
+    'sheetFieldEpisode': '화수',
+    'sheetFieldScene': '씬',
+    'sheetFieldCut': '컷',
+    'sheetFieldTime': '타임',
+    'sheetFieldName': '작화자',
+    'sheetFieldSheet': '시트',
+    'sheetTitleHint': '비우면 프로젝트 이름',
+    'sheetArtist': '작화자',
+    'sheetVisibleBoxes': '표시할 칸',
+    'sheetNotation': '표기',
+    'sheetExposureBar': '止め 늘림 선',
+    'sheetExposureBarHelp': 'N코마 이상 止め에서 (N+1)번째 코마부터 선을 긋기',
+    'sheetExposureBarN': 'N (업계 표준 3)',
+    'sheetSeEmptyFill': '대사 없는 구간을 회색으로 채우기',
+    'instructionsTitle': '지시 기호',
+    'instructionEditTooltip': '지시 기호 편집',
+    'instructionDeleteTooltip': '지시 기호 삭제',
+    'instructionAddButton': '지시 기호 추가',
+    'instructionDefTitle': '지시 기호',
+    'instructionDefNameLabel': '이름 (FI, PAN 등)',
+    'instructionEventEditTitle': '지시 편집',
+    'instructionEventAddTitle': '지시 추가',
+    'instructionMarkLabel': '지시 (기호)',
+    'instructionNameLabel': '이름 (비우면 기호 이름)',
+    'instructionStartLabel': '시작 이름 (A)',
+    'instructionEndLabel': '끝 이름 (B)',
+    'instructionMemoLabel': '메모 (타임시트 메모 칸)',
+    'instructionEditSetButton': '지시 기호 편집…',
     'shortcutCategory.Navigation': '이동',
     'shortcutCategory.Playback': '재생',
     'shortcutCategory.Edit': '편집',
@@ -839,6 +1029,54 @@ class AppStrings {
         'Rien à lier — les plans sont déjà entièrement liés ou ne partagent '
         'aucun calque de dessin.',
     'convertLinkedCutUndoNote': 'Annuler restaure les deux plans.',
+    'prefsTitle': 'Préférences',
+    'prefsInput': 'Saisie',
+    'prefsAutosave': 'Sauvegarde auto',
+    'prefsAudio': 'Audio',
+    'prefsLanguage': 'Langue',
+    'prefsAccent': "Couleurs d'accent",
+    'prefsSystem': 'Système',
+    'accentTitle': "Couleurs d'accent",
+    'accent1Label': 'Accent 1',
+    'accent1Help': 'Sélection, tête de lecture, bascules actives.',
+    'accent2Label': 'Accent 2',
+    'accent2AutoLabel': "L'accent 2 suit la couleur complémentaire",
+    'accent2AutoHelp':
+        'Les motifs répétés et les losanges de clés sélectionnées utilisent '
+        "l'accent 2.",
+    'accent2AutoHint': "Automatique : le complément de l'accent 1.",
+    'accent2CustomHint': 'Accent 2 personnalisé.',
+    'sheetInfoTitle': 'Infos de la feuille',
+    'sheetFieldTitle': 'Titre',
+    'sheetFieldEpisode': 'Épisode',
+    'sheetFieldScene': 'Scène',
+    'sheetFieldCut': 'Plan',
+    'sheetFieldTime': 'Durée',
+    'sheetFieldName': 'Animateur',
+    'sheetFieldSheet': 'Feuille',
+    'sheetTitleHint': 'Nom du projet si vide',
+    'sheetArtist': 'Animateur',
+    'sheetVisibleBoxes': 'Cases visibles',
+    'sheetNotation': 'Notation',
+    'sheetExposureBar': 'Trait de maintien',
+    'sheetExposureBarHelp':
+        'Tracer le trait à partir du (N+1)e comma des maintiens de N+',
+    'sheetExposureBarN': 'N (standard du métier : 3)',
+    'sheetSeEmptyFill': 'Griser les plages sans dialogue',
+    'instructionsTitle': 'Indications',
+    'instructionEditTooltip': "Modifier l'indication",
+    'instructionDeleteTooltip': "Supprimer l'indication",
+    'instructionAddButton': 'Ajouter une indication',
+    'instructionDefTitle': 'Indication',
+    'instructionDefNameLabel': 'Nom (FI, PAN, …)',
+    'instructionEventEditTitle': "Modifier l'indication",
+    'instructionEventAddTitle': 'Ajouter une indication',
+    'instructionMarkLabel': 'Indication (repère)',
+    'instructionNameLabel': "Nom (vide = nom de l'indication)",
+    'instructionStartLabel': 'Nom de début (A)',
+    'instructionEndLabel': 'Nom de fin (B)',
+    'instructionMemoLabel': 'Mémo (bande mémo de la feuille)',
+    'instructionEditSetButton': 'Modifier les indications…',
     'shortcutCategory.Navigation': 'Navigation',
     'shortcutCategory.Playback': 'Lecture',
     'shortcutCategory.Edit': 'Édition',
@@ -1001,6 +1239,51 @@ class AppStrings {
     'convertLinkedCutNothing': '没有可链接的内容 — 两个镜头已完全链接，'
         '或没有可共用的绘制图层。',
     'convertLinkedCutUndoNote': '撤销会同时还原两个镜头。',
+    'prefsTitle': '偏好设置',
+    'prefsInput': '输入',
+    'prefsAutosave': '自动保存',
+    'prefsAudio': '音频',
+    'prefsLanguage': '语言',
+    'prefsAccent': '强调色',
+    'prefsSystem': '系统',
+    'accentTitle': '强调色',
+    'accent1Label': '强调色 1',
+    'accent1Help': '用于选区、播放头和已启用的开关。',
+    'accent2Label': '强调色 2',
+    'accent2AutoLabel': '强调色 2 跟随补色',
+    'accent2AutoHelp': '重复区间与选中的关键帧菱形使用强调色 2。',
+    'accent2AutoHint': '自动：强调色 1 的补色。',
+    'accent2CustomHint': '自定义强调色 2。',
+    'sheetInfoTitle': '摄影表信息',
+    'sheetFieldTitle': '标题',
+    'sheetFieldEpisode': '集数',
+    'sheetFieldScene': '场',
+    'sheetFieldCut': '镜头',
+    'sheetFieldTime': '时长',
+    'sheetFieldName': '作画',
+    'sheetFieldSheet': '表号',
+    'sheetTitleHint': '留空则用项目名',
+    'sheetArtist': '作画',
+    'sheetVisibleBoxes': '显示的栏位',
+    'sheetNotation': '标注',
+    'sheetExposureBar': '保持延长线',
+    'sheetExposureBarHelp': '在 N 格以上的保持中，从第 (N+1) 格开始画线',
+    'sheetExposureBarN': 'N（行业标准为 3）',
+    'sheetSeEmptyFill': '将无台词区间置灰',
+    'instructionsTitle': '指示记号',
+    'instructionEditTooltip': '编辑指示记号',
+    'instructionDeleteTooltip': '删除指示记号',
+    'instructionAddButton': '添加指示记号',
+    'instructionDefTitle': '指示记号',
+    'instructionDefNameLabel': '名称（FI、PAN 等）',
+    'instructionEventEditTitle': '编辑指示',
+    'instructionEventAddTitle': '添加指示',
+    'instructionMarkLabel': '指示（记号）',
+    'instructionNameLabel': '名称（留空则用记号名）',
+    'instructionStartLabel': '起点名称（A）',
+    'instructionEndLabel': '终点名称（B）',
+    'instructionMemoLabel': '备注（摄影表备注栏）',
+    'instructionEditSetButton': '编辑指示记号…',
     'shortcutCategory.Navigation': '导航',
     'shortcutCategory.Playback': '播放',
     'shortcutCategory.Edit': '编辑',

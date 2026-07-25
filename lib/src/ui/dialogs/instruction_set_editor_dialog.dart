@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/camera_instruction.dart';
 import '../timeline/instruction_icon_palette.dart';
 import '../widgets/app_window.dart';
+import '../text/app_strings.dart';
 
 /// Edits the project's instruction vocabulary: rename defs, repick their
 /// icons, add custom ones, delete. Pops the edited [CameraInstructionSet]
@@ -63,9 +64,10 @@ class _InstructionSetEditorDialogState
 
   @override
   Widget build(BuildContext context) {
+    final strings = AppText.strings;
     return AppWindow(
       windowKey: const ValueKey<String>('instruction-set-dialog'),
-      title: 'Instructions',
+      title: strings.instructionsTitle,
       titleIcon: Icons.videocam_outlined,
       onClose: () => Navigator.of(context).pop(),
       width: 420,
@@ -100,7 +102,7 @@ class _InstructionSetEditorDialogState
                           key: ValueKey<String>(
                             'instruction-def-edit-${def.id}',
                           ),
-                          tooltip: 'Edit instruction',
+                          tooltip: strings.instructionEditTooltip,
                           icon: const Icon(Icons.edit_outlined, size: 18),
                           onPressed: () => _editDef(index),
                         ),
@@ -108,7 +110,7 @@ class _InstructionSetEditorDialogState
                           key: ValueKey<String>(
                             'instruction-def-delete-${def.id}',
                           ),
-                          tooltip: 'Delete instruction',
+                          tooltip: strings.instructionDeleteTooltip,
                           icon: const Icon(Icons.delete_outline, size: 18),
                           onPressed: () => setState(
                             () => _defs = [..._defs]..removeAt(index),
@@ -126,7 +128,7 @@ class _InstructionSetEditorDialogState
                 key: const ValueKey<String>('instruction-def-add-button'),
                 onPressed: _addDef,
                 icon: const Icon(Icons.add, size: 16),
-                label: const Text('Add instruction'),
+                label: Text(strings.instructionAddButton),
               ),
             ),
           ],
@@ -134,12 +136,12 @@ class _InstructionSetEditorDialogState
       ),
       actions: [
         AppWindowAction(
-          label: 'Cancel',
+          label: strings.commonCancel,
           actionKey: const ValueKey<String>('instruction-set-cancel-button'),
           onPressed: () => Navigator.of(context).pop(),
         ),
         AppWindowAction(
-          label: 'Save',
+          label: strings.commonSave,
           actionKey: const ValueKey<String>('instruction-set-save-button'),
           emphasis: AppWindowActionEmphasis.primary,
           onPressed: () =>
@@ -201,10 +203,11 @@ class _InstructionDefDialogState extends State<_InstructionDefDialog> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final strings = AppText.strings;
     // The body scrolls: the option sections outgrow short screens.
     return AppWindow(
       windowKey: const ValueKey<String>('instruction-def-dialog'),
-      title: 'Instruction',
+      title: strings.instructionDefTitle,
       titleIcon: Icons.edit_outlined,
       onClose: () => Navigator.of(context).pop(),
       width: 400,
@@ -215,7 +218,7 @@ class _InstructionDefDialogState extends State<_InstructionDefDialog> {
             mainAxisSize: MainAxisSize.min,
             children: [
               AppWindowField(
-                label: 'Name (FI, PAN, …)',
+                label: strings.instructionDefNameLabel,
                 emphasized: true,
                 child: TextField(
                   key: const ValueKey<String>('instruction-def-name-field'),
@@ -365,12 +368,12 @@ class _InstructionDefDialogState extends State<_InstructionDefDialog> {
       ),
       actions: [
         AppWindowAction(
-          label: 'Cancel',
+          label: strings.commonCancel,
           actionKey: const ValueKey<String>('instruction-def-cancel-button'),
           onPressed: () => Navigator.of(context).pop(),
         ),
         AppWindowAction(
-          label: 'Save',
+          label: strings.commonSave,
           actionKey: const ValueKey<String>('instruction-def-save-button'),
           emphasis: AppWindowActionEmphasis.primary,
           onPressed: () => Navigator.of(context).pop(

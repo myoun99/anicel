@@ -4,6 +4,7 @@ import '../editor_session_manager.dart';
 import '../theme/app_accents.dart';
 import '../theme/app_theme.dart' show AppColors;
 import '../widgets/app_window.dart';
+import '../text/app_strings.dart';
 
 /// The two-accent settings dialog (UI-R22 #5): accent 1 (selection,
 /// playhead, active toggles) and accent 2 (the secondary highlight —
@@ -41,14 +42,14 @@ class _AccentSettingsDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     return AppWindow(
       windowKey: const ValueKey<String>('accent-settings-dialog'),
-      title: 'Accent colors',
+      title: AppText.strings.accentTitle,
       titleIcon: Icons.palette_outlined,
       onClose: () => Navigator.of(context).pop(),
       width: 420,
       body: AccentSettingsSection(session: session),
       actions: [
         AppWindowAction(
-          label: 'Close',
+          label: AppText.strings.commonClose,
           actionKey: const ValueKey<String>('settings-accent-close'),
           emphasis: AppWindowActionEmphasis.primary,
           onPressed: () => Navigator.of(context).pop(),
@@ -70,14 +71,15 @@ class AccentSettingsSection extends StatelessWidget {
     return ValueListenableBuilder<AppAccentSettings>(
       valueListenable: AppColors.accentSettings,
       builder: (context, settings, _) {
+        final strings = AppText.strings;
         return Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             _AccentRow(
               keyPrefix: 'settings-accent1',
-              label: 'Accent 1',
-              help: 'Selection, playhead, active toggles.',
+              label: strings.accent1Label,
+              help: strings.accent1Help,
               value: settings.accent,
               onChanged: (color) =>
                   session.setAccentSettings(settings.copyWith(accent: color)),
@@ -88,10 +90,8 @@ class AccentSettingsSection extends StatelessWidget {
               contentPadding: EdgeInsets.zero,
               dense: true,
               controlAffinity: ListTileControlAffinity.leading,
-              title: const Text('Accent 2 follows the complement'),
-              subtitle: const Text(
-                'Repeat patterns and selected key diamonds use accent 2.',
-              ),
+              title: Text(strings.accent2AutoLabel),
+              subtitle: Text(strings.accent2AutoHelp),
               value: settings.accent2FollowsComplement,
               onChanged: (auto) => session.setAccentSettings(
                 auto ?? true
@@ -101,10 +101,10 @@ class AccentSettingsSection extends StatelessWidget {
             ),
             _AccentRow(
               keyPrefix: 'settings-accent2',
-              label: 'Accent 2',
+              label: strings.accent2Label,
               help: settings.accent2FollowsComplement
-                  ? 'Automatic: the complement of accent 1.'
-                  : 'Custom accent 2.',
+                  ? strings.accent2AutoHint
+                  : strings.accent2CustomHint,
               value: settings.accent2,
               enabled: !settings.accent2FollowsComplement,
               onChanged: (color) =>

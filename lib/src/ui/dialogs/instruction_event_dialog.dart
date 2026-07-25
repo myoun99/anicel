@@ -5,6 +5,7 @@ import '../timeline/instruction_icon_palette.dart';
 import 'instance_edit_dialog.dart';
 import 'instance_edit_preview.dart';
 import '../widgets/app_window.dart';
+import '../text/app_strings.dart';
 
 /// What the instruction event dialog resolved to: an event to apply, a
 /// deletion, or (when the user edited the vocabulary meanwhile) the edited
@@ -138,15 +139,18 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
   @override
   Widget build(BuildContext context) {
     final instructionId = _instructionId;
+    final strings = AppText.strings;
     return InstanceEditDialogShell(
-      title: widget.editing ? 'Edit instruction' : 'Add instruction',
+      title: widget.editing
+          ? strings.instructionEventEditTitle
+          : strings.instructionEventAddTitle,
       titleIcon: Icons.videocam_outlined,
       body: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           AppWindowField(
-            label: 'Instruction (mark)',
+            label: strings.instructionMarkLabel,
             emphasized: true,
             child: DropdownButtonFormField<String>(
               key: const ValueKey<String>('instruction-def-dropdown'),
@@ -171,7 +175,7 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
           ),
           const SizedBox(height: 12),
           AppWindowField(
-            label: 'Name (blank = instruction name)',
+            label: strings.instructionNameLabel,
             child: TextField(
               key: const ValueKey<String>('instruction-text-field'),
               controller: _textController,
@@ -183,7 +187,7 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
             children: [
               Expanded(
                 child: AppWindowField(
-                  label: 'Start name (A)',
+                  label: strings.instructionStartLabel,
                   child: TextField(
                     key: const ValueKey<String>('instruction-value-a-field'),
                     controller: _valueAController,
@@ -193,7 +197,7 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
               const SizedBox(width: 8),
               Expanded(
                 child: AppWindowField(
-                  label: 'End name (B)',
+                  label: strings.instructionEndLabel,
                   child: TextField(
                     key: const ValueKey<String>('instruction-value-b-field'),
                     controller: _valueBController,
@@ -204,7 +208,7 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
           ),
           const SizedBox(height: 12),
           AppWindowField(
-            label: 'Memo (timesheet memo band)',
+            label: strings.instructionMemoLabel,
             child: TextField(
               key: const ValueKey<String>('instruction-memo-field'),
               controller: _memoController,
@@ -218,7 +222,7 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
                 key: const ValueKey<String>('instruction-edit-set-button'),
                 onPressed: widget.onEditInstructionSet,
                 icon: const Icon(Icons.tune, size: 16),
-                label: const Text('Edit instructions…'),
+                label: Text(strings.instructionEditSetButton),
               ),
             ),
           ],
