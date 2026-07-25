@@ -47,24 +47,21 @@ void main() {
     onCancel: () {},
   );
 
-  /// The bar is the only sized Container inside the grip.
-  Size barSize(WidgetTester tester) {
-    final bar = find.descendant(
+  /// The grip's bar is PAINTED (R28 #4 tier 2) through the same helpers the
+  /// dense rows' chrome painter uses, so both reads come off the painter.
+  BlockEdgeGripBarPainter barPainter(WidgetTester tester) {
+    final paint = find.descendant(
       of: find.byType(BlockEdgeGrip),
-      matching: find.byType(Container),
+      matching: find.byType(CustomPaint),
     );
-    return tester.getSize(bar.first);
+    return tester.widget<CustomPaint>(paint.first).painter!
+        as BlockEdgeGripBarPainter;
   }
 
-  Color barColor(WidgetTester tester) {
-    final bar = find.descendant(
-      of: find.byType(BlockEdgeGrip),
-      matching: find.byType(Container),
-    );
-    final decoration =
-        tester.widget<Container>(bar.first).decoration! as BoxDecoration;
-    return decoration.color!;
-  }
+  Size barSize(WidgetTester tester) => barPainter(tester).barRect.size;
+
+  Color barColor(WidgetTester tester) =>
+      blockEdgeGripBarColor(barPainter(tester).ink);
 
   testWidgets('R28 #3: hover changes the grip color, never its size', (
     tester,

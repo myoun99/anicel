@@ -10,6 +10,7 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_row_cells_painter.dar
 import 'package:quick_animaker_v2/src/ui/widgets/field_slider.dart';
 
 import 'ui/timeline/timeline_cell_probe.dart';
+import 'ui/timeline/timeline_row_chrome_probe.dart';
 import 'ui/timeline/timeline_ruler_probe.dart';
 
 import 'ui/flyout_test_helpers.dart'
@@ -447,11 +448,13 @@ Future<void> _dragBlockEndGrip(
     find.byKey(ValueKey<String>('timeline-layer-row-$layerId')),
   );
   await tester.pumpAndSettle();
-  final grip = find.byKey(
-    ValueKey<String>('timeline-block-edge-grip-end-$layerId-$blockOrdinal'),
+  final gesture = await tester.startGesture(
+    timelineRowChromeCenter(
+      tester,
+      layerId,
+      'block-edge-grip-end-$layerId-$blockOrdinal',
+    ),
   );
-  expect(grip, findsOneWidget);
-  final gesture = await tester.startGesture(tester.getCenter(grip));
   await gesture.moveBy(const Offset(19, 0));
   await tester.pump();
   await gesture.moveBy(Offset(frames * 24.0 + 11, 0));
@@ -1902,24 +1905,22 @@ Line 8''';
         const ValueKey<String>('new-frame-button'),
       );
 
-      // Grip keys are ORDINAL-based (block 0, block 1) so a start-edge drag
-      // that moves the block's start index keeps its gesture subtree alive.
-      final endGrip = find.byKey(
-        const ValueKey<String>(
-          'timeline-block-edge-grip-end-default-layer-1-0',
-        ),
-      );
-      final startGripB = find.byKey(
-        const ValueKey<String>(
-          'timeline-block-edge-grip-start-default-layer-1-1',
-        ),
-      );
-      expect(endGrip, findsOneWidget);
-      expect(startGripB, findsOneWidget);
+      // Grip ids are ORDINAL-based (block 0, block 1): a start-edge drag
+      // moves the block's start index, and an index-derived identity would
+      // change under the live drag.
+      final gripIds = timelineRowChromeIds(tester, 'default-layer-1');
+      expect(gripIds, contains('block-edge-grip-end-default-layer-1-0'));
+      expect(gripIds, contains('block-edge-grip-start-default-layer-1-1'));
 
       // Lengthen A by 3: it consumes the X gap and pushes B from 3 to 4
       // with B's comma preserved (24px slim cells; 18px slop first).
-      final gesture = await tester.startGesture(tester.getCenter(endGrip));
+      final gesture = await tester.startGesture(
+        timelineRowChromeCenter(
+          tester,
+          'default-layer-1',
+          'block-edge-grip-end-default-layer-1-0',
+        ),
+      );
       await gesture.moveBy(const Offset(19, 0));
       await tester.pump();
       await gesture.moveBy(const Offset(71, 0));
@@ -1940,7 +1941,13 @@ Line 8''';
       // preview moves the block's start every step, and the drag must
       // survive it (regression: start grips died after one step). B grows
       // backward through the gap until it touches A.
-      final frontDrag = await tester.startGesture(tester.getCenter(startGripB));
+      final frontDrag = await tester.startGesture(
+        timelineRowChromeCenter(
+          tester,
+          'default-layer-1',
+          'block-edge-grip-start-default-layer-1-1',
+        ),
+      );
       await frontDrag.moveBy(const Offset(-19, 0));
       await tester.pump();
       await frontDrag.moveBy(const Offset(-24, 0));

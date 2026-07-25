@@ -7,10 +7,12 @@ import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/timeline_coverage.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_exposure_comma_drag_handle.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_exposure_comma_drag_policy.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_cells_row.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_row_edit_chrome.dart';
+
+import 'timeline_row_chrome_probe.dart';
 
 /// UI-R7 #6: the cut-scoped timeline announces an SE sound's other half
 /// with `~` continuation marks — at the cut end when the block runs past
@@ -122,17 +124,13 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-se-crossing-se-1-start')),
       findsOneWidget,
     );
+    final targets = timelineRowChromeTargets(tester, 'se-1');
     expect(
-      find.byType(TimelineBlockEdgeGrip),
-      findsOneWidget,
+      targets,
+      hasLength(1),
       reason: 'only the END grip: the ~ replaces the start edge',
     );
-    expect(
-      tester
-          .widget<TimelineBlockEdgeGrip>(find.byType(TimelineBlockEdgeGrip))
-          .edge,
-      TimelineBlockEdge.end,
-    );
+    expect((targets.single as TimelineRowGripTarget).edge, TimelineBlockEdge.end);
 
     // Without the spill flag the same geometry keeps BOTH grips.
     await tester.pumpWidget(
@@ -143,7 +141,7 @@ void main() {
         commaDrag: commaDrag,
       ),
     );
-    expect(find.byType(TimelineBlockEdgeGrip), findsNWidgets(2));
+    expect(timelineRowChromeTargets(tester, 'se-1'), hasLength(2));
     expect(
       find.byKey(const ValueKey<String>('timeline-se-crossing-se-1-start')),
       findsNothing,
