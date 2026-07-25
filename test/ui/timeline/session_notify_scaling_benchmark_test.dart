@@ -191,11 +191,42 @@ void main() {
     }
   });
 
+  /// A fixed CPU chunk that touches NOTHING in the app — the internal
+  /// control (verify-discipline rule 5). Two other agent sessions build and
+  /// test on this machine, so an absolute number here means nothing on its
+  /// own; what makes a run readable is whether the control moved WITH the
+  /// subject. Control steady + subject up = a real signal. Both up = the
+  /// run was contended and the absolutes must be thrown away.
+  double controlMicros({int iterations = 400000}) {
+    final watch = Stopwatch()..start();
+    var acc = 0;
+    for (var i = 1; i <= iterations; i += 1) {
+      acc += i % 7;
+    }
+    watch.stop();
+    // Keep the loop from being optimised away.
+    if (acc < 0) {
+      // ignore: avoid_print
+      print('unreachable $acc');
+    }
+    return watch.elapsedMicroseconds.toDouble();
+  }
+
   /// WHERE, inside the operation? `create drawing` is the outlier by an
   /// order of magnitude, and "scoped notify" only helps if the cost is in
   /// the REBUILD. If it is in the command itself, no amount of listener
   /// scoping touches it and the round would be aimed at the wrong thing.
-  testWidgets('create drawing: command time vs rebuild time', (tester) async {
+  ///
+  /// FRAMES ARE HELD FIXED here. An earlier revision moved 6x24 -> 24x48,
+  /// growing BOTH axes at once, so its "4x layers" column silently carried
+  /// 2x the frames as well and any per-row conclusion drawn from it was
+  /// unsound. Only the row axis moves now.
+  ///
+  /// Each size is measured TWICE, in opposite order, because a single
+  /// direction bakes in the warm-up/ordering effect (rule 5 again).
+  testWidgets('create drawing: command vs rebuild, row axis only', (
+    tester,
+  ) async {
     tester.view.physicalSize = const Size(1600, 1000);
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.reset);
@@ -207,41 +238,101 @@ void main() {
     });
     await teardown(tester, warm);
 
-    // ignore: avoid_print
-    print('--- create drawing, split (the R27 #20 outlier)');
-    for (final size in const [
-      (layers: 6, frames: 24, label: 'layers  6 x frames 24'),
-      (layers: 24, frames: 48, label: 'layers 24 x frames 48'),
-    ]) {
+    const frames = 48;
+    const rounds = 8;
+
+    // The frame is pumped through `tester.pump()` rather than a manual
+    // scheduleFrame/handleBeginFrame(absolute timestamp) trio. Mixing the
+    // two walks time BACKWARDS for any live AnimationController (Material
+    // ripples own one) — a manual timestamp that overshoots leaves the next
+    // automatic pump behind it — and the run then dies inside the scheduler
+    // on `elapsedInSeconds >= 0.0`, a harness artifact that reads like a
+    // product failure. Letting the binding own the clock removes the whole
+    // class of bug; the pump's own overhead is identical at both sizes, so
+    // the RATIO this test exists to report is unaffected.
+    Future<({double command, double rebuild, double control})> measure(
+      int layers,
+    ) async {
+      final control = controlMicros();
       final session = await pumpTimeline(
         tester,
-        extraLayers: size.layers,
-        framesPerLayer: size.frames,
+        extraLayers: layers,
+        framesPerLayer: frames,
       );
-      const rounds = 8;
+      // The active layer is the one the drawings land on; hold it fixed so
+      // the row that actually rebuilds is the same in both sizes.
+      session.selectLayer(session.layers.first.id);
+      await tester.pump();
       final command = Stopwatch();
       final frame = Stopwatch();
       for (var round = 0; round < rounds; round += 1) {
-        session.selectFrameIndex(size.frames + round);
+        session.selectFrameIndex(frames + round);
         command.start();
         session.createDrawingAtCurrentFrame();
         command.stop();
         frame.start();
-        tester.binding.scheduleFrame();
-        tester.binding.handleBeginFrame(Duration(milliseconds: 16 * round));
-        tester.binding.handleDrawFrame();
+        await tester.pump();
         frame.stop();
       }
-      // ignore: avoid_print
-      print(
-        '${size.label}: command '
-        '${(command.elapsedMicroseconds / rounds / 1000).toStringAsFixed(2)}ms'
-        ' | rebuild '
-        '${(frame.elapsedMicroseconds / rounds / 1000).toStringAsFixed(2)}ms',
-      );
-      expect(command.elapsedMicroseconds, greaterThan(0));
       await teardown(tester, session);
+      return (
+        command: command.elapsedMicroseconds / rounds,
+        rebuild: frame.elapsedMicroseconds / rounds,
+        control: control,
+      );
     }
+
+    // ignore: avoid_print
+    print('--- create drawing, ROW AXIS ONLY (frames fixed at $frames)');
+    // Pass 1: small then large. Pass 2: large then small.
+    final small1 = await measure(6);
+    final large1 = await measure(24);
+    final large2 = await measure(24);
+    final small2 = await measure(6);
+
+    String ms(double micros) => (micros / 1000).toStringAsFixed(2);
+    // ignore: avoid_print
+    print(
+      'pass1 (6 then 24):  6L command ${ms(small1.command)}ms rebuild '
+      '${ms(small1.rebuild)}ms | 24L command ${ms(large1.command)}ms rebuild '
+      '${ms(large1.rebuild)}ms | rebuild ratio '
+      '${(large1.rebuild / small1.rebuild).toStringAsFixed(2)}x',
+    );
+    // ignore: avoid_print
+    print(
+      'pass2 (24 then 6):  6L command ${ms(small2.command)}ms rebuild '
+      '${ms(small2.rebuild)}ms | 24L command ${ms(large2.command)}ms rebuild '
+      '${ms(large2.rebuild)}ms | rebuild ratio '
+      '${(large2.rebuild / small2.rebuild).toStringAsFixed(2)}x',
+    );
+    // ignore: avoid_print
+    print(
+      'CONTROL (untouched CPU chunk, must be flat): '
+      '${ms(small1.control)} / ${ms(large1.control)} / '
+      '${ms(large2.control)} / ${ms(small2.control)}ms — spread '
+      '${(([
+            small1.control,
+            large1.control,
+            large2.control,
+            small2.control,
+          ].reduce((a, b) => a > b ? a : b) /
+              [
+                small1.control,
+                large1.control,
+                large2.control,
+                small2.control,
+              ].reduce((a, b) => a < b ? a : b)) *
+          100 -
+      100).toStringAsFixed(0)}%',
+    );
+    // ignore: avoid_print
+    print(
+      'READ IT AS: 4x the rows should cost <4x the rebuild. Trust the two '
+      'ratios only if they agree AND the control spread is small; a wide '
+      'control spread means another process was competing and the run is '
+      'noise (verify-discipline rules 2 and 5).',
+    );
+    expect(small1.command, greaterThan(0));
   });
 
   /// WHICH AXIS? The scaling above cannot say whether the cost is per ROW
