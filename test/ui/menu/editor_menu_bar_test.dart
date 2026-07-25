@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/layer_folder.dart';
 import 'package:quick_animaker_v2/src/services/project_repository.dart';
 import 'package:quick_animaker_v2/src/ui/debug/input_inspector.dart';
+import 'package:quick_animaker_v2/src/ui/debug/measurement_mode.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
 
 /// The top menu bar (W2): every submenu lists its commands, enablement
@@ -385,5 +386,36 @@ void main() {
       find.byKey(const ValueKey<String>('input-inspector-card')),
       findsNothing,
     );
+  });
+
+  testWidgets('Edit: Frame Timing Overlay toggles the measurement switch', (
+    tester,
+  ) async {
+    addTearDown(MeasurementMode.reset);
+    await pumpHome(tester);
+
+    Future<void> tapOverlayItem() async {
+      final item = find.byKey(
+        const ValueKey<String>('menu-edit-frame-timing-overlay'),
+      );
+      await tester.ensureVisible(item);
+      await tester.pumpAndSettle();
+      await tester.tap(item);
+      await tester.pumpAndSettle();
+    }
+
+    expect(MeasurementMode.frameTimingOverlay.value, isFalse);
+
+    await openMenu(tester, 'menu-edit');
+    await tapOverlayItem();
+    expect(
+      MeasurementMode.frameTimingOverlay.value,
+      isTrue,
+      reason: 'the menu entry drives the switch MaterialApp reads',
+    );
+
+    await openMenu(tester, 'menu-edit');
+    await tapOverlayItem();
+    expect(MeasurementMode.frameTimingOverlay.value, isFalse);
   });
 }

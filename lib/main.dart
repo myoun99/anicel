@@ -4,9 +4,9 @@ import 'package:flutter/material.dart';
 
 import 'src/services/input/pen_sidecars.dart';
 import 'src/services/persistence/app_documents.dart' show AppStorage;
+import 'src/ui/debug/measurement_mode.dart';
 import 'src/ui/home_page.dart';
 import 'src/ui/input/app_input_settings.dart' show AppInput;
-import 'src/ui/perf_overlay_flag.dart';
 import 'src/ui/theme/app_theme.dart';
 
 void main() {
@@ -32,15 +32,16 @@ class QuickAnimakerApp extends StatelessWidget {
       listenable: Listenable.merge([
         AppColors.accentSettings,
         AppInput.settings,
+        // Edit ▸ Frame Timing Overlay: a MaterialApp property, so the
+        // toggle has to reach this build — that is what makes it usable
+        // on a tablet, where a --dart-define costs a rebuild and an
+        // install.
+        MeasurementMode.frameTimingOverlay,
       ]),
       builder: (context, _) => MaterialApp(
         title: 'QuickAnimaker',
         theme: buildAppTheme(),
-        // Off unless a measurement run asked for it (see
-        // kShowPerformanceOverlay) — UI and raster frame times over the
-        // app, which is how a stroke's latency, playback's cel rate and a
-        // scrub's re-raster get told apart on a device.
-        showPerformanceOverlay: kShowPerformanceOverlay,
+        showPerformanceOverlay: MeasurementMode.frameTimingOverlay.value,
         home: const HomePage(),
       ),
     );

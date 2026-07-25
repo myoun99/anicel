@@ -17,6 +17,7 @@ import '../dialogs/delete_layer_dialog.dart';
 import '../dialogs/file_browser_dialog.dart';
 import '../dialogs/preferences_dialog.dart';
 import '../debug/input_inspector.dart';
+import '../debug/measurement_mode.dart';
 import '../dialogs/project_background_dialog.dart';
 import '../dialogs/rename_cut_dialog.dart';
 import '../dialogs/rename_layer_dialog.dart';
@@ -329,6 +330,20 @@ class EditorMenuBar extends StatelessWidget {
           : 'Input Inspector',
       onPressed: () {
         InputInspector.visible.value = !InputInspector.visible.value;
+      },
+    ),
+    // Its sibling measurement switch: the inspector says what the
+    // platform DELIVERED, this says what the app did with the frame it
+    // had. A toggle rather than a build flag because flipping a
+    // --dart-define on a tablet costs a rebuild and an install.
+    _item(
+      id: 'edit-frame-timing-overlay',
+      label: MeasurementMode.frameTimingOverlay.value
+          ? 'Hide Frame Timing Overlay'
+          : 'Frame Timing Overlay',
+      onPressed: () {
+        MeasurementMode.frameTimingOverlay.value =
+            !MeasurementMode.frameTimingOverlay.value;
       },
     ),
   ];
