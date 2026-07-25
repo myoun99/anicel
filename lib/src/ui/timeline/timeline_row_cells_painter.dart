@@ -11,6 +11,7 @@ import '../../models/layer_kind.dart';
 import '../../models/timeline_repeat.dart';
 import '../input/app_input_settings.dart' show AppInput;
 import 'timeline_cell_double_tap.dart';
+import 'timeline_cel_content_source.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
@@ -73,7 +74,6 @@ class TimelineRowCellsPainter extends CustomPainter {
     required this.crossAxisExtent,
     required this.exposureStateForLayer,
     this.frameNameForLayer,
-    this.celHasContentForLayer,
     required this.colorScheme,
     required this.baseTextStyle,
     this.axis = Axis.horizontal,
@@ -81,13 +81,27 @@ class TimelineRowCellsPainter extends CustomPainter {
     this.viewportMainExtent = 0,
     this.tileStore,
     this.devicePixelRatio = 1.0,
+    this.celContent,
   }) : super(
          repaint: Listenable.merge([
            geometry,
            ?windowBucket,
            ?tileStore?.revision,
+           ?celContent?.revision,
          ]),
        );
+
+  /// R26 #44: the unworked-block tint's fact AND its event. Null = no tint.
+  final TimelineCelContentSource? celContent;
+
+  bool Function(Layer layer, int frameIndex)? get celHasContentForLayer =>
+      celContent?.hasContent;
+
+  /// Read LIVE, never captured: the whole point is that the row does NOT
+  /// rebuild when a cel gains pixels — it repaints — so a value frozen at
+  /// construction would hand the tile store yesterday's answer forever and
+  /// the baked tile would keep serving the old tint.
+  int get celContentRevision => celContent?.revision.value ?? 0;
 
   final Layer layer;
   final int playbackFrameCount;
@@ -107,10 +121,6 @@ class TimelineRowCellsPainter extends CustomPainter {
   exposureStateForLayer;
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
 
-  /// R26 #44: whether the covering block's cel holds any picture — false
-  /// grays the block paper slightly (ACTION-section rows; the resolver
-  /// answers true everywhere else). Null keeps every block plain paper.
-  final bool Function(Layer layer, int frameIndex)? celHasContentForLayer;
   final ColorScheme colorScheme;
 
   /// The ambient text style the widget cells inherited (DefaultTextStyle);
@@ -667,6 +677,7 @@ class TimelineRowCellsPainter extends CustomPainter {
       oldDelegate.exposureStateForLayer != exposureStateForLayer ||
       oldDelegate.frameNameForLayer != frameNameForLayer ||
       oldDelegate.celHasContentForLayer != celHasContentForLayer ||
+      oldDelegate.celContentRevision != celContentRevision ||
       !identical(oldDelegate.tileStore, tileStore) ||
       oldDelegate.devicePixelRatio != devicePixelRatio;
 
@@ -733,7 +744,7 @@ Widget timelineRowCellsPaintArea({
   required TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
-  bool Function(Layer layer, int frameIndex)? celHasContentForLayer,
+  TimelineCelContentSource? celContent,
   required ValueChanged<LayerId> onSelectLayer,
   required ValueChanged<int> onSelectFrame,
   void Function(LayerId layerId, int frameIndex)? onActivateCell,
@@ -748,7 +759,7 @@ Widget timelineRowCellsPaintArea({
     crossAxisExtent: crossAxisExtent,
     exposureStateForLayer: exposureStateForLayer,
     frameNameForLayer: frameNameForLayer,
-    celHasContentForLayer: celHasContentForLayer,
+    celContent: celContent,
     colorScheme: Theme.of(context).colorScheme,
     baseTextStyle: DefaultTextStyle.of(context).style,
     axis: axis,

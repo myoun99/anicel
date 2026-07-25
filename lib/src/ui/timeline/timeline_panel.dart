@@ -14,6 +14,7 @@ import 'layer_timeline_display_adapter.dart';
 import 'layer_timeline_grid.dart';
 import 'property_lane_model.dart';
 import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
+import 'timeline_cel_content_source.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
@@ -42,8 +43,7 @@ class TimelinePanel extends StatefulWidget {
     required this.playbackFrameCount,
     required this.exposureStateForLayer,
     this.frameNameForLayer,
-    this.celHasContentForLayer,
-    this.celContentTokenForLayer,
+    this.celContent,
     required this.onSelectLayer,
     required this.onSelectFrame,
     this.onScrubFrame,
@@ -157,8 +157,8 @@ class TimelinePanel extends StatefulWidget {
 
   /// R26 #44: the unworked-block tint's fact source + its row-memo token
   /// (see [TimelineFrameRowsScrollBody]); null = no tint.
-  final bool Function(Layer layer, int frameIndex)? celHasContentForLayer;
-  final String? Function(Layer layer)? celContentTokenForLayer;
+  /// R26 #44: the unworked-block tint's fact and its event.
+  final TimelineCelContentSource? celContent;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
 
@@ -419,8 +419,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     playbackFrameCount: widget.playbackFrameCount,
                     exposureStateForLayer: widget.exposureStateForLayer,
                     frameNameForLayer: widget.frameNameForLayer,
-                    celHasContentForLayer: widget.celHasContentForLayer,
-                    celContentTokenForLayer: widget.celContentTokenForLayer,
+                    celContent: widget.celContent,
                     onSelectLayer: widget.onSelectLayer,
                     onSelectFrame: widget.onSelectFrame,
                     onScrubFrame: widget.onScrubFrame,
@@ -496,7 +495,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     frameCount: widget.playbackFrameCount,
                     exposureStateForLayer: widget.exposureStateForLayer,
                     frameNameForLayer: widget.frameNameForLayer,
-                    celHasContentForLayer: widget.celHasContentForLayer,
+                    celContent: widget.celContent,
                     onSelectLayer: widget.onSelectLayer,
                     onSelectFrame: widget.onSelectFrame,
                     onScrubFrame: widget.onScrubFrame,

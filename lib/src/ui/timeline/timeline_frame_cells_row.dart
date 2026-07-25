@@ -7,6 +7,7 @@ import '../../services/audio/audio_peaks_extractor.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project_frame_rate.dart';
+import 'timeline_cel_content_source.dart';
 import 'timeline_cell_editor_policy.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart' show timelineDrawingInkColor;
@@ -38,7 +39,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
     required this.crossAxisExtent,
     required this.exposureStateForLayer,
     this.frameNameForLayer,
-    this.celHasContentForLayer,
+    this.celContent,
     required this.onSelectLayer,
     required this.onSelectFrame,
     this.onActivateCell,
@@ -99,8 +100,8 @@ class TimelineFrameCellsRow extends StatelessWidget {
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
 
   /// R26 #44: the unworked-block tint's fact source (see
-  /// [TimelineRowCellsPainter.celHasContentForLayer]); null = no tint.
-  final bool Function(Layer layer, int frameIndex)? celHasContentForLayer;
+  /// [TimelineCelContentSource]); null = no tint.
+  final TimelineCelContentSource? celContent;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
 
@@ -225,7 +226,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
               ? instructionCellExposureState
               : exposureStateForLayer,
           frameNameForLayer: frameNameForLayer,
-          celHasContentForLayer: celHasContentForLayer,
+          celContent: celContent,
           onSelectLayer: onSelectLayer,
           onSelectFrame: onSelectFrame,
           onActivateCell: layerKindOpensCellEditorOnDoubleTap(layer.kind)

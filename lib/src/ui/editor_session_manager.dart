@@ -214,6 +214,10 @@ class EditorSessionManager extends ChangeNotifier {
     // PCM copy, and outside live playback the activation rebuild covers
     // it.
     _historyManager.addListener(_refreshLiveAudioSchedule);
+    // The unworked-block tint's two events (see [celTintRevision]): the
+    // store's empty↔drawn crossing, and the pen going down on a cel.
+    brushFrameStore.celContentRevision.addListener(_bumpCelTintRevision);
+    brushInputActive.addListener(_bumpCelTintRevision);
   }
 
   static const FrameId _frameId = FrameId('default-frame');
@@ -900,6 +904,9 @@ class EditorSessionManager extends ChangeNotifier {
 
   @override
   void dispose() {
+    brushFrameStore.celContentRevision.removeListener(_bumpCelTintRevision);
+    brushInputActive.removeListener(_bumpCelTintRevision);
+    celTintRevision.dispose();
     cacheInvalidationHub.removeBrushFrameListener(_onBrushFrameInvalidated);
     playback.globalFrameIndexListenable.removeListener(_followPlaybackCut);
     _historyManager.removeListener(_markProjectDirty);
@@ -2727,20 +2734,36 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   void selectLayer(LayerId layerId) {
+    var changed = false;
     // A frame-range selection is single-layer (UI-R8): moving to another
     // row drops it. The lane selection follows the same rule.
     if (frameRangeSelection.value != null &&
         frameRangeSelection.value!.layerId != layerId) {
       clearFrameRangeSelection();
+      changed = true;
     }
     if (laneRangeSelection.value != null &&
         laneRangeSelection.value!.layerId != layerId) {
       clearLaneRangeSelection();
+      changed = true;
     }
-    _layerController.selectLayer(layerId);
-    // The solo mode FOLLOWS the active layer (R4 #7).
-    _syncVisibilitySolo();
-    notifyListeners();
+    // ALREADY-ACTIVE IS FREE. Every timeline cell tap calls this before it
+    // seeks — `select()` sends the layer and the frame — and the seek itself
+    // is deliberately notify-free (it rides the cursor notifier). This was
+    // not: clicking a second cell in the row you are already on announced
+    // app-wide and rebuilt the whole panel, which is what made cell
+    // selection feel like it lagged behind the pointer.
+    if (activeLayerId != layerId) {
+      _layerController.selectLayer(layerId);
+      // The solo mode FOLLOWS the active layer (R4 #7) — nothing to follow
+      // when the layer did not move, and re-applying it is what would have
+      // fought a manual visibility toggle on every click.
+      _syncVisibilitySolo();
+      changed = true;
+    }
+    if (changed) {
+      notifyListeners();
+    }
   }
 
   void toggleLayerVisibility(LayerId layerId) {
@@ -9383,33 +9406,39 @@ class EditorSessionManager extends ChangeNotifier {
     if (frame == null) {
       return true;
     }
+    // A LIVE stroke already counts. The store only learns about pixels at
+    // commit (`markCelEdited` on pen-up), so waiting for it left the block
+    // grey for the whole stroke — the user asked for it to go white the
+    // moment the line starts, which is also when the cel stops being
+    // "unworked" in any sense that matters.
+    if (brushInputActive.value &&
+        layer.id == activeLayerId &&
+        frame.id == selectedFrame?.id) {
+      return true;
+    }
     return brushFrameStore.celHasRenderableContent(
       brushFrameKeyForCut(cut, layer.id, frame.id),
     );
   }
 
-  /// R26 #44 memo token: the layer's EMPTY cels in canonical string form.
-  /// Cel pixels live in the brush store, outside the immutable Layer, so
-  /// the row memos need this extra fact in their key — an emptiness flip
-  /// (first stroke, undo to blank) rebuilds exactly the rows it changes.
-  /// Null for non-drawing sections (the fact never renders there).
-  String? celContentTokenForLayer(Layer layer) {
-    if (timelineSectionForLayerKind(layer.kind) != TimelineSection.drawing) {
-      return null;
-    }
-    final cut = activeCutOrNull;
-    if (cut == null) {
-      return null;
-    }
-    final emptyFrameIds = <String>[
-      for (final frame in layer.frames)
-        if (!brushFrameStore.celHasRenderableContent(
-          brushFrameKeyForCut(cut, layer.id, frame.id),
-        ))
-          frame.id.value,
-    ];
-    return emptyFrameIds.join(',');
-  }
+  /// Bumps whenever [celHasContentForLayer] can have changed anywhere: the
+  /// store crosses empty↔drawn, or the pen goes down on a cel.
+  ///
+  /// The store's own crossing signal (R27 #13) already existed and NOTHING
+  /// SUBSCRIBED TO IT — which is the whole bug: the tint is derived state
+  /// living outside the immutable Layer, so with no listener it only caught
+  /// up when an unrelated edit announced app-wide (switch layers, rename a
+  /// frame). This adds the live-stroke half and hands the row painters one
+  /// thing to listen to.
+  final ValueNotifier<int> celTintRevision = ValueNotifier<int>(0);
+
+  void _bumpCelTintRevision() => celTintRevision.value += 1;
+
+  // The per-layer "empty cels" memo TOKEN that used to live here is gone
+  // with [celContentRevision]. It was the weaker form of the same idea: a
+  // string rebuilt for every row on every pass, which forced a row REBUILD
+  // and only when something else had already announced — which is exactly
+  // why a freshly drawn block stayed grey until you switched layers.
 
   int? get selectedEffectiveDuration {
     final layer = activeLayer;
