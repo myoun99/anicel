@@ -43,6 +43,7 @@ void main() {
     WidgetTester tester, {
     required int extraLayers,
     required int framesPerLayer,
+    ValueNotifier<double>? zoom,
   }) async {
     final session = EditorSessionManager(initialProject: createDefaultProject());
 
@@ -77,8 +78,11 @@ void main() {
               session: session,
               orientation: TimelineOrientation.horizontal,
               onOrientationChanged: (_) {},
-              pixelsPerFrame: 24,
-              onPixelsPerFrameChanged: (_) {},
+              pixelsPerFrame: zoom?.value ?? 24,
+              // With this set the host scopes a zoom step to the panel
+              // subtree (UI-R6 #4) — the path a real pinch/wheel takes.
+              pixelsPerFrameListenable: zoom,
+              onPixelsPerFrameChanged: (value) => zoom?.value = value,
               showSeconds: false,
               onShowSecondsChanged: (_) {},
             ),
@@ -197,7 +201,15 @@ void main() {
   /// own; what makes a run readable is whether the control moved WITH the
   /// subject. Control steady + subject up = a real signal. Both up = the
   /// run was contended and the absolutes must be thrown away.
+  var controlWarmed = false;
   double controlMicros({int iterations = 400000}) {
+    if (!controlWarmed) {
+      // The control is JIT-compiled on its first call like anything else, so
+      // an unwarmed first reading lands 3-4x high and reads as contention
+      // that is not there. Burn one pass before it counts.
+      controlWarmed = true;
+      controlMicros(iterations: iterations);
+    }
     final watch = Stopwatch()..start();
     var acc = 0;
     for (var i = 1; i <= iterations; i += 1) {
@@ -333,6 +345,87 @@ void main() {
       'noise (verify-discipline rules 2 and 5).',
     );
     expect(small1.command, greaterThan(0));
+  });
+
+  /// R28 #4 (zoom lag), recorded as "measure first, same root as the scoped
+  /// notify". It is NOT the same root, and this is the case that shows it.
+  ///
+  /// A session notify misses the row memo for the ONE row it touched. A zoom
+  /// step changes [TimelineGridMetrics.frameCellWidth], and `metrics` is part
+  /// of the memo key — by design, because every cell's geometry moves. So a
+  /// zoom step invalidates EVERY visible row at once. Same widget tree, a
+  /// completely different amount of work, and no amount of notify scoping
+  /// touches it.
+  ///
+  /// Frames fixed, both orders, control alongside — same protocol as above.
+  testWidgets('zoom step: cost per row (R28 #4)', (tester) async {
+    tester.view.physicalSize = const Size(1600, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    const frames = 48;
+    const rounds = 8;
+
+    final warmZoom = ValueNotifier<double>(24);
+    addTearDown(warmZoom.dispose);
+    final warm = await pumpTimeline(
+      tester,
+      extraLayers: 2,
+      framesPerLayer: 4,
+      zoom: warmZoom,
+    );
+    for (var i = 0; i < 4; i += 1) {
+      warmZoom.value = 24 + i.toDouble();
+      await tester.pump();
+    }
+    await teardown(tester, warm);
+
+    Future<({double step, double control})> measureZoom(int layers) async {
+      final control = controlMicros();
+      final zoom = ValueNotifier<double>(24);
+      final session = await pumpTimeline(
+        tester,
+        extraLayers: layers,
+        framesPerLayer: frames,
+        zoom: zoom,
+      );
+      final watch = Stopwatch();
+      for (var round = 0; round < rounds; round += 1) {
+        // A real zoom gesture walks the scale; each step is one frame.
+        zoom.value = 24 + (round + 1) * 2;
+        watch.start();
+        await tester.pump();
+        watch.stop();
+      }
+      await teardown(tester, session);
+      zoom.dispose();
+      return (step: watch.elapsedMicroseconds / rounds, control: control);
+    }
+
+    // ignore: avoid_print
+    print('--- ZOOM step, ROW AXIS ONLY (frames fixed at $frames)');
+    final small1 = await measureZoom(6);
+    final large1 = await measureZoom(24);
+    final large2 = await measureZoom(24);
+    final small2 = await measureZoom(6);
+
+    String ms(double micros) => (micros / 1000).toStringAsFixed(2);
+    // ignore: avoid_print
+    print(
+      'pass1 (6 then 24): 6L ${ms(small1.step)}ms | 24L ${ms(large1.step)}ms '
+      '| ratio ${(large1.step / small1.step).toStringAsFixed(2)}x',
+    );
+    // ignore: avoid_print
+    print(
+      'pass2 (24 then 6): 6L ${ms(small2.step)}ms | 24L ${ms(large2.step)}ms '
+      '| ratio ${(large2.step / small2.step).toStringAsFixed(2)}x',
+    );
+    // ignore: avoid_print
+    print(
+      'CONTROL: ${ms(small1.control)} / ${ms(large1.control)} / '
+      '${ms(large2.control)} / ${ms(small2.control)}ms',
+    );
+    expect(small1.step, greaterThan(0));
   });
 
   /// WHICH AXIS? The scaling above cannot say whether the cost is per ROW
