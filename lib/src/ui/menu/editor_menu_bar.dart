@@ -13,6 +13,7 @@ import '../../services/persistence/app_save_settings.dart';
 import '../../services/persistence/project_autosave_service.dart';
 import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/canvas_size_dialog.dart';
+import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 import '../dialogs/convert_to_linked_cut_dialog.dart';
 import '../dialogs/delete_layer_dialog.dart';
@@ -83,7 +84,10 @@ class EditorMenuBar extends StatelessWidget {
       key: ValueKey<String>('menu-$id'),
       onPressed: onPressed,
       shortcut: shortcut,
-      child: Text(label),
+      // Every entry localizes HERE, by the id it is already keyed with —
+      // 42 menu items in one place, with the English staying at the call
+      // sites where the menu is actually authored.
+      child: Text(AppText.strings.menuLabel(id, label)),
     );
   }
 
@@ -134,19 +138,17 @@ class EditorMenuBar extends StatelessWidget {
         context: context,
         builder: (context) => AppConfirmDialog(
           windowKey: const ValueKey<String>('recover-autosave-dialog'),
-          title: 'Recover autosaved changes?',
+          title: AppText.strings.recoverAutosaveTitle,
           titleIcon: Icons.restore_outlined,
-          message:
-              'A newer autosave exists for this project. Recover it, or open '
-              'the file as last saved?',
+          message: AppText.strings.recoverAutosaveBody,
           actions: [
             AppWindowAction(
-              label: 'Open saved',
+              label: AppText.strings.recoverOpenSaved,
               actionKey: const ValueKey<String>('recover-open-saved-button'),
               onPressed: () => Navigator.of(context).pop(false),
             ),
             AppWindowAction(
-              label: 'Recover',
+              label: AppText.strings.recoverAction,
               actionKey: const ValueKey<String>('recover-autosave-button'),
               emphasis: AppWindowActionEmphasis.primary,
               onPressed: () => Navigator.of(context).pop(true),
@@ -642,9 +644,11 @@ class EditorMenuBar extends StatelessWidget {
   List<Widget> _playbackItems(BuildContext context) => [
     _item(
       id: 'playback-play-pause',
+      // Untabled by id on purpose: this label flips with playback state,
+      // so it arrives already localized and the id lookup falls through.
       label: session.playback.isActive && session.playback.isPlaying
-          ? 'Pause'
-          : 'Play',
+          ? AppText.strings.menuPause
+          : AppText.strings.menuPlay,
       onPressed: _togglePlayPause,
       shortcut: _shortcutFor(EditorActionIds.playbackToggle),
     ),
@@ -732,31 +736,31 @@ class EditorMenuBar extends StatelessWidget {
           key: const ValueKey<String>('menu-file'),
           style: topLevelStyle,
           menuChildren: _fileItems(context),
-          child: const Text('File'),
+          child: Text(AppText.strings.menuBarFile),
         ),
         SubmenuButton(
           key: const ValueKey<String>('menu-edit'),
           style: topLevelStyle,
           menuChildren: _editItems(context),
-          child: const Text('Edit'),
+          child: Text(AppText.strings.menuBarEdit),
         ),
         SubmenuButton(
           key: const ValueKey<String>('menu-cut'),
           style: topLevelStyle,
           menuChildren: _cutItems(context),
-          child: const Text('Cut'),
+          child: Text(AppText.strings.menuBarCut),
         ),
         SubmenuButton(
           key: const ValueKey<String>('menu-layer'),
           style: topLevelStyle,
           menuChildren: _layerItems(context),
-          child: const Text('Layer'),
+          child: Text(AppText.strings.menuBarLayer),
         ),
         SubmenuButton(
           key: const ValueKey<String>('menu-playback'),
           style: topLevelStyle,
           menuChildren: _playbackItems(context),
-          child: const Text('Playback'),
+          child: Text(AppText.strings.menuBarPlayback),
         ),
         // The Panels menu of old (same item keys): every panel with its
         // visibility — closed (X-ed) panels reopen from here, PS
@@ -765,13 +769,13 @@ class EditorMenuBar extends StatelessWidget {
           key: const ValueKey<String>('panels-menu-button'),
           style: topLevelStyle,
           menuChildren: _windowItems(context),
-          child: const Text('Window'),
+          child: Text(AppText.strings.menuBarWindow),
         ),
         SubmenuButton(
           key: const ValueKey<String>('menu-help'),
           style: topLevelStyle,
           menuChildren: _helpItems(context),
-          child: const Text('Help'),
+          child: Text(AppText.strings.menuBarHelp),
         ),
       ],
     );

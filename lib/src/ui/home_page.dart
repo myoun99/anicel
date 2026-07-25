@@ -585,27 +585,27 @@ class _HomePageState extends State<HomePage> {
         context: context,
         builder: (context) => AppConfirmDialog(
           windowKey: const ValueKey<String>('system-exit-dialog'),
-          title: 'Close project?',
+          title: AppText.strings.closeProjectTitle,
           titleIcon: Icons.logout_outlined,
-          message: 'Your changes are not saved. Close anyway?',
+          message: AppText.strings.closeProjectBody,
           actions: [
             AppWindowAction(
-              label: 'Cancel',
+              label: AppText.strings.commonCancel,
               actionKey: const ValueKey<String>('system-exit-cancel'),
               onPressed: () => Navigator.of(context).pop(_ExitChoice.cancel),
             ),
             AppWindowAction(
-              label: 'Save as…',
+              label: AppText.strings.commonSaveAs,
               actionKey: const ValueKey<String>('system-exit-save-as'),
               onPressed: () => Navigator.of(context).pop(_ExitChoice.saveAs),
             ),
             AppWindowAction(
-              label: 'Save',
+              label: AppText.strings.commonSave,
               actionKey: const ValueKey<String>('system-exit-save'),
               onPressed: () => Navigator.of(context).pop(_ExitChoice.save),
             ),
             AppWindowAction(
-              label: 'Close',
+              label: AppText.strings.commonClose,
               actionKey: const ValueKey<String>('system-exit-close'),
               emphasis: AppWindowActionEmphasis.primary,
               onPressed: () => Navigator.of(context).pop(_ExitChoice.close),
@@ -653,19 +653,17 @@ class _HomePageState extends State<HomePage> {
       context: context,
       builder: (context) => AppConfirmDialog(
         windowKey: const ValueKey<String>('unsaved-autosave-dialog'),
-        title: 'Save your project',
+        title: AppText.strings.unsavedAutosaveTitle,
         titleIcon: Icons.save_outlined,
-        message:
-            'This project has never been saved, so autosave has nowhere to '
-            'write. Pick a file and autosave will guard it from then on.',
+        message: AppText.strings.unsavedAutosaveBody,
         actions: [
           AppWindowAction(
-            label: 'Not now',
+            label: AppText.strings.commonNotNow,
             actionKey: const ValueKey<String>('unsaved-autosave-later'),
             onPressed: () => Navigator.of(context).pop(false),
           ),
           AppWindowAction(
-            label: 'Save as…',
+            label: AppText.strings.commonSaveAs,
             actionKey: const ValueKey<String>('unsaved-autosave-save'),
             emphasis: AppWindowActionEmphasis.primary,
             onPressed: () => Navigator.of(context).pop(true),

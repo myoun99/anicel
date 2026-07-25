@@ -45,6 +45,14 @@ class AppStrings {
   String shortcutCategory(String category, String fallback) =>
       _values['shortcutCategory.$category'] ?? fallback;
 
+  /// A menu entry's wording, by the stable id the menu bar already keys its
+  /// widgets with. Same fallback contract as [shortcutLabel]: English lives
+  /// at the call site, the other languages here. An id left untabled — the
+  /// play/pause entry, whose label flips with playback state — simply keeps
+  /// the label it was given.
+  String menuLabel(String id, String fallback) =>
+      _values['menuAction.$id'] ?? fallback;
+
   String get languageSettingsTitle => _s('languageSettingsTitle');
   String get programLanguageLabel => _s('programLanguageLabel');
   String get notationLanguageLabel => _s('notationLanguageLabel');
@@ -236,6 +244,29 @@ class AppStrings {
       _s('convertLinkedCutOriginGainsTemplate');
   String get convertLinkedCutNothing => _s('convertLinkedCutNothing');
   String get convertLinkedCutUndoNote => _s('convertLinkedCutUndoNote');
+
+  // --- Project lifecycle confirmations ---
+  String get recoverAutosaveTitle => _s('recoverAutosaveTitle');
+  String get recoverAutosaveBody => _s('recoverAutosaveBody');
+  String get recoverOpenSaved => _s('recoverOpenSaved');
+  String get recoverAction => _s('recoverAction');
+  String get closeProjectTitle => _s('closeProjectTitle');
+  String get closeProjectBody => _s('closeProjectBody');
+  String get commonSaveAs => _s('commonSaveAs');
+  String get unsavedAutosaveTitle => _s('unsavedAutosaveTitle');
+  String get unsavedAutosaveBody => _s('unsavedAutosaveBody');
+  String get commonNotNow => _s('commonNotNow');
+
+  // --- The menu bar's own headings and its one stateful entry ---
+  String get menuBarFile => _s('menuBarFile');
+  String get menuBarEdit => _s('menuBarEdit');
+  String get menuBarCut => _s('menuBarCut');
+  String get menuBarLayer => _s('menuBarLayer');
+  String get menuBarPlayback => _s('menuBarPlayback');
+  String get menuBarWindow => _s('menuBarWindow');
+  String get menuBarHelp => _s('menuBarHelp');
+  String get menuPlay => _s('menuPlay');
+  String get menuPause => _s('menuPause');
 
   // --- The file browser ---
   String get fileOpenTitle => _s('fileOpenTitle');
@@ -515,6 +546,29 @@ class AppStrings {
         'Nothing to link — the cuts are already fully linked or share no '
         'drawing layers.',
     'convertLinkedCutUndoNote': 'Undo restores both cuts.',
+    'recoverAutosaveTitle': 'Recover autosaved changes?',
+    'recoverAutosaveBody':
+        'A newer autosave exists for this project. Recover it, or open the '
+        'file as last saved?',
+    'recoverOpenSaved': 'Open saved',
+    'recoverAction': 'Recover',
+    'closeProjectTitle': 'Close project?',
+    'closeProjectBody': 'Your changes are not saved. Close anyway?',
+    'commonSaveAs': 'Save as…',
+    'unsavedAutosaveTitle': 'Save your project',
+    'unsavedAutosaveBody':
+        'This project has never been saved, so autosave has nowhere to '
+        'write. Pick a file and autosave will guard it from then on.',
+    'commonNotNow': 'Not now',
+    'menuBarFile': 'File',
+    'menuBarEdit': 'Edit',
+    'menuBarCut': 'Cut',
+    'menuBarLayer': 'Layer',
+    'menuBarPlayback': 'Playback',
+    'menuBarWindow': 'Window',
+    'menuBarHelp': 'Help',
+    'menuPlay': 'Play',
+    'menuPause': 'Pause',
     'fileOpenTitle': 'Open project',
     'fileSaveTitle': 'Save project',
     'fileAppDocuments': 'App documents',
@@ -783,6 +837,71 @@ class AppStrings {
         'リンクするものがありません — 既に完全にリンク済みか、共有できる'
         '作画レイヤーがありません。',
     'convertLinkedCutUndoNote': '元に戻すと両方のカットが復元されます。',
+    'recoverAutosaveTitle': '自動保存の変更を復元しますか？',
+    'recoverAutosaveBody':
+        'このプロジェクトには、より新しい自動保存があります。それを復元'
+        'しますか、それとも最後に保存したファイルを開きますか？',
+    'recoverOpenSaved': '保存済みを開く',
+    'recoverAction': '復元',
+    'closeProjectTitle': 'プロジェクトを閉じますか？',
+    'closeProjectBody': '変更は保存されていません。閉じますか？',
+    'commonSaveAs': '名前を付けて保存…',
+    'unsavedAutosaveTitle': 'プロジェクトを保存',
+    'unsavedAutosaveBody':
+        'このプロジェクトはまだ一度も保存されていないため、自動保存の書き込み'
+        '先がありません。ファイルを選べば、以降は自動保存が守ります。',
+    'commonNotNow': '後で',
+    'menuBarFile': 'ファイル',
+    'menuBarEdit': '編集',
+    'menuBarCut': 'カット',
+    'menuBarLayer': 'レイヤー',
+    'menuBarPlayback': '再生',
+    'menuBarWindow': 'ウィンドウ',
+    'menuBarHelp': 'ヘルプ',
+    'menuPlay': '再生',
+    'menuPause': '一時停止',
+    'menuAction.file-open': '開く…',
+    'menuAction.file-save': '保存',
+    'menuAction.file-save-as': '名前を付けて保存…',
+    'menuAction.file-project-background': 'プロジェクトの背景…',
+    'menuAction.file-export': '書き出し…',
+    'menuAction.edit-undo': '元に戻す',
+    'menuAction.edit-redo': 'やり直す',
+    'menuAction.edit-copy-frame': 'フレームをコピー',
+    'menuAction.edit-paste-linked-frame': 'リンクフレームを貼り付け',
+    'menuAction.edit-new-drawing': 'このフレームに新規作画',
+    'menuAction.edit-delete-cell': 'セルを削除',
+    'menuAction.edit-cut-exposure': '露光をカット',
+    'menuAction.edit-toggle-mark': 'マークの切り替え',
+    'menuAction.edit-keyboard-shortcuts': 'キーボードショートカット…',
+    'menuAction.edit-preferences': '環境設定…',
+    'menuAction.cut-new': 'カットを新規作成',
+    'menuAction.cut-duplicate': 'カットを複製',
+    'menuAction.cut-create-linked': 'リンクカットを作成',
+    'menuAction.cut-convert-linked': 'リンクカットに変換…',
+    'menuAction.cut-rename': 'カット名を変更…',
+    'menuAction.cut-canvas-size': 'カンバスサイズ…',
+    'menuAction.cut-move-left': 'カットを左へ',
+    'menuAction.cut-move-right': 'カットを右へ',
+    'menuAction.cut-copy-ae-camera': 'カメラのAEキーフレームをコピー',
+    'menuAction.cut-delete': 'カットを削除',
+    'menuAction.layer-add': 'レイヤーを追加',
+    'menuAction.layer-add-attach-free-above': '上にフリーの付属レイヤーを追加',
+    'menuAction.layer-add-attach-free-below': '下にフリーの付属レイヤーを追加',
+    'menuAction.layer-add-attach-above': '上に同期の付属レイヤーを追加',
+    'menuAction.layer-add-attach-below': '下に同期の付属レイヤーを追加',
+    'menuAction.layer-duplicate': 'レイヤーを複製',
+    'menuAction.layer-link-duplicate': 'リンクして複製',
+    'menuAction.layer-unlink': 'リンクを解除',
+    'menuAction.layer-group-into-folder': 'フォルダにまとめる',
+    'menuAction.layer-rename': 'レイヤー名を変更…',
+    'menuAction.layer-copy': 'レイヤーをコピー',
+    'menuAction.layer-paste': 'レイヤーを貼り付け',
+    'menuAction.layer-delete': 'レイヤーを削除…',
+    'menuAction.playback-stop': '停止',
+    'menuAction.playback-play-all': '全カットを再生',
+    'menuAction.window-reset-layout': 'ワークスペース配置をリセット',
+    'menuAction.help-about': 'QuickAnimaker について',
     'fileOpenTitle': 'プロジェクトを開く',
     'fileSaveTitle': 'プロジェクトを保存',
     'fileAppDocuments': 'アプリのドキュメント',
@@ -1086,6 +1205,71 @@ class AppStrings {
         '링크할 것이 없습니다 — 이미 완전히 링크됐거나 공유할 그리기 '
         '레이어가 없습니다.',
     'convertLinkedCutUndoNote': '실행 취소하면 두 컷 모두 복원됩니다.',
+    'recoverAutosaveTitle': '자동 저장된 변경을 복구할까요?',
+    'recoverAutosaveBody':
+        '이 프로젝트에 더 최신인 자동 저장이 있습니다. 그것을 복구할까요, '
+        '아니면 마지막으로 저장된 파일을 열까요?',
+    'recoverOpenSaved': '저장본 열기',
+    'recoverAction': '복구',
+    'closeProjectTitle': '프로젝트를 닫을까요?',
+    'closeProjectBody': '변경 사항이 저장되지 않았습니다. 그래도 닫을까요?',
+    'commonSaveAs': '다른 이름으로 저장…',
+    'unsavedAutosaveTitle': '프로젝트 저장',
+    'unsavedAutosaveBody':
+        '이 프로젝트는 한 번도 저장된 적이 없어서 자동 저장이 쓸 곳이 '
+        '없습니다. 파일을 지정하면 그때부터 자동 저장이 지켜줍니다.',
+    'commonNotNow': '나중에',
+    'menuBarFile': '파일',
+    'menuBarEdit': '편집',
+    'menuBarCut': '컷',
+    'menuBarLayer': '레이어',
+    'menuBarPlayback': '재생',
+    'menuBarWindow': '창',
+    'menuBarHelp': '도움말',
+    'menuPlay': '재생',
+    'menuPause': '일시정지',
+    'menuAction.file-open': '열기…',
+    'menuAction.file-save': '저장',
+    'menuAction.file-save-as': '다른 이름으로 저장…',
+    'menuAction.file-project-background': '프로젝트 배경…',
+    'menuAction.file-export': '내보내기…',
+    'menuAction.edit-undo': '실행 취소',
+    'menuAction.edit-redo': '다시 실행',
+    'menuAction.edit-copy-frame': '프레임 복사',
+    'menuAction.edit-paste-linked-frame': '링크 프레임 붙여넣기',
+    'menuAction.edit-new-drawing': '이 프레임에 새 원화',
+    'menuAction.edit-delete-cell': '셀 삭제',
+    'menuAction.edit-cut-exposure': '노출 잘라내기',
+    'menuAction.edit-toggle-mark': '마크 켜기/끄기',
+    'menuAction.edit-keyboard-shortcuts': '키보드 단축키…',
+    'menuAction.edit-preferences': '환경설정…',
+    'menuAction.cut-new': '새 컷',
+    'menuAction.cut-duplicate': '컷 복제',
+    'menuAction.cut-create-linked': '링크 컷 만들기',
+    'menuAction.cut-convert-linked': '링크 컷으로 변환…',
+    'menuAction.cut-rename': '컷 이름 변경…',
+    'menuAction.cut-canvas-size': '캔버스 크기…',
+    'menuAction.cut-move-left': '컷 왼쪽으로',
+    'menuAction.cut-move-right': '컷 오른쪽으로',
+    'menuAction.cut-copy-ae-camera': '카메라 AE 키프레임 복사',
+    'menuAction.cut-delete': '컷 삭제',
+    'menuAction.layer-add': '레이어 추가',
+    'menuAction.layer-add-attach-free-above': '위에 프리 부속 레이어 추가',
+    'menuAction.layer-add-attach-free-below': '아래에 프리 부속 레이어 추가',
+    'menuAction.layer-add-attach-above': '위에 동기 부속 레이어 추가',
+    'menuAction.layer-add-attach-below': '아래에 동기 부속 레이어 추가',
+    'menuAction.layer-duplicate': '레이어 복제',
+    'menuAction.layer-link-duplicate': '링크해서 복제',
+    'menuAction.layer-unlink': '링크 해제',
+    'menuAction.layer-group-into-folder': '폴더로 묶기',
+    'menuAction.layer-rename': '레이어 이름 변경…',
+    'menuAction.layer-copy': '레이어 복사',
+    'menuAction.layer-paste': '레이어 붙여넣기',
+    'menuAction.layer-delete': '레이어 삭제…',
+    'menuAction.playback-stop': '정지',
+    'menuAction.playback-play-all': '모든 컷 재생',
+    'menuAction.window-reset-layout': '작업공간 배치 초기화',
+    'menuAction.help-about': 'QuickAnimaker 정보',
     'fileOpenTitle': '프로젝트 열기',
     'fileSaveTitle': '프로젝트 저장',
     'fileAppDocuments': '앱 문서',
@@ -1389,6 +1573,77 @@ class AppStrings {
         'Rien à lier — les plans sont déjà entièrement liés ou ne partagent '
         'aucun calque de dessin.',
     'convertLinkedCutUndoNote': 'Annuler restaure les deux plans.',
+    'recoverAutosaveTitle': 'Récupérer les modifications enregistrées ?',
+    'recoverAutosaveBody':
+        'Une sauvegarde automatique plus récente existe pour ce projet. La '
+        'récupérer, ou ouvrir le fichier tel quel ?',
+    'recoverOpenSaved': 'Ouvrir la version enregistrée',
+    'recoverAction': 'Récupérer',
+    'closeProjectTitle': 'Fermer le projet ?',
+    'closeProjectBody':
+        'Vos modifications ne sont pas enregistrées. Fermer quand même ?',
+    'commonSaveAs': 'Enregistrer sous…',
+    'unsavedAutosaveTitle': 'Enregistrez votre projet',
+    'unsavedAutosaveBody':
+        "Ce projet n'a jamais été enregistré : la sauvegarde automatique "
+        "n'a nulle part où écrire. Choisissez un fichier et elle le "
+        'protégera ensuite.',
+    'commonNotNow': 'Plus tard',
+    'menuBarFile': 'Fichier',
+    'menuBarEdit': 'Édition',
+    'menuBarCut': 'Plan',
+    'menuBarLayer': 'Calque',
+    'menuBarPlayback': 'Lecture',
+    'menuBarWindow': 'Fenêtre',
+    'menuBarHelp': 'Aide',
+    'menuPlay': 'Lire',
+    'menuPause': 'Pause',
+    'menuAction.file-open': 'Ouvrir…',
+    'menuAction.file-save': 'Enregistrer',
+    'menuAction.file-save-as': 'Enregistrer sous…',
+    'menuAction.file-project-background': 'Arrière-plan du projet…',
+    'menuAction.file-export': 'Exporter…',
+    'menuAction.edit-undo': 'Annuler',
+    'menuAction.edit-redo': 'Rétablir',
+    'menuAction.edit-copy-frame': "Copier l'image",
+    'menuAction.edit-paste-linked-frame': "Coller l'image liée",
+    'menuAction.edit-new-drawing': 'Nouveau dessin sur cette image',
+    'menuAction.edit-delete-cell': 'Supprimer la case',
+    'menuAction.edit-cut-exposure': "Couper l'exposition",
+    'menuAction.edit-toggle-mark': 'Basculer le repère',
+    'menuAction.edit-keyboard-shortcuts': 'Raccourcis clavier…',
+    'menuAction.edit-preferences': 'Préférences…',
+    'menuAction.cut-new': 'Nouveau plan',
+    'menuAction.cut-duplicate': 'Dupliquer le plan',
+    'menuAction.cut-create-linked': 'Créer un plan lié',
+    'menuAction.cut-convert-linked': 'Convertir en plan lié…',
+    'menuAction.cut-rename': 'Renommer le plan…',
+    'menuAction.cut-canvas-size': 'Taille du canevas…',
+    'menuAction.cut-move-left': 'Déplacer le plan à gauche',
+    'menuAction.cut-move-right': 'Déplacer le plan à droite',
+    'menuAction.cut-copy-ae-camera': 'Copier les clés AE de la caméra',
+    'menuAction.cut-delete': 'Supprimer le plan',
+    'menuAction.layer-add': 'Ajouter un calque',
+    'menuAction.layer-add-attach-free-above':
+        'Ajouter un calque attaché libre au-dessus',
+    'menuAction.layer-add-attach-free-below':
+        'Ajouter un calque attaché libre en dessous',
+    'menuAction.layer-add-attach-above':
+        'Ajouter un calque attaché synchronisé au-dessus',
+    'menuAction.layer-add-attach-below':
+        'Ajouter un calque attaché synchronisé en dessous',
+    'menuAction.layer-duplicate': 'Dupliquer le calque',
+    'menuAction.layer-link-duplicate': 'Dupliquer en liant',
+    'menuAction.layer-unlink': 'Délier le calque',
+    'menuAction.layer-group-into-folder': 'Grouper dans un dossier',
+    'menuAction.layer-rename': 'Renommer le calque…',
+    'menuAction.layer-copy': 'Copier le calque',
+    'menuAction.layer-paste': 'Coller le calque',
+    'menuAction.layer-delete': 'Supprimer le calque…',
+    'menuAction.playback-stop': 'Arrêter',
+    'menuAction.playback-play-all': 'Lire tous les plans',
+    'menuAction.window-reset-layout': "Réinitialiser l'espace de travail",
+    'menuAction.help-about': 'À propos de QuickAnimaker',
     'fileOpenTitle': 'Ouvrir un projet',
     'fileSaveTitle': 'Enregistrer le projet',
     'fileAppDocuments': "Documents de l'app",
@@ -1697,6 +1952,70 @@ class AppStrings {
     'convertLinkedCutNothing': '没有可链接的内容 — 两个镜头已完全链接，'
         '或没有可共用的绘制图层。',
     'convertLinkedCutUndoNote': '撤销会同时还原两个镜头。',
+    'recoverAutosaveTitle': '要恢复自动保存的更改吗？',
+    'recoverAutosaveBody':
+        '此项目存在更新的自动保存。是恢复它，还是打开上次保存的文件？',
+    'recoverOpenSaved': '打开已保存版本',
+    'recoverAction': '恢复',
+    'closeProjectTitle': '关闭项目？',
+    'closeProjectBody': '你的更改尚未保存。仍要关闭吗？',
+    'commonSaveAs': '另存为…',
+    'unsavedAutosaveTitle': '保存你的项目',
+    'unsavedAutosaveBody':
+        '此项目从未保存过，自动保存没有可写入的位置。选择一个文件后，'
+        '自动保存就会开始守护它。',
+    'commonNotNow': '暂不',
+    'menuBarFile': '文件',
+    'menuBarEdit': '编辑',
+    'menuBarCut': '镜头',
+    'menuBarLayer': '图层',
+    'menuBarPlayback': '播放',
+    'menuBarWindow': '窗口',
+    'menuBarHelp': '帮助',
+    'menuPlay': '播放',
+    'menuPause': '暂停',
+    'menuAction.file-open': '打开…',
+    'menuAction.file-save': '保存',
+    'menuAction.file-save-as': '另存为…',
+    'menuAction.file-project-background': '项目背景…',
+    'menuAction.file-export': '导出…',
+    'menuAction.edit-undo': '撤销',
+    'menuAction.edit-redo': '重做',
+    'menuAction.edit-copy-frame': '复制帧',
+    'menuAction.edit-paste-linked-frame': '粘贴链接帧',
+    'menuAction.edit-new-drawing': '在此帧新建原画',
+    'menuAction.edit-delete-cell': '删除单元格',
+    'menuAction.edit-cut-exposure': '剪切曝光',
+    'menuAction.edit-toggle-mark': '切换标记',
+    'menuAction.edit-keyboard-shortcuts': '键盘快捷键…',
+    'menuAction.edit-preferences': '偏好设置…',
+    'menuAction.cut-new': '新建镜头',
+    'menuAction.cut-duplicate': '复制镜头',
+    'menuAction.cut-create-linked': '创建链接镜头',
+    'menuAction.cut-convert-linked': '转换为链接镜头…',
+    'menuAction.cut-rename': '重命名镜头…',
+    'menuAction.cut-canvas-size': '画布尺寸…',
+    'menuAction.cut-move-left': '镜头左移',
+    'menuAction.cut-move-right': '镜头右移',
+    'menuAction.cut-copy-ae-camera': '复制摄影机 AE 关键帧',
+    'menuAction.cut-delete': '删除镜头',
+    'menuAction.layer-add': '添加图层',
+    'menuAction.layer-add-attach-free-above': '在上方添加自由附属图层',
+    'menuAction.layer-add-attach-free-below': '在下方添加自由附属图层',
+    'menuAction.layer-add-attach-above': '在上方添加同步附属图层',
+    'menuAction.layer-add-attach-below': '在下方添加同步附属图层',
+    'menuAction.layer-duplicate': '复制图层',
+    'menuAction.layer-link-duplicate': '链接复制图层',
+    'menuAction.layer-unlink': '取消图层链接',
+    'menuAction.layer-group-into-folder': '编组到文件夹',
+    'menuAction.layer-rename': '重命名图层…',
+    'menuAction.layer-copy': '复制图层',
+    'menuAction.layer-paste': '粘贴图层',
+    'menuAction.layer-delete': '删除图层…',
+    'menuAction.playback-stop': '停止',
+    'menuAction.playback-play-all': '播放所有镜头',
+    'menuAction.window-reset-layout': '重置工作区布局',
+    'menuAction.help-about': '关于 QuickAnimaker',
     'fileOpenTitle': '打开项目',
     'fileSaveTitle': '保存项目',
     'fileAppDocuments': '应用文档',

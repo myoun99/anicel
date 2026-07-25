@@ -129,6 +129,25 @@ void main() {
         s.convertLinkedCutOriginGainsTemplate,
     'convertLinkedCutNothing': (s) => s.convertLinkedCutNothing,
     'convertLinkedCutUndoNote': (s) => s.convertLinkedCutUndoNote,
+    'recoverAutosaveTitle': (s) => s.recoverAutosaveTitle,
+    'recoverAutosaveBody': (s) => s.recoverAutosaveBody,
+    'recoverOpenSaved': (s) => s.recoverOpenSaved,
+    'recoverAction': (s) => s.recoverAction,
+    'closeProjectTitle': (s) => s.closeProjectTitle,
+    'closeProjectBody': (s) => s.closeProjectBody,
+    'commonSaveAs': (s) => s.commonSaveAs,
+    'unsavedAutosaveTitle': (s) => s.unsavedAutosaveTitle,
+    'unsavedAutosaveBody': (s) => s.unsavedAutosaveBody,
+    'commonNotNow': (s) => s.commonNotNow,
+    'menuBarFile': (s) => s.menuBarFile,
+    'menuBarEdit': (s) => s.menuBarEdit,
+    'menuBarCut': (s) => s.menuBarCut,
+    'menuBarLayer': (s) => s.menuBarLayer,
+    'menuBarPlayback': (s) => s.menuBarPlayback,
+    'menuBarWindow': (s) => s.menuBarWindow,
+    'menuBarHelp': (s) => s.menuBarHelp,
+    'menuPlay': (s) => s.menuPlay,
+    'menuPause': (s) => s.menuPause,
     'fileOpenTitle': (s) => s.fileOpenTitle,
     'fileSaveTitle': (s) => s.fileSaveTitle,
     'fileAppDocuments': (s) => s.fileAppDocuments,
@@ -286,6 +305,6 @@ void main() {
   test('the reader table covers every getter the class declares', () {
     // Guards the guard: a string added without a line here would other-
     // wise be silently unchecked.
-    expect(readers, hasLength(231));
+    expect(readers, hasLength(250));
   });
 }
