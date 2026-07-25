@@ -1,39 +1,52 @@
 import '../core/collection_equality.dart';
 
-/// One onion-skin peg (Callipeg's light-table model): one unique drawing
-/// before/after the current one, individually toggleable with its own
-/// opacity.
+/// One onion-skin peg: how strongly the drawing at that distance ghosts.
+///
+/// Opacity 0 IS the off switch — there is no separate enable flag, so a peg
+/// can never be "on" and invisible at the same time.
 class OnionPeg {
-  const OnionPeg({required this.enabled, required this.opacity});
+  const OnionPeg({required this.opacity});
 
-  final bool enabled;
+  /// 0 = this peg ghosts nothing.
   final double opacity;
 
-  OnionPeg copyWith({bool? enabled, double? opacity}) => OnionPeg(
-    enabled: enabled ?? this.enabled,
-    opacity: opacity ?? this.opacity,
-  );
+  bool get shows => opacity > 0;
+
+  OnionPeg copyWith({double? opacity}) =>
+      OnionPeg(opacity: opacity ?? this.opacity);
 
   @override
   bool operator ==(Object other) =>
-      identical(this, other) ||
-      other is OnionPeg && other.enabled == enabled && other.opacity == opacity;
+      identical(this, other) || other is OnionPeg && other.opacity == opacity;
 
   @override
-  int get hashCode => Object.hash(enabled, opacity);
+  int get hashCode => opacity.hashCode;
 }
 
-/// How onion frames color: side tints (Colors — the Callipeg default) or
-/// the artwork's own colors (Images), opacity only.
+/// How onion frames color: side tints (Colors — the default) or the
+/// artwork's own colors (Images), opacity only.
 enum OnionSkinMode { colors, images }
 
-/// The editor's onion-skin state (session view state, not project data) —
-/// Callipeg's peg model: up to [maxPegs] pegs per side, each toggleable
-/// with its own opacity, side tint colors and a Colors/Images mode.
+/// What one peg step counts.
+enum OnionSkinStep {
+  /// Peg k = the k-th unique DRAWING before/after the current one: a held
+  /// block is one drawing and linked repeats collapse. This is the
+  /// animator's "previous drawing", and it degenerates to plain frames
+  /// when nothing is held.
+  blocks,
+
+  /// Peg k = literally k frames before/after. Inside a hold that resolves
+  /// to the drawing already on screen, which ghosts nothing at all.
+  frames,
+}
+
+/// The editor's onion-skin state (session view state, not project data):
+/// [maxPegs] pegs per side, each with its own opacity, the side tints, the
+/// Colors/Images mode and what a peg step counts.
 ///
-/// UI-R17 #5: there is NO master enable anymore — onion application is
-/// PER LAYER (TVPaint style: the session's onion layer-id set), these
-/// settings only shape HOW the ghosts render.
+/// UI-R17 #5: there is NO master enable — onion application is PER LAYER
+/// (TVPaint style: the session's onion layer-id set), these settings only
+/// shape HOW the ghosts render.
 class OnionSkinSettings {
   const OnionSkinSettings({
     this.beforePegs = defaultBeforePegs,
@@ -41,25 +54,37 @@ class OnionSkinSettings {
     this.tintBefore = 0xFFE53935,
     this.tintAfter = 0xFF43A047,
     this.mode = OnionSkinMode.colors,
+    this.step = OnionSkinStep.blocks,
   });
 
   static const int maxPegs = 8;
 
-  /// Callipeg's defaults: two drawings back, one ahead.
+  static const OnionPeg _off = OnionPeg(opacity: 0);
+
+  /// Every slot exists from the start (the panel shows all of them at
+  /// once): one drawing each way, the rest silent.
   static const List<OnionPeg> defaultBeforePegs = [
-    OnionPeg(enabled: true, opacity: 0.4),
-    OnionPeg(enabled: true, opacity: 0.2),
-    OnionPeg(enabled: false, opacity: 0.15),
-    OnionPeg(enabled: false, opacity: 0.1),
+    OnionPeg(opacity: 0.4),
+    _off,
+    _off,
+    _off,
+    _off,
+    _off,
+    _off,
+    _off,
   ];
   static const List<OnionPeg> defaultAfterPegs = [
-    OnionPeg(enabled: true, opacity: 0.3),
-    OnionPeg(enabled: false, opacity: 0.15),
-    OnionPeg(enabled: false, opacity: 0.1),
-    OnionPeg(enabled: false, opacity: 0.1),
+    OnionPeg(opacity: 0.3),
+    _off,
+    _off,
+    _off,
+    _off,
+    _off,
+    _off,
+    _off,
   ];
 
-  /// Peg k = the (k+1)-th unique drawing before/after the current one.
+  /// Peg k = the (k+1)-th drawing (or frame, per [step]) before/after.
   final List<OnionPeg> beforePegs;
   final List<OnionPeg> afterPegs;
 
@@ -68,6 +93,7 @@ class OnionSkinSettings {
   final int tintAfter;
 
   final OnionSkinMode mode;
+  final OnionSkinStep step;
 
   OnionSkinSettings copyWith({
     List<OnionPeg>? beforePegs,
@@ -75,6 +101,7 @@ class OnionSkinSettings {
     int? tintBefore,
     int? tintAfter,
     OnionSkinMode? mode,
+    OnionSkinStep? step,
   }) {
     return OnionSkinSettings(
       beforePegs: beforePegs ?? this.beforePegs,
@@ -82,6 +109,7 @@ class OnionSkinSettings {
       tintBefore: tintBefore ?? this.tintBefore,
       tintAfter: tintAfter ?? this.tintAfter,
       mode: mode ?? this.mode,
+      step: step ?? this.step,
     );
   }
 
@@ -93,7 +121,8 @@ class OnionSkinSettings {
           listEquals(other.afterPegs, afterPegs) &&
           other.tintBefore == tintBefore &&
           other.tintAfter == tintAfter &&
-          other.mode == mode;
+          other.mode == mode &&
+          other.step == step;
 
   @override
   int get hashCode => Object.hash(
@@ -102,5 +131,6 @@ class OnionSkinSettings {
     tintBefore,
     tintAfter,
     mode,
+    step,
   );
 }

@@ -21,12 +21,19 @@ class OnionSkinFramePlan {
   final int? tint;
 }
 
-/// Resolves which of the ACTIVE layer's cels ghost at [frameIndex] —
-/// Callipeg's sheet-based model: peg k is the (k+1)-th UNIQUE drawing
-/// before/after the current exposure. Holds are respected (a held block
-/// is one drawing), linked-cel repeats of an already-collected (or the
-/// current) cel are skipped, and disabled pegs still consume their slot
-/// (peg 2 stays "two drawings back" while peg 1 is off).
+/// Resolves which of the ACTIVE layer's cels ghost at [frameIndex].
+///
+/// [OnionSkinStep.blocks] (the default) walks DRAWINGS: peg k is the
+/// (k+1)-th unique drawing before/after the current exposure, holds are
+/// respected (a held block is one drawing), linked-cel repeats of an
+/// already-collected (or the current) cel are skipped, and a silent peg
+/// still consumes its slot (peg 2 stays "two drawings back" while peg 1
+/// is at 0).
+///
+/// [OnionSkinStep.frames] walks the sheet instead: peg k is whatever is
+/// exposed k frames away. Inside a hold that is the drawing already on
+/// screen, and ghosting it would only paint the current drawing under
+/// itself — so it draws nothing.
 List<OnionSkinFramePlan> planOnionSkin({
   required Layer layer,
   required int frameIndex,
@@ -38,7 +45,36 @@ List<OnionSkinFramePlan> planOnionSkin({
   final timeline = SplayTreeMap<int, TimelineExposure>.of(layer.timeline);
   final currentFrameId = exposedFrameIdAt(timeline, frameIndex);
 
-  List<OnionSkinFramePlan> collect({
+  List<OnionSkinFramePlan> collectFrames({
+    required List<OnionPeg> pegs,
+    required int? tint,
+    required int direction,
+  }) {
+    final plans = <OnionSkinFramePlan>[];
+    for (var peg = 0; peg < pegs.length; peg += 1) {
+      final index = frameIndex + direction * (peg + 1);
+      if (index < 0) {
+        break;
+      }
+      if (!pegs[peg].shows) {
+        continue;
+      }
+      final frameId = exposedFrameIdAt(timeline, index);
+      if (frameId == null || frameId == currentFrameId) {
+        continue;
+      }
+      plans.add(
+        OnionSkinFramePlan(
+          frameId: frameId,
+          opacity: pegs[peg].opacity,
+          tint: settings.mode == OnionSkinMode.colors ? tint : null,
+        ),
+      );
+    }
+    return plans;
+  }
+
+  List<OnionSkinFramePlan> collectBlocks({
     required List<OnionPeg> pegs,
     required int? tint,
     required int? Function(int cursor) nextBlockStart,
@@ -66,7 +102,7 @@ List<OnionSkinFramePlan> planOnionSkin({
       if (blockStart == null || blockFrameId == null) {
         break;
       }
-      if (peg.enabled && peg.opacity > 0) {
+      if (peg.shows) {
         plans.add(
           OnionSkinFramePlan(
             frameId: blockFrameId,
@@ -83,20 +119,33 @@ List<OnionSkinFramePlan> planOnionSkin({
   // mid-block playhead still sees the previous drawing, not its own
   // block); the AFTER walk from the current index.
   final currentBlock = coveringDrawingBlockAt(timeline, frameIndex);
-  final before = collect(
-    pegs: settings.beforePegs,
-    tint: settings.tintBefore,
-    startCursor: currentBlock?.startIndex ?? frameIndex,
-    nextBlockStart: (cursor) =>
-        previousDrawingBlockBefore(timeline, cursor)?.startIndex,
-  );
-  final after = collect(
-    pegs: settings.afterPegs,
-    tint: settings.tintAfter,
-    startCursor: frameIndex,
-    nextBlockStart: (cursor) =>
-        nextDrawingBlockAfter(timeline, cursor)?.startIndex,
-  );
+  final frameSteps = settings.step == OnionSkinStep.frames;
+  final before = frameSteps
+      ? collectFrames(
+          pegs: settings.beforePegs,
+          tint: settings.tintBefore,
+          direction: -1,
+        )
+      : collectBlocks(
+          pegs: settings.beforePegs,
+          tint: settings.tintBefore,
+          startCursor: currentBlock?.startIndex ?? frameIndex,
+          nextBlockStart: (cursor) =>
+              previousDrawingBlockBefore(timeline, cursor)?.startIndex,
+        );
+  final after = frameSteps
+      ? collectFrames(
+          pegs: settings.afterPegs,
+          tint: settings.tintAfter,
+          direction: 1,
+        )
+      : collectBlocks(
+          pegs: settings.afterPegs,
+          tint: settings.tintAfter,
+          startCursor: frameIndex,
+          nextBlockStart: (cursor) =>
+              nextDrawingBlockAfter(timeline, cursor)?.startIndex,
+        );
 
   // Furthest ghosts paint first (bottom), nearest last, before then after.
   return [...before.reversed, ...after];
