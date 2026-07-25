@@ -110,30 +110,37 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
-                child: TextField(
-                  key: const ValueKey<String>('canvas-size-width-field'),
-                  controller: _widthController,
-                  autofocus: true,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  decoration: const InputDecoration(labelText: 'Width (px)'),
-                  onChanged: (_) => setState(() {}),
+                child: AppWindowField(
+                  label: 'Width (px)',
+                  emphasized: true,
+                  child: TextField(
+                    key: const ValueKey<String>('canvas-size-width-field'),
+                    controller: _widthController,
+                    autofocus: true,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    onChanged: (_) => setState(() {}),
+                  ),
                 ),
               ),
               const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8),
+                padding: EdgeInsets.fromLTRB(8, 0, 8, 7),
                 child: Text('×'),
               ),
               Expanded(
-                child: TextField(
-                  key: const ValueKey<String>('canvas-size-height-field'),
-                  controller: _heightController,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  decoration: const InputDecoration(labelText: 'Height (px)'),
-                  onChanged: (_) => setState(() {}),
+                child: AppWindowField(
+                  label: 'Height (px)',
+                  emphasized: true,
+                  child: TextField(
+                    key: const ValueKey<String>('canvas-size-height-field'),
+                    controller: _heightController,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    onChanged: (_) => setState(() {}),
+                  ),
                 ),
               ),
             ],

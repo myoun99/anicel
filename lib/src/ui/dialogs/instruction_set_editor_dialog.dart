@@ -100,7 +100,7 @@ class _InstructionSetEditorDialogState
                           key: ValueKey<String>(
                             'instruction-def-edit-${def.id}',
                           ),
-                          tooltip: 'Edit Instruction',
+                          tooltip: 'Edit instruction',
                           icon: const Icon(Icons.edit_outlined, size: 18),
                           onPressed: () => _editDef(index),
                         ),
@@ -108,7 +108,7 @@ class _InstructionSetEditorDialogState
                           key: ValueKey<String>(
                             'instruction-def-delete-${def.id}',
                           ),
-                          tooltip: 'Delete Instruction',
+                          tooltip: 'Delete instruction',
                           icon: const Icon(Icons.delete_outline, size: 18),
                           onPressed: () => setState(
                             () => _defs = [..._defs]..removeAt(index),
@@ -126,7 +126,7 @@ class _InstructionSetEditorDialogState
                 key: const ValueKey<String>('instruction-def-add-button'),
                 onPressed: _addDef,
                 icon: const Icon(Icons.add, size: 16),
-                label: const Text('Add Instruction'),
+                label: const Text('Add instruction'),
               ),
             ),
           ],
@@ -214,12 +214,13 @@ class _InstructionDefDialogState extends State<_InstructionDefDialog> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              TextField(
-                key: const ValueKey<String>('instruction-def-name-field'),
-                controller: _nameController,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  labelText: 'Name (FI, PAN, …)',
+              AppWindowField(
+                label: 'Name (FI, PAN, …)',
+                emphasized: true,
+                child: TextField(
+                  key: const ValueKey<String>('instruction-def-name-field'),
+                  controller: _nameController,
+                  autofocus: true,
                 ),
               ),
               const SizedBox(height: 12),

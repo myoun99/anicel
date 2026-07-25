@@ -8,12 +8,18 @@ import 'package:quick_animaker_v2/src/models/timesheet_info.dart';
 import 'package:quick_animaker_v2/src/services/persistence/app_language_settings_store.dart';
 import 'package:quick_animaker_v2/src/ui/dialogs/language_settings_dialog.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
+import 'package:quick_animaker_v2/src/ui/text/app_strings.dart';
 import 'package:quick_animaker_v2/src/ui/timesheet/timesheet_document_painter.dart';
 import 'package:quick_animaker_v2/src/ui/timesheet/timesheet_notation.dart';
 
 /// UI-R10 #7: TWO language settings — program (app chrome) and notation
 /// (what prints on submissions). Defaults: program=en, notation=ja.
 void main() {
+  // The languages are an APP-WIDE setting (AppText), not per-session, so
+  // each test starts from the product defaults rather than inheriting
+  // whatever the previous one selected.
+  setUp(() => AppText.settings.value = const AppLanguageSettings());
+
   test('defaults: program English, notation Japanese', () {
     const settings = AppLanguageSettings();
     expect(settings.programLanguage, AppLanguage.en);

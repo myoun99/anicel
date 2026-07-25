@@ -229,7 +229,7 @@ class _FileBrowserDialogState extends State<_FileBrowserDialog> {
                 TextButton(
                   key: const ValueKey<String>('file-browser-root-appdocs'),
                   onPressed: () => _enter(ensuredAppDocumentsDirectorySync()),
-                  child: const Text('App Documents'),
+                  child: const Text('App documents'),
                 ),
                 Expanded(
                   child: Text(
@@ -305,21 +305,15 @@ class _FileBrowserDialogState extends State<_FileBrowserDialog> {
                     ),
             ),
             if (widget.mode == FileBrowserMode.saveAs)
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      key: const ValueKey<String>('file-browser-name'),
-                      controller: _name,
-                      decoration: const InputDecoration(
-                        isDense: true,
-                        labelText: 'File name',
-                        suffixText: '.qap',
-                      ),
-                      onSubmitted: (_) => _saveHere(),
-                    ),
-                  ),
-                ],
+              AppWindowField(
+                label: 'File name',
+                emphasized: true,
+                child: TextField(
+                  key: const ValueKey<String>('file-browser-name'),
+                  controller: _name,
+                  decoration: const InputDecoration(suffixText: '.qap'),
+                  onSubmitted: (_) => _saveHere(),
+                ),
               ),
             Padding(
               padding: const EdgeInsets.only(top: 6),

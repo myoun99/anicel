@@ -232,8 +232,11 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// The program + notation languages — a value-only channel (widgets
   /// subscribe where they read strings; no whole-session notify).
-  final ValueNotifier<AppLanguageSettings> languageSettings =
-      ValueNotifier<AppLanguageSettings>(const AppLanguageSettings());
+  ///
+  /// The notifier itself lives app-wide on [AppText.settings], so canvas
+  /// widgets that hold no session still read the chosen language; this is
+  /// that same object, not a copy.
+  ValueNotifier<AppLanguageSettings> get languageSettings => AppText.settings;
 
   /// The PROGRAM-language string table, read at call time — for session
   /// verbs that produce user-facing messages and for widgets that already
@@ -928,7 +931,8 @@ class EditorSessionManager extends ChangeNotifier {
     cutFrameCompositeCache.dispose();
     layerFrameImageCache.dispose();
     audioConformStore.dispose();
-    languageSettings.dispose();
+    // languageSettings is NOT disposed here: it lives on AppText, app-wide,
+    // and outlives this session (as the accent settings do).
     audioSyncSettings.dispose();
     soloedSeLayerIds.dispose();
     editingFrameCursor.dispose();

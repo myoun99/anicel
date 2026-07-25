@@ -92,39 +92,48 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              TextField(
-                key: const ValueKey<String>('timesheet-info-title-field'),
-                controller: _titleController,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  labelText: 'Title',
-                  hintText: 'Project name when empty',
+              AppWindowField(
+                label: 'Title',
+                emphasized: true,
+                child: TextField(
+                  key: const ValueKey<String>('timesheet-info-title-field'),
+                  controller: _titleController,
+                  autofocus: true,
+                  decoration: const InputDecoration(
+                    hintText: 'Project name when empty',
+                  ),
                 ),
               ),
-              const SizedBox(height: 8),
-              TextField(
-                key: const ValueKey<String>('timesheet-info-episode-field'),
-                controller: _episodeController,
-                decoration: const InputDecoration(labelText: 'Episode'),
+              const SizedBox(height: 12),
+              AppWindowField(
+                label: 'Episode',
+                child: TextField(
+                  key: const ValueKey<String>('timesheet-info-episode-field'),
+                  controller: _episodeController,
+                ),
               ),
-              const SizedBox(height: 8),
-              TextField(
-                key: const ValueKey<String>('timesheet-info-scene-field'),
-                controller: _sceneController,
-                decoration: const InputDecoration(labelText: 'Scene'),
+              const SizedBox(height: 12),
+              AppWindowField(
+                label: 'Scene',
+                child: TextField(
+                  key: const ValueKey<String>('timesheet-info-scene-field'),
+                  controller: _sceneController,
+                ),
               ),
-              const SizedBox(height: 8),
-              TextField(
-                key: const ValueKey<String>('timesheet-info-artist-field'),
-                controller: _artistController,
-                decoration: const InputDecoration(labelText: 'Artist'),
-                onSubmitted: (_) => _submit(),
+              const SizedBox(height: 12),
+              AppWindowField(
+                label: 'Artist',
+                child: TextField(
+                  key: const ValueKey<String>('timesheet-info-artist-field'),
+                  controller: _artistController,
+                  onSubmitted: (_) => _submit(),
+                ),
               ),
               const SizedBox(height: 16),
               Text(
-                'Visible Boxes',
+                'Visible boxes',
                 style: Theme.of(context).textTheme.labelMedium,
               ),
               const SizedBox(height: 8),
@@ -164,15 +173,14 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
                     setState(() => _exposureBarEnabled = value),
               ),
               if (_exposureBarEnabled)
-                TextField(
-                  key: const ValueKey<String>(
-                    'timesheet-info-exposure-bar-threshold',
-                  ),
-                  controller: _exposureBarThresholdController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'N (industry standard 3)',
-                    isDense: true,
+                AppWindowField(
+                  label: 'N (industry standard 3)',
+                  child: TextField(
+                    key: const ValueKey<String>(
+                      'timesheet-info-exposure-bar-threshold',
+                    ),
+                    controller: _exposureBarThresholdController,
+                    keyboardType: TextInputType.number,
                   ),
                 ),
               SwitchListTile(

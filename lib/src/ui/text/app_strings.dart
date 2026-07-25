@@ -1,4 +1,22 @@
+import 'package:flutter/foundation.dart';
+
 import '../../models/app_language.dart';
+
+/// The LIVE program/notation languages, app-wide — the same shape
+/// [AppColors.accentSettings] uses, and for the same reason: widgets deep
+/// in the canvas have no session to ask, and a string that ignores the
+/// language setting is a bug wherever it appears.
+///
+/// The session restores and persists this; it is never disposed, because
+/// it outlives any one session (tests build several).
+abstract final class AppText {
+  static final ValueNotifier<AppLanguageSettings> settings =
+      ValueNotifier<AppLanguageSettings>(const AppLanguageSettings());
+
+  /// The PROGRAM-language table, read at call time.
+  static AppStrings get strings =>
+      AppStrings.of(settings.value.programLanguage);
+}
 
 /// PROGRAM-language strings (UI-R10 #7): what the app chrome reads in.
 /// Coverage rolls out incrementally — panels adopt entries as they get
@@ -78,6 +96,10 @@ class AppStrings {
     required this.fpsAudioBody,
     required this.fpsAudioKeep,
     required this.fpsAudioPull,
+    required this.selectionMoveConfirmTitle,
+    required this.selectionMoveConfirmBody,
+    required this.selectionMoveRevert,
+    required this.selectionMoveApply,
   });
 
   final String languageSettingsTitle;
@@ -195,6 +217,12 @@ class AppStrings {
   final String fpsAudioKeep;
   final String fpsAudioPull;
 
+  // --- The pending selection-move prompt (R17-①) ---
+  final String selectionMoveConfirmTitle;
+  final String selectionMoveConfirmBody;
+  final String selectionMoveRevert;
+  final String selectionMoveApply;
+
   static AppStrings of(AppLanguage language) => switch (language) {
     AppLanguage.en => _en,
     AppLanguage.ja => _ja,
@@ -303,6 +331,10 @@ class AppStrings {
         'conform) so every sound keeps its exact frame span.',
     fpsAudioKeep: 'Keep audio timing',
     fpsAudioPull: 'Pull audio 0.1%',
+    selectionMoveConfirmTitle: 'Commit move',
+    selectionMoveConfirmBody: 'Commit the selection move?',
+    selectionMoveRevert: 'Revert',
+    selectionMoveApply: 'Commit',
   );
 
   static const _ja = AppStrings._(
@@ -399,6 +431,10 @@ class AppStrings {
         '維持します。',
     fpsAudioKeep: '音のタイミングを維持',
     fpsAudioPull: '音を0.1%プル',
+    selectionMoveConfirmTitle: '移動の確定',
+    selectionMoveConfirmBody: '選択範囲の移動を確定しますか？',
+    selectionMoveRevert: '元に戻す',
+    selectionMoveApply: '確定',
   );
 
   static const _ko = AppStrings._(
@@ -496,6 +532,10 @@ class AppStrings {
         '유지합니다.',
     fpsAudioKeep: '오디오 타이밍 유지',
     fpsAudioPull: '오디오 0.1% 당김',
+    selectionMoveConfirmTitle: '이동 확정',
+    selectionMoveConfirmBody: '선택 영역 이동을 확정하시겠습니까?',
+    selectionMoveRevert: '되돌리기',
+    selectionMoveApply: '확정',
   );
 
   static const _fr = AppStrings._(
@@ -605,6 +645,10 @@ class AppStrings {
         'd\'images exacte.',
     fpsAudioKeep: 'Garder le timing audio',
     fpsAudioPull: 'Tirer l\'audio de 0,1 %',
+    selectionMoveConfirmTitle: 'Valider le déplacement',
+    selectionMoveConfirmBody: 'Valider le déplacement de la sélection ?',
+    selectionMoveRevert: 'Rétablir',
+    selectionMoveApply: 'Valider',
   );
 
   static const _zhHans = AppStrings._(
@@ -697,5 +741,9 @@ class AppStrings {
         '帧范围。',
     fpsAudioKeep: '保持音频时间',
     fpsAudioPull: '拉伸音频 0.1%',
+    selectionMoveConfirmTitle: '确认移动',
+    selectionMoveConfirmBody: '要确认选区的移动吗？',
+    selectionMoveRevert: '还原',
+    selectionMoveApply: '确认',
   );
 }

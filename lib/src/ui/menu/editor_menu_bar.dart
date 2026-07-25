@@ -202,13 +202,13 @@ class EditorMenuBar extends StatelessWidget {
     ),
     _item(
       id: 'file-save-as',
-      label: 'Save As…',
+      label: 'Save as…',
       onPressed: () => unawaited(_saveProjectAs(context)),
     ),
     const Divider(height: 8),
     _item(
       id: 'file-project-background',
-      label: 'Project Background…',
+      label: 'Project background…',
       onPressed: () {
         unawaited(
           showDialog<void>(
@@ -258,42 +258,42 @@ class EditorMenuBar extends StatelessWidget {
     const Divider(height: 8),
     _item(
       id: 'edit-copy-frame',
-      label: 'Copy Frame',
+      label: 'Copy frame',
       onPressed: session.canCopyFrameAtCurrentFrame
           ? session.copyFrameAtCurrentFrame
           : null,
     ),
     _item(
       id: 'edit-paste-linked-frame',
-      label: 'Paste Linked Frame',
+      label: 'Paste linked frame',
       onPressed: session.canPasteLinkedFrameAtCurrentFrame
           ? session.pasteLinkedFrameAtCurrentFrame
           : null,
     ),
     _item(
       id: 'edit-new-drawing',
-      label: 'New Drawing at Frame',
+      label: 'New drawing at frame',
       onPressed: session.canCreateDrawingAtCurrentFrame
           ? session.createDrawingAtCurrentFrame
           : null,
     ),
     _item(
       id: 'edit-delete-cell',
-      label: 'Delete Cell',
+      label: 'Delete cell',
       onPressed: session.canDeleteCellAtCurrentFrame
           ? session.deleteCellAtCurrentFrame
           : null,
     ),
     _item(
       id: 'edit-cut-exposure',
-      label: 'Cut Exposure',
+      label: 'Cut exposure',
       onPressed: session.canCutExposureAtCurrentFrame
           ? session.cutExposureAtCurrentFrame
           : null,
     ),
     _item(
       id: 'edit-toggle-mark',
-      label: 'Toggle Mark',
+      label: 'Toggle mark',
       onPressed: session.canToggleMarkAtCurrentFrame
           ? session.toggleMarkAtCurrentFrame
           : null,
@@ -301,7 +301,7 @@ class EditorMenuBar extends StatelessWidget {
     const Divider(height: 8),
     _item(
       id: 'edit-keyboard-shortcuts',
-      label: 'Keyboard Shortcuts…',
+      label: 'Keyboard shortcuts…',
       onPressed: shortcuts == null
           ? null
           : () {
@@ -385,23 +385,23 @@ class EditorMenuBar extends StatelessWidget {
   }
 
   List<Widget> _cutItems(BuildContext context) => [
-    _item(id: 'cut-new', label: 'New Cut', onPressed: session.createCut),
+    _item(id: 'cut-new', label: 'New cut', onPressed: session.createCut),
     _item(
       id: 'cut-duplicate',
-      label: 'Duplicate Cut',
+      label: 'Duplicate cut',
       onPressed: session.duplicateActiveCut,
     ),
     // 겸용컷 (the link system, L4): same pictures, own timing.
     _item(
       id: 'cut-create-linked',
-      label: 'Create Linked Cut',
+      label: 'Create linked cut',
       onPressed: session.activeCutOrNull != null
           ? session.createLinkedCutFromActiveCut
           : null,
     ),
     _item(
       id: 'cut-convert-linked',
-      label: 'Convert to Linked Cut…',
+      label: 'Convert to linked cut…',
       onPressed:
           session.activeCutOrNull != null &&
               session.convertToLinkedCutCandidates.isNotEmpty
@@ -410,25 +410,25 @@ class EditorMenuBar extends StatelessWidget {
     ),
     _item(
       id: 'cut-rename',
-      label: 'Rename Cut…',
+      label: 'Rename cut…',
       onPressed: () => unawaited(_renameActiveCut(context)),
     ),
     _item(
       id: 'cut-canvas-size',
-      label: 'Canvas Size…',
+      label: 'Canvas size…',
       onPressed: () => unawaited(_resizeActiveCutCanvas(context)),
     ),
     const Divider(height: 8),
     _item(
       id: 'cut-move-left',
-      label: 'Move Cut Left',
+      label: 'Move cut left',
       onPressed: session.canMoveActiveCutLeft
           ? session.moveActiveCutLeft
           : null,
     ),
     _item(
       id: 'cut-move-right',
-      label: 'Move Cut Right',
+      label: 'Move cut right',
       onPressed: session.canMoveActiveCutRight
           ? session.moveActiveCutRight
           : null,
@@ -438,13 +438,13 @@ class EditorMenuBar extends StatelessWidget {
     // cut's camera work as AE keyframe data on the clipboard.
     _item(
       id: 'cut-copy-ae-camera',
-      label: 'Copy Camera AE Keyframes',
+      label: 'Copy camera AE keyframes',
       onPressed: () => _copyCameraAeKeyframes(context),
     ),
     const Divider(height: 8),
     _item(
       id: 'cut-delete',
-      label: 'Delete Cut',
+      label: 'Delete cut',
       onPressed: session.deleteActiveCut,
     ),
   ];
@@ -527,13 +527,13 @@ class EditorMenuBar extends StatelessWidget {
   }
 
   List<Widget> _layerItems(BuildContext context) => [
-    _item(id: 'layer-add', label: 'Add Layer', onPressed: session.addLayer),
+    _item(id: 'layer-add', label: 'Add layer', onPressed: session.addLayer),
     // Attach layers (W5 / UI-R21 #3): own cels riding the base's FX.
     // FREE = own timeline like a normal layer; SYNCED = the ghost mirror
     // riding the base's exposures.
     _item(
       id: 'layer-add-attach-free-above',
-      label: 'Add Attach Free Layer Above',
+      label: 'Add attach free layer above',
       onPressed: session.canAddAttachedLayerToActive
           ? () => session.addAttachedLayer(
               AttachedPlacement.above,
@@ -543,7 +543,7 @@ class EditorMenuBar extends StatelessWidget {
     ),
     _item(
       id: 'layer-add-attach-free-below',
-      label: 'Add Attach Free Layer Below',
+      label: 'Add attach free layer below',
       onPressed: session.canAddAttachedLayerToActive
           ? () => session.addAttachedLayer(
               AttachedPlacement.below,
@@ -553,35 +553,35 @@ class EditorMenuBar extends StatelessWidget {
     ),
     _item(
       id: 'layer-add-attach-above',
-      label: 'Add Attach Synced Layer Above',
+      label: 'Add attach synced layer above',
       onPressed: session.canAddAttachedLayerToActive
           ? () => session.addAttachedLayer(AttachedPlacement.above)
           : null,
     ),
     _item(
       id: 'layer-add-attach-below',
-      label: 'Add Attach Synced Layer Below',
+      label: 'Add attach synced layer below',
       onPressed: session.canAddAttachedLayerToActive
           ? () => session.addAttachedLayer(AttachedPlacement.below)
           : null,
     ),
     _item(
       id: 'layer-duplicate',
-      label: 'Duplicate Layer',
+      label: 'Duplicate layer',
       onPressed: session.duplicateActiveLayer,
     ),
     // 링크 복제 / 독립시키기 (L4): the duplicate SHARES its pictures
     // ("이름이 같으면 같은 그림"); unlink forks them back out.
     _item(
       id: 'layer-link-duplicate',
-      label: 'Link Duplicate Layer',
+      label: 'Link duplicate layer',
       onPressed: session.canLinkDuplicateActiveLayer
           ? session.linkDuplicateActiveLayer
           : null,
     ),
     _item(
       id: 'layer-unlink',
-      label: 'Unlink Layer',
+      label: 'Unlink layer',
       onPressed: session.canUnlinkActiveLayer
           ? session.unlinkActiveLayer
           : null,
@@ -590,25 +590,25 @@ class EditorMenuBar extends StatelessWidget {
     // dissolve live on the folder row's context menu.
     _item(
       id: 'layer-group-into-folder',
-      label: 'Group into Folder',
+      label: 'Group into folder',
       onPressed: session.canGroupActiveLayerIntoFolder
           ? session.groupActiveLayerIntoFolder
           : null,
     ),
     _item(
       id: 'layer-rename',
-      label: 'Rename Layer…',
+      label: 'Rename layer…',
       onPressed: () => unawaited(_renameActiveLayer(context)),
     ),
     const Divider(height: 8),
     _item(
       id: 'layer-copy',
-      label: 'Copy Layer',
+      label: 'Copy layer',
       onPressed: session.copyActiveLayer,
     ),
     _item(
       id: 'layer-paste',
-      label: 'Paste Layer',
+      label: 'Paste layer',
       onPressed: session.hasLayerClipboard
           ? session.pasteLayerFromClipboard
           : null,
@@ -616,7 +616,7 @@ class EditorMenuBar extends StatelessWidget {
     const Divider(height: 8),
     _item(
       id: 'layer-delete',
-      label: 'Delete Layer…',
+      label: 'Delete layer…',
       onPressed: session.canDeleteActiveLayer
           ? () => unawaited(_deleteActiveLayer(context))
           : null,
@@ -655,7 +655,7 @@ class EditorMenuBar extends StatelessWidget {
     ),
     _item(
       id: 'playback-play-all',
-      label: 'Play All Cuts',
+      label: 'Play all cuts',
       onPressed: () {
         session.playback.play(
           scope: PlaybackScope.allCuts,
@@ -696,7 +696,7 @@ class EditorMenuBar extends StatelessWidget {
     const Divider(height: 8),
     _item(
       id: 'window-reset-layout',
-      label: 'Reset Workspace Layout',
+      label: 'Reset workspace layout',
       onPressed: panelsMenu.canResetLayout ? panelsMenu.resetLayout : null,
     ),
   ];

@@ -4,6 +4,7 @@ import '../../models/camera_instruction.dart';
 import '../timeline/instruction_icon_palette.dart';
 import 'instance_edit_dialog.dart';
 import 'instance_edit_preview.dart';
+import '../widgets/app_window.dart';
 
 /// What the instruction event dialog resolved to: an event to apply, a
 /// deletion, or (when the user edited the vocabulary meanwhile) the edited
@@ -142,64 +143,71 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
       titleIcon: Icons.videocam_outlined,
       body: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          DropdownButtonFormField<String>(
-            key: const ValueKey<String>('instruction-def-dropdown'),
-            initialValue: _instructionId,
-            decoration: const InputDecoration(labelText: 'Instruction (mark)'),
-            items: [
-              for (final def in widget.instructionSet.defs)
-                DropdownMenuItem<String>(
-                  key: ValueKey<String>('instruction-option-${def.id}'),
-                  value: def.id,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(instructionIconFor(def.iconKey), size: 16),
-                      const SizedBox(width: 8),
-                      Text(def.name),
-                    ],
+          AppWindowField(
+            label: 'Instruction (mark)',
+            emphasized: true,
+            child: DropdownButtonFormField<String>(
+              key: const ValueKey<String>('instruction-def-dropdown'),
+              initialValue: _instructionId,
+              items: [
+                for (final def in widget.instructionSet.defs)
+                  DropdownMenuItem<String>(
+                    key: ValueKey<String>('instruction-option-${def.id}'),
+                    value: def.id,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(instructionIconFor(def.iconKey), size: 16),
+                        const SizedBox(width: 8),
+                        Text(def.name),
+                      ],
+                    ),
                   ),
-                ),
-            ],
-            onChanged: (value) => setState(() => _instructionId = value),
-          ),
-          const SizedBox(height: 8),
-          TextField(
-            key: const ValueKey<String>('instruction-text-field'),
-            controller: _textController,
-            decoration: const InputDecoration(
-              labelText: 'Name (blank = instruction name)',
+              ],
+              onChanged: (value) => setState(() => _instructionId = value),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
+          AppWindowField(
+            label: 'Name (blank = instruction name)',
+            child: TextField(
+              key: const ValueKey<String>('instruction-text-field'),
+              controller: _textController,
+            ),
+          ),
+          const SizedBox(height: 12),
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Expanded(
-                child: TextField(
-                  key: const ValueKey<String>('instruction-value-a-field'),
-                  controller: _valueAController,
-                  decoration: const InputDecoration(
-                    labelText: 'Start name (A)',
+                child: AppWindowField(
+                  label: 'Start name (A)',
+                  child: TextField(
+                    key: const ValueKey<String>('instruction-value-a-field'),
+                    controller: _valueAController,
                   ),
                 ),
               ),
               const SizedBox(width: 8),
               Expanded(
-                child: TextField(
-                  key: const ValueKey<String>('instruction-value-b-field'),
-                  controller: _valueBController,
-                  decoration: const InputDecoration(labelText: 'End name (B)'),
+                child: AppWindowField(
+                  label: 'End name (B)',
+                  child: TextField(
+                    key: const ValueKey<String>('instruction-value-b-field'),
+                    controller: _valueBController,
+                  ),
                 ),
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          TextField(
-            key: const ValueKey<String>('instruction-memo-field'),
-            controller: _memoController,
-            decoration: const InputDecoration(
-              labelText: 'Memo (timesheet memo band)',
+          const SizedBox(height: 12),
+          AppWindowField(
+            label: 'Memo (timesheet memo band)',
+            child: TextField(
+              key: const ValueKey<String>('instruction-memo-field'),
+              controller: _memoController,
             ),
           ),
           if (widget.onEditInstructionSet != null) ...[
@@ -210,7 +218,7 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
                 key: const ValueKey<String>('instruction-edit-set-button'),
                 onPressed: widget.onEditInstructionSet,
                 icon: const Icon(Icons.tune, size: 16),
-                label: const Text('Edit Instructions…'),
+                label: const Text('Edit instructions…'),
               ),
             ),
           ],
