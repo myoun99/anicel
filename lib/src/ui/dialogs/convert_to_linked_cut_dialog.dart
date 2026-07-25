@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/cut_id.dart';
 import '../../services/commands/convert_to_linked_cut_plan.dart';
+import '../widgets/app_window.dart';
 
 /// 겸용 변경 dialog: pick a target cut, read the 안내문 (what links, what
 /// gets replaced — 원본 승리 — and what appears where), then confirm.
@@ -38,27 +39,28 @@ class _ConvertToLinkedCutDialogState extends State<ConvertToLinkedCutDialog> {
   Widget build(BuildContext context) {
     final targetCutId = _targetCutId;
     final preview = targetCutId == null ? null : widget.previewOf(targetCutId);
-    return AlertDialog(
-      key: const ValueKey<String>('convert-linked-cut-dialog'),
-      title: const Text('Convert to Linked Cut'),
-      content: SizedBox(
-        width: 380,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              'Link "${widget.activeCutName}" (origin) with another cut. '
-              'Layers with the SAME NAME become one shared picture.',
-            ),
-            const SizedBox(height: 12),
-            DropdownButtonFormField<CutId>(
+    return AppWindow(
+      windowKey: const ValueKey<String>('convert-linked-cut-dialog'),
+      title: 'Convert to linked cut',
+      titleIcon: Icons.link_outlined,
+      onClose: () => Navigator.of(context).pop(null),
+      width: 420,
+      body: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            'Link "${widget.activeCutName}" (origin) with another cut. '
+            'Layers with the SAME NAME become one shared picture.',
+            style: Theme.of(context).textTheme.bodyMedium,
+          ),
+          const SizedBox(height: 14),
+          AppWindowField(
+            label: 'Link with cut',
+            emphasized: true,
+            child: DropdownButtonFormField<CutId>(
               key: const ValueKey<String>('convert-linked-cut-target'),
               initialValue: targetCutId,
-              decoration: const InputDecoration(
-                labelText: 'Link with cut',
-                isDense: true,
-              ),
               items: [
                 for (final candidate in widget.candidates)
                   DropdownMenuItem(
@@ -68,25 +70,28 @@ class _ConvertToLinkedCutDialogState extends State<ConvertToLinkedCutDialog> {
               ],
               onChanged: (value) => setState(() => _targetCutId = value),
             ),
-            if (preview != null) ...[
-              const SizedBox(height: 12),
-              _PreviewSummary(preview: preview),
-            ],
+          ),
+          if (preview != null) ...[
+            const SizedBox(height: 12),
+            _PreviewSummary(preview: preview),
           ],
-        ),
+        ],
       ),
       actions: [
-        TextButton(
-          key: const ValueKey<String>('convert-linked-cut-cancel-button'),
+        AppWindowAction(
+          label: 'Cancel',
+          actionKey: const ValueKey<String>('convert-linked-cut-cancel-button'),
           onPressed: () => Navigator.of(context).pop(null),
-          child: const Text('Cancel'),
         ),
-        FilledButton(
-          key: const ValueKey<String>('convert-linked-cut-confirm-button'),
+        AppWindowAction(
+          label: 'Link',
+          actionKey: const ValueKey<String>(
+            'convert-linked-cut-confirm-button',
+          ),
+          emphasis: AppWindowActionEmphasis.primary,
           onPressed: preview != null && preview.linksAnything
               ? () => Navigator.of(context).pop(targetCutId)
               : null,
-          child: const Text('Link'),
         ),
       ],
     );

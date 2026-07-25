@@ -6,6 +6,8 @@ import 'dart:ui' show AppExitResponse;
 
 import 'package:flutter/services.dart' show SystemNavigator;
 
+import 'dialogs/app_confirm_dialog.dart';
+import 'widgets/app_window.dart';
 import '../controllers/default_project_helpers.dart';
 import '../models/project.dart';
 import '../services/persistence/app_language_settings_store.dart';
@@ -581,30 +583,32 @@ class _HomePageState extends State<HomePage> {
     try {
       final choice = await showDialog<_ExitChoice>(
         context: context,
-        builder: (context) => AlertDialog(
-          key: const ValueKey<String>('system-exit-dialog'),
-          title: const Text('Close project?'),
-          content: const Text('Your changes are not saved. Close anyway?'),
+        builder: (context) => AppConfirmDialog(
+          windowKey: const ValueKey<String>('system-exit-dialog'),
+          title: 'Close project?',
+          titleIcon: Icons.logout_outlined,
+          message: 'Your changes are not saved. Close anyway?',
           actions: [
-            TextButton(
-              key: const ValueKey<String>('system-exit-cancel'),
+            AppWindowAction(
+              label: 'Cancel',
+              actionKey: const ValueKey<String>('system-exit-cancel'),
               onPressed: () => Navigator.of(context).pop(_ExitChoice.cancel),
-              child: const Text('Cancel'),
             ),
-            TextButton(
-              key: const ValueKey<String>('system-exit-save-as'),
+            AppWindowAction(
+              label: 'Save as…',
+              actionKey: const ValueKey<String>('system-exit-save-as'),
               onPressed: () => Navigator.of(context).pop(_ExitChoice.saveAs),
-              child: const Text('Save As…'),
             ),
-            TextButton(
-              key: const ValueKey<String>('system-exit-save'),
+            AppWindowAction(
+              label: 'Save',
+              actionKey: const ValueKey<String>('system-exit-save'),
               onPressed: () => Navigator.of(context).pop(_ExitChoice.save),
-              child: const Text('Save'),
             ),
-            FilledButton(
-              key: const ValueKey<String>('system-exit-close'),
+            AppWindowAction(
+              label: 'Close',
+              actionKey: const ValueKey<String>('system-exit-close'),
+              emphasis: AppWindowActionEmphasis.primary,
               onPressed: () => Navigator.of(context).pop(_ExitChoice.close),
-              child: const Text('Close'),
             ),
           ],
         ),
@@ -647,23 +651,24 @@ class _HomePageState extends State<HomePage> {
     _unsavedAutosavePromptShown = true;
     final save = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        key: const ValueKey<String>('unsaved-autosave-dialog'),
-        title: const Text('Save your project'),
-        content: const Text(
-          'This project has never been saved, so autosave has nowhere to '
-          'write. Pick a file and autosave will guard it from then on.',
-        ),
+      builder: (context) => AppConfirmDialog(
+        windowKey: const ValueKey<String>('unsaved-autosave-dialog'),
+        title: 'Save your project',
+        titleIcon: Icons.save_outlined,
+        message:
+            'This project has never been saved, so autosave has nowhere to '
+            'write. Pick a file and autosave will guard it from then on.',
         actions: [
-          TextButton(
-            key: const ValueKey<String>('unsaved-autosave-later'),
+          AppWindowAction(
+            label: 'Not now',
+            actionKey: const ValueKey<String>('unsaved-autosave-later'),
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('Not now'),
           ),
-          FilledButton(
-            key: const ValueKey<String>('unsaved-autosave-save'),
+          AppWindowAction(
+            label: 'Save as…',
+            actionKey: const ValueKey<String>('unsaved-autosave-save'),
+            emphasis: AppWindowActionEmphasis.primary,
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('Save As…'),
           ),
         ],
       ),

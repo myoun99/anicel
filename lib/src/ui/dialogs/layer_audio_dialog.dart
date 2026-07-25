@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/layer_id.dart';
 import '../editor_session_manager.dart';
 import '../widgets/field_slider.dart';
+import '../widgets/app_window.dart';
 
 /// AUDIO-PRO R1: the SE row's track fader + pan — the layer-level mix
 /// controls (clip gain/fades stay on the lane). Opened from the speaker
@@ -45,14 +46,16 @@ class _LayerAudioDialogState extends State<_LayerAudioDialog> {
   @override
   Widget build(BuildContext context) {
     final strings = widget.session.uiStrings;
-    return AlertDialog(
-      key: const ValueKey<String>('layer-audio-dialog'),
-      title: Text(strings.layerAudioTitle),
-      content: SizedBox(
-        width: 260,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
+    return AppWindow(
+      windowKey: const ValueKey<String>('layer-audio-dialog'),
+      title: strings.layerAudioTitle,
+      titleIcon: Icons.volume_up_outlined,
+      onClose: () => Navigator.of(context).pop(),
+      width: 320,
+      body: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
             FieldSlider(
               key: const ValueKey<String>('layer-audio-gain-slider'),
               min: 0,
@@ -78,21 +81,23 @@ class _LayerAudioDialogState extends State<_LayerAudioDialog> {
               displayFactor: 100,
               onChanged: (value) => setState(() => _pan = value),
             ),
-            const SizedBox(height: 4),
-            Text(
-              strings.layerAudioPanHelp,
-              style: const TextStyle(fontSize: 11),
-            ),
-          ],
-        ),
+          const SizedBox(height: 4),
+          Text(
+            strings.layerAudioPanHelp,
+            style: const TextStyle(fontSize: 11),
+          ),
+        ],
       ),
       actions: [
-        TextButton(
+        AppWindowAction(
+          label: strings.commonCancel,
+          actionKey: const ValueKey<String>('layer-audio-cancel'),
           onPressed: () => Navigator.of(context).pop(),
-          child: Text(strings.commonCancel),
         ),
-        TextButton(
-          key: const ValueKey<String>('layer-audio-apply'),
+        AppWindowAction(
+          label: strings.commonApply,
+          actionKey: const ValueKey<String>('layer-audio-apply'),
+          emphasis: AppWindowActionEmphasis.primary,
           onPressed: () {
             widget.session.setLayerAudio(
               layerId: widget.layerId,
@@ -101,7 +106,6 @@ class _LayerAudioDialogState extends State<_LayerAudioDialog> {
             );
             Navigator.of(context).pop();
           },
-          child: Text(strings.commonApply),
         ),
       ],
     );

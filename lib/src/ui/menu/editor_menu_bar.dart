@@ -11,7 +11,9 @@ import '../../models/cut_id.dart';
 import '../../services/persistence/app_documents.dart';
 import '../../services/persistence/app_save_settings.dart';
 import '../../services/persistence/project_autosave_service.dart';
+import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/canvas_size_dialog.dart';
+import '../widgets/app_window.dart';
 import '../dialogs/convert_to_linked_cut_dialog.dart';
 import '../dialogs/delete_layer_dialog.dart';
 import '../dialogs/file_browser_dialog.dart';
@@ -130,22 +132,24 @@ class EditorMenuBar extends StatelessWidget {
         )) {
       final recover = await showDialog<bool>(
         context: context,
-        builder: (context) => AlertDialog(
-          title: const Text('Recover autosaved changes?'),
-          content: const Text(
-            'A newer autosave exists for this project. Recover it, or open '
-            'the file as last saved?',
-          ),
+        builder: (context) => AppConfirmDialog(
+          windowKey: const ValueKey<String>('recover-autosave-dialog'),
+          title: 'Recover autosaved changes?',
+          titleIcon: Icons.restore_outlined,
+          message:
+              'A newer autosave exists for this project. Recover it, or open '
+              'the file as last saved?',
           actions: [
-            TextButton(
-              key: const ValueKey<String>('recover-open-saved-button'),
+            AppWindowAction(
+              label: 'Open saved',
+              actionKey: const ValueKey<String>('recover-open-saved-button'),
               onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('Open Saved'),
             ),
-            TextButton(
-              key: const ValueKey<String>('recover-autosave-button'),
+            AppWindowAction(
+              label: 'Recover',
+              actionKey: const ValueKey<String>('recover-autosave-button'),
+              emphasis: AppWindowActionEmphasis.primary,
               onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('Recover'),
             ),
           ],
         ),

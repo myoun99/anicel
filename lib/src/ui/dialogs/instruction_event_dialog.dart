@@ -138,7 +138,7 @@ class _InstructionEventDialogState extends State<InstructionEventDialog> {
   Widget build(BuildContext context) {
     final instructionId = _instructionId;
     return InstanceEditDialogShell(
-      title: widget.editing ? 'Edit Instruction' : 'Add Instruction',
+      title: widget.editing ? 'Edit instruction' : 'Add instruction',
       titleIcon: Icons.videocam_outlined,
       body: Column(
         mainAxisSize: MainAxisSize.min,

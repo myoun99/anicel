@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 
 import '../../models/canvas_resize_anchor.dart';
 import '../../models/canvas_size.dart';
+import '../widgets/app_window.dart';
 
 /// What the canvas-size dialog confirms: the new size plus the anchor the
 /// existing artwork stays pinned to.
@@ -98,9 +99,13 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
   Widget build(BuildContext context) {
     final enteredRequest = _enteredRequest;
 
-    return AlertDialog(
-      title: const Text('Canvas Size'),
-      content: Column(
+    return AppWindow(
+      windowKey: const ValueKey<String>('canvas-size-dialog'),
+      title: 'Canvas size',
+      titleIcon: Icons.crop_outlined,
+      onClose: () => Navigator.of(context).pop(),
+      width: 460,
+      body: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -171,17 +176,18 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
         ],
       ),
       actions: [
-        TextButton(
-          key: const ValueKey<String>('canvas-size-cancel-button'),
+        AppWindowAction(
+          label: 'Cancel',
+          actionKey: const ValueKey<String>('canvas-size-cancel-button'),
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
         ),
-        TextButton(
-          key: const ValueKey<String>('canvas-size-confirm-button'),
+        AppWindowAction(
+          label: 'Resize',
+          actionKey: const ValueKey<String>('canvas-size-confirm-button'),
+          emphasis: AppWindowActionEmphasis.primary,
           onPressed: enteredRequest == null
               ? null
               : () => Navigator.of(context).pop(enteredRequest),
-          child: const Text('Resize'),
         ),
       ],
     );

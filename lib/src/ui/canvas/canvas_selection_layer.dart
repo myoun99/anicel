@@ -15,6 +15,8 @@ import '../../models/viewport_point.dart';
 import 'dart:math' as math;
 
 import '../../native/qa_native_engine.dart';
+import '../dialogs/app_confirm_dialog.dart';
+import '../widgets/app_window.dart';
 import '../../services/bitmap_surface_brush_commit.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
@@ -511,20 +513,24 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        key: const ValueKey<String>('selection-move-confirm-dialog'),
-        title: const Text('이동 확정'),
-        content: const Text('선택 영역 이동을 확정하시겠습니까?'),
+      // NOTE: this is the one dialog still written in Korean while the rest
+      // of the app is English — left as the author wrote it, not swept.
+      builder: (context) => AppConfirmDialog(
+        windowKey: const ValueKey<String>('selection-move-confirm-dialog'),
+        title: '이동 확정',
+        titleIcon: Icons.open_with_outlined,
+        message: '선택 영역 이동을 확정하시겠습니까?',
         actions: [
-          TextButton(
-            key: const ValueKey<String>('selection-move-revert-button'),
+          AppWindowAction(
+            label: '되돌리기',
+            actionKey: const ValueKey<String>('selection-move-revert-button'),
             onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('되돌리기'),
           ),
-          FilledButton(
-            key: const ValueKey<String>('selection-move-apply-button'),
+          AppWindowAction(
+            label: '확정',
+            actionKey: const ValueKey<String>('selection-move-apply-button'),
+            emphasis: AppWindowActionEmphasis.primary,
             onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('확정'),
           ),
         ],
       ),

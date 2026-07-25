@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/brush_preset.dart';
 import '../../models/brush_preset_id.dart';
+import '../dialogs/app_prompt_dialog.dart';
 import '../panels/editor_panel_frame.dart';
 import '../panels/panel_scrollbar.dart';
 import '../theme/app_theme.dart' show instantMenuAnimation;
@@ -458,61 +459,24 @@ class _BrushGroupHeader extends StatelessWidget {
   }
 }
 
-class _RenameBrushPresetDialog extends StatefulWidget {
+class _RenameBrushPresetDialog extends StatelessWidget {
   const _RenameBrushPresetDialog({required this.initialName});
 
   final String initialName;
 
   @override
-  State<_RenameBrushPresetDialog> createState() =>
-      _RenameBrushPresetDialogState();
-}
-
-class _RenameBrushPresetDialogState extends State<_RenameBrushPresetDialog> {
-  late final TextEditingController _controller = TextEditingController(
-    text: widget.initialName,
-  );
-  String? _errorText;
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  void _submit() {
-    final name = _controller.text.trim();
-    if (name.isEmpty) {
-      setState(() => _errorText = 'Brush name cannot be empty.');
-      return;
-    }
-    Navigator.of(context).pop(name);
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      key: const ValueKey<String>('brush-preset-rename-dialog'),
-      title: const Text('Rename brush'),
-      content: TextField(
-        key: const ValueKey<String>('brush-preset-rename-text-field'),
-        controller: _controller,
-        autofocus: true,
-        decoration: InputDecoration(errorText: _errorText),
-        onSubmitted: (_) => _submit(),
-      ),
-      actions: [
-        TextButton(
-          key: const ValueKey<String>('brush-preset-rename-cancel-button'),
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          key: const ValueKey<String>('brush-preset-rename-ok-button'),
-          onPressed: _submit,
-          child: const Text('OK'),
-        ),
-      ],
+    return AppPromptDialog(
+      windowKey: const ValueKey<String>('brush-preset-rename-dialog'),
+      title: 'Rename brush',
+      titleIcon: Icons.drive_file_rename_outline,
+      fieldLabel: 'Brush name',
+      initialValue: initialName,
+      confirmLabel: 'Rename',
+      emptyError: 'Brush name cannot be empty.',
+      fieldKey: const ValueKey<String>('brush-preset-rename-text-field'),
+      cancelKey: const ValueKey<String>('brush-preset-rename-cancel-button'),
+      confirmKey: const ValueKey<String>('brush-preset-rename-ok-button'),
     );
   }
 }

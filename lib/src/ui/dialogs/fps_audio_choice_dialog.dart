@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 
 import '../../models/project_frame_rate.dart';
 import '../text/app_strings.dart';
+import '../widgets/app_window.dart';
+import 'app_confirm_dialog.dart';
 
 /// EXPORT-AUDIO ④ (the RT conform semantics): what happens to SOUND on a
 /// pulldown-pair rate change.
@@ -29,35 +31,30 @@ Future<FpsAudioChoice?> showFpsAudioChoiceDialog(
 }) {
   return showDialog<FpsAudioChoice>(
     context: context,
-    builder: (context) => AlertDialog(
-      key: const ValueKey<String>('fps-audio-choice-dialog'),
-      title: Text(
-        strings.fpsAudioTitleTemplate
-            .replaceAll('{from}', from.label)
-            .replaceAll('{to}', to.label),
-      ),
-      content: SizedBox(
-        width: 440,
-        child: Text(
-          strings.fpsAudioBody,
-          style: const TextStyle(fontSize: 13),
-        ),
-      ),
+    builder: (context) => AppConfirmDialog(
+      windowKey: const ValueKey<String>('fps-audio-choice-dialog'),
+      title: strings.fpsAudioTitleTemplate
+          .replaceAll('{from}', from.label)
+          .replaceAll('{to}', to.label),
+      titleIcon: Icons.speed_outlined,
+      message: strings.fpsAudioBody,
+      width: 520,
       actions: [
-        TextButton(
-          key: const ValueKey<String>('fps-audio-cancel'),
+        AppWindowAction(
+          label: strings.commonCancel,
+          actionKey: const ValueKey<String>('fps-audio-cancel'),
           onPressed: () => Navigator.of(context).pop(),
-          child: Text(strings.commonCancel),
         ),
-        TextButton(
-          key: const ValueKey<String>('fps-audio-keep'),
+        AppWindowAction(
+          label: strings.fpsAudioKeep,
+          actionKey: const ValueKey<String>('fps-audio-keep'),
           onPressed: () => Navigator.of(context).pop(FpsAudioChoice.keep),
-          child: Text(strings.fpsAudioKeep),
         ),
-        FilledButton(
-          key: const ValueKey<String>('fps-audio-pull'),
+        AppWindowAction(
+          label: strings.fpsAudioPull,
+          actionKey: const ValueKey<String>('fps-audio-pull'),
+          emphasis: AppWindowActionEmphasis.primary,
           onPressed: () => Navigator.of(context).pop(FpsAudioChoice.pull),
-          child: Text(strings.fpsAudioPull),
         ),
       ],
     ),

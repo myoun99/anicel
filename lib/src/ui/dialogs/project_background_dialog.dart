@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/project_background.dart';
 import '../editor_session_manager.dart';
+import '../widgets/app_window.dart';
 
 /// File > Project Background… (R10-⑥): the paper/background choice —
 /// white, black, a custom hex color, or the transparent checkerboard
@@ -101,10 +102,13 @@ class _ProjectBackgroundDialogState extends State<ProjectBackgroundDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      key: const ValueKey<String>('project-background-dialog'),
-      title: const Text('Project Background'),
-      content: SizedBox(
+    return AppWindow(
+      windowKey: const ValueKey<String>('project-background-dialog'),
+      title: 'Project background',
+      titleIcon: Icons.wallpaper_outlined,
+      onClose: () => Navigator.of(context).pop(),
+      width: 400,
+      body: SizedBox(
         width: 340,
         child: RadioGroup<_BackgroundChoice>(
           groupValue: _choice,
@@ -170,15 +174,16 @@ class _ProjectBackgroundDialogState extends State<ProjectBackgroundDialog> {
         ),
       ),
       actions: [
-        TextButton(
-          key: const ValueKey<String>('background-cancel-button'),
+        AppWindowAction(
+          label: 'Cancel',
+          actionKey: const ValueKey<String>('background-cancel-button'),
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
         ),
-        TextButton(
-          key: const ValueKey<String>('background-apply-button'),
+        AppWindowAction(
+          label: 'Apply',
+          actionKey: const ValueKey<String>('background-apply-button'),
+          emphasis: AppWindowActionEmphasis.primary,
           onPressed: _apply,
-          child: const Text('Apply'),
         ),
       ],
     );

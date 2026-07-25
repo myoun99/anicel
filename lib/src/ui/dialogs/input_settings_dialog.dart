@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../editor_session_manager.dart';
 import '../input/app_input_settings.dart';
 import '../widgets/field_slider.dart';
+import '../widgets/app_window.dart';
 
 /// The pointer-input settings dialog (UI-R22 #6). One toggle decides
 /// what a TOUCH contact means on the timeline grids — scroll or edit —
@@ -25,17 +26,21 @@ class _InputSettingsDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Input Settings'),
-      // Scrollable: the dialog outgrew short windows once the canvas
-      // mappings joined (PEN-7a).
-      content: SingleChildScrollView(
-        child: InputSettingsSection(session: session),
-      ),
+    // The body scrolls: the window outgrew short screens once the canvas
+    // mappings joined (PEN-7a). AppWindow scrolls it by default.
+    return AppWindow(
+      windowKey: const ValueKey<String>('input-settings-dialog'),
+      title: 'Input settings',
+      titleIcon: Icons.gesture_outlined,
+      onClose: () => Navigator.of(context).pop(),
+      width: 560,
+      body: InputSettingsSection(session: session),
       actions: [
-        TextButton(
+        AppWindowAction(
+          label: 'Close',
+          actionKey: const ValueKey<String>('settings-input-close'),
+          emphasis: AppWindowActionEmphasis.primary,
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Close'),
         ),
       ],
     );

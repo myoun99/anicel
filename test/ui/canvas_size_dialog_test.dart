@@ -37,9 +37,13 @@ void main() {
   TextField fieldByKey(WidgetTester tester, String key) =>
       tester.widget<TextField>(find.byKey(ValueKey<String>(key)));
 
-  TextButton confirmButton(WidgetTester tester) => tester.widget<TextButton>(
-    find.byKey(const ValueKey<String>('canvas-size-confirm-button')),
-  );
+  // ButtonStyleButton, not a concrete kind: the window shell decides
+  // whether the confirm action renders filled or quiet, and the test only
+  // cares whether it is enabled.
+  ButtonStyleButton confirmButton(WidgetTester tester) =>
+      tester.widget<ButtonStyleButton>(
+        find.byKey(const ValueKey<String>('canvas-size-confirm-button')),
+      );
 
   testWidgets('prefills the current canvas size', (tester) async {
     await pumpOpenDialog(tester);

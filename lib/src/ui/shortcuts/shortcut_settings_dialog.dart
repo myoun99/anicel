@@ -6,6 +6,7 @@ import 'editor_action_registry.dart';
 import 'editor_shortcut_bindings.dart';
 import 'shortcut_activator_codec.dart';
 import 'touch_shortcuts.dart';
+import '../widgets/app_window.dart';
 
 /// The Keyboard Shortcuts editor (Edit menu): a searchable action list
 /// grouped by category, click-to-record capture, conflict highlighting
@@ -137,9 +138,15 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
       );
     }
 
-    return AlertDialog(
-      title: const Text('Keyboard Shortcuts'),
-      content: Focus(
+    return AppWindow(
+      windowKey: const ValueKey<String>('shortcut-settings-dialog'),
+      title: 'Keyboard shortcuts',
+      titleIcon: Icons.keyboard_outlined,
+      onClose: () => Navigator.of(context).pop(),
+      width: 520,
+      height: 520,
+      scrollBody: false,
+      body: Focus(
         focusNode: _recordFocus,
         onKeyEvent: _onRecordKey,
         child: SizedBox(
@@ -181,15 +188,17 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
         ),
       ),
       actions: [
-        TextButton(
-          key: const ValueKey<String>('shortcut-reset-all-button'),
+        AppWindowAction(
+          label: 'Reset all',
+          actionKey: const ValueKey<String>('shortcut-reset-all-button'),
+          emphasis: AppWindowActionEmphasis.danger,
           onPressed: bindings.resetAll,
-          child: const Text('Reset All'),
         ),
-        TextButton(
-          key: const ValueKey<String>('shortcut-close-button'),
+        AppWindowAction(
+          label: 'Close',
+          actionKey: const ValueKey<String>('shortcut-close-button'),
+          emphasis: AppWindowActionEmphasis.primary,
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Close'),
         ),
       ],
     );

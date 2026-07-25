@@ -47,7 +47,7 @@ class _CameraKeyDialogState extends State<CameraKeyDialog> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     return InstanceEditDialogShell(
-      title: 'Camera Keys — Frame ${widget.frameIndex + 1}',
+      title: 'Camera keys — frame ${widget.frameIndex + 1}',
       titleIcon: Icons.videocam_outlined,
       body: Column(
         mainAxisSize: MainAxisSize.min,

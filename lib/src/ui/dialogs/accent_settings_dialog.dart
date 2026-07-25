@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../editor_session_manager.dart';
 import '../theme/app_accents.dart';
 import '../theme/app_theme.dart' show AppColors;
+import '../widgets/app_window.dart';
 
 /// The two-accent settings dialog (UI-R22 #5): accent 1 (selection,
 /// playhead, active toggles) and accent 2 (the secondary highlight —
@@ -38,14 +39,19 @@ class _AccentSettingsDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Accent Colors'),
-      content: AccentSettingsSection(session: session),
+    return AppWindow(
+      windowKey: const ValueKey<String>('accent-settings-dialog'),
+      title: 'Accent colors',
+      titleIcon: Icons.palette_outlined,
+      onClose: () => Navigator.of(context).pop(),
+      width: 420,
+      body: AccentSettingsSection(session: session),
       actions: [
-        TextButton(
-          key: const ValueKey<String>('settings-accent-close'),
+        AppWindowAction(
+          label: 'Close',
+          actionKey: const ValueKey<String>('settings-accent-close'),
+          emphasis: AppWindowActionEmphasis.primary,
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Close'),
         ),
       ],
     );

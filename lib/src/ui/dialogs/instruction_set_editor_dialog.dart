@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/camera_instruction.dart';
 import '../timeline/instruction_icon_palette.dart';
+import '../widgets/app_window.dart';
 
 /// Edits the project's instruction vocabulary: rename defs, repick their
 /// icons, add custom ones, delete. Pops the edited [CameraInstructionSet]
@@ -62,9 +63,15 @@ class _InstructionSetEditorDialogState
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Instructions'),
-      content: SizedBox(
+    return AppWindow(
+      windowKey: const ValueKey<String>('instruction-set-dialog'),
+      title: 'Instructions',
+      titleIcon: Icons.videocam_outlined,
+      onClose: () => Navigator.of(context).pop(),
+      width: 420,
+      height: 520,
+      scrollBody: false,
+      body: SizedBox(
         width: 380,
         height: 420,
         child: Column(
@@ -126,16 +133,17 @@ class _InstructionSetEditorDialogState
         ),
       ),
       actions: [
-        TextButton(
-          key: const ValueKey<String>('instruction-set-cancel-button'),
+        AppWindowAction(
+          label: 'Cancel',
+          actionKey: const ValueKey<String>('instruction-set-cancel-button'),
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
         ),
-        FilledButton(
-          key: const ValueKey<String>('instruction-set-save-button'),
+        AppWindowAction(
+          label: 'Save',
+          actionKey: const ValueKey<String>('instruction-set-save-button'),
+          emphasis: AppWindowActionEmphasis.primary,
           onPressed: () =>
               Navigator.of(context).pop(CameraInstructionSet(defs: _defs)),
-          child: const Text('Save'),
         ),
       ],
     );
@@ -193,10 +201,14 @@ class _InstructionDefDialogState extends State<_InstructionDefDialog> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return AlertDialog(
-      title: const Text('Instruction'),
-      // Scrollable: the option sections outgrow short windows.
-      content: SizedBox(
+    // The body scrolls: the option sections outgrow short screens.
+    return AppWindow(
+      windowKey: const ValueKey<String>('instruction-def-dialog'),
+      title: 'Instruction',
+      titleIcon: Icons.edit_outlined,
+      onClose: () => Navigator.of(context).pop(),
+      width: 400,
+      body: SizedBox(
         width: 340,
         child: SingleChildScrollView(
           child: Column(
@@ -351,13 +363,15 @@ class _InstructionDefDialogState extends State<_InstructionDefDialog> {
         ),
       ),
       actions: [
-        TextButton(
-          key: const ValueKey<String>('instruction-def-cancel-button'),
+        AppWindowAction(
+          label: 'Cancel',
+          actionKey: const ValueKey<String>('instruction-def-cancel-button'),
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
         ),
-        FilledButton(
-          key: const ValueKey<String>('instruction-def-save-button'),
+        AppWindowAction(
+          label: 'Save',
+          actionKey: const ValueKey<String>('instruction-def-save-button'),
+          emphasis: AppWindowActionEmphasis.primary,
           onPressed: () => Navigator.of(context).pop(
             widget.def.copyWith(
               name: _nameController.text.trim(),
@@ -366,7 +380,6 @@ class _InstructionDefDialogState extends State<_InstructionDefDialog> {
               markType: _markType,
             ),
           ),
-          child: const Text('Save'),
         ),
       ],
     );

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../editor_session_manager.dart';
+import '../widgets/app_window.dart';
 import 'accent_settings_dialog.dart' show AccentSettingsSection;
 import 'audio_settings_section.dart';
 import 'autosave_settings_section.dart';
@@ -67,47 +68,30 @@ class _PreferencesDialogState extends State<_PreferencesDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      key: const ValueKey<String>('preferences-dialog'),
-      title: const Text('Preferences'),
-      content: SizedBox(
-        width: 680,
-        height: 460,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            SizedBox(
-              width: 150,
-              child: ListView(
-                children: [
-                  for (final section in PreferencesSection.values)
-                    ListTile(
-                      key: ValueKey<String>(
-                        'preferences-section-${section.name}',
-                      ),
-                      dense: true,
-                      selected: section == _section,
-                      title: Text(_labelOf(section)),
-                      onTap: () => setState(() => _section = section),
-                    ),
-                ],
-              ),
-            ),
-            const VerticalDivider(width: 16),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.only(right: 4),
-                child: _bodyOf(_section),
-              ),
-            ),
-          ],
-        ),
-      ),
+    const sections = PreferencesSection.values;
+    return AppWindow(
+      windowKey: const ValueKey<String>('preferences-dialog'),
+      title: 'Preferences',
+      titleIcon: Icons.tune_outlined,
+      onClose: () => Navigator.of(context).pop(),
+      width: 720,
+      height: 520,
+      tabs: [
+        for (final section in sections)
+          AppWindowTab(
+            label: _labelOf(section),
+            tabKey: ValueKey<String>('preferences-section-${section.name}'),
+            onSelected: () => setState(() => _section = section),
+          ),
+      ],
+      selectedTab: sections.indexOf(_section),
+      body: _bodyOf(_section),
       actions: [
-        TextButton(
-          key: const ValueKey<String>('preferences-close'),
+        AppWindowAction(
+          label: 'Close',
+          actionKey: const ValueKey<String>('preferences-close'),
+          emphasis: AppWindowActionEmphasis.primary,
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Close'),
         ),
       ],
     );

@@ -1,52 +1,28 @@
 import 'package:flutter/material.dart';
 
-/// Rename dialog for a cut. Pops the new name text, or nothing on cancel.
-class RenameCutDialog extends StatefulWidget {
+import 'app_prompt_dialog.dart';
+
+/// Rename dialog for a cut. Pops the trimmed new name, or nothing on
+/// cancel. Rejects an empty name inline — the cut's name IS its number on
+/// every sheet and storyboard page that prints it.
+class RenameCutDialog extends StatelessWidget {
   const RenameCutDialog({super.key, required this.initialName});
 
   final String initialName;
 
   @override
-  State<RenameCutDialog> createState() => _RenameCutDialogState();
-}
-
-class _RenameCutDialogState extends State<RenameCutDialog> {
-  late final TextEditingController _textController;
-
-  @override
-  void initState() {
-    super.initState();
-    _textController = TextEditingController(text: widget.initialName);
-  }
-
-  @override
-  void dispose() {
-    _textController.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Rename Cut'),
-      content: TextField(
-        key: const ValueKey<String>('rename-cut-text-field'),
-        controller: _textController,
-        autofocus: true,
-        decoration: const InputDecoration(labelText: 'Cut name'),
-      ),
-      actions: [
-        TextButton(
-          key: const ValueKey<String>('rename-cut-cancel-button'),
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          key: const ValueKey<String>('rename-cut-confirm-button'),
-          onPressed: () => Navigator.of(context).pop(_textController.text),
-          child: const Text('Rename'),
-        ),
-      ],
+    return AppPromptDialog(
+      windowKey: const ValueKey<String>('rename-cut-dialog'),
+      title: 'Rename cut',
+      titleIcon: Icons.drive_file_rename_outline,
+      fieldLabel: 'Cut name',
+      initialValue: initialName,
+      confirmLabel: 'Rename',
+      emptyError: 'Cut name cannot be empty.',
+      fieldKey: const ValueKey<String>('rename-cut-text-field'),
+      cancelKey: const ValueKey<String>('rename-cut-cancel-button'),
+      confirmKey: const ValueKey<String>('rename-cut-confirm-button'),
     );
   }
 }

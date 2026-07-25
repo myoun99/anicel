@@ -47,6 +47,8 @@ import '../../models/timesheet_document.dart';
 import '../timesheet/timesheet_document_painter.dart'
     show TimesheetDocumentLayout;
 import '../timesheet/timesheet_notation.dart';
+import '../widgets/app_window.dart';
+import '../dialogs/app_confirm_dialog.dart';
 
 /// Picks the output directory (the Browse… button); `null` on cancel.
 typedef ExportDirectoryPicker = Future<String?> Function();
@@ -1492,150 +1494,132 @@ class ExportDialogState extends State<ExportDialog> {
     if (_anchorCut == null) {
       // R27 #31: nothing to export. An empty state, never a throw.
       final strings = _session.uiStrings;
-      return AlertDialog(
-        key: const ValueKey<String>('export-dialog-no-cuts'),
-        title: const Text('Export'),
-        content: Text(strings.exportNoCuts),
+      return AppConfirmDialog(
+        windowKey: const ValueKey<String>('export-dialog-no-cuts'),
+        title: 'Export',
+        titleIcon: Icons.upload_file_outlined,
+        message: strings.exportNoCuts,
         actions: [
-          TextButton(
+          AppWindowAction(
+            label: strings.commonClose,
+            emphasis: AppWindowActionEmphasis.primary,
             onPressed: () => Navigator.of(context).pop(),
-            child: Text(strings.commonClose),
           ),
         ],
       );
     }
-    return Dialog(
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          // The drawers yield before the preview does (v10: 전개 ~1020 /
-          // 최소 ~700): a tight surface collapses the queue, then the
-          // presets, to presentational strips — the stored preference
-          // stays untouched.
-          var presetsOpen = _presetsOpen;
-          var queueOpen = _queueOpen;
-          double widthFor() =>
-              (presetsOpen ? 152.0 : 22.0) +
-              330 +
-              272 +
-              (queueOpen ? 200.0 : 22.0) +
-              4;
-          if (widthFor() > constraints.maxWidth && queueOpen) {
-            queueOpen = false;
-          }
-          if (widthFor() > constraints.maxWidth && presetsOpen) {
-            presetsOpen = false;
-          }
-          final presetsWidth = presetsOpen ? 152.0 : 22.0;
-          final queueWidth = queueOpen ? 200.0 : 22.0;
-          final width = math.min(widthFor(), constraints.maxWidth);
-          final height = math.min(560.0, constraints.maxHeight);
+    // LayoutBuilder sits OUTSIDE the window now: AppWindow owns the Dialog,
+    // so the room the drawers negotiate over is the screen minus the
+    // window's inset, not the dialog's interior.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        const inset = 64.0;
+        final availableWidth = constraints.maxWidth - inset;
+        final availableHeight = constraints.maxHeight - inset;
+        // The drawers yield before the preview does (v10: 전개 ~1020 /
+        // 최소 ~700): a tight surface collapses the queue, then the
+        // presets, to presentational strips — the stored preference
+        // stays untouched.
+        var presetsOpen = _presetsOpen;
+        var queueOpen = _queueOpen;
+        double widthFor() =>
+            (presetsOpen ? 152.0 : 22.0) +
+            330 +
+            272 +
+            (queueOpen ? 200.0 : 22.0) +
+            4;
+        if (widthFor() > availableWidth && queueOpen) {
+          queueOpen = false;
+        }
+        if (widthFor() > availableWidth && presetsOpen) {
+          presetsOpen = false;
+        }
+        final presetsWidth = presetsOpen ? 152.0 : 22.0;
+        final queueWidth = queueOpen ? 200.0 : 22.0;
+        final width = math.min(widthFor(), availableWidth);
+        final height = math.min(620.0, availableHeight);
 
-          return SizedBox(
-            width: width,
-            height: height,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                _titleBar(theme),
-                _tabBar(theme),
-                _nameBar(theme),
-                Expanded(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      SizedBox(
-                        width: presetsWidth,
-                        child: _presetsZone(open: presetsOpen),
-                      ),
-                      VerticalDivider(width: 1, color: theme.dividerColor),
-                      Expanded(child: _previewZone(theme)),
-                      VerticalDivider(width: 1, color: theme.dividerColor),
-                      SizedBox(width: 272, child: _settingsZone()),
-                      VerticalDivider(width: 1, color: theme.dividerColor),
-                      SizedBox(
-                        width: queueWidth,
-                        child: _queueZone(open: queueOpen),
-                      ),
-                    ],
-                  ),
-                ),
-                Divider(height: 1, color: theme.dividerColor),
-                _footer(theme),
-              ],
-            ),
-          );
-        },
-      ),
-    );
-  }
-
-  Widget _titleBar(ThemeData theme) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 6, 0),
-      child: Row(
-        children: [
-          Text(
-            'Export',
-            style: theme.textTheme.titleSmall?.copyWith(
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          const Spacer(),
-          IconButton(
-            key: const ValueKey<String>('export-close-button'),
-            onPressed: _isExporting
-                ? null
-                : () => Navigator.of(context).pop(),
-            icon: const Icon(Icons.close, size: 16),
-            visualDensity: VisualDensity.compact,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _tabBar(ThemeData theme) {
-    Widget tabButton(ExportTab tab) {
-      final selected = _tab == tab;
-      final accent = theme.colorScheme.primary;
-      return InkWell(
-        key: ValueKey<String>('export-tab-${tab.jsonValue}'),
-        onTap: _isExporting || selected
-            ? null
-            : () {
-                setState(() => _tab = tab);
-                // Tabs share the one preview slot; a stale picture from
-                // another domain must not linger under the new axis.
-                _preview.clear();
-                _refreshPreview();
-              },
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(13, 6, 13, 5),
-          decoration: BoxDecoration(
-            border: Border(
-              bottom: BorderSide(
-                width: 2,
-                color: selected ? accent : Colors.transparent,
+        return AppWindow(
+          windowKey: const ValueKey<String>('export-dialog'),
+          title: 'Export',
+          titleIcon: Icons.upload_file_outlined,
+          onClose: _isExporting ? null : () => Navigator.of(context).pop(),
+          width: width,
+          height: height,
+          scrollBody: false,
+          bodyPadding: EdgeInsets.zero,
+          tabs: [
+            for (final tab in ExportTab.values)
+              AppWindowTab(
+                label: ExportPresetRail.tabLabel(tab),
+                tabKey: ValueKey<String>('export-tab-${tab.jsonValue}'),
+                enabled: !_isExporting,
+                onSelected: () {
+                  setState(() => _tab = tab);
+                  // Tabs share the one preview slot; a stale picture from
+                  // another domain must not linger under the new axis.
+                  _preview.clear();
+                  _refreshPreview();
+                },
               ),
+          ],
+          selectedTab: ExportTab.values.indexOf(_tab),
+          body: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              _nameBar(theme),
+              Expanded(
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    SizedBox(
+                      width: presetsWidth,
+                      child: _presetsZone(open: presetsOpen),
+                    ),
+                    VerticalDivider(width: 1, color: theme.dividerColor),
+                    Expanded(child: _previewZone(theme)),
+                    VerticalDivider(width: 1, color: theme.dividerColor),
+                    SizedBox(width: 272, child: _settingsZone()),
+                    VerticalDivider(width: 1, color: theme.dividerColor),
+                    SizedBox(
+                      width: queueWidth,
+                      child: _queueZone(open: queueOpen),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          footerNote: Text(
+            _statusMessage ?? '',
+            key: const ValueKey<String>('export-status'),
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
             ),
           ),
-          child: Text(
-            ExportPresetRail.tabLabel(tab),
-            style: theme.textTheme.labelMedium?.copyWith(
-              color: selected ? accent : theme.colorScheme.onSurfaceVariant,
-              fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
+          actions: [
+            if (_isExporting)
+              AppWindowAction(
+                label: 'Cancel',
+                actionKey: const ValueKey<String>('export-cancel-button'),
+                onPressed: cancelExport,
+              ),
+            AppWindowAction(
+              label: 'Add to queue',
+              actionKey: const ValueKey<String>('export-queue-add-button'),
+              onPressed: _canExport ? addToQueue : null,
             ),
-          ),
-        ),
-      );
-    }
-
-    return Container(
-      decoration: BoxDecoration(
-        border: Border(bottom: BorderSide(color: theme.dividerColor)),
-      ),
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: Row(children: [for (final tab in ExportTab.values) tabButton(tab)]),
+            AppWindowAction(
+              label: 'Export',
+              actionKey: const ValueKey<String>('export-run-button'),
+              emphasis: AppWindowActionEmphasis.primary,
+              onPressed: _canExport ? () => unawaited(export()) : null,
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -2718,49 +2702,4 @@ class ExportDialogState extends State<ExportDialog> {
     );
   }
 
-  Widget _footer(ThemeData theme) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 7, 12, 8),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              _statusMessage ?? '',
-              key: const ValueKey<String>('export-status'),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: theme.textTheme.bodySmall?.copyWith(
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
-          if (_isExporting) ...[
-            TextButton(
-              key: const ValueKey<String>('export-cancel-button'),
-              onPressed: cancelExport,
-              child: const Text('Cancel'),
-            ),
-            const SizedBox(width: 6),
-          ],
-          OutlinedButton(
-            key: const ValueKey<String>('export-queue-add-button'),
-            onPressed: _canExport ? addToQueue : null,
-            style: OutlinedButton.styleFrom(
-              visualDensity: VisualDensity.compact,
-            ),
-            child: const Text('Add to Queue'),
-          ),
-          const SizedBox(width: 6),
-          FilledButton(
-            key: const ValueKey<String>('export-run-button'),
-            onPressed: _canExport ? () => unawaited(export()) : null,
-            style: FilledButton.styleFrom(
-              visualDensity: VisualDensity.compact,
-            ),
-            child: const Text('Export'),
-          ),
-        ],
-      ),
-    );
-  }
 }

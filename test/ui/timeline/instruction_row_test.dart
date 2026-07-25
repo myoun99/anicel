@@ -170,7 +170,7 @@ void main() {
       'inst-cam',
       4,
     );
-    expect(find.text('Add Instruction'), findsNothing);
+    expect(find.text('Add instruction'), findsNothing);
     var event = _camLayer(repository).instructions[4]!;
     expect(event.length, 1, reason: 'new instances are one frame long');
 
@@ -181,7 +181,7 @@ void main() {
       'inst-cam',
       4,
     );
-    expect(find.text('Edit Instruction'), findsOneWidget);
+    expect(find.text('Edit instruction'), findsOneWidget);
     await tester.tap(
       find.byKey(const ValueKey<String>('instruction-def-dropdown')),
     );
@@ -272,7 +272,7 @@ void main() {
       'inst-cam',
       5,
     );
-    expect(find.text('Edit Instruction'), findsOneWidget);
+    expect(find.text('Edit instruction'), findsOneWidget);
     await tester.enterText(
       find.byKey(const ValueKey<String>('instruction-value-b-field')),
       'B2',

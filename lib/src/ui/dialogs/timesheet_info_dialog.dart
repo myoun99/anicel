@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/timesheet_info.dart';
+import '../widgets/app_window.dart';
 
 /// Edits the sheet-header text (title/episode/scene/artist) the paper
 /// timesheet reads, and which header boxes the form prints. Pops the
@@ -80,9 +81,13 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Sheet Info'),
-      content: SizedBox(
+    return AppWindow(
+      windowKey: const ValueKey<String>('timesheet-info-dialog'),
+      title: 'Sheet info',
+      titleIcon: Icons.description_outlined,
+      onClose: () => Navigator.of(context).pop(),
+      width: 420,
+      body: SizedBox(
         width: 360,
         child: SingleChildScrollView(
           child: Column(
@@ -183,15 +188,16 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
         ),
       ),
       actions: [
-        TextButton(
-          key: const ValueKey<String>('timesheet-info-cancel-button'),
+        AppWindowAction(
+          label: 'Cancel',
+          actionKey: const ValueKey<String>('timesheet-info-cancel-button'),
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
         ),
-        FilledButton(
-          key: const ValueKey<String>('timesheet-info-save-button'),
+        AppWindowAction(
+          label: 'Save',
+          actionKey: const ValueKey<String>('timesheet-info-save-button'),
+          emphasis: AppWindowActionEmphasis.primary,
           onPressed: _submit,
-          child: const Text('Save'),
         ),
       ],
     );
