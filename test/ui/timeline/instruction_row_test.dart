@@ -14,6 +14,8 @@ import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/project_repository.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
 
+import 'timeline_cell_probe.dart';
+
 const _cutId = CutId('inst-cut');
 const _camLayerId = LayerId('inst-cam');
 const _celLayerId = LayerId('inst-cel');
@@ -84,10 +86,17 @@ Future<void> _pumpHome(
 // No ensureVisible here: cell-level ensureVisible over-scrolls the custom
 // frame viewport and virtualizes earlier cells out of the window. The
 // instruction row sits at the top of the display order, always on screen.
-Future<void> _doubleTapCell(WidgetTester tester, Finder cell) async {
-  await tester.tap(cell);
+Future<void> _doubleTapCell(
+  WidgetTester tester,
+  String layerId,
+  int frameIndex,
+) async {
+  // The instruction row paints its cells (R28 #4) — the tap point comes
+  // from the painter probe, not a cell widget.
+  final target = timelineCellCenter(tester, layerId, frameIndex);
+  await tester.tapAt(target);
   await tester.pump(const Duration(milliseconds: 60));
-  await tester.tap(cell);
+  await tester.tapAt(target);
   await tester.pumpAndSettle();
 }
 
@@ -158,7 +167,8 @@ void main() {
     // DIRECTLY — no dialog (UI-R25 #2, 조작 통일화).
     await _doubleTapCell(
       tester,
-      find.byKey(const ValueKey<String>('timeline-cell-inst-cam-4')),
+      'inst-cam',
+      4,
     );
     expect(find.text('Add Instruction'), findsNothing);
     var event = _camLayer(repository).instructions[4]!;
@@ -168,7 +178,8 @@ void main() {
     // PAN with endpoint values — editing stays the dialog's job.
     await _doubleTapCell(
       tester,
-      find.byKey(const ValueKey<String>('timeline-cell-inst-cam-4')),
+      'inst-cam',
+      4,
     );
     expect(find.text('Edit Instruction'), findsOneWidget);
     await tester.tap(
@@ -229,7 +240,8 @@ void main() {
 
     await _doubleTapCell(
       tester,
-      find.byKey(const ValueKey<String>('timeline-cell-inst-cam-2')),
+      'inst-cam',
+      2,
     );
     await tester.enterText(
       find.byKey(const ValueKey<String>('instruction-text-field')),
@@ -257,7 +269,8 @@ void main() {
     // Edit the B value on the covering cell (not the start).
     await _doubleTapCell(
       tester,
-      find.byKey(const ValueKey<String>('timeline-cell-inst-cam-5')),
+      'inst-cam',
+      5,
     );
     expect(find.text('Edit Instruction'), findsOneWidget);
     await tester.enterText(
@@ -276,7 +289,8 @@ void main() {
     // Delete via the same dialog.
     await _doubleTapCell(
       tester,
-      find.byKey(const ValueKey<String>('timeline-cell-inst-cam-2')),
+      'inst-cam',
+      2,
     );
     await tester.tap(
       find.byKey(const ValueKey<String>('instance-edit-delete-button')),
@@ -332,11 +346,13 @@ void main() {
     // lives in.
     await _doubleTapCell(
       tester,
-      find.byKey(const ValueKey<String>('timeline-cell-inst-cam-0')),
+      'inst-cam',
+      0,
     );
     await _doubleTapCell(
       tester,
-      find.byKey(const ValueKey<String>('timeline-cell-inst-cam-0')),
+      'inst-cam',
+      0,
     );
     await tester.ensureVisible(
       find.byKey(const ValueKey<String>('instruction-edit-set-button')),

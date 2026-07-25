@@ -15,6 +15,7 @@ import 'package:quick_animaker_v2/src/ui/timeline/property_lane_model.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_section_policy.dart';
 
 import '../flyout_test_helpers.dart';
+import 'timeline_cell_probe.dart';
 
 Layer _layer(String id, LayerKind kind) {
   return Layer(
@@ -119,7 +120,7 @@ void main() {
     await _pump(tester);
 
     // Make a camera-section layer active first.
-    await tester.tap(find.byKey(const ValueKey<String>('timeline-cell-cam-0')));
+    await tapTimelineCell(tester, 'cam', 0);
     await tester.pumpAndSettle();
 
     await _toggleSection(tester, 'toggle-camera-section-button');

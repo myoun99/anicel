@@ -25,6 +25,8 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_style.dart'
 import 'package:quick_animaker_v2/src/ui/timeline/transform_lane_editing.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/transform_lane_policy.dart';
 
+import 'timeline_cell_probe.dart';
+
 const _cameraLayerId = LayerId('lane-cam-layer');
 const _laneToggleKey = ValueKey<String>('timeline-lane-toggle-lane-cam-layer');
 
@@ -677,8 +679,10 @@ void main() {
   });
 
   group('collapsed camera row key-union summary', () {
-    Finder cameraCell(int frame) =>
-        find.byKey(ValueKey<String>('timeline-cell-lane-cam-layer-$frame'));
+    // The camera row PAINTS its cells (R28 #4), so the glyph is read off the
+    // row painter's model rather than from a per-cell Text widget.
+    String cameraGlyph(WidgetTester tester, int frame) =>
+        timelineCellModel(tester, 'lane-cam-layer', frame).glyph;
 
     testWidgets('keyed frames show ◆ markers instead of paper cells', (
       tester,
@@ -688,27 +692,32 @@ void main() {
         _project(camera: CutCamera(keyframes: {0: _pose(0), 8: _pose(80)})),
       );
 
+      expect(cameraGlyph(tester, 0), '◆');
+      expect(cameraGlyph(tester, 8), '◆');
+      expect(cameraGlyph(tester, 4), '');
+      // The old paper-cell ○ glyph is gone from the camera row, and the
+      // cells carry no block chrome — the marker rides empty-cell styling.
+      for (var frame = 0; frame < 12; frame += 1) {
+        expect(cameraGlyph(tester, frame), isNot('○'), reason: 'frame $frame');
+        expect(
+          timelineCellDecoration(tester, 'lane-cam-layer', frame).borderRadius,
+          isNull,
+          reason: 'frame $frame draws no paper block',
+        );
+      }
+      // The a11y surface moved from a per-cell Semantics widget to the row
+      // painter's semanticsBuilder — still a real semantics tree, just not
+      // one `find.bySemanticsLabel` can see.
+      final semantics = tester.ensureSemantics();
+      await tester.pumpAndSettle();
       expect(
-        find.descendant(of: cameraCell(0), matching: find.text('◆')),
-        findsOneWidget,
+        timelineCellSemanticsLabels(
+          tester,
+          'lane-cam-layer',
+        ).where((label) => label == 'camera keyframe'),
+        hasLength(2),
       );
-      expect(
-        find.descendant(of: cameraCell(8), matching: find.text('◆')),
-        findsOneWidget,
-      );
-      expect(
-        find.descendant(of: cameraCell(4), matching: find.text('◆')),
-        findsNothing,
-      );
-      // The old paper-cell ○ glyph is gone from the camera row.
-      final rowArea = find.byKey(
-        const ValueKey<String>('timeline-frame-row-area-lane-cam-layer'),
-      );
-      expect(
-        find.descendant(of: rowArea, matching: find.text('○')),
-        findsNothing,
-      );
-      expect(find.bySemanticsLabel('camera keyframe'), findsNWidgets(2));
+      semantics.dispose();
     });
 
     testWidgets('a frame whose keyed lanes ALL hold shows ■', (tester) async {
@@ -730,16 +739,10 @@ void main() {
         ),
       );
 
-      expect(
-        find.descendant(of: cameraCell(4), matching: find.text('■')),
-        findsOneWidget,
-      );
+      expect(cameraGlyph(tester, 4), '■');
       // A linear key (the second withKey overwrote hold with the default
       // linear) reads ◆ even when another lane would hold elsewhere.
-      expect(
-        find.descendant(of: cameraCell(8), matching: find.text('◆')),
-        findsOneWidget,
-      );
+      expect(cameraGlyph(tester, 8), '◆');
     });
   });
 

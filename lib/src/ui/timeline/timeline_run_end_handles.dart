@@ -175,6 +175,25 @@ TimelineRunEdgeChrome timelineRunEdgeChrome({
   final patterns = <TimelineRunPatternSpan>[];
   final seenRunStarts = <int>{};
 
+  // ONE pass each for the two things this loop used to ask per block. Both
+  // helpers scan the whole timeline, and asking them inside the loop made
+  // resolving a row's chrome O(n²) — which is what a zoom step pays, since
+  // the geometry moved and the model has to come out again.
+  final identityRuns = gluedRunsByBlockStart(identity);
+  final displayRuns = identical(layer, identity)
+      ? identityRuns
+      : gluedRunsByBlockStart(layer);
+  final displayStartByFrameId = <FrameId, int>{};
+  for (final entry in layer.timeline.entries) {
+    final frameId = entry.value.frameId;
+    if (entry.value.ghost || frameId == null) {
+      continue;
+    }
+    // Lowest non-ghost display start wins (a cross-layer move preview can
+    // leave the block absent entirely — then it simply never lands here).
+    displayStartByFrameId.putIfAbsent(frameId, () => entry.key);
+  }
+
   double edgeX(int frameIndex) => frameVisibleX(
     frameIndex: frameIndex,
     frameStartIndex: frameStartIndex,
@@ -182,23 +201,14 @@ TimelineRunEdgeChrome timelineRunEdgeChrome({
     leadingFrameSpacerWidth: leadingFrameSpacerWidth,
   );
 
-  /// Lowest non-ghost display start carrying [frameId]; null when the
-  /// block left this layer (e.g. a cross-layer move preview).
-  int? displayStartOf(FrameId frameId) {
-    for (final entry in layer.timeline.entries) {
-      if (!entry.value.ghost && entry.value.frameId == frameId) {
-        return entry.key;
-      }
-    }
-    return null;
-  }
+  int? displayStartOf(FrameId frameId) => displayStartByFrameId[frameId];
 
   for (final key in identity.timeline.keys) {
     final entry = identity.timeline[key]!;
     if (!entry.isDrawing || entry.ghost) {
       continue;
     }
-    final baseRun = gluedRunAt(identity, key);
+    final baseRun = identityRuns[key];
     if (baseRun == null || !seenRunStarts.add(baseRun.startIndex)) {
       continue;
     }
@@ -208,21 +218,17 @@ TimelineRunEdgeChrome timelineRunEdgeChrome({
     if (displayAnchorStart == null) {
       continue;
     }
-    final run = gluedRunAt(layer, displayAnchorStart);
+    final run = displayRuns[displayAnchorStart];
     if (run == null ||
         run.endIndexExclusive < frameStartIndex ||
         run.startIndex > frameEndIndexExclusive) {
       continue;
     }
 
-    final endBehavior = runEdgeBehaviorAt(
+    final endBehavior = runEdgeBehaviorIn(layer, run, TimelineRunEdgeSide.end);
+    final startBehavior = runEdgeBehaviorIn(
       layer,
-      run.startIndex,
-      TimelineRunEdgeSide.end,
-    );
-    final startBehavior = runEdgeBehaviorAt(
-      layer,
-      run.startIndex,
+      run,
       TimelineRunEdgeSide.start,
     );
 

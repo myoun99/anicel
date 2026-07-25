@@ -109,10 +109,17 @@ Future<void> _ensureRowVisible(WidgetTester tester, LayerId layerId) async {
   await tester.pumpAndSettle();
 }
 
-Future<void> _doubleTapCell(WidgetTester tester, Finder cell) async {
-  await tester.tap(cell);
+Future<void> _doubleTapCell(
+  WidgetTester tester,
+  String layerId,
+  int frameIndex,
+) async {
+  // The SE row paints its cells (R28 #4) — the tap point comes from the
+  // painter probe, not a cell widget.
+  final target = timelineCellCenter(tester, layerId, frameIndex);
+  await tester.tapAt(target);
   await tester.pump(const Duration(milliseconds: 60));
-  await tester.tap(cell);
+  await tester.tapAt(target);
   await tester.pumpAndSettle();
 }
 
@@ -166,18 +173,9 @@ void main() {
       expect(find.text('Hello!'), findsNothing);
 
       // Covered SE cells paint the same white paper as drawing blocks.
-      final startCell = tester.widget<Container>(
-        find
-            .descendant(
-              of: find.byKey(
-                const ValueKey<String>('timeline-cell-se-voice-1'),
-              ),
-              matching: find.byType(Container),
-            )
-            .first,
-      );
+      // The SE row is PAINTED now (R28 #4) — read the painter's style.
       expect(
-        (startCell.decoration! as BoxDecoration).color,
+        timelineCellDecoration(tester, 'se-voice', 1).color,
         timelineDrawingHeldColor,
       );
 
@@ -185,13 +183,13 @@ void main() {
       expect(find.bySemanticsLabel(RegExp('^SE name')), findsNothing);
 
       // No X anywhere on the SE row; the empty cel row still gets its X.
-      final seRowArea = find.byKey(
-        const ValueKey<String>('timeline-frame-row-area-se-voice'),
-      );
-      expect(
-        find.descendant(of: seRowArea, matching: find.text('X')),
-        findsNothing,
-      );
+      for (var frame = 0; frame < 8; frame += 1) {
+        expect(
+          timelineCellModel(tester, 'se-voice', frame).glyph,
+          isNot('X'),
+          reason: 'frame $frame',
+        );
+      }
       await _ensureRowVisible(tester, _celLayerId);
       // The cel row is PAINTED (UI-R9 #12b): the X reads off the painter.
       expect(
@@ -319,7 +317,8 @@ void main() {
     // no dialog (UI-R25 #2, 조작 통일화).
     await _doubleTapCell(
       tester,
-      find.byKey(const ValueKey<String>('timeline-cell-se-voice-4')),
+      'se-voice',
+      4,
     );
     expect(find.text('New SE'), findsNothing, reason: 'creation is silent');
     var layer = _seLayer(repository);
@@ -330,7 +329,8 @@ void main() {
     // labeling stays the dialog's job.
     await _doubleTapCell(
       tester,
-      find.byKey(const ValueKey<String>('timeline-cell-se-voice-4')),
+      'se-voice',
+      4,
     );
     await tester.enterText(
       find.byKey(const ValueKey<String>('se-dialogue-field')),
@@ -394,7 +394,8 @@ void main() {
     // duplicate dialogue (no link-conflict flow).
     await _doubleTapCell(
       tester,
-      find.byKey(const ValueKey<String>('timeline-cell-se-voice-6')),
+      'se-voice',
+      6,
     );
     expect(find.text('Edit SE'), findsOneWidget);
     await tester.enterText(

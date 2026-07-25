@@ -19,7 +19,8 @@ import 'timeline_folder_aggregate_row.dart';
 import 'timeline_frame_cells_row.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_grid_metrics.dart';
-import 'timeline_row_cells_painter.dart' show timelineRowUsesCellsPainter;
+import 'timeline_row_cells_painter.dart'
+    show timelineRowReadsGeometryAtBuild;
 import 'timeline_lane_rows.dart';
 
 import '../../models/project_frame_rate.dart';
@@ -449,12 +450,12 @@ class _TimelineFrameRowsScrollBodyState
       layer: row.layer,
       active: row.layer.id == widget.activeLayerId,
       playbackFrameCount: widget.playbackFrameCount,
-      // THE tier-3 line: a painted drawing row follows the live geometry, so
-      // a zoom step leaves its memo entry valid; a sparse widget-cell row
-      // still reads geometry at build time and must miss.
-      geometry: timelineRowUsesCellsPainter(row.layer.kind)
-          ? null
-          : _geometry.value,
+      // THE line: a row whose every geometry consumer is live keeps its memo
+      // entry across a zoom step; a row with build-time span overlays (SE,
+      // instruction) must miss.
+      geometry: timelineRowReadsGeometryAtBuild(row.layer.kind)
+          ? _geometry.value
+          : null,
       crossAxisExtent: widget.metrics.layerRowHeight,
       projectFrameRate: widget.projectFrameRate,
       exposureStateForLayer: widget.exposureStateForLayer,

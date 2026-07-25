@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/semantics.dart' show SemanticsNode;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_row_cells_painter.dart';
 
@@ -97,6 +98,37 @@ BoxDecoration timelineCellDecoration(
     border: Border.all(color: style.border, width: 1),
     borderRadius: style.radius,
   );
+}
+
+/// Every semantics label the row's cell painter actually publishes.
+///
+/// `find.bySemanticsLabel` cannot see these: a painter's `semanticsBuilder`
+/// produces SemanticsNodes owned by the RenderCustomPaint, not widgets with
+/// their own semantics config. Requires `tester.ensureSemantics()` — without
+/// it the tree is not built at all, which is exactly why this reads the tree
+/// instead of the painter's model (the model would pass even if the nodes
+/// were never emitted).
+List<String> timelineCellSemanticsLabels(
+  WidgetTester tester,
+  String layerId, {
+  String prefix = 'timeline',
+}) {
+  final node = tester.getSemantics(
+    find.byKey(ValueKey<String>('$prefix-row-cells-$layerId')),
+  );
+  final labels = <String>[];
+  void visit(SemanticsNode current) {
+    if (current.label.isNotEmpty) {
+      labels.add(current.label);
+    }
+    current.visitChildren((child) {
+      visit(child);
+      return true;
+    });
+  }
+
+  visit(node);
+  return labels;
 }
 
 /// Parses a legacy cell key (`timeline-cell-<layerId>-<index>` /
