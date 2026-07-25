@@ -428,6 +428,74 @@ void main() {
     expect(small1.step, greaterThan(0));
   });
 
+  /// WHERE does a zoom step spend it — per ROW, or per CELL? The fix is a
+  /// different shape for each: row-structure cost means the rows must stop
+  /// rebuilding for geometry, while cell cost means the painter's window is
+  /// not holding (the frame window should cap paint work at the viewport no
+  /// matter the project length).
+  ///
+  /// Rows are held at 6 and the FRAME count moves instead.
+  testWidgets('zoom step: per row or per cell?', (tester) async {
+    tester.view.physicalSize = const Size(1600, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    const rounds = 8;
+    final warmZoom = ValueNotifier<double>(24);
+    addTearDown(warmZoom.dispose);
+    final warm = await pumpTimeline(
+      tester,
+      extraLayers: 2,
+      framesPerLayer: 4,
+      zoom: warmZoom,
+    );
+    for (var i = 0; i < 4; i += 1) {
+      warmZoom.value = 24 + i.toDouble();
+      await tester.pump();
+    }
+    await teardown(tester, warm);
+
+    Future<double> measureFrames(int frames) async {
+      final zoom = ValueNotifier<double>(24);
+      final session = await pumpTimeline(
+        tester,
+        extraLayers: 6,
+        framesPerLayer: frames,
+        zoom: zoom,
+      );
+      final watch = Stopwatch();
+      for (var round = 0; round < rounds; round += 1) {
+        zoom.value = 24 + (round + 1) * 2;
+        watch.start();
+        await tester.pump();
+        watch.stop();
+      }
+      await teardown(tester, session);
+      zoom.dispose();
+      return watch.elapsedMicroseconds / rounds;
+    }
+
+    // ignore: avoid_print
+    print('--- ZOOM step, FRAME AXIS ONLY (rows fixed at 6)');
+    final f24 = await measureFrames(24);
+    final f96 = await measureFrames(96);
+    final f24again = await measureFrames(24);
+    // ignore: avoid_print
+    print(
+      '24f ${(f24 / 1000).toStringAsFixed(2)}ms | 96f (4x FRAMES) '
+      '${(f96 / 1000).toStringAsFixed(2)}ms | 24f again '
+      '${(f24again / 1000).toStringAsFixed(2)}ms | ratio '
+      '${(f96 / ((f24 + f24again) / 2)).toStringAsFixed(2)}x',
+    );
+    // ignore: avoid_print
+    print(
+      'READ IT AS: flat in frames => the cost is per-ROW structure (rows '
+      'rebuilding for geometry). Scaling with frames => the frame window is '
+      'not capping the per-cell work on a zoom step.',
+    );
+    expect(f24, greaterThan(0));
+  });
+
   /// WHICH AXIS? The scaling above cannot say whether the cost is per ROW
   /// (a rebuild of every layer's controls + band) or per CELL (grid
   /// geometry over frames). The fix is different for each, so hold one
