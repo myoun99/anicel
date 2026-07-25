@@ -34,12 +34,12 @@ void main() {
   });
 
   testWidgets('O toggles the ACTIVE layer onion (UI-R17 #5 — the master '
-      'switch is gone); the panel chips and mode drive the settings', (
+      'switch is gone); the panel strip and mode drive the settings', (
     tester,
   ) async {
     // R26 #31: the left dock stacks Tool Library over Tool Settings, so
     // each section gets about half the dock — on the 800×600 default
-    // surface the onion panel's chips fall outside its section's clip.
+    // surface the onion panel's strip falls outside its section's clip.
     // A realistic window keeps them reachable.
     await tester.binding.setSurfaceSize(const Size(1400, 1000));
     addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -78,16 +78,20 @@ void main() {
     await tester.pumpAndSettle();
     expect(tester.widget<IconButton>(rowToggle).tooltip, 'Onion skin');
 
-    // Peg chip 2 (before) toggles off through the panel.
-    final peg2 = find.byKey(const ValueKey<String>('onion-peg-before-2'));
-    expect(tester.widget<FilterChip>(peg2).selected, isTrue);
-    await tester.tap(peg2);
+    // Peg 1 (before) silences through the panel's light-table strip — the
+    // bar's tooltip carries its state.
+    final peg1 = find.byKey(const ValueKey<String>('onion-peg-before-1'));
+    expect(tester.widget<Tooltip>(peg1).message, '1 back · 40%');
+    await tester.tap(peg1);
     await tester.pumpAndSettle();
-    expect(tester.widget<FilterChip>(peg2).selected, isFalse);
+    expect(tester.widget<Tooltip>(peg1).message, '1 back · off');
 
-    // Mode switch to Images.
-    await tester.tap(find.text('Images'));
+    // Mode switch to Images through the panel's picker.
+    await tester.tap(find.byKey(const ValueKey<String>('onion-mode-button')));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const ValueKey<String>('onion-mode-images')));
     await tester.pumpAndSettle();
     expect(find.byType(OnionSkinPanel), findsOneWidget);
+    expect(find.text('Images'), findsOneWidget);
   });
 }
