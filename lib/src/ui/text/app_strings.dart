@@ -154,6 +154,77 @@ class AppStrings {
   String get selectionMoveRevert => _s('selectionMoveRevert');
   String get selectionMoveApply => _s('selectionMoveApply');
 
+  // --- Shared window verbs (the AppWindow action row) ---
+  String get commonSave => _s('commonSave');
+  String get commonDelete => _s('commonDelete');
+  String get commonRename => _s('commonRename');
+  String get commonLink => _s('commonLink');
+  String get commonPreview => _s('commonPreview');
+
+  // --- The rename family (AppPromptDialog) ---
+  String get renameLayerTitle => _s('renameLayerTitle');
+  String get renameLayerField => _s('renameLayerField');
+  String get renameLayerEmpty => _s('renameLayerEmpty');
+  String get renameCutTitle => _s('renameCutTitle');
+  String get renameCutField => _s('renameCutField');
+  String get renameCutEmpty => _s('renameCutEmpty');
+  String get renameFrameTitle => _s('renameFrameTitle');
+  String get renameFrameField => _s('renameFrameField');
+
+  /// The cut's note — empty is allowed, it CLEARS the note.
+  String get cutNoteTitle => _s('cutNoteTitle');
+  String get cutNoteField => _s('cutNoteField');
+
+  // --- Confirmations ---
+  String get deleteLayerTitle => _s('deleteLayerTitle');
+
+  /// '{name}' is replaced with the layer name.
+  String get deleteLayerMessageTemplate => _s('deleteLayerMessageTemplate');
+  String get frameNameConflictTitle => _s('frameNameConflictTitle');
+  String get frameNameConflictBody => _s('frameNameConflictBody');
+
+  // --- The instance editors ---
+  String get seInstanceNewTitle => _s('seInstanceNewTitle');
+  String get seInstanceEditTitle => _s('seInstanceEditTitle');
+  String get seNameLabel => _s('seNameLabel');
+  String get seDialogueLabel => _s('seDialogueLabel');
+
+  /// '{frame}' is replaced with the 1-based frame number.
+  String get cameraKeyTitleTemplate => _s('cameraKeyTitleTemplate');
+  String get cameraKeyLinear => _s('cameraKeyLinear');
+  String get cameraKeyHold => _s('cameraKeyHold');
+
+  // --- Convert to linked cut ---
+  String get convertLinkedCutTitle => _s('convertLinkedCutTitle');
+
+  /// '{cut}' is replaced with the origin cut's name.
+  String get convertLinkedCutBodyTemplate =>
+      _s('convertLinkedCutBodyTemplate');
+  String get convertLinkedCutTargetLabel => _s('convertLinkedCutTargetLabel');
+
+  /// '{names}' is the comma-joined layer list.
+  String get convertLinkedCutLinksTemplate =>
+      _s('convertLinkedCutLinksTemplate');
+
+  /// '{count}' drawings, '{cut}' the target cut. The origin's picture wins
+  /// each same-name conflict (원본 승리) — announced up front.
+  String get convertLinkedCutReplacedTemplate =>
+      _s('convertLinkedCutReplacedTemplate');
+
+  /// '{count}' is the joining drawing count.
+  String get convertLinkedCutJoiningTemplate =>
+      _s('convertLinkedCutJoiningTemplate');
+
+  /// '{cut}' gains '{names}'.
+  String get convertLinkedCutTargetGainsTemplate =>
+      _s('convertLinkedCutTargetGainsTemplate');
+
+  /// '{names}' join THIS cut.
+  String get convertLinkedCutOriginGainsTemplate =>
+      _s('convertLinkedCutOriginGainsTemplate');
+  String get convertLinkedCutNothing => _s('convertLinkedCutNothing');
+  String get convertLinkedCutUndoNote => _s('convertLinkedCutUndoNote');
+
   static AppStrings of(AppLanguage language) => switch (language) {
     AppLanguage.en => _en,
     AppLanguage.ja => _ja,
@@ -247,6 +318,51 @@ class AppStrings {
     'selectionMoveConfirmBody': 'Commit the selection move?',
     'selectionMoveRevert': 'Revert',
     'selectionMoveApply': 'Commit',
+    'commonSave': 'Save',
+    'commonDelete': 'Delete',
+    'commonRename': 'Rename',
+    'commonLink': 'Link',
+    'commonPreview': 'Preview',
+    'renameLayerTitle': 'Rename layer',
+    'renameLayerField': 'Layer name',
+    'renameLayerEmpty': 'Layer name cannot be empty.',
+    'renameCutTitle': 'Rename cut',
+    'renameCutField': 'Cut name',
+    'renameCutEmpty': 'Cut name cannot be empty.',
+    'renameFrameTitle': 'Rename frame',
+    'renameFrameField': 'Frame name',
+    'cutNoteTitle': 'Edit cut note',
+    'cutNoteField': 'Cut note',
+    'deleteLayerTitle': 'Delete layer',
+    'deleteLayerMessageTemplate': 'Delete layer "{name}"?',
+    'frameNameConflictTitle': 'Frame name already exists',
+    'frameNameConflictBody':
+        'This name is already used by another frame in this layer. Link to '
+        'the existing named frame so the same name shares the same material?',
+    'seInstanceNewTitle': 'New SE',
+    'seInstanceEditTitle': 'Edit SE',
+    'seNameLabel': 'Name (speaker — blank hides the box)',
+    'seDialogueLabel': 'Dialogue',
+    'cameraKeyTitleTemplate': 'Camera keys — frame {frame}',
+    'cameraKeyLinear': 'Linear',
+    'cameraKeyHold': 'Hold',
+    'convertLinkedCutTitle': 'Convert to linked cut',
+    'convertLinkedCutBodyTemplate':
+        'Link "{cut}" (origin) with another cut. Layers with the SAME NAME '
+        'become one shared picture.',
+    'convertLinkedCutTargetLabel': 'Link with cut',
+    'convertLinkedCutLinksTemplate': 'Links {names}.',
+    'convertLinkedCutReplacedTemplate':
+        '{count} same-name drawing(s) in "{cut}" will be replaced by the '
+        "origin's (원본 승리).",
+    'convertLinkedCutJoiningTemplate':
+        '{count} drawing(s) join the shared set.',
+    'convertLinkedCutTargetGainsTemplate': '"{cut}" gains: {names}.',
+    'convertLinkedCutOriginGainsTemplate': 'This cut gains: {names}.',
+    'convertLinkedCutNothing':
+        'Nothing to link — the cuts are already fully linked or share no '
+        'drawing layers.',
+    'convertLinkedCutUndoNote': 'Undo restores both cuts.',
   };
 
   static const _jaValues = <String, String>{
@@ -327,6 +443,49 @@ class AppStrings {
     'selectionMoveConfirmBody': '選択範囲の移動を確定しますか？',
     'selectionMoveRevert': '元に戻す',
     'selectionMoveApply': '確定',
+    'commonSave': '保存',
+    'commonDelete': '削除',
+    'commonRename': '名前を変更',
+    'commonLink': 'リンク',
+    'commonPreview': 'プレビュー',
+    'renameLayerTitle': 'レイヤー名の変更',
+    'renameLayerField': 'レイヤー名',
+    'renameLayerEmpty': 'レイヤー名を空にはできません。',
+    'renameCutTitle': 'カット名の変更',
+    'renameCutField': 'カット名',
+    'renameCutEmpty': 'カット名を空にはできません。',
+    'renameFrameTitle': 'フレーム名の変更',
+    'renameFrameField': 'フレーム名',
+    'cutNoteTitle': 'カットメモの編集',
+    'cutNoteField': 'カットメモ',
+    'deleteLayerTitle': 'レイヤーの削除',
+    'deleteLayerMessageTemplate': 'レイヤー「{name}」を削除しますか？',
+    'frameNameConflictTitle': '同じフレーム名が既にあります',
+    'frameNameConflictBody':
+        'この名前はこのレイヤーの別のフレームで既に使われています。同じ名前が'
+        '同じ素材を共有するよう、既存のフレームにリンクしますか？',
+    'seInstanceNewTitle': 'SEの新規作成',
+    'seInstanceEditTitle': 'SEの編集',
+    'seNameLabel': '名前（話者 — 空欄でボックス非表示）',
+    'seDialogueLabel': 'セリフ',
+    'cameraKeyTitleTemplate': 'カメラキー — {frame}フレーム目',
+    'cameraKeyLinear': 'リニア',
+    'cameraKeyHold': 'ホールド',
+    'convertLinkedCutTitle': 'リンクカットに変換',
+    'convertLinkedCutBodyTemplate':
+        '「{cut}」（原本）を別のカットとリンクします。同じ名前のレイヤーが'
+        '1枚の共有画になります。',
+    'convertLinkedCutTargetLabel': 'リンクするカット',
+    'convertLinkedCutLinksTemplate': '{names} をリンクします。',
+    'convertLinkedCutReplacedTemplate':
+        '「{cut}」の同名作画 {count} 枚が原本のもので置き換わります（原本優先）。',
+    'convertLinkedCutJoiningTemplate': '作画 {count} 枚が共有セットに加わります。',
+    'convertLinkedCutTargetGainsTemplate': '「{cut}」に追加：{names}。',
+    'convertLinkedCutOriginGainsTemplate': 'このカットに追加：{names}。',
+    'convertLinkedCutNothing':
+        'リンクするものがありません — 既に完全にリンク済みか、共有できる'
+        '作画レイヤーがありません。',
+    'convertLinkedCutUndoNote': '元に戻すと両方のカットが復元されます。',
   };
 
   static const _koValues = <String, String>{
@@ -407,6 +566,50 @@ class AppStrings {
     'selectionMoveConfirmBody': '선택 영역 이동을 확정하시겠습니까?',
     'selectionMoveRevert': '되돌리기',
     'selectionMoveApply': '확정',
+    'commonSave': '저장',
+    'commonDelete': '삭제',
+    'commonRename': '이름 변경',
+    'commonLink': '링크',
+    'commonPreview': '미리보기',
+    'renameLayerTitle': '레이어 이름 변경',
+    'renameLayerField': '레이어 이름',
+    'renameLayerEmpty': '레이어 이름은 비울 수 없습니다.',
+    'renameCutTitle': '컷 이름 변경',
+    'renameCutField': '컷 이름',
+    'renameCutEmpty': '컷 이름은 비울 수 없습니다.',
+    'renameFrameTitle': '프레임 이름 변경',
+    'renameFrameField': '프레임 이름',
+    'cutNoteTitle': '컷 메모 편집',
+    'cutNoteField': '컷 메모',
+    'deleteLayerTitle': '레이어 삭제',
+    'deleteLayerMessageTemplate': '레이어 "{name}"을(를) 삭제할까요?',
+    'frameNameConflictTitle': '같은 프레임 이름이 이미 있습니다',
+    'frameNameConflictBody':
+        '이 이름은 이 레이어의 다른 프레임이 이미 쓰고 있습니다. 같은 이름이 '
+        '같은 원화를 공유하도록 기존 프레임에 링크할까요?',
+    'seInstanceNewTitle': '새 SE',
+    'seInstanceEditTitle': 'SE 편집',
+    'seNameLabel': '이름 (화자 — 비우면 박스 숨김)',
+    'seDialogueLabel': '대사',
+    'cameraKeyTitleTemplate': '카메라 키 — {frame}프레임',
+    'cameraKeyLinear': '리니어',
+    'cameraKeyHold': '홀드',
+    'convertLinkedCutTitle': '링크 컷으로 변환',
+    'convertLinkedCutBodyTemplate':
+        '"{cut}"(원본)을 다른 컷과 링크합니다. 이름이 같은 레이어끼리 '
+        '한 장의 공유 그림이 됩니다.',
+    'convertLinkedCutTargetLabel': '링크할 컷',
+    'convertLinkedCutLinksTemplate': '{names}을(를) 링크합니다.',
+    'convertLinkedCutReplacedTemplate':
+        '"{cut}"의 같은 이름 원화 {count}장이 원본 것으로 대체됩니다'
+        '(원본 승리).',
+    'convertLinkedCutJoiningTemplate': '원화 {count}장이 공유 세트에 합류합니다.',
+    'convertLinkedCutTargetGainsTemplate': '"{cut}"에 추가: {names}.',
+    'convertLinkedCutOriginGainsTemplate': '이 컷에 추가: {names}.',
+    'convertLinkedCutNothing':
+        '링크할 것이 없습니다 — 이미 완전히 링크됐거나 공유할 그리기 '
+        '레이어가 없습니다.',
+    'convertLinkedCutUndoNote': '실행 취소하면 두 컷 모두 복원됩니다.',
   };
 
   static const _frValues = <String, String>{
@@ -487,6 +690,51 @@ class AppStrings {
     'selectionMoveConfirmBody': 'Valider le déplacement de la sélection ?',
     'selectionMoveRevert': 'Rétablir',
     'selectionMoveApply': 'Valider',
+    'commonSave': 'Enregistrer',
+    'commonDelete': 'Supprimer',
+    'commonRename': 'Renommer',
+    'commonLink': 'Lier',
+    'commonPreview': 'Aperçu',
+    'renameLayerTitle': 'Renommer le calque',
+    'renameLayerField': 'Nom du calque',
+    'renameLayerEmpty': 'Le nom du calque ne peut pas être vide.',
+    'renameCutTitle': 'Renommer le plan',
+    'renameCutField': 'Nom du plan',
+    'renameCutEmpty': 'Le nom du plan ne peut pas être vide.',
+    'renameFrameTitle': "Renommer l'image",
+    'renameFrameField': "Nom de l'image",
+    'cutNoteTitle': 'Modifier la note du plan',
+    'cutNoteField': 'Note du plan',
+    'deleteLayerTitle': 'Supprimer le calque',
+    'deleteLayerMessageTemplate': 'Supprimer le calque « {name} » ?',
+    'frameNameConflictTitle': "Ce nom d'image existe déjà",
+    'frameNameConflictBody':
+        "Ce nom est déjà utilisé par une autre image de ce calque. Lier à "
+        "l'image existante pour que le même nom partage le même dessin ?",
+    'seInstanceNewTitle': 'Nouveau SE',
+    'seInstanceEditTitle': 'Modifier le SE',
+    'seNameLabel': 'Nom (locuteur — vide masque le cadre)',
+    'seDialogueLabel': 'Dialogue',
+    'cameraKeyTitleTemplate': 'Clés caméra — image {frame}',
+    'cameraKeyLinear': 'Linéaire',
+    'cameraKeyHold': 'Maintien',
+    'convertLinkedCutTitle': 'Convertir en plan lié',
+    'convertLinkedCutBodyTemplate':
+        'Lier « {cut} » (origine) à un autre plan. Les calques de MÊME NOM '
+        'deviennent un seul dessin partagé.',
+    'convertLinkedCutTargetLabel': 'Lier au plan',
+    'convertLinkedCutLinksTemplate': 'Lie {names}.',
+    'convertLinkedCutReplacedTemplate':
+        '{count} dessin(s) de même nom dans « {cut} » seront remplacés par '
+        "ceux de l'origine (원본 승리).",
+    'convertLinkedCutJoiningTemplate':
+        "{count} dessin(s) rejoignent l'ensemble partagé.",
+    'convertLinkedCutTargetGainsTemplate': '« {cut} » gagne : {names}.',
+    'convertLinkedCutOriginGainsTemplate': 'Ce plan gagne : {names}.',
+    'convertLinkedCutNothing':
+        'Rien à lier — les plans sont déjà entièrement liés ou ne partagent '
+        'aucun calque de dessin.',
+    'convertLinkedCutUndoNote': 'Annuler restaure les deux plans.',
   };
 
   static const _zhHansValues = <String, String>{
@@ -567,5 +815,46 @@ class AppStrings {
     'selectionMoveConfirmBody': '要确认选区的移动吗？',
     'selectionMoveRevert': '还原',
     'selectionMoveApply': '确认',
+    'commonSave': '保存',
+    'commonDelete': '删除',
+    'commonRename': '重命名',
+    'commonLink': '链接',
+    'commonPreview': '预览',
+    'renameLayerTitle': '重命名图层',
+    'renameLayerField': '图层名称',
+    'renameLayerEmpty': '图层名称不能为空。',
+    'renameCutTitle': '重命名镜头',
+    'renameCutField': '镜头名称',
+    'renameCutEmpty': '镜头名称不能为空。',
+    'renameFrameTitle': '重命名帧',
+    'renameFrameField': '帧名称',
+    'cutNoteTitle': '编辑镜头备注',
+    'cutNoteField': '镜头备注',
+    'deleteLayerTitle': '删除图层',
+    'deleteLayerMessageTemplate': '要删除图层“{name}”吗？',
+    'frameNameConflictTitle': '帧名称已存在',
+    'frameNameConflictBody':
+        '该名称已被此图层中的另一帧使用。是否链接到已有的同名帧，'
+        '让相同名称共用同一张原画？',
+    'seInstanceNewTitle': '新建 SE',
+    'seInstanceEditTitle': '编辑 SE',
+    'seNameLabel': '名称（说话者 — 留空则隐藏名条）',
+    'seDialogueLabel': '台词',
+    'cameraKeyTitleTemplate': '摄影表关键帧 — 第 {frame} 帧',
+    'cameraKeyLinear': '线性',
+    'cameraKeyHold': '保持',
+    'convertLinkedCutTitle': '转换为链接镜头',
+    'convertLinkedCutBodyTemplate':
+        '将“{cut}”（原本）与另一个镜头链接。同名图层会合并为一张共用画面。',
+    'convertLinkedCutTargetLabel': '链接的镜头',
+    'convertLinkedCutLinksTemplate': '链接 {names}。',
+    'convertLinkedCutReplacedTemplate':
+        '“{cut}”中 {count} 张同名原画将被原本的替换（원본 승리）。',
+    'convertLinkedCutJoiningTemplate': '{count} 张原画加入共用集合。',
+    'convertLinkedCutTargetGainsTemplate': '“{cut}”新增：{names}。',
+    'convertLinkedCutOriginGainsTemplate': '本镜头新增：{names}。',
+    'convertLinkedCutNothing': '没有可链接的内容 — 两个镜头已完全链接，'
+        '或没有可共用的绘制图层。',
+    'convertLinkedCutUndoNote': '撤销会同时还原两个镜头。',
   };
 }

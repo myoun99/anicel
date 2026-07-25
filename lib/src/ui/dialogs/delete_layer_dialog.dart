@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 import 'app_confirm_dialog.dart';
 
@@ -11,19 +12,23 @@ class DeleteLayerDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final strings = AppText.strings;
     return AppConfirmDialog(
       windowKey: const ValueKey<String>('delete-layer-dialog'),
-      title: 'Delete layer',
+      title: strings.deleteLayerTitle,
       titleIcon: Icons.delete_outline,
-      message: 'Delete layer "$layerName"?',
+      message: strings.deleteLayerMessageTemplate.replaceAll(
+        '{name}',
+        layerName,
+      ),
       actions: [
         AppWindowAction(
-          label: 'Cancel',
+          label: strings.commonCancel,
           actionKey: const ValueKey<String>('delete-layer-cancel-button'),
           onPressed: () => Navigator.of(context).pop(false),
         ),
         AppWindowAction(
-          label: 'Delete',
+          label: strings.commonDelete,
           actionKey: const ValueKey<String>('delete-layer-confirm-button'),
           emphasis: AppWindowActionEmphasis.primary,
           onPressed: () => Navigator.of(context).pop(true),

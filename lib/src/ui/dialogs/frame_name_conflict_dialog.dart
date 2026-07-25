@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 import 'app_confirm_dialog.dart';
 
@@ -10,23 +11,22 @@ class FrameNameConflictDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final strings = AppText.strings;
     return AppConfirmDialog(
       windowKey: const ValueKey<String>('frame-name-conflict-dialog'),
-      title: 'Frame name already exists',
+      title: strings.frameNameConflictTitle,
       titleIcon: Icons.link_outlined,
-      message:
-          'This name is already used by another frame in this layer. Link to '
-          'the existing named frame so the same name shares the same material?',
+      message: strings.frameNameConflictBody,
       actions: [
         AppWindowAction(
-          label: 'Cancel',
+          label: strings.commonCancel,
           actionKey: const ValueKey<String>(
             'frame-name-conflict-cancel-button',
           ),
           onPressed: () => Navigator.of(context).pop(false),
         ),
         AppWindowAction(
-          label: 'Link',
+          label: strings.commonLink,
           actionKey: const ValueKey<String>('frame-name-conflict-link-button'),
           emphasis: AppWindowActionEmphasis.primary,
           onPressed: () => Navigator.of(context).pop(true),

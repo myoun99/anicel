@@ -88,6 +88,46 @@ void main() {
     'selectionMoveConfirmBody': (s) => s.selectionMoveConfirmBody,
     'selectionMoveRevert': (s) => s.selectionMoveRevert,
     'selectionMoveApply': (s) => s.selectionMoveApply,
+    'commonSave': (s) => s.commonSave,
+    'commonDelete': (s) => s.commonDelete,
+    'commonRename': (s) => s.commonRename,
+    'commonLink': (s) => s.commonLink,
+    'commonPreview': (s) => s.commonPreview,
+    'renameLayerTitle': (s) => s.renameLayerTitle,
+    'renameLayerField': (s) => s.renameLayerField,
+    'renameLayerEmpty': (s) => s.renameLayerEmpty,
+    'renameCutTitle': (s) => s.renameCutTitle,
+    'renameCutField': (s) => s.renameCutField,
+    'renameCutEmpty': (s) => s.renameCutEmpty,
+    'renameFrameTitle': (s) => s.renameFrameTitle,
+    'renameFrameField': (s) => s.renameFrameField,
+    'cutNoteTitle': (s) => s.cutNoteTitle,
+    'cutNoteField': (s) => s.cutNoteField,
+    'deleteLayerTitle': (s) => s.deleteLayerTitle,
+    'deleteLayerMessageTemplate': (s) => s.deleteLayerMessageTemplate,
+    'frameNameConflictTitle': (s) => s.frameNameConflictTitle,
+    'frameNameConflictBody': (s) => s.frameNameConflictBody,
+    'seInstanceNewTitle': (s) => s.seInstanceNewTitle,
+    'seInstanceEditTitle': (s) => s.seInstanceEditTitle,
+    'seNameLabel': (s) => s.seNameLabel,
+    'seDialogueLabel': (s) => s.seDialogueLabel,
+    'cameraKeyTitleTemplate': (s) => s.cameraKeyTitleTemplate,
+    'cameraKeyLinear': (s) => s.cameraKeyLinear,
+    'cameraKeyHold': (s) => s.cameraKeyHold,
+    'convertLinkedCutTitle': (s) => s.convertLinkedCutTitle,
+    'convertLinkedCutBodyTemplate': (s) => s.convertLinkedCutBodyTemplate,
+    'convertLinkedCutTargetLabel': (s) => s.convertLinkedCutTargetLabel,
+    'convertLinkedCutLinksTemplate': (s) => s.convertLinkedCutLinksTemplate,
+    'convertLinkedCutReplacedTemplate': (s) =>
+        s.convertLinkedCutReplacedTemplate,
+    'convertLinkedCutJoiningTemplate': (s) =>
+        s.convertLinkedCutJoiningTemplate,
+    'convertLinkedCutTargetGainsTemplate': (s) =>
+        s.convertLinkedCutTargetGainsTemplate,
+    'convertLinkedCutOriginGainsTemplate': (s) =>
+        s.convertLinkedCutOriginGainsTemplate,
+    'convertLinkedCutNothing': (s) => s.convertLinkedCutNothing,
+    'convertLinkedCutUndoNote': (s) => s.convertLinkedCutUndoNote,
   };
 
   for (final language in AppLanguage.values) {
@@ -106,6 +146,6 @@ void main() {
   test('the reader table covers every getter the class declares', () {
     // Guards the guard: a string added without a line here would other-
     // wise be silently unchecked.
-    expect(readers, hasLength(77));
+    expect(readers, hasLength(113));
   });
 }

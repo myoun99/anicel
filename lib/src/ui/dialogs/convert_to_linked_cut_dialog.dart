@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/cut_id.dart';
 import '../../services/commands/convert_to_linked_cut_plan.dart';
+import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 
 /// 겸용 변경 dialog: pick a target cut, read the 안내문 (what links, what
@@ -39,9 +40,10 @@ class _ConvertToLinkedCutDialogState extends State<ConvertToLinkedCutDialog> {
   Widget build(BuildContext context) {
     final targetCutId = _targetCutId;
     final preview = targetCutId == null ? null : widget.previewOf(targetCutId);
+    final strings = AppText.strings;
     return AppWindow(
       windowKey: const ValueKey<String>('convert-linked-cut-dialog'),
-      title: 'Convert to linked cut',
+      title: strings.convertLinkedCutTitle,
       titleIcon: Icons.link_outlined,
       onClose: () => Navigator.of(context).pop(null),
       width: 420,
@@ -50,13 +52,15 @@ class _ConvertToLinkedCutDialogState extends State<ConvertToLinkedCutDialog> {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Text(
-            'Link "${widget.activeCutName}" (origin) with another cut. '
-            'Layers with the SAME NAME become one shared picture.',
+            strings.convertLinkedCutBodyTemplate.replaceAll(
+              '{cut}',
+              widget.activeCutName,
+            ),
             style: Theme.of(context).textTheme.bodyMedium,
           ),
           const SizedBox(height: 14),
           AppWindowField(
-            label: 'Link with cut',
+            label: strings.convertLinkedCutTargetLabel,
             emphasized: true,
             child: DropdownButtonFormField<CutId>(
               key: const ValueKey<String>('convert-linked-cut-target'),
@@ -79,12 +83,12 @@ class _ConvertToLinkedCutDialogState extends State<ConvertToLinkedCutDialog> {
       ),
       actions: [
         AppWindowAction(
-          label: 'Cancel',
+          label: strings.commonCancel,
           actionKey: const ValueKey<String>('convert-linked-cut-cancel-button'),
           onPressed: () => Navigator.of(context).pop(null),
         ),
         AppWindowAction(
-          label: 'Link',
+          label: strings.commonLink,
           actionKey: const ValueKey<String>(
             'convert-linked-cut-confirm-button',
           ),
@@ -105,27 +109,38 @@ class _PreviewSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final strings = AppText.strings;
     final lines = <String>[
       if (preview.linkingLayerNames.isNotEmpty)
-        'Links ${preview.linkingLayerNames.join(", ")}.',
+        strings.convertLinkedCutLinksTemplate.replaceAll(
+          '{names}',
+          preview.linkingLayerNames.join(', '),
+        ),
       // 원본 승리, announced up front (user-confirmed rule): the origin's
       // picture wins each same-name conflict, exactly once, undoable.
       if (preview.replacedFrameCount > 0)
-        '${preview.replacedFrameCount} same-name drawing(s) in '
-            '"${preview.targetCutName}" will be replaced by the origin\'s '
-            '(원본 승리).',
+        strings.convertLinkedCutReplacedTemplate
+            .replaceAll('{count}', '${preview.replacedFrameCount}')
+            .replaceAll('{cut}', preview.targetCutName),
       if (preview.joiningFrameCount > 0)
-        '${preview.joiningFrameCount} drawing(s) join the shared set.',
+        strings.convertLinkedCutJoiningTemplate.replaceAll(
+          '{count}',
+          '${preview.joiningFrameCount}',
+        ),
       if (preview.layerNamesAppearingInTarget.isNotEmpty)
-        '"${preview.targetCutName}" gains: '
-            '${preview.layerNamesAppearingInTarget.join(", ")}.',
+        strings.convertLinkedCutTargetGainsTemplate
+            .replaceAll('{cut}', preview.targetCutName)
+            .replaceAll(
+              '{names}',
+              preview.layerNamesAppearingInTarget.join(', '),
+            ),
       if (preview.layerNamesAppearingInOrigin.isNotEmpty)
-        'This cut gains: '
-            '${preview.layerNamesAppearingInOrigin.join(", ")}.',
-      if (!preview.linksAnything)
-        'Nothing to link — the cuts are already fully linked or share no '
-            'drawing layers.',
-      if (preview.linksAnything) 'Undo restores both cuts.',
+        strings.convertLinkedCutOriginGainsTemplate.replaceAll(
+          '{names}',
+          preview.layerNamesAppearingInOrigin.join(', '),
+        ),
+      if (!preview.linksAnything) strings.convertLinkedCutNothing,
+      if (preview.linksAnything) strings.convertLinkedCutUndoNote,
     ];
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,

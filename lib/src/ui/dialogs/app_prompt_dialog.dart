@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 
 /// The one "type a short string" window: rename a layer, a cut, a frame, a
@@ -109,7 +110,7 @@ class _AppPromptDialogState extends State<AppPromptDialog> {
       ),
       actions: [
         AppWindowAction(
-          label: 'Cancel',
+          label: AppText.strings.commonCancel,
           actionKey: widget.cancelKey,
           onPressed: () => Navigator.of(context).pop(),
         ),

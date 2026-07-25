@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 
 /// The "instance edit" family's window — one layer kind's entry being
@@ -21,7 +22,7 @@ class InstanceEditDialogShell extends StatelessWidget {
     this.preview,
     required this.onSubmit,
     this.onDelete,
-    this.submitLabel = 'Save',
+    this.submitLabel,
   });
 
   final String title;
@@ -39,11 +40,14 @@ class InstanceEditDialogShell extends StatelessWidget {
 
   /// Non-null shows the Delete action.
   final VoidCallback? onDelete;
-  final String submitLabel;
+
+  /// Null takes the tabled Save verb in the program language.
+  final String? submitLabel;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final strings = AppText.strings;
     final preview = this.preview;
     final onDelete = this.onDelete;
     return AppWindow(
@@ -63,7 +67,7 @@ class InstanceEditDialogShell extends StatelessWidget {
             Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                'Preview',
+                strings.commonPreview,
                 style: theme.textTheme.labelSmall?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant,
                   letterSpacing: 1.1,
@@ -78,18 +82,18 @@ class InstanceEditDialogShell extends StatelessWidget {
       actions: [
         if (onDelete != null)
           AppWindowAction(
-            label: 'Delete',
+            label: strings.commonDelete,
             actionKey: const ValueKey<String>('instance-edit-delete-button'),
             emphasis: AppWindowActionEmphasis.danger,
             onPressed: onDelete,
           ),
         AppWindowAction(
-          label: 'Cancel',
+          label: strings.commonCancel,
           actionKey: const ValueKey<String>('instance-edit-cancel-button'),
           onPressed: () => Navigator.of(context).pop(),
         ),
         AppWindowAction(
-          label: submitLabel,
+          label: submitLabel ?? strings.commonSave,
           actionKey: const ValueKey<String>('instance-edit-ok-button'),
           emphasis: AppWindowActionEmphasis.primary,
           onPressed: onSubmit,

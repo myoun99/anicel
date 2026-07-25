@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../text/app_strings.dart';
 import '../timeline/camera_key_edit.dart';
 import 'instance_edit_dialog.dart';
 
@@ -46,8 +47,12 @@ class _CameraKeyDialogState extends State<CameraKeyDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final strings = AppText.strings;
     return InstanceEditDialogShell(
-      title: 'Camera keys — frame ${widget.frameIndex + 1}',
+      title: strings.cameraKeyTitleTemplate.replaceAll(
+        '{frame}',
+        '${widget.frameIndex + 1}',
+      ),
       titleIcon: Icons.videocam_outlined,
       body: Column(
         mainAxisSize: MainAxisSize.min,
@@ -98,9 +103,15 @@ class _CameraKeyDialogState extends State<CameraKeyDialog> {
                             ),
                           )
                         : null,
-                    items: const [
-                      DropdownMenuItem(value: false, child: Text('Linear')),
-                      DropdownMenuItem(value: true, child: Text('Hold')),
+                    items: [
+                      DropdownMenuItem(
+                        value: false,
+                        child: Text(strings.cameraKeyLinear),
+                      ),
+                      DropdownMenuItem(
+                        value: true,
+                        child: Text(strings.cameraKeyHold),
+                      ),
                     ],
                   ),
                 ],

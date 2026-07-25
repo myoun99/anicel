@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../text/app_strings.dart';
 import 'app_prompt_dialog.dart';
 
 /// Rename dialog for a layer. Pops the trimmed new name, or nothing on
@@ -11,14 +12,15 @@ class RenameLayerDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final strings = AppText.strings;
     return AppPromptDialog(
       windowKey: const ValueKey<String>('rename-layer-dialog'),
-      title: 'Rename layer',
+      title: strings.renameLayerTitle,
       titleIcon: Icons.drive_file_rename_outline,
-      fieldLabel: 'Layer name',
+      fieldLabel: strings.renameLayerField,
       initialValue: initialName,
-      confirmLabel: 'Rename',
-      emptyError: 'Layer name cannot be empty.',
+      confirmLabel: strings.commonRename,
+      emptyError: strings.renameLayerEmpty,
       fieldKey: const ValueKey<String>('rename-layer-text-field'),
       cancelKey: const ValueKey<String>('rename-layer-cancel-button'),
       confirmKey: const ValueKey<String>('rename-layer-ok-button'),
