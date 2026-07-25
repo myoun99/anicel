@@ -1,61 +1,40 @@
 import 'package:flutter/material.dart';
 
-/// Rename dialog for a frame. Pops the new name text, or nothing on cancel.
-/// SE rows reuse it with sheet wording (title/label overrides) — the frame
-/// name IS the sheet's name/dialogue text there.
-class RenameFrameDialog extends StatefulWidget {
+import '../text/app_strings.dart';
+import 'app_prompt_dialog.dart';
+
+/// Rename dialog for a frame. Pops the trimmed new name, or nothing on
+/// cancel. SE rows reuse it with sheet wording ([title]/[fieldLabel]
+/// overrides) — the frame name IS the sheet's name/dialogue text there,
+/// which is also why an empty value is allowed here: clearing a sheet cell
+/// is a real edit.
+class RenameFrameDialog extends StatelessWidget {
   const RenameFrameDialog({
     super.key,
     required this.initialName,
-    this.title = 'Rename Frame',
-    this.fieldLabel = 'Frame name',
+    this.title,
+    this.fieldLabel,
   });
 
   final String initialName;
-  final String title;
-  final String fieldLabel;
 
-  @override
-  State<RenameFrameDialog> createState() => _RenameFrameDialogState();
-}
-
-class _RenameFrameDialogState extends State<RenameFrameDialog> {
-  late final TextEditingController _textController;
-
-  @override
-  void initState() {
-    super.initState();
-    _textController = TextEditingController(text: widget.initialName);
-  }
-
-  @override
-  void dispose() {
-    _textController.dispose();
-    super.dispose();
-  }
+  /// Null takes the tabled frame wording in the program language.
+  final String? title;
+  final String? fieldLabel;
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: Text(widget.title),
-      content: TextField(
-        key: const ValueKey<String>('rename-frame-text-field'),
-        controller: _textController,
-        autofocus: true,
-        decoration: InputDecoration(labelText: widget.fieldLabel),
-      ),
-      actions: [
-        TextButton(
-          key: const ValueKey<String>('rename-frame-cancel-button'),
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          key: const ValueKey<String>('rename-frame-ok-button'),
-          onPressed: () => Navigator.of(context).pop(_textController.text),
-          child: const Text('OK'),
-        ),
-      ],
+    final strings = AppText.strings;
+    return AppPromptDialog(
+      windowKey: const ValueKey<String>('rename-frame-dialog'),
+      title: title ?? strings.renameFrameTitle,
+      titleIcon: Icons.drive_file_rename_outline,
+      fieldLabel: fieldLabel ?? strings.renameFrameField,
+      initialValue: initialName,
+      confirmLabel: strings.commonRename,
+      fieldKey: const ValueKey<String>('rename-frame-text-field'),
+      cancelKey: const ValueKey<String>('rename-frame-cancel-button'),
+      confirmKey: const ValueKey<String>('rename-frame-ok-button'),
     );
   }
 }

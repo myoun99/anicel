@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../models/timesheet_info.dart';
+import '../widgets/app_window.dart';
+import '../text/app_strings.dart';
 
 /// Edits the sheet-header text (title/episode/scene/artist) the paper
 /// timesheet reads, and which header boxes the form prints. Pops the
@@ -39,15 +41,18 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
   );
   late bool _seEmptyFill = widget.initialInfo.seEmptyFill;
 
-  static const Map<TimesheetHeaderField, String> _fieldLabels = {
-    TimesheetHeaderField.title: 'Title',
-    TimesheetHeaderField.episode: 'Episode',
-    TimesheetHeaderField.scene: 'Scene',
-    TimesheetHeaderField.cut: 'Cut',
-    TimesheetHeaderField.time: 'Time',
-    TimesheetHeaderField.name: 'Name',
-    TimesheetHeaderField.sheet: 'Sheet',
-  };
+  static String _fieldLabel(TimesheetHeaderField field) {
+    final strings = AppText.strings;
+    return switch (field) {
+      TimesheetHeaderField.title => strings.sheetFieldTitle,
+      TimesheetHeaderField.episode => strings.sheetFieldEpisode,
+      TimesheetHeaderField.scene => strings.sheetFieldScene,
+      TimesheetHeaderField.cut => strings.sheetFieldCut,
+      TimesheetHeaderField.time => strings.sheetFieldTime,
+      TimesheetHeaderField.name => strings.sheetFieldName,
+      TimesheetHeaderField.sheet => strings.sheetFieldSheet,
+    };
+  }
 
   @override
   void dispose() {
@@ -80,46 +85,60 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Sheet Info'),
-      content: SizedBox(
+    final strings = AppText.strings;
+    return AppWindow(
+      windowKey: const ValueKey<String>('timesheet-info-dialog'),
+      title: strings.sheetInfoTitle,
+      titleIcon: Icons.description_outlined,
+      onClose: () => Navigator.of(context).pop(),
+      width: 420,
+      body: SizedBox(
         width: 360,
         child: SingleChildScrollView(
           child: Column(
             mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              TextField(
-                key: const ValueKey<String>('timesheet-info-title-field'),
-                controller: _titleController,
-                autofocus: true,
-                decoration: const InputDecoration(
-                  labelText: 'Title',
-                  hintText: 'Project name when empty',
+              AppWindowField(
+                label: strings.sheetFieldTitle,
+                emphasized: true,
+                child: TextField(
+                  key: const ValueKey<String>('timesheet-info-title-field'),
+                  controller: _titleController,
+                  autofocus: true,
+                  decoration: InputDecoration(
+                    hintText: strings.sheetTitleHint,
+                  ),
                 ),
               ),
-              const SizedBox(height: 8),
-              TextField(
-                key: const ValueKey<String>('timesheet-info-episode-field'),
-                controller: _episodeController,
-                decoration: const InputDecoration(labelText: 'Episode'),
+              const SizedBox(height: 12),
+              AppWindowField(
+                label: strings.sheetFieldEpisode,
+                child: TextField(
+                  key: const ValueKey<String>('timesheet-info-episode-field'),
+                  controller: _episodeController,
+                ),
               ),
-              const SizedBox(height: 8),
-              TextField(
-                key: const ValueKey<String>('timesheet-info-scene-field'),
-                controller: _sceneController,
-                decoration: const InputDecoration(labelText: 'Scene'),
+              const SizedBox(height: 12),
+              AppWindowField(
+                label: strings.sheetFieldScene,
+                child: TextField(
+                  key: const ValueKey<String>('timesheet-info-scene-field'),
+                  controller: _sceneController,
+                ),
               ),
-              const SizedBox(height: 8),
-              TextField(
-                key: const ValueKey<String>('timesheet-info-artist-field'),
-                controller: _artistController,
-                decoration: const InputDecoration(labelText: 'Artist'),
-                onSubmitted: (_) => _submit(),
+              const SizedBox(height: 12),
+              AppWindowField(
+                label: strings.sheetArtist,
+                child: TextField(
+                  key: const ValueKey<String>('timesheet-info-artist-field'),
+                  controller: _artistController,
+                  onSubmitted: (_) => _submit(),
+                ),
               ),
               const SizedBox(height: 16),
               Text(
-                'Visible Boxes',
+                strings.sheetVisibleBoxes,
                 style: Theme.of(context).textTheme.labelMedium,
               ),
               const SizedBox(height: 8),
@@ -132,7 +151,7 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
                       key: ValueKey<String>(
                         'timesheet-info-visible-${field.name}',
                       ),
-                      label: Text(_fieldLabels[field]!),
+                      label: Text(_fieldLabel(field)),
                       selected: !_hiddenFields.contains(field),
                       onSelected: (visible) => setState(() {
                         if (visible) {
@@ -145,36 +164,36 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
                 ],
               ),
               const SizedBox(height: 16),
-              Text('Notation', style: Theme.of(context).textTheme.labelMedium),
+              Text(
+                strings.sheetNotation,
+                style: Theme.of(context).textTheme.labelMedium,
+              ),
               SwitchListTile(
                 key: const ValueKey<String>('timesheet-info-exposure-bar'),
                 contentPadding: EdgeInsets.zero,
                 dense: true,
-                title: const Text('Exposure hold bar'),
-                subtitle: const Text(
-                  'Draw the hold bar from the (N+1)th comma of N+ holds',
-                ),
+                title: Text(strings.sheetExposureBar),
+                subtitle: Text(strings.sheetExposureBarHelp),
                 value: _exposureBarEnabled,
                 onChanged: (value) =>
                     setState(() => _exposureBarEnabled = value),
               ),
               if (_exposureBarEnabled)
-                TextField(
-                  key: const ValueKey<String>(
-                    'timesheet-info-exposure-bar-threshold',
-                  ),
-                  controller: _exposureBarThresholdController,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    labelText: 'N (industry standard 3)',
-                    isDense: true,
+                AppWindowField(
+                  label: strings.sheetExposureBarN,
+                  child: TextField(
+                    key: const ValueKey<String>(
+                      'timesheet-info-exposure-bar-threshold',
+                    ),
+                    controller: _exposureBarThresholdController,
+                    keyboardType: TextInputType.number,
                   ),
                 ),
               SwitchListTile(
                 key: const ValueKey<String>('timesheet-info-se-empty-fill'),
                 contentPadding: EdgeInsets.zero,
                 dense: true,
-                title: const Text('Gray out empty SE stretches'),
+                title: Text(strings.sheetSeEmptyFill),
                 value: _seEmptyFill,
                 onChanged: (value) => setState(() => _seEmptyFill = value),
               ),
@@ -183,15 +202,16 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
         ),
       ),
       actions: [
-        TextButton(
-          key: const ValueKey<String>('timesheet-info-cancel-button'),
+        AppWindowAction(
+          label: strings.commonCancel,
+          actionKey: const ValueKey<String>('timesheet-info-cancel-button'),
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
         ),
-        FilledButton(
-          key: const ValueKey<String>('timesheet-info-save-button'),
+        AppWindowAction(
+          label: strings.commonSave,
+          actionKey: const ValueKey<String>('timesheet-info-save-button'),
+          emphasis: AppWindowActionEmphasis.primary,
           onPressed: _submit,
-          child: const Text('Save'),
         ),
       ],
     );

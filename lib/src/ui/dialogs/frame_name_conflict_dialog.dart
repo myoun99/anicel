@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
 
+import '../text/app_strings.dart';
+import '../widgets/app_window.dart';
+import 'app_confirm_dialog.dart';
+
 /// Asks whether to link to an existing frame that already uses the entered
 /// name so identical names share the same material. Pops `true` to link.
 class FrameNameConflictDialog extends StatelessWidget {
@@ -7,23 +11,25 @@ class FrameNameConflictDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      key: const ValueKey<String>('frame-name-conflict-dialog'),
-      title: const Text('Frame name already exists'),
-      content: const Text(
-        'This name is already used by another frame in this layer. Link to '
-        'the existing named frame so the same name shares the same material?',
-      ),
+    final strings = AppText.strings;
+    return AppConfirmDialog(
+      windowKey: const ValueKey<String>('frame-name-conflict-dialog'),
+      title: strings.frameNameConflictTitle,
+      titleIcon: Icons.link_outlined,
+      message: strings.frameNameConflictBody,
       actions: [
-        TextButton(
-          key: const ValueKey<String>('frame-name-conflict-cancel-button'),
+        AppWindowAction(
+          label: strings.commonCancel,
+          actionKey: const ValueKey<String>(
+            'frame-name-conflict-cancel-button',
+          ),
           onPressed: () => Navigator.of(context).pop(false),
-          child: const Text('Cancel'),
         ),
-        TextButton(
-          key: const ValueKey<String>('frame-name-conflict-link-button'),
+        AppWindowAction(
+          label: strings.commonLink,
+          actionKey: const ValueKey<String>('frame-name-conflict-link-button'),
+          emphasis: AppWindowActionEmphasis.primary,
           onPressed: () => Navigator.of(context).pop(true),
-          child: const Text('Link'),
         ),
       ],
     );

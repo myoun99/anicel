@@ -1,12 +1,14 @@
 import 'package:flutter/material.dart';
 
 import '../editor_session_manager.dart';
+import '../widgets/app_window.dart';
 import 'accent_settings_dialog.dart' show AccentSettingsSection;
 import 'audio_settings_section.dart';
 import 'autosave_settings_section.dart';
 import 'input_settings_dialog.dart' show InputSettingsSection;
 import 'language_settings_dialog.dart' show LanguageSettingsSection;
 import 'system_status_section.dart';
+import '../text/app_strings.dart';
 
 /// SAVE-1: the unified Preferences dialog — Input, Autosave, Audio,
 /// Language, Accent Colors and System (the runtime-path report) as
@@ -43,14 +45,17 @@ class _PreferencesDialog extends StatefulWidget {
 class _PreferencesDialogState extends State<_PreferencesDialog> {
   late PreferencesSection _section = widget.initialSection;
 
-  static String _labelOf(PreferencesSection section) => switch (section) {
-    PreferencesSection.input => 'Input',
-    PreferencesSection.autosave => 'Autosave',
-    PreferencesSection.audio => 'Audio',
-    PreferencesSection.language => 'Language',
-    PreferencesSection.accent => 'Accent Colors',
-    PreferencesSection.system => 'System',
-  };
+  static String _labelOf(PreferencesSection section) {
+    final strings = AppText.strings;
+    return switch (section) {
+      PreferencesSection.input => strings.prefsInput,
+      PreferencesSection.autosave => strings.prefsAutosave,
+      PreferencesSection.audio => strings.prefsAudio,
+      PreferencesSection.language => strings.prefsLanguage,
+      PreferencesSection.accent => strings.prefsAccent,
+      PreferencesSection.system => strings.prefsSystem,
+    };
+  }
 
   Widget _bodyOf(PreferencesSection section) => switch (section) {
     PreferencesSection.input => InputSettingsSection(session: widget.session),
@@ -67,47 +72,30 @@ class _PreferencesDialogState extends State<_PreferencesDialog> {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      key: const ValueKey<String>('preferences-dialog'),
-      title: const Text('Preferences'),
-      content: SizedBox(
-        width: 680,
-        height: 460,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            SizedBox(
-              width: 150,
-              child: ListView(
-                children: [
-                  for (final section in PreferencesSection.values)
-                    ListTile(
-                      key: ValueKey<String>(
-                        'preferences-section-${section.name}',
-                      ),
-                      dense: true,
-                      selected: section == _section,
-                      title: Text(_labelOf(section)),
-                      onTap: () => setState(() => _section = section),
-                    ),
-                ],
-              ),
-            ),
-            const VerticalDivider(width: 16),
-            Expanded(
-              child: SingleChildScrollView(
-                padding: const EdgeInsets.only(right: 4),
-                child: _bodyOf(_section),
-              ),
-            ),
-          ],
-        ),
-      ),
+    const sections = PreferencesSection.values;
+    return AppWindow(
+      windowKey: const ValueKey<String>('preferences-dialog'),
+      title: AppText.strings.prefsTitle,
+      titleIcon: Icons.tune_outlined,
+      onClose: () => Navigator.of(context).pop(),
+      width: 720,
+      height: 520,
+      tabs: [
+        for (final section in sections)
+          AppWindowTab(
+            label: _labelOf(section),
+            tabKey: ValueKey<String>('preferences-section-${section.name}'),
+            onSelected: () => setState(() => _section = section),
+          ),
+      ],
+      selectedTab: sections.indexOf(_section),
+      body: _bodyOf(_section),
       actions: [
-        TextButton(
-          key: const ValueKey<String>('preferences-close'),
+        AppWindowAction(
+          label: AppText.strings.commonClose,
+          actionKey: const ValueKey<String>('preferences-close'),
+          emphasis: AppWindowActionEmphasis.primary,
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Close'),
         ),
       ],
     );

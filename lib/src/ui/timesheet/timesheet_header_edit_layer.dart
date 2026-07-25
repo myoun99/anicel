@@ -288,6 +288,9 @@ class _TimesheetHeaderEditLayerState extends State<TimesheetHeaderEditLayer> {
                 fontWeight: memo ? FontWeight.w400 : FontWeight.w600,
               ),
               decoration: const InputDecoration(
+                // Bare: this field sits ON the printed sheet (paper white),
+                // so it opts out of the app-wide dark filled box.
+                filled: false,
                 isCollapsed: true,
                 border: InputBorder.none,
               ),

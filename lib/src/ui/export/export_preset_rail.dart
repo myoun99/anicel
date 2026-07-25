@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/export_preset.dart';
 import '../../models/export_size_mode.dart';
 import '../../models/export_spec.dart';
+import '../dialogs/app_prompt_dialog.dart';
 import 'export_settings_modules.dart';
 
 /// The left drawer: per-tab presets (자동 규칙만). Selection highlight is
@@ -209,52 +210,16 @@ class _PresetEntry extends StatelessWidget {
 Future<String?> showExportPresetNameDialog(BuildContext context) {
   return showDialog<String>(
     context: context,
-    builder: (context) => const _ExportPresetNameDialog(),
+    builder: (context) => const AppPromptDialog(
+      windowKey: ValueKey<String>('export-preset-name-dialog'),
+      title: 'Save preset',
+      titleIcon: Icons.bookmark_add_outlined,
+      fieldLabel: 'Preset name',
+      initialValue: '',
+      confirmLabel: 'Save',
+      emptyError: 'Preset name cannot be empty.',
+      fieldKey: ValueKey<String>('export-preset-name-field'),
+      confirmKey: ValueKey<String>('export-preset-name-save'),
+    ),
   );
-}
-
-/// Owns its controller as State so disposal waits for the route to fully
-/// unmount (a helper-scoped controller dies under the reverse transition
-/// while the field still builds with it).
-class _ExportPresetNameDialog extends StatefulWidget {
-  const _ExportPresetNameDialog();
-
-  @override
-  State<_ExportPresetNameDialog> createState() =>
-      _ExportPresetNameDialogState();
-}
-
-class _ExportPresetNameDialogState extends State<_ExportPresetNameDialog> {
-  final TextEditingController _controller = TextEditingController();
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Save preset'),
-      content: TextField(
-        key: const ValueKey<String>('export-preset-name-field'),
-        controller: _controller,
-        autofocus: true,
-        decoration: const InputDecoration(labelText: 'Preset name'),
-        onSubmitted: (value) => Navigator.of(context).pop(value.trim()),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          key: const ValueKey<String>('export-preset-name-save'),
-          onPressed: () => Navigator.of(context).pop(_controller.text.trim()),
-          child: const Text('Save'),
-        ),
-      ],
-    );
-  }
 }

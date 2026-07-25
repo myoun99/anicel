@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../text/app_strings.dart';
+import '../widgets/app_window.dart';
 import 'instance_edit_dialog.dart';
 import 'instance_edit_preview.dart';
 
@@ -76,27 +78,34 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = AppText.strings;
     return InstanceEditDialogShell(
-      title: widget.creating ? 'New SE' : 'Edit SE',
+      title: widget.creating
+          ? strings.seInstanceNewTitle
+          : strings.seInstanceEditTitle,
       titleIcon: Icons.music_note_outlined,
       body: Column(
         mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          TextField(
-            key: const ValueKey<String>('se-name-field'),
-            controller: _seNameController,
-            decoration: const InputDecoration(
-              labelText: 'Name (speaker — blank hides the box)',
+          AppWindowField(
+            label: strings.seNameLabel,
+            child: TextField(
+              key: const ValueKey<String>('se-name-field'),
+              controller: _seNameController,
             ),
           ),
-          const SizedBox(height: 8),
-          TextField(
-            key: const ValueKey<String>('se-dialogue-field'),
-            controller: _dialogueController,
-            autofocus: true,
-            minLines: 2,
-            maxLines: null,
-            decoration: const InputDecoration(labelText: 'Dialogue'),
+          const SizedBox(height: 12),
+          AppWindowField(
+            label: strings.seDialogueLabel,
+            emphasized: true,
+            child: TextField(
+              key: const ValueKey<String>('se-dialogue-field'),
+              controller: _dialogueController,
+              autofocus: true,
+              minLines: 2,
+              maxLines: null,
+            ),
           ),
         ],
       ),

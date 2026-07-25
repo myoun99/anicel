@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import '../editor_session_manager.dart';
 import '../input/app_input_settings.dart';
 import '../widgets/field_slider.dart';
+import '../widgets/app_window.dart';
+import '../text/app_strings.dart';
 
 /// The pointer-input settings dialog (UI-R22 #6). One toggle decides
 /// what a TOUCH contact means on the timeline grids — scroll or edit —
@@ -25,17 +27,21 @@ class _InputSettingsDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Input Settings'),
-      // Scrollable: the dialog outgrew short windows once the canvas
-      // mappings joined (PEN-7a).
-      content: SingleChildScrollView(
-        child: InputSettingsSection(session: session),
-      ),
+    // The body scrolls: the window outgrew short screens once the canvas
+    // mappings joined (PEN-7a). AppWindow scrolls it by default.
+    return AppWindow(
+      windowKey: const ValueKey<String>('input-settings-dialog'),
+      title: AppText.strings.inputTitle,
+      titleIcon: Icons.gesture_outlined,
+      onClose: () => Navigator.of(context).pop(),
+      width: 560,
+      body: InputSettingsSection(session: session),
       actions: [
-        TextButton(
+        AppWindowAction(
+          label: AppText.strings.commonClose,
+          actionKey: const ValueKey<String>('settings-input-close'),
+          emphasis: AppWindowActionEmphasis.primary,
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Close'),
         ),
       ],
     );
@@ -54,6 +60,7 @@ class InputSettingsSection extends StatelessWidget {
     return ValueListenableBuilder<AppInputSettings>(
       valueListenable: AppInput.settings,
       builder: (context, settings, _) {
+        final strings = AppText.strings;
         return Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -62,14 +69,8 @@ class InputSettingsSection extends StatelessWidget {
               key: const ValueKey<String>('settings-touch-timeline-scroll'),
               contentPadding: EdgeInsets.zero,
               dense: true,
-              title: const Text('Touch scrolls the timeline'),
-              subtitle: const Text(
-                'ON (default): finger pans scroll the grids — the edit '
-                'gestures release touch entirely.\n'
-                'OFF: touch edits exactly like the pen (select, move, '
-                'drag grips) — the safety net for pens that report as '
-                'touch.',
-              ),
+              title: Text(strings.inputTouchScroll),
+              subtitle: Text(strings.inputTouchScrollHelp),
               value: settings.touchTimelineScroll,
               onChanged: (enabled) => session.setInputSettings(
                 settings.copyWith(touchTimelineScroll: enabled),
@@ -80,7 +81,7 @@ class InputSettingsSection extends StatelessWidget {
             // release.
             const Divider(height: 16),
             Text(
-              'Pen pressure response',
+              strings.inputPressureHeading,
               style: Theme.of(context).textTheme.labelLarge,
             ),
             Padding(
@@ -97,9 +98,9 @@ class InputSettingsSection extends StatelessWidget {
                   min: 0.25,
                   max: 4.0,
                   scale: FieldSliderScale.exponential,
-                  label: 'Soft ↔ Hard',
+                  label: strings.inputPressureSoftHard,
                   valueText: settings.pressureCurveGamma == 1.0
-                      ? 'Linear'
+                      ? strings.inputPressureLinear
                       : '×${settings.pressureCurveGamma.toStringAsFixed(2)}',
                   onChanged: (gamma) => AppInput.settings.value = AppInput
                       .settings
@@ -117,10 +118,13 @@ class InputSettingsSection extends StatelessWidget {
             // 'wheel click'. Hold switches the tool temporarily;
             // release springs back or keeps it.
             const Divider(height: 16),
-            Text('Canvas', style: Theme.of(context).textTheme.labelLarge),
+            Text(
+              strings.inputCanvasHeading,
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
             _CanvasMappingRow(
               keyPrefix: 'settings-canvas-right',
-              label: 'Right click / pen side button',
+              label: strings.inputRightClick,
               mapping: settings.canvasRightClick,
               onChanged: (mapping) => session.setInputSettings(
                 settings.copyWith(canvasRightClick: mapping),
@@ -128,7 +132,7 @@ class InputSettingsSection extends StatelessWidget {
             ),
             _CanvasMappingRow(
               keyPrefix: 'settings-canvas-wheel',
-              label: 'Wheel click / pen upper button',
+              label: strings.inputWheelClick,
               mapping: settings.canvasWheelClick,
               onChanged: (mapping) => session.setInputSettings(
                 settings.copyWith(canvasWheelClick: mapping),
@@ -139,10 +143,13 @@ class InputSettingsSection extends StatelessWidget {
             // control/draw mode into the ONE-FINGER slot's Drawing
             // action), the +1-finger modifier and the snap tables.
             const Divider(height: 16),
-            Text('Canvas touch', style: Theme.of(context).textTheme.labelLarge),
+            Text(
+              strings.inputCanvasTouchHeading,
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
             _EnumDropdownRow<CanvasTouchDragAction>(
               rowKey: 'settings-touch-slot-1',
-              label: '1-finger drag',
+              label: strings.inputDragOneFinger,
               value: settings.touchDragOneFinger,
               values: CanvasTouchDragAction.values,
               labelOf: _dragActionLabel,
@@ -152,7 +159,7 @@ class InputSettingsSection extends StatelessWidget {
             ),
             _EnumDropdownRow<CanvasTouchDragAction>(
               rowKey: 'settings-touch-slot-2',
-              label: '2-finger drag',
+              label: strings.inputDragTwoFingers,
               // Drawing is single-finger by nature — the multi-finger
               // slots never offer it.
               values: const [
@@ -169,7 +176,7 @@ class InputSettingsSection extends StatelessWidget {
             ),
             _EnumDropdownRow<CanvasTouchDragAction>(
               rowKey: 'settings-touch-slot-3',
-              label: '3-finger drag',
+              label: strings.inputDragThreeFingers,
               values: const [
                 CanvasTouchDragAction.flip,
                 CanvasTouchDragAction.navigate,
@@ -186,11 +193,8 @@ class InputSettingsSection extends StatelessWidget {
               key: const ValueKey<String>('settings-extra-finger'),
               contentPadding: EdgeInsets.zero,
               dense: true,
-              title: const Text('Extra-finger modifier'),
-              subtitle: const Text(
-                'A finger added DURING a gesture constrains it — '
-                'snap zoom/rotation/size, fine frame steps.',
-              ),
+              title: Text(strings.inputExtraFinger),
+              subtitle: Text(strings.inputExtraFingerHelp),
               value: settings.extraFingerModifier,
               onChanged: (enabled) => session.setInputSettings(
                 settings.copyWith(extraFingerModifier: enabled),
@@ -200,11 +204,8 @@ class InputSettingsSection extends StatelessWidget {
               key: const ValueKey<String>('settings-nav-rotation'),
               contentPadding: EdgeInsets.zero,
               dense: true,
-              title: const Text('Two-finger rotation'),
-              subtitle: const Text(
-                'OFF: the navigate gesture pans and zooms only '
-                '(the rotate buttons/shortcut stay).',
-              ),
+              title: Text(strings.inputTwoFingerRotation),
+              subtitle: Text(strings.inputTwoFingerRotationHelp),
               value: settings.navigationRotationEnabled,
               onChanged: (enabled) => session.setInputSettings(
                 settings.copyWith(navigationRotationEnabled: enabled),
@@ -214,11 +215,8 @@ class InputSettingsSection extends StatelessWidget {
               key: const ValueKey<String>('settings-nav-rot-lock'),
               contentPadding: EdgeInsets.zero,
               dense: true,
-              title: const Text('Modifier locks rotation'),
-              subtitle: const Text(
-                'ON: the extra finger FREEZES the angle (pure pan + '
-                'snapped zoom). OFF (default): it snaps the angle.',
-              ),
+              title: Text(strings.inputRotationLock),
+              subtitle: Text(strings.inputRotationLockHelp),
               value: settings.navigationModifierRotationLock,
               onChanged: settings.navigationRotationEnabled
                   ? (enabled) => session.setInputSettings(
@@ -230,7 +228,7 @@ class InputSettingsSection extends StatelessWidget {
             ),
             _SnapListField(
               fieldKey: 'settings-snap-rotation',
-              label: 'Rotation snap (°)',
+              label: strings.inputRotationSnap,
               text: settings.rotationSnapDegrees.toStringAsFixed(0),
               onSubmitted: (text) {
                 final value = double.tryParse(text.trim());
@@ -243,7 +241,7 @@ class InputSettingsSection extends StatelessWidget {
             ),
             _SnapListField(
               fieldKey: 'settings-snap-zoom',
-              label: 'Zoom snaps (%)',
+              label: strings.inputZoomSnaps,
               text: settings.zoomSnapPercents
                   .map((value) => value.toStringAsFixed(0))
                   .join(', '),
@@ -258,7 +256,7 @@ class InputSettingsSection extends StatelessWidget {
             ),
             _SnapListField(
               fieldKey: 'settings-snap-size',
-              label: 'Brush size snaps (px)',
+              label: strings.inputBrushSizeSnaps,
               text: settings.brushSizeSnaps
                   .map((value) => value.toStringAsFixed(0))
                   .join(', '),
@@ -276,7 +274,7 @@ class InputSettingsSection extends StatelessWidget {
             if (defaultTargetPlatform == TargetPlatform.windows) ...[
               const Divider(height: 16),
               Text(
-                'Tablet service',
+                strings.inputTabletHeading,
                 style: Theme.of(context).textTheme.labelLarge,
               ),
               RadioGroup<TabletService>(
@@ -284,30 +282,23 @@ class InputSettingsSection extends StatelessWidget {
                 onChanged: (service) => session.setInputSettings(
                   settings.copyWith(tabletService: service),
                 ),
-                child: const Column(
+                child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     RadioListTile<TabletService>(
-                      key: ValueKey<String>('settings-tablet-standard'),
+                      key: const ValueKey<String>('settings-tablet-standard'),
                       contentPadding: EdgeInsets.zero,
                       dense: true,
-                      title: Text('Standard (default)'),
-                      subtitle: Text(
-                        'The OS pointer pipeline (Windows Ink) — right '
-                        'for up-to-date drivers and built-in pens.',
-                      ),
+                      title: Text(strings.inputTabletStandard),
+                      subtitle: Text(strings.inputTabletStandardHelp),
                       value: TabletService.standard,
                     ),
                     RadioListTile<TabletService>(
-                      key: ValueKey<String>('settings-tablet-wintab'),
+                      key: const ValueKey<String>('settings-tablet-wintab'),
                       contentPadding: EdgeInsets.zero,
                       dense: true,
-                      title: Text('Wintab'),
-                      subtitle: Text(
-                        'Reads pressure straight from the tablet driver '
-                        '— the escape hatch when the pen arrives without '
-                        'pressure or as touch/mouse.',
-                      ),
+                      title: Text(strings.inputTabletWintab),
+                      subtitle: Text(strings.inputTabletWintabHelp),
                       value: TabletService.wintab,
                     ),
                   ],
@@ -321,15 +312,18 @@ class InputSettingsSection extends StatelessWidget {
   }
 }
 
-String _dragActionLabel(CanvasTouchDragAction action) => switch (action) {
-  CanvasTouchDragAction.flip => 'Flip (frames / layers)',
-  CanvasTouchDragAction.navigate => 'Screen (pan · zoom · rotate)',
-  CanvasTouchDragAction.brushSize => 'Brush size',
-  // PEN-13: named to match its reach — the slot also gates the touch
-  // CAMERA drag (pen-class edits follow the drawing capability).
-  CanvasTouchDragAction.draw => 'Touch drawing',
-  CanvasTouchDragAction.none => 'None',
-};
+String _dragActionLabel(CanvasTouchDragAction action) {
+  final strings = AppText.strings;
+  return switch (action) {
+    CanvasTouchDragAction.flip => strings.dragActionFlip,
+    CanvasTouchDragAction.navigate => strings.dragActionScreen,
+    CanvasTouchDragAction.brushSize => strings.dragActionBrushSize,
+    // PEN-13: named to match its reach — the slot also gates the touch
+    // CAMERA drag (pen-class edits follow the drawing capability).
+    CanvasTouchDragAction.draw => strings.dragActionDraw,
+    CanvasTouchDragAction.none => strings.commonNone,
+  };
+}
 
 List<double> _parseDoubleList(String text) => [
   for (final part in text.split(','))
@@ -445,21 +439,27 @@ class _CanvasMappingRow extends StatelessWidget {
   final CanvasPointerMapping mapping;
   final ValueChanged<CanvasPointerMapping> onChanged;
 
-  static const Map<CanvasPointerAction, String> _actionLabels = {
-    CanvasPointerAction.eyedropper: 'Eyedropper',
-    CanvasPointerAction.eraser: 'Eraser',
-    CanvasPointerAction.pan: 'Pan',
-    // PEN-11 one-shot actions: fire at the press (and at a hover barrel
-    // press) — the pen undoes even while S-Pen hover blocks touch.
-    CanvasPointerAction.undo: 'Undo',
-    CanvasPointerAction.redo: 'Redo',
-    CanvasPointerAction.none: 'None',
-  };
+  static String _actionLabel(CanvasPointerAction action) {
+    final strings = AppText.strings;
+    return switch (action) {
+      CanvasPointerAction.eyedropper => strings.mapEyedropper,
+      CanvasPointerAction.eraser => strings.mapEraser,
+      CanvasPointerAction.pan => strings.mapPan,
+      // PEN-11 one-shot actions: fire at the press (and at a hover barrel
+      // press) — the pen undoes even while S-Pen hover blocks touch.
+      CanvasPointerAction.undo => strings.mapUndo,
+      CanvasPointerAction.redo => strings.mapRedo,
+      CanvasPointerAction.none => strings.commonNone,
+    };
+  }
 
-  static const Map<CanvasPointerRelease, String> _releaseLabels = {
-    CanvasPointerRelease.returnToTool: 'Return to tool',
-    CanvasPointerRelease.keep: 'Keep',
-  };
+  static String _releaseLabel(CanvasPointerRelease release) {
+    final strings = AppText.strings;
+    return switch (release) {
+      CanvasPointerRelease.returnToTool => strings.holdReturnToTool,
+      CanvasPointerRelease.keep => strings.holdKeep,
+    };
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -480,7 +480,7 @@ class _CanvasMappingRow extends StatelessWidget {
                 DropdownMenuItem(
                   value: action,
                   child: Text(
-                    _actionLabels[action]!,
+                    _actionLabel(action),
                     style: const TextStyle(fontSize: 12),
                   ),
                 ),
@@ -499,7 +499,7 @@ class _CanvasMappingRow extends StatelessWidget {
                 DropdownMenuItem(
                   value: release,
                   child: Text(
-                    _releaseLabels[release]!,
+                    _releaseLabel(release),
                     style: const TextStyle(fontSize: 12),
                   ),
                 ),

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/app_language.dart';
 import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
+import '../widgets/app_window.dart';
 
 /// The two-language settings dialog (UI-R10 #7): program language (the
 /// app chrome) and notation language (what prints on the timesheet and
@@ -28,14 +29,19 @@ class _LanguageSettingsDialog extends StatelessWidget {
       valueListenable: session.languageSettings,
       builder: (context, settings, _) {
         final strings = AppStrings.of(settings.programLanguage);
-        return AlertDialog(
-          title: Text(strings.languageSettingsTitle),
-          content: LanguageSettingsSection(session: session),
+        return AppWindow(
+          windowKey: const ValueKey<String>('language-settings-dialog'),
+          title: strings.languageSettingsTitle,
+          titleIcon: Icons.translate_outlined,
+          onClose: () => Navigator.of(context).pop(),
+          width: 420,
+          body: LanguageSettingsSection(session: session),
           actions: [
-            TextButton(
-              key: const ValueKey<String>('settings-language-close'),
+            AppWindowAction(
+              label: strings.commonClose,
+              actionKey: const ValueKey<String>('settings-language-close'),
+              emphasis: AppWindowActionEmphasis.primary,
               onPressed: () => Navigator.of(context).pop(),
-              child: const Text('OK'),
             ),
           ],
         );

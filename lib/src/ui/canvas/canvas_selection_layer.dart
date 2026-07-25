@@ -15,6 +15,9 @@ import '../../models/viewport_point.dart';
 import 'dart:math' as math;
 
 import '../../native/qa_native_engine.dart';
+import '../dialogs/app_confirm_dialog.dart';
+import '../text/app_strings.dart';
+import '../widgets/app_window.dart';
 import '../../services/bitmap_surface_brush_commit.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
@@ -511,23 +514,31 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     final confirmed = await showDialog<bool>(
       context: context,
-      builder: (context) => AlertDialog(
-        key: const ValueKey<String>('selection-move-confirm-dialog'),
-        title: const Text('이동 확정'),
-        content: const Text('선택 영역 이동을 확정하시겠습니까?'),
-        actions: [
-          TextButton(
-            key: const ValueKey<String>('selection-move-revert-button'),
-            onPressed: () => Navigator.of(context).pop(false),
-            child: const Text('되돌리기'),
-          ),
-          FilledButton(
-            key: const ValueKey<String>('selection-move-apply-button'),
-            onPressed: () => Navigator.of(context).pop(true),
-            child: const Text('확정'),
-          ),
-        ],
-      ),
+      builder: (context) {
+        // Read at call time: this layer holds no session, so the program
+        // language arrives through AppText — the wording was hardcoded
+        // Korean before and ignored the language setting entirely.
+        final strings = AppText.strings;
+        return AppConfirmDialog(
+          windowKey: const ValueKey<String>('selection-move-confirm-dialog'),
+          title: strings.selectionMoveConfirmTitle,
+          titleIcon: Icons.open_with_outlined,
+          message: strings.selectionMoveConfirmBody,
+          actions: [
+            AppWindowAction(
+              label: strings.selectionMoveRevert,
+              actionKey: const ValueKey<String>('selection-move-revert-button'),
+              onPressed: () => Navigator.of(context).pop(false),
+            ),
+            AppWindowAction(
+              label: strings.selectionMoveApply,
+              actionKey: const ValueKey<String>('selection-move-apply-button'),
+              emphasis: AppWindowActionEmphasis.primary,
+              onPressed: () => Navigator.of(context).pop(true),
+            ),
+          ],
+        );
+      },
     );
     if (!mounted || !_movePending) {
       return;

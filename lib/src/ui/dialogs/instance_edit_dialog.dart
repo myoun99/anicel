@@ -1,15 +1,18 @@
 import 'package:flutter/material.dart';
 
-import '../theme/app_theme.dart';
+import '../text/app_strings.dart';
+import '../widgets/app_window.dart';
 
-/// The one dialog shell every layer kind's "instance edit" flow uses —
-/// entrance unification's visual half. Owning the chrome here (accent
-/// title band, body scroll, preview slot, action row with stable keys)
-/// means a future redesign touches exactly one file.
+/// The "instance edit" family's window — one layer kind's entry being
+/// created or edited (an SE line, a camera key, an instruction mark).
+///
+/// It owns no chrome of its own: [AppWindow] draws the window and this
+/// holds what the FAMILY shares — the stable action keys every kind's
+/// tests and muscle memory rely on, the optional Delete, and the live
+/// preview slot below the fields.
 ///
 /// Keys: 'instance-edit-dialog' on the surface and
-/// 'instance-edit-ok/cancel/delete-button' on the actions, shared across
-/// kinds so tests and muscle memory transfer.
+/// 'instance-edit-ok/cancel/delete-button' on the actions.
 class InstanceEditDialogShell extends StatelessWidget {
   const InstanceEditDialogShell({
     super.key,
@@ -19,7 +22,7 @@ class InstanceEditDialogShell extends StatelessWidget {
     this.preview,
     required this.onSubmit,
     this.onDelete,
-    this.submitLabel = 'OK',
+    this.submitLabel,
   });
 
   final String title;
@@ -32,103 +35,70 @@ class InstanceEditDialogShell extends StatelessWidget {
   /// Live preview pane ([InstanceEditPreview] usually); null hides the slot.
   final Widget? preview;
 
-  /// Null disables the OK button (e.g. nothing selected yet).
+  /// Null disables the confirm action (e.g. nothing selected yet).
   final VoidCallback? onSubmit;
 
   /// Non-null shows the Delete action.
   final VoidCallback? onDelete;
-  final String submitLabel;
+
+  /// Null takes the tabled Save verb in the program language.
+  final String? submitLabel;
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Dialog(
-      key: const ValueKey<String>('instance-edit-dialog'),
-      child: ConstrainedBox(
-        constraints: const BoxConstraints(minWidth: 380, maxWidth: 560),
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(20, 16, 20, 12),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Row(
-                children: [
-                  if (titleIcon != null) ...[
-                    Icon(titleIcon, size: 18, color: AppColors.accent),
-                    const SizedBox(width: 8),
-                  ],
-                  Expanded(
-                    child: Text(
-                      title,
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              Container(
-                height: 2,
-                decoration: BoxDecoration(
-                  color: AppColors.accent.withValues(alpha: 0.55),
-                  borderRadius: BorderRadius.circular(1),
+    final strings = AppText.strings;
+    final preview = this.preview;
+    final onDelete = this.onDelete;
+    return AppWindow(
+      windowKey: const ValueKey<String>('instance-edit-dialog'),
+      title: title,
+      titleIcon: titleIcon,
+      onClose: () => Navigator.of(context).pop(),
+      minWidth: 380,
+      maxWidth: 560,
+      body: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          body,
+          if (preview != null) ...[
+            const SizedBox(height: 14),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                strings.commonPreview,
+                style: theme.textTheme.labelSmall?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant,
+                  letterSpacing: 1.1,
                 ),
               ),
-              const SizedBox(height: 12),
-              Flexible(
-                child: SingleChildScrollView(
-                  child: Padding(
-                    padding: const EdgeInsets.only(bottom: 4),
-                    child: body,
-                  ),
-                ),
-              ),
-              if (preview != null) ...[
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Preview',
-                    style: theme.textTheme.labelSmall?.copyWith(
-                      color: theme.colorScheme.onSurfaceVariant,
-                      letterSpacing: 1.1,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 6),
-                preview!,
-              ],
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  if (onDelete != null)
-                    TextButton(
-                      key: const ValueKey<String>(
-                        'instance-edit-delete-button',
-                      ),
-                      onPressed: onDelete,
-                      child: const Text('Delete'),
-                    ),
-                  const Spacer(),
-                  TextButton(
-                    key: const ValueKey<String>('instance-edit-cancel-button'),
-                    onPressed: () => Navigator.of(context).pop(),
-                    child: const Text('Cancel'),
-                  ),
-                  const SizedBox(width: 8),
-                  FilledButton(
-                    key: const ValueKey<String>('instance-edit-ok-button'),
-                    onPressed: onSubmit,
-                    child: Text(submitLabel),
-                  ),
-                ],
-              ),
-            ],
-          ),
-        ),
+            ),
+            const SizedBox(height: 6),
+            preview,
+          ],
+        ],
       ),
+      actions: [
+        if (onDelete != null)
+          AppWindowAction(
+            label: strings.commonDelete,
+            actionKey: const ValueKey<String>('instance-edit-delete-button'),
+            emphasis: AppWindowActionEmphasis.danger,
+            onPressed: onDelete,
+          ),
+        AppWindowAction(
+          label: strings.commonCancel,
+          actionKey: const ValueKey<String>('instance-edit-cancel-button'),
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        AppWindowAction(
+          label: submitLabel ?? strings.commonSave,
+          actionKey: const ValueKey<String>('instance-edit-ok-button'),
+          emphasis: AppWindowActionEmphasis.primary,
+          onPressed: onSubmit,
+        ),
+      ],
     );
   }
 }

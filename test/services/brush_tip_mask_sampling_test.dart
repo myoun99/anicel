@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
@@ -162,10 +163,21 @@ void main() {
     test('are deterministic, non-empty, and square', () {
       expect(chalkBrushTipMask.id, 'builtin-chalk');
       expect(splatterBrushTipMask.id, 'builtin-splatter');
-      for (final mask in [chalkBrushTipMask, splatterBrushTipMask]) {
+      expect(grainBrushTipMask.id, 'builtin-grain');
+      expect(bristleBrushTipMask.id, 'builtin-bristle');
+      expect(spongeBrushTipMask.id, 'builtin-sponge');
+      for (final mask in [
+        chalkBrushTipMask,
+        splatterBrushTipMask,
+        grainBrushTipMask,
+        bristleBrushTipMask,
+        spongeBrushTipMask,
+      ]) {
         expect(mask.size, 64);
         expect(mask.alpha.length, 64 * 64);
         expect(mask.alpha.any((value) => value > 0), isTrue);
+        // A tip needs transparent padding: the sampler reads outside texels
+        // as 0, so a mask that ran to the edge would clip square.
         expect(mask.alpha.any((value) => value == 0), isTrue);
       }
     });
@@ -174,20 +186,95 @@ void main() {
       // Two reads of the lazily-initialized top-level values are identical
       // by construction; verify a stable fingerprint so a seed change or
       // algorithm drift is caught explicitly.
-      var chalkSum = 0;
-      for (final value in chalkBrushTipMask.alpha) {
-        chalkSum += value;
+      int sumOf(BrushTipMask mask) {
+        var total = 0;
+        for (final value in mask.alpha) {
+          total += value;
+        }
+        return total;
       }
-      var splatterSum = 0;
-      for (final value in splatterBrushTipMask.alpha) {
-        splatterSum += value;
-      }
-      expect(chalkSum, greaterThan(0));
-      expect(splatterSum, greaterThan(0));
+
       // Fingerprints locked at first generation; a change means every
       // existing stroke drawn with these tips would re-render differently.
-      expect(chalkSum, 224521);
-      expect(splatterSum, 115796);
+      expect(sumOf(chalkBrushTipMask), 224521);
+      expect(sumOf(splatterBrushTipMask), 115796);
+      expect(sumOf(grainBrushTipMask), 251292);
+      expect(sumOf(bristleBrushTipMask), 251426);
+      expect(sumOf(spongeBrushTipMask), 73504);
+    });
+  });
+
+  group('built-in canvas textures', () {
+    test('are square and hole-free', () {
+      expect(paperGrainTextureMask.id, 'builtin-paper-grain');
+      expect(canvasWeaveTextureMask.id, 'builtin-canvas-weave');
+      for (final mask in [paperGrainTextureMask, canvasWeaveTextureMask]) {
+        expect(mask.size, 64);
+        expect(mask.alpha.length, 64 * 64);
+        // A texture multiplies coverage rather than shaping a tip, so a zero
+        // would punch a permanent hole in every stroke that crosses it.
+        expect(mask.alpha.every((value) => value > 0), isTrue);
+      }
+    });
+
+    test('regenerate identically (fixed seed)', () {
+      int sumOf(BrushTipMask mask) {
+        var total = 0;
+        for (final value in mask.alpha) {
+          total += value;
+        }
+        return total;
+      }
+
+      expect(sumOf(paperGrainTextureMask), 702170);
+      expect(sumOf(canvasWeaveTextureMask), 692736);
+    });
+
+    test('tile without a seam', () {
+      // Textures are sampled WRAPPED across the canvas, so the last column
+      // sits next to the first. If that pair jumped more than the worst pair
+      // inside the tile, the tiling would print a grid over the artwork.
+      double meanColumnDiff(BrushTipMask mask, int a, int b) {
+        var total = 0.0;
+        for (var y = 0; y < mask.size; y += 1) {
+          total +=
+              (mask.alpha[y * mask.size + a] - mask.alpha[y * mask.size + b])
+                  .abs();
+        }
+        return total / mask.size;
+      }
+
+      double meanRowDiff(BrushTipMask mask, int a, int b) {
+        var total = 0.0;
+        for (var x = 0; x < mask.size; x += 1) {
+          total +=
+              (mask.alpha[a * mask.size + x] - mask.alpha[b * mask.size + x])
+                  .abs();
+        }
+        return total / mask.size;
+      }
+
+      for (final mask in [paperGrainTextureMask, canvasWeaveTextureMask]) {
+        var worstColumn = 0.0;
+        var worstRow = 0.0;
+        for (var index = 0; index + 1 < mask.size; index += 1) {
+          worstColumn = math.max(
+            worstColumn,
+            meanColumnDiff(mask, index, index + 1),
+          );
+          worstRow = math.max(worstRow, meanRowDiff(mask, index, index + 1));
+        }
+        expect(
+          meanColumnDiff(mask, mask.size - 1, 0),
+          lessThanOrEqualTo(worstColumn),
+          reason: '${mask.id} has a vertical seam',
+        );
+        expect(
+          meanRowDiff(mask, mask.size - 1, 0),
+          lessThanOrEqualTo(worstRow),
+          reason: '${mask.id} has a horizontal seam',
+        );
+      }
     });
   });
 

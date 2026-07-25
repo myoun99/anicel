@@ -1,8 +1,10 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'package:quick_animaker_v2/src/models/app_language.dart';
 import 'package:quick_animaker_v2/src/services/persistence/app_documents.dart';
 import 'package:quick_animaker_v2/src/ui/input/app_input_settings.dart';
+import 'package:quick_animaker_v2/src/ui/text/app_strings.dart';
 
 /// Corpus-wide input baseline (UI-R22F #1).
 ///
@@ -18,6 +20,10 @@ import 'package:quick_animaker_v2/src/ui/input/app_input_settings.dart';
 /// product default `AppInputSettings()`.
 Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   AppInput.settings.value = AppInputSettings.testCorpusBaseline;
+  // The program/notation languages live app-wide too (AppText), so a file
+  // that flips them cannot leak into the next one. Tests that flip them
+  // WITHIN a file reset per-test themselves.
+  AppText.settings.value = const AppLanguageSettings();
   // REC1-B2: the app documents home — and with it the Recordings take
   // shelf — resolves through the channel override, pointed at a per-run
   // temp sandbox so no test ever writes into the REAL user Documents.

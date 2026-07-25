@@ -58,6 +58,14 @@ const AnimationStyle instantMenuAnimation = AnimationStyle(
   reverseDuration: Duration.zero,
 );
 
+/// The one outline every text input wears: hairline at rest, accent on
+/// focus, danger on error, 4px corners. Inline cell editors that must stay
+/// bare opt out at the call site with `filled: false` + [InputBorder.none].
+OutlineInputBorder _fieldBorder(Color color) => OutlineInputBorder(
+  borderRadius: const BorderRadius.all(Radius.circular(4)),
+  borderSide: BorderSide(color: color),
+);
+
 ColorScheme _buildColorScheme() {
   // Non-const: the accent is LIVE now (UI-R22 #5) — the app root
   // rebuilds the theme when the accent settings change.
@@ -120,11 +128,72 @@ ThemeData buildAppTheme() {
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
     ),
+    // Dialog actions are the only place these two buttons appear (the one
+    // toolbar TextButton — the comma group — sets its own minimumSize), so
+    // sizing them here gives every window the same generous action row: a
+    // 34px tall pair with 6px corners, cancel and confirm the same size.
     textButtonTheme: TextButtonThemeData(
       style: TextButton.styleFrom(
         foregroundColor: AppColors.text,
         disabledForegroundColor: AppColors.textDim.withValues(alpha: 0.5),
+        minimumSize: const Size(96, 34),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(6)),
+        ),
       ),
+    ),
+    filledButtonTheme: FilledButtonThemeData(
+      style: FilledButton.styleFrom(
+        minimumSize: const Size(96, 34),
+        padding: const EdgeInsets.symmetric(horizontal: 16),
+        textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
+        shape: const RoundedRectangleBorder(
+          borderRadius: BorderRadius.all(Radius.circular(6)),
+        ),
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+    ),
+    // Every window's MATERIAL, decided once: the panel surface, a hairline
+    // border and 6px corners (M3's default is a 28px tinted blob that
+    // floats off the charcoal), no elevation tint, and a barrier light
+    // enough to keep the drawing visible behind it.
+    dialogTheme: DialogThemeData(
+      backgroundColor: AppColors.surface,
+      surfaceTintColor: Colors.transparent,
+      elevation: 0,
+      barrierColor: Colors.black.withValues(alpha: 0.45),
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.all(Radius.circular(6)),
+        side: BorderSide(color: AppColors.hairline),
+      ),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 28),
+      titleTextStyle: const TextStyle(
+        color: AppColors.text,
+        fontSize: 13,
+        fontWeight: FontWeight.w500,
+      ),
+      contentTextStyle: const TextStyle(color: AppColors.text, fontSize: 13),
+      actionsPadding: const EdgeInsets.fromLTRB(10, 4, 10, 10),
+    ),
+    // Boxed fields sunk to the backdrop, so a field reads as a well on the
+    // panel surface rather than as a stray underline.
+    inputDecorationTheme: InputDecorationThemeData(
+      filled: true,
+      fillColor: AppColors.backdrop,
+      isDense: true,
+      contentPadding: const EdgeInsets.symmetric(horizontal: 9, vertical: 8),
+      border: _fieldBorder(AppColors.hairlineStrong),
+      enabledBorder: _fieldBorder(AppColors.hairlineStrong),
+      focusedBorder: _fieldBorder(AppColors.accent),
+      disabledBorder: _fieldBorder(AppColors.hairline),
+      errorBorder: _fieldBorder(AppColors.danger),
+      focusedErrorBorder: _fieldBorder(AppColors.danger),
+      labelStyle: const TextStyle(color: AppColors.textDim, fontSize: 13),
+      floatingLabelStyle: TextStyle(color: AppColors.accent, fontSize: 12),
+      hintStyle: const TextStyle(color: AppColors.textDim, fontSize: 13),
+      errorStyle: const TextStyle(color: AppColors.danger, fontSize: 11),
     ),
     // Stragglers only — every app surface uses AppScrollbar; this keeps a
     // raw Flutter Scrollbar (if one ever appears) on the same S1 visuals:

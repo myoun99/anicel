@@ -6,6 +6,7 @@ import '../../models/export_cel_naming.dart';
 import '../../models/export_format_selection.dart';
 import '../../models/export_size_mode.dart';
 import '../../models/export_spec.dart';
+import '../widgets/app_window.dart';
 
 /// Compact building blocks of the export window's settings column (v10):
 /// one accordion grammar, chip pickers, and the shared Format module.
@@ -746,18 +747,20 @@ class ExportSequenceNamingModule extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
       children: [
         Expanded(
-          child: TextField(
-            key: const ValueKey<String>('export-naming-base-field'),
-            controller: baseNameController,
-            enabled: enabled,
-            decoration: const InputDecoration(
-              labelText: 'Base name',
-              isDense: true,
-            ),
-            onChanged: (value) => onChanged(
-              naming.copyWith(baseName: value.trim().isEmpty ? 'frame' : value.trim()),
+          child: AppWindowField(
+            label: 'Base name',
+            child: TextField(
+              key: const ValueKey<String>('export-naming-base-field'),
+              controller: baseNameController,
+              enabled: enabled,
+              onChanged: (value) => onChanged(
+                naming.copyWith(
+                  baseName: value.trim().isEmpty ? 'frame' : value.trim(),
+                ),
+              ),
             ),
           ),
         ),
@@ -806,19 +809,21 @@ class _DigitsFieldState extends State<_DigitsField> {
 
   @override
   Widget build(BuildContext context) {
-    return TextField(
-      key: widget.widgetKey,
-      controller: _controller,
-      enabled: widget.enabled,
-      keyboardType: TextInputType.number,
-      inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-      decoration: const InputDecoration(labelText: 'Digits', isDense: true),
-      onChanged: (value) {
-        final parsed = int.tryParse(value.trim());
-        if (parsed != null) {
-          widget.onChanged(parsed);
-        }
-      },
+    return AppWindowField(
+      label: 'Digits',
+      child: TextField(
+        key: widget.widgetKey,
+        controller: _controller,
+        enabled: widget.enabled,
+        keyboardType: TextInputType.number,
+        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        onChanged: (value) {
+          final parsed = int.tryParse(value.trim());
+          if (parsed != null) {
+            widget.onChanged(parsed);
+          }
+        },
+      ),
     );
   }
 }
@@ -902,6 +907,7 @@ class ExportCelNamingModule extends StatelessWidget {
         ),
         const SizedBox(height: 6),
         Row(
+          crossAxisAlignment: CrossAxisAlignment.end,
           children: [
             SizedBox(
               width: 64,
@@ -915,16 +921,15 @@ class ExportCelNamingModule extends StatelessWidget {
             ),
             const SizedBox(width: 8),
             Expanded(
-              child: TextField(
-                key: const ValueKey<String>('export-cel-suffix-field'),
-                controller: suffixController,
-                enabled: enabled,
-                decoration: const InputDecoration(
-                  labelText: 'Suffix',
-                  isDense: true,
+              child: AppWindowField(
+                label: 'Suffix',
+                child: TextField(
+                  key: const ValueKey<String>('export-cel-suffix-field'),
+                  controller: suffixController,
+                  enabled: enabled,
+                  onChanged: (value) =>
+                      onChanged(naming.copyWith(suffix: value.trim())),
                 ),
-                onChanged: (value) =>
-                    onChanged(naming.copyWith(suffix: value.trim())),
               ),
             ),
           ],

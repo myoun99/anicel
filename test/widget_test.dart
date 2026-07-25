@@ -1209,7 +1209,7 @@ Line 8''';
     await _saveCutNote(tester, 'Old note');
     await _openCutNoteDialog(tester);
 
-    expect(find.text('Edit Cut Note'), findsOneWidget);
+    expect(find.text('Edit cut note'), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('cut-note-text-field')),
       findsOneWidget,
@@ -1239,7 +1239,7 @@ Line 8''';
 
       await _saveCutNote(tester, 'New note');
 
-      expect(find.text('Edit Cut Note'), findsNothing);
+      expect(find.text('Edit cut note'), findsNothing);
       expect(await _currentCutNoteFromDialog(tester), 'New note');
       await _expectActiveCutName(tester, '1');
       expect(await _activeCutId(tester), const CutId('default-cut-1'));
@@ -1270,7 +1270,7 @@ Line 8''';
       );
       await _tapCutNoteCancelButton(tester);
 
-      expect(find.text('Edit Cut Note'), findsNothing);
+      expect(find.text('Edit cut note'), findsNothing);
       expect(await _currentCutNoteFromDialog(tester), '');
       await _expectActiveCutName(tester, '1');
       expect(
@@ -1292,7 +1292,7 @@ Line 8''';
     expect(_cutNoteFieldText(tester), '');
     await _tapCutNoteSaveButton(tester);
 
-    expect(find.text('Edit Cut Note'), findsNothing);
+    expect(find.text('Edit cut note'), findsNothing);
     expect(await _currentCutNoteFromDialog(tester), '');
     expect(
       await _isActionButtonEnabled(
@@ -1314,7 +1314,10 @@ Line 8''';
       const ValueKey<String>('rename-cut-button'),
     );
 
-    expect(find.text('Rename Cut'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('rename-cut-dialog')),
+      findsOneWidget,
+    );
     expect(
       find.byKey(const ValueKey<String>('rename-cut-text-field')),
       findsOneWidget,
@@ -1338,7 +1341,10 @@ Line 8''';
     );
     await tester.pumpAndSettle();
 
-    expect(find.text('Rename Cut'), findsNothing);
+    expect(
+      find.byKey(const ValueKey<String>('rename-cut-dialog')),
+      findsNothing,
+    );
     await _expectCutName(tester, 'default-cut-1', '1');
     await _expectCutsNamed(tester, 'Canceled Cut', 0);
     await _expectActiveCutName(tester, '1');
@@ -2367,7 +2373,10 @@ Line 8''';
         const ValueKey<String>('rename-frame-button'),
       );
 
-      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('rename-frame-dialog')),
+        findsOneWidget,
+      );
       expect(
         find.byKey(const ValueKey<String>('rename-frame-text-field')),
         findsOneWidget,

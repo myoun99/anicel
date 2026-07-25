@@ -338,6 +338,9 @@ class _FieldSliderState extends State<FieldSlider> {
         ),
         style: valueStyle,
         decoration: const InputDecoration(
+          // Bare: the editor sits ON the slider track, so it opts out of
+          // the app-wide filled box.
+          filled: false,
           isDense: true,
           isCollapsed: true,
           border: InputBorder.none,

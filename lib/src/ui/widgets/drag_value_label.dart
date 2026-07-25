@@ -114,6 +114,9 @@ class _DragValueLabelState extends State<DragValueLabel> {
             ),
             style: widget.textStyle ?? const TextStyle(fontSize: 12),
             decoration: const InputDecoration(
+              // Bare: the editor replaces the label in place, so it opts
+              // out of the app-wide filled box.
+              filled: false,
               isDense: true,
               isCollapsed: true,
               border: InputBorder.none,

@@ -3,6 +3,8 @@ import 'package:flutter/services.dart';
 
 import '../../models/canvas_resize_anchor.dart';
 import '../../models/canvas_size.dart';
+import '../widgets/app_window.dart';
+import '../text/app_strings.dart';
 
 /// What the canvas-size dialog confirms: the new size plus the anchor the
 /// existing artwork stays pinned to.
@@ -97,38 +99,50 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
   @override
   Widget build(BuildContext context) {
     final enteredRequest = _enteredRequest;
+    final strings = AppText.strings;
 
-    return AlertDialog(
-      title: const Text('Canvas Size'),
-      content: Column(
+    return AppWindow(
+      windowKey: const ValueKey<String>('canvas-size-dialog'),
+      title: strings.canvasSizeTitle,
+      titleIcon: Icons.crop_outlined,
+      onClose: () => Navigator.of(context).pop(),
+      width: 460,
+      body: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.end,
             children: [
               Expanded(
-                child: TextField(
-                  key: const ValueKey<String>('canvas-size-width-field'),
-                  controller: _widthController,
-                  autofocus: true,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  decoration: const InputDecoration(labelText: 'Width (px)'),
-                  onChanged: (_) => setState(() {}),
+                child: AppWindowField(
+                  label: strings.canvasWidthLabel,
+                  emphasized: true,
+                  child: TextField(
+                    key: const ValueKey<String>('canvas-size-width-field'),
+                    controller: _widthController,
+                    autofocus: true,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    onChanged: (_) => setState(() {}),
+                  ),
                 ),
               ),
               const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 8),
+                padding: EdgeInsets.fromLTRB(8, 0, 8, 7),
                 child: Text('×'),
               ),
               Expanded(
-                child: TextField(
-                  key: const ValueKey<String>('canvas-size-height-field'),
-                  controller: _heightController,
-                  keyboardType: TextInputType.number,
-                  inputFormatters: [FilteringTextInputFormatter.digitsOnly],
-                  decoration: const InputDecoration(labelText: 'Height (px)'),
-                  onChanged: (_) => setState(() {}),
+                child: AppWindowField(
+                  label: strings.canvasHeightLabel,
+                  emphasized: true,
+                  child: TextField(
+                    key: const ValueKey<String>('canvas-size-height-field'),
+                    controller: _heightController,
+                    keyboardType: TextInputType.number,
+                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    onChanged: (_) => setState(() {}),
+                  ),
                 ),
               ),
             ],
@@ -159,10 +173,9 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'Anchor: existing artwork stays pinned here. '
-                  'Cropped strokes are kept and reappear if the canvas '
-                  'grows again. '
-                  '(${CanvasSizeDialog.minDimension}–${CanvasSizeDialog.maxDimension} px)',
+                  strings.canvasAnchorHelpTemplate
+                      .replaceAll('{min}', '${CanvasSizeDialog.minDimension}')
+                      .replaceAll('{max}', '${CanvasSizeDialog.maxDimension}'),
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
@@ -171,17 +184,18 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
         ],
       ),
       actions: [
-        TextButton(
-          key: const ValueKey<String>('canvas-size-cancel-button'),
+        AppWindowAction(
+          label: strings.commonCancel,
+          actionKey: const ValueKey<String>('canvas-size-cancel-button'),
           onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
         ),
-        TextButton(
-          key: const ValueKey<String>('canvas-size-confirm-button'),
+        AppWindowAction(
+          label: strings.commonResize,
+          actionKey: const ValueKey<String>('canvas-size-confirm-button'),
+          emphasis: AppWindowActionEmphasis.primary,
           onPressed: enteredRequest == null
               ? null
               : () => Navigator.of(context).pop(enteredRequest),
-          child: const Text('Resize'),
         ),
       ],
     );

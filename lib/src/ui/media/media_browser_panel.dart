@@ -4,6 +4,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/media_asset.dart';
+import '../dialogs/app_prompt_dialog.dart';
 import '../theme/app_theme.dart' show instantMenuAnimation;
 import 'media_asset_drag_data.dart';
 
@@ -291,49 +292,24 @@ class MediaBrowserPanel extends StatelessWidget {
   }
 }
 
-/// Owns the rename field's controller for the dialog's full route lifetime
-/// (the exit animation still builds the field after the pop).
-class _RenameMediaDialog extends StatefulWidget {
+class _RenameMediaDialog extends StatelessWidget {
   const _RenameMediaDialog({required this.initialName});
 
   final String initialName;
 
   @override
-  State<_RenameMediaDialog> createState() => _RenameMediaDialogState();
-}
-
-class _RenameMediaDialogState extends State<_RenameMediaDialog> {
-  late final TextEditingController _controller = TextEditingController(
-    text: widget.initialName,
-  );
-
-  @override
-  void dispose() {
-    _controller.dispose();
-    super.dispose();
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return AlertDialog(
-      title: const Text('Rename Media'),
-      content: TextField(
-        key: const ValueKey<String>('media-rename-field'),
-        controller: _controller,
-        autofocus: true,
-      ),
-      actions: [
-        TextButton(
-          key: const ValueKey<String>('media-rename-cancel-button'),
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          key: const ValueKey<String>('media-rename-save-button'),
-          onPressed: () => Navigator.of(context).pop(_controller.text.trim()),
-          child: const Text('Save'),
-        ),
-      ],
+    return AppPromptDialog(
+      windowKey: const ValueKey<String>('media-rename-dialog'),
+      title: 'Rename media',
+      titleIcon: Icons.drive_file_rename_outline,
+      fieldLabel: 'Name',
+      initialValue: initialName,
+      confirmLabel: 'Rename',
+      emptyError: 'Media name cannot be empty.',
+      fieldKey: const ValueKey<String>('media-rename-field'),
+      cancelKey: const ValueKey<String>('media-rename-cancel-button'),
+      confirmKey: const ValueKey<String>('media-rename-save-button'),
     );
   }
 }
