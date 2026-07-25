@@ -237,6 +237,47 @@ class AppStrings {
   String get convertLinkedCutNothing => _s('convertLinkedCutNothing');
   String get convertLinkedCutUndoNote => _s('convertLinkedCutUndoNote');
 
+  // --- Input settings ---
+  String get inputTitle => _s('inputTitle');
+  String get inputTouchScroll => _s('inputTouchScroll');
+  String get inputTouchScrollHelp => _s('inputTouchScrollHelp');
+  String get inputPressureHeading => _s('inputPressureHeading');
+  String get inputPressureSoftHard => _s('inputPressureSoftHard');
+  String get inputPressureLinear => _s('inputPressureLinear');
+  String get inputCanvasHeading => _s('inputCanvasHeading');
+  String get inputRightClick => _s('inputRightClick');
+  String get inputWheelClick => _s('inputWheelClick');
+  String get inputCanvasTouchHeading => _s('inputCanvasTouchHeading');
+  String get inputDragOneFinger => _s('inputDragOneFinger');
+  String get inputDragTwoFingers => _s('inputDragTwoFingers');
+  String get inputDragThreeFingers => _s('inputDragThreeFingers');
+  String get inputExtraFinger => _s('inputExtraFinger');
+  String get inputExtraFingerHelp => _s('inputExtraFingerHelp');
+  String get inputTwoFingerRotation => _s('inputTwoFingerRotation');
+  String get inputTwoFingerRotationHelp => _s('inputTwoFingerRotationHelp');
+  String get inputRotationLock => _s('inputRotationLock');
+  String get inputRotationLockHelp => _s('inputRotationLockHelp');
+  String get inputRotationSnap => _s('inputRotationSnap');
+  String get inputZoomSnaps => _s('inputZoomSnaps');
+  String get inputBrushSizeSnaps => _s('inputBrushSizeSnaps');
+  String get inputTabletHeading => _s('inputTabletHeading');
+  String get inputTabletStandard => _s('inputTabletStandard');
+  String get inputTabletStandardHelp => _s('inputTabletStandardHelp');
+  String get inputTabletWintab => _s('inputTabletWintab');
+  String get inputTabletWintabHelp => _s('inputTabletWintabHelp');
+  String get dragActionFlip => _s('dragActionFlip');
+  String get dragActionScreen => _s('dragActionScreen');
+  String get dragActionBrushSize => _s('dragActionBrushSize');
+  String get dragActionDraw => _s('dragActionDraw');
+  String get commonNone => _s('commonNone');
+  String get mapEyedropper => _s('mapEyedropper');
+  String get mapEraser => _s('mapEraser');
+  String get mapPan => _s('mapPan');
+  String get mapUndo => _s('mapUndo');
+  String get mapRedo => _s('mapRedo');
+  String get holdReturnToTool => _s('holdReturnToTool');
+  String get holdKeep => _s('holdKeep');
+
   // --- Preferences ---
   String get prefsTitle => _s('prefsTitle');
   String get prefsInput => _s('prefsInput');
@@ -434,6 +475,59 @@ class AppStrings {
         'Nothing to link — the cuts are already fully linked or share no '
         'drawing layers.',
     'convertLinkedCutUndoNote': 'Undo restores both cuts.',
+    'inputTitle': 'Input settings',
+    'inputTouchScroll': 'Touch scrolls the timeline',
+    'inputTouchScrollHelp':
+        'ON (default): finger pans scroll the grids — the edit gestures '
+        'release touch entirely.\n'
+        'OFF: touch edits exactly like the pen (select, move, drag grips) — '
+        'the safety net for pens that report as touch.',
+    'inputPressureHeading': 'Pen pressure response',
+    'inputPressureSoftHard': 'Soft ↔ Hard',
+    'inputPressureLinear': 'Linear',
+    'inputCanvasHeading': 'Canvas',
+    'inputRightClick': 'Right click / pen side button',
+    'inputWheelClick': 'Wheel click / pen upper button',
+    'inputCanvasTouchHeading': 'Canvas touch',
+    'inputDragOneFinger': '1-finger drag',
+    'inputDragTwoFingers': '2-finger drag',
+    'inputDragThreeFingers': '3-finger drag',
+    'inputExtraFinger': 'Extra-finger modifier',
+    'inputExtraFingerHelp':
+        'A finger added DURING a gesture constrains it — snap '
+        'zoom/rotation/size, fine frame steps.',
+    'inputTwoFingerRotation': 'Two-finger rotation',
+    'inputTwoFingerRotationHelp':
+        'OFF: the navigate gesture pans and zooms only (the rotate '
+        'buttons/shortcut stay).',
+    'inputRotationLock': 'Modifier locks rotation',
+    'inputRotationLockHelp':
+        'ON: the extra finger FREEZES the angle (pure pan + snapped zoom). '
+        'OFF (default): it snaps the angle.',
+    'inputRotationSnap': 'Rotation snap (°)',
+    'inputZoomSnaps': 'Zoom snaps (%)',
+    'inputBrushSizeSnaps': 'Brush size snaps (px)',
+    'inputTabletHeading': 'Tablet service',
+    'inputTabletStandard': 'Standard (default)',
+    'inputTabletStandardHelp':
+        'The OS pointer pipeline (Windows Ink) — right for up-to-date '
+        'drivers and built-in pens.',
+    'inputTabletWintab': 'Wintab',
+    'inputTabletWintabHelp':
+        'Reads pressure straight from the tablet driver — the escape hatch '
+        'when the pen arrives without pressure or as touch/mouse.',
+    'dragActionFlip': 'Flip (frames / layers)',
+    'dragActionScreen': 'Screen (pan · zoom · rotate)',
+    'dragActionBrushSize': 'Brush size',
+    'dragActionDraw': 'Touch drawing',
+    'commonNone': 'None',
+    'mapEyedropper': 'Eyedropper',
+    'mapEraser': 'Eraser',
+    'mapPan': 'Pan',
+    'mapUndo': 'Undo',
+    'mapRedo': 'Redo',
+    'holdReturnToTool': 'Return to tool',
+    'holdKeep': 'Keep',
     'prefsTitle': 'Preferences',
     'prefsInput': 'Input',
     'prefsAutosave': 'Autosave',
@@ -608,6 +702,58 @@ class AppStrings {
         'リンクするものがありません — 既に完全にリンク済みか、共有できる'
         '作画レイヤーがありません。',
     'convertLinkedCutUndoNote': '元に戻すと両方のカットが復元されます。',
+    'inputTitle': '入力設定',
+    'inputTouchScroll': 'タッチでタイムラインをスクロール',
+    'inputTouchScrollHelp':
+        'ON（既定）：指のドラッグでグリッドをスクロールします — 編集'
+        'ジェスチャーはタッチを完全に手放します。\n'
+        'OFF：タッチがペンとまったく同じに編集します（選択・移動・グリップの'
+        'ドラッグ）— タッチとして報告されるペンのための保険です。',
+    'inputPressureHeading': '筆圧カーブ',
+    'inputPressureSoftHard': '柔らかい ↔ 硬い',
+    'inputPressureLinear': 'リニア',
+    'inputCanvasHeading': 'カンバス',
+    'inputRightClick': '右クリック / ペンのサイドボタン',
+    'inputWheelClick': 'ホイールクリック / ペンの上ボタン',
+    'inputCanvasTouchHeading': 'カンバスのタッチ',
+    'inputDragOneFinger': '1本指ドラッグ',
+    'inputDragTwoFingers': '2本指ドラッグ',
+    'inputDragThreeFingers': '3本指ドラッグ',
+    'inputExtraFinger': '追加指モディファイア',
+    'inputExtraFingerHelp':
+        'ジェスチャーの途中で指を足すと動作が制限されます — ズーム・回転・'
+        'サイズのスナップ、フレームの微送り。',
+    'inputTwoFingerRotation': '2本指の回転',
+    'inputTwoFingerRotationHelp':
+        'OFF：ナビゲートは移動とズームのみになります（回転ボタンと'
+        'ショートカットは残ります）。',
+    'inputRotationLock': 'モディファイアで回転をロック',
+    'inputRotationLockHelp':
+        'ON：追加指が角度を固定します（移動＋スナップズームのみ）。'
+        'OFF（既定）：角度をスナップします。',
+    'inputRotationSnap': '回転スナップ（°）',
+    'inputZoomSnaps': 'ズームスナップ（%）',
+    'inputBrushSizeSnaps': 'ブラシサイズのスナップ（px）',
+    'inputTabletHeading': 'タブレットサービス',
+    'inputTabletStandard': '標準（既定）',
+    'inputTabletStandardHelp':
+        'OSのポインタ経路（Windows Ink）— 最新ドライバや内蔵ペンに適します。',
+    'inputTabletWintab': 'Wintab',
+    'inputTabletWintabHelp':
+        'タブレットドライバから直接筆圧を読みます — ペンが筆圧なし、または'
+        'タッチ／マウスとして届くときの逃げ道です。',
+    'dragActionFlip': 'めくり（フレーム / レイヤー）',
+    'dragActionScreen': '画面（移動・ズーム・回転）',
+    'dragActionBrushSize': 'ブラシサイズ',
+    'dragActionDraw': 'タッチで描画',
+    'commonNone': 'なし',
+    'mapEyedropper': 'スポイト',
+    'mapEraser': '消しゴム',
+    'mapPan': '手のひら',
+    'mapUndo': '元に戻す',
+    'mapRedo': 'やり直す',
+    'holdReturnToTool': 'ツールに戻る',
+    'holdKeep': '保持',
     'prefsTitle': '環境設定',
     'prefsInput': '入力',
     'prefsAutosave': '自動保存',
@@ -818,6 +964,57 @@ class AppStrings {
         '링크할 것이 없습니다 — 이미 완전히 링크됐거나 공유할 그리기 '
         '레이어가 없습니다.',
     'convertLinkedCutUndoNote': '실행 취소하면 두 컷 모두 복원됩니다.',
+    'inputTitle': '입력 설정',
+    'inputTouchScroll': '터치로 타임라인 스크롤',
+    'inputTouchScrollHelp':
+        'ON(기본): 손가락 드래그가 그리드를 스크롤합니다 — 편집 제스처는 '
+        '터치를 완전히 놓습니다.\n'
+        'OFF: 터치가 펜과 똑같이 편집합니다(선택·이동·그립 드래그) — '
+        '터치로 보고되는 펜을 위한 안전장치입니다.',
+    'inputPressureHeading': '필압 곡선',
+    'inputPressureSoftHard': '부드럽게 ↔ 단단하게',
+    'inputPressureLinear': '리니어',
+    'inputCanvasHeading': '캔버스',
+    'inputRightClick': '우클릭 / 펜 사이드 버튼',
+    'inputWheelClick': '휠 클릭 / 펜 위쪽 버튼',
+    'inputCanvasTouchHeading': '캔버스 터치',
+    'inputDragOneFinger': '한 손가락 드래그',
+    'inputDragTwoFingers': '두 손가락 드래그',
+    'inputDragThreeFingers': '세 손가락 드래그',
+    'inputExtraFinger': '손가락 추가 모디파이어',
+    'inputExtraFingerHelp':
+        '제스처 도중에 손가락을 더하면 동작이 제한됩니다 — 줌·회전·크기 '
+        '스냅, 프레임 미세 이동.',
+    'inputTwoFingerRotation': '두 손가락 회전',
+    'inputTwoFingerRotationHelp':
+        'OFF: 내비게이트가 이동과 줌만 합니다(회전 버튼과 단축키는 유지).',
+    'inputRotationLock': '모디파이어가 회전을 잠금',
+    'inputRotationLockHelp':
+        'ON: 추가 손가락이 각도를 고정합니다(순수 이동 + 스냅 줌). '
+        'OFF(기본): 각도를 스냅합니다.',
+    'inputRotationSnap': '회전 스냅 (°)',
+    'inputZoomSnaps': '줌 스냅 (%)',
+    'inputBrushSizeSnaps': '브러시 크기 스냅 (px)',
+    'inputTabletHeading': '태블릿 서비스',
+    'inputTabletStandard': '표준 (기본)',
+    'inputTabletStandardHelp':
+        'OS 포인터 경로(Windows Ink) — 최신 드라이버와 내장 펜에 적합합니다.',
+    'inputTabletWintab': 'Wintab',
+    'inputTabletWintabHelp':
+        '태블릿 드라이버에서 필압을 직접 읽습니다 — 펜이 필압 없이, 또는 '
+        '터치/마우스로 들어올 때의 탈출구입니다.',
+    'dragActionFlip': '넘기기 (프레임 / 레이어)',
+    'dragActionScreen': '화면 (이동·줌·회전)',
+    'dragActionBrushSize': '브러시 크기',
+    'dragActionDraw': '터치로 그리기',
+    'commonNone': '없음',
+    'mapEyedropper': '스포이트',
+    'mapEraser': '지우개',
+    'mapPan': '손바닥',
+    'mapUndo': '실행 취소',
+    'mapRedo': '다시 실행',
+    'holdReturnToTool': '도구로 복귀',
+    'holdKeep': '유지',
     'prefsTitle': '환경설정',
     'prefsInput': '입력',
     'prefsAutosave': '자동 저장',
@@ -1029,6 +1226,61 @@ class AppStrings {
         'Rien à lier — les plans sont déjà entièrement liés ou ne partagent '
         'aucun calque de dessin.',
     'convertLinkedCutUndoNote': 'Annuler restaure les deux plans.',
+    'inputTitle': 'Paramètres de saisie',
+    'inputTouchScroll': 'Le toucher fait défiler la timeline',
+    'inputTouchScrollHelp':
+        'ACTIVÉ (par défaut) : le glissement au doigt fait défiler les '
+        'grilles — les gestes d\'édition relâchent entièrement le toucher.\n'
+        'DÉSACTIVÉ : le toucher édite exactement comme le stylet '
+        '(sélection, déplacement, poignées) — le filet de sécurité pour les '
+        'stylets vus comme du toucher.',
+    'inputPressureHeading': 'Réponse à la pression',
+    'inputPressureSoftHard': 'Doux ↔ Dur',
+    'inputPressureLinear': 'Linéaire',
+    'inputCanvasHeading': 'Canevas',
+    'inputRightClick': 'Clic droit / bouton latéral du stylet',
+    'inputWheelClick': 'Clic molette / bouton supérieur du stylet',
+    'inputCanvasTouchHeading': 'Toucher sur le canevas',
+    'inputDragOneFinger': 'Glissement à 1 doigt',
+    'inputDragTwoFingers': 'Glissement à 2 doigts',
+    'inputDragThreeFingers': 'Glissement à 3 doigts',
+    'inputExtraFinger': 'Modificateur au doigt supplémentaire',
+    'inputExtraFingerHelp':
+        'Un doigt ajouté PENDANT un geste le contraint — zoom, rotation et '
+        'taille par crans, avance image par image fine.',
+    'inputTwoFingerRotation': 'Rotation à deux doigts',
+    'inputTwoFingerRotationHelp':
+        'DÉSACTIVÉ : le geste de navigation ne fait que déplacer et zoomer '
+        '(les boutons et le raccourci de rotation restent).',
+    'inputRotationLock': 'Le modificateur verrouille la rotation',
+    'inputRotationLockHelp':
+        "ACTIVÉ : le doigt supplémentaire FIGE l'angle (déplacement pur + "
+        "zoom par crans). DÉSACTIVÉ (par défaut) : il aligne l'angle.",
+    'inputRotationSnap': 'Cran de rotation (°)',
+    'inputZoomSnaps': 'Crans de zoom (%)',
+    'inputBrushSizeSnaps': 'Crans de taille de pinceau (px)',
+    'inputTabletHeading': 'Service tablette',
+    'inputTabletStandard': 'Standard (par défaut)',
+    'inputTabletStandardHelp':
+        "Le pipeline de pointeur de l'OS (Windows Ink) — adapté aux pilotes "
+        'à jour et aux stylets intégrés.',
+    'inputTabletWintab': 'Wintab',
+    'inputTabletWintabHelp':
+        'Lit la pression directement depuis le pilote de la tablette — la '
+        'solution de secours quand le stylet arrive sans pression ou comme '
+        'toucher/souris.',
+    'dragActionFlip': 'Feuilleter (images / calques)',
+    'dragActionScreen': 'Écran (déplacer · zoomer · pivoter)',
+    'dragActionBrushSize': 'Taille du pinceau',
+    'dragActionDraw': 'Dessin au toucher',
+    'commonNone': 'Aucun',
+    'mapEyedropper': 'Pipette',
+    'mapEraser': 'Gomme',
+    'mapPan': 'Main',
+    'mapUndo': 'Annuler',
+    'mapRedo': 'Rétablir',
+    'holdReturnToTool': "Revenir à l'outil",
+    'holdKeep': 'Conserver',
     'prefsTitle': 'Préférences',
     'prefsInput': 'Saisie',
     'prefsAutosave': 'Sauvegarde auto',
@@ -1239,6 +1491,51 @@ class AppStrings {
     'convertLinkedCutNothing': '没有可链接的内容 — 两个镜头已完全链接，'
         '或没有可共用的绘制图层。',
     'convertLinkedCutUndoNote': '撤销会同时还原两个镜头。',
+    'inputTitle': '输入设置',
+    'inputTouchScroll': '触摸滚动时间轴',
+    'inputTouchScrollHelp':
+        '开启（默认）：手指拖动滚动网格 — 编辑手势完全放开触摸。\n'
+        '关闭：触摸与笔完全一样地编辑（选择、移动、拖动手柄）— '
+        '这是为被识别成触摸的笔准备的保险。',
+    'inputPressureHeading': '压感曲线',
+    'inputPressureSoftHard': '软 ↔ 硬',
+    'inputPressureLinear': '线性',
+    'inputCanvasHeading': '画布',
+    'inputRightClick': '右键 / 笔侧键',
+    'inputWheelClick': '滚轮点击 / 笔上键',
+    'inputCanvasTouchHeading': '画布触摸',
+    'inputDragOneFinger': '单指拖动',
+    'inputDragTwoFingers': '双指拖动',
+    'inputDragThreeFingers': '三指拖动',
+    'inputExtraFinger': '加指修饰键',
+    'inputExtraFingerHelp':
+        '手势进行中再加一根手指会约束它 — 缩放/旋转/笔刷大小吸附，逐帧微调。',
+    'inputTwoFingerRotation': '双指旋转',
+    'inputTwoFingerRotationHelp': '关闭：导航手势只做平移和缩放（旋转按钮与快捷键保留）。',
+    'inputRotationLock': '修饰键锁定旋转',
+    'inputRotationLockHelp':
+        '开启：额外的手指会冻结角度（纯平移 + 吸附缩放）。关闭（默认）：吸附角度。',
+    'inputRotationSnap': '旋转吸附（°）',
+    'inputZoomSnaps': '缩放吸附（%）',
+    'inputBrushSizeSnaps': '笔刷大小吸附（px）',
+    'inputTabletHeading': '数位板服务',
+    'inputTabletStandard': '标准（默认）',
+    'inputTabletStandardHelp': '系统指针通道（Windows Ink）— 适合新版驱动和内置笔。',
+    'inputTabletWintab': 'Wintab',
+    'inputTabletWintabHelp':
+        '直接从数位板驱动读取压感 — 当笔没有压感或被识别为触摸/鼠标时的退路。',
+    'dragActionFlip': '翻页（帧 / 图层）',
+    'dragActionScreen': '画面（平移·缩放·旋转）',
+    'dragActionBrushSize': '笔刷大小',
+    'dragActionDraw': '触摸绘制',
+    'commonNone': '无',
+    'mapEyedropper': '吸管',
+    'mapEraser': '橡皮',
+    'mapPan': '抓手',
+    'mapUndo': '撤销',
+    'mapRedo': '重做',
+    'holdReturnToTool': '返回原工具',
+    'holdKeep': '保持',
     'prefsTitle': '偏好设置',
     'prefsInput': '输入',
     'prefsAutosave': '自动保存',
