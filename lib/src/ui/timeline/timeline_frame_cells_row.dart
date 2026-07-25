@@ -199,6 +199,23 @@ class TimelineFrameCellsRow extends StatelessWidget {
           axis: axis,
           windowBucket: windowBucket,
           viewportMainExtent: viewportMainExtent,
+          // R26 #7 / R27 #3: each block prints ITS OWN length at its end
+          // cell. It rides the cells painter as a FOREGROUND pass — above
+          // the tiles, so the frames/seconds toggle stays a plain repaint
+          // and never joins a tile bake key (the reason it is not inside
+          // the cells painter itself).
+          foregroundPainter:
+              layerKindHoldsDrawings(layer.kind) &&
+                  !layerKindUsesSeSheetCells(layer.kind)
+              ? TimelineRowRunLabelsPainter(
+                  layer: layer,
+                  geometry: geometry,
+                  crossAxisExtent: crossAxisExtent,
+                  showSeconds: showSeconds,
+                  countingBase: projectFrameRate.countingBase,
+                  axis: axis,
+                )
+              : null,
           // Instruction rows have no timeline entries — their events adapt
           // onto the shared exposure states so the cells paint the same
           // paper blocks. A TOP-LEVEL tear-off, not a closure: the painter
@@ -319,27 +336,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
             axis: axis,
             defById: instructionDefById!,
             keyPrefix: keyPrefix,
-          ),
-        // R26 #7: each block's own length at its end cell, bottom-right
-        // (the storyboard cut block's TIME label, on frame blocks). ONE
-        // painter for the whole row (R28 #4) — a `Positioned` per block
-        // made a zoom step re-lay-out rows x blocks boxes.
-        if (layerKindHoldsDrawings(layer.kind) &&
-            !layerKindUsesSeSheetCells(layer.kind))
-          Positioned.fill(
-            child: IgnorePointer(
-              child: CustomPaint(
-                key: ValueKey<String>('$keyPrefix-run-durations-${layer.id}'),
-                painter: TimelineRowRunLabelsPainter(
-                  layer: layer,
-                  geometry: geometry,
-                  crossAxisExtent: crossAxisExtent,
-                  showSeconds: showSeconds,
-                  countingBase: projectFrameRate.countingBase,
-                  axis: axis,
-                ),
-              ),
-            ),
           ),
         // The range gesture layer replaces the block-body move handle
         // (UI-R8, TVP style): a pan on the cells SELECTS a frame range —

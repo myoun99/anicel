@@ -8,6 +8,7 @@ import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_cells_row.dart';
 
+import 'timeline_cell_probe.dart';
 import 'timeline_frame_geometry_probe.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_row_run_labels_painter.dart';
 
@@ -20,13 +21,25 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_row_run_labels_painte
 /// resolved labels instead of hunting `Text` widgets — the same probe shape
 /// the cells and ruler painters already use.
 void main() {
+  /// The row's labels painter, or null when the row draws none. It rides the
+  /// cells painter as a FOREGROUND pass now — same geometry, two fewer render
+  /// objects per row to lay out on a zoom step.
+  TimelineRowRunLabelsPainter? painterOf(
+    WidgetTester tester, {
+    String layerId = 'a-1',
+  }) =>
+      tester
+              .widget<CustomPaint>(
+                find.byKey(ValueKey<String>('timeline-row-cells-$layerId')),
+              )
+              .foregroundPainter
+          as TimelineRowRunLabelsPainter?;
+
   /// The row's resolved labels, in block order.
-  List<TimelineRunLabel> labelsOf(WidgetTester tester, {String layerId = 'a-1'}) {
-    final paint = tester.widget<CustomPaint>(
-      find.byKey(ValueKey<String>('timeline-run-durations-$layerId')),
-    );
-    return (paint.painter! as TimelineRowRunLabelsPainter).runLabels();
-  }
+  List<TimelineRunLabel> labelsOf(
+    WidgetTester tester, {
+    String layerId = 'a-1',
+  }) => painterOf(tester, layerId: layerId)!.runLabels();
 
   List<String> textsOf(WidgetTester tester, {String layerId = 'a-1'}) =>
       labelsOf(tester, layerId: layerId).map((label) => label.text).toList();
@@ -79,16 +92,15 @@ void main() {
     );
     expect(textsOf(tester), ['6'], reason: 'bare number, never "6f"');
 
-    final painter =
-        tester
-                .widget<CustomPaint>(
-                  find.byKey(
-                    const ValueKey<String>('timeline-run-durations-a-1'),
-                  ),
-                )
-                .painter!
-            as TimelineRowRunLabelsPainter;
-    expect(painter.labelStyle.fontWeight, FontWeight.w700);
+    expect(painterOf(tester)!.labelStyle.fontWeight, FontWeight.w700);
+
+    // The label's a11y node survives riding the cells painter as a
+    // FOREGROUND pass — RenderCustomPaint builds semantics for both
+    // painters, and nothing here asserted that before.
+    final semantics = tester.ensureSemantics();
+    await tester.pumpAndSettle();
+    expect(timelineCellSemanticsLabels(tester, 'a-1'), contains('6'));
+    semantics.dispose();
   });
 
   testWidgets('the seconds toggle switches the label to seconds+frames', (
@@ -167,8 +179,8 @@ void main() {
       ),
     );
     expect(
-      find.byKey(const ValueKey<String>('timeline-run-durations-se-1')),
-      findsNothing,
+      painterOf(tester, layerId: 'se-1'),
+      isNull,
       reason:
           'SE sheet rows carry dialogue and waveforms, not exposure durations',
     );

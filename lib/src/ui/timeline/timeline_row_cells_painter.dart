@@ -729,6 +729,7 @@ Widget timelineRowCellsPaintArea({
   required TimelineFrameGeometryHandle geometry,
   required double crossAxisExtent,
   required Axis axis,
+  CustomPainter? foregroundPainter,
   required TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
@@ -877,6 +878,13 @@ Widget timelineRowCellsPaintArea({
               CustomPaint(
                 key: ValueKey<String>('$keyPrefix-row-cells-${layer.id}'),
                 painter: painter,
+                // The block duration labels ride HERE rather than as their
+                // own Positioned.fill CustomPaint: same geometry, same
+                // repaint trigger, two fewer render objects per row to lay
+                // out on a zoom step. A foreground painter that does not
+                // implement `hitTest` never absorbs a pointer, which is what
+                // the IgnorePointer around it used to guarantee.
+                foregroundPainter: foregroundPainter,
               ),
             ],
           ),
