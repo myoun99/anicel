@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/app_language.dart';
+import 'package:quick_animaker_v2/src/ui/shortcuts/editor_action_registry.dart';
 import 'package:quick_animaker_v2/src/ui/text/app_strings.dart';
 
 /// The key contract behind the fallback table.
@@ -128,6 +129,10 @@ void main() {
         s.convertLinkedCutOriginGainsTemplate,
     'convertLinkedCutNothing': (s) => s.convertLinkedCutNothing,
     'convertLinkedCutUndoNote': (s) => s.convertLinkedCutUndoNote,
+    'setCommasTitle': (s) => s.setCommasTitle,
+    'setCommasField': (s) => s.setCommasField,
+    'projectFpsTitle': (s) => s.projectFpsTitle,
+    'projectFpsField': (s) => s.projectFpsField,
   };
 
   for (final language in AppLanguage.values) {
@@ -143,9 +148,30 @@ void main() {
     });
   }
 
+  // The shortcut registry resolves by ID, not by getter, so it is checked
+  // against the registry itself rather than a hand-listed table — a new
+  // action cannot be added without this noticing.
+  for (final language in AppLanguage.values) {
+    test('every shortcut action and category resolves in ${language.name}', () {
+      final strings = AppStrings.of(language);
+      for (final definition in editorActionDefinitions) {
+        expect(
+          strings.shortcutLabel(definition.id, definition.label),
+          isNotEmpty,
+          reason: '${definition.id} in ${language.name}',
+        );
+        expect(
+          strings.shortcutCategory(definition.category, definition.category),
+          isNotEmpty,
+          reason: '${definition.category} in ${language.name}',
+        );
+      }
+    });
+  }
+
   test('the reader table covers every getter the class declares', () {
     // Guards the guard: a string added without a line here would other-
     // wise be silently unchecked.
-    expect(readers, hasLength(113));
+    expect(readers, hasLength(117));
   });
 }

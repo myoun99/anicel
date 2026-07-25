@@ -12,6 +12,8 @@ import '../widgets/app_icon_button.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/split_icon_button.dart';
 import 'timeline_section_policy.dart';
+import '../text/app_strings.dart';
+import '../dialogs/app_prompt_dialog.dart';
 
 /// The N-comma input (UI-R17 #7): asks for an exposure count and applies
 /// it to the selection (or the current block). Shared by the toolbar's N
@@ -20,33 +22,22 @@ Future<void> showTimelineCommaCountDialog(
   BuildContext context,
   EditorSessionManager session,
 ) async {
-  final controller = TextEditingController();
-  final comma = await showDialog<int>(
+  final strings = AppText.strings;
+  final entered = await showDialog<String>(
     context: context,
-    builder: (context) => AlertDialog(
-      title: const Text('Set commas'),
-      content: TextField(
-        key: const ValueKey<String>('set-comma-n-field'),
-        controller: controller,
-        autofocus: true,
-        keyboardType: TextInputType.number,
-        decoration: const InputDecoration(labelText: 'Exposure frames'),
-        onSubmitted: (value) => Navigator.of(context).pop(int.tryParse(value)),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          key: const ValueKey<String>('set-comma-n-apply'),
-          onPressed: () =>
-              Navigator.of(context).pop(int.tryParse(controller.text)),
-          child: const Text('Apply'),
-        ),
-      ],
+    builder: (context) => AppPromptDialog(
+      windowKey: const ValueKey<String>('set-comma-n-dialog'),
+      title: strings.setCommasTitle,
+      titleIcon: Icons.timelapse_outlined,
+      fieldLabel: strings.setCommasField,
+      initialValue: '',
+      confirmLabel: strings.commonApply,
+      numeric: true,
+      fieldKey: const ValueKey<String>('set-comma-n-field'),
+      confirmKey: const ValueKey<String>('set-comma-n-apply'),
     ),
   );
+  final comma = int.tryParse(entered ?? '');
   if (comma != null && comma >= 1) {
     session.setCommaForSelectionOrCurrent(comma);
   }
@@ -58,34 +49,22 @@ Future<void> showTimelineFpsDialog(
   BuildContext context,
   EditorSessionManager session,
 ) async {
-  final controller = TextEditingController(text: '${session.projectFps}');
-  final fps = await showDialog<int>(
+  final strings = AppText.strings;
+  final entered = await showDialog<String>(
     context: context,
-    builder: (context) => AlertDialog(
-      key: const ValueKey<String>('project-fps-dialog'),
-      title: const Text('Project frame rate'),
-      content: TextField(
-        key: const ValueKey<String>('project-fps-field'),
-        controller: controller,
-        autofocus: true,
-        keyboardType: TextInputType.number,
-        decoration: const InputDecoration(labelText: 'Frames per second'),
-        onSubmitted: (value) => Navigator.of(context).pop(int.tryParse(value)),
-      ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.of(context).pop(),
-          child: const Text('Cancel'),
-        ),
-        FilledButton(
-          key: const ValueKey<String>('project-fps-apply'),
-          onPressed: () =>
-              Navigator.of(context).pop(int.tryParse(controller.text)),
-          child: const Text('Apply'),
-        ),
-      ],
+    builder: (context) => AppPromptDialog(
+      windowKey: const ValueKey<String>('project-fps-dialog'),
+      title: strings.projectFpsTitle,
+      titleIcon: Icons.speed_outlined,
+      fieldLabel: strings.projectFpsField,
+      initialValue: '${session.projectFps}',
+      confirmLabel: strings.commonApply,
+      numeric: true,
+      fieldKey: const ValueKey<String>('project-fps-field'),
+      confirmKey: const ValueKey<String>('project-fps-apply'),
     ),
   );
+  final fps = int.tryParse(entered ?? '');
   if (fps != null && fps >= 1) {
     session.setProjectFps(fps);
   }

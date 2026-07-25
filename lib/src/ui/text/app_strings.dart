@@ -33,6 +33,18 @@ class AppStrings {
 
   String _s(String key) => _values[key] ?? _enValues[key]!;
 
+  /// The shortcut registry's action label. The registry is `const`, so it
+  /// cannot hold a translated string — it holds the id and its own English
+  /// wording, and that wording IS the English row: no entry is tabled for
+  /// `en`, which is why this falls back to [fallback] rather than to
+  /// [_enValues]. Keeps the app's action names in exactly one place.
+  String shortcutLabel(String actionId, String fallback) =>
+      _values['shortcutAction.$actionId'] ?? fallback;
+
+  /// Same contract for the registry's category headings.
+  String shortcutCategory(String category, String fallback) =>
+      _values['shortcutCategory.$category'] ?? fallback;
+
   String get languageSettingsTitle => _s('languageSettingsTitle');
   String get programLanguageLabel => _s('programLanguageLabel');
   String get notationLanguageLabel => _s('notationLanguageLabel');
@@ -225,6 +237,12 @@ class AppStrings {
   String get convertLinkedCutNothing => _s('convertLinkedCutNothing');
   String get convertLinkedCutUndoNote => _s('convertLinkedCutUndoNote');
 
+  // --- Timeline toolbar prompts ---
+  String get setCommasTitle => _s('setCommasTitle');
+  String get setCommasField => _s('setCommasField');
+  String get projectFpsTitle => _s('projectFpsTitle');
+  String get projectFpsField => _s('projectFpsField');
+
   static AppStrings of(AppLanguage language) => switch (language) {
     AppLanguage.en => _en,
     AppLanguage.ja => _ja,
@@ -363,6 +381,10 @@ class AppStrings {
         'Nothing to link — the cuts are already fully linked or share no '
         'drawing layers.',
     'convertLinkedCutUndoNote': 'Undo restores both cuts.',
+    'setCommasTitle': 'Set commas',
+    'setCommasField': 'Exposure frames',
+    'projectFpsTitle': 'Project frame rate',
+    'projectFpsField': 'Frames per second',
   };
 
   static const _jaValues = <String, String>{
@@ -486,6 +508,47 @@ class AppStrings {
         'リンクするものがありません — 既に完全にリンク済みか、共有できる'
         '作画レイヤーがありません。',
     'convertLinkedCutUndoNote': '元に戻すと両方のカットが復元されます。',
+    'shortcutCategory.Navigation': 'ナビゲーション',
+    'shortcutCategory.Playback': '再生',
+    'shortcutCategory.Edit': '編集',
+    'shortcutCategory.Tools': 'ツール',
+    'shortcutCategory.Selection': '選択',
+    'shortcutCategory.View': '表示',
+    'shortcutCategory.Timeline': 'タイムライン',
+    'shortcutAction.frame-previous': '前のフレーム',
+    'shortcutAction.frame-next': '次のフレーム',
+    'shortcutAction.drawing-previous': '前の作画',
+    'shortcutAction.drawing-next': '次の作画',
+    'shortcutAction.playback-toggle': '再生 / 一時停止',
+    'shortcutAction.voice-record-toggle': '音声収録（開始/停止）',
+    'shortcutAction.edit-undo': '元に戻す',
+    'shortcutAction.edit-redo': 'やり直す',
+    'shortcutAction.tool-brush': 'ブラシツール',
+    'shortcutAction.tool-eraser': '消しゴムツール',
+    'shortcutAction.tool-eyedropper': 'スポイトツール',
+    'shortcutAction.tool-fill': '塗りつぶしツール',
+    'shortcutAction.tool-select-rect': '長方形選択ツール',
+    'shortcutAction.tool-lasso': '投げなわ選択ツール',
+    'shortcutAction.tool-move': '移動ツール',
+    'shortcutAction.selection-deselect': '選択解除',
+    'shortcutAction.selection-nudge-up': '選択 / レイヤーを上へ微調整',
+    'shortcutAction.selection-nudge-down': '選択 / レイヤーを下へ微調整',
+    'shortcutAction.selection-free-transform': '自由変形',
+    'shortcutAction.selection-transform-commit': '変形を確定',
+    'shortcutAction.selection-transform-cancel': '変形をキャンセル',
+    'shortcutAction.onion-skin-toggle': 'オニオンスキンの切り替え',
+    'shortcutAction.canvas-rotate-ccw': 'カンバス表示を左に回転',
+    'shortcutAction.canvas-rotate-cw': 'カンバス表示を右に回転',
+    'shortcutAction.canvas-flip-horizontal': 'カンバス表示を左右反転',
+    'shortcutAction.timeline-comma-1': '1コマに設定',
+    'shortcutAction.timeline-comma-2': '2コマに設定',
+    'shortcutAction.timeline-comma-3': '3コマに設定',
+    'shortcutAction.timeline-comma-4': '4コマに設定',
+    'shortcutAction.timeline-comma-n': 'Nコマに設定…',
+    'setCommasTitle': 'コマ数の設定',
+    'setCommasField': '露光フレーム数',
+    'projectFpsTitle': 'プロジェクトのフレームレート',
+    'projectFpsField': '1秒あたりのフレーム数',
   };
 
   static const _koValues = <String, String>{
@@ -610,6 +673,47 @@ class AppStrings {
         '링크할 것이 없습니다 — 이미 완전히 링크됐거나 공유할 그리기 '
         '레이어가 없습니다.',
     'convertLinkedCutUndoNote': '실행 취소하면 두 컷 모두 복원됩니다.',
+    'shortcutCategory.Navigation': '이동',
+    'shortcutCategory.Playback': '재생',
+    'shortcutCategory.Edit': '편집',
+    'shortcutCategory.Tools': '도구',
+    'shortcutCategory.Selection': '선택',
+    'shortcutCategory.View': '보기',
+    'shortcutCategory.Timeline': '타임라인',
+    'shortcutAction.frame-previous': '이전 프레임',
+    'shortcutAction.frame-next': '다음 프레임',
+    'shortcutAction.drawing-previous': '이전 원화',
+    'shortcutAction.drawing-next': '다음 원화',
+    'shortcutAction.playback-toggle': '재생 / 일시정지',
+    'shortcutAction.voice-record-toggle': '음성 녹음 (시작/정지)',
+    'shortcutAction.edit-undo': '실행 취소',
+    'shortcutAction.edit-redo': '다시 실행',
+    'shortcutAction.tool-brush': '브러시 도구',
+    'shortcutAction.tool-eraser': '지우개 도구',
+    'shortcutAction.tool-eyedropper': '스포이트 도구',
+    'shortcutAction.tool-fill': '채우기 도구',
+    'shortcutAction.tool-select-rect': '사각형 선택 도구',
+    'shortcutAction.tool-lasso': '올가미 선택 도구',
+    'shortcutAction.tool-move': '이동 도구',
+    'shortcutAction.selection-deselect': '선택 해제',
+    'shortcutAction.selection-nudge-up': '선택 / 레이어 위로 미세 이동',
+    'shortcutAction.selection-nudge-down': '선택 / 레이어 아래로 미세 이동',
+    'shortcutAction.selection-free-transform': '자유 변형',
+    'shortcutAction.selection-transform-commit': '변형 확정',
+    'shortcutAction.selection-transform-cancel': '변형 취소',
+    'shortcutAction.onion-skin-toggle': '어니언 스킨 켜기/끄기',
+    'shortcutAction.canvas-rotate-ccw': '캔버스 보기 왼쪽 회전',
+    'shortcutAction.canvas-rotate-cw': '캔버스 보기 오른쪽 회전',
+    'shortcutAction.canvas-flip-horizontal': '캔버스 보기 좌우 반전',
+    'shortcutAction.timeline-comma-1': '1코마로 설정',
+    'shortcutAction.timeline-comma-2': '2코마로 설정',
+    'shortcutAction.timeline-comma-3': '3코마로 설정',
+    'shortcutAction.timeline-comma-4': '4코마로 설정',
+    'shortcutAction.timeline-comma-n': 'N코마로 설정…',
+    'setCommasTitle': '코마 수 설정',
+    'setCommasField': '노출 프레임 수',
+    'projectFpsTitle': '프로젝트 프레임레이트',
+    'projectFpsField': '초당 프레임 수',
   };
 
   static const _frValues = <String, String>{
@@ -735,6 +839,47 @@ class AppStrings {
         'Rien à lier — les plans sont déjà entièrement liés ou ne partagent '
         'aucun calque de dessin.',
     'convertLinkedCutUndoNote': 'Annuler restaure les deux plans.',
+    'shortcutCategory.Navigation': 'Navigation',
+    'shortcutCategory.Playback': 'Lecture',
+    'shortcutCategory.Edit': 'Édition',
+    'shortcutCategory.Tools': 'Outils',
+    'shortcutCategory.Selection': 'Sélection',
+    'shortcutCategory.View': 'Affichage',
+    'shortcutCategory.Timeline': 'Timeline',
+    'shortcutAction.frame-previous': 'Image précédente',
+    'shortcutAction.frame-next': 'Image suivante',
+    'shortcutAction.drawing-previous': 'Dessin précédent',
+    'shortcutAction.drawing-next': 'Dessin suivant',
+    'shortcutAction.playback-toggle': 'Lecture / Pause',
+    'shortcutAction.voice-record-toggle': 'Enregistrer la voix (démarrer/arrêter)',
+    'shortcutAction.edit-undo': 'Annuler',
+    'shortcutAction.edit-redo': 'Rétablir',
+    'shortcutAction.tool-brush': 'Outil pinceau',
+    'shortcutAction.tool-eraser': 'Outil gomme',
+    'shortcutAction.tool-eyedropper': 'Outil pipette',
+    'shortcutAction.tool-fill': 'Outil remplissage',
+    'shortcutAction.tool-select-rect': 'Outil sélection rectangle',
+    'shortcutAction.tool-lasso': 'Outil lasso',
+    'shortcutAction.tool-move': 'Outil déplacement',
+    'shortcutAction.selection-deselect': 'Désélectionner',
+    'shortcutAction.selection-nudge-up': 'Décaler la sélection / le calque vers le haut',
+    'shortcutAction.selection-nudge-down': 'Décaler la sélection / le calque vers le bas',
+    'shortcutAction.selection-free-transform': 'Transformation libre',
+    'shortcutAction.selection-transform-commit': 'Valider la transformation',
+    'shortcutAction.selection-transform-cancel': 'Annuler la transformation',
+    'shortcutAction.onion-skin-toggle': "Activer/désactiver la pelure d'oignon",
+    'shortcutAction.canvas-rotate-ccw': 'Pivoter la vue à gauche',
+    'shortcutAction.canvas-rotate-cw': 'Pivoter la vue à droite',
+    'shortcutAction.canvas-flip-horizontal': 'Miroir horizontal de la vue',
+    'shortcutAction.timeline-comma-1': 'Régler sur 1 comma',
+    'shortcutAction.timeline-comma-2': 'Régler sur 2 commas',
+    'shortcutAction.timeline-comma-3': 'Régler sur 3 commas',
+    'shortcutAction.timeline-comma-4': 'Régler sur 4 commas',
+    'shortcutAction.timeline-comma-n': 'Régler sur N commas…',
+    'setCommasTitle': 'Définir les commas',
+    'setCommasField': "Images d'exposition",
+    'projectFpsTitle': 'Fréquence du projet',
+    'projectFpsField': 'Images par seconde',
   };
 
   static const _zhHansValues = <String, String>{
@@ -856,5 +1001,46 @@ class AppStrings {
     'convertLinkedCutNothing': '没有可链接的内容 — 两个镜头已完全链接，'
         '或没有可共用的绘制图层。',
     'convertLinkedCutUndoNote': '撤销会同时还原两个镜头。',
+    'shortcutCategory.Navigation': '导航',
+    'shortcutCategory.Playback': '播放',
+    'shortcutCategory.Edit': '编辑',
+    'shortcutCategory.Tools': '工具',
+    'shortcutCategory.Selection': '选区',
+    'shortcutCategory.View': '视图',
+    'shortcutCategory.Timeline': '时间轴',
+    'shortcutAction.frame-previous': '上一帧',
+    'shortcutAction.frame-next': '下一帧',
+    'shortcutAction.drawing-previous': '上一张原画',
+    'shortcutAction.drawing-next': '下一张原画',
+    'shortcutAction.playback-toggle': '播放 / 暂停',
+    'shortcutAction.voice-record-toggle': '录音（开始/停止）',
+    'shortcutAction.edit-undo': '撤销',
+    'shortcutAction.edit-redo': '重做',
+    'shortcutAction.tool-brush': '画笔工具',
+    'shortcutAction.tool-eraser': '橡皮工具',
+    'shortcutAction.tool-eyedropper': '吸管工具',
+    'shortcutAction.tool-fill': '填充工具',
+    'shortcutAction.tool-select-rect': '矩形选择工具',
+    'shortcutAction.tool-lasso': '套索选择工具',
+    'shortcutAction.tool-move': '移动工具',
+    'shortcutAction.selection-deselect': '取消选择',
+    'shortcutAction.selection-nudge-up': '选区 / 图层上移微调',
+    'shortcutAction.selection-nudge-down': '选区 / 图层下移微调',
+    'shortcutAction.selection-free-transform': '自由变换',
+    'shortcutAction.selection-transform-commit': '确认变换',
+    'shortcutAction.selection-transform-cancel': '取消变换',
+    'shortcutAction.onion-skin-toggle': '切换洋葱皮',
+    'shortcutAction.canvas-rotate-ccw': '画布视图向左旋转',
+    'shortcutAction.canvas-rotate-cw': '画布视图向右旋转',
+    'shortcutAction.canvas-flip-horizontal': '画布视图水平翻转',
+    'shortcutAction.timeline-comma-1': '设为 1 格',
+    'shortcutAction.timeline-comma-2': '设为 2 格',
+    'shortcutAction.timeline-comma-3': '设为 3 格',
+    'shortcutAction.timeline-comma-4': '设为 4 格',
+    'shortcutAction.timeline-comma-n': '设为 N 格…',
+    'setCommasTitle': '设置格数',
+    'setCommasField': '曝光帧数',
+    'projectFpsTitle': '项目帧率',
+    'projectFpsField': '每秒帧数',
   };
 }

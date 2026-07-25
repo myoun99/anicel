@@ -19,6 +19,7 @@ import 'property_lane_model.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_grid_metrics.dart';
+import '../widgets/app_window.dart';
 
 /// The SE audio lane: SE layers with sounds get ONE twirl-down lane — a
 /// waveform editing strip where dragging a span's MIDDLE along the frame
@@ -850,10 +851,13 @@ class _AudioEnvelopeDialogState extends State<_AudioEnvelopeDialog> {
   @override
   Widget build(BuildContext context) {
     final strings = widget.strings;
-    return AlertDialog(
-      key: const ValueKey<String>('audio-envelope-dialog'),
-      title: Text(strings.audioEnvelopeTitle),
-      content: SizedBox(
+    return AppWindow(
+      windowKey: const ValueKey<String>('audio-envelope-dialog'),
+      title: strings.audioEnvelopeTitle,
+      titleIcon: Icons.show_chart_outlined,
+      onClose: () => Navigator.of(context).pop(),
+      width: 360,
+      body: SizedBox(
         width: 300,
         child: Column(
           mainAxisSize: MainAxisSize.min,
@@ -875,30 +879,27 @@ class _AudioEnvelopeDialogState extends State<_AudioEnvelopeDialog> {
                       child: Row(
                         children: [
                           Expanded(
-                            child: TextField(
-                              key: ValueKey<String>(
-                                'audio-envelope-frame-$index',
-                              ),
-                              controller: _rows[index].frame,
-                              keyboardType: TextInputType.number,
-                              decoration: InputDecoration(
-                                isDense: true,
-                                labelText: strings.audioEnvelopeFrameLabel,
+                            child: AppWindowField(
+                              label: strings.audioEnvelopeFrameLabel,
+                              child: TextField(
+                                key: ValueKey<String>(
+                                  'audio-envelope-frame-$index',
+                                ),
+                                controller: _rows[index].frame,
+                                keyboardType: TextInputType.number,
                               ),
                             ),
                           ),
                           const SizedBox(width: 8),
                           Expanded(
-                            child: TextField(
-                              key: ValueKey<String>(
-                                'audio-envelope-gain-$index',
-                              ),
-                              controller: _rows[index].gain,
-                              keyboardType: TextInputType.number,
-                              decoration: InputDecoration(
-                                isDense: true,
-                                labelText:
-                                    strings.audioEnvelopeGainPercentLabel,
+                            child: AppWindowField(
+                              label: strings.audioEnvelopeGainPercentLabel,
+                              child: TextField(
+                                key: ValueKey<String>(
+                                  'audio-envelope-gain-$index',
+                                ),
+                                controller: _rows[index].gain,
+                                keyboardType: TextInputType.number,
                               ),
                             ),
                           ),
@@ -929,14 +930,16 @@ class _AudioEnvelopeDialogState extends State<_AudioEnvelopeDialog> {
         ),
       ),
       actions: [
-        TextButton(
+        AppWindowAction(
+          label: strings.commonCancel,
+          actionKey: const ValueKey<String>('audio-envelope-cancel'),
           onPressed: () => Navigator.of(context).pop(),
-          child: Text(strings.commonCancel),
         ),
-        TextButton(
-          key: const ValueKey<String>('audio-envelope-apply'),
+        AppWindowAction(
+          label: strings.commonApply,
+          actionKey: const ValueKey<String>('audio-envelope-apply'),
+          emphasis: AppWindowActionEmphasis.primary,
           onPressed: () => Navigator.of(context).pop(_collect()),
-          child: Text(strings.commonApply),
         ),
       ],
     );
@@ -960,30 +963,33 @@ class _AudioGainDialogState extends State<_AudioGainDialog> {
   @override
   Widget build(BuildContext context) {
     final strings = widget.strings;
-    return AlertDialog(
-      title: Text(strings.audioClipGainTitle),
-      content: SizedBox(
-        width: 240,
-        child: FieldSlider(
-          key: const ValueKey<String>('audio-gain-slider'),
-          min: 0,
-          max: 2,
-          value: _gain,
-          label: strings.audioGainLabel,
-          valueText: '${(_gain * 100).round()}%',
-          displayFactor: 100,
-          onChanged: (value) => setState(() => _gain = value),
-        ),
+    return AppWindow(
+      windowKey: const ValueKey<String>('audio-clip-gain-dialog'),
+      title: strings.audioClipGainTitle,
+      titleIcon: Icons.volume_up_outlined,
+      onClose: () => Navigator.of(context).pop(),
+      width: 320,
+      body: FieldSlider(
+        key: const ValueKey<String>('audio-gain-slider'),
+        min: 0,
+        max: 2,
+        value: _gain,
+        label: strings.audioGainLabel,
+        valueText: '${(_gain * 100).round()}%',
+        displayFactor: 100,
+        onChanged: (value) => setState(() => _gain = value),
       ),
       actions: [
-        TextButton(
+        AppWindowAction(
+          label: strings.commonCancel,
+          actionKey: const ValueKey<String>('audio-gain-cancel'),
           onPressed: () => Navigator.of(context).pop(),
-          child: Text(strings.commonCancel),
         ),
-        TextButton(
-          key: const ValueKey<String>('audio-gain-apply'),
+        AppWindowAction(
+          label: strings.commonApply,
+          actionKey: const ValueKey<String>('audio-gain-apply'),
+          emphasis: AppWindowActionEmphasis.primary,
           onPressed: () => Navigator.of(context).pop(_gain),
-          child: Text(strings.commonApply),
         ),
       ],
     );
