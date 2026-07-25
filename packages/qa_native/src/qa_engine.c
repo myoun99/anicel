@@ -2227,32 +2227,62 @@ static void qa_pre_blend_item(int32_t item_index, void* context) {
   const qa_pre_blend_context* batch = (const qa_pre_blend_context*)context;
   const qa_tile_span* span = &batch->tiles[item_index];
   const int32_t tile_size = batch->tile_size;
-  const ptrdiff_t tile_bytes = (ptrdiff_t)tile_size * tile_size * 4;
   uint8_t* tile = span->tile_pixels;
 
-  // 1. Stage the cel's bytes (or emptiness) as the blend destination.
-  if (span->base_pixels != NULL) {
-    memcpy(tile, span->base_pixels, (size_t)tile_bytes);
-  } else {
-    memset(tile, 0, (size_t)tile_bytes);
-  }
-
-  // 2. Blend the stroke in place, row by row, through the SAME kernels
-  // the pen-up commit uses.
-  int32_t changed = 0;
+  // ONE PASS PER ROW: stage the cel's bytes, blend the stroke into them,
+  // premultiply into the upload buffer - all while the row is still in
+  // L1. The three steps used to be three sweeps of the WHOLE tile, so a
+  // 256px tile (256KB) crossed the cache three times; per row it is 1KB
+  // and stays resident from the stage to the premultiply.
+  //
+  // WHAT THIS IS AND IS NOT, measured - do not re-derive it:
+  // on a 20-core desktop this is NOT faster. An 8-pair A/B said 15%,
+  // and the benchmark's own control (the dab-blend time, code neither
+  // arm touches) had moved 6% the same way - two builds from different
+  // source dirs shift function layout and with it the i-cache behaviour
+  // of code that did not change. Reversing which arm ran first collapsed
+  // the rest. Net: inside noise.
+  //
+  // It is here for the devices that could not be measured. The whole
+  // benefit is reuse distance, so it grows as the cache shrinks: a
+  // desktop L2 already holds much of a 256KB tile, a tablet's does not.
+  // That is a MECHANISM, not a measurement - if a device profile ever
+  // shows the pre-blend cold, this is the shape that should pay off, and
+  // if it never does, nothing here is lost.
+  //
+  // Byte-identical by construction: every pixel sees the same three
+  // operations in the same order, and no pixel reads another's result
+  // (parity-pinned both engines).
+  const int32_t row_bytes = tile_size * 4;
   const int32_t left = span->span_left - span->tile_left;
   const int32_t right = span->span_right_exclusive - span->tile_left;
   const int32_t top = span->span_top - span->tile_top;
   const int32_t bottom = span->span_bottom_exclusive - span->tile_top;
   const int32_t count = right - left;
-  if (count > 0 && span->stroke_pixels != NULL) {
-    // Masking rewrites alpha, so it needs a row of scratch. Fixed stack
-    // chunk rather than an allocation: the pool runs this on several
-    // threads and must never touch the heap here. Unmasked spans skip
-    // the copy entirely (the scratch stays untouched).
-    uint8_t masked_row[QA_PRE_BLEND_CHUNK * 4];
-    const int32_t chunk = count > QA_PRE_BLEND_CHUNK ? QA_PRE_BLEND_CHUNK : count;
-    for (int32_t y = top; y < bottom; y += 1) {
+  const int32_t blending = (count > 0 && span->stroke_pixels != NULL) ? 1 : 0;
+  // Masking rewrites alpha, so it needs a row of scratch. Fixed stack
+  // chunk rather than an allocation: the pool runs this on several
+  // threads and must never touch the heap here. Unmasked spans skip the
+  // copy entirely (the scratch stays untouched).
+  uint8_t masked_row[QA_PRE_BLEND_CHUNK * 4];
+  const int32_t chunk =
+      count > QA_PRE_BLEND_CHUNK ? QA_PRE_BLEND_CHUNK : count;
+  int32_t changed = 0;
+
+  for (int32_t y = 0; y < tile_size; y += 1) {
+    uint8_t* row = tile + (ptrdiff_t)y * row_bytes;
+
+    // 1. Stage the cel's bytes (or emptiness) as the blend destination.
+    if (span->base_pixels != NULL) {
+      memcpy(row, span->base_pixels + (ptrdiff_t)y * row_bytes,
+             (size_t)row_bytes);
+    } else {
+      memset(row, 0, (size_t)row_bytes);
+    }
+
+    // 2. Blend the stroke in place, through the SAME kernels the pen-up
+    // commit uses. Rows outside the span keep the staged base.
+    if (blending && y >= top && y < bottom) {
       for (int32_t x0 = left; x0 < right; x0 += chunk) {
         const int32_t n = (right - x0) < chunk ? (right - x0) : chunk;
         const ptrdiff_t offset = ((ptrdiff_t)y * tile_size + x0);
@@ -2275,14 +2305,14 @@ static void qa_pre_blend_item(int32_t item_index, void* context) {
         }
       }
     }
+
+    // 3. Premultiply straight into the upload buffer.
+    if (span->premul_out != NULL) {
+      qa_premultiply_rgba_copy(span->premul_out + (ptrdiff_t)y * row_bytes,
+                               row, tile_size);
+    }
   }
   batch->changed_out[item_index] = (uint8_t)changed;
-
-  // 3. Premultiply straight into the upload buffer — the third pass that
-  // used to be its own FFI call per tile.
-  if (span->premul_out != NULL) {
-    qa_premultiply_rgba_copy(span->premul_out, tile, tile_size * tile_size);
-  }
 }
 
 // Stages, blends and premultiplies MANY overlay tiles in one call, fanned
