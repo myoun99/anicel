@@ -8,6 +8,91 @@ import '../../models/timeline_coverage.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 
+/// How a grip reads right now. The ONLY thing a state change moves is the
+/// ink (R28 #3) — geometry is constant, so this is the whole visual state.
+enum BlockEdgeGripInk { rest, hovered, dragging }
+
+const double _gripBarThickness = 3.5;
+const double _gripBarInset = 2.5;
+
+/// R28 #3: the bar's cross-axis length as a fraction of the row — a
+/// CONSTANT. Hover and drag change the bar's color, never its size.
+const double _gripBarLengthFactor = 0.55;
+
+/// Pointer-target strip anchored inside the block edge — capped at a THIRD
+/// of the cell extent so a one-frame block at the slim 24px zoom keeps a
+/// tappable cell body between its two grips (fixed 12px strips covered the
+/// whole cell and swallowed cell selection).
+double blockEdgeGripHitExtent(double frameCellExtent) =>
+    TimelineBlockEdgeGrip.hitExtent < frameCellExtent / 3
+    ? TimelineBlockEdgeGrip.hitExtent
+    : frameCellExtent / 3;
+
+/// The bar's rect INSIDE a hit strip whose origin is the strip's top-left:
+/// [hitExtent] along the frame axis, [crossAxisExtent] across it.
+///
+/// THE geometry source (R28 #4 tier 2): the widget grip and the dense rows'
+/// chrome painter both read it, so a grip drawn by a painter and one drawn
+/// by a widget cannot drift.
+Rect blockEdgeGripBarRect({
+  required TimelineBlockEdge edge,
+  required double hitExtent,
+  required double crossAxisExtent,
+  required Axis axis,
+}) {
+  final isStart = edge == TimelineBlockEdge.start;
+  final barLength = crossAxisExtent * _gripBarLengthFactor;
+  if (axis == Axis.horizontal) {
+    return Rect.fromLTWH(
+      isStart ? _gripBarInset : hitExtent - _gripBarInset - _gripBarThickness,
+      (crossAxisExtent - barLength) / 2,
+      _gripBarThickness,
+      barLength,
+    );
+  }
+  return Rect.fromLTWH(
+    (crossAxisExtent - barLength) / 2,
+    isStart ? _gripBarInset : hitExtent - _gripBarInset - _gripBarThickness,
+    barLength,
+    _gripBarThickness,
+  );
+}
+
+/// Quiet at rest, full on hover, accent while dragging — state carried by
+/// ink ALONE (R28 #3).
+Color blockEdgeGripBarColor(BlockEdgeGripInk ink) => switch (ink) {
+  BlockEdgeGripInk.dragging => timelineSelectedFrameBorderColor,
+  BlockEdgeGripInk.hovered => timelineDrawingInkColor.withValues(alpha: 0.95),
+  BlockEdgeGripInk.rest => timelineDrawingInkColor.withValues(alpha: 0.38),
+};
+
+/// Draws one grip bar at [barRect]. THE drawing source, shared by the widget
+/// grip and the dense rows' row-wide chrome painter.
+void paintBlockEdgeGripBar(Canvas canvas, Rect barRect, BlockEdgeGripInk ink) {
+  canvas.drawRRect(
+    RRect.fromRectAndRadius(barRect, const Radius.circular(2)),
+    Paint()..color = blockEdgeGripBarColor(ink),
+  );
+}
+
+/// The widget grip's bar, painted rather than boxed: the sparse surfaces
+/// (storyboard cut trim, SE spans, instruction rows) still mount a widget
+/// per grip, and this keeps their pixels identical to the painted rows'.
+class BlockEdgeGripBarPainter extends CustomPainter {
+  const BlockEdgeGripBarPainter({required this.barRect, required this.ink});
+
+  final Rect barRect;
+  final BlockEdgeGripInk ink;
+
+  @override
+  void paint(Canvas canvas, Size size) =>
+      paintBlockEdgeGripBar(canvas, barRect, ink);
+
+  @override
+  bool shouldRepaint(covariant BlockEdgeGripBarPainter oldDelegate) =>
+      oldDelegate.barRect != barRect || oldDelegate.ink != ink;
+}
+
 /// The drag hooks a grip needs once its identity is already bound by the
 /// caller (R28 #3). The timeline binds layer + block, the storyboard binds
 /// the cut — below this line the two are the same grip.
@@ -138,21 +223,11 @@ class TimelineBlockEdgeGrip extends StatelessWidget {
   /// The frame axis direction; geometry and gesture transpose with it.
   final Axis axis;
 
-  /// Pointer-target strip anchored inside the block edge — capped at a
-  /// THIRD of the cell extent so a one-frame block at the slim 24px zoom
-  /// keeps a tappable cell body between its two grips (fixed 12px strips
-  /// covered the whole cell and swallowed cell selection).
+  /// The grip strip's nominal main-axis extent; [blockEdgeGripHitExtent]
+  /// caps it against the cell width.
   static const double hitExtent = 12;
 
-  double get effectiveHitExtent =>
-      hitExtent < frameCellExtent / 3 ? hitExtent : frameCellExtent / 3;
-
-  static const double _barThickness = 3.5;
-  static const double _barInset = 2.5;
-
-  /// R28 #3: the bar's cross-axis length as a fraction of the row — a
-  /// CONSTANT. Hover and drag change the bar's color, never its size.
-  static const double _barLengthFactor = 0.55;
+  double get effectiveHitExtent => blockEdgeGripHitExtent(frameCellExtent);
 
   @override
   Widget build(BuildContext context) {
@@ -257,23 +332,25 @@ class _BlockEdgeGripState extends State<BlockEdgeGrip> {
     // State is carried by ink alone now: quiet at rest, full on hover,
     // accent while dragging. (Both surfaces mount this one widget, so
     // the timeline and the storyboard get the same feedback.)
-    final barLength =
-        widget.crossAxisExtent * TimelineBlockEdgeGrip._barLengthFactor;
-    final barColor = _dragging
-        ? timelineSelectedFrameBorderColor
-        : _hovered
-        ? timelineDrawingInkColor.withValues(alpha: 0.95)
-        : timelineDrawingInkColor.withValues(alpha: 0.38);
-    const barThickness = TimelineBlockEdgeGrip._barThickness;
-    const barInset = TimelineBlockEdgeGrip._barInset;
-
-    final bar = Container(
-      width: horizontal ? barThickness : barLength,
-      height: horizontal ? barLength : barThickness,
-      decoration: BoxDecoration(
-        color: barColor,
-        borderRadius: BorderRadius.circular(2),
+    //
+    // The bar is PAINTED through the shared helpers (R28 #4 tier 2) so the
+    // dense rows — which draw all their grips in one row-wide painter —
+    // and these widget-mounted grips cannot drift apart.
+    final bar = CustomPaint(
+      painter: BlockEdgeGripBarPainter(
+        barRect: blockEdgeGripBarRect(
+          edge: widget.edge,
+          hitExtent: widget.hitExtent,
+          crossAxisExtent: widget.crossAxisExtent,
+          axis: widget.axis,
+        ),
+        ink: _dragging
+            ? BlockEdgeGripInk.dragging
+            : _hovered
+            ? BlockEdgeGripInk.hovered
+            : BlockEdgeGripInk.rest,
       ),
+      child: const SizedBox.expand(),
     );
 
     final grip = MouseRegion(
@@ -297,21 +374,7 @@ class _BlockEdgeGripState extends State<BlockEdgeGrip> {
             : (details) => _updateDrag(details.delta.dy),
         onVerticalDragEnd: horizontal ? null : (_) => _endDrag(),
         onVerticalDragCancel: horizontal ? null : _cancelDrag,
-        child: Align(
-          // The bar sits inset just inside the block edge.
-          alignment: horizontal
-              ? (isStartEdge ? Alignment.centerLeft : Alignment.centerRight)
-              : (isStartEdge ? Alignment.topCenter : Alignment.bottomCenter),
-          child: Padding(
-            padding: EdgeInsets.only(
-              left: horizontal && isStartEdge ? barInset : 0,
-              right: horizontal && !isStartEdge ? barInset : 0,
-              top: !horizontal && isStartEdge ? barInset : 0,
-              bottom: !horizontal && !isStartEdge ? barInset : 0,
-            ),
-            child: bar,
-          ),
-        ),
+        child: bar,
       ),
     );
 

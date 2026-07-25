@@ -13,15 +13,19 @@ import 'package:quick_animaker_v2/src/ui/input/app_input_settings.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_exposure_comma_drag_handle.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_exposure_comma_drag_policy.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_run_end_handles.dart';
 
 import 'timeline_cell_probe.dart';
+import 'timeline_row_chrome_probe.dart';
 
 /// UI-R9 #10: the run-edge cluster — the accent [+] add chip, the N/H/R
 /// property tag + flyout, and the GHOST display.
+///
+/// The cluster is PAINTED (R28 #4 tier 2): its identity, geometry and hit
+/// rects come off the row's chrome model, and every gesture below starts
+/// from the rect the row itself hit-tests.
 void main() {
   TimelineCellExposureState stateFor(Layer layer, int frameIndex) {
     if (layer.timeline[frameIndex]?.isDrawing ?? false) {
@@ -133,19 +137,14 @@ void main() {
       ),
     );
 
-    // Keys carry the run ANCHOR frameId, never an index (UI-R9 A1).
-    expect(
-      find.byKey(const ValueKey<String>('timeline-run-add-end-layer-a-f1')),
-      findsOneWidget,
-    );
+    // Target ids carry the run ANCHOR frameId, never an index (UI-R9 A1).
+    final ids = timelineRowChromeIds(tester, 'layer-a');
+    expect(ids, contains('run-add-end-layer-a-f1'));
     // The second run (frame 6) has free space before it too.
-    expect(
-      find.byKey(const ValueKey<String>('timeline-run-add-start-layer-a-f2')),
-      findsOneWidget,
-    );
+    expect(ids, contains('run-add-start-layer-a-f2'));
 
-    await tester.drag(
-      find.byKey(const ValueKey<String>('timeline-run-add-end-layer-a-f1')),
+    await tester.dragFrom(
+      timelineRowChromeCenter(tester, 'layer-a', 'run-add-end-layer-a-f1'),
       const Offset(96, 0),
       kind: PointerDeviceKind.mouse,
     );
@@ -193,11 +192,8 @@ void main() {
       harness(layers: [layer], runEdit: callbacks, dragPreview: dragPreview),
     );
 
-    final handle = find.byKey(
-      const ValueKey<String>('timeline-run-add-start-layer-a-f2'),
-    );
     final gesture = await tester.startGesture(
-      tester.getCenter(handle),
+      timelineRowChromeCenter(tester, 'layer-a', 'run-add-start-layer-a-f2'),
       kind: PointerDeviceKind.mouse,
     );
     for (var step = 0; step < 3; step += 1) {
@@ -224,23 +220,19 @@ void main() {
       ),
     );
 
-    const tagKey = ValueKey<String>('timeline-run-edge-tag-layer-a-f1-end');
+    const tagId = 'run-edge-tag-layer-a-f1-end';
+    final ids = timelineRowChromeIds(tester, 'layer-a');
     expect(
-      find.byKey(tagKey),
-      findsOneWidget,
+      ids,
+      contains(tagId),
       reason: 'the tag shows without hover, N state included',
     );
     // Start tags mirror on the second run.
-    expect(
-      find.byKey(
-        const ValueKey<String>('timeline-run-edge-tag-layer-a-f2-start'),
-      ),
-      findsOneWidget,
-    );
+    expect(ids, contains('run-edge-tag-layer-a-f2-start'));
 
     // The flyout opens on POINTER DOWN (UI-R10 #2) — before any tap-up.
     final gesture = await tester.startGesture(
-      tester.getCenter(find.byKey(tagKey)),
+      timelineRowChromeCenter(tester, 'layer-a', tagId),
       kind: PointerDeviceKind.mouse,
     );
     await tester.pump();
@@ -281,12 +273,12 @@ void main() {
       harness(layers: [plainLayer()], runEdit: callbacks),
     );
 
-    const tagKey = ValueKey<String>('timeline-run-edge-tag-layer-a-f1-end');
+    const tagId = 'run-edge-tag-layer-a-f1-end';
     const selectionEntry = ValueKey<String>('run-edge-mode-repeat-selection');
 
     // No scopable selection: the entry stays out.
     var gesture = await tester.startGesture(
-      tester.getCenter(find.byKey(tagKey)),
+      timelineRowChromeCenter(tester, 'layer-a', tagId),
       kind: PointerDeviceKind.mouse,
     );
     await tester.pump();
@@ -299,7 +291,7 @@ void main() {
     // A scopable selection: the entry shows; picking it scopes.
     canScope = true;
     gesture = await tester.startGesture(
-      tester.getCenter(find.byKey(tagKey)),
+      timelineRowChromeCenter(tester, 'layer-a', tagId),
       kind: PointerDeviceKind.mouse,
     );
     await tester.pump();
@@ -323,23 +315,27 @@ void main() {
       ),
     );
 
-    const tagKey = ValueKey<String>('timeline-run-edge-tag-layer-r-rf-end');
-    expect(find.byKey(tagKey), findsOneWidget);
+    const tagId = 'run-edge-tag-layer-r-rf-end';
+    final ids = timelineRowChromeIds(tester, 'layer-r');
+    expect(ids, contains(tagId));
 
     // The [+] chip stays too: ghost coverage never blocks authored adds.
-    final addKey = find.byKey(
-      const ValueKey<String>('timeline-run-add-end-layer-r-rf'),
-    );
-    expect(addKey, findsOneWidget);
+    expect(ids, contains('run-add-end-layer-r-rf'));
     // Both sit at the run end (frame 2), NOT after the ghost tail (6).
     final edgeLeft = timelineCellGlobalRect(tester, 'layer-r', 2).left;
     expect(
-      (tester.getTopLeft(addKey).dx - edgeLeft).abs(),
+      (timelineRowChromeGlobalRect(
+                tester,
+                'layer-r',
+                'run-add-end-layer-r-rf',
+              ).left -
+              edgeLeft)
+          .abs(),
       lessThan(4),
       reason: 'cluster hugs the authored edge at frame 2',
     );
 
-    await tester.tap(find.byKey(tagKey));
+    await tester.tapAt(timelineRowChromeCenter(tester, 'layer-r', tagId));
     await tester.pumpAndSettle();
     // Selecting None clears the edge.
     await tester.tap(find.byKey(const ValueKey<String>('run-edge-mode-none')));
@@ -434,12 +430,11 @@ void main() {
       harness(layers: [patterned], runEdit: recordingCallbacks()),
     );
 
-    final outline = find.byKey(
-      const ValueKey<String>('timeline-run-pattern-layer-p-p2-end'),
-    );
-    expect(outline, findsOneWidget);
+    final spans = timelineRowChromePatternSpans(tester, 'layer-p');
+    expect(spans, hasLength(1));
     // The span wraps the pattern block [1,2) only (48px harness cells).
-    expect(tester.getSize(outline).width, 48);
+    expect(spans.single.width, 48);
+    expect(spans.single.left, 48);
   });
 
   testWidgets('ghost cells dim and ghost blocks carry no edge grips', (
@@ -484,7 +479,10 @@ void main() {
     expect(ghostAt(6), isFalse, reason: 'the tail stops at cut frame 6');
 
     // Grips: only the SOURCE block's two — the ghost blocks carry none.
-    expect(find.byType(TimelineBlockEdgeGrip), findsNWidgets(2));
+    expect(timelineRowChromeIds(tester, 'layer-r'), [
+      'block-edge-grip-start-layer-r-0',
+      'block-edge-grip-end-layer-r-0',
+    ]);
   });
 
   testWidgets('PEN-12 #6: with touch-timeline-scroll ON, a clean finger '
@@ -506,8 +504,8 @@ void main() {
       ),
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-run-add-end-layer-a-f1')),
+    await tester.tapAt(
+      timelineRowChromeCenter(tester, 'layer-a', 'run-add-end-layer-a-f1'),
     );
     await tester.pumpAndSettle();
     expect(begins.single, (const LayerId('layer-a'), 0, true));
@@ -532,12 +530,10 @@ void main() {
         .toList();
     final before = scrollOffsets();
 
-    final tag = find.byKey(
-      const ValueKey<String>('timeline-run-edge-tag-layer-a-f1-end'),
-    );
-    expect(tag, findsOneWidget);
+    const tagId = 'run-edge-tag-layer-a-f1-end';
+    expect(timelineRowChromeIds(tester, 'layer-a'), contains(tagId));
     final gesture = await tester.startGesture(
-      tester.getCenter(tag),
+      timelineRowChromeCenter(tester, 'layer-a', tagId),
       kind: PointerDeviceKind.touch,
     );
     for (var step = 0; step < 5; step += 1) {

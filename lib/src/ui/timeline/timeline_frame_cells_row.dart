@@ -9,20 +9,18 @@ import '../../services/audio/audio_peaks_extractor.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project_frame_rate.dart';
-import '../../models/timeline_coverage.dart';
 import 'timeline_cell_editor_policy.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
-import 'timeline_exposure_comma_drag_handle.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import '../../models/timeline_repeat.dart';
 import 'timeline_frame_cell.dart';
-import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_frame_window.dart';
 import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
 import 'timeline_row_cells_painter.dart';
+import 'timeline_row_edit_chrome.dart';
 import 'timeline_row_run_labels_painter.dart';
 import 'timeline_run_end_handles.dart';
 import 'timeline_grid_metrics.dart';
@@ -163,6 +161,30 @@ class TimelineFrameCellsRow extends StatelessWidget {
     final commaDrag = this.commaDrag;
     final rangeGesture = this.rangeGesture;
     final axisWord = axis == Axis.vertical ? 'column' : 'row';
+    // Grips ride every drawing-holding kind; the run clusters skip the SE
+    // sheet rows (their spans are sound clips, not glued cel runs).
+    final wantsGrips = commaDrag != null && layerKindHoldsDrawings(layer.kind);
+    final wantsRunEdges =
+        runEdit != null &&
+        layerKindHoldsDrawings(layer.kind) &&
+        !layerKindUsesSeSheetCells(layer.kind);
+    final editChrome = wantsGrips || wantsRunEdges
+        ? timelineRowEditChromeModel(
+            layer: layer,
+            baseLayer: baseLayer,
+            frameStartIndex: frameStartIndex,
+            frameEndIndexExclusive: frameEndIndexExclusive,
+            leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+            frameCellExtent: metrics.frameCellWidth,
+            crossAxisExtent: metrics.layerRowHeight,
+            axis: axis,
+            includeGrips: wantsGrips,
+            includeRunEdges: wantsRunEdges,
+            // The spill-in block's `~` replaces its start grip (UI-R7 #6).
+            suppressStartGripAtZero:
+                seSpillsIn && layerKindUsesSeSheetCells(layer.kind),
+          )
+        : null;
 
     final stack = Stack(
       key: ValueKey<String>('$keyPrefix-frame-$axisWord-area-${layer.id}'),
@@ -399,42 +421,33 @@ class TimelineFrameCellsRow extends StatelessWidget {
             callbacks: rangeGesture,
             axis: axis,
           ),
-        // The TVP run-edge handles (UI-R8): [+] add-frames + [↻] repeat,
-        // hugging each glued run's edges where space is free. Mounted from
-        // the COMMITTED layer: the add-start preview shifts the run's
-        // start, and a preview-derived mount would remount the handle
-        // mid-gesture (R12-③ — the remount's dispose used to commit the
-        // drag at one frame).
-        if (runEdit != null &&
-            layerKindHoldsDrawings(layer.kind) &&
-            !layerKindUsesSeSheetCells(layer.kind))
-          ...timelineRowRunEndHandles(
-            // Display layer positions the clusters (they ride previews,
-            // UI-R11 #1/#2); the committed base keeps their identity.
-            layer: layer,
-            baseLayer: baseLayer,
-            frameStartIndex: frameStartIndex,
-            frameEndIndexExclusive: frameEndIndexExclusive,
-            leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-            frameCellExtent: metrics.frameCellWidth,
-            crossAxisExtent: metrics.layerRowHeight,
-            callbacks: runEdit!,
-            axis: axis,
-            keyPrefix: keyPrefix,
-          ),
-        if (commaDrag != null && layerKindHoldsDrawings(layer.kind))
-          ...timelineRowBlockEdgeGrips(
-            layer: layer,
-            frameStartIndex: frameStartIndex,
-            frameEndIndexExclusive: frameEndIndexExclusive,
-            leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-            frameCellExtent: metrics.frameCellWidth,
-            crossAxisExtent: metrics.layerRowHeight,
-            commaDrag: commaDrag,
-            axis: axis,
-            // The spill-in block's `~` replaces its start grip (UI-R7 #6).
-            suppressStartGripAtZero:
-                seSpillsIn && layerKindUsesSeSheetCells(layer.kind),
+        // The block edit chrome — comma grips plus the TVP run-edge
+        // clusters ([+] add-frames over the N/H/R property tag, hugging
+        // each glued run's edges). ONE painter and ONE gesture layer for
+        // the whole row (R28 #4 tier 2): these were a Positioned box per
+        // grip and a two-Text Column per run edge, so a zoom step re-laid
+        // out rows x (blocks + runs) of them.
+        //
+        // Identity vs display (R12-③, UI-R11 #1/#2): the run clusters
+        // position on the DISPLAY layer (they ride previews) but call back
+        // with the COMMITTED run's identity, and the layer itself no longer
+        // remounts mid-gesture at all — its state lives at row level.
+        if (editChrome != null && !editChrome.isEmpty)
+          Positioned.fill(
+            // The SLOT key (R12-③ rule, UI-R22 #1): mid-drag previews
+            // add/remove sibling overlays in this Stack.
+            key: ValueKey<String>('$keyPrefix-edit-chrome-slot-${layer.id}'),
+            child: TimelineRowEditChromeLayer(
+              paintKey: ValueKey<String>(
+                '$keyPrefix-edit-chrome-${layer.id}',
+              ),
+              layerId: layer.id,
+              model: editChrome,
+              frameCellExtent: metrics.frameCellWidth,
+              axis: axis,
+              commaDrag: commaDrag,
+              runEdit: runEdit,
+            ),
           ),
         if (commaDrag != null && layer.kind == LayerKind.instruction)
           ...timelineRowInstructionEdgeGrips(
@@ -527,70 +540,4 @@ class TimelineFrameCellsRow extends StatelessWidget {
       ],
     );
   }
-}
-
-/// The edge grips for every drawing block intersecting the visible window,
-/// shared by the horizontal row and the X-sheet column (Axis policy).
-List<Widget> timelineRowBlockEdgeGrips({
-  required Layer layer,
-  required int frameStartIndex,
-  required int frameEndIndexExclusive,
-  required double leadingFrameSpacerWidth,
-  required double frameCellExtent,
-  required double crossAxisExtent,
-  required TimelineCommaDragCallbacks commaDrag,
-  required Axis axis,
-  bool suppressStartGripAtZero = false,
-}) {
-  final grips = <Widget>[];
-  final blocks = drawingBlocks(layer.timeline);
-  for (var ordinal = 0; ordinal < blocks.length; ordinal += 1) {
-    final block = blocks[ordinal];
-    if (block.endIndexExclusive <= frameStartIndex ||
-        block.startIndex >= frameEndIndexExclusive) {
-      continue;
-    }
-    // Ghost repeat instances are DERIVED — no timing grips (UI-R8).
-    if (block.entry.ghost) {
-      continue;
-    }
-
-    final blockStartOffset = frameVisibleX(
-      frameIndex: block.startIndex,
-      frameStartIndex: frameStartIndex,
-      frameCellWidth: frameCellExtent,
-      leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-    );
-    final blockEndOffset = frameVisibleX(
-      frameIndex: block.endIndexExclusive,
-      frameStartIndex: frameStartIndex,
-      frameCellWidth: frameCellExtent,
-      leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-    );
-
-    for (final edge in TimelineBlockEdge.values) {
-      // The spill-in display block's start is not editable here — its real
-      // start lives in an earlier cut (UI-R7 #6, TrackSeWindow contract).
-      if (suppressStartGripAtZero &&
-          edge == TimelineBlockEdge.start &&
-          block.startIndex == 0) {
-        continue;
-      }
-      grips.add(
-        TimelineBlockEdgeGrip(
-          layerId: layer.id,
-          blockStartIndex: block.startIndex,
-          blockOrdinal: ordinal,
-          edge: edge,
-          blockStartOffset: blockStartOffset,
-          blockEndOffset: blockEndOffset,
-          frameCellExtent: frameCellExtent,
-          crossAxisExtent: crossAxisExtent,
-          callbacks: commaDrag,
-          axis: axis,
-        ),
-      );
-    }
-  }
-  return grips;
 }

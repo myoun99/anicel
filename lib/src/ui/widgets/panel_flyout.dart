@@ -57,6 +57,11 @@ class PanelFlyoutItem extends PanelFlyoutEntry {
 /// Shows the shared flyout anchored under [anchorContext]'s widget and runs
 /// the picked item's [PanelFlyoutItem.onSelected] after the menu closes.
 ///
+/// [anchorRect] narrows the anchor to a rect INSIDE that widget, in its
+/// local coordinates. PAINTED affordances (the timeline's run-edge property
+/// tags) have no box of their own to anchor on, and this keeps them on the
+/// one shared popup shell instead of growing a surface-local copy.
+///
 /// When the space below the anchor can't fit the list, the flyout opens
 /// UPWARD instead (its bottom hugging the anchor's top) — the item order
 /// never changes (UI-R6 #1); Material's default merely clamped the menu,
@@ -64,8 +69,10 @@ class PanelFlyoutItem extends PanelFlyoutEntry {
 Future<void> showPanelFlyout(
   BuildContext anchorContext, {
   required List<PanelFlyoutEntry> entries,
+  Rect? anchorRect,
 }) async {
   final button = anchorContext.findRenderObject()! as RenderBox;
+  final anchor = anchorRect ?? (Offset.zero & button.size);
   final overlay =
       Navigator.of(anchorContext).overlay!.context.findRenderObject()!
           as RenderBox;
@@ -79,30 +86,27 @@ Future<void> showPanelFlyout(
       PanelFlyoutItem() => 32.0,
     };
   }
-  final anchorTopLeft = button.localToGlobal(Offset.zero, ancestor: overlay);
+  final anchorTopLeft = button.localToGlobal(anchor.topLeft, ancestor: overlay);
   final anchorBottomLeft = button.localToGlobal(
-    Offset(0, button.size.height),
+    anchor.bottomLeft,
     ancestor: overlay,
   );
   final spaceBelow = overlay.size.height - anchorBottomLeft.dy;
   final openUpward =
       estimatedHeight > spaceBelow && anchorTopLeft.dy > spaceBelow;
-  final anchorRect = openUpward
+  final menuAnchorRect = openUpward
       ? Rect.fromLTWH(
           anchorTopLeft.dx,
           anchorTopLeft.dy - estimatedHeight,
-          button.size.width,
+          anchor.width,
           estimatedHeight,
         )
       : Rect.fromPoints(
           anchorBottomLeft,
-          button.localToGlobal(
-            button.size.bottomRight(Offset.zero),
-            ancestor: overlay,
-          ),
+          button.localToGlobal(anchor.bottomRight, ancestor: overlay),
         );
   final position = RelativeRect.fromRect(
-    anchorRect,
+    menuAnchorRect,
     Offset.zero & overlay.size,
   );
 

@@ -13,9 +13,15 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_cells_row.dart'
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/xsheet_timeline_grid.dart';
 
+import 'timeline/timeline_row_chrome_probe.dart';
+
 /// TVPaint-style comma grips: every drawing block shows inset bars inside
 /// BOTH edges, in both orientations; dragging reports cumulative frame
 /// deltas.
+///
+/// The dense rows PAINT their grips (R28 #4 tier 2), so the assertions read
+/// the row's target model and the drags start from those rects — the same
+/// geometry the row hit-tests with.
 void main() {
   group('comma drag pixel policy', () {
     test('rounds at cell midpoints, both directions', () {
@@ -36,10 +42,12 @@ void main() {
     testWidgets('every block gets a start and an end grip', (tester) async {
       await tester.pumpWidget(_rowHarness(layer: _twoBlockLayer()));
 
-      expect(_gripFinder('start', 0), findsOneWidget);
-      expect(_gripFinder('end', 0), findsOneWidget);
-      expect(_gripFinder('start', 1), findsOneWidget);
-      expect(_gripFinder('end', 1), findsOneWidget);
+      expect(timelineRowChromeIds(tester, 'layer-a'), [
+        _gripId('start', 0),
+        _gripId('end', 0),
+        _gripId('start', 1),
+        _gripId('end', 1),
+      ]);
     });
 
     testWidgets('grips sit inside the block edges', (tester) async {
@@ -47,8 +55,8 @@ void main() {
 
       // Block [0,2) at 48px cells: start hit strip begins at the block's
       // left edge, end strip ends at its right edge (x = 96).
-      expect(tester.getTopLeft(_gripFinder('start', 0)).dx, 0);
-      expect(tester.getBottomRight(_gripFinder('end', 0)).dx, 96);
+      expect(_gripRect(tester, 'start', 0).left, 0);
+      expect(_gripRect(tester, 'end', 0).right, 96);
     });
 
     testWidgets('camera layers show no grips', (tester) async {
@@ -56,7 +64,7 @@ void main() {
         _rowHarness(layer: _twoBlockLayer(kind: LayerKind.camera)),
       );
 
-      expect(_anyGripFinder(), findsNothing);
+      expect(timelineRowChromeIds(tester, 'layer-a'), isEmpty);
     });
 
     testWidgets('no grips without commaDrag callbacks', (tester) async {
@@ -64,7 +72,7 @@ void main() {
         _rowHarness(layer: _twoBlockLayer(), commaDrag: null),
       );
 
-      expect(_anyGripFinder(), findsNothing);
+      expect(timelineRowChromeIds(tester, 'layer-a'), isEmpty);
     });
 
     testWidgets('dragging the end grip reports cumulative frame deltas', (
@@ -76,7 +84,7 @@ void main() {
       );
 
       final gesture = await tester.startGesture(
-        tester.getCenter(_gripFinder('end', 0)),
+        _gripRect(tester, 'end', 0).center,
       );
       await gesture.moveBy(const Offset(19, 0));
       await tester.pump();
@@ -106,7 +114,7 @@ void main() {
       );
 
       final gesture = await tester.startGesture(
-        tester.getCenter(_gripFinder('start', 1)),
+        _gripRect(tester, 'start', 1).center,
       );
       await gesture.moveBy(const Offset(-19, 0));
       await tester.pump();
@@ -129,7 +137,7 @@ void main() {
       );
 
       final gesture = await tester.startGesture(
-        tester.getCenter(_gripFinder('end', 0)),
+        _gripRect(tester, 'end', 0).center,
       );
       await gesture.moveBy(const Offset(67, 0));
       await tester.pump();
@@ -151,11 +159,17 @@ void main() {
         _xsheetHarness(layer: _twoBlockLayer(), commaDrag: log.callbacks),
       );
 
-      expect(_gripFinder('start', 0), findsOneWidget);
-      expect(_gripFinder('end', 1), findsOneWidget);
+      final ids = timelineRowChromeIds(tester, 'layer-a', prefix: 'xsheet');
+      expect(ids, contains(_gripId('start', 0)));
+      expect(ids, contains(_gripId('end', 1)));
 
       final gesture = await tester.startGesture(
-        tester.getCenter(_gripFinder('end', 0)),
+        timelineRowChromeCenter(
+          tester,
+          'layer-a',
+          _gripId('end', 0),
+          prefix: 'xsheet',
+        ),
       );
       // X-sheet frame rows are 36px tall.
       await gesture.moveBy(const Offset(0, 19));
@@ -174,15 +188,11 @@ void main() {
   });
 }
 
-Finder _gripFinder(String edge, int ordinal) => find.byKey(
-  ValueKey<String>('timeline-block-edge-grip-$edge-layer-a-$ordinal'),
-);
+String _gripId(String edge, int ordinal) =>
+    'block-edge-grip-$edge-layer-a-$ordinal';
 
-Finder _anyGripFinder() => find.byWidgetPredicate((widget) {
-  final key = widget.key;
-  return key is ValueKey<String> &&
-      key.value.startsWith('timeline-block-edge-grip-');
-});
+Rect _gripRect(WidgetTester tester, String edge, int ordinal) =>
+    timelineRowChromeGlobalRect(tester, 'layer-a', _gripId(edge, ordinal));
 
 class _DragLog {
   _DragLog({this.acceptBegin = true});
