@@ -447,34 +447,42 @@ Layer rederiveRunBehaviors(Layer layer, {required int cutFrameCount}) {
 ({int startIndex, int endIndexExclusive, FrameId anchorFrameId})? gluedRunAt(
   Layer layer,
   int blockStartIndex,
-) {
-  final entry = layer.timeline[blockStartIndex];
-  if (entry == null || !entry.isDrawing || entry.ghost) {
-    return null;
-  }
+) => gluedRunsByBlockStart(layer)[blockStartIndex];
+
+/// EVERY glued run in [layer], keyed by each member block's start index.
+///
+/// [gluedRunAt] answers for one block and rebuilds the block list to do it,
+/// so asking it once per block — which is what resolving a row's run-edge
+/// chrome does — was O(n²) with an allocation per block. Callers that want
+/// more than one run resolve them all in a single pass through this and index
+/// the result.
+Map<int, ({int startIndex, int endIndexExclusive, FrameId anchorFrameId})>
+gluedRunsByBlockStart(Layer layer) {
   final blocks = [
     for (final key in layer.timeline.keys)
       if (layer.timeline[key]!.isDrawing && !layer.timeline[key]!.ghost)
         (start: key, endExclusive: key + layer.timeline[key]!.length!),
   ];
-  var index = blocks.indexWhere((block) => block.start == blockStartIndex);
-  if (index < 0) {
-    return null;
+  final runs =
+      <int, ({int startIndex, int endIndexExclusive, FrameId anchorFrameId})>{};
+  var first = 0;
+  while (first < blocks.length) {
+    var last = first;
+    while (last < blocks.length - 1 &&
+        blocks[last].endExclusive == blocks[last + 1].start) {
+      last += 1;
+    }
+    final run = (
+      startIndex: blocks[first].start,
+      endIndexExclusive: blocks[last].endExclusive,
+      anchorFrameId: layer.timeline[blocks[first].start]!.frameId!,
+    );
+    for (var member = first; member <= last; member += 1) {
+      runs[blocks[member].start] = run;
+    }
+    first = last + 1;
   }
-  var first = index;
-  while (first > 0 && blocks[first - 1].endExclusive == blocks[first].start) {
-    first -= 1;
-  }
-  var last = index;
-  while (last < blocks.length - 1 &&
-      blocks[last].endExclusive == blocks[last + 1].start) {
-    last += 1;
-  }
-  return (
-    startIndex: blocks[first].start,
-    endIndexExclusive: blocks[last].endExclusive,
-    anchorFrameId: layer.timeline[blocks[first].start]!.frameId!,
-  );
+  return runs;
 }
 
 /// The behavior set on [side] of the glued run containing
@@ -488,6 +496,16 @@ TimelineRunBehavior? runEdgeBehaviorAt(
   if (run == null) {
     return null;
   }
+  return runEdgeBehaviorIn(layer, run, side);
+}
+
+/// [runEdgeBehaviorAt] with the run already resolved — the form a caller
+/// that walked every run once should use.
+TimelineRunBehavior? runEdgeBehaviorIn(
+  Layer layer,
+  ({int startIndex, int endIndexExclusive, FrameId anchorFrameId}) run,
+  TimelineRunEdgeSide side,
+) {
   TimelineRunBehavior? found;
   for (final behavior in layer.runBehaviors) {
     if (behavior.side != side) {
