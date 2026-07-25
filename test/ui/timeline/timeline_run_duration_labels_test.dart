@@ -7,7 +7,8 @@ import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_cells_row.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
+
+import 'timeline_frame_geometry_probe.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_row_run_labels_painter.dart';
 
 /// R26 #7 + R27 #3: every frame block prints ITS OWN length — one label
@@ -51,14 +52,11 @@ void main() {
             layer: layer,
             active: true,
             playbackFrameCount: 12,
-            frameStartIndex: 0,
-            frameEndIndexExclusive: 12,
-            leadingFrameSpacerWidth: 0,
-            trailingFrameSpacerWidth: 0,
-            metrics: const TimelineGridMetrics(
-              frameCellWidth: cellWidth,
-              layerRowHeight: 52,
+            geometry: testFrameGeometry(
+              frameCellExtent: cellWidth,
+              frameEndIndexExclusive: 12,
             ),
+            crossAxisExtent: 52,
             exposureStateForLayer: stateFor,
             onSelectLayer: (_) {},
             onSelectFrame: (_) {},

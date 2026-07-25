@@ -9,6 +9,8 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_double_tap.dart'
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_row_cells_painter.dart';
 
+import 'timeline_frame_geometry_probe.dart';
+
 /// R26 #37: the cell editor opens on two taps of the SAME cell only —
 /// tapping two different frames of one block is two seeks (the double-tap
 /// recognizer's 100px slop used to fuse them into a rename).
@@ -43,11 +45,10 @@ void main() {
                 layer: layer,
                 active: true,
                 playbackFrameCount: 6,
-                frameStartIndex: 0,
-                frameEndIndexExclusive: 6,
-                leadingFrameSpacerWidth: 0,
-                trailingFrameSpacerWidth: 0,
-                frameCellExtent: cellExtent,
+                geometry: testFrameGeometry(
+                  frameCellExtent: cellExtent,
+                  frameEndIndexExclusive: 6,
+                ),
                 crossAxisExtent: 24,
                 axis: Axis.horizontal,
                 exposureStateForLayer: (_, _) =>

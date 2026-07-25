@@ -17,6 +17,8 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_tile_ops.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_tile_store.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_row_cells_painter.dart';
 
+import 'timeline_frame_geometry_probe.dart';
+
 /// UI-R18 O7 T2: the substrate tile store — engine-gated stand-down,
 /// probe-driven op emission, tile landing + look-identity invalidation.
 void main() {
@@ -51,10 +53,10 @@ void main() {
     return TimelineRowCellsPainter(
       layer: layer,
       playbackFrameCount: 24,
-      frameStartIndex: 0,
-      frameEndIndexExclusive: 40,
-      leadingFrameSpacerWidth: 0,
-      frameCellExtent: 24,
+      geometry: testFrameGeometry(
+        frameCellExtent: 24,
+        frameEndIndexExclusive: 40,
+      ),
       crossAxisExtent: 28,
       exposureStateForLayer: stateFor,
       colorScheme: const ColorScheme.dark(),
@@ -320,10 +322,10 @@ void main() {
     TimelineRowCellsPainter zoomedTo(double extent) => TimelineRowCellsPainter(
       layer: editedPainter.layer,
       playbackFrameCount: 24,
-      frameStartIndex: 0,
-      frameEndIndexExclusive: 40,
-      leadingFrameSpacerWidth: 0,
-      frameCellExtent: extent,
+      geometry: testFrameGeometry(
+        frameCellExtent: extent,
+        frameEndIndexExclusive: 40,
+      ),
       crossAxisExtent: 28,
       exposureStateForLayer: stateFor,
       colorScheme: const ColorScheme.dark(),

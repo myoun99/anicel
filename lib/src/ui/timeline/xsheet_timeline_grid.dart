@@ -29,6 +29,7 @@ import 'timeline_frame_range_gesture.dart';
 import 'timeline_ruler_cursor_overlay.dart';
 import 'timeline_run_end_handles.dart';
 import 'timeline_frame_cells_row.dart' show TimelineFrameCellsRow;
+import 'timeline_frame_geometry.dart' show TimelineFrameGeometry;
 import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_frame_cursor_layer.dart';
 import 'timeline_beat_lines.dart';
@@ -319,6 +320,27 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   final TimelineRangeMoveRowResolver _rangeMoveResolver =
       TimelineRangeMoveRowResolver();
 
+  /// The LIVE frame-axis geometry the painted columns follow (R28 #4 — the
+  /// timeline's rule, transposed). Its identity outlives zoom steps, so the
+  /// row memo hands cached columns back while the geometry underneath moves;
+  /// listeners are render objects only (see the timeline body's note).
+  final ValueNotifier<TimelineFrameGeometry> _frameGeometry = ValueNotifier(
+    const TimelineFrameGeometry(
+      frameCellExtent: 1,
+      frameStartIndex: 0,
+      frameEndIndexExclusive: 0,
+    ),
+  );
+
+  ValueNotifier<TimelineFrameGeometry> _publishFrameGeometry() {
+    _frameGeometry.value = TimelineFrameGeometry(
+      frameCellExtent: _metrics.frameCellWidth,
+      frameStartIndex: 0,
+      frameEndIndexExclusive: _renderedFrameCount,
+    );
+    return _frameGeometry;
+  }
+
   /// The per-build gesture bundle (rebuilt in [build], consumed by the
   /// column builder).
   TimelineRangeGestureCallbacks? _rangeGesture;
@@ -382,6 +404,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       ..removeListener(_handleFrameScroll)
       ..dispose();
     _layerScrollController.dispose();
+    _frameGeometry.dispose();
     _frameAxisOffset.dispose();
     _frameWindowBucket.dispose();
     super.dispose();
@@ -717,13 +740,10 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       baseLayer: entry.layer,
       active: entry.layer.id == widget.activeLayerId,
       playbackFrameCount: widget.frameCount,
-      frameStartIndex: 0,
-      frameEndIndexExclusive: _renderedFrameCount,
-      leadingFrameSpacerWidth: 0,
-      trailingFrameSpacerWidth: 0,
+      geometry: _publishFrameGeometry(),
+      crossAxisExtent: _metrics.layerRowHeight,
       windowBucket: _frameWindowBucket,
       viewportMainExtent: viewportExtent,
-      metrics: _metrics,
       exposureStateForLayer: widget.exposureStateForLayer,
       frameNameForLayer: widget.frameNameForLayer,
       celHasContentForLayer: widget.celHasContentForLayer,

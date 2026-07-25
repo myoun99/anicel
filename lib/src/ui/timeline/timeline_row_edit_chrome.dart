@@ -14,7 +14,7 @@ import '../../models/timeline_repeat.dart';
 import '../widgets/panel_flyout.dart';
 import 'timeline_exposure_comma_drag_handle.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
-import 'timeline_frame_coordinate_policy.dart';
+import 'timeline_frame_geometry.dart';
 import 'timeline_run_end_handles.dart';
 
 /// One pointer target in a dense row's edit chrome. Its [rect] is the
@@ -156,10 +156,7 @@ class TimelineRowEditChromeModel {
 TimelineRowEditChromeModel timelineRowEditChromeModel({
   required Layer layer,
   Layer? baseLayer,
-  required int frameStartIndex,
-  required int frameEndIndexExclusive,
-  required double leadingFrameSpacerWidth,
-  required double frameCellExtent,
+  required TimelineFrameGeometry geometry,
   required double crossAxisExtent,
   required Axis axis,
   required bool includeGrips,
@@ -169,6 +166,9 @@ TimelineRowEditChromeModel timelineRowEditChromeModel({
   final targets = <TimelineRowChromeTarget>[];
   final patternSpans = <Rect>[];
   final horizontal = axis == Axis.horizontal;
+  final frameStartIndex = geometry.frameStartIndex;
+  final frameEndIndexExclusive = geometry.frameEndIndexExclusive;
+  final frameCellExtent = geometry.frameCellExtent;
 
   Rect mainRect(double start, double extent) => horizontal
       ? Rect.fromLTWH(start, 0, extent, crossAxisExtent)
@@ -187,18 +187,8 @@ TimelineRowEditChromeModel timelineRowEditChromeModel({
       if (block.entry.ghost) {
         continue;
       }
-      final blockStartOffset = frameVisibleX(
-        frameIndex: block.startIndex,
-        frameStartIndex: frameStartIndex,
-        frameCellWidth: frameCellExtent,
-        leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-      );
-      final blockEndOffset = frameVisibleX(
-        frameIndex: block.endIndexExclusive,
-        frameStartIndex: frameStartIndex,
-        frameCellWidth: frameCellExtent,
-        leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-      );
+      final blockStartOffset = geometry.edgeAt(block.startIndex);
+      final blockEndOffset = geometry.edgeAt(block.endIndexExclusive);
       for (final edge in TimelineBlockEdge.values) {
         // The spill-in display block's start is not editable here — its
         // real start lives in an earlier cut (UI-R7 #6, TrackSeWindow).
@@ -237,7 +227,7 @@ TimelineRowEditChromeModel timelineRowEditChromeModel({
       baseLayer: baseLayer,
       frameStartIndex: frameStartIndex,
       frameEndIndexExclusive: frameEndIndexExclusive,
-      leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+      leadingFrameSpacerWidth: geometry.leadingFrameSpacerWidth,
       frameCellExtent: frameCellExtent,
     );
     for (final span in chrome.patterns) {
@@ -282,19 +272,87 @@ TimelineRowEditChromeModel timelineRowEditChromeModel({
   );
 }
 
+/// Holds a row's chrome inputs and hands out the model for whatever geometry
+/// is live, remembering the last one.
+///
+/// The split matters (R28 #4 tier 3 measurement): resolving the model walks
+/// the layer's blocks and glued runs, which is the expensive part and does
+/// NOT depend on the zoom; the rects are arithmetic. One instance per row
+/// survives zoom steps, so a step re-derives rects and nothing else.
+class TimelineRowChromeResolver {
+  TimelineRowChromeResolver({
+    required this.layer,
+    required this.baseLayer,
+    required this.crossAxisExtent,
+    required this.axis,
+    required this.includeGrips,
+    required this.includeRunEdges,
+    required this.suppressStartGripAtZero,
+  });
+
+  final Layer layer;
+  final Layer? baseLayer;
+  final double crossAxisExtent;
+  final Axis axis;
+  final bool includeGrips;
+  final bool includeRunEdges;
+  final bool suppressStartGripAtZero;
+
+  TimelineFrameGeometry? _lastGeometry;
+  TimelineRowEditChromeModel? _lastModel;
+
+  /// Whether [other] would resolve the same models — the widget-level
+  /// "do I need a new resolver" test.
+  bool matches(TimelineRowChromeResolver other) =>
+      identical(other.layer, layer) &&
+      identical(other.baseLayer, baseLayer) &&
+      other.crossAxisExtent == crossAxisExtent &&
+      other.axis == axis &&
+      other.includeGrips == includeGrips &&
+      other.includeRunEdges == includeRunEdges &&
+      other.suppressStartGripAtZero == suppressStartGripAtZero;
+
+  TimelineRowEditChromeModel resolve(TimelineFrameGeometry geometry) {
+    final cached = _lastModel;
+    if (cached != null && _lastGeometry == geometry) {
+      return cached;
+    }
+    final model = timelineRowEditChromeModel(
+      layer: layer,
+      baseLayer: baseLayer,
+      geometry: geometry,
+      crossAxisExtent: crossAxisExtent,
+      axis: axis,
+      includeGrips: includeGrips,
+      includeRunEdges: includeRunEdges,
+      suppressStartGripAtZero: suppressStartGripAtZero,
+    );
+    _lastGeometry = geometry;
+    _lastModel = model;
+    return model;
+  }
+}
+
 /// Draws a dense row's whole edit chrome in one pass.
 class TimelineRowEditChromePainter extends CustomPainter {
-  const TimelineRowEditChromePainter({
-    required this.model,
-    required this.frameCellExtent,
+  TimelineRowEditChromePainter({
+    required this.resolver,
+    required this.geometry,
     required this.colorScheme,
     required this.hoveredId,
     required this.operatingId,
     required this.draggingGripId,
-  });
+  }) : super(repaint: geometry);
 
-  final TimelineRowEditChromeModel model;
-  final double frameCellExtent;
+  final TimelineRowChromeResolver resolver;
+
+  /// The LIVE frame-axis geometry (R28 #4): a zoom step repaints, never
+  /// rebuilds, the row that built this painter.
+  final TimelineFrameGeometryHandle geometry;
+
+  TimelineRowEditChromeModel get model => resolver.resolve(geometry.value);
+  double get frameCellExtent => geometry.value.frameCellExtent;
+
   final ColorScheme colorScheme;
 
   /// The target the pointer rests on; null = nothing hovered.
@@ -332,6 +390,7 @@ class TimelineRowEditChromePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
+    final model = this.model;
     for (final span in model.patternSpans) {
       paintTimelineRunPatternSpan(canvas, span);
     }
@@ -378,11 +437,11 @@ class TimelineRowEditChromePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant TimelineRowEditChromePainter oldDelegate) =>
+      // Geometry is absent on purpose — it arrives through `repaint`.
       // Value-compared, never `identical`: a fresh-but-equal instance is
       // the common case on a rebuild (the churn that hid in the rulers).
       !listEquals(oldDelegate.model.targets, model.targets) ||
       !listEquals(oldDelegate.model.patternSpans, model.patternSpans) ||
-      oldDelegate.frameCellExtent != frameCellExtent ||
       oldDelegate.colorScheme != colorScheme ||
       oldDelegate.hoveredId != hoveredId ||
       oldDelegate.operatingId != operatingId ||
@@ -393,7 +452,7 @@ class TimelineRowEditChromePainter extends CustomPainter {
     // The glyphs these replaced were `Text` widgets, each carrying its own
     // semantics node; dropping them would take the row away from screen
     // readers (tier 1's lesson, applied before it can bite).
-    for (final target in model.targets)
+    for (final target in resolver.resolve(geometry.value).targets)
       if (target is TimelineRowRunAddTarget)
         CustomPainterSemantics(
           rect: target.rect,
@@ -425,8 +484,8 @@ class TimelineRowEditChromeLayer extends StatefulWidget {
     super.key,
     required this.paintKey,
     required this.layerId,
-    required this.model,
-    required this.frameCellExtent,
+    required this.resolver,
+    required this.geometry,
     required this.axis,
     required this.commaDrag,
     required this.runEdit,
@@ -437,8 +496,14 @@ class TimelineRowEditChromeLayer extends StatefulWidget {
   final Key paintKey;
 
   final LayerId layerId;
-  final TimelineRowEditChromeModel model;
-  final double frameCellExtent;
+
+  /// Resolves the targets for whatever geometry is live; rebuilt by the row
+  /// only when the LAYER changes, never for a zoom step.
+  final TimelineRowChromeResolver resolver;
+
+  /// The LIVE frame-axis geometry (R28 #4).
+  final TimelineFrameGeometryHandle geometry;
+
   final Axis axis;
 
   /// Comma-drag hooks; null when the row has no grip targets.
@@ -559,7 +624,7 @@ class _TimelineRowEditChromeLayerState
     _gripAccumulated += delta;
     final frames = commaDragFrameDelta(
       accumulatedDelta: _gripAccumulated,
-      frameCellExtent: widget.frameCellExtent,
+      frameCellExtent: widget.geometry.value.frameCellExtent,
     );
     if (frames == _gripLastReported) {
       return;
@@ -620,7 +685,7 @@ class _TimelineRowEditChromeLayerState
     _addAccumulated += _horizontal ? delta.dx : delta.dy;
     final frames = commaDragFrameDelta(
       accumulatedDelta: _addAccumulated,
-      frameCellExtent: widget.frameCellExtent,
+      frameCellExtent: widget.geometry.value.frameCellExtent,
     );
     widget.runEdit?.onAddUpdate(
       target.atEnd ? (frames < 0 ? 0 : frames) : (frames > 0 ? 0 : -frames),
@@ -741,8 +806,14 @@ class _TimelineRowEditChromeLayerState
 
   // ---- routing --------------------------------------------------------
 
+  /// The targets for the LIVE geometry. Read through the resolver, never
+  /// captured: this layer does not rebuild on a zoom step, so a snapshot
+  /// taken at build time would hit-test yesterday's rects.
+  List<TimelineRowChromeTarget> get _targets =>
+      widget.resolver.resolve(widget.geometry.value).targets;
+
   TimelineRowChromeTarget? _targetAt(Offset position) {
-    for (final target in widget.model.targets) {
+    for (final target in _targets) {
       if (target.rect.contains(position)) {
         return target;
       }
@@ -783,7 +854,7 @@ class _TimelineRowEditChromeLayerState
     if (hovered == null) {
       return MouseCursor.defer;
     }
-    for (final target in widget.model.targets) {
+    for (final target in _targets) {
       if (target.id != hovered) {
         continue;
       }
@@ -817,8 +888,8 @@ class _TimelineRowEditChromeLayerState
     return CustomPaint(
       key: widget.paintKey,
       painter: TimelineRowEditChromePainter(
-        model: widget.model,
-        frameCellExtent: widget.frameCellExtent,
+        resolver: widget.resolver,
+        geometry: widget.geometry,
         colorScheme: Theme.of(context).colorScheme,
         hoveredId: _hoveredId,
         operatingId: _addDragging ? _addTarget?.id : _menuOpenId,

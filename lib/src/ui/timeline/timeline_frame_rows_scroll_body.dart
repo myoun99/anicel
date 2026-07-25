@@ -17,7 +17,9 @@ import 'timeline_drag_preview.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_folder_aggregate_row.dart';
 import 'timeline_frame_cells_row.dart';
+import 'timeline_frame_geometry.dart';
 import 'timeline_grid_metrics.dart';
+import 'timeline_row_cells_painter.dart' show timelineRowUsesCellsPainter;
 import 'timeline_lane_rows.dart';
 
 import '../../models/project_frame_rate.dart';
@@ -195,11 +197,13 @@ typedef _RowMemoInputs = ({
   Layer layer,
   bool active,
   int playbackFrameCount,
-  int frameStartIndex,
-  int frameEndIndexExclusive,
-  double leadingFrameSpacerWidth,
-  double trailingFrameSpacerWidth,
-  TimelineGridMetrics metrics,
+  // The frame-axis GEOMETRY, present only for rows that still read it at
+  // build time (R28 #4). The painted drawing rows take the live handle and
+  // follow it through repaint/relayout, so a zoom step must NOT invalidate
+  // them — null here. The sparse widget-cell kinds keep the value and
+  // rebuild on zoom exactly as before.
+  TimelineFrameGeometry? geometry,
+  double crossAxisExtent,
   ProjectFrameRate projectFrameRate,
   TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer,
@@ -238,6 +242,33 @@ class _TimelineFrameRowsScrollBodyState
   /// waveform peaks that load asynchronously, and lane rows are few.
   final Map<Object, _RowMemoEntry> _rowMemo = {};
 
+  /// The LIVE frame-axis geometry every painted row follows (R28 #4).
+  ///
+  /// It lives here, in State, so its IDENTITY survives the rebuilds this
+  /// body does on every zoom step — that identity is what lets the memo hand
+  /// a painted row's cached widget back while the geometry underneath it has
+  /// moved. Republished from `build`, which is safe because every listener is
+  /// a render object (the row painters' `repaint`, the axis box's relayout):
+  /// both marks are honoured later in the same frame. Never attach a
+  /// `ValueListenableBuilder` or a `setState` listener to it.
+  late final ValueNotifier<TimelineFrameGeometry> _geometry = ValueNotifier(
+    _geometryFromWidget(),
+  );
+
+  TimelineFrameGeometry _geometryFromWidget() => TimelineFrameGeometry(
+    frameCellExtent: widget.metrics.frameCellWidth,
+    frameStartIndex: widget.frameStartIndex,
+    frameEndIndexExclusive: widget.frameEndIndexExclusive,
+    leadingFrameSpacerWidth: widget.leadingFrameSpacerWidth,
+    trailingFrameSpacerWidth: widget.trailingFrameSpacerWidth,
+  );
+
+  @override
+  void dispose() {
+    _geometry.dispose();
+    super.dispose();
+  }
+
   /// Folder rows key off their own id like every other row — the header's
   /// representative member (which DID collide with that member's own row)
   /// is gone; the prefix just keeps the band's key readable.
@@ -260,11 +291,8 @@ class _TimelineFrameRowsScrollBodyState
     return identical(a.layer, b.layer) &&
         a.active == b.active &&
         a.playbackFrameCount == b.playbackFrameCount &&
-        a.frameStartIndex == b.frameStartIndex &&
-        a.frameEndIndexExclusive == b.frameEndIndexExclusive &&
-        a.leadingFrameSpacerWidth == b.leadingFrameSpacerWidth &&
-        a.trailingFrameSpacerWidth == b.trailingFrameSpacerWidth &&
-        a.metrics == b.metrics &&
+        a.geometry == b.geometry &&
+        a.crossAxisExtent == b.crossAxisExtent &&
         a.projectFrameRate == b.projectFrameRate &&
         a.exposureStateForLayer == b.exposureStateForLayer &&
         a.frameNameForLayer == b.frameNameForLayer &&
@@ -293,11 +321,8 @@ class _TimelineFrameRowsScrollBodyState
       baseLayer: baseLayer,
       active: layer.id == widget.activeLayerId,
       playbackFrameCount: widget.playbackFrameCount,
-      frameStartIndex: widget.frameStartIndex,
-      frameEndIndexExclusive: widget.frameEndIndexExclusive,
-      leadingFrameSpacerWidth: widget.leadingFrameSpacerWidth,
-      trailingFrameSpacerWidth: widget.trailingFrameSpacerWidth,
-      metrics: widget.metrics,
+      geometry: _geometry,
+      crossAxisExtent: widget.metrics.layerRowHeight,
       exposureStateForLayer: widget.exposureStateForLayer,
       frameNameForLayer: widget.frameNameForLayer,
       celHasContentForLayer: widget.celHasContentForLayer,
@@ -424,11 +449,13 @@ class _TimelineFrameRowsScrollBodyState
       layer: row.layer,
       active: row.layer.id == widget.activeLayerId,
       playbackFrameCount: widget.playbackFrameCount,
-      frameStartIndex: widget.frameStartIndex,
-      frameEndIndexExclusive: widget.frameEndIndexExclusive,
-      leadingFrameSpacerWidth: widget.leadingFrameSpacerWidth,
-      trailingFrameSpacerWidth: widget.trailingFrameSpacerWidth,
-      metrics: widget.metrics,
+      // THE tier-3 line: a painted drawing row follows the live geometry, so
+      // a zoom step leaves its memo entry valid; a sparse widget-cell row
+      // still reads geometry at build time and must miss.
+      geometry: timelineRowUsesCellsPainter(row.layer.kind)
+          ? null
+          : _geometry.value,
+      crossAxisExtent: widget.metrics.layerRowHeight,
       projectFrameRate: widget.projectFrameRate,
       exposureStateForLayer: widget.exposureStateForLayer,
       frameNameForLayer: widget.frameNameForLayer,
@@ -452,6 +479,9 @@ class _TimelineFrameRowsScrollBodyState
 
   @override
   Widget build(BuildContext context) {
+    // Republish BEFORE the rows read it: the painted rows' render objects
+    // take the mark now and settle it during this frame's layout/paint.
+    _geometry.value = _geometryFromWidget();
     final children = <Widget>[
       if (widget.leadingLayerSpacerHeight > 0)
         SizedBox(

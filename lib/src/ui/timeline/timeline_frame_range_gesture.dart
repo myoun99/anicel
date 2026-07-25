@@ -10,6 +10,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_frame_range.dart';
 import 'property_lane_model.dart';
+import 'timeline_frame_geometry.dart';
 import 'timeline_row_span_resolver.dart' show resolveBlockMoveTargetLayer;
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'transform_lane_policy.dart' show laneSelectionCoversBandRow;
@@ -170,18 +171,17 @@ class TimelineFrameRangeGestureLayer extends StatefulWidget {
   const TimelineFrameRangeGestureLayer({
     super.key,
     required this.layer,
-    required this.frameStartIndex,
-    required this.leadingFrameSpacerWidth,
-    required this.frameCellExtent,
+    required this.geometry,
     required this.crossAxisExtent,
     required this.callbacks,
     this.axis = Axis.horizontal,
   });
 
   final Layer layer;
-  final int frameStartIndex;
-  final double leadingFrameSpacerWidth;
-  final double frameCellExtent;
+
+  /// The LIVE frame-axis geometry (R28 #4): read at gesture time, so a zoom
+  /// step never rebuilds this layer — it has nothing to lay out or paint.
+  final TimelineFrameGeometryHandle geometry;
 
   /// Row height (horizontal) / column width (X-sheet) — also the cross-
   /// axis row step for move drags.
@@ -209,9 +209,10 @@ class _TimelineFrameRangeGestureLayerState
         ? localPosition.dx
         : localPosition.dy;
     final cell =
-        ((main - widget.leadingFrameSpacerWidth) / widget.frameCellExtent)
+        ((main - widget.geometry.value.leadingFrameSpacerWidth) /
+                widget.geometry.value.frameCellExtent)
             .floor();
-    final frame = widget.frameStartIndex + cell;
+    final frame = widget.geometry.value.frameStartIndex + cell;
     return frame < 0 ? 0 : frame;
   }
 
@@ -267,7 +268,7 @@ class _TimelineFrameRangeGestureLayerState
         _crossDelta += horizontal ? details.delta.dy : details.delta.dx;
         final frames = commaDragFrameDelta(
           accumulatedDelta: _mainDelta,
-          frameCellExtent: widget.frameCellExtent,
+          frameCellExtent: widget.geometry.value.frameCellExtent,
         );
         // R27 #12: the row axis has a deadband — a horizontal sweep's
         // wobble must not hand the step to the row-change path.
@@ -461,6 +462,9 @@ class _TimelineLaneRangeGestureLayerState
   double _mainDelta = 0;
   int _lastFrames = 0;
 
+  // Lane rows are not memoized (their bands rebuild on every host pass), so
+  // this layer keeps the plain scalars — the live-geometry treatment buys
+  // nothing where the widget rebuilds anyway.
   int _frameAt(Offset localPosition) {
     final main = widget.axis == Axis.horizontal
         ? localPosition.dx

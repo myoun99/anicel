@@ -22,6 +22,8 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_rows_scroll_bod
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_row_cells_painter.dart';
 
+import 'timeline_frame_geometry_probe.dart';
+
 /// R26 #44: ACTION-section blocks whose cel holds no picture yet paint a
 /// slightly grayed paper — the painter's style resolution, the session's
 /// fact/token pair, and the row memo's token invalidation.
@@ -56,10 +58,10 @@ void main() {
     return TimelineRowCellsPainter(
       layer: layer,
       playbackFrameCount: 24,
-      frameStartIndex: 0,
-      frameEndIndexExclusive: 24,
-      leadingFrameSpacerWidth: 0,
-      frameCellExtent: 24,
+      geometry: testFrameGeometry(
+        frameCellExtent: 24,
+        frameEndIndexExclusive: 24,
+      ),
       crossAxisExtent: 28,
       exposureStateForLayer: stateFor,
       celHasContentForLayer: celHasContentForLayer,
