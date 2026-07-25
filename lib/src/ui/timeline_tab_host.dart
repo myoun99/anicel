@@ -29,6 +29,7 @@ import 'text/app_strings.dart';
 import '../models/timeline_coverage.dart' show TimelineBlockEdge;
 import 'timeline/camera_key_edit.dart';
 import 'timeline/property_lane_model.dart';
+import 'timeline/timeline_cel_content_source.dart';
 import 'timeline/timeline_cut_end_handle.dart';
 import 'timeline/timeline_frame_rows_scroll_body.dart' show TimelineRowMemoAux;
 import 'timeline/se_audio_lane.dart';
@@ -155,6 +156,14 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   /// derived state (composites self-validate by signature), so there is no
   /// token to compare. Built once: a fresh merge per build would make the
   /// painters re-subscribe on every rebuild.
+  /// R26 #44: the unworked-block tint's fact and its event, bound once —
+  /// a fresh bundle per build would re-subscribe the row painters on every
+  /// pass and defeat their repaint gating.
+  late final TimelineCelContentSource _celContent = TimelineCelContentSource(
+    hasContent: _session.celHasContentForLayer,
+    revision: _session.celTintRevision,
+  );
+
   late final Listenable _frameCachedSignal = Listenable.merge([
     _session.prerenderScheduler.progress,
     _session.brushFrameStore.celPixelRevision,
@@ -933,8 +942,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           // R26 #44: ACTION-section blocks whose cel is still blank gray
           // their paper; the token keys the row memo (cel pixels live
           // outside the Layer value).
-          celHasContentForLayer: _session.celHasContentForLayer,
-          celContentTokenForLayer: _session.celContentTokenForLayer,
+          celContent: _celContent,
           onSelectLayer: _session.selectLayer,
           // Ruler scrubs during playback SEEK the playback clock instead of
           // moving the (hidden) editing playhead.

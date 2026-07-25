@@ -18,6 +18,7 @@ import 'timeline_edge_auto_pan.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_ruler_cursor_overlay.dart';
 import 'timeline_run_end_handles.dart';
+import 'timeline_cel_content_source.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
@@ -69,8 +70,7 @@ class LayerTimelineGrid extends StatefulWidget {
     required this.playbackFrameCount,
     required this.exposureStateForLayer,
     this.frameNameForLayer,
-    this.celHasContentForLayer,
-    this.celContentTokenForLayer,
+    this.celContent,
     required this.onSelectLayer,
     required this.onSelectFrame,
     this.onScrubFrame,
@@ -188,8 +188,8 @@ class LayerTimelineGrid extends StatefulWidget {
 
   /// R26 #44: the unworked-block tint's fact source + its memo token
   /// (see [TimelineFrameRowsScrollBody]); null = no tint.
-  final bool Function(Layer layer, int frameIndex)? celHasContentForLayer;
-  final String? Function(Layer layer)? celContentTokenForLayer;
+  /// R26 #44: the unworked-block tint's fact and its event.
+  final TimelineCelContentSource? celContent;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
 
@@ -1719,12 +1719,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                 .exposureStateForLayer,
                                                         frameNameForLayer: widget
                                                             .frameNameForLayer,
-                                                        celHasContentForLayer:
-                                                            widget
-                                                                .celHasContentForLayer,
-                                                        celContentTokenForLayer:
-                                                            widget
-                                                                .celContentTokenForLayer,
+                                                        celContent: widget
+                                                            .celContent,
                                                         onSelectLayer: widget
                                                             .onSelectLayer,
                                                         onSelectFrame: widget

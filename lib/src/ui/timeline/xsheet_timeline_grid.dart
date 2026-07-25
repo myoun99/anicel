@@ -14,6 +14,7 @@ import '../../models/layer_mark.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../widgets/field_slider.dart';
 import 'layer_label_controls.dart';
+import 'timeline_cel_content_source.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 
@@ -75,7 +76,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     required this.frameCount,
     required this.exposureStateForLayer,
     this.frameNameForLayer,
-    this.celHasContentForLayer,
+    this.celContent,
     required this.onSelectLayer,
     required this.onSelectFrame,
     this.onScrubFrame,
@@ -162,9 +163,8 @@ class XSheetTimelineGrid extends StatefulWidget {
   exposureStateForLayer;
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
 
-  /// R26 #44: the unworked-block tint's fact source (null = no tint).
-  /// No memo token here — the X-sheet builds its columns per pass.
-  final bool Function(Layer layer, int frameIndex)? celHasContentForLayer;
+  /// R26 #44: the unworked-block tint's fact and its event (null = no tint).
+  final TimelineCelContentSource? celContent;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
 
@@ -746,7 +746,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       viewportMainExtent: viewportExtent,
       exposureStateForLayer: widget.exposureStateForLayer,
       frameNameForLayer: widget.frameNameForLayer,
-      celHasContentForLayer: widget.celHasContentForLayer,
+      celContent: widget.celContent,
       onSelectLayer: widget.onSelectLayer,
       onSelectFrame: widget.onSelectFrame,
       commaDrag: widget.commaDrag,

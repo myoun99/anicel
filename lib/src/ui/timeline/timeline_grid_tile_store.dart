@@ -180,6 +180,7 @@ class TimelineGridTileStore {
         exposureStateForLayer: request.painter.exposureStateForLayer,
         frameNameForLayer: request.painter.frameNameForLayer,
         celHasContentForLayer: request.painter.celHasContentForLayer,
+        celContentRevision: request.painter.celContentRevision,
         baseTextStyle: request.painter.baseTextStyle,
         spanEndIndexExclusive: request.spanEndIndexExclusive,
         devicePixelRatio: request.devicePixelRatio,
@@ -500,6 +501,7 @@ class _TileEntry {
     required this.exposureStateForLayer,
     required this.frameNameForLayer,
     required this.celHasContentForLayer,
+    required this.celContentRevision,
     required this.baseTextStyle,
     required this.spanEndIndexExclusive,
     required this.devicePixelRatio,
@@ -514,6 +516,13 @@ class _TileEntry {
   final Object exposureStateForLayer;
   final Object? frameNameForLayer;
   final Object? celHasContentForLayer;
+
+  /// The RESOLVER above answers per cell, so its identity says nothing
+  /// about whether a cel just gained pixels — a fresh stroke left this
+  /// tile "matching" and serving the old grey back. The revision is the
+  /// content's own version.
+  final int celContentRevision;
+
   final TextStyle baseTextStyle;
   final int spanEndIndexExclusive;
   final double devicePixelRatio;
@@ -535,6 +544,7 @@ class _TileEntry {
         identical(exposureStateForLayer, painter.exposureStateForLayer) &&
         identical(frameNameForLayer, painter.frameNameForLayer) &&
         identical(celHasContentForLayer, painter.celHasContentForLayer) &&
+        celContentRevision == painter.celContentRevision &&
         baseTextStyle == painter.baseTextStyle &&
         this.spanEndIndexExclusive == spanEndIndexExclusive &&
         this.devicePixelRatio == devicePixelRatio;

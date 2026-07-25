@@ -20,6 +20,7 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.d
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_style.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_rows_scroll_body.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_cel_content_source.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import 'timeline_frame_geometry_probe.dart';
@@ -64,7 +65,12 @@ void main() {
       ),
       crossAxisExtent: 28,
       exposureStateForLayer: stateFor,
-      celHasContentForLayer: celHasContentForLayer,
+      celContent: celHasContentForLayer == null
+          ? null
+          : TimelineCelContentSource(
+              hasContent: celHasContentForLayer,
+              revision: ValueNotifier<int>(0),
+            ),
       colorScheme: const ColorScheme.dark(),
       baseTextStyle: const TextStyle(fontSize: 11),
     );
@@ -119,28 +125,70 @@ void main() {
       );
     }
 
-    test('an undrawn cel answers false and joins the token; storing ink '
-        'flips both; non-drawing sections always answer true', () {
+    test('an undrawn cel answers false; storing ink flips it; non-drawing '
+        'sections always answer true', () {
       final s = EditorSessionManager(initialProject: createDefaultProject());
+      addTearDown(s.dispose);
       s.createDrawingAtCurrentFrame();
       final layer = s.activeLayer!;
       final frameId = layer.frames.single.id;
 
       expect(s.celHasContentForLayer(layer, 0), isFalse);
-      expect(s.celContentTokenForLayer(layer), frameId.value);
+      final before = s.celTintRevision.value;
 
       s.brushFrameStore.storeBakedSurface(
         s.brushFrameKeyForCut(s.activeCutOrNull!, layer.id, frameId),
         surfaceWithInk(),
       );
       expect(s.celHasContentForLayer(layer, 0), isTrue);
-      expect(s.celContentTokenForLayer(layer), isEmpty);
+      expect(
+        s.celTintRevision.value,
+        greaterThan(before),
+        reason: 'the timeline has to be TOLD; that is the whole fix',
+      );
 
-      // CAM rows never tint and carry no token — the fact never renders
-      // outside the ACTION section.
+      // CAM rows never tint — the fact never renders outside the ACTION
+      // section.
       final camera = s.layers.firstWhere((l) => l.kind == LayerKind.camera);
       expect(s.celHasContentForLayer(camera, 0), isTrue);
-      expect(s.celContentTokenForLayer(camera), isNull);
+    });
+
+    test('the block goes white when the LINE STARTS, not when the pen '
+        'lifts', () {
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      addTearDown(s.dispose);
+      s.createDrawingAtCurrentFrame();
+      final layer = s.activeLayer!;
+
+      // Nothing committed yet: the store only learns about pixels at
+      // stroke commit, which is why waiting for it left the block grey
+      // for the whole stroke.
+      expect(s.celHasContentForLayer(layer, 0), isFalse);
+      final before = s.celTintRevision.value;
+
+      s.setBrushInputActive(true);
+
+      expect(
+        s.celHasContentForLayer(layer, 0),
+        isTrue,
+        reason: 'pen down on the active cel already counts as worked',
+      );
+      expect(
+        s.celTintRevision.value,
+        greaterThan(before),
+        reason: 'and it announces, so the row repaints now',
+      );
+
+      // A cel the pen is NOT on is unaffected.
+      final other = s.layers.firstWhere((l) => l.id != layer.id);
+      expect(s.celHasContentForLayer(other, 0), isTrue);
+
+      s.setBrushInputActive(false);
+      expect(
+        s.celHasContentForLayer(layer, 0),
+        isFalse,
+        reason: 'an abandoned stroke that drew nothing leaves it unworked',
+      );
     });
 
     test('R27 #13: the store ANNOUNCES the empty↔drawn crossing, and only '
@@ -178,16 +226,22 @@ void main() {
     });
   });
 
-  group('row memo invalidation', () {
-    testWidgets('an unchanged token reuses the cached row; a token flip '
-        'rebuilds it with the fresh fact', (tester) async {
+  group('the tint follows the cel content signal', () {
+    testWidgets('a cel gaining pixels updates the tint WITHOUT rebuilding '
+        'the row, and moves the revision the tile store bakes on', (
+      tester,
+    ) async {
       final layer = twoBlockLayer();
       var hasContent = false;
-      var token = 'f1,f2';
+      final revision = ValueNotifier<int>(0);
+      addTearDown(revision.dispose);
       // STABLE closures across pumps — session method tear-offs compare
       // equal in production; here the same objects stand in for them.
       bool celHasContent(Layer l, int frameIndex) => hasContent;
-      String? celToken(Layer l) => token;
+      final celContent = TimelineCelContentSource(
+        hasContent: celHasContent,
+        revision: revision,
+      );
       void onSelectLayer(LayerId id) {}
       void onSelectFrame(int index) {}
 
@@ -207,8 +261,7 @@ void main() {
               totalFrameContentWidth: 24 * 24,
               metrics: const TimelineGridMetrics(),
               exposureStateForLayer: stateFor,
-              celHasContentForLayer: celHasContent,
-              celContentTokenForLayer: celToken,
+              celContent: celContent,
               onSelectLayer: onSelectLayer,
               onSelectFrame: onSelectFrame,
             ),
@@ -233,19 +286,30 @@ void main() {
       await tester.pumpWidget(body());
       expect(identical(painterOf(), first), isTrue,
           reason: 'unchanged inputs must reuse the cached row');
+      expect(first.celContentRevision, 0);
 
-      // An emptiness flip changes ONLY store state + the token — the
-      // Layer instance is untouched. The token must carry the memo miss.
+      // A cel gains pixels: store state moves and the revision announces
+      // it. The Layer instance is untouched, and so is the ROW — the point
+      // of the signal is that the painter re-reads instead of the row
+      // rebuilding.
       hasContent = true;
-      token = '';
-      await tester.pumpWidget(body());
-      final rebuilt = painterOf();
-      expect(identical(rebuilt, first), isFalse,
-          reason: 'the token flip must rebuild the row');
+      revision.value += 1;
+      await tester.pump();
+
+      final after = painterOf();
       expect(
-        rebuilt.resolvedCellStyleFor(0).background,
-        timelineDrawingStartColor,
+        identical(after, first),
+        isTrue,
+        reason: 'the tint must not cost a row rebuild',
       );
+      expect(
+        after.resolvedCellStyleFor(0).background,
+        timelineDrawingStartColor,
+        reason: 'the painter re-reads the fact it was told changed',
+      );
+      // Read LIVE off the same painter instance — a captured value would
+      // leave the tile store baking against a stale key forever.
+      expect(after.celContentRevision, 1);
     });
   });
 }

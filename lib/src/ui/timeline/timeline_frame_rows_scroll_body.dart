@@ -15,6 +15,7 @@ import 'timeline_run_end_handles.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
+import 'timeline_cel_content_source.dart';
 import 'timeline_folder_aggregate_row.dart';
 import 'timeline_frame_cells_row.dart';
 import 'timeline_frame_geometry.dart';
@@ -53,8 +54,7 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     required this.metrics,
     required this.exposureStateForLayer,
     this.frameNameForLayer,
-    this.celHasContentForLayer,
-    this.celContentTokenForLayer,
+    this.celContent,
     required this.onSelectLayer,
     required this.onSelectFrame,
     this.onActivateCell,
@@ -116,14 +116,12 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   exposureStateForLayer;
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
 
-  /// R26 #44: the unworked-block tint's fact source (null = no tint).
-  final bool Function(Layer layer, int frameIndex)? celHasContentForLayer;
-
-  /// R26 #44: the per-layer empty-cel token joining the row memo key —
-  /// cel pixels live outside the immutable Layer, so without this an
-  /// emptiness flip (first stroke, undo to blank) would leave the row's
-  /// cached widget showing the stale tint.
-  final String? Function(Layer layer)? celContentTokenForLayer;
+  /// R26 #44: the unworked-block tint's fact AND its event (null = no
+  /// tint). The event replaced a per-layer "empty cels" token that joined
+  /// the memo key: the token forced a row REBUILD and only when something
+  /// else already announced, while the revision repaints the row painter
+  /// the moment a cel gains pixels — and costs no per-row string build.
+  final TimelineCelContentSource? celContent;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<int> onSelectFrame;
   final void Function(LayerId layerId, int frameIndex)? onActivateCell;
@@ -209,9 +207,6 @@ typedef _RowMemoInputs = ({
   TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer,
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
-  // R26 #44: the layer's empty-cel token — cel pixels live outside the
-  // Layer value, so emptiness flips must invalidate the memo here.
-  String? celContentToken,
   bool hasCommaDrag,
   bool hasRangeGesture,
   bool hasActivateCell,
@@ -297,7 +292,6 @@ class _TimelineFrameRowsScrollBodyState
         a.projectFrameRate == b.projectFrameRate &&
         a.exposureStateForLayer == b.exposureStateForLayer &&
         a.frameNameForLayer == b.frameNameForLayer &&
-        a.celContentToken == b.celContentToken &&
         a.hasCommaDrag == b.hasCommaDrag &&
         a.hasRangeGesture == b.hasRangeGesture &&
         a.hasActivateCell == b.hasActivateCell &&
@@ -326,7 +320,7 @@ class _TimelineFrameRowsScrollBodyState
       crossAxisExtent: widget.metrics.layerRowHeight,
       exposureStateForLayer: widget.exposureStateForLayer,
       frameNameForLayer: widget.frameNameForLayer,
-      celHasContentForLayer: widget.celHasContentForLayer,
+      celContent: widget.celContent,
       onSelectLayer: widget.onSelectLayer,
       onSelectFrame: widget.onSelectFrame,
       onActivateCell: widget.onActivateCell,
@@ -434,7 +428,7 @@ class _TimelineFrameRowsScrollBodyState
                 metrics: widget.metrics,
                 // R28 #11: the empty-cel grey reaches the folder band.
                 members: row.members,
-                memberHasContentAt: widget.celHasContentForLayer,
+                memberHasContentAt: widget.celContent?.hasContent,
               )
             : row.isLane
             ? _buildLaneRow(row, layer)
@@ -460,7 +454,6 @@ class _TimelineFrameRowsScrollBodyState
       projectFrameRate: widget.projectFrameRate,
       exposureStateForLayer: widget.exposureStateForLayer,
       frameNameForLayer: widget.frameNameForLayer,
-      celContentToken: widget.celContentTokenForLayer?.call(row.layer),
       hasCommaDrag: widget.commaDrag != null,
       hasRangeGesture: widget.rangeGesture != null,
       hasActivateCell: widget.onActivateCell != null,
