@@ -4,6 +4,7 @@ import 'package:flutter/services.dart';
 import '../../models/canvas_resize_anchor.dart';
 import '../../models/canvas_size.dart';
 import '../widgets/app_window.dart';
+import '../text/app_strings.dart';
 
 /// What the canvas-size dialog confirms: the new size plus the anchor the
 /// existing artwork stays pinned to.
@@ -98,10 +99,11 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
   @override
   Widget build(BuildContext context) {
     final enteredRequest = _enteredRequest;
+    final strings = AppText.strings;
 
     return AppWindow(
       windowKey: const ValueKey<String>('canvas-size-dialog'),
-      title: 'Canvas size',
+      title: strings.canvasSizeTitle,
       titleIcon: Icons.crop_outlined,
       onClose: () => Navigator.of(context).pop(),
       width: 460,
@@ -114,7 +116,7 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
             children: [
               Expanded(
                 child: AppWindowField(
-                  label: 'Width (px)',
+                  label: strings.canvasWidthLabel,
                   emphasized: true,
                   child: TextField(
                     key: const ValueKey<String>('canvas-size-width-field'),
@@ -132,7 +134,7 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
               ),
               Expanded(
                 child: AppWindowField(
-                  label: 'Height (px)',
+                  label: strings.canvasHeightLabel,
                   emphasized: true,
                   child: TextField(
                     key: const ValueKey<String>('canvas-size-height-field'),
@@ -171,10 +173,9 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  'Anchor: existing artwork stays pinned here. '
-                  'Cropped strokes are kept and reappear if the canvas '
-                  'grows again. '
-                  '(${CanvasSizeDialog.minDimension}–${CanvasSizeDialog.maxDimension} px)',
+                  strings.canvasAnchorHelpTemplate
+                      .replaceAll('{min}', '${CanvasSizeDialog.minDimension}')
+                      .replaceAll('{max}', '${CanvasSizeDialog.maxDimension}'),
                   style: Theme.of(context).textTheme.bodySmall,
                 ),
               ),
@@ -184,12 +185,12 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
       ),
       actions: [
         AppWindowAction(
-          label: 'Cancel',
+          label: strings.commonCancel,
           actionKey: const ValueKey<String>('canvas-size-cancel-button'),
           onPressed: () => Navigator.of(context).pop(),
         ),
         AppWindowAction(
-          label: 'Resize',
+          label: strings.commonResize,
           actionKey: const ValueKey<String>('canvas-size-confirm-button'),
           emphasis: AppWindowActionEmphasis.primary,
           onPressed: enteredRequest == null

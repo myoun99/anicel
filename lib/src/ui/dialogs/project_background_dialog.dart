@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/project_background.dart';
 import '../editor_session_manager.dart';
 import '../widgets/app_window.dart';
+import '../text/app_strings.dart';
 
 /// File > Project Background… (R10-⑥): the paper/background choice —
 /// white, black, a custom hex color, or the transparent checkerboard
@@ -102,9 +103,10 @@ class _ProjectBackgroundDialogState extends State<ProjectBackgroundDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final strings = AppText.strings;
     return AppWindow(
       windowKey: const ValueKey<String>('project-background-dialog'),
-      title: 'Project background',
+      title: strings.backgroundTitle,
       titleIcon: Icons.wallpaper_outlined,
       onClose: () => Navigator.of(context).pop(),
       width: 400,
@@ -118,27 +120,27 @@ class _ProjectBackgroundDialogState extends State<ProjectBackgroundDialog> {
             children: [
               _option(
                 _BackgroundChoice.defaultPaper,
-                'Paper (default)',
+                strings.backgroundPaper,
                 key: const ValueKey<String>('background-default'),
               ),
               _option(
                 _BackgroundChoice.white,
-                'White',
+                strings.backgroundWhite,
                 key: const ValueKey<String>('background-white'),
               ),
               _option(
                 _BackgroundChoice.black,
-                'Black',
+                strings.backgroundBlack,
                 key: const ValueKey<String>('background-black'),
               ),
               _option(
                 _BackgroundChoice.transparent,
-                'Transparent (checker)',
+                strings.backgroundTransparent,
                 key: const ValueKey<String>('background-transparent'),
               ),
               _option(
                 _BackgroundChoice.custom,
-                'Custom',
+                strings.backgroundCustom,
                 key: const ValueKey<String>('background-custom'),
                 trailing: TextField(
                   key: const ValueKey<String>('background-custom-hex'),
@@ -164,9 +166,7 @@ class _ProjectBackgroundDialogState extends State<ProjectBackgroundDialog> {
               ),
               const SizedBox(height: 8),
               Text(
-                'The background shows on the canvas, in playback gaps and '
-                'behind exports. Transparent is display-only — exports bake '
-                'white.',
+                strings.backgroundHelp,
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ],
@@ -175,12 +175,12 @@ class _ProjectBackgroundDialogState extends State<ProjectBackgroundDialog> {
       ),
       actions: [
         AppWindowAction(
-          label: 'Cancel',
+          label: strings.commonCancel,
           actionKey: const ValueKey<String>('background-cancel-button'),
           onPressed: () => Navigator.of(context).pop(),
         ),
         AppWindowAction(
-          label: 'Apply',
+          label: strings.commonApply,
           actionKey: const ValueKey<String>('background-apply-button'),
           emphasis: AppWindowActionEmphasis.primary,
           onPressed: _apply,

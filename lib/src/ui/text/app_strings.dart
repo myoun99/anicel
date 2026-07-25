@@ -237,6 +237,46 @@ class AppStrings {
   String get convertLinkedCutNothing => _s('convertLinkedCutNothing');
   String get convertLinkedCutUndoNote => _s('convertLinkedCutUndoNote');
 
+  // --- The file browser ---
+  String get fileOpenTitle => _s('fileOpenTitle');
+  String get fileSaveTitle => _s('fileSaveTitle');
+  String get fileAppDocuments => _s('fileAppDocuments');
+  String get fileStorageOffNotice => _s('fileStorageOffNotice');
+  String get fileOpenSettings => _s('fileOpenSettings');
+  String get fileCheckAgain => _s('fileCheckAgain');
+  String get fileNameLabel => _s('fileNameLabel');
+  String get fileCloudNoticeOpen => _s('fileCloudNoticeOpen');
+  String get fileCloudNoticeSave => _s('fileCloudNoticeSave');
+  String get fileNewFolderAction => _s('fileNewFolderAction');
+  String get newFolderTitle => _s('newFolderTitle');
+  String get newFolderField => _s('newFolderField');
+  String get newFolderEmpty => _s('newFolderEmpty');
+  String get commonCreate => _s('commonCreate');
+  String get replaceFileTitle => _s('replaceFileTitle');
+
+  /// '{name}' is the colliding file name.
+  String get replaceFileMessageTemplate => _s('replaceFileMessageTemplate');
+  String get commonReplace => _s('commonReplace');
+
+  // --- Canvas size ---
+  String get canvasSizeTitle => _s('canvasSizeTitle');
+  String get canvasWidthLabel => _s('canvasWidthLabel');
+  String get canvasHeightLabel => _s('canvasHeightLabel');
+
+  /// '{min}'/'{max}' are the dimension bounds.
+  String get canvasAnchorHelpTemplate => _s('canvasAnchorHelpTemplate');
+  String get canvasPresetDefault => _s('canvasPresetDefault');
+  String get commonResize => _s('commonResize');
+
+  // --- Project background ---
+  String get backgroundTitle => _s('backgroundTitle');
+  String get backgroundPaper => _s('backgroundPaper');
+  String get backgroundWhite => _s('backgroundWhite');
+  String get backgroundBlack => _s('backgroundBlack');
+  String get backgroundTransparent => _s('backgroundTransparent');
+  String get backgroundCustom => _s('backgroundCustom');
+  String get backgroundHelp => _s('backgroundHelp');
+
   // --- Input settings ---
   String get inputTitle => _s('inputTitle');
   String get inputTouchScroll => _s('inputTouchScroll');
@@ -475,6 +515,47 @@ class AppStrings {
         'Nothing to link — the cuts are already fully linked or share no '
         'drawing layers.',
     'convertLinkedCutUndoNote': 'Undo restores both cuts.',
+    'fileOpenTitle': 'Open project',
+    'fileSaveTitle': 'Save project',
+    'fileAppDocuments': 'App documents',
+    'fileStorageOffNotice':
+        'Storage access is off — projects outside the app folder need the '
+        'All-Files permission.',
+    'fileOpenSettings': 'Open settings',
+    'fileCheckAgain': 'Check again',
+    'fileNameLabel': 'File name',
+    'fileCloudNoticeOpen':
+        'Cloud services (Google Drive, Dropbox …): use a sync app (Autosync, '
+        'FolderSync …) and open its mirror folder here — direct cloud '
+        'documents are not supported.',
+    'fileCloudNoticeSave':
+        'Cloud folders: save into a sync-app mirror folder to work with '
+        'Google Drive / Dropbox.',
+    'fileNewFolderAction': 'New folder…',
+    'newFolderTitle': 'New folder',
+    'newFolderField': 'Folder name',
+    'newFolderEmpty': 'Folder name cannot be empty.',
+    'commonCreate': 'Create',
+    'replaceFileTitle': 'Replace file?',
+    'replaceFileMessageTemplate': '{name} already exists here.',
+    'commonReplace': 'Replace',
+    'canvasSizeTitle': 'Canvas size',
+    'canvasWidthLabel': 'Width (px)',
+    'canvasHeightLabel': 'Height (px)',
+    'canvasAnchorHelpTemplate':
+        'Anchor: existing artwork stays pinned here. Cropped strokes are '
+        'kept and reappear if the canvas grows again. ({min}–{max} px)',
+    'canvasPresetDefault': 'Default',
+    'commonResize': 'Resize',
+    'backgroundTitle': 'Project background',
+    'backgroundPaper': 'Paper (default)',
+    'backgroundWhite': 'White',
+    'backgroundBlack': 'Black',
+    'backgroundTransparent': 'Transparent (checker)',
+    'backgroundCustom': 'Custom',
+    'backgroundHelp':
+        'The background shows on the canvas, in playback gaps and behind '
+        'exports. Transparent is display-only — exports bake white.',
     'inputTitle': 'Input settings',
     'inputTouchScroll': 'Touch scrolls the timeline',
     'inputTouchScrollHelp':
@@ -702,6 +783,47 @@ class AppStrings {
         'リンクするものがありません — 既に完全にリンク済みか、共有できる'
         '作画レイヤーがありません。',
     'convertLinkedCutUndoNote': '元に戻すと両方のカットが復元されます。',
+    'fileOpenTitle': 'プロジェクトを開く',
+    'fileSaveTitle': 'プロジェクトを保存',
+    'fileAppDocuments': 'アプリのドキュメント',
+    'fileStorageOffNotice':
+        'ストレージへのアクセスがオフです — アプリフォルダの外にある'
+        'プロジェクトには「すべてのファイル」の権限が必要です。',
+    'fileOpenSettings': '設定を開く',
+    'fileCheckAgain': '再確認',
+    'fileNameLabel': 'ファイル名',
+    'fileCloudNoticeOpen':
+        'クラウドサービス（Google ドライブ、Dropbox など）：同期アプリ'
+        '（Autosync、FolderSync など）を使い、そのミラーフォルダをここで'
+        '開いてください — クラウド上のドキュメントを直接扱うことはできません。',
+    'fileCloudNoticeSave':
+        'クラウドフォルダ：Google ドライブ / Dropbox と連携するには、同期'
+        'アプリのミラーフォルダに保存してください。',
+    'fileNewFolderAction': '新規フォルダ…',
+    'newFolderTitle': '新規フォルダ',
+    'newFolderField': 'フォルダ名',
+    'newFolderEmpty': 'フォルダ名を空にはできません。',
+    'commonCreate': '作成',
+    'replaceFileTitle': 'ファイルを置き換えますか？',
+    'replaceFileMessageTemplate': '{name} はここに既にあります。',
+    'commonReplace': '置き換え',
+    'canvasSizeTitle': 'カンバスサイズ',
+    'canvasWidthLabel': '幅（px）',
+    'canvasHeightLabel': '高さ（px）',
+    'canvasAnchorHelpTemplate':
+        '基準：既存の絵はここに固定されます。切り取られた線は保持され、'
+        'カンバスを広げれば再び現れます。（{min}〜{max} px）',
+    'canvasPresetDefault': '既定',
+    'commonResize': 'サイズ変更',
+    'backgroundTitle': 'プロジェクトの背景',
+    'backgroundPaper': '紙（既定）',
+    'backgroundWhite': '白',
+    'backgroundBlack': '黒',
+    'backgroundTransparent': '透明（市松）',
+    'backgroundCustom': 'カスタム',
+    'backgroundHelp':
+        '背景はカンバス、再生中の空き、書き出しの背後に表示されます。'
+        '透明は表示のみで、書き出しは白で焼き込まれます。',
     'inputTitle': '入力設定',
     'inputTouchScroll': 'タッチでタイムラインをスクロール',
     'inputTouchScrollHelp':
@@ -964,6 +1086,47 @@ class AppStrings {
         '링크할 것이 없습니다 — 이미 완전히 링크됐거나 공유할 그리기 '
         '레이어가 없습니다.',
     'convertLinkedCutUndoNote': '실행 취소하면 두 컷 모두 복원됩니다.',
+    'fileOpenTitle': '프로젝트 열기',
+    'fileSaveTitle': '프로젝트 저장',
+    'fileAppDocuments': '앱 문서',
+    'fileStorageOffNotice':
+        '저장소 접근이 꺼져 있습니다 — 앱 폴더 바깥의 프로젝트에는 '
+        '모든 파일 권한이 필요합니다.',
+    'fileOpenSettings': '설정 열기',
+    'fileCheckAgain': '다시 확인',
+    'fileNameLabel': '파일 이름',
+    'fileCloudNoticeOpen':
+        '클라우드 서비스(Google 드라이브, Dropbox 등): 동기화 앱'
+        '(Autosync, FolderSync 등)을 쓰고 그 미러 폴더를 여기서 여세요 — '
+        '클라우드 문서를 직접 다루는 건 지원하지 않습니다.',
+    'fileCloudNoticeSave':
+        '클라우드 폴더: Google 드라이브 / Dropbox와 함께 쓰려면 동기화 앱의 '
+        '미러 폴더에 저장하세요.',
+    'fileNewFolderAction': '새 폴더…',
+    'newFolderTitle': '새 폴더',
+    'newFolderField': '폴더 이름',
+    'newFolderEmpty': '폴더 이름은 비울 수 없습니다.',
+    'commonCreate': '만들기',
+    'replaceFileTitle': '파일을 바꿀까요?',
+    'replaceFileMessageTemplate': '{name}이(가) 여기 이미 있습니다.',
+    'commonReplace': '바꾸기',
+    'canvasSizeTitle': '캔버스 크기',
+    'canvasWidthLabel': '너비 (px)',
+    'canvasHeightLabel': '높이 (px)',
+    'canvasAnchorHelpTemplate':
+        '기준점: 기존 그림이 여기에 고정됩니다. 잘린 획은 보존되며 캔버스를 '
+        '다시 넓히면 되살아납니다. ({min}~{max} px)',
+    'canvasPresetDefault': '기본',
+    'commonResize': '크기 변경',
+    'backgroundTitle': '프로젝트 배경',
+    'backgroundPaper': '종이 (기본)',
+    'backgroundWhite': '흰색',
+    'backgroundBlack': '검정',
+    'backgroundTransparent': '투명 (체커)',
+    'backgroundCustom': '사용자 지정',
+    'backgroundHelp':
+        '배경은 캔버스, 재생 중 빈 구간, 출력 뒤에 표시됩니다. 투명은 '
+        '화면 전용이고 출력에는 흰색으로 구워집니다.',
     'inputTitle': '입력 설정',
     'inputTouchScroll': '터치로 타임라인 스크롤',
     'inputTouchScrollHelp':
@@ -1226,6 +1389,49 @@ class AppStrings {
         'Rien à lier — les plans sont déjà entièrement liés ou ne partagent '
         'aucun calque de dessin.',
     'convertLinkedCutUndoNote': 'Annuler restaure les deux plans.',
+    'fileOpenTitle': 'Ouvrir un projet',
+    'fileSaveTitle': 'Enregistrer le projet',
+    'fileAppDocuments': "Documents de l'app",
+    'fileStorageOffNotice':
+        "L'accès au stockage est désactivé — les projets hors du dossier de "
+        "l'application exigent l'autorisation Tous les fichiers.",
+    'fileOpenSettings': 'Ouvrir les réglages',
+    'fileCheckAgain': 'Vérifier à nouveau',
+    'fileNameLabel': 'Nom du fichier',
+    'fileCloudNoticeOpen':
+        'Services cloud (Google Drive, Dropbox …) : utilisez une app de '
+        'synchronisation (Autosync, FolderSync …) et ouvrez son dossier '
+        'miroir ici — les documents cloud directs ne sont pas pris en charge.',
+    'fileCloudNoticeSave':
+        "Dossiers cloud : enregistrez dans le dossier miroir d'une app de "
+        'synchronisation pour travailler avec Google Drive / Dropbox.',
+    'fileNewFolderAction': 'Nouveau dossier…',
+    'newFolderTitle': 'Nouveau dossier',
+    'newFolderField': 'Nom du dossier',
+    'newFolderEmpty': 'Le nom du dossier ne peut pas être vide.',
+    'commonCreate': 'Créer',
+    'replaceFileTitle': 'Remplacer le fichier ?',
+    'replaceFileMessageTemplate': '{name} existe déjà ici.',
+    'commonReplace': 'Remplacer',
+    'canvasSizeTitle': 'Taille du canevas',
+    'canvasWidthLabel': 'Largeur (px)',
+    'canvasHeightLabel': 'Hauteur (px)',
+    'canvasAnchorHelpTemplate':
+        "Ancrage : le dessin existant reste fixé ici. Les traits rognés sont "
+        'conservés et réapparaissent si le canevas est agrandi. '
+        '({min}–{max} px)',
+    'canvasPresetDefault': 'Par défaut',
+    'commonResize': 'Redimensionner',
+    'backgroundTitle': 'Arrière-plan du projet',
+    'backgroundPaper': 'Papier (par défaut)',
+    'backgroundWhite': 'Blanc',
+    'backgroundBlack': 'Noir',
+    'backgroundTransparent': 'Transparent (damier)',
+    'backgroundCustom': 'Personnalisé',
+    'backgroundHelp':
+        "L'arrière-plan apparaît sur le canevas, dans les vides de lecture "
+        "et derrière les exports. Le transparent est purement d'affichage — "
+        'les exports gravent du blanc.',
     'inputTitle': 'Paramètres de saisie',
     'inputTouchScroll': 'Le toucher fait défiler la timeline',
     'inputTouchScrollHelp':
@@ -1491,6 +1697,44 @@ class AppStrings {
     'convertLinkedCutNothing': '没有可链接的内容 — 两个镜头已完全链接，'
         '或没有可共用的绘制图层。',
     'convertLinkedCutUndoNote': '撤销会同时还原两个镜头。',
+    'fileOpenTitle': '打开项目',
+    'fileSaveTitle': '保存项目',
+    'fileAppDocuments': '应用文档',
+    'fileStorageOffNotice': '存储访问已关闭 — 应用文件夹之外的项目需要"所有文件"权限。',
+    'fileOpenSettings': '打开设置',
+    'fileCheckAgain': '重新检查',
+    'fileNameLabel': '文件名',
+    'fileCloudNoticeOpen':
+        '云服务（Google 云端硬盘、Dropbox 等）：请使用同步应用'
+        '（Autosync、FolderSync 等），并在此打开它的镜像文件夹 — '
+        '不支持直接打开云端文档。',
+    'fileCloudNoticeSave':
+        '云文件夹：保存到同步应用的镜像文件夹，即可配合 Google 云端硬盘 / Dropbox 使用。',
+    'fileNewFolderAction': '新建文件夹…',
+    'newFolderTitle': '新建文件夹',
+    'newFolderField': '文件夹名称',
+    'newFolderEmpty': '文件夹名称不能为空。',
+    'commonCreate': '创建',
+    'replaceFileTitle': '替换文件？',
+    'replaceFileMessageTemplate': '{name} 已存在于此处。',
+    'commonReplace': '替换',
+    'canvasSizeTitle': '画布尺寸',
+    'canvasWidthLabel': '宽度（px）',
+    'canvasHeightLabel': '高度（px）',
+    'canvasAnchorHelpTemplate':
+        '锚点：已有画面固定在此处。被裁掉的笔画会保留，画布再放大时会重新出现。'
+        '（{min}–{max} px）',
+    'canvasPresetDefault': '默认',
+    'commonResize': '调整尺寸',
+    'backgroundTitle': '项目背景',
+    'backgroundPaper': '纸（默认）',
+    'backgroundWhite': '白色',
+    'backgroundBlack': '黑色',
+    'backgroundTransparent': '透明（棋盘格）',
+    'backgroundCustom': '自定义',
+    'backgroundHelp':
+        '背景会显示在画布上、播放空隙处以及导出内容的后面。透明仅用于显示 — '
+        '导出时会烘焙为白色。',
     'inputTitle': '输入设置',
     'inputTouchScroll': '触摸滚动时间轴',
     'inputTouchScrollHelp':

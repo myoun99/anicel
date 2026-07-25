@@ -129,6 +129,36 @@ void main() {
         s.convertLinkedCutOriginGainsTemplate,
     'convertLinkedCutNothing': (s) => s.convertLinkedCutNothing,
     'convertLinkedCutUndoNote': (s) => s.convertLinkedCutUndoNote,
+    'fileOpenTitle': (s) => s.fileOpenTitle,
+    'fileSaveTitle': (s) => s.fileSaveTitle,
+    'fileAppDocuments': (s) => s.fileAppDocuments,
+    'fileStorageOffNotice': (s) => s.fileStorageOffNotice,
+    'fileOpenSettings': (s) => s.fileOpenSettings,
+    'fileCheckAgain': (s) => s.fileCheckAgain,
+    'fileNameLabel': (s) => s.fileNameLabel,
+    'fileCloudNoticeOpen': (s) => s.fileCloudNoticeOpen,
+    'fileCloudNoticeSave': (s) => s.fileCloudNoticeSave,
+    'fileNewFolderAction': (s) => s.fileNewFolderAction,
+    'newFolderTitle': (s) => s.newFolderTitle,
+    'newFolderField': (s) => s.newFolderField,
+    'newFolderEmpty': (s) => s.newFolderEmpty,
+    'commonCreate': (s) => s.commonCreate,
+    'replaceFileTitle': (s) => s.replaceFileTitle,
+    'replaceFileMessageTemplate': (s) => s.replaceFileMessageTemplate,
+    'commonReplace': (s) => s.commonReplace,
+    'canvasSizeTitle': (s) => s.canvasSizeTitle,
+    'canvasWidthLabel': (s) => s.canvasWidthLabel,
+    'canvasHeightLabel': (s) => s.canvasHeightLabel,
+    'canvasAnchorHelpTemplate': (s) => s.canvasAnchorHelpTemplate,
+    'canvasPresetDefault': (s) => s.canvasPresetDefault,
+    'commonResize': (s) => s.commonResize,
+    'backgroundTitle': (s) => s.backgroundTitle,
+    'backgroundPaper': (s) => s.backgroundPaper,
+    'backgroundWhite': (s) => s.backgroundWhite,
+    'backgroundBlack': (s) => s.backgroundBlack,
+    'backgroundTransparent': (s) => s.backgroundTransparent,
+    'backgroundCustom': (s) => s.backgroundCustom,
+    'backgroundHelp': (s) => s.backgroundHelp,
     'inputTitle': (s) => s.inputTitle,
     'inputTouchScroll': (s) => s.inputTouchScroll,
     'inputTouchScrollHelp': (s) => s.inputTouchScrollHelp,
@@ -256,6 +286,6 @@ void main() {
   test('the reader table covers every getter the class declares', () {
     // Guards the guard: a string added without a line here would other-
     // wise be silently unchecked.
-    expect(readers, hasLength(201));
+    expect(readers, hasLength(231));
   });
 }

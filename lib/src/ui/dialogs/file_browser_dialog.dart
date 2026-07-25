@@ -6,6 +6,7 @@ import '../../services/persistence/app_documents.dart';
 import '../widgets/app_window.dart';
 import 'app_confirm_dialog.dart';
 import 'app_prompt_dialog.dart';
+import '../text/app_strings.dart';
 
 /// SAVE-1c: the in-app file browser — the MOBILE open/save surface of
 /// the real-path model (the OS pickers hand out content URIs Android-
@@ -133,16 +134,16 @@ class _FileBrowserDialogState extends State<_FileBrowserDialog> {
   Future<void> _newFolder() async {
     final name = await showDialog<String>(
       context: context,
-      builder: (context) => const AppPromptDialog(
-        windowKey: ValueKey<String>('file-browser-new-folder-dialog'),
-        title: 'New folder',
+      builder: (context) => AppPromptDialog(
+        windowKey: const ValueKey<String>('file-browser-new-folder-dialog'),
+        title: AppText.strings.newFolderTitle,
         titleIcon: Icons.create_new_folder_outlined,
-        fieldLabel: 'Folder name',
+        fieldLabel: AppText.strings.newFolderField,
         initialValue: '',
-        confirmLabel: 'Create',
-        emptyError: 'Folder name cannot be empty.',
-        fieldKey: ValueKey<String>('file-browser-new-folder-name'),
-        confirmKey: ValueKey<String>('file-browser-new-folder-create'),
+        confirmLabel: AppText.strings.commonCreate,
+        emptyError: AppText.strings.newFolderEmpty,
+        fieldKey: const ValueKey<String>('file-browser-new-folder-name'),
+        confirmKey: const ValueKey<String>('file-browser-new-folder-create'),
       ),
     );
     final trimmed = name?.trim();
@@ -171,16 +172,19 @@ class _FileBrowserDialogState extends State<_FileBrowserDialog> {
         context: context,
         builder: (context) => AppConfirmDialog(
           windowKey: const ValueKey<String>('file-browser-replace-dialog'),
-          title: 'Replace file?',
+          title: AppText.strings.replaceFileTitle,
           titleIcon: Icons.warning_amber_outlined,
-          message: '$name already exists here.',
+          message: AppText.strings.replaceFileMessageTemplate.replaceAll(
+            '{name}',
+            name,
+          ),
           actions: [
             AppWindowAction(
-              label: 'Cancel',
+              label: AppText.strings.commonCancel,
               onPressed: () => Navigator.of(context).pop(false),
             ),
             AppWindowAction(
-              label: 'Replace',
+              label: AppText.strings.commonReplace,
               actionKey: const ValueKey<String>('file-browser-overwrite'),
               emphasis: AppWindowActionEmphasis.primary,
               onPressed: () => Navigator.of(context).pop(true),
@@ -200,11 +204,12 @@ class _FileBrowserDialogState extends State<_FileBrowserDialog> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final strings = AppText.strings;
     return AppWindow(
       windowKey: const ValueKey<String>('file-browser-dialog'),
       title: widget.mode == FileBrowserMode.open
-          ? 'Open project'
-          : 'Save project',
+          ? strings.fileOpenTitle
+          : strings.fileSaveTitle,
       titleIcon: widget.mode == FileBrowserMode.open
           ? Icons.folder_open_outlined
           : Icons.save_outlined,
@@ -229,7 +234,7 @@ class _FileBrowserDialogState extends State<_FileBrowserDialog> {
                 TextButton(
                   key: const ValueKey<String>('file-browser-root-appdocs'),
                   onPressed: () => _enter(ensuredAppDocumentsDirectorySync()),
-                  child: const Text('App documents'),
+                  child: Text(strings.fileAppDocuments),
                 ),
                 Expanded(
                   child: Text(
@@ -249,22 +254,21 @@ class _FileBrowserDialogState extends State<_FileBrowserDialog> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    const Text(
-                      'Storage access is off — projects outside the app '
-                      'folder need the All-Files permission.',
-                      style: TextStyle(fontSize: 12),
+                    Text(
+                      strings.fileStorageOffNotice,
+                      style: const TextStyle(fontSize: 12),
                     ),
                     TextButton(
                       key: const ValueKey<String>('file-browser-grant'),
                       onPressed: () async {
                         await AppStorage.requestAllFilesAccess();
                       },
-                      child: const Text('Open settings'),
+                      child: Text(strings.fileOpenSettings),
                     ),
                     TextButton(
                       key: const ValueKey<String>('file-browser-recheck'),
                       onPressed: _refresh,
-                      child: const Text('Check again'),
+                      child: Text(strings.fileCheckAgain),
                     ),
                   ],
                 ),
@@ -306,7 +310,7 @@ class _FileBrowserDialogState extends State<_FileBrowserDialog> {
             ),
             if (widget.mode == FileBrowserMode.saveAs)
               AppWindowField(
-                label: 'File name',
+                label: strings.fileNameLabel,
                 emphasized: true,
                 child: TextField(
                   key: const ValueKey<String>('file-browser-name'),
@@ -319,12 +323,8 @@ class _FileBrowserDialogState extends State<_FileBrowserDialog> {
               padding: const EdgeInsets.only(top: 6),
               child: Text(
                 widget.mode == FileBrowserMode.open
-                    ? 'Cloud services (Google Drive, Dropbox …): use a sync '
-                          'app (Autosync, FolderSync …) and open its mirror '
-                          'folder here — direct cloud documents are not '
-                          'supported.'
-                    : 'Cloud folders: save into a sync-app mirror folder to '
-                          'work with Google Drive / Dropbox.',
+                    ? strings.fileCloudNoticeOpen
+                    : strings.fileCloudNoticeSave,
                 style: TextStyle(
                   fontSize: 11,
                   color: colorScheme.onSurfaceVariant,
@@ -337,18 +337,18 @@ class _FileBrowserDialogState extends State<_FileBrowserDialog> {
       actions: [
         if (widget.mode == FileBrowserMode.saveAs)
           AppWindowAction(
-            label: 'New folder…',
+            label: strings.fileNewFolderAction,
             actionKey: const ValueKey<String>('file-browser-new-folder'),
             onPressed: _newFolder,
           ),
         AppWindowAction(
-          label: 'Cancel',
+          label: strings.commonCancel,
           actionKey: const ValueKey<String>('file-browser-cancel'),
           onPressed: () => Navigator.of(context).pop(),
         ),
         if (widget.mode == FileBrowserMode.saveAs)
           AppWindowAction(
-            label: 'Save',
+            label: strings.commonSave,
             actionKey: const ValueKey<String>('file-browser-save'),
             emphasis: AppWindowActionEmphasis.primary,
             onPressed: _saveHere,
