@@ -8,11 +8,28 @@ import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_cells_row.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_row_run_labels_painter.dart';
 
 /// R26 #7 + R27 #3: every frame block prints ITS OWN length — one label
 /// per block (never the glued run's total), bare number (no `f`), bold,
 /// bottom-CENTRE of the block's last cell.
+///
+/// R28 #4 painterized these (a `Positioned` per block made a zoom step
+/// re-lay-out rows x blocks boxes), so the assertions read the painter's
+/// resolved labels instead of hunting `Text` widgets — the same probe shape
+/// the cells and ruler painters already use.
 void main() {
+  /// The row's resolved labels, in block order.
+  List<TimelineRunLabel> labelsOf(WidgetTester tester, {String layerId = 'a-1'}) {
+    final paint = tester.widget<CustomPaint>(
+      find.byKey(ValueKey<String>('timeline-run-durations-$layerId')),
+    );
+    return (paint.painter! as TimelineRowRunLabelsPainter).runLabels();
+  }
+
+  List<String> textsOf(WidgetTester tester, {String layerId = 'a-1'}) =>
+      labelsOf(tester, layerId: layerId).map((label) => label.text).toList();
+
   Layer drawingLayer(Map<int, TimelineExposure> timeline) => Layer(
     id: const LayerId('a-1'),
     name: 'A',
@@ -62,15 +79,18 @@ void main() {
         }),
       ),
     );
-    expect(
-      find.byKey(const ValueKey<String>('timeline-run-duration-a-1-2')),
-      findsOneWidget,
-    );
-    expect(find.text('6'), findsOneWidget);
-    expect(find.text('6f'), findsNothing);
+    expect(textsOf(tester), ['6'], reason: 'bare number, never "6f"');
 
-    final label = tester.widget<Text>(find.text('6'));
-    expect(label.style?.fontWeight, FontWeight.w700);
+    final painter =
+        tester
+                .widget<CustomPaint>(
+                  find.byKey(
+                    const ValueKey<String>('timeline-run-durations-a-1'),
+                  ),
+                )
+                .painter!
+            as TimelineRowRunLabelsPainter;
+    expect(painter.labelStyle.fontWeight, FontWeight.w700);
   });
 
   testWidgets('the seconds toggle switches the label to seconds+frames', (
@@ -85,8 +105,7 @@ void main() {
       ),
     );
     // 6 frames at the default 24-base: under a second.
-    expect(find.text('0+06'), findsOneWidget);
-    expect(find.text('6'), findsNothing);
+    expect(textsOf(tester), ['0+06']);
   });
 
   testWidgets('R27 #3: GLUED blocks each label their own length', (
@@ -102,9 +121,7 @@ void main() {
         }),
       ),
     );
-    expect(find.text('2'), findsOneWidget);
-    expect(find.text('3'), findsOneWidget);
-    expect(find.text('5'), findsNothing);
+    expect(textsOf(tester), ['2', '3'], reason: 'never the glued total 5');
   });
 
   testWidgets('R27 #3: the label centres on the block LAST cell', (
@@ -118,12 +135,11 @@ void main() {
       ),
     );
     // Block spans frames 0..4 → last cell is [144, 192), centre 168.
-    final centre = tester.getCenter(find.text('4'));
-    expect(centre.dx, closeTo(168, 1.5));
-
-    // Bottom-anchored inside the row (52 tall, 1px padding).
-    final bottom = tester.getRect(find.text('4')).bottom;
-    expect(bottom, greaterThan(40));
+    final label = labelsOf(tester).single;
+    expect(label.text, '4');
+    expect(label.anchor.dx, closeTo(168, 1.5));
+    // Bottom-anchored inside the row (52 tall; the glyph insets 1px above).
+    expect(label.anchor.dy, 52);
   });
 
   testWidgets('separate blocks label separately; SE rows stay clean', (
@@ -137,8 +153,7 @@ void main() {
         }),
       ),
     );
-    expect(find.text('2'), findsOneWidget);
-    expect(find.text('3'), findsOneWidget);
+    expect(textsOf(tester), ['2', '3']);
 
     await tester.pumpWidget(
       harness(
@@ -154,7 +169,7 @@ void main() {
       ),
     );
     expect(
-      find.text('4'),
+      find.byKey(const ValueKey<String>('timeline-run-durations-se-1')),
       findsNothing,
       reason:
           'SE sheet rows carry dialogue and waveforms, not exposure durations',

@@ -23,7 +23,7 @@ import 'timeline_frame_range_gesture.dart';
 import 'timeline_frame_window.dart';
 import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
 import 'timeline_row_cells_painter.dart';
-import 'timeline_run_duration_labels.dart';
+import 'timeline_row_run_labels_painter.dart';
 import 'timeline_run_end_handles.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_instruction_row_visual.dart';
@@ -354,20 +354,28 @@ class TimelineFrameCellsRow extends StatelessWidget {
             keyPrefix: keyPrefix,
           ),
         // R26 #7: each block's own length at its end cell, bottom-right
-        // (the storyboard cut block's TIME label, on frame blocks).
+        // (the storyboard cut block's TIME label, on frame blocks). ONE
+        // painter for the whole row (R28 #4) — a `Positioned` per block
+        // made a zoom step re-lay-out rows x blocks boxes.
         if (layerKindHoldsDrawings(layer.kind) &&
             !layerKindUsesSeSheetCells(layer.kind))
-          ...timelineRowRunDurationLabels(
-            layer: layer,
-            frameStartIndex: frameStartIndex,
-            frameEndIndexExclusive: frameEndIndexExclusive,
-            leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-            frameCellExtent: metrics.frameCellWidth,
-            crossAxisExtent: metrics.layerRowHeight,
-            showSeconds: showSeconds,
-            countingBase: projectFrameRate.countingBase,
-            axis: axis,
-            keyPrefix: keyPrefix,
+          Positioned.fill(
+            child: IgnorePointer(
+              child: CustomPaint(
+                key: ValueKey<String>('$keyPrefix-run-durations-${layer.id}'),
+                painter: TimelineRowRunLabelsPainter(
+                  layer: layer,
+                  frameStartIndex: frameStartIndex,
+                  frameEndIndexExclusive: frameEndIndexExclusive,
+                  leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+                  frameCellExtent: metrics.frameCellWidth,
+                  crossAxisExtent: metrics.layerRowHeight,
+                  showSeconds: showSeconds,
+                  countingBase: projectFrameRate.countingBase,
+                  axis: axis,
+                ),
+              ),
+            ),
           ),
         // The range gesture layer replaces the block-body move handle
         // (UI-R8, TVP style): a pan on the cells SELECTS a frame range —
