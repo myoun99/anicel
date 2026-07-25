@@ -890,40 +890,39 @@ Widget timelineRowCellsPaintArea({
             },
       onDoubleTap: onActivateCell == null ? null : () {},
       child: RepaintBoundary(
-        // The row's main-axis size comes from the LIVE geometry (R28 #4): a
-        // zoom step relays this box out without rebuilding a widget.
-        child: TimelineFrameAxisBox(
-          geometry: geometry,
-          crossAxisExtent: crossAxisExtent,
-          axis: axis,
-          // The row's PAPER underlay (UI-R21 #2): the surface base and
-          // the active-row wash live HERE, row-wide — the cell substrate
-          // paints transparent empties and carries no active state, so
-          // switching the active layer re-rasters NOTHING (the wash is
-          // one ColoredBox on a row that was rebuilding anyway).
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              ColoredBox(color: Theme.of(context).colorScheme.surface),
-              if (active)
-                ColoredBox(
-                  color: timelineActiveRowWashColor(
-                    Theme.of(context).colorScheme,
-                  ),
+        // The main-axis size arrives from the row's frame-axis box, which
+        // wraps this WHOLE row now (the zoom round) rather than just the
+        // cells — so the grips, the range gesture layer and this strip all
+        // sit in the one constant-size window and a zoom step re-lays-out
+        // none of them.
+        //
+        // The row's PAPER underlay (UI-R21 #2): the surface base and the
+        // active-row wash live HERE, row-wide — the cell substrate paints
+        // transparent empties and carries no active state, so switching the
+        // active layer re-rasters NOTHING (the wash is one ColoredBox on a
+        // row that was rebuilding anyway).
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            ColoredBox(color: Theme.of(context).colorScheme.surface),
+            if (active)
+              ColoredBox(
+                color: timelineActiveRowWashColor(
+                  Theme.of(context).colorScheme,
                 ),
-              CustomPaint(
-                key: ValueKey<String>('$keyPrefix-row-cells-${layer.id}'),
-                painter: painter,
-                // The block duration labels ride HERE rather than as their
-                // own Positioned.fill CustomPaint: same geometry, same
-                // repaint trigger, two fewer render objects per row to lay
-                // out on a zoom step. A foreground painter that does not
-                // implement `hitTest` never absorbs a pointer, which is what
-                // the IgnorePointer around it used to guarantee.
-                foregroundPainter: foregroundPainter,
               ),
-            ],
-          ),
+            CustomPaint(
+              key: ValueKey<String>('$keyPrefix-row-cells-${layer.id}'),
+              painter: painter,
+              // The block duration labels ride HERE rather than as their
+              // own Positioned.fill CustomPaint: same geometry, same
+              // repaint trigger, two fewer render objects per row to lay
+              // out on a zoom step. A foreground painter that does not
+              // implement `hitTest` never absorbs a pointer, which is what
+              // the IgnorePointer around it used to guarantee.
+              foregroundPainter: foregroundPainter,
+            ),
+          ],
         ),
       ),
     ),

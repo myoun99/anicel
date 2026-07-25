@@ -182,6 +182,9 @@ class TimelineFrameCellsRow extends StatelessWidget {
 
     final stack = Stack(
       key: ValueKey<String>('$keyPrefix-frame-$axisWord-area-${layer.id}'),
+      // The frame-axis box below sizes this row, so the cell strip (the one
+      // non-positioned child) takes the box outright instead of sizing it.
+      fit: StackFit.expand,
       children: [
         // EVERY row paints its cells as ONE CustomPaint (UI-R9 #12b, and
         // R28 #4 for the sparse kinds): the SE / instruction / camera rows
@@ -399,11 +402,24 @@ class TimelineFrameCellsRow extends StatelessWidget {
           ),
       ],
     );
+    // THE row's box (zoom round): it reports the row's content extent, as it
+    // always did, but lays its child out at the geometry's window — a
+    // constant pixel extent when the owner supplies one — and paints and
+    // hit-tests that child at the window's origin. A zoom step then moves
+    // this one box per row instead of the ~25 render objects inside it.
+    // Without a window (X-sheet, tests, short content) it is exactly the box
+    // it replaced.
+    final body = TimelineFrameAxisBox(
+      geometry: geometry,
+      crossAxisExtent: crossAxisExtent,
+      axis: axis,
+      child: stack,
+    );
     // The X-sheet column is cross-axis sized to the layer's row height (its
     // width); the horizontal row takes its height from the parent list.
     return axis == Axis.vertical
-        ? SizedBox(width: crossAxisExtent, child: stack)
-        : stack;
+        ? SizedBox(width: crossAxisExtent, child: body)
+        : body;
   }
 
 }
