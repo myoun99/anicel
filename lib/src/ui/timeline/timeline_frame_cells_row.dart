@@ -16,6 +16,7 @@ import 'timeline_exposure_block_visual.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import '../../models/timeline_repeat.dart';
 import 'timeline_frame_cell.dart';
+import 'timeline_frame_geometry.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_frame_window.dart';
 import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
@@ -23,7 +24,6 @@ import 'timeline_row_cells_painter.dart';
 import 'timeline_row_edit_chrome.dart';
 import 'timeline_row_run_labels_painter.dart';
 import 'timeline_run_end_handles.dart';
-import 'timeline_grid_metrics.dart';
 import 'timeline_instruction_row_visual.dart';
 import 'timeline_se_row_visual.dart';
 
@@ -40,11 +40,8 @@ class TimelineFrameCellsRow extends StatelessWidget {
     required this.layer,
     required this.active,
     required this.playbackFrameCount,
-    required this.frameStartIndex,
-    required this.frameEndIndexExclusive,
-    required this.leadingFrameSpacerWidth,
-    required this.trailingFrameSpacerWidth,
-    required this.metrics,
+    required this.geometry,
+    required this.crossAxisExtent,
     required this.exposureStateForLayer,
     this.frameNameForLayer,
     this.celHasContentForLayer,
@@ -69,11 +66,20 @@ class TimelineFrameCellsRow extends StatelessWidget {
   final Layer layer;
   final bool active;
   final int playbackFrameCount;
-  final int frameStartIndex;
-  final int frameEndIndexExclusive;
-  final double leadingFrameSpacerWidth;
-  final double trailingFrameSpacerWidth;
-  final TimelineGridMetrics metrics;
+
+  /// The LIVE frame-axis geometry — the part a ZOOM STEP moves (R28 #4).
+  ///
+  /// It arrives as a listenable, not as scalars, so the row's memo can key
+  /// on its IDENTITY and a zoom step reaches the painted rows as a repaint
+  /// plus one box relayout instead of rebuilding every visible row's whole
+  /// subtree. The SPARSE kinds (SE / instruction / camera, whose cells and
+  /// overlays are still a widget apiece) read `geometry.value` at build time
+  /// and stay in the memo key by value — they rebuild on zoom exactly as
+  /// before.
+  final TimelineFrameGeometryHandle geometry;
+
+  /// Row height (horizontal) / column width (X-sheet). NOT a zoom field.
+  final double crossAxisExtent;
 
   /// The frame axis this row lays its cells along: horizontal in the layer
   /// timeline, vertical in the X-sheet. Every axis-aware child overlay and
@@ -161,6 +167,9 @@ class TimelineFrameCellsRow extends StatelessWidget {
     final commaDrag = this.commaDrag;
     final rangeGesture = this.rangeGesture;
     final axisWord = axis == Axis.vertical ? 'column' : 'row';
+    // The SPARSE kinds' build-time snapshot. The painted paths never read
+    // this — they take the listenable and follow it live.
+    final frames = geometry.value;
     // Grips ride every drawing-holding kind; the run clusters skip the SE
     // sheet rows (their spans are sound clips, not glued cel runs).
     final wantsGrips = commaDrag != null && layerKindHoldsDrawings(layer.kind);
@@ -168,15 +177,11 @@ class TimelineFrameCellsRow extends StatelessWidget {
         runEdit != null &&
         layerKindHoldsDrawings(layer.kind) &&
         !layerKindUsesSeSheetCells(layer.kind);
-    final editChrome = wantsGrips || wantsRunEdges
-        ? timelineRowEditChromeModel(
+    final chromeResolver = wantsGrips || wantsRunEdges
+        ? TimelineRowChromeResolver(
             layer: layer,
             baseLayer: baseLayer,
-            frameStartIndex: frameStartIndex,
-            frameEndIndexExclusive: frameEndIndexExclusive,
-            leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-            frameCellExtent: metrics.frameCellWidth,
-            crossAxisExtent: metrics.layerRowHeight,
+            crossAxisExtent: crossAxisExtent,
             axis: axis,
             includeGrips: wantsGrips,
             includeRunEdges: wantsRunEdges,
@@ -216,12 +221,8 @@ class TimelineFrameCellsRow extends StatelessWidget {
             layer: layer,
             active: active,
             playbackFrameCount: playbackFrameCount,
-            frameStartIndex: frameStartIndex,
-            frameEndIndexExclusive: frameEndIndexExclusive,
-            leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-            trailingFrameSpacerWidth: trailingFrameSpacerWidth,
-            frameCellExtent: metrics.frameCellWidth,
-            crossAxisExtent: metrics.layerRowHeight,
+            geometry: geometry,
+            crossAxisExtent: crossAxisExtent,
             axis: axis,
             windowBucket: windowBucket,
             viewportMainExtent: viewportMainExtent,
@@ -248,35 +249,40 @@ class TimelineFrameCellsRow extends StatelessWidget {
           ValueListenableBuilder<int>(
             valueListenable: windowBucket!,
             builder: (context, bucket, _) {
-              final cellExtent = metrics.frameCellWidth;
+              final cellExtent = frames.frameCellExtent;
               final window = timelineFrameWindowFor(
                 bucket: bucket,
                 cellExtent: cellExtent,
                 viewportExtent: viewportMainExtent,
               );
-              final first = math.max(frameStartIndex, window.startIndex);
+              final first = math.max(
+                frames.frameStartIndex,
+                window.startIndex,
+              );
               final last = math.min(
-                frameEndIndexExclusive,
+                frames.frameEndIndexExclusive,
                 window.endIndexExclusive,
               );
               return _widgetCellsStrip(
+                frames,
                 stateAt,
                 startIndex: first,
                 endIndexExclusive: math.max(first, last),
                 leading: first * cellExtent,
                 trailing:
-                    (frameEndIndexExclusive - math.max(first, last)) *
+                    (frames.frameEndIndexExclusive - math.max(first, last)) *
                     cellExtent,
               );
             },
           )
         else
           _widgetCellsStrip(
+            frames,
             stateAt,
-            startIndex: frameStartIndex,
-            endIndexExclusive: frameEndIndexExclusive,
-            leading: leadingFrameSpacerWidth,
-            trailing: trailingFrameSpacerWidth,
+            startIndex: frames.frameStartIndex,
+            endIndexExclusive: frames.frameEndIndexExclusive,
+            leading: frames.leadingFrameSpacerWidth,
+            trailing: frames.trailingFrameSpacerWidth,
           ),
         // NO extra section-divider overlay (R3 feedback #6): section
         // boundaries share the same single hairline as every row boundary;
@@ -288,10 +294,10 @@ class TimelineFrameCellsRow extends StatelessWidget {
         if (layerKindUsesSeSheetCells(layer.kind) && audioPeaksFor != null)
           ...timelineRowAudioOverlays(
             layer: layer,
-            frameStartIndex: frameStartIndex,
-            leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-            frameCellExtent: metrics.frameCellWidth,
-            crossAxisExtent: metrics.layerRowHeight,
+            frameStartIndex: frames.frameStartIndex,
+            leadingFrameSpacerWidth: frames.leadingFrameSpacerWidth,
+            frameCellExtent: frames.frameCellExtent,
+            crossAxisExtent: crossAxisExtent,
             axis: axis,
             frameRate: projectFrameRate,
             audioPeaksFor: audioPeaksFor!,
@@ -306,11 +312,11 @@ class TimelineFrameCellsRow extends StatelessWidget {
         if (layerKindUsesSeSheetCells(layer.kind))
           ...timelineRowSeLabelOverlays(
             layer: layer,
-            frameStartIndex: frameStartIndex,
-            frameEndIndexExclusive: frameEndIndexExclusive,
-            leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-            frameCellExtent: metrics.frameCellWidth,
-            crossAxisExtent: metrics.layerRowHeight,
+            frameStartIndex: frames.frameStartIndex,
+            frameEndIndexExclusive: frames.frameEndIndexExclusive,
+            leadingFrameSpacerWidth: frames.leadingFrameSpacerWidth,
+            frameCellExtent: frames.frameCellExtent,
+            crossAxisExtent: crossAxisExtent,
             axis: axis,
             keyPrefix: keyPrefix,
           ),
@@ -320,11 +326,11 @@ class TimelineFrameCellsRow extends StatelessWidget {
             seClipMarkerTooltip != null)
           ...timelineRowClipMarkerOverlays(
             layer: layer,
-            frameStartIndex: frameStartIndex,
-            frameEndIndexExclusive: frameEndIndexExclusive,
-            leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-            frameCellExtent: metrics.frameCellWidth,
-            crossAxisExtent: metrics.layerRowHeight,
+            frameStartIndex: frames.frameStartIndex,
+            frameEndIndexExclusive: frames.frameEndIndexExclusive,
+            leadingFrameSpacerWidth: frames.leadingFrameSpacerWidth,
+            frameCellExtent: frames.frameCellExtent,
+            crossAxisExtent: crossAxisExtent,
             axis: axis,
             tooltip: seClipMarkerTooltip!,
             color: Theme.of(context).colorScheme.error,
@@ -337,11 +343,11 @@ class TimelineFrameCellsRow extends StatelessWidget {
             layer: layer,
             cutFrameCount: playbackFrameCount,
             spillsInAtStart: seSpillsIn,
-            frameStartIndex: frameStartIndex,
-            frameEndIndexExclusive: frameEndIndexExclusive,
-            leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-            frameCellExtent: metrics.frameCellWidth,
-            crossAxisExtent: metrics.layerRowHeight,
+            frameStartIndex: frames.frameStartIndex,
+            frameEndIndexExclusive: frames.frameEndIndexExclusive,
+            leadingFrameSpacerWidth: frames.leadingFrameSpacerWidth,
+            frameCellExtent: frames.frameCellExtent,
+            crossAxisExtent: crossAxisExtent,
             axis: axis,
             keyPrefix: keyPrefix,
           ),
@@ -350,11 +356,11 @@ class TimelineFrameCellsRow extends StatelessWidget {
             audioLane?.onDropMediaAsset != null)
           ...timelineRowSeAssetDropTargets(
             layer: layer,
-            frameStartIndex: frameStartIndex,
-            frameEndIndexExclusive: frameEndIndexExclusive,
-            leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-            frameCellExtent: metrics.frameCellWidth,
-            crossAxisExtent: metrics.layerRowHeight,
+            frameStartIndex: frames.frameStartIndex,
+            frameEndIndexExclusive: frames.frameEndIndexExclusive,
+            leadingFrameSpacerWidth: frames.leadingFrameSpacerWidth,
+            frameCellExtent: frames.frameCellExtent,
+            crossAxisExtent: crossAxisExtent,
             axis: axis,
             onAssetDropped: (blockStartFrame, path) =>
                 audioLane!.onDropMediaAsset!(layer.id, blockStartFrame, path),
@@ -366,11 +372,11 @@ class TimelineFrameCellsRow extends StatelessWidget {
         if (layer.kind == LayerKind.instruction && instructionDefById != null)
           ...timelineRowInstructionOverlays(
             layer: layer,
-            frameStartIndex: frameStartIndex,
-            frameEndIndexExclusive: frameEndIndexExclusive,
-            leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-            frameCellExtent: metrics.frameCellWidth,
-            crossAxisExtent: metrics.layerRowHeight,
+            frameStartIndex: frames.frameStartIndex,
+            frameEndIndexExclusive: frames.frameEndIndexExclusive,
+            leadingFrameSpacerWidth: frames.leadingFrameSpacerWidth,
+            frameCellExtent: frames.frameCellExtent,
+            crossAxisExtent: crossAxisExtent,
             axis: axis,
             defById: instructionDefById!,
             keyPrefix: keyPrefix,
@@ -387,11 +393,8 @@ class TimelineFrameCellsRow extends StatelessWidget {
                 key: ValueKey<String>('$keyPrefix-run-durations-${layer.id}'),
                 painter: TimelineRowRunLabelsPainter(
                   layer: layer,
-                  frameStartIndex: frameStartIndex,
-                  frameEndIndexExclusive: frameEndIndexExclusive,
-                  leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-                  frameCellExtent: metrics.frameCellWidth,
-                  crossAxisExtent: metrics.layerRowHeight,
+                  geometry: geometry,
+                  crossAxisExtent: crossAxisExtent,
                   showSeconds: showSeconds,
                   countingBase: projectFrameRate.countingBase,
                   axis: axis,
@@ -414,10 +417,8 @@ class TimelineFrameCellsRow extends StatelessWidget {
             // commits the move under the pointer.
             key: ValueKey<String>('$keyPrefix-range-gesture-slot-${layer.id}'),
             layer: layer,
-            frameStartIndex: frameStartIndex,
-            leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-            frameCellExtent: metrics.frameCellWidth,
-            crossAxisExtent: metrics.layerRowHeight,
+            geometry: geometry,
+            crossAxisExtent: crossAxisExtent,
             callbacks: rangeGesture,
             axis: axis,
           ),
@@ -432,7 +433,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
         // position on the DISPLAY layer (they ride previews) but call back
         // with the COMMITTED run's identity, and the layer itself no longer
         // remounts mid-gesture at all — its state lives at row level.
-        if (editChrome != null && !editChrome.isEmpty)
+        if (chromeResolver != null)
           Positioned.fill(
             // The SLOT key (R12-③ rule, UI-R22 #1): mid-drag previews
             // add/remove sibling overlays in this Stack.
@@ -442,8 +443,8 @@ class TimelineFrameCellsRow extends StatelessWidget {
                 '$keyPrefix-edit-chrome-${layer.id}',
               ),
               layerId: layer.id,
-              model: editChrome,
-              frameCellExtent: metrics.frameCellWidth,
+              resolver: chromeResolver,
+              geometry: geometry,
               axis: axis,
               commaDrag: commaDrag,
               runEdit: runEdit,
@@ -452,11 +453,11 @@ class TimelineFrameCellsRow extends StatelessWidget {
         if (commaDrag != null && layer.kind == LayerKind.instruction)
           ...timelineRowInstructionEdgeGrips(
             layer: layer,
-            frameStartIndex: frameStartIndex,
-            frameEndIndexExclusive: frameEndIndexExclusive,
-            leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-            frameCellExtent: metrics.frameCellWidth,
-            crossAxisExtent: metrics.layerRowHeight,
+            frameStartIndex: frames.frameStartIndex,
+            frameEndIndexExclusive: frames.frameEndIndexExclusive,
+            leadingFrameSpacerWidth: frames.leadingFrameSpacerWidth,
+            frameCellExtent: frames.frameCellExtent,
+            crossAxisExtent: crossAxisExtent,
             commaDrag: commaDrag,
             axis: axis,
           ),
@@ -465,13 +466,19 @@ class TimelineFrameCellsRow extends StatelessWidget {
     // The X-sheet column is cross-axis sized to the layer's row height (its
     // width); the horizontal row takes its height from the parent list.
     return axis == Axis.vertical
-        ? SizedBox(width: metrics.layerRowHeight, child: stack)
+        ? SizedBox(width: crossAxisExtent, child: stack)
         : stack;
   }
 
   /// The sparse kinds' per-cell widget strip (SE / instruction / camera):
   /// spacers stand in for the cells outside [startIndex, endIndexExclusive).
+  ///
+  /// Takes its geometry by VALUE: these cells are widgets, so the row that
+  /// built them rebuilds on a zoom step (they stay in the memo key). Making
+  /// them follow the live geometry is the sparse-cell round, deliberately
+  /// out of scope here.
   Widget _widgetCellsStrip(
+    TimelineFrameGeometry frames,
     TimelineCellExposureState Function(int frameIndex) stateAt, {
     required int startIndex,
     required int endIndexExclusive,
@@ -487,8 +494,8 @@ class TimelineFrameCellsRow extends StatelessWidget {
           key: ValueKey<String>(
             '$keyPrefix-frame-$axisWord-leading-spacer-${layer.id}',
           ),
-          width: vertical ? metrics.layerRowHeight : leading,
-          height: vertical ? leading : metrics.layerRowHeight,
+          width: vertical ? crossAxisExtent : leading,
+          height: vertical ? leading : crossAxisExtent,
         ),
         for (
           var frameIndex = startIndex;
@@ -500,8 +507,8 @@ class TimelineFrameCellsRow extends StatelessWidget {
             frameIndex: frameIndex,
             axis: axis,
             cellKeyPrefix: '$keyPrefix-cell',
-            width: vertical ? metrics.layerRowHeight : metrics.frameCellWidth,
-            height: vertical ? metrics.frameCellWidth : metrics.layerRowHeight,
+            width: vertical ? crossAxisExtent : frames.frameCellExtent,
+            height: vertical ? frames.frameCellExtent : crossAxisExtent,
             active: active,
             outsidePlaybackRange: frameIndex >= playbackFrameCount,
             ghost: timelineIndexIsGhost(layer, frameIndex),
@@ -534,8 +541,8 @@ class TimelineFrameCellsRow extends StatelessWidget {
           key: ValueKey<String>(
             '$keyPrefix-frame-$axisWord-trailing-spacer-${layer.id}',
           ),
-          width: vertical ? metrics.layerRowHeight : trailing,
-          height: vertical ? trailing : metrics.layerRowHeight,
+          width: vertical ? crossAxisExtent : trailing,
+          height: vertical ? trailing : crossAxisExtent,
         ),
       ],
     );

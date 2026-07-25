@@ -11,9 +11,9 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.d
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_exposure_comma_drag_handle.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_exposure_comma_drag_policy.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_cells_row.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_run_end_handles.dart';
 
+import 'timeline_frame_geometry_probe.dart';
 import 'timeline_row_chrome_probe.dart';
 
 /// R28 #4 tier 2: a dense row's grips and run clusters are ONE painter plus
@@ -61,16 +61,13 @@ void main() {
           layer: twoRunLayer(),
           active: true,
           playbackFrameCount: 24,
-          frameStartIndex: 0,
-          frameEndIndexExclusive: 8,
-          leadingFrameSpacerWidth: 0,
-          trailingFrameSpacerWidth: 0,
           // Classic geometry: 48px cells put the grips at [0,12] / [84,96]
           // and run 0's end cluster at [96,120].
-          metrics: const TimelineGridMetrics(
-            frameCellWidth: 48,
-            layerRowHeight: 52,
+          geometry: testFrameGeometry(
+            frameCellExtent: 48,
+            frameEndIndexExclusive: 8,
           ),
+          crossAxisExtent: 52,
           exposureStateForLayer: stateFor,
           onSelectLayer: (_) {},
           onSelectFrame: seeks.add,

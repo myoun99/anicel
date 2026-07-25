@@ -14,6 +14,7 @@ import 'timeline_cell_double_tap.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
+import 'timeline_frame_geometry.dart';
 import 'timeline_frame_window.dart';
 import 'timeline_glyph_cache.dart';
 import 'timeline_grid_tile_store.dart';
@@ -68,10 +69,7 @@ class TimelineRowCellsPainter extends CustomPainter {
   TimelineRowCellsPainter({
     required this.layer,
     required this.playbackFrameCount,
-    required this.frameStartIndex,
-    required this.frameEndIndexExclusive,
-    required this.leadingFrameSpacerWidth,
-    required this.frameCellExtent,
+    required this.geometry,
     required this.crossAxisExtent,
     required this.exposureStateForLayer,
     this.frameNameForLayer,
@@ -84,18 +82,26 @@ class TimelineRowCellsPainter extends CustomPainter {
     this.tileStore,
     this.devicePixelRatio = 1.0,
   }) : super(
-         repaint: tileStore == null
-             ? windowBucket
-             : Listenable.merge([?windowBucket, tileStore.revision]),
+         repaint: Listenable.merge([
+           geometry,
+           ?windowBucket,
+           ?tileStore?.revision,
+         ]),
        );
 
   final Layer layer;
   final int playbackFrameCount;
 
-  final int frameStartIndex;
-  final int frameEndIndexExclusive;
-  final double leadingFrameSpacerWidth;
-  final double frameCellExtent;
+  /// The LIVE frame-axis geometry (R28 #4): read through, never copied, so a
+  /// zoom step repaints this painter instead of rebuilding the row that
+  /// built it. Every geometry getter below reads `geometry.value`.
+  final TimelineFrameGeometryHandle geometry;
+
+  int get frameStartIndex => geometry.value.frameStartIndex;
+  int get frameEndIndexExclusive => geometry.value.frameEndIndexExclusive;
+  double get leadingFrameSpacerWidth => geometry.value.leadingFrameSpacerWidth;
+  double get frameCellExtent => geometry.value.frameCellExtent;
+
   final double crossAxisExtent;
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
@@ -605,20 +611,24 @@ class TimelineRowCellsPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant TimelineRowCellsPainter oldDelegate) =>
+      // Geometry is absent on purpose: it arrives through `repaint`, and a
+      // rebuilt-but-identical painter must not re-record on its account.
+      //
+      // Value-compared, never `identical`: a same-receiver tear-off is a
+      // FRESH object every build but compares equal, and `AnimatedTheme`
+      // hands out a new ColorScheme instance per build — under `!identical`
+      // both read as "changed" and this painter re-recorded on every
+      // rebuild it saw (the churn that hid in the rulers, F2).
       !identical(oldDelegate.layer, layer) ||
       oldDelegate.playbackFrameCount != playbackFrameCount ||
-      oldDelegate.frameStartIndex != frameStartIndex ||
-      oldDelegate.frameEndIndexExclusive != frameEndIndexExclusive ||
-      oldDelegate.leadingFrameSpacerWidth != leadingFrameSpacerWidth ||
-      oldDelegate.frameCellExtent != frameCellExtent ||
       oldDelegate.crossAxisExtent != crossAxisExtent ||
       oldDelegate.axis != axis ||
       !identical(oldDelegate.windowBucket, windowBucket) ||
       oldDelegate.viewportMainExtent != viewportMainExtent ||
-      !identical(oldDelegate.colorScheme, colorScheme) ||
-      !identical(oldDelegate.exposureStateForLayer, exposureStateForLayer) ||
-      !identical(oldDelegate.frameNameForLayer, frameNameForLayer) ||
-      !identical(oldDelegate.celHasContentForLayer, celHasContentForLayer) ||
+      oldDelegate.colorScheme != colorScheme ||
+      oldDelegate.exposureStateForLayer != exposureStateForLayer ||
+      oldDelegate.frameNameForLayer != frameNameForLayer ||
+      oldDelegate.celHasContentForLayer != celHasContentForLayer ||
       !identical(oldDelegate.tileStore, tileStore) ||
       oldDelegate.devicePixelRatio != devicePixelRatio;
 
@@ -672,11 +682,7 @@ Widget timelineRowCellsPaintArea({
   required Layer layer,
   required bool active,
   required int playbackFrameCount,
-  required int frameStartIndex,
-  required int frameEndIndexExclusive,
-  required double leadingFrameSpacerWidth,
-  required double trailingFrameSpacerWidth,
-  required double frameCellExtent,
+  required TimelineFrameGeometryHandle geometry,
   required double crossAxisExtent,
   required Axis axis,
   required TimelineCellExposureState Function(Layer layer, int frameIndex)
@@ -693,10 +699,7 @@ Widget timelineRowCellsPaintArea({
   final painter = TimelineRowCellsPainter(
     layer: layer,
     playbackFrameCount: playbackFrameCount,
-    frameStartIndex: frameStartIndex,
-    frameEndIndexExclusive: frameEndIndexExclusive,
-    leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-    frameCellExtent: frameCellExtent,
+    geometry: geometry,
     crossAxisExtent: crossAxisExtent,
     exposureStateForLayer: exposureStateForLayer,
     frameNameForLayer: frameNameForLayer,
@@ -711,12 +714,8 @@ Widget timelineRowCellsPaintArea({
     tileStore: TimelineGridTileStore.instance,
     devicePixelRatio: MediaQuery.maybeDevicePixelRatioOf(context) ?? 1.0,
   );
-  final totalMainExtent =
-      leadingFrameSpacerWidth +
-      (frameEndIndexExclusive - frameStartIndex) * frameCellExtent +
-      trailingFrameSpacerWidth;
-  bool inWindow(int frameIndex) =>
-      frameIndex >= frameStartIndex && frameIndex < frameEndIndexExclusive;
+  // Read LIVE: the row that built this closure survives zoom steps now.
+  bool inWindow(int frameIndex) => geometry.value.contains(frameIndex);
   void select(int frameIndex) {
     onSelectLayer(layer.id);
     onSelectFrame(frameIndex);
@@ -810,9 +809,12 @@ Widget timelineRowCellsPaintArea({
             },
       onDoubleTap: onActivateCell == null ? null : () {},
       child: RepaintBoundary(
-        child: SizedBox(
-          width: axis == Axis.horizontal ? totalMainExtent : crossAxisExtent,
-          height: axis == Axis.horizontal ? crossAxisExtent : totalMainExtent,
+        // The row's main-axis size comes from the LIVE geometry (R28 #4): a
+        // zoom step relays this box out without rebuilding a widget.
+        child: TimelineFrameAxisBox(
+          geometry: geometry,
+          crossAxisExtent: crossAxisExtent,
+          axis: axis,
           // The row's PAPER underlay (UI-R21 #2): the surface base and
           // the active-row wash live HERE, row-wide — the cell substrate
           // paints transparent empties and carries no active state, so

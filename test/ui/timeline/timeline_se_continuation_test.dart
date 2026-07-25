@@ -9,9 +9,9 @@ import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_exposure_comma_drag_policy.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_cells_row.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_row_edit_chrome.dart';
 
+import 'timeline_frame_geometry_probe.dart';
 import 'timeline_row_chrome_probe.dart';
 
 /// UI-R7 #6: the cut-scoped timeline announces an SE sound's other half
@@ -43,14 +43,11 @@ void main() {
             active: true,
             // The cut is 6 frames long; the row shows a few runway frames.
             playbackFrameCount: 6,
-            frameStartIndex: 0,
-            frameEndIndexExclusive: 10,
-            leadingFrameSpacerWidth: 0,
-            trailingFrameSpacerWidth: 0,
-            metrics: const TimelineGridMetrics(
-              frameCellWidth: 48,
-              layerRowHeight: 52,
+            geometry: testFrameGeometry(
+              frameCellExtent: 48,
+              frameEndIndexExclusive: 10,
             ),
+            crossAxisExtent: 52,
             exposureStateForLayer: stateFor,
             onSelectLayer: (_) {},
             onSelectFrame: (_) {},

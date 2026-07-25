@@ -3,7 +3,7 @@ import 'package:flutter/semantics.dart' show SemanticsProperties;
 
 import '../../models/layer.dart';
 import 'timeline_cell_style.dart';
-import 'timeline_frame_coordinate_policy.dart';
+import 'timeline_frame_geometry.dart';
 import 'timeline_frame_range_policy.dart' show timelineDurationLabel;
 import 'timeline_glyph_cache.dart';
 
@@ -46,34 +46,31 @@ class TimelineRunLabel {
 /// Ghost blocks stay unlabeled: their timing is derived, the same rule the
 /// run-edge clusters follow.
 class TimelineRowRunLabelsPainter extends CustomPainter {
-  const TimelineRowRunLabelsPainter({
+  TimelineRowRunLabelsPainter({
     required this.layer,
-    required this.frameStartIndex,
-    required this.frameEndIndexExclusive,
-    required this.leadingFrameSpacerWidth,
-    required this.frameCellExtent,
+    required this.geometry,
     required this.crossAxisExtent,
     required this.showSeconds,
     required this.countingBase,
     this.axis = Axis.horizontal,
-  });
+  }) : super(repaint: geometry);
 
   final Layer layer;
-  final int frameStartIndex;
-  final int frameEndIndexExclusive;
-  final double leadingFrameSpacerWidth;
-  final double frameCellExtent;
+
+  /// The LIVE frame-axis geometry (R28 #4): a zoom step repaints this
+  /// painter rather than rebuilding the row that built it.
+  final TimelineFrameGeometryHandle geometry;
+
   final double crossAxisExtent;
   final bool showSeconds;
   final int countingBase;
   final Axis axis;
 
-  double _edge(int frameIndex) => frameVisibleX(
-    frameIndex: frameIndex,
-    frameStartIndex: frameStartIndex,
-    frameCellWidth: frameCellExtent,
-    leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-  );
+  int get frameStartIndex => geometry.value.frameStartIndex;
+  int get frameEndIndexExclusive => geometry.value.frameEndIndexExclusive;
+  double get frameCellExtent => geometry.value.frameCellExtent;
+
+  double _edge(int frameIndex) => geometry.value.edgeAt(frameIndex);
 
   /// The resolved label style — public so the bold/scale contract stays
   /// assertable now that there is no `Text` widget to read it off.
@@ -151,14 +148,8 @@ class TimelineRowRunLabelsPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant TimelineRowRunLabelsPainter oldDelegate) =>
-      // Value-compared, never `identical`: a fresh-but-equal instance is the
-      // common case on a rebuild, and an identity check would re-record the
-      // whole pass every time (the churn that hid in the ruler painters).
+      // Geometry is absent on purpose — it arrives through `repaint`.
       !identical(oldDelegate.layer, layer) ||
-      oldDelegate.frameStartIndex != frameStartIndex ||
-      oldDelegate.frameEndIndexExclusive != frameEndIndexExclusive ||
-      oldDelegate.leadingFrameSpacerWidth != leadingFrameSpacerWidth ||
-      oldDelegate.frameCellExtent != frameCellExtent ||
       oldDelegate.crossAxisExtent != crossAxisExtent ||
       oldDelegate.showSeconds != showSeconds ||
       oldDelegate.countingBase != countingBase ||

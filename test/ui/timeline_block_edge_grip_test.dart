@@ -10,9 +10,9 @@ import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_exposure_comma_drag_policy.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_cells_row.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/xsheet_timeline_grid.dart';
 
+import 'timeline/timeline_frame_geometry_probe.dart';
 import 'timeline/timeline_row_chrome_probe.dart';
 
 /// TVPaint-style comma grips: every drawing block shows inset bars inside
@@ -256,15 +256,12 @@ Widget _rowHarness({required Layer layer, Object? commaDrag = const _Unset()}) {
           layer: layer,
           active: true,
           playbackFrameCount: 24,
-          frameStartIndex: 0,
-          frameEndIndexExclusive: 8,
-          leadingFrameSpacerWidth: 0,
-          trailingFrameSpacerWidth: 0,
           // Classic geometry: the drag distances below assume 48px cells.
-          metrics: const TimelineGridMetrics(
-            frameCellWidth: 48,
-            layerRowHeight: 52,
+          geometry: testFrameGeometry(
+            frameCellExtent: 48,
+            frameEndIndexExclusive: 8,
           ),
+          crossAxisExtent: 52,
           exposureStateForLayer: _stateFor,
           onSelectLayer: (_) {},
           onSelectFrame: (_) {},
