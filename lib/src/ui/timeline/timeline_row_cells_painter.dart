@@ -188,11 +188,16 @@ class TimelineRowCellsPainter extends CustomPainter {
     return frame < 0 ? 0 : frame;
   }
 
+  /// Camera rows are a SUMMARY column, not a sheet: their "coverage" is the
+  /// lane-key union, drawn as a marker on empty-cell styling rather than as
+  /// paper (the widget cells' `cameraSummaryCell` rule, brought over intact).
+  bool get _cameraSummaryRow => layer.kind == LayerKind.camera;
+
   /// The cell state with ghost coverage READ AS EMPTY — ghosts render
   /// text-only (UI-R10 #11), so block-segment math and cell chrome treat
-  /// them as uncovered cells.
+  /// them as uncovered cells. Camera summary cells read empty ALWAYS.
   TimelineCellExposureState _chromeStateAt(int frameIndex) =>
-      timelineIndexIsGhost(layer, frameIndex)
+      timelineIndexIsGhost(layer, frameIndex) || _cameraSummaryRow
       ? TimelineCellExposureState.uncovered
       : _stateAt(frameIndex);
 
@@ -261,13 +266,29 @@ class TimelineRowCellsPainter extends CustomPainter {
     required bool outsidePlaybackRange,
     String? frameName,
   }) {
-    // The drawing-row half of TimelineFrameCell's marker table (SE /
-    // instruction / camera rows keep the widget renderer).
+    // THE marker table, all kinds (it was split across this painter and
+    // TimelineFrameCell while the sparse rows were still widgets).
     return switch (exposureState) {
+      // The timesheet "X": the FIRST cell of each empty run inside the
+      // playback range (paper-sheet style). Camera rows mirror keyframes,
+      // instruction rows carry instruction events and SE columns stay blank
+      // between entries on paper — no X on any of those.
       TimelineCellExposureState.uncovered =>
-        outsidePlaybackRange || !emptyRunStart ? '' : 'X',
+        !layerKindHoldsDrawings(layer.kind) ||
+                layerKindUsesSeSheetCells(layer.kind) ||
+                outsidePlaybackRange ||
+                !emptyRunStart
+            ? ''
+            : 'X',
+      // SE entries and instruction events draw their writing through the
+      // row-level span overlays; the cells stay glyph-free paper.
       TimelineCellExposureState.drawingStart =>
-        frameName == null || frameName.isEmpty ? '○' : frameName,
+        layerKindUsesSeSheetCells(layer.kind) ||
+                layer.kind == LayerKind.instruction
+            ? ''
+            : frameName == null || frameName.isEmpty
+            ? '○'
+            : frameName,
       TimelineCellExposureState.held => '',
       TimelineCellExposureState.markHeld ||
       TimelineCellExposureState.markUncovered => '●',
@@ -278,10 +299,16 @@ class TimelineRowCellsPainter extends CustomPainter {
     required TimelineCellExposureState exposureState,
     String? frameName,
   }) {
+    // Instruction spans carry their own semantics on the row overlay.
+    if (layer.kind == LayerKind.instruction) {
+      return null;
+    }
     return switch (exposureState) {
       TimelineCellExposureState.uncovered => null,
       TimelineCellExposureState.drawingStart =>
-        frameName == null || frameName.isEmpty
+        layer.kind == LayerKind.camera
+            ? 'camera keyframe'
+            : frameName == null || frameName.isEmpty
             ? 'drawing start'
             : 'drawing start $frameName',
       TimelineCellExposureState.held => 'held exposure',
@@ -299,9 +326,11 @@ class TimelineRowCellsPainter extends CustomPainter {
     final model = cellModelAt(frameIndex);
     // Ghosts carry NO block chrome (UI-R10 #11): the cell paints as plain
     // empty paper and only the dimmed glyph marks the derived exposure.
+    // A camera summary cell is empty-styled for the same reason — its
+    // coverage is a key marker, not paper.
     final styleColors = timelineCellStyleColors(
       colorScheme: colorScheme,
-      exposureState: model.ghost
+      exposureState: model.ghost || _cameraSummaryRow
           ? TimelineCellExposureState.uncovered
           : model.exposureState,
       selected: false,
@@ -315,6 +344,7 @@ class TimelineRowCellsPainter extends CustomPainter {
     // block chrome at all).
     final baseBackground =
         !model.ghost &&
+            !_cameraSummaryRow &&
             model.exposureState.isCovered &&
             !(celHasContentForLayer?.call(layer, frameIndex) ?? true)
         ? timelineEmptyCelBlockColor
@@ -499,6 +529,14 @@ class TimelineRowCellsPainter extends CustomPainter {
   /// exactly this, so tiles cannot drift from the classic pass.
   Color foregroundInkFor(TimelineRowCellModel model) {
     final isEmptyX = model.exposureState == TimelineCellExposureState.uncovered;
+    // Camera key-summary markers read like the lane key diamonds (UI-R24
+    // #9): the frame-block WHITE body — selection speaks through the accent
+    // outline layers, not the glyph. Dimmed outside the playback range.
+    if (_cameraSummaryRow && model.exposureState.isCovered) {
+      return timelineDrawingStartColor.withValues(
+        alpha: model.dimmed ? 0.55 : 1,
+      );
+    }
     return model.ghost
         ? colorScheme.onSurface.withValues(alpha: 0.85)
         : timelineCellUsesDrawingInk(model.exposureState)
@@ -663,11 +701,17 @@ class TimelineRowCellsPainter extends CustomPainter {
   };
 }
 
-/// Whether [kind]'s row paints its cells through [TimelineRowCellsPainter]
-/// (the dense drawing rows); the sparse kinds (SE / instruction / camera)
-/// keep the per-cell widget renderer with its overlays.
-bool timelineRowUsesCellsPainter(LayerKind kind) =>
-    layerKindHoldsDrawings(kind) && !layerKindUsesSeSheetCells(kind);
+/// Whether [kind]'s row still reads the frame geometry at BUILD time, and so
+/// must rebuild on a zoom step.
+///
+/// Every kind PAINTS its cells now, but the SE and instruction rows carry
+/// span overlays that are widgets — the SE name box and fitted dialogue, the
+/// waveform and its clip menu, the media drop targets, the CAM chips — and
+/// those position themselves from build-time scalars. Until they follow the
+/// live handle too, their rows keep the geometry in the memo key. Drawing and
+/// camera rows have no such overlay and follow it already.
+bool timelineRowReadsGeometryAtBuild(LayerKind kind) =>
+    layerKindUsesSeSheetCells(kind) || kind == LayerKind.instruction;
 
 /// The painted cell strip + its row-level interaction, shared by the
 /// horizontal row and the X-sheet column (Axis policy):

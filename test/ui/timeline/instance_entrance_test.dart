@@ -104,17 +104,11 @@ Future<ProjectRepository> _pumpHome(WidgetTester tester) async {
 }
 
 Future<void> _doubleTapCell(WidgetTester tester, String cellKey) async {
-  // Painted drawing rows have no per-cell widgets (UI-R9 #12b): resolve
-  // the tap point through the painter probe; sparse rows (SE / camera /
-  // instruction) still carry their cell keys.
-  final cellFinder = find.byKey(ValueKey<String>(cellKey));
-  final Offset target;
-  if (cellFinder.evaluate().isNotEmpty) {
-    target = tester.getCenter(cellFinder);
-  } else {
-    final cell = parseTimelineCellKey(cellKey);
-    target = timelineCellCenter(tester, cell.layerId, cell.frameIndex);
-  }
+  // EVERY row paints its cells now (UI-R9 #12b for the drawing rows, R28 #4
+  // for SE / camera / instruction), so the tap point comes from the painter
+  // probe rather than a cell widget's box.
+  final cell = parseTimelineCellKey(cellKey);
+  final target = timelineCellCenter(tester, cell.layerId, cell.frameIndex);
   await tester.tapAt(target);
   await tester.pump(const Duration(milliseconds: 60));
   await tester.tapAt(target);
@@ -184,7 +178,7 @@ void main() {
       'the playhead', (tester) async {
     final repository = await _pumpHome(tester);
 
-    await tester.tap(find.byKey(const ValueKey<String>('timeline-cell-cam-4')));
+    await tapTimelineCell(tester, 'cam', 4);
     await tester.pumpAndSettle();
     await _tapToolbarAdd(tester);
 
@@ -199,9 +193,7 @@ void main() {
       'it afterwards', (tester) async {
     final repository = await _pumpHome(tester);
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('timeline-cell-voice-3')),
-    );
+    await tapTimelineCell(tester, 'voice', 3);
     await tester.pumpAndSettle();
     await _tapToolbarAdd(tester);
     expect(find.text('New SE'), findsNothing, reason: 'creation is silent');
@@ -239,7 +231,7 @@ void main() {
       'camera layer', (tester) async {
     await _pumpHome(tester);
 
-    await tester.tap(find.byKey(const ValueKey<String>('timeline-cell-cam-0')));
+    await tapTimelineCell(tester, 'cam', 0);
     await tester.pumpAndSettle();
     // Edit Instance lives in the Frame ▾ flyout (R-toolbar round).
     await tapCommandButton(

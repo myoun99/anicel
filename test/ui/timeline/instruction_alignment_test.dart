@@ -8,6 +8,8 @@ import 'package:quick_animaker_v2/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/xsheet_timeline_grid.dart';
 
+import 'timeline_cell_probe.dart';
+
 /// R5-⑤ geometry pin: the instruction endpoints (A/B) sit DEAD CENTER in
 /// their cells — both axes — and the instruction name sits on the span's
 /// true center, exactly like the printed sheet.
@@ -31,9 +33,10 @@ void main() {
   TimelineCellExposureState stateFor(Layer layer, int frameIndex) =>
       TimesheetStubState.uncovered;
 
-  void expectCentered(WidgetTester tester, Finder text, Finder cell) {
+  /// The cells are PAINTED now (R28 #4), so the target comes from the row
+  /// painter's geometry rather than from a cell widget's box.
+  void expectCentered(WidgetTester tester, Finder text, Offset cellCenter) {
     final textCenter = tester.getCenter(text);
-    final cellCenter = tester.getCenter(cell);
     expect(textCenter.dx, closeTo(cellCenter.dx, 1.0));
     expect(textCenter.dy, closeTo(cellCenter.dy, 1.0));
   }
@@ -67,18 +70,18 @@ void main() {
     expectCentered(
       tester,
       find.text('ㄱ'),
-      find.byKey(const ValueKey<String>('timeline-cell-cam-1-2')),
+      timelineCellCenter(tester, 'cam-1', 2),
     );
     expectCentered(
       tester,
       find.text('ㄴ'),
-      find.byKey(const ValueKey<String>('timeline-cell-cam-1-6')),
+      timelineCellCenter(tester, 'cam-1', 6),
     );
     // Span covers cells 2..6 — its center is cell 4's center.
     expectCentered(
       tester,
       find.text('PAN'),
-      find.byKey(const ValueKey<String>('timeline-cell-cam-1-4')),
+      timelineCellCenter(tester, 'cam-1', 4),
     );
   });
 
@@ -112,19 +115,19 @@ void main() {
     expectCentered(
       tester,
       find.text('ㄱ'),
-      find.byKey(const ValueKey<String>('xsheet-cell-cam-1-2')),
+      timelineCellCenter(tester, 'cam-1', 2, prefix: 'xsheet'),
     );
     expectCentered(
       tester,
       find.text('ㄴ'),
-      find.byKey(const ValueKey<String>('xsheet-cell-cam-1-6')),
+      timelineCellCenter(tester, 'cam-1', 6, prefix: 'xsheet'),
     );
     // R6-①c: the name reads HORIZONTALLY on the X-sheet too (glyph stack
     // retired) — one Text, dead center on the span like the timeline.
     expectCentered(
       tester,
       find.text('PAN'),
-      find.byKey(const ValueKey<String>('xsheet-cell-cam-1-4')),
+      timelineCellCenter(tester, 'cam-1', 4, prefix: 'xsheet'),
     );
   });
 }

@@ -1,5 +1,3 @@
-import 'dart:math' as math;
-
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
@@ -11,14 +9,10 @@ import '../../models/layer_kind.dart';
 import '../../models/project_frame_rate.dart';
 import 'timeline_cell_editor_policy.dart';
 import 'timeline_cell_exposure_state.dart';
-import 'timeline_cell_style.dart';
-import 'timeline_exposure_block_visual.dart';
+import 'timeline_cell_style.dart' show timelineDrawingInkColor;
 import 'timeline_exposure_comma_drag_policy.dart';
-import '../../models/timeline_repeat.dart';
-import 'timeline_frame_cell.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_range_gesture.dart';
-import 'timeline_frame_window.dart';
 import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
 import 'timeline_row_cells_painter.dart';
 import 'timeline_row_edit_chrome.dart';
@@ -158,12 +152,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Instruction rows have no timeline entries — adapt their events onto
-    // the shared exposure states so the cells paint the same paper blocks.
-    TimelineCellExposureState stateAt(int frameIndex) =>
-        layer.kind == LayerKind.instruction
-        ? instructionCellExposureState(layer, frameIndex)
-        : exposureStateForLayer(layer, frameIndex);
     final commaDrag = this.commaDrag;
     final rangeGesture = this.rangeGesture;
     final axisWord = axis == Axis.vertical ? 'column' : 'row';
@@ -194,96 +182,47 @@ class TimelineFrameCellsRow extends StatelessWidget {
     final stack = Stack(
       key: ValueKey<String>('$keyPrefix-frame-$axisWord-area-${layer.id}'),
       children: [
-        // Sparse rows' PAPER underlay (UI-R21 #2, the painter rows carry
-        // theirs inside the paint area): surface base + the active wash,
-        // row-wide — cells paint transparent empties now.
-        if (!timelineRowUsesCellsPainter(layer.kind)) ...[
-          Positioned.fill(
-            child: ColoredBox(color: Theme.of(context).colorScheme.surface),
-          ),
-          if (active)
-            Positioned.fill(
-              child: ColoredBox(
-                color: timelineActiveRowWashColor(
-                  Theme.of(context).colorScheme,
-                ),
-              ),
-            ),
-        ],
-        // The dense drawing rows paint their cells as ONE CustomPaint
-        // (UI-R9 #12b hybrid painterization); the sparse kinds (SE /
-        // instruction / camera) keep the per-cell widget renderer their
-        // overlays are built around.
-        if (timelineRowUsesCellsPainter(layer.kind))
-          timelineRowCellsPaintArea(
-            context: context,
-            keyPrefix: keyPrefix,
-            layer: layer,
-            active: active,
-            playbackFrameCount: playbackFrameCount,
-            geometry: geometry,
-            crossAxisExtent: crossAxisExtent,
-            axis: axis,
-            windowBucket: windowBucket,
-            viewportMainExtent: viewportMainExtent,
-            exposureStateForLayer: exposureStateForLayer,
-            frameNameForLayer: frameNameForLayer,
-            celHasContentForLayer: celHasContentForLayer,
-            onSelectLayer: onSelectLayer,
-            onSelectFrame: onSelectFrame,
-            onActivateCell: onActivateCell,
-            suppressPointerDownSelect: rangeGesture == null
-                ? null
-                : (frameIndex) {
-                    final selection = rangeGesture.selection.value;
-                    return selection != null &&
-                        selection.coversLayer(layer.id) &&
-                        selection.contains(frameIndex);
-                  },
-          )
-        else if (windowBucket != null)
-          // Sparse widget-cell kinds re-window their cells under the
-          // bucket ALONE (UI-R15→R16): the row itself never rebuilds on
-          // scroll — only this thin cell strip does, once per span
-          // crossing (shared window policy).
-          ValueListenableBuilder<int>(
-            valueListenable: windowBucket!,
-            builder: (context, bucket, _) {
-              final cellExtent = frames.frameCellExtent;
-              final window = timelineFrameWindowFor(
-                bucket: bucket,
-                cellExtent: cellExtent,
-                viewportExtent: viewportMainExtent,
-              );
-              final first = math.max(
-                frames.frameStartIndex,
-                window.startIndex,
-              );
-              final last = math.min(
-                frames.frameEndIndexExclusive,
-                window.endIndexExclusive,
-              );
-              return _widgetCellsStrip(
-                frames,
-                stateAt,
-                startIndex: first,
-                endIndexExclusive: math.max(first, last),
-                leading: first * cellExtent,
-                trailing:
-                    (frames.frameEndIndexExclusive - math.max(first, last)) *
-                    cellExtent,
-              );
-            },
-          )
-        else
-          _widgetCellsStrip(
-            frames,
-            stateAt,
-            startIndex: frames.frameStartIndex,
-            endIndexExclusive: frames.frameEndIndexExclusive,
-            leading: frames.leadingFrameSpacerWidth,
-            trailing: frames.trailingFrameSpacerWidth,
-          ),
+        // EVERY row paints its cells as ONE CustomPaint (UI-R9 #12b, and
+        // R28 #4 for the sparse kinds): the SE / instruction / camera rows
+        // used to render a widget per cell, which is what made a zoom step
+        // rebuild 140-180 widgets on four rows alone. The span overlays
+        // above still position themselves as widgets — the cells beneath
+        // them are canvas work now.
+        timelineRowCellsPaintArea(
+          context: context,
+          keyPrefix: keyPrefix,
+          layer: layer,
+          active: active,
+          playbackFrameCount: playbackFrameCount,
+          geometry: geometry,
+          crossAxisExtent: crossAxisExtent,
+          axis: axis,
+          windowBucket: windowBucket,
+          viewportMainExtent: viewportMainExtent,
+          // Instruction rows have no timeline entries — their events adapt
+          // onto the shared exposure states so the cells paint the same
+          // paper blocks. A TOP-LEVEL tear-off, not a closure: the painter
+          // value-compares this field, and a fresh closure per build would
+          // re-record the row on every pass.
+          exposureStateForLayer: layer.kind == LayerKind.instruction
+              ? instructionCellExposureState
+              : exposureStateForLayer,
+          frameNameForLayer: frameNameForLayer,
+          celHasContentForLayer: celHasContentForLayer,
+          onSelectLayer: onSelectLayer,
+          onSelectFrame: onSelectFrame,
+          onActivateCell: layerKindOpensCellEditorOnDoubleTap(layer.kind)
+              ? onActivateCell
+              : null,
+          suppressPointerDownSelect: rangeGesture == null
+              ? null
+              : (frameIndex) {
+                  final selection = rangeGesture.selection.value;
+                  return selection != null &&
+                      selection.coversLayer(layer.id) &&
+                      selection.contains(frameIndex);
+                },
+        ),
         // NO extra section-divider overlay (R3 feedback #6): section
         // boundaries share the same single hairline as every row boundary;
         // the rail's gutter bracket carries the section identity.
@@ -470,81 +409,4 @@ class TimelineFrameCellsRow extends StatelessWidget {
         : stack;
   }
 
-  /// The sparse kinds' per-cell widget strip (SE / instruction / camera):
-  /// spacers stand in for the cells outside [startIndex, endIndexExclusive).
-  ///
-  /// Takes its geometry by VALUE: these cells are widgets, so the row that
-  /// built them rebuilds on a zoom step (they stay in the memo key). Making
-  /// them follow the live geometry is the sparse-cell round, deliberately
-  /// out of scope here.
-  Widget _widgetCellsStrip(
-    TimelineFrameGeometry frames,
-    TimelineCellExposureState Function(int frameIndex) stateAt, {
-    required int startIndex,
-    required int endIndexExclusive,
-    required double leading,
-    required double trailing,
-  }) {
-    final vertical = axis == Axis.vertical;
-    final axisWord = vertical ? 'column' : 'row';
-    return Flex(
-      direction: axis,
-      children: [
-        SizedBox(
-          key: ValueKey<String>(
-            '$keyPrefix-frame-$axisWord-leading-spacer-${layer.id}',
-          ),
-          width: vertical ? crossAxisExtent : leading,
-          height: vertical ? leading : crossAxisExtent,
-        ),
-        for (
-          var frameIndex = startIndex;
-          frameIndex < endIndexExclusive;
-          frameIndex += 1
-        )
-          TimelineFrameCell(
-            layer: layer,
-            frameIndex: frameIndex,
-            axis: axis,
-            cellKeyPrefix: '$keyPrefix-cell',
-            width: vertical ? crossAxisExtent : frames.frameCellExtent,
-            height: vertical ? frames.frameCellExtent : crossAxisExtent,
-            active: active,
-            outsidePlaybackRange: frameIndex >= playbackFrameCount,
-            ghost: timelineIndexIsGhost(layer, frameIndex),
-            // A press inside the selection starts a MOVE, never a seek
-            // (UI-R22 #2 — the painter rows' rule, unified).
-            suppressPointerDownSelect: (frame) {
-              final selection = rangeGesture?.selection.value;
-              return selection != null &&
-                  selection.coversLayer(layer.id) &&
-                  selection.contains(frame);
-            },
-            exposureState: stateAt(frameIndex),
-            exposureBlockSegment: calculateTimelineExposureBlockVisualSegment(
-              previous: frameIndex == 0 ? null : stateAt(frameIndex - 1),
-              current: stateAt(frameIndex),
-              next: stateAt(frameIndex + 1),
-            ),
-            emptyRunStart: timelineEmptyRunStartsAt(
-              current: stateAt(frameIndex),
-              previous: frameIndex == 0 ? null : stateAt(frameIndex - 1),
-            ),
-            frameName: frameNameForLayer?.call(layer, frameIndex),
-            onSelectLayer: onSelectLayer,
-            onSelectFrame: onSelectFrame,
-            onActivateCell: layerKindOpensCellEditorOnDoubleTap(layer.kind)
-                ? onActivateCell
-                : null,
-          ),
-        SizedBox(
-          key: ValueKey<String>(
-            '$keyPrefix-frame-$axisWord-trailing-spacer-${layer.id}',
-          ),
-          width: vertical ? crossAxisExtent : trailing,
-          height: vertical ? trailing : crossAxisExtent,
-        ),
-      ],
-    );
-  }
 }
