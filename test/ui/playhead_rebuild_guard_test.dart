@@ -5,6 +5,7 @@ import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/app_language.dart';
 import 'package:quick_animaker_v2/src/models/playback_quality.dart';
+import 'package:quick_animaker_v2/src/ui/playback/playback_transport_controls.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_section_policy.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_action_toolbar.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_layer_controls_header.dart';
@@ -142,6 +143,7 @@ void main() {
     final session = await pumpNotifyWrappedHost(tester);
 
     Object toolbar() => tester.widget(find.byType(TimelineActionToolbar));
+    Object transport() => tester.widget(find.byType(PlaybackTransportControls));
 
     // 1. The project frame-rate dropdown prints its label.
     var before = toolbar();
@@ -163,25 +165,35 @@ void main() {
         reason: 'the sample-rate label change must refresh the toolbar');
 
     // 3. Playback quality is a transport value-prop (its clock is live via
-    // AnimatedBuilder, but this is read as a plain value).
-    before = toolbar();
+    // AnimatedBuilder, but this is read as a plain value). It belongs to the
+    // TRANSPORT group alone — the action toolbar must ride through it.
+    before = transport();
+    var actionsBefore = toolbar();
     session.setPlaybackQuality(
       session.playbackQuality == PlaybackQuality.full
           ? PlaybackQuality.half
           : PlaybackQuality.full,
     );
     await tester.pump();
-    expect(identical(toolbar(), before), isFalse,
-        reason: 'a playback-quality change must refresh the toolbar');
+    expect(identical(transport(), before), isFalse,
+        reason: 'a playback-quality change must refresh the transport');
+    expect(identical(toolbar(), actionsBefore), isTrue,
+        reason: 'the action toolbar shows no playback quality — it must not '
+            'be dragged along by the transport group');
 
     // 4. Landing a drawing flips the cell-sensitive enablements (which the
     // comma buttons and the Add button read through their can* getters).
+    // The frequent case, and the reason the groups are split: the transport
+    // shows none of it and must survive.
     before = toolbar();
+    final transportBefore = transport();
     session.selectFrameIndex(0);
     session.createDrawingAtCurrentFrame();
     await tester.pump();
     expect(identical(toolbar(), before), isFalse,
         reason: 'an enablement change must refresh the toolbar');
+    expect(identical(transport(), transportBefore), isTrue,
+        reason: 'an enablement change must NOT rebuild the transport');
 
     // 5. Moving the active layer refreshes it. HONEST SCOPE: this does not
     // isolate `activeLayer.kind` — a layer switch moves the can* getters
@@ -205,8 +217,9 @@ void main() {
 
     // 6. The transport prints its mic tooltips in the PROGRAM language, and
     // a language switch fires no session notify at all — the gate has to be
-    // listening to it directly.
+    // listening to it directly. Both groups print language, so both refresh.
     before = toolbar();
+    final transportBeforeLanguage = transport();
     session.setLanguageSettings(
       AppLanguageSettings(
         programLanguage:
@@ -218,6 +231,8 @@ void main() {
     await tester.pump();
     expect(identical(toolbar(), before), isFalse,
         reason: 'a language change must refresh the toolbar');
+    expect(identical(transport(), transportBeforeLanguage), isFalse,
+        reason: 'a language change must refresh the transport too');
 
     await drainWarming(tester);
   });

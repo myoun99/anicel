@@ -13,6 +13,44 @@ import '../widgets/field_slider.dart';
 import 'layer_label_controls.dart';
 import 'timeline_grid_metrics.dart';
 
+/// Whether two [Layer] snapshots would make [TimelineLayerControlsRow] look
+/// EXACTLY the same — the rail memo's gate.
+///
+/// Layer identity is the wrong question here: a timesheet edit (a drawing
+/// landed, an exposure cut, a block moved) hands back a new Layer instance
+/// whose every RAIL-visible field is unchanged, and the rail row is ~200
+/// Material widgets — measured at 24 layers, rebuilding it was a fifth of a
+/// session notify's widget rebuilds for nothing on screen.
+///
+/// COMPLETENESS CONTRACT: every Layer field this row (or anything it builds)
+/// RENDERS must be compared here — miss one and the rail shows stale state
+/// until something else invalidates. The row's callbacks are all keyed by
+/// [LayerId], never by the Layer value, so a cached row holding an older
+/// instance can only be stale in what this function compares.
+/// `timeline_rail_row_memo_test.dart` drives one mutation per field.
+///
+/// Deliberately absent (the row renders none of them): `frames`, `timeline`,
+/// `instructions`, `audioClips`, `baseFrameLinks`, `runBehaviors`,
+/// `transformTrack` (the LANE rows read it, and those are unmemoized),
+/// `audioGain`/`audioPan` (the mix menu reads them at open time),
+/// `attachedMode` and `folderId`.
+bool timelineLayerControlsRowShowsSameState(Layer a, Layer b) {
+  return identical(a, b) ||
+      (a.id == b.id &&
+          a.name == b.name &&
+          a.kind == b.kind &&
+          a.opacity == b.opacity &&
+          a.isVisible == b.isVisible &&
+          a.muted == b.muted &&
+          a.mark == b.mark &&
+          a.onTimesheet == b.onTimesheet &&
+          a.blendMode == b.blendMode &&
+          a.collapsed == b.collapsed &&
+          a.isFillReference == b.isFillReference &&
+          a.attachedToLayerId == b.attachedToLayerId &&
+          a.attachedPlacement == b.attachedPlacement);
+}
+
 class TimelineLayerControlsRow extends StatelessWidget {
   Future<void> _showMixMenu(BuildContext context, Offset globalPosition) async {
     final overlay = Overlay.of(context).context.findRenderObject();

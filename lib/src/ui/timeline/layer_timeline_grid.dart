@@ -947,10 +947,11 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   }
 
   bool _railRowInputsMatch(_RailRowMemoInputs a, _RailRowMemoInputs b) {
-    // Layer identity gates content: commits hand untouched layers back as
-    // the SAME repository instances (SE display clones and the camera-view
-    // copy churn identity — those rows simply rebuild).
-    return identical(a.layer, b.layer) &&
+    // What the row SHOWS gates content, not the Layer's identity: a
+    // timesheet edit rebuilds the edited layer's instance while every
+    // rail-visible field stays put (see the completeness contract on
+    // [timelineLayerControlsRowShowsSameState]).
+    return timelineLayerControlsRowShowsSameState(a.layer, b.layer) &&
         a.active == b.active &&
         a.hasLanes == b.hasLanes &&
         a.lanesExpanded == b.lanesExpanded &&
