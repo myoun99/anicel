@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -19,6 +21,7 @@ import 'timeline_cel_content_source.dart';
 import 'timeline_folder_aggregate_row.dart';
 import 'timeline_frame_cells_row.dart';
 import 'timeline_frame_geometry.dart';
+import 'timeline_frame_window.dart' show timelineFrameWindowSpanFor;
 import 'timeline_grid_metrics.dart';
 import 'timeline_row_cells_painter.dart'
     show timelineRowReadsGeometryAtBuild;
@@ -251,6 +254,21 @@ class _TimelineFrameRowsScrollBodyState
     _geometryFromWidget(),
   );
 
+  /// The same geometry seen through the frame-axis WINDOW (zoom round) —
+  /// handed to the rows whose every consumer reads it live, so their boxes
+  /// stop being `frames * cellWidth` and a zoom step re-lays-out one box per
+  /// row instead of everything in it.
+  ///
+  /// The SPARSE kinds keep [_geometry]: their span overlays are widgets
+  /// positioned from build-time scalars, so a window that slides under them
+  /// without a rebuild would leave them behind.
+  ///
+  /// It follows the window bucket DIRECTLY (not through build) because a
+  /// scroll must not rebuild this body — the same render-object-only
+  /// listener contract as [_geometry].
+  late final ValueNotifier<TimelineFrameGeometry> _windowedGeometry =
+      ValueNotifier(_windowedGeometryFromWidget());
+
   TimelineFrameGeometry _geometryFromWidget() => TimelineFrameGeometry(
     frameCellExtent: widget.metrics.frameCellWidth,
     frameStartIndex: widget.frameStartIndex,
@@ -259,9 +277,54 @@ class _TimelineFrameRowsScrollBodyState
     trailingFrameSpacerWidth: widget.trailingFrameSpacerWidth,
   );
 
+  /// The window for the CURRENT bucket: origin quantized to the shared
+  /// bucket span (so it moves once per crossing, exactly when the painters
+  /// re-window), extent a constant pixel span around the viewport.
+  ///
+  /// Without a bucket or a measured viewport there is no window at all and
+  /// every row keeps the content-sized box.
+  TimelineFrameGeometry _windowedGeometryFromWidget() {
+    final base = _geometryFromWidget();
+    final bucket = widget.windowBucket;
+    final viewport = widget.viewportMainExtent;
+    final cellExtent = base.frameCellExtent;
+    if (bucket == null || viewport <= 0 || cellExtent <= 0) {
+      return base;
+    }
+    final spanPx = timelineFrameWindowSpanFor(cellExtent) * cellExtent;
+    return base.windowed(
+      originPx: math.max(
+        0.0,
+        bucket.value * spanPx - timelineFrameWindowMarginPx,
+      ),
+      extentPx: viewport + 2 * timelineFrameWindowMarginPx,
+    );
+  }
+
+  void _handleWindowBucket() {
+    _windowedGeometry.value = _windowedGeometryFromWidget();
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    widget.windowBucket?.addListener(_handleWindowBucket);
+  }
+
+  @override
+  void didUpdateWidget(covariant TimelineFrameRowsScrollBody oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (!identical(oldWidget.windowBucket, widget.windowBucket)) {
+      oldWidget.windowBucket?.removeListener(_handleWindowBucket);
+      widget.windowBucket?.addListener(_handleWindowBucket);
+    }
+  }
+
   @override
   void dispose() {
+    widget.windowBucket?.removeListener(_handleWindowBucket);
     _geometry.dispose();
+    _windowedGeometry.dispose();
     super.dispose();
   }
 
@@ -310,13 +373,20 @@ class _TimelineFrameRowsScrollBodyState
     };
   }
 
+  /// The handle a row of [kind] follows: the windowed one unless the kind
+  /// still reads geometry at BUILD time (see [timelineRowReadsGeometryAtBuild]
+  /// — a sliding window under a build-time-positioned overlay would strand
+  /// it).
+  ValueNotifier<TimelineFrameGeometry> _geometryFor(LayerKind kind) =>
+      timelineRowReadsGeometryAtBuild(kind) ? _geometry : _windowedGeometry;
+
   Widget _buildCellsRow(Layer layer, {required Layer baseLayer}) {
     return TimelineFrameCellsRow(
       layer: layer,
       baseLayer: baseLayer,
       active: layer.id == widget.activeLayerId,
       playbackFrameCount: widget.playbackFrameCount,
-      geometry: _geometry,
+      geometry: _geometryFor(layer.kind),
       crossAxisExtent: widget.metrics.layerRowHeight,
       exposureStateForLayer: widget.exposureStateForLayer,
       frameNameForLayer: widget.frameNameForLayer,
@@ -476,6 +546,7 @@ class _TimelineFrameRowsScrollBodyState
     // Republish BEFORE the rows read it: the painted rows' render objects
     // take the mark now and settle it during this frame's layout/paint.
     _geometry.value = _geometryFromWidget();
+    _windowedGeometry.value = _windowedGeometryFromWidget();
     final children = <Widget>[
       if (widget.leadingLayerSpacerHeight > 0)
         SizedBox(

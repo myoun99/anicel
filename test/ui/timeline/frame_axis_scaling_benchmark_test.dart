@@ -10,11 +10,13 @@ import 'package:quick_animaker_v2/src/ui/timeline_tab_host.dart';
 
 /// THE frame-axis baseline, and the guard for the round that follows.
 ///
-/// ZOOM is geometry-bound. A row's box is `renderedFrameCount * cellWidth`,
-/// so moving the cell width re-lays-out every visible row and everything
-/// inside it — measured at 24 layers, ~25 render objects per row, and
-/// freezing the row box (a probe that pinned the box at a constant width)
-/// took the step down 23%.
+/// ZOOM is geometry-bound. A row's box WAS `renderedFrameCount * cellWidth`,
+/// so moving the cell width re-laid-out every visible row and everything
+/// inside it — ~25 render objects a row at 24 layers. The frame-axis WINDOW
+/// (TimelineFrameGeometry.windowed) lays each painted row out at a constant
+/// pixel extent instead and paints/hit-tests it at the scrolled origin, so
+/// the step now moves one box per row: measured 731 -> 267 layouts, which is
+/// deterministic and therefore the number to trust when the machine is busy.
 ///
 /// GROW is NOT. It reads like a geometry cost and is not one: creating a
 /// drawing INSIDE the cut, where the render extent does not move at all,
@@ -41,6 +43,15 @@ import 'package:quick_animaker_v2/src/ui/timeline_tab_host.dart';
 ///   before  zoom 71.9 / 71.1ms | grow 47.3 / 50.4ms | scroll 6.9 / 6.5ms
 ///   after   zoom 71.1 / 73.7ms | grow 36.3 / 37.2ms | scroll 6.1 / 6.3ms
 /// Widget rebuilds per notify, which are deterministic: 1201 -> 774.
+///
+/// The frame-axis window round followed, measured against a detached master
+/// worktree while another session had the machine (so read the ratios, and
+/// the layout counts above all):
+///   zoom   best-of-six 108.9ms -> 69.4ms; layouts per step 731 -> 267
+///   grow   55 layouts -> 55; it was never a layout cost
+///   scroll 76 layouts over 8 steps -> 76; the window rides the same bucket
+///          the painters do, so a crossing costs one box per row and the
+///          frames between crossings cost nothing
 ///
 /// Growth is measured past the cut end because that is where the geometry
 /// DOES move, so the two costs can still be told apart: growth is free while

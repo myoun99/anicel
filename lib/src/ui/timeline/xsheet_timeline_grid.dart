@@ -30,8 +30,11 @@ import 'timeline_frame_range_gesture.dart';
 import 'timeline_ruler_cursor_overlay.dart';
 import 'timeline_run_end_handles.dart';
 import 'timeline_frame_cells_row.dart' show TimelineFrameCellsRow;
-import 'timeline_frame_geometry.dart' show TimelineFrameGeometry;
+import 'timeline_frame_geometry.dart'
+    show TimelineFrameGeometry, timelineFrameWindowMarginPx;
 import 'timeline_frame_coordinate_policy.dart';
+import 'timeline_row_cells_painter.dart'
+    show timelineRowReadsGeometryAtBuild;
 import 'timeline_frame_cursor_layer.dart';
 import 'timeline_beat_lines.dart';
 import 'timeline_frame_range_policy.dart';
@@ -332,13 +335,59 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     ),
   );
 
-  ValueNotifier<TimelineFrameGeometry> _publishFrameGeometry() {
-    _frameGeometry.value = TimelineFrameGeometry(
-      frameCellExtent: _metrics.frameCellWidth,
-      frameStartIndex: 0,
-      frameEndIndexExclusive: _renderedFrameCount,
+  /// The WINDOWED twin (zoom round, the timeline body's split transposed):
+  /// the columns whose every consumer reads geometry live are laid out at a
+  /// constant pixel window instead of `frames * cellHeight`, so a zoom step
+  /// re-lays-out one box per column rather than everything inside it. The
+  /// sparse kinds keep [_frameGeometry] — their span overlays are widgets
+  /// positioned from build-time scalars, and a window sliding under them
+  /// without a rebuild would strand them.
+  final ValueNotifier<TimelineFrameGeometry> _windowedFrameGeometry =
+      ValueNotifier(
+        const TimelineFrameGeometry(
+          frameCellExtent: 1,
+          frameStartIndex: 0,
+          frameEndIndexExclusive: 0,
+        ),
+      );
+
+  /// The frame-axis viewport recorded by the last build — the window's
+  /// extent, needed again when the bucket moves outside a build.
+  double _frameViewportExtent = 0;
+
+  TimelineFrameGeometry _baseFrameGeometry() => TimelineFrameGeometry(
+    frameCellExtent: _metrics.frameCellWidth,
+    frameStartIndex: 0,
+    frameEndIndexExclusive: _renderedFrameCount,
+  );
+
+  TimelineFrameGeometry _windowedFrameGeometryValue() {
+    final base = _baseFrameGeometry();
+    final cellExtent = base.frameCellExtent;
+    if (_frameViewportExtent <= 0 || cellExtent <= 0) {
+      return base;
+    }
+    final spanPx = timelineFrameWindowSpanFor(cellExtent) * cellExtent;
+    return base.windowed(
+      originPx: math.max(
+        0.0,
+        _frameWindowBucket.value * spanPx - timelineFrameWindowMarginPx,
+      ),
+      extentPx: _frameViewportExtent + 2 * timelineFrameWindowMarginPx,
     );
-    return _frameGeometry;
+  }
+
+  void _handleFrameWindowBucket() {
+    _windowedFrameGeometry.value = _windowedFrameGeometryValue();
+  }
+
+  /// The handle a column of [kind] follows (see [_windowedFrameGeometry]).
+  ValueNotifier<TimelineFrameGeometry> _publishFrameGeometry(LayerKind kind) {
+    _frameGeometry.value = _baseFrameGeometry();
+    _windowedFrameGeometry.value = _windowedFrameGeometryValue();
+    return timelineRowReadsGeometryAtBuild(kind)
+        ? _frameGeometry
+        : _windowedFrameGeometry;
   }
 
   /// The per-build gesture bundle (rebuilt in [build], consumed by the
@@ -372,6 +421,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     _frameScrollController = PenFriendlyScrollController();
     _layerScrollController = PenFriendlyScrollController();
     _frameScrollController.addListener(_handleFrameScroll);
+    _frameWindowBucket.addListener(_handleFrameWindowBucket);
   }
 
   @override
@@ -404,7 +454,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       ..removeListener(_handleFrameScroll)
       ..dispose();
     _layerScrollController.dispose();
+    _frameWindowBucket.removeListener(_handleFrameWindowBucket);
     _frameGeometry.dispose();
+    _windowedFrameGeometry.dispose();
     _frameAxisOffset.dispose();
     _frameWindowBucket.dispose();
     super.dispose();
@@ -648,6 +700,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     TimelineVirtualizationPlan plan,
     double viewportExtent,
   ) {
+    // Recorded for the window, which is recomputed on bucket crossings —
+    // outside any build.
+    _frameViewportExtent = viewportExtent;
     if (entry.isLane) {
       return laneIsSeAudio(entry.lane!)
           ? SeAudioLaneFrameRow(
@@ -740,7 +795,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       baseLayer: entry.layer,
       active: entry.layer.id == widget.activeLayerId,
       playbackFrameCount: widget.frameCount,
-      geometry: _publishFrameGeometry(),
+      geometry: _publishFrameGeometry(layer.kind),
       crossAxisExtent: _metrics.layerRowHeight,
       windowBucket: _frameWindowBucket,
       viewportMainExtent: viewportExtent,

@@ -21,6 +21,8 @@ class TimelineFrameGeometry {
     required this.frameEndIndexExclusive,
     this.leadingFrameSpacerWidth = 0,
     this.trailingFrameSpacerWidth = 0,
+    this.windowOriginPx = 0,
+    this.windowExtentPx = 0,
   });
 
   /// Main-axis extent of one frame cell (cell width in the horizontal
@@ -29,11 +31,40 @@ class TimelineFrameGeometry {
 
   final int frameStartIndex;
   final int frameEndIndexExclusive;
+
+  /// Main-axis offset of [frameStartIndex]'s leading edge in the ROW's own
+  /// coordinates. Under a window (below) this is the content's leading spacer
+  /// MINUS [windowOriginPx], so it goes negative as the view scrolls — every
+  /// consumer that positions from it lands in window-local coordinates
+  /// without knowing the window exists.
   final double leadingFrameSpacerWidth;
   final double trailingFrameSpacerWidth;
 
-  /// The row's total main-axis extent, spacers included.
-  double get mainExtent =>
+  /// THE frame-axis window (zoom round): where the row's laid-out box starts
+  /// in content space, and how wide it is. Both zero = no window, and every
+  /// getter below collapses to the pre-window behavior.
+  ///
+  /// The point is that [windowExtentPx] is a PIXEL quantity — viewport plus a
+  /// fixed margin — so it does not move when the cell width does. A row whose
+  /// box is `frames * cellWidth` re-lays-out its whole subtree on every zoom
+  /// step (~25 render objects a row, measured); a row whose box is a constant
+  /// window only re-lays-out the box itself and its children's constraints
+  /// come back unchanged, which Flutter skips. The scrolled position rides
+  /// [windowOriginPx] instead, quantized to the shared window bucket, so it
+  /// moves once per bucket crossing rather than per pixel.
+  final double windowOriginPx;
+  final double windowExtentPx;
+
+  bool get isWindowed => windowExtentPx > 0;
+
+  /// The extent the row's box is LAID OUT at — the window when there is one.
+  double get mainExtent => isWindowed ? windowExtentPx : contentMainExtent;
+
+  /// The row's total main-axis extent in CONTENT space, spacers included —
+  /// what the row still REPORTS as its size, so the grid's Stack, the
+  /// scrolled content and every absolute overlay above see no change.
+  double get contentMainExtent =>
+      windowOriginPx +
       leadingFrameSpacerWidth +
       (frameEndIndexExclusive - frameStartIndex) * frameCellExtent +
       trailingFrameSpacerWidth;
@@ -49,6 +80,21 @@ class TimelineFrameGeometry {
   bool contains(int frameIndex) =>
       frameIndex >= frameStartIndex && frameIndex < frameEndIndexExclusive;
 
+  /// The same geometry seen through a window starting at [originPx] and
+  /// [extentPx] wide. Only the owner (the rows body) calls this.
+  TimelineFrameGeometry windowed({
+    required double originPx,
+    required double extentPx,
+  }) => TimelineFrameGeometry(
+    frameCellExtent: frameCellExtent,
+    frameStartIndex: frameStartIndex,
+    frameEndIndexExclusive: frameEndIndexExclusive,
+    leadingFrameSpacerWidth: leadingFrameSpacerWidth - originPx,
+    trailingFrameSpacerWidth: trailingFrameSpacerWidth,
+    windowOriginPx: originPx,
+    windowExtentPx: extentPx,
+  );
+
   @override
   bool operator ==(Object other) =>
       other is TimelineFrameGeometry &&
@@ -56,7 +102,9 @@ class TimelineFrameGeometry {
       other.frameStartIndex == frameStartIndex &&
       other.frameEndIndexExclusive == frameEndIndexExclusive &&
       other.leadingFrameSpacerWidth == leadingFrameSpacerWidth &&
-      other.trailingFrameSpacerWidth == trailingFrameSpacerWidth;
+      other.trailingFrameSpacerWidth == trailingFrameSpacerWidth &&
+      other.windowOriginPx == windowOriginPx &&
+      other.windowExtentPx == windowExtentPx;
 
   @override
   int get hashCode => Object.hash(
@@ -65,14 +113,28 @@ class TimelineFrameGeometry {
     frameEndIndexExclusive,
     leadingFrameSpacerWidth,
     trailingFrameSpacerWidth,
+    windowOriginPx,
+    windowExtentPx,
   );
 
   @override
   String toString() =>
       'TimelineFrameGeometry(cell $frameCellExtent, '
       '[$frameStartIndex, $frameEndIndexExclusive), '
-      'spacers $leadingFrameSpacerWidth/$trailingFrameSpacerWidth)';
+      'spacers $leadingFrameSpacerWidth/$trailingFrameSpacerWidth'
+      '${isWindowed ? ', window $windowOriginPx+$windowExtentPx' : ''})';
 }
+
+/// Margin the frame-axis window keeps on both sides of the viewport.
+///
+/// It has to cover everything the view can reveal while the scroll offset
+/// stays inside one window bucket, plus the painters' own overscan: a bucket
+/// spans at most 4 cells and a cell is at most
+/// [TimelinePanel.maxPixelsPerFrame] (96), so 384 + 2 cells = 576px is the
+/// worst case. 1024 keeps a wide margin AND is a constant, which is the whole
+/// point — a zoom-dependent margin would put the cell width back into the
+/// row's constraints.
+const double timelineFrameWindowMarginPx = 1024;
 
 /// The live geometry handle a row holds. Its IDENTITY is what the row memo
 /// keys on, so it must outlive the zoom steps it reports — owners keep it in
@@ -177,43 +239,103 @@ class RenderTimelineFrameAxisBox extends RenderProxyBox {
     super.detach();
   }
 
+  Size _sizeFor(double main) => _axis == Axis.horizontal
+      ? Size(main, _crossAxisExtent)
+      : Size(_crossAxisExtent, main);
+
+  /// What the CHILD is laid out at. Windowed, it is the constant window
+  /// extent and the incoming constraints are deliberately NOT enforced: the
+  /// parent's max is the content width, and clamping to it would put the
+  /// content — and so the cell width — back into the child's constraints,
+  /// which is the whole thing this exists to avoid. Overflow past the box is
+  /// off-screen by construction (the window covers the viewport with margin)
+  /// and nothing here clips.
   BoxConstraints _innerConstraints(BoxConstraints constraints) {
-    final main = _geometry.value.mainExtent;
-    return BoxConstraints.tightFor(
-      width: _axis == Axis.horizontal ? main : _crossAxisExtent,
-      height: _axis == Axis.horizontal ? _crossAxisExtent : main,
-    ).enforce(constraints);
+    final geometry = _geometry.value;
+    final inner = BoxConstraints.tight(_sizeFor(geometry.mainExtent));
+    return geometry.isWindowed ? inner : inner.enforce(constraints);
+  }
+
+  /// The box's OWN size stays content-space, so everything above the row —
+  /// the grid Stack, the scrolled content, the absolute overlays — sees the
+  /// row it always saw.
+  Size _outerSize(BoxConstraints constraints) =>
+      constraints.constrain(_sizeFor(_geometry.value.contentMainExtent));
+
+  /// Where the child sits inside this box.
+  Offset get _childOffset {
+    final origin = _geometry.value.windowOriginPx;
+    if (origin == 0) {
+      return Offset.zero;
+    }
+    return _axis == Axis.horizontal ? Offset(origin, 0) : Offset(0, origin);
   }
 
   @override
   void performLayout() {
     final child = this.child;
     if (child == null) {
-      size = _innerConstraints(constraints).smallest;
+      size = _outerSize(constraints);
       return;
     }
     child.layout(_innerConstraints(constraints), parentUsesSize: true);
-    size = child.size;
+    size = _geometry.value.isWindowed ? _outerSize(constraints) : child.size;
   }
 
   @override
-  double computeMinIntrinsicWidth(double height) =>
-      _axis == Axis.horizontal ? _geometry.value.mainExtent : _crossAxisExtent;
+  void paint(PaintingContext context, Offset offset) {
+    final child = this.child;
+    if (child != null) {
+      context.paintChild(child, offset + _childOffset);
+    }
+  }
+
+  /// Paint and hit-test read the SAME [_childOffset] — the two cannot drift
+  /// into a row that draws in one place and answers pointers in another.
+  @override
+  void applyPaintTransform(RenderObject child, Matrix4 transform) {
+    final childOffset = _childOffset;
+    transform.translateByDouble(childOffset.dx, childOffset.dy, 0, 1);
+  }
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {
+    final child = this.child;
+    if (child == null) {
+      return false;
+    }
+    return result.addWithPaintOffset(
+      offset: _childOffset,
+      position: position,
+      hitTest: (result, transformed) =>
+          child.hitTest(result, position: transformed),
+    );
+  }
+
+  @override
+  double computeMinIntrinsicWidth(double height) => _axis == Axis.horizontal
+      ? _geometry.value.contentMainExtent
+      : _crossAxisExtent;
 
   @override
   double computeMaxIntrinsicWidth(double height) =>
       computeMinIntrinsicWidth(height);
 
   @override
-  double computeMinIntrinsicHeight(double width) =>
-      _axis == Axis.horizontal ? _crossAxisExtent : _geometry.value.mainExtent;
+  double computeMinIntrinsicHeight(double width) => _axis == Axis.horizontal
+      ? _crossAxisExtent
+      : _geometry.value.contentMainExtent;
 
   @override
   double computeMaxIntrinsicHeight(double width) =>
       computeMinIntrinsicHeight(width);
 
   @override
-  Size computeDryLayout(BoxConstraints constraints) =>
-      child?.getDryLayout(_innerConstraints(constraints)) ??
-      _innerConstraints(constraints).smallest;
+  Size computeDryLayout(BoxConstraints constraints) {
+    if (_geometry.value.isWindowed) {
+      return _outerSize(constraints);
+    }
+    return child?.getDryLayout(_innerConstraints(constraints)) ??
+        _innerConstraints(constraints).smallest;
+  }
 }
