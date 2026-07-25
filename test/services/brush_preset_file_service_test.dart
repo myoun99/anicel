@@ -45,13 +45,16 @@ void main() {
       final service = BrushPresetFileService(
         filePath: pathIn('nested/dir/presets.json'),
       );
-      const groups = [
-        BrushGroup(id: BrushGroupId('imported-불투명 수채'), name: '불투명 수채'),
-        BrushGroup(
+      final groups = [
+        const BrushGroup(id: BrushGroupId('imported-불투명 수채'), name: '불투명 수채'),
+        const BrushGroup(
           id: BrushGroupId('user-group-1'),
           name: 'Mine',
           collapsed: true,
         ),
+        // The built-in below belongs to one of these, and a preset whose
+        // group is missing would be sent back to the root section.
+        ...defaultBrushGroups,
       ];
       final presets = [
         BrushPreset(
@@ -148,16 +151,55 @@ void main() {
         // Save a library missing most built-ins at the CURRENT version: the
         // user deleted them, so loading must not bring them back.
         await service.save((
-          groups: const [],
+          groups: defaultBrushGroups,
           presets: [defaultBrushPresets.last],
         ));
 
         final loaded = await service.loadOrDefaults();
 
         expect(loaded.presets, [defaultBrushPresets.last]);
-        expect(loaded.groups, isEmpty);
+        expect(loaded.groups, defaultBrushGroups);
       },
     );
+
+    test('crossing a version line files built-ins left at the root', () async {
+      // A library saved before the built-ins had groups: the ones the user
+      // never filed get their shipped home, everything else stays put.
+      final path = pathIn('rehome.json');
+      final builtin = defaultBrushPresets.first;
+      final movedByUser = defaultBrushPresets[1].copyWith(
+        groupId: const BrushGroupId('mine'),
+      );
+      final ownPreset = BrushPreset(
+        id: const BrushPresetId('user-1'),
+        name: 'Mine',
+        settings: BrushSettings(size: 3),
+      );
+      await File(path).writeAsString(
+        jsonEncode({
+          'version': BrushPresetFileService.libraryVersion - 1,
+          'groups': [
+            const BrushGroup(id: BrushGroupId('mine'), name: 'Mine').toJson(),
+          ],
+          'presets': [
+            builtin.copyWith(groupId: null).toJson(),
+            movedByUser.toJson(),
+            ownPreset.toJson(),
+          ],
+        }),
+      );
+
+      final loaded = await BrushPresetFileService(
+        filePath: path,
+      ).loadOrDefaults();
+
+      final byId = {for (final preset in loaded.presets) preset.id: preset};
+      expect(byId[builtin.id]!.groupId, builtin.groupId);
+      // The user's own filing wins over the shipped home.
+      expect(byId[movedByUser.id]!.groupId, const BrushGroupId('mine'));
+      // A preset that is not a built-in is never re-homed.
+      expect(byId[ownPreset.id]!.groupId, isNull);
+    });
 
     test(
       'duplicate preset ids in a saved library are healed on load',
@@ -283,7 +325,16 @@ void main() {
         filePath: path,
       ).loadOrDefaults();
 
-      expect(loaded.groups.map((group) => group.name), ['불투명 수채', 'Noah']);
+      // The rebuilt groups come first, in the order their members appeared;
+      // crossing the version line also appends the built-in groups.
+      expect(loaded.groups.take(2).map((group) => group.name), [
+        '불투명 수채',
+        'Noah',
+      ]);
+      expect(
+        loaded.groups.map((group) => group.id),
+        containsAll(defaultBrushGroups.map((group) => group.id)),
+      );
       // The id is the one the importer derives from the file name, so
       // re-importing that same pack still lands in this migrated group.
       expect(loaded.groups.first.id, importedBrushGroupId('불투명 수채'));

@@ -40,8 +40,9 @@ class BrushPresetFileService {
   ///
   /// 3 turned groups into first-class entities: they live in their own
   /// `groups` list and presets reference one by id, where versions 1-2
-  /// repeated the group NAME on every member.
-  static const int libraryVersion = 3;
+  /// repeated the group NAME on every member. 4 filled the built-in roster
+  /// out into the Pencil / Ink / Paint / Texture groups.
+  static const int libraryVersion = 4;
 
   /// Reads the preset library; a missing or unreadable file yields the
   /// built-in defaults (nothing is written back until the next save).
@@ -85,7 +86,7 @@ class BrushPresetFileService {
             if (!knownGroupIds.contains(builtin.id)) builtin,
         ];
         presets = [
-          ...presets,
+          for (final preset in presets) _rehomedBuiltin(preset),
           for (final builtin in defaultBrushPresets)
             if (!knownPresetIds.contains(builtin.id)) builtin,
         ];
@@ -103,6 +104,22 @@ class BrushPresetFileService {
     groups: List.of(defaultBrushGroups),
     presets: List.of(defaultBrushPresets),
   );
+
+  /// Moves a built-in that is still sitting in the ROOT section into the
+  /// group it ships in — the case of a library saved before the built-ins
+  /// had groups at all. A preset the user filed somewhere stays filed:
+  /// crossing a version line may hand out a home, never take one away.
+  static BrushPreset _rehomedBuiltin(BrushPreset preset) {
+    if (preset.groupId != null) {
+      return preset;
+    }
+    for (final builtin in defaultBrushPresets) {
+      if (builtin.id == preset.id && builtin.groupId != null) {
+        return preset.copyWith(groupId: builtin.groupId);
+      }
+    }
+    return preset;
+  }
 
   /// Rebuilds group entities from the group NAMES a version 1-2 library
   /// repeated on each preset, keeping first-appearance order. [entries] is
