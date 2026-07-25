@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import '../helpers/json_round_trip.dart';
+import 'package:quick_animaker_v2/src/models/brush_group_id.dart';
 import 'package:quick_animaker_v2/src/models/brush_preset.dart';
 import 'package:quick_animaker_v2/src/models/brush_preset_id.dart';
 import 'package:quick_animaker_v2/src/models/brush_settings.dart';
@@ -40,6 +41,29 @@ void main() {
       );
       expect(preset.copyWith(name: 'Ink'), isNot(preset));
       expect(preset.copyWith(settings: BrushSettings(size: 6)), isNot(preset));
+    });
+
+    test('equality includes the group', () {
+      final grouped = preset.copyWith(groupId: const BrushGroupId('ink'));
+
+      expect(grouped, isNot(preset));
+      expect(grouped.groupId, const BrushGroupId('ink'));
+    });
+
+    test('copyWith keeps the group unless it is passed', () {
+      final grouped = preset.copyWith(groupId: const BrushGroupId('ink'));
+
+      expect(grouped.copyWith(name: 'Ink').groupId, const BrushGroupId('ink'));
+      // An explicit null is the way OUT of a group (back to the root
+      // section) — the sentinel keeps that distinct from "not passed".
+      expect(grouped.copyWith(groupId: null).groupId, isNull);
+    });
+
+    test('a grouped preset round-trips through json', () {
+      expectJsonRoundTrip(
+        preset.copyWith(groupId: const BrushGroupId('imported-Noah')),
+        BrushPreset.fromJson,
+      );
     });
 
     test(

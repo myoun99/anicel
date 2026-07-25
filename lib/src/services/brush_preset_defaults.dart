@@ -1,8 +1,14 @@
-﻿import '../models/brush_preset.dart';
+﻿import '../models/brush_group.dart';
+import '../models/brush_preset.dart';
 import '../models/brush_preset_id.dart';
 import '../models/brush_pressure_curve.dart';
 import '../models/brush_settings.dart';
 import 'brush_tip_mask_defaults.dart';
+
+/// Built-in library groups seeded alongside [defaultBrushPresets], in display
+/// order. Every group here is referenced by at least one built-in preset; a
+/// library saved at an older version gains the ones it lacks on load.
+final List<BrushGroup> defaultBrushGroups = List.unmodifiable(<BrushGroup>[]);
 
 /// Built-in brush presets seeded when no user preset library exists yet.
 ///

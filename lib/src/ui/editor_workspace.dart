@@ -5,6 +5,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../models/brush_group_id.dart';
 import '../models/brush_preset.dart';
 import '../models/brush_preset_id.dart';
 import '../models/canvas_size.dart';
@@ -204,10 +205,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     ],
     EditorWorkspace.bottomGroupId: [
       DockSection(
-        tabs: [
-          EditorWorkspace.timelineTabId,
-          EditorWorkspace.storyboardTabId,
-        ],
+        tabs: [EditorWorkspace.timelineTabId, EditorWorkspace.storyboardTabId],
         activeTabId: EditorWorkspace.timelineTabId,
       ),
     ],
@@ -682,6 +680,21 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _presetLibrary.markActive(preset.id);
   }
 
+  /// The group the tool's active preset sits in — where a newly saved
+  /// preset joins.
+  BrushGroupId? _activePresetGroupId(CanvasTool tool) {
+    final activeId = _activePresetByTool[tool];
+    if (activeId == null) {
+      return null;
+    }
+    for (final preset in _presetLibrary.presets) {
+      if (preset.id == activeId) {
+        return preset.groupId;
+      }
+    }
+    return null;
+  }
+
   Future<void> _importBrushFile() async {
     final message = await _presetLibrary.importFromFile();
     if (message == null || !mounted) {
@@ -798,12 +811,17 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                           listenable: _presetLibrary,
                           builder: (context, _) => BrushPresetPanel(
                             presets: _presetLibrary.presets,
+                            groups: _presetLibrary.groups,
                             selectedPresetId:
                                 _activePresetByTool[toolState.tool],
                             onPresetApplied: _applyPreset,
                             onPresetSaveRequested: () {
                               _presetLibrary.saveCurrent(
                                 _brushTool.value.toBrushSettings(),
+                                // A saved variant lands beside the brush it
+                                // came from rather than at the far end of
+                                // the list.
+                                groupId: _activePresetGroupId(toolState.tool),
                               );
                             },
                             onPresetDeleted: _presetLibrary.delete,
@@ -812,6 +830,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                             onPresetImportRequested: () {
                               unawaited(_importBrushFile());
                             },
+                            onGroupCreated: _presetLibrary.createGroup,
+                            onGroupRenamed: _presetLibrary.renameGroup,
+                            onGroupDeleted: _presetLibrary.deleteGroup,
+                            onGroupCollapseChanged:
+                                _presetLibrary.setGroupCollapsed,
+                            onGroupsReordered: _presetLibrary.reorderGroups,
+                            onLibraryReset: _presetLibrary.resetToDefaults,
                           ),
                         ),
                       ),
@@ -853,27 +878,29 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                                   >(
                                     valueListenable: _eyedropperSource,
                                     builder: (context, eyedropperSource, _) =>
-                                  ToolSettingsPanel(
-                                    state: toolState,
-                                    onChanged: (state) =>
-                                        _brushTool.value = state,
-                                    fillOptions: fillOptions,
-                                    onFillOptionsChanged: (options) =>
-                                        _fillOptions.value = options,
-                                    eyedropperSource: eyedropperSource,
-                                    onEyedropperSourceChanged: (source) =>
-                                        _eyedropperSource.value = source,
-                                    selectionMaskOptions: maskOptions,
-                                    onSelectionMaskOptionsChanged: (options) =>
-                                        _selectionMaskOptions.value = options,
-                                    selectionCommands:
-                                        widget.canvasSelectionCommands,
-                                    language: widget
-                                        .session
-                                        .languageSettings
-                                        .value
-                                        .programLanguage,
-                                  ),
+                                        ToolSettingsPanel(
+                                          state: toolState,
+                                          onChanged: (state) =>
+                                              _brushTool.value = state,
+                                          fillOptions: fillOptions,
+                                          onFillOptionsChanged: (options) =>
+                                              _fillOptions.value = options,
+                                          eyedropperSource: eyedropperSource,
+                                          onEyedropperSourceChanged: (source) =>
+                                              _eyedropperSource.value = source,
+                                          selectionMaskOptions: maskOptions,
+                                          onSelectionMaskOptionsChanged:
+                                              (options) =>
+                                                  _selectionMaskOptions.value =
+                                                      options,
+                                          selectionCommands:
+                                              widget.canvasSelectionCommands,
+                                          language: widget
+                                              .session
+                                              .languageSettings
+                                              .value
+                                              .programLanguage,
+                                        ),
                                   ),
                             ),
                       ),

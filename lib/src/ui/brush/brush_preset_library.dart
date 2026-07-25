@@ -4,12 +4,16 @@ import 'dart:io';
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 
+import '../../models/brush_group.dart';
+import '../../models/brush_group_id.dart';
 import '../../models/brush_preset.dart';
 import '../../models/brush_preset_id.dart';
 import '../../models/brush_settings.dart';
 import '../../services/abr/abr_decoder.dart';
+import '../../services/brush_preset_defaults.dart';
 import '../../services/brush_preset_file_service.dart';
 import '../../services/sut/sut_decoder.dart';
+import 'brush_import_merge.dart';
 
 /// A picked brush file: display name plus raw bytes.
 typedef BrushFilePick = ({String name, Uint8List bytes});
@@ -32,11 +36,12 @@ Future<BrushFilePick?> _openBrushFileDialog() async {
   return (name: file.name, bytes: bytes);
 }
 
-/// The brush preset library: the preset list, the active (highlighted)
-/// preset and every mutation on them — save/rename/reorder/delete plus
-/// ABR/SUT file import — with fire-and-forget persistence to the app-level
-/// preset file. Pure data controller; user messaging stays with the UI
-/// (mutations that want a snackbar return the message text).
+/// The brush preset library: the groups, the preset list, the active
+/// (highlighted) preset and every mutation on them — save/rename/reorder/
+/// delete for both presets and groups, plus ABR/SUT file import — with
+/// fire-and-forget persistence to the app-level preset file. Pure data
+/// controller; user messaging stays with the UI (mutations that want a
+/// snackbar return the message text).
 class BrushPresetLibrary extends ChangeNotifier {
   BrushPresetLibrary({
     BrushPresetFileService? fileService,
@@ -47,9 +52,14 @@ class BrushPresetLibrary extends ChangeNotifier {
   final BrushPresetFileService _fileService;
   final BrushFilePicker _filePicker;
 
+  List<BrushGroup> _groups = const <BrushGroup>[];
   List<BrushPreset> _presets = const <BrushPreset>[];
   BrushPresetId? _activePresetId;
   bool _disposed = false;
+
+  /// Library groups in display order (the root section is not one of them —
+  /// it is simply every preset without a group).
+  List<BrushGroup> get groups => _groups;
 
   List<BrushPreset> get presets => _presets;
 
@@ -70,8 +80,9 @@ class BrushPresetLibrary extends ChangeNotifier {
   }
 
   Future<void> load() async {
-    final presets = await _fileService.loadOrDefaults();
-    _presets = presets;
+    final library = await _fileService.loadOrDefaults();
+    _groups = library.groups;
+    _presets = library.presets;
     _notify();
   }
 
@@ -83,11 +94,14 @@ class BrushPresetLibrary extends ChangeNotifier {
     _notify();
   }
 
-  /// Saves the given settings as a new preset and makes it active.
-  void saveCurrent(BrushSettings settings) {
+  /// Saves the given settings as a new preset and makes it active. It lands
+  /// in [groupId] — the caller passes the active preset's group, so saving a
+  /// variant of a brush keeps it next to the brush it came from.
+  void saveCurrent(BrushSettings settings, {BrushGroupId? groupId}) {
     final preset = BrushPreset(
       id: BrushPresetId('user-${DateTime.now().millisecondsSinceEpoch}'),
       name: _nextPresetName(),
+      groupId: _groups.any((group) => group.id == groupId) ? groupId : null,
       settings: settings,
     );
     _presets = [..._presets, preset];
@@ -119,6 +133,73 @@ class BrushPresetLibrary extends ChangeNotifier {
     if (_activePresetId == id) {
       _activePresetId = null;
     }
+    _notify();
+    _persist();
+  }
+
+  /// Adds an empty group at the end of the list; the user fills it by
+  /// dragging presets in (an empty group is legal, which is the whole point
+  /// of groups being entities).
+  void createGroup(String name) {
+    _groups = [
+      ..._groups,
+      BrushGroup(
+        id: BrushGroupId('user-group-${DateTime.now().millisecondsSinceEpoch}'),
+        name: name,
+      ),
+    ];
+    _notify();
+    _persist();
+  }
+
+  void renameGroup(BrushGroupId id, String name) {
+    _groups = [
+      for (final group in _groups)
+        group.id == id ? group.copyWith(name: name) : group,
+    ];
+    _notify();
+    _persist();
+  }
+
+  /// Deletes a group AND the presets inside it — the one-click way to drop
+  /// an imported pack. Presets that were dragged out of the group earlier
+  /// live elsewhere and are untouched.
+  void deleteGroup(BrushGroupId id) {
+    _groups = [
+      for (final group in _groups)
+        if (group.id != id) group,
+    ];
+    _presets = [
+      for (final preset in _presets)
+        if (preset.groupId != id) preset,
+    ];
+    if (!_presets.any((preset) => preset.id == _activePresetId)) {
+      _activePresetId = null;
+    }
+    _notify();
+    _persist();
+  }
+
+  void setGroupCollapsed(BrushGroupId id, bool collapsed) {
+    _groups = [
+      for (final group in _groups)
+        group.id == id ? group.copyWith(collapsed: collapsed) : group,
+    ];
+    _notify();
+    _persist();
+  }
+
+  void reorderGroups(List<BrushGroup> groups) {
+    _groups = List.of(groups);
+    _notify();
+    _persist();
+  }
+
+  /// Throws the whole library away and re-seeds the built-ins.
+  void resetToDefaults() {
+    _groups = List.of(defaultBrushGroups);
+    _presets = List.of(defaultBrushPresets);
+    _activePresetId = null;
     _notify();
     _persist();
   }
@@ -162,18 +243,16 @@ class BrushPresetLibrary extends ChangeNotifier {
     if (_disposed) {
       return null;
     }
-    // Imported brushes group under their source file, mirroring Clip
-    // Studio's sub-tool groups (re-importing keeps them together).
-    final grouped = [
-      for (final preset in imported) preset.copyWith(group: baseName),
-    ];
-    // Re-importing replaces presets with the same id (same brush/tip).
-    final importedIds = {for (final preset in grouped) preset.id};
-    _presets = [
-      for (final preset in _presets)
-        if (!importedIds.contains(preset.id)) preset,
-      ...grouped,
-    ];
+    final merged = mergeImportedBrushPresets(
+      library: (groups: _groups, presets: _presets),
+      imported: imported,
+      sourceName: baseName,
+    );
+    _groups = merged.groups;
+    _presets = merged.presets;
+    if (!_presets.any((preset) => preset.id == _activePresetId)) {
+      _activePresetId = null;
+    }
     _notify();
     _persist();
     final summary = imported.length == 1
@@ -217,6 +296,10 @@ class BrushPresetLibrary extends ChangeNotifier {
   void _persist() {
     // Fire-and-forget: preset persistence must never block or crash the
     // editor; a failed write just leaves the in-memory library unsaved.
-    unawaited(_fileService.save(_presets).catchError((Object _) {}));
+    unawaited(
+      _fileService
+          .save((groups: _groups, presets: _presets))
+          .catchError((Object _) {}),
+    );
   }
 }

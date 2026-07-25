@@ -1,3 +1,4 @@
+import 'brush_group_id.dart';
 import 'brush_preset_id.dart';
 import 'brush_settings.dart';
 
@@ -6,33 +7,35 @@ class BrushPreset {
     required this.id,
     required this.name,
     required this.settings,
-    this.group,
+    this.groupId,
   });
 
   final BrushPresetId id;
   final String name;
   final BrushSettings settings;
 
-  /// Library group the preset belongs to (e.g. the import source file's
-  /// base name, mirroring Clip Studio sub-tool groups). `null` means
-  /// ungrouped; the UI shows those under a default group.
-  final String? group;
+  /// The library group this preset sits in, by id (see `BrushGroup`).
+  /// `null` — and, defensively, an id no group carries — means the preset
+  /// belongs to the library's headerless root section.
+  final BrushGroupId? groupId;
 
   static const Object _groupUnset = Object();
 
-  /// [group] accepts an explicit `null` to clear the group (move the preset
-  /// back to the default section); omitting it keeps the current group.
+  /// [groupId] accepts an explicit `null` to clear the group (move the preset
+  /// back to the root section); omitting it keeps the current group.
   BrushPreset copyWith({
     BrushPresetId? id,
     String? name,
     BrushSettings? settings,
-    Object? group = _groupUnset,
+    Object? groupId = _groupUnset,
   }) {
     return BrushPreset(
       id: id ?? this.id,
       name: name ?? this.name,
       settings: settings ?? this.settings,
-      group: identical(group, _groupUnset) ? this.group : group as String?,
+      groupId: identical(groupId, _groupUnset)
+          ? this.groupId
+          : groupId as BrushGroupId?,
     );
   }
 
@@ -40,7 +43,7 @@ class BrushPreset {
     'id': id.toJson(),
     'name': name,
     'settings': settings.toJson(),
-    if (group != null) 'group': group,
+    if (groupId != null) 'groupId': groupId!.toJson(),
   };
 
   factory BrushPreset.fromJson(Map<String, dynamic> json) {
@@ -50,7 +53,9 @@ class BrushPreset {
       settings: BrushSettings.fromJson(
         json['settings'] as Map<String, dynamic>,
       ),
-      group: json['group'] as String?,
+      groupId: json['groupId'] == null
+          ? null
+          : BrushGroupId.fromJson(json['groupId'] as Map<String, dynamic>),
     );
   }
 
@@ -61,12 +66,13 @@ class BrushPreset {
           other.id == id &&
           other.name == name &&
           other.settings == settings &&
-          other.group == group;
+          other.groupId == groupId;
 
   @override
-  int get hashCode => Object.hash(id, name, settings, group);
+  int get hashCode => Object.hash(id, name, settings, groupId);
 
   @override
   String toString() =>
-      'BrushPreset(id: $id, name: $name, group: $group, settings: $settings)';
+      'BrushPreset(id: $id, name: $name, groupId: $groupId, '
+      'settings: $settings)';
 }
