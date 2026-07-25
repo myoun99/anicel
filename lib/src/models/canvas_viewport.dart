@@ -230,6 +230,28 @@ class CanvasViewport {
     );
   }
 
+  /// Maps a canvas-space DELTA into viewport space (the linear forward
+  /// transform — no pan): what a canvas-space vector measures on screen.
+  /// The mirror of [viewportDeltaToCanvasDelta], and the authority for
+  /// anything that has to draw a canvas-sized shape in screen coordinates.
+  ViewportPoint canvasDeltaToViewportDelta({
+    required double dx,
+    required double dy,
+  }) {
+    if (!hasRotationOrFlip) {
+      return ViewportPoint(x: dx * zoom, y: dy * zoom);
+    }
+    final x = flipHorizontal ? -dx : dx;
+    final y = flipVertical ? -dy : dy;
+    final radians = rotationRadians;
+    final cos = math.cos(radians);
+    final sin = math.sin(radians);
+    return ViewportPoint(
+      x: (x * cos - y * sin) * zoom,
+      y: (x * sin + y * cos) * zoom,
+    );
+  }
+
   CanvasPoint viewportToCanvas(ViewportPoint point) {
     if (!hasRotationOrFlip) {
       return CanvasPoint(
