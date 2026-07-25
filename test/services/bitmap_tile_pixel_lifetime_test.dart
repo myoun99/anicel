@@ -24,10 +24,32 @@ import '../helpers/native_engine_path.dart';
 /// allocation, and the copy then wrote through a pointer someone else
 /// owned — an access violation that took the whole test process down.
 ///
-/// This drives the shape that reproduced it every time: a Dart-engine
-/// phase (which builds up collectable tiles) followed by a native-engine
-/// phase that pre-blends, promotes and commits hard enough to make the GC
-/// run mid-copy. It is a crash test — reaching the end IS the assertion.
+/// This drives that shape hard: a Dart-engine phase (which builds up
+/// collectable tiles) followed by a native-engine phase that pre-blends,
+/// promotes and commits, with every result byte read back at the end. It
+/// is a crash test — reaching the end IS the assertion.
+///
+/// WHAT IT DOES NOT DO, measured — do not mistake it for a regression pin.
+/// An audit re-introduced the hazard twice, faithfully, and this test
+/// stayed green three runs each time:
+///
+///   * dropping the `_baseKeepAlive.add(tile)` that guards the pre-blend's
+///     staged base pointer (BrushLiveStrokeRasterizer);
+///   * escaping an `asTypedList` view out of `readPixels` into a local in
+///     `bitmapSurfaceRegionPixels` — the exact shape the doc above calls
+///     unsafe.
+///
+/// Both sites are on the paths this test drives. It survives them because
+/// the tile stays reachable through the live [BitmapSurface] that owns it
+/// (`base.tiles`), so the keep-alives are redundant HERE: the hazard needs
+/// a tile whose only reference is the escaped local, and nothing in this
+/// test creates one.
+///
+/// So: this is a CHURN SMOKE TEST. What actually enforces the lifetime
+/// contract is the API shape — no member returns a raw pointer, so
+/// [BitmapTile.readPixels] is the only way in — not the assertions below.
+/// Strengthening it would mean constructing a tile that the surface no
+/// longer holds and forcing a collection between the escape and the read.
 void main() {
   const canvasSize = CanvasSize(width: 192, height: 128);
   const tileSize = 64;
