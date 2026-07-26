@@ -3,11 +3,13 @@ import 'package:flutter/widgets.dart';
 
 import '../../models/attached_layer_resolve.dart';
 import '../../models/camera_pose.dart';
+import '../../models/cut.dart';
 import '../../models/cut_camera.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/project.dart';
+import '../../models/track_id.dart';
 
 /// The scoped edit-drag preview channel.
 ///
@@ -99,22 +101,30 @@ class BlockMoveDragPreview extends TimelineDragPreview {
 }
 
 /// A storyboard cut edge drag in flight: the involved cuts' previewed
-/// durations (end trims) and leading gaps (start slides / gap
-/// consumption).
+/// durations (end trims), leading gaps (start slides / gap consumption)
+/// and — when a move drag reaches into a neighbour — the previewed ORDER
+/// of a track's cuts.
 class CutTrimDragPreview extends TimelineDragPreview {
   const CutTrimDragPreview({
     required this.previewDurations,
     this.previewGaps = const {},
+    this.previewOrder = const {},
   });
 
   final Map<CutId, int> previewDurations;
   final Map<CutId, int> previewGaps;
 
+  /// Per track, the cut sequence as the release would leave it. A move
+  /// drag resolves to gaps OR to an order, never both: re-timing and
+  /// reordering are the two outcomes of one rule (see [planCutMove]).
+  final Map<TrackId, List<CutId>> previewOrder;
+
   @override
   bool operator ==(Object other) =>
       other is CutTrimDragPreview &&
       mapEquals(other.previewDurations, previewDurations) &&
-      mapEquals(other.previewGaps, previewGaps);
+      mapEquals(other.previewGaps, previewGaps) &&
+      _orderEquals(other.previewOrder, previewOrder);
 
   @override
   int get hashCode => Object.hash(
@@ -124,7 +134,27 @@ class CutTrimDragPreview extends TimelineDragPreview {
     Object.hashAllUnordered(
       previewGaps.entries.map((e) => Object.hash(e.key, e.value)),
     ),
+    Object.hashAllUnordered(
+      previewOrder.entries.map(
+        (e) => Object.hash(e.key, Object.hashAll(e.value)),
+      ),
+    ),
   );
+
+  static bool _orderEquals(
+    Map<TrackId, List<CutId>> a,
+    Map<TrackId, List<CutId>> b,
+  ) {
+    if (a.length != b.length) {
+      return false;
+    }
+    for (final entry in a.entries) {
+      if (!listEquals(entry.value, b[entry.key])) {
+        return false;
+      }
+    }
+    return true;
+  }
 }
 
 /// A movie-end drag in flight (UI-R20 #3): the previewed TRAILING GAP —
@@ -176,6 +206,25 @@ Layer? timelineDragPreviewGlobalLayerFor(
   return null;
 }
 
+/// [cuts] resequenced to [order], ignoring ids the track no longer holds
+/// and keeping any cut the order forgot at the end (the preview must never
+/// make a cut disappear).
+List<Cut> _previewOrdered(List<Cut> cuts, List<CutId>? order) {
+  if (order == null || order.isEmpty) {
+    return cuts;
+  }
+  final byId = {for (final cut in cuts) cut.id: cut};
+  final resequenced = <Cut>[
+    for (final id in order)
+      if (byId.remove(id) case final Cut cut) cut,
+  ];
+  return [
+    ...resequenced,
+    for (final cut in cuts)
+      if (byId.containsKey(cut.id)) cut,
+  ];
+}
+
 /// A project snapshot with an in-flight drag preview substituted in —
 /// the storyboard panel renders THIS during a drag so its blocks follow
 /// the pointer while the repository stays untouched.
@@ -186,22 +235,28 @@ Project projectWithTimelineDragPreview(
   switch (preview) {
     case null:
       return project;
-    case CutTrimDragPreview(:final previewDurations, :final previewGaps):
+    case CutTrimDragPreview(
+      :final previewDurations,
+      :final previewGaps,
+      :final previewOrder,
+    ):
       return project.copyWith(
         tracks: [
           for (final track in project.tracks)
             track.copyWith(
-              cuts: [
-                for (final cut in track.cuts)
-                  previewDurations.containsKey(cut.id) ||
-                          previewGaps.containsKey(cut.id)
-                      ? cut.copyWith(
-                          duration: previewDurations[cut.id] ?? cut.duration,
-                          leadingGapFrames:
-                              previewGaps[cut.id] ?? cut.leadingGapFrames,
-                        )
-                      : cut,
-              ],
+              cuts: _previewOrdered(track.cuts, previewOrder[track.id])
+                  .map(
+                    (cut) =>
+                        previewDurations.containsKey(cut.id) ||
+                            previewGaps.containsKey(cut.id)
+                        ? cut.copyWith(
+                            duration: previewDurations[cut.id] ?? cut.duration,
+                            leadingGapFrames:
+                                previewGaps[cut.id] ?? cut.leadingGapFrames,
+                          )
+                        : cut,
+                  )
+                  .toList(growable: false),
             ),
         ],
       );

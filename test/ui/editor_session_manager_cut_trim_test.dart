@@ -47,6 +47,16 @@ void main() {
     ).firstWhere((entry) => entry.cutId == cutId).startFrame;
   }
 
+  /// The previewed cut order for the only track, or null when the live
+  /// preview is a re-time rather than a reorder.
+  List<CutId>? previewOrderOf(EditorSessionManager s) {
+    final preview = s.dragPreview.value;
+    if (preview is! CutTrimDragPreview) {
+      return null;
+    }
+    return preview.previewOrder[s.repository.requireProject().tracks.first.id];
+  }
+
   /// A cut-select drag stated the way the panel's gesture states it —
   /// track-global frames inside the anchor and head cuts.
   void selectCutRun(EditorSessionManager s, CutId anchor, CutId head) {
@@ -140,14 +150,17 @@ void main() {
   test('start-edge leftward GROWTH pushes predecessors through their gaps '
       '(block-body push language) and adds the movement to the length', () {
     final (s, first, second) = twoCutSession();
+
+    // Give the FIRST cut a 4-frame lead-in gap. Its START edge trims from
+    // the front, which is what opens a lead-in — a move drag cannot, with
+    // the second cut packed against it.
+    s.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.start);
+    s.updateCutEdgeDrag(4);
+    s.endCutEdgeDrag();
+    expect(layoutStart(s, first), 4);
+
     final firstDuration = s.cutById(first)!.duration;
     final secondDuration = s.cutById(second)!.duration;
-
-    // Give the FIRST cut a 4-frame lead-in gap (a pure slide: cut move).
-    expect(s.beginCutMoveDrag(first), isTrue);
-    s.updateCutMoveDrag(4);
-    s.endCutMoveDrag();
-    expect(layoutStart(s, first), 4);
     final secondEnd = layoutStart(s, second) + secondDuration;
 
     // Grow the SECOND cut's start left by 6: its own gap is 0, so the
@@ -356,27 +369,27 @@ void main() {
   });
 
   group('whole-block move drags (R10-④)', () {
-    test('a rightward move grows the gap; the follower holds still until '
-        'its gap is spent, then pushes', () {
+    test('a rightward move eats the follower\'s gap and stops at contact — '
+        'it never shoves the follower along', () {
       final (s, first, second) = twoCutSession();
       final firstStart = layoutStart(s, first);
       final secondStart = layoutStart(s, second);
 
       // Open a 3-frame gap before the second cut, then move the FIRST cut
-      // right by 5: its own gap grows 5, the second cut's gap absorbs 3
-      // and the remaining 2 push it.
+      // right by 5: only 3 frames of free space exist, so it lands there
+      // and the second cut does not move at all.
       s.beginCutEdgeDrag(cutId: second, edge: TimelineBlockEdge.start);
       s.updateCutEdgeDrag(3);
       s.endCutEdgeDrag();
 
       expect(s.beginCutMoveDrag(first), isTrue);
       s.updateCutMoveDrag(5);
-      expect(previewedGap(s, first), 5);
+      expect(previewedGap(s, first), 3);
       expect(previewedGap(s, second), 0);
       s.endCutMoveDrag();
 
-      expect(layoutStart(s, first), firstStart + 5);
-      expect(layoutStart(s, second), secondStart + 3 + 2);
+      expect(layoutStart(s, first), firstStart + 3);
+      expect(layoutStart(s, second), secondStart + 3);
 
       // ONE undo restores both gaps.
       s.undo();
@@ -384,8 +397,8 @@ void main() {
       expect(layoutStart(s, second), secondStart + 3);
     });
 
-    test('a leftward move consumes its own gap, then pushes the '
-        'predecessor left; followers hold still', () {
+    test('a leftward move consumes its own gap and stops at the '
+        'predecessor; the predecessor holds still', () {
       final (s, first, second) = twoCutSession();
 
       // first: gap 4, second: gap 2.
@@ -398,17 +411,16 @@ void main() {
       final secondStart = layoutStart(s, second);
       final firstStart = layoutStart(s, first);
 
-      // Move the SECOND cut left by 5: its own gap (2) absorbs first,
-      // then the first cut's gap (4) absorbs 3 more — the first cut is
-      // PUSHED left by 3.
+      // Move the SECOND cut left by 5: its own 2 frames of gap are all it
+      // has, so it stops touching the first cut, which never moves.
       expect(s.beginCutMoveDrag(second), isTrue);
       s.updateCutMoveDrag(-5);
       expect(previewedGap(s, second), 0);
-      expect(previewedGap(s, first), 1);
+      expect(previewedGap(s, first), 4);
       s.endCutMoveDrag();
 
-      expect(layoutStart(s, second), secondStart - 5);
-      expect(layoutStart(s, first), firstStart - 3);
+      expect(layoutStart(s, second), secondStart - 2);
+      expect(layoutStart(s, first), firstStart);
     });
 
     test('a leftward move clamps at the chain\'s total slack (frame 0)', () {
@@ -438,7 +450,11 @@ void main() {
     });
 
     test('cancel leaves no trace', () {
-      final (s, first, _) = twoCutSession();
+      final (s, first, second) = twoCutSession();
+      // Room to actually move into.
+      s.beginCutEdgeDrag(cutId: second, edge: TimelineBlockEdge.start);
+      s.updateCutEdgeDrag(10);
+      s.endCutEdgeDrag();
       final undoDepthProbe = s.canUndo;
 
       s.beginCutMoveDrag(first);
@@ -481,23 +497,72 @@ void main() {
       expect(s.storyboardCutSelection.value, isNull);
     });
 
-    test('a move starting inside the selection slides the RUN as one '
-        'unit: compensation lands past the run\'s last cut', () {
+    test('a packed run has nowhere to slide: it stops at contact rather '
+        'than shoving the follower along', () {
       final (s, first, second, third) = threeCutSession();
       final thirdStart = layoutStart(s, third);
 
-      // Select [first, second], then slide from the FIRST cut by +5: both
-      // selected cuts move, and the THIRD holds still only if it had gap
-      // (none here → it is pushed by the full 5).
+      // No gaps anywhere: the run already touches the third cut, so a
+      // small nudge right changes nothing at all (a bigger one would
+      // reorder — see below).
       selectCutRun(s, first, second);
       expect(s.beginCutMoveDrag(first), isTrue);
       s.updateCutMoveDrag(5);
-      expect(previewedGap(s, first), 5);
+      expect(s.dragPreview.value, isNull);
       s.endCutMoveDrag();
 
-      expect(layoutStart(s, first), 5);
-      expect(layoutStart(s, second), 5 + s.cutById(first)!.duration);
-      expect(layoutStart(s, third), thirdStart + 5);
+      expect(layoutStart(s, first), 0);
+      expect(layoutStart(s, second), s.cutById(first)!.duration);
+      expect(layoutStart(s, third), thirdStart);
+    });
+
+    test('a drag past the neighbour\'s midpoint REORDERS the track, and '
+        'the whole selected run crosses in one undo step', () {
+      final (s, first, second, third) = threeCutSession();
+      final undoDepthBefore = s.canUndo;
+
+      // [first, second] dragged right past the third cut: 24-frame cuts,
+      // so the pair's midpoint reaches the third's after 36 frames.
+      selectCutRun(s, first, second);
+      expect(s.beginCutMoveDrag(first), isTrue);
+      s.updateCutMoveDrag(36);
+      // The preview already shows the new order.
+      expect(previewOrderOf(s), [third, first, second]);
+      s.endCutMoveDrag();
+
+      expect(
+        [
+          for (final cut in s.repository.requireProject().tracks.first.cuts)
+            cut.id,
+        ],
+        [third, first, second],
+      );
+      expect(undoDepthBefore || s.canUndo, isTrue);
+
+      s.undo();
+      expect(
+        [
+          for (final cut in s.repository.requireProject().tracks.first.cuts)
+            cut.id,
+        ],
+        [first, second, third],
+      );
+    });
+
+    test('a single cut swaps with its neighbour and the gaps ride along', () {
+      final (s, first, second, third) = threeCutSession();
+
+      expect(s.beginCutMoveDrag(first), isTrue);
+      s.updateCutMoveDrag(24);
+      s.endCutMoveDrag();
+
+      expect(
+        [
+          for (final cut in s.repository.requireProject().tracks.first.cuts)
+            cut.id,
+        ],
+        [second, first, third],
+      );
     });
 
     test('with follower slack the run slides INTO the gap: members keep '

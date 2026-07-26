@@ -2,18 +2,6 @@ import '../../models/cut_id.dart';
 import '../../models/project.dart';
 import '../../models/track_id.dart';
 
-class CutDragReorderPlan {
-  const CutDragReorderPlan({
-    required this.trackId,
-    required this.cutId,
-    required this.newIndex,
-  });
-
-  final TrackId trackId;
-  final CutId cutId;
-  final int newIndex;
-}
-
 class CutPosition {
   const CutPosition({
     required this.trackId,
@@ -81,25 +69,5 @@ class CutReorderPlanner {
       );
     }
     return position.cutIndex + 1;
-  }
-
-  CutDragReorderPlan? planSameTrackDrop({
-    required Project project,
-    required CutId draggedCutId,
-    required TrackId targetTrackId,
-    required int targetCutIndex,
-  }) {
-    final position = findCutPosition(project: project, cutId: draggedCutId);
-    if (position == null ||
-        position.trackId != targetTrackId ||
-        position.cutIndex == targetCutIndex) {
-      return null;
-    }
-
-    return CutDragReorderPlan(
-      trackId: position.trackId,
-      cutId: position.cutId,
-      newIndex: targetCutIndex,
-    );
   }
 }

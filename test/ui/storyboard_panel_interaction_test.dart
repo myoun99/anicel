@@ -1,7 +1,6 @@
 import 'dart:ui' as ui;
 
-import 'package:flutter/gestures.dart'
-    show PointerDeviceKind, kLongPressTimeout;
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
@@ -197,55 +196,7 @@ void main() {
     );
   });
 
-  group('StoryboardPanel cut drag reorder', () {
-    testWidgets('dragging a block onto another emits the target index', (
-      tester,
-    ) async {
-      CutId? reorderedCutId;
-      TrackId? capturedTargetTrackId;
-      int? capturedTargetCutIndex;
-
-      await _pumpStoryboardPanel(
-        tester,
-        _singleTrackProject([
-          _cut('cut-a', name: 'Cut A'),
-          _cut('cut-b', name: 'Cut B'),
-          _cut('cut-c', name: 'Cut C'),
-        ]),
-        activeCutId: const CutId('cut-a'),
-        onCutSelected: (_) {},
-        onCutReordered:
-            ({
-              required CutId draggedCutId,
-              required TrackId targetTrackId,
-              required int targetCutIndex,
-            }) {
-              reorderedCutId = draggedCutId;
-              capturedTargetTrackId = targetTrackId;
-              capturedTargetCutIndex = targetCutIndex;
-            },
-      );
-
-      final source = find.byKey(
-        const ValueKey<String>('storyboard-cut-block-cut-a'),
-      );
-      final target = find.byKey(
-        const ValueKey<String>('storyboard-cut-block-cut-c'),
-      );
-      // Reordering lifts on LONG-PRESS (R10-④ gave the plain horizontal
-      // drag to the whole-block slide).
-      final gesture = await tester.startGesture(tester.getCenter(source));
-      await tester.pump(kLongPressTimeout + const Duration(milliseconds: 50));
-      await gesture.moveTo(tester.getCenter(target));
-      await tester.pump();
-      await gesture.up();
-      await tester.pumpAndSettle();
-
-      expect(reorderedCutId, const CutId('cut-a'));
-      expect(capturedTargetTrackId, const TrackId('track-a'));
-      expect(capturedTargetCutIndex, 2);
-    });
-
+  group('StoryboardPanel cut drag', () {
     testWidgets('a drag on a cut SLIDES it (R10-④): begin → whole-frame '
         'updates → end', (tester) async {
       final began = <CutId>[];
@@ -758,41 +709,8 @@ void main() {
       expect(trims, isEmpty, reason: 'no cut is ever trimmed by the end line');
     });
 
-    testWidgets('dropping a block onto itself does not reorder', (
-      tester,
-    ) async {
-      var reorderCalls = 0;
-
-      await _pumpStoryboardPanel(
-        tester,
-        _singleTrackProject([
-          _cut('cut-a', name: 'Cut A'),
-          _cut('cut-b', name: 'Cut B'),
-        ]),
-        activeCutId: const CutId('cut-a'),
-        onCutSelected: (_) {},
-        onCutReordered:
-            ({
-              required CutId draggedCutId,
-              required TrackId targetTrackId,
-              required int targetCutIndex,
-            }) {
-              reorderCalls += 1;
-            },
-      );
-
-      final source = find.byKey(
-        const ValueKey<String>('storyboard-cut-block-cut-a'),
-      );
-      await tester.dragFrom(tester.getCenter(source), const Offset(4, 0));
-      await tester.pumpAndSettle();
-
-      expect(reorderCalls, 0);
-    });
-
-    testWidgets('without onCutReordered blocks are not draggable', (
-      tester,
-    ) async {
+    testWidgets('nothing lifts a block any more — reordering is the move '
+        'drag reaching past a neighbour', (tester) async {
       await _pumpStoryboardPanel(
         tester,
         _singleTrackProject([
@@ -803,30 +721,8 @@ void main() {
         onCutSelected: (_) {},
       );
 
-      expect(
-        find.byKey(const ValueKey<String>('storyboard-cut-draggable-cut-a')),
-        findsNothing,
-      );
-    });
-
-    testWidgets('a single-cut track is not draggable', (tester) async {
-      await _pumpStoryboardPanel(
-        tester,
-        _singleTrackProject([_cut('cut-a', name: 'Cut A')]),
-        activeCutId: const CutId('cut-a'),
-        onCutSelected: (_) {},
-        onCutReordered:
-            ({
-              required CutId draggedCutId,
-              required TrackId targetTrackId,
-              required int targetCutIndex,
-            }) {},
-      );
-
-      expect(
-        find.byKey(const ValueKey<String>('storyboard-cut-draggable-cut-a')),
-        findsNothing,
-      );
+      expect(find.byType(LongPressDraggable<CutId>), findsNothing);
+      expect(find.byType(DragTarget<CutId>), findsNothing);
     });
 
     testWidgets('ruler tap seeks the frame under the pointer', (tester) async {
@@ -1221,12 +1117,6 @@ void main() {
         ]),
         activeCutId: const CutId('cut-a'),
         onCutSelected: selectedCutIds.add,
-        onCutReordered:
-            ({
-              required CutId draggedCutId,
-              required TrackId targetTrackId,
-              required int targetCutIndex,
-            }) {},
       );
 
       await tester.tap(
@@ -1377,7 +1267,6 @@ Future<void> _pumpStoryboardPanel(
   Project project, {
   required CutId activeCutId,
   required ValueChanged<CutId> onCutSelected,
-  CutReorderedCallback? onCutReordered,
   StoryboardCutTrimCallbacks? cutTrim,
   StoryboardCutMoveCallbacks? cutMove,
   StoryboardCutSelectCallbacks? cutSelect,
@@ -1404,7 +1293,6 @@ Future<void> _pumpStoryboardPanel(
           project: project,
           activeCutId: activeCutId,
           onCutSelected: onCutSelected,
-          onCutReordered: onCutReordered,
           cutTrim: cutTrim,
           cutMove: cutMove,
           cutSelect: cutSelect,

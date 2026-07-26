@@ -408,7 +408,6 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                 // V-track selection (UI-R18 #6): tapping a V row promotes
                 // that track's playhead-index cut to the active cut.
                 onSelectTrack: _session.selectTrackCutAtPlayhead,
-                onCutReordered: _session.reorderCut,
                 pixelsPerFrame: widget.pixelsPerFrame,
                 showSeconds: widget.showSeconds,
                 projectFrameRate: _session.projectFrameRate,
@@ -421,9 +420,9 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   onEnd: _session.endCutEdgeDrag,
                   onCancel: _session.cancelCutEdgeDrag,
                 ),
-                // Whole-block slides (R10-④): drag a block's body to move
-                // the cut along the frame axis — gap authoring with
-                // edge-style pushes, one undo per drag.
+                // Whole-block moves (R10-④): a drag re-times the cut where
+                // it has room and REORDERS the track where it reaches past
+                // a neighbour — one rule, one undo per drag.
                 cutMove: StoryboardCutMoveCallbacks(
                   onBegin: _session.beginCutMoveDrag,
                   onUpdate: _session.updateCutMoveDrag,

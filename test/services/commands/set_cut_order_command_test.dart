@@ -17,8 +17,8 @@ import 'package:quick_animaker_v2/src/services/history_manager.dart';
 import 'package:quick_animaker_v2/src/services/project_repository.dart';
 
 void main() {
-  group('ReorderCutCommand', () {
-    test('execute reorders cuts while preserving IDs and content', () {
+  group('SetCutOrderCommand', () {
+    test('execute resequences cuts while preserving IDs and content', () {
       final richCut = _cut(
         id: 'cut-a',
         name: 'Cut A',
@@ -38,11 +38,10 @@ void main() {
       final cutC = _cut(id: 'cut-c', name: 'Cut C');
       final fixture = _fixture([richCut, cutB, cutC], activeCutId: cutB.id);
 
-      ReorderCutCommand(
+      SetCutOrderCommand(
         repository: fixture.repository,
         trackId: _trackId,
-        cutId: richCut.id,
-        newIndex: 2,
+        order: [cutB.id, cutC.id, richCut.id],
       ).execute();
 
       final cuts = fixture.cuts;
@@ -55,23 +54,26 @@ void main() {
       expect(fixture.editingSession.activeCutId, cutB.id);
     });
 
-    test('undo restores the original order without changing activeCutId', () {
+    test('a whole RUN crosses in one step — one command, one undo', () {
       final cutA = _cut(id: 'cut-a', name: 'Cut A');
       final cutB = _cut(id: 'cut-b', name: 'Cut B');
       final cutC = _cut(id: 'cut-c', name: 'Cut C');
       final fixture = _fixture([cutA, cutB, cutC], activeCutId: cutC.id);
-      final command = ReorderCutCommand(
-        repository: fixture.repository,
-        trackId: _trackId,
-        cutId: cutA.id,
-        newIndex: 2,
+      final historyManager = HistoryManager();
+
+      historyManager.execute(
+        SetCutOrderCommand(
+          repository: fixture.repository,
+          trackId: _trackId,
+          order: [cutC.id, cutA.id, cutB.id],
+        ),
       );
 
-      command.execute();
-      command.undo();
+      expect(fixture.cuts, [cutC, cutA, cutB]);
+      expect(historyManager.undoCount, 1);
 
+      historyManager.undo();
       expect(fixture.cuts, [cutA, cutB, cutC]);
-      expect(fixture.editingSession.activeCutId, cutC.id);
     });
 
     test('redo reapplies the target order without changing activeCutId', () {
@@ -82,11 +84,10 @@ void main() {
       final historyManager = HistoryManager();
 
       historyManager.execute(
-        ReorderCutCommand(
+        SetCutOrderCommand(
           repository: fixture.repository,
           trackId: _trackId,
-          cutId: cutC.id,
-          newIndex: 0,
+          order: [cutC.id, cutA.id, cutB.id],
         ),
       );
       historyManager.undo();
@@ -96,7 +97,7 @@ void main() {
       expect(fixture.editingSession.activeCutId, cutB.id);
     });
 
-    test('active moved cut remains active through execute, undo, and redo', () {
+    test('the moved cut stays active through execute, undo, and redo', () {
       final cutA = _cut(id: 'cut-a', name: 'Cut A');
       final cutB = _cut(id: 'cut-b', name: 'Cut B');
       final cutC = _cut(id: 'cut-c', name: 'Cut C');
@@ -104,11 +105,10 @@ void main() {
       final historyManager = HistoryManager();
 
       historyManager.execute(
-        ReorderCutCommand(
+        SetCutOrderCommand(
           repository: fixture.repository,
           trackId: _trackId,
-          cutId: cutA.id,
-          newIndex: 2,
+          order: [cutB.id, cutC.id, cutA.id],
         ),
       );
       expect(fixture.editingSession.activeCutId, cutA.id);
@@ -123,35 +123,29 @@ void main() {
       _expectActiveCutExists(fixture);
     });
 
-    test(
-      'different active cut remains active through execute, undo, and redo',
-      () {
-        final cutA = _cut(id: 'cut-a', name: 'Cut A');
-        final cutB = _cut(id: 'cut-b', name: 'Cut B');
-        final cutC = _cut(id: 'cut-c', name: 'Cut C');
-        final fixture = _fixture([cutA, cutB, cutC], activeCutId: cutB.id);
-        final historyManager = HistoryManager();
+    test('an order that is not a permutation of the track is refused', () {
+      final cutA = _cut(id: 'cut-a', name: 'Cut A');
+      final cutB = _cut(id: 'cut-b', name: 'Cut B');
+      final fixture = _fixture([cutA, cutB], activeCutId: cutA.id);
 
-        historyManager.execute(
-          ReorderCutCommand(
-            repository: fixture.repository,
-            trackId: _trackId,
-            cutId: cutA.id,
-            newIndex: 2,
-          ),
-        );
-        expect(fixture.editingSession.activeCutId, cutB.id);
-        _expectActiveCutExists(fixture);
-
-        historyManager.undo();
-        expect(fixture.editingSession.activeCutId, cutB.id);
-        _expectActiveCutExists(fixture);
-
-        historyManager.redo();
-        expect(fixture.editingSession.activeCutId, cutB.id);
-        _expectActiveCutExists(fixture);
-      },
-    );
+      expect(
+        () => SetCutOrderCommand(
+          repository: fixture.repository,
+          trackId: _trackId,
+          order: [cutA.id],
+        ).execute(),
+        throwsStateError,
+      );
+      expect(
+        () => SetCutOrderCommand(
+          repository: fixture.repository,
+          trackId: _trackId,
+          order: [cutA.id, cutA.id],
+        ).execute(),
+        throwsStateError,
+      );
+      expect(fixture.cuts, [cutA, cutB]);
+    });
   });
 }
 

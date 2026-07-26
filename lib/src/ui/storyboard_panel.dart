@@ -76,15 +76,6 @@ import 'timeline/timeline_se_row_visual.dart'
     show SePaperSpan, SeSpanVisual, timelineRowClipMarkerOverlays;
 import 'timeline/timeline_zoom_anchor_policy.dart';
 
-/// Same-track cut reorder request: drop [draggedCutId] at [targetCutIndex]
-/// of [targetTrackId]. (Moved here from the retired top-bar CutListBar.)
-typedef CutReorderedCallback =
-    void Function({
-      required CutId draggedCutId,
-      required TrackId targetTrackId,
-      required int targetCutIndex,
-    });
-
 /// The trim-drag hooks the cut edge grips need, mirroring the timeline's
 /// comma-drag callbacks: wired to the session's
 /// begin/update/end/cancelCutEdgeDrag (live preview, ONE undo per drag).
@@ -185,7 +176,6 @@ class StoryboardPanel extends StatefulWidget {
     this.activeLayerId,
     this.onSelectLayer,
     this.onSelectTrack,
-    this.onCutReordered,
     this.cutTrim,
     this.cutMove,
     this.cutSelect,
@@ -291,10 +281,6 @@ class StoryboardPanel extends StatefulWidget {
   /// promotes that track's cut under the shared global playhead to the
   /// active cut. Null keeps V labels display-only.
   final ValueChanged<TrackId>? onSelectTrack;
-
-  /// Dragging a cut block onto another block of the same track reorders the
-  /// cuts (same semantics as the top-bar chips). Null disables dragging.
-  final CutReorderedCallback? onCutReordered;
 
   /// Edge-grip trim hooks: the END grip changes a cut's duration (later
   /// cuts ripple), the START grip rolls the boundary with the previous cut.
@@ -1060,7 +1046,6 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           layoutEntries: entries,
           activeCutId: widget.activeCutId,
           onCutSelected: widget.onCutSelected,
-          onCutReordered: widget.onCutReordered,
           cutTrim: widget.cutTrim,
           cutMove: widget.cutMove,
           cutSelect: widget.cutSelect,
@@ -3396,7 +3381,6 @@ class _StoryboardTrackRow extends StatelessWidget {
     required this.layoutEntries,
     required this.activeCutId,
     required this.onCutSelected,
-    required this.onCutReordered,
     required this.cutTrim,
     required this.cutMove,
     required this.cutSelect,
@@ -3414,7 +3398,6 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// cut-scoped rail controls stand down.
   final CutId? activeCutId;
   final ValueChanged<CutId> onCutSelected;
-  final CutReorderedCallback? onCutReordered;
   final StoryboardCutTrimCallbacks? cutTrim;
   final StoryboardCutMoveCallbacks? cutMove;
   final StoryboardCutSelectCallbacks? cutSelect;
@@ -3536,13 +3519,10 @@ class _StoryboardTrackRow extends StatelessWidget {
                 width: timelineScale.widthForDuration(entry.duration),
                 top: 0,
                 bottom: 0,
-                child: _ReorderableStoryboardCutBlock(
+                child: _StoryboardCutBlockSlot(
                   layoutEntry: entry,
                   width: timelineScale.widthForDuration(entry.duration),
                   isActive: entry.cutId == activeCutId,
-                  canReorder:
-                      onCutReordered != null && layoutEntries.length > 1,
-                  onCutReordered: onCutReordered,
                   cutSelect: cutSelect,
                   totalLabel: _totalLabelFor(entry),
                   thumbnail: thumbnailFor?.call(entry.cut),
@@ -3763,15 +3743,14 @@ class _StoryboardCutEdgeGrip extends StatelessWidget {
 /// surfaces stay interchangeable.
 ///
 /// Selecting and sliding are NOT here any more — those are the row's
-/// shared range gesture. What is left is the long-press reorder lift, and
-/// the tint that follows the live cut selection.
-class _ReorderableStoryboardCutBlock extends StatelessWidget {
-  const _ReorderableStoryboardCutBlock({
+/// shared range gesture, and reordering is that same drag reaching past a
+/// neighbour — a long-press lift onto a drop target would be a second way
+/// to say the same thing, with a widget per cut to hang it on.
+class _StoryboardCutBlockSlot extends StatelessWidget {
+  const _StoryboardCutBlockSlot({
     required this.layoutEntry,
     required this.width,
     required this.isActive,
-    required this.canReorder,
-    required this.onCutReordered,
     required this.cutSelect,
     required this.totalLabel,
     required this.thumbnail,
@@ -3781,8 +3760,6 @@ class _ReorderableStoryboardCutBlock extends StatelessWidget {
   final StoryboardTimelineLayoutEntry layoutEntry;
   final double width;
   final bool isActive;
-  final bool canReorder;
-  final CutReorderedCallback? onCutReordered;
   final StoryboardCutSelectCallbacks? cutSelect;
 
   final String totalLabel;
@@ -3792,88 +3769,29 @@ class _ReorderableStoryboardCutBlock extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cutSelect = this.cutSelect;
-    final Widget block = cutSelect == null
-        ? _StoryboardCutBlock(
-            layoutEntry: layoutEntry,
-            width: width,
-            isActive: isActive,
-            totalLabel: totalLabel,
-            thumbnail: thumbnail,
-            showThumbnail: showThumbnail,
-          )
-        // The selection listenable drives the tint directly (UI-R18 #1):
-        // only the touched blocks rebuild per selection change.
-        : ValueListenableBuilder<List<CutId>?>(
-            valueListenable: cutSelect.selectedCutIds,
-            builder: (context, selected, _) => _StoryboardCutBlock(
-              layoutEntry: layoutEntry,
-              width: width,
-              isActive: isActive,
-              totalLabel: totalLabel,
-              thumbnail: thumbnail,
-              showThumbnail: showThumbnail,
-              isRangeSelected: selected?.contains(layoutEntry.cutId) ?? false,
-            ),
-          );
-    if (!canReorder) {
-      return block;
+    if (cutSelect == null) {
+      return _StoryboardCutBlock(
+        layoutEntry: layoutEntry,
+        width: width,
+        isActive: isActive,
+        totalLabel: totalLabel,
+        thumbnail: thumbnail,
+        showThumbnail: showThumbnail,
+      );
     }
-
-    return DragTarget<CutId>(
-      onWillAcceptWithDetails: (details) => details.data != layoutEntry.cutId,
-      onAcceptWithDetails: (details) {
-        if (details.data == layoutEntry.cutId) {
-          return;
-        }
-
-        onCutReordered?.call(
-          draggedCutId: details.data,
-          targetTrackId: layoutEntry.trackId,
-          targetCutIndex: layoutEntry.cutIndex,
-        );
-      },
-      builder: (context, candidateData, rejectedData) {
-        final isDropTarget = candidateData.isNotEmpty;
-        // Long-press LIFTS the block for reordering (R10-④ moved the
-        // plain horizontal drag to the slide); works with mouse-hold and
-        // touch alike.
-        return LongPressDraggable<CutId>(
-          key: ValueKey<String>(
-            'storyboard-cut-draggable-${layoutEntry.cutId.value}',
-          ),
-          data: layoutEntry.cutId,
-          feedback: Material(
-            color: Colors.transparent,
-            child: Opacity(
-              opacity: 0.85,
-              child: SizedBox(
-                width: width,
-                height: StoryboardPanel._trackLaneHeight,
-                child: _StoryboardCutBlock(
-                  layoutEntry: layoutEntry,
-                  width: width,
-                  isActive: isActive,
-                  totalLabel: totalLabel,
-                  thumbnail: thumbnail,
-                  showThumbnail: showThumbnail,
-                ),
-              ),
-            ),
-          ),
-          childWhenDragging: Opacity(opacity: 0.45, child: block),
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              border: isDropTarget
-                  ? Border.all(
-                      color: Theme.of(context).colorScheme.primary,
-                      width: 2,
-                    )
-                  : null,
-            ),
-            child: block,
-          ),
-        );
-      },
+    // The selection listenable drives the tint directly (UI-R18 #1): only
+    // the touched blocks rebuild per selection change.
+    return ValueListenableBuilder<List<CutId>?>(
+      valueListenable: cutSelect.selectedCutIds,
+      builder: (context, selected, _) => _StoryboardCutBlock(
+        layoutEntry: layoutEntry,
+        width: width,
+        isActive: isActive,
+        totalLabel: totalLabel,
+        thumbnail: thumbnail,
+        showThumbnail: showThumbnail,
+        isRangeSelected: selected?.contains(layoutEntry.cutId) ?? false,
+      ),
     );
   }
 }
