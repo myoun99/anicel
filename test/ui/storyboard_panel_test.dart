@@ -333,14 +333,15 @@ void main() {
     expect(selectedCutId, const CutId('cut-long'));
   });
 
-  testWidgets('tapping active cut block is a no-op', (tester) async {
-    var selectionCount = 0;
+  testWidgets('tapping the active cut announces it again — the row press '
+      'reports WHICH cut, and the session drops the repeat', (tester) async {
+    final selected = <CutId>[];
 
     await _pumpPanel(
       tester,
       _twoCutProject(),
       activeCutId: const CutId('cut-short'),
-      onCutSelected: (_) => selectionCount += 1,
+      onCutSelected: selected.add,
     );
 
     await tester.tap(
@@ -348,7 +349,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(selectionCount, 0);
+    expect(selected, [const CutId('cut-short')]);
   });
 
   testWidgets('cut block width roughly represents cut duration', (
@@ -521,12 +522,6 @@ Layer _layer({required LayerKind kind, required String name}) {
     id: LayerId('layer-$name-${kind.name}'),
     name: name,
     kind: kind,
-    frames: [
-      Frame(
-        id: FrameId('frame-$name'),
-        duration: 1,
-        strokes: const [],
-      ),
-    ],
+    frames: [Frame(id: FrameId('frame-$name'), duration: 1, strokes: const [])],
   );
 }

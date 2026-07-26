@@ -2,7 +2,7 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show Listenable, ValueListenable;
-import 'package:flutter/gestures.dart' show DragStartBehavior;
+import 'package:flutter/gestures.dart' show DragStartBehavior, kPrimaryButton;
 import 'package:flutter/material.dart';
 
 import '../models/canvas_point.dart';
@@ -47,7 +47,11 @@ import 'timeline/timeline_exposure_comma_drag_handle.dart'
         BlockEdgeGripHooks,
         TimelineBlockEdgeGrip,
         timelineBlockEdgeGripPlacement;
-import 'timeline/timeline_frame_geometry.dart' show TimelineFrameGeometry;
+import 'timeline/timeline_frame_geometry.dart'
+    show TimelineFrameGeometry, TimelineFrameGeometryHandle;
+import 'timeline/timeline_frame_range_gesture.dart'
+    show TimelineFrameRangeGestureLayer, TimelineRangeGestureCallbacks;
+import '../models/timeline_row_address.dart' show TrackRowAddress;
 import 'timeline/timeline_frame_span_layout.dart'
     show TimelineFixedFrameSpanLayer, TimelineFrameSpan;
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
@@ -142,12 +146,11 @@ class StoryboardMovieEndCallbacks {
   final VoidCallback onCancel;
 }
 
-/// Cut RANGE-selection hooks (UI-R18 #1): a horizontal drag on an
-/// UNSELECTED cut paints a contiguous run selection (anchor = the pressed
-/// cut's ordinal, head follows the pointer across the track); a drag that
-/// starts INSIDE the selection routes to [StoryboardCutMoveCallbacks]
-/// instead and slides the whole run; a plain tap clears. The timeline's
-/// frame-range selection model applied to cuts.
+/// Cut RANGE-selection hooks (UI-R18 #1): a drag on the cut row paints a
+/// contiguous run selection (anchor = where the drag started, head = the
+/// pointer's frame now); a drag that starts INSIDE the selection routes to
+/// [StoryboardCutMoveCallbacks] instead and slides the whole run; a plain
+/// tap clears. The timeline's frame-range selection model applied to cuts.
 class StoryboardCutSelectCallbacks {
   const StoryboardCutSelectCallbacks({
     required this.selectedCutIds,
@@ -159,10 +162,15 @@ class StoryboardCutSelectCallbacks {
   /// color-only per the selection language.
   final ValueListenable<List<CutId>?> selectedCutIds;
 
+  /// A select-drag step stated on the track's GLOBAL FRAME axis. Ordinals
+  /// used to be the panel-facing form, which is what kept the cut row on a
+  /// gesture of its own; frames are the axis the shared range gesture
+  /// already speaks, and the session snaps them to whole cuts with the
+  /// same rule the timeline snaps cells with.
   final void Function({
     required TrackId trackId,
-    required int anchorCutIndex,
-    required int headCutIndex,
+    required int anchorGlobalFrame,
+    required int headGlobalFrame,
   })
   onDrag;
   final VoidCallback onClear;
@@ -502,6 +510,19 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// frames between crossings are pure translation.
   final ValueNotifier<int> _horizontalWindowBucket = ValueNotifier<int>(0);
 
+  /// The V rows' frame-axis geometry, as the LIVE handle the shared range
+  /// gesture reads at press time (the timeline's rows hold the same kind of
+  /// handle). Republished from `build`, which is safe here because nothing
+  /// listens to it — the gesture layer only ever reads `.value`.
+  final TimelineFrameGeometryHandle _frameGeometry =
+      TimelineFrameGeometryHandle(
+        const TimelineFrameGeometry(
+          frameCellExtent: 8,
+          frameStartIndex: 0,
+          frameEndIndexExclusive: 0,
+        ),
+      );
+
   @override
   void initState() {
     super.initState();
@@ -631,6 +652,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     _horizontalController.dispose();
     _horizontalScrollOffset.dispose();
     _horizontalWindowBucket.dispose();
+    _frameGeometry.dispose();
     super.dispose();
   }
 
@@ -1044,6 +1066,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           cutSelect: widget.cutSelect,
           thumbnailFor: widget.thumbnailFor,
           timelineScale: scale,
+          frameGeometry: _frameGeometry,
           showSeconds: widget.showSeconds,
           projectFrameRate: widget.projectFrameRate,
         ),
@@ -1252,6 +1275,21 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                     .toDouble()
               : 0.0,
           frameCellExtent: _scale.pixelsPerFrame,
+        );
+        // The V rows' geometry for this pass. `frameStartIndex` is 0 and
+        // there is no leading spacer: the storyboard's x IS the track-global
+        // frame axis, which is exactly why the timeline's gesture layer can
+        // read it without knowing whose row it is on.
+        _frameGeometry.value = TimelineFrameGeometry(
+          frameCellExtent: _scale.pixelsPerFrame,
+          frameStartIndex: 0,
+          frameEndIndexExclusive:
+              _totalFrames(
+                widget.project,
+                buildStoryboardTimelineLayout(widget.project),
+              ) +
+              _endlessTrailingFrames +
+              _viewportFillFrameCells,
         );
         // SE rows are built OUTSIDE the drag-preview builder from the RAW
         // project (R10-③): their content is track-global, so a cut trim
@@ -3273,7 +3311,6 @@ class _StoryboardTrackLabel extends StatelessWidget {
   }
 }
 
-
 /// The end line's drag grip (UI-R18 #15 → UI-R20 #3): a 12px strip over
 /// the strips' movie-end line; dragging it edits the movie's FINAL
 /// LENGTH (the project's trailing gap) through the session channel —
@@ -3365,6 +3402,7 @@ class _StoryboardTrackRow extends StatelessWidget {
     required this.cutSelect,
     required this.thumbnailFor,
     required this.timelineScale,
+    required this.frameGeometry,
     required this.showSeconds,
     required this.projectFrameRate,
   });
@@ -3382,6 +3420,10 @@ class _StoryboardTrackRow extends StatelessWidget {
   final StoryboardCutSelectCallbacks? cutSelect;
   final ui.Image? Function(Cut cut)? thumbnailFor;
   final TimelineScale timelineScale;
+
+  /// The panel's live frame-axis geometry — what the SHARED range gesture
+  /// reads to turn a pointer position into a track-global frame.
+  final TimelineFrameGeometryHandle frameGeometry;
   final bool showSeconds;
   final ProjectFrameRate projectFrameRate;
 
@@ -3394,23 +3436,86 @@ class _StoryboardTrackRow extends StatelessWidget {
     );
   }
 
-  /// The cut ordinal a selection-drag head at track-local [trackX] lands
-  /// on: the LAST cut whose left edge sits at or before the pointer (a
-  /// pointer in a leading gap keeps the previous cut — sweeping right
-  /// only grows the run when the next block is actually reached).
-  int _cutOrdinalAt(double trackX) {
-    var ordinal = layoutEntries.isEmpty ? 0 : layoutEntries.first.cutIndex;
+  /// The cut covering track-global [frame], or null in a gap / past the
+  /// end. The row's blocks are the snap material, so a press that lands
+  /// between cuts addresses no cut at all — the same answer
+  /// [TrackFrameAxis.cutBlockAt] gives the shared snap rule.
+  StoryboardTimelineLayoutEntry? _cutAtFrame(int frame) {
     for (final entry in layoutEntries) {
-      if (timelineScale.leftForFrame(entry.startFrame) <= trackX) {
-        ordinal = entry.cutIndex;
+      if (frame < entry.startFrame) {
+        return null;
+      }
+      if (frame < entry.endFrame) {
+        return entry;
       }
     }
-    return ordinal;
+    return null;
+  }
+
+  /// Whether the cut covering [frame] sits in the live selection.
+  bool _isSelectedAt(int frame) {
+    final selected = cutSelect?.selectedCutIds.value;
+    final entry = _cutAtFrame(frame);
+    return selected != null && entry != null && selected.contains(entry.cutId);
+  }
+
+  /// The cut row's half of the shared range gesture: SELECT paints a cut
+  /// run through the session's frame-stated entry point, MOVE slides the
+  /// grabbed cut (or the whole selected run) along the frame axis.
+  ///
+  /// The row delta is ignored: this panel shows one cut row per track and
+  /// there is no "drop a cut on another track" verb — a cross-track move
+  /// would need one, not a different gesture.
+  TimelineRangeGestureCallbacks? _rangeGesture() {
+    final cutSelect = this.cutSelect;
+    final cutMove = this.cutMove;
+    if (cutSelect == null && cutMove == null) {
+      return null;
+    }
+    return TimelineRangeGestureCallbacks(
+      // With no selection hookup there is no select domain at all, so
+      // every press is a move press — what the block body did before the
+      // row had a range gesture. [onMoveBegin] still refuses gaps.
+      isInSelection: (_, frame) => cutSelect == null || _isSelectedAt(frame),
+      onSelectUpdate: (_, anchorIndex, headIndex, _) => cutSelect?.onDrag(
+        trackId: track.id,
+        anchorGlobalFrame: anchorIndex,
+        headGlobalFrame: headIndex,
+      ),
+      onTapClear: (_) => cutSelect?.onClear(),
+      onMoveBegin: (_, frame) {
+        final entry = _cutAtFrame(frame);
+        return entry != null && (cutMove?.onBegin(entry.cutId) ?? false);
+      },
+      onMoveUpdate: (frameDelta, _) => cutMove?.onUpdate(frameDelta),
+      onMoveEnd: () => cutMove?.onEnd(),
+      onMoveCancel: () => cutMove?.onCancel(),
+    );
+  }
+
+  /// Cut activation on the raw pointer DOWN, never a tap recognizer — the
+  /// timeline cells' contract (the arena must not delay a select), and the
+  /// only shape that leaves the row-wide tap free to clear the selection.
+  /// A press inside the live selection stays silent: it is starting a
+  /// move, not picking a cut.
+  void _handlePressDown(PointerDownEvent event) {
+    if (event.buttons != 0 && (event.buttons & kPrimaryButton) == 0) {
+      return;
+    }
+    final frame = timelineScale.pixelsPerFrame <= 0
+        ? 0
+        : (event.localPosition.dx / timelineScale.pixelsPerFrame).floor();
+    final entry = _cutAtFrame(frame);
+    if (entry == null || _isSelectedAt(frame)) {
+      return;
+    }
+    onCutSelected(entry.cutId);
   }
 
   @override
   Widget build(BuildContext context) {
     final timelineWidth = _timelineWidthFor(layoutEntries, timelineScale);
+    final rangeGesture = _rangeGesture();
 
     return KeyedSubtree(
       key: ValueKey<String>('storyboard-track-row-${track.id.value}'),
@@ -3435,22 +3540,40 @@ class _StoryboardTrackRow extends StatelessWidget {
                   layoutEntry: entry,
                   width: timelineScale.widthForDuration(entry.duration),
                   isActive: entry.cutId == activeCutId,
-                  onSelected: onCutSelected,
                   canReorder:
                       onCutReordered != null && layoutEntries.length > 1,
                   onCutReordered: onCutReordered,
-                  cutMove: cutMove,
                   cutSelect: cutSelect,
-                  blockLeft: timelineScale.leftForFrame(entry.startFrame),
-                  cutOrdinalAt: _cutOrdinalAt,
-                  pixelsPerFrame: timelineScale.pixelsPerFrame,
                   totalLabel: _totalLabelFor(entry),
                   thumbnail: thumbnailFor?.call(entry.cut),
                   showThumbnail: thumbnailFor != null,
                 ),
               ),
+            // The press layer sits ABOVE the blocks and passes pointers
+            // through (translucent): the blocks own no tap of their own
+            // any more, so nothing competes with the row-wide gesture.
+            Positioned.fill(
+              key: ValueKey<String>('storyboard-cut-press-${track.id.value}'),
+              child: Listener(
+                behavior: HitTestBehavior.translucent,
+                onPointerDown: _handlePressDown,
+              ),
+            ),
+            // THE range gesture — the timeline's, not a copy of it: a pan
+            // paints a cut run, a pan starting inside the selection slides
+            // it. Mounted UNDER the grips so the edges keep trim priority.
+            if (rangeGesture != null)
+              TimelineFrameRangeGestureLayer(
+                key: ValueKey<String>(
+                  'storyboard-cut-range-gesture-slot-${track.id.value}',
+                ),
+                row: TrackRowAddress(track.id),
+                geometry: frameGeometry,
+                crossAxisExtent: StoryboardPanel._trackLaneHeight,
+                callbacks: rangeGesture,
+              ),
             // Trim grips paint over the block edges (their 12px strips win
-            // pointer contests there; block taps/reorder keep the middle).
+            // pointer contests there; the row gesture keeps the middle).
             // The start grip SLIDES the cut (gap authoring) — every cut has
             // one, the first included.
             if (cutTrim != null)
@@ -3638,19 +3761,18 @@ class _StoryboardCutEdgeGrip extends StatelessWidget {
 /// The drag layer around a cut block: mirrors the top-bar chips' semantics
 /// (drop on a target block = same-track reorder to its index) so both
 /// surfaces stay interchangeable.
-class _ReorderableStoryboardCutBlock extends StatefulWidget {
+///
+/// Selecting and sliding are NOT here any more — those are the row's
+/// shared range gesture. What is left is the long-press reorder lift, and
+/// the tint that follows the live cut selection.
+class _ReorderableStoryboardCutBlock extends StatelessWidget {
   const _ReorderableStoryboardCutBlock({
     required this.layoutEntry,
     required this.width,
     required this.isActive,
-    required this.onSelected,
     required this.canReorder,
     required this.onCutReordered,
-    required this.cutMove,
     required this.cutSelect,
-    required this.blockLeft,
-    required this.cutOrdinalAt,
-    required this.pixelsPerFrame,
     required this.totalLabel,
     required this.thumbnail,
     required this.showThumbnail,
@@ -3659,126 +3781,25 @@ class _ReorderableStoryboardCutBlock extends StatefulWidget {
   final StoryboardTimelineLayoutEntry layoutEntry;
   final double width;
   final bool isActive;
-  final ValueChanged<CutId> onSelected;
   final bool canReorder;
   final CutReorderedCallback? onCutReordered;
-  final StoryboardCutMoveCallbacks? cutMove;
   final StoryboardCutSelectCallbacks? cutSelect;
 
-  /// The block's left edge in track-strip space — selection drags add the
-  /// pointer's block-local x to it so the row's ordinal resolver sees
-  /// track coordinates.
-  final double blockLeft;
-  final int Function(double trackX) cutOrdinalAt;
-  final double pixelsPerFrame;
   final String totalLabel;
   final ui.Image? thumbnail;
   final bool showThumbnail;
 
   @override
-  State<_ReorderableStoryboardCutBlock> createState() =>
-      _ReorderableStoryboardCutBlockState();
-}
-
-class _ReorderableStoryboardCutBlockState
-    extends State<_ReorderableStoryboardCutBlock> {
-  // Whole-block slide (R10-④): cumulative pointer dx → whole frames.
-  double _moveDx = 0;
-  bool _moving = false;
-
-  // Range-selection drag (UI-R18 #1): the head follows the pointer's
-  // track-space x through the row's ordinal resolver.
-  bool _selecting = false;
-
-  StoryboardTimelineLayoutEntry get layoutEntry => widget.layoutEntry;
-
-  bool get _isInSelection {
-    final selected = widget.cutSelect?.selectedCutIds.value;
-    return selected != null && selected.contains(layoutEntry.cutId);
-  }
-
-  void _handleMoveStart(DragStartDetails details) {
-    final cutSelect = widget.cutSelect;
-    // UI-R18 #1 mode split: dragging an UNSELECTED cut paints a run
-    // selection; only a drag starting inside the selection slides.
-    if (cutSelect != null && !_isInSelection) {
-      _selecting = true;
-      cutSelect.onDrag(
-        trackId: layoutEntry.trackId,
-        anchorCutIndex: layoutEntry.cutIndex,
-        headCutIndex: layoutEntry.cutIndex,
-      );
-      return;
-    }
-    final cutMove = widget.cutMove;
-    if (cutMove == null || !cutMove.onBegin(layoutEntry.cutId)) {
-      return;
-    }
-    _moving = true;
-    _moveDx = 0;
-  }
-
-  void _handleMoveUpdate(DragUpdateDetails details) {
-    if (_selecting) {
-      widget.cutSelect!.onDrag(
-        trackId: layoutEntry.trackId,
-        anchorCutIndex: layoutEntry.cutIndex,
-        headCutIndex: widget.cutOrdinalAt(
-          widget.blockLeft + details.localPosition.dx,
-        ),
-      );
-      return;
-    }
-    if (!_moving) {
-      return;
-    }
-    _moveDx += details.delta.dx;
-    widget.cutMove!.onUpdate((_moveDx / widget.pixelsPerFrame).round());
-  }
-
-  void _handleMoveEnd(DragEndDetails details) {
-    if (_selecting) {
-      _selecting = false; // The selection itself stays live.
-      return;
-    }
-    if (!_moving) {
-      return;
-    }
-    _moving = false;
-    widget.cutMove!.onEnd();
-  }
-
-  void _handleMoveCancel() {
-    if (_selecting) {
-      _selecting = false;
-      return;
-    }
-    if (!_moving) {
-      return;
-    }
-    _moving = false;
-    widget.cutMove!.onCancel();
-  }
-
-  /// Taps activate the cut AND clear the range selection (the timeline
-  /// cell-tap contract).
-  void _handleSelected(CutId cutId) {
-    widget.cutSelect?.onClear();
-    widget.onSelected(cutId);
-  }
-
-  @override
   Widget build(BuildContext context) {
-    final cutSelect = widget.cutSelect;
-    Widget block = cutSelect == null
+    final cutSelect = this.cutSelect;
+    final Widget block = cutSelect == null
         ? _StoryboardCutBlock(
             layoutEntry: layoutEntry,
-            width: widget.width,
-            isActive: widget.isActive,
-            onSelected: widget.onSelected,
-            totalLabel: widget.totalLabel,
-            thumbnail: widget.thumbnail,
-            showThumbnail: widget.showThumbnail,
+            width: width,
+            isActive: isActive,
+            totalLabel: totalLabel,
+            thumbnail: thumbnail,
+            showThumbnail: showThumbnail,
           )
         // The selection listenable drives the tint directly (UI-R18 #1):
         // only the touched blocks rebuild per selection change.
@@ -3786,36 +3807,15 @@ class _ReorderableStoryboardCutBlockState
             valueListenable: cutSelect.selectedCutIds,
             builder: (context, selected, _) => _StoryboardCutBlock(
               layoutEntry: layoutEntry,
-              width: widget.width,
-              isActive: widget.isActive,
-              onSelected: _handleSelected,
-              totalLabel: widget.totalLabel,
-              thumbnail: widget.thumbnail,
-              showThumbnail: widget.showThumbnail,
+              width: width,
+              isActive: isActive,
+              totalLabel: totalLabel,
+              thumbnail: thumbnail,
+              showThumbnail: showThumbnail,
               isRangeSelected: selected?.contains(layoutEntry.cutId) ?? false,
-              selectionActive: selected != null,
             ),
           );
-    // A horizontal drag on the block's BODY selects a cut run, or slides
-    // the cut(s) when it starts inside the selection (timeline block
-    // language, R10-④/UI-R18 #1): live preview through the session
-    // channel, one undo on release. Taps still select; the long-press
-    // lift below owns reordering.
-    if (widget.cutMove != null || cutSelect != null) {
-      block = GestureDetector(
-        key: ValueKey<String>('storyboard-cut-move-${layoutEntry.cutId.value}'),
-        behavior: HitTestBehavior.translucent,
-        // Pixel-exact deltas from the true pointer-down (the camera
-        // overlay's rule) — touch slop must not eat the first frames.
-        dragStartBehavior: DragStartBehavior.down,
-        onHorizontalDragStart: _handleMoveStart,
-        onHorizontalDragUpdate: _handleMoveUpdate,
-        onHorizontalDragEnd: _handleMoveEnd,
-        onHorizontalDragCancel: _handleMoveCancel,
-        child: block,
-      );
-    }
-    if (!widget.canReorder) {
+    if (!canReorder) {
       return block;
     }
 
@@ -3826,7 +3826,7 @@ class _ReorderableStoryboardCutBlockState
           return;
         }
 
-        widget.onCutReordered?.call(
+        onCutReordered?.call(
           draggedCutId: details.data,
           targetTrackId: layoutEntry.trackId,
           targetCutIndex: layoutEntry.cutIndex,
@@ -3847,16 +3847,15 @@ class _ReorderableStoryboardCutBlockState
             child: Opacity(
               opacity: 0.85,
               child: SizedBox(
-                width: widget.width,
+                width: width,
                 height: StoryboardPanel._trackLaneHeight,
                 child: _StoryboardCutBlock(
                   layoutEntry: layoutEntry,
-                  width: widget.width,
-                  isActive: widget.isActive,
-                  onSelected: (_) {},
-                  totalLabel: widget.totalLabel,
-                  thumbnail: widget.thumbnail,
-                  showThumbnail: widget.showThumbnail,
+                  width: width,
+                  isActive: isActive,
+                  totalLabel: totalLabel,
+                  thumbnail: thumbnail,
+                  showThumbnail: showThumbnail,
                 ),
               ),
             ),
@@ -3884,26 +3883,19 @@ class _StoryboardCutBlock extends StatelessWidget {
     required this.layoutEntry,
     required this.width,
     required this.isActive,
-    required this.onSelected,
     required this.totalLabel,
     this.thumbnail,
     this.showThumbnail = false,
     this.isRangeSelected = false,
-    this.selectionActive = false,
   });
 
   final StoryboardTimelineLayoutEntry layoutEntry;
   final double width;
   final bool isActive;
-  final ValueChanged<CutId> onSelected;
 
   /// This cut sits inside the live range selection — tint only (the
   /// color-only selection language).
   final bool isRangeSelected;
-
-  /// ANY cut selection is live: taps stay wired even on the active cut
-  /// so they can clear it (the timeline cell-tap contract).
-  final bool selectionActive;
 
   /// Cumulative time at this cut's end (conte-sheet TIME column), rendered
   /// bottom-right; frames or seconds per the shared display toggle.
@@ -3939,7 +3931,9 @@ class _StoryboardCutBlock extends StatelessWidget {
       isRangeSelected: isRangeSelected,
       minHeight: 0,
       padding: const EdgeInsets.all(4),
-      onTap: isActive && !selectionActive ? null : () => onSelected(cut.id),
+      // NO tap of its own (the row's press layer selects the cut and the
+      // row's gesture owns the tap): a tap recognizer here would join the
+      // arena under the range gesture layer and lose the sweep to it.
       // Conte-sheet cell turned sideways: the camera-view picture fills the
       // block center, texts stack on top of it.
       child: Stack(

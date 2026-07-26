@@ -97,13 +97,14 @@ void main() {
     expect(session.storyboardCutSelection.value, const [CutId('cut-3')]);
   });
 
-  test('the ordinal entry point still paints the contiguous run', () {
+  test('a sweep across every cut paints the whole run', () {
     final session = sessionWithGap();
+    final axis = session.trackFrameAxis();
 
-    session.updateStoryboardCutSelectionDrag(
+    session.updateStoryboardCutSelectionByFrame(
       trackId: trackId,
-      anchorCutIndex: 0,
-      headCutIndex: 2,
+      anchorGlobalFrame: axis.entryFor(const CutId('cut-1'))!.startFrame,
+      headGlobalFrame: axis.entryFor(const CutId('cut-3'))!.startFrame,
     );
 
     expect(session.storyboardCutSelection.value, const [
@@ -113,13 +114,14 @@ void main() {
     ]);
   });
 
-  test('the ordinal entry point orders a backwards drag the same way', () {
+  test('a backwards drag orders the run the same way', () {
     final session = sessionWithGap();
+    final axis = session.trackFrameAxis();
 
-    session.updateStoryboardCutSelectionDrag(
+    session.updateStoryboardCutSelectionByFrame(
       trackId: trackId,
-      anchorCutIndex: 2,
-      headCutIndex: 1,
+      anchorGlobalFrame: axis.entryFor(const CutId('cut-3'))!.startFrame,
+      headGlobalFrame: axis.entryFor(const CutId('cut-2'))!.startFrame,
     );
 
     expect(session.storyboardCutSelection.value, const [

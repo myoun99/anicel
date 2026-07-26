@@ -9,6 +9,7 @@ import '../debug/input_inspector.dart' show InputInspector;
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_frame_range.dart';
+import '../../models/timeline_row_address.dart';
 import 'property_lane_model.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_row_span_resolver.dart' show resolveBlockMoveTargetLayer;
@@ -123,7 +124,7 @@ class TimelineRangeMoveRowResolver {
 /// to the cells (playhead select) and clear the selection.
 class TimelineRangeGestureCallbacks {
   const TimelineRangeGestureCallbacks({
-    required this.selection,
+    required this.isInSelection,
     required this.onSelectUpdate,
     required this.onTapClear,
     required this.onMoveBegin,
@@ -132,29 +133,38 @@ class TimelineRangeGestureCallbacks {
     required this.onMoveCancel,
   });
 
-  /// The session's live selection (read at press to pick the mode; the
-  /// layer never rebuilds for selection changes).
-  final ValueListenable<TimelineFrameRangeSelection?> selection;
+  /// "Is this cell inside the live selection?" — read at PRESS to pick the
+  /// drag's mode (inside = MOVE, anywhere else = SELECT).
+  ///
+  /// A predicate rather than the selection object itself: the timeline
+  /// answers from its [TimelineFrameRangeSelection], the storyboard's cut
+  /// row from its selected cut run, and the gesture has no business
+  /// knowing which. It stays a callback (not a rebuild input) for the same
+  /// reason the listenable did — this layer has nothing to lay out or
+  /// paint, so a selection change must never rebuild it.
+  final bool Function(TimelineRowAddress row, int frameIndex) isInSelection;
 
   /// A select-drag step: anchor = where the drag started, head = the
   /// pointer's frame now (the session snaps to whole blocks). The row
   /// delta (Excel-style cross-row select, UI-R17 #8) rides along — the
-  /// grid maps it onto the head layer.
+  /// mount maps it onto the head row.
   final void Function(
-    LayerId layerId,
+    TimelineRowAddress row,
     int anchorIndex,
     int headIndex,
     int headRowDelta,
   )
   onSelectUpdate;
 
-  /// A plain tap on the cells (no drag): clears the selection — the cell's
-  /// own pointer-down keeps doing the playhead select.
-  final void Function(LayerId layerId) onTapClear;
+  /// A plain tap on the cells (no drag): clears the selection — the row's
+  /// own pointer-down keeps doing the playhead/cut select.
+  final void Function(TimelineRowAddress row) onTapClear;
 
   /// Move mode (handle-level): pure grid geometry — frame steps along the
-  /// main axis, ROW steps across it (the grid maps rows onto layers).
-  final bool Function(LayerId layerId) onMoveBegin;
+  /// main axis, ROW steps across it (the mount maps rows onto layers or
+  /// tracks). [frameIndex] is where the pointer went DOWN, which is what
+  /// tells a cut row WHICH block was grabbed.
+  final bool Function(TimelineRowAddress row, int frameIndex) onMoveBegin;
   final void Function(int frameDelta, int rowDelta) onMoveUpdate;
   final VoidCallback onMoveEnd;
   final VoidCallback onMoveCancel;
@@ -167,17 +177,22 @@ enum _RangeDragMode { none, select, move }
 /// dragging the selected span moves it (TVP style). Translucent + pen/
 /// mouse only, so taps keep falling through to the cells and a finger
 /// still scrolls the grid (the block-move handle's arena contract).
+///
+/// Row-addressed rather than layer-addressed: the storyboard's CUT row
+/// mounts this same layer with a [TrackRowAddress], so the four surfaces
+/// share one drag state machine instead of one of them owning a lookalike.
 class TimelineFrameRangeGestureLayer extends StatefulWidget {
   const TimelineFrameRangeGestureLayer({
     super.key,
-    required this.layer,
+    required this.row,
     required this.geometry,
     required this.crossAxisExtent,
     required this.callbacks,
     this.axis = Axis.horizontal,
   });
 
-  final Layer layer;
+  /// The row this layer covers — a layer's cells or a track's cuts.
+  final TimelineRowAddress row;
 
   /// The LIVE frame-axis geometry (R28 #4): read at gesture time, so a zoom
   /// step never rebuilds this layer — it has nothing to lay out or paint.
@@ -218,12 +233,8 @@ class _TimelineFrameRangeGestureLayerState
 
   void _startDrag(Offset localPosition) {
     final frame = _frameAt(localPosition);
-    final selection = widget.callbacks.selection.value;
-    final insideSelection =
-        selection != null &&
-        selection.coversLayer(widget.layer.id) &&
-        selection.contains(frame);
-    if (insideSelection && widget.callbacks.onMoveBegin(widget.layer.id)) {
+    final insideSelection = widget.callbacks.isInSelection(widget.row, frame);
+    if (insideSelection && widget.callbacks.onMoveBegin(widget.row, frame)) {
       setState(() {
         _mode = _RangeDragMode.move;
         _mainDelta = 0;
@@ -235,7 +246,7 @@ class _TimelineFrameRangeGestureLayerState
     }
     _mode = _RangeDragMode.select;
     _anchorIndex = frame;
-    widget.callbacks.onSelectUpdate(widget.layer.id, frame, frame, 0);
+    widget.callbacks.onSelectUpdate(widget.row, frame, frame, 0);
   }
 
   /// The display-row delta of the pointer relative to THIS row (Excel
@@ -257,7 +268,7 @@ class _TimelineFrameRangeGestureLayerState
         return;
       case _RangeDragMode.select:
         widget.callbacks.onSelectUpdate(
-          widget.layer.id,
+          widget.row,
           _anchorIndex,
           _frameAt(details.localPosition),
           _rowDeltaAt(details.localPosition),
@@ -319,7 +330,7 @@ class _TimelineFrameRangeGestureLayerState
   @override
   Widget build(BuildContext context) {
     return Positioned.fill(
-      key: ValueKey<String>('timeline-range-gesture-${widget.layer.id}'),
+      key: ValueKey<String>('timeline-range-gesture-${widget.row.keySuffix}'),
       // Two detectors: the TAP (any device — a finger tap clears the
       // selection too) and the PAN. Touch joined the pan set (UI-R17
       // #6/#8): stylus pens report as TOUCH on some Windows/tablet
@@ -337,7 +348,7 @@ class _TimelineFrameRangeGestureLayerState
         },
         child: GestureDetector(
           behavior: HitTestBehavior.translucent,
-          onTapUp: (_) => widget.callbacks.onTapClear(widget.layer.id),
+          onTapUp: (_) => widget.callbacks.onTapClear(widget.row),
           child: RawGestureDetector(
             // Translucent: the cells' pointer-down select keeps firing;
             // only the pan recognizer competes in the arena. Touch joins

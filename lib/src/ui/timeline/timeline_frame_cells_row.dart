@@ -7,6 +7,7 @@ import '../../services/audio/audio_peaks_extractor.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project_frame_rate.dart';
+import '../../models/timeline_row_address.dart';
 import 'timeline_cel_content_source.dart';
 import 'timeline_cell_editor_policy.dart';
 import 'timeline_cell_exposure_state.dart';
@@ -156,6 +157,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final commaDrag = this.commaDrag;
     final rangeGesture = this.rangeGesture;
+    final rowAddress = LayerRowAddress(layer.id);
     final axisWord = axis == Axis.vertical ? 'column' : 'row';
     // The SPARSE kinds' build-time snapshot. The painted paths never read
     // this — they take the listenable and follow it live.
@@ -337,12 +339,8 @@ class TimelineFrameCellsRow extends StatelessWidget {
               : null,
           suppressPointerDownSelect: rangeGesture == null
               ? null
-              : (frameIndex) {
-                  final selection = rangeGesture.selection.value;
-                  return selection != null &&
-                      selection.coversLayer(layer.id) &&
-                      selection.contains(frameIndex);
-                },
+              : (frameIndex) =>
+                    rangeGesture.isInSelection(rowAddress, frameIndex),
         ),
         // NO extra section-divider overlay (R3 feedback #6): section
         // boundaries share the same single hairline as every row boundary;
@@ -364,7 +362,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
             // the positional rematch REMOUNTS this layer and its dispose
             // commits the move under the pointer.
             key: ValueKey<String>('$keyPrefix-range-gesture-slot-${layer.id}'),
-            layer: layer,
+            row: rowAddress,
             geometry: geometry,
             crossAxisExtent: crossAxisExtent,
             callbacks: rangeGesture,
@@ -387,9 +385,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
             // add/remove sibling overlays in this Stack.
             key: ValueKey<String>('$keyPrefix-edit-chrome-slot-${layer.id}'),
             child: TimelineRowEditChromeLayer(
-              paintKey: ValueKey<String>(
-                '$keyPrefix-edit-chrome-${layer.id}',
-              ),
+              paintKey: ValueKey<String>('$keyPrefix-edit-chrome-${layer.id}'),
               layerId: layer.id,
               resolver: chromeResolver,
               geometry: geometry,
@@ -421,5 +417,4 @@ class TimelineFrameCellsRow extends StatelessWidget {
         ? SizedBox(width: crossAxisExtent, child: body)
         : body;
   }
-
 }

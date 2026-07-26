@@ -47,6 +47,15 @@ void main() {
     ).firstWhere((entry) => entry.cutId == cutId).startFrame;
   }
 
+  /// A cut-select drag stated the way the panel's gesture states it —
+  /// track-global frames inside the anchor and head cuts.
+  void selectCutRun(EditorSessionManager s, CutId anchor, CutId head) {
+    s.updateStoryboardCutSelectionByFrame(
+      anchorGlobalFrame: layoutStart(s, anchor),
+      headGlobalFrame: layoutStart(s, head),
+    );
+  }
+
   test('end-edge drag previews on the channel and commits one undo', () {
     final (s, first, _) = twoCutSession();
     final before = s.cutById(first)!.duration;
@@ -456,20 +465,15 @@ void main() {
     test('a selection drag paints a contiguous run in track order, '
         'whichever way it sweeps', () {
       final (s, first, second, third) = threeCutSession();
-      final trackId = s.repository.requireProject().tracks.first.id;
 
-      s.updateStoryboardCutSelectionDrag(
-        trackId: trackId,
-        anchorCutIndex: 0,
-        headCutIndex: 1,
-      );
+      selectCutRun(s, first, second);
       expect(s.storyboardCutSelection.value, [first, second]);
 
-      // Backwards sweep normalizes; out-of-range heads clamp.
-      s.updateStoryboardCutSelectionDrag(
-        trackId: trackId,
-        anchorCutIndex: 2,
-        headCutIndex: -5,
+      // Backwards sweep normalizes; a head dragged off the left edge
+      // clamps at frame 0.
+      s.updateStoryboardCutSelectionByFrame(
+        anchorGlobalFrame: layoutStart(s, third),
+        headGlobalFrame: -5,
       );
       expect(s.storyboardCutSelection.value, [first, second, third]);
 
@@ -480,17 +484,12 @@ void main() {
     test('a move starting inside the selection slides the RUN as one '
         'unit: compensation lands past the run\'s last cut', () {
       final (s, first, second, third) = threeCutSession();
-      final trackId = s.repository.requireProject().tracks.first.id;
       final thirdStart = layoutStart(s, third);
 
       // Select [first, second], then slide from the FIRST cut by +5: both
       // selected cuts move, and the THIRD holds still only if it had gap
       // (none here → it is pushed by the full 5).
-      s.updateStoryboardCutSelectionDrag(
-        trackId: trackId,
-        anchorCutIndex: 0,
-        headCutIndex: 1,
-      );
+      selectCutRun(s, first, second);
       expect(s.beginCutMoveDrag(first), isTrue);
       s.updateCutMoveDrag(5);
       expect(previewedGap(s, first), 5);
@@ -504,7 +503,6 @@ void main() {
     test('with follower slack the run slides INTO the gap: members keep '
         'formation, the follower holds still', () {
       final (s, first, second, third) = threeCutSession();
-      final trackId = s.repository.requireProject().tracks.first.id;
 
       // Open a 6-frame gap before the THIRD cut.
       s.beginCutEdgeDrag(cutId: third, edge: TimelineBlockEdge.start);
@@ -512,11 +510,7 @@ void main() {
       s.endCutEdgeDrag();
       final thirdStart = layoutStart(s, third);
 
-      s.updateStoryboardCutSelectionDrag(
-        trackId: trackId,
-        anchorCutIndex: 0,
-        headCutIndex: 1,
-      );
+      selectCutRun(s, first, second);
       expect(s.beginCutMoveDrag(second), isTrue);
       s.updateCutMoveDrag(4);
       s.endCutMoveDrag();
@@ -531,25 +525,16 @@ void main() {
     test('deleteSelectedCuts removes the run as ONE undo step; deleting '
         'every cut is refused', () {
       final (s, first, second, third) = threeCutSession();
-      final trackId = s.repository.requireProject().tracks.first.id;
 
       // Selecting ALL cuts: delete stands down (the project never
       // empties).
-      s.updateStoryboardCutSelectionDrag(
-        trackId: trackId,
-        anchorCutIndex: 0,
-        headCutIndex: 2,
-      );
+      selectCutRun(s, first, third);
       expect(s.canDeleteSelectedCuts, isFalse);
       s.deleteSelectedCuts();
       expect(s.repository.requireProject().tracks.first.cuts.length, 3);
 
       // A two-cut run deletes in one step and clears the selection.
-      s.updateStoryboardCutSelectionDrag(
-        trackId: trackId,
-        anchorCutIndex: 0,
-        headCutIndex: 1,
-      );
+      selectCutRun(s, first, second);
       expect(s.canDeleteSelectedCuts, isTrue);
       s.deleteSelectedCuts();
       final cutsAfter = s.repository.requireProject().tracks.first.cuts;
@@ -563,15 +548,10 @@ void main() {
     });
 
     test('deleteActiveCut routes to the selection while one is live', () {
-      final (s, _, _, third) = threeCutSession();
-      final trackId = s.repository.requireProject().tracks.first.id;
+      final (s, first, second, third) = threeCutSession();
       s.selectCut(third);
 
-      s.updateStoryboardCutSelectionDrag(
-        trackId: trackId,
-        anchorCutIndex: 0,
-        headCutIndex: 1,
-      );
+      selectCutRun(s, first, second);
       s.deleteActiveCut();
 
       // The SELECTED run went, not the active cut.

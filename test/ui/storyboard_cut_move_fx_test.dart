@@ -54,10 +54,14 @@ void main() {
     expect(block, findsOneWidget);
     // UI-R18 #1 mode split: a body drag slides only when the cut sits in
     // the selection — select it first (the user's first drag does this).
-    manager.updateStoryboardCutSelectionDrag(
+    final secondStart = manager
+        .trackFrameAxis()
+        .entryFor(secondCut.id)!
+        .startFrame;
+    manager.updateStoryboardCutSelectionByFrame(
       trackId: manager.activeTrack.id,
-      anchorCutIndex: 1,
-      headCutIndex: 1,
+      anchorGlobalFrame: secondStart,
+      headGlobalFrame: secondStart,
     );
     await tester.pump();
     final gesture = await tester.startGesture(tester.getCenter(block));
