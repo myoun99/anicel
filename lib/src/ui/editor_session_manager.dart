@@ -6080,30 +6080,53 @@ class EditorSessionManager extends ChangeNotifier {
       ValueNotifier<List<CutId>?>(null);
 
   /// A cut-select drag step: anchor/head are CUT ORDINALS on [trackId].
+  ///
+  /// Runs the drag through the SAME snap the timeline's cell selection uses
+  /// ([snapSpanToBlocks]) with the track's cuts as the blocks — the
+  /// ordinals are converted to frames on the track axis and the covered
+  /// cuts come back out. Ordinals stay the panel-facing form until its
+  /// strip speaks the frame axis directly.
   void updateStoryboardCutSelectionDrag({
     required TrackId trackId,
     required int anchorCutIndex,
     required int headCutIndex,
   }) {
-    for (final track in _repository.requireProject().tracks) {
-      if (track.id != trackId) {
-        continue;
-      }
-      if (track.cuts.isEmpty) {
-        storyboardCutSelection.value = null;
-        return;
-      }
-      final low = math
-          .min(anchorCutIndex, headCutIndex)
-          .clamp(0, track.cuts.length - 1);
-      final high = math
-          .max(anchorCutIndex, headCutIndex)
-          .clamp(0, track.cuts.length - 1);
-      storyboardCutSelection.value = [
-        for (var i = low; i <= high; i += 1) track.cuts[i].id,
-      ];
+    final layout = [
+      for (final entry in buildStoryboardTimelineLayout(
+        _repository.requireProject(),
+      ))
+        if (entry.trackId == trackId) entry,
+    ];
+    if (layout.isEmpty) {
+      storyboardCutSelection.value = null;
       return;
     }
+    final anchor = layout[anchorCutIndex.clamp(0, layout.length - 1)];
+    final head = layout[headCutIndex.clamp(0, layout.length - 1)];
+    updateStoryboardCutSelectionByFrame(
+      layout: layout,
+      anchorGlobalFrame: anchor.startFrame,
+      headGlobalFrame: head.startFrame,
+    );
+  }
+
+  /// A cut-select drag step stated on the track's GLOBAL FRAME axis — the
+  /// timeline's range grammar, cuts as the blocks. Dragging from anywhere
+  /// inside one cut to anywhere inside another selects both whole, and a
+  /// span that only crosses a gap selects nothing there.
+  void updateStoryboardCutSelectionByFrame({
+    required int anchorGlobalFrame,
+    required int headGlobalFrame,
+    List<StoryboardTimelineLayoutEntry>? layout,
+  }) {
+    final axis = layout == null
+        ? trackFrameAxis()
+        : TrackFrameAxis(layout);
+    final cuts = axis.cutsInSnappedSpan(
+      anchorFrame: anchorGlobalFrame,
+      headFrame: headGlobalFrame,
+    );
+    storyboardCutSelection.value = cuts.isEmpty ? null : cuts;
   }
 
   void clearStoryboardCutSelection() {
