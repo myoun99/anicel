@@ -317,4 +317,51 @@ void main() {
       expect(state.angleDegrees, BrushToolState.maxAngleDegrees);
     });
   });
+
+  group('ground-colour mixing', () {
+    BrushSettings mixingPreset() => BrushSettings(
+      mixesGroundColor: true,
+      paintAmount: 0.9,
+      paintDensity: 0.5,
+      colorStretch: 0.3,
+    );
+
+    test('applying an imported preset carries mixing to the canvas', () {
+      // The whole point of the import program: a watercolour brush from a
+      // .sut has to mix when it paints, with no hand setup in between.
+      final state = BrushToolState.fromBrushSettings(mixingPreset());
+      final input = state.toInputSettings();
+
+      expect(input.shape.mixesGroundColor, isTrue);
+      expect(input.shape.paintAmount, closeTo(0.9, 1e-9));
+      expect(input.shape.paintDensity, closeTo(0.5, 1e-9));
+      expect(input.shape.colorStretch, closeTo(0.3, 1e-9));
+    });
+
+    test('mixing forces plain srcOver so the blend is not applied twice', () {
+      // The dab already carries the ground colour; letting the blend mode
+      // combine with that same ground again would apply it visibly twice.
+      final state = BrushToolState.fromBrushSettings(
+        mixingPreset(),
+      ).copyWith(brushBlendMode: BrushBlendMode.multiply);
+
+      expect(state.toInputSettings().blendMode, BrushBlendMode.color);
+    });
+
+    test('the eraser still wins over mixing', () {
+      final state = BrushToolState.fromBrushSettings(
+        mixingPreset(),
+      ).copyWith(tool: CanvasTool.eraser);
+      final input = state.toInputSettings();
+
+      expect(input.blendMode, BrushBlendMode.erase);
+      expect(input.erase, isTrue);
+    });
+
+    test('a non-mixing brush keeps the hand blend mode', () {
+      final state = BrushToolState(brushBlendMode: BrushBlendMode.multiply);
+
+      expect(state.toInputSettings().blendMode, BrushBlendMode.multiply);
+    });
+  });
 }

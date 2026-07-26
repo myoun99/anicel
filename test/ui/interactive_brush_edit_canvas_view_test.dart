@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
@@ -14,6 +15,7 @@ import 'package:quick_animaker_v2/src/models/tile_coord.dart';
 import 'package:quick_animaker_v2/src/models/brush_dab.dart';
 import 'package:quick_animaker_v2/src/models/brush_edit_session_state.dart';
 import 'package:quick_animaker_v2/src/models/brush_pressure_curve.dart';
+import 'package:quick_animaker_v2/src/models/brush_shape.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/canvas_surface_state.dart';
@@ -225,6 +227,73 @@ void main() {
       expect(results.single.length, greaterThan(2));
       expect(sequences, everyElement(greaterThanOrEqualTo(0)));
       expect(_isStrictlyIncreasing(sequences), isTrue);
+    });
+
+    testWidgets('a mixing brush deposits the colour it lifted', (tester) async {
+      // A black brush releasing half its paint over a white cel lands
+      // halfway between the two. Driven through a real pointer stroke so
+      // the whole placement chain is exercised, not just the mixer.
+      final results = <List<BrushDab>>[];
+      await tester.pumpWidget(
+        _app(
+          _view(
+            _paintedSessionState(const [255, 255, 255, 255]),
+            results.add,
+            inputSettings: BrushEditCanvasInputSettings.fromShape(
+              BrushShape(
+                size: 4,
+                color: 0xFF000000,
+                mixesGroundColor: true,
+                paintAmount: 0.5,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final gesture = await tester.startGesture(
+        canvasGlobalOffset(tester, const Offset(3, 3)),
+        pointer: 1,
+      );
+      await gesture.moveTo(canvasGlobalOffset(tester, const Offset(5, 3)));
+      await gesture.up();
+      await tester.pump();
+
+      expect(results, hasLength(1));
+      expect(results.single, isNotEmpty);
+      for (final dab in results.single) {
+        expect(dab.color, 0xFF808080);
+      }
+    });
+
+    testWidgets('a brush that does not mix keeps its own colour', (
+      tester,
+    ) async {
+      final results = <List<BrushDab>>[];
+      await tester.pumpWidget(
+        _app(
+          _view(
+            _paintedSessionState(const [255, 255, 255, 255]),
+            results.add,
+            inputSettings: BrushEditCanvasInputSettings.fromShape(
+              BrushShape(size: 4, color: 0xFF000000),
+            ),
+          ),
+        ),
+      );
+
+      final gesture = await tester.startGesture(
+        canvasGlobalOffset(tester, const Offset(3, 3)),
+        pointer: 1,
+      );
+      await gesture.moveTo(canvasGlobalOffset(tester, const Offset(5, 3)));
+      await gesture.up();
+      await tester.pump();
+
+      expect(results.single, isNotEmpty);
+      for (final dab in results.single) {
+        expect(dab.color, 0xFF000000);
+      }
     });
 
     testWidgets('tiny movement does not create duplicate sampled source dabs', (
@@ -1456,6 +1525,34 @@ void _settlingTileGroup() {
       expect(hold, {existing.coord: same(existing)});
     });
   });
+}
+
+/// A session whose cel is already painted a solid straight-RGBA [rgba], so
+/// a mixing brush has something to lift.
+BrushEditSessionState _paintedSessionState(List<int> rgba) {
+  const size = 8;
+  const tileSize = 2;
+  final tiles = <TileCoord, BitmapTile>{};
+  for (var tileY = 0; tileY < size ~/ tileSize; tileY += 1) {
+    for (var tileX = 0; tileX < size ~/ tileSize; tileX += 1) {
+      final pixels = Uint8List(tileSize * tileSize * 4);
+      for (var index = 0; index < tileSize * tileSize; index += 1) {
+        pixels.setRange(index * 4, index * 4 + 4, rgba);
+      }
+      final coord = TileCoord(x: tileX, y: tileY);
+      tiles[coord] = BitmapTile(coord: coord, size: tileSize, pixels: pixels);
+    }
+  }
+  return BrushEditSessionState(
+    canvasState: CanvasSurfaceState(
+      currentSurface: BitmapSurface(
+        canvasSize: const CanvasSize(width: size, height: size),
+        tileSize: tileSize,
+        tiles: tiles,
+      ),
+    ),
+    materializationHistoryState: BrushBitmapMaterializationHistoryState(),
+  );
 }
 
 BrushEditSessionState _sessionState({int width = 8, int height = 8}) {
