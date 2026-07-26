@@ -56,6 +56,7 @@ import '../models/project_background.dart';
 import '../models/timesheet_info.dart';
 import '../models/project.dart';
 import '../models/project_frame_rate.dart';
+import '../models/row_block_shift.dart';
 import '../models/property_track.dart';
 import '../models/timeline_coverage.dart';
 import '../models/timeline_frame_range.dart';
@@ -6329,6 +6330,204 @@ class EditorSessionManager extends ChangeNotifier {
     return layer != null &&
         layerKindHoldsDrawings(layer.kind) &&
         layer.kind != LayerKind.se;
+  }
+
+  // --- PUSH / PULL (design D) ----------------------------------------------
+  //
+  // The rigid shove a drag used to do, as a verb you aim. PUSH opens n
+  // frames at the anchor and everything after it travels with its own
+  // spacing intact; PULL closes them and stops where the first affected
+  // row runs out of room. The arithmetic is [rowPullSlack] /
+  // [timelineShiftedFrom] for both axes; only the commit differs — re-keyed
+  // exposures on a layer row, a leading gap on a track's cuts.
+  //
+  // SCOPE: the live selection's rows, anchored at its start; with no
+  // selection, the current row at the current index.
+
+  /// The frame-axis scope: which layer rows shift, and from where.
+  ({List<LayerId> layerIds, int anchorIndex})? _frameShiftScope() {
+    final selection = frameRangeSelection.value;
+    if (selection != null) {
+      final rows = [
+        for (final id in selection.spanLayerIds)
+          if (_rangeLayerById(id) != null) id,
+      ];
+      return rows.isEmpty
+          ? null
+          : (layerIds: rows, anchorIndex: selection.startIndex);
+    }
+    final layerId = activeLayerId;
+    final index = _timelineController.currentFrameIndex;
+    if (layerId == null || index < 0 || _rangeLayerById(layerId) == null) {
+      return null;
+    }
+    return (layerIds: [layerId], anchorIndex: index);
+  }
+
+  bool get canPushFrames => _frameShiftScope() != null;
+
+  /// How far a frame PULL can travel: the LEAST slack across the scope's
+  /// rows, so the whole scope stops where the first one touches.
+  int get framePullSlack {
+    final scope = _frameShiftScope();
+    if (scope == null) {
+      return 0;
+    }
+    var slack = 0x7fffffff;
+    for (final layerId in scope.layerIds) {
+      final layer = _rangeLayerById(layerId);
+      if (layer == null) {
+        continue;
+      }
+      slack = math.min(
+        slack,
+        rowPullSlack(
+          blocks: timelineShiftableBlocks(layer.timeline),
+          anchorIndex: scope.anchorIndex,
+        ),
+      );
+    }
+    return slack == 0x7fffffff ? 0 : slack;
+  }
+
+  bool get canPullFrames => framePullSlack > 0;
+
+  /// Opens [count] frames at the anchor across the scope's rows; the
+  /// blocks after it keep their own spacing (empty space is carried, not
+  /// eaten). ONE undo step for every row it touches.
+  void pushFrames(int count) => _shiftFrames(count);
+
+  /// Closes up to [count] frames, clamped to [framePullSlack].
+  void pullFrames(int count) =>
+      _shiftFrames(-math.min(count, framePullSlack));
+
+  void _shiftFrames(int delta) {
+    final scope = _frameShiftScope();
+    if (scope == null || delta == 0) {
+      return;
+    }
+    final edits = <({Layer before, Layer after})>[];
+    for (final layerId in scope.layerIds) {
+      // The COMMIT layer, never the display clone: a track-SE row's clone
+      // is a projection and writing it back would drop the edit (the
+      // clones are never written back).
+      final before = _commitLayerById(layerId);
+      if (before == null) {
+        continue;
+      }
+      // Track-SE rows live on the GLOBAL axis, so a cut-local anchor has
+      // to be translated before it can address their blocks.
+      final anchor = isTrackSeLayerId(layerId)
+          ? _commitBlockStart(layerId, scope.anchorIndex)
+          : scope.anchorIndex;
+      final after = before.copyWith(
+        timeline: timelineShiftedFrom(
+          before.timeline,
+          anchorIndex: anchor,
+          delta: delta,
+        ),
+      );
+      if (after.timeline != before.timeline) {
+        edits.add((before: before, after: after));
+      }
+    }
+    if (edits.isEmpty) {
+      return;
+    }
+    _timelineController.commitLayerTimelineDrags(edits);
+    _refreshAfterCutCommand();
+    notifyListeners();
+  }
+
+  /// The cut-axis scope: which track, and the ordinal the shove starts at.
+  ({TrackId trackId, int anchorCutIndex})? _cutShiftScope() {
+    final project = _repository.requireProject();
+    final selection = storyboardCutSelection.value;
+    for (final track in project.tracks) {
+      if (selection != null && selection.isNotEmpty) {
+        final indexes = [
+          for (final id in selection) track.cuts.indexWhere((c) => c.id == id),
+        ]..removeWhere((value) => value < 0);
+        if (indexes.isEmpty) {
+          continue;
+        }
+        indexes.sort();
+        return (trackId: track.id, anchorCutIndex: indexes.first);
+      }
+      final activeIndex = track.cuts.indexWhere((c) => c.id == activeCutId);
+      if (activeIndex >= 0) {
+        return (trackId: track.id, anchorCutIndex: activeIndex);
+      }
+    }
+    return null;
+  }
+
+  List<ShiftableBlock> _cutShiftBlocks(TrackId trackId) => [
+    for (final entry in buildStoryboardTimelineLayout(
+      _repository.requireProject(),
+    ))
+      if (entry.trackId == trackId)
+        (startIndex: entry.startFrame, endIndexExclusive: entry.endFrame),
+  ];
+
+  bool get canPushCuts => _cutShiftScope() != null;
+
+  /// How far a cut PULL can travel — the same slack rule, read off the
+  /// track's cuts instead of a layer's exposures.
+  int get cutPullSlack {
+    final scope = _cutShiftScope();
+    if (scope == null) {
+      return 0;
+    }
+    final blocks = _cutShiftBlocks(scope.trackId);
+    if (scope.anchorCutIndex >= blocks.length) {
+      return 0;
+    }
+    final slack = rowPullSlack(
+      blocks: blocks,
+      anchorIndex: blocks[scope.anchorCutIndex].startIndex,
+    );
+    return slack == 0x7fffffff ? 0 : slack;
+  }
+
+  bool get canPullCuts => cutPullSlack > 0;
+
+  /// Slides the anchor cut and everything after it [count] frames later.
+  /// Cut LENGTHS never change (design D) — only where the run starts.
+  void pushCuts(int count) => _shiftCuts(count);
+
+  void pullCuts(int count) => _shiftCuts(-math.min(count, cutPullSlack));
+
+  void _shiftCuts(int delta) {
+    final scope = _cutShiftScope();
+    if (scope == null || delta == 0) {
+      return;
+    }
+    final track = _repository
+        .requireProject()
+        .tracks
+        .firstWhere((track) => track.id == scope.trackId);
+    if (scope.anchorCutIndex >= track.cuts.length) {
+      return;
+    }
+    // Positions are cumulative, so the anchor's own leading gap carries the
+    // whole run: every cut after it follows for free with its spacing
+    // intact, which is exactly what "rigid" means here.
+    final anchor = track.cuts[scope.anchorCutIndex];
+    final after = anchor.leadingGapFrames + delta;
+    if (after < 0) {
+      return;
+    }
+    _cutCommandCoordinator.commitCutDurationDrag(
+      beforeDurations: const {},
+      afterDurations: const {},
+      beforeGaps: {anchor.id: anchor.leadingGapFrames},
+      afterGaps: {anchor.id: after},
+      beforeTransforms: const {},
+      afterTransforms: const {},
+    );
+    _refreshAfterCutCommand();
+    notifyListeners();
   }
 
   // --- Frame RANGE selection (UI-R8, TVP-style) ----------------------------

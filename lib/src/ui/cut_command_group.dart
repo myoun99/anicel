@@ -144,6 +144,24 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
         onSelected: session.moveActiveCutRight,
       ),
       const PanelFlyoutDivider(),
+      // Design D: the cut axis' half of push/pull. Same rule as the frame
+      // axis, committed as the anchor cut's leading gap — a cut's LENGTH
+      // never changes, only where its run starts.
+      PanelFlyoutItem(
+        keyValue: 'push-cuts-button',
+        label: AppText.strings.tlPush,
+        icon: Icons.keyboard_tab,
+        enabled: session.canPushCuts,
+        onSelected: () => session.pushCuts(1),
+      ),
+      PanelFlyoutItem(
+        keyValue: 'pull-cuts-button',
+        label: AppText.strings.tlPull,
+        icon: Icons.keyboard_backspace,
+        enabled: session.canPullCuts,
+        onSelected: () => session.pullCuts(1),
+      ),
+      const PanelFlyoutDivider(),
       PanelFlyoutItem(
         keyValue: 'delete-cut-button',
         label: AppText.strings.cutDelete,

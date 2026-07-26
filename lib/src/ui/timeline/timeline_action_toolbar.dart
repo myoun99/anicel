@@ -629,6 +629,25 @@ class TimelineActionToolbar extends StatelessWidget {
                         ? session.toggleMarkAtCurrentFrame
                         : null,
                   ),
+                  // Design D: the rigid shove a drag used to do, aimed.
+                  // Scope = the live selection's rows, or the current row
+                  // at the current cell.
+                  _iconButton(
+                    key: const ValueKey<String>('push-frames-button'),
+                    tooltip: AppText.strings.tlPush,
+                    icon: Icons.keyboard_tab,
+                    onPressed: session.canPushFrames
+                        ? () => session.pushFrames(1)
+                        : null,
+                  ),
+                  _iconButton(
+                    key: const ValueKey<String>('pull-frames-button'),
+                    tooltip: AppText.strings.tlPull,
+                    icon: Icons.keyboard_backspace,
+                    onPressed: session.canPullFrames
+                        ? () => session.pullFrames(1)
+                        : null,
+                  ),
                   const SizedBox(width: 4),
                   // Comma set (UI-R17 #7, TVP-style): the current block —
                   // or the whole selection, packed — takes the pressed
