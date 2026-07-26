@@ -6217,11 +6217,17 @@ class EditorSessionManager extends ChangeNotifier {
     TrackId? trackId,
   }) {
     final row = trackId ?? selectedTrackId;
-    final span = _axisForTrack(row).snapSpanToCuts(
+    final axis = _axisForTrack(row);
+    final span = axis.snapSpanToCuts(
       anchorFrame: anchorGlobalFrame,
       headFrame: headGlobalFrame,
     );
-    if (span == null) {
+    // A span that only crosses a GAP selects nothing at all — not an empty
+    // range over the gap, which would still read as "inside the selection"
+    // and swallow the next press there. The cut row's blocks are cuts, so a
+    // range covering none of them is no selection.
+    if (span == null ||
+        axis.cutsIn(span.startIndex, span.endIndexExclusive).isEmpty) {
       trackFrameRangeSelection.value = null;
       return;
     }

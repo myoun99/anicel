@@ -83,6 +83,9 @@ void main() {
     );
 
     expect(session.storyboardSelectedCutIds, isEmpty);
+    // And no RANGE either: an empty range parked over the gap would still
+    // read as "inside the selection" and swallow the next press there.
+    expect(session.trackFrameRangeSelection.value, isNull);
   });
 
   test('a single frame inside a cut takes that whole cut', () {
