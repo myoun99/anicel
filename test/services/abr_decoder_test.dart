@@ -162,9 +162,29 @@ Uint8List _descPayload({required String sampledUuid}) {
   desc.asciiChars('Objc');
   desc.unicode('');
   desc.key('null');
-  desc.i32(13);
+  desc.i32(14);
   desc.key('Nm  ');
   desc.text('Fancy Chalk');
+  // Photoshop's tool-settings bundle: opacity and flow import, blend mode
+  // and smoothing must NOT (they are hand settings, R26 #10).
+  desc.key('toolOptions');
+  desc.asciiChars('Objc');
+  desc.unicode('');
+  desc.key('PbTl');
+  desc.i32(4);
+  desc.key('Opct');
+  desc.asciiChars('long');
+  desc.i32(70);
+  desc.key('flow');
+  desc.asciiChars('long');
+  desc.i32(60);
+  desc.key('Md  ');
+  desc.asciiChars('enum');
+  desc.key('BlnM');
+  desc.key('Mltp');
+  desc.key('smoothing');
+  desc.asciiChars('bool');
+  desc.u8(1);
   desc.key('dualBrush');
   desc.asciiChars('Objc');
   desc.unicode('');
@@ -330,11 +350,19 @@ void main() {
       expect(chalk.settings.dualMask!.id, 'abr-tip-two-uuid');
       expect(chalk.settings.dualMaskScale, closeTo(0.5, 1e-9));
 
+      // Photoshop keeps opacity and flow in the `toolOptions` bundle; both
+      // are preset fields on this engine, so both import.
+      expect(chalk.settings.opacity, closeTo(0.7, 1e-9));
+      expect(chalk.settings.flow, closeTo(0.6, 1e-9));
+
       final round = result.presets.firstWhere((p) => p.name == 'Soft Round 16');
       expect(round.settings.tipMask, isNull);
       expect(round.settings.size, 16.0);
       expect(round.settings.hardness, closeTo(0.8, 1e-9));
       expect(round.settings.spacing, closeTo(0.3, 1e-9));
+      // No toolOptions on this one: opacity and flow fall back to full.
+      expect(round.settings.opacity, 1.0);
+      expect(round.settings.flow, 1.0);
     });
 
     test('pads non-square tips to a centered square mask', () {

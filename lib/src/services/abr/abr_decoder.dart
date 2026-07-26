@@ -370,6 +370,18 @@ BrushPreset? _presetFromBrushDescriptor(
   final roundnessPercent = tip.numberValue('Rndn') ?? 100.0;
   final hardnessPercent = tip.numberValue('Hrdn') ?? 100.0;
 
+  // Photoshop keeps opacity, flow, blend mode and smoothing together in a
+  // `toolOptions` sub-descriptor — the settings its "Include Tool Settings"
+  // checkbox bundles into a preset. We take opacity and flow, because this
+  // engine already carries both as preset fields (and the Clip Studio
+  // importer reads them, so dropping them here would make the same brush
+  // behave differently depending on which file it arrived in). Blend mode
+  // (`Md`) and smoothing stay UNREAD on purpose: they are hand settings that
+  // a preset must not overwrite (R26 #10), matching Photoshop's own split.
+  final toolOptions = entry.childDescriptor('toolOptions');
+  final opacityPercent = toolOptions?.numberValue('Opct') ?? 100.0;
+  final flowPercent = toolOptions?.numberValue('flow') ?? 100.0;
+
   // Dynamics live at the preset level (sibling of 'Brsh'), gated by the
   // useTipDynamics / usePaintDynamics switches. Control type ('bVTy')
   // 2 = pen pressure; 6/7 = initial direction / direction.
@@ -484,6 +496,8 @@ BrushPreset? _presetFromBrushDescriptor(
       angleDegrees: angle,
       roundness: roundnessPercent / 100.0,
       hardness: hardnessPercent / 100.0,
+      opacity: opacityPercent / 100.0,
+      flow: flowPercent / 100.0,
       sizePressureCurve: sizePressureCurve,
       opacityPressureCurve: opacityPressureCurve,
       flowPressureCurve: flowPressureCurve,
@@ -527,6 +541,8 @@ BrushSettings _settingsForTip(
   required double angleDegrees,
   required double roundness,
   double hardness = 1.0,
+  double opacity = 1.0,
+  double flow = 1.0,
   BrushPressureCurve? sizePressureCurve,
   BrushPressureCurve? opacityPressureCurve,
   BrushPressureCurve? flowPressureCurve,
@@ -550,6 +566,8 @@ BrushSettings _settingsForTip(
     angleDegrees: normalizedAngle.isFinite ? normalizedAngle : 0.0,
     roundness: roundness.isFinite ? roundness.clamp(0.01, 1.0).toDouble() : 1.0,
     hardness: hardness.isFinite ? hardness.clamp(0.0, 1.0).toDouble() : 1.0,
+    opacity: opacity.isFinite ? opacity.clamp(0.0, 1.0).toDouble() : 1.0,
+    flow: flow.isFinite ? flow.clamp(0.0, 1.0).toDouble() : 1.0,
     tipMask: mask,
     sizePressureCurve: sizePressureCurve,
     opacityPressureCurve: opacityPressureCurve,
