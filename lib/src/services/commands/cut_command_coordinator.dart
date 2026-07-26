@@ -11,8 +11,6 @@ import '../../models/cut.dart';
 import '../../models/cut_camera.dart';
 import '../../models/cut_id.dart';
 import '../../models/cut_metadata.dart';
-import '../../models/frame.dart';
-import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -21,7 +19,7 @@ import '../../models/media_asset.dart';
 import '../../models/project.dart';
 import '../../models/project_background.dart';
 import '../../models/timesheet_info.dart';
-import '../../models/storyboard_frame_metadata.dart';
+import '../../models/exposure_memo.dart';
 import '../../models/track_id.dart';
 import '../../models/transform_track.dart';
 import '../brush_frame_store.dart';
@@ -65,7 +63,7 @@ import 'update_layer_transform_command.dart';
 import 'update_media_assets_command.dart';
 import 'update_project_background_command.dart';
 import 'update_timesheet_info_command.dart';
-import 'update_storyboard_frame_metadata_command.dart';
+import 'update_exposure_memo_command.dart';
 
 class CutCommandCoordinator {
   const CutCommandCoordinator({
@@ -1054,28 +1052,40 @@ class CutCommandCoordinator {
     );
   }
 
-  void updateStoryboardFrameMetadata({
+  /// Writes the memo of the exposure BLOCK starting at [blockStartIndex].
+  /// An empty memo clears it, so a memo nobody wrote costs nothing on disk.
+  void updateExposureMemo({
     required CutId cutId,
     required LayerId layerId,
-    required FrameId frameId,
-    required StoryboardFrameMetadata metadata,
+    required int blockStartIndex,
+    required ExposureMemo memo,
   }) {
-    final target = _requireStoryboardFrameTarget(
-      cutId: cutId,
-      layerId: layerId,
-      frameId: frameId,
-    );
-    if (target.frame.storyboardMetadata == metadata) {
+    final layer = _requireLayer(cutId: cutId, layerId: layerId);
+    final entry = layer.timeline[blockStartIndex];
+    if (entry == null || !entry.isDrawing) {
+      throw StateError(
+        'No exposure block starts at $blockStartIndex on $layerId.',
+      );
+    }
+    if (entry.ghost) {
+      throw StateError(
+        'A ghost exposure is rederived, so it cannot hold a memo '
+        '($layerId at $blockStartIndex).',
+      );
+    }
+
+    final next = memo.isEmpty ? null : memo;
+    if (entry.memo == next) {
       return;
     }
 
     historyManager.execute(
-      UpdateStoryboardFrameMetadataCommand(
+      UpdateExposureMemoCommand(
         repository: repository,
         cutId: cutId,
         layerId: layerId,
-        frameId: frameId,
-        metadata: metadata,
+        blockStartIndex: blockStartIndex,
+        memo: next,
       ),
     );
   }
@@ -1168,31 +1178,6 @@ class CutCommandCoordinator {
     );
   }
 
-  _StoryboardFrameTarget _requireStoryboardFrameTarget({
-    required CutId cutId,
-    required LayerId layerId,
-    required FrameId frameId,
-  }) {
-    final targetLayer = _requireLayer(cutId: cutId, layerId: layerId);
-    if (targetLayer.kind != LayerKind.storyboard) {
-      throw StateError('Layer is not a storyboard layer: $layerId');
-    }
-
-    Frame? targetFrame;
-    for (final frame in targetLayer.frames) {
-      if (frame.id == frameId) {
-        targetFrame = frame;
-        break;
-      }
-    }
-
-    if (targetFrame == null) {
-      throw StateError('Frame not found in layer $layerId: $frameId');
-    }
-
-    return _StoryboardFrameTarget(frame: targetFrame);
-  }
-
   Layer _requireLayer({required CutId cutId, required LayerId layerId}) {
     return requireLayer(
       repository.requireProject(),
@@ -1207,8 +1192,3 @@ class CutCommandCoordinator {
   }
 }
 
-class _StoryboardFrameTarget {
-  const _StoryboardFrameTarget({required this.frame});
-
-  final Frame frame;
-}

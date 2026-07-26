@@ -13,7 +13,6 @@ import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
-import 'package:quick_animaker_v2/src/models/storyboard_frame_metadata.dart';
 import 'package:quick_animaker_v2/src/models/stroke.dart';
 import 'package:quick_animaker_v2/src/models/stroke_id.dart';
 import 'package:quick_animaker_v2/src/models/stroke_point.dart';
@@ -103,11 +102,6 @@ Project _projectWithLayer({
                     id: _frameId,
                     duration: 2,
                     name: 'A1',
-                    storyboardMetadata: const StoryboardFrameMetadata(
-                      actionMemo: 'action memo stays on frame',
-                      dialogueMemo: 'dialogue memo stays on frame',
-                      note: 'storyboard note stays on frame',
-                    ),
                     strokes: [
                       Stroke(
                         id: const StrokeId('stroke-1'),

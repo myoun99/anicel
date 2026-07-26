@@ -10,7 +10,7 @@ import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
-import 'package:quick_animaker_v2/src/models/storyboard_frame_metadata.dart';
+import 'package:quick_animaker_v2/src/models/exposure_memo.dart';
 import 'package:quick_animaker_v2/src/models/stroke.dart';
 import 'package:quick_animaker_v2/src/models/stroke_id.dart';
 import 'package:quick_animaker_v2/src/models/stroke_point.dart';
@@ -94,7 +94,15 @@ void main() {
       expect(duplicate.layers[1].timeline.keys, orderedEquals([2]));
       expect(
         duplicate.layers[1].timeline[2],
-        TimelineExposure.drawing(const FrameId('frame-copy-c'), length: 1),
+        TimelineExposure.drawing(
+          const FrameId('frame-copy-c'),
+          length: 1,
+          // The block's memo is copied with it (see the memo test below).
+          memo: const ExposureMemo(
+            actionMemo: 'Character points at the horizon.',
+            note: 'Use as conte panel note.',
+          ),
+        ),
       );
     });
 
@@ -168,9 +176,11 @@ void main() {
         duplicate.layers[1].frames.single.id,
         const FrameId('frame-copy-c'),
       );
+      // The memo rides the EXPOSURE, so duplicating the cut carries it
+      // without the frame copier knowing anything about memos.
       expect(
-        duplicate.layers[1].frames.single.storyboardMetadata,
-        source.layers[1].frames.single.storyboardMetadata,
+        duplicate.layers[1].timeline[2]!.memo,
+        source.layers[1].timeline[2]!.memo,
       );
     });
 
@@ -350,15 +360,17 @@ Cut _sourceCut() {
             name: 'C',
             duration: 2,
             strokes: const [],
-            storyboardMetadata: const StoryboardFrameMetadata(
-              actionMemo: 'Character points at the horizon.',
-              dialogueMemo: 'A: Over there!',
-              note: 'Use as conte panel note.',
-            ),
           ),
         ],
         timeline: {
-          2: TimelineExposure.drawing(const FrameId('frame-c'), length: 1),
+          2: TimelineExposure.drawing(
+            const FrameId('frame-c'),
+            length: 1,
+            memo: const ExposureMemo(
+              actionMemo: 'Character points at the horizon.',
+              note: 'Use as conte panel note.',
+            ),
+          ),
         },
         isVisible: true,
         opacity: 0.75,

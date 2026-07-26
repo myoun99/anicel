@@ -1,9 +1,14 @@
 import '../core/collection_equality.dart';
 import 'frame_id.dart';
-import 'storyboard_frame_metadata.dart';
 import '../core/copy_with_sentinel.dart';
 import 'stroke.dart';
 
+/// One DRAWING in a layer's cel bank.
+///
+/// Memos are deliberately NOT here: a frame is the picture, and the same
+/// picture may be exposed twice in a cut and shared across linked cuts, so
+/// a memo hanging off it would be shared by everything that draws it. They
+/// live on the exposure instead ([TimelineExposure.memo]).
 class Frame {
   Frame({
     required this.id,
@@ -11,7 +16,6 @@ class Frame {
     required List<Stroke> strokes,
     this.name,
     this.seName,
-    this.storyboardMetadata = const StoryboardFrameMetadata.empty(),
   }) : strokes = List.unmodifiable(strokes);
 
   final FrameId id;
@@ -24,15 +28,12 @@ class Frame {
   /// so legacy SE labels keep reading as dialogue).
   final String? seName;
 
-  final StoryboardFrameMetadata storyboardMetadata;
-
   Frame copyWith({
     FrameId? id,
     int? duration,
     List<Stroke>? strokes,
     Object? name = copyWithSentinel,
     Object? seName = copyWithSentinel,
-    StoryboardFrameMetadata? storyboardMetadata,
   }) {
     return Frame(
       id: id ?? this.id,
@@ -42,7 +43,6 @@ class Frame {
       seName: identical(seName, copyWithSentinel)
           ? this.seName
           : seName as String?,
-      storyboardMetadata: storyboardMetadata ?? this.storyboardMetadata,
     );
   }
 
@@ -52,7 +52,6 @@ class Frame {
     'strokes': strokes.map((stroke) => stroke.toJson()).toList(),
     if (name != null) 'name': name,
     if (seName != null) 'seName': seName,
-    'storyboardMetadata': storyboardMetadata.toJson(),
   };
 
   factory Frame.fromJson(Map<String, dynamic> json) {
@@ -64,11 +63,6 @@ class Frame {
           .toList(),
       name: json['name'] as String?,
       seName: json['seName'] as String?,
-      storyboardMetadata: json['storyboardMetadata'] == null
-          ? const StoryboardFrameMetadata.empty()
-          : StoryboardFrameMetadata.fromJson(
-              json['storyboardMetadata'] as Map<String, dynamic>,
-            ),
     );
   }
 
@@ -80,20 +74,14 @@ class Frame {
           other.duration == duration &&
           other.name == name &&
           other.seName == seName &&
-          other.storyboardMetadata == storyboardMetadata &&
           listEquals(other.strokes, strokes);
 
   @override
-  int get hashCode => Object.hash(
-    id,
-    duration,
-    name,
-    seName,
-    storyboardMetadata,
-    Object.hashAll(strokes),
-  );
+  int get hashCode =>
+      Object.hash(id, duration, name, seName, Object.hashAll(strokes));
 
   @override
   String toString() =>
-      'Frame(id: $id, duration: $duration, name: $name, seName: $seName, strokes: $strokes, storyboardMetadata: $storyboardMetadata)';
+      'Frame(id: $id, duration: $duration, name: $name, '
+      'seName: $seName, strokes: $strokes)';
 }
