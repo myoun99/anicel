@@ -13,6 +13,7 @@ import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
+import 'storyboard_cut_block_probe.dart';
 
 void main() {
   group('StoryboardPanel baseline smoke tests', () {
@@ -60,19 +61,10 @@ void main() {
       expect(find.text('V1'), findsOneWidget);
     });
 
-    testWidgets('renders current cut positioned and block keys', (
-      tester,
-    ) async {
+    testWidgets('renders the current cut as a painted block', (tester) async {
       await _pumpStoryboardPanel(tester, _projectWithStoryboardLayer());
 
-      expect(
-        find.byKey(const ValueKey<String>('storyboard-cut-positioned-cut-a')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey<String>('storyboard-cut-block-cut-a')),
-        findsOneWidget,
-      );
+      expect(cutBlock(tester, 'cut-a'), isNotNull);
     });
 
     testWidgets('renders current cut title and cumulative end time', (
@@ -80,18 +72,11 @@ void main() {
     ) async {
       await _pumpStoryboardPanel(tester, _projectWithStoryboardLayer());
 
-      expect(
-        find.byKey(const ValueKey<String>('storyboard-cut-title-cut-a')),
-        findsOneWidget,
-      );
-      expect(find.text('Cut A'), findsOneWidget);
+      final block = requireCutBlock(tester, 'cut-a');
+      expect(block.title, 'Cut A');
       // Conte-sheet TIME column bottom-right; the old duration/frame-range
       // row is gone.
-      expect(
-        find.byKey(const ValueKey<String>('storyboard-cut-total-cut-a')),
-        findsOneWidget,
-      );
-      expect(find.text('24'), findsOneWidget);
+      expect(block.total, '24');
     });
 
     testWidgets('renders current storyboard layer strip when present', (
@@ -99,15 +84,9 @@ void main() {
     ) async {
       await _pumpStoryboardPanel(tester, _projectWithStoryboardLayer());
 
-      expect(
-        find.byKey(const ValueKey<String>('storyboard-layer-strip-cut-a')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey<String>('storyboard-layer-name-cut-a')),
-        findsOneWidget,
-      );
-      expect(find.text('Storyboard'), findsOneWidget);
+      final block = requireCutBlock(tester, 'cut-a');
+      expect(block.hasStoryboardLayer, isTrue);
+      expect(block.layerLabel, 'Storyboard');
     });
 
     testWidgets('marks the active cut without an ACTIVE label', (tester) async {
@@ -140,9 +119,7 @@ void main() {
         onCutSelected: (cutId) => selectedCutId = cutId,
       );
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('storyboard-cut-block-cut-b')),
-      );
+      await tester.tapAt(cutBlockCenter(tester, 'cut-b'));
       await tester.pumpAndSettle();
 
       expect(selectedCutId, const CutId('cut-b'));
@@ -153,11 +130,9 @@ void main() {
     ) async {
       await _pumpStoryboardPanel(tester, _projectWithoutStoryboardLayer());
 
-      expect(
-        find.byKey(const ValueKey<String>('storyboard-layer-empty-cut-a')),
-        findsOneWidget,
-      );
-      expect(find.text('No Storyboard Layer'), findsOneWidget);
+      final block = requireCutBlock(tester, 'cut-a');
+      expect(block.hasStoryboardLayer, isFalse);
+      expect(block.layerLabel, 'No Storyboard Layer');
     });
 
     testWidgets(
@@ -166,18 +141,18 @@ void main() {
         await _pumpStoryboardPanel(tester, _projectWithLayerStack());
 
         expect(
-          find.byKey(const ValueKey<String>('storyboard-layer-strip-cut-a')),
-          findsOneWidget,
+          requireCutBlock(tester, 'cut-a').layerLabel,
+          'Middle Storyboard',
         );
-        expect(find.text('Middle Storyboard'), findsOneWidget);
       },
     );
 
     testWidgets('does not select storyboard layer by name', (tester) async {
       await _pumpStoryboardPanel(tester, _projectWithMisleadingLayerNames());
 
-      expect(find.text('Animation Named Layer'), findsOneWidget);
-      expect(find.text('Storyboard'), findsNothing);
+      final block = requireCutBlock(tester, 'cut-a');
+      expect(block.hasStoryboardLayer, isTrue);
+      expect(block.layerLabel, 'Animation Named Layer');
     });
 
     testWidgets('surfaces multiple storyboard layers with StateError', (

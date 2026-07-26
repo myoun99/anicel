@@ -11,8 +11,16 @@ final Map<Object, TextPainter> _cache = <Object, TextPainter>{};
 /// hundreds of headers × two styles) while bounding memory.
 const int _cacheCap = 2048;
 
-TextPainter timelineGlyphPainter(String text, TextStyle style) {
-  final key = (text, style.color, style.fontWeight, style.fontSize);
+/// [maxWidth] turns the glyph into a one-line ELLIPSIZED run — free text
+/// (a cut's name) has to stop at its box the way a `Text` with
+/// `TextOverflow.ellipsis` did. It joins the cache key: the same string
+/// laid out at two widths is two different pictures.
+TextPainter timelineGlyphPainter(
+  String text,
+  TextStyle style, {
+  double? maxWidth,
+}) {
+  final key = (text, style.color, style.fontWeight, style.fontSize, maxWidth);
   final cached = _cache.remove(key);
   if (cached != null) {
     _cache[key] = cached; // LRU touch.
@@ -21,7 +29,9 @@ TextPainter timelineGlyphPainter(String text, TextStyle style) {
   final painter = TextPainter(
     text: TextSpan(text: text, style: style),
     textDirection: TextDirection.ltr,
-  )..layout();
+    maxLines: maxWidth == null ? null : 1,
+    ellipsis: maxWidth == null ? null : '…',
+  )..layout(maxWidth: maxWidth ?? double.infinity);
   if (_cache.length >= _cacheCap) {
     _cache.remove(_cache.keys.first);
   }

@@ -95,6 +95,58 @@ bool timelineCellUsesDrawingInk(TimelineCellExposureState exposureState) {
 Color timelineActiveRowWashColor(ColorScheme colorScheme) =>
     colorScheme.secondaryContainer.withValues(alpha: 0.35);
 
+/// A cut block's fill (the storyboard's V row).
+///
+/// These two live beside the cell colours rather than in a block widget of
+/// their own: the row paints its blocks now, and a painter reaching into a
+/// widget's private styling would have been a copy of it. Same vocabulary,
+/// one place — the active accent, the hover lift (R27 #11: a faint surface
+/// lift rather than a thicker border, so nothing reflows) and the
+/// colour-only range tint.
+Color storyboardCutBlockBackgroundColor(
+  ColorScheme colorScheme, {
+  required bool active,
+  required bool hovered,
+  required bool rangeSelected,
+}) {
+  final resting = active
+      ? colorScheme.primaryContainer
+      : colorScheme.surfaceContainerHighest;
+  final base = hovered && !active
+      ? Color.alphaBlend(
+          colorScheme.onSurface.withValues(alpha: 0.10),
+          resting,
+        )
+      : resting;
+  if (!rangeSelected) {
+    return base;
+  }
+  return Color.alphaBlend(
+    timelineSelectedFrameBorderColor.withValues(alpha: 0.28),
+    base,
+  );
+}
+
+/// A cut block's border ink. R26 #8: the resting edge follows the lane's
+/// BRIGHTNESS — a dark lane gets a light edge and a light lane a dark one;
+/// the old single grey vanished against the near-black track background.
+Color storyboardCutBlockEdgeColor(
+  ColorScheme colorScheme,
+  Brightness brightness, {
+  required bool active,
+  required bool hovered,
+}) {
+  if (active) {
+    return colorScheme.primary;
+  }
+  if (hovered) {
+    return colorScheme.onSurface.withValues(alpha: 0.95);
+  }
+  return colorScheme.onSurface.withValues(
+    alpha: brightness == Brightness.dark ? 0.60 : 0.45,
+  );
+}
+
 TimelineCellStyleColors timelineCellStyleColors({
   required ColorScheme colorScheme,
   required TimelineCellExposureState exposureState,

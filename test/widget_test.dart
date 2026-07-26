@@ -9,6 +9,7 @@ import 'package:quick_animaker_v2/src/ui/storyboard_timeline_layout.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:quick_animaker_v2/src/ui/widgets/field_slider.dart';
 
+import 'ui/storyboard_cut_block_probe.dart';
 import 'ui/timeline/timeline_cell_probe.dart';
 import 'ui/timeline/timeline_row_chrome_probe.dart';
 import 'ui/timeline/timeline_ruler_probe.dart';
@@ -102,9 +103,7 @@ Future<void> _switchToCut(WidgetTester tester, String cutId) async {
 
 Future<void> _tapStoryboardCutBlock(WidgetTester tester, String cutId) async {
   await _withStoryboardPanel(tester, (panel) async {
-    await tester.tap(
-      find.byKey(ValueKey<String>('storyboard-cut-block-$cutId')),
-    );
+    await tester.tapAt(cutBlockCenter(tester, cutId));
     await tester.pumpAndSettle();
   });
 }
@@ -119,9 +118,7 @@ Future<void> _expectCutName(
   String text,
 ) async {
   await _withStoryboardPanel(tester, (panel) async {
-    final title = find.byKey(ValueKey<String>('storyboard-cut-title-$cutId'));
-    expect(title, findsOneWidget);
-    expect(tester.widget<Text>(title).data, text);
+    expect(requireCutBlock(tester, cutId).title, text);
   });
 }
 
@@ -131,10 +128,7 @@ Future<void> _expectCutExists(
   required bool exists,
 }) async {
   await _withStoryboardPanel(tester, (panel) async {
-    expect(
-      find.byKey(ValueKey<String>('storyboard-cut-block-$cutId')),
-      exists ? findsOneWidget : findsNothing,
-    );
+    expect(cutBlock(tester, cutId), exists ? isNotNull : isNull);
   });
 }
 
@@ -144,14 +138,10 @@ Future<void> _expectCutsNamed(
   int count,
 ) async {
   await _withStoryboardPanel(tester, (panel) async {
-    final titles = find.byWidgetPredicate((widget) {
-      final key = widget.key;
-      return widget is Text &&
-          key is ValueKey<String> &&
-          key.value.startsWith('storyboard-cut-title-') &&
-          widget.data == name;
-    });
-    expect(titles, findsNWidgets(count));
+    expect(
+      cutBlocks(tester).where((block) => block.title == name).length,
+      count,
+    );
   });
 }
 
@@ -159,15 +149,7 @@ Future<void> _expectActiveCutName(WidgetTester tester, String name) async {
   await _withStoryboardPanel(tester, (panel) async {
     // The block highlight carries the active state (no ACTIVE badge);
     // the panel's activeCutId is the oracle for WHICH cut that is.
-    final activeId = panel.activeCutId!.value;
-    expect(
-      tester
-          .widget<Text>(
-            find.byKey(ValueKey<String>('storyboard-cut-title-$activeId')),
-          )
-          .data,
-      name,
-    );
+    expect(requireCutBlock(tester, panel.activeCutId!.value).title, name);
   });
 }
 
@@ -1740,9 +1722,7 @@ Line 8''';
     await _expectActiveCutName(tester, '1');
     expect(await _activeCutId(tester), const CutId('default-cut-1'));
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('storyboard-cut-block-cut-1')),
-    );
+    await tester.tapAt(cutBlockCenter(tester, 'cut-1'));
     await tester.pumpAndSettle();
 
     await _expectActiveCutName(tester, '2');
