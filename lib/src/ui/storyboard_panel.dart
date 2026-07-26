@@ -41,7 +41,10 @@ import 'timeline/transform_lane_policy.dart'
     show transformGroupHeader, transformGroupHeaderLane, transformPropertyLanes;
 import 'timeline/timeline_drag_preview.dart';
 import 'timeline/timeline_cell_style.dart'
-    show timelineBaseGridAlpha, timelineDrawingInkColor;
+    show
+        timelineBaseGridAlpha,
+        timelineDrawingInkColor,
+        timelineSelectedFrameBorderColor;
 import 'timeline/timeline_exposure_comma_drag_handle.dart'
     show TimelineBlockEdgeGrip, timelineBlockEdgeGripPlacement;
 import 'timeline/timeline_row_edit_chrome.dart'
@@ -169,6 +172,31 @@ class StoryboardCutSelectCallbacks {
   final VoidCallback onClear;
 }
 
+/// Range selection on a track-SE row — the cut row's hooks, one row up and
+/// one axis over: the same shared gesture, the same track-global selection,
+/// only the snap material differs (sounds instead of cuts).
+class StoryboardSeSelectCallbacks {
+  const StoryboardSeSelectCallbacks({
+    required this.selectedRange,
+    required this.onDrag,
+    required this.onClear,
+  });
+
+  /// The live selection (null = none), shared with the cut row: the S rows
+  /// and the V row are rows of ONE track-axis selection, so starting one
+  /// here is what takes it off the cut row.
+  final ValueListenable<TrackFrameRangeSelection?> selectedRange;
+
+  /// A select-drag step on the track's GLOBAL frame axis.
+  final void Function({
+    required LayerId layerId,
+    required int anchorGlobalFrame,
+    required int headGlobalFrame,
+  })
+  onDrag;
+  final VoidCallback onClear;
+}
+
 /// A press on a row's CELLS: the row that was pressed and the track-global
 /// frame under the pointer. The timeline's cell contract (`onSelectLayer` +
 /// `onSelectFrame` on the raw pointer down) stated once for a rail whose
@@ -229,6 +257,7 @@ class StoryboardPanel extends StatefulWidget {
     this.cutPictureVisibleOf,
     this.onToggleCutPictureVisibility,
     this.seCommaDrag,
+    this.seSelect,
     this.onSetAudioClipOffset,
     this.dragPreview,
     this.legend,
@@ -470,6 +499,10 @@ class StoryboardPanel extends StatefulWidget {
   final ValueChanged<CutId>? onToggleCutFx;
   final bool Function(CutId cutId)? cutPictureVisibleOf;
   final ValueChanged<CutId>? onToggleCutPictureVisibility;
+
+  /// Range selection on the S rows — the cut row's hooks one row up, in
+  /// the same track-axis selection. Null keeps the S rows unselectable.
+  final StoryboardSeSelectCallbacks? seSelect;
 
   /// The timeline's comma-drag hooks for the ACTIVE cut's SE blocks (the
   /// session's exposure edge drags are active-cut scoped — other cuts'
@@ -1125,6 +1158,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       audioPeaksFor: widget.audioPeaksFor,
       onRowFramePress: widget.onRowFramePress,
       seCommaDrag: widget.seCommaDrag,
+      seSelect: widget.seSelect,
+      frameGeometry: _frameGeometry,
     );
     return [
       for (var slot = _seSlotCount(track) - 1; slot >= 0; slot--) ...[
@@ -2346,6 +2381,8 @@ class _StoryboardSeRow extends StatelessWidget {
     this.audioPeaksFor,
     this.onRowFramePress,
     this.seCommaDrag,
+    this.seSelect,
+    this.frameGeometry,
   });
 
   final int trackIndex;
@@ -2364,6 +2401,25 @@ class _StoryboardSeRow extends StatelessWidget {
   /// global starts, any cut).
   final StoryboardRowFramePress? onRowFramePress;
   final TimelineCommaDragCallbacks? seCommaDrag;
+
+  /// Range selection on this row — the SAME shared gesture and the same
+  /// track-axis selection the cut row uses, one row up. Null keeps the row
+  /// display-only.
+  final StoryboardSeSelectCallbacks? seSelect;
+
+  /// The panel's live frame-axis geometry, which the shared gesture reads
+  /// to turn a pointer position into a track-global frame.
+  final TimelineFrameGeometryHandle? frameGeometry;
+
+  /// Whether the live selection covers this row at [globalFrame].
+  bool _isSelectedAt(int globalFrame) {
+    final layer = this.layer;
+    final selection = seSelect?.selectedRange.value;
+    return layer != null &&
+        selection != null &&
+        selection.coversRow(LayerRowAddress(layer.id)) &&
+        selection.contains(globalFrame);
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -2487,6 +2543,45 @@ class _StoryboardSeRow extends StatelessWidget {
       // landed the playhead on its START — neither is what a timeline cell
       // does. Translucent and mounted BEFORE the grips, so the edges keep
       // comma-drag priority…
+      // The selection wash — colour only, over the row's content the way
+      // the timeline's selected cells tint their paper.
+      final seSelect = this.seSelect;
+      if (seSelect != null) {
+        spans.add(
+          Positioned.fill(
+            key: ValueKey<String>('storyboard-se-selection-${layer.id}'),
+            child: IgnorePointer(
+              child: ValueListenableBuilder<TrackFrameRangeSelection?>(
+                valueListenable: seSelect.selectedRange,
+                builder: (context, selection, _) {
+                  if (selection == null ||
+                      !selection.coversRow(LayerRowAddress(layer.id)) ||
+                      timelineScale.pixelsPerFrame <= 0) {
+                    return const SizedBox.shrink();
+                  }
+                  return Stack(
+                    children: [
+                      Positioned(
+                        left: timelineScale.leftForFrame(selection.startFrame),
+                        top: 0,
+                        bottom: 0,
+                        width:
+                            selection.lengthFrames *
+                            timelineScale.pixelsPerFrame,
+                        child: ColoredBox(
+                          color: timelineSelectedFrameBorderColor.withValues(
+                            alpha: 0.28,
+                          ),
+                        ),
+                      ),
+                    ],
+                  );
+                },
+              ),
+            ),
+          ),
+        );
+      }
       if (onRowFramePress != null) {
         spans.add(
           Positioned.fill(
@@ -2507,6 +2602,44 @@ class _StoryboardSeRow extends StatelessWidget {
                       .floor(),
                 );
               },
+            ),
+          ),
+        );
+      }
+      // THE range gesture — the timeline's, the same one the cut row
+      // mounts, addressed to this LAYER row. It states track-global frames
+      // because that is the axis this row draws in: the cut-local display
+      // clone the timeline shows is windowed to the active cut, so a sound
+      // two cuts away has no local index to be selected by. Mounted UNDER
+      // the grips so the edges keep comma-drag priority.
+      final geometry = frameGeometry;
+      if (seSelect != null && geometry != null) {
+        spans.add(
+          TimelineFrameRangeGestureLayer(
+            // The SLOT key (R12-③): the layer already positions itself, so
+            // it goes into the Stack bare — a Positioned around it would be
+            // a second ParentDataWidget on the same render object.
+            key: ValueKey<String>(
+              'storyboard-se-range-gesture-slot-${layer.id}',
+            ),
+            row: LayerRowAddress(layer.id),
+            geometry: geometry,
+            crossAxisExtent: _seRowHeight,
+            callbacks: TimelineRangeGestureCallbacks(
+              isInSelection: (_, frame) => _isSelectedAt(frame),
+              onSelectUpdate: (_, anchorIndex, headIndex, _) => seSelect.onDrag(
+                layerId: layer.id,
+                anchorGlobalFrame: anchorIndex,
+                headGlobalFrame: headIndex,
+              ),
+              onTapClear: (_) => seSelect.onClear(),
+              // MOVING a sound along the global axis is not wired yet: the
+              // row selects and the push/pull buttons shift, which is the
+              // grammar this round set out to give it.
+              onMoveBegin: (_, _) => false,
+              onMoveUpdate: (_, _) {},
+              onMoveEnd: () {},
+              onMoveCancel: () {},
             ),
           ),
         );

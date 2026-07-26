@@ -568,6 +568,16 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                 cutPictureVisibleOf: _session.isCutPictureVisible,
                 onToggleCutPictureVisibility:
                     _session.toggleCutPictureVisibility,
+                // S-row range selection: the SAME track-axis selection the
+                // cut row paints, one row up. The timeline mounts its range
+                // gesture on every layer row (UI-R20 #2) and these rows had
+                // none, which is the last place the two panels' cells still
+                // behaved differently.
+                seSelect: StoryboardSeSelectCallbacks(
+                  selectedRange: _session.trackFrameRangeSelection,
+                  onDrag: _session.updateTrackSeRangeSelectionByFrame,
+                  onClear: _session.clearStoryboardCutSelection,
+                ),
                 // The ACTIVE cut's SE blocks reuse the timeline's comma
                 // edge grips (live preview + ONE undo per drag).
                 // The strip passes GLOBAL block starts (UI-R7 #5: every
