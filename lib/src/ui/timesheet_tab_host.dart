@@ -273,7 +273,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
         ),
       AppIconButton(
         keyValue: 'timesheet-info-button',
-        tooltip: 'Sheet Info',
+        tooltip: AppText.strings.sheetInfoTitle,
         icon: const Icon(Icons.edit_note),
         size: AppIconButtonSize.strip,
         onPressed: _editSheetInfo,
@@ -323,7 +323,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
       ),
       AppIconButton(
         keyValue: 'timesheet-page-prev-button',
-        tooltip: 'Previous Page',
+        tooltip: AppText.strings.sheetPreviousPage,
         icon: const Icon(Icons.chevron_left),
         onPressed: paged && page > 0 ? () => _turnToPage(page - 1) : null,
       ),
@@ -331,7 +331,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
         keyValue: 'timesheet-page-label',
         inputKeyValue: 'timesheet-page-input',
         text: layout?.pageLabel(page) ?? '-',
-        tooltip: 'Page (drag / double-tap)',
+        tooltip: AppText.strings.sheetPageDrag,
         width: 40,
         textStyle: const TextStyle(fontSize: 11),
         // One page per 8px of drag: the readout is 40px wide, so a
@@ -354,7 +354,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
       ),
       AppIconButton(
         keyValue: 'timesheet-page-next-button',
-        tooltip: 'Next Page',
+        tooltip: AppText.strings.sheetNextPage,
         icon: const Icon(Icons.chevron_right),
         onPressed: paged && page < pageCount - 1
             ? () => _turnToPage(page + 1)

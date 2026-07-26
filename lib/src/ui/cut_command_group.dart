@@ -4,6 +4,7 @@ import 'cut/cut_note_dialog.dart';
 import 'dialogs/canvas_size_dialog.dart';
 import 'dialogs/rename_cut_dialog.dart';
 import 'editor_session_manager.dart';
+import 'text/app_strings.dart';
 import 'widgets/panel_flyout.dart';
 import 'widgets/split_icon_button.dart';
 
@@ -73,16 +74,16 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
 
   List<PanelFlyoutEntry> _addEntries() {
     return [
-      const PanelFlyoutHeader('Add cut'),
+      PanelFlyoutHeader(AppText.strings.cutAddCut),
       PanelFlyoutItem(
         keyValue: 'add-cut-new',
-        label: 'New cut',
+        label: AppText.strings.cutNewCut,
         icon: Icons.add,
         onSelected: session.createCut,
       ),
       PanelFlyoutItem(
         keyValue: 'add-cut-duplicate',
-        label: 'Duplicate active cut',
+        label: AppText.strings.cutDuplicateActive,
         icon: Icons.content_copy,
         onSelected: session.duplicateActiveCut,
       ),
@@ -93,26 +94,26 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
     return [
       PanelFlyoutItem(
         keyValue: 'rename-cut-button',
-        label: 'Rename cut…',
+        label: AppText.strings.cutRename,
         icon: Icons.edit_outlined,
         onSelected: _renameActiveCut,
       ),
       PanelFlyoutItem(
         keyValue: 'edit-cut-note-button',
-        label: 'Edit cut note…',
+        label: AppText.strings.cutEditNote,
         icon: Icons.note_alt_outlined,
         onSelected: _editActiveCutNote,
       ),
       PanelFlyoutItem(
         keyValue: 'resize-cut-canvas-button',
-        label: 'Canvas size…',
+        label: AppText.strings.canvasSizeTitle,
         icon: Icons.aspect_ratio,
         onSelected: _resizeActiveCutCanvas,
       ),
       const PanelFlyoutDivider(),
       PanelFlyoutItem(
         keyValue: 'duplicate-cut-button',
-        label: 'Duplicate cut',
+        label: AppText.strings.cutDuplicateCut,
         icon: Icons.content_copy,
         onSelected: session.duplicateActiveCut,
       ),
@@ -130,14 +131,14 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
       const PanelFlyoutDivider(),
       PanelFlyoutItem(
         keyValue: 'move-cut-left-button',
-        label: 'Move cut left',
+        label: AppText.strings.cutMoveLeft,
         icon: Icons.chevron_left,
         enabled: session.canMoveActiveCutLeft,
         onSelected: session.moveActiveCutLeft,
       ),
       PanelFlyoutItem(
         keyValue: 'move-cut-right-button',
-        label: 'Move cut right',
+        label: AppText.strings.cutMoveRight,
         icon: Icons.chevron_right,
         enabled: session.canMoveActiveCutRight,
         onSelected: session.moveActiveCutRight,
@@ -145,7 +146,7 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
       const PanelFlyoutDivider(),
       PanelFlyoutItem(
         keyValue: 'delete-cut-button',
-        label: 'Delete cut',
+        label: AppText.strings.cutDelete,
         icon: Icons.delete_outline,
         danger: true,
         onSelected: session.deleteActiveCut,
@@ -162,7 +163,7 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
           buttonKey: 'new-cut-button',
           menuKey: 'new-cut-menu',
           icon: Icons.add_photo_alternate_outlined,
-          tooltip: 'New cut',
+          tooltip: AppText.strings.cutNewCut,
           onPressed: session.createCut,
           entriesBuilder: _addEntries,
         ),
@@ -170,7 +171,7 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
         PanelFlyoutButton(
           key: const ValueKey<String>('cut-menu-button'),
           label: 'Cut',
-          tooltip: 'Cut commands',
+          tooltip: AppText.strings.cutCommands,
           entriesBuilder: _menuEntries,
         ),
       ],

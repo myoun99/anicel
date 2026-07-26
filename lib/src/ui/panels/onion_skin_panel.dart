@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/onion_skin_settings.dart';
+import '../text/app_strings.dart';
 import '../theme/app_theme.dart';
 import '../widgets/color_swatch_button.dart';
 import '../widgets/panel_flyout.dart';
@@ -55,7 +56,7 @@ class OnionSkinPanel extends StatelessWidget {
                 child: PanelFlyoutButton(
                   key: const ValueKey<String>('onion-step-button'),
                   label: _stepLabel(settings.step),
-                  tooltip: 'What one peg counts',
+                  tooltip: AppText.strings.onionPegCountHelp,
                   expand: true,
                   entriesBuilder: () => [
                     for (final step in OnionSkinStep.values)
@@ -77,7 +78,7 @@ class OnionSkinPanel extends StatelessWidget {
                 child: PanelFlyoutButton(
                   key: const ValueKey<String>('onion-mode-button'),
                   label: _modeLabel(settings.mode),
-                  tooltip: 'How the ghosts are colored',
+                  tooltip: AppText.strings.onionGhostColorHelp,
                   expand: true,
                   entriesBuilder: () => [
                     for (final mode in OnionSkinMode.values)
@@ -94,8 +95,8 @@ class OnionSkinPanel extends StatelessWidget {
               const SizedBox(width: 8),
               ColorSwatchButton(
                 keyValue: 'onion-tint-before',
-                title: 'Before',
-                tooltip: 'Before tint',
+                title: AppText.strings.onionBefore,
+                tooltip: AppText.strings.onionBeforeTint,
                 color: settings.tintBefore,
                 onChanged: (color) =>
                     onChanged(settings.copyWith(tintBefore: color)),
@@ -103,8 +104,8 @@ class OnionSkinPanel extends StatelessWidget {
               const SizedBox(width: 6),
               ColorSwatchButton(
                 keyValue: 'onion-tint-after',
-                title: 'After',
-                tooltip: 'After tint',
+                title: AppText.strings.onionAfter,
+                tooltip: AppText.strings.onionAfterTint,
                 color: settings.tintAfter,
                 onChanged: (color) =>
                     onChanged(settings.copyWith(tintAfter: color)),

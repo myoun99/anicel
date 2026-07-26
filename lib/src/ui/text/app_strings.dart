@@ -444,6 +444,70 @@ class AppStrings {
   String get tlArtLayer => _s('tlArtLayer');
   String get tlStoryboardLayer => _s('tlStoryboardLayer');
 
+  // --- The cut command group ---
+  String get cutCommands => _s('cutCommands');
+  String get cutAddCut => _s('cutAddCut');
+  String get cutNewCut => _s('cutNewCut');
+  String get cutDuplicateCut => _s('cutDuplicateCut');
+  String get cutDuplicateActive => _s('cutDuplicateActive');
+  String get cutRename => _s('cutRename');
+  String get cutEditNote => _s('cutEditNote');
+  String get cutMoveLeft => _s('cutMoveLeft');
+  String get cutMoveRight => _s('cutMoveRight');
+  String get cutDelete => _s('cutDelete');
+
+  // --- The media browser ---
+  String get mediaActions => _s('mediaActions');
+  String get mediaImportAudio => _s('mediaImportAudio');
+  String get mediaRename => _s('mediaRename');
+  String get mediaRelink => _s('mediaRelink');
+  String get mediaRemove => _s('mediaRemove');
+  String get mediaStillLinked => _s('mediaStillLinked');
+
+  // --- Workspace panel names ---
+  String get panelCanvas => _s('panelCanvas');
+  String get panelColor => _s('panelColor');
+  String get panelMedia => _s('panelMedia');
+  String get panelOnionSkin => _s('panelOnionSkin');
+  String get panelStoryboard => _s('panelStoryboard');
+  String get panelTimeline => _s('panelTimeline');
+  String get panelTimesheet => _s('panelTimesheet');
+  String get panelToolLibrary => _s('panelToolLibrary');
+  String get panelToolSettings => _s('panelToolSettings');
+  String get panelTools => _s('panelTools');
+
+  // --- The onion skin panel ---
+  String get onionBefore => _s('onionBefore');
+  String get onionAfter => _s('onionAfter');
+  String get onionBeforeTint => _s('onionBeforeTint');
+  String get onionAfterTint => _s('onionAfterTint');
+  String get onionGhostColorHelp => _s('onionGhostColorHelp');
+  String get onionPegCountHelp => _s('onionPegCountHelp');
+
+  // --- The shortcut editor ---
+  String get shortcutTitle => _s('shortcutTitle');
+  String get shortcutResetAll => _s('shortcutResetAll');
+  String get shortcutResetToDefault => _s('shortcutResetToDefault');
+  String get shortcutRecordNew => _s('shortcutRecordNew');
+  String get shortcutTouch => _s('shortcutTouch');
+  String get shortcutSearch => _s('shortcutSearch');
+  String get shortcutConflictBanner => _s('shortcutConflictBanner');
+  String get shortcutRecordingHint => _s('shortcutRecordingHint');
+
+  // --- Playback transport and the sheet page rail ---
+  String get playbackQuality => _s('playbackQuality');
+  String get playbackStop => _s('playbackStop');
+  String get playbackToStart => _s('playbackToStart');
+  String get sheetPreviousPage => _s('sheetPreviousPage');
+  String get sheetNextPage => _s('sheetNextPage');
+  String get sheetPageDrag => _s('sheetPageDrag');
+
+  // --- Autosave settings ---
+  String get autosaveTitle => _s('autosaveTitle');
+  String get autosaveChoose => _s('autosaveChoose');
+  String get autosaveDefault => _s('autosaveDefault');
+  String get autosaveSidecarFolder => _s('autosaveSidecarFolder');
+
   // --- The export window ---
   String get exExport => _s('exExport');
   String get exAddToQueue => _s('exAddToQueue');
@@ -909,6 +973,58 @@ class AppStrings {
     'instructionEndLabel': 'End name (B)',
     'instructionMemoLabel': 'Memo (timesheet memo band)',
     'instructionEditSetButton': 'Edit instructions…',
+    'cutCommands': 'Cut commands',
+    'cutAddCut': 'Add cut',
+    'cutNewCut': 'New cut',
+    'cutDuplicateCut': 'Duplicate cut',
+    'cutDuplicateActive': 'Duplicate active cut',
+    'cutRename': 'Rename cut…',
+    'cutEditNote': 'Edit cut note…',
+    'cutMoveLeft': 'Move cut left',
+    'cutMoveRight': 'Move cut right',
+    'cutDelete': 'Delete cut',
+    'mediaActions': 'Media actions',
+    'mediaImportAudio': 'Import audio',
+    'mediaRename': 'Rename media',
+    'mediaRelink': 'Relink…',
+    'mediaRemove': 'Remove',
+    'mediaStillLinked':
+        'Still linked on SE rows — remove its sounds first.',
+    'panelCanvas': 'Canvas',
+    'panelColor': 'Color',
+    'panelMedia': 'Media',
+    'panelOnionSkin': 'Onion skin',
+    'panelStoryboard': 'Storyboard',
+    'panelTimeline': 'Timeline',
+    'panelTimesheet': 'Timesheet',
+    'panelToolLibrary': 'Tool library',
+    'panelToolSettings': 'Tool settings',
+    'panelTools': 'Tools',
+    'onionBefore': 'Before',
+    'onionAfter': 'After',
+    'onionBeforeTint': 'Before tint',
+    'onionAfterTint': 'After tint',
+    'onionGhostColorHelp': 'How the ghosts are colored',
+    'onionPegCountHelp': 'What one peg counts',
+    'shortcutTitle': 'Keyboard shortcuts',
+    'shortcutResetAll': 'Reset all',
+    'shortcutResetToDefault': 'Reset to default',
+    'shortcutRecordNew': 'Record new shortcut',
+    'shortcutTouch': 'Touch shortcut',
+    'shortcutSearch': 'Search actions',
+    'shortcutConflictBanner':
+        'Some actions share the same key — the highlighted bindings collide.',
+    'shortcutRecordingHint': 'Press keys… (Esc cancels)',
+    'playbackQuality': 'Playback quality',
+    'playbackStop': 'Stop',
+    'playbackToStart': 'To start',
+    'sheetPreviousPage': 'Previous page',
+    'sheetNextPage': 'Next page',
+    'sheetPageDrag': 'Page (drag / double-tap)',
+    'autosaveTitle': 'Autosave',
+    'autosaveChoose': 'Choose…',
+    'autosaveDefault': 'Default',
+    'autosaveSidecarFolder': 'Keep sidecars in a separate folder',
     'exExport': 'Export',
     'exAddToQueue': 'Add to queue',
     'exImage': 'Image',
@@ -1454,6 +1570,58 @@ class AppStrings {
     'shortcutAction.timeline-comma-3': '3コマに設定',
     'shortcutAction.timeline-comma-4': '4コマに設定',
     'shortcutAction.timeline-comma-n': 'Nコマに設定…',
+    'cutCommands': 'カット操作',
+    'cutAddCut': 'カットを追加',
+    'cutNewCut': 'カットを新規作成',
+    'cutDuplicateCut': 'カットを複製',
+    'cutDuplicateActive': 'アクティブなカットを複製',
+    'cutRename': 'カット名を変更…',
+    'cutEditNote': 'カットメモを編集…',
+    'cutMoveLeft': 'カットを左へ',
+    'cutMoveRight': 'カットを右へ',
+    'cutDelete': 'カットを削除',
+    'mediaActions': 'メディア操作',
+    'mediaImportAudio': '音声を読み込み',
+    'mediaRename': 'メディア名を変更',
+    'mediaRelink': '再リンク…',
+    'mediaRemove': '削除',
+    'mediaStillLinked': 'SE行でまだ使われています — 先に音を外してください。',
+    'panelCanvas': 'カンバス',
+    'panelColor': 'カラー',
+    'panelMedia': 'メディア',
+    'panelOnionSkin': 'オニオンスキン',
+    'panelStoryboard': '絵コンテ',
+    'panelTimeline': 'タイムライン',
+    'panelTimesheet': 'タイムシート',
+    'panelToolLibrary': 'ツールライブラリ',
+    'panelToolSettings': 'ツール設定',
+    'panelTools': 'ツール',
+    'onionBefore': '前',
+    'onionAfter': '後',
+    'onionBeforeTint': '前の色',
+    'onionAfterTint': '後の色',
+    'onionGhostColorHelp': 'ゴーストの色付け方',
+    'onionPegCountHelp': '1段が数えるもの',
+    'shortcutTitle': 'キーボードショートカット',
+    'shortcutResetAll': 'すべてリセット',
+    'shortcutResetToDefault': '既定に戻す',
+    'shortcutRecordNew': '新しいショートカットを記録',
+    'shortcutTouch': 'タッチショートカット',
+    'shortcutSearch': 'アクションを検索',
+    'shortcutConflictBanner':
+        '同じキーを共有しているアクションがあります — 強調された割り当てが'
+        '衝突しています。',
+    'shortcutRecordingHint': 'キーを押してください…（Escで中止）',
+    'playbackQuality': '再生品質',
+    'playbackStop': '停止',
+    'playbackToStart': '先頭へ',
+    'sheetPreviousPage': '前のページ',
+    'sheetNextPage': '次のページ',
+    'sheetPageDrag': 'ページ（ドラッグ / ダブルタップ）',
+    'autosaveTitle': '自動保存',
+    'autosaveChoose': '選択…',
+    'autosaveDefault': '既定',
+    'autosaveSidecarFolder': 'サイドカーを別フォルダに置く',
     'exExport': '書き出し',
     'exAddToQueue': 'キューに追加',
     'exImage': '画像',
@@ -1999,6 +2167,57 @@ class AppStrings {
     'shortcutAction.timeline-comma-3': '3코마로 설정',
     'shortcutAction.timeline-comma-4': '4코마로 설정',
     'shortcutAction.timeline-comma-n': 'N코마로 설정…',
+    'cutCommands': '컷 명령',
+    'cutAddCut': '컷 추가',
+    'cutNewCut': '새 컷',
+    'cutDuplicateCut': '컷 복제',
+    'cutDuplicateActive': '활성 컷 복제',
+    'cutRename': '컷 이름 변경…',
+    'cutEditNote': '컷 메모 편집…',
+    'cutMoveLeft': '컷 왼쪽으로',
+    'cutMoveRight': '컷 오른쪽으로',
+    'cutDelete': '컷 삭제',
+    'mediaActions': '미디어 작업',
+    'mediaImportAudio': '오디오 불러오기',
+    'mediaRename': '미디어 이름 변경',
+    'mediaRelink': '다시 연결…',
+    'mediaRemove': '제거',
+    'mediaStillLinked': 'SE 행에서 아직 쓰이고 있습니다 — 소리를 먼저 빼세요.',
+    'panelCanvas': '캔버스',
+    'panelColor': '색',
+    'panelMedia': '미디어',
+    'panelOnionSkin': '어니언 스킨',
+    'panelStoryboard': '콘티',
+    'panelTimeline': '타임라인',
+    'panelTimesheet': '타임시트',
+    'panelToolLibrary': '도구 라이브러리',
+    'panelToolSettings': '도구 설정',
+    'panelTools': '도구',
+    'onionBefore': '이전',
+    'onionAfter': '이후',
+    'onionBeforeTint': '이전 색',
+    'onionAfterTint': '이후 색',
+    'onionGhostColorHelp': '고스트에 색을 입히는 방식',
+    'onionPegCountHelp': '한 칸이 세는 단위',
+    'shortcutTitle': '키보드 단축키',
+    'shortcutResetAll': '모두 초기화',
+    'shortcutResetToDefault': '기본값으로',
+    'shortcutRecordNew': '새 단축키 기록',
+    'shortcutTouch': '터치 단축키',
+    'shortcutSearch': '동작 검색',
+    'shortcutConflictBanner':
+        '같은 키를 쓰는 동작이 있습니다 — 강조된 할당이 충돌합니다.',
+    'shortcutRecordingHint': '키를 누르세요… (Esc로 취소)',
+    'playbackQuality': '재생 품질',
+    'playbackStop': '정지',
+    'playbackToStart': '처음으로',
+    'sheetPreviousPage': '이전 페이지',
+    'sheetNextPage': '다음 페이지',
+    'sheetPageDrag': '페이지 (드래그 / 더블탭)',
+    'autosaveTitle': '자동 저장',
+    'autosaveChoose': '선택…',
+    'autosaveDefault': '기본',
+    'autosaveSidecarFolder': '사이드카를 별도 폴더에 보관',
     'exExport': '내보내기',
     'exAddToQueue': '큐에 추가',
     'exImage': '이미지',
@@ -2560,6 +2779,60 @@ class AppStrings {
     'shortcutAction.timeline-comma-3': 'Régler sur 3 commas',
     'shortcutAction.timeline-comma-4': 'Régler sur 4 commas',
     'shortcutAction.timeline-comma-n': 'Régler sur N commas…',
+    'cutCommands': 'Commandes de plan',
+    'cutAddCut': 'Ajouter un plan',
+    'cutNewCut': 'Nouveau plan',
+    'cutDuplicateCut': 'Dupliquer le plan',
+    'cutDuplicateActive': 'Dupliquer le plan actif',
+    'cutRename': 'Renommer le plan…',
+    'cutEditNote': 'Modifier la note du plan…',
+    'cutMoveLeft': 'Déplacer le plan à gauche',
+    'cutMoveRight': 'Déplacer le plan à droite',
+    'cutDelete': 'Supprimer le plan',
+    'mediaActions': 'Actions média',
+    'mediaImportAudio': "Importer de l'audio",
+    'mediaRename': 'Renommer le média',
+    'mediaRelink': 'Relier…',
+    'mediaRemove': 'Retirer',
+    'mediaStillLinked':
+        "Encore lié sur des lignes SE — retirez d'abord ses sons.",
+    'panelCanvas': 'Canevas',
+    'panelColor': 'Couleur',
+    'panelMedia': 'Médias',
+    'panelOnionSkin': "Pelure d'oignon",
+    'panelStoryboard': 'Storyboard',
+    'panelTimeline': 'Timeline',
+    'panelTimesheet': 'Feuille de temps',
+    'panelToolLibrary': "Bibliothèque d'outils",
+    'panelToolSettings': "Réglages de l'outil",
+    'panelTools': 'Outils',
+    'onionBefore': 'Avant',
+    'onionAfter': 'Après',
+    'onionBeforeTint': 'Teinte avant',
+    'onionAfterTint': 'Teinte après',
+    'onionGhostColorHelp': 'Comment les fantômes sont colorés',
+    'onionPegCountHelp': 'Ce que compte un cran',
+    'shortcutTitle': 'Raccourcis clavier',
+    'shortcutResetAll': 'Tout réinitialiser',
+    'shortcutResetToDefault': 'Rétablir le défaut',
+    'shortcutRecordNew': 'Enregistrer un nouveau raccourci',
+    'shortcutTouch': 'Raccourci tactile',
+    'shortcutSearch': 'Rechercher une action',
+    'shortcutConflictBanner':
+        'Certaines actions partagent la même touche — les assignations '
+        'surlignées entrent en conflit.',
+    'shortcutRecordingHint': 'Appuyez sur des touches… (Échap annule)',
+    'playbackQuality': 'Qualité de lecture',
+    'playbackStop': 'Arrêter',
+    'playbackToStart': 'Au début',
+    'sheetPreviousPage': 'Page précédente',
+    'sheetNextPage': 'Page suivante',
+    'sheetPageDrag': 'Page (glisser / double-tap)',
+    'autosaveTitle': 'Sauvegarde automatique',
+    'autosaveChoose': 'Choisir…',
+    'autosaveDefault': 'Par défaut',
+    'autosaveSidecarFolder':
+        'Garder les fichiers annexes dans un dossier séparé',
     'exExport': 'Exporter',
     'exAddToQueue': 'Ajouter à la file',
     'exImage': 'Image',
@@ -3093,6 +3366,56 @@ class AppStrings {
     'shortcutAction.timeline-comma-3': '设为 3 格',
     'shortcutAction.timeline-comma-4': '设为 4 格',
     'shortcutAction.timeline-comma-n': '设为 N 格…',
+    'cutCommands': '镜头命令',
+    'cutAddCut': '添加镜头',
+    'cutNewCut': '新建镜头',
+    'cutDuplicateCut': '复制镜头',
+    'cutDuplicateActive': '复制当前镜头',
+    'cutRename': '重命名镜头…',
+    'cutEditNote': '编辑镜头备注…',
+    'cutMoveLeft': '镜头左移',
+    'cutMoveRight': '镜头右移',
+    'cutDelete': '删除镜头',
+    'mediaActions': '媒体操作',
+    'mediaImportAudio': '导入音频',
+    'mediaRename': '重命名媒体',
+    'mediaRelink': '重新链接…',
+    'mediaRemove': '移除',
+    'mediaStillLinked': 'SE 行仍在使用 — 请先移除它的声音。',
+    'panelCanvas': '画布',
+    'panelColor': '颜色',
+    'panelMedia': '媒体',
+    'panelOnionSkin': '洋葱皮',
+    'panelStoryboard': '分镜',
+    'panelTimeline': '时间轴',
+    'panelTimesheet': '摄影表',
+    'panelToolLibrary': '工具库',
+    'panelToolSettings': '工具设置',
+    'panelTools': '工具',
+    'onionBefore': '之前',
+    'onionAfter': '之后',
+    'onionBeforeTint': '之前色调',
+    'onionAfterTint': '之后色调',
+    'onionGhostColorHelp': '残影的着色方式',
+    'onionPegCountHelp': '一格所计的单位',
+    'shortcutTitle': '键盘快捷键',
+    'shortcutResetAll': '全部重置',
+    'shortcutResetToDefault': '恢复默认',
+    'shortcutRecordNew': '录制新快捷键',
+    'shortcutTouch': '触摸快捷方式',
+    'shortcutSearch': '搜索动作',
+    'shortcutConflictBanner': '有动作共用同一按键 — 高亮的绑定发生冲突。',
+    'shortcutRecordingHint': '请按键…（Esc 取消）',
+    'playbackQuality': '播放质量',
+    'playbackStop': '停止',
+    'playbackToStart': '回到开头',
+    'sheetPreviousPage': '上一页',
+    'sheetNextPage': '下一页',
+    'sheetPageDrag': '页面（拖动 / 双击）',
+    'autosaveTitle': '自动保存',
+    'autosaveChoose': '选择…',
+    'autosaveDefault': '默认',
+    'autosaveSidecarFolder': '将附属文件放在单独文件夹',
     'exExport': '导出',
     'exAddToQueue': '加入队列',
     'exImage': '图像',

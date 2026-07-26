@@ -114,7 +114,7 @@ class PlaybackTransportControls extends StatelessWidget {
           children: [
             IconButton(
               key: const ValueKey<String>('playback-skip-to-start-button'),
-              tooltip: 'To start',
+              tooltip: AppText.strings.playbackToStart,
               iconSize: 18,
               visualDensity: VisualDensity.compact,
               icon: const Icon(Icons.skip_previous),
@@ -220,7 +220,7 @@ class PlaybackTransportControls extends StatelessWidget {
               ),
             PopupMenuButton<PlaybackQuality>(
               key: const ValueKey<String>('playback-quality-selector'),
-              tooltip: 'Playback quality',
+              tooltip: AppText.strings.playbackQuality,
               popUpAnimationStyle: instantMenuAnimation,
               initialValue: quality,
               onSelected: onQualityChanged,

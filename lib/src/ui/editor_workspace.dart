@@ -53,6 +53,7 @@ import 'storyboard_tab_host.dart';
 import '../models/canvas_viewport.dart';
 import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart' show TimelinePanel;
+import 'text/app_strings.dart';
 import 'timeline_tab_host.dart';
 import 'timesheet/timesheet_ink_controller.dart';
 import 'timesheet_tab_host.dart';
@@ -782,7 +783,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         // remembers its own selection), selection tools their variants.
         return EditorPanelTab(
           id: tabId,
-          label: 'Tool Library',
+          label: AppText.strings.panelToolLibrary,
           icon: Icons.brush_outlined,
           locked: locked,
           // Sliced (R18 UI-1) + per-tool keep-alive (R18 UI-4): the
@@ -848,7 +849,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         // tool's detailed knobs.
         return EditorPanelTab(
           id: tabId,
-          label: 'Tool Settings',
+          label: AppText.strings.panelToolSettings,
           icon: Icons.tune,
           locked: locked,
           // Per-tool keep-alive (R18 UI-4): switching back to a tool whose
@@ -975,7 +976,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       case EditorWorkspace.onionSkinTabId:
         return EditorPanelTab(
           id: tabId,
-          label: 'Onion Skin',
+          label: AppText.strings.panelOnionSkin,
           icon: Icons.layers_outlined,
           locked: locked,
           builder: (context) => ValueListenableBuilder<OnionSkinSettings>(
