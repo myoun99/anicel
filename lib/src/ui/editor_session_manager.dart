@@ -58,6 +58,7 @@ import '../models/project.dart';
 import '../models/project_frame_rate.dart';
 import '../models/row_block_shift.dart';
 import '../models/property_track.dart';
+import '../models/range_snap.dart';
 import '../models/timeline_coverage.dart';
 import '../models/timeline_frame_range.dart';
 import '../models/timeline_repeat.dart';
@@ -6247,6 +6248,43 @@ class EditorSessionManager extends ChangeNotifier {
     if (trackFrameRangeSelection.value != null) {
       trackFrameRangeSelection.value = null;
     }
+  }
+
+  /// A select-drag step on a track-SE row of the storyboard, stated on the
+  /// track's GLOBAL frame axis.
+  ///
+  /// The SAME selection the cut row paints — one axis, several rows. It
+  /// cannot be the timeline's cut-local selection: the display clone the
+  /// timeline shows is WINDOWED to the active cut, so a sound two cuts away
+  /// has no cut-local address to be selected by. The snap runs on the
+  /// GLOBAL layer, which is also the layer any edit would commit against.
+  void updateTrackSeRangeSelectionByFrame({
+    required LayerId layerId,
+    required int anchorGlobalFrame,
+    required int headGlobalFrame,
+  }) {
+    final layer = trackSeGlobalLayerById(layerId);
+    if (layer == null) {
+      return;
+    }
+    final span = snapSpanToBlocks(
+      lanes: [(index) => exposureBlockAt(layer, index)],
+      anchorIndex: anchorGlobalFrame,
+      headIndex: headGlobalFrame,
+    );
+    if (span == null) {
+      trackFrameRangeSelection.value = null;
+      return;
+    }
+    // Starting a TRACK-axis selection clears the cut-local one (the same
+    // exclusion the cut row's entry point applies).
+    clearFrameRangeSelection();
+    trackFrameRangeSelection.value = TrackFrameRangeSelection(
+      trackId: selectedTrackId,
+      anchorRow: LayerRowAddress(layerId),
+      startFrame: span.startIndex,
+      endFrameExclusive: span.endIndexExclusive,
+    );
   }
 
   /// The selection filtered to cuts that still EXIST — nothing to filter
