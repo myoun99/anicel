@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import 'brush_tool_state.dart';
+import '../text/app_strings.dart';
 
 /// The Photoshop/Clip-Studio style tool switcher (brush ⇄ eraser): a
 /// dockable PANEL whose home is a slim vertical edge dock, so it lives on
@@ -43,7 +44,7 @@ class ToolsPanel extends StatelessWidget {
         children: [
           _ToolButton(
             keyValue: 'tool-brush-button',
-            tooltip: 'Brush Tool',
+            tooltip: AppText.strings.toolBrushTip,
             icon: Icons.brush_outlined,
             selected: tool == CanvasTool.brush,
             onPressed: () => onToolChanged(CanvasTool.brush),
@@ -51,7 +52,7 @@ class ToolsPanel extends StatelessWidget {
           const SizedBox(height: 4),
           _ToolButton(
             keyValue: 'tool-eraser-button',
-            tooltip: 'Eraser Tool',
+            tooltip: AppText.strings.toolEraserTip,
             // No dedicated eraser glyph in this icon set; the "magic
             // eraser" wand reads closest.
             icon: Icons.auto_fix_normal,
@@ -61,7 +62,7 @@ class ToolsPanel extends StatelessWidget {
           const SizedBox(height: 4),
           _ToolButton(
             keyValue: 'tool-eyedropper-button',
-            tooltip: 'Eyedropper Tool',
+            tooltip: AppText.strings.toolEyedropperTip,
             icon: Icons.colorize_outlined,
             selected: tool == CanvasTool.eyedropper,
             onPressed: () => onToolChanged(CanvasTool.eyedropper),
@@ -69,7 +70,7 @@ class ToolsPanel extends StatelessWidget {
           const SizedBox(height: 4),
           _ToolButton(
             keyValue: 'tool-fill-button',
-            tooltip: 'Fill Tool',
+            tooltip: AppText.strings.toolFillTip,
             icon: Icons.format_color_fill_outlined,
             selected: tool == CanvasTool.fill,
             onPressed: () => onToolChanged(CanvasTool.fill),
@@ -79,7 +80,7 @@ class ToolsPanel extends StatelessWidget {
           // tool SETTING, not a separate toolbar entry (유저 채택 설계).
           _ToolButton(
             keyValue: 'tool-select-button',
-            tooltip: 'Select Tool',
+            tooltip: AppText.strings.toolSelectTip,
             icon: Icons.highlight_alt_outlined,
             selected: tool == CanvasTool.selectRect || tool == CanvasTool.lasso,
             onPressed: () => onToolChanged(
@@ -91,7 +92,7 @@ class ToolsPanel extends StatelessWidget {
           const SizedBox(height: 4),
           _ToolButton(
             keyValue: 'tool-move-button',
-            tooltip: 'Move / Transform Tool',
+            tooltip: AppText.strings.toolMoveTip,
             icon: Icons.open_with,
             selected: tool == CanvasTool.move,
             onPressed: () => onToolChanged(CanvasTool.move),

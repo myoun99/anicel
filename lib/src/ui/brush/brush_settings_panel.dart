@@ -8,6 +8,7 @@ import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/pressure_curve_popup.dart';
 import 'brush_tool_state.dart';
+import '../text/app_strings.dart';
 
 /// Editable brush tool properties — the CSP-style GROUPED layout (BB-2,
 /// user-picked candidate B, 07-22): 브러시 크기 / 잉크 / 브러시 끝 /
@@ -62,7 +63,7 @@ class BrushSettingsPanel extends StatelessWidget {
         children: [
           _GroupHeader('Brush size', first: true),
           _PanelSlider(
-            label: 'Size',
+            label: AppText.strings.brSize,
             valueLabel: sizeLabel,
             value: BrushToolState.clampSize(state.size),
             min: BrushToolState.minSize,
@@ -72,12 +73,12 @@ class BrushSettingsPanel extends StatelessWidget {
             scale: FieldSliderScale.exponential,
             keyValue: 'brush-tool-size-slider',
             onChanged: (value) => onChanged(state.copyWith(size: value)),
-            trailing: _pressureButton(BrushPressureTarget.size, 'Size'),
+            trailing: _pressureButton(BrushPressureTarget.size, AppText.strings.brSize),
           ),
           _GroupHeader('Ink'),
           _BlendModeRow(state: state, onChanged: onChanged, language: language),
           _PanelSlider(
-            label: 'Opacity',
+            label: AppText.strings.brOpacity,
             valueLabel: opacityLabel,
             value: BrushToolState.clampOpacity(state.opacity),
             min: 0,
@@ -85,10 +86,10 @@ class BrushSettingsPanel extends StatelessWidget {
             displayFactor: 100,
             keyValue: 'brush-tool-opacity-slider',
             onChanged: (value) => onChanged(state.copyWith(opacity: value)),
-            trailing: _pressureButton(BrushPressureTarget.opacity, 'Opacity'),
+            trailing: _pressureButton(BrushPressureTarget.opacity, AppText.strings.brOpacity),
           ),
           _PanelSlider(
-            label: 'Flow',
+            label: AppText.strings.brFlow,
             valueLabel: flowLabel,
             value: BrushToolState.clampUnit(state.flow),
             min: 0,
@@ -96,11 +97,11 @@ class BrushSettingsPanel extends StatelessWidget {
             displayFactor: 100,
             keyValue: 'brush-tool-flow-slider',
             onChanged: (value) => onChanged(state.copyWith(flow: value)),
-            trailing: _pressureButton(BrushPressureTarget.flow, 'Flow'),
+            trailing: _pressureButton(BrushPressureTarget.flow, AppText.strings.brFlow),
           ),
           _GroupHeader('Brush tip'),
           _PanelSlider(
-            label: 'Hardness',
+            label: AppText.strings.brHardness,
             valueLabel: hardnessLabel,
             value: BrushToolState.clampUnit(state.hardness),
             min: 0,
@@ -110,11 +111,11 @@ class BrushSettingsPanel extends StatelessWidget {
             onChanged: (value) => onChanged(state.copyWith(hardness: value)),
             trailing: _pressureButton(
               BrushPressureTarget.hardness,
-              'Hardness',
+              AppText.strings.brHardness,
             ),
           ),
           _PanelSlider(
-            label: 'Roundness',
+            label: AppText.strings.brRoundness,
             valueLabel: roundnessLabel,
             value: BrushToolState.clampRoundness(state.roundness),
             min: BrushToolState.minRoundness,
@@ -124,7 +125,7 @@ class BrushSettingsPanel extends StatelessWidget {
             onChanged: (value) => onChanged(state.copyWith(roundness: value)),
           ),
           _PanelSlider(
-            label: 'Angle',
+            label: AppText.strings.brAngle,
             valueLabel: angleLabel,
             value: BrushToolState.clampAngleDegrees(state.angleDegrees),
             min: BrushToolState.minAngleDegrees,
@@ -134,7 +135,7 @@ class BrushSettingsPanel extends StatelessWidget {
                 onChanged(state.copyWith(angleDegrees: value)),
           ),
           _PanelSlider(
-            label: 'Spacing',
+            label: AppText.strings.brSpacing,
             valueLabel: spacingLabel,
             value: BrushToolState.clampSpacing(state.spacing),
             min: BrushToolState.minSpacing,
@@ -148,7 +149,7 @@ class BrushSettingsPanel extends StatelessWidget {
           // Pull-string stabilization (P7): a hand-feel setting, kept OUT
           // of brush presets on purpose.
           _PanelSlider(
-            label: 'Stabilizer',
+            label: AppText.strings.brStabilizer,
             valueLabel: '${state.stabilizerStrength.round()}',
             value: BrushToolState.clampStabilizerStrength(
               state.stabilizerStrength,
@@ -258,12 +259,12 @@ class _BlendModeRow extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Text('Blend', style: theme.textTheme.labelSmall),
+            child: Text(AppText.strings.brBlend, style: theme.textTheme.labelSmall),
           ),
           PanelFlyoutButton(
             key: const ValueKey<String>('brush-tool-blend-menu-button'),
             label: mode.labelFor(language),
-            tooltip: 'Brush blend mode',
+            tooltip: AppText.strings.brBlendMode,
             entriesBuilder: () => [
               for (final candidate in BrushBlendMode.values)
                 PanelFlyoutItem(

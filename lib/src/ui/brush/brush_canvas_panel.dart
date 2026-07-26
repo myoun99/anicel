@@ -44,6 +44,7 @@ import 'canvas_viewport_pan_metrics.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/app_scrollbar.dart';
 import '../widgets/drag_value_label.dart';
+import '../text/app_strings.dart';
 
 /// A playback-follow reframe request for [BrushCanvasPanel.autoFrame]:
 /// whenever [token] changes between widget updates the panel reframes the
@@ -1978,7 +1979,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
       if (onRotateCcw != null)
         _barIconButton(
           keyValue: 'canvas-viewport-rotate-ccw',
-          tooltip: 'Rotate View Left',
+          tooltip: AppText.strings.viewRotateLeft,
           icon: const Icon(Icons.rotate_left),
           onPressed: onRotateCcw,
           isSelected: rotationDegrees < 0,
@@ -1987,7 +1988,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
         DragValueLabel(
           keyValue: 'canvas-viewport-rotation-label',
           text: '$rotationDegrees°',
-          tooltip: 'View angle (drag / double-tap)',
+          tooltip: AppText.strings.viewAngleDrag,
           width: 40,
           textStyle: const TextStyle(fontSize: 11),
           onDragDelta: onRotateByDrag!,
@@ -2001,7 +2002,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
       if (onRotateCw != null)
         _barIconButton(
           keyValue: 'canvas-viewport-rotate-cw',
-          tooltip: 'Rotate View Right',
+          tooltip: AppText.strings.viewRotateRight,
           icon: const Icon(Icons.rotate_right),
           onPressed: onRotateCw,
           isSelected: rotationDegrees > 0,
@@ -2009,14 +2010,14 @@ class _CanvasViewportBottomBar extends StatelessWidget {
       if (onRotateReset != null)
         _barIconButton(
           keyValue: 'canvas-viewport-rotate-reset',
-          tooltip: 'Straighten View (0°)',
+          tooltip: AppText.strings.viewStraighten,
           icon: const Icon(Icons.refresh),
           onPressed: onRotateReset,
         ),
       if (onFlipHorizontal != null)
         _barIconButton(
           keyValue: 'canvas-viewport-flip',
-          tooltip: 'Flip View Horizontal',
+          tooltip: AppText.strings.viewFlipHorizontal,
           icon: const Icon(Icons.flip),
           onPressed: onFlipHorizontal,
           isSelected: viewport.flipHorizontal,
@@ -2024,7 +2025,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
       if (onFlipVertical != null)
         _barIconButton(
           keyValue: 'canvas-viewport-flip-vertical',
-          tooltip: 'Flip View Vertical',
+          tooltip: AppText.strings.viewFlipVertical,
           icon: const RotatedBox(quarterTurns: 1, child: Icon(Icons.flip)),
           onPressed: onFlipVertical,
           isSelected: viewport.flipVertical,
@@ -2036,13 +2037,13 @@ class _CanvasViewportBottomBar extends StatelessWidget {
     final zoomCluster = <Widget>[
       _barIconButton(
         keyValue: 'canvas-viewport-fit',
-        tooltip: 'Fit to View',
+        tooltip: AppText.strings.viewFitToView,
         icon: const Icon(Icons.fit_screen),
         onPressed: onFit,
       ),
       _barIconButton(
         keyValue: 'canvas-viewport-reset',
-        tooltip: 'Reset View (100%)',
+        tooltip: AppText.strings.viewResetView,
         icon: const Text(
           '1:1',
           style: TextStyle(
@@ -2055,7 +2056,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
       ),
       _barIconButton(
         keyValue: 'canvas-viewport-zoom-out',
-        tooltip: 'Zoom Out',
+        tooltip: AppText.strings.viewZoomOut,
         icon: const Icon(Icons.zoom_out),
         onPressed: onZoomOut,
       ),
@@ -2063,7 +2064,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
         keyValue: 'canvas-viewport-zoom-label',
         inputKeyValue: 'canvas-viewport-zoom-input',
         text: '${(viewport.zoom * 100).round()}%',
-        tooltip: 'Zoom (drag / double-tap)',
+        tooltip: AppText.strings.viewZoomDrag,
         width: 44,
         textStyle: const TextStyle(fontSize: 12),
         onDragDelta: (units) => onZoomSet(
@@ -2078,7 +2079,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
       ),
       _barIconButton(
         keyValue: 'canvas-viewport-zoom-in',
-        tooltip: 'Zoom In',
+        tooltip: AppText.strings.viewZoomIn,
         icon: const Icon(Icons.zoom_in),
         onPressed: onZoomIn,
       ),
@@ -2103,7 +2104,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
         ColorSwatchButton(
           keyValue: 'canvas-paper-color-button',
           title: 'Canvas',
-          tooltip: 'Canvas color',
+          tooltip: AppText.strings.viewCanvasColor,
           color: paperColor,
           onChanged: onPaper,
         ),
@@ -2112,7 +2113,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
         ColorSwatchButton(
           keyValue: 'canvas-pasteboard-color-button',
           title: 'Pasteboard',
-          tooltip: 'Pasteboard color',
+          tooltip: AppText.strings.viewPasteboardColor,
           color: pasteboardColor,
           onChanged: onPasteboard,
         ),
