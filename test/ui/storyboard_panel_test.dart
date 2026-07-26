@@ -13,7 +13,7 @@ import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_block.dart';
+import 'storyboard_cut_block_probe.dart';
 
 void main() {
   testWidgets('the panel body hosts NO cut toolbar (cut commands moved to the '
@@ -29,23 +29,12 @@ void main() {
     expect(find.byKey(const ValueKey<String>('new-cut-button')), findsNothing);
   });
 
-  testWidgets('cut blocks use the shared timeline block primitive', (
-    tester,
-  ) async {
+  testWidgets('the cut row PAINTS its blocks — one painter, no widget per '
+      'cut', (tester) async {
     await _pumpPanel(tester, _project(storyboardLayer: null));
 
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-cut-block-cut-a')),
-      findsOneWidget,
-    );
-    expect(
-      find.byWidgetPredicate(
-        (widget) =>
-            widget is TimelineBlock &&
-            widget.key == const ValueKey<String>('storyboard-cut-block-cut-a'),
-      ),
-      findsOneWidget,
-    );
+    expect(cutBlocksFinder(trackId: 'track-a'), findsOneWidget);
+    expect(requireCutBlock(tester, 'cut-a').title, 'Cut A');
   });
 
   testWidgets('track rows expose timeline areas for cut positioning', (
@@ -149,26 +138,12 @@ void main() {
     );
   });
 
-  testWidgets('cuts are wrapped in positioned timeline entries', (
-    tester,
-  ) async {
+  testWidgets('every cut of the track gets a block', (tester) async {
     await _pumpPanel(tester, _twoCutProject());
 
     expect(
-      find.byKey(const ValueKey<String>('storyboard-cut-positioned-cut-short')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-cut-positioned-cut-long')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-cut-block-cut-short')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-cut-block-cut-long')),
-      findsOneWidget,
+      [for (final block in cutBlocks(tester)) block.cutId.value],
+      ['cut-short', 'cut-long'],
     );
   });
 
@@ -190,22 +165,11 @@ void main() {
       ),
       findsOneWidget,
     );
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-cut-positioned-cut-01')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-cut-block-cut-01')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-cut-positioned-cut-08')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-cut-block-cut-08')),
-      findsOneWidget,
-    );
+    // The row draws what the WINDOW covers (UI-R16's shared policy): the
+    // near cuts, not the ones the viewport cannot reach — which is also
+    // what keeps the thumbnail store from being asked for them.
+    expect(cutBlock(tester, 'cut-01', trackId: 'track-long'), isNotNull);
+    expect(cutBlock(tester, 'cut-08', trackId: 'track-long'), isNull);
   });
 
   testWidgets('second cut is positioned to the right of the first cut', (
@@ -213,22 +177,10 @@ void main() {
   ) async {
     await _pumpPanel(tester, _twoCutProject());
 
-    final firstLeft = tester
-        .getTopLeft(
-          find.byKey(
-            const ValueKey<String>('storyboard-cut-positioned-cut-short'),
-          ),
-        )
-        .dx;
-    final secondLeft = tester
-        .getTopLeft(
-          find.byKey(
-            const ValueKey<String>('storyboard-cut-positioned-cut-long'),
-          ),
-        )
-        .dx;
-
-    expect(secondLeft, greaterThan(firstLeft));
+    expect(
+      requireCutBlock(tester, 'cut-long').rect.left,
+      greaterThan(requireCutBlock(tester, 'cut-short').rect.left),
+    );
   });
 
   testWidgets('shows storyboard shell, V tracks, cut blocks, and empty state', (
@@ -252,27 +204,14 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('V2'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-cut-block-cut-a')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-cut-title-cut-a')),
-      findsOneWidget,
-    );
-    expect(find.text('Cut A'), findsOneWidget);
+
+    final block = requireCutBlock(tester, 'cut-a');
+    expect(block.title, 'Cut A');
     // The conte-sheet TIME column: cumulative time at the cut's end sits
     // bottom-right (the old duration/frame-range row is gone).
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-cut-total-cut-a')),
-      findsOneWidget,
-    );
-    expect(find.text('24'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-layer-empty-cut-a')),
-      findsOneWidget,
-    );
-    expect(find.text('No Storyboard Layer'), findsOneWidget);
+    expect(block.total, '24');
+    expect(block.hasStoryboardLayer, isFalse);
+    expect(block.layerLabel, 'No Storyboard Layer');
   });
 
   testWidgets(
@@ -285,32 +224,17 @@ void main() {
         ),
       );
 
-      expect(
-        find.byKey(const ValueKey<String>('storyboard-layer-strip-cut-a')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey<String>('storyboard-layer-name-cut-a')),
-        findsOneWidget,
-      );
-      expect(find.text('SB'), findsOneWidget);
-      expect(find.text('No Storyboard Layer'), findsNothing);
+      final block = requireCutBlock(tester, 'cut-a');
+      expect(block.hasStoryboardLayer, isTrue);
+      expect(block.layerLabel, 'SB');
     },
   );
 
   testWidgets('shows cumulative end times for sequential cuts', (tester) async {
     await _pumpPanel(tester, _twoCutProject());
 
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-cut-total-cut-short')),
-      findsOneWidget,
-    );
-    expect(find.text('12'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-cut-total-cut-long')),
-      findsOneWidget,
-    );
-    expect(find.text('48'), findsOneWidget);
+    expect(requireCutBlock(tester, 'cut-short').total, '12');
+    expect(requireCutBlock(tester, 'cut-long').total, '48');
   });
 
   testWidgets('tapping inactive cut block calls onCutSelected with cut id', (
@@ -325,9 +249,7 @@ void main() {
       onCutSelected: (cutId) => selectedCutId = cutId,
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('storyboard-cut-block-cut-long')),
-    );
+    await tester.tapAt(cutBlockCenter(tester, 'cut-long'));
     await tester.pumpAndSettle();
 
     expect(selectedCutId, const CutId('cut-long'));
@@ -344,9 +266,7 @@ void main() {
       onCutSelected: selected.add,
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('storyboard-cut-block-cut-short')),
-    );
+    await tester.tapAt(cutBlockCenter(tester, 'cut-short'));
     await tester.pumpAndSettle();
 
     expect(selected, [const CutId('cut-short')]);
@@ -357,19 +277,14 @@ void main() {
   ) async {
     await _pumpPanel(tester, _twoCutProject());
 
-    final shortSize = tester.getSize(
-      find.byKey(const ValueKey<String>('storyboard-cut-block-cut-short')),
+    expect(
+      requireCutBlock(tester, 'cut-long').rect.width,
+      greaterThan(requireCutBlock(tester, 'cut-short').rect.width),
     );
-    final longSize = tester.getSize(
-      find.byKey(const ValueKey<String>('storyboard-cut-block-cut-long')),
-    );
-
-    expect(longSize.width, greaterThan(shortSize.width));
   });
 
-  testWidgets('compact cut blocks keep content vertically overflow-safe', (
-    tester,
-  ) async {
+  testWidgets('a long layer name still fits the block — the label stops at '
+      'its box instead of overflowing it', (tester) async {
     await _pumpPanel(
       tester,
       _project(
@@ -381,22 +296,10 @@ void main() {
     );
 
     expect(tester.takeException(), isNull);
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-cut-title-cut-a')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-cut-total-cut-a')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-layer-strip-cut-a')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-layer-name-cut-a')),
-      findsOneWidget,
-    );
+    final block = requireCutBlock(tester, 'cut-a');
+    expect(block.title, 'Cut A');
+    expect(block.total, isNotNull);
+    expect(block.layerLabel, 'Storyboard Layer With A Long Name');
   });
 
   testWidgets('building the panel does not mutate the project', (tester) async {

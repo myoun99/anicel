@@ -2,7 +2,8 @@ import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show Listenable, ValueListenable;
-import 'package:flutter/gestures.dart' show DragStartBehavior, kPrimaryButton;
+import 'package:flutter/gestures.dart'
+    show DragStartBehavior, PointerHoverEvent, kPrimaryButton;
 import 'package:flutter/material.dart';
 
 import '../models/canvas_point.dart';
@@ -24,6 +25,7 @@ import '../services/audio/audio_peaks_extractor.dart';
 import '../services/cut_frame_composite_plan.dart' show layerIdentityPose;
 import 'audio/waveform_painter.dart';
 import 'storyboard_cut_fade_policy.dart';
+import 'storyboard_cut_blocks_painter.dart';
 import 'storyboard_layer_policy.dart';
 import 'storyboard_timeline_layout.dart';
 import 'theme/app_theme.dart';
@@ -37,7 +39,6 @@ import 'timeline/timeline_lane_rows.dart'
 import 'timeline/timeline_ruler_cursor_overlay.dart';
 import 'timeline/transform_lane_policy.dart'
     show transformGroupHeader, transformGroupHeaderLane, transformPropertyLanes;
-import 'timeline/timeline_block.dart';
 import 'timeline/timeline_drag_preview.dart';
 import 'timeline/timeline_cell_style.dart'
     show timelineBaseGridAlpha, timelineDrawingInkColor;
@@ -57,10 +58,7 @@ import 'timeline/timeline_frame_span_layout.dart'
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
     show TimelineCommaDragCallbacks;
 import 'timeline/timeline_frame_range_policy.dart'
-    show
-        endlessTrailingFrames,
-        endlessViewportFillFrames,
-        timelineDurationLabel;
+    show endlessTrailingFrames, endlessViewportFillFrames;
 import '../models/layer_kind.dart';
 import 'timeline/timeline_frame_ruler.dart';
 import 'timeline/timeline_edge_auto_pan.dart';
@@ -496,6 +494,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// frames between crossings are pure translation.
   final ValueNotifier<int> _horizontalWindowBucket = ValueNotifier<int>(0);
 
+  /// The cut under the pointer. With the blocks painted there is no widget
+  /// per cut to hold a hover state, so this one notifier serves every V
+  /// row and a hover costs a repaint instead of a rebuild.
+  final ValueNotifier<CutId?> _hoveredCutId = ValueNotifier<CutId?>(null);
+
   /// The V rows' frame-axis geometry, as the LIVE handle the shared range
   /// gesture reads at press time (the timeline's rows hold the same kind of
   /// handle). Republished from `build`, which is safe here because nothing
@@ -638,6 +641,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     _horizontalController.dispose();
     _horizontalScrollOffset.dispose();
     _horizontalWindowBucket.dispose();
+    _hoveredCutId.dispose();
     _frameGeometry.dispose();
     super.dispose();
   }
@@ -1052,6 +1056,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           thumbnailFor: widget.thumbnailFor,
           timelineScale: scale,
           frameGeometry: _frameGeometry,
+          hoveredCutId: _hoveredCutId,
+          windowBucket: _horizontalWindowBucket,
+          viewportWidth: _stripViewportWidth,
           showSeconds: widget.showSeconds,
           projectFrameRate: widget.projectFrameRate,
         ),
@@ -1251,14 +1258,15 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         // Viewport paper fill (UI-R12 #16): the strips run to the
         // viewport's right edge — recorded FIRST so the SE strip rows and
         // the body agree on the rendered extent within one build.
+        _stripViewportWidth = constraints.hasBoundedWidth
+            ? (constraints.maxWidth -
+                      StoryboardPanel._trackLabelWidth -
+                      StoryboardPanel._scrollbarLaneWidth)
+                  .clamp(0.0, double.infinity)
+                  .toDouble()
+            : 0.0;
         _viewportFillFrameCells = endlessViewportFillFrames(
-          viewportExtent: constraints.hasBoundedWidth
-              ? (constraints.maxWidth -
-                        StoryboardPanel._trackLabelWidth -
-                        StoryboardPanel._scrollbarLaneWidth)
-                    .clamp(0.0, double.infinity)
-                    .toDouble()
-              : 0.0,
+          viewportExtent: _stripViewportWidth,
           frameCellExtent: _scale.pixelsPerFrame,
         );
         // The V rows' geometry for this pass. `frameStartIndex` is 0 and
@@ -1324,6 +1332,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// Frame cells the strips viewport needs to be fully papered (UI-R12
   /// #16) — recorded by [_buildBody]'s LayoutBuilder. Zero until layout.
   int _viewportFillFrameCells = 0;
+
+  /// The strip column's viewport width — the shared window policy's other
+  /// input (UI-R16). Recorded in build beside [_viewportFillFrameCells],
+  /// which already derived from it.
+  double _stripViewportWidth = 0;
 
   /// Render extent (UI-R12 #16 contract, unified with the timeline
   /// grids): the cells scrolled/panned into existence PLUS the viewport
@@ -3387,6 +3400,9 @@ class _StoryboardTrackRow extends StatelessWidget {
     required this.thumbnailFor,
     required this.timelineScale,
     required this.frameGeometry,
+    required this.hoveredCutId,
+    required this.windowBucket,
+    required this.viewportWidth,
     required this.showSeconds,
     required this.projectFrameRate,
   });
@@ -3407,17 +3423,19 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// The panel's live frame-axis geometry — what the SHARED range gesture
   /// reads to turn a pointer position into a track-global frame.
   final TimelineFrameGeometryHandle frameGeometry;
+
+  /// The cut under the pointer, panel-wide: with the blocks painted there
+  /// is no widget per cut to hold a hover state, so one notifier does for
+  /// the whole row and a hover is a repaint rather than a rebuild.
+  final ValueNotifier<CutId?> hoveredCutId;
+
+  /// The shared window inputs (UI-R16): the blocks painter draws — and asks
+  /// for thumbnails — only inside the visible span.
+  final ValueListenable<int> windowBucket;
+  final double viewportWidth;
+
   final bool showSeconds;
   final ProjectFrameRate projectFrameRate;
-
-  String _totalLabelFor(StoryboardTimelineLayoutEntry entry) {
-    // R27 #3: no `f` suffix — the shared readout, same as the timeline.
-    return timelineDurationLabel(
-      entry.endFrame,
-      showSeconds: showSeconds,
-      countingBase: projectFrameRate.countingBase,
-    );
-  }
 
   /// The cut covering track-global [frame], or null in a gap / past the
   /// end. The row's blocks are the snap material, so a press that lands
@@ -3485,14 +3503,23 @@ class _StoryboardTrackRow extends StatelessWidget {
     if (event.buttons != 0 && (event.buttons & kPrimaryButton) == 0) {
       return;
     }
-    final frame = timelineScale.pixelsPerFrame <= 0
-        ? 0
-        : (event.localPosition.dx / timelineScale.pixelsPerFrame).floor();
+    final frame = _frameAtX(event.localPosition.dx);
     final entry = _cutAtFrame(frame);
     if (entry == null || _isSelectedAt(frame)) {
       return;
     }
     onCutSelected(entry.cutId);
+  }
+
+  int _frameAtX(double x) =>
+      timelineScale.pixelsPerFrame <= 0
+      ? 0
+      : (x / timelineScale.pixelsPerFrame).floor();
+
+  void _handleHover(PointerHoverEvent event) {
+    hoveredCutId.value = _cutAtFrame(
+      _frameAtX(event.localPosition.dx),
+    )?.cutId;
   }
 
   @override
@@ -3510,33 +3537,60 @@ class _StoryboardTrackRow extends StatelessWidget {
         height: StoryboardPanel._trackLaneHeight,
         child: Stack(
           children: [
-            for (final entry in layoutEntries)
-              Positioned(
-                key: ValueKey<String>(
-                  'storyboard-cut-positioned-${entry.cutId.value}',
-                ),
-                left: timelineScale.leftForFrame(entry.startFrame),
-                width: timelineScale.widthForDuration(entry.duration),
-                top: 0,
-                bottom: 0,
-                child: _StoryboardCutBlockSlot(
-                  layoutEntry: entry,
-                  width: timelineScale.widthForDuration(entry.duration),
-                  isActive: entry.cutId == activeCutId,
-                  cutSelect: cutSelect,
-                  totalLabel: _totalLabelFor(entry),
-                  thumbnail: thumbnailFor?.call(entry.cut),
-                  showThumbnail: thumbnailFor != null,
+            // THE blocks — one painter for the whole row (R28 #4's rule
+            // brought to the cut axis). A cut costs a draw call, not three
+            // widgets, and off-window cuts cost nothing at all.
+            Positioned.fill(
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  key: ValueKey<String>(
+                    'storyboard-cut-blocks-${track.id.value}',
+                  ),
+                  painter: StoryboardCutBlocksPainter(
+                    entries: layoutEntries,
+                    // Resolved HERE, not in the painter: a cut holding two
+                    // storyboard layers is a StateError, and a painter that
+                    // throws takes the frame down with it.
+                    storyboardLayerNames: {
+                      for (final entry in layoutEntries)
+                        if (storyboardLayerForCut(entry.cut) case final layer?)
+                          entry.cutId: layer.name,
+                    },
+                    geometry: frameGeometry,
+                    crossAxisExtent: StoryboardPanel._trackLaneHeight,
+                    minBlockWidth: timelineScale.minBlockWidth,
+                    activeCutId: activeCutId,
+                    selectedCutIds: cutSelect?.selectedCutIds,
+                    hoveredCutId: hoveredCutId,
+                    colorScheme: Theme.of(context).colorScheme,
+                    brightness: Theme.of(context).brightness,
+                    baseTextStyle:
+                        Theme.of(context).textTheme.labelSmall ??
+                        DefaultTextStyle.of(context).style,
+                    showSeconds: showSeconds,
+                    countingBase: projectFrameRate.countingBase,
+                    thumbnailFor: thumbnailFor,
+                    showThumbnails: thumbnailFor != null,
+                    windowBucket: windowBucket,
+                    viewportMainExtent: viewportWidth,
+                  ),
                 ),
               ),
+            ),
             // The press layer sits ABOVE the blocks and passes pointers
             // through (translucent): the blocks own no tap of their own
             // any more, so nothing competes with the row-wide gesture.
+            // It carries the HOVER too, which the block widgets used to
+            // track one InkWell apiece.
             Positioned.fill(
               key: ValueKey<String>('storyboard-cut-press-${track.id.value}'),
-              child: Listener(
-                behavior: HitTestBehavior.translucent,
-                onPointerDown: _handlePressDown,
+              child: MouseRegion(
+                onHover: _handleHover,
+                onExit: (_) => hoveredCutId.value = null,
+                child: Listener(
+                  behavior: HitTestBehavior.translucent,
+                  onPointerDown: _handlePressDown,
+                ),
               ),
             ),
             // THE range gesture — the timeline's, not a copy of it: a pan
@@ -3733,235 +3787,6 @@ class _StoryboardCutEdgeGrip extends StatelessWidget {
           onEnd: callbacks.onEnd,
           onCancel: callbacks.onCancel,
         ),
-      ),
-    );
-  }
-}
-
-/// The drag layer around a cut block: mirrors the top-bar chips' semantics
-/// (drop on a target block = same-track reorder to its index) so both
-/// surfaces stay interchangeable.
-///
-/// Selecting and sliding are NOT here any more — those are the row's
-/// shared range gesture, and reordering is that same drag reaching past a
-/// neighbour — a long-press lift onto a drop target would be a second way
-/// to say the same thing, with a widget per cut to hang it on.
-class _StoryboardCutBlockSlot extends StatelessWidget {
-  const _StoryboardCutBlockSlot({
-    required this.layoutEntry,
-    required this.width,
-    required this.isActive,
-    required this.cutSelect,
-    required this.totalLabel,
-    required this.thumbnail,
-    required this.showThumbnail,
-  });
-
-  final StoryboardTimelineLayoutEntry layoutEntry;
-  final double width;
-  final bool isActive;
-  final StoryboardCutSelectCallbacks? cutSelect;
-
-  final String totalLabel;
-  final ui.Image? thumbnail;
-  final bool showThumbnail;
-
-  @override
-  Widget build(BuildContext context) {
-    final cutSelect = this.cutSelect;
-    if (cutSelect == null) {
-      return _StoryboardCutBlock(
-        layoutEntry: layoutEntry,
-        width: width,
-        isActive: isActive,
-        totalLabel: totalLabel,
-        thumbnail: thumbnail,
-        showThumbnail: showThumbnail,
-      );
-    }
-    // The selection listenable drives the tint directly (UI-R18 #1): only
-    // the touched blocks rebuild per selection change.
-    return ValueListenableBuilder<List<CutId>?>(
-      valueListenable: cutSelect.selectedCutIds,
-      builder: (context, selected, _) => _StoryboardCutBlock(
-        layoutEntry: layoutEntry,
-        width: width,
-        isActive: isActive,
-        totalLabel: totalLabel,
-        thumbnail: thumbnail,
-        showThumbnail: showThumbnail,
-        isRangeSelected: selected?.contains(layoutEntry.cutId) ?? false,
-      ),
-    );
-  }
-}
-
-class _StoryboardCutBlock extends StatelessWidget {
-  const _StoryboardCutBlock({
-    required this.layoutEntry,
-    required this.width,
-    required this.isActive,
-    required this.totalLabel,
-    this.thumbnail,
-    this.showThumbnail = false,
-    this.isRangeSelected = false,
-  });
-
-  final StoryboardTimelineLayoutEntry layoutEntry;
-  final double width;
-  final bool isActive;
-
-  /// This cut sits inside the live range selection — tint only (the
-  /// color-only selection language).
-  final bool isRangeSelected;
-
-  /// Cumulative time at this cut's end (conte-sheet TIME column), rendered
-  /// bottom-right; frames or seconds per the shared display toggle.
-  final String totalLabel;
-
-  /// Painted, never disposed here: the thumbnail store owns the image.
-  final ui.Image? thumbnail;
-  final bool showThumbnail;
-
-  /// A translucent strip behind the overlay texts keeps them readable over
-  /// the picture.
-  Widget _scrim(BuildContext context, Widget child) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface.withValues(alpha: 0.65),
-        borderRadius: BorderRadius.circular(3),
-      ),
-      child: child,
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final cut = layoutEntry.cut;
-    final storyboardLayer = storyboardLayerForCut(cut);
-
-    return TimelineBlock(
-      key: ValueKey<String>('storyboard-cut-block-${cut.id.value}'),
-      width: width,
-      isActive: isActive,
-      isRangeSelected: isRangeSelected,
-      minHeight: 0,
-      padding: const EdgeInsets.all(4),
-      // NO tap of its own (the row's press layer selects the cut and the
-      // row's gesture owns the tap): a tap recognizer here would join the
-      // arena under the range gesture layer and lose the sweep to it.
-      // Conte-sheet cell turned sideways: the camera-view picture fills the
-      // block center, texts stack on top of it.
-      child: Stack(
-        children: [
-          if (showThumbnail)
-            Positioned.fill(
-              child: thumbnail == null
-                  ? ColoredBox(
-                      key: ValueKey<String>(
-                        'storyboard-cut-thumb-empty-${cut.id.value}',
-                      ),
-                      color: colorScheme.surfaceContainerHighest,
-                    )
-                  : Center(
-                      child: RawImage(
-                        key: ValueKey<String>(
-                          'storyboard-cut-thumb-${cut.id.value}',
-                        ),
-                        image: thumbnail,
-                        fit: BoxFit.contain,
-                      ),
-                    ),
-            ),
-          Positioned(
-            left: 0,
-            top: 0,
-            right: 0,
-            child: Align(
-              alignment: Alignment.topLeft,
-              child: _scrim(
-                context,
-                Text(
-                  cut.name,
-                  key: ValueKey<String>('storyboard-cut-title-${cut.id.value}'),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  softWrap: false,
-                  style: Theme.of(context).textTheme.labelSmall,
-                ),
-              ),
-            ),
-          ),
-          Positioned(
-            left: 0,
-            bottom: 0,
-            child: ConstrainedBox(
-              constraints: BoxConstraints(
-                maxWidth: math.max(0, width - 8) * 0.6,
-              ),
-              child: storyboardLayer == null
-                  ? _scrim(
-                      context,
-                      Text(
-                        'No Storyboard Layer',
-                        key: ValueKey<String>(
-                          'storyboard-layer-empty-${cut.id.value}',
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        softWrap: false,
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    )
-                  : Container(
-                      key: ValueKey<String>(
-                        'storyboard-layer-strip-${cut.id.value}',
-                      ),
-                      padding: const EdgeInsets.symmetric(horizontal: 4),
-                      decoration: BoxDecoration(
-                        color: colorScheme.primaryContainer,
-                        borderRadius: BorderRadius.circular(4),
-                      ),
-                      child: Text(
-                        storyboardLayer.name,
-                        key: ValueKey<String>(
-                          'storyboard-layer-name-${cut.id.value}',
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        softWrap: false,
-                        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                          color: colorScheme.onPrimaryContainer,
-                        ),
-                      ),
-                    ),
-            ),
-          ),
-          // The conte sheet's TIME column: cumulative time at the cut's end.
-          if (width >= 48)
-            Positioned(
-              right: 0,
-              bottom: 0,
-              child: _scrim(
-                context,
-                Text(
-                  totalLabel,
-                  key: ValueKey<String>('storyboard-cut-total-${cut.id.value}'),
-                  maxLines: 1,
-                  softWrap: false,
-                  // R27 #3: bold — the readout was too easy to miss.
-                  style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: colorScheme.onSurfaceVariant,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ),
-            ),
-        ],
       ),
     );
   }

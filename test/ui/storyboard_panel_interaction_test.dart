@@ -21,6 +21,7 @@ import 'package:quick_animaker_v2/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
+import 'storyboard_cut_block_probe.dart';
 
 void main() {
   group('StoryboardPanel cut selection interactions', () {
@@ -39,9 +40,7 @@ void main() {
         onCutSelected: selectedCutIds.add,
       );
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('storyboard-cut-block-cut-b')),
-      );
+      await tester.tapAt(cutBlockCenter(tester, 'cut-b'));
       await tester.pumpAndSettle();
 
       expect(selectedCutIds, [const CutId('cut-b')]);
@@ -62,11 +61,9 @@ void main() {
       );
 
       // 8 px/frame: cut-a spans frames 0..23, the gap 24..33.
-      final blockA = find.byKey(
-        const ValueKey<String>('storyboard-cut-block-cut-a'),
-      );
+      final blockA = cutBlockScreenRect(tester, 'cut-a');
       final gesture = await tester.startGesture(
-        tester.getTopLeft(blockA) + const Offset(8 * 28.0, 10),
+        blockA.topLeft + const Offset(8 * 28.0, 10),
       );
       await gesture.up();
       await tester.pumpAndSettle();
@@ -95,9 +92,7 @@ void main() {
         onCutSelected: selectedCutIds.add,
       );
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('storyboard-cut-block-cut-b')),
-      );
+      await tester.tapAt(cutBlockCenter(tester, 'cut-b'));
       await tester.pumpAndSettle();
 
       expect(selectedCutIds, [const CutId('cut-b')]);
@@ -116,12 +111,15 @@ void main() {
         onCutSelected: selectedCutIds.add,
       );
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('storyboard-cut-block-cut-b')),
-      );
+      await tester.tapAt(cutBlockCenter(tester, 'cut-b'));
       await tester.pumpAndSettle();
 
-      expect(find.text('Duplicate Cut'), findsNWidgets(2));
+      expect(
+        cutBlocks(
+          tester,
+        ).where((block) => block.title == 'Duplicate Cut').length,
+        2,
+      );
       expect(selectedCutIds, [const CutId('cut-b')]);
     });
 
@@ -144,18 +142,10 @@ void main() {
           onCutSelected: selectedCutIds.add,
         );
 
-        expect(
-          find.byKey(const ValueKey<String>('storyboard-layer-strip-cut-a')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const ValueKey<String>('storyboard-layer-empty-cut-b')),
-          findsOneWidget,
-        );
+        expect(requireCutBlock(tester, 'cut-a').hasStoryboardLayer, isTrue);
+        expect(requireCutBlock(tester, 'cut-b').hasStoryboardLayer, isFalse);
 
-        await tester.tap(
-          find.byKey(const ValueKey<String>('storyboard-cut-block-cut-b')),
-        );
+        await tester.tapAt(cutBlockCenter(tester, 'cut-b'));
         await tester.pumpAndSettle();
 
         expect(selectedCutIds, [const CutId('cut-b')]);
@@ -177,18 +167,10 @@ void main() {
           onCutSelected: selectedCutIds.add,
         );
 
-        expect(
-          find.byKey(const ValueKey<String>('storyboard-layer-empty-cut-a')),
-          findsOneWidget,
-        );
-        expect(
-          find.byKey(const ValueKey<String>('storyboard-layer-empty-cut-b')),
-          findsOneWidget,
-        );
+        expect(requireCutBlock(tester, 'cut-a').hasStoryboardLayer, isFalse);
+        expect(requireCutBlock(tester, 'cut-b').hasStoryboardLayer, isFalse);
 
-        await tester.tap(
-          find.byKey(const ValueKey<String>('storyboard-cut-block-cut-b')),
-        );
+        await tester.tapAt(cutBlockCenter(tester, 'cut-b'));
         await tester.pumpAndSettle();
 
         expect(selectedCutIds, [const CutId('cut-b')]);
@@ -226,11 +208,9 @@ void main() {
       // MOUSE: the shared range gesture uses the timeline's edit-pan
       // device policy, where a finger scrolls unless the user says
       // otherwise.
-      final block = find.byKey(
-        const ValueKey<String>('storyboard-cut-block-cut-b'),
-      );
+      final block = cutBlockScreenRect(tester, 'cut-b');
       final gesture = await tester.startGesture(
-        tester.getCenter(block),
+        block.center,
         kind: PointerDeviceKind.mouse,
       );
       await tester.pump();
@@ -269,11 +249,9 @@ void main() {
         ),
       );
 
-      final blockA = find.byKey(
-        const ValueKey<String>('storyboard-cut-block-cut-a'),
-      );
+      final blockA = cutBlockScreenRect(tester, 'cut-a');
       final gesture = await tester.startGesture(
-        tester.getTopLeft(blockA) + const Offset(8 * 28.0, 10),
+        blockA.topLeft + const Offset(8 * 28.0, 10),
         kind: PointerDeviceKind.mouse,
       );
       await tester.pump();
@@ -327,11 +305,9 @@ void main() {
         ),
       );
 
-      final block = find.byKey(
-        const ValueKey<String>('storyboard-cut-block-cut-b'),
-      );
+      final block = cutBlockScreenRect(tester, 'cut-b');
       final gesture = await tester.startGesture(
-        tester.getCenter(block),
+        block.center,
         kind: PointerDeviceKind.mouse,
       );
       await tester.pump();
@@ -387,11 +363,9 @@ void main() {
       // Sweep from the middle of cut-a (frame 12) across into cut-b: the
       // anchor holds, the head follows the pointer's FRAME. No slide
       // begins. 24-frame cuts at 8 px/frame → cut-b starts at frame 24.
-      final blockA = find.byKey(
-        const ValueKey<String>('storyboard-cut-block-cut-a'),
-      );
+      final blockA = cutBlockScreenRect(tester, 'cut-a');
       final gesture = await tester.startGesture(
-        tester.getTopLeft(blockA) + const Offset(8 * 12.0 + 4, 10),
+        blockA.topLeft + const Offset(8 * 12.0 + 4, 10),
         kind: PointerDeviceKind.mouse,
       );
       await tester.pump();
@@ -436,11 +410,9 @@ void main() {
 
       // Press at frame 28 — inside the gap between the cuts, where no
       // block exists — and sweep right into cut-b (frame 34 onward).
-      final blockA = find.byKey(
-        const ValueKey<String>('storyboard-cut-block-cut-a'),
-      );
+      final blockA = cutBlockScreenRect(tester, 'cut-a');
       final gesture = await tester.startGesture(
-        tester.getTopLeft(blockA) + const Offset(8 * 28.0, 10),
+        blockA.topLeft + const Offset(8 * 28.0, 10),
         kind: PointerDeviceKind.mouse,
       );
       await tester.pump();
@@ -493,11 +465,9 @@ void main() {
         ),
       );
 
-      final blockA = find.byKey(
-        const ValueKey<String>('storyboard-cut-block-cut-a'),
-      );
+      final blockA = cutBlockScreenRect(tester, 'cut-a');
       final gesture = await tester.startGesture(
-        tester.getCenter(blockA),
+        blockA.center,
         kind: PointerDeviceKind.mouse,
       );
       await tester.pump();
@@ -565,9 +535,7 @@ void main() {
 
       // Tap an UNSELECTED cut while cut-b is selected: the press picks the
       // cut, the release clears the selection (the timeline cell contract).
-      await tester.tap(
-        find.byKey(const ValueKey<String>('storyboard-cut-block-cut-a')),
-      );
+      await tester.tapAt(cutBlockCenter(tester, 'cut-a'));
       await tester.pumpAndSettle();
 
       expect(clears, 1);
@@ -600,9 +568,7 @@ void main() {
         ),
       );
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('storyboard-cut-block-cut-b')),
-      );
+      await tester.tapAt(cutBlockCenter(tester, 'cut-b'));
       await tester.pumpAndSettle();
 
       expect(selectedCuts, isEmpty);
@@ -841,17 +807,11 @@ void main() {
         thumbnailFor: (cut) => cut.id == const CutId('cut-a') ? image : null,
       );
 
-      expect(
-        find.byKey(const ValueKey<String>('storyboard-cut-thumb-cut-a')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey<String>('storyboard-cut-thumb-empty-cut-b')),
-        findsOneWidget,
-      );
+      expect(requireCutBlock(tester, 'cut-a').thumbnail, isNotNull);
+      expect(requireCutBlock(tester, 'cut-b').thumbnail, isNull);
     });
 
-    testWidgets('no thumbnail slots without a resolver', (tester) async {
+    testWidgets('no thumbnails at all without a resolver', (tester) async {
       await _pumpStoryboardPanel(
         tester,
         _singleTrackProject([_cut('cut-a', name: 'Cut A')]),
@@ -859,10 +819,8 @@ void main() {
         onCutSelected: (_) {},
       );
 
-      expect(
-        find.byKey(const ValueKey<String>('storyboard-cut-thumb-empty-cut-a')),
-        findsNothing,
-      );
+      expect(cutBlocksPainter(tester).showThumbnails, isFalse);
+      expect(requireCutBlock(tester, 'cut-a').thumbnail, isNull);
     });
 
     testWidgets('pixelsPerFrame rescales blocks, ruler and playhead', (
@@ -882,31 +840,25 @@ void main() {
         );
       }
 
-      final blockA = find.byKey(
-        const ValueKey<String>('storyboard-cut-block-cut-a'),
-      );
       final playhead = find.byKey(
         const ValueKey<String>('storyboard-playhead'),
       );
 
       await pumpAt(8);
-      expect(tester.getSize(blockA).width, 24 * 8);
+      expect(requireCutBlock(tester, 'cut-a').rect.width, 24 * 8);
       expect(tester.widget<Positioned>(playhead).left, 24 * 8);
 
       await pumpAt(16);
-      expect(tester.getSize(blockA).width, 24 * 16);
+      expect(requireCutBlock(tester, 'cut-a').rect.width, 24 * 16);
       expect(tester.widget<Positioned>(playhead).left, 24 * 16);
 
       // Fully zoomed out blocks stay frame-linear (no min-width overlap).
       await pumpAt(4);
-      expect(tester.getSize(blockA).width, 24 * 4);
-      final rightOfA = tester.getTopRight(blockA).dx;
-      final leftOfB = tester
-          .getTopLeft(
-            find.byKey(const ValueKey<String>('storyboard-cut-block-cut-b')),
-          )
-          .dx;
-      expect(rightOfA, lessThanOrEqualTo(leftOfB));
+      expect(requireCutBlock(tester, 'cut-a').rect.width, 24 * 4);
+      expect(
+        requireCutBlock(tester, 'cut-a').rect.right,
+        lessThanOrEqualTo(requireCutBlock(tester, 'cut-b').rect.left),
+      );
       expect(tester.takeException(), isNull);
     });
 
@@ -936,31 +888,12 @@ void main() {
         thumbnailFor: (cut) => cut.id == const CutId('cut-a') ? image : null,
       );
 
-      final thumb = find.byKey(
-        const ValueKey<String>('storyboard-cut-thumb-cut-a'),
-      );
-      expect(thumb, findsOneWidget);
-      // Centered inside the block (not a left strip).
-      final blockCenter = tester
-          .getCenter(
-            find.byKey(const ValueKey<String>('storyboard-cut-block-cut-a')),
-          )
-          .dx;
-      expect(
-        tester.getCenter(thumb).dx,
-        moreOrLessEquals(blockCenter, epsilon: 1),
-      );
-      // Pending cuts show the placeholder tile.
-      expect(
-        find.byKey(const ValueKey<String>('storyboard-cut-thumb-empty-cut-b')),
-        findsOneWidget,
-      );
-      // The old duration/range row and ACTIVE badge are gone.
+      expect(requireCutBlock(tester, 'cut-a').thumbnail, same(image));
+      // Pending cuts have no picture yet — the block paints its
+      // placeholder for them.
+      expect(requireCutBlock(tester, 'cut-b').thumbnail, isNull);
+      // The old ACTIVE badge is gone.
       expect(find.text('ACTIVE'), findsNothing);
-      expect(
-        find.byKey(const ValueKey<String>('storyboard-cut-duration-cut-a')),
-        findsNothing,
-      );
     });
 
     testWidgets('cut totals switch between frames and seconds', (tester) async {
@@ -973,14 +906,7 @@ void main() {
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
       );
-      expect(
-        tester
-            .widget<Text>(
-              find.byKey(const ValueKey<String>('storyboard-cut-total-cut-b')),
-            )
-            .data,
-        '48',
-      );
+      expect(requireCutBlock(tester, 'cut-b').total, '48');
 
       await _pumpStoryboardPanel(
         tester,
@@ -993,14 +919,7 @@ void main() {
         showSeconds: true,
         projectFrameRate: const ProjectFrameRate.integer(24),
       );
-      expect(
-        tester
-            .widget<Text>(
-              find.byKey(const ValueKey<String>('storyboard-cut-total-cut-b')),
-            )
-            .data,
-        '2+00',
-      );
+      expect(requireCutBlock(tester, 'cut-b').total, '2+00');
     });
 
     testWidgets('frame axis: scrolling stays CLAMPED to the built cells; '
@@ -1119,9 +1038,7 @@ void main() {
         onCutSelected: selectedCutIds.add,
       );
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('storyboard-cut-block-cut-b')),
-      );
+      await tester.tapAt(cutBlockCenter(tester, 'cut-b'));
       await tester.pumpAndSettle();
 
       expect(selectedCutIds, [const CutId('cut-b')]);
@@ -1176,16 +1093,13 @@ void main() {
       }
 
       await pumpAtZoom(8);
-      final blockA = find.byKey(
-        const ValueKey<String>('storyboard-cut-block-cut-a'),
-      );
-      final blockBefore = tester.getTopLeft(blockA).dx;
+      final blockBefore = cutBlockScreenRect(tester, 'cut-a').left;
 
       await pumpAtZoom(16);
       await tester.pumpAndSettle();
 
       // Offset 0 scales to 0: the track start stays at the same edge.
-      expect(tester.getTopLeft(blockA).dx, blockBefore);
+      expect(cutBlockScreenRect(tester, 'cut-a').left, blockBefore);
     });
   });
 
@@ -1239,11 +1153,8 @@ void main() {
       );
 
       final ruler = find.byKey(const ValueKey<String>('storyboard-ruler'));
-      final block = find.byKey(
-        const ValueKey<String>('storyboard-cut-block-cut-a'),
-      );
       final rulerX = tester.getTopLeft(ruler).dx;
-      final blockX = tester.getTopLeft(block).dx;
+      final blockX = cutBlockScreenRect(tester, 'cut-a').left;
 
       await tester.drag(
         find.byKey(
@@ -1254,7 +1165,7 @@ void main() {
       await tester.pumpAndSettle();
 
       final rulerShift = rulerX - tester.getTopLeft(ruler).dx;
-      final blockShift = blockX - tester.getTopLeft(block).dx;
+      final blockShift = blockX - cutBlockScreenRect(tester, 'cut-a').left;
       expect(rulerShift, greaterThan(0));
       // Frame labels stay aligned with the blocks under them.
       expect(rulerShift, blockShift);

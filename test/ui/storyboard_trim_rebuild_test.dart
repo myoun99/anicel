@@ -11,6 +11,7 @@ import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
+import 'storyboard_cut_block_probe.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_drag_preview.dart';
 
 /// R10-③: the storyboard consumes the drag-preview channel INTERNALLY —
@@ -77,12 +78,10 @@ void main() {
     await tester.pump();
 
     const seRowKey = ValueKey<String>('storyboard-se-row-0-1');
-    const blockKey = ValueKey<String>('storyboard-cut-positioned-cut-1');
     final seRowBefore = tester.widget(
       find.byKey(seRowKey, skipOffstage: false),
     );
-    final blockBefore = tester.widget(find.byKey(blockKey));
-    final blockWidthBefore = tester.getSize(find.byKey(blockKey)).width;
+    final blockWidthBefore = requireCutBlock(tester, 'cut-1').rect.width;
 
     // One trim step through the channel — NO panel rebuild from above.
     preview.value = CutTrimDragPreview(
@@ -90,11 +89,10 @@ void main() {
     );
     await tester.pump();
 
-    // The trimmed block followed the preview (new widget, new width)…
-    expect(tester.getSize(find.byKey(blockKey)).width, isNot(blockWidthBefore));
+    // The trimmed block followed the preview…
     expect(
-      identical(tester.widget(find.byKey(blockKey)), blockBefore),
-      isFalse,
+      requireCutBlock(tester, 'cut-1').rect.width,
+      isNot(blockWidthBefore),
     );
     // …while the SE row kept its exact widget identity (subtree skipped).
     expect(
@@ -109,6 +107,6 @@ void main() {
     // Clearing the preview restores the base layout.
     preview.value = null;
     await tester.pump();
-    expect(tester.getSize(find.byKey(blockKey)).width, blockWidthBefore);
+    expect(requireCutBlock(tester, 'cut-1').rect.width, blockWidthBefore);
   });
 }

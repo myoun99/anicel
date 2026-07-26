@@ -2,10 +2,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
+import 'storyboard_cut_block_probe.dart';
 
 /// R4-⑩ regression probe: storyboard cut blocks must show their rendered
-/// thumbnail (the real render pipeline, not a fake) — the block's RawImage
-/// replaces the empty placeholder once the async render lands.
+/// thumbnail (the real render pipeline, not a fake) — the painted block's
+/// picture replaces the pending placeholder once the async render lands.
 void main() {
   testWidgets('storyboard cut blocks show a rendered thumbnail end-to-end', (
     tester,
@@ -26,52 +27,16 @@ void main() {
       for (var attempt = 0; attempt < 20; attempt += 1) {
         await Future<void>.delayed(const Duration(milliseconds: 50));
         await tester.pump();
-        if (tester
-            .widgetList(
-              find.byKey(
-                ValueKey<String>(
-                  'storyboard-cut-thumb-'
-                  '${_firstCutId(tester)}',
-                ),
-              ),
-            )
-            .isNotEmpty) {
+        if (cutBlocks(tester).first.thumbnail != null) {
           break;
         }
       }
 
       expect(
-        find.byKey(
-          ValueKey<String>(
-            'storyboard-cut-thumb-empty-'
-            '${_firstCutId(tester)}',
-          ),
-        ),
-        findsNothing,
+        cutBlocks(tester).first.thumbnail,
+        isNotNull,
         reason: 'the placeholder must give way to the rendered thumbnail',
-      );
-      expect(
-        find.byKey(
-          ValueKey<String>('storyboard-cut-thumb-${_firstCutId(tester)}'),
-        ),
-        findsOneWidget,
       );
     });
   });
-}
-
-String _firstCutId(WidgetTester tester) {
-  // The default project has exactly one cut; read its id off the block key.
-  final block = tester
-      .widgetList(
-        find.byWidgetPredicate((widget) {
-          final key = widget.key;
-          return key is ValueKey<String> &&
-              key.value.startsWith('storyboard-cut-block-');
-        }),
-      )
-      .first;
-  return (block.key! as ValueKey<String>).value.substring(
-    'storyboard-cut-block-'.length,
-  );
 }

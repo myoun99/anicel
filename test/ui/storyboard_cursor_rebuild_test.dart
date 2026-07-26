@@ -10,6 +10,7 @@ import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
+import 'storyboard_cut_block_probe.dart';
 
 /// W4 perf pass: the storyboard playhead rides its own listenable (the
 /// cursor-layer pattern) — a cursor/playback tick moves the playhead
@@ -64,18 +65,12 @@ void main() {
       ),
     );
 
-    final blockA = find.byKey(
-      const ValueKey<String>('storyboard-cut-block-cut-a'),
-    );
-    final blockB = find.byKey(
-      const ValueKey<String>('storyboard-cut-block-cut-b'),
-    );
     final overlay = find.byKey(const ValueKey<String>('storyboard-playhead'));
-    expect(blockA, findsOneWidget);
     expect(overlay, findsOneWidget);
 
-    final blockAWidget = tester.widget(blockA);
-    final blockBWidget = tester.widget(blockB);
+    // The blocks are one PAINTER now, so "did the row rebuild" is asked of
+    // the painter's identity rather than of a widget per cut.
+    final painterBefore = cutBlocksPainter(tester);
     final overlayXBefore = tester.getTopLeft(overlay).dx;
 
     playhead.value = 5;
@@ -83,10 +78,8 @@ void main() {
 
     // The overlay followed the tick...
     expect(tester.getTopLeft(overlay).dx - overlayXBefore, 5 * pixelsPerFrame);
-    // ...and the blocks were NOT rebuilt (identical widget instances — the
-    // panel build never ran again).
-    expect(identical(tester.widget(blockA), blockAWidget), isTrue);
-    expect(identical(tester.widget(blockB), blockBWidget), isTrue);
+    // ...and the row was NOT rebuilt (the panel build never ran again).
+    expect(identical(cutBlocksPainter(tester), painterBefore), isTrue);
   });
 
   testWidgets('a null playhead value hides the overlay without a panel '
@@ -108,16 +101,13 @@ void main() {
     );
 
     final overlay = find.byKey(const ValueKey<String>('storyboard-playhead'));
-    final blockA = find.byKey(
-      const ValueKey<String>('storyboard-cut-block-cut-a'),
-    );
     expect(overlay, findsOneWidget);
-    final blockAWidget = tester.widget(blockA);
+    final painterBefore = cutBlocksPainter(tester);
 
     playhead.value = null;
     await tester.pump();
 
     expect(overlay, findsNothing);
-    expect(identical(tester.widget(blockA), blockAWidget), isTrue);
+    expect(identical(cutBlocksPainter(tester), painterBefore), isTrue);
   });
 }

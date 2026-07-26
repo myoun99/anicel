@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
@@ -5,6 +6,7 @@ import 'package:quick_animaker_v2/src/models/canvas_point.dart';
 import 'package:quick_animaker_v2/src/models/transform_track.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_tab_host.dart';
+import 'storyboard_cut_block_probe.dart';
 
 /// R12-⑧ repro: the cut-block slide (gap authoring) must keep working when
 /// the cut carries fx transform keys — with the Transform strips twirled
@@ -48,10 +50,6 @@ void main() {
     EditorSessionManager manager,
   ) async {
     final secondCut = manager.activeTrack.cuts[1];
-    final block = find.byKey(
-      ValueKey<String>('storyboard-cut-block-${secondCut.id.value}'),
-    );
-    expect(block, findsOneWidget);
     // UI-R18 #1 mode split: a body drag slides only when the cut sits in
     // the selection — select it first (the user's first drag does this).
     final secondStart = manager
@@ -64,7 +62,10 @@ void main() {
       headGlobalFrame: secondStart,
     );
     await tester.pump();
-    final gesture = await tester.startGesture(tester.getCenter(block));
+    final gesture = await tester.startGesture(
+      cutBlockCenter(tester, secondCut.id.value),
+      kind: PointerDeviceKind.mouse,
+    );
     await tester.pump();
     await gesture.moveBy(const Offset(24, 0));
     await tester.pump();
