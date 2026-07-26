@@ -1,3 +1,4 @@
+import 'exposure_memo.dart';
 import 'frame_id.dart';
 import 'timeline_exposure_type.dart';
 
@@ -22,6 +23,7 @@ class TimelineExposure {
     this.ghost = false,
     this.ghostOwnerId,
     this.breakdownOffsets = const [],
+    this.memo,
   }) : type = TimelineExposureType.drawing,
        assert(length >= 1, 'Drawing exposure length must be at least 1.');
 
@@ -50,6 +52,14 @@ class TimelineExposure {
   /// trusts the caller).
   final List<int> breakdownOffsets;
 
+  /// This block's memo, or null when it carries none. BLOCK-OWNED like
+  /// [breakdownOffsets] — moves and copies carry it, re-exposing the same
+  /// drawing gets its own, and a linked cut's local timeline keeps its own
+  /// without any mirroring rule. Ghost entries never hold one: they are
+  /// rederived from a run behaviour on every edit, so there is nothing
+  /// there to author against.
+  final ExposureMemo? memo;
+
   static List<int> _normalizedOffsets(List<int> offsets, int length) {
     if (offsets.isEmpty) {
       return const [];
@@ -69,6 +79,7 @@ class TimelineExposure {
     FrameId? frameId,
     int? length,
     List<int>? breakdownOffsets,
+    ExposureMemo? Function()? memo,
   }) {
     final nextLength = length ?? this.length!;
     return TimelineExposure.drawing(
@@ -82,6 +93,7 @@ class TimelineExposure {
         breakdownOffsets ?? this.breakdownOffsets,
         nextLength,
       ),
+      memo: memo == null ? this.memo : memo(),
     );
   }
 
@@ -92,6 +104,7 @@ class TimelineExposure {
     if (ghost) 'ghost': true,
     if (ghostOwnerId != null) 'ghostOwner': ghostOwnerId,
     if (breakdownOffsets.isNotEmpty) 'breakdown': breakdownOffsets,
+    if (memo != null && !memo!.isEmpty) 'memo': memo!.toJson(),
   };
 
   /// Decodes the CURRENT format only. Legacy entries (`blank`/`mark`
@@ -123,6 +136,9 @@ class TimelineExposure {
         for (final offset in (json['breakdown'] as List<dynamic>? ?? const []))
           offset as int,
       ], length),
+      memo: json['memo'] == null
+          ? null
+          : ExposureMemo.fromJson(json['memo'] as Map<String, dynamic>),
     );
   }
 
@@ -147,6 +163,7 @@ class TimelineExposure {
           other.length == length &&
           other.ghost == ghost &&
           other.ghostOwnerId == ghostOwnerId &&
+          other.memo == memo &&
           _sameOffsets(other.breakdownOffsets);
 
   @override
@@ -157,11 +174,13 @@ class TimelineExposure {
     ghost,
     ghostOwnerId,
     Object.hashAll(breakdownOffsets),
+    memo,
   );
 
   @override
   String toString() =>
       'TimelineExposure(type: $type, frameId: $frameId, length: $length'
       '${ghost ? ', ghost($ghostOwnerId)' : ''}'
-      '${breakdownOffsets.isEmpty ? '' : ', breakdown: $breakdownOffsets'})';
+      '${breakdownOffsets.isEmpty ? '' : ', breakdown: $breakdownOffsets'}'
+      '${memo == null ? '' : ', memo: $memo'})';
 }

@@ -10,7 +10,6 @@ import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
-import 'package:quick_animaker_v2/src/models/storyboard_frame_metadata.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
@@ -527,9 +526,6 @@ Layer _layer({required LayerKind kind, required String name}) {
         id: FrameId('frame-$name'),
         duration: 1,
         strokes: const [],
-        storyboardMetadata: const StoryboardFrameMetadata(
-          note: 'metadata kept',
-        ),
       ),
     ],
   );

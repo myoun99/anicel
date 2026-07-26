@@ -25,7 +25,7 @@ import 'package:quick_animaker_v2/src/models/layer_mark.dart';
 import 'package:quick_animaker_v2/src/models/media_asset.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
-import 'package:quick_animaker_v2/src/models/storyboard_frame_metadata.dart';
+import 'package:quick_animaker_v2/src/models/exposure_memo.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/timesheet_info.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
@@ -1196,70 +1196,94 @@ void main() {
       expect(fixture.historyManager.redoCount, 0);
     });
 
-    test(
-      'updateStoryboardFrameMetadata routes through history with undo/redo',
-      () {
-        final frame = _frame(id: 'frame-1');
-        final layer = _layer(
-          id: 'layer-1',
-          kind: LayerKind.storyboard,
-          frames: [frame],
-        );
-        final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [layer]);
-        final fixture = _fixture(
-          _project(
-            tracks: [
-              _track(id: 'track-1', name: 'Video', cuts: [cutA]),
-            ],
-          ),
-          activeCutId: cutA.id,
-        );
-        const metadata = StoryboardFrameMetadata(
-          actionMemo: 'Action',
-          dialogueMemo: 'Dialogue',
-          note: 'Note',
-        );
+    test('updateExposureMemo routes through history with undo/redo', () {
+      final frame = _frame(id: 'frame-1');
+      final layer = _layer(
+        id: 'layer-1',
+        kind: LayerKind.storyboard,
+        frames: [frame],
+      );
+      final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [layer]);
+      final fixture = _fixture(
+        _project(
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA]),
+          ],
+        ),
+        activeCutId: cutA.id,
+      );
+      const memo = ExposureMemo(actionMemo: 'Action', note: 'Note');
 
-        fixture.coordinator.updateStoryboardFrameMetadata(
-          cutId: cutA.id,
-          layerId: layer.id,
-          frameId: frame.id,
-          metadata: metadata,
-        );
+      ExposureMemo? memoAt(int index) => fixture
+          .project
+          .tracks
+          .single
+          .cuts
+          .single
+          .layers
+          .single
+          .timeline[index]
+          ?.memo;
 
-        expect(
-          _frameById(fixture.project, frame.id).storyboardMetadata,
-          metadata,
-        );
-        expect(fixture.editingSession.activeCutId, cutA.id);
-        expect(fixture.historyManager.undoCount, 1);
-        expect(fixture.historyManager.redoCount, 0);
+      fixture.coordinator.updateExposureMemo(
+        cutId: cutA.id,
+        layerId: layer.id,
+        blockStartIndex: 0,
+        memo: memo,
+      );
 
-        fixture.historyManager.undo();
+      expect(memoAt(0), memo);
+      expect(fixture.editingSession.activeCutId, cutA.id);
+      expect(fixture.historyManager.undoCount, 1);
+      expect(fixture.historyManager.redoCount, 0);
 
-        expect(
-          _frameById(fixture.project, frame.id).storyboardMetadata,
-          const StoryboardFrameMetadata.empty(),
-        );
-        expect(fixture.editingSession.activeCutId, cutA.id);
-        expect(fixture.historyManager.undoCount, 0);
-        expect(fixture.historyManager.redoCount, 1);
+      fixture.historyManager.undo();
 
-        fixture.historyManager.redo();
+      expect(memoAt(0), isNull);
+      expect(fixture.historyManager.undoCount, 0);
+      expect(fixture.historyManager.redoCount, 1);
 
-        expect(
-          _frameById(fixture.project, frame.id).storyboardMetadata,
-          metadata,
-        );
-        expect(fixture.editingSession.activeCutId, cutA.id);
-        expect(fixture.historyManager.undoCount, 1);
-        expect(fixture.historyManager.redoCount, 0);
-      },
-    );
+      fixture.historyManager.redo();
 
-    test('updateStoryboardFrameMetadata skips unchanged metadata', () {
-      const metadata = StoryboardFrameMetadata(note: 'Same');
-      final frame = _frame(id: 'frame-1', metadata: metadata);
+      expect(memoAt(0), memo);
+      expect(fixture.historyManager.undoCount, 1);
+      expect(fixture.historyManager.redoCount, 0);
+    });
+
+    test('updateExposureMemo skips an unchanged memo', () {
+      final frame = _frame(id: 'frame-1');
+      final layer = _layer(
+        id: 'layer-1',
+        kind: LayerKind.storyboard,
+        frames: [frame],
+      );
+      final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [layer]);
+      final fixture = _fixture(
+        _project(
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA]),
+          ],
+        ),
+        activeCutId: cutA.id,
+      );
+      // An EMPTY memo is what "no memo" already is, so writing one is a
+      // no-op rather than an undo step over nothing.
+      final beforeJson = fixture.project.toJson();
+
+      fixture.coordinator.updateExposureMemo(
+        cutId: cutA.id,
+        layerId: layer.id,
+        blockStartIndex: 0,
+        memo: const ExposureMemo.empty(),
+      );
+
+      expect(fixture.project.toJson(), beforeJson);
+      expect(fixture.historyManager.undoCount, 0);
+      expect(fixture.historyManager.redoCount, 0);
+    });
+
+    test('updateExposureMemo refuses an index that starts no block', () {
+      final frame = _frame(id: 'frame-1');
       final layer = _layer(
         id: 'layer-1',
         kind: LayerKind.storyboard,
@@ -1276,38 +1300,12 @@ void main() {
       );
       final beforeJson = fixture.project.toJson();
 
-      fixture.coordinator.updateStoryboardFrameMetadata(
-        cutId: cutA.id,
-        layerId: layer.id,
-        frameId: frame.id,
-        metadata: metadata,
-      );
-
-      expect(fixture.project.toJson(), beforeJson);
-      expect(fixture.historyManager.undoCount, 0);
-      expect(fixture.historyManager.redoCount, 0);
-    });
-
-    test('updateStoryboardFrameMetadata rejects animation layers safely', () {
-      final frame = _frame(id: 'frame-1');
-      final layer = _layer(id: 'layer-1', frames: [frame]);
-      final cutA = _cut(id: 'cut-1', name: 'Cut A', layers: [layer]);
-      final fixture = _fixture(
-        _project(
-          tracks: [
-            _track(id: 'track-1', name: 'Video', cuts: [cutA]),
-          ],
-        ),
-        activeCutId: cutA.id,
-      );
-      final beforeJson = fixture.project.toJson();
-
       expect(
-        () => fixture.coordinator.updateStoryboardFrameMetadata(
+        () => fixture.coordinator.updateExposureMemo(
           cutId: cutA.id,
           layerId: layer.id,
-          frameId: frame.id,
-          metadata: const StoryboardFrameMetadata(note: 'New'),
+          blockStartIndex: 7,
+          memo: const ExposureMemo(note: 'New'),
         ),
         throwsStateError,
       );
@@ -2634,34 +2632,9 @@ Layer _layer({
   return Layer(id: LayerId(id), name: id, frames: frames, kind: kind);
 }
 
-Frame _frame({
-  required String id,
-  String? name,
-  StoryboardFrameMetadata metadata = const StoryboardFrameMetadata.empty(),
-}) {
-  return Frame(
-    id: FrameId(id),
-    duration: 1,
-    strokes: const [],
-    name: name,
-    storyboardMetadata: metadata,
-  );
+Frame _frame({required String id, String? name}) {
+  return Frame(id: FrameId(id), duration: 1, strokes: const [], name: name);
 }
 
 
 
-Frame _frameById(Project project, FrameId frameId) {
-  for (final track in project.tracks) {
-    for (final cut in track.cuts) {
-      for (final layer in cut.layers) {
-        for (final frame in layer.frames) {
-          if (frame.id == frameId) {
-            return frame;
-          }
-        }
-      }
-    }
-  }
-
-  throw StateError('Frame not found: $frameId');
-}

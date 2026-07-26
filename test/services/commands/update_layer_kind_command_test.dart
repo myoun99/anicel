@@ -11,7 +11,6 @@ import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
-import 'package:quick_animaker_v2/src/models/storyboard_frame_metadata.dart';
 import 'package:quick_animaker_v2/src/models/stroke.dart';
 import 'package:quick_animaker_v2/src/models/stroke_id.dart';
 import 'package:quick_animaker_v2/src/models/stroke_point.dart';
@@ -28,17 +27,8 @@ void main() {
     test(
       'execute changes animation layer to storyboard and preserves data',
       () {
-        const metadata = StoryboardFrameMetadata(
-          actionMemo: 'Action',
-          dialogueMemo: 'Dialogue',
-          note: 'Panel note',
-        );
         final stroke = _stroke('stroke-1');
-        final frame = _frame(
-          id: 'frame-1',
-          strokes: [stroke],
-          metadata: metadata,
-        );
+        final frame = _frame(id: 'frame-1', strokes: [stroke]);
         final layer = _layer(
           id: 'layer-1',
           frames: [frame],
@@ -76,7 +66,6 @@ void main() {
         expect(updatedLayer.timeline, layer.timeline);
         expect(updatedLayer.isVisible, isFalse);
         expect(updatedLayer.opacity, 0.42);
-        expect(updatedFrame.storyboardMetadata, metadata);
         expect(updatedFrame.strokes, [stroke]);
         expect(updatedCut.metadata, const CutMetadata(note: 'Cut note'));
       },
@@ -85,8 +74,7 @@ void main() {
     test(
       'execute changes storyboard layer back to animation without metadata loss',
       () {
-        const metadata = StoryboardFrameMetadata(actionMemo: 'Keep me');
-        final frame = _frame(id: 'frame-1', metadata: metadata);
+        final frame = _frame(id: 'frame-1');
         final layer = _layer(
           id: 'layer-1',
           kind: LayerKind.storyboard,
@@ -104,7 +92,7 @@ void main() {
 
         final updatedLayer = requireLayerAnywhere(repository.requireProject(), layer.id);
         expect(updatedLayer.kind, LayerKind.animation);
-        expect(updatedLayer.frames.single.storyboardMetadata, metadata);
+        expect(updatedLayer.frames.single.name, 'name-frame-1');
       },
     );
 
@@ -282,16 +270,11 @@ Layer _layer({
   opacity: opacity,
 );
 
-Frame _frame({
-  required String id,
-  List<Stroke> strokes = const [],
-  StoryboardFrameMetadata metadata = const StoryboardFrameMetadata.empty(),
-}) => Frame(
+Frame _frame({required String id, List<Stroke> strokes = const []}) => Frame(
   id: FrameId(id),
   duration: 12,
   name: 'name-$id',
   strokes: strokes,
-  storyboardMetadata: metadata,
 );
 
 Stroke _stroke(String id) => Stroke(

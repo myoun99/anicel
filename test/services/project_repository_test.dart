@@ -11,7 +11,7 @@ import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
-import 'package:quick_animaker_v2/src/models/storyboard_frame_metadata.dart';
+import 'package:quick_animaker_v2/src/models/exposure_memo.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/stroke.dart';
 import 'package:quick_animaker_v2/src/models/stroke_id.dart';
@@ -723,17 +723,13 @@ void main() {
         ],
       );
       final repository = ProjectRepository(initialProject: project);
-      const metadata = StoryboardFrameMetadata(
-        actionMemo: 'Action',
-        dialogueMemo: 'Dialogue',
-        note: 'Note',
-      );
+      const memo = ExposureMemo(actionMemo: 'Action', note: 'Note');
 
-      repository.updateFrameStoryboardMetadata(
+      repository.updateExposureMemo(
         cutId: cut.id,
         layerId: layer.id,
-        frameId: frame.id,
-        metadata: metadata,
+        blockStartIndex: 0,
+        memo: memo,
       );
 
       final updatedLayer = repository
@@ -745,7 +741,7 @@ void main() {
           .layers
           .single;
       final updatedFrame = updatedLayer.frames.single;
-      expect(updatedFrame.storyboardMetadata, metadata);
+      expect(updatedLayer.timeline[0]!.memo, memo);
       expect(updatedFrame.id, frame.id);
       expect(updatedFrame.duration, frame.duration);
       expect(updatedFrame.name, frame.name);
@@ -757,7 +753,7 @@ void main() {
       );
     });
 
-    test('updateFrameStoryboardMetadata throws for missing target', () {
+    test('updateExposureMemo throws for missing target', () {
       final frame = _frame(id: 'frame-1');
       final layer = _layer(id: 'layer-1', name: 'Storyboard', frames: [frame]);
       final cut = _cut(id: 'cut-1', name: 'Cut 1', layers: [layer]);
@@ -773,33 +769,33 @@ void main() {
       final beforeJson = repository.requireProject().toJson();
 
       expect(
-        () => repository.updateFrameStoryboardMetadata(
+        () => repository.updateExposureMemo(
           cutId: const CutId('missing'),
           layerId: layer.id,
-          frameId: frame.id,
-          metadata: const StoryboardFrameMetadata(note: 'New'),
+          blockStartIndex: 0,
+          memo: const ExposureMemo(note: 'New'),
         ),
         throwsStateError,
       );
       expect(repository.requireProject().toJson(), beforeJson);
 
       expect(
-        () => repository.updateFrameStoryboardMetadata(
+        () => repository.updateExposureMemo(
           cutId: cut.id,
           layerId: const LayerId('missing'),
-          frameId: frame.id,
-          metadata: const StoryboardFrameMetadata(note: 'New'),
+          blockStartIndex: 0,
+          memo: const ExposureMemo(note: 'New'),
         ),
         throwsStateError,
       );
       expect(repository.requireProject().toJson(), beforeJson);
 
       expect(
-        () => repository.updateFrameStoryboardMetadata(
+        () => repository.updateExposureMemo(
           cutId: cut.id,
           layerId: layer.id,
-          frameId: const FrameId('missing'),
-          metadata: const StoryboardFrameMetadata(note: 'New'),
+          blockStartIndex: 99,
+          memo: const ExposureMemo(note: 'New'),
         ),
         throwsStateError,
       );
@@ -807,20 +803,14 @@ void main() {
     });
 
     test('updateLayerKind replaces only kind and preserves layer data', () {
-      const metadata = StoryboardFrameMetadata(
-        actionMemo: 'Action',
-        dialogueMemo: 'Dialogue',
-        note: 'Panel note',
-      );
       final frame = _frame(
         id: 'frame-1',
         strokes: [_stroke(id: 'stroke-1')],
       );
-      final frameWithMetadata = frame.copyWith(storyboardMetadata: metadata);
       final layer = Layer(
         id: const LayerId('layer-1'),
         name: 'Layer 1',
-        frames: [frameWithMetadata],
+        frames: [frame],
         timeline: {
           0: TimelineExposure.drawing(
             frame.id,
@@ -860,8 +850,7 @@ void main() {
       expect(updatedLayer.kind, LayerKind.storyboard);
       expect(updatedLayer.id, layer.id);
       expect(updatedLayer.name, layer.name);
-      expect(updatedLayer.frames, [frameWithMetadata]);
-      expect(updatedLayer.frames.single.storyboardMetadata, metadata);
+      expect(updatedLayer.frames, [frame]);
       expect(updatedLayer.timeline, layer.timeline);
       expect(updatedLayer.isVisible, isFalse);
       expect(updatedLayer.opacity, 0.25);

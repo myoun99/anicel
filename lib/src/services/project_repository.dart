@@ -15,7 +15,7 @@ import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
 import '../models/layer_mark.dart';
 import '../models/media_asset.dart';
-import '../models/storyboard_frame_metadata.dart';
+import '../models/exposure_memo.dart';
 import '../models/timeline_repeat.dart';
 import '../models/timesheet_info.dart';
 import '../models/project.dart';
@@ -637,24 +637,37 @@ class ProjectRepository {
     });
   }
 
-  void updateFrameStoryboardMetadata({
+  /// Writes the memo of the exposure BLOCK starting at [blockStartIndex].
+  ///
+  /// Addressed by block start rather than by frame: the memo belongs to the
+  /// exposure, so re-exposing the same drawing elsewhere carries its own.
+  void updateExposureMemo({
     required CutId cutId,
     required LayerId layerId,
-    required FrameId frameId,
-    required StoryboardFrameMetadata metadata,
+    required int blockStartIndex,
+    required ExposureMemo? memo,
   }) {
     updateProject((project) {
       final next = updateCutAnywhere(project, cutId, (cut) {
         final updatedCut = updateLayerInCut(cut, layerId, (layer) {
-          final updatedLayer = updateFrameInLayer(
-            layer,
-            frameId,
-            (frame) => frame.copyWith(storyboardMetadata: metadata),
-          );
-          if (updatedLayer == null) {
-            throw StateError('Frame not found in layer $layerId: $frameId');
+          final entry = layer.timeline[blockStartIndex];
+          if (entry == null || !entry.isDrawing) {
+            throw StateError(
+              'No exposure block starts at $blockStartIndex on $layerId.',
+            );
           }
-          return updatedLayer;
+          if (entry.ghost) {
+            throw StateError(
+              'A ghost exposure is rederived, so it cannot hold a memo '
+              '($layerId at $blockStartIndex).',
+            );
+          }
+          return layer.copyWith(
+            timeline: {
+              ...layer.timeline,
+              blockStartIndex: entry.copyWith(memo: () => memo),
+            },
+          );
         });
         if (updatedCut == null) {
           throw StateError('Layer not found in cut $cutId: $layerId');

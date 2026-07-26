@@ -3,6 +3,7 @@ import 'package:quick_animaker_v2/src/controllers/editing_session_state.dart';
 import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/cut.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/models/exposure_memo.dart';
 import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
@@ -10,7 +11,6 @@ import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
-import 'package:quick_animaker_v2/src/models/storyboard_frame_metadata.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
@@ -222,15 +222,16 @@ Layer _layer(
         duration: 2,
         strokes: const [],
         name: '$name-1',
-        storyboardMetadata: const StoryboardFrameMetadata(
-          actionMemo: 'action',
-          dialogueMemo: 'dialogue',
-          note: 'note',
-        ),
       ),
       Frame(id: _frameBId, duration: 1, strokes: const [], name: '$name-2'),
     ],
-    timeline: {0: TimelineExposure.drawing(_frameAId, length: 2)},
+    timeline: {
+      0: TimelineExposure.drawing(
+        _frameAId,
+        length: 2,
+        memo: const ExposureMemo(actionMemo: 'action', note: 'note'),
+      ),
+    },
   );
 }
 
