@@ -20,6 +20,7 @@ import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
 import 'package:quick_animaker_v2/src/models/timeline_row_address.dart';
+import 'package:quick_animaker_v2/src/models/track_frame_range.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_timeline_layout.dart';
@@ -326,7 +327,7 @@ void main() {
 
     testWidgets('with cutSelect a drag on an UNSELECTED cut paints a '
         'run selection instead of sliding (UI-R18 #1)', (tester) async {
-      final selection = ValueNotifier<List<CutId>?>(null);
+      final selection = ValueNotifier<TrackFrameRangeSelection?>(null);
       addTearDown(selection.dispose);
       final dragSteps = <(TrackId, int, int)>[];
       final began = <CutId>[];
@@ -350,7 +351,7 @@ void main() {
           onCancel: () {},
         ),
         cutSelect: StoryboardCutSelectCallbacks(
-          selectedCutIds: selection,
+          selectedRange: selection,
           onDrag:
               ({
                 required TrackId trackId,
@@ -385,7 +386,7 @@ void main() {
 
     testWidgets('a drag starting in a GAP still paints a run — the gesture '
         'covers the row, not the blocks', (tester) async {
-      final selection = ValueNotifier<List<CutId>?>(null);
+      final selection = ValueNotifier<TrackFrameRangeSelection?>(null);
       addTearDown(selection.dispose);
       final dragSteps = <(int, int)>[];
 
@@ -398,7 +399,7 @@ void main() {
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
         cutSelect: StoryboardCutSelectCallbacks(
-          selectedCutIds: selection,
+          selectedRange: selection,
           onDrag:
               ({
                 required TrackId trackId,
@@ -430,10 +431,15 @@ void main() {
 
     testWidgets('a body drag starting INSIDE the selection slides the run '
         'through cutMove (UI-R18 #1)', (tester) async {
-      final selection = ValueNotifier<List<CutId>?>([
-        const CutId('cut-a'),
-        const CutId('cut-b'),
-      ]);
+      // Both 24-frame cuts: the run is the range [0,48) on the track axis.
+      final selection = ValueNotifier<TrackFrameRangeSelection?>(
+        const TrackFrameRangeSelection(
+          trackId: TrackId('track-a'),
+          anchorRow: TrackRowAddress(TrackId('track-a')),
+          startFrame: 0,
+          endFrameExclusive: 48,
+        ),
+      );
       addTearDown(selection.dispose);
       final began = <CutId>[];
       final updates = <int>[];
@@ -457,7 +463,7 @@ void main() {
           onCancel: () {},
         ),
         cutSelect: StoryboardCutSelectCallbacks(
-          selectedCutIds: selection,
+          selectedRange: selection,
           onDrag:
               ({
                 required TrackId trackId,
@@ -508,7 +514,15 @@ void main() {
 
     testWidgets('while a selection is live a tap clears it — even on the '
         'ACTIVE cut (UI-R18 #1)', (tester) async {
-      final selection = ValueNotifier<List<CutId>?>([const CutId('cut-b')]);
+      // cut-b alone: the second 24-frame cut is the range [24,48).
+      final selection = ValueNotifier<TrackFrameRangeSelection?>(
+        const TrackFrameRangeSelection(
+          trackId: TrackId('track-a'),
+          anchorRow: TrackRowAddress(TrackId('track-a')),
+          startFrame: 24,
+          endFrameExclusive: 48,
+        ),
+      );
       addTearDown(selection.dispose);
       var clears = 0;
       final selectedCuts = <CutId>[];
@@ -522,7 +536,7 @@ void main() {
         activeCutId: const CutId('cut-a'),
         onCutSelected: selectedCuts.add,
         cutSelect: StoryboardCutSelectCallbacks(
-          selectedCutIds: selection,
+          selectedRange: selection,
           onDrag:
               ({
                 required TrackId trackId,
@@ -547,7 +561,15 @@ void main() {
 
     testWidgets('a press INSIDE the selection picks no cut — it is starting '
         'a move, not choosing (UI-R10 #12)', (tester) async {
-      final selection = ValueNotifier<List<CutId>?>([const CutId('cut-b')]);
+      // cut-b alone: the second 24-frame cut is the range [24,48).
+      final selection = ValueNotifier<TrackFrameRangeSelection?>(
+        const TrackFrameRangeSelection(
+          trackId: TrackId('track-a'),
+          anchorRow: TrackRowAddress(TrackId('track-a')),
+          startFrame: 24,
+          endFrameExclusive: 48,
+        ),
+      );
       addTearDown(selection.dispose);
       final selectedCuts = <CutId>[];
 
@@ -560,7 +582,7 @@ void main() {
         activeCutId: const CutId('cut-a'),
         onCutSelected: selectedCuts.add,
         cutSelect: StoryboardCutSelectCallbacks(
-          selectedCutIds: selection,
+          selectedRange: selection,
           onDrag:
               ({
                 required TrackId trackId,

@@ -55,6 +55,7 @@ import 'timeline/timeline_frame_range_gesture.dart'
     show TimelineFrameRangeGestureLayer, TimelineRangeGestureCallbacks;
 import '../models/timeline_row_address.dart'
     show LayerRowAddress, TimelineRowAddress, TrackRowAddress;
+import '../models/track_frame_range.dart';
 import 'timeline/timeline_frame_span_layout.dart'
     show TimelineFixedFrameSpanLayer, TimelineFrameSpan;
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
@@ -144,14 +145,15 @@ class StoryboardMovieEndCallbacks {
 /// tap clears. The timeline's frame-range selection model applied to cuts.
 class StoryboardCutSelectCallbacks {
   const StoryboardCutSelectCallbacks({
-    required this.selectedCutIds,
+    required this.selectedRange,
     required this.onDrag,
     required this.onClear,
   });
 
-  /// The live selected run (null = none) — blocks tint from it directly,
-  /// color-only per the selection language.
-  final ValueListenable<List<CutId>?> selectedCutIds;
+  /// The live selection (null = none) — a frame RANGE on the track's
+  /// global axis, which blocks tint from directly (they are selected when
+  /// the range covers them), color-only per the selection language.
+  final ValueListenable<TrackFrameRangeSelection?> selectedRange;
 
   /// A select-drag step stated on the track's GLOBAL FRAME axis. Ordinals
   /// used to be the panel-facing form, which is what kept the cut row on a
@@ -3470,11 +3472,13 @@ class _StoryboardTrackRow extends StatelessWidget {
     return null;
   }
 
-  /// Whether the cut covering [frame] sits in the live selection.
+  /// Whether [frame] sits in the live selection — a plain range test now
+  /// that the selection IS a range on this row's own axis.
   bool _isSelectedAt(int frame) {
-    final selected = cutSelect?.selectedCutIds.value;
-    final entry = _cutAtFrame(frame);
-    return selected != null && entry != null && selected.contains(entry.cutId);
+    final selection = cutSelect?.selectedRange.value;
+    return selection != null &&
+        selection.coversRow(TrackRowAddress(track.id)) &&
+        selection.contains(frame);
   }
 
   /// The cut row's half of the shared range gesture: SELECT paints a cut
@@ -3577,7 +3581,8 @@ class _StoryboardTrackRow extends StatelessWidget {
                     crossAxisExtent: StoryboardPanel._trackLaneHeight,
                     minBlockWidth: timelineScale.minBlockWidth,
                     activeCutId: activeCutId,
-                    selectedCutIds: cutSelect?.selectedCutIds,
+                    selectedRange: cutSelect?.selectedRange,
+                    rowAddress: TrackRowAddress(track.id),
                     hoveredCutId: hoveredCutId,
                     colorScheme: Theme.of(context).colorScheme,
                     brightness: Theme.of(context).brightness,
