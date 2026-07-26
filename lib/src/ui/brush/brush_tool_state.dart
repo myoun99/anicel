@@ -332,9 +332,15 @@ class BrushToolState {
       // is erase rides the SAME dab flag and kernels.
       erase:
           tool == CanvasTool.eraser || brushBlendMode == BrushBlendMode.erase,
+      // A mixing brush has already taken the ground colour into the dab it
+      // deposits, so letting the blend mode combine with that ground again
+      // would apply it twice — visibly. Mixing therefore forces plain
+      // srcOver. Erase still wins: it is the tool, not a blend choice.
       blendMode: tool == CanvasTool.eraser
           ? BrushBlendMode.erase
-          : brushBlendMode,
+          : (shape.mixesGroundColor && brushBlendMode != BrushBlendMode.erase
+                ? BrushBlendMode.color
+                : brushBlendMode),
       stabilizerStrength: stabilizerStrength,
     );
   }

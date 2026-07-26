@@ -25,6 +25,8 @@ import '../../models/viewport_point.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_id.dart';
 import '../../services/brush_dab_interpolator.dart';
+import '../../services/brush_ground_color_mixing.dart';
+import '../../services/brush_ground_color_sampling.dart';
 import '../../services/brush_live_stroke_rasterizer.dart';
 import '../../services/brush_stroke_dynamics.dart';
 import '../../services/brush_tip_stamp_cache.dart';
@@ -242,6 +244,17 @@ class _InteractiveBrushEditCanvasViewState
   /// anchor on the base chain — anchoring on scattered/jittered dabs would
   /// wander the spacing.
   BrushDab? _previousBaseDab;
+
+  /// Ground-colour mixing state for the stroke in flight, or null when the
+  /// brush paints its own colour flat. Holds the reservoir, so it must see
+  /// the dabs in stroke order.
+  BrushGroundColorMixer? _groundMixer;
+
+  /// Reads the cel as it stood when the stroke began. A stroke cannot change
+  /// what is under it mid-flight from the mixer's point of view: the live
+  /// tiles are rasterized a pointer-move at a time, so sampling them would
+  /// race the batch that produced them.
+  BrushGroundColorSampler? _groundSampler;
 
   /// Pull-string stabilization for the active stroke (P7): created at
   /// pointer-down when the strength is non-zero (rope = screen px / zoom,
@@ -611,6 +624,9 @@ class _InteractiveBrushEditCanvasViewState
     _strokeDynamics = BrushStrokeDynamics(settings: strokeSettings);
     _lastDirectionDegrees = null;
     _previousBaseDab = null;
+    _groundMixer = strokeSettings.shape.mixesGroundColor
+        ? BrushGroundColorMixer(shape: strokeSettings.shape)
+        : null;
     _resetOverlay();
     // Overlay stroke configuration AFTER the reset — reset() clears
     // preBlendBase, so setting it earlier silently disabled the whole
@@ -619,6 +635,9 @@ class _InteractiveBrushEditCanvasViewState
     // it). The overlay must display in the stroke's blend mode from the
     // first dab.
     final strokeSurface = widget.sessionState.canvasState.currentSurface;
+    _groundSampler = _groundMixer == null
+        ? null
+        : bitmapSurfaceGroundSampler(strokeSurface);
     _overlayModel.configureTileSize(strokeSurface.tileSize);
     _overlayModel.erase = strokeSettings.erase;
     _overlayModel.blendMode = strokeSettings.blendMode;
@@ -650,10 +669,12 @@ class _InteractiveBrushEditCanvasViewState
     // — the overlay, the commit, undo replay and the .qap all see the
     // same resolved (quantized, prerotated-mask) dabs.
     final emitted = BrushTipStampCache.instance.resolveDabs(
-      _strokeDynamics!.apply(
-        initialDabs,
-        firstSequence: _nextSequence,
-        directionDegrees: null,
+      _withGroundMixing(
+        _strokeDynamics!.apply(
+          initialDabs,
+          firstSequence: _nextSequence,
+          directionDegrees: null,
+        ),
       ),
     );
     _collectedDabs.addAll(emitted);
@@ -763,12 +784,14 @@ class _InteractiveBrushEditCanvasViewState
         strokeDirectionDegrees(from: previousRaw, to: canvasPosition) ??
         _lastDirectionDegrees;
     final emitted = BrushTipStampCache.instance.resolveDabs(
-      _strokeDynamics?.apply(
+      _withGroundMixing(
+        _strokeDynamics?.apply(
+              baseDabs,
+              firstSequence: _nextSequence,
+              directionDegrees: _lastDirectionDegrees,
+            ) ??
             baseDabs,
-            firstSequence: _nextSequence,
-            directionDegrees: _lastDirectionDegrees,
-          ) ??
-          baseDabs,
+      ),
     );
 
     // No setState: pointer moves only QUEUE the new dabs (this runs at
@@ -1145,6 +1168,18 @@ class _InteractiveBrushEditCanvasViewState
   /// Scales freshly interpolated dabs by their pressure per the active
   /// stroke's pressure curves (BB-3). Returns the input unchanged when no
   /// curve is set, so the common no-pressure path stays allocation-free.
+  /// Resolves the colour a mixing brush deposits, after the dynamics have
+  /// settled each dab's final position — scatter moves dabs, and the ground
+  /// has to be read where the dab actually lands.
+  List<BrushDab> _withGroundMixing(List<BrushDab> dabs) {
+    final mixer = _groundMixer;
+    final sampler = _groundSampler;
+    if (mixer == null || sampler == null) {
+      return dabs;
+    }
+    return mixer.apply(dabs, sample: sampler);
+  }
+
   List<BrushDab> _withPressureDynamics(List<BrushDab> dabs) {
     final settings = _activeStrokeInputSettings ?? widget.inputSettings;
     if (!settings.hasPressureDynamics) {
@@ -1227,6 +1262,9 @@ class _InteractiveBrushEditCanvasViewState
     _strokeDynamics = null;
     _lastDirectionDegrees = null;
     _previousBaseDab = null;
+    // The reservoir is per stroke: a new stroke starts with a clean brush.
+    _groundMixer = null;
+    _groundSampler = null;
     _stabilizer = null;
     _lastPenPosition = null;
     _collectedDabs.clear();
