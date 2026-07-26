@@ -6,6 +6,7 @@ import 'package:quick_animaker_v2/src/models/cut_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_section_defaults.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
+import 'package:quick_animaker_v2/src/models/timeline_row_address.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
@@ -64,7 +65,7 @@ void main() {
       headGlobalFrame: second.startFrame + 1,
     );
 
-    expect(session.storyboardCutSelection.value, const [
+    expect(session.storyboardSelectedCutIds, const [
       CutId('cut-1'),
       CutId('cut-2'),
     ]);
@@ -81,7 +82,10 @@ void main() {
       headGlobalFrame: second.startFrame - 1,
     );
 
-    expect(session.storyboardCutSelection.value, isNull);
+    expect(session.storyboardSelectedCutIds, isEmpty);
+    // And no RANGE either: an empty range parked over the gap would still
+    // read as "inside the selection" and swallow the next press there.
+    expect(session.trackFrameRangeSelection.value, isNull);
   });
 
   test('a single frame inside a cut takes that whole cut', () {
@@ -94,7 +98,7 @@ void main() {
       headGlobalFrame: third.startFrame + 2,
     );
 
-    expect(session.storyboardCutSelection.value, const [CutId('cut-3')]);
+    expect(session.storyboardSelectedCutIds, const [CutId('cut-3')]);
   });
 
   test('a sweep across every cut paints the whole run', () {
@@ -107,7 +111,7 @@ void main() {
       headGlobalFrame: axis.entryFor(const CutId('cut-3'))!.startFrame,
     );
 
-    expect(session.storyboardCutSelection.value, const [
+    expect(session.storyboardSelectedCutIds, const [
       CutId('cut-1'),
       CutId('cut-2'),
       CutId('cut-3'),
@@ -124,9 +128,91 @@ void main() {
       headGlobalFrame: axis.entryFor(const CutId('cut-2'))!.startFrame,
     );
 
-    expect(session.storyboardCutSelection.value, const [
+    expect(session.storyboardSelectedCutIds, const [
       CutId('cut-2'),
       CutId('cut-3'),
     ]);
+  });
+
+  group('the cut row is a frame-axis row', () {
+    test('the selection IS a frame range on the track axis — the cuts are '
+        'what the range covers, not a list of their own', () {
+      final session = sessionWithGap();
+      final axis = session.trackFrameAxis();
+      final second = axis.entryFor(const CutId('cut-2'))!;
+
+      session.updateStoryboardCutSelectionByFrame(
+        trackId: trackId,
+        anchorGlobalFrame: second.startFrame + 1,
+        headGlobalFrame: second.startFrame + 1,
+      );
+
+      final selection = session.trackFrameRangeSelection.value!;
+      // The snap expanded one pressed frame to the whole cut block.
+      expect(selection.startFrame, second.startFrame);
+      expect(selection.endFrameExclusive, second.endFrame);
+      expect(selection.anchorRow, const TrackRowAddress(trackId));
+      expect(selection.trackId, trackId);
+    });
+
+    test('it OUTLIVES a cut switch: the track axis does not belong to any '
+        'one cut, unlike the cut-local selection', () {
+      final session = sessionWithGap();
+      final axis = session.trackFrameAxis();
+      final third = axis.entryFor(const CutId('cut-3'))!;
+      session.updateStoryboardCutSelectionByFrame(
+        trackId: trackId,
+        anchorGlobalFrame: third.startFrame,
+        headGlobalFrame: third.startFrame,
+      );
+
+      session.selectCut(const CutId('cut-1'));
+
+      expect(session.storyboardSelectedCutIds, const [CutId('cut-3')]);
+    });
+
+    test(
+      'starting a CUT-LOCAL selection clears it: two axes, one highlight',
+      () {
+        final session = sessionWithGap();
+        final axis = session.trackFrameAxis();
+        final first = axis.entryFor(const CutId('cut-1'))!;
+        session.updateStoryboardCutSelectionByFrame(
+          trackId: trackId,
+          anchorGlobalFrame: first.startFrame,
+          headGlobalFrame: first.startFrame,
+        );
+
+        session.updateFrameRangeSelectionDrag(
+          layerId: session.activeLayerId!,
+          anchorIndex: 0,
+          headIndex: 0,
+        );
+
+        expect(session.trackFrameRangeSelection.value, isNull);
+        expect(session.storyboardSelectedCutIds, isEmpty);
+      },
+    );
+
+    test('and starting a TRACK-axis one clears the cut-local selection', () {
+      final session = sessionWithGap();
+      session.updateFrameRangeSelectionDrag(
+        layerId: session.activeLayerId!,
+        anchorIndex: 0,
+        headIndex: 0,
+      );
+      expect(session.frameRangeSelection.value, isNotNull);
+      final axis = session.trackFrameAxis();
+      final first = axis.entryFor(const CutId('cut-1'))!;
+
+      session.updateStoryboardCutSelectionByFrame(
+        trackId: trackId,
+        anchorGlobalFrame: first.startFrame,
+        headGlobalFrame: first.startFrame,
+      );
+
+      expect(session.frameRangeSelection.value, isNull);
+      expect(session.storyboardSelectedCutIds, const [CutId('cut-1')]);
+    });
   });
 }

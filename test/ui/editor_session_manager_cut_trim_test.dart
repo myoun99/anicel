@@ -483,7 +483,7 @@ void main() {
       final (s, first, second, third) = threeCutSession();
 
       selectCutRun(s, first, second);
-      expect(s.storyboardCutSelection.value, [first, second]);
+      expect(s.storyboardSelectedCutIds, [first, second]);
 
       // Backwards sweep normalizes; a head dragged off the left edge
       // clamps at frame 0.
@@ -491,10 +491,10 @@ void main() {
         anchorGlobalFrame: layoutStart(s, third),
         headGlobalFrame: -5,
       );
-      expect(s.storyboardCutSelection.value, [first, second, third]);
+      expect(s.storyboardSelectedCutIds, [first, second, third]);
 
       s.clearStoryboardCutSelection();
-      expect(s.storyboardCutSelection.value, isNull);
+      expect(s.storyboardSelectedCutIds, isEmpty);
     });
 
     test('a packed run has nowhere to slide: it stops at contact rather '
@@ -604,7 +604,7 @@ void main() {
       s.deleteSelectedCuts();
       final cutsAfter = s.repository.requireProject().tracks.first.cuts;
       expect([for (final cut in cutsAfter) cut.id], [third]);
-      expect(s.storyboardCutSelection.value, isNull);
+      expect(s.storyboardSelectedCutIds, isEmpty);
 
       // ONE undo restores both.
       s.undo();

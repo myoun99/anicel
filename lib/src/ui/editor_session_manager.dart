@@ -64,6 +64,7 @@ import '../models/timeline_repeat.dart';
 import '../models/timeline_row_address.dart';
 import '../models/timeline_run_edit.dart';
 import '../models/track.dart';
+import '../models/track_frame_range.dart';
 import '../models/track_id.dart';
 import '../models/track_se_window.dart';
 import '../services/brush_frame_store.dart';
@@ -520,8 +521,8 @@ class EditorSessionManager extends ChangeNotifier {
     resolveDevice: Platform.environment['FLUTTER_TEST'] == 'true'
         ? () => null
         : null,
-    resolveUserOffsetSamples: (sampleRate) => audioSyncSettings.value
-        .offsetSamples(
+    resolveUserOffsetSamples: (sampleRate) =>
+        audioSyncSettings.value.offsetSamples(
           sampleRate: sampleRate,
           frameRateNumerator: projectFrameRate.numerator,
           frameRateDenominator: projectFrameRate.denominator,
@@ -738,7 +739,9 @@ class EditorSessionManager extends ChangeNotifier {
     }
 
     if (project.tracks.isEmpty) {
-      throw StateError('Cannot resolve the selected track in an empty project.');
+      throw StateError(
+        'Cannot resolve the selected track in an empty project.',
+      );
     }
     return project.tracks.first.id;
   }
@@ -1027,7 +1030,7 @@ class EditorSessionManager extends ChangeNotifier {
     opacityDragPreview.dispose();
     onionSkinSettings.dispose();
     onionSkinLayerIds.dispose();
-    storyboardCutSelection.dispose();
+    trackFrameRangeSelection.dispose();
     _historyManager.dispose();
     super.dispose();
   }
@@ -1043,25 +1046,25 @@ class EditorSessionManager extends ChangeNotifier {
   /// nothing recorded, nothing to fall out of sync.
   late final AudioConformStore audioConformStore =
       (_injectedAudioConformStore ??
-          AudioConformStore(
-            resolveConformPath: _conformPathFor,
-            resolveProjectSampleRate: () =>
-                _repository.requireProject().audioSampleRate,
-            resolveAudioSpeed: () {
-              final project = _repository.requireProject();
-              return (
-                numerator: project.audioSpeedNumerator,
-                denominator: project.audioSpeedDenominator,
-              );
-            },
-            // Widget tests: run conforms inline — a worker isolate started
-            // under fake async outlives the test (the prerender scheduler's
-            // FLUTTER_TEST branch, same reason). Missing fixture paths
-            // short-circuit before any decode, so this stays cheap.
-            runner: Platform.environment['FLUTTER_TEST'] == 'true'
-                ? (request) => Future.value(runConformHere(request))
-                : null,
-          ))
+            AudioConformStore(
+              resolveConformPath: _conformPathFor,
+              resolveProjectSampleRate: () =>
+                  _repository.requireProject().audioSampleRate,
+              resolveAudioSpeed: () {
+                final project = _repository.requireProject();
+                return (
+                  numerator: project.audioSpeedNumerator,
+                  denominator: project.audioSpeedDenominator,
+                );
+              },
+              // Widget tests: run conforms inline — a worker isolate started
+              // under fake async outlives the test (the prerender scheduler's
+              // FLUTTER_TEST branch, same reason). Missing fixture paths
+              // short-circuit before any decode, so this stays cheap.
+              runner: Platform.environment['FLUTTER_TEST'] == 'true'
+                  ? (request) => Future.value(runConformHere(request))
+                  : null,
+            ))
         ..addListener(notifyListeners);
 
   String? _conformPathFor(String sourcePath) {
@@ -1148,7 +1151,7 @@ class EditorSessionManager extends ChangeNotifier {
   void deleteActiveCut() {
     // With a cut RANGE selection live, the delete command acts on the
     // whole run instead of the active cut (UI-R18 #1).
-    if (storyboardCutSelection.value?.isNotEmpty ?? false) {
+    if (storyboardSelectedCutIds.isNotEmpty) {
       deleteSelectedCuts();
       return;
     }
@@ -3563,8 +3566,9 @@ class EditorSessionManager extends ChangeNotifier {
   /// A take the TRANSPORT finished (stop pressed mid-take): the message
   /// the toggle path would have returned, for whoever hosts the snackbar.
   /// Null = finished clean (or nothing to say).
-  final ValueNotifier<String?> voiceRecordingNotice =
-      ValueNotifier<String?>(null);
+  final ValueNotifier<String?> voiceRecordingNotice = ValueNotifier<String?>(
+    null,
+  );
 
   AudioRecorder? _voiceRecorder;
   LayerId? _voiceRecordLaneId;
@@ -3811,7 +3815,11 @@ class EditorSessionManager extends ChangeNotifier {
       device,
       audioSyncSettings.value.outputDeviceName,
     );
-    var opened = device.open(sampleRate: 48000, channels: 2, deviceIndex: index);
+    var opened = device.open(
+      sampleRate: 48000,
+      channels: 2,
+      deviceIndex: index,
+    );
     if (opened == 0 && index >= 0) {
       opened = device.open(sampleRate: 48000, channels: 2);
     }
@@ -3876,8 +3884,9 @@ class EditorSessionManager extends ChangeNotifier {
   /// outside recording. Changes at most once per FRAME (the boundary
   /// gate), and NEVER through a session notify: the timeline host
   /// subscribes directly (the R12-B playback-performance contract).
-  final ValueNotifier<Layer?> voiceRecordPreviewLane =
-      ValueNotifier<Layer?>(null);
+  final ValueNotifier<Layer?> voiceRecordPreviewLane = ValueNotifier<Layer?>(
+    null,
+  );
 
   /// The growing |peak| envelope of the take being recorded, folded from
   /// the recorder's chunk tap in the waveform store's own format.
@@ -3890,7 +3899,8 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// What the waveform strips should paint for [path]: the live envelope
   /// for the preview sentinel, the conform store's peaks otherwise.
-  AudioPeaks? audioPeaksForDisplay(String path) => path == voiceRecordPreviewPath
+  AudioPeaks? audioPeaksForDisplay(String path) =>
+      path == voiceRecordPreviewPath
       ? _voiceRecordLivePeaks
       : audioConformStore.peaksFor(path);
 
@@ -4004,9 +4014,7 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   void _clearVoiceRecordPreview() {
-    playback.globalFrameIndexListenable.removeListener(
-      _syncVoiceRecordPreview,
-    );
+    playback.globalFrameIndexListenable.removeListener(_syncVoiceRecordPreview);
     _voiceRecordLivePeaks = null;
     _voiceRecordPeakBuckets.clear();
     _voiceRecordBucketMax = 0;
@@ -6159,11 +6167,38 @@ class EditorSessionManager extends ChangeNotifier {
 
   // --- Storyboard cut RANGE selection (UI-R18 #1, O2c) ----------------------
 
-  /// The storyboard's selected cut RUN — one track, contiguous, in track
-  /// order (the timeline range-selection model applied to cuts). Value-
-  /// only view state; a plain tap clears it.
-  final ValueNotifier<List<CutId>?> storyboardCutSelection =
-      ValueNotifier<List<CutId>?>(null);
+  /// THE storyboard's selection: a frame RANGE on the track's global axis.
+  ///
+  /// The cut row used to carry a selection model of its own — a list of cut
+  /// ids — which is what made "cut axis" a second domain next to the frame
+  /// axis. It is one axis: a cut is a long block on the cut row, the snap
+  /// expands a dragged range to whole blocks, and "these cuts" is what
+  /// falls out ([storyboardSelectedCutIds]). Value-only view state; a plain
+  /// tap clears it.
+  final ValueNotifier<TrackFrameRangeSelection?> trackFrameRangeSelection =
+      ValueNotifier<TrackFrameRangeSelection?>(null);
+
+  /// The cuts the storyboard selection covers — DERIVED from the range, in
+  /// track order.
+  List<CutId> get storyboardSelectedCutIds {
+    final selection = trackFrameRangeSelection.value;
+    if (selection == null ||
+        !selection.coversRow(TrackRowAddress(selection.trackId))) {
+      return const [];
+    }
+    return _axisForTrack(
+      selection.trackId,
+    ).cutsIn(selection.startFrame, selection.endFrameExclusive);
+  }
+
+  /// The global frame axis of ONE track (the selected track's is
+  /// [trackFrameAxis]).
+  TrackFrameAxis _axisForTrack(TrackId trackId) => TrackFrameAxis([
+    for (final entry in buildStoryboardTimelineLayout(
+      _repository.requireProject(),
+    ))
+      if (entry.trackId == trackId) entry,
+  ]);
 
   /// A cut-select drag step stated on the track's GLOBAL FRAME axis — the
   /// timeline's range grammar, cuts as the blocks. Dragging from anywhere
@@ -6181,43 +6216,44 @@ class EditorSessionManager extends ChangeNotifier {
     required int headGlobalFrame,
     TrackId? trackId,
   }) {
-    final axis = trackId == null
-        ? trackFrameAxis()
-        : TrackFrameAxis([
-            for (final entry in buildStoryboardTimelineLayout(
-              _repository.requireProject(),
-            ))
-              if (entry.trackId == trackId) entry,
-          ]);
-    final cuts = axis.cutsInSnappedSpan(
+    final row = trackId ?? selectedTrackId;
+    final axis = _axisForTrack(row);
+    final span = axis.snapSpanToCuts(
       anchorFrame: anchorGlobalFrame,
       headFrame: headGlobalFrame,
     );
-    storyboardCutSelection.value = cuts.isEmpty ? null : cuts;
+    // A span that only crosses a GAP selects nothing at all — not an empty
+    // range over the gap, which would still read as "inside the selection"
+    // and swallow the next press there. The cut row's blocks are cuts, so a
+    // range covering none of them is no selection.
+    if (span == null ||
+        axis.cutsIn(span.startIndex, span.endIndexExclusive).isEmpty) {
+      trackFrameRangeSelection.value = null;
+      return;
+    }
+    // Starting a TRACK-axis selection clears the cut-local one: the two
+    // state the same thing in different axes, and only one may be on screen
+    // (the timeline's own frame ⊥ lane rule, one level up).
+    clearFrameRangeSelection();
+    trackFrameRangeSelection.value = TrackFrameRangeSelection(
+      trackId: row,
+      anchorRow: TrackRowAddress(row),
+      startFrame: span.startIndex,
+      endFrameExclusive: span.endIndexExclusive,
+    );
   }
 
   void clearStoryboardCutSelection() {
-    if (storyboardCutSelection.value != null) {
-      storyboardCutSelection.value = null;
+    if (trackFrameRangeSelection.value != null) {
+      trackFrameRangeSelection.value = null;
     }
   }
 
-  /// The selection filtered to cuts that still EXIST (other commands may
-  /// have deleted/reordered members since the drag painted it).
-  List<CutId> get _liveSelectedCutIds {
-    final selection = storyboardCutSelection.value;
-    if (selection == null || selection.isEmpty) {
-      return const [];
-    }
-    final existing = <CutId>{
-      for (final track in _repository.requireProject().tracks)
-        for (final cut in track.cuts) cut.id,
-    };
-    return [
-      for (final id in selection)
-        if (existing.contains(id)) id,
-    ];
-  }
+  /// The selection filtered to cuts that still EXIST — nothing to filter
+  /// any more: [storyboardSelectedCutIds] reads the CURRENT layout, so a
+  /// cut another command deleted since the drag painted the range is simply
+  /// not in it.
+  List<CutId> get _liveSelectedCutIds => storyboardSelectedCutIds;
 
   /// Whether the selection can delete: cuts selected AND at least one
   /// cut survives (the project never empties).
@@ -6284,8 +6320,8 @@ class EditorSessionManager extends ChangeNotifier {
       _cutMoveGroupEndIndex = null;
       // Dragging inside the cut SELECTION slides the whole run (UI-R18
       // #1): anchor at the run's first cut, compensate past its last.
-      final selection = storyboardCutSelection.value;
-      if (selection != null && selection.contains(cutId)) {
+      final selection = storyboardSelectedCutIds;
+      if (selection.contains(cutId)) {
         final order = [for (final cut in track.cuts) cut.id];
         final indexes = [for (final id in selection) order.indexOf(id)]
           ..removeWhere((value) => value < 0);
@@ -6506,8 +6542,7 @@ class EditorSessionManager extends ChangeNotifier {
   void pushFrames(int count) => _shiftFrames(count);
 
   /// Closes up to [count] frames, clamped to [framePullSlack].
-  void pullFrames(int count) =>
-      _shiftFrames(-math.min(count, framePullSlack));
+  void pullFrames(int count) => _shiftFrames(-math.min(count, framePullSlack));
 
   void _shiftFrames(int delta) {
     final scope = _frameShiftScope();
@@ -6550,9 +6585,9 @@ class EditorSessionManager extends ChangeNotifier {
   /// The cut-axis scope: which track, and the ordinal the shove starts at.
   ({TrackId trackId, int anchorCutIndex})? _cutShiftScope() {
     final project = _repository.requireProject();
-    final selection = storyboardCutSelection.value;
+    final selection = storyboardSelectedCutIds;
     for (final track in project.tracks) {
-      if (selection != null && selection.isNotEmpty) {
+      if (selection.isNotEmpty) {
         final indexes = [
           for (final id in selection) track.cuts.indexWhere((c) => c.id == id),
         ]..removeWhere((value) => value < 0);
@@ -6611,10 +6646,9 @@ class EditorSessionManager extends ChangeNotifier {
     if (scope == null || delta == 0) {
       return;
     }
-    final track = _repository
-        .requireProject()
-        .tracks
-        .firstWhere((track) => track.id == scope.trackId);
+    final track = _repository.requireProject().tracks.firstWhere(
+      (track) => track.id == scope.trackId,
+    );
     if (scope.anchorCutIndex >= track.cuts.length) {
       return;
     }
@@ -6900,6 +6934,9 @@ class EditorSessionManager extends ChangeNotifier {
     // exclusion, UI-R23 #3 part 2) — unless THIS drag is the one
     // producing it (the mixed span below re-sets it).
     clearLaneRangeSelection();
+    // …and the TRACK-axis selection, for the same reason one level up: the
+    // two state a range in different axes and only one may be on screen.
+    clearStoryboardCutSelection();
     final base = snapFrameRangeToBlocks(
       layer: layer,
       anchorIndex: anchorIndex,
@@ -7515,11 +7552,7 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// The display-row hop from [anchorId] to [targetId]; null when either
   /// row is not on screen.
-  int? _displayRowDelta(
-    List<Layer> rows,
-    LayerId anchorId,
-    LayerId targetId,
-  ) {
+  int? _displayRowDelta(List<Layer> rows, LayerId anchorId, LayerId targetId) {
     final anchorIndex = rows.indexWhere((layer) => layer.id == anchorId);
     final targetIndex = rows.indexWhere((layer) => layer.id == targetId);
     if (anchorIndex == -1 || targetIndex == -1) {
@@ -7795,7 +7828,8 @@ class EditorSessionManager extends ChangeNotifier {
       },
       cameraCutId: cameraShifted == null ? null : activeCutOrNull?.id,
       cameraKeyframes: cameraShifted,
-      cameraMarkerLayer: cameraShifted == null || _rangeMoveCameraLayerId == null
+      cameraMarkerLayer:
+          cameraShifted == null || _rangeMoveCameraLayerId == null
           ? null
           : _layerById(_rangeMoveCameraLayerId!),
     );

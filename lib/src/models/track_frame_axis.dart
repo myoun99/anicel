@@ -62,10 +62,15 @@ class TrackFrameAxis {
     return null;
   }
 
-  /// The cuts a raw dragged span covers once snapped to whole cuts — the
-  /// storyboard's range selection, run through the SAME rule the timeline's
-  /// cell selection uses.
-  List<CutId> cutsInSnappedSpan({
+  /// A raw dragged span snapped to whole CUTS — the storyboard's range
+  /// selection, run through the SAME rule the timeline's cell selection
+  /// uses. Null when the span covers no cut at all (a drag entirely inside
+  /// a gap).
+  ///
+  /// The cut row is a frame-axis row like any other and a cut is just a
+  /// long block on it; "select these cuts" is what the snap makes of a
+  /// frame range, not a selection model of its own.
+  RangeBlock? snapSpanToCuts({
     required int anchorFrame,
     required int headFrame,
   }) {
@@ -74,16 +79,20 @@ class TrackFrameAxis {
       anchorIndex: anchorFrame,
       headIndex: headFrame,
     );
-    if (span == null) {
-      return const [];
-    }
-    return [
-      for (final entry in entries)
-        if (entry.startFrame < span.endIndexExclusive &&
-            entry.endFrame > span.startIndex)
-          entry.cutId,
-    ];
+    return span == null
+        ? null
+        : RangeBlock(
+            startIndex: span.startIndex,
+            endIndexExclusive: span.endIndexExclusive,
+          );
   }
+
+  /// The cuts overlapping the half-open global span [start, endExclusive).
+  List<CutId> cutsIn(int start, int endExclusive) => [
+    for (final entry in entries)
+      if (entry.startFrame < endExclusive && entry.endFrame > start)
+        entry.cutId,
+  ];
 
   /// Whether [globalFrame] falls between cuts (no cut contains it).
   bool isGap(int globalFrame) {

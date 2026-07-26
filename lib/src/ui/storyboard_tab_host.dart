@@ -455,7 +455,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                 // drag inside the selection = slide the whole run, tap =
                 // clear; the delete command batches the selection.
                 cutSelect: StoryboardCutSelectCallbacks(
-                  selectedCutIds: _session.storyboardCutSelection,
+                  selectedRange: _session.trackFrameRangeSelection,
                   onDrag: _session.updateStoryboardCutSelectionByFrame,
                   onClear: _session.clearStoryboardCutSelection,
                 ),

@@ -7,6 +7,8 @@ import 'package:flutter/semantics.dart' show SemanticsProperties;
 
 import '../models/cut.dart';
 import '../models/cut_id.dart';
+import '../models/timeline_row_address.dart';
+import '../models/track_frame_range.dart';
 import 'storyboard_layer_policy.dart';
 import 'storyboard_timeline_layout.dart';
 import 'timeline/timeline_cell_style.dart';
@@ -78,7 +80,8 @@ class StoryboardCutBlocksPainter extends CustomPainter {
     required this.crossAxisExtent,
     required this.minBlockWidth,
     required this.activeCutId,
-    required this.selectedCutIds,
+    required this.selectedRange,
+    required this.rowAddress,
     required this.hoveredCutId,
     required this.colorScheme,
     required this.brightness,
@@ -92,7 +95,7 @@ class StoryboardCutBlocksPainter extends CustomPainter {
   }) : super(
          repaint: Listenable.merge([
            geometry,
-           ?selectedCutIds,
+           ?selectedRange,
            hoveredCutId,
            ?windowBucket,
          ]),
@@ -118,7 +121,15 @@ class StoryboardCutBlocksPainter extends CustomPainter {
   final double minBlockWidth;
 
   final CutId? activeCutId;
-  final ValueListenable<List<CutId>?>? selectedCutIds;
+
+  /// The live frame RANGE on this track's global axis. A block is selected
+  /// when the range COVERS it — the cut row is a frame-axis row and a cut
+  /// is a long block on it, so there is no list of selected cuts to carry.
+  final ValueListenable<TrackFrameRangeSelection?>? selectedRange;
+
+  /// This row's address, so a selection anchored on another row (an S row,
+  /// once those select too) does not tint these blocks.
+  final TimelineRowAddress rowAddress;
   final ValueListenable<CutId?> hoveredCutId;
 
   final ColorScheme colorScheme;
@@ -171,7 +182,11 @@ class StoryboardCutBlocksPainter extends CustomPainter {
   /// [thumbnailFor] from being asked for pictures nobody can see.
   List<StoryboardCutBlockVisual> blocks() {
     final window = visibleFrameWindow();
-    final selected = selectedCutIds?.value;
+    final selectionValue = selectedRange?.value;
+    final selection =
+        selectionValue != null && selectionValue.coversRow(rowAddress)
+        ? selectionValue
+        : null;
     final hovered = hoveredCutId.value;
     final visuals = <StoryboardCutBlockVisual>[];
     for (final entry in entries) {
@@ -192,7 +207,8 @@ class StoryboardCutBlocksPainter extends CustomPainter {
           cutId: entry.cutId,
           rect: Rect.fromLTWH(left, 0, width, crossAxisExtent),
           isActive: entry.cutId == activeCutId,
-          isRangeSelected: selected?.contains(entry.cutId) ?? false,
+          isRangeSelected:
+              selection?.overlaps(entry.startFrame, entry.endFrame) ?? false,
           isHovered: entry.cutId == hovered,
           title: entry.cut.name,
           layerLabel: layerName ?? storyboardCutBlockNoLayerLabel,
@@ -443,6 +459,7 @@ class StoryboardCutBlocksPainter extends CustomPainter {
       oldDelegate.crossAxisExtent != crossAxisExtent ||
       oldDelegate.minBlockWidth != minBlockWidth ||
       oldDelegate.activeCutId != activeCutId ||
+      oldDelegate.rowAddress != rowAddress ||
       oldDelegate.colorScheme != colorScheme ||
       oldDelegate.brightness != brightness ||
       oldDelegate.baseTextStyle != baseTextStyle ||
