@@ -7,6 +7,7 @@ import '../../models/export_format_selection.dart';
 import '../../models/export_size_mode.dart';
 import '../../models/export_spec.dart';
 import '../widgets/app_window.dart';
+import '../text/app_strings.dart';
 
 /// Compact building blocks of the export window's settings column (v10):
 /// one accordion grammar, chip pickers, and the shared Format module.
@@ -324,7 +325,7 @@ class ExportFormatModule extends StatelessWidget {
       children: [
         if (capabilities.hasVideo)
           ExportModuleRow(
-            label: 'Video',
+            label: AppText.strings.exVideo,
             child: Wrap(
               spacing: 5,
               runSpacing: 4,
@@ -378,7 +379,7 @@ class ExportFormatModule extends StatelessWidget {
             ),
           ),
         ExportModuleRow(
-          label: 'Image',
+          label: AppText.strings.exImage,
           child: Wrap(
             spacing: 5,
             runSpacing: 4,
@@ -410,7 +411,7 @@ class ExportFormatModule extends StatelessWidget {
         ),
         if (selection.isVideo && codecs.length > 1)
           ExportModuleRow(
-            label: 'Codec',
+            label: AppText.strings.exCodec,
             child: Wrap(
               spacing: 5,
               runSpacing: 4,
@@ -441,7 +442,7 @@ class ExportFormatModule extends StatelessWidget {
           ),
         if (showBitrate)
           ExportModuleRow(
-            label: 'Bitrate',
+            label: AppText.strings.exBitrate,
             child: Row(
               children: [
                 Expanded(
@@ -476,7 +477,7 @@ class ExportFormatModule extends StatelessWidget {
           ),
         if (showQuality)
           ExportModuleRow(
-            label: 'Quality',
+            label: AppText.strings.exQuality,
             child: Row(
               children: [
                 Expanded(
@@ -506,7 +507,7 @@ class ExportFormatModule extends StatelessWidget {
           ),
         if (showChannels)
           ExportModuleRow(
-            label: 'Channels',
+            label: AppText.strings.exChannels,
             child: Wrap(
               spacing: 5,
               children: [
@@ -542,7 +543,7 @@ class ExportFormatModule extends StatelessWidget {
               children: [
                 ExportChip(
                   key: const ValueKey<String>('export-format-bg-white'),
-                  label: 'White',
+                  label: AppText.strings.exWhite,
                   selected: selection.backgroundArgb == 0xFFFFFFFF,
                   onTap: enabled
                       ? () =>
@@ -551,7 +552,7 @@ class ExportFormatModule extends StatelessWidget {
                 ),
                 ExportChip(
                   key: const ValueKey<String>('export-format-bg-black'),
-                  label: 'Black',
+                  label: AppText.strings.exBlack,
                   selected: selection.backgroundArgb == 0xFF000000,
                   onTap: enabled
                       ? () =>
@@ -597,13 +598,13 @@ class ExportScopeModule extends StatelessWidget {
           children: [
             ExportChip(
               key: const ValueKey<String>('export-scope-cut'),
-              label: 'Cut',
+              label: AppText.strings.exCut,
               selected: scope == ExportScopeKind.cut,
               onTap: enabled ? () => onChanged(ExportScopeKind.cut) : null,
             ),
             ExportChip(
               key: const ValueKey<String>('export-scope-project'),
-              label: 'Project',
+              label: AppText.strings.exProject,
               selected: scope == ExportScopeKind.project,
               onTap: enabled ? () => onChanged(ExportScopeKind.project) : null,
             ),
@@ -751,7 +752,7 @@ class ExportSequenceNamingModule extends StatelessWidget {
       children: [
         Expanded(
           child: AppWindowField(
-            label: 'Base name',
+            label: AppText.strings.exBaseName,
             child: TextField(
               key: const ValueKey<String>('export-naming-base-field'),
               controller: baseNameController,
@@ -810,7 +811,7 @@ class _DigitsFieldState extends State<_DigitsField> {
   @override
   Widget build(BuildContext context) {
     return AppWindowField(
-      label: 'Digits',
+      label: AppText.strings.exDigits,
       child: TextField(
         key: widget.widgetKey,
         controller: _controller,
@@ -871,7 +872,7 @@ class ExportCelNamingModule extends StatelessWidget {
           children: [
             ExportChip(
               key: const ValueKey<String>('export-cel-include-project'),
-              label: 'Project name',
+              label: AppText.strings.exProjectName,
               selected: naming.includeProjectName,
               onTap: enabled
                   ? () => onChanged(
@@ -883,7 +884,7 @@ class ExportCelNamingModule extends StatelessWidget {
             ),
             ExportChip(
               key: const ValueKey<String>('export-cel-include-cut'),
-              label: 'Cut name',
+              label: AppText.strings.renameCutField,
               selected: naming.includeCutName,
               onTap: enabled
                   ? () => onChanged(
@@ -893,7 +894,7 @@ class ExportCelNamingModule extends StatelessWidget {
             ),
             ExportChip(
               key: const ValueKey<String>('export-cel-include-layer'),
-              label: 'Layer name',
+              label: AppText.strings.renameLayerField,
               selected: naming.includeLayerName,
               onTap: enabled
                   ? () => onChanged(
@@ -922,7 +923,7 @@ class ExportCelNamingModule extends StatelessWidget {
             const SizedBox(width: 8),
             Expanded(
               child: AppWindowField(
-                label: 'Suffix',
+                label: AppText.strings.exSuffix,
                 child: TextField(
                   key: const ValueKey<String>('export-cel-suffix-field'),
                   controller: suffixController,
@@ -940,7 +941,7 @@ class ExportCelNamingModule extends StatelessWidget {
           children: [
             ExportChip(
               key: const ValueKey<String>('export-cel-cut-folder'),
-              label: 'Cut folder',
+              label: AppText.strings.exCutFolder,
               selected: naming.cutFolder,
               onTap: enabled
                   ? () => onChanged(
@@ -950,7 +951,7 @@ class ExportCelNamingModule extends StatelessWidget {
             ),
             ExportChip(
               key: const ValueKey<String>('export-cel-layer-folder'),
-              label: 'Layer folder',
+              label: AppText.strings.exLayerFolder,
               selected: naming.layerFolder,
               onTap: enabled
                   ? () => onChanged(
