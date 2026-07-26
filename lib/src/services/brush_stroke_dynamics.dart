@@ -27,6 +27,7 @@ class BrushStrokeDynamics {
       settings.sizeJitter > 0.0 ||
       settings.opacityJitter > 0.0 ||
       settings.angleJitter > 0.0 ||
+      settings.roundnessJitter > 0.0 ||
       (settings.scatterRadiusRatio > 0.0 || settings.scatterCount > 1);
 
   /// Transforms [dabs] (renumbering from [firstSequence]) using the stroke
@@ -76,12 +77,19 @@ class BrushStrokeDynamics {
         if (settings.opacityJitter > 0.0) {
           opacity *= 1.0 - settings.opacityJitter * _random.nextDouble();
         }
+        var roundness = dab.roundness;
+        if (settings.roundnessJitter > 0.0) {
+          roundness *= 1.0 - settings.roundnessJitter * _random.nextDouble();
+        }
 
         emitted.add(
           dab.copyWith(
             center: center,
             size: size,
             opacity: opacity.clamp(0.0, 1.0).toDouble(),
+            // Roundness is a ratio in (0, 1]; a fully-squashed tip would be
+            // a degenerate zero-width ellipse, so it keeps a hair of width.
+            roundness: roundness.clamp(0.01, 1.0).toDouble(),
             angleDegrees: _normalizeAngle(angle),
             sequence: sequence,
           ),

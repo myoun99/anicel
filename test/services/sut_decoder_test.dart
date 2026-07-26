@@ -74,6 +74,8 @@ void main() {
     int sizeEffectorMinimum = 59,
     int flowEffectorFlags = 0x30,
     int flowEffectorMinimum = 0,
+    int thicknessEffectorFlags = 0x00,
+    int thicknessEffectorMinimum = 0,
     int rotationEffector = 0x03,
     int rotationRandomScale = 100,
     double dualSize = 30.0,
@@ -102,7 +104,8 @@ void main() {
         DualUsePatternImage INTEGER, DualPatternImageArray BLOB,
         DualSize REAL, SyncDualBrushSize INTEGER,
         BrushUseWaterColor INTEGER, BrushMixColor INTEGER,
-        BrushMixAlpha INTEGER, BrushMixColorExtension INTEGER);
+        BrushMixAlpha INTEGER, BrushMixColorExtension INTEGER,
+        BrushThicknessEffector BLOB);
       CREATE TABLE MaterialFile(_PW_ID INTEGER PRIMARY KEY,
         CatalogPath TEXT, OriginalPath TEXT, FileData BLOB);
     ''');
@@ -128,9 +131,9 @@ void main() {
       'BrushRotationRandomScale, UseDualBrush, DualUsePatternImage, '
       'DualPatternImageArray, DualSize, SyncDualBrushSize, '
       'BrushUseWaterColor, BrushMixColor, BrushMixAlpha, '
-      'BrushMixColorExtension) '
+      'BrushMixColorExtension, BrushThicknessEffector) '
       'VALUES (9, 80, 50.0, 60, 70, 15.0, 40, 200.0, 1, ?, ?, ?, ?, '
-      '1, 200.0, 4, ?, 182.0, 90, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      '1, 200.0, 4, ?, 182.0, 90, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         patternArray(catalogPath),
         effector(sizeEffectorFlags, minimumPercent: sizeEffectorMinimum),
@@ -149,6 +152,10 @@ void main() {
         mixColor,
         mixAlpha,
         mixColorExtension,
+        effector(
+          thicknessEffectorFlags,
+          minimumPercent: thicknessEffectorMinimum,
+        ),
       ],
     );
     // Round brush without pattern data.
@@ -294,6 +301,8 @@ void main() {
     expect(s.opacityJitter, closeTo(0.96, 1e-9));
     // The rotation effector is a bare int carrying the same 0x80 bit.
     expect(s.angleJitter, closeTo(0.45, 1e-9));
+    // Thickness IS roundness, so its random source squashes the tip.
+    expect(s.roundnessJitter, 0.0, reason: 'inert without the random bit');
     // The random bit does not imply a pressure curve.
     expect(s.sizePressureCurve, isNull);
   });
@@ -356,6 +365,23 @@ void main() {
 
     expect(s.dualMask, isNull);
     expect(s.dualMaskScale, 1.0);
+  });
+
+  test('the thickness effector random source squashes the tip', () async {
+    // Clip Studio's thickness IS this engine's roundness, so its random
+    // input source becomes a per-dab roundness jitter (Sampled Brush 4 3
+    // in the user's library carries exactly this).
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      thicknessEffectorFlags: 0x80,
+      thicknessEffectorMinimum: 35,
+    );
+    final s = (await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    )).presets.first.settings;
+
+    expect(s.roundnessJitter, closeTo(0.65, 1e-9));
   });
 
   test('ground-colour mixing imports behind its gate', () async {

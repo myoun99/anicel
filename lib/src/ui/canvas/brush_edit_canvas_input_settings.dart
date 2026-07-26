@@ -25,6 +25,7 @@ class BrushEditCanvasInputSettings {
     double sizeJitter = 0.0,
     double opacityJitter = 0.0,
     double angleJitter = 0.0,
+    double roundnessJitter = 0.0,
     double scatterRadiusRatio = 0.0,
     int scatterCount = 1,
     bool scatterBothAxes = true,
@@ -99,6 +100,7 @@ class BrushEditCanvasInputSettings {
         sizeJitter: sizeJitter,
         opacityJitter: opacityJitter,
         angleJitter: angleJitter,
+        roundnessJitter: roundnessJitter,
         scatterRadiusRatio: scatterRadiusRatio,
         scatterCount: scatterCount,
         scatterBothAxes: scatterBothAxes,
@@ -186,6 +188,7 @@ class BrushEditCanvasInputSettings {
   double get sizeJitter => shape.sizeJitter;
   double get opacityJitter => shape.opacityJitter;
   double get angleJitter => shape.angleJitter;
+  double get roundnessJitter => shape.roundnessJitter;
   double get scatterRadiusRatio => shape.scatterRadiusRatio;
   int get scatterCount => shape.scatterCount;
   bool get scatterBothAxes => shape.scatterBothAxes;
@@ -228,6 +231,7 @@ class BrushEditCanvasInputSettings {
     double? sizeJitter,
     double? opacityJitter,
     double? angleJitter,
+    double? roundnessJitter,
     double? scatterRadiusRatio,
     int? scatterCount,
     bool? scatterBothAxes,
@@ -260,6 +264,7 @@ class BrushEditCanvasInputSettings {
       sizeJitter: sizeJitter ?? this.sizeJitter,
       opacityJitter: opacityJitter ?? this.opacityJitter,
       angleJitter: angleJitter ?? this.angleJitter,
+      roundnessJitter: roundnessJitter ?? this.roundnessJitter,
       scatterRadiusRatio: scatterRadiusRatio ?? this.scatterRadiusRatio,
       scatterCount: scatterCount ?? this.scatterCount,
       scatterBothAxes: scatterBothAxes ?? this.scatterBothAxes,

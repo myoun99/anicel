@@ -255,6 +255,11 @@ BrushSettings _settingsFromVariant(
   // SAME input-source bits. `BrushRotationRandomScale` is a percentage of a
   // full turn and sits at its default 100 on brushes that never randomise,
   // so it only means anything once the random bit is actually set.
+  // Thickness IS roundness here, so its random source squashes the tip per
+  // dab — what stops a textured stamp brush from looking stamped.
+  final roundnessJitter = _effectorRandomJitter(
+    variant['BrushThicknessEffector'],
+  );
   final angleJitter = _usesRandom(_effectorFlags(variant['BrushRotationEffector']))
       ? ((_doubleOf(variant['BrushRotationRandomScale']) ?? 0.0) / 100.0)
             .clamp(0.0, 1.0)
@@ -303,6 +308,7 @@ BrushSettings _settingsFromVariant(
     sizeJitter: sizeJitter,
     opacityJitter: opacityJitter,
     angleJitter: angleJitter,
+    roundnessJitter: roundnessJitter,
     scatterRadiusRatio: scatterRadiusRatio,
     scatterCount: scatterCount,
     dualMask: dualMask,
