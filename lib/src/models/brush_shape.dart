@@ -52,6 +52,7 @@ class BrushShape {
     this.textureScale = 1.0,
     this.textureDensity = 1.0,
     this.roundnessJitter = 0.0,
+    this.spacingJitter = 0.0,
     this.mixesGroundColor = false,
     this.paintAmount = 1.0,
     this.paintDensity = 1.0,
@@ -123,6 +124,11 @@ class BrushShape {
   /// different amount on every dab, which is how a textured stamp brush
   /// stops looking stamped.
   final double roundnessJitter;
+
+  /// Random per-segment spacing reduction, 0..1 — Clip Studio drives this
+  /// from its interval effector's random input source, which breaks up the
+  /// even beat of a stamped brush.
+  final double spacingJitter;
 
   /// Whether the brush mixes with the colour already on the cel — Clip
   /// Studio's 밑바탕 혼색, Photoshop's Mixer Brush. The gate: with it off the
@@ -200,6 +206,7 @@ class BrushShape {
       textureScale: textureScale,
       textureDensity: textureDensity,
       roundnessJitter: roundnessJitter,
+      spacingJitter: spacingJitter,
       mixesGroundColor: mixesGroundColor,
       paintAmount: paintAmount,
       paintDensity: paintDensity,
@@ -228,6 +235,7 @@ class BrushShape {
       angleDegrees: angleDegrees,
       tipMask: slot == BrushMaskSlot.tip ? mask : tipMask,
       roundnessJitter: roundnessJitter,
+      spacingJitter: spacingJitter,
       mixesGroundColor: mixesGroundColor,
       paintAmount: paintAmount,
       paintDensity: paintDensity,
@@ -275,6 +283,7 @@ class BrushShape {
     double? textureScale,
     double? textureDensity,
     double? roundnessJitter,
+    double? spacingJitter,
     bool? mixesGroundColor,
     double? paintAmount,
     double? paintDensity,
@@ -309,6 +318,7 @@ class BrushShape {
       textureScale: textureScale ?? this.textureScale,
       textureDensity: textureDensity ?? this.textureDensity,
       roundnessJitter: roundnessJitter ?? this.roundnessJitter,
+      spacingJitter: spacingJitter ?? this.spacingJitter,
       mixesGroundColor: mixesGroundColor ?? this.mixesGroundColor,
       paintAmount: paintAmount ?? this.paintAmount,
       paintDensity: paintDensity ?? this.paintDensity,
@@ -347,6 +357,7 @@ class BrushShape {
           other.textureScale == textureScale &&
           other.textureDensity == textureDensity &&
           other.roundnessJitter == roundnessJitter &&
+          other.spacingJitter == spacingJitter &&
           other.mixesGroundColor == mixesGroundColor &&
           other.paintAmount == paintAmount &&
           other.paintDensity == paintDensity &&
@@ -381,6 +392,7 @@ class BrushShape {
     textureScale,
     textureDensity,
     roundnessJitter,
+    spacingJitter,
     mixesGroundColor,
     paintAmount,
     paintDensity,

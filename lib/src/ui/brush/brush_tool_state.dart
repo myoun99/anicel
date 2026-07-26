@@ -60,6 +60,8 @@ class BrushToolState {
     double sizeJitter = 0.0,
     double opacityJitter = 0.0,
     double angleJitter = 0.0,
+    double roundnessJitter = 0.0,
+    double spacingJitter = 0.0,
     double scatterRadiusRatio = 0.0,
     int scatterCount = 1,
     bool scatterBothAxes = true,
@@ -91,6 +93,8 @@ class BrushToolState {
       sizeJitter: sizeJitter,
       opacityJitter: opacityJitter,
       angleJitter: angleJitter,
+      roundnessJitter: roundnessJitter,
+      spacingJitter: spacingJitter,
       scatterRadiusRatio: scatterRadiusRatio,
       scatterCount: scatterCount,
       scatterBothAxes: scatterBothAxes,
@@ -150,6 +154,8 @@ class BrushToolState {
     double? sizeJitter,
     double? opacityJitter,
     double? angleJitter,
+    double? roundnessJitter,
+    double? spacingJitter,
     double? scatterRadiusRatio,
     int? scatterCount,
     bool? scatterBothAxes,
@@ -158,6 +164,10 @@ class BrushToolState {
     BrushTipMask? textureMask,
     double? textureScale,
     double? textureDensity,
+    bool? mixesGroundColor,
+    double? paintAmount,
+    double? paintDensity,
+    double? colorStretch,
     CanvasTool? tool,
     double? stabilizerStrength,
     BrushBlendMode? brushBlendMode,
@@ -182,6 +192,8 @@ class BrushToolState {
         sizeJitter: sizeJitter ?? 0.0,
         opacityJitter: opacityJitter ?? 0.0,
         angleJitter: angleJitter ?? 0.0,
+        roundnessJitter: roundnessJitter ?? 0.0,
+        spacingJitter: spacingJitter ?? 0.0,
         scatterRadiusRatio: scatterRadiusRatio ?? 0.0,
         scatterCount: scatterCount ?? 1,
         scatterBothAxes: scatterBothAxes ?? true,
@@ -190,6 +202,10 @@ class BrushToolState {
         textureMask: textureMask,
         textureScale: textureScale ?? 1.0,
         textureDensity: textureDensity ?? 1.0,
+        mixesGroundColor: mixesGroundColor ?? false,
+        paintAmount: paintAmount ?? 1.0,
+        paintDensity: paintDensity ?? 1.0,
+        colorStretch: colorStretch ?? 0.0,
       ),
       tool: tool ?? CanvasTool.brush,
       stabilizerStrength: stabilizerStrength ?? 0.0,
@@ -212,6 +228,11 @@ class BrushToolState {
     sizeJitter: clampZeroToOne(s.sizeJitter),
     opacityJitter: clampZeroToOne(s.opacityJitter),
     angleJitter: clampZeroToOne(s.angleJitter),
+    roundnessJitter: clampZeroToOne(s.roundnessJitter),
+    spacingJitter: clampZeroToOne(s.spacingJitter),
+    paintAmount: clampZeroToOne(s.paintAmount),
+    paintDensity: clampZeroToOne(s.paintDensity),
+    colorStretch: clampZeroToOne(s.colorStretch),
     scatterRadiusRatio: clampScatterRadius(s.scatterRadiusRatio),
     scatterCount: clampScatterCount(s.scatterCount),
     dualMaskScale: clampDualMaskScale(s.dualMaskScale),
@@ -293,6 +314,8 @@ class BrushToolState {
   double get sizeJitter => shape.sizeJitter;
   double get opacityJitter => shape.opacityJitter;
   double get angleJitter => shape.angleJitter;
+  double get roundnessJitter => shape.roundnessJitter;
+  double get spacingJitter => shape.spacingJitter;
   double get scatterRadiusRatio => shape.scatterRadiusRatio;
   int get scatterCount => shape.scatterCount;
   bool get scatterBothAxes => shape.scatterBothAxes;
@@ -301,6 +324,10 @@ class BrushToolState {
   BrushTipMask? get textureMask => shape.textureMask;
   double get textureScale => shape.textureScale;
   double get textureDensity => shape.textureDensity;
+  bool get mixesGroundColor => shape.mixesGroundColor;
+  double get paintAmount => shape.paintAmount;
+  double get paintDensity => shape.paintDensity;
+  double get colorStretch => shape.colorStretch;
 
   /// The active canvas tool. Not part of presets ([toBrushSettings] omits
   /// it); applying a preset returns to the brush, CSP-style.
@@ -364,6 +391,8 @@ class BrushToolState {
     double? sizeJitter,
     double? opacityJitter,
     double? angleJitter,
+    double? roundnessJitter,
+    double? spacingJitter,
     double? scatterRadiusRatio,
     int? scatterCount,
     bool? scatterBothAxes,
@@ -372,6 +401,10 @@ class BrushToolState {
     BrushTipMask? textureMask,
     double? textureScale,
     double? textureDensity,
+    bool? mixesGroundColor,
+    double? paintAmount,
+    double? paintDensity,
+    double? colorStretch,
     CanvasTool? tool,
     double? stabilizerStrength,
     BrushBlendMode? brushBlendMode,
@@ -397,6 +430,8 @@ class BrushToolState {
           sizeJitter: sizeJitter,
           opacityJitter: opacityJitter,
           angleJitter: angleJitter,
+          roundnessJitter: roundnessJitter,
+          spacingJitter: spacingJitter,
           scatterRadiusRatio: scatterRadiusRatio,
           scatterCount: scatterCount,
           scatterBothAxes: scatterBothAxes,
@@ -405,6 +440,10 @@ class BrushToolState {
           textureMask: textureMask,
           textureScale: textureScale,
           textureDensity: textureDensity,
+          mixesGroundColor: mixesGroundColor,
+          paintAmount: paintAmount,
+          paintDensity: paintDensity,
+          colorStretch: colorStretch,
         ),
       ),
       tool: tool ?? this.tool,

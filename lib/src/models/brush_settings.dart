@@ -33,6 +33,7 @@ class BrushSettings {
     double textureScale = 1.0,
     double textureDensity = 1.0,
     double roundnessJitter = 0.0,
+    double spacingJitter = 0.0,
     bool mixesGroundColor = false,
     double paintAmount = 1.0,
     double paintDensity = 1.0,
@@ -65,6 +66,7 @@ class BrushSettings {
          textureScale: textureScale,
          textureDensity: textureDensity,
          roundnessJitter: roundnessJitter,
+         spacingJitter: spacingJitter,
          mixesGroundColor: mixesGroundColor,
          paintAmount: paintAmount,
          paintDensity: paintDensity,
@@ -120,6 +122,7 @@ class BrushSettings {
   double get textureDensity => shape.textureDensity;
 
   double get roundnessJitter => shape.roundnessJitter;
+  double get spacingJitter => shape.spacingJitter;
 
   /// Ground-colour mixing — see [BrushShape.mixesGroundColor].
   bool get mixesGroundColor => shape.mixesGroundColor;
@@ -159,6 +162,7 @@ class BrushSettings {
     double? textureScale,
     double? textureDensity,
     double? roundnessJitter,
+    double? spacingJitter,
     bool? mixesGroundColor,
     double? paintAmount,
     double? paintDensity,
@@ -193,6 +197,7 @@ class BrushSettings {
       textureScale: textureScale ?? this.textureScale,
       textureDensity: textureDensity ?? this.textureDensity,
       roundnessJitter: roundnessJitter ?? this.roundnessJitter,
+      spacingJitter: spacingJitter ?? this.spacingJitter,
       mixesGroundColor: mixesGroundColor ?? this.mixesGroundColor,
       paintAmount: paintAmount ?? this.paintAmount,
       paintDensity: paintDensity ?? this.paintDensity,
@@ -224,6 +229,7 @@ class BrushSettings {
     'opacityJitter': opacityJitter,
     'angleJitter': angleJitter,
     if (roundnessJitter > 0.0) 'roundnessJitter': roundnessJitter,
+    if (spacingJitter > 0.0) 'spacingJitter': spacingJitter,
     'scatterRadiusRatio': scatterRadiusRatio,
     'scatterCount': scatterCount,
     'scatterBothAxes': scatterBothAxes,
@@ -283,6 +289,7 @@ class BrushSettings {
       opacityJitter: (json['opacityJitter'] as num?)?.toDouble() ?? 0.0,
       angleJitter: (json['angleJitter'] as num?)?.toDouble() ?? 0.0,
       roundnessJitter: (json['roundnessJitter'] as num?)?.toDouble() ?? 0.0,
+      spacingJitter: (json['spacingJitter'] as num?)?.toDouble() ?? 0.0,
       scatterRadiusRatio:
           (json['scatterRadiusRatio'] as num?)?.toDouble() ?? 0.0,
       scatterCount: json['scatterCount'] as int? ?? 1,
@@ -347,6 +354,7 @@ void _validateShape(BrushShape shape) {
   _validateUnitInterval(shape.opacityJitter, 'opacityJitter');
   _validateUnitInterval(shape.angleJitter, 'angleJitter');
   _validateUnitInterval(shape.roundnessJitter, 'roundnessJitter');
+  _validateUnitInterval(shape.spacingJitter, 'spacingJitter');
   _validateNonNegativeFinite(shape.scatterRadiusRatio, 'scatterRadiusRatio');
   if (shape.scatterCount < 1) {
     throw ArgumentError.value(

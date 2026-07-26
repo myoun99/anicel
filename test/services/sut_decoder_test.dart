@@ -76,6 +76,8 @@ void main() {
     int flowEffectorMinimum = 0,
     int thicknessEffectorFlags = 0x00,
     int thicknessEffectorMinimum = 0,
+    int intervalEffectorFlags = 0x00,
+    int intervalEffectorMinimum = 0,
     int rotationEffector = 0x03,
     int rotationRandomScale = 100,
     double dualSize = 30.0,
@@ -105,7 +107,7 @@ void main() {
         DualSize REAL, SyncDualBrushSize INTEGER,
         BrushUseWaterColor INTEGER, BrushMixColor INTEGER,
         BrushMixAlpha INTEGER, BrushMixColorExtension INTEGER,
-        BrushThicknessEffector BLOB);
+        BrushThicknessEffector BLOB, BrushIntervalEffector BLOB);
       CREATE TABLE MaterialFile(_PW_ID INTEGER PRIMARY KEY,
         CatalogPath TEXT, OriginalPath TEXT, FileData BLOB);
     ''');
@@ -131,9 +133,10 @@ void main() {
       'BrushRotationRandomScale, UseDualBrush, DualUsePatternImage, '
       'DualPatternImageArray, DualSize, SyncDualBrushSize, '
       'BrushUseWaterColor, BrushMixColor, BrushMixAlpha, '
-      'BrushMixColorExtension, BrushThicknessEffector) '
+      'BrushMixColorExtension, BrushThicknessEffector, '
+      'BrushIntervalEffector) '
       'VALUES (9, 80, 50.0, 60, 70, 15.0, 40, 200.0, 1, ?, ?, ?, ?, '
-      '1, 200.0, 4, ?, 182.0, 90, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      '1, 200.0, 4, ?, 182.0, 90, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         patternArray(catalogPath),
         effector(sizeEffectorFlags, minimumPercent: sizeEffectorMinimum),
@@ -155,6 +158,10 @@ void main() {
         effector(
           thicknessEffectorFlags,
           minimumPercent: thicknessEffectorMinimum,
+        ),
+        effector(
+          intervalEffectorFlags,
+          minimumPercent: intervalEffectorMinimum,
         ),
       ],
     );
@@ -382,6 +389,21 @@ void main() {
     )).presets.first.settings;
 
     expect(s.roundnessJitter, closeTo(0.65, 1e-9));
+  });
+
+  test('the interval effector random source breaks up the beat', () async {
+    // 水彩うろこ雲 in the user's library carries exactly this.
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      intervalEffectorFlags: 0x80,
+      intervalEffectorMinimum: 20,
+    );
+    final s = (await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    )).presets.first.settings;
+
+    expect(s.spacingJitter, closeTo(0.8, 1e-9));
   });
 
   test('ground-colour mixing imports behind its gate', () async {

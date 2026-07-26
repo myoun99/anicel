@@ -1229,8 +1229,23 @@ class _InteractiveBrushEditCanvasViewState
     );
   }
 
-  double get _activeStrokeSpacing =>
-      (_activeStrokeInputSettings ?? widget.inputSettings).spacing;
+  /// Spacing for the segment about to be interpolated.
+  ///
+  /// Clip Studio rolls its interval randomness per dab. The interpolator is
+  /// pure and shared, and a segment between two pointer samples almost
+  /// always yields one or two dabs (it returns nothing at all when the move
+  /// is shorter than one step), so rolling once per segment lands in the
+  /// same place without threading a random source through it.
+  double get _activeStrokeSpacing {
+    final settings = _activeStrokeInputSettings ?? widget.inputSettings;
+    final jitter = settings.spacingJitter;
+    if (jitter <= 0.0) {
+      return settings.spacing;
+    }
+    return settings.spacing * (1.0 - jitter * _spacingRandom.nextDouble());
+  }
+
+  final math.Random _spacingRandom = math.Random();
 
   /// Whether [buttons] is a drawing contact.
   ///

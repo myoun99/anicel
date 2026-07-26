@@ -260,6 +260,11 @@ BrushSettings _settingsFromVariant(
   final roundnessJitter = _effectorRandomJitter(
     variant['BrushThicknessEffector'],
   );
+  // The interval effector's random source breaks up the even beat of a
+  // stamped brush.
+  final spacingJitter = _effectorRandomJitter(
+    variant['BrushIntervalEffector'],
+  );
   final angleJitter = _usesRandom(_effectorFlags(variant['BrushRotationEffector']))
       ? ((_doubleOf(variant['BrushRotationRandomScale']) ?? 0.0) / 100.0)
             .clamp(0.0, 1.0)
@@ -309,6 +314,7 @@ BrushSettings _settingsFromVariant(
     opacityJitter: opacityJitter,
     angleJitter: angleJitter,
     roundnessJitter: roundnessJitter,
+    spacingJitter: spacingJitter,
     scatterRadiusRatio: scatterRadiusRatio,
     scatterCount: scatterCount,
     dualMask: dualMask,

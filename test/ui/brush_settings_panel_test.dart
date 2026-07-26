@@ -168,10 +168,14 @@ void main() {
     await tester.pumpAndSettle();
     expect(state.hardness, lessThan(BrushToolState.defaultHardness));
 
-    await tester.drag(
-      find.byKey(const ValueKey<String>('brush-tool-flow-slider')),
-      const Offset(-80, 0),
+    // ensureVisible before dragging, like the hardness slider above: the
+    // scroll position after the previous ensureVisible depends on how much
+    // panel there is, so a bare drag silently misses once the panel grows.
+    final flowSlider = find.byKey(
+      const ValueKey<String>('brush-tool-flow-slider'),
     );
+    await tester.ensureVisible(flowSlider);
+    await tester.drag(flowSlider, const Offset(-80, 0));
     await tester.pumpAndSettle();
     expect(state.flow, lessThan(BrushToolState.defaultFlow));
 
@@ -328,6 +332,56 @@ void main() {
       expect(read().sizeJitter, greaterThan(0));
       expect(read().opacityJitter, greaterThan(0));
       expect(read().angleJitter, greaterThan(0));
+    });
+
+    testWidgets('the roundness and spacing jitters reach the engine', (
+      tester,
+    ) async {
+      final read = await pumpPanel(tester);
+
+      for (final key in [
+        'brush-tool-roundness-jitter-slider',
+        'brush-tool-spacing-jitter-slider',
+      ]) {
+        final slider = find.byKey(ValueKey<String>(key));
+        await tester.ensureVisible(slider);
+        await tester.drag(slider, const Offset(60, 0));
+        await tester.pumpAndSettle();
+      }
+
+      expect(read().roundnessJitter, greaterThan(0));
+      expect(read().spacingJitter, greaterThan(0));
+    });
+
+    testWidgets('mixing hides its knobs until it is switched on', (
+      tester,
+    ) async {
+      final read = await pumpPanel(tester);
+      const amount = ValueKey<String>('brush-tool-paint-amount-slider');
+
+      expect(read().mixesGroundColor, isFalse);
+      expect(find.byKey(amount), findsNothing);
+
+      final toggle = find.byKey(
+        const ValueKey<String>('brush-tool-mixing-toggle'),
+      );
+      await tester.ensureVisible(toggle);
+      await tester.tap(toggle);
+      await tester.pumpAndSettle();
+
+      expect(read().mixesGroundColor, isTrue);
+      expect(find.byKey(amount), findsOneWidget);
+
+      // Colour stretch starts at zero — a brush that lifts nothing is the
+      // safe default — so dragging it right is what proves it is wired.
+      final stretch = find.byKey(
+        const ValueKey<String>('brush-tool-color-stretch-slider'),
+      );
+      await tester.ensureVisible(stretch);
+      await tester.drag(stretch, const Offset(60, 0));
+      await tester.pumpAndSettle();
+
+      expect(read().colorStretch, greaterThan(0));
     });
 
     testWidgets('scatter carries a radius, a count and an axis choice', (
