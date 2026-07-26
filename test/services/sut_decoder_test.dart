@@ -78,6 +78,10 @@ void main() {
     int rotationRandomScale = 100,
     double dualSize = 30.0,
     int syncDualBrushSize = 0,
+    int useWaterColor = 0,
+    int mixColor = 50,
+    int mixAlpha = 50,
+    int mixColorExtension = 10,
   }) async {
     final path = '${tempDirectory.path}/fixture.sut';
     final database = sqlite3.open(path);
@@ -96,7 +100,9 @@ void main() {
         BrushSizeUnit INTEGER, BrushRotationEffector INTEGER,
         BrushRotationRandomScale INTEGER, UseDualBrush INTEGER,
         DualUsePatternImage INTEGER, DualPatternImageArray BLOB,
-        DualSize REAL, SyncDualBrushSize INTEGER);
+        DualSize REAL, SyncDualBrushSize INTEGER,
+        BrushUseWaterColor INTEGER, BrushMixColor INTEGER,
+        BrushMixAlpha INTEGER, BrushMixColorExtension INTEGER);
       CREATE TABLE MaterialFile(_PW_ID INTEGER PRIMARY KEY,
         CatalogPath TEXT, OriginalPath TEXT, FileData BLOB);
     ''');
@@ -120,9 +126,11 @@ void main() {
       'BrushSpraySize, BrushSprayDensity, TextureImage, TextureScale2, '
       'TextureDensity, BrushSizeUnit, BrushRotationEffector, '
       'BrushRotationRandomScale, UseDualBrush, DualUsePatternImage, '
-      'DualPatternImageArray, DualSize, SyncDualBrushSize) '
+      'DualPatternImageArray, DualSize, SyncDualBrushSize, '
+      'BrushUseWaterColor, BrushMixColor, BrushMixAlpha, '
+      'BrushMixColorExtension) '
       'VALUES (9, 80, 50.0, 60, 70, 15.0, 40, 200.0, 1, ?, ?, ?, ?, '
-      '1, 200.0, 4, ?, 182.0, 90, ?, ?, ?, ?, ?, ?, ?, ?)',
+      '1, 200.0, 4, ?, 182.0, 90, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         patternArray(catalogPath),
         effector(sizeEffectorFlags, minimumPercent: sizeEffectorMinimum),
@@ -137,6 +145,10 @@ void main() {
         dualPng == null ? null : patternArray(dualCatalogPath),
         dualSize,
         syncDualBrushSize,
+        useWaterColor,
+        mixColor,
+        mixAlpha,
+        mixColorExtension,
       ],
     );
     // Round brush without pattern data.
@@ -344,6 +356,42 @@ void main() {
 
     expect(s.dualMask, isNull);
     expect(s.dualMaskScale, 1.0);
+  });
+
+  test('ground-colour mixing imports behind its gate', () async {
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      useWaterColor: 1,
+      mixColor: 90,
+      mixAlpha: 100,
+      mixColorExtension: 30,
+    );
+    final s = (await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    )).presets.first.settings;
+
+    expect(s.mixesGroundColor, isTrue);
+    expect(s.paintAmount, closeTo(0.9, 1e-9));
+    expect(s.paintDensity, closeTo(1.0, 1e-9));
+    expect(s.colorStretch, closeTo(0.3, 1e-9));
+  });
+
+  test('mixing knobs stay inert when the gate is off', () async {
+    // Real brushes park mixing values with the gate off (鉛筆R sits at
+    // 물감량 50 while never mixing), so the gate has to win.
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      mixColor: 50,
+      mixAlpha: 50,
+      mixColorExtension: 10,
+    );
+    final s = (await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    )).presets.first.settings;
+
+    expect(s.mixesGroundColor, isFalse);
   });
 
   test('non-pixel brush size warns instead of mis-scaling', () async {

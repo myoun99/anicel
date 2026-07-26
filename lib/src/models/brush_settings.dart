@@ -32,6 +32,10 @@ class BrushSettings {
     BrushTipMask? textureMask,
     double textureScale = 1.0,
     double textureDensity = 1.0,
+    bool mixesGroundColor = false,
+    double paintAmount = 1.0,
+    double paintDensity = 1.0,
+    double colorStretch = 0.0,
   }) : shape = BrushShape(
          color: color,
          size: size,
@@ -59,6 +63,10 @@ class BrushSettings {
          textureMask: textureMask,
          textureScale: textureScale,
          textureDensity: textureDensity,
+         mixesGroundColor: mixesGroundColor,
+         paintAmount: paintAmount,
+         paintDensity: paintDensity,
+         colorStretch: colorStretch,
        ) {
     _validateShape(shape);
   }
@@ -109,6 +117,12 @@ class BrushSettings {
   double get textureScale => shape.textureScale;
   double get textureDensity => shape.textureDensity;
 
+  /// Ground-colour mixing — see [BrushShape.mixesGroundColor].
+  bool get mixesGroundColor => shape.mixesGroundColor;
+  double get paintAmount => shape.paintAmount;
+  double get paintDensity => shape.paintDensity;
+  double get colorStretch => shape.colorStretch;
+
   /// The pressure curve driving [target], if any.
   BrushPressureCurve? pressureCurveFor(BrushPressureTarget target) =>
       shape.pressureCurveFor(target);
@@ -140,6 +154,10 @@ class BrushSettings {
     BrushTipMask? textureMask,
     double? textureScale,
     double? textureDensity,
+    bool? mixesGroundColor,
+    double? paintAmount,
+    double? paintDensity,
+    double? colorStretch,
   }) {
     return BrushSettings(
       color: color ?? this.color,
@@ -169,6 +187,10 @@ class BrushSettings {
       textureMask: textureMask ?? this.textureMask,
       textureScale: textureScale ?? this.textureScale,
       textureDensity: textureDensity ?? this.textureDensity,
+      mixesGroundColor: mixesGroundColor ?? this.mixesGroundColor,
+      paintAmount: paintAmount ?? this.paintAmount,
+      paintDensity: paintDensity ?? this.paintDensity,
+      colorStretch: colorStretch ?? this.colorStretch,
     );
   }
 
@@ -203,6 +225,14 @@ class BrushSettings {
     if (textureMask != null) 'textureMask': textureMask!.toJson(),
     'textureScale': textureScale,
     'textureDensity': textureDensity,
+    // Ground-colour mixing writes only when ON, so presets saved before it
+    // existed round-trip byte-identically.
+    if (mixesGroundColor) ...{
+      'mixesGroundColor': true,
+      'paintAmount': paintAmount,
+      'paintDensity': paintDensity,
+      'colorStretch': colorStretch,
+    },
   };
 
   factory BrushSettings.fromJson(Map<String, dynamic> json) {
@@ -258,6 +288,10 @@ class BrushSettings {
           : BrushTipMask.fromJson(json['textureMask'] as Map<String, dynamic>),
       textureScale: (json['textureScale'] as num?)?.toDouble() ?? 1.0,
       textureDensity: (json['textureDensity'] as num?)?.toDouble() ?? 1.0,
+      mixesGroundColor: json['mixesGroundColor'] as bool? ?? false,
+      paintAmount: (json['paintAmount'] as num?)?.toDouble() ?? 1.0,
+      paintDensity: (json['paintDensity'] as num?)?.toDouble() ?? 1.0,
+      colorStretch: (json['colorStretch'] as num?)?.toDouble() ?? 0.0,
     );
   }
 
@@ -291,6 +325,9 @@ void _validateShape(BrushShape shape) {
     );
   }
   _validateUnitInterval(shape.textureDensity, 'textureDensity');
+  _validateUnitInterval(shape.paintAmount, 'paintAmount');
+  _validateUnitInterval(shape.paintDensity, 'paintDensity');
+  _validateUnitInterval(shape.colorStretch, 'colorStretch');
   _validatePositive(shape.size, 'size');
   _validateUnitInterval(shape.opacity, 'opacity');
   _validateUnitInterval(shape.flow, 'flow');

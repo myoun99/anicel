@@ -51,6 +51,10 @@ class BrushShape {
     this.textureMask,
     this.textureScale = 1.0,
     this.textureDensity = 1.0,
+    this.mixesGroundColor = false,
+    this.paintAmount = 1.0,
+    this.paintDensity = 1.0,
+    this.colorStretch = 0.0,
   });
 
   final int color;
@@ -113,6 +117,28 @@ class BrushShape {
   final double textureScale;
   final double textureDensity;
 
+  /// Whether the brush mixes with the colour already on the cel — Clip
+  /// Studio's 밑바탕 혼색, Photoshop's Mixer Brush. The gate: with it off the
+  /// three knobs below mean nothing and the brush paints its own colour flat.
+  ///
+  /// Both apps model this the same way, as a brush carrying a reservoir of
+  /// paint: each dab picks colour up from the canvas into the reservoir, then
+  /// puts a blend of the two back down. The resolved colour is computed AT
+  /// PLACEMENT and baked into the dab, so the rasterizers never learn about
+  /// mixing and undo/redo replays byte-identically.
+  final bool mixesGroundColor;
+
+  /// How much of the reservoir reaches the canvas, 0..1 — Clip Studio's
+  /// 물감량. At 0 the dab leaves the ground untouched.
+  final double paintAmount;
+
+  /// Strength of the deposited paint, 0..1 — Clip Studio's 물감 농도.
+  final double paintDensity;
+
+  /// How strongly the reservoir takes on the colour under the brush, 0..1 —
+  /// Clip Studio's 색 늘이기. This is what smears colour along a stroke.
+  final double colorStretch;
+
   /// The pressure curve driving [target], if any.
   BrushPressureCurve? pressureCurveFor(BrushPressureTarget target) {
     return switch (target) {
@@ -166,6 +192,10 @@ class BrushShape {
       textureMask: textureMask,
       textureScale: textureScale,
       textureDensity: textureDensity,
+      mixesGroundColor: mixesGroundColor,
+      paintAmount: paintAmount,
+      paintDensity: paintDensity,
+      colorStretch: colorStretch,
     );
   }
 
@@ -189,6 +219,10 @@ class BrushShape {
       roundness: roundness,
       angleDegrees: angleDegrees,
       tipMask: slot == BrushMaskSlot.tip ? mask : tipMask,
+      mixesGroundColor: mixesGroundColor,
+      paintAmount: paintAmount,
+      paintDensity: paintDensity,
+      colorStretch: colorStretch,
       rotationMode: rotationMode,
       sizeJitter: sizeJitter,
       opacityJitter: opacityJitter,
@@ -231,6 +265,10 @@ class BrushShape {
     BrushTipMask? textureMask,
     double? textureScale,
     double? textureDensity,
+    bool? mixesGroundColor,
+    double? paintAmount,
+    double? paintDensity,
+    double? colorStretch,
   }) {
     return BrushShape(
       color: color ?? this.color,
@@ -260,6 +298,10 @@ class BrushShape {
       textureMask: textureMask ?? this.textureMask,
       textureScale: textureScale ?? this.textureScale,
       textureDensity: textureDensity ?? this.textureDensity,
+      mixesGroundColor: mixesGroundColor ?? this.mixesGroundColor,
+      paintAmount: paintAmount ?? this.paintAmount,
+      paintDensity: paintDensity ?? this.paintDensity,
+      colorStretch: colorStretch ?? this.colorStretch,
     );
   }
 
@@ -292,7 +334,11 @@ class BrushShape {
           other.dualMaskScale == dualMaskScale &&
           other.textureMask == textureMask &&
           other.textureScale == textureScale &&
-          other.textureDensity == textureDensity;
+          other.textureDensity == textureDensity &&
+          other.mixesGroundColor == mixesGroundColor &&
+          other.paintAmount == paintAmount &&
+          other.paintDensity == paintDensity &&
+          other.colorStretch == colorStretch;
 
   @override
   int get hashCode => Object.hashAll([
@@ -322,6 +368,10 @@ class BrushShape {
     textureMask,
     textureScale,
     textureDensity,
+    mixesGroundColor,
+    paintAmount,
+    paintDensity,
+    colorStretch,
   ]);
 
   @override

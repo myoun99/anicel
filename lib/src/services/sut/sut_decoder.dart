@@ -261,6 +261,19 @@ BrushSettings _settingsFromVariant(
             .toDouble()
       : 0.0;
 
+  // Ground-colour mixing (밑바탕 혼색). `BrushUseWaterColor` is the gate and
+  // it matters: brushes that never enabled mixing still carry stored knob
+  // values (鉛筆R sits at 물감량 50 with the gate off). The three knobs are
+  // percentages; 불투명 수채 reading 색 늘이기 0 while the wet brushes read
+  // 10-50 is the tell that this column is the smear, not the pickup.
+  final mixesGroundColor = _intOf(variant['BrushUseWaterColor']) == 1;
+  final paintAmount = _percentRatio(variant['BrushMixColor'], fallback: 1.0);
+  final paintDensity = _percentRatio(variant['BrushMixAlpha'], fallback: 1.0);
+  final colorStretch = _percentRatio(
+    variant['BrushMixColorExtension'],
+    fallback: 0.0,
+  );
+
   // Spray mode scatters dabs around the stroke; the spray size is a
   // percentage of the brush size (its diameter), so the radius is half.
   var scatterRadiusRatio = 0.0;
@@ -302,7 +315,20 @@ BrushSettings _settingsFromVariant(
     textureMask: textureMask,
     textureScale: _textureScaleOf(variant),
     textureDensity: _textureDensityOf(variant),
+    mixesGroundColor: mixesGroundColor,
+    paintAmount: paintAmount,
+    paintDensity: paintDensity,
+    colorStretch: colorStretch,
   );
+}
+
+/// Reads a 0-100 percentage column as a 0..1 ratio.
+double _percentRatio(Object? value, {required double fallback}) {
+  final percent = _doubleOf(value);
+  if (percent == null || !percent.isFinite) {
+    return fallback;
+  }
+  return (percent / 100.0).clamp(0.0, 1.0).toDouble();
 }
 
 /// The dual tip's size relative to the primary tip.
