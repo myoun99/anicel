@@ -111,6 +111,31 @@ void main() {
     }
   });
 
+  test('roundness jitter squashes the tip without degenerating it', () {
+    final dynamics = BrushStrokeDynamics(
+      settings: BrushEditCanvasInputSettings(roundnessJitter: 1.0),
+      random: math.Random(7),
+    );
+
+    final emitted = dynamics.apply(
+      [for (var i = 0; i < 32; i += 1) _dab(sequence: i)],
+      firstSequence: 0,
+      directionDegrees: 0,
+    );
+
+    // A ratio in (0, 1]: even at full jitter the tip keeps a hair of width,
+    // because a zero-width ellipse has no coverage to rasterize.
+    for (final dab in emitted) {
+      expect(dab.roundness, greaterThanOrEqualTo(0.01));
+      expect(dab.roundness, lessThanOrEqualTo(1.0));
+    }
+    expect(
+      emitted.map((dab) => dab.roundness).toSet().length,
+      greaterThan(1),
+      reason: 'the squash is rolled per dab',
+    );
+  });
+
   test('same seed reproduces the same emission', () {
     final settings = BrushEditCanvasInputSettings(
       scatterRadiusRatio: 1.0,
