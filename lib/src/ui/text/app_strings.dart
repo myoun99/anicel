@@ -434,6 +434,12 @@ class AppStrings {
   String get tlAdd => _s('tlAdd');
   String get tlBlankX => _s('tlBlankX');
   String get tlMark => _s('tlMark');
+
+  /// Design D: the rigid shove as a verb. PUSH opens frames at the anchor
+  /// and everything after travels with its spacing; PULL closes them and
+  /// stops where the first affected row runs out of room.
+  String get tlPush => _s('tlPush');
+  String get tlPull => _s('tlPull');
   String get tlSetCommasN => _s('tlSetCommasN');
 
   /// '{n}' is the comma count.
@@ -1230,6 +1236,8 @@ class AppStrings {
     'tlDeleteCell': 'Delete cell',
     'tlEditInstance': 'Edit instance…',
     'tlAdd': 'Add',
+    'tlPush': 'Push (open frames)',
+    'tlPull': 'Pull (close frames)',
     'tlBlankX': 'Blank / X',
     'tlMark': 'Mark ●',
     'tlSetCommasN': 'Set N commas…',
@@ -1845,6 +1853,8 @@ class AppStrings {
     'tlDeleteCell': 'セルを削除',
     'tlEditInstance': 'インスタンスを編集…',
     'tlAdd': '追加',
+    'tlPush': '押し出し（コマを開ける）',
+    'tlPull': '詰め（コマを詰める）',
     'tlBlankX': '中割なし / ×',
     'tlMark': 'マーク ●',
     'tlSetCommasN': 'Nコマに設定…',
@@ -2457,6 +2467,8 @@ class AppStrings {
     'tlDeleteCell': '셀 삭제',
     'tlEditInstance': '인스턴스 편집…',
     'tlAdd': '추가',
+    'tlPush': '밀기(칸 열기)',
+    'tlPull': '당기기(칸 닫기)',
     'tlBlankX': '중간 없음 / ×',
     'tlMark': '마크 ●',
     'tlSetCommasN': 'N코마로 설정…',
@@ -3101,6 +3113,8 @@ class AppStrings {
     'tlDeleteCell': 'Supprimer la case',
     'tlEditInstance': "Modifier l'instance…",
     'tlAdd': 'Ajouter',
+    'tlPush': 'Pousser (ouvrir des images)',
+    'tlPull': 'Tirer (fermer des images)',
     'tlBlankX': 'Vide / X',
     'tlMark': 'Repère ●',
     'tlSetCommasN': 'Régler sur N commas…',
@@ -3694,6 +3708,8 @@ class AppStrings {
     'tlDeleteCell': '删除单元格',
     'tlEditInstance': '编辑实例…',
     'tlAdd': '添加',
+    'tlPush': '推出（空出帧）',
+    'tlPull': '拉回（收拢帧）',
     'tlBlankX': '空 / ×',
     'tlMark': '标记 ●',
     'tlSetCommasN': '设为 N 格…',
