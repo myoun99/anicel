@@ -12,11 +12,13 @@ import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/layer_id.dart';
 import '../services/brush_preset_file_service.dart';
+import '../services/brush_tip_library_service.dart';
 import '../services/canvas_color_sampler.dart' show CanvasColorSampleSource;
 import '../services/canvas_flood_fill.dart' show FloodFillOptions;
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
 import 'brush/brush_preset_library.dart';
 import 'brush/brush_preset_panel.dart';
+import 'brush/brush_tip_library.dart';
 import 'brush/brush_tool_state.dart';
 import 'brush/canvas_selection_commands.dart';
 import 'brush/canvas_view_commands.dart';
@@ -78,6 +80,7 @@ class EditorWorkspace extends StatefulWidget {
     super.key,
     required this.session,
     this.presetFileService,
+    this.tipLibraryService,
     this.brushFilePicker,
     this.layoutStore,
     this.panelsMenu,
@@ -112,6 +115,9 @@ class EditorWorkspace extends StatefulWidget {
 
   /// Injectable preset persistence; defaults to the app-data preset file.
   final BrushPresetFileService? presetFileService;
+
+  /// Injectable tip-library storage; defaults to the app-data tip folder.
+  final BrushTipLibraryService? tipLibraryService;
 
   /// Injectable workspace-layout persistence; defaults to the app-data
   /// layout file outside tests (`FLUTTER_TEST` disables it so widget tests
@@ -297,6 +303,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   }
 
   late final BrushPresetLibrary _presetLibrary;
+  late final BrushTipLibrary _tipLibrary;
 
   /// Camera view mode: overlay shown with the outside dimmed.
   final ValueNotifier<bool> _cameraViewEnabled = ValueNotifier(false);
@@ -419,11 +426,15 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   @override
   void initState() {
     super.initState();
+    _tipLibrary = BrushTipLibrary(service: widget.tipLibraryService);
     _presetLibrary = BrushPresetLibrary(
       fileService: widget.presetFileService,
       filePicker: widget.brushFilePicker,
+      tipLibrary: _tipLibrary,
     );
-    unawaited(_presetLibrary.load());
+    // Tips first: presets reference them by id, so the library has to be
+    // able to answer before the presets that ask are read.
+    unawaited(_tipLibrary.load().then((_) => _presetLibrary.load()));
     _paletteService = Platform.environment['FLUTTER_TEST'] == 'true'
         ? null
         : ColorPaletteFileService();
@@ -601,6 +612,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _colorPalette.dispose();
     _storyboardThumbnails.dispose();
     _presetLibrary.dispose();
+    _tipLibrary.dispose();
     // An injected tool notifier belongs to the shell; only a local
     // fallback is ours to dispose.
     if (widget.brushTool == null) {

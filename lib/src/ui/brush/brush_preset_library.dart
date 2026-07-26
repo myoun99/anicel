@@ -14,6 +14,7 @@ import '../../services/brush_preset_defaults.dart';
 import '../../services/brush_preset_file_service.dart';
 import '../../services/sut/sut_decoder.dart';
 import 'brush_import_merge.dart';
+import 'brush_tip_library.dart';
 
 /// A picked brush file: display name plus raw bytes.
 typedef BrushFilePick = ({String name, Uint8List bytes});
@@ -46,11 +47,19 @@ class BrushPresetLibrary extends ChangeNotifier {
   BrushPresetLibrary({
     BrushPresetFileService? fileService,
     BrushFilePicker? filePicker,
+    BrushTipLibrary? tipLibrary,
   }) : _fileService = fileService ?? BrushPresetFileService(),
-       _filePicker = filePicker ?? _openBrushFileDialog;
+       _filePicker = filePicker ?? _openBrushFileDialog,
+       _tipLibrary = tipLibrary;
 
   final BrushPresetFileService _fileService;
   final BrushFilePicker _filePicker;
+
+  /// Where the sampled tips live. Presets reference them by id on disk, so
+  /// loading resolves through here — and any tip that arrives INSIDE a
+  /// preset (an old library, a freshly imported pack) is handed over so it
+  /// gets a home of its own.
+  final BrushTipLibrary? _tipLibrary;
 
   List<BrushGroup> _groups = const <BrushGroup>[];
   List<BrushPreset> _presets = const <BrushPreset>[];
@@ -80,10 +89,34 @@ class BrushPresetLibrary extends ChangeNotifier {
   }
 
   Future<void> load() async {
-    final library = await _fileService.loadOrDefaults();
+    final library = await _fileService.loadOrDefaults(
+      resolveTip: _tipLibrary?.maskFor,
+    );
     _groups = library.groups;
     _presets = library.presets;
     _notify();
+    await _adoptCarriedTips();
+  }
+
+  /// Moves any tip that came in ON a preset into the tip library.
+  ///
+  /// Two cases land here and neither can be skipped: a library saved before
+  /// tips had a home still stores the image inline, and an imported pack
+  /// arrives with its tips attached. Either way the next save writes an id,
+  /// so a tip that was never adopted would be a reference to nothing.
+  Future<void> _adoptCarriedTips() async {
+    final tipLibrary = _tipLibrary;
+    if (tipLibrary == null) {
+      return;
+    }
+    for (final carried in brushTipMasksIn(_presets)) {
+      if (_disposed) {
+        return;
+      }
+      if (tipLibrary.maskFor(carried.mask.id) == null) {
+        await tipLibrary.register(carried.mask, name: carried.name);
+      }
+    }
   }
 
   void markActive(BrushPresetId? id) {
@@ -255,6 +288,9 @@ class BrushPresetLibrary extends ChangeNotifier {
     }
     _notify();
     _persist();
+    // The pack's tips become library tips in their own right, so they can be
+    // put on any brush and survive the preset they arrived with.
+    unawaited(_adoptCarriedTips());
     final summary = imported.length == 1
         ? 'Imported 1 brush from "${pick.name}".'
         : 'Imported ${imported.length} brushes from "${pick.name}".';

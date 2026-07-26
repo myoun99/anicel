@@ -1,4 +1,6 @@
+import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/brush_group.dart';
@@ -6,6 +8,9 @@ import 'package:quick_animaker_v2/src/models/brush_group_id.dart';
 import 'package:quick_animaker_v2/src/models/brush_preset.dart';
 import 'package:quick_animaker_v2/src/models/brush_preset_id.dart';
 import 'package:quick_animaker_v2/src/models/brush_settings.dart';
+import 'package:quick_animaker_v2/src/models/brush_tip_mask.dart';
+import 'package:quick_animaker_v2/src/services/brush_tip_library_service.dart';
+import 'package:quick_animaker_v2/src/ui/brush/brush_tip_library.dart';
 import 'package:quick_animaker_v2/src/services/brush_preset_defaults.dart';
 import 'package:quick_animaker_v2/src/services/brush_preset_file_service.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_import_merge.dart';
@@ -209,6 +214,121 @@ void main() {
       );
 
       expect(library.presets.last.groupId, isNull);
+    });
+  });
+
+  group('tips carried on presets', () {
+    late Directory tipDirectory;
+    late BrushTipLibraryService tipService;
+
+    setUp(() async {
+      tipDirectory = await Directory.systemTemp.createTemp('preset_tips');
+      tipService = BrushTipLibraryService(directoryPath: tipDirectory.path);
+    });
+
+    tearDown(() async {
+      for (var attempt = 0; ; attempt += 1) {
+        try {
+          if (await tipDirectory.exists()) {
+            await tipDirectory.delete(recursive: true);
+          }
+          return;
+        } on FileSystemException {
+          if (attempt >= 20) {
+            rethrow;
+          }
+          await Future<void>.delayed(const Duration(milliseconds: 10));
+        }
+      }
+    });
+
+    test('an old library hands its inline tips to the tip library', () async {
+      // The migration that matters: a preset written before tips had a home
+      // still carries the image, and the next save will write only an id —
+      // so the image has to be adopted or it is lost.
+      final tip = BrushTipMask(
+        id: 'sut-abc-tip',
+        size: 4,
+        alpha: Uint8List.fromList(List<int>.filled(16, 210)),
+      );
+      final legacy = BrushPreset(
+        id: const BrushPresetId('p1'),
+        name: 'Wet wash',
+        settings: BrushSettings(size: 9, tipMask: tip),
+      );
+      await File(service.filePath).parent.create(recursive: true);
+      await File(service.filePath).writeAsString(
+        jsonEncode({
+          'version': 4,
+          'groups': const <Object>[],
+          'presets': [legacy.toJson()],
+        }),
+      );
+
+      final tipLibrary = BrushTipLibrary(service: tipService);
+      addTearDown(tipLibrary.dispose);
+      await tipLibrary.load();
+      final presetLibrary = BrushPresetLibrary(
+        fileService: service,
+        tipLibrary: tipLibrary,
+      );
+      addTearDown(presetLibrary.dispose);
+
+      await presetLibrary.load();
+
+      // Adopted: it is a library tip now, with a file of its own, named
+      // after the brush that brought it.
+      expect(tipLibrary.maskFor('sut-abc-tip'), tip);
+      expect(
+        tipLibrary.tips.firstWhere((entry) => entry.id == 'sut-abc-tip').name,
+        'Wet wash',
+      );
+      expect(File(tipService.imagePathFor('sut-abc-tip')).existsSync(), isTrue);
+
+      // And the round trip closes: saving now writes an id, and a fresh
+      // load resolves it back to the same mask.
+      await service.save((
+        groups: presetLibrary.groups,
+        presets: presetLibrary.presets,
+      ));
+      final reloaded = await service.loadOrDefaults(
+        resolveTip: tipLibrary.maskFor,
+      );
+      final restored = reloaded.presets.firstWhere(
+        (preset) => preset.id == const BrushPresetId('p1'),
+      );
+      expect(restored.settings.tipMask, tip);
+    });
+
+    test('adoption is idempotent — a second load adds nothing', () async {
+      final tip = BrushTipMask(
+        id: 'sut-abc-tip',
+        size: 4,
+        alpha: Uint8List.fromList(List<int>.filled(16, 210)),
+      );
+      await service.save((
+        groups: const [],
+        presets: [
+          BrushPreset(
+            id: const BrushPresetId('p1'),
+            name: 'Wet wash',
+            settings: BrushSettings(size: 9, tipMask: tip),
+          ),
+        ],
+      ));
+      final tipLibrary = BrushTipLibrary(service: tipService);
+      addTearDown(tipLibrary.dispose);
+      await tipLibrary.register(tip, name: 'Wet wash');
+      final before = tipLibrary.tips.length;
+
+      final presetLibrary = BrushPresetLibrary(
+        fileService: service,
+        tipLibrary: tipLibrary,
+      );
+      addTearDown(presetLibrary.dispose);
+      await presetLibrary.load();
+
+      expect(tipLibrary.tips.length, before);
     });
   });
 
