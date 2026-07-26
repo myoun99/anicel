@@ -9,22 +9,22 @@ import 'editor_session_manager.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'storyboard_timeline_layout.dart';
 
-/// The active track's layout entries (the track containing the active cut;
-/// every entry as fallback when it is not found).
+/// The SELECTED track's layout entries (every entry as fallback when that
+/// track holds no cuts). Reads the session's first-class track selection
+/// rather than hunting for the active cut's owner, so a playhead parked in
+/// a gap keeps addressing the same track.
 List<StoryboardTimelineLayoutEntry> storyboardActiveTrackLayout(
   EditorSessionManager session,
 ) {
   final layout = buildStoryboardTimelineLayout(
     session.repository.requireProject(),
   );
-  for (final entry in layout) {
-    if (entry.cutId == session.activeCutId) {
-      return layout
-          .where((candidate) => candidate.trackId == entry.trackId)
-          .toList(growable: false);
-    }
-  }
-  return layout;
+  final trackId = session.selectedTrackId;
+  final scoped = [
+    for (final entry in layout)
+      if (entry.trackId == trackId) entry,
+  ];
+  return scoped.isEmpty ? layout : scoped;
 }
 
 /// Where the storyboard playhead sits: the playback position while playback
