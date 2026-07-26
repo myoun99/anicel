@@ -5,9 +5,9 @@ import 'dart:ui' as ui;
 
 import '../models/brush_tip_mask.dart';
 
-/// Longest mask side kept after import; larger tips are downscaled so the
-/// tip library stays a reasonable size on disk.
-const int maxBrushTipMaskSide = 256;
+// `maxBrushTipMaskSide` moved to the mask model so the pure-Dart importers
+// can honour the same cap without pulling `dart:ui` in behind it.
+export '../models/brush_tip_mask.dart' show maxBrushTipMaskSide;
 
 /// Reads a PNG (or any format the engine decodes) as a brush tip mask.
 ///
