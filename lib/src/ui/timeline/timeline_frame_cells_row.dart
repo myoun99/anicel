@@ -165,9 +165,12 @@ class TimelineFrameCellsRow extends StatelessWidget {
     // Grips ride every drawing-holding kind; the run clusters skip the SE
     // sheet rows (their spans are sound clips, not glued cel runs).
     final wantsGrips = commaDrag != null && layerKindHoldsDrawings(layer.kind);
+    // The run clusters carry the N/H/R property tag, so the rows that
+    // refuse repeat regions (the storyboard's, design E) show no cluster
+    // rather than one whose menu is dead.
     final wantsRunEdges =
         runEdit != null &&
-        layerKindHoldsDrawings(layer.kind) &&
+        layerKindAcceptsRepeatRegions(layer.kind) &&
         !layerKindUsesSeSheetCells(layer.kind);
     final chromeResolver = wantsGrips || wantsRunEdges
         ? TimelineRowChromeResolver(
