@@ -8484,6 +8484,12 @@ class EditorSessionManager extends ChangeNotifier {
     if (before == null) {
       return;
     }
+    // Design E: the storyboard row refuses repeat/hold regions outright —
+    // a derived instance would look exactly like a panel while owning no
+    // memo of its own. Copy the frames instead.
+    if (!layerKindAcceptsRepeatRegions(before.kind)) {
+      return;
+    }
     final run = gluedRunAt(before, blockStartIndex);
     if (run == null) {
       return;

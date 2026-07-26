@@ -22,5 +22,22 @@ void main() {
       expect(() => LayerKind.fromJson(0), throwsArgumentError);
       expect(() => LayerKind.fromJson(null), throwsArgumentError);
     });
+
+    test('the STORYBOARD row is the gapless one, and the only one that '
+        'refuses repeat regions (design E)', () {
+      expect(layerKindCoversWithoutGaps(LayerKind.storyboard), isTrue);
+      expect(layerKindAcceptsRepeatRegions(LayerKind.storyboard), isFalse);
+
+      for (final kind in [LayerKind.animation, LayerKind.art]) {
+        expect(layerKindCoversWithoutGaps(kind), isFalse, reason: '$kind');
+        expect(layerKindAcceptsRepeatRegions(kind), isTrue, reason: '$kind');
+      }
+
+      // Rows that hold no drawings at all take no repeat regions either —
+      // the predicate answers for every kind, not just the two it names.
+      for (final kind in [LayerKind.camera, LayerKind.folder]) {
+        expect(layerKindAcceptsRepeatRegions(kind), isFalse, reason: '$kind');
+      }
+    });
   });
 }

@@ -206,3 +206,26 @@ bool layerKindTakesTimesheetColumn(LayerKind kind) {
     LayerKind.camera || LayerKind.folder => false,
   };
 }
+
+/// Whether [kind]'s exposures leave NO GAPS: every block runs to the next
+/// one's start and the last runs to the cut's end (design E).
+///
+/// The storyboard row is the conte sheet lying down, and a conte has no
+/// holes — a panel covers frames until the next panel begins. So a block's
+/// length is not stored so much as implied: growing the cut extends the last
+/// block, deleting a block hands its frames to the one before it, and an
+/// edge drag MOVES a division rather than resizing one thing and leaving a
+/// hole beside it.
+///
+/// Every other drawing kind keeps real gaps — an animation row with nothing
+/// on frame 7 means nothing is drawn on frame 7.
+bool layerKindCoversWithoutGaps(LayerKind kind) => kind == LayerKind.storyboard;
+
+/// Whether [kind] may carry REPEAT/hold regions (the `N/H/R` run edges).
+///
+/// The storyboard row refuses them (design E, user's rule): a conte panel is
+/// a thing you draw on and write memos against, and a repeat instance is
+/// derived — it would own no memo of its own while looking exactly like a
+/// panel that does. Copy the frames instead and the copies are real blocks.
+bool layerKindAcceptsRepeatRegions(LayerKind kind) =>
+    layerKindHoldsDrawings(kind) && !layerKindCoversWithoutGaps(kind);
