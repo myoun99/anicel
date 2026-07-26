@@ -15,12 +15,17 @@ class EditorPanelFrame extends StatelessWidget {
     required this.child,
     this.trailing,
     this.bodyPadding = const EdgeInsets.all(10),
+    this.bodyScrolls = true,
   });
 
   final String title;
   final Widget child;
   final Widget? trailing;
   final EdgeInsetsGeometry bodyPadding;
+
+  /// See [EditorPanelBody.scrollable]: false for a panel that owns its own
+  /// scrolling, so the two never stack.
+  final bool bodyScrolls;
 
   @override
   Widget build(BuildContext context) {
@@ -30,7 +35,11 @@ class EditorPanelFrame extends StatelessWidget {
       key: ValueKey<String>('editor-panel-frame-$title'),
       decoration: BoxDecoration(color: colorScheme.surface),
       child: trailing == null
-          ? EditorPanelBody(padding: bodyPadding, child: child)
+          ? EditorPanelBody(
+              padding: bodyPadding,
+              scrollable: bodyScrolls,
+              child: child,
+            )
           : LayoutBuilder(
               builder: (context, constraints) {
                 final hasBoundedHeight = constraints.hasBoundedHeight;
@@ -44,6 +53,7 @@ class EditorPanelFrame extends StatelessWidget {
                     : EditorPanelHeader.height;
                 final body = EditorPanelBody(
                   padding: bodyPadding,
+                  scrollable: bodyScrolls,
                   child: child,
                 );
 
