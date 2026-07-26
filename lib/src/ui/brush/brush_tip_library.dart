@@ -1,5 +1,7 @@
 import 'dart:async';
+import 'dart:io';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../models/brush_tip_entry.dart';
@@ -7,6 +9,24 @@ import '../../models/brush_tip_mask.dart';
 import '../../services/brush_tip_defaults.dart';
 import '../../services/brush_tip_image_codec.dart';
 import '../../services/brush_tip_library_service.dart';
+
+/// A picked image file: display name plus raw bytes.
+typedef TipImagePick = ({String name, Uint8List bytes});
+
+/// Opens an image picker; `null` when the user cancels.
+typedef BrushTipImagePicker = Future<TipImagePick?> Function();
+
+Future<TipImagePick?> _openTipImageDialog() async {
+  const typeGroup = XTypeGroup(
+    label: 'Images',
+    extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'],
+  );
+  final file = await openFile(acceptedTypeGroups: const [typeGroup]);
+  if (file == null) {
+    return null;
+  }
+  return (name: file.name, bytes: await File(file.path).readAsBytes());
+}
 
 /// The shared brush tip library: every sampled tip the app can put on a
 /// brush, whether it was generated, imported with a brush pack, or added by
@@ -17,10 +37,14 @@ import '../../services/brush_tip_library_service.dart';
 /// lets a tip that arrived with an import outlive the brush it came with —
 /// deleting a preset never deletes a tip.
 class BrushTipLibrary extends ChangeNotifier {
-  BrushTipLibrary({BrushTipLibraryService? service})
-    : _service = service ?? BrushTipLibraryService();
+  BrushTipLibrary({
+    BrushTipLibraryService? service,
+    BrushTipImagePicker? picker,
+  }) : _service = service ?? BrushTipLibraryService(),
+       _picker = picker ?? _openTipImageDialog;
 
   final BrushTipLibraryService _service;
+  final BrushTipImagePicker _picker;
 
   List<BrushTipEntry> _tips = List.of(defaultBrushTipEntries);
   var _userSequence = 0;
@@ -128,6 +152,25 @@ class BrushTipLibrary extends ChangeNotifier {
     }
     await register(mask, name: name);
     return null;
+  }
+
+  /// Picks an image and registers it as a tip, naming it after the file.
+  /// Returns a user-facing message on failure, `null` on success, and
+  /// `null` when the picker was simply cancelled.
+  Future<String?> importFromFile() async {
+    final TipImagePick? pick;
+    try {
+      pick = await _picker();
+    } catch (error) {
+      return 'Could not open the file: $error';
+    }
+    if (pick == null || _disposed) {
+      return null;
+    }
+    final baseName = pick.name.contains('.')
+        ? pick.name.substring(0, pick.name.lastIndexOf('.'))
+        : pick.name;
+    return registerImageBytes(pick.bytes, name: baseName);
   }
 
   void rename(String id, String name) {

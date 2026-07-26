@@ -708,6 +708,16 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     return null;
   }
 
+  Future<void> _importTipImage() async {
+    final message = await _tipLibrary.importFromFile();
+    if (message == null || !mounted) {
+      return;
+    }
+    ScaffoldMessenger.maybeOf(
+      context,
+    )?.showSnackBar(SnackBar(content: Text(message)));
+  }
+
   Future<void> _importBrushFile() async {
     final message = await _presetLibrary.importFromFile();
     if (message == null || !mounted) {
@@ -890,29 +900,47 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                                     CanvasColorSampleSource
                                   >(
                                     valueListenable: _eyedropperSource,
+                                    // The tip library loads in two passes,
+                                    // so the pickers have to follow it.
                                     builder: (context, eyedropperSource, _) =>
-                                        ToolSettingsPanel(
-                                          state: toolState,
-                                          onChanged: (state) =>
-                                              _brushTool.value = state,
-                                          fillOptions: fillOptions,
-                                          onFillOptionsChanged: (options) =>
-                                              _fillOptions.value = options,
-                                          eyedropperSource: eyedropperSource,
-                                          onEyedropperSourceChanged: (source) =>
-                                              _eyedropperSource.value = source,
-                                          selectionMaskOptions: maskOptions,
-                                          onSelectionMaskOptionsChanged:
-                                              (options) =>
-                                                  _selectionMaskOptions.value =
-                                                      options,
-                                          selectionCommands:
-                                              widget.canvasSelectionCommands,
-                                          language: widget
-                                              .session
-                                              .languageSettings
-                                              .value
-                                              .programLanguage,
+                                        ListenableBuilder(
+                                          listenable: _tipLibrary,
+                                          builder: (context, _) =>
+                                              ToolSettingsPanel(
+                                                state: toolState,
+                                                onChanged: (state) =>
+                                                    _brushTool.value = state,
+                                                tips: _tipLibrary.tips,
+                                                onTipImportRequested: () {
+                                                  unawaited(_importTipImage());
+                                                },
+                                                fillOptions: fillOptions,
+                                                onFillOptionsChanged:
+                                                    (options) =>
+                                                        _fillOptions.value =
+                                                            options,
+                                                eyedropperSource:
+                                                    eyedropperSource,
+                                                onEyedropperSourceChanged:
+                                                    (source) =>
+                                                        _eyedropperSource
+                                                                .value =
+                                                            source,
+                                                selectionMaskOptions:
+                                                    maskOptions,
+                                                onSelectionMaskOptionsChanged:
+                                                    (options) =>
+                                                        _selectionMaskOptions
+                                                                .value =
+                                                            options,
+                                                selectionCommands: widget
+                                                    .canvasSelectionCommands,
+                                                language: widget
+                                                    .session
+                                                    .languageSettings
+                                                    .value
+                                                    .programLanguage,
+                                              ),
                                         ),
                                   ),
                             ),

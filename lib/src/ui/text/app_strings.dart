@@ -584,6 +584,12 @@ class AppStrings {
   String get brScatter => _s('brScatter');
   String get brScatterCount => _s('brScatterCount');
   String get brScatterBothAxes => _s('brScatterBothAxes');
+  String get brBrushTip => _s('brBrushTip');
+  String get brTipNone => _s('brTipNone');
+  String get brDualTip => _s('brDualTip');
+  String get brTexture => _s('brTexture');
+  String get brTextureDensity => _s('brTextureDensity');
+  String get brAddTipImage => _s('brAddTipImage');
   String get brTipRotation => _s('brTipRotation');
   String get brRotationFixed => _s('brRotationFixed');
   String get brRotationDirection => _s('brRotationDirection');
@@ -1109,6 +1115,12 @@ class AppStrings {
     'brTipRotation': 'Rotation',
     'brRotationFixed': 'Fixed',
     'brRotationDirection': 'Direction',
+    'brBrushTip': 'Brush Tip',
+    'brTipNone': 'None',
+    'brDualTip': 'Dual Tip',
+    'brTexture': 'Texture',
+    'brTextureDensity': 'Density',
+    'brAddTipImage': 'Add a tip from an image',
     'brStabilizer': 'Stabilizer',
     'brBlend': 'Blend',
     'brBlendMode': 'Brush blend mode',
@@ -1718,6 +1730,12 @@ class AppStrings {
     'brTipRotation': '回転',
     'brRotationFixed': '固定',
     'brRotationDirection': '進行方向',
+    'brBrushTip': 'ブラシ先端',
+    'brTipNone': 'なし',
+    'brDualTip': 'デュアル先端',
+    'brTexture': '質感',
+    'brTextureDensity': '濃度',
+    'brAddTipImage': '画像から先端を追加',
     'brStabilizer': '手ブレ補正',
     'brBlend': '合成',
     'brBlendMode': 'ブラシの合成モード',
@@ -2324,6 +2342,12 @@ class AppStrings {
     'brTipRotation': '회전',
     'brRotationFixed': '고정',
     'brRotationDirection': '진행방향',
+    'brBrushTip': '브러시 끝',
+    'brTipNone': '없음',
+    'brDualTip': '듀얼 끝',
+    'brTexture': '질감',
+    'brTextureDensity': '농도',
+    'brAddTipImage': '이미지에서 끝 추가',
     'brStabilizer': '손떨림 보정',
     'brBlend': '합성',
     'brBlendMode': '브러시 합성 모드',
@@ -2962,6 +2986,12 @@ class AppStrings {
     'brTipRotation': 'Rotation',
     'brRotationFixed': 'Fixe',
     'brRotationDirection': 'Direction',
+    'brBrushTip': 'Pointe',
+    'brTipNone': 'Aucune',
+    'brDualTip': 'Pointe double',
+    'brTexture': 'Texture',
+    'brTextureDensity': 'Densité',
+    'brAddTipImage': 'Ajouter une pointe depuis une image',
     'brStabilizer': 'Stabilisateur',
     'brBlend': 'Fusion',
     'brBlendMode': 'Mode de fusion du pinceau',
@@ -3549,6 +3579,12 @@ class AppStrings {
     'brTipRotation': '旋转',
     'brRotationFixed': '固定',
     'brRotationDirection': '前进方向',
+    'brBrushTip': '笔尖',
+    'brTipNone': '无',
+    'brDualTip': '双重笔尖',
+    'brTexture': '纹理',
+    'brTextureDensity': '浓度',
+    'brAddTipImage': '从图像添加笔尖',
     'brStabilizer': '防抖',
     'brBlend': '混合',
     'brBlendMode': '画笔混合模式',

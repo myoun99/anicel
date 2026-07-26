@@ -413,6 +413,18 @@ class BrushToolState {
   BrushPressureCurve? pressureCurveFor(BrushPressureTarget target) =>
       shape.pressureCurveFor(target);
 
+  /// Replaces (or CLEARS, with null) one of the three sampled masks.
+  /// [copyWith] preserves them so a slider tweak keeps a textured tip, which
+  /// leaves no way to take one off; this is that way.
+  BrushToolState withMask(BrushMaskSlot slot, BrushTipMask? mask) {
+    return BrushToolState._raw(
+      shape: _clampShape(shape.withMask(slot, mask)),
+      tool: tool,
+      stabilizerStrength: stabilizerStrength,
+      brushBlendMode: brushBlendMode,
+    );
+  }
+
   /// Replaces (or CLEARS, with null) one setting's pressure curve —
   /// [copyWith] deliberately preserves curves, so disabling pressure on a
   /// setting comes through here.

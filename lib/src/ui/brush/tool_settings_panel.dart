@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart';
-import '../../services/canvas_color_sampler.dart'
-    show CanvasColorSampleSource;
+import '../../models/brush_tip_entry.dart';
+import '../../services/canvas_color_sampler.dart' show CanvasColorSampleSource;
 import '../../services/canvas_flood_fill.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
@@ -31,7 +31,15 @@ class ToolSettingsPanel extends StatelessWidget {
     this.language = AppLanguage.en,
     this.eyedropperSource = CanvasColorSampleSource.display,
     this.onEyedropperSourceChanged,
+    this.tips = const <BrushTipEntry>[],
+    this.onTipImportRequested,
   });
+
+  /// The shared tip library, forwarded to the brush settings' tip pickers.
+  final List<BrushTipEntry> tips;
+
+  /// Opens the add-a-tip-from-an-image flow.
+  final VoidCallback? onTipImportRequested;
 
   /// The program language (BB-2): the brush blend labels localize
   /// (ja = CSP terms); everything else keeps incremental coverage.
@@ -72,6 +80,8 @@ class ToolSettingsPanel extends StatelessWidget {
           state: state,
           onChanged: onChanged,
           language: language,
+          tips: tips,
+          onTipImportRequested: onTipImportRequested,
         ),
         CanvasTool.fill => _FillSettings(
           options: fillOptions,
@@ -90,9 +100,7 @@ class ToolSettingsPanel extends StatelessWidget {
           selectionCommands: selectionCommands,
           language: language,
         ),
-        CanvasTool.move => _MoveSettings(
-          selectionCommands: selectionCommands,
-        ),
+        CanvasTool.move => _MoveSettings(selectionCommands: selectionCommands),
       },
     );
   }
@@ -586,4 +594,3 @@ class _FillSettings extends StatelessWidget {
     );
   }
 }
-
