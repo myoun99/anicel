@@ -6079,49 +6079,30 @@ class EditorSessionManager extends ChangeNotifier {
   final ValueNotifier<List<CutId>?> storyboardCutSelection =
       ValueNotifier<List<CutId>?>(null);
 
-  /// A cut-select drag step: anchor/head are CUT ORDINALS on [trackId].
-  ///
-  /// Runs the drag through the SAME snap the timeline's cell selection uses
-  /// ([snapSpanToBlocks]) with the track's cuts as the blocks — the
-  /// ordinals are converted to frames on the track axis and the covered
-  /// cuts come back out. Ordinals stay the panel-facing form until its
-  /// strip speaks the frame axis directly.
-  void updateStoryboardCutSelectionDrag({
-    required TrackId trackId,
-    required int anchorCutIndex,
-    required int headCutIndex,
-  }) {
-    final layout = [
-      for (final entry in buildStoryboardTimelineLayout(
-        _repository.requireProject(),
-      ))
-        if (entry.trackId == trackId) entry,
-    ];
-    if (layout.isEmpty) {
-      storyboardCutSelection.value = null;
-      return;
-    }
-    final anchor = layout[anchorCutIndex.clamp(0, layout.length - 1)];
-    final head = layout[headCutIndex.clamp(0, layout.length - 1)];
-    updateStoryboardCutSelectionByFrame(
-      layout: layout,
-      anchorGlobalFrame: anchor.startFrame,
-      headGlobalFrame: head.startFrame,
-    );
-  }
-
   /// A cut-select drag step stated on the track's GLOBAL FRAME axis — the
   /// timeline's range grammar, cuts as the blocks. Dragging from anywhere
   /// inside one cut to anywhere inside another selects both whole, and a
   /// span that only crosses a gap selects nothing there.
+  ///
+  /// This is the ONLY cut-select entry point: the storyboard's cut row now
+  /// mounts the shared range gesture, which speaks frames, so the ordinal
+  /// form it used to need is gone.
+  ///
+  /// [trackId] names the row the drag is on; omitting it means the selected
+  /// track (the panel always knows, the session's own callers rarely do).
   void updateStoryboardCutSelectionByFrame({
     required int anchorGlobalFrame,
     required int headGlobalFrame,
-    List<StoryboardTimelineLayoutEntry>? layout,
+    TrackId? trackId,
   }) {
-    final axis = layout == null
+    final axis = trackId == null
         ? trackFrameAxis()
-        : TrackFrameAxis(layout);
+        : TrackFrameAxis([
+            for (final entry in buildStoryboardTimelineLayout(
+              _repository.requireProject(),
+            ))
+              if (entry.trackId == trackId) entry,
+          ]);
     final cuts = axis.cutsInSnappedSpan(
       anchorFrame: anchorGlobalFrame,
       headFrame: headGlobalFrame,

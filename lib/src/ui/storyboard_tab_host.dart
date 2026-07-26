@@ -435,7 +435,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                 // clear; the delete command batches the selection.
                 cutSelect: StoryboardCutSelectCallbacks(
                   selectedCutIds: _session.storyboardCutSelection,
-                  onDrag: _session.updateStoryboardCutSelectionDrag,
+                  onDrag: _session.updateStoryboardCutSelectionByFrame,
                   onClear: _session.clearStoryboardCutSelection,
                 ),
                 // The end line edits the MOVIE length (UI-R20 #3): the

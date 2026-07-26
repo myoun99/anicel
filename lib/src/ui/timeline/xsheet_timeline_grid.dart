@@ -24,6 +24,7 @@ import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import '../../models/project_frame_rate.dart';
+import '../../models/timeline_row_address.dart';
 import 'timeline_edge_auto_pan.dart';
 import 'timeline_row_span_resolver.dart' show resolveBlockMoveTargetLayer;
 import 'timeline_frame_range_gesture.dart';
@@ -868,24 +869,38 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
             _rangeGesture = rangeHooks == null
                 ? null
                 : TimelineRangeGestureCallbacks(
-                    selection: rangeHooks.selection,
+                    // Every row this grid mounts is a LAYER row (the
+                    // address resolves back at this one seam).
+                    isInSelection: (row, frameIndex) {
+                      final selection = rangeHooks.selection.value;
+                      return row is LayerRowAddress &&
+                          selection != null &&
+                          selection.coversLayer(row.layerId) &&
+                          selection.contains(frameIndex);
+                    },
                     // Cross-row select (UI-R17 #8), transposed like the moves.
                     onSelectUpdate:
-                        (layerId, anchorIndex, headIndex, headRowDelta) =>
-                            rangeHooks.onSelectUpdate(
-                              layerId,
-                              anchorIndex,
-                              headIndex,
-                              headLayerId: headRowDelta == 0
-                                  ? null
-                                  : resolveBlockMoveTargetLayer(
-                                      rows: entries,
-                                      sourceLayerId: layerId,
-                                      rowDelta: headRowDelta,
-                                    ),
-                            ),
+                        (row, anchorIndex, headIndex, headRowDelta) {
+                          if (row is! LayerRowAddress) {
+                            return;
+                          }
+                          rangeHooks.onSelectUpdate(
+                            row.layerId,
+                            anchorIndex,
+                            headIndex,
+                            headLayerId: headRowDelta == 0
+                                ? null
+                                : resolveBlockMoveTargetLayer(
+                                    rows: entries,
+                                    sourceLayerId: row.layerId,
+                                    rowDelta: headRowDelta,
+                                  ),
+                          );
+                        },
                     onTapClear: (_) => rangeHooks.onClear(),
-                    onMoveBegin: _rangeMoveResolver.begin,
+                    onMoveBegin: (row, _) =>
+                        row is LayerRowAddress &&
+                        _rangeMoveResolver.begin(row.layerId),
                     onMoveUpdate: _rangeMoveResolver.update,
                     onMoveEnd: _rangeMoveResolver.end,
                     onMoveCancel: _rangeMoveResolver.cancel,

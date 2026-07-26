@@ -12,6 +12,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
+import '../../models/timeline_row_address.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import 'timeline_row_span_resolver.dart' show resolveSelectionSpanHead;
 import 'timeline_edge_auto_pan.dart';
@@ -1169,10 +1170,22 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     final rangeGesture = rangeHooks == null
         ? null
         : TimelineRangeGestureCallbacks(
-            selection: rangeHooks.selection,
+            // Every row this grid mounts is a LAYER row, so the address
+            // resolves back to a layer id at this one seam.
+            isInSelection: (row, frameIndex) {
+              final selection = rangeHooks.selection.value;
+              return row is LayerRowAddress &&
+                  selection != null &&
+                  selection.coversLayer(row.layerId) &&
+                  selection.contains(frameIndex);
+            },
             // Cross-row select (UI-R17 #8): the gesture's row delta maps
             // onto the display rows exactly like the move drags do.
-            onSelectUpdate: (layerId, anchorIndex, headIndex, headRowDelta) {
+            onSelectUpdate: (row, anchorIndex, headIndex, headRowDelta) {
+              if (row is! LayerRowAddress) {
+                return;
+              }
+              final layerId = row.layerId;
               // R27 #14: the head row may be a LANE row of the dragged
               // layer — the span then runs cell → lane → lane and stops
               // where the pointer is, instead of stepping over the whole
@@ -1193,7 +1206,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
               );
             },
             onTapClear: (_) => rangeHooks.onClear(),
-            onMoveBegin: _rangeMoveResolver.begin,
+            onMoveBegin: (row, _) =>
+                row is LayerRowAddress && _rangeMoveResolver.begin(row.layerId),
             onMoveUpdate: _rangeMoveResolver.update,
             onMoveEnd: _rangeMoveResolver.end,
             onMoveCancel: _rangeMoveResolver.cancel,
@@ -1720,8 +1734,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                                 .exposureStateForLayer,
                                                         frameNameForLayer: widget
                                                             .frameNameForLayer,
-                                                        celContent: widget
-                                                            .celContent,
+                                                        celContent:
+                                                            widget.celContent,
                                                         onSelectLayer: widget
                                                             .onSelectLayer,
                                                         onSelectFrame: widget

@@ -1,6 +1,7 @@
 import 'dart:ui' as ui;
 
-import 'package:flutter/gestures.dart' show kLongPressTimeout;
+import 'package:flutter/gestures.dart'
+    show PointerDeviceKind, kLongPressTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/canvas_point.dart';
@@ -47,24 +48,28 @@ void main() {
       expect(selectedCutIds, [const CutId('cut-b')]);
     });
 
-    testWidgets('tapping the active cut does not call onCutSelected', (
-      tester,
-    ) async {
+    testWidgets('a press in a GAP announces no cut', (tester) async {
       final selectedCutIds = <CutId>[];
 
       await _pumpStoryboardPanel(
         tester,
         _singleTrackProject([
           _cut('cut-a', name: 'Cut A'),
-          _cut('cut-b', name: 'Cut B'),
+          // A 10-frame gap sits before cut-b.
+          _cut('cut-b', name: 'Cut B').copyWith(leadingGapFrames: 10),
         ]),
         activeCutId: const CutId('cut-a'),
         onCutSelected: selectedCutIds.add,
       );
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('storyboard-cut-block-cut-a')),
+      // 8 px/frame: cut-a spans frames 0..23, the gap 24..33.
+      final blockA = find.byKey(
+        const ValueKey<String>('storyboard-cut-block-cut-a'),
       );
+      final gesture = await tester.startGesture(
+        tester.getTopLeft(blockA) + const Offset(8 * 28.0, 10),
+      );
+      await gesture.up();
       await tester.pumpAndSettle();
 
       expect(selectedCutIds, isEmpty);
@@ -241,8 +246,8 @@ void main() {
       expect(capturedTargetCutIndex, 2);
     });
 
-    testWidgets('a horizontal drag on a block body SLIDES the cut '
-        '(R10-④): begin → whole-frame updates → end', (tester) async {
+    testWidgets('a drag on a cut SLIDES it (R10-④): begin → whole-frame '
+        'updates → end', (tester) async {
       final began = <CutId>[];
       final updates = <int>[];
       var ended = 0;
@@ -267,10 +272,16 @@ void main() {
       );
 
       // Drag the SECOND block 40px right at 8 px/frame = +5 frames.
+      // MOUSE: the shared range gesture uses the timeline's edit-pan
+      // device policy, where a finger scrolls unless the user says
+      // otherwise.
       final block = find.byKey(
         const ValueKey<String>('storyboard-cut-block-cut-b'),
       );
-      final gesture = await tester.startGesture(tester.getCenter(block));
+      final gesture = await tester.startGesture(
+        tester.getCenter(block),
+        kind: PointerDeviceKind.mouse,
+      );
       await tester.pump();
       await gesture.moveBy(const Offset(20, 0));
       await tester.pump();
@@ -283,6 +294,44 @@ void main() {
       expect(updates, isNotEmpty);
       expect(updates.last, 5);
       expect(ended, 1);
+    });
+
+    testWidgets('a drag that starts in a GAP begins no slide', (tester) async {
+      final began = <CutId>[];
+
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([
+          _cut('cut-a', name: 'Cut A'),
+          _cut('cut-b', name: 'Cut B').copyWith(leadingGapFrames: 10),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+        cutMove: StoryboardCutMoveCallbacks(
+          onBegin: (cutId) {
+            began.add(cutId);
+            return true;
+          },
+          onUpdate: (_) {},
+          onEnd: () {},
+          onCancel: () {},
+        ),
+      );
+
+      final blockA = find.byKey(
+        const ValueKey<String>('storyboard-cut-block-cut-a'),
+      );
+      final gesture = await tester.startGesture(
+        tester.getTopLeft(blockA) + const Offset(8 * 28.0, 10),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      await gesture.moveBy(const Offset(40, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(began, isEmpty);
     });
 
     testWidgets('the slide still works when the cut carries fx transform '
@@ -330,7 +379,10 @@ void main() {
       final block = find.byKey(
         const ValueKey<String>('storyboard-cut-block-cut-b'),
       );
-      final gesture = await tester.startGesture(tester.getCenter(block));
+      final gesture = await tester.startGesture(
+        tester.getCenter(block),
+        kind: PointerDeviceKind.mouse,
+      );
       await tester.pump();
       await gesture.moveBy(const Offset(40, 0));
       await tester.pump();
@@ -342,7 +394,7 @@ void main() {
       expect(updates.last, 5);
     });
 
-    testWidgets('with cutSelect a body drag on an UNSELECTED cut paints a '
+    testWidgets('with cutSelect a drag on an UNSELECTED cut paints a '
         'run selection instead of sliding (UI-R18 #1)', (tester) async {
       final selection = ValueNotifier<List<CutId>?>(null);
       addTearDown(selection.dispose);
@@ -372,31 +424,82 @@ void main() {
           onDrag:
               ({
                 required TrackId trackId,
-                required int anchorCutIndex,
-                required int headCutIndex,
+                required int anchorGlobalFrame,
+                required int headGlobalFrame,
               }) {
-                dragSteps.add((trackId, anchorCutIndex, headCutIndex));
+                dragSteps.add((trackId, anchorGlobalFrame, headGlobalFrame));
               },
           onClear: () => selection.value = null,
         ),
       );
 
-      // Sweep from cut-a's body across cut-b: anchor stays 0, the head
-      // follows the pointer to ordinal 1. No slide begins.
+      // Sweep from the middle of cut-a (frame 12) across into cut-b: the
+      // anchor holds, the head follows the pointer's FRAME. No slide
+      // begins. 24-frame cuts at 8 px/frame → cut-b starts at frame 24.
       final blockA = find.byKey(
         const ValueKey<String>('storyboard-cut-block-cut-a'),
       );
-      final gesture = await tester.startGesture(tester.getCenter(blockA));
+      final gesture = await tester.startGesture(
+        tester.getTopLeft(blockA) + const Offset(8 * 12.0 + 4, 10),
+        kind: PointerDeviceKind.mouse,
+      );
       await tester.pump();
-      await gesture.moveBy(const Offset(192, 0));
+      await gesture.moveBy(const Offset(8 * 20.0, 0));
       await tester.pump();
       await gesture.up();
       await tester.pumpAndSettle();
 
       expect(began, isEmpty);
       expect(dragSteps, isNotEmpty);
-      expect(dragSteps.first, (const TrackId('track-a'), 0, 0));
-      expect(dragSteps.last, (const TrackId('track-a'), 0, 1));
+      expect(dragSteps.first, (const TrackId('track-a'), 12, 12));
+      expect(dragSteps.last, (const TrackId('track-a'), 12, 32));
+    });
+
+    testWidgets('a drag starting in a GAP still paints a run — the gesture '
+        'covers the row, not the blocks', (tester) async {
+      final selection = ValueNotifier<List<CutId>?>(null);
+      addTearDown(selection.dispose);
+      final dragSteps = <(int, int)>[];
+
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([
+          _cut('cut-a', name: 'Cut A'),
+          _cut('cut-b', name: 'Cut B').copyWith(leadingGapFrames: 10),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+        cutSelect: StoryboardCutSelectCallbacks(
+          selectedCutIds: selection,
+          onDrag:
+              ({
+                required TrackId trackId,
+                required int anchorGlobalFrame,
+                required int headGlobalFrame,
+              }) {
+                dragSteps.add((anchorGlobalFrame, headGlobalFrame));
+              },
+          onClear: () => selection.value = null,
+        ),
+      );
+
+      // Press at frame 28 — inside the gap between the cuts, where no
+      // block exists — and sweep right into cut-b (frame 34 onward).
+      final blockA = find.byKey(
+        const ValueKey<String>('storyboard-cut-block-cut-a'),
+      );
+      final gesture = await tester.startGesture(
+        tester.getTopLeft(blockA) + const Offset(8 * 28.0, 10),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      await gesture.moveBy(const Offset(8 * 10.0, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(dragSteps.first, (28, 28));
+      expect(dragSteps.last, (28, 38));
     });
 
     testWidgets('a body drag starting INSIDE the selection slides the run '
@@ -432,8 +535,8 @@ void main() {
           onDrag:
               ({
                 required TrackId trackId,
-                required int anchorCutIndex,
-                required int headCutIndex,
+                required int anchorGlobalFrame,
+                required int headGlobalFrame,
               }) => selectDrags += 1,
           onClear: () => selection.value = null,
         ),
@@ -442,7 +545,10 @@ void main() {
       final blockA = find.byKey(
         const ValueKey<String>('storyboard-cut-block-cut-a'),
       );
-      final gesture = await tester.startGesture(tester.getCenter(blockA));
+      final gesture = await tester.startGesture(
+        tester.getCenter(blockA),
+        kind: PointerDeviceKind.mouse,
+      );
       await tester.pump();
       await gesture.moveBy(const Offset(40, 0));
       await tester.pump();
@@ -496,8 +602,8 @@ void main() {
           onDrag:
               ({
                 required TrackId trackId,
-                required int anchorCutIndex,
-                required int headCutIndex,
+                required int anchorGlobalFrame,
+                required int headGlobalFrame,
               }) {},
           onClear: () {
             clears += 1;
@@ -506,8 +612,8 @@ void main() {
         ),
       );
 
-      // Tap the ACTIVE cut: normally tap-dead, but the live selection
-      // keeps it wired so the tap can clear.
+      // Tap an UNSELECTED cut while cut-b is selected: the press picks the
+      // cut, the release clears the selection (the timeline cell contract).
       await tester.tap(
         find.byKey(const ValueKey<String>('storyboard-cut-block-cut-a')),
       );
@@ -515,6 +621,40 @@ void main() {
 
       expect(clears, 1);
       expect(selectedCuts, [const CutId('cut-a')]);
+    });
+
+    testWidgets('a press INSIDE the selection picks no cut — it is starting '
+        'a move, not choosing (UI-R10 #12)', (tester) async {
+      final selection = ValueNotifier<List<CutId>?>([const CutId('cut-b')]);
+      addTearDown(selection.dispose);
+      final selectedCuts = <CutId>[];
+
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([
+          _cut('cut-a', name: 'Cut A'),
+          _cut('cut-b', name: 'Cut B'),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: selectedCuts.add,
+        cutSelect: StoryboardCutSelectCallbacks(
+          selectedCutIds: selection,
+          onDrag:
+              ({
+                required TrackId trackId,
+                required int anchorGlobalFrame,
+                required int headGlobalFrame,
+              }) {},
+          onClear: () => selection.value = null,
+        ),
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('storyboard-cut-block-cut-b')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(selectedCuts, isEmpty);
     });
 
     testWidgets('the ruler PRESS itself scrubs and the release commits '
