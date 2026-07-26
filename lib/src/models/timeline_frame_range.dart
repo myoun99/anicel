@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import '../core/collection_equality.dart';
 import 'layer.dart';
 import 'layer_id.dart';
+import 'range_snap.dart';
 import 'timeline_coverage.dart';
 
 /// One layer's selected frame RANGE (UI-R8, TVP-style): [startIndex,
@@ -125,64 +126,73 @@ class TimelineLaneSelection {
       '$endIndexExclusive), span: $spanLaneIds)';
 }
 
-/// Snaps a raw dragged span to WHOLE exposure blocks (UI-R8 user rule: a
-/// selection half-covering a block extends through it — blocks never
-/// split). GHOST exposures are TEXT-ONLY now (UI-R23 #6: repeat/hold
-/// instances and synced attach mirrors "aren't blocks, they only carry
-/// text") — they never extend a selection, reading as empty cells for the
-/// snap. A raw span may still land on ghost cells; the move plans stay
-/// ghost-free so those cells just ride along.
+/// The layer's EXPOSURE lane as snap material. Ghost entries are text-only
+/// (UI-R23 #6: repeat/hold instances and synced attach mirrors "aren't
+/// blocks, they only carry text"), so they resolve as non-extending —
+/// a span may land on them, it just never grows for them.
+///
+/// Resolves through the timeline's SplayTreeMap navigation, so a long row
+/// costs O(log n) per drag step rather than a rebuilt block list.
+RangeBlock? exposureBlockAt(Layer layer, int index) {
+  final block = coveringDrawingBlockAt(layer.timeline, index);
+  if (block == null) {
+    return null;
+  }
+  return RangeBlock(
+    startIndex: block.startIndex,
+    endIndexExclusive: block.endIndexExclusive,
+    extendsSelection: !block.entry.ghost,
+  );
+}
+
+/// The layer's INSTRUCTION lane as snap material (UI-R22 #4: covering one
+/// cell of a CAM event selects its whole span, the block rule).
+///
+/// Scanned rather than navigated: an instruction row holds a handful of
+/// chips, and a plain scan keeps the answer right even if two events ever
+/// overlap — it returns their UNION, which is what growing for each in turn
+/// used to arrive at.
+RangeBlock? instructionBlockAt(Layer layer, int index) {
+  int? start;
+  int? endExclusive;
+  for (final entry in layer.instructions.entries) {
+    final eventEnd = entry.key + entry.value.length;
+    if (entry.key > index || eventEnd <= index) {
+      continue;
+    }
+    start = start == null ? entry.key : math.min(start, entry.key);
+    endExclusive = endExclusive == null
+        ? eventEnd
+        : math.max(endExclusive, eventEnd);
+  }
+  if (start == null || endExclusive == null) {
+    return null;
+  }
+  return RangeBlock(startIndex: start, endIndexExclusive: endExclusive);
+}
+
+/// Snaps a raw dragged span to WHOLE blocks on [layer] — THE shared rule
+/// ([snapSpanToBlocks]), handed this row's two lanes.
 TimelineFrameRangeSelection? snapFrameRangeToBlocks({
   required Layer layer,
   required int anchorIndex,
   required int headIndex,
 }) {
-  var start = math.max(0, math.min(anchorIndex, headIndex));
-  var endExclusive = math.max(anchorIndex, headIndex) + 1;
-  if (endExclusive <= start) {
+  final span = snapSpanToBlocks(
+    lanes: [
+      (index) => exposureBlockAt(layer, index),
+      (index) => instructionBlockAt(layer, index),
+    ],
+    anchorIndex: anchorIndex,
+    headIndex: headIndex,
+  );
+  if (span == null) {
     return null;
-  }
-
-  // Expand outward until stable: covering REAL blocks at the edges (ghost
-  // exposures are text-only and never extend the span, UI-R23 #6), and
-  // INSTRUCTION events anywhere in the range (UI-R22 #4 — covering one
-  // cell of a CAM event selects its whole span, the block rule). Each pass
-  // only grows the range, so the loop terminates.
-  var changed = true;
-  while (changed) {
-    changed = false;
-    final startBlock = coveringDrawingBlockAt(layer.timeline, start);
-    if (startBlock != null &&
-        !startBlock.entry.ghost &&
-        startBlock.startIndex < start) {
-      start = startBlock.startIndex;
-      changed = true;
-    }
-    final endBlock = coveringDrawingBlockAt(layer.timeline, endExclusive - 1);
-    if (endBlock != null &&
-        !endBlock.entry.ghost &&
-        endBlock.endIndexExclusive > endExclusive) {
-      endExclusive = endBlock.endIndexExclusive;
-      changed = true;
-    }
-    for (final entry in layer.instructions.entries) {
-      final eventEnd = entry.key + entry.value.length;
-      if (entry.key < endExclusive && eventEnd > start) {
-        if (entry.key < start) {
-          start = entry.key;
-          changed = true;
-        }
-        if (eventEnd > endExclusive) {
-          endExclusive = eventEnd;
-          changed = true;
-        }
-      }
-    }
   }
 
   return TimelineFrameRangeSelection(
     layerId: layer.id,
-    startIndex: start,
-    endIndexExclusive: endExclusive,
+    startIndex: span.startIndex,
+    endIndexExclusive: span.endIndexExclusive,
   );
 }

@@ -1,5 +1,6 @@
 import '../ui/storyboard_timeline_layout.dart';
 import 'cut_id.dart';
+import 'range_snap.dart';
 
 /// THE track-global frame axis (R15-①): one structural model of a track's
 /// timeline — cuts occupy [start, end) ranges, the frames between them are
@@ -36,6 +37,52 @@ class TrackFrameAxis {
       previous = entry;
     }
     return previous;
+  }
+
+  /// This track's CUTS as snap material for the shared range rule
+  /// ([snapSpanToBlocks]): a span half-covering a cut extends through it,
+  /// exactly the way it extends through a layer's exposure block.
+  ///
+  /// Distinct from [ownerOf] on purpose — the owner rule hands a gap frame
+  /// to the PRECEDING cut (its runway), which is right for addressing a
+  /// playhead and wrong for snapping: a selection may span a gap, it just
+  /// must not grow for one.
+  RangeBlock? cutBlockAt(int globalFrame) {
+    for (final entry in entries) {
+      if (globalFrame < entry.startFrame) {
+        return null;
+      }
+      if (globalFrame < entry.endFrame) {
+        return RangeBlock(
+          startIndex: entry.startFrame,
+          endIndexExclusive: entry.endFrame,
+        );
+      }
+    }
+    return null;
+  }
+
+  /// The cuts a raw dragged span covers once snapped to whole cuts — the
+  /// storyboard's range selection, run through the SAME rule the timeline's
+  /// cell selection uses.
+  List<CutId> cutsInSnappedSpan({
+    required int anchorFrame,
+    required int headFrame,
+  }) {
+    final span = snapSpanToBlocks(
+      lanes: [cutBlockAt],
+      anchorIndex: anchorFrame,
+      headIndex: headFrame,
+    );
+    if (span == null) {
+      return const [];
+    }
+    return [
+      for (final entry in entries)
+        if (entry.startFrame < span.endIndexExclusive &&
+            entry.endFrame > span.startIndex)
+          entry.cutId,
+    ];
   }
 
   /// Whether [globalFrame] falls between cuts (no cut contains it).
