@@ -9,8 +9,10 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_row_edit_chrome.dart'
 /// through the same rects the painter draws and the row hit-tests, so a
 /// probe can never address a target the user could not.
 ///
-/// The sparse surfaces (storyboard cut trim, instruction rows) still mount
-/// `BlockEdgeGrip` widgets and keep their key finders.
+/// The storyboard's CUT row mounts the same layer (`prefix: 'storyboard'`,
+/// its track id in place of a layer id). The sparse surfaces (instruction
+/// rows, storyboard SE strips) still mount `BlockEdgeGrip` widgets and keep
+/// their key finders.
 Finder timelineRowChromeFinder(String layerId, {String prefix = 'timeline'}) =>
     find.byKey(ValueKey<String>('$prefix-edit-chrome-$layerId'));
 
