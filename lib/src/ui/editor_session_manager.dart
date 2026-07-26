@@ -61,6 +61,7 @@ import '../models/property_track.dart';
 import '../models/timeline_coverage.dart';
 import '../models/timeline_frame_range.dart';
 import '../models/timeline_repeat.dart';
+import '../models/timeline_row_address.dart';
 import '../models/timeline_run_edit.dart';
 import '../models/track.dart';
 import '../models/track_id.dart';
@@ -740,6 +741,51 @@ class EditorSessionManager extends ChangeNotifier {
       throw StateError('Cannot resolve the selected track in an empty project.');
     }
     return project.tracks.first.id;
+  }
+
+  /// Set when the V row was picked DIRECTLY while an SE row held the
+  /// active layer — the one case [selectedRow] cannot read off the layer.
+  bool _trackRowSelected = false;
+
+  /// THE selected row in the STORYBOARD's row space — exactly ONE, the way
+  /// the timeline has always had exactly one selected layer row. (The
+  /// timeline's own rail is all layer rows and keeps reading
+  /// [activeLayerId] directly.)
+  ///
+  /// That rail mixes TRACK rows (V) with LAYER rows (S), and the two used
+  /// to light from unrelated states — the V row from "the active cut lives
+  /// on this track", the S row from [activeLayerId] — so both could read as
+  /// selected at once. This is the single answer; [selectedTrackId] and
+  /// [activeLayerId] stay as the row's CONTENTS, not its identity.
+  ///
+  /// The rule: the rail's only LAYER rows are the track-SE rows, so the
+  /// active layer names a row here only while it IS one of those. Every
+  /// other layer (a drawing cel, camera, instruction…) lives inside a cut,
+  /// and the row that owns it is the track row — which is why the V row
+  /// keeps lighting by default, as it always has.
+  ///
+  /// The drawing target does NOT follow a track row (user decision): a V
+  /// row is a track, so it has no layer to select, and the active layer
+  /// stays where the last layer row left it.
+  TimelineRowAddress get selectedRow {
+    final layerId = activeLayerId;
+    if (!_trackRowSelected && layerId != null && isTrackSeLayerId(layerId)) {
+      return LayerRowAddress(layerId);
+    }
+    return TrackRowAddress(selectedTrackId);
+  }
+
+  /// Selects a row by ADDRESS — the rail taps come through here, and the
+  /// cells press will. Each kind keeps its own landing verb: a layer row
+  /// selects the layer, a track row promotes that track's cut under the
+  /// playhead.
+  void selectRow(TimelineRowAddress row) {
+    switch (row) {
+      case LayerRowAddress(:final layerId):
+        selectLayer(layerId);
+      case TrackRowAddress(:final trackId):
+        selectTrackCutAtPlayhead(trackId);
+    }
   }
 
   // --- Track-owned SE rows --------------------------------------------------
@@ -2091,6 +2137,24 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The row each cut was last worked on, replayed on the way back in
+  /// (user request 2026-07-26). SESSION view state on purpose: hanging it
+  /// on the Cut would make picking a layer a document edit — an undo entry
+  /// and a dirty file per click.
+  final Map<CutId, LayerId> _lastLayerByCut = <CutId, LayerId>{};
+
+  /// Records the layer a cut is being LEFT on — one funnel instead of a
+  /// hook on every path that can move the active layer. Stale ids need no
+  /// cleanup: [_activeCutHasLayer] already drops a layer the cut no longer
+  /// has, and the rebuild falls back to the top row.
+  void _rememberActiveLayerForCut() {
+    final cutId = _editingSession.activeCutId;
+    final layerId = activeLayerId;
+    if (cutId != null && layerId != null) {
+      _lastLayerByCut[cutId] = layerId;
+    }
+  }
+
   void selectCut(CutId cutId) {
     if (cutId == _editingSession.activeCutId) {
       return;
@@ -2099,6 +2163,7 @@ class EditorSessionManager extends ChangeNotifier {
     if (editingInteractionBusy) {
       return;
     }
+    _rememberActiveLayerForCut();
 
     final fromGap =
         _gapGlobalFrame != null || _editingSession.activeCutId == null;
@@ -2116,7 +2181,11 @@ class EditorSessionManager extends ChangeNotifier {
     );
     _copiedFrame = null;
     clearFrameRangeSelection();
-    _rebuildActiveCutControllers();
+    // The cut comes back on the row it was left on ([_lastLayerByCut]);
+    // never visited (or the layer is gone) still falls back to the top row.
+    _rebuildActiveCutControllers(
+      preferredActiveLayerId: _lastLayerByCut[cutId],
+    );
     if (fromGap) {
       // Activating a cut FROM the gap lands on ITS first frame (UI-R10
       // #14): the stale gap-global cursor never leaks into the new cut
@@ -2742,6 +2811,11 @@ class EditorSessionManager extends ChangeNotifier {
 
   void selectLayer(LayerId layerId) {
     var changed = false;
+    // Picking a LAYER row releases the storyboard's direct V-row pick;
+    // whether that MOVES the row is [selectedRow]'s call (only the SE rows
+    // are layer rows there), so the answer is compared, not assumed.
+    final rowBefore = selectedRow;
+    _trackRowSelected = false;
     // A frame-range selection is single-layer (UI-R8): moving to another
     // row drops it. The lane selection follows the same rule.
     if (frameRangeSelection.value != null &&
@@ -2766,6 +2840,9 @@ class EditorSessionManager extends ChangeNotifier {
       // when the layer did not move, and re-applying it is what would have
       // fought a manual visibility toggle on every click.
       _syncVisibilitySolo();
+      changed = true;
+    }
+    if (selectedRow != rowBefore) {
       changed = true;
     }
     if (changed) {
@@ -9054,6 +9131,9 @@ class EditorSessionManager extends ChangeNotifier {
     if (_editingSession.activeCutId == null) {
       return false;
     }
+    // Parking in a gap LEAVES the cut, so the row it was on is recorded
+    // here too — scrubbing out and back keeps the layer.
+    _rememberActiveLayerForCut();
     // The visibility solo is cut-scoped: restore the eyes before leaving
     // (the selectCut contract).
     if (_layerVisibilitySoloEnabled) {
@@ -9080,7 +9160,11 @@ class EditorSessionManager extends ChangeNotifier {
     // cut is found under the playhead — a gap on the tapped track is still
     // a no-op for the active cut, but the selection itself no longer
     // evaporates on the way.
+    final rowBefore = selectedRow;
     _editingSession.setSelectedTrackId(trackId);
+    // THE row is this one now, whatever happens to the active cut below —
+    // a gap tap still moves the selection off whichever S row held it.
+    _trackRowSelected = true;
     final globalFrame = editingGlobalFrame;
     final layout = buildStoryboardTimelineLayout(repository.requireProject());
     for (final entry in layout) {
@@ -9089,10 +9173,17 @@ class EditorSessionManager extends ChangeNotifier {
           globalFrame < entry.endFrame) {
         if (entry.cutId != activeCutId) {
           selectCut(entry.cutId);
+        } else if (selectedRow != rowBefore) {
+          // Same cut, different row: nothing below announces, so the rail
+          // would keep painting the old row as selected.
+          notifyListeners();
         }
         selectFrameIndex(globalFrame - entry.startFrame);
         return;
       }
+    }
+    if (selectedRow != rowBefore) {
+      notifyListeners();
     }
     // A GAP on the tapped track stays a no-op for the active cut (UI-R18
     // #6, the V-row fx/eye rule). The tapped track is still RECORDED

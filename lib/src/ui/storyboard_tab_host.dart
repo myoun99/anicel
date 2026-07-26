@@ -6,6 +6,7 @@ import '../models/canvas_point.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/layer_id.dart';
+import '../models/timeline_row_address.dart';
 import '../models/transform_track.dart';
 import 'camera/camera_view_toggle_button.dart';
 import 'cut_command_group.dart';
@@ -400,14 +401,18 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     ? _session.playback.position?.cutId ?? _session.activeCutId
                     : _session.activeCutId,
                 onCutSelected: _session.selectCut,
-                // S-row selection (W4): tapping a rail label selects the
-                // TRACK layer — the timeline row highlight follows for
-                // free (same layer identity).
                 activeLayerId: _session.activeLayerId,
-                onSelectLayer: _session.selectLayer,
-                // V-track selection (UI-R18 #6): tapping a V row promotes
-                // that track's playhead-index cut to the active cut.
-                onSelectTrack: _session.selectTrackCutAtPlayhead,
+                // The rail speaks ROW ADDRESSES: track rows and layer rows
+                // are one selection, so exactly one of them highlights.
+                // Each kind keeps its own landing verb inside `selectRow`
+                // — an S row selects the track layer (the timeline row
+                // highlight follows for free, same layer identity), a V row
+                // promotes that track's playhead-index cut (UI-R18 #6).
+                selectedRow: _session.selectedRow,
+                onSelectLayer: (layerId) =>
+                    _session.selectRow(LayerRowAddress(layerId)),
+                onSelectTrack: (trackId) =>
+                    _session.selectRow(TrackRowAddress(trackId)),
                 pixelsPerFrame: widget.pixelsPerFrame,
                 showSeconds: widget.showSeconds,
                 projectFrameRate: _session.projectFrameRate,

@@ -92,10 +92,19 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // The initial active layer is the cut's drawing cel — no S row lights.
+    // The initial active layer is the cut's drawing cel, which is not a
+    // rail row of its own — the row that owns it is the V row, so THAT is
+    // the one selected row.
     expect(
-      find.byKey(const ValueKey<String>('storyboard-selected-layer')),
-      findsNothing,
+      find.descendant(
+        of: find.byKey(
+          const ValueKey<String>('storyboard-track-label-row-sb-se-track'),
+        ),
+        matching: find.byKey(
+          const ValueKey<String>('storyboard-selected-row'),
+        ),
+      ),
+      findsOneWidget,
     );
 
     // Tap the row's NAME (the row also carries controls; the text is the
@@ -109,10 +118,14 @@ void main() {
     expect(
       find.descendant(
         of: label,
-        matching: find.byKey(
-          const ValueKey<String>('storyboard-selected-layer'),
-        ),
+        matching: find.byKey(const ValueKey<String>('storyboard-selected-row')),
       ),
+      findsOneWidget,
+    );
+    // ONE row is selected, never two: the V row let go the moment the S
+    // row took it.
+    expect(
+      find.byKey(const ValueKey<String>('storyboard-selected-row')),
       findsOneWidget,
     );
 
