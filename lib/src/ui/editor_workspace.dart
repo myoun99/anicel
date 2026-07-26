@@ -856,8 +856,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                             onGroupCreated: _presetLibrary.createGroup,
                             onGroupRenamed: _presetLibrary.renameGroup,
                             onGroupDeleted: _presetLibrary.deleteGroup,
-                            onGroupCollapseChanged:
-                                _presetLibrary.setGroupCollapsed,
                             onGroupsReordered: _presetLibrary.reorderGroups,
                             onLibraryReset: _presetLibrary.resetToDefaults,
                           ),

@@ -116,14 +116,6 @@ class _PanelHostState extends State<_PanelHost> {
               onGroupCreated: widget.onGroupCreated,
               onGroupRenamed: widget.onGroupRenamed,
               onGroupDeleted: widget.onGroupDeleted,
-              onGroupCollapseChanged: (id, collapsed) => setState(() {
-                _groups = [
-                  for (final group in _groups)
-                    group.id == id
-                        ? group.copyWith(collapsed: collapsed)
-                        : group,
-                ];
-              }),
               onGroupsReordered: widget.onGroupsReordered == null
                   ? null
                   : (groups) {
@@ -176,8 +168,8 @@ Future<void> _pumpPanel(
   );
 }
 
-Finder _header(String idValue) =>
-    find.byKey(ValueKey<String>('brush-preset-group-$idValue'));
+Finder _tab(String idValue) =>
+    find.byKey(ValueKey<String>('brush-preset-tab-$idValue'));
 
 Finder _row(String idValue) =>
     find.byKey(ValueKey<String>('brush-preset-chip-$idValue'));
@@ -341,7 +333,7 @@ void main() {
       groups: const [BrushGroup(id: _ink, name: 'Ink')],
     );
 
-    expect(_header('ink'), findsOneWidget);
+    expect(_tab('ink'), findsOneWidget);
     expect(find.byIcon(Icons.brush_outlined), findsNothing);
   });
 
@@ -397,7 +389,7 @@ void main() {
     expect(find.byType(BrushTipPreview), findsOneWidget);
   });
 
-  testWidgets('lists groups in their own order with the root section last', (
+  testWidgets('the rail lists groups in order with the root tab last', (
     tester,
   ) async {
     await _pumpPanel(
@@ -407,8 +399,8 @@ void main() {
         BrushGroup(id: _ink, name: 'Ink'),
       ],
       presets: [
-        // Library ORDER puts the loose preset first; group order decides the
-        // display, so it still lands under the last header.
+        // Library ORDER puts the loose preset first; the GROUP list decides
+        // the rail, so the leftovers tab still comes last.
         _marker(),
         _calligraphy().copyWith(groupId: _ink),
         _sampled().copyWith(groupId: _paint),
@@ -417,13 +409,13 @@ void main() {
 
     double top(Finder finder) => tester.getTopLeft(finder).dy;
 
-    expect(top(_header('paint')), lessThan(top(_header('ink'))));
-    expect(top(_header('ink')), lessThan(top(_header('root'))));
-    expect(top(_row('preset-sampled')), lessThan(top(_header('ink'))));
-    expect(top(_row('preset-marker')), greaterThan(top(_header('root'))));
+    expect(top(_tab('paint')), lessThan(top(_tab('ink'))));
+    expect(top(_tab('ink')), lessThan(top(_tab('root'))));
   });
 
-  testWidgets('collapsing a group hides only its rows', (tester) async {
+  testWidgets('one tab at a time — the list shows only its group', (
+    tester,
+  ) async {
     final applied = <BrushPreset>[];
     await _pumpPanel(
       tester,
@@ -439,33 +431,55 @@ void main() {
       onPresetApplied: applied.add,
     );
 
-    expect(find.byType(BrushStrokePreview), findsNWidgets(3));
+    // Opens on the first tab.
+    expect(_row('preset-calligraphy'), findsOneWidget);
+    expect(_row('preset-sampled'), findsNothing);
+    expect(_row('preset-marker'), findsNothing);
 
-    await tester.tap(_header('ink'));
+    await tester.tap(_tab('paint'));
     await tester.pumpAndSettle();
-    expect(_row('preset-calligraphy'), findsNothing);
     expect(_row('preset-sampled'), findsOneWidget);
+    expect(_row('preset-calligraphy'), findsNothing);
+
+    await tester.tap(_tab('root'));
+    await tester.pumpAndSettle();
     expect(_row('preset-marker'), findsOneWidget);
 
-    // Expanding restores the rows and they stay tappable.
-    await tester.tap(_header('ink'));
+    // Rows stay tappable wherever the rail has landed.
+    await tester.tap(find.text('Marker'));
     await tester.pumpAndSettle();
-    await tester.tap(find.text('Calligraphy'));
-    await tester.pumpAndSettle();
-    expect(applied.single.id, const BrushPresetId('preset-calligraphy'));
+    expect(applied.single.id, const BrushPresetId('preset-marker'));
   });
 
-  testWidgets('a group starts collapsed when the library says so', (
-    tester,
-  ) async {
+  testWidgets('the open tab follows the selected brush', (tester) async {
+    // Opening the panel should land where you are painting from, not on
+    // whatever tab happens to be first.
     await _pumpPanel(
       tester,
-      groups: const [BrushGroup(id: _ink, name: 'Ink', collapsed: true)],
+      groups: const [
+        BrushGroup(id: _ink, name: 'Ink'),
+        BrushGroup(id: _paint, name: 'Paint'),
+      ],
+      presets: [
+        _calligraphy().copyWith(groupId: _ink),
+        _sampled().copyWith(groupId: _paint),
+      ],
+      selectedPresetId: const BrushPresetId('preset-sampled'),
+    );
+
+    expect(_row('preset-sampled'), findsOneWidget);
+    expect(_row('preset-calligraphy'), findsNothing);
+  });
+
+  testWidgets('no root tab when every brush is filed', (tester) async {
+    await _pumpPanel(
+      tester,
+      groups: const [BrushGroup(id: _ink, name: 'Ink')],
       presets: [_calligraphy().copyWith(groupId: _ink)],
     );
 
-    expect(_header('ink'), findsOneWidget);
-    expect(_row('preset-calligraphy'), findsNothing);
+    expect(_tab('ink'), findsOneWidget);
+    expect(_tab('root'), findsNothing);
   });
 
   testWidgets('the group menu renames the group', (tester) async {
@@ -478,7 +492,7 @@ void main() {
     );
 
     await tester.tap(
-      find.byKey(const ValueKey<String>('brush-preset-group-ink-menu')),
+      find.byKey(const ValueKey<String>('brush-preset-tab-ink-menu')),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Rename group'));
@@ -512,7 +526,7 @@ void main() {
     );
 
     await tester.tap(
-      find.byKey(const ValueKey<String>('brush-preset-group-ink-menu')),
+      find.byKey(const ValueKey<String>('brush-preset-tab-ink-menu')),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Delete group'));
@@ -534,7 +548,7 @@ void main() {
     expect(deleted, isEmpty);
 
     await tester.tap(
-      find.byKey(const ValueKey<String>('brush-preset-group-ink-menu')),
+      find.byKey(const ValueKey<String>('brush-preset-tab-ink-menu')),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Delete group'));
@@ -559,7 +573,7 @@ void main() {
     );
 
     await tester.tap(
-      find.byKey(const ValueKey<String>('brush-preset-group-ink-menu')),
+      find.byKey(const ValueKey<String>('brush-preset-tab-ink-menu')),
     );
     await tester.pumpAndSettle();
     await tester.tap(find.text('Delete group'));
@@ -581,13 +595,13 @@ void main() {
       onGroupDeleted: (_) {},
     );
 
-    expect(_header('root'), findsOneWidget);
+    expect(_tab('root'), findsOneWidget);
     expect(
-      find.byKey(const ValueKey<String>('brush-preset-group-root-menu')),
+      find.byKey(const ValueKey<String>('brush-preset-tab-root-menu')),
       findsNothing,
     );
     expect(
-      find.byKey(const ValueKey<String>('brush-preset-group-ink-menu')),
+      find.byKey(const ValueKey<String>('brush-preset-tab-ink-menu')),
       findsOneWidget,
     );
   });
@@ -742,46 +756,51 @@ void main() {
     ]);
   });
 
-  testWidgets('dragging a row to the top joins the first group', (
-    tester,
-  ) async {
+  testWidgets('a row drag stays inside its own group', (tester) async {
+    // One tab shows one group, so a row can only move within it — crossing
+    // groups is what dragging onto a tab is for.
     final reordered = <List<BrushPreset>>[];
     await _pumpPanel(
       tester,
-      // Collapsed groups make the drag geometry unambiguous — and are how
-      // the panel reads while rearranging a big library.
       groups: const [
-        BrushGroup(id: _ink, name: 'Ink', collapsed: true),
-        BrushGroup(id: _paint, name: 'Paint', collapsed: true),
+        BrushGroup(id: _ink, name: 'Ink'),
+        BrushGroup(id: _paint, name: 'Paint'),
       ],
       presets: [
         _calligraphy().copyWith(groupId: _ink),
+        _marker().copyWith(groupId: _ink),
         _sampled().copyWith(groupId: _paint),
-        _marker(),
       ],
       onPresetsReordered: reordered.add,
     );
 
     await tester.drag(
-      find.byKey(const ValueKey<String>('brush-preset-entry-preset-marker')),
-      const Offset(0, -200),
+      find.byKey(
+        const ValueKey<String>('brush-preset-entry-preset-calligraphy'),
+      ),
+      const Offset(0, 44),
     );
     await tester.pumpAndSettle();
 
     expect(reordered, isNotEmpty);
     final moved = reordered.last.firstWhere(
-      (preset) => preset.id == const BrushPresetId('preset-marker'),
+      (preset) => preset.id == const BrushPresetId('preset-calligraphy'),
     );
     expect(moved.groupId, _ink);
+    // Inside Ink the order flipped; Paint's brush never moved.
+    expect(
+      reordered.last.map((preset) => preset.id.value),
+      containsAllInOrder(['preset-marker', 'preset-calligraphy']),
+    );
   });
 
-  testWidgets('dragging a group header reorders the groups', (tester) async {
+  testWidgets('dragging a tab reorders the groups', (tester) async {
     final reordered = <List<BrushGroup>>[];
     await _pumpPanel(
       tester,
       groups: const [
-        BrushGroup(id: _ink, name: 'Ink', collapsed: true),
-        BrushGroup(id: _paint, name: 'Paint', collapsed: true),
+        BrushGroup(id: _ink, name: 'Ink'),
+        BrushGroup(id: _paint, name: 'Paint'),
       ],
       presets: [
         _calligraphy().copyWith(groupId: _ink),
@@ -790,25 +809,110 @@ void main() {
       onGroupsReordered: reordered.add,
     );
 
-    // Headers are 24px; drag Paint above Ink.
+    // Tabs are 26px; drag Paint above Ink.
     await tester.drag(
-      find.byKey(const ValueKey<String>('brush-preset-entry-header-paint')),
-      const Offset(0, -30),
+      find.byKey(const ValueKey<String>('brush-preset-tab-entry-paint')),
+      const Offset(0, -32),
     );
     await tester.pumpAndSettle();
 
     expect(reordered, isNotEmpty);
     expect(reordered.last.map((group) => group.id.value), ['paint', 'ink']);
-    // The members follow their group by reference — the preset list is not
+    // Members follow their group by reference — the preset list is not
     // touched at all.
-    expect(_header('paint'), findsOneWidget);
+    expect(_tab('paint'), findsOneWidget);
   });
 
-  testWidgets('the root header never starts a drag', (tester) async {
+  testWidgets('holding a dragged brush over a tab opens that tab', (
+    tester,
+  ) async {
+    // The move-between-groups gesture. A tab that only accepted a DROP
+    // would lose the ordering; opening it lets the brush be placed.
+    await _pumpPanel(
+      tester,
+      groups: const [
+        BrushGroup(id: _ink, name: 'Ink'),
+        BrushGroup(id: _paint, name: 'Paint'),
+      ],
+      presets: [
+        _calligraphy().copyWith(groupId: _ink),
+        _marker().copyWith(groupId: _ink),
+        _sampled().copyWith(groupId: _paint),
+      ],
+      onPresetsReordered: (_) {},
+      onGroupsReordered: (_) {},
+    );
+    expect(_row('preset-calligraphy'), findsOneWidget);
+    expect(_row('preset-sampled'), findsNothing);
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(
+        find.byKey(
+          const ValueKey<String>('brush-preset-entry-preset-calligraphy'),
+        ),
+      ),
+    );
+    // Nudge past the touch slop so the reorder engages, then hover the
+    // other tab and wait out the spring delay.
+    await gesture.moveBy(const Offset(0, 30));
+    await tester.pump(const Duration(milliseconds: 20));
+    await gesture.moveTo(tester.getCenter(_tab('paint')));
+    await tester.pump(const Duration(milliseconds: 20));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+
+    expect(_row('preset-sampled'), findsOneWidget);
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('a brush merely passing over the rail changes nothing', (
+    tester,
+  ) async {
+    // Crossing the rail on the way somewhere must not flip through every
+    // tab it touches, so the switch waits.
+    await _pumpPanel(
+      tester,
+      groups: const [
+        BrushGroup(id: _ink, name: 'Ink'),
+        BrushGroup(id: _paint, name: 'Paint'),
+      ],
+      presets: [
+        _calligraphy().copyWith(groupId: _ink),
+        _sampled().copyWith(groupId: _paint),
+      ],
+      onPresetsReordered: (_) {},
+      onGroupsReordered: (_) {},
+    );
+
+    final gesture = await tester.startGesture(
+      tester.getCenter(
+        find.byKey(
+          const ValueKey<String>('brush-preset-entry-preset-calligraphy'),
+        ),
+      ),
+    );
+    await gesture.moveBy(const Offset(0, 12));
+    await tester.pump();
+    await gesture.moveTo(tester.getCenter(_tab('paint')));
+    await tester.pump(const Duration(milliseconds: 80));
+    await gesture.moveBy(const Offset(120, 0));
+    await tester.pump(const Duration(milliseconds: 500));
+    await tester.pumpAndSettle();
+
+    expect(_row('preset-calligraphy'), findsOneWidget);
+    expect(_row('preset-sampled'), findsNothing);
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('the root tab never starts a drag', (tester) async {
     final reordered = <List<BrushGroup>>[];
     await _pumpPanel(
       tester,
-      groups: const [BrushGroup(id: _ink, name: 'Ink', collapsed: true)],
+      groups: const [BrushGroup(id: _ink, name: 'Ink')],
       presets: [
         _calligraphy().copyWith(groupId: _ink),
         _marker(),
@@ -817,7 +921,7 @@ void main() {
     );
 
     await tester.drag(
-      find.byKey(const ValueKey<String>('brush-preset-entry-header-root')),
+      find.byKey(const ValueKey<String>('brush-preset-tab-entry-root')),
       const Offset(0, -60),
     );
     await tester.pumpAndSettle();
@@ -825,12 +929,14 @@ void main() {
     expect(reordered, isEmpty);
   });
 
-  testWidgets('shows no group headers when every preset is ungrouped', (
-    tester,
-  ) async {
+  testWidgets('no rail at all when there are no groups', (tester) async {
     await _pumpPanel(tester, presets: [_calligraphy(), _marker()]);
 
-    expect(_header('root'), findsNothing);
+    expect(_tab('root'), findsNothing);
+    expect(
+      find.byKey(const ValueKey<String>('brush-preset-tab-rail')),
+      findsNothing,
+    );
     expect(find.byType(BrushStrokePreview), findsNWidgets(2));
   });
 

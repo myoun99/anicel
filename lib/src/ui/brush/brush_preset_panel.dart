@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../../models/brush_group.dart';
@@ -34,29 +36,25 @@ enum _BrushGroupMenuAction { rename, delete }
 /// Label for the root section holding presets that belong to no group.
 const String _rootSectionLabel = 'Default';
 
-/// One flattened list entry: either a group header or a preset row.
-class _ListEntry {
-  /// A `null` [group] is the root section's header.
-  const _ListEntry.header(this.group) : preset = null, isHeader = true;
-  const _ListEntry.preset(BrushPreset this.preset)
-    : group = null,
-      isHeader = false;
-
-  final bool isHeader;
-  final BrushGroup? group;
-  final BrushPreset? preset;
-}
-
-/// The brush library panel: one row per preset with a tip icon, a stroke
-/// preview, and the preset name — each hideable from the options menu.
+/// The brush library panel: a rail of group TABS down the left, and the open
+/// group's brushes beside it — one row per preset with a tip icon, a stroke
+/// preview and the name, each hideable from the options menu.
 ///
-/// Split out of [BrushSettingsPanel] so the dock reads Clip-Studio-like —
-/// brush list on top, tool properties below — while staying icon-first.
-/// Tapping a row applies the preset; dragging a row reorders it (dropping
-/// under a group's header moves it into that group) and dragging a HEADER
-/// reorders the groups themselves. Destructive and name-editing actions live
-/// behind the header options menu (Photoshop-style) acting on the selected
-/// preset, and behind each group header's own menu for the group.
+/// Groups used to be headers inside the list, which meant every group cost
+/// the brushes a row. A rail costs them no height at all, and it is what
+/// scales here: a 260px panel fits about three tabs across the top but a
+/// dozen down the side.
+///
+/// Rail and list are SIBLINGS, each scrolling itself. Neither is nested in
+/// the other and the panel opts out of the frame's own scrolling, so with
+/// scrollbars always visible there is never a question of which one the
+/// wheel is driving — and the tabs stay put however far the list is
+/// scrolled.
+///
+/// Tapping a row applies its preset; dragging one reorders it within the
+/// open group. Dragging one ONTO a tab and holding opens that tab, so it can
+/// be dropped anywhere inside — a tab that only accepted a drop would lose
+/// the ordering.
 class BrushPresetPanel extends StatefulWidget {
   const BrushPresetPanel({
     super.key,
@@ -72,7 +70,6 @@ class BrushPresetPanel extends StatefulWidget {
     this.onGroupCreated,
     this.onGroupRenamed,
     this.onGroupDeleted,
-    this.onGroupCollapseChanged,
     this.onGroupsReordered,
     this.onLibraryReset,
   });
@@ -110,17 +107,16 @@ class BrushPresetPanel extends StatefulWidget {
   /// naming the count).
   final ValueChanged<BrushGroupId>? onGroupDeleted;
 
-  final void Function(BrushGroupId id, bool collapsed)? onGroupCollapseChanged;
-
-  /// Called with the full reordered group list after a header drag.
+  /// Called with the full reordered group list after a tab drag.
   final ValueChanged<List<BrushGroup>>? onGroupsReordered;
 
   /// Throws the library away and re-seeds the built-ins (confirmed first).
   final VoidCallback? onLibraryReset;
 
-  /// Caps the list; beyond this the list scrolls inside the panel instead
-  /// of growing the dock.
-  static const double _maxListHeight = 312;
+  /// List height when the panel is laid out somewhere with no height of its
+  /// own — a widget test pumping it inside a scroll view. Docked, the
+  /// section's height wins and the list takes all of it.
+  static const double _fallbackListHeight = 312;
 
   @override
   State<BrushPresetPanel> createState() => _BrushPresetPanelState();
@@ -129,14 +125,36 @@ class BrushPresetPanel extends StatefulWidget {
 class _BrushPresetPanelState extends State<BrushPresetPanel> {
   final ScrollController _scrollController = ScrollController();
 
+  /// The rail's own scroller. Rail and list are SIBLINGS, each scrolling
+  /// itself: neither is nested in the other, so there is never a question of
+  /// which one the wheel is driving, and the tabs stay put however far the
+  /// brush list is scrolled.
+  final ScrollController _railController = ScrollController();
+
+  /// Locates the rail for the pointer arithmetic that springs tabs open.
+  /// Per-STATE, not a library global: two panels can be on screen at once,
+  /// and a shared GlobalKey would have them fighting over one element.
+  final GlobalKey _railKey = GlobalKey();
+
   // View options are editor-session UI state local to the panel; they are
-  // deliberately not persisted or project data. Group fold state, by
-  // contrast, lives on the group entity and IS persisted — only the root
-  // section, which has no entity to hold it, folds locally.
+  // deliberately not persisted or project data. The open TAB is the same
+  // kind of thing — on a fresh launch it follows the selected brush, which
+  // is a better answer than whatever was open last time.
   bool _showTipIcon = true;
   bool _showStrokePreview = true;
   bool _showName = true;
-  bool _rootCollapsed = false;
+
+  /// The open tab; `null` is the root section (presets in no group). Unset
+  /// until the user picks one, so the panel can follow the selection.
+  BrushGroupId? _activeGroupId;
+  bool _tabChosen = false;
+
+  /// A preset is mid-drag: the rail watches the pointer so hovering a tab
+  /// opens it, the way a spring-loaded folder does.
+  bool _dragging = false;
+  BrushGroupId? _springTarget;
+  bool _springTargetIsRoot = false;
+  Timer? _springTimer;
 
   int get _visibleElementCount =>
       (_showTipIcon ? 1 : 0) +
@@ -159,42 +177,45 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     return widget.groups.any((group) => group.id == groupId) ? groupId : null;
   }
 
-  /// The group that owns an ENTRY: a header owns its own group, a row owns
-  /// its preset's. `null` is the root section.
-  BrushGroupId? _entryGroupId(_ListEntry entry) =>
-      entry.isHeader ? entry.group?.id : _ownerGroupId(entry.preset!);
+  /// Whether the root section gets a tab: only when something is actually
+  /// in it. A library whose brushes are all filed shows no leftovers tab.
+  bool get _hasRootTab =>
+      widget.presets.any((preset) => _ownerGroupId(preset) == null);
 
-  /// Flattens the library into header + row entries. Groups come first in
-  /// their own order, then the root section; when there are no groups the
-  /// headers are omitted entirely (a lone "Default" header is noise).
-  List<_ListEntry> _buildEntries() {
-    if (widget.groups.isEmpty) {
-      return [for (final preset in widget.presets) _ListEntry.preset(preset)];
+  /// The rail's tabs, in order: the groups as the library lists them, then
+  /// the root section last — folders first, loose items after, the way a
+  /// file tree reads.
+  ///
+  /// A library with no groups shows NO rail: a lone "Default" tab would be a
+  /// control with nothing to choose between, taking width from the brushes.
+  List<BrushGroup?> get _tabs => widget.groups.isEmpty
+      ? const <BrushGroup?>[]
+      : [...widget.groups, if (_hasRootTab) null];
+
+  /// The open tab. Until the user picks one this follows the SELECTED brush,
+  /// so opening the panel lands on the group you are painting from.
+  BrushGroupId? get _openGroupId {
+    if (_tabChosen) {
+      return _activeGroupId;
     }
-    final entries = <_ListEntry>[];
-    for (final group in widget.groups) {
-      entries.add(_ListEntry.header(group));
-      if (!group.collapsed) {
-        for (final preset in widget.presets) {
-          if (_ownerGroupId(preset) == group.id) {
-            entries.add(_ListEntry.preset(preset));
-          }
+    final selectedId = widget.selectedPresetId;
+    if (selectedId != null) {
+      for (final preset in widget.presets) {
+        if (preset.id == selectedId) {
+          return _ownerGroupId(preset);
         }
       }
     }
-    final rootPresets = [
+    return widget.groups.isEmpty ? null : widget.groups.first.id;
+  }
+
+  /// The presets on screen: one tab's worth.
+  List<BrushPreset> get _visiblePresets {
+    final open = _openGroupId;
+    return [
       for (final preset in widget.presets)
-        if (_ownerGroupId(preset) == null) preset,
+        if (_ownerGroupId(preset) == open) preset,
     ];
-    if (rootPresets.isNotEmpty) {
-      entries.add(const _ListEntry.header(null));
-      if (!_rootCollapsed) {
-        for (final preset in rootPresets) {
-          entries.add(_ListEntry.preset(preset));
-        }
-      }
-    }
-    return entries;
   }
 
   void _onMenuSelected(_BrushPresetMenuAction action) {
@@ -382,117 +403,120 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     onReset();
   }
 
-  void _toggleGroupCollapsed(BrushGroup? group) {
-    if (group == null) {
-      setState(() => _rootCollapsed = !_rootCollapsed);
+  void _openTab(BrushGroupId? groupId) {
+    if (_tabChosen && _activeGroupId == groupId) {
       return;
     }
-    widget.onGroupCollapseChanged?.call(group.id, !group.collapsed);
+    setState(() {
+      _tabChosen = true;
+      _activeGroupId = groupId;
+    });
   }
 
-  /// Maps a drag in the flattened entry list onto the library move. Dragging
-  /// a ROW moves a preset (the entry before the drop decides its group and
-  /// anchor); dragging a HEADER moves the whole group. [newIndex] is already
-  /// adjusted for the removed item (onReorderItem semantics).
-  void _handleReorder(List<_ListEntry> entries, int oldIndex, int newIndex) {
-    if (oldIndex >= entries.length) {
-      return;
-    }
-    final entry = entries[oldIndex];
-    final without = [...entries]..removeAt(oldIndex);
-    final clampedIndex = newIndex.clamp(0, without.length);
-    if (entry.isHeader) {
-      _moveGroup(entry.group, without, clampedIndex);
-      return;
-    }
-    _movePreset(entry.preset!, without, clampedIndex);
-  }
-
-  /// Reorders groups: the moved group lands before the first group that
-  /// still sits at or after the drop position. The moved group's own members
-  /// stay in the flattened list while its header is dragged, so they are
-  /// skipped; the root section owns no group, so dropping into it appends.
-  void _moveGroup(BrushGroup? moved, List<_ListEntry> without, int dropIndex) {
+  /// Moves a group in the rail. The rail is a plain list of tabs, so a tab
+  /// drag is an ordinary reorder — no headers, no members riding along.
+  void _handleTabReorder(int oldIndex, int newIndex) {
     final onReordered = widget.onGroupsReordered;
-    if (moved == null || onReordered == null) {
+    final tabs = _tabs;
+    if (onReordered == null || oldIndex >= tabs.length) {
       return;
     }
-    BrushGroupId? anchor;
-    for (var index = dropIndex; index < without.length; index += 1) {
-      final owner = _entryGroupId(without[index]);
-      if (owner != null && owner != moved.id) {
-        anchor = owner;
-        break;
-      }
+    final moved = tabs[oldIndex];
+    if (moved == null) {
+      // The root section is not a group and always sorts last.
+      return;
     }
+    final clamped = newIndex.clamp(0, tabs.length - 1);
+    final anchor = clamped < widget.groups.length
+        ? widget.groups[clamped]
+        : null;
     onReordered(
       moveBrushGroupInLibrary(
         groups: widget.groups,
         movedId: moved.id,
-        insertBeforeId: anchor,
+        insertBeforeId: anchor?.id == moved.id ? null : anchor?.id,
       ),
     );
   }
 
-  void _movePreset(BrushPreset moved, List<_ListEntry> without, int dropIndex) {
+  /// Reorders inside the open tab. One tab shows one group, so a row drag
+  /// can only ever be a move WITHIN it — crossing groups is what the
+  /// spring-loaded tabs are for.
+  void _handleReorder(List<BrushPreset> visible, int oldIndex, int newIndex) {
     final onReordered = widget.onPresetsReordered;
-    if (onReordered == null) {
+    if (onReordered == null || oldIndex >= visible.length) {
       return;
     }
-    final previous = dropIndex > 0 ? without[dropIndex - 1] : null;
-    final next = dropIndex < without.length ? without[dropIndex] : null;
-
-    BrushGroupId? targetGroupId;
-    BrushPresetId? insertBeforeId;
-    if (previous == null) {
-      if (next == null) {
-        return;
-      }
-      // Dropped at the very top: join whatever comes first.
-      targetGroupId = _entryGroupId(next);
-      insertBeforeId = next.isHeader
-          ? _firstMemberId(targetGroupId, excluding: moved.id)
-          : next.preset!.id;
-    } else if (!previous.isHeader) {
-      // Right after another preset: same group, before the next member of
-      // that group (or appended when the group ends here).
-      targetGroupId = _ownerGroupId(previous.preset!);
-      final nextPreset = next?.preset;
-      insertBeforeId =
-          (nextPreset != null && _ownerGroupId(nextPreset) == targetGroupId)
-          ? nextPreset.id
-          : null;
-    } else {
-      // Right under a header: become the group's first member (works for
-      // collapsed groups too — members need not be visible).
-      targetGroupId = previous.group?.id;
-      insertBeforeId = _firstMemberId(targetGroupId, excluding: moved.id);
-    }
-
+    final moved = visible[oldIndex];
+    final without = [...visible]..removeAt(oldIndex);
+    final clamped = newIndex.clamp(0, without.length);
     onReordered(
       moveBrushPresetInLibrary(
         presets: widget.presets,
         movedId: moved.id,
-        targetGroupId: targetGroupId,
-        insertBeforeId: insertBeforeId,
+        targetGroupId: _openGroupId,
+        insertBeforeId: clamped < without.length ? without[clamped].id : null,
       ),
     );
   }
 
-  BrushPresetId? _firstMemberId(
-    BrushGroupId? groupId, {
-    BrushPresetId? excluding,
-  }) {
-    for (final preset in widget.presets) {
-      if (_ownerGroupId(preset) == groupId && preset.id != excluding) {
-        return preset.id;
-      }
+  /// Opens whichever tab the dragged brush is hovering, after a beat.
+  ///
+  /// A reorder drag is not a [Draggable], so the tabs cannot be drop targets
+  /// — the pointer keeps reporting to the row that was picked up. The rail
+  /// therefore reads the pointer itself: tabs are a fixed height, so the
+  /// offset alone says which one is under it.
+  void _updateSpringTarget(Offset globalPosition) {
+    if (!_dragging) {
+      return;
     }
-    return null;
+    final box = _railKey.currentContext?.findRenderObject() as RenderBox?;
+    if (box == null) {
+      return;
+    }
+    final local = box.globalToLocal(globalPosition);
+    final tabs = _tabs;
+    if (!box.size.contains(local)) {
+      _cancelSpring();
+      return;
+    }
+    final offset =
+        local.dy + (_railController.hasClients ? _railController.offset : 0.0);
+    final index = offset ~/ _BrushGroupTab.extent;
+    if (index < 0 || index >= tabs.length) {
+      _cancelSpring();
+      return;
+    }
+    final target = tabs[index];
+    final isRoot = target == null;
+    if (_springTimer != null &&
+        _springTarget == target?.id &&
+        _springTargetIsRoot == isRoot) {
+      return;
+    }
+    _springTimer?.cancel();
+    _springTarget = target?.id;
+    _springTargetIsRoot = isRoot;
+    // Long enough that dragging ACROSS the rail does not flip through every
+    // tab on the way, short enough to feel like an invitation.
+    _springTimer = Timer(const Duration(milliseconds: 350), () {
+      if (mounted && _dragging) {
+        _openTab(_springTarget);
+      }
+    });
+  }
+
+  void _cancelSpring() {
+    _springTimer?.cancel();
+    _springTimer = null;
+    _springTarget = null;
+    _springTargetIsRoot = false;
   }
 
   @override
   void dispose() {
+    _springTimer?.cancel();
+    _railController.dispose();
     _scrollController.dispose();
     super.dispose();
   }
@@ -562,12 +586,129 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     ];
   }
 
+  /// The tab rail: a list of groups down the left edge.
+  ///
+  /// It costs the brush list no HEIGHT at all, which is the point — adding
+  /// a group used to take a row away from the brushes. A 260px panel fits
+  /// about three tabs across the top but a dozen down the side, so in this
+  /// panel's proportions the rail is also what scales.
+  Widget _buildRail() {
+    final tabs = _tabs;
+    final open = _openGroupId;
+    final reorderable = widget.onGroupsReordered != null;
+    return SizedBox(
+      key: _railKey,
+      width: _BrushGroupTab.extent + panelScrollbarGutter,
+      child: PanelScrollbar(
+        controller: _railController,
+        child: ReorderableListView.builder(
+          key: const ValueKey<String>('brush-preset-tab-rail'),
+          scrollController: _railController,
+          buildDefaultDragHandles: false,
+          padding: const EdgeInsets.only(right: panelScrollbarGutter),
+          itemCount: tabs.length,
+          onReorderItem: _handleTabReorder,
+          itemBuilder: (context, index) {
+            final group = tabs[index];
+            final tab = _BrushGroupTab(
+              keyValue: 'brush-preset-tab-${group?.id.value ?? 'root'}',
+              label: group?.name ?? _rootSectionLabel,
+              // The tab wears its group's first brush, so a chalk group
+              // looks chalky and no one has to pick an icon.
+              preview: _firstPresetIn(group?.id),
+              selected: group?.id == open,
+              onTap: () => _openTab(group?.id),
+              onRename: group == null || widget.onGroupRenamed == null
+                  ? null
+                  : () => _renameGroup(group),
+              onDelete: group == null || widget.onGroupDeleted == null
+                  ? null
+                  : () => _deleteGroup(group),
+            );
+            return KeyedSubtree(
+              key: ValueKey<String>(
+                'brush-preset-tab-entry-${group?.id.value ?? 'root'}',
+              ),
+              // The root section is not a group and always sorts last, so
+              // only real tabs drag.
+              child: reorderable && group != null
+                  ? ReorderableDragStartListener(index: index, child: tab)
+                  : tab,
+            );
+          },
+        ),
+      ),
+    );
+  }
+
+  /// The open tab's brushes.
+  Widget _buildList(List<BrushPreset> visible, bool reorderable) {
+    return PanelScrollbar(
+      controller: _scrollController,
+      child: ReorderableListView.builder(
+        key: const ValueKey<String>('brush-preset-list'),
+        scrollController: _scrollController,
+        buildDefaultDragHandles: false,
+        padding: const EdgeInsets.only(right: panelScrollbarGutter),
+        itemCount: visible.length,
+        onReorderStart: (_) => _dragging = true,
+        onReorderEnd: (_) {
+          _dragging = false;
+          _cancelSpring();
+        },
+        onReorderItem: (oldIndex, newIndex) =>
+            _handleReorder(visible, oldIndex, newIndex),
+        itemBuilder: (context, index) {
+          final preset = visible[index];
+          final row = _BrushPresetRow(
+            preset: preset,
+            selected: preset.id == widget.selectedPresetId,
+            onApplied: widget.onPresetApplied,
+            showTipIcon: _showTipIcon,
+            showStrokePreview: _showStrokePreview,
+            showName: _showName,
+          );
+          return KeyedSubtree(
+            key: ValueKey<String>('brush-preset-entry-${preset.id.value}'),
+            child: reorderable
+                ? ReorderableDragStartListener(index: index, child: row)
+                : row,
+          );
+        },
+      ),
+    );
+  }
+
+  BrushPreset? _firstPresetIn(BrushGroupId? groupId) {
+    for (final preset in widget.presets) {
+      if (_ownerGroupId(preset) == groupId) {
+        return preset;
+      }
+    }
+    return null;
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final entries = _buildEntries();
+    final visible = _visiblePresets;
     final reorderable = widget.onPresetsReordered != null;
-    final groupsReorderable = widget.onGroupsReordered != null;
+    return Listener(
+      // Watches the pointer only to spring the tabs open: a reorder drag
+      // reports to the row it picked up, never to what is under it now.
+      behavior: HitTestBehavior.translucent,
+      onPointerMove: (event) => _updateSpringTarget(event.position),
+      onPointerUp: (_) => _cancelSpring(),
+      child: _buildFrame(context, colorScheme, visible, reorderable),
+    );
+  }
+
+  Widget _buildFrame(
+    BuildContext context,
+    ColorScheme colorScheme,
+    List<BrushPreset> visible,
+    bool reorderable,
+  ) {
     return EditorPanelFrame(
       title: 'Brushes',
       bodyPadding: const EdgeInsets.all(5),
@@ -605,7 +746,10 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
           ),
         ],
       ),
-      child: entries.isEmpty
+      // The panel owns its scrolling — two of them, side by side — so the
+      // frame must not wrap it in a third.
+      bodyScrolls: false,
+      child: widget.presets.isEmpty && widget.groups.isEmpty
           ? SizedBox(
               height: 56,
               child: Center(
@@ -616,97 +760,59 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
                 ),
               ),
             )
-          : ConstrainedBox(
-              constraints: const BoxConstraints(
-                maxHeight: BrushPresetPanel._maxListHeight,
-              ),
-              child: PanelScrollbar(
-                controller: _scrollController,
-                child: ReorderableListView.builder(
-                  key: const ValueKey<String>('brush-preset-list'),
-                  scrollController: _scrollController,
-                  shrinkWrap: true,
-                  buildDefaultDragHandles: false,
-                  padding: const EdgeInsets.only(right: panelScrollbarGutter),
-                  itemCount: entries.length,
-                  onReorderItem: (oldIndex, newIndex) =>
-                      _handleReorder(entries, oldIndex, newIndex),
-                  itemBuilder: (context, index) {
-                    final entry = entries[index];
-                    if (entry.isHeader) {
-                      final group = entry.group;
-                      final header = _BrushGroupHeader(
-                        keyValue:
-                            'brush-preset-group-${group?.id.value ?? 'root'}',
-                        label: group?.name ?? _rootSectionLabel,
-                        collapsed: group?.collapsed ?? _rootCollapsed,
-                        onToggle: () => _toggleGroupCollapsed(group),
-                        onRename: group == null || widget.onGroupRenamed == null
-                            ? null
-                            : () => _renameGroup(group),
-                        onDelete: group == null || widget.onGroupDeleted == null
-                            ? null
-                            : () => _deleteGroup(group),
-                      );
-                      return KeyedSubtree(
-                        key: ValueKey<String>(
-                          'brush-preset-entry-header-'
-                          '${group?.id.value ?? 'root'}',
-                        ),
-                        // The root section has no entity and always sorts
-                        // last, so only real group headers drag.
-                        child: groupsReorderable && group != null
-                            ? ReorderableDragStartListener(
-                                index: index,
-                                child: header,
-                              )
-                            : header,
-                      );
-                    }
-                    final preset = entry.preset!;
-                    final row = _BrushPresetRow(
-                      preset: preset,
-                      selected: preset.id == widget.selectedPresetId,
-                      onApplied: widget.onPresetApplied,
-                      showTipIcon: _showTipIcon,
-                      showStrokePreview: _showStrokePreview,
-                      showName: _showName,
-                    );
-                    return KeyedSubtree(
-                      key: ValueKey<String>(
-                        'brush-preset-entry-${preset.id.value}',
-                      ),
-                      child: reorderable
-                          ? ReorderableDragStartListener(
-                              index: index,
-                              child: row,
-                            )
-                          : row,
-                    );
-                  },
-                ),
-              ),
+          : LayoutBuilder(
+              builder: (context, constraints) {
+                // Docked, the section hands down a real height and the list
+                // takes all of it. Somewhere unbounded — a panel pumped
+                // inside a scroll view — it falls back to a fixed extent
+                // rather than trying to be infinitely tall.
+                final height = constraints.hasBoundedHeight
+                    ? constraints.maxHeight
+                    : BrushPresetPanel._fallbackListHeight;
+                return SizedBox(
+                  height: height,
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      if (_tabs.isNotEmpty) _buildRail(),
+                      Expanded(child: _buildList(visible, reorderable)),
+                    ],
+                  ),
+                );
+              },
             ),
     );
   }
 }
 
-/// A flat collapsible group header (chevron + name), Clip-Studio-like, with
-/// the group's own rename/delete menu when those are wired.
-class _BrushGroupHeader extends StatelessWidget {
-  const _BrushGroupHeader({
+/// One tab in the rail: the group's first brush as its face, its name as the
+/// tooltip, and its own rename/delete menu behind a long press.
+///
+/// A rotated label was the obvious alternative and a bad one — Korean and
+/// Japanese group names do not read sideways. The brush the group starts
+/// with says more anyway.
+class _BrushGroupTab extends StatelessWidget {
+  const _BrushGroupTab({
     required this.keyValue,
     required this.label,
-    required this.collapsed,
-    required this.onToggle,
+    required this.preview,
+    required this.selected,
+    required this.onTap,
     this.onRename,
     this.onDelete,
   });
 
+  /// Height of one tab. Fixed, because the rail turns a pointer offset into
+  /// a tab index while a brush is being dragged over it.
+  static const double extent = 26;
+
   final String keyValue;
   final String label;
-  final bool collapsed;
-  final VoidCallback onToggle;
+
+  /// The group's first brush, or null for an empty group.
+  final BrushPreset? preview;
+  final bool selected;
+  final VoidCallback onTap;
   final VoidCallback? onRename;
   final VoidCallback? onDelete;
 
@@ -714,81 +820,143 @@ class _BrushGroupHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final hasMenu = onRename != null || onDelete != null;
-    return SizedBox(
-      height: 24,
-      child: Row(
-        children: [
-          Expanded(
-            child: InkWell(
-              key: ValueKey<String>(keyValue),
-              onTap: onToggle,
-              child: Row(
-                children: [
-                  Icon(
-                    collapsed ? Icons.chevron_right : Icons.expand_more,
-                    size: 15,
+    final face = Tooltip(
+      message: label,
+      child: Material(
+        color: selected ? colorScheme.surfaceContainerHigh : Colors.transparent,
+        borderRadius: BorderRadius.circular(4),
+        child: InkWell(
+          key: ValueKey<String>(keyValue),
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(4),
+          child: Container(
+            margin: const EdgeInsets.symmetric(vertical: 1),
+            decoration: BoxDecoration(
+              border: Border.all(
+                color: selected
+                    ? colorScheme.primary
+                    : colorScheme.outlineVariant,
+                width: selected ? 1.5 : 1,
+              ),
+              borderRadius: BorderRadius.circular(4),
+            ),
+            clipBehavior: Clip.antiAlias,
+            child: preview == null
+                ? Icon(
+                    Icons.folder_outlined,
+                    size: 13,
                     color: colorScheme.onSurfaceVariant,
-                  ),
-                  const SizedBox(width: 3),
-                  Expanded(
-                    child: Text(
-                      label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 11,
-                        fontWeight: FontWeight.w600,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
+                  )
+                : BrushTipPreview(settings: preview!.settings),
           ),
-          if (hasMenu)
-            PopupMenuButton<_BrushGroupMenuAction>(
-              key: ValueKey<String>('$keyValue-menu'),
-              tooltip: AppText.strings.brGroupOptions,
-              popUpAnimationStyle: instantMenuAnimation,
-              icon: Icon(
-                Icons.more_horiz,
-                size: 14,
-                color: colorScheme.onSurfaceVariant,
-              ),
-              padding: EdgeInsets.zero,
-              iconSize: 14,
-              style: const ButtonStyle(
-                visualDensity: VisualDensity.compact,
-                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              ),
-              onSelected: (action) {
-                switch (action) {
-                  case _BrushGroupMenuAction.rename:
-                    onRename!();
-                  case _BrushGroupMenuAction.delete:
-                    onDelete!();
-                }
-              },
-              itemBuilder: (context) => [
-                if (onRename != null)
-                  PopupMenuItem<_BrushGroupMenuAction>(
-                    key: ValueKey<String>('brush-preset-group-menu-rename'),
-                    value: _BrushGroupMenuAction.rename,
-                    height: 34,
-                    child: Text(AppText.strings.brRenameGroup),
-                  ),
-                if (onDelete != null)
-                  PopupMenuItem<_BrushGroupMenuAction>(
-                    key: ValueKey<String>('brush-preset-group-menu-delete'),
-                    value: _BrushGroupMenuAction.delete,
-                    height: 34,
-                    child: Text(AppText.strings.brDeleteGroup),
-                  ),
-              ],
-            ),
-        ],
+        ),
       ),
+    );
+    return SizedBox(
+      height: extent,
+      child: hasMenu
+          ? _TabContextMenu(
+              keyValue: keyValue,
+              onRename: onRename,
+              onDelete: onDelete,
+              child: face,
+            )
+          : face,
+    );
+  }
+}
+
+/// Wraps a tab so a long press (or a right-click) opens the group's menu —
+/// the rail has no room for a visible ⋯ on every tab.
+class _TabContextMenu extends StatelessWidget {
+  const _TabContextMenu({
+    required this.keyValue,
+    required this.onRename,
+    required this.onDelete,
+    required this.child,
+  });
+
+  final String keyValue;
+  final VoidCallback? onRename;
+  final VoidCallback? onDelete;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return _LegacyGroupMenuHost(
+      keyValue: keyValue,
+      onRename: onRename,
+      onDelete: onDelete,
+      child: child,
+    );
+  }
+}
+
+/// Holds the popup itself, kept apart so the tab stays a plain widget.
+class _LegacyGroupMenuHost extends StatelessWidget {
+  const _LegacyGroupMenuHost({
+    required this.keyValue,
+    required this.onRename,
+    required this.onDelete,
+    required this.child,
+  });
+
+  final String keyValue;
+  final VoidCallback? onRename;
+  final VoidCallback? onDelete;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Stack(
+      children: [
+        Positioned.fill(child: child),
+        Positioned(
+          right: 0,
+          bottom: 0,
+          child: PopupMenuButton<_BrushGroupMenuAction>(
+            key: ValueKey<String>('$keyValue-menu'),
+            tooltip: AppText.strings.brGroupOptions,
+            popUpAnimationStyle: instantMenuAnimation,
+            icon: Icon(
+              Icons.more_horiz,
+              size: 10,
+              color: colorScheme.onSurfaceVariant,
+            ),
+            padding: EdgeInsets.zero,
+            iconSize: 10,
+            style: const ButtonStyle(
+              visualDensity: VisualDensity.compact,
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            onSelected: (action) {
+              switch (action) {
+                case _BrushGroupMenuAction.rename:
+                  onRename!();
+                case _BrushGroupMenuAction.delete:
+                  onDelete!();
+              }
+            },
+            itemBuilder: (context) => [
+              if (onRename != null)
+                PopupMenuItem<_BrushGroupMenuAction>(
+                  key: ValueKey<String>('brush-preset-group-menu-rename'),
+                  value: _BrushGroupMenuAction.rename,
+                  height: 34,
+                  child: Text(AppText.strings.brRenameGroup),
+                ),
+              if (onDelete != null)
+                PopupMenuItem<_BrushGroupMenuAction>(
+                  key: ValueKey<String>('brush-preset-group-menu-delete'),
+                  value: _BrushGroupMenuAction.delete,
+                  height: 34,
+                  child: Text(AppText.strings.brDeleteGroup),
+                ),
+            ],
+          ),
+        ),
+      ],
     );
   }
 }
