@@ -18,6 +18,7 @@ import 'input/app_input_settings.dart';
 import 'theme/app_accents.dart';
 import 'theme/app_theme.dart' show AppColors;
 import 'theme/app_workspace_colors.dart';
+import '../controllers/active_cut_helpers.dart';
 import '../controllers/editing_session_state.dart';
 import '../controllers/layer_controller.dart';
 import '../controllers/timeline_controller.dart';
@@ -495,7 +496,7 @@ class EditorSessionManager extends ChangeNotifier {
   late final CanvasPlaybackController playback = CanvasPlaybackController(
     resolveProject: () => _repository.requireProject(),
     resolveActiveCutId: () => _editingSession.activeCutId,
-    resolveActiveTrackId: () => activeCutTrackId,
+    resolveActiveTrackId: () => selectedTrackId,
     resolveFrameRate: () => projectFrameRate,
     onStopped: _onPlaybackStopped,
     onStoppedInGap: _onPlaybackStoppedInGap,
@@ -707,17 +708,34 @@ class EditorSessionManager extends ChangeNotifier {
     return frameIndex.clamp(0, maxIndex);
   }
 
-  TrackId get activeCutTrackId {
-    final activeCutId = _editingSession.activeCutId;
+  /// THE selected track — the storyboard's row selection, read by everything
+  /// that used to hunt for "whichever track owns the active cut".
+  ///
+  /// Track selection is FIRST-CLASS state now ([EditingSessionState]): the
+  /// old derivation had nowhere to live whenever the playhead parked in a
+  /// gap, so tapping a V row and then scrubbing into a gap lost it. The
+  /// reconciliation keeps the answer identical to the old one while a cut
+  /// is active — the cut's own track wins — and falls back to the stored
+  /// selection (then the first track) only when there is no active cut or
+  /// the stored track is gone.
+  TrackId get selectedTrackId {
     final project = _repository.requireProject();
-    for (final track in project.tracks) {
-      if (track.cuts.any((cut) => cut.id == activeCutId)) {
-        return track.id;
+    final cutTrackId = trackIdOfCut(project, _editingSession.activeCutId);
+    if (cutTrackId != null) {
+      return cutTrackId;
+    }
+
+    final stored = _editingSession.selectedTrackId;
+    if (stored != null) {
+      for (final track in project.tracks) {
+        if (track.id == stored) {
+          return stored;
+        }
       }
     }
 
     if (project.tracks.isEmpty) {
-      throw StateError('Cannot resolve active Cut track in an empty project.');
+      throw StateError('Cannot resolve the selected track in an empty project.');
     }
     return project.tracks.first.id;
   }
@@ -731,7 +749,7 @@ class EditorSessionManager extends ChangeNotifier {
   // written back).
 
   Track get activeTrack {
-    final trackId = activeCutTrackId;
+    final trackId = selectedTrackId;
     return _repository.requireProject().tracks.firstWhere(
       (track) => track.id == trackId,
     );
@@ -1025,7 +1043,7 @@ class EditorSessionManager extends ChangeNotifier {
 
   void createCut() {
     _cutCommandCoordinator.createCut(
-      trackId: activeCutTrackId,
+      trackId: selectedTrackId,
       // New cuts inherit the active cut's canvas size, like new scenes in
       // TVPaint/Clip Studio inherit the project size.
       canvasSize: activeCutOrNull?.canvasSize,
@@ -1058,7 +1076,7 @@ class EditorSessionManager extends ChangeNotifier {
     }
     _cutCommandCoordinator.duplicateCut(
       sourceCutId: cutId,
-      targetTrackId: activeCutTrackId,
+      targetTrackId: selectedTrackId,
     );
     _refreshAfterCutCommand();
     notifyListeners();
@@ -1711,7 +1729,7 @@ class EditorSessionManager extends ChangeNotifier {
     }
     final frameKey = BrushFrameKey(
       projectId: _repository.requireProject().id,
-      trackId: activeCutTrackId,
+      trackId: selectedTrackId,
       cutId: cut.id,
       layerId: layer.id,
       frameId: frame.id,
@@ -2111,6 +2129,13 @@ class EditorSessionManager extends ChangeNotifier {
       _exitVisibilitySolo();
     }
     _editingSession.setActiveCutId(cutId);
+    // Keep the pair reconciled at the seam instead of only at read time:
+    // selecting a cut selects its track, so the stored selection is right
+    // the moment the cut is dropped (a gap park) rather than falling back.
+    _editingSession.setSelectedTrackId(
+      trackIdOfCut(_repository.requireProject(), cutId) ??
+          _editingSession.selectedTrackId,
+    );
     _copiedFrame = null;
     clearFrameRangeSelection();
     _rebuildActiveCutControllers();
@@ -2159,7 +2184,7 @@ class EditorSessionManager extends ChangeNotifier {
     }
     return BrushEditorSelection(
       projectId: _repository.requireProject().id,
-      trackId: activeCutTrackId,
+      trackId: selectedTrackId,
       cutId: cutId,
       layerId: activeLayer.id,
       frameId: selectedFrame.id,
@@ -2227,7 +2252,7 @@ class EditorSessionManager extends ChangeNotifier {
       }
       return BrushEditorSelection(
         projectId: _repository.requireProject().id,
-        trackId: activeCutTrackId,
+        trackId: selectedTrackId,
         cutId: cut.id,
         layerId: layer.id,
         frameId: frame.id,
@@ -2536,7 +2561,7 @@ class EditorSessionManager extends ChangeNotifier {
       _historyManager.execute(
         RemoveTrackSeLayerCommand(
           repository: _repository,
-          trackId: activeCutTrackId,
+          trackId: selectedTrackId,
           layerId: activeLayer.id,
         ),
       );
@@ -2612,7 +2637,7 @@ class EditorSessionManager extends ChangeNotifier {
         _historyManager.execute(
           AddTrackSeLayerCommand(
             repository: _repository,
-            trackId: activeCutTrackId,
+            trackId: selectedTrackId,
             layer: newLayer,
             insertionIndex: activeIndex < 0 ? null : activeIndex + 1,
           ),
@@ -8789,16 +8814,12 @@ class EditorSessionManager extends ChangeNotifier {
   /// axis — change it and every panel changes together.
   TrackFrameAxis trackFrameAxis() {
     final layout = buildStoryboardTimelineLayout(repository.requireProject());
-    for (final entry in layout) {
-      if (entry.cutId == activeCutId) {
-        return TrackFrameAxis(
-          layout
-              .where((candidate) => candidate.trackId == entry.trackId)
-              .toList(growable: false),
-        );
-      }
-    }
-    return TrackFrameAxis(layout);
+    final trackId = selectedTrackId;
+    final scoped = [
+      for (final entry in layout)
+        if (entry.trackId == trackId) entry,
+    ];
+    return TrackFrameAxis(scoped.isEmpty ? layout : scoped);
   }
 
   /// Set while the editing playhead is PARKED IN A GAP (R16-⑥, user
@@ -8876,6 +8897,11 @@ class EditorSessionManager extends ChangeNotifier {
     if (editingInteractionBusy) {
       return;
     }
+    // The TRACK is what the tap selected, so it is stored whether or not a
+    // cut is found under the playhead — a gap on the tapped track is still
+    // a no-op for the active cut, but the selection itself no longer
+    // evaporates on the way.
+    _editingSession.setSelectedTrackId(trackId);
     final globalFrame = editingGlobalFrame;
     final layout = buildStoryboardTimelineLayout(repository.requireProject());
     for (final entry in layout) {
@@ -8889,6 +8915,11 @@ class EditorSessionManager extends ChangeNotifier {
         return;
       }
     }
+    // A GAP on the tapped track stays a no-op for the active cut (UI-R18
+    // #6, the V-row fx/eye rule). The tapped track is still RECORDED
+    // above, so it is what the session addresses the moment the active cut
+    // goes away — a scrub into a gap no longer throws the selection back
+    // to the first track.
   }
 
   /// THE canonical seek: a global frame in. Inside a cut it selects
