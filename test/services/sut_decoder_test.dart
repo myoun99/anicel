@@ -64,9 +64,20 @@ void main() {
     required Uint8List tipPng,
     Uint8List? thumbnailPng,
     Uint8List? texturePng,
+    Uint8List? dualPng,
     String catalogPath = '.:36:43:fixture-tip-catalog',
     String textureCatalogPath = '.:25:01:fixture-texture-catalog',
+    String dualCatalogPath = '.:77:88:fixture-dual-catalog',
     bool includeMaterial = true,
+    int brushSizeUnit = 0,
+    int sizeEffectorFlags = 0x10,
+    int sizeEffectorMinimum = 59,
+    int flowEffectorFlags = 0x30,
+    int flowEffectorMinimum = 0,
+    int rotationEffector = 0x03,
+    int rotationRandomScale = 100,
+    double dualSize = 30.0,
+    int syncDualBrushSize = 0,
   }) async {
     final path = '${tempDirectory.path}/fixture.sut';
     final database = sqlite3.open(path);
@@ -81,7 +92,11 @@ void main() {
         BrushOpacityEffector BLOB, BrushFlowEffector BLOB,
         BrushUseSpray INTEGER, BrushSpraySize REAL,
         BrushSprayDensity INTEGER, TextureImage BLOB,
-        TextureScale2 REAL, TextureDensity INTEGER);
+        TextureScale2 REAL, TextureDensity INTEGER,
+        BrushSizeUnit INTEGER, BrushRotationEffector INTEGER,
+        BrushRotationRandomScale INTEGER, UseDualBrush INTEGER,
+        DualUsePatternImage INTEGER, DualPatternImageArray BLOB,
+        DualSize REAL, SyncDualBrushSize INTEGER);
       CREATE TABLE MaterialFile(_PW_ID INTEGER PRIMARY KEY,
         CatalogPath TEXT, OriginalPath TEXT, FileData BLOB);
     ''');
@@ -103,15 +118,25 @@ void main() {
       'BrushUsePatternImage, BrushPatternImageArray, BrushSizeEffector, '
       'BrushOpacityEffector, BrushFlowEffector, BrushUseSpray, '
       'BrushSpraySize, BrushSprayDensity, TextureImage, TextureScale2, '
-      'TextureDensity) '
+      'TextureDensity, BrushSizeUnit, BrushRotationEffector, '
+      'BrushRotationRandomScale, UseDualBrush, DualUsePatternImage, '
+      'DualPatternImageArray, DualSize, SyncDualBrushSize) '
       'VALUES (9, 80, 50.0, 60, 70, 15.0, 40, 200.0, 1, ?, ?, ?, ?, '
-      '1, 200.0, 4, ?, 182.0, 90)',
+      '1, 200.0, 4, ?, 182.0, 90, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         patternArray(catalogPath),
-        effector(0x10, minimumPercent: 59),
+        effector(sizeEffectorFlags, minimumPercent: sizeEffectorMinimum),
         effector(0x00),
-        effector(0x30),
+        effector(flowEffectorFlags, minimumPercent: flowEffectorMinimum),
         texturePng == null ? null : patternArray(textureCatalogPath),
+        brushSizeUnit,
+        rotationEffector,
+        rotationRandomScale,
+        dualPng == null ? 0 : 1,
+        dualPng == null ? 0 : 1,
+        dualPng == null ? null : patternArray(dualCatalogPath),
+        dualSize,
+        syncDualBrushSize,
       ],
     );
     // Round brush without pattern data.
@@ -141,6 +166,22 @@ void main() {
         'VALUES (?, ?, ?)',
         [catalogPath, '$catalogPath:data:material_0.layer', fileData.toBytes()],
       );
+      if (dualPng != null) {
+        final dualData = BytesBuilder();
+        dualData.add(ascii.encode('catalog.zip'));
+        dualData.add(Uint8List(11));
+        dualData.add(dualPng);
+        dualData.add(Uint8List(5));
+        database.execute(
+          'INSERT INTO MaterialFile(CatalogPath, OriginalPath, FileData) '
+          'VALUES (?, ?, ?)',
+          [
+            dualCatalogPath,
+            '$dualCatalogPath:data:material_0.layer',
+            dualData.toBytes(),
+          ],
+        );
+      }
       if (texturePng != null) {
         final textureData = BytesBuilder();
         textureData.add(ascii.encode('catalog.zip'));
@@ -217,6 +258,109 @@ void main() {
     expect(round.settings.size, 8.0);
     expect(round.settings.hardness, closeTo(0.9, 1e-9));
     expect(round.settings.sizePressureCurve, isNull);
+  });
+
+  test('random input source drives the jitters', () async {
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      sizeEffectorFlags: 0x80,
+      sizeEffectorMinimum: 20,
+      flowEffectorFlags: 0x80,
+      flowEffectorMinimum: 4,
+      rotationEffector: 0xC3,
+      rotationRandomScale: 45,
+    );
+    final s = (await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    )).presets.first.settings;
+
+    // Clip Studio wanders between 최소치% and 100%; the engine shakes
+    // downward, so the amplitude is the complement of the floor.
+    expect(s.sizeJitter, closeTo(0.8, 1e-9));
+    // No flow jitter on the engine — flow randomness folds into opacity.
+    expect(s.opacityJitter, closeTo(0.96, 1e-9));
+    // The rotation effector is a bare int carrying the same 0x80 bit.
+    expect(s.angleJitter, closeTo(0.45, 1e-9));
+    // The random bit does not imply a pressure curve.
+    expect(s.sizePressureCurve, isNull);
+  });
+
+  test('rotation random scale stays inert without the random bit', () async {
+    // Real brushes park BrushRotationRandomScale at its default 100 while
+    // never randomising, so reading it ungated would spin every tip.
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      rotationEffector: 0x13, // pressure, no random
+      rotationRandomScale: 100,
+    );
+    final s = (await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    )).presets.first.settings;
+
+    expect(s.angleJitter, 0.0);
+  });
+
+  test('imports the dual brush tip with a synced size ratio', () async {
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      dualPng: await blackPng(10, 10),
+      dualSize: 250.0,
+      syncDualBrushSize: 1,
+    );
+    final s = (await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    )).presets.first.settings;
+
+    expect(s.dualMask, isNotNull);
+    expect(s.dualMask!.size, 10);
+    // Synced: DualSize is a percentage of the brush size.
+    expect(s.dualMaskScale, closeTo(2.5, 1e-9));
+  });
+
+  test('unsynced dual size divides against the brush size', () async {
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      dualPng: await blackPng(10, 10),
+      dualSize: 25.0, // absolute, against the fixture's 50px brush
+    );
+    final s = (await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    )).presets.first.settings;
+
+    expect(s.dualMaskScale, closeTo(0.5, 1e-9));
+  });
+
+  test('dual ratio stays neutral when no dual tip arrived', () async {
+    // Brushes that never enabled a dual tip still carry a stored DualSize.
+    final path = await buildFixture(tipPng: await blackPng(4, 4));
+    final s = (await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    )).presets.first.settings;
+
+    expect(s.dualMask, isNull);
+    expect(s.dualMaskScale, 1.0);
+  });
+
+  test('non-pixel brush size warns instead of mis-scaling', () async {
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      brushSizeUnit: 2,
+    );
+    final result = await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    );
+
+    expect(result.presets.first.settings.size, 50.0);
+    expect(
+      result.warnings.any((w) => w.contains('non-pixel unit')),
+      isTrue,
+    );
   });
 
   test('missing material degrades to a round tip with a warning', () async {

@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:sqlite3/sqlite3.dart';
@@ -32,11 +33,13 @@ class SutDecodeException implements Exception {
 /// nodes (`Node`), their parameters (`Variant`), and, when the brush was
 /// exported with its materials, embedded tip bitmaps (`MaterialFile`).
 ///
-/// Mapping (verified against real CSP 1.x/3.x exports): `BrushSize` px,
+/// Mapping (verified against real CSP 1.x/3.x exports): `BrushSize` px when
+/// `BrushSizeUnit` is 0 (other units warn rather than mis-scale),
 /// `Opacity`/`BrushFlow`/`BrushHardness`/`BrushThickness` percent,
 /// `BrushInterval` percent -> spacing ratio, `BrushRotation` degrees,
-/// `*Effector` blobs carry the input-source flags (bit 0x10 at byte offset
-/// 8 = pen pressure). Tip bitmaps live in `MaterialFile.FileData` (a CSP
+/// `*Effector` values carry the input-source flags (0x10 pen pressure,
+/// 0x80 random -> the jitters). The dual tip rides `UseDualBrush` +
+/// `DualPatternImageArray`. Tip bitmaps live in `MaterialFile.FileData` (a CSP
 /// material archive containing PNGs; the largest PNG is the tip image,
 /// smaller ones are thumbnails), joined through the UTF-16 catalog path in
 /// `BrushPatternImageArray`. The Variant schema varies across CSP versions,
@@ -156,6 +159,20 @@ Future<SutImportResult> _decode(
         warnings: warnings,
       );
     }
+    // Dual brush: a second tip whose coverage multiplies the primary's,
+    // referenced through its own pattern array.
+    BrushTipMask? dualMask;
+    if (_intOf(variant['UseDualBrush']) == 1 &&
+        _intOf(variant['DualUsePatternImage']) == 1) {
+      dualMask = await _tipMaskFromPatternArray(
+        variant['DualPatternImageArray'],
+        materials: materials,
+        maskId: '$idBase-dual',
+        brushName: name,
+        describe: 'dual brush tip',
+        warnings: warnings,
+      );
+    }
 
     presets.add(
       BrushPreset(
@@ -165,6 +182,9 @@ Future<SutImportResult> _decode(
           variant,
           mask: mask,
           textureMask: textureMask,
+          dualMask: dualMask,
+          brushName: name,
+          warnings: warnings,
         ),
       ),
     );
@@ -179,9 +199,24 @@ Future<SutImportResult> _decode(
 BrushSettings _settingsFromVariant(
   Map<String, Object?> variant, {
   required BrushTipMask? mask,
+  required String brushName,
+  required List<String> warnings,
   BrushTipMask? textureMask,
+  BrushTipMask? dualMask,
 }) {
   final size = _doubleOf(variant['BrushSize']) ?? 24.0;
+  // `BrushSizeUnit` 0 means pixels — the only unit we can honour, since a
+  // physical unit resolves against a canvas resolution the brush file does
+  // not carry. Anything else imports at its raw number, so say so rather
+  // than let the brush come in silently mis-scaled.
+  final sizeUnit = _intOf(variant['BrushSizeUnit']) ?? 0;
+  if (sizeUnit != 0) {
+    warnings.add(
+      'Brush "$brushName": size is stored in a non-pixel unit '
+      '(BrushSizeUnit $sizeUnit); imported as $size px, which may not '
+      'match Clip Studio.',
+    );
+  }
   final opacityPercent = _doubleOf(variant['Opacity']) ?? 100.0;
   final flowPercent = _doubleOf(variant['BrushFlow']) ?? 100.0;
   final hardnessPercent = _doubleOf(variant['BrushHardness']) ?? 100.0;
@@ -204,6 +239,27 @@ BrushSettings _settingsFromVariant(
   final flowPressureCurve = _effectorUsesPressure(variant['BrushFlowEffector'])
       ? BrushPressureCurve.identity()
       : null;
+
+  // Random input source (flag 0x80) drives the jitters. The engine shakes a
+  // value DOWNWARD from its full setting (`v *= 1 - jitter * random`), which
+  // is exactly Clip Studio's effector minimum: the value wanders between
+  // 최소치% and 100%, so the amplitude is the complement of that floor.
+  final sizeJitter = _effectorRandomJitter(variant['BrushSizeEffector']);
+  // No flow jitter exists on the engine; flow randomness folds into opacity,
+  // the same approximation the ABR importer makes.
+  final opacityJitter = math.max(
+    _effectorRandomJitter(variant['BrushOpacityEffector']),
+    _effectorRandomJitter(variant['BrushFlowEffector']),
+  );
+  // `BrushRotationEffector` is a bare int rather than a blob, but carries the
+  // SAME input-source bits. `BrushRotationRandomScale` is a percentage of a
+  // full turn and sits at its default 100 on brushes that never randomise,
+  // so it only means anything once the random bit is actually set.
+  final angleJitter = _usesRandom(_effectorFlags(variant['BrushRotationEffector']))
+      ? ((_doubleOf(variant['BrushRotationRandomScale']) ?? 0.0) / 100.0)
+            .clamp(0.0, 1.0)
+            .toDouble()
+      : 0.0;
 
   // Spray mode scatters dabs around the stroke; the spray size is a
   // percentage of the brush size (its diameter), so the radius is half.
@@ -231,12 +287,43 @@ BrushSettings _settingsFromVariant(
     opacityPressureCurve: opacityPressureCurve,
     flowPressureCurve: flowPressureCurve,
     tipMask: mask,
+    sizeJitter: sizeJitter,
+    opacityJitter: opacityJitter,
+    angleJitter: angleJitter,
     scatterRadiusRatio: scatterRadiusRatio,
     scatterCount: scatterCount,
+    dualMask: dualMask,
+    // Inactive dual settings keep their stored defaults (`DualSize` 30 sits
+    // on brushes that never enabled a dual tip), so the ratio only means
+    // anything once a tip actually arrived.
+    dualMaskScale: dualMask == null
+        ? 1.0
+        : _dualMaskScaleOf(variant, brushSize: size),
     textureMask: textureMask,
     textureScale: _textureScaleOf(variant),
     textureDensity: _textureDensityOf(variant),
   );
+}
+
+/// The dual tip's size relative to the primary tip.
+///
+/// `SyncDualBrushSize` decides how `DualSize` reads: synced, it is a
+/// percentage of the brush size (Clip Studio's own default presentation);
+/// unsynced, it is an absolute size in the same unit as `BrushSize`, so the
+/// ratio comes from dividing. Either way the engine wants a multiplier.
+double _dualMaskScaleOf(Map<String, Object?> variant, {required double brushSize}) {
+  final dualSize = _doubleOf(variant['DualSize']);
+  if (dualSize == null || !dualSize.isFinite || dualSize <= 0.0) {
+    return 1.0;
+  }
+  final synced = _intOf(variant['SyncDualBrushSize']) == 1;
+  final scale = synced
+      ? dualSize / 100.0
+      : (brushSize > 0 ? dualSize / brushSize : 1.0);
+  if (!scale.isFinite || scale <= 0.0) {
+    return 1.0;
+  }
+  return scale.clamp(0.05, 10.0).toDouble();
 }
 
 /// `TextureScale2` is a percentage of the texture's native size.
@@ -257,15 +344,43 @@ double _textureDensityOf(Map<String, Object?> variant) {
   return (density / 100.0).clamp(0.0, 1.0).toDouble();
 }
 
-/// Effector blobs start with two header ints, then the input-source flags:
-/// bit 0x10 selects pen pressure (0x20/0x80 are velocity/random and stay
-/// unmapped).
-bool _effectorUsesPressure(Object? blob) {
-  if (blob is! Uint8List || blob.length < 12) {
-    return false;
+/// The input-source flags of an effector, or `null` when it carries none.
+///
+/// Most effectors are blobs: two header ints, then the flags. The rotation
+/// effector is a bare int that IS the flags, with the same bit layout —
+/// real files show 0x13 on a brush whose rotation follows pressure and 0xC3
+/// on the one brush carrying a non-default random scale.
+///
+/// Bit 0x10 selects pen pressure and 0x80 random. 0x20 (velocity) and 0x40
+/// (seen only on the rotation effector, most likely stroke direction) have
+/// no engine target yet and stay unmapped.
+int? _effectorFlags(Object? effector) {
+  if (effector is int) {
+    return effector;
   }
-  final flags = ByteData.sublistView(blob).getInt32(8);
-  return (flags & 0x10) != 0;
+  if (effector is Uint8List && effector.length >= 12) {
+    return ByteData.sublistView(effector).getInt32(8);
+  }
+  return null;
+}
+
+bool _usesRandom(int? flags) => flags != null && (flags & 0x80) != 0;
+
+bool _effectorUsesPressure(Object? effector) {
+  final flags = _effectorFlags(effector);
+  return flags != null && (flags & 0x10) != 0;
+}
+
+/// Jitter amplitude for an effector driven by the random input source.
+///
+/// Clip Studio wanders the value between its 최소치% and 100%; the engine
+/// shakes downward by `jitter * random`, so the amplitude is the complement
+/// of the minimum. An effector without the random bit contributes nothing.
+double _effectorRandomJitter(Object? effector) {
+  if (!_usesRandom(_effectorFlags(effector))) {
+    return 0.0;
+  }
+  return (1.0 - _effectorMinimumRatio(effector)).clamp(0.0, 1.0).toDouble();
 }
 
 /// The effector's minimum-output percentage (byte offset 12) — Clip
