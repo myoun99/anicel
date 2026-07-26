@@ -402,6 +402,48 @@ class AppStrings {
   String get instructionMemoLabel => _s('instructionMemoLabel');
   String get instructionEditSetButton => _s('instructionEditSetButton');
 
+  // --- The timeline action toolbar and its flyouts ---
+  String get tlAddLayerHeader => _s('tlAddLayerHeader');
+  String get tlSameAsSelected => _s('tlSameAsSelected');
+  String get tlKindAnimation => _s('tlKindAnimation');
+  String get tlKindStoryboard => _s('tlKindStoryboard');
+  String get tlKindArt => _s('tlKindArt');
+  String get tlKindSe => _s('tlKindSe');
+  String get tlKindInstruction => _s('tlKindInstruction');
+  String get tlAttachFreeAbove => _s('tlAttachFreeAbove');
+  String get tlAttachFreeBelow => _s('tlAttachFreeBelow');
+  String get tlAttachSyncedAbove => _s('tlAttachSyncedAbove');
+  String get tlAttachSyncedBelow => _s('tlAttachSyncedBelow');
+  String get tlLayerCommands => _s('tlLayerCommands');
+  String get tlFrameCommands => _s('tlFrameCommands');
+  String get tlLayer => _s('tlLayer');
+  String get tlFrame => _s('tlFrame');
+  String get tlDuplicateLayer => _s('tlDuplicateLayer');
+  String get tlLinkDuplicateLayer => _s('tlLinkDuplicateLayer');
+  String get tlUnlinkLayer => _s('tlUnlinkLayer');
+  String get tlGroupIntoFolder => _s('tlGroupIntoFolder');
+  String get tlRenameLayer => _s('tlRenameLayer');
+  String get tlCopyLayer => _s('tlCopyLayer');
+  String get tlDeleteLayer => _s('tlDeleteLayer');
+  String get tlImportAudio => _s('tlImportAudio');
+  String get tlCopyFrame => _s('tlCopyFrame');
+  String get tlPasteLinkedFrame => _s('tlPasteLinkedFrame');
+  String get tlDeleteCell => _s('tlDeleteCell');
+  String get tlEditInstance => _s('tlEditInstance');
+  String get tlAdd => _s('tlAdd');
+  String get tlBlankX => _s('tlBlankX');
+  String get tlMark => _s('tlMark');
+  String get tlSetCommasN => _s('tlSetCommasN');
+
+  /// '{n}' is the comma count.
+  String get tlSetCommaTemplate => _s('tlSetCommaTemplate');
+  String get tlProjectAudioRate => _s('tlProjectAudioRate');
+  String get tlCustom => _s('tlCustom');
+  String get tlShowSeRows => _s('tlShowSeRows');
+  String get tlShowCameraRows => _s('tlShowCameraRows');
+  String get tlArtLayer => _s('tlArtLayer');
+  String get tlStoryboardLayer => _s('tlStoryboardLayer');
+
   // --- Timeline toolbar prompts ---
   String get setCommasTitle => _s('setCommasTitle');
   String get setCommasField => _s('setCommasField');
@@ -710,6 +752,44 @@ class AppStrings {
     'instructionEndLabel': 'End name (B)',
     'instructionMemoLabel': 'Memo (timesheet memo band)',
     'instructionEditSetButton': 'Edit instructions…',
+    'tlAddLayerHeader': 'Add layer',
+    'tlSameAsSelected': 'Same as selected',
+    'tlKindAnimation': 'Animation',
+    'tlKindStoryboard': 'Storyboard',
+    'tlKindArt': 'Art',
+    'tlKindSe': 'SE',
+    'tlKindInstruction': 'Instruction',
+    'tlAttachFreeAbove': 'Attach free layer above',
+    'tlAttachFreeBelow': 'Attach free layer below',
+    'tlAttachSyncedAbove': 'Attach synced layer above',
+    'tlAttachSyncedBelow': 'Attach synced layer below',
+    'tlLayerCommands': 'Layer commands',
+    'tlFrameCommands': 'Frame commands',
+    'tlLayer': 'Layer',
+    'tlFrame': 'Frame',
+    'tlDuplicateLayer': 'Duplicate layer',
+    'tlLinkDuplicateLayer': 'Link duplicate layer',
+    'tlUnlinkLayer': 'Unlink layer',
+    'tlGroupIntoFolder': 'Group into folder',
+    'tlRenameLayer': 'Rename layer…',
+    'tlCopyLayer': 'Copy layer',
+    'tlDeleteLayer': 'Delete layer',
+    'tlImportAudio': 'Import audio…',
+    'tlCopyFrame': 'Copy frame',
+    'tlPasteLinkedFrame': 'Paste linked frame',
+    'tlDeleteCell': 'Delete cell',
+    'tlEditInstance': 'Edit instance…',
+    'tlAdd': 'Add',
+    'tlBlankX': 'Blank / X',
+    'tlMark': 'Mark ●',
+    'tlSetCommasN': 'Set N commas…',
+    'tlSetCommaTemplate': 'Set {n} comma exposure',
+    'tlProjectAudioRate': 'Project audio sample rate',
+    'tlCustom': 'Custom…',
+    'tlShowSeRows': 'Show SE rows',
+    'tlShowCameraRows': 'Show camera rows',
+    'tlArtLayer': 'Art layer',
+    'tlStoryboardLayer': 'Storyboard layer',
     'setCommasTitle': 'Set commas',
     'setCommasField': 'Exposure frames',
     'projectFpsTitle': 'Project frame rate',
@@ -1077,6 +1157,44 @@ class AppStrings {
     'shortcutAction.timeline-comma-3': '3コマに設定',
     'shortcutAction.timeline-comma-4': '4コマに設定',
     'shortcutAction.timeline-comma-n': 'Nコマに設定…',
+    'tlAddLayerHeader': 'レイヤーを追加',
+    'tlSameAsSelected': '選択中と同じ種類',
+    'tlKindAnimation': '動画',
+    'tlKindStoryboard': '絵コンテ',
+    'tlKindArt': '美術',
+    'tlKindSe': 'SE',
+    'tlKindInstruction': '指示',
+    'tlAttachFreeAbove': '上にフリーの付属レイヤー',
+    'tlAttachFreeBelow': '下にフリーの付属レイヤー',
+    'tlAttachSyncedAbove': '上に同期の付属レイヤー',
+    'tlAttachSyncedBelow': '下に同期の付属レイヤー',
+    'tlLayerCommands': 'レイヤー操作',
+    'tlFrameCommands': 'フレーム操作',
+    'tlLayer': 'レイヤー',
+    'tlFrame': 'フレーム',
+    'tlDuplicateLayer': 'レイヤーを複製',
+    'tlLinkDuplicateLayer': 'リンクして複製',
+    'tlUnlinkLayer': 'リンクを解除',
+    'tlGroupIntoFolder': 'フォルダにまとめる',
+    'tlRenameLayer': 'レイヤー名を変更…',
+    'tlCopyLayer': 'レイヤーをコピー',
+    'tlDeleteLayer': 'レイヤーを削除',
+    'tlImportAudio': '音声を読み込み…',
+    'tlCopyFrame': 'フレームをコピー',
+    'tlPasteLinkedFrame': 'リンクフレームを貼り付け',
+    'tlDeleteCell': 'セルを削除',
+    'tlEditInstance': 'インスタンスを編集…',
+    'tlAdd': '追加',
+    'tlBlankX': '中割なし / ×',
+    'tlMark': 'マーク ●',
+    'tlSetCommasN': 'Nコマに設定…',
+    'tlSetCommaTemplate': '{n}コマに設定',
+    'tlProjectAudioRate': 'プロジェクトの音声サンプルレート',
+    'tlCustom': 'カスタム…',
+    'tlShowSeRows': 'SE行を表示',
+    'tlShowCameraRows': 'カメラ行を表示',
+    'tlArtLayer': '美術レイヤー',
+    'tlStoryboardLayer': '絵コンテレイヤー',
     'setCommasTitle': 'コマ数の設定',
     'setCommasField': '露光フレーム数',
     'projectFpsTitle': 'プロジェクトのフレームレート',
@@ -1444,6 +1562,44 @@ class AppStrings {
     'shortcutAction.timeline-comma-3': '3코마로 설정',
     'shortcutAction.timeline-comma-4': '4코마로 설정',
     'shortcutAction.timeline-comma-n': 'N코마로 설정…',
+    'tlAddLayerHeader': '레이어 추가',
+    'tlSameAsSelected': '선택한 것과 같은 종류',
+    'tlKindAnimation': '동화',
+    'tlKindStoryboard': '콘티',
+    'tlKindArt': '미술',
+    'tlKindSe': 'SE',
+    'tlKindInstruction': '지시',
+    'tlAttachFreeAbove': '위에 프리 부속 레이어',
+    'tlAttachFreeBelow': '아래에 프리 부속 레이어',
+    'tlAttachSyncedAbove': '위에 동기 부속 레이어',
+    'tlAttachSyncedBelow': '아래에 동기 부속 레이어',
+    'tlLayerCommands': '레이어 명령',
+    'tlFrameCommands': '프레임 명령',
+    'tlLayer': '레이어',
+    'tlFrame': '프레임',
+    'tlDuplicateLayer': '레이어 복제',
+    'tlLinkDuplicateLayer': '링크해서 복제',
+    'tlUnlinkLayer': '링크 해제',
+    'tlGroupIntoFolder': '폴더로 묶기',
+    'tlRenameLayer': '레이어 이름 변경…',
+    'tlCopyLayer': '레이어 복사',
+    'tlDeleteLayer': '레이어 삭제',
+    'tlImportAudio': '오디오 불러오기…',
+    'tlCopyFrame': '프레임 복사',
+    'tlPasteLinkedFrame': '링크 프레임 붙여넣기',
+    'tlDeleteCell': '셀 삭제',
+    'tlEditInstance': '인스턴스 편집…',
+    'tlAdd': '추가',
+    'tlBlankX': '중간 없음 / ×',
+    'tlMark': '마크 ●',
+    'tlSetCommasN': 'N코마로 설정…',
+    'tlSetCommaTemplate': '{n}코마로 설정',
+    'tlProjectAudioRate': '프로젝트 오디오 샘플레이트',
+    'tlCustom': '사용자 지정…',
+    'tlShowSeRows': 'SE 행 표시',
+    'tlShowCameraRows': '카메라 행 표시',
+    'tlArtLayer': '미술 레이어',
+    'tlStoryboardLayer': '콘티 레이어',
     'setCommasTitle': '코마 수 설정',
     'setCommasField': '노출 프레임 수',
     'projectFpsTitle': '프로젝트 프레임레이트',
@@ -1827,6 +1983,44 @@ class AppStrings {
     'shortcutAction.timeline-comma-3': 'Régler sur 3 commas',
     'shortcutAction.timeline-comma-4': 'Régler sur 4 commas',
     'shortcutAction.timeline-comma-n': 'Régler sur N commas…',
+    'tlAddLayerHeader': 'Ajouter un calque',
+    'tlSameAsSelected': 'Comme la sélection',
+    'tlKindAnimation': 'Animation',
+    'tlKindStoryboard': 'Storyboard',
+    'tlKindArt': 'Décor',
+    'tlKindSe': 'SE',
+    'tlKindInstruction': 'Indication',
+    'tlAttachFreeAbove': 'Calque attaché libre au-dessus',
+    'tlAttachFreeBelow': 'Calque attaché libre en dessous',
+    'tlAttachSyncedAbove': 'Calque attaché synchronisé au-dessus',
+    'tlAttachSyncedBelow': 'Calque attaché synchronisé en dessous',
+    'tlLayerCommands': 'Commandes de calque',
+    'tlFrameCommands': "Commandes d'image",
+    'tlLayer': 'Calque',
+    'tlFrame': 'Image',
+    'tlDuplicateLayer': 'Dupliquer le calque',
+    'tlLinkDuplicateLayer': 'Dupliquer en liant',
+    'tlUnlinkLayer': 'Délier le calque',
+    'tlGroupIntoFolder': 'Grouper dans un dossier',
+    'tlRenameLayer': 'Renommer le calque…',
+    'tlCopyLayer': 'Copier le calque',
+    'tlDeleteLayer': 'Supprimer le calque',
+    'tlImportAudio': "Importer de l'audio…",
+    'tlCopyFrame': "Copier l'image",
+    'tlPasteLinkedFrame': "Coller l'image liée",
+    'tlDeleteCell': 'Supprimer la case',
+    'tlEditInstance': "Modifier l'instance…",
+    'tlAdd': 'Ajouter',
+    'tlBlankX': 'Vide / X',
+    'tlMark': 'Repère ●',
+    'tlSetCommasN': 'Régler sur N commas…',
+    'tlSetCommaTemplate': 'Régler sur {n} comma',
+    'tlProjectAudioRate': "Fréquence d'échantillonnage du projet",
+    'tlCustom': 'Personnalisé…',
+    'tlShowSeRows': 'Afficher les lignes SE',
+    'tlShowCameraRows': 'Afficher les lignes caméra',
+    'tlArtLayer': 'Calque décor',
+    'tlStoryboardLayer': 'Calque storyboard',
     'setCommasTitle': 'Définir les commas',
     'setCommasField': "Images d'exposition",
     'projectFpsTitle': 'Fréquence du projet',
@@ -2181,6 +2375,44 @@ class AppStrings {
     'shortcutAction.timeline-comma-3': '设为 3 格',
     'shortcutAction.timeline-comma-4': '设为 4 格',
     'shortcutAction.timeline-comma-n': '设为 N 格…',
+    'tlAddLayerHeader': '添加图层',
+    'tlSameAsSelected': '与所选相同',
+    'tlKindAnimation': '动画',
+    'tlKindStoryboard': '分镜',
+    'tlKindArt': '美术',
+    'tlKindSe': 'SE',
+    'tlKindInstruction': '指示',
+    'tlAttachFreeAbove': '在上方添加自由附属图层',
+    'tlAttachFreeBelow': '在下方添加自由附属图层',
+    'tlAttachSyncedAbove': '在上方添加同步附属图层',
+    'tlAttachSyncedBelow': '在下方添加同步附属图层',
+    'tlLayerCommands': '图层命令',
+    'tlFrameCommands': '帧命令',
+    'tlLayer': '图层',
+    'tlFrame': '帧',
+    'tlDuplicateLayer': '复制图层',
+    'tlLinkDuplicateLayer': '链接复制图层',
+    'tlUnlinkLayer': '取消图层链接',
+    'tlGroupIntoFolder': '编组到文件夹',
+    'tlRenameLayer': '重命名图层…',
+    'tlCopyLayer': '复制图层',
+    'tlDeleteLayer': '删除图层',
+    'tlImportAudio': '导入音频…',
+    'tlCopyFrame': '复制帧',
+    'tlPasteLinkedFrame': '粘贴链接帧',
+    'tlDeleteCell': '删除单元格',
+    'tlEditInstance': '编辑实例…',
+    'tlAdd': '添加',
+    'tlBlankX': '空 / ×',
+    'tlMark': '标记 ●',
+    'tlSetCommasN': '设为 N 格…',
+    'tlSetCommaTemplate': '设为 {n} 格',
+    'tlProjectAudioRate': '项目音频采样率',
+    'tlCustom': '自定义…',
+    'tlShowSeRows': '显示 SE 行',
+    'tlShowCameraRows': '显示摄影机行',
+    'tlArtLayer': '美术图层',
+    'tlStoryboardLayer': '分镜图层',
     'setCommasTitle': '设置格数',
     'setCommasField': '曝光帧数',
     'projectFpsTitle': '项目帧率',
