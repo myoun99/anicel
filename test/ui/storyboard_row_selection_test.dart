@@ -79,18 +79,18 @@ void main() {
       expect(session.selectedRow, const TrackRowAddress(trackId));
     });
 
-    test('selecting a track-SE layer moves the row to that S row', () {
+    test('picking an S row moves the rail to it', () {
       final session = sessionFor(projectWithTwoCuts());
 
-      session.selectLayer(seLayerId);
+      session.selectRow(const LayerRowAddress(seLayerId));
 
       expect(session.selectedRow, const LayerRowAddress(seLayerId));
     });
 
-    test('selecting the V row takes the row back off the S row — even with '
+    test('picking the V row takes the rail back off the S row — even with '
         'the same cut still active, which changes nothing else', () {
       final session = sessionFor(projectWithTwoCuts());
-      session.selectLayer(seLayerId);
+      session.selectRow(const LayerRowAddress(seLayerId));
       final activeCutBefore = session.activeCutId;
 
       session.selectRow(const TrackRowAddress(trackId));
@@ -99,30 +99,32 @@ void main() {
       expect(session.activeCutId, activeCutBefore);
     });
 
-    test('the V row does NOT move the drawing target: the active layer '
-        'stays where the last layer row left it', () {
+    test('NEITHER kind moves the drawing target: the rail\'s row and the '
+        "CUT's row are separate selections", () {
       final session = sessionFor(projectWithTwoCuts());
-      session.selectLayer(seLayerId);
+      final drawingLayerId = session.activeLayerId;
+
+      session.selectRow(const LayerRowAddress(seLayerId));
+      expect(session.activeLayerId, drawingLayerId);
 
       session.selectRow(const TrackRowAddress(trackId));
-
-      expect(session.activeLayerId, seLayerId);
+      expect(session.activeLayerId, drawingLayerId);
     });
 
-    test('selecting a drawing layer leaves the row on the track row: a cel '
-        'is not one of the rail\'s rows', () {
+    test("selecting a LAYER leaves the rail's row alone — that is the cut's "
+        'row selection, not this one', () {
       final session = sessionFor(projectWithTwoCuts());
-      session.selectLayer(seLayerId);
+      session.selectRow(const LayerRowAddress(seLayerId));
 
       session.selectLayer(defaultLayerIdForSequence(1));
 
-      expect(session.selectedRow, const TrackRowAddress(trackId));
+      expect(session.selectedRow, const LayerRowAddress(seLayerId));
     });
 
     test('picking a V row announces, so the rail repaints even when the '
         'active cut does not move', () {
       final session = sessionFor(projectWithTwoCuts());
-      session.selectLayer(seLayerId);
+      session.selectRow(const LayerRowAddress(seLayerId));
       var notifications = 0;
       session.addListener(() => notifications++);
 
@@ -133,17 +135,28 @@ void main() {
 
     test('re-picking the row already selected stays silent', () {
       final session = sessionFor(projectWithTwoCuts());
-      session.selectLayer(seLayerId);
+      session.selectRow(const LayerRowAddress(seLayerId));
       var notifications = 0;
       session.addListener(() => notifications++);
 
-      session.selectLayer(seLayerId);
+      session.selectRow(const LayerRowAddress(seLayerId));
 
       expect(notifications, 0);
     });
   });
 
   group('per-cut layer memory', () {
+    test('an SE row is remembered like any other: what the timeline shows '
+        'for it is a cut-local projection of the track layer', () {
+      final session = sessionFor(projectWithTwoCuts());
+      session.selectLayer(seLayerId);
+
+      session.selectCut(const CutId('cut-b'));
+      session.selectCut(const CutId('cut-a'));
+
+      expect(session.activeLayerId, seLayerId);
+    });
+
     test('a cut comes back on the layer it was left on', () {
       final session = sessionFor(projectWithTwoCuts());
       final secondLayerId = addSecondDrawingLayer(session);

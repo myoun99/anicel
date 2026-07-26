@@ -411,20 +411,20 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                 // cuts twice, since the pressed frame decides the cut.
                 onRowFramePress: (row, globalFrame) {
                   switch (row) {
-                    case LayerRowAddress(:final layerId):
-                      _session.selectLayer(layerId);
+                    case LayerRowAddress():
+                      _session.selectRow(row);
                     case TrackRowAddress(:final trackId):
                       _session.selectTrackRow(trackId);
                   }
                   seekStoryboardGlobalFrame(_session, globalFrame);
                 },
                 activeLayerId: _session.activeLayerId,
-                // The rail speaks ROW ADDRESSES: track rows and layer rows
-                // are one selection, so exactly one of them highlights.
-                // Each kind keeps its own landing verb inside `selectRow`
-                // — an S row selects the track layer (the timeline row
-                // highlight follows for free, same layer identity), a V row
-                // promotes that track's playhead-index cut (UI-R18 #6).
+                // The rail speaks ROW ADDRESSES, and its selection is its
+                // OWN: picking a row here never moves the drawing target
+                // (the CUT's row, which the timeline rail highlights and
+                // each cut remembers). A V row still promotes that track's
+                // playhead-index cut (UI-R18 #6) — that is the track
+                // selection landing, not a row selection following.
                 selectedRow: _session.selectedRow,
                 onSelectLayer: (layerId) =>
                     _session.selectRow(LayerRowAddress(layerId)),

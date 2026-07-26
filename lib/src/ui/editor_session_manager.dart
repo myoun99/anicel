@@ -747,64 +747,76 @@ class EditorSessionManager extends ChangeNotifier {
     return project.tracks.first.id;
   }
 
-  /// Set when the V row was picked DIRECTLY while an SE row held the
-  /// active layer — the one case [selectedRow] cannot read off the layer.
-  bool _trackRowSelected = false;
+  /// The storyboard rail's own selected row, as picked. Null = never
+  /// picked, which reads as the selected track's V row.
+  TimelineRowAddress? _storyboardRow;
 
-  /// THE selected row in the STORYBOARD's row space — exactly ONE, the way
-  /// the timeline has always had exactly one selected layer row. (The
-  /// timeline's own rail is all layer rows and keeps reading
-  /// [activeLayerId] directly.)
+  /// THE selected row of the STORYBOARD's rail — exactly ONE, whichever row
+  /// was picked, the way the timeline has exactly one selected layer row.
   ///
-  /// That rail mixes TRACK rows (V) with LAYER rows (S), and the two used
-  /// to light from unrelated states — the V row from "the active cut lives
-  /// on this track", the S row from [activeLayerId] — so both could read as
-  /// selected at once. This is the single answer; [selectedTrackId] and
-  /// [activeLayerId] stay as the row's CONTENTS, not its identity.
+  /// State of its OWN, not a projection of [activeLayerId]. The two row
+  /// selections are separate things (user decision 2026-07-27): a CUT's
+  /// selected row is the active layer — the drawing target, remembered per
+  /// cut — while this one says which row of THIS RAIL the user is on.
+  /// Deriving it is what forced the previous "only a track-SE layer names a
+  /// row here" rule, which made the rail's two row kinds unequal for no
+  /// reason the rail itself has.
   ///
-  /// The rule: the rail's only LAYER rows are the track-SE rows, so the
-  /// active layer names a row here only while it IS one of those. Every
-  /// other layer (a drawing cel, camera, instruction…) lives inside a cut,
-  /// and the row that owns it is the track row — which is why the V row
-  /// keeps lighting by default, as it always has.
+  /// Picking a row here therefore never moves the drawing target — not for
+  /// a V row (a track has no layer to select) and not for an S row.
   ///
-  /// The drawing target does NOT follow a track row (user decision): a V
-  /// row is a track, so it has no layer to select, and the active layer
-  /// stays where the last layer row left it.
+  /// A stored row that the rail no longer shows (its track's SE slot went
+  /// away) falls back to the track row rather than lighting nothing.
   TimelineRowAddress get selectedRow {
-    final layerId = activeLayerId;
-    if (!_trackRowSelected && layerId != null && isTrackSeLayerId(layerId)) {
-      return LayerRowAddress(layerId);
+    final row = _storyboardRow;
+    if (row is LayerRowAddress && isTrackSeLayerId(row.layerId)) {
+      return row;
     }
     return TrackRowAddress(selectedTrackId);
   }
 
-  /// Selects a row by ADDRESS — the rail taps come through here. Each kind
-  /// keeps its own landing verb: a layer row selects the layer, a track row
-  /// promotes that track's cut under the playhead.
+  /// Selects a row of the storyboard's rail by ADDRESS — the rail taps and
+  /// the cells press come through here. A track row additionally promotes
+  /// that track's cut under the playhead (UI-R18 #6); a layer row has no
+  /// landing verb of its own, because the drawing target is not this
+  /// selection's business.
   void selectRow(TimelineRowAddress row) {
     switch (row) {
-      case LayerRowAddress(:final layerId):
-        selectLayer(layerId);
+      case LayerRowAddress():
+        if (editingInteractionBusy) {
+          return;
+        }
+        if (_storeStoryboardRow(row)) {
+          notifyListeners();
+        }
       case TrackRowAddress(:final trackId):
         selectTrackCutAtPlayhead(trackId);
     }
   }
 
-  /// Makes a V row THE selected row and nothing else — no cut promotion,
-  /// no seek. The cells press wants this half on its own: the frame it
-  /// presses decides the cut, so promoting the playhead's cut first would
-  /// switch cuts twice for one press.
+  /// Makes a V row THE selected row and nothing else — no cut promotion, no
+  /// seek. The cells press wants this half on its own: the frame it presses
+  /// decides the cut, so promoting the playhead's cut first would switch
+  /// cuts twice for one press.
   void selectTrackRow(TrackId trackId) {
     if (editingInteractionBusy) {
       return;
     }
-    final rowBefore = selectedRow;
+    final trackBefore = selectedTrackId;
     _editingSession.setSelectedTrackId(trackId);
-    _trackRowSelected = true;
-    if (selectedRow != rowBefore) {
+    if (_storeStoryboardRow(TrackRowAddress(trackId)) ||
+        selectedTrackId != trackBefore) {
       notifyListeners();
     }
+  }
+
+  /// Stores the rail's row. Returns whether the ANSWER moved — the store
+  /// and the answer differ, since a row the rail no longer shows resolves
+  /// back to the track row.
+  bool _storeStoryboardRow(TimelineRowAddress row) {
+    final before = selectedRow;
+    _storyboardRow = row;
+    return selectedRow != before;
   }
 
   // --- Track-owned SE rows --------------------------------------------------
@@ -2167,28 +2179,16 @@ class EditorSessionManager extends ChangeNotifier {
   /// cleanup: [_activeCutHasLayer] already drops a layer the cut no longer
   /// has, and the rebuild falls back to the top row.
   ///
-  /// Track-SE rows are NOT recorded: they belong to the track, not the cut,
-  /// so "the row this cut was left on" is not one of them — staying on an
-  /// SE row across a cut switch is [_activeLayerIdAfterEnteringCut]'s job.
+  /// SE rows are recorded like any other: what the timeline shows for them
+  /// is a cut-local PROJECTION of the track layer, so "the row this cut was
+  /// left on" can name one, and the id is the same in every cut — a cut
+  /// left on S1 comes back on S1 for free.
   void _rememberActiveLayerForCut() {
     final cutId = _editingSession.activeCutId;
     final layerId = activeLayerId;
-    if (cutId != null && layerId != null && !isTrackSeLayerId(layerId)) {
+    if (cutId != null && layerId != null) {
       _lastLayerByCut[cutId] = layerId;
     }
-  }
-
-  /// The row a cut opens on. A track-SE row is not INSIDE the cut, so a cut
-  /// switch does not leave it — otherwise pressing an S row over another
-  /// cut's frames would drop the row selection the same press just made.
-  /// Anything else comes from the leaving record (null = never visited,
-  /// which lands on the top row).
-  LayerId? _activeLayerIdAfterEnteringCut(CutId cutId) {
-    final layerId = activeLayerId;
-    if (layerId != null && isTrackSeLayerId(layerId)) {
-      return layerId;
-    }
-    return _lastLayerByCut[cutId];
   }
 
   void selectCut(CutId cutId) {
@@ -2200,7 +2200,7 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     _rememberActiveLayerForCut();
-    final nextActiveLayerId = _activeLayerIdAfterEnteringCut(cutId);
+    final nextActiveLayerId = _lastLayerByCut[cutId];
 
     final fromGap =
         _gapGlobalFrame != null || _editingSession.activeCutId == null;
@@ -2844,13 +2844,12 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Selects the CUT's row — the active layer, which is the drawing target
+  /// and what the timeline's rail highlights. It does not touch the
+  /// storyboard rail's own [selectedRow]: the two row selections are
+  /// separate (user decision 2026-07-27).
   void selectLayer(LayerId layerId) {
     var changed = false;
-    // Picking a LAYER row releases the storyboard's direct V-row pick;
-    // whether that MOVES the row is [selectedRow]'s call (only the SE rows
-    // are layer rows there), so the answer is compared, not assumed.
-    final rowBefore = selectedRow;
-    _trackRowSelected = false;
     // A frame-range selection is single-layer (UI-R8): moving to another
     // row drops it. The lane selection follows the same rule.
     if (frameRangeSelection.value != null &&
@@ -2875,9 +2874,6 @@ class EditorSessionManager extends ChangeNotifier {
       // when the layer did not move, and re-applying it is what would have
       // fought a manual visibility toggle on every click.
       _syncVisibilitySolo();
-      changed = true;
-    }
-    if (selectedRow != rowBefore) {
       changed = true;
     }
     if (changed) {

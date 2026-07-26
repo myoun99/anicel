@@ -93,10 +93,8 @@ Project _project() {
 }
 
 void main() {
-  testWidgets('tapping an S-row label selects the TRACK layer — the same '
-      'highlight language as the timeline row, synced by identity (W4)', (
-    tester,
-  ) async {
+  testWidgets("tapping an S-row label selects that row of the STORYBOARD's "
+      "rail — and leaves the CUT's row selection alone", (tester) async {
     await tester.pumpWidget(
       MaterialApp(home: HomePage(initialProject: _project())),
     );
@@ -106,9 +104,7 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // The initial active layer is the cut's drawing cel, which is not a
-    // rail row of its own — the row that owns it is the V row, so THAT is
-    // the one selected row.
+    // Nothing picked yet: the rail rests on the V row.
     expect(
       find.descendant(
         of: find.byKey(
@@ -143,20 +139,25 @@ void main() {
       findsOneWidget,
     );
 
-    // The timeline shows the SAME selection — one track-layer identity.
+    // The TIMELINE does not follow: its rail shows the CUT's row — the
+    // drawing target, which this pick has no business moving (the two row
+    // selections are separate). The S row it draws is a cut-local
+    // projection of the same track layer, but selecting the projection and
+    // selecting the original are different acts.
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-mode-timeline-button')),
     );
     await tester.pumpAndSettle();
     expect(
-      find.byKey(const ValueKey<String>('timeline-selected-layer')),
-      findsOneWidget,
-    );
-    expect(
       find.descendant(
         of: find.byKey(const ValueKey<String>('timeline-layer-row-se-row-1')),
         matching: find.byKey(const ValueKey<String>('timeline-selected-layer')),
       ),
+      findsNothing,
+    );
+    // Still exactly one selected row THERE, on the cut's own cel.
+    expect(
+      find.byKey(const ValueKey<String>('timeline-selected-layer')),
       findsOneWidget,
     );
   });
