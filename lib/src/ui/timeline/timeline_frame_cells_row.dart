@@ -14,6 +14,7 @@ import 'timeline_cell_style.dart' show timelineDrawingInkColor;
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_range_gesture.dart';
+import 'timeline_frame_span_layout.dart';
 import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
 import 'timeline_row_cells_painter.dart';
 import 'timeline_row_edit_chrome.dart';
@@ -180,6 +181,105 @@ class TimelineFrameCellsRow extends StatelessWidget {
           )
         : null;
 
+    // The SPARSE kinds' span overlays (SE writing, waveforms, drop targets,
+    // CAM chips, `~` marks) and their grips. They are placed by
+    // [TimelineFrameSpanLayout] at LAYOUT time, which is what lets these rows
+    // keep their memo through a zoom step — position used to be a build-time
+    // scalar, so a zoom reconstructed every one of them.
+    final spanOverlays = <Widget>[
+      // SE audio clips paint over the paper cells, under the writing —
+      // clipped to the row's drawing blocks (no block, no waveform).
+      if (layerKindUsesSeSheetCells(layer.kind) && audioPeaksFor != null)
+        ...timelineRowAudioOverlays(
+          layer: layer,
+          frameStartIndex: frames.frameStartIndex,
+          axis: axis,
+          frameRate: projectFrameRate,
+          audioPeaksFor: audioPeaksFor!,
+          onRemoveClip: audioLane?.onRemoveClip == null
+              ? null
+              : (clipIndex) => audioLane!.onRemoveClip!(layer.id, clipIndex),
+          color: timelineDrawingInkColor.withValues(alpha: 0.22),
+          keyPrefix: keyPrefix,
+        ),
+      // SE rows: the sheet's writing on the paper blocks — name box at the
+      // block start plus the dialogue fitted across the span.
+      if (layerKindUsesSeSheetCells(layer.kind))
+        ...timelineRowSeLabelOverlays(
+          layer: layer,
+          frameStartIndex: frames.frameStartIndex,
+          frameEndIndexExclusive: frames.frameEndIndexExclusive,
+          axis: axis,
+          keyPrefix: keyPrefix,
+        ),
+      // Clipped-take markers (REC1-D): mounted only when the clipping
+      // notice is on — the tooltip string doubles as the switch.
+      if (layerKindUsesSeSheetCells(layer.kind) && seClipMarkerTooltip != null)
+        ...timelineRowClipMarkerOverlays(
+          layer: layer,
+          frameStartIndex: frames.frameStartIndex,
+          frameEndIndexExclusive: frames.frameEndIndexExclusive,
+          crossAxisExtent: crossAxisExtent,
+          axis: axis,
+          tooltip: seClipMarkerTooltip!,
+          color: Theme.of(context).colorScheme.error,
+          keyPrefix: keyPrefix,
+        ),
+      // Cut-boundary `~` marks (UI-R7 #6): a sound running past the cut end
+      // / spilling in from the previous cut announces its other half.
+      if (layerKindUsesSeSheetCells(layer.kind))
+        ...timelineRowSeContinuationMarks(
+          layer: layer,
+          cutFrameCount: playbackFrameCount,
+          spillsInAtStart: seSpillsIn,
+          frameStartIndex: frames.frameStartIndex,
+          frameEndIndexExclusive: frames.frameEndIndexExclusive,
+          keyPrefix: keyPrefix,
+        ),
+      // Media-browser drops land on SE blocks (sound → block frame).
+      if (layerKindUsesSeSheetCells(layer.kind) &&
+          audioLane?.onDropMediaAsset != null)
+        ...timelineRowSeAssetDropTargets(
+          layer: layer,
+          frameStartIndex: frames.frameStartIndex,
+          frameEndIndexExclusive: frames.frameEndIndexExclusive,
+          onAssetDropped: (blockStartFrame, path) =>
+              audioLane!.onDropMediaAsset!(layer.id, blockStartFrame, path),
+          keyPrefix: keyPrefix,
+        ),
+      // Instruction rows: the sheet's CAM column — bar arrows or the O.L
+      // bowtie on the paper block, A → B endpoint values and the name
+      // snapped to the anchor cell.
+      if (layer.kind == LayerKind.instruction && instructionDefById != null)
+        ...timelineRowInstructionOverlays(
+          layer: layer,
+          frameStartIndex: frames.frameStartIndex,
+          frameEndIndexExclusive: frames.frameEndIndexExclusive,
+          axis: axis,
+          defById: instructionDefById!,
+          keyPrefix: keyPrefix,
+        ),
+    ];
+    final spanGrips = <Widget>[
+      if (commaDrag != null && layer.kind == LayerKind.instruction)
+        ...timelineRowInstructionEdgeGrips(
+          layer: layer,
+          frameStartIndex: frames.frameStartIndex,
+          frameEndIndexExclusive: frames.frameEndIndexExclusive,
+          resolveFrameCellExtent: () => geometry.value.frameCellExtent,
+          commaDrag: commaDrag,
+          axis: axis,
+        ),
+    ];
+    Widget spanLayer(List<Widget> children) => Positioned.fill(
+      child: TimelineFrameSpanLayout(
+        geometry: geometry,
+        crossAxisExtent: crossAxisExtent,
+        axis: axis,
+        children: children,
+      ),
+    );
+
     final stack = Stack(
       key: ValueKey<String>('$keyPrefix-frame-$axisWord-area-${layer.id}'),
       // The frame-axis box below sizes this row, so the cell strip (the one
@@ -249,98 +349,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
         // the rail's gutter bracket carries the section identity.
         // NO empty-stretch furniture here (R5-②): uncovered timeline cells
         // are already dark — the gray wash is print-sheet-only.
-        // SE audio clips paint over the paper cells, under the writing —
-        // clipped to the row's drawing blocks (no block, no waveform).
-        if (layerKindUsesSeSheetCells(layer.kind) && audioPeaksFor != null)
-          ...timelineRowAudioOverlays(
-            layer: layer,
-            frameStartIndex: frames.frameStartIndex,
-            leadingFrameSpacerWidth: frames.leadingFrameSpacerWidth,
-            frameCellExtent: frames.frameCellExtent,
-            crossAxisExtent: crossAxisExtent,
-            axis: axis,
-            frameRate: projectFrameRate,
-            audioPeaksFor: audioPeaksFor!,
-            onRemoveClip: audioLane?.onRemoveClip == null
-                ? null
-                : (clipIndex) => audioLane!.onRemoveClip!(layer.id, clipIndex),
-            color: timelineDrawingInkColor.withValues(alpha: 0.22),
-            keyPrefix: keyPrefix,
-          ),
-        // SE rows: the sheet's writing on the paper blocks — name box at
-        // the block start plus the dialogue fitted across the span.
-        if (layerKindUsesSeSheetCells(layer.kind))
-          ...timelineRowSeLabelOverlays(
-            layer: layer,
-            frameStartIndex: frames.frameStartIndex,
-            frameEndIndexExclusive: frames.frameEndIndexExclusive,
-            leadingFrameSpacerWidth: frames.leadingFrameSpacerWidth,
-            frameCellExtent: frames.frameCellExtent,
-            crossAxisExtent: crossAxisExtent,
-            axis: axis,
-            keyPrefix: keyPrefix,
-          ),
-        // Clipped-take markers (REC1-D): mounted only when the clipping
-        // notice is on — the tooltip string doubles as the switch.
-        if (layerKindUsesSeSheetCells(layer.kind) &&
-            seClipMarkerTooltip != null)
-          ...timelineRowClipMarkerOverlays(
-            layer: layer,
-            frameStartIndex: frames.frameStartIndex,
-            frameEndIndexExclusive: frames.frameEndIndexExclusive,
-            leadingFrameSpacerWidth: frames.leadingFrameSpacerWidth,
-            frameCellExtent: frames.frameCellExtent,
-            crossAxisExtent: crossAxisExtent,
-            axis: axis,
-            tooltip: seClipMarkerTooltip!,
-            color: Theme.of(context).colorScheme.error,
-            keyPrefix: keyPrefix,
-          ),
-        // Cut-boundary `~` marks (UI-R7 #6): a sound running past the cut
-        // end / spilling in from the previous cut announces its other half.
-        if (layerKindUsesSeSheetCells(layer.kind))
-          ...timelineRowSeContinuationMarks(
-            layer: layer,
-            cutFrameCount: playbackFrameCount,
-            spillsInAtStart: seSpillsIn,
-            frameStartIndex: frames.frameStartIndex,
-            frameEndIndexExclusive: frames.frameEndIndexExclusive,
-            leadingFrameSpacerWidth: frames.leadingFrameSpacerWidth,
-            frameCellExtent: frames.frameCellExtent,
-            crossAxisExtent: crossAxisExtent,
-            axis: axis,
-            keyPrefix: keyPrefix,
-          ),
-        // Media-browser drops land on SE blocks (sound → block frame).
-        if (layerKindUsesSeSheetCells(layer.kind) &&
-            audioLane?.onDropMediaAsset != null)
-          ...timelineRowSeAssetDropTargets(
-            layer: layer,
-            frameStartIndex: frames.frameStartIndex,
-            frameEndIndexExclusive: frames.frameEndIndexExclusive,
-            leadingFrameSpacerWidth: frames.leadingFrameSpacerWidth,
-            frameCellExtent: frames.frameCellExtent,
-            crossAxisExtent: crossAxisExtent,
-            axis: axis,
-            onAssetDropped: (blockStartFrame, path) =>
-                audioLane!.onDropMediaAsset!(layer.id, blockStartFrame, path),
-            keyPrefix: keyPrefix,
-          ),
-        // Instruction rows: the sheet's CAM column — bar arrows or the O.L
-        // bowtie on the paper block, A → B endpoint values and the name
-        // snapped to the anchor cell.
-        if (layer.kind == LayerKind.instruction && instructionDefById != null)
-          ...timelineRowInstructionOverlays(
-            layer: layer,
-            frameStartIndex: frames.frameStartIndex,
-            frameEndIndexExclusive: frames.frameEndIndexExclusive,
-            leadingFrameSpacerWidth: frames.leadingFrameSpacerWidth,
-            frameCellExtent: frames.frameCellExtent,
-            crossAxisExtent: crossAxisExtent,
-            axis: axis,
-            defById: instructionDefById!,
-            keyPrefix: keyPrefix,
-          ),
+        if (spanOverlays.isNotEmpty) spanLayer(spanOverlays),
         // The range gesture layer replaces the block-body move handle
         // (UI-R8, TVP style): a pan on the cells SELECTS a frame range —
         // a pan starting inside the current selection MOVES it. Mounted
@@ -389,17 +398,8 @@ class TimelineFrameCellsRow extends StatelessWidget {
               runEdit: runEdit,
             ),
           ),
-        if (commaDrag != null && layer.kind == LayerKind.instruction)
-          ...timelineRowInstructionEdgeGrips(
-            layer: layer,
-            frameStartIndex: frames.frameStartIndex,
-            frameEndIndexExclusive: frames.frameEndIndexExclusive,
-            leadingFrameSpacerWidth: frames.leadingFrameSpacerWidth,
-            frameCellExtent: frames.frameCellExtent,
-            crossAxisExtent: crossAxisExtent,
-            commaDrag: commaDrag,
-            axis: axis,
-          ),
+        // Grips ride ABOVE the chrome so the edges keep comma-drag priority.
+        if (spanGrips.isNotEmpty) spanLayer(spanGrips),
       ],
     );
     // THE row's box (zoom round): it reports the row's content extent, as it

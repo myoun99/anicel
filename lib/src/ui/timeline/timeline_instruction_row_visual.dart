@@ -7,7 +7,7 @@ import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_comma_drag_handle.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
-import 'timeline_frame_coordinate_policy.dart';
+import 'timeline_frame_span_layout.dart';
 
 /// Instruction rows render like the paper sheet's CAM column on white
 /// frame blocks: the cells paint the paper (via
@@ -51,9 +51,6 @@ List<Widget> timelineRowInstructionOverlays({
   required Layer layer,
   required int frameStartIndex,
   required int frameEndIndexExclusive,
-  required double leadingFrameSpacerWidth,
-  required double frameCellExtent,
-  required double crossAxisExtent,
   required Axis axis,
   required CameraInstructionDef? Function(String instructionId) defById,
   String keyPrefix = 'timeline',
@@ -65,48 +62,19 @@ List<Widget> timelineRowInstructionOverlays({
     if (endExclusive <= frameStartIndex || start >= frameEndIndexExclusive) {
       continue;
     }
-
-    final startOffset = frameVisibleX(
-      frameIndex: start,
-      frameStartIndex: frameStartIndex,
-      frameCellWidth: frameCellExtent,
-      leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-    );
-    final endOffset = frameVisibleX(
-      frameIndex: endExclusive,
-      frameStartIndex: frameStartIndex,
-      frameCellWidth: frameCellExtent,
-      leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-    );
-    final mainExtent = endOffset - startOffset;
     final def = defById(entry.value.instructionId);
-
-    final content = IgnorePointer(
-      key: ValueKey<String>('$keyPrefix-instruction-${layer.id}-$start'),
-      child: _InstructionSpan(
-        axis: axis,
-        event: entry.value,
-        def: def,
-        frameCellExtent: frameCellExtent,
+    overlays.add(
+      TimelineFrameSpan(
+        placement: TimelineFrameSpanPlacement(
+          startIndex: start,
+          endIndexExclusive: endExclusive,
+        ),
+        child: IgnorePointer(
+          key: ValueKey<String>('$keyPrefix-instruction-${layer.id}-$start'),
+          child: _InstructionSpan(axis: axis, event: entry.value, def: def),
+        ),
       ),
     );
-
-    overlays.add(switch (axis) {
-      Axis.horizontal => Positioned(
-        left: startOffset,
-        top: 0,
-        width: mainExtent,
-        height: crossAxisExtent,
-        child: content,
-      ),
-      Axis.vertical => Positioned(
-        top: startOffset,
-        left: 0,
-        height: mainExtent,
-        width: crossAxisExtent,
-        child: content,
-      ),
-    });
   }
   return overlays;
 }
@@ -118,9 +86,7 @@ List<Widget> timelineRowInstructionEdgeGrips({
   required Layer layer,
   required int frameStartIndex,
   required int frameEndIndexExclusive,
-  required double leadingFrameSpacerWidth,
-  required double frameCellExtent,
-  required double crossAxisExtent,
+  required double Function() resolveFrameCellExtent,
   required TimelineCommaDragCallbacks commaDrag,
   required Axis axis,
 }) {
@@ -132,31 +98,23 @@ List<Widget> timelineRowInstructionEdgeGrips({
     final visible =
         endExclusive > frameStartIndex && start < frameEndIndexExclusive;
     if (visible) {
-      final startOffset = frameVisibleX(
-        frameIndex: start,
-        frameStartIndex: frameStartIndex,
-        frameCellWidth: frameCellExtent,
-        leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-      );
-      final endOffset = frameVisibleX(
-        frameIndex: endExclusive,
-        frameStartIndex: frameStartIndex,
-        frameCellWidth: frameCellExtent,
-        leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-      );
       for (final edge in TimelineBlockEdge.values) {
         grips.add(
-          TimelineBlockEdgeGrip(
-            layerId: layer.id,
-            blockStartIndex: start,
-            blockOrdinal: ordinal,
-            edge: edge,
-            blockStartOffset: startOffset,
-            blockEndOffset: endOffset,
-            frameCellExtent: frameCellExtent,
-            crossAxisExtent: crossAxisExtent,
-            callbacks: commaDrag,
-            axis: axis,
+          TimelineFrameSpan(
+            placement: timelineBlockEdgeGripPlacement(
+              edge: edge,
+              startIndex: start,
+              endIndexExclusive: endExclusive,
+            ),
+            child: TimelineBlockEdgeGrip(
+              layerId: layer.id,
+              blockStartIndex: start,
+              blockOrdinal: ordinal,
+              edge: edge,
+              resolveFrameCellExtent: resolveFrameCellExtent,
+              callbacks: commaDrag,
+              axis: axis,
+            ),
           ),
         );
       }
@@ -171,52 +129,52 @@ class _InstructionSpan extends StatelessWidget {
     required this.axis,
     required this.event,
     required this.def,
-    required this.frameCellExtent,
   });
 
   final Axis axis;
   final InstructionEvent event;
   final CameraInstructionDef? def;
-  final double frameCellExtent;
 
   /// One cell-sized slot at [cellIndex] holding [child] at [alignment]; the
   /// child may overflow the cell (paper writing spills over neighbours
   /// freely).
+  ///
+  /// The slot is a FRACTION of the span, never a cell width in pixels: the
+  /// span box is `event.length` cells wide by construction, so this widget
+  /// needs nothing from the zoom and never rebuilds for it.
   Widget _cellSlot({
     required int cellIndex,
     required Widget child,
     AlignmentGeometry alignment = Alignment.center,
   }) {
-    final start = cellIndex * frameCellExtent;
     final overflowing = OverflowBox(
       alignment: alignment,
       // BOTH bounds must open up: OverflowBox only replaces what is set,
-      // and the Positioned slot's TIGHT mins otherwise force the writing
-      // to fill the slot — glyphs then paint from the start edge and the
-      // labels LOOK top/left-aligned instead of centered (R5-⑤ root
-      // cause, all three misalignment reports).
+      // and the slot's TIGHT mins otherwise force the writing to fill the
+      // slot — glyphs then paint from the start edge and the labels LOOK
+      // top/left-aligned instead of centered (R5-⑤ root cause, all three
+      // misalignment reports).
       minWidth: 0,
       minHeight: 0,
       maxWidth: double.infinity,
       maxHeight: double.infinity,
       child: child,
     );
-    return switch (axis) {
-      Axis.horizontal => Positioned(
-        left: start,
-        top: 0,
-        bottom: 0,
-        width: frameCellExtent,
+    final cells = event.length < 1 ? 1 : event.length;
+    // Align spreads the child's FREE space, not the parent's: with a child
+    // 1/cells wide, alignment a puts its left edge at (1 - 1/cells)(a+1)/2 of
+    // the span. Solving that for cell `i` gives a = 2i/(cells-1) - 1.
+    final fraction = cells <= 1 ? 0.0 : -1 + 2 * cellIndex / (cells - 1);
+    return Align(
+      alignment: axis == Axis.horizontal
+          ? Alignment(fraction, 0)
+          : Alignment(0, fraction),
+      child: FractionallySizedBox(
+        widthFactor: axis == Axis.horizontal ? 1 / cells : 1,
+        heightFactor: axis == Axis.horizontal ? 1 : 1 / cells,
         child: overflowing,
       ),
-      Axis.vertical => Positioned(
-        top: start,
-        left: 0,
-        right: 0,
-        height: frameCellExtent,
-        child: overflowing,
-      ),
-    };
+    );
   }
 
   /// Instruction writing reads HORIZONTALLY in both orientations (R6-①c:
@@ -266,7 +224,6 @@ class _InstructionSpan extends StatelessWidget {
                   axis: axis,
                   markType: def?.markType ?? CameraInstructionMarkType.bar,
                   eventLength: event.length,
-                  frameCellExtent: frameCellExtent,
                   color: markColor,
                   hasStartName: valueA != null && valueA.isNotEmpty,
                   hasEndName: valueB != null && valueB.isNotEmpty,
@@ -317,7 +274,6 @@ class _InstructionMarkPainter extends CustomPainter {
     required this.axis,
     required this.markType,
     required this.eventLength,
-    required this.frameCellExtent,
     required this.color,
     this.hasStartName = true,
     this.hasEndName = true,
@@ -326,8 +282,13 @@ class _InstructionMarkPainter extends CustomPainter {
   final Axis axis;
   final CameraInstructionMarkType markType;
   final int eventLength;
-  final double frameCellExtent;
   final Color color;
+
+  /// The cell width, DERIVED from the box: the span is [eventLength] cells
+  /// wide, so the painter needs no zoom-dependent field — that field was what
+  /// made every instruction span rebuild on a zoom step.
+  double _cellExtent(double mainExtent) =>
+      eventLength < 1 ? mainExtent : mainExtent / eventLength;
 
   /// Whether the A/B writing occupies the endpoint cells. A NAMELESS bar
   /// endpoint carries the sheet's solid triangle mark instead (real
@@ -374,6 +335,7 @@ class _InstructionMarkPainter extends CustomPainter {
     final mainExtent = axis == Axis.horizontal ? size.width : size.height;
     final crossExtent = axis == Axis.horizontal ? size.height : size.width;
     final crossCenter = crossExtent / 2;
+    final frameCellExtent = _cellExtent(mainExtent);
     var start = frameCellExtent;
     var end = mainExtent - frameCellExtent;
     if (!hasStartName) {
@@ -415,7 +377,7 @@ class _InstructionMarkPainter extends CustomPainter {
     required double crossExtent,
     required bool atStart,
   }) {
-    final length = frameCellExtent / 2;
+    final length = _cellExtent(mainExtent) / 2;
     final crossHalf = crossExtent / 4;
     final baseMain = atStart ? 0.0 : mainExtent;
     final apexMain = atStart ? length : mainExtent - length;
@@ -491,7 +453,6 @@ class _InstructionMarkPainter extends CustomPainter {
     return axis != oldDelegate.axis ||
         markType != oldDelegate.markType ||
         eventLength != oldDelegate.eventLength ||
-        frameCellExtent != oldDelegate.frameCellExtent ||
         color != oldDelegate.color ||
         hasStartName != oldDelegate.hasStartName ||
         hasEndName != oldDelegate.hasEndName;

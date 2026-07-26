@@ -120,18 +120,29 @@ void main() {
     expect(cellAfter.left, 80, reason: 'cell 2 at 40px cells');
   });
 
-  testWidgets('a sparse widget-cell row still rebuilds — its cells are '
-      'widgets, so the geometry stays in its memo key', (tester) async {
+  testWidgets('a SPARSE row survives a zoom step too — its span overlays are '
+      'placed at layout time', (tester) async {
     final layers = [seLayer('se-1')];
     await tester.pumpWidget(harness(layers, 24));
     final before = rowWidget(tester, 'se-1');
+    final spanFinder = find.byKey(
+      const ValueKey<String>('timeline-se-label-se-1-0'),
+    );
+    expect(tester.getSize(spanFinder).width, 3 * 24);
 
     await tester.pumpWidget(harness(layers, 40));
 
     expect(
       identical(rowWidget(tester, 'se-1'), before),
-      isFalse,
-      reason: 'the sparse kinds read geometry at build time and must miss',
+      isTrue,
+      reason: 'the SE row used to read geometry at build time and miss the '
+          'memo; its overlays follow the live handle now',
+    );
+    // Not vacuous: the overlay moved with the zoom without being rebuilt.
+    expect(
+      tester.getSize(spanFinder).width,
+      3 * 40,
+      reason: 'the span still stretches with the cells',
     );
   });
 

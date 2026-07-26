@@ -11,6 +11,8 @@ import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
 import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/timesheet_document.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_geometry.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_span_layout.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_instruction_row_visual.dart';
 import 'package:quick_animaker_v2/src/ui/timesheet/timesheet_document_painter.dart';
 
@@ -56,14 +58,18 @@ void main() {
           home: SizedBox(
             width: cellExtent * spanCells,
             height: crossExtent,
-            child: Stack(
+            child: TimelineFixedFrameSpanLayer(
+              geometry: const TimelineFrameGeometry(
+                frameCellExtent: cellExtent,
+                frameStartIndex: 0,
+                frameEndIndexExclusive: spanCells,
+              ),
+              crossAxisExtent: crossExtent,
+              axis: Axis.horizontal,
               children: timelineRowInstructionOverlays(
                 layer: instructionLayer(valueA: valueA, valueB: valueB),
                 frameStartIndex: 0,
                 frameEndIndexExclusive: spanCells,
-                leadingFrameSpacerWidth: 0,
-                frameCellExtent: cellExtent,
-                crossAxisExtent: crossExtent,
                 axis: Axis.horizontal,
                 defById: CameraInstructionSet.standard.defById,
               ),

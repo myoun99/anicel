@@ -33,8 +33,6 @@ import 'timeline_frame_cells_row.dart' show TimelineFrameCellsRow;
 import 'timeline_frame_geometry.dart'
     show TimelineFrameGeometry, timelineFrameWindowMarginPx;
 import 'timeline_frame_coordinate_policy.dart';
-import 'timeline_row_cells_painter.dart'
-    show timelineRowReadsGeometryAtBuild;
 import 'timeline_frame_cursor_layer.dart';
 import 'timeline_beat_lines.dart';
 import 'timeline_frame_range_policy.dart';
@@ -381,13 +379,15 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     _windowedFrameGeometry.value = _windowedFrameGeometryValue();
   }
 
-  /// The handle a column of [kind] follows (see [_windowedFrameGeometry]).
+  /// The handle every column follows (see [_windowedFrameGeometry]).
+  ///
+  /// EVERY kind takes the windowed one now: the sparse columns' span
+  /// overlays are placed by [TimelineFrameSpanLayout] at layout time, so a
+  /// window sliding under them carries them along.
   ValueNotifier<TimelineFrameGeometry> _publishFrameGeometry(LayerKind kind) {
     _frameGeometry.value = _baseFrameGeometry();
     _windowedFrameGeometry.value = _windowedFrameGeometryValue();
-    return timelineRowReadsGeometryAtBuild(kind)
-        ? _frameGeometry
-        : _windowedFrameGeometry;
+    return _windowedFrameGeometry;
   }
 
   /// The per-build gesture bundle (rebuilt in [build], consumed by the

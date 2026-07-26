@@ -16,6 +16,8 @@ import 'package:quick_animaker_v2/src/services/audio/conform_wav_codec.dart';
 import 'package:quick_animaker_v2/src/ui/audio/audio_conform_store.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
 import 'package:quick_animaker_v2/src/ui/playback/audio_recorder.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_geometry.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_span_layout.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/timeline_se_row_visual.dart';
 
 /// The capture chain wired through the session (REC1-D): baked gain in
@@ -161,13 +163,18 @@ void main() {
         home: SizedBox(
           width: 600,
           height: 40,
-          child: Stack(
+          child: TimelineFixedFrameSpanLayer(
+            geometry: const TimelineFrameGeometry(
+              frameCellExtent: 20,
+              frameStartIndex: 0,
+              frameEndIndexExclusive: 24,
+            ),
+            crossAxisExtent: 28,
+            axis: Axis.horizontal,
             children: timelineRowClipMarkerOverlays(
               layer: layer,
               frameStartIndex: 0,
               frameEndIndexExclusive: 24,
-              leadingFrameSpacerWidth: 0,
-              frameCellExtent: 20,
               crossAxisExtent: 28,
               axis: Axis.horizontal,
               tooltip: 'clipped take',

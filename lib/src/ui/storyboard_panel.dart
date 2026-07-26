@@ -42,7 +42,14 @@ import 'timeline/timeline_drag_preview.dart';
 import 'timeline/timeline_cell_style.dart'
     show timelineBaseGridAlpha, timelineDrawingInkColor;
 import 'timeline/timeline_exposure_comma_drag_handle.dart'
-    show BlockEdgeGrip, BlockEdgeGripHooks, TimelineBlockEdgeGrip;
+    show
+        BlockEdgeGrip,
+        BlockEdgeGripHooks,
+        TimelineBlockEdgeGrip,
+        timelineBlockEdgeGripPlacement;
+import 'timeline/timeline_frame_geometry.dart' show TimelineFrameGeometry;
+import 'timeline/timeline_frame_span_layout.dart'
+    show TimelineFixedFrameSpanLayer, TimelineFrameSpan;
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
     show TimelineCommaDragCallbacks;
 import 'timeline/timeline_frame_range_policy.dart'
@@ -2466,31 +2473,52 @@ class _StoryboardSeRow extends StatelessWidget {
       // (blockStartIsGlobal) so the session skips the active-cut window.
       final seCommaDrag = this.seCommaDrag;
       if (seCommaDrag != null) {
+        final grips = <Widget>[];
         var ordinal = 0;
         for (final block in blocks) {
           final blockOrdinal = ordinal;
           ordinal += 1;
-          final startOffset = timelineScale.leftForFrame(block.startIndex);
-          final endOffset = timelineScale.leftForFrame(block.endIndexExclusive);
           for (final edge in TimelineBlockEdge.values) {
-            spans.add(
-              TimelineBlockEdgeGrip(
-                key: ValueKey<String>(
-                  'storyboard-se-grip-${layer.id}-$blockOrdinal'
-                  '-${edge.name}',
+            grips.add(
+              TimelineFrameSpan(
+                placement: timelineBlockEdgeGripPlacement(
+                  edge: edge,
+                  startIndex: block.startIndex,
+                  endIndexExclusive: block.endIndexExclusive,
                 ),
-                layerId: layer.id,
-                blockStartIndex: block.startIndex,
-                blockOrdinal: blockOrdinal,
-                edge: edge,
-                blockStartOffset: startOffset,
-                blockEndOffset: endOffset,
-                frameCellExtent: timelineScale.pixelsPerFrame,
-                crossAxisExtent: _seRowHeight,
-                callbacks: seCommaDrag,
+                child: TimelineBlockEdgeGrip(
+                  key: ValueKey<String>(
+                    'storyboard-se-grip-${layer.id}-$blockOrdinal'
+                    '-${edge.name}',
+                  ),
+                  layerId: layer.id,
+                  blockStartIndex: block.startIndex,
+                  blockOrdinal: blockOrdinal,
+                  edge: edge,
+                  resolveFrameCellExtent: () => timelineScale.pixelsPerFrame,
+                  callbacks: seCommaDrag,
+                ),
               ),
             );
           }
+        }
+        if (grips.isNotEmpty) {
+          spans.add(
+            Positioned.fill(
+              child: TimelineFixedFrameSpanLayer(
+                geometry: TimelineFrameGeometry(
+                  frameCellExtent: timelineScale.pixelsPerFrame,
+                  frameStartIndex: 0,
+                  frameEndIndexExclusive: timelineScale.pixelsPerFrame <= 0
+                      ? 0
+                      : (width / timelineScale.pixelsPerFrame).ceil(),
+                ),
+                crossAxisExtent: _seRowHeight,
+                axis: Axis.horizontal,
+                children: grips,
+              ),
+            ),
+          );
         }
       }
     }
@@ -2589,13 +2617,18 @@ class _StoryboardAudioLaneRow extends StatelessWidget {
             top: 1,
             width: totalFrames * timelineScale.pixelsPerFrame,
             height: _audioLaneHeight - 2,
-            child: Stack(
+            child: TimelineFixedFrameSpanLayer(
+              geometry: TimelineFrameGeometry(
+                frameCellExtent: timelineScale.pixelsPerFrame,
+                frameStartIndex: 0,
+                frameEndIndexExclusive: totalFrames,
+              ),
+              crossAxisExtent: _audioLaneHeight - 2,
+              axis: Axis.horizontal,
               children: timelineRowClipMarkerOverlays(
                 layer: layer,
                 frameStartIndex: 0,
                 frameEndIndexExclusive: totalFrames,
-                leadingFrameSpacerWidth: 0,
-                frameCellExtent: timelineScale.pixelsPerFrame,
                 crossAxisExtent: _audioLaneHeight - 2,
                 axis: Axis.horizontal,
                 tooltip: clipTooltip,
@@ -3577,21 +3610,26 @@ class _StoryboardCutEdgeGrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return BlockEdgeGrip(
-      positionedKey: ValueKey<String>(
+    // WHERE the grip sits is the mount's business now (the sparse rows place
+    // theirs by frame span); this strip already has its pixel offsets.
+    final isStart = edge == TimelineBlockEdge.start;
+    return Positioned(
+      key: ValueKey<String>(
         'storyboard-cut-edge-grip-${edge.name}-$cutOrdinal',
       ),
-      edge: edge,
-      blockStartOffset: blockStartOffset,
-      blockEndOffset: blockEndOffset,
-      frameCellExtent: frameCellExtent,
-      crossAxisExtent: crossAxisExtent,
-      hitExtent: hitExtent,
-      hooks: BlockEdgeGripHooks(
-        onBegin: () => callbacks.onBegin(cutId, edge),
-        onUpdate: callbacks.onUpdate,
-        onEnd: callbacks.onEnd,
-        onCancel: callbacks.onCancel,
+      left: isStart ? blockStartOffset : blockEndOffset - hitExtent,
+      top: 0,
+      width: hitExtent,
+      height: crossAxisExtent,
+      child: BlockEdgeGrip(
+        edge: edge,
+        resolveFrameCellExtent: () => frameCellExtent,
+        hooks: BlockEdgeGripHooks(
+          onBegin: () => callbacks.onBegin(cutId, edge),
+          onUpdate: callbacks.onUpdate,
+          onEnd: callbacks.onEnd,
+          onCancel: callbacks.onCancel,
+        ),
       ),
     );
   }

@@ -737,18 +737,6 @@ class TimelineRowCellsPainter extends CustomPainter {
   };
 }
 
-/// Whether [kind]'s row still reads the frame geometry at BUILD time, and so
-/// must rebuild on a zoom step.
-///
-/// Every kind PAINTS its cells now, but the SE and instruction rows carry
-/// span overlays that are widgets — the SE name box and fitted dialogue, the
-/// waveform and its clip menu, the media drop targets, the CAM chips — and
-/// those position themselves from build-time scalars. Until they follow the
-/// live handle too, their rows keep the geometry in the memo key. Drawing and
-/// camera rows have no such overlay and follow it already.
-bool timelineRowReadsGeometryAtBuild(LayerKind kind) =>
-    layerKindUsesSeSheetCells(kind) || kind == LayerKind.instruction;
-
 /// The painted cell strip + its row-level interaction, shared by the
 /// horizontal row and the X-sheet column (Axis policy):
 /// - raw pointer-down selects the cell under the pointer (instant, the

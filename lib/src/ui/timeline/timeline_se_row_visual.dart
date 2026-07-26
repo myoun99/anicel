@@ -13,7 +13,7 @@ import '../media/media_asset_drag_data.dart';
 import '../theme/app_theme.dart';
 import 'dialogue_fit_text.dart';
 import 'timeline_cell_style.dart';
-import 'timeline_frame_coordinate_policy.dart';
+import 'timeline_frame_span_layout.dart';
 import '../text/app_strings.dart';
 
 /// SE rows reuse the drawing rows' white paper frame blocks (the cells
@@ -33,9 +33,6 @@ List<Widget> timelineRowSeLabelOverlays({
   required Layer layer,
   required int frameStartIndex,
   required int frameEndIndexExclusive,
-  required double leadingFrameSpacerWidth,
-  required double frameCellExtent,
-  required double crossAxisExtent,
   required Axis axis,
   String keyPrefix = 'timeline',
 }) {
@@ -46,20 +43,6 @@ List<Widget> timelineRowSeLabelOverlays({
         block.startIndex >= frameEndIndexExclusive) {
       continue;
     }
-
-    final blockStartOffset = frameVisibleX(
-      frameIndex: block.startIndex,
-      frameStartIndex: frameStartIndex,
-      frameCellWidth: frameCellExtent,
-      leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-    );
-    final blockEndOffset = frameVisibleX(
-      frameIndex: block.endIndexExclusive,
-      frameStartIndex: frameStartIndex,
-      frameCellWidth: frameCellExtent,
-      leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-    );
-    final mainExtent = blockEndOffset - blockStartOffset;
     String? dialogue;
     String? seName;
     for (final frame in layer.frames) {
@@ -69,30 +52,24 @@ List<Widget> timelineRowSeLabelOverlays({
         break;
       }
     }
-
-    final content = IgnorePointer(
-      key: ValueKey<String>(
-        '$keyPrefix-se-label-${layer.id}-${block.startIndex}',
+    overlays.add(
+      TimelineFrameSpan(
+        placement: TimelineFrameSpanPlacement(
+          startIndex: block.startIndex,
+          endIndexExclusive: block.endIndexExclusive,
+        ),
+        child: IgnorePointer(
+          key: ValueKey<String>(
+            '$keyPrefix-se-label-${layer.id}-${block.startIndex}',
+          ),
+          child: SeSpanVisual(
+            axis: axis,
+            dialogue: dialogue ?? '',
+            seName: seName,
+          ),
+        ),
       ),
-      child: SeSpanVisual(axis: axis, dialogue: dialogue ?? '', seName: seName),
     );
-
-    overlays.add(switch (axis) {
-      Axis.horizontal => Positioned(
-        left: blockStartOffset,
-        top: 0,
-        width: mainExtent,
-        height: crossAxisExtent,
-        child: content,
-      ),
-      Axis.vertical => Positioned(
-        top: blockStartOffset,
-        left: 0,
-        height: mainExtent,
-        width: crossAxisExtent,
-        child: content,
-      ),
-    });
   }
   return overlays;
 }
@@ -109,10 +86,6 @@ List<Widget> timelineRowSeContinuationMarks({
   required bool spillsInAtStart,
   required int frameStartIndex,
   required int frameEndIndexExclusive,
-  required double leadingFrameSpacerWidth,
-  required double frameCellExtent,
-  required double crossAxisExtent,
-  required Axis axis,
   String keyPrefix = 'timeline',
 }) {
   final marks = <Widget>[];
@@ -121,41 +94,30 @@ List<Widget> timelineRowSeContinuationMarks({
         boundaryFrame > frameEndIndexExclusive) {
       return;
     }
-    final center = frameVisibleX(
-      frameIndex: boundaryFrame,
-      frameStartIndex: frameStartIndex,
-      frameCellWidth: frameCellExtent,
-      leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-    );
-    final glyph = IgnorePointer(
-      key: ValueKey<String>('$keyPrefix-se-crossing-${layer.id}-$suffix'),
-      child: const Center(
-        child: Text(
-          '~',
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: FontWeight.bold,
-            color: timelineDrawingInkColor,
+    marks.add(
+      TimelineFrameSpan(
+        // A fixed 14px glyph straddling the boundary — the one piece of SE
+        // chrome that must NOT scale with the zoom.
+        placement: TimelineFrameSpanPlacement(
+          startIndex: boundaryFrame,
+          mainInset: -7,
+          mainExtent: 14,
+        ),
+        child: IgnorePointer(
+          key: ValueKey<String>('$keyPrefix-se-crossing-${layer.id}-$suffix'),
+          child: const Center(
+            child: Text(
+              '~',
+              style: TextStyle(
+                fontSize: 13,
+                fontWeight: FontWeight.bold,
+                color: timelineDrawingInkColor,
+              ),
+            ),
           ),
         ),
       ),
     );
-    marks.add(switch (axis) {
-      Axis.horizontal => Positioned(
-        left: center - 7,
-        top: 0,
-        width: 14,
-        height: crossAxisExtent,
-        child: glyph,
-      ),
-      Axis.vertical => Positioned(
-        top: center - 7,
-        left: 0,
-        height: 14,
-        width: crossAxisExtent,
-        child: glyph,
-      ),
-    });
   }
 
   for (final block in drawingBlocks(layer.timeline)) {
@@ -180,9 +142,6 @@ List<Widget> timelineRowSeContinuationMarks({
 List<Widget> timelineRowAudioOverlays({
   required Layer layer,
   required int frameStartIndex,
-  required double leadingFrameSpacerWidth,
-  required double frameCellExtent,
-  required double crossAxisExtent,
   required Axis axis,
   required ProjectFrameRate frameRate,
   required AudioPeaks? Function(String filePath) audioPeaksFor,
@@ -205,36 +164,33 @@ List<Widget> timelineRowAudioOverlays({
     if (audibleFrames <= 0) {
       continue;
     }
-    final startOffset = frameVisibleX(
-      frameIndex: span.startFrame,
-      frameStartIndex: frameStartIndex,
-      frameCellWidth: frameCellExtent,
-      leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-    );
     overlays.add(
-      _positionedAudioWindow(
-        key: ValueKey<String>(
-          '$keyPrefix-audio-clip-${layer.id}-${span.clipIndex}'
-          '-b${span.startFrame}',
+      TimelineFrameSpan(
+        placement: TimelineFrameSpanPlacement(
+          startIndex: span.startFrame,
+          endIndexExclusive: span.startFrame + audibleFrames,
         ),
-        axis: axis,
-        startOffset: startOffset,
-        mainExtent: audibleFrames * frameCellExtent,
-        crossAxisExtent: crossAxisExtent,
-        leadingShift: 0,
-        strip: _AudioClipStrip(
-          peaks: peaks,
-          frameRate: frameRate,
-          pixelsPerFrame: frameCellExtent,
-          axis: axis,
-          color: color,
-          leadingFrames: span.clip.offsetFrames,
-          gain: span.clip.gain,
-          fadeInFrames: span.clip.fadeInFrames,
-          fadeOutFrames: span.clip.fadeOutFrames,
-          onRemove: onRemoveClip == null
-              ? null
-              : () => onRemoveClip(span.clipIndex),
+        child: KeyedSubtree(
+          key: ValueKey<String>(
+            '$keyPrefix-audio-clip-${layer.id}-${span.clipIndex}'
+            '-b${span.startFrame}',
+          ),
+          child: _AudioClipStrip(
+            peaks: peaks,
+            frameRate: frameRate,
+            // Frames, not pixels: the strip reads its own box to learn what
+            // a frame is worth, so a zoom step repaints it without a rebuild.
+            audibleFrames: audibleFrames,
+            axis: axis,
+            color: color,
+            leadingFrames: span.clip.offsetFrames,
+            gain: span.clip.gain,
+            fadeInFrames: span.clip.fadeInFrames,
+            fadeOutFrames: span.clip.fadeOutFrames,
+            onRemove: onRemoveClip == null
+                ? null
+                : () => onRemoveClip(span.clipIndex),
+          ),
         ),
       ),
     );
@@ -251,8 +207,6 @@ List<Widget> timelineRowClipMarkerOverlays({
   required Layer layer,
   required int frameStartIndex,
   required int frameEndIndexExclusive,
-  required double leadingFrameSpacerWidth,
-  required double frameCellExtent,
   required double crossAxisExtent,
   required Axis axis,
   required String tooltip,
@@ -270,48 +224,35 @@ List<Widget> timelineRowClipMarkerOverlays({
         span.startFrame >= frameEndIndexExclusive) {
       continue;
     }
-    final startOffset = frameVisibleX(
-      frameIndex: span.startFrame,
-      frameStartIndex: frameStartIndex,
-      frameCellWidth: frameCellExtent,
-      leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-    );
-    final endOffset = frameVisibleX(
-      frameIndex: blockEnd,
-      frameStartIndex: frameStartIndex,
-      frameCellWidth: frameCellExtent,
-      leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-    );
-    final marker = Tooltip(
-      message: tooltip,
-      child: CustomPaint(
-        size: const Size(markerSize, markerSize),
-        painter: _ClipCornerPainter(color),
+    overlays.add(
+      TimelineFrameSpan(
+        // The block's top-right corner — beside, never over, the
+        // bottom-right duration label (R26 #7). Transposed, it rides the
+        // block's top edge on the column's trailing side.
+        placement: axis == Axis.horizontal
+            ? TimelineFrameSpanPlacement(
+                startIndex: blockEnd,
+                anchorAtTrailingEdge: true,
+                mainExtent: markerSize,
+                crossExtent: markerSize,
+              )
+            : TimelineFrameSpanPlacement(
+                startIndex: span.startFrame,
+                mainExtent: markerSize,
+                crossInset: crossAxisExtent - markerSize,
+                crossExtent: markerSize,
+              ),
+        child: KeyedSubtree(
+          key: ValueKey<String>(
+            '$keyPrefix-clip-marker-${layer.id}-b${span.startFrame}',
+          ),
+          child: Tooltip(
+            message: tooltip,
+            child: CustomPaint(painter: _ClipCornerPainter(color)),
+          ),
+        ),
       ),
     );
-    final key = ValueKey<String>(
-      '$keyPrefix-clip-marker-${layer.id}-b${span.startFrame}',
-    );
-    overlays.add(switch (axis) {
-      // The block's top-right corner — beside, never over, the
-      // bottom-right duration label (R26 #7).
-      Axis.horizontal => Positioned(
-        key: key,
-        left: endOffset - markerSize,
-        top: 0,
-        width: markerSize,
-        height: markerSize,
-        child: marker,
-      ),
-      Axis.vertical => Positioned(
-        key: key,
-        top: startOffset,
-        left: crossAxisExtent - markerSize,
-        width: markerSize,
-        height: markerSize,
-        child: marker,
-      ),
-    });
   }
   return overlays;
 }
@@ -346,10 +287,6 @@ List<Widget> timelineRowSeAssetDropTargets({
   required Layer layer,
   required int frameStartIndex,
   required int frameEndIndexExclusive,
-  required double leadingFrameSpacerWidth,
-  required double frameCellExtent,
-  required double crossAxisExtent,
-  required Axis axis,
   required void Function(int blockStartFrame, String path) onAssetDropped,
   String keyPrefix = 'timeline',
 }) {
@@ -359,119 +296,39 @@ List<Widget> timelineRowSeAssetDropTargets({
         block.startIndex >= frameEndIndexExclusive) {
       continue;
     }
-    final startOffset = frameVisibleX(
-      frameIndex: block.startIndex,
-      frameStartIndex: frameStartIndex,
-      frameCellWidth: frameCellExtent,
-      leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-    );
-    final endOffset = frameVisibleX(
-      frameIndex: block.endIndexExclusive,
-      frameStartIndex: frameStartIndex,
-      frameCellWidth: frameCellExtent,
-      leadingFrameSpacerWidth: leadingFrameSpacerWidth,
-    );
-    final mainExtent = endOffset - startOffset;
-
-    final target = DragTarget<MediaAssetDragData>(
-      key: ValueKey<String>(
-        '$keyPrefix-se-asset-drop-${layer.id}-${block.startIndex}',
+    targets.add(
+      TimelineFrameSpan(
+        placement: TimelineFrameSpanPlacement(
+          startIndex: block.startIndex,
+          endIndexExclusive: block.endIndexExclusive,
+        ),
+        child: DragTarget<MediaAssetDragData>(
+          key: ValueKey<String>(
+            '$keyPrefix-se-asset-drop-${layer.id}-${block.startIndex}',
+          ),
+          onAcceptWithDetails: (details) =>
+              onAssetDropped(block.startIndex, details.data.path),
+          builder: (context, candidates, _) => candidates.isEmpty
+              ? const SizedBox.expand()
+              : DecoratedBox(
+                  decoration: BoxDecoration(
+                    borderRadius: const BorderRadius.all(Radius.circular(4)),
+                    border: Border.all(color: AppColors.accent, width: 2),
+                    color: AppColors.accent.withValues(alpha: 0.12),
+                  ),
+                ),
+        ),
       ),
-      onAcceptWithDetails: (details) =>
-          onAssetDropped(block.startIndex, details.data.path),
-      builder: (context, candidates, _) => candidates.isEmpty
-          ? const SizedBox.expand()
-          : DecoratedBox(
-              decoration: BoxDecoration(
-                borderRadius: const BorderRadius.all(Radius.circular(4)),
-                border: Border.all(color: AppColors.accent, width: 2),
-                color: AppColors.accent.withValues(alpha: 0.12),
-              ),
-            ),
     );
-
-    targets.add(switch (axis) {
-      Axis.horizontal => Positioned(
-        left: startOffset,
-        top: 0,
-        width: mainExtent,
-        height: crossAxisExtent,
-        child: target,
-      ),
-      Axis.vertical => Positioned(
-        top: startOffset,
-        left: 0,
-        height: mainExtent,
-        width: crossAxisExtent,
-        child: target,
-      ),
-    });
   }
   return targets;
-}
-
-/// One positioned waveform window: the full-length strip shifted back by
-/// [leadingShift] inside a ClipRect, so a mid-clip window still shows the
-/// globally aligned envelope.
-Widget _positionedAudioWindow({
-  required Key key,
-  required Axis axis,
-  required double startOffset,
-  required double mainExtent,
-  required double crossAxisExtent,
-  required double leadingShift,
-  required Widget strip,
-}) {
-  final windowed = leadingShift == 0 && axis == Axis.horizontal
-      ? strip
-      : ClipRect(
-          child: OverflowBox(
-            alignment: axis == Axis.horizontal
-                ? Alignment.centerLeft
-                : Alignment.topCenter,
-            maxWidth: double.infinity,
-            maxHeight: double.infinity,
-            child: Transform.translate(
-              offset: axis == Axis.horizontal
-                  ? Offset(-leadingShift, 0)
-                  : Offset(0, -leadingShift),
-              child: SizedBox(
-                width: axis == Axis.horizontal
-                    ? mainExtent + leadingShift
-                    : crossAxisExtent,
-                height: axis == Axis.horizontal
-                    ? crossAxisExtent
-                    : mainExtent + leadingShift,
-                child: strip,
-              ),
-            ),
-          ),
-        );
-  return switch (axis) {
-    Axis.horizontal => Positioned(
-      key: key,
-      left: startOffset,
-      top: 0,
-      width: mainExtent,
-      height: crossAxisExtent,
-      child: windowed,
-    ),
-    Axis.vertical => Positioned(
-      key: key,
-      top: startOffset,
-      left: 0,
-      height: mainExtent,
-      width: crossAxisExtent,
-      child: windowed,
-    ),
-  };
 }
 
 class _AudioClipStrip extends StatelessWidget {
   const _AudioClipStrip({
     required this.peaks,
     required this.frameRate,
-    required this.pixelsPerFrame,
+    required this.audibleFrames,
     required this.axis,
     required this.color,
     this.leadingFrames = 0,
@@ -483,7 +340,10 @@ class _AudioClipStrip extends StatelessWidget {
 
   final AudioPeaks peaks;
   final ProjectFrameRate frameRate;
-  final double pixelsPerFrame;
+
+  /// How many FRAMES this strip's box spans; the pixels per frame follow
+  /// from the box, so the zoom never reaches this widget as a new value.
+  final int audibleFrames;
   final Axis axis;
   final Color color;
   final int leadingFrames;
@@ -516,17 +376,26 @@ class _AudioClipStrip extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final waveform = CustomPaint(
-      painter: WaveformPainter(
-        peaks: peaks,
-        frameRate: frameRate,
-        pixelsPerFrame: pixelsPerFrame,
-        color: color,
-        axis: axis,
-        leadingFrames: leadingFrames,
-        gain: gain,
-        fadeInFrames: fadeInFrames,
-        fadeOutFrames: fadeOutFrames,
+    final waveform = ClipRect(
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final main = axis == Axis.horizontal
+              ? constraints.maxWidth
+              : constraints.maxHeight;
+          return CustomPaint(
+            painter: WaveformPainter(
+              peaks: peaks,
+              frameRate: frameRate,
+              pixelsPerFrame: audibleFrames <= 0 ? 0 : main / audibleFrames,
+              color: color,
+              axis: axis,
+              leadingFrames: leadingFrames,
+              gain: gain,
+              fadeInFrames: fadeInFrames,
+              fadeOutFrames: fadeOutFrames,
+            ),
+          );
+        },
       ),
     );
     if (onRemove == null) {
