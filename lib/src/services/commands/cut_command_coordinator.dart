@@ -20,6 +20,7 @@ import '../../models/project.dart';
 import '../../models/project_background.dart';
 import '../../models/timesheet_info.dart';
 import '../../models/exposure_memo.dart';
+import '../../models/track.dart';
 import '../../models/track_id.dart';
 import '../../models/transform_track.dart';
 import '../brush_frame_store.dart';
@@ -1090,17 +1091,31 @@ class CutCommandCoordinator {
     );
   }
 
+  /// Moves ONE cut to [newIndex] — the left/right nudge buttons' form of
+  /// the order edit, stated as the resulting order so both forms share a
+  /// command.
   void reorderCut({
     required TrackId trackId,
     required CutId cutId,
     required int newIndex,
   }) {
+    final cuts = [for (final cut in _requireTrack(trackId).cuts) cut.id];
+    final oldIndex = cuts.indexOf(cutId);
+    if (oldIndex == -1) {
+      throw StateError('Cut not found in track $trackId: $cutId');
+    }
+    cuts.insert(newIndex, cuts.removeAt(oldIndex));
+    setCutOrder(trackId: trackId, order: cuts);
+  }
+
+  /// Resequences a whole track — what a cut drag that reached into a
+  /// neighbour commits (a run may carry several cuts across at once).
+  void setCutOrder({required TrackId trackId, required List<CutId> order}) {
     historyManager.execute(
-      ReorderCutCommand(
+      SetCutOrderCommand(
         repository: repository,
         trackId: trackId,
-        cutId: cutId,
-        newIndex: newIndex,
+        order: order,
       ),
     );
   }
@@ -1189,6 +1204,15 @@ class CutCommandCoordinator {
 
   Cut _requireCut(CutId cutId) {
     return requireCut(repository.requireProject(), cutId);
+  }
+
+  Track _requireTrack(TrackId trackId) {
+    for (final track in repository.requireProject().tracks) {
+      if (track.id == trackId) {
+        return track;
+      }
+    }
+    throw StateError('Track not found: $trackId');
   }
 }
 

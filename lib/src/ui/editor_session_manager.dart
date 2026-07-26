@@ -38,6 +38,7 @@ import '../models/cut_camera.dart';
 import '../models/transform_track.dart';
 import '../models/cut_id.dart';
 import '../models/cut_metadata.dart';
+import '../models/cut_move_plan.dart';
 import '../models/layer_folder.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
@@ -1152,30 +1153,6 @@ class EditorSessionManager extends ChangeNotifier {
       trackId: position.trackId,
       cutId: position.cutId,
       newIndex: _cutReorderPlanner.moveRightTargetIndex(position),
-    );
-    _refreshAfterCutCommand();
-    notifyListeners();
-  }
-
-  void reorderCut({
-    required CutId draggedCutId,
-    required TrackId targetTrackId,
-    required int targetCutIndex,
-  }) {
-    final plan = _cutReorderPlanner.planSameTrackDrop(
-      project: _repository.requireProject(),
-      draggedCutId: draggedCutId,
-      targetTrackId: targetTrackId,
-      targetCutIndex: targetCutIndex,
-    );
-    if (plan == null) {
-      return;
-    }
-
-    _cutCommandCoordinator.reorderCut(
-      trackId: plan.trackId,
-      cutId: plan.cutId,
-      newIndex: plan.newIndex,
     );
     _refreshAfterCutCommand();
     notifyListeners();
@@ -6161,19 +6138,23 @@ class EditorSessionManager extends ChangeNotifier {
 
   // --- Storyboard cut-block MOVE drags (R10-④) ----------------------------
 
-  List<CutId>? _cutMoveOrder;
-  Map<CutId, int>? _cutMoveBeforeGaps;
+  TrackId? _cutMoveTrackId;
+  List<CutMoveSlot>? _cutMoveSlots;
   int? _cutMoveIndex;
 
   /// The selected run's LAST index while a group slide is live (UI-R18
   /// #1: dragging inside the cut selection moves the whole run).
   int? _cutMoveGroupEndIndex;
 
-  /// Starts a whole-block move drag on [cutId]: the cut SLIDES along the
-  /// frame axis by adjusting gaps, and pushes neighbors edge-style on
-  /// contact — rightward pushes the followers (their gap absorbs first),
-  /// leftward pushes the predecessors (each one's own gap absorbs before
-  /// the wave reaches the next), clamped when the chain hits frame 0.
+  /// Starts a whole-block move drag on [cutId].
+  ///
+  /// Where it ends up is [planCutMove]'s answer: a drag that stays in its
+  /// own free space re-times (its leading gap grows or shrinks, the
+  /// neighbours hold still), and a drag that reaches past a neighbour's
+  /// midpoint REORDERS the track instead. Sliding used to shove the
+  /// followers along on contact; that whole-track shove is what the
+  /// push/pull buttons are for, and a drag that could only shove could
+  /// never say "put this cut after that one".
   bool beginCutMoveDrag(CutId cutId) {
     final project = _repository.requireProject();
     for (final track in project.tracks) {
@@ -6181,22 +6162,32 @@ class EditorSessionManager extends ChangeNotifier {
       if (index < 0) {
         continue;
       }
-      _cutMoveOrder = [for (final cut in track.cuts) cut.id];
-      _cutMoveBeforeGaps = {
-        for (final cut in track.cuts) cut.id: cut.leadingGapFrames,
-      };
+      _cutMoveTrackId = track.id;
+      _cutMoveSlots = [
+        for (final cut in track.cuts)
+          (
+            id: cut.id,
+            leadingGapFrames: cut.leadingGapFrames,
+            duration: cut.duration,
+          ),
+      ];
       _cutMoveIndex = index;
       _cutMoveGroupEndIndex = null;
       // Dragging inside the cut SELECTION slides the whole run (UI-R18
       // #1): anchor at the run's first cut, compensate past its last.
       final selection = storyboardCutSelection.value;
       if (selection != null && selection.contains(cutId)) {
-        final indexes = [for (final id in selection) _cutMoveOrder!.indexOf(id)]
+        final order = [for (final cut in track.cuts) cut.id];
+        final indexes = [for (final id in selection) order.indexOf(id)]
           ..removeWhere((value) => value < 0);
         if (indexes.length > 1) {
           indexes.sort();
-          _cutMoveIndex = indexes.first;
-          _cutMoveGroupEndIndex = indexes.last;
+          // Only a CONTIGUOUS run travels as one — a selection with a hole
+          // in it has no single length to carry.
+          if (indexes.last - indexes.first == indexes.length - 1) {
+            _cutMoveIndex = indexes.first;
+            _cutMoveGroupEndIndex = indexes.last;
+          }
         }
       }
       return true;
@@ -6207,89 +6198,68 @@ class EditorSessionManager extends ChangeNotifier {
   /// Applies the move's cumulative frame delta as a live preview on
   /// [dragPreview] (the repository is NOT touched).
   void updateCutMoveDrag(int cumulativeDelta) {
-    final order = _cutMoveOrder;
-    final beforeGaps = _cutMoveBeforeGaps;
-    final index = _cutMoveIndex;
-    if (order == null || beforeGaps == null || index == null) {
+    final plan = _cutMovePlanFor(cumulativeDelta);
+    final trackId = _cutMoveTrackId;
+    if (plan == null || trackId == null) {
       return;
     }
-    final gaps = _cutMoveGaps(
-      order: order,
-      beforeGaps: beforeGaps,
-      index: index,
-      delta: cumulativeDelta,
-      groupEndIndex: _cutMoveGroupEndIndex,
-    );
-    final changed = gaps.entries.any(
-      (entry) => beforeGaps[entry.key] != entry.value,
-    );
-    dragPreview.value = changed
-        ? CutTrimDragPreview(previewDurations: const {}, previewGaps: gaps)
-        : null;
-  }
-
-  /// The previewed gap map for a move by [delta] (pure — shared by update
-  /// and tests). Rightward: the moved cut's gap grows, the follower's gap
-  /// absorbs (followers hold still) until spent, then the rest pushes.
-  /// Leftward: the moved cut's own gap absorbs first, then each
-  /// predecessor's in turn (pushing them left), clamped at the chain's
-  /// total slack; the follower's gap grows by the applied movement so
-  /// everything after holds still.
-  static Map<CutId, int> _cutMoveGaps({
-    required List<CutId> order,
-    required Map<CutId, int> beforeGaps,
-    required int index,
-    required int delta,
-    int? groupEndIndex,
-  }) {
-    final gaps = <CutId, int>{};
-    // A selected RUN slides as one unit (UI-R18 #1): the first cut's gap
-    // carries the delta (the run follows for free — positions are
-    // cumulative), the compensation lands past the run's LAST cut.
-    final end = groupEndIndex ?? index;
-    if (delta > 0) {
-      gaps[order[index]] = beforeGaps[order[index]]! + delta;
-      if (end + 1 < order.length) {
-        final nextId = order[end + 1];
-        gaps[nextId] = math.max(0, beforeGaps[nextId]! - delta);
-      }
-    } else if (delta < 0) {
-      var remaining = -delta;
-      for (var i = index; i >= 0 && remaining > 0; i -= 1) {
-        final id = order[i];
-        final take = math.min(remaining, beforeGaps[id]!);
-        if (take > 0) {
-          gaps[id] = beforeGaps[id]! - take;
-          remaining -= take;
-        }
-      }
-      final applied = (-delta) - remaining;
-      if (end + 1 < order.length && applied > 0) {
-        final nextId = order[end + 1];
-        gaps[nextId] = beforeGaps[nextId]! + applied;
-      }
+    if (plan.isReorder) {
+      dragPreview.value = CutTrimDragPreview(
+        previewDurations: const {},
+        previewOrder: {trackId: plan.order!},
+      );
+      return;
     }
-    return gaps;
+    dragPreview.value = plan.gaps.isEmpty
+        ? null
+        : CutTrimDragPreview(
+            previewDurations: const {},
+            previewGaps: plan.gaps,
+          );
   }
 
-  /// Commits the move as a single undo step (no-op when nothing changed).
-  /// Durations are untouched, so no fade re-anchor is needed.
+  CutMovePlan? _cutMovePlanFor(int cumulativeDelta) {
+    final slots = _cutMoveSlots;
+    final index = _cutMoveIndex;
+    if (slots == null || index == null) {
+      return null;
+    }
+    return planCutMove(
+      slots: slots,
+      runStart: index,
+      runEnd: _cutMoveGroupEndIndex ?? index,
+      frameDelta: cumulativeDelta,
+    );
+  }
+
+  /// Commits the move as a single undo step (no-op when nothing changed):
+  /// a re-time lands as gaps, a reorder as the track's new sequence.
+  /// Durations are untouched either way, so no fade re-anchor is needed.
   void endCutMoveDrag() {
-    final beforeGaps = _cutMoveBeforeGaps;
+    final slots = _cutMoveSlots;
+    final trackId = _cutMoveTrackId;
     final preview = dragPreview.value;
-    _cutMoveOrder = null;
-    _cutMoveBeforeGaps = null;
+    _cutMoveTrackId = null;
+    _cutMoveSlots = null;
     _cutMoveIndex = null;
     _cutMoveGroupEndIndex = null;
     dragPreview.value = null;
-    if (beforeGaps == null) {
+    if (slots == null || trackId == null || preview is! CutTrimDragPreview) {
       return;
     }
-    final previewGaps = preview is CutTrimDragPreview
-        ? preview.previewGaps
-        : const <CutId, int>{};
+    final order = preview.previewOrder[trackId];
+    if (order != null) {
+      _cutCommandCoordinator.setCutOrder(trackId: trackId, order: order);
+      _refreshAfterCutCommand();
+      notifyListeners();
+      return;
+    }
+    final beforeGaps = {
+      for (final slot in slots) slot.id: slot.leadingGapFrames,
+    };
     final afterGaps = {
-      for (final id in beforeGaps.keys) id: previewGaps[id] ?? beforeGaps[id]!,
+      for (final id in beforeGaps.keys)
+        id: preview.previewGaps[id] ?? beforeGaps[id]!,
     };
     final changed = afterGaps.entries.any(
       (entry) => beforeGaps[entry.key] != entry.value,
@@ -6311,8 +6281,8 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// Drops an in-flight move preview without touching history.
   void cancelCutMoveDrag() {
-    _cutMoveOrder = null;
-    _cutMoveBeforeGaps = null;
+    _cutMoveTrackId = null;
+    _cutMoveSlots = null;
     _cutMoveIndex = null;
     _cutMoveGroupEndIndex = null;
     dragPreview.value = null;

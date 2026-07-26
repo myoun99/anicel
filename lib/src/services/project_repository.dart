@@ -192,17 +192,38 @@ class ProjectRepository {
     required CutId cutId,
     required int newIndex,
   }) {
+    final track = requireProject().tracks
+        .where((track) => track.id == trackId)
+        .firstOrNull;
+    if (track == null) {
+      throw StateError('Track not found: $trackId');
+    }
+    final cuts = [...track.cuts];
+    final oldIndex = cuts.indexWhere((cut) => cut.id == cutId);
+    if (oldIndex == -1) {
+      throw StateError('Cut not found in track $trackId: $cutId');
+    }
+    final moved = cuts.removeAt(oldIndex);
+    cuts.insert(newIndex, moved);
+    setCutOrder(trackId: trackId, order: [for (final cut in cuts) cut.id]);
+  }
+
+  /// Resequences [trackId]'s cuts to exactly [order] — the ONE cut-order
+  /// mutation ([reorderCut] states the same move as an index). [order] must
+  /// be a permutation of the track's cut ids; a partial or foreign list is
+  /// a programming error, not a silent drop.
+  void setCutOrder({required TrackId trackId, required List<CutId> order}) {
     updateProject((project) {
       final next = updateTrackById(project, trackId, (track) {
-        final cuts = [...track.cuts];
-        final oldIndex = cuts.indexWhere((cut) => cut.id == cutId);
-        if (oldIndex == -1) {
-          throw StateError('Cut not found in track $trackId: $cutId');
+        final byId = {for (final cut in track.cuts) cut.id: cut};
+        if (order.length != track.cuts.length ||
+            order.toSet().length != order.length ||
+            !order.every(byId.containsKey)) {
+          throw StateError(
+            'Cut order for track $trackId must be a permutation of its cuts.',
+          );
         }
-
-        final cut = cuts.removeAt(oldIndex);
-        cuts.insert(newIndex, cut);
-        return track.copyWith(cuts: cuts);
+        return track.copyWith(cuts: [for (final id in order) byId[id]!]);
       });
       if (next == null) {
         throw StateError('Track not found: $trackId');

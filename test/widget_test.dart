@@ -171,21 +171,32 @@ Future<void> _expectActiveCutName(WidgetTester tester, String name) async {
   });
 }
 
+/// Drags [sourceCutId] far enough to take [targetCutId]'s place.
+///
+/// Reordering is the MOVE drag reaching past a neighbour now, so this
+/// drives the panel's move hooks with the frame delta that carries the
+/// source's midpoint onto the target's. Dragging LEFT needs one frame more:
+/// a midpoint exactly level with another still belongs to the cut that
+/// already holds the rank.
 Future<void> _dragCutOnto(
   WidgetTester tester, {
   required String sourceCutId,
   required String targetCutId,
 }) async {
   await _withStoryboardPanel(tester, (panel) async {
-    final targetEntry = buildStoryboardTimelineLayout(
-      panel.project,
-    ).singleWhere((entry) => entry.cutId.value == targetCutId);
-
-    panel.onCutReordered?.call(
-      draggedCutId: CutId(sourceCutId),
-      targetTrackId: targetEntry.trackId,
-      targetCutIndex: targetEntry.cutIndex,
+    final layout = buildStoryboardTimelineLayout(panel.project);
+    final source = layout.singleWhere(
+      (entry) => entry.cutId.value == sourceCutId,
     );
+    final target = layout.singleWhere(
+      (entry) => entry.cutId.value == targetCutId,
+    );
+    final delta = target.startFrame - source.startFrame;
+
+    final cutMove = panel.cutMove!;
+    expect(cutMove.onBegin(CutId(sourceCutId)), isTrue);
+    cutMove.onUpdate(delta < 0 ? delta - 1 : delta);
+    cutMove.onEnd();
 
     await tester.pumpAndSettle();
   });
