@@ -53,7 +53,8 @@ import 'timeline/timeline_frame_geometry.dart'
     show TimelineFrameGeometry, TimelineFrameGeometryHandle;
 import 'timeline/timeline_frame_range_gesture.dart'
     show TimelineFrameRangeGestureLayer, TimelineRangeGestureCallbacks;
-import '../models/timeline_row_address.dart' show TrackRowAddress;
+import '../models/timeline_row_address.dart'
+    show LayerRowAddress, TimelineRowAddress, TrackRowAddress;
 import 'timeline/timeline_frame_span_layout.dart'
     show TimelineFixedFrameSpanLayer, TimelineFrameSpan;
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
@@ -173,6 +174,7 @@ class StoryboardPanel extends StatefulWidget {
     required this.activeCutId,
     required this.onCutSelected,
     this.activeLayerId,
+    this.selectedRow,
     this.onSelectLayer,
     this.onSelectTrack,
     this.cutTrim,
@@ -267,10 +269,18 @@ class StoryboardPanel extends StatefulWidget {
   final CutId? activeCutId;
   final ValueChanged<CutId> onCutSelected;
 
-  /// The session's active layer — the S row carrying it gets the timeline
-  /// row's active highlight (W4 S-row selection; the V row is not a layer
-  /// and stands down). Null = no row highlighted.
+  /// The session's active layer — the drawing target, and what the S rows'
+  /// cut-scoped controls act on. It no longer decides the HIGHLIGHT: see
+  /// [selectedRow].
   final LayerId? activeLayerId;
+
+  /// THE selected row, track rows and layer rows in one address space
+  /// (`EditorSessionManager.selectedRow`). Exactly one row highlights, the
+  /// way the timeline has exactly one selected layer row — the V row used
+  /// to light from "the active cut lives on this track" and the S rows from
+  /// [activeLayerId], which are unrelated states, so both could read as
+  /// selected at once. Null = no row highlighted.
+  final TimelineRowAddress? selectedRow;
 
   /// Tapping an S-row label selects its TRACK layer (the same session
   /// selection a timeline row tap makes). Null keeps labels display-only.
@@ -876,8 +886,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       slot: slot,
       active:
           trackLayer != null &&
-          widget.activeLayerId != null &&
-          trackLayer.id == widget.activeLayerId,
+          widget.selectedRow == LayerRowAddress(trackLayer.id),
       onSelectLayer: widget.onSelectLayer,
       laneExpanded: widget.expandedSeAudioRows.contains(
         StoryboardPanel.seRowKey(track, slot),
@@ -947,10 +956,12 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         onToggleLane: widget.onToggleTrackLane == null
             ? null
             : () => widget.onToggleTrackLane!(track),
-        // V-track selection (UI-R18 #6): the row highlights while the
-        // ACTIVE cut lives on this track; tapping selects the track (its
-        // playhead-index cut becomes active).
-        active: activeCut != null,
+        // V-track selection (UI-R18 #6): tapping selects the track (its
+        // playhead-index cut becomes active). The highlight says THIS ROW
+        // IS SELECTED — not "the active cut lives here", which is what the
+        // cut block's own active border already says, and which could light
+        // at the same time as an S row.
+        active: widget.selectedRow == TrackRowAddress(track.id),
         onSelectTrack: widget.onSelectTrack == null
             ? null
             : () => widget.onSelectTrack!(track.id),
@@ -2038,9 +2049,8 @@ class _StoryboardSeLabel extends StatelessWidget {
   /// controls act on it.
   final Layer? activeLayer;
 
-  /// Whether this row's TRACK layer is the session's active layer — the
-  /// same highlight the timeline row shows (W3 identity keeps them in
-  /// sync automatically).
+  /// Whether this row is THE selected row — the same highlight the
+  /// timeline row shows (W3 identity keeps them in sync automatically).
   final bool active;
 
   /// Tapping the row selects its track layer, like tapping a timeline
@@ -2099,8 +2109,10 @@ class _StoryboardSeLabel extends StatelessWidget {
           ),
         ),
         child: Semantics(
+          // The rail's ONE selection marker — the V rows carry the same
+          // key, so "exactly one row is selected" is one assertion.
           key: active
-              ? const ValueKey<String>('storyboard-selected-layer')
+              ? const ValueKey<String>('storyboard-selected-row')
               : null,
           label: active ? 'selected layer' : 'layer',
           container: true,
@@ -3147,8 +3159,8 @@ class _StoryboardTrackLabel extends StatelessWidget {
   final bool laneExpanded;
   final VoidCallback? onToggleLane;
 
-  /// The active cut lives on this track — the S-row active treatment
-  /// (background only, UI-R18 #5/#6).
+  /// This row is THE selected row — the S-row active treatment (background
+  /// only, UI-R18 #5/#6).
   final bool active;
 
   /// Tapping the row selects the TRACK (UI-R18 #6): the session promotes
@@ -3195,115 +3207,125 @@ class _StoryboardTrackLabel extends StatelessWidget {
             bottom: BorderSide(color: colorScheme.outlineVariant),
           ),
         ),
-        child: Row(
-          children: [
-            // Reserved section slot — the V zone overlays the group
-            // (UI-R7 #2).
-            const LayerSectionBandCell(),
-            const SizedBox(width: 8),
-            // The timeline rows' lane chevron: twirls down the track's
-            // cut-level Transform group (the V-track lanes + fade strip).
-            if (onToggleLane != null)
-              InkWell(
-                key: ValueKey<String>(
-                  'storyboard-track-lane-toggle-${track.id.value}',
-                ),
-                onTap: onToggleLane,
-                child: SizedBox(
-                  width: 16,
-                  height: 24,
-                  child: Icon(
-                    laneExpanded ? Icons.arrow_drop_down : Icons.arrow_right,
-                    size: 16,
-                    color: colorScheme.onSurfaceVariant,
+        child: Semantics(
+          // The rail's ONE selection marker, shared with the S rows: a V
+          // row is a row like any other, so both kinds answer here.
+          key: active
+              ? const ValueKey<String>('storyboard-selected-row')
+              : null,
+          label: active ? 'selected track' : 'track',
+          container: true,
+          explicitChildNodes: true,
+          child: Row(
+            children: [
+              // Reserved section slot — the V zone overlays the group
+              // (UI-R7 #2).
+              const LayerSectionBandCell(),
+              const SizedBox(width: 8),
+              // The timeline rows' lane chevron: twirls down the track's
+              // cut-level Transform group (the V-track lanes + fade strip).
+              if (onToggleLane != null)
+                InkWell(
+                  key: ValueKey<String>(
+                    'storyboard-track-lane-toggle-${track.id.value}',
                   ),
-                ),
-              )
-            else
-              const SizedBox(width: 16),
-            const Icon(Icons.movie_outlined, size: 18),
-            const SizedBox(width: 6),
-            Expanded(
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    trackLabel,
-                    key: ValueKey<String>(
-                      'storyboard-track-label-${track.id.value}',
+                  onTap: onToggleLane,
+                  child: SizedBox(
+                    width: 16,
+                    height: 24,
+                    child: Icon(
+                      laneExpanded ? Icons.arrow_drop_down : Icons.arrow_right,
+                      size: 16,
+                      color: colorScheme.onSurfaceVariant,
                     ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    softWrap: false,
-                    style: const TextStyle(fontWeight: FontWeight.bold),
                   ),
-                  if (track.name.isNotEmpty)
+                )
+              else
+                const SizedBox(width: 16),
+              const Icon(Icons.movie_outlined, size: 18),
+              const SizedBox(width: 6),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
                     Text(
-                      track.name,
+                      trackLabel,
+                      key: ValueKey<String>(
+                        'storyboard-track-label-${track.id.value}',
+                      ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       softWrap: false,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: colorScheme.onSurfaceVariant,
-                      ),
+                      style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
-                ],
+                    if (track.name.isNotEmpty)
+                      Text(
+                        track.name,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        softWrap: false,
+                        style: TextStyle(
+                          fontSize: 11,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
+                  ],
+                ),
               ),
-            ),
-            // V-row display toggles (UI-R13 #2): ALWAYS-normal buttons in
-            // the shared fx/eye slots (UI-R5) acting on THIS track's cut at
-            // the current global index — no stand-down, no parked graying.
-            // Where no cut exists (a gap on this track) a press is a no-op;
-            // the button is track furniture, only its subject is absent.
-            const SizedBox(width: layerFillReferenceSlotWidth),
-            if (onToggleCutFx != null)
-              FxToggleButton(
-                keyValue:
-                    'storyboard-cut-fx-'
-                    '${subjectCut?.id.value ?? 'none-${track.id.value}'}',
-                subject: 'cut',
-                size: 26,
-                fxEnabled: subjectCut == null
-                    ? true
-                    : (cutFxEnabledOf?.call(subjectCut!.id) ?? true),
-                onToggle: () {
-                  final subject = subjectCut;
-                  if (subject != null) {
-                    onToggleCutFx!(subject.id);
-                  }
-                },
-              )
-            else
-              const SizedBox(width: layerFxSlotWidth),
-            if (onToggleCutPictureVisibility != null)
-              SizedBox(
-                width: layerVisibilitySlotWidth,
-                height: 26,
-                // The SAME eye the layer and folder rows mount — this was
-                // a sixth inline copy (R28 follow-up).
-                child: LayerVisibilityToggleButton(
+              // V-row display toggles (UI-R13 #2): ALWAYS-normal buttons in
+              // the shared fx/eye slots (UI-R5) acting on THIS track's cut at
+              // the current global index — no stand-down, no parked graying.
+              // Where no cut exists (a gap on this track) a press is a no-op;
+              // the button is track furniture, only its subject is absent.
+              const SizedBox(width: layerFillReferenceSlotWidth),
+              if (onToggleCutFx != null)
+                FxToggleButton(
                   keyValue:
-                      'storyboard-cut-visibility-'
+                      'storyboard-cut-fx-'
                       '${subjectCut?.id.value ?? 'none-${track.id.value}'}',
-                  subject: 'cut picture',
-                  isVisible:
-                      subjectCut == null ||
-                      (cutPictureVisibleOf?.call(subjectCut!.id) ?? true),
+                  subject: 'cut',
+                  size: 26,
+                  fxEnabled: subjectCut == null
+                      ? true
+                      : (cutFxEnabledOf?.call(subjectCut!.id) ?? true),
                   onToggle: () {
                     final subject = subjectCut;
                     if (subject != null) {
-                      onToggleCutPictureVisibility!(subject.id);
+                      onToggleCutFx!(subject.id);
                     }
                   },
-                ),
-              )
-            else
-              const SizedBox(width: layerVisibilitySlotWidth),
-            const SizedBox(width: layerMuteSlotWidth),
-            const SizedBox(width: layerOpacitySlotWidth),
-          ],
+                )
+              else
+                const SizedBox(width: layerFxSlotWidth),
+              if (onToggleCutPictureVisibility != null)
+                SizedBox(
+                  width: layerVisibilitySlotWidth,
+                  height: 26,
+                  // The SAME eye the layer and folder rows mount — this was
+                  // a sixth inline copy (R28 follow-up).
+                  child: LayerVisibilityToggleButton(
+                    keyValue:
+                        'storyboard-cut-visibility-'
+                        '${subjectCut?.id.value ?? 'none-${track.id.value}'}',
+                    subject: 'cut picture',
+                    isVisible:
+                        subjectCut == null ||
+                        (cutPictureVisibleOf?.call(subjectCut!.id) ?? true),
+                    onToggle: () {
+                      final subject = subjectCut;
+                      if (subject != null) {
+                        onToggleCutPictureVisibility!(subject.id);
+                      }
+                    },
+                  ),
+                )
+              else
+                const SizedBox(width: layerVisibilitySlotWidth),
+              const SizedBox(width: layerMuteSlotWidth),
+              const SizedBox(width: layerOpacitySlotWidth),
+            ],
+          ),
         ),
       ),
     );
@@ -3512,15 +3534,12 @@ class _StoryboardTrackRow extends StatelessWidget {
     onCutSelected(entry.cutId);
   }
 
-  int _frameAtX(double x) =>
-      timelineScale.pixelsPerFrame <= 0
+  int _frameAtX(double x) => timelineScale.pixelsPerFrame <= 0
       ? 0
       : (x / timelineScale.pixelsPerFrame).floor();
 
   void _handleHover(PointerHoverEvent event) {
-    hoveredCutId.value = _cutAtFrame(
-      _frameAtX(event.localPosition.dx),
-    )?.cutId;
+    hoveredCutId.value = _cutAtFrame(_frameAtX(event.localPosition.dx))?.cutId;
   }
 
   @override
