@@ -216,6 +216,71 @@ class BrushSettingsPanel extends StatelessWidget {
             keyValue: 'brush-tool-angle-jitter-slider',
             onChanged: (value) => onChanged(state.copyWith(angleJitter: value)),
           ),
+          _PanelSlider(
+            label: AppText.strings.brRoundnessJitter,
+            valueLabel: '${(state.roundnessJitter * 100).round()}%',
+            value: BrushToolState.clampZeroToOne(state.roundnessJitter),
+            min: 0,
+            max: 1,
+            displayFactor: 100,
+            keyValue: 'brush-tool-roundness-jitter-slider',
+            onChanged: (value) =>
+                onChanged(state.copyWith(roundnessJitter: value)),
+          ),
+          _PanelSlider(
+            label: AppText.strings.brSpacingJitter,
+            valueLabel: '${(state.spacingJitter * 100).round()}%',
+            value: BrushToolState.clampZeroToOne(state.spacingJitter),
+            min: 0,
+            max: 1,
+            displayFactor: 100,
+            keyValue: 'brush-tool-spacing-jitter-slider',
+            onChanged: (value) =>
+                onChanged(state.copyWith(spacingJitter: value)),
+          ),
+          _GroupHeader('Mixing'),
+          _PanelSwitch(
+            label: AppText.strings.brMixing,
+            value: state.mixesGroundColor,
+            keyValue: 'brush-tool-mixing-toggle',
+            onChanged: (value) =>
+                onChanged(state.copyWith(mixesGroundColor: value)),
+          ),
+          if (state.mixesGroundColor) ...[
+            _PanelSlider(
+              label: AppText.strings.brPaintAmount,
+              valueLabel: '${(state.paintAmount * 100).round()}%',
+              value: BrushToolState.clampZeroToOne(state.paintAmount),
+              min: 0,
+              max: 1,
+              displayFactor: 100,
+              keyValue: 'brush-tool-paint-amount-slider',
+              onChanged: (value) =>
+                  onChanged(state.copyWith(paintAmount: value)),
+            ),
+            _PanelSlider(
+              label: AppText.strings.brPaintDensity,
+              valueLabel: '${(state.paintDensity * 100).round()}%',
+              value: BrushToolState.clampZeroToOne(state.paintDensity),
+              min: 0,
+              max: 1,
+              displayFactor: 100,
+              keyValue: 'brush-tool-paint-density-slider',
+              onChanged: (value) =>
+                  onChanged(state.copyWith(paintDensity: value)),
+            ),
+            _PanelSlider(
+              label: AppText.strings.brColorStretch,
+              valueLabel: '${(state.colorStretch * 100).round()}%',
+              value: BrushToolState.clampZeroToOne(state.colorStretch),
+              min: 0,
+              max: 1,
+              displayFactor: 100,
+              keyValue: 'brush-tool-color-stretch-slider',
+              onChanged: (value) =>
+                  onChanged(state.copyWith(colorStretch: value)),
+            ),
+          ],
           _GroupHeader('Scattering'),
           _PanelSlider(
             // A ratio of the brush size, so scatter keeps its character as

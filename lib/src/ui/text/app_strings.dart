@@ -579,6 +579,10 @@ class AppStrings {
   String get brSize => _s('brSize');
   String get brOpacity => _s('brOpacity');
   String get brFlow => _s('brFlow');
+  String get brMixing => _s('brMixing');
+  String get brPaintAmount => _s('brPaintAmount');
+  String get brPaintDensity => _s('brPaintDensity');
+  String get brColorStretch => _s('brColorStretch');
   String get brHardness => _s('brHardness');
   String get brSpacing => _s('brSpacing');
   String get brAngle => _s('brAngle');
@@ -587,6 +591,8 @@ class AppStrings {
   String get brSizeJitter => _s('brSizeJitter');
   String get brOpacityJitter => _s('brOpacityJitter');
   String get brAngleJitter => _s('brAngleJitter');
+  String get brRoundnessJitter => _s('brRoundnessJitter');
+  String get brSpacingJitter => _s('brSpacingJitter');
   String get brScatter => _s('brScatter');
   String get brScatterCount => _s('brScatterCount');
   String get brScatterBothAxes => _s('brScatterBothAxes');
@@ -1107,6 +1113,10 @@ class AppStrings {
     'brSize': 'Size',
     'brOpacity': 'Opacity',
     'brFlow': 'Flow',
+    'brMixing': 'Mix with ground colour',
+    'brPaintAmount': 'Paint amount',
+    'brPaintDensity': 'Paint density',
+    'brColorStretch': 'Colour stretch',
     'brHardness': 'Hardness',
     'brSpacing': 'Spacing',
     'brAngle': 'Angle',
@@ -1115,6 +1125,8 @@ class AppStrings {
     'brSizeJitter': 'Size Jitter',
     'brOpacityJitter': 'Opacity Jitter',
     'brAngleJitter': 'Angle Jitter',
+    'brRoundnessJitter': 'Roundness Jitter',
+    'brSpacingJitter': 'Spacing Jitter',
     'brScatter': 'Scatter',
     'brScatterCount': 'Count',
     'brScatterBothAxes': 'Both Axes',
@@ -1724,6 +1736,10 @@ class AppStrings {
     'brSize': 'サイズ',
     'brOpacity': '不透明度',
     'brFlow': '流量',
+    'brMixing': '下地混色',
+    'brPaintAmount': '絵の具量',
+    'brPaintDensity': '絵の具濃度',
+    'brColorStretch': '色延び',
     'brHardness': '硬さ',
     'brSpacing': '間隔',
     'brAngle': '角度',
@@ -1732,6 +1748,8 @@ class AppStrings {
     'brSizeJitter': 'サイズのランダム',
     'brOpacityJitter': '不透明度のランダム',
     'brAngleJitter': '角度のランダム',
+    'brRoundnessJitter': '真円率のランダム',
+    'brSpacingJitter': '間隔のランダム',
     'brScatter': '散布',
     'brScatterCount': '個数',
     'brScatterBothAxes': '両軸',
@@ -2338,6 +2356,10 @@ class AppStrings {
     'brSize': '크기',
     'brOpacity': '불투명도',
     'brFlow': '흐름',
+    'brMixing': '밑바탕 혼색',
+    'brPaintAmount': '물감량',
+    'brPaintDensity': '물감 농도',
+    'brColorStretch': '색 늘이기',
     'brHardness': '경도',
     'brSpacing': '간격',
     'brAngle': '각도',
@@ -2346,6 +2368,8 @@ class AppStrings {
     'brSizeJitter': '크기 랜덤',
     'brOpacityJitter': '불투명도 랜덤',
     'brAngleJitter': '각도 랜덤',
+    'brRoundnessJitter': '원형률 랜덤',
+    'brSpacingJitter': '간격 랜덤',
     'brScatter': '살포',
     'brScatterCount': '개수',
     'brScatterBothAxes': '양축',
@@ -2984,6 +3008,10 @@ class AppStrings {
     'brSize': 'Taille',
     'brOpacity': 'Opacité',
     'brFlow': 'Débit',
+    'brMixing': 'Mélanger au fond',
+    'brPaintAmount': 'Quantité de peinture',
+    'brPaintDensity': 'Densité de peinture',
+    'brColorStretch': 'Étirement de la couleur',
     'brHardness': 'Dureté',
     'brSpacing': 'Espacement',
     'brAngle': 'Angle',
@@ -2992,6 +3020,8 @@ class AppStrings {
     'brSizeJitter': 'Variation de taille',
     'brOpacityJitter': "Variation d'opacité",
     'brAngleJitter': "Variation d'angle",
+    'brRoundnessJitter': 'Variation de rondeur',
+    'brSpacingJitter': "Variation d'espacement",
     'brScatter': 'Dispersion',
     'brScatterCount': 'Nombre',
     'brScatterBothAxes': 'Deux axes',
@@ -3579,6 +3609,10 @@ class AppStrings {
     'brSize': '大小',
     'brOpacity': '不透明度',
     'brFlow': '流量',
+    'brMixing': '与底色混合',
+    'brPaintAmount': '颜料量',
+    'brPaintDensity': '颜料浓度',
+    'brColorStretch': '色彩延伸',
     'brHardness': '硬度',
     'brSpacing': '间距',
     'brAngle': '角度',
@@ -3587,6 +3621,8 @@ class AppStrings {
     'brSizeJitter': '大小抖动',
     'brOpacityJitter': '不透明度抖动',
     'brAngleJitter': '角度抖动',
+    'brRoundnessJitter': '圆度抖动',
+    'brSpacingJitter': '间隔抖动',
     'brScatter': '散布',
     'brScatterCount': '数量',
     'brScatterBothAxes': '双轴',
