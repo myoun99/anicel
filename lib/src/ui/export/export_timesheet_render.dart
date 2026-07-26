@@ -12,7 +12,7 @@ import '../timesheet/timesheet_notation.dart';
 class ExportTimesheetPageTask {
   const ExportTimesheetPageTask({
     required this.cut,
-    required this.cutNumber,
+    required this.cutLabel,
     required this.cutStartFrame,
     required this.pageIndex,
     required this.pageCount,
@@ -20,7 +20,10 @@ class ExportTimesheetPageTask {
   });
 
   final Cut cut;
-  final int cutNumber;
+
+  /// The cut NUMBER as the sheet writes it — the cut's own name, which is
+  /// what the timesheet panel has always printed.
+  final String cutLabel;
 
   /// The cut's start on the TRACK axis (leading gaps included) — the SE
   /// column reads track-global spans.

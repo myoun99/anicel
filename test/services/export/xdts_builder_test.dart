@@ -92,7 +92,7 @@ void main() {
       'CAMERAWORK fields', () {
     final content = buildXdtsContent(
       cut: _cut(),
-      cutNumber: 3,
+      cutLabel: '3',
       instructionDefById: CameraInstructionSet.standard.defById,
     );
 
@@ -185,7 +185,7 @@ void main() {
           ),
         ],
       ),
-      cutNumber: 1,
+      cutLabel: '1',
     );
 
     final json =

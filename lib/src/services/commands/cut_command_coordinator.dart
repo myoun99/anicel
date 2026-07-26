@@ -90,6 +90,7 @@ class CutCommandCoordinator {
   }) {
     final project = repository.requireProject();
     final plan = planCreateCutCommandInput(project);
+    final anchor = _insertionAnchorFor(project, trackId);
 
     historyManager.execute(
       CreateCutCommand(
@@ -98,26 +99,111 @@ class CutCommandCoordinator {
         trackId: trackId,
         cutId: plan.cutId,
         layerId: plan.layerId,
-        name: name ?? nextNumericCutName(project),
+        name: name ?? nextCutNameAfter(project, anchor.referenceName),
+        index: anchor.index,
         canvasSize: canvasSize ?? defaultCutCanvasSize,
       ),
     );
   }
 
-  /// The next bare-number cut name ('1', '2', … — the sheet convention,
-  /// UI-R7 #3): one past the highest numeric name anywhere in the project,
-  /// so numbering keeps climbing even after deletes/renames.
-  static String nextNumericCutName(Project project) {
-    var highest = 0;
+  /// Where a new cut lands on [trackId], and which name it counts from: to
+  /// the RIGHT of the active cut when the active cut is on this track (the
+  /// user's working position), the track's end otherwise.
+  ({int? index, String? referenceName}) _insertionAnchorFor(
+    Project project,
+    TrackId trackId,
+  ) {
     for (final track in project.tracks) {
-      for (final cut in track.cuts) {
-        final parsed = int.tryParse(cut.name.trim());
-        if (parsed != null && parsed > highest) {
-          highest = parsed;
+      if (track.id != trackId) {
+        continue;
+      }
+      final activeIndex = track.cuts.indexWhere(
+        (cut) => cut.id == editingSession.activeCutId,
+      );
+      if (activeIndex != -1) {
+        return (
+          index: activeIndex + 1,
+          referenceName: track.cuts[activeIndex].name,
+        );
+      }
+      return (
+        index: null,
+        referenceName: track.cuts.isEmpty ? null : track.cuts.last.name,
+      );
+    }
+    return (index: null, referenceName: null);
+  }
+
+  /// The name a new cut takes when it lands after [referenceName].
+  ///
+  /// The cut NAME is the cut number (UI-R7 #3: bare numbers, the sheet
+  /// convention) — a free string the user may rename to anything, so this
+  /// never computes a number, it OFFERS candidates and takes the first one
+  /// nobody holds:
+  ///
+  /// 1. the reference's trailing digits, incremented (`39A` → `40`);
+  /// 2. failing that — which is exactly the moment a cut is being slipped
+  ///    BETWEEN two numbered ones — a letter suffix on the reference
+  ///    (`39` → `39A` → `39B`), the split-cut convention Japanese sheets
+  ///    use and Storyboard Pro's naming preferences generate;
+  /// 3. past `Z`, the suffix takes a number (`39Z` → `39A1`).
+  ///
+  /// Offering candidates rather than computing is what keeps hand-written
+  /// names (`39ハ`, `オープニング`) from breaking it: a name the rule cannot
+  /// read is simply not a candidate it would have proposed.
+  static String nextCutNameAfter(Project project, String? referenceName) {
+    final taken = <String>{
+      for (final track in project.tracks)
+        for (final cut in track.cuts) cut.name.trim(),
+    };
+
+    final reference = referenceName?.trim() ?? '';
+
+    // The number is the reference's FIRST digit run; whatever trails it is
+    // a split marker, not part of the count ('39A' counts as 39).
+    final number = RegExp(r'^(\D*)(\d+)').firstMatch(reference);
+    if (number != null) {
+      final candidate = '${number.group(1)!}${int.parse(number.group(2)!) + 1}';
+      if (!taken.contains(candidate)) {
+        return candidate;
+      }
+    }
+
+    if (reference.isEmpty) {
+      // Nothing to hang a suffix on (an empty track): count up from 1.
+      for (var next = 1; ; next += 1) {
+        final candidate = '$next';
+        if (!taken.contains(candidate)) {
+          return candidate;
         }
       }
     }
-    return '${highest + 1}';
+
+    // The number is spoken for, so this is a split: suffix the reference.
+    // A reference that already carries a single-letter suffix continues
+    // ITS series ('39A' → '39B') rather than growing a second one.
+    final suffixed = RegExp(r'^(.*?)([A-Za-z])$').firstMatch(reference);
+    final root = suffixed?.group(1) ?? reference;
+    final firstLetter = suffixed == null
+        ? 0
+        : suffixed.group(2)!.toUpperCase().codeUnitAt(0) - 64;
+
+    for (var letter = firstLetter; letter < 26; letter += 1) {
+      final candidate = '$root${String.fromCharCode(65 + letter)}';
+      if (!taken.contains(candidate)) {
+        return candidate;
+      }
+    }
+    // Past Z the suffix takes a number, the way Storyboard Pro's Auto
+    // suffix cycles into numbered variants.
+    for (var round = 1; ; round += 1) {
+      for (var letter = 0; letter < 26; letter += 1) {
+        final candidate = '$root${String.fromCharCode(65 + letter)}$round';
+        if (!taken.contains(candidate)) {
+          return candidate;
+        }
+      }
+    }
   }
 
   void resizeCutCanvas({
@@ -381,7 +467,9 @@ class CutCommandCoordinator {
         editingSession: editingSession,
         sourceCutId: sourceCutId,
         newCutId: plan.newCutId,
-        newName: name ?? nextNumericCutName(project),
+        // A linked cut is inserted right after its source, so the source
+        // is what it counts from.
+        newName: name ?? nextCutNameAfter(project, sourceCut.name),
         layerIdMap: plan.layerIdMap,
         newGroupIdBySource: plan.newGroupIdBySource,
       ),

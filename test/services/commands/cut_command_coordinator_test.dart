@@ -2476,8 +2476,8 @@ void main() {
       },
     );
 
-    test('createCut names cuts with bare climbing numbers (UI-R7 #3): one '
-        'past the highest numeric name, non-numeric names ignored', () {
+    test('createCut lands to the RIGHT of the active cut and counts from it '
+        '(UI-R7 #3: the cut name IS the cut number)', () {
       final cutA = _cut(id: 'cut-1', name: '1');
       final cutB = _cut(id: 'cut-2', name: 'Opening');
       final fixture = _fixture(
@@ -2490,11 +2490,33 @@ void main() {
       );
 
       fixture.coordinator.createCut(trackId: const TrackId('track-1'));
-      final track = fixture.project.tracks.single;
-      expect(track.cuts.last.name, '2');
+
+      // The new cut lands to the RIGHT of the active one and counts from
+      // it: '1' → '2', inserted between '1' and 'Opening'.
+      expect(
+        fixture.project.tracks.single.cuts.map((cut) => cut.name),
+        ['1', '2', 'Opening'],
+      );
+    });
+
+    test('createCut splits when the next number is spoken for', () {
+      final cutA = _cut(id: 'cut-1', name: '39');
+      final cutB = _cut(id: 'cut-2', name: '40');
+      final fixture = _fixture(
+        _project(
+          tracks: [
+            _track(id: 'track-1', name: 'Video', cuts: [cutA, cutB]),
+          ],
+        ),
+        activeCutId: cutA.id,
+      );
 
       fixture.coordinator.createCut(trackId: const TrackId('track-1'));
-      expect(fixture.project.tracks.single.cuts.last.name, '3');
+
+      expect(
+        fixture.project.tracks.single.cuts.map((cut) => cut.name),
+        ['39', '39A', '40'],
+      );
     });
 
     test('the default project cut is named "1" — bare numbers, no prefix '
