@@ -1,6 +1,12 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+/// Longest mask side kept when an imported image becomes a mask; larger
+/// sources are downscaled so the tip library stays a reasonable size on
+/// disk. It lives with the mask rather than with any one decoder, so the
+/// pure-Dart importers can honour it without dragging in `dart:ui`.
+const int maxBrushTipMaskSide = 256;
+
 /// A sampled (bitmap) brush tip: a square grayscale alpha mask.
 ///
 /// This is the engine primitive Photoshop ABR "sampled brush" tips map onto:

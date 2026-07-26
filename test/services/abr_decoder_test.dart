@@ -242,13 +242,29 @@ Uint8List _descPayload({required String sampledUuid}) {
   desc.asciiChars('bool');
   desc.u8(1);
 
-  // Brush 2: computed round brush.
+  // Brush 2: computed round brush, carrying a paper texture.
   desc.asciiChars('Objc');
   desc.unicode('');
   desc.key('null');
-  desc.i32(2);
+  desc.i32(6);
   desc.key('Nm  ');
   desc.text('Soft Round 16');
+  desc.key('useTexture');
+  desc.asciiChars('bool');
+  desc.u8(1);
+  desc.key('Txtr');
+  desc.asciiChars('Objc');
+  desc.unicode('');
+  desc.key('Ptrn');
+  desc.i32(2);
+  desc.key('Nm  ');
+  desc.text('packed paper');
+  desc.key('Idnt');
+  desc.text('pattern-rle-uuid');
+  desc.key('textureScale');
+  desc.untf('#Prc', 150);
+  desc.key('textureDepth');
+  desc.untf('#Prc', 40);
   desc.key('Brsh');
   desc.asciiChars('Objc');
   desc.unicode('');
@@ -276,7 +292,81 @@ final List<int> _tipOnePixels = [
 /// A 4x4 uniform tip.
 final List<int> _tipTwoPixels = List<int>.filled(16, 200);
 
-Uint8List _fixtureAbr({bool includeDesc = true, bool corruptDesc = false}) {
+/// Writes one `patt` pattern record: header, name, uuid, then a virtual
+/// memory array per channel. [rle] packs the planes the way Photoshop does
+/// once a pattern gets large.
+void _writePatternRecord(
+  _AbrBytes patt, {
+  required String name,
+  required String id,
+  required int width,
+  required int height,
+  required List<int> Function(int channel) plane,
+  int channels = 3,
+  bool rle = false,
+}) {
+  final record = _AbrBytes();
+  record.i32(1); // record version
+  record.i32(3); // image mode: RGB
+  record.i16(height);
+  record.i16(width);
+  record.unicode(name);
+  record.pascal(id);
+
+  record.i32(3); // array list version
+  record.i32(0); // array list length (unread)
+  record.i32(0); // top
+  record.i32(0); // left
+  record.i32(height);
+  record.i32(width);
+  record.i32(24); // declared channel slots, as Photoshop writes them
+
+  for (var channel = 0; channel < 24; channel += 1) {
+    if (channel >= channels) {
+      record.i32(0); // written = false
+      record.i32(0); // length
+      continue;
+    }
+    final body = _AbrBytes();
+    body.i32(8); // pixel depth
+    body.i32(0);
+    body.i32(0);
+    body.i32(height);
+    body.i32(width);
+    body.i16(8); // pixel depth, repeated
+    body.u8(rle ? 1 : 0);
+    final pixels = plane(channel);
+    if (rle) {
+      // One literal run per scanline: a 1-byte count then the row.
+      for (var y = 0; y < height; y += 1) {
+        body.i16(width + 1);
+      }
+      for (var y = 0; y < height; y += 1) {
+        body.u8(width - 1); // literal run of `width` bytes
+        body.raw(pixels.sublist(y * width, (y + 1) * width));
+      }
+    } else {
+      body.raw(pixels);
+    }
+    final bytes = body.bytes;
+    record.i32(1); // written
+    record.i32(bytes.length);
+    record.raw(bytes);
+  }
+
+  final recordBytes = record.bytes;
+  patt.i32(recordBytes.length);
+  patt.raw(recordBytes);
+  while (patt.bytes.length % 4 != 0) {
+    patt.u8(0);
+  }
+}
+
+Uint8List _fixtureAbr({
+  bool includeDesc = true,
+  bool corruptDesc = false,
+  bool patternsMissing = false,
+}) {
   final samp = _AbrBytes();
   _writeSampEntry(
     samp,
@@ -294,10 +384,37 @@ Uint8List _fixtureAbr({bool includeDesc = true, bool corruptDesc = false}) {
     pixels: _tipTwoPixels,
   );
 
+  // Two patterns: a raw one that nothing references, and the RLE one the
+  // computed brush asks for by uuid.
+  final patt = _AbrBytes();
+  _writePatternRecord(
+    patt,
+    name: 'plain paper',
+    id: 'pattern-raw-uuid',
+    width: 4,
+    height: 4,
+    plane: (_) => List<int>.filled(16, 90),
+  );
+  _writePatternRecord(
+    patt,
+    name: 'packed paper',
+    id: 'pattern-rle-uuid',
+    width: 4,
+    height: 4,
+    rle: true,
+    // Channel 0 is the only one that differs, so a decoder that ignored the
+    // green/blue planes would produce a different luminance.
+    plane: (channel) =>
+        List<int>.generate(16, (i) => channel == 0 ? (i * 16) % 256 : 0),
+  );
+
   final file = _AbrBytes();
   file.i16(6); // version
   file.i16(2); // subversion
   _write8bimSection(file, 'samp', samp.bytes);
+  if (!patternsMissing) {
+    _write8bimSection(file, 'patt', patt.bytes);
+  }
   if (includeDesc) {
     final payload = corruptDesc
         ? Uint8List.fromList([0, 0, 0, 99, 1, 2, 3])
@@ -363,6 +480,38 @@ void main() {
       // No toolOptions on this one: opacity and flow fall back to full.
       expect(round.settings.opacity, 1.0);
       expect(round.settings.flow, 1.0);
+      // Paper texture joins the `patt` section by uuid; the referenced
+      // pattern is RLE-packed, which is what Photoshop writes once a
+      // pattern gets large.
+      expect(round.settings.textureMask, isNotNull);
+      expect(round.settings.textureMask!.id, 'abr-pattern-pattern-rle-uuid');
+      expect(round.settings.textureMask!.size, 4);
+      expect(round.settings.textureScale, closeTo(1.5, 1e-9));
+      // Photoshop's texture depth is Clip Studio's density.
+      expect(round.settings.textureDensity, closeTo(0.4, 1e-9));
+      // Coverage reads dark-means-paint, over the luminance of all three
+      // channels: pixel 0 is black -> full, and the ramp darkens coverage.
+      final paper = round.settings.textureMask!;
+      expect(paper.alpha[0], 255);
+      expect(paper.alpha[1], lessThan(255));
+      expect(paper.alpha[15], lessThan(paper.alpha[1]));
+      // The brush that asked for no texture keeps none.
+      expect(chalk.settings.textureMask, isNull);
+    });
+
+    test('a texture reference with no embedded pattern warns', () {
+      // Real packs ship brushes whose paper was never embedded.
+      final result = decodeAbrBrushFile(
+        _fixtureAbr(patternsMissing: true),
+        sourceName: 'fixture',
+      );
+      final round = result.presets.firstWhere((p) => p.name == 'Soft Round 16');
+
+      expect(round.settings.textureMask, isNull);
+      expect(
+        result.warnings.any((w) => w.contains('not embedded in this file')),
+        isTrue,
+      );
     });
 
     test('pads non-square tips to a centered square mask', () {

@@ -95,3 +95,51 @@ class AbrByteReader {
     }
   }
 }
+
+/// Decodes Photoshop's per-scanline PackBits RLE: one compressed byte count
+/// per scanline, then the packed data for each in turn.
+///
+/// Shared by the sampled-tip reader and the pattern reader — both are the
+/// same Photoshop compression code (1) over the same kind of 8-bit plane.
+Uint8List decodePackBitsScanlines(
+  AbrByteReader reader, {
+  required int width,
+  required int height,
+}) {
+  final scanlineLengths = List<int>.generate(
+    height,
+    (_) => reader.readUint16(),
+  );
+  final output = Uint8List(width * height);
+  for (var y = 0; y < height; y += 1) {
+    final compressed = reader.readBytes(scanlineLengths[y]);
+    var read = 0;
+    var write = y * width;
+    final rowEnd = write + width;
+    while (read < compressed.length && write < rowEnd) {
+      final control = compressed[read].toSigned(8);
+      read += 1;
+      if (control >= 0) {
+        final count = control + 1;
+        if (read + count > compressed.length || write + count > rowEnd) {
+          throw const FormatException('Corrupt RLE scanline.');
+        }
+        output.setRange(write, write + count, compressed, read);
+        read += count;
+        write += count;
+      } else if (control != -128) {
+        final count = 1 - control;
+        if (read >= compressed.length || write + count > rowEnd) {
+          throw const FormatException('Corrupt RLE scanline.');
+        }
+        output.fillRange(write, write + count, compressed[read]);
+        read += 1;
+        write += count;
+      }
+    }
+    if (write != rowEnd) {
+      throw const FormatException('RLE scanline ended short.');
+    }
+  }
+  return output;
+}

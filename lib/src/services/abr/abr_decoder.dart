@@ -9,6 +9,7 @@ import '../../models/brush_tip_mask.dart';
 import '../../models/brush_tip_rotation_mode.dart';
 import 'abr_byte_reader.dart';
 import 'photoshop_descriptor.dart';
+import 'photoshop_pattern.dart';
 
 /// Result of decoding a Photoshop `.abr` brush file.
 class AbrImportResult {
@@ -63,6 +64,7 @@ AbrImportResult decodeAbrBrushFile(
   final warnings = <String>[];
   final tipsByKey = <String, BrushTipMask>{};
   final tipOrder = <String>[];
+  final patternsById = <String, PsPattern>{};
   PsDescriptor? descriptor;
 
   while (_seekTo8bimSection(reader)) {
@@ -82,6 +84,12 @@ AbrImportResult decodeAbrBrushFile(
           tipOrder: tipOrder,
           warnings: warnings,
         );
+      case 'patt':
+        for (final pattern in readPatternSection(
+          reader.readBytes(sectionLength),
+        )) {
+          patternsById[pattern.id] = pattern;
+        }
       case 'desc':
         try {
           descriptor = readVersionedDescriptor(
@@ -131,6 +139,7 @@ AbrImportResult decodeAbrBrushFile(
       final preset = _presetFromBrushDescriptor(
         entry,
         tipsByKey: tipsByKey,
+        patternsById: patternsById,
         usedTipKeys: usedTipKeys,
         sourceName: sourceName,
         computedIndex: () => ++computedIndex,
@@ -235,7 +244,7 @@ void _readSampledTips(
       }
 
       final pixels = compressed
-          ? _decodePackBitsScanlines(reader, width: width, height: height)
+          ? decodePackBitsScanlines(reader, width: width, height: height)
           : Uint8List.fromList(reader.readBytes(width * height));
       final mask = _squareMaskFromTipPixels(
         key: key,
@@ -251,51 +260,6 @@ void _readSampledTips(
       reader.offset = nextEntry;
     }
   }
-}
-
-/// ABR tip RLE: one 16-bit compressed byte count per scanline, then
-/// PackBits data per scanline.
-Uint8List _decodePackBitsScanlines(
-  AbrByteReader reader, {
-  required int width,
-  required int height,
-}) {
-  final scanlineLengths = List<int>.generate(
-    height,
-    (_) => reader.readUint16(),
-  );
-  final output = Uint8List(width * height);
-  for (var y = 0; y < height; y += 1) {
-    final compressed = reader.readBytes(scanlineLengths[y]);
-    var read = 0;
-    var write = y * width;
-    final rowEnd = write + width;
-    while (read < compressed.length && write < rowEnd) {
-      final control = compressed[read].toSigned(8);
-      read += 1;
-      if (control >= 0) {
-        final count = control + 1;
-        if (read + count > compressed.length || write + count > rowEnd) {
-          throw const FormatException('Corrupt RLE scanline.');
-        }
-        output.setRange(write, write + count, compressed, read);
-        read += count;
-        write += count;
-      } else if (control != -128) {
-        final count = 1 - control;
-        if (read >= compressed.length || write + count > rowEnd) {
-          throw const FormatException('Corrupt RLE scanline.');
-        }
-        output.fillRange(write, write + count, compressed[read]);
-        read += 1;
-        write += count;
-      }
-    }
-    if (write != rowEnd) {
-      throw const FormatException('RLE scanline ended short.');
-    }
-  }
-  return output;
 }
 
 /// Pads a tip bitmap to a centered square, matching the engine's
@@ -341,6 +305,7 @@ List<Object?>? _brushListOf(PsDescriptor? descriptor) {
 BrushPreset? _presetFromBrushDescriptor(
   PsDescriptor entry, {
   required Map<String, BrushTipMask> tipsByKey,
+  required Map<String, PsPattern> patternsById,
   required Set<String> usedTipKeys,
   required String sourceName,
   required int Function() computedIndex,
@@ -456,13 +421,50 @@ BrushPreset? _presetFromBrushDescriptor(
     }
   }
 
-  // Photoshop paper texture lives in the unparsed 'patt' section; flag it
-  // so the fidelity gap is visible instead of silent.
+  // Paper texture: the descriptor names a pattern from the `patt` section by
+  // uuid, and the engine anchors it to the canvas exactly like the Clip
+  // Studio one.
+  BrushTipMask? textureMask;
+  var textureScale = 1.0;
+  var textureDensity = 1.0;
   if (entry['useTexture'] == true) {
-    warnings.add(
-      'Brush "${name ?? sampledKey ?? ''}": Photoshop paper texture is not '
-      'imported yet.',
-    );
+    final label = name ?? sampledKey ?? '';
+    final reference = entry.childDescriptor('Txtr');
+    final patternId = reference?.textValue('Idnt');
+    final pattern = patternId == null ? null : patternsById[patternId];
+    if (pattern == null) {
+      warnings.add(
+        'Brush "$label": paper texture '
+        '"${reference?.textValue('Nm  ') ?? patternId ?? 'unknown'}" is not '
+        'embedded in this file; imported without it.',
+      );
+    } else {
+      textureMask = brushTipMaskFromPattern(
+        pattern,
+        id: 'abr-pattern-${pattern.id}',
+        invert: entry['InvT'] == true,
+      );
+      final scalePercent = entry.numberValue('textureScale');
+      if (scalePercent != null && scalePercent > 0) {
+        textureScale = (scalePercent / 100.0).clamp(0.05, 10.0).toDouble();
+      }
+      // Photoshop's texture "depth" is the same knob as Clip Studio's
+      // density: how far the paper is allowed to eat into the coverage.
+      final depthPercent = entry.numberValue('textureDepth');
+      if (depthPercent != null) {
+        textureDensity = (depthPercent / 100.0).clamp(0.0, 1.0).toDouble();
+      }
+      // The engine has no brightness/contrast on a paper texture, so say so
+      // rather than let the grain come in at the wrong strength silently.
+      final brightness = entry.numberValue('textureBrightness') ?? 0.0;
+      final contrast = entry.numberValue('textureContrast') ?? 0.0;
+      if (brightness != 0.0 || contrast != 0.0) {
+        warnings.add(
+          'Brush "$label": paper texture brightness/contrast '
+          '(${brightness.round()}/${contrast.round()}) are not applied.',
+        );
+      }
+    }
   }
 
   var scatterRadiusRatio = 0.0;
@@ -510,6 +512,9 @@ BrushPreset? _presetFromBrushDescriptor(
       scatterBothAxes: scatterBothAxes,
       dualMask: dualMask,
       dualMaskScale: dualMaskScale,
+      textureMask: textureMask,
+      textureScale: textureScale,
+      textureDensity: textureDensity,
     ),
   );
 }
@@ -555,6 +560,9 @@ BrushSettings _settingsForTip(
   bool scatterBothAxes = true,
   BrushTipMask? dualMask,
   double dualMaskScale = 1.0,
+  BrushTipMask? textureMask,
+  double textureScale = 1.0,
+  double textureDensity = 1.0,
 }) {
   // Photoshop angles span -180..180; the ellipse repeats every 180.
   final normalizedAngle = ((angleDegrees % 180.0) + 180.0) % 180.0;
@@ -581,5 +589,8 @@ BrushSettings _settingsForTip(
     scatterBothAxes: scatterBothAxes,
     dualMask: dualMask,
     dualMaskScale: dualMaskScale,
+    textureMask: textureMask,
+    textureScale: textureScale,
+    textureDensity: textureDensity,
   );
 }
