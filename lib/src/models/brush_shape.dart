@@ -3,6 +3,9 @@ import 'brush_tip_mask.dart';
 import 'brush_tip_rotation_mode.dart';
 import 'brush_tip_shape.dart';
 
+/// Which of the three sampled-mask slots a write targets.
+enum BrushMaskSlot { tip, dual, texture }
+
 /// The 26 brush parameters shared, byte-for-byte, by every settings bag in the
 /// stroke chain: the UI's `BrushToolState`, the preset payload `BrushSettings`,
 /// and the canvas input `BrushEditCanvasInputSettings`. Each of those HOLDS one
@@ -161,6 +164,41 @@ class BrushShape {
       dualMask: dualMask,
       dualMaskScale: dualMaskScale,
       textureMask: textureMask,
+      textureScale: textureScale,
+      textureDensity: textureDensity,
+    );
+  }
+
+  /// Replaces — or CLEARS, with null — one of the three sampled masks.
+  ///
+  /// [copyWith] deliberately preserves them so a slider tweak never drops a
+  /// textured tip, which leaves no way to take one OFF. This is that way.
+  BrushShape withMask(BrushMaskSlot slot, BrushTipMask? mask) {
+    return BrushShape(
+      color: color,
+      size: size,
+      opacity: opacity,
+      flow: flow,
+      hardness: hardness,
+      spacing: spacing,
+      tipShape: tipShape,
+      sizePressureCurve: sizePressureCurve,
+      opacityPressureCurve: opacityPressureCurve,
+      flowPressureCurve: flowPressureCurve,
+      hardnessPressureCurve: hardnessPressureCurve,
+      roundness: roundness,
+      angleDegrees: angleDegrees,
+      tipMask: slot == BrushMaskSlot.tip ? mask : tipMask,
+      rotationMode: rotationMode,
+      sizeJitter: sizeJitter,
+      opacityJitter: opacityJitter,
+      angleJitter: angleJitter,
+      scatterRadiusRatio: scatterRadiusRatio,
+      scatterCount: scatterCount,
+      scatterBothAxes: scatterBothAxes,
+      dualMask: slot == BrushMaskSlot.dual ? mask : dualMask,
+      dualMaskScale: dualMaskScale,
+      textureMask: slot == BrushMaskSlot.texture ? mask : textureMask,
       textureScale: textureScale,
       textureDensity: textureDensity,
     );

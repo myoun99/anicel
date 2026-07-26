@@ -10,6 +10,8 @@ import '../../models/timeline_exposure.dart';
 import '../timeline/timeline_cell_exposure_state.dart';
 import '../timeline/timeline_exposure_block_visual.dart';
 import '../timeline/timeline_frame_cell.dart';
+import '../timeline/timeline_frame_geometry.dart';
+import '../timeline/timeline_frame_span_layout.dart';
 import '../timeline/timeline_instruction_row_visual.dart';
 import '../timeline/timeline_se_row_visual.dart';
 
@@ -134,9 +136,6 @@ class InstanceEditPreview extends StatelessWidget {
                 layer: layer,
                 frameStartIndex: 0,
                 frameEndIndexExclusive: komaCount,
-                leadingFrameSpacerWidth: 0,
-                frameCellExtent: komaExtent,
-                crossAxisExtent: crossExtent,
                 axis: axis,
                 keyPrefix: 'instance-preview',
               )
@@ -144,9 +143,6 @@ class InstanceEditPreview extends StatelessWidget {
                 layer: layer,
                 frameStartIndex: 0,
                 frameEndIndexExclusive: komaCount,
-                leadingFrameSpacerWidth: 0,
-                frameCellExtent: komaExtent,
-                crossAxisExtent: crossExtent,
                 axis: axis,
                 defById: _defById!,
                 keyPrefix: 'instance-preview',
@@ -171,7 +167,21 @@ class InstanceEditPreview extends StatelessWidget {
                       mainAxisSize: MainAxisSize.min,
                       children: cells,
                     ),
-                    ...overlays,
+                    // The span overlays place themselves off the frame
+                    // geometry now (the timeline's own mechanism); the
+                    // preview hands them a fixed one for its koma strip.
+                    Positioned.fill(
+                      child: TimelineFixedFrameSpanLayer(
+                        geometry: TimelineFrameGeometry(
+                          frameCellExtent: komaExtent,
+                          frameStartIndex: 0,
+                          frameEndIndexExclusive: komaCount,
+                        ),
+                        crossAxisExtent: crossExtent,
+                        axis: axis,
+                        children: overlays,
+                      ),
+                    ),
                   ],
                 ),
               ),

@@ -72,6 +72,7 @@ class AppStrings {
   /// R26 #35/#13 — the shared CURSOR NOTICES: every refused action says
   /// why, right where the user is looking.
   String get noticeNoFrameHere => _s('noticeNoFrameHere');
+
   /// R27 #16: the refusal is about the LAYER, not the section — the CAM
   /// section is no longer uniformly undrawable in the user's model.
   String get noticeLayerNotDrawable => _s('noticeLayerNotDrawable');
@@ -158,7 +159,8 @@ class AppStrings {
   String get audioEnvelopeTitle => _s('audioEnvelopeTitle');
   String get audioEnvelopeHelp => _s('audioEnvelopeHelp');
   String get audioEnvelopeFrameLabel => _s('audioEnvelopeFrameLabel');
-  String get audioEnvelopeGainPercentLabel => _s('audioEnvelopeGainPercentLabel');
+  String get audioEnvelopeGainPercentLabel =>
+      _s('audioEnvelopeGainPercentLabel');
   String get audioEnvelopeAddKey => _s('audioEnvelopeAddKey');
 
   // --- The fps-change audio notice (EXPORT-AUDIO ④) ---
@@ -218,8 +220,7 @@ class AppStrings {
   String get convertLinkedCutTitle => _s('convertLinkedCutTitle');
 
   /// '{cut}' is replaced with the origin cut's name.
-  String get convertLinkedCutBodyTemplate =>
-      _s('convertLinkedCutBodyTemplate');
+  String get convertLinkedCutBodyTemplate => _s('convertLinkedCutBodyTemplate');
   String get convertLinkedCutTargetLabel => _s('convertLinkedCutTargetLabel');
 
   /// '{names}' is the comma-joined layer list.
@@ -577,6 +578,21 @@ class AppStrings {
   String get brAngle => _s('brAngle');
   String get brRoundness => _s('brRoundness');
   String get brScale => _s('brScale');
+  String get brSizeJitter => _s('brSizeJitter');
+  String get brOpacityJitter => _s('brOpacityJitter');
+  String get brAngleJitter => _s('brAngleJitter');
+  String get brScatter => _s('brScatter');
+  String get brScatterCount => _s('brScatterCount');
+  String get brScatterBothAxes => _s('brScatterBothAxes');
+  String get brBrushTip => _s('brBrushTip');
+  String get brTipNone => _s('brTipNone');
+  String get brDualTip => _s('brDualTip');
+  String get brTexture => _s('brTexture');
+  String get brTextureDensity => _s('brTextureDensity');
+  String get brAddTipImage => _s('brAddTipImage');
+  String get brTipRotation => _s('brTipRotation');
+  String get brRotationFixed => _s('brRotationFixed');
+  String get brRotationDirection => _s('brRotationDirection');
   String get brStabilizer => _s('brStabilizer');
   String get brBlend => _s('brBlend');
   String get brBlendMode => _s('brBlendMode');
@@ -679,7 +695,6 @@ class AppStrings {
     AppLanguage.zhHans => _zhHans,
   };
 
-
   static const _en = AppStrings._(_enValues);
   static const _ja = AppStrings._(_jaValues);
   static const _ko = AppStrings._(_koValues);
@@ -704,11 +719,13 @@ class AppStrings {
     'commonClose': 'Close',
     'exportNoCuts': 'This project has no cuts to export yet.',
     'audioOffsetTitle': 'A/V offset',
-    'audioOffsetHelp': 'Fine-tunes when the picture is shown relative to the sound. The measurable part of the delay is corrected automatically; this removes what remains — wireless headphones commonly sit 150–300 ms behind and report nothing. Positive shows the picture LATER (sound arriving late is the common case).',
+    'audioOffsetHelp':
+        'Fine-tunes when the picture is shown relative to the sound. The measurable part of the delay is corrected automatically; this removes what remains — wireless headphones commonly sit 150–300 ms behind and report nothing. Positive shows the picture LATER (sound arriving late is the common case).',
     'audioOffsetLabel': 'Offset',
     'audioUnitFrames': 'frames',
     'audioDevicesTitle': 'Devices',
-    'audioDevicesHelp': 'Which speaker playback uses and which microphone recording will use. Changes apply from the next playback run; a device that is no longer attached falls back to the system default.',
+    'audioDevicesHelp':
+        'Which speaker playback uses and which microphone recording will use. Changes apply from the next playback run; a device that is no longer attached falls back to the system default.',
     'audioOutputLabel': 'Output',
     'audioInputLabel': 'Input',
     'audioSystemDefault': 'System default',
@@ -717,9 +734,11 @@ class AppStrings {
     'audioSyncInspectorTitle': 'Sync inspector',
     'recordVoiceTooltip': 'Record voice at the playhead',
     'recordVoiceStopTooltip': 'Stop recording (places the take)',
-    'recordMicOpenFailed': 'Could not open the microphone — check Preferences ▸ Audio and the OS microphone permission.',
+    'recordMicOpenFailed':
+        'Could not open the microphone — check Preferences ▸ Audio and the OS microphone permission.',
     'recordMicPermissionDenied': 'Microphone permission was not granted.',
-    'recordSelectSeLane': 'Recording lands on the selected SE track — select one first.',
+    'recordSelectSeLane':
+        'Recording lands on the selected SE track — select one first.',
     'recordTakeClipped': 'The take clipped — the red corner marks the block.',
     'recordClipMarkerTooltip': 'This take clipped (recorded too hot)',
     'audioMicGainLabel': 'Mic gain (dB)',
@@ -738,11 +757,13 @@ class AppStrings {
     'recordNothingRecording': 'Nothing was recording.',
     'recordTakeEmpty': 'The take was empty — nothing to place.',
     'recordPlacementFailed': 'The recording could not be placed.',
-    'recordDroppedFramesTemplate': 'Recorded, but {count} frames were dropped (the machine could not keep up) — check the take.',
+    'recordDroppedFramesTemplate':
+        'Recorded, but {count} frames were dropped (the machine could not keep up) — check the take.',
     'layerAudioTitle': 'Layer Audio',
     'audioGainLabel': 'Gain',
     'audioPanLabel': 'Pan',
-    'layerAudioPanHelp': 'Pan applies on the device mixer path (equal-power law).',
+    'layerAudioPanHelp':
+        'Pan applies on the device mixer path (equal-power law).',
     'audioSolo': 'Solo',
     'audioUnsolo': 'Unsolo',
     'audioLayerAudioMenu': 'Layer audio…',
@@ -752,12 +773,14 @@ class AppStrings {
     'audioFadesLinearMenu': 'Fades: linear (switch to equal-power)',
     'audioClipGainTitle': 'Clip Gain',
     'audioEnvelopeTitle': 'Volume Envelope',
-    'audioEnvelopeHelp': 'Keyed gains at clip frames (linear between keys, held past the ends). Empty = flat.',
+    'audioEnvelopeHelp':
+        'Keyed gains at clip frames (linear between keys, held past the ends). Empty = flat.',
     'audioEnvelopeFrameLabel': 'frame',
     'audioEnvelopeGainPercentLabel': 'gain %',
     'audioEnvelopeAddKey': 'Add key',
     'fpsAudioTitleTemplate': '{from} → {to}: what happens to sound?',
-    'fpsAudioBody': 'These two rates differ by 0.1% in real speed, and audio exists in real seconds — it cannot stay both frame-exact and time-exact.\n\n• Keep audio timing: sounds keep their real seconds; their frame positions drift by 0.1% (about one frame every 42 seconds).\n\n• Pull audio 0.1%: sounds are resampled by the exact pulldown ratio (an inaudible pitch change — the standard telecine conform) so every sound keeps its exact frame span.',
+    'fpsAudioBody':
+        'These two rates differ by 0.1% in real speed, and audio exists in real seconds — it cannot stay both frame-exact and time-exact.\n\n• Keep audio timing: sounds keep their real seconds; their frame positions drift by 0.1% (about one frame every 42 seconds).\n\n• Pull audio 0.1%: sounds are resampled by the exact pulldown ratio (an inaudible pitch change — the standard telecine conform) so every sound keeps its exact frame span.',
     'fpsAudioKeep': 'Keep audio timing',
     'fpsAudioPull': 'Pull audio 0.1%',
     'selectionMoveConfirmTitle': 'Commit move',
@@ -988,8 +1011,7 @@ class AppStrings {
     'mediaRename': 'Rename media',
     'mediaRelink': 'Relink…',
     'mediaRemove': 'Remove',
-    'mediaStillLinked':
-        'Still linked on SE rows — remove its sounds first.',
+    'mediaStillLinked': 'Still linked on SE rows — remove its sounds first.',
     'panelCanvas': 'Canvas',
     'panelColor': 'Color',
     'panelMedia': 'Media',
@@ -1084,6 +1106,21 @@ class AppStrings {
     'brAngle': 'Angle',
     'brRoundness': 'Roundness',
     'brScale': 'Scale',
+    'brSizeJitter': 'Size Jitter',
+    'brOpacityJitter': 'Opacity Jitter',
+    'brAngleJitter': 'Angle Jitter',
+    'brScatter': 'Scatter',
+    'brScatterCount': 'Count',
+    'brScatterBothAxes': 'Both Axes',
+    'brTipRotation': 'Rotation',
+    'brRotationFixed': 'Fixed',
+    'brRotationDirection': 'Direction',
+    'brBrushTip': 'Brush Tip',
+    'brTipNone': 'None',
+    'brDualTip': 'Dual Tip',
+    'brTexture': 'Texture',
+    'brTextureDensity': 'Density',
+    'brAddTipImage': 'Add a tip from an image',
     'brStabilizer': 'Stabilizer',
     'brBlend': 'Blend',
     'brBlendMode': 'Brush blend mode',
@@ -1227,11 +1264,13 @@ class AppStrings {
     'commonClose': '閉じる',
     'exportNoCuts': 'このプロジェクトには書き出せるカットがありません。',
     'audioOffsetTitle': 'A/Vオフセット',
-    'audioOffsetHelp': '音に対して絵をいつ表示するかを微調整します。測定できる遅延は自動補正され、これは残りを取り除くための設定です — ワイヤレスイヤホンは150〜300ms遅れているのに何も報告しないのが普通です。正の値で絵が遅く表示されます（音が遅れて届くのが一般的なケース）。',
+    'audioOffsetHelp':
+        '音に対して絵をいつ表示するかを微調整します。測定できる遅延は自動補正され、これは残りを取り除くための設定です — ワイヤレスイヤホンは150〜300ms遅れているのに何も報告しないのが普通です。正の値で絵が遅く表示されます（音が遅れて届くのが一般的なケース）。',
     'audioOffsetLabel': 'オフセット',
     'audioUnitFrames': 'コマ',
     'audioDevicesTitle': 'デバイス',
-    'audioDevicesHelp': '再生に使うスピーカーと録音に使うマイクの選択。変更は次の再生から適用されます。取り外されたデバイスはシステム既定にフォールバックします。',
+    'audioDevicesHelp':
+        '再生に使うスピーカーと録音に使うマイクの選択。変更は次の再生から適用されます。取り外されたデバイスはシステム既定にフォールバックします。',
     'audioOutputLabel': '出力',
     'audioInputLabel': '入力',
     'audioSystemDefault': 'システム既定',
@@ -1261,7 +1300,8 @@ class AppStrings {
     'recordNothingRecording': '録音中ではありません。',
     'recordTakeEmpty': 'テイクが空でした — 配置するものがありません。',
     'recordPlacementFailed': '録音を配置できませんでした。',
-    'recordDroppedFramesTemplate': '録音しましたが{count}フレームが欠落しました（処理が追いつきませんでした）— テイクを確認してください。',
+    'recordDroppedFramesTemplate':
+        '録音しましたが{count}フレームが欠落しました（処理が追いつきませんでした）— テイクを確認してください。',
     'layerAudioTitle': 'レイヤーオーディオ',
     'audioGainLabel': 'ゲイン',
     'audioPanLabel': 'パン',
@@ -1280,7 +1320,8 @@ class AppStrings {
     'audioEnvelopeGainPercentLabel': 'ゲイン %',
     'audioEnvelopeAddKey': 'キーを追加',
     'fpsAudioTitleTemplate': '{from} → {to}：音はどうしますか？',
-    'fpsAudioBody': 'この2つのレートは実速度が0.1%異なり、音は実時間で存在します — コマ厳密と時間厳密を両立することはできません。\n\n• 音のタイミングを維持：音は実時間を保ち、コマ位置が0.1%ずれます（約42秒ごとに1コマ）。\n\n• 音を0.1%プル：正確なプルダウン比でリサンプルします（聴き取れないピッチ変化 — テレシネの標準コンフォーム）。全ての音がコマ範囲を維持します。',
+    'fpsAudioBody':
+        'この2つのレートは実速度が0.1%異なり、音は実時間で存在します — コマ厳密と時間厳密を両立することはできません。\n\n• 音のタイミングを維持：音は実時間を保ち、コマ位置が0.1%ずれます（約42秒ごとに1コマ）。\n\n• 音を0.1%プル：正確なプルダウン比でリサンプルします（聴き取れないピッチ変化 — テレシネの標準コンフォーム）。全ての音がコマ範囲を維持します。',
     'fpsAudioKeep': '音のタイミングを維持',
     'fpsAudioPull': '音を0.1%プル',
     'selectionMoveConfirmTitle': '移動の確定',
@@ -1470,8 +1511,7 @@ class AppStrings {
     'inputBrushSizeSnaps': 'ブラシサイズのスナップ（px）',
     'inputTabletHeading': 'タブレットサービス',
     'inputTabletStandard': '標準（既定）',
-    'inputTabletStandardHelp':
-        'OSのポインタ経路（Windows Ink）— 最新ドライバや内蔵ペンに適します。',
+    'inputTabletStandardHelp': 'OSのポインタ経路（Windows Ink）— 最新ドライバや内蔵ペンに適します。',
     'inputTabletWintab': 'Wintab',
     'inputTabletWintabHelp':
         'タブレットドライバから直接筆圧を読みます — ペンが筆圧なし、または'
@@ -1681,6 +1721,21 @@ class AppStrings {
     'brAngle': '角度',
     'brRoundness': '真円率',
     'brScale': '拡大率',
+    'brSizeJitter': 'サイズのランダム',
+    'brOpacityJitter': '不透明度のランダム',
+    'brAngleJitter': '角度のランダム',
+    'brScatter': '散布',
+    'brScatterCount': '個数',
+    'brScatterBothAxes': '両軸',
+    'brTipRotation': '回転',
+    'brRotationFixed': '固定',
+    'brRotationDirection': '進行方向',
+    'brBrushTip': 'ブラシ先端',
+    'brTipNone': 'なし',
+    'brDualTip': 'デュアル先端',
+    'brTexture': '質感',
+    'brTextureDensity': '濃度',
+    'brAddTipImage': '画像から先端を追加',
     'brStabilizer': '手ブレ補正',
     'brBlend': '合成',
     'brBlendMode': 'ブラシの合成モード',
@@ -1824,11 +1879,13 @@ class AppStrings {
     'commonClose': '닫기',
     'exportNoCuts': '이 프로젝트에는 출력할 컷이 없습니다.',
     'audioOffsetTitle': 'A/V 오프셋',
-    'audioOffsetHelp': '소리에 대해 그림을 언제 표시할지 미세 조정합니다. 측정 가능한 지연은 자동 보정되며, 이 설정은 그 잔차를 제거합니다 — 무선 이어폰은 150~300ms 늦으면서 아무것도 보고하지 않는 게 보통입니다. 양수면 그림이 더 늦게 표시됩니다(소리가 늦게 도착하는 경우가 일반적).',
+    'audioOffsetHelp':
+        '소리에 대해 그림을 언제 표시할지 미세 조정합니다. 측정 가능한 지연은 자동 보정되며, 이 설정은 그 잔차를 제거합니다 — 무선 이어폰은 150~300ms 늦으면서 아무것도 보고하지 않는 게 보통입니다. 양수면 그림이 더 늦게 표시됩니다(소리가 늦게 도착하는 경우가 일반적).',
     'audioOffsetLabel': '오프셋',
     'audioUnitFrames': '프레임',
     'audioDevicesTitle': '장치',
-    'audioDevicesHelp': '재생에 쓸 스피커와 녹음에 쓸 마이크. 변경은 다음 재생부터 적용되며, 분리된 장치는 시스템 기본값으로 대체됩니다.',
+    'audioDevicesHelp':
+        '재생에 쓸 스피커와 녹음에 쓸 마이크. 변경은 다음 재생부터 적용되며, 분리된 장치는 시스템 기본값으로 대체됩니다.',
     'audioOutputLabel': '출력',
     'audioInputLabel': '입력',
     'audioSystemDefault': '시스템 기본값',
@@ -1858,7 +1915,8 @@ class AppStrings {
     'recordNothingRecording': '녹음 중이 아닙니다.',
     'recordTakeEmpty': '테이크가 비어 있어 배치할 것이 없습니다.',
     'recordPlacementFailed': '녹음을 배치하지 못했습니다.',
-    'recordDroppedFramesTemplate': '녹음됐지만 {count}프레임이 유실됐습니다(처리가 따라가지 못함) — 테이크를 확인하세요.',
+    'recordDroppedFramesTemplate':
+        '녹음됐지만 {count}프레임이 유실됐습니다(처리가 따라가지 못함) — 테이크를 확인하세요.',
     'layerAudioTitle': '레이어 오디오',
     'audioGainLabel': '게인',
     'audioPanLabel': '팬',
@@ -1877,7 +1935,8 @@ class AppStrings {
     'audioEnvelopeGainPercentLabel': '게인 %',
     'audioEnvelopeAddKey': '키 추가',
     'fpsAudioTitleTemplate': '{from} → {to}: 소리는 어떻게 할까요?',
-    'fpsAudioBody': '두 레이트는 실제 속도가 0.1% 다르고, 소리는 실시간으로 존재합니다 — 프레임 정확과 시간 정확을 동시에 지킬 수 없습니다.\n\n• 오디오 타이밍 유지: 소리는 실시간을 지키고, 프레임 위치가 0.1% 어긋납니다(약 42초마다 1프레임).\n\n• 오디오 0.1% 당김: 정확한 풀다운 비율로 리샘플합니다(들리지 않는 피치 변화 — 텔레시네 표준 컨폼). 모든 소리가 프레임 범위를 유지합니다.',
+    'fpsAudioBody':
+        '두 레이트는 실제 속도가 0.1% 다르고, 소리는 실시간으로 존재합니다 — 프레임 정확과 시간 정확을 동시에 지킬 수 없습니다.\n\n• 오디오 타이밍 유지: 소리는 실시간을 지키고, 프레임 위치가 0.1% 어긋납니다(약 42초마다 1프레임).\n\n• 오디오 0.1% 당김: 정확한 풀다운 비율로 리샘플합니다(들리지 않는 피치 변화 — 텔레시네 표준 컨폼). 모든 소리가 프레임 범위를 유지합니다.',
     'fpsAudioKeep': '오디오 타이밍 유지',
     'fpsAudioPull': '오디오 0.1% 당김',
     'selectionMoveConfirmTitle': '이동 확정',
@@ -2056,8 +2115,7 @@ class AppStrings {
         '제스처 도중에 손가락을 더하면 동작이 제한됩니다 — 줌·회전·크기 '
         '스냅, 프레임 미세 이동.',
     'inputTwoFingerRotation': '두 손가락 회전',
-    'inputTwoFingerRotationHelp':
-        'OFF: 내비게이트가 이동과 줌만 합니다(회전 버튼과 단축키는 유지).',
+    'inputTwoFingerRotationHelp': 'OFF: 내비게이트가 이동과 줌만 합니다(회전 버튼과 단축키는 유지).',
     'inputRotationLock': '모디파이어가 회전을 잠금',
     'inputRotationLockHelp':
         'ON: 추가 손가락이 각도를 고정합니다(순수 이동 + 스냅 줌). '
@@ -2067,8 +2125,7 @@ class AppStrings {
     'inputBrushSizeSnaps': '브러시 크기 스냅 (px)',
     'inputTabletHeading': '태블릿 서비스',
     'inputTabletStandard': '표준 (기본)',
-    'inputTabletStandardHelp':
-        'OS 포인터 경로(Windows Ink) — 최신 드라이버와 내장 펜에 적합합니다.',
+    'inputTabletStandardHelp': 'OS 포인터 경로(Windows Ink) — 최신 드라이버와 내장 펜에 적합합니다.',
     'inputTabletWintab': 'Wintab',
     'inputTabletWintabHelp':
         '태블릿 드라이버에서 필압을 직접 읽습니다 — 펜이 필압 없이, 또는 '
@@ -2205,8 +2262,7 @@ class AppStrings {
     'shortcutRecordNew': '새 단축키 기록',
     'shortcutTouch': '터치 단축키',
     'shortcutSearch': '동작 검색',
-    'shortcutConflictBanner':
-        '같은 키를 쓰는 동작이 있습니다 — 강조된 할당이 충돌합니다.',
+    'shortcutConflictBanner': '같은 키를 쓰는 동작이 있습니다 — 강조된 할당이 충돌합니다.',
     'shortcutRecordingHint': '키를 누르세요… (Esc로 취소)',
     'playbackQuality': '재생 품질',
     'playbackStop': '정지',
@@ -2277,6 +2333,21 @@ class AppStrings {
     'brAngle': '각도',
     'brRoundness': '원형률',
     'brScale': '배율',
+    'brSizeJitter': '크기 랜덤',
+    'brOpacityJitter': '불투명도 랜덤',
+    'brAngleJitter': '각도 랜덤',
+    'brScatter': '살포',
+    'brScatterCount': '개수',
+    'brScatterBothAxes': '양축',
+    'brTipRotation': '회전',
+    'brRotationFixed': '고정',
+    'brRotationDirection': '진행방향',
+    'brBrushTip': '브러시 끝',
+    'brTipNone': '없음',
+    'brDualTip': '듀얼 끝',
+    'brTexture': '질감',
+    'brTextureDensity': '농도',
+    'brAddTipImage': '이미지에서 끝 추가',
     'brStabilizer': '손떨림 보정',
     'brBlend': '합성',
     'brBlendMode': '브러시 합성 모드',
@@ -2420,11 +2491,13 @@ class AppStrings {
     'commonClose': 'Fermer',
     'exportNoCuts': 'Ce projet ne contient aucun plan à exporter.',
     'audioOffsetTitle': 'Décalage A/V',
-    'audioOffsetHelp': 'Ajuste finement le moment où l\'image s\'affiche par rapport au son. La part mesurable du retard est corrigée automatiquement ; ce réglage retire le reste — les écouteurs sans fil ont souvent 150 à 300 ms de retard sans rien signaler. Une valeur positive affiche l\'image PLUS TARD (le son en retard est le cas courant).',
+    'audioOffsetHelp':
+        'Ajuste finement le moment où l\'image s\'affiche par rapport au son. La part mesurable du retard est corrigée automatiquement ; ce réglage retire le reste — les écouteurs sans fil ont souvent 150 à 300 ms de retard sans rien signaler. Une valeur positive affiche l\'image PLUS TARD (le son en retard est le cas courant).',
     'audioOffsetLabel': 'Décalage',
     'audioUnitFrames': 'images',
     'audioDevicesTitle': 'Périphériques',
-    'audioDevicesHelp': 'Le haut-parleur utilisé en lecture et le micro utilisé en enregistrement. Les changements s\'appliquent à la prochaine lecture ; un périphérique débranché retombe sur le choix système.',
+    'audioDevicesHelp':
+        'Le haut-parleur utilisé en lecture et le micro utilisé en enregistrement. Les changements s\'appliquent à la prochaine lecture ; un périphérique débranché retombe sur le choix système.',
     'audioOutputLabel': 'Sortie',
     'audioInputLabel': 'Entrée',
     'audioSystemDefault': 'Défaut système',
@@ -2433,9 +2506,11 @@ class AppStrings {
     'audioSyncInspectorTitle': 'Inspecteur de synchro',
     'recordVoiceTooltip': 'Enregistrer la voix à la tête de lecture',
     'recordVoiceStopTooltip': 'Arrêter l\'enregistrement (place la prise)',
-    'recordMicOpenFailed': 'Impossible d\'ouvrir le micro — vérifiez Préférences ▸ Audio et l\'autorisation micro du système.',
+    'recordMicOpenFailed':
+        'Impossible d\'ouvrir le micro — vérifiez Préférences ▸ Audio et l\'autorisation micro du système.',
     'recordMicPermissionDenied': 'L\'autorisation micro a été refusée.',
-    'recordSelectSeLane': 'L\'enregistrement se place sur la piste SE sélectionnée — sélectionnez-en une d\'abord.',
+    'recordSelectSeLane':
+        'L\'enregistrement se place sur la piste SE sélectionnée — sélectionnez-en une d\'abord.',
     'recordTakeClipped': 'La prise a saturé — le coin rouge marque le bloc.',
     'recordClipMarkerTooltip': 'Prise saturée (niveau trop fort)',
     'audioMicGainLabel': 'Gain micro (dB)',
@@ -2445,7 +2520,8 @@ class AppStrings {
     'audioInputChannelLeft': 'Gauche seul',
     'audioInputChannelRight': 'Droit seul',
     'audioClippingNoticeLabel': 'Alertes de saturation (toast + marqueur)',
-    'audioDenoiseLabel': 'Réduction de bruit (voix — désactiver pour le bruitage)',
+    'audioDenoiseLabel':
+        'Réduction de bruit (voix — désactiver pour le bruitage)',
     'audioInputMeterLabel': 'Niveau d\'entrée',
     'audioTestSoundLabel': 'Son de test',
     'audioCountInLabel': 'Décompte (secondes)',
@@ -2454,26 +2530,31 @@ class AppStrings {
     'recordNothingRecording': 'Aucun enregistrement en cours.',
     'recordTakeEmpty': 'La prise était vide — rien à placer.',
     'recordPlacementFailed': 'La prise n\'a pas pu être placée.',
-    'recordDroppedFramesTemplate': 'Enregistré, mais {count} trames ont été perdues (la machine n\'a pas suivi) — vérifiez la prise.',
+    'recordDroppedFramesTemplate':
+        'Enregistré, mais {count} trames ont été perdues (la machine n\'a pas suivi) — vérifiez la prise.',
     'layerAudioTitle': 'Audio du calque',
     'audioGainLabel': 'Gain',
     'audioPanLabel': 'Panoramique',
-    'layerAudioPanHelp': 'Le panoramique s\'applique sur la voie du mixeur natif (loi à puissance constante).',
+    'layerAudioPanHelp':
+        'Le panoramique s\'applique sur la voie du mixeur natif (loi à puissance constante).',
     'audioSolo': 'Solo',
     'audioUnsolo': 'Retirer le solo',
     'audioLayerAudioMenu': 'Audio du calque…',
     'audioClipGainMenu': 'Gain…',
     'audioEnvelopeMenu': 'Enveloppe de volume…',
-    'audioFadesEqualPowerMenu': 'Fondus : puissance constante (passer en linéaire)',
+    'audioFadesEqualPowerMenu':
+        'Fondus : puissance constante (passer en linéaire)',
     'audioFadesLinearMenu': 'Fondus : linéaire (passer en puissance constante)',
     'audioClipGainTitle': 'Gain du clip',
     'audioEnvelopeTitle': 'Enveloppe de volume',
-    'audioEnvelopeHelp': 'Clés de gain aux images du clip (linéaire entre les clés, maintenu aux extrémités). Vide = plat.',
+    'audioEnvelopeHelp':
+        'Clés de gain aux images du clip (linéaire entre les clés, maintenu aux extrémités). Vide = plat.',
     'audioEnvelopeFrameLabel': 'image',
     'audioEnvelopeGainPercentLabel': 'gain %',
     'audioEnvelopeAddKey': 'Ajouter une clé',
     'fpsAudioTitleTemplate': '{from} → {to} : que faire du son ?',
-    'fpsAudioBody': 'Ces deux cadences diffèrent de 0,1 % en vitesse réelle, et le son existe en secondes réelles — il ne peut pas rester à la fois exact à l\'image et exact au temps.\n\n• Garder le timing audio : les sons gardent leurs secondes réelles ; leurs positions d\'image dérivent de 0,1 % (environ une image toutes les 42 secondes).\n\n• Tirer l\'audio de 0,1 % : les sons sont rééchantillonnés au rapport de pulldown exact (variation de hauteur inaudible — la conformation télécinéma standard) et chaque son garde sa plage d\'images exacte.',
+    'fpsAudioBody':
+        'Ces deux cadences diffèrent de 0,1 % en vitesse réelle, et le son existe en secondes réelles — il ne peut pas rester à la fois exact à l\'image et exact au temps.\n\n• Garder le timing audio : les sons gardent leurs secondes réelles ; leurs positions d\'image dérivent de 0,1 % (environ une image toutes les 42 secondes).\n\n• Tirer l\'audio de 0,1 % : les sons sont rééchantillonnés au rapport de pulldown exact (variation de hauteur inaudible — la conformation télécinéma standard) et chaque son garde sa plage d\'images exacte.',
     'fpsAudioKeep': 'Garder le timing audio',
     'fpsAudioPull': 'Tirer l\'audio de 0,1 %',
     'selectionMoveConfirmTitle': 'Valider le déplacement',
@@ -2754,7 +2835,8 @@ class AppStrings {
     'shortcutAction.drawing-previous': 'Dessin précédent',
     'shortcutAction.drawing-next': 'Dessin suivant',
     'shortcutAction.playback-toggle': 'Lecture / Pause',
-    'shortcutAction.voice-record-toggle': 'Enregistrer la voix (démarrer/arrêter)',
+    'shortcutAction.voice-record-toggle':
+        'Enregistrer la voix (démarrer/arrêter)',
     'shortcutAction.edit-undo': 'Annuler',
     'shortcutAction.edit-redo': 'Rétablir',
     'shortcutAction.tool-brush': 'Outil pinceau',
@@ -2765,8 +2847,10 @@ class AppStrings {
     'shortcutAction.tool-lasso': 'Outil lasso',
     'shortcutAction.tool-move': 'Outil déplacement',
     'shortcutAction.selection-deselect': 'Désélectionner',
-    'shortcutAction.selection-nudge-up': 'Décaler la sélection / le calque vers le haut',
-    'shortcutAction.selection-nudge-down': 'Décaler la sélection / le calque vers le bas',
+    'shortcutAction.selection-nudge-up':
+        'Décaler la sélection / le calque vers le haut',
+    'shortcutAction.selection-nudge-down':
+        'Décaler la sélection / le calque vers le bas',
     'shortcutAction.selection-free-transform': 'Transformation libre',
     'shortcutAction.selection-transform-commit': 'Valider la transformation',
     'shortcutAction.selection-transform-cancel': 'Annuler la transformation',
@@ -2893,6 +2977,21 @@ class AppStrings {
     'brAngle': 'Angle',
     'brRoundness': 'Rondeur',
     'brScale': 'Échelle',
+    'brSizeJitter': 'Variation de taille',
+    'brOpacityJitter': "Variation d'opacité",
+    'brAngleJitter': "Variation d'angle",
+    'brScatter': 'Dispersion',
+    'brScatterCount': 'Nombre',
+    'brScatterBothAxes': 'Deux axes',
+    'brTipRotation': 'Rotation',
+    'brRotationFixed': 'Fixe',
+    'brRotationDirection': 'Direction',
+    'brBrushTip': 'Pointe',
+    'brTipNone': 'Aucune',
+    'brDualTip': 'Pointe double',
+    'brTexture': 'Texture',
+    'brTextureDensity': 'Densité',
+    'brAddTipImage': 'Ajouter une pointe depuis une image',
     'brStabilizer': 'Stabilisateur',
     'brBlend': 'Fusion',
     'brBlendMode': 'Mode de fusion du pinceau',
@@ -3036,7 +3135,8 @@ class AppStrings {
     'commonClose': '关闭',
     'exportNoCuts': '此项目暂无可导出的镜头。',
     'audioOffsetTitle': 'A/V 偏移',
-    'audioOffsetHelp': '微调画面相对声音的显示时机。可测量的延迟会自动校正，此设置用于消除剩余部分 — 无线耳机通常落后 150~300 毫秒且不作任何报告。正值让画面更晚显示（声音迟到是常见情况）。',
+    'audioOffsetHelp':
+        '微调画面相对声音的显示时机。可测量的延迟会自动校正，此设置用于消除剩余部分 — 无线耳机通常落后 150~300 毫秒且不作任何报告。正值让画面更晚显示（声音迟到是常见情况）。',
     'audioOffsetLabel': '偏移',
     'audioUnitFrames': '帧',
     'audioDevicesTitle': '设备',
@@ -3089,7 +3189,8 @@ class AppStrings {
     'audioEnvelopeGainPercentLabel': '增益 %',
     'audioEnvelopeAddKey': '添加关键点',
     'fpsAudioTitleTemplate': '{from} → {to}：声音怎么办？',
-    'fpsAudioBody': '这两个帧率的实际速度相差 0.1%，而声音存在于真实时间中 — 无法同时保持帧精确与时间精确。\n\n• 保持音频时间：声音保持真实秒数；帧位置漂移 0.1%（约每 42 秒一帧）。\n\n• 拉伸音频 0.1%：按精确的 pulldown 比例重采样（听不出的音高变化 — 电视电影的标准做法），每个声音保持其精确的帧范围。',
+    'fpsAudioBody':
+        '这两个帧率的实际速度相差 0.1%，而声音存在于真实时间中 — 无法同时保持帧精确与时间精确。\n\n• 保持音频时间：声音保持真实秒数；帧位置漂移 0.1%（约每 42 秒一帧）。\n\n• 拉伸音频 0.1%：按精确的 pulldown 比例重采样（听不出的音高变化 — 电视电影的标准做法），每个声音保持其精确的帧范围。',
     'fpsAudioKeep': '保持音频时间',
     'fpsAudioPull': '拉伸音频 0.1%',
     'selectionMoveConfirmTitle': '确认移动',
@@ -3125,21 +3226,19 @@ class AppStrings {
     'cameraKeyLinear': '线性',
     'cameraKeyHold': '保持',
     'convertLinkedCutTitle': '转换为链接镜头',
-    'convertLinkedCutBodyTemplate':
-        '将“{cut}”（原本）与另一个镜头链接。同名图层会合并为一张共用画面。',
+    'convertLinkedCutBodyTemplate': '将“{cut}”（原本）与另一个镜头链接。同名图层会合并为一张共用画面。',
     'convertLinkedCutTargetLabel': '链接的镜头',
     'convertLinkedCutLinksTemplate': '链接 {names}。',
-    'convertLinkedCutReplacedTemplate':
-        '“{cut}”中 {count} 张同名原画将被原本的替换（원본 승리）。',
+    'convertLinkedCutReplacedTemplate': '“{cut}”中 {count} 张同名原画将被原本的替换（원본 승리）。',
     'convertLinkedCutJoiningTemplate': '{count} 张原画加入共用集合。',
     'convertLinkedCutTargetGainsTemplate': '“{cut}”新增：{names}。',
     'convertLinkedCutOriginGainsTemplate': '本镜头新增：{names}。',
-    'convertLinkedCutNothing': '没有可链接的内容 — 两个镜头已完全链接，'
+    'convertLinkedCutNothing':
+        '没有可链接的内容 — 两个镜头已完全链接，'
         '或没有可共用的绘制图层。',
     'convertLinkedCutUndoNote': '撤销会同时还原两个镜头。',
     'recoverAutosaveTitle': '要恢复自动保存的更改吗？',
-    'recoverAutosaveBody':
-        '此项目存在更新的自动保存。是恢复它，还是打开上次保存的文件？',
+    'recoverAutosaveBody': '此项目存在更新的自动保存。是恢复它，还是打开上次保存的文件？',
     'recoverOpenSaved': '打开已保存版本',
     'recoverAction': '恢复',
     'closeProjectTitle': '关闭项目？',
@@ -3212,8 +3311,7 @@ class AppStrings {
         '云服务（Google 云端硬盘、Dropbox 等）：请使用同步应用'
         '（Autosync、FolderSync 等），并在此打开它的镜像文件夹 — '
         '不支持直接打开云端文档。',
-    'fileCloudNoticeSave':
-        '云文件夹：保存到同步应用的镜像文件夹，即可配合 Google 云端硬盘 / Dropbox 使用。',
+    'fileCloudNoticeSave': '云文件夹：保存到同步应用的镜像文件夹，即可配合 Google 云端硬盘 / Dropbox 使用。',
     'fileNewFolderAction': '新建文件夹…',
     'newFolderTitle': '新建文件夹',
     'newFolderField': '文件夹名称',
@@ -3256,13 +3354,11 @@ class AppStrings {
     'inputDragTwoFingers': '双指拖动',
     'inputDragThreeFingers': '三指拖动',
     'inputExtraFinger': '加指修饰键',
-    'inputExtraFingerHelp':
-        '手势进行中再加一根手指会约束它 — 缩放/旋转/笔刷大小吸附，逐帧微调。',
+    'inputExtraFingerHelp': '手势进行中再加一根手指会约束它 — 缩放/旋转/笔刷大小吸附，逐帧微调。',
     'inputTwoFingerRotation': '双指旋转',
     'inputTwoFingerRotationHelp': '关闭：导航手势只做平移和缩放（旋转按钮与快捷键保留）。',
     'inputRotationLock': '修饰键锁定旋转',
-    'inputRotationLockHelp':
-        '开启：额外的手指会冻结角度（纯平移 + 吸附缩放）。关闭（默认）：吸附角度。',
+    'inputRotationLockHelp': '开启：额外的手指会冻结角度（纯平移 + 吸附缩放）。关闭（默认）：吸附角度。',
     'inputRotationSnap': '旋转吸附（°）',
     'inputZoomSnaps': '缩放吸附（%）',
     'inputBrushSizeSnaps': '笔刷大小吸附（px）',
@@ -3270,8 +3366,7 @@ class AppStrings {
     'inputTabletStandard': '标准（默认）',
     'inputTabletStandardHelp': '系统指针通道（Windows Ink）— 适合新版驱动和内置笔。',
     'inputTabletWintab': 'Wintab',
-    'inputTabletWintabHelp':
-        '直接从数位板驱动读取压感 — 当笔没有压感或被识别为触摸/鼠标时的退路。',
+    'inputTabletWintabHelp': '直接从数位板驱动读取压感 — 当笔没有压感或被识别为触摸/鼠标时的退路。',
     'dragActionFlip': '翻页（帧 / 图层）',
     'dragActionScreen': '画面（平移·缩放·旋转）',
     'dragActionBrushSize': '笔刷大小',
@@ -3475,6 +3570,21 @@ class AppStrings {
     'brAngle': '角度',
     'brRoundness': '圆度',
     'brScale': '缩放',
+    'brSizeJitter': '大小抖动',
+    'brOpacityJitter': '不透明度抖动',
+    'brAngleJitter': '角度抖动',
+    'brScatter': '散布',
+    'brScatterCount': '数量',
+    'brScatterBothAxes': '双轴',
+    'brTipRotation': '旋转',
+    'brRotationFixed': '固定',
+    'brRotationDirection': '前进方向',
+    'brBrushTip': '笔尖',
+    'brTipNone': '无',
+    'brDualTip': '双重笔尖',
+    'brTexture': '纹理',
+    'brTextureDensity': '浓度',
+    'brAddTipImage': '从图像添加笔尖',
     'brStabilizer': '防抖',
     'brBlend': '混合',
     'brBlendMode': '画笔混合模式',

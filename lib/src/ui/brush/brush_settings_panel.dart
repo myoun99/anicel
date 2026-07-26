@@ -3,10 +3,14 @@ import 'package:flutter/material.dart';
 import '../../models/app_language.dart';
 import '../../models/brush_blend_mode.dart';
 import '../../models/brush_pressure_curve.dart';
+import '../../models/brush_shape.dart' show BrushMaskSlot;
+import '../../models/brush_tip_entry.dart';
+import '../../models/brush_tip_rotation_mode.dart';
 import '../panels/editor_panel_frame.dart';
 import '../widgets/field_slider.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/pressure_curve_popup.dart';
+import 'brush_tip_picker.dart';
 import 'brush_tool_state.dart';
 import '../text/app_strings.dart';
 
@@ -25,10 +29,19 @@ class BrushSettingsPanel extends StatelessWidget {
     required this.state,
     required this.onChanged,
     this.language = AppLanguage.en,
+    this.tips = const <BrushTipEntry>[],
+    this.onTipImportRequested,
   });
 
   final BrushToolState state;
   final ValueChanged<BrushToolState> onChanged;
+
+  /// The shared tip library, for the tip / dual / texture pickers. Empty
+  /// keeps the pickers hidden, which is what a bare panel test wants.
+  final List<BrushTipEntry> tips;
+
+  /// Opens the add-a-tip-from-an-image flow.
+  final VoidCallback? onTipImportRequested;
 
   /// The program language — the blend mode labels localize (ja = CSP
   /// terms); the rest of the panel keeps the incremental-coverage rule.
@@ -73,7 +86,10 @@ class BrushSettingsPanel extends StatelessWidget {
             scale: FieldSliderScale.exponential,
             keyValue: 'brush-tool-size-slider',
             onChanged: (value) => onChanged(state.copyWith(size: value)),
-            trailing: _pressureButton(BrushPressureTarget.size, AppText.strings.brSize),
+            trailing: _pressureButton(
+              BrushPressureTarget.size,
+              AppText.strings.brSize,
+            ),
           ),
           _GroupHeader('Ink'),
           _BlendModeRow(state: state, onChanged: onChanged, language: language),
@@ -86,7 +102,10 @@ class BrushSettingsPanel extends StatelessWidget {
             displayFactor: 100,
             keyValue: 'brush-tool-opacity-slider',
             onChanged: (value) => onChanged(state.copyWith(opacity: value)),
-            trailing: _pressureButton(BrushPressureTarget.opacity, AppText.strings.brOpacity),
+            trailing: _pressureButton(
+              BrushPressureTarget.opacity,
+              AppText.strings.brOpacity,
+            ),
           ),
           _PanelSlider(
             label: AppText.strings.brFlow,
@@ -97,9 +116,25 @@ class BrushSettingsPanel extends StatelessWidget {
             displayFactor: 100,
             keyValue: 'brush-tool-flow-slider',
             onChanged: (value) => onChanged(state.copyWith(flow: value)),
-            trailing: _pressureButton(BrushPressureTarget.flow, AppText.strings.brFlow),
+            trailing: _pressureButton(
+              BrushPressureTarget.flow,
+              AppText.strings.brFlow,
+            ),
           ),
           _GroupHeader('Brush tip'),
+          if (tips.isNotEmpty)
+            BrushTipPickerRow(
+              label: AppText.strings.brBrushTip,
+              role: BrushTipRole.tip,
+              selected: state.tipMask,
+              tips: tips,
+              onImportRequested: onTipImportRequested,
+              // The sampled tip REPLACES hardness and tip shape, so clearing
+              // it is how a brush gets its parametric footprint back — which
+              // is why this goes through withTipMask rather than copyWith.
+              onPicked: (mask) =>
+                  onChanged(state.withMask(BrushMaskSlot.tip, mask)),
+            ),
           _PanelSlider(
             label: AppText.strings.brHardness,
             valueLabel: hardnessLabel,
@@ -145,6 +180,134 @@ class BrushSettingsPanel extends StatelessWidget {
             keyValue: 'brush-tool-spacing-slider',
             onChanged: (value) => onChanged(state.copyWith(spacing: value)),
           ),
+          _RotationModeRow(state: state, onChanged: onChanged),
+          // P20 shipped placement dynamics into the engine and left them
+          // unreachable: only a preset or an import could set them. These
+          // are those knobs.
+          _GroupHeader('Randomness'),
+          _PanelSlider(
+            label: AppText.strings.brSizeJitter,
+            valueLabel: '${(state.sizeJitter * 100).round()}%',
+            value: BrushToolState.clampZeroToOne(state.sizeJitter),
+            min: 0,
+            max: 1,
+            displayFactor: 100,
+            keyValue: 'brush-tool-size-jitter-slider',
+            onChanged: (value) => onChanged(state.copyWith(sizeJitter: value)),
+          ),
+          _PanelSlider(
+            label: AppText.strings.brOpacityJitter,
+            valueLabel: '${(state.opacityJitter * 100).round()}%',
+            value: BrushToolState.clampZeroToOne(state.opacityJitter),
+            min: 0,
+            max: 1,
+            displayFactor: 100,
+            keyValue: 'brush-tool-opacity-jitter-slider',
+            onChanged: (value) =>
+                onChanged(state.copyWith(opacityJitter: value)),
+          ),
+          _PanelSlider(
+            label: AppText.strings.brAngleJitter,
+            valueLabel: '${(state.angleJitter * 100).round()}%',
+            value: BrushToolState.clampZeroToOne(state.angleJitter),
+            min: 0,
+            max: 1,
+            displayFactor: 100,
+            keyValue: 'brush-tool-angle-jitter-slider',
+            onChanged: (value) => onChanged(state.copyWith(angleJitter: value)),
+          ),
+          _GroupHeader('Scattering'),
+          _PanelSlider(
+            // A ratio of the brush size, so scatter keeps its character as
+            // the brush grows.
+            label: AppText.strings.brScatter,
+            valueLabel: '${(state.scatterRadiusRatio * 100).round()}%',
+            value: BrushToolState.clampScatterRadius(state.scatterRadiusRatio),
+            min: 0,
+            max: 4,
+            displayFactor: 100,
+            keyValue: 'brush-tool-scatter-slider',
+            onChanged: (value) =>
+                onChanged(state.copyWith(scatterRadiusRatio: value)),
+          ),
+          _PanelSlider(
+            label: AppText.strings.brScatterCount,
+            valueLabel: '${state.scatterCount}',
+            value: BrushToolState.clampScatterCount(
+              state.scatterCount,
+            ).toDouble(),
+            min: 1,
+            max: 16,
+            keyValue: 'brush-tool-scatter-count-slider',
+            onChanged: (value) =>
+                onChanged(state.copyWith(scatterCount: value.round())),
+          ),
+          _PanelSwitch(
+            label: AppText.strings.brScatterBothAxes,
+            value: state.scatterBothAxes,
+            keyValue: 'brush-tool-scatter-both-axes-toggle',
+            onChanged: (value) =>
+                onChanged(state.copyWith(scatterBothAxes: value)),
+          ),
+          if (tips.isNotEmpty) ...[
+            _GroupHeader('Texture'),
+            BrushTipPickerRow(
+              label: AppText.strings.brDualTip,
+              role: BrushTipRole.dual,
+              selected: state.dualMask,
+              tips: tips,
+              onImportRequested: onTipImportRequested,
+              onPicked: (mask) =>
+                  onChanged(state.withMask(BrushMaskSlot.dual, mask)),
+            ),
+            if (state.dualMask != null)
+              _PanelSlider(
+                label: AppText.strings.brScale,
+                valueLabel: '${(state.dualMaskScale * 100).round()}%',
+                value: BrushToolState.clampDualMaskScale(state.dualMaskScale),
+                min: 0.05,
+                max: 10,
+                scale: FieldSliderScale.exponential,
+                displayFactor: 100,
+                keyValue: 'brush-tool-dual-scale-slider',
+                onChanged: (value) =>
+                    onChanged(state.copyWith(dualMaskScale: value)),
+              ),
+            BrushTipPickerRow(
+              label: AppText.strings.brTexture,
+              role: BrushTipRole.texture,
+              selected: state.textureMask,
+              tips: tips,
+              onImportRequested: onTipImportRequested,
+              onPicked: (mask) =>
+                  onChanged(state.withMask(BrushMaskSlot.texture, mask)),
+            ),
+            if (state.textureMask != null) ...[
+              _PanelSlider(
+                label: AppText.strings.brScale,
+                valueLabel: '${(state.textureScale * 100).round()}%',
+                value: BrushToolState.clampDualMaskScale(state.textureScale),
+                min: 0.05,
+                max: 10,
+                scale: FieldSliderScale.exponential,
+                displayFactor: 100,
+                keyValue: 'brush-tool-texture-scale-slider',
+                onChanged: (value) =>
+                    onChanged(state.copyWith(textureScale: value)),
+              ),
+              _PanelSlider(
+                label: AppText.strings.brTextureDensity,
+                valueLabel: '${(state.textureDensity * 100).round()}%',
+                value: BrushToolState.clampZeroToOne(state.textureDensity),
+                min: 0,
+                max: 1,
+                displayFactor: 100,
+                keyValue: 'brush-tool-texture-density-slider',
+                onChanged: (value) =>
+                    onChanged(state.copyWith(textureDensity: value)),
+              ),
+            ],
+          ],
           _GroupHeader('Correction'),
           // Pull-string stabilization (P7): a hand-feel setting, kept OUT
           // of brush presets on purpose.
@@ -208,6 +371,91 @@ class _GroupHeader extends StatelessWidget {
 /// PS/CSP dropdown vocabulary — the label IS the current mode. The
 /// ERASER tool locks it to 消去/Erase (the eraser IS the erase blend);
 /// the flyout stands down there.
+/// How a dab picks its angle: the fixed [BrushToolState.angleDegrees], or
+/// the stroke's own direction with that angle as an offset.
+///
+/// A flat tip is the whole reason this exists — a calligraphy nib held at a
+/// fixed angle draws thick and thin as the stroke turns, while a bristle
+/// brush wants to rake ALONG the stroke however it curves.
+class _RotationModeRow extends StatelessWidget {
+  const _RotationModeRow({required this.state, required this.onChanged});
+
+  final BrushToolState state;
+  final ValueChanged<BrushToolState> onChanged;
+
+  String _labelFor(BrushTipRotationMode mode) => switch (mode) {
+    BrushTipRotationMode.fixed => AppText.strings.brRotationFixed,
+    BrushTipRotationMode.direction => AppText.strings.brRotationDirection,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              AppText.strings.brTipRotation,
+              style: theme.textTheme.labelSmall,
+            ),
+          ),
+          PanelFlyoutButton(
+            key: const ValueKey<String>('brush-tool-rotation-menu-button'),
+            label: _labelFor(state.rotationMode),
+            tooltip: AppText.strings.brTipRotation,
+            entriesBuilder: () => [
+              for (final candidate in BrushTipRotationMode.values)
+                PanelFlyoutItem(
+                  keyValue: 'brush-tool-rotation-${candidate.name}',
+                  label: _labelFor(candidate),
+                  checked: candidate == state.rotationMode,
+                  onSelected: () =>
+                      onChanged(state.copyWith(rotationMode: candidate)),
+                ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// A labelled on/off row, matching the slider rows' label-left layout.
+class _PanelSwitch extends StatelessWidget {
+  const _PanelSwitch({
+    required this.label,
+    required this.value,
+    required this.keyValue,
+    required this.onChanged,
+  });
+
+  final String label;
+  final bool value;
+  final String keyValue;
+  final ValueChanged<bool> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 6),
+      child: Row(
+        children: [
+          Expanded(child: Text(label, style: theme.textTheme.labelSmall)),
+          Switch(
+            key: ValueKey<String>(keyValue),
+            value: value,
+            materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            onChanged: onChanged,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
 class _BlendModeRow extends StatelessWidget {
   const _BlendModeRow({
     required this.state,
@@ -259,7 +507,10 @@ class _BlendModeRow extends StatelessWidget {
       child: Row(
         children: [
           Expanded(
-            child: Text(AppText.strings.brBlend, style: theme.textTheme.labelSmall),
+            child: Text(
+              AppText.strings.brBlend,
+              style: theme.textTheme.labelSmall,
+            ),
           ),
           PanelFlyoutButton(
             key: const ValueKey<String>('brush-tool-blend-menu-button'),
@@ -336,4 +587,3 @@ class _PanelSlider extends StatelessWidget {
     );
   }
 }
-

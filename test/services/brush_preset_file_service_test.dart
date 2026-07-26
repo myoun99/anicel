@@ -1,7 +1,9 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/brush_tip_mask.dart';
 import 'package:quick_animaker_v2/src/models/brush_group.dart';
 import 'package:quick_animaker_v2/src/models/brush_group_id.dart';
 import 'package:quick_animaker_v2/src/models/brush_preset.dart';
@@ -10,6 +12,18 @@ import 'package:quick_animaker_v2/src/models/brush_pressure_curve.dart';
 import 'package:quick_animaker_v2/src/models/brush_settings.dart';
 import 'package:quick_animaker_v2/src/services/brush_preset_defaults.dart';
 import 'package:quick_animaker_v2/src/services/brush_preset_file_service.dart';
+import 'package:quick_animaker_v2/src/services/brush_tip_defaults.dart';
+
+/// What the tip library answers for the generated tips — production always
+/// has those loaded, so a test that saves a built-in preset needs them too.
+BrushTipMask? resolveBuiltInTip(String id) {
+  for (final entry in defaultBrushTipEntries) {
+    if (entry.id == id) {
+      return entry.mask;
+    }
+  }
+  return null;
+}
 
 void main() {
   late Directory tempDirectory;
@@ -155,7 +169,9 @@ void main() {
           presets: [defaultBrushPresets.last],
         ));
 
-        final loaded = await service.loadOrDefaults();
+        final loaded = await service.loadOrDefaults(
+          resolveTip: resolveBuiltInTip,
+        );
 
         expect(loaded.presets, [defaultBrushPresets.last]);
         expect(loaded.groups, defaultBrushGroups);
@@ -399,6 +415,129 @@ void main() {
       // The old per-preset name is gone; membership is a reference now.
       expect(preset.containsKey('group'), isFalse);
       expect(preset['groupId'], {'value': importedBrushGroupId('Noah').value});
+    });
+  });
+
+  group('tip references (version 5)', () {
+    BrushTipMask mask(String id) => BrushTipMask(
+      id: id,
+      size: 4,
+      alpha: Uint8List.fromList(List<int>.filled(16, 180)),
+    );
+
+    BrushPreset sampled({String id = 'p1'}) => BrushPreset(
+      id: BrushPresetId(id),
+      name: 'Sampled',
+      settings: BrushSettings(
+        size: 12,
+        tipMask: mask('tip-a'),
+        dualMask: mask('tip-b'),
+        textureMask: mask('tip-c'),
+      ),
+    );
+
+    test('the file stores ids, not the images', () async {
+      final path = pathIn('v5.json');
+      final service = BrushPresetFileService(filePath: path);
+
+      await service.save((groups: const [], presets: [sampled()]));
+
+      final written =
+          jsonDecode(await File(path).readAsString()) as Map<String, dynamic>;
+      final settings =
+          ((written['presets'] as List<dynamic>).single
+              as Map<String, dynamic>)['settings'];
+      expect(settings, isA<Map<String, dynamic>>());
+      final map = settings as Map<String, dynamic>;
+      expect(map['tipMaskId'], 'tip-a');
+      expect(map['dualMaskId'], 'tip-b');
+      expect(map['textureMaskId'], 'tip-c');
+      // The point of the exercise: the bytes are gone from the preset.
+      expect(map.containsKey('tipMask'), isFalse);
+      expect(map.containsKey('dualMask'), isFalse);
+      expect(map.containsKey('textureMask'), isFalse);
+    });
+
+    test('ids resolve back to masks on load', () async {
+      final path = pathIn('v5_resolve.json');
+      final service = BrushPresetFileService(filePath: path);
+      await service.save((groups: const [], presets: [sampled()]));
+
+      final loaded = await service.loadOrDefaults(resolveTip: mask);
+
+      final settings = loaded.presets.single.settings;
+      expect(settings.tipMask, mask('tip-a'));
+      expect(settings.dualMask, mask('tip-b'));
+      expect(settings.textureMask, mask('tip-c'));
+    });
+
+    test('an id the library cannot answer degrades to the round tip', () async {
+      final path = pathIn('v5_missing.json');
+      final service = BrushPresetFileService(filePath: path);
+      await service.save((groups: const [], presets: [sampled()]));
+
+      final loaded = await service.loadOrDefaults(resolveTip: (_) => null);
+
+      // The brush loses its texture, not its existence.
+      expect(loaded.presets.single.settings.tipMask, isNull);
+      expect(loaded.presets.single.settings.size, 12);
+    });
+
+    test('a version 4 library still carries its images inline', () async {
+      // Written before tips had a home: the blob IS the file's copy, and it
+      // must survive so the caller can hoist it into the tip library.
+      final path = pathIn('v4_inline.json');
+      final legacy = sampled().toJson();
+      await File(path).writeAsString(
+        jsonEncode({
+          'version': 4,
+          'groups': const <Object>[],
+          'presets': [legacy],
+        }),
+      );
+
+      final loaded = await BrushPresetFileService(
+        filePath: path,
+      ).loadOrDefaults(resolveTip: (_) => null);
+
+      final restored = loaded.presets.firstWhere(
+        (preset) => preset.id == const BrushPresetId('p1'),
+      );
+      expect(restored.settings.tipMask, mask('tip-a'));
+    });
+  });
+
+  group('brushTipMasksIn', () {
+    test('lists each mask once, with the preset that carries it', () {
+      final tip = BrushTipMask(
+        id: 'shared',
+        size: 2,
+        alpha: Uint8List.fromList([1, 2, 3, 4]),
+      );
+      final presets = [
+        BrushPreset(
+          id: const BrushPresetId('a'),
+          name: 'First',
+          settings: BrushSettings(size: 4, tipMask: tip),
+        ),
+        BrushPreset(
+          id: const BrushPresetId('b'),
+          name: 'Second',
+          settings: BrushSettings(size: 4, dualMask: tip),
+        ),
+      ];
+
+      final found = brushTipMasksIn(presets);
+
+      // One entry even though two presets use it — that de-duplication is
+      // the whole reason tips moved out of presets.
+      expect(found.length, 1);
+      expect(found.single.mask, tip);
+      expect(found.single.name, 'First');
+    });
+
+    test('finds nothing in parametric presets', () {
+      expect(brushTipMasksIn(defaultBrushPresets.take(1)), isEmpty);
     });
   });
 

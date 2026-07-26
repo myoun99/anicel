@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/brush_pressure_curve.dart';
+import 'package:quick_animaker_v2/src/models/brush_tip_rotation_mode.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_preset_panel.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_settings_panel.dart';
@@ -142,9 +143,7 @@ void main() {
   });
 
   testWidgets('BrushSettingsPanel updates hardness and flow (the tip '
-      'shape segment left with R26 #11 — presets own the tip)', (
-    tester,
-  ) async {
+      'shape segment left with R26 #11 — presets own the tip)', (tester) async {
     var state = BrushToolState.defaults;
     await tester.pumpWidget(
       MaterialApp(
@@ -289,4 +288,98 @@ void main() {
       expect(state.sizePressureCurve, isNull);
     },
   );
+
+  group('placement dynamics', () {
+    Future<BrushToolState Function()> pumpPanel(WidgetTester tester) async {
+      var state = BrushToolState.defaults;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SingleChildScrollView(
+              child: StatefulBuilder(
+                builder: (context, setState) => BrushSettingsPanel(
+                  state: state,
+                  onChanged: (next) => setState(() => state = next),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      return () => state;
+    }
+
+    testWidgets('the jitter sliders reach the engine', (tester) async {
+      // These have existed in the engine since P20 with no way to touch
+      // them: only a preset or an import could turn them on.
+      final read = await pumpPanel(tester);
+
+      for (final key in [
+        'brush-tool-size-jitter-slider',
+        'brush-tool-opacity-jitter-slider',
+        'brush-tool-angle-jitter-slider',
+      ]) {
+        final slider = find.byKey(ValueKey<String>(key));
+        await tester.ensureVisible(slider);
+        await tester.drag(slider, const Offset(60, 0));
+        await tester.pumpAndSettle();
+      }
+
+      expect(read().sizeJitter, greaterThan(0));
+      expect(read().opacityJitter, greaterThan(0));
+      expect(read().angleJitter, greaterThan(0));
+    });
+
+    testWidgets('scatter carries a radius, a count and an axis choice', (
+      tester,
+    ) async {
+      final read = await pumpPanel(tester);
+
+      final radius = find.byKey(
+        const ValueKey<String>('brush-tool-scatter-slider'),
+      );
+      await tester.ensureVisible(radius);
+      await tester.drag(radius, const Offset(60, 0));
+      await tester.pumpAndSettle();
+
+      final count = find.byKey(
+        const ValueKey<String>('brush-tool-scatter-count-slider'),
+      );
+      await tester.ensureVisible(count);
+      await tester.drag(count, const Offset(60, 0));
+      await tester.pumpAndSettle();
+
+      final axes = find.byKey(
+        const ValueKey<String>('brush-tool-scatter-both-axes-toggle'),
+      );
+      await tester.ensureVisible(axes);
+      await tester.tap(axes);
+      await tester.pumpAndSettle();
+
+      expect(read().scatterRadiusRatio, greaterThan(0));
+      expect(read().scatterCount, greaterThan(1));
+      // Defaults to both axes, so one tap turns it off.
+      expect(read().scatterBothAxes, isFalse);
+    });
+
+    testWidgets('the tip can be told to follow the stroke direction', (
+      tester,
+    ) async {
+      final read = await pumpPanel(tester);
+      expect(read().rotationMode, BrushTipRotationMode.fixed);
+
+      final button = find.byKey(
+        const ValueKey<String>('brush-tool-rotation-menu-button'),
+      );
+      await tester.ensureVisible(button);
+      await tester.tap(button);
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('brush-tool-rotation-direction')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(read().rotationMode, BrushTipRotationMode.direction);
+    });
+  });
 }

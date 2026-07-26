@@ -23,8 +23,6 @@ import 'timeline_frame_cells_row.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_window.dart' show timelineFrameWindowSpanFor;
 import 'timeline_grid_metrics.dart';
-import 'timeline_row_cells_painter.dart'
-    show timelineRowReadsGeometryAtBuild;
 import 'timeline_lane_rows.dart';
 
 import '../../models/project_frame_rate.dart';
@@ -373,12 +371,14 @@ class _TimelineFrameRowsScrollBodyState
     };
   }
 
-  /// The handle a row of [kind] follows: the windowed one unless the kind
-  /// still reads geometry at BUILD time (see [timelineRowReadsGeometryAtBuild]
-  /// — a sliding window under a build-time-positioned overlay would strand
-  /// it).
+  /// The handle every row follows.
+  ///
+  /// The sparse kinds used to be excluded: their span overlays were placed
+  /// from build-time scalars, so a window sliding under them without a
+  /// rebuild would have stranded them. [TimelineFrameSpanLayout] places those
+  /// overlays during layout now, so every kind rides the window.
   ValueNotifier<TimelineFrameGeometry> _geometryFor(LayerKind kind) =>
-      timelineRowReadsGeometryAtBuild(kind) ? _geometry : _windowedGeometry;
+      _windowedGeometry;
 
   Widget _buildCellsRow(Layer layer, {required Layer baseLayer}) {
     return TimelineFrameCellsRow(
@@ -514,12 +514,11 @@ class _TimelineFrameRowsScrollBodyState
       layer: row.layer,
       active: row.layer.id == widget.activeLayerId,
       playbackFrameCount: widget.playbackFrameCount,
-      // THE line: a row whose every geometry consumer is live keeps its memo
-      // entry across a zoom step; a row with build-time span overlays (SE,
-      // instruction) must miss.
-      geometry: timelineRowReadsGeometryAtBuild(row.layer.kind)
-          ? _geometry.value
-          : null,
+      // THE line: every row's geometry consumers are live now — painters
+      // through `repaint`, span overlays through the span layout — so a zoom
+      // step keeps every memo entry. It stays in the record (as a constant
+      // null) to say that deliberately.
+      geometry: null,
       crossAxisExtent: widget.metrics.layerRowHeight,
       projectFrameRate: widget.projectFrameRate,
       exposureStateForLayer: widget.exposureStateForLayer,

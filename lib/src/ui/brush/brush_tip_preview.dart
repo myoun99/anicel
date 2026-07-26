@@ -1,9 +1,9 @@
 import 'dart:math' as math;
+import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 
 import '../../models/brush_settings.dart';
-import '../../models/brush_tip_mask.dart';
 import '../../models/brush_tip_shape.dart';
 
 /// A small synchronous preview of a brush tip for preset lists.
@@ -30,59 +30,118 @@ class BrushTipPreview extends StatelessWidget {
   }
 }
 
+/// Preview raster resolution for sampled tips (cells per edge). The tip
+/// library's inline thumbnails are exactly this wide, so one of those paints
+/// at full fidelity here.
+const int brushTipPreviewGrid = 16;
+
+/// Draws [alpha] — a `side`x`side` coverage mask, whether a full tip or the
+/// library's thumbnail of one — as a coarse grid of cells.
+///
+/// Deliberately synchronous and image-free: previews appear in list rows and
+/// picker grids by the dozen, and an async decode per cell would make the
+/// whole panel flicker as it scrolled.
+void paintBrushTipAlpha(
+  Canvas canvas,
+  Size size,
+  Uint8List alpha,
+  int side,
+  Color color,
+) {
+  final cell = size.shortestSide / brushTipPreviewGrid;
+  final texelsPerCell = math.max(1, side ~/ brushTipPreviewGrid);
+  final paint = Paint();
+  for (var row = 0; row < brushTipPreviewGrid; row += 1) {
+    for (var col = 0; col < brushTipPreviewGrid; col += 1) {
+      final startX = col * side ~/ brushTipPreviewGrid;
+      final startY = row * side ~/ brushTipPreviewGrid;
+      var total = 0;
+      var count = 0;
+      for (var dy = 0; dy < texelsPerCell; dy += 1) {
+        final y = startY + dy;
+        if (y >= side) {
+          break;
+        }
+        for (var dx = 0; dx < texelsPerCell; dx += 1) {
+          final x = startX + dx;
+          if (x >= side) {
+            break;
+          }
+          total += alpha[y * side + x];
+          count += 1;
+        }
+      }
+      if (count == 0 || total == 0) {
+        continue;
+      }
+      paint.color = color.withValues(alpha: (total / count) / 255);
+      canvas.drawRect(
+        Rect.fromLTWH(col * cell, row * cell, cell + 0.5, cell + 0.5),
+        paint,
+      );
+    }
+  }
+}
+
+/// A standalone preview of one coverage mask — the picker's grid cell.
+class BrushTipMaskPreview extends StatelessWidget {
+  const BrushTipMaskPreview({
+    super.key,
+    required this.alpha,
+    required this.side,
+  });
+
+  final Uint8List alpha;
+  final int side;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      painter: _BrushTipMaskPreviewPainter(
+        alpha: alpha,
+        side: side,
+        color: Theme.of(context).colorScheme.onSurface,
+      ),
+      size: Size.infinite,
+    );
+  }
+}
+
+class _BrushTipMaskPreviewPainter extends CustomPainter {
+  const _BrushTipMaskPreviewPainter({
+    required this.alpha,
+    required this.side,
+    required this.color,
+  });
+
+  final Uint8List alpha;
+  final int side;
+  final Color color;
+
+  @override
+  void paint(Canvas canvas, Size size) =>
+      paintBrushTipAlpha(canvas, size, alpha, side, color);
+
+  @override
+  bool shouldRepaint(_BrushTipMaskPreviewPainter oldDelegate) =>
+      oldDelegate.color != color ||
+      oldDelegate.side != side ||
+      !identical(oldDelegate.alpha, alpha);
+}
+
 class _BrushTipPreviewPainter extends CustomPainter {
   const _BrushTipPreviewPainter({required this.settings, required this.color});
 
   final BrushSettings settings;
   final Color color;
 
-  /// Preview raster resolution for sampled tips (cells per edge).
-  static const int _maskGrid = 16;
-
   @override
   void paint(Canvas canvas, Size size) {
     final mask = settings.tipMask;
     if (mask != null) {
-      _paintMask(canvas, size, mask);
+      paintBrushTipAlpha(canvas, size, mask.alpha, mask.size, color);
     } else {
       _paintParametric(canvas, size);
-    }
-  }
-
-  void _paintMask(Canvas canvas, Size size, BrushTipMask mask) {
-    final cell = size.shortestSide / _maskGrid;
-    final texelsPerCell = math.max(1, mask.size ~/ _maskGrid);
-    final paint = Paint();
-    for (var row = 0; row < _maskGrid; row += 1) {
-      for (var col = 0; col < _maskGrid; col += 1) {
-        final startX = col * mask.size ~/ _maskGrid;
-        final startY = row * mask.size ~/ _maskGrid;
-        var total = 0;
-        var count = 0;
-        for (var dy = 0; dy < texelsPerCell; dy += 1) {
-          final y = startY + dy;
-          if (y >= mask.size) {
-            break;
-          }
-          for (var dx = 0; dx < texelsPerCell; dx += 1) {
-            final x = startX + dx;
-            if (x >= mask.size) {
-              break;
-            }
-            total += mask.alpha[y * mask.size + x];
-            count += 1;
-          }
-        }
-        if (count == 0 || total == 0) {
-          continue;
-        }
-        final alpha = (total / count) / 255;
-        paint.color = color.withValues(alpha: alpha);
-        canvas.drawRect(
-          Rect.fromLTWH(col * cell, row * cell, cell + 0.5, cell + 0.5),
-          paint,
-        );
-      }
     }
   }
 

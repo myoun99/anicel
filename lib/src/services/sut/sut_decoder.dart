@@ -1,7 +1,5 @@
 import 'dart:async';
-import 'dart:math' as math;
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:sqlite3/sqlite3.dart';
 
@@ -10,6 +8,7 @@ import '../../models/brush_preset_id.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_settings.dart';
 import '../../models/brush_tip_mask.dart';
+import '../brush_tip_image_codec.dart';
 
 /// Result of decoding a Clip Studio Paint `.sut`/`.sutg` brush file.
 class SutImportResult {
@@ -326,7 +325,7 @@ Future<BrushTipMask?> _tipMaskFromPatternArray(
     return null;
   }
   try {
-    return await _maskFromPngBytes(png, maskId: maskId);
+    return await decodeBrushTipImage(png, id: maskId);
   } catch (error) {
     warnings.add(
       'Brush "$brushName": $describe image could not be decoded '
@@ -408,115 +407,10 @@ int? _pngEnd(Uint8List data, int start) {
   return null;
 }
 
-/// Longest mask side kept after import; larger tips are downscaled so the
-/// preset library stays reasonably sized.
-const int _maxMaskSide = 256;
-
-Future<BrushTipMask> _maskFromPngBytes(
-  Uint8List png, {
-  required String maskId,
-}) async {
-  final codec = await ui.instantiateImageCodec(png);
-  final frame = await codec.getNextFrame();
-  final image = frame.image;
-  try {
-    final byteData = await image.toByteData(
-      format: ui.ImageByteFormat.rawStraightRgba,
-    );
-    if (byteData == null) {
-      throw const FormatException('image pixels unavailable');
-    }
-    final rgba = byteData.buffer.asUint8List();
-    final width = image.width;
-    final height = image.height;
-
-    // Coverage: alpha shaped by darkness. Black-on-transparent tips resolve
-    // to their alpha; black-on-white opaque tips resolve to inverted
-    // luminance. If that yields nothing (e.g. white-on-transparent), fall
-    // back to the alpha channel alone.
-    var gray = Uint8List(width * height);
-    var sum = 0;
-    for (var index = 0; index < gray.length; index += 1) {
-      final r = rgba[index * 4];
-      final g = rgba[index * 4 + 1];
-      final b = rgba[index * 4 + 2];
-      final a = rgba[index * 4 + 3];
-      final luminance = (r * 299 + g * 587 + b * 114) ~/ 1000;
-      final value = a * (255 - luminance) ~/ 255;
-      gray[index] = value;
-      sum += value;
-    }
-    if (sum == 0) {
-      for (var index = 0; index < gray.length; index += 1) {
-        gray[index] = rgba[index * 4 + 3];
-      }
-    }
-
-    var maskWidth = width;
-    var maskHeight = height;
-    final longSide = math.max(width, height);
-    if (longSide > _maxMaskSide) {
-      final scale = _maxMaskSide / longSide;
-      final scaledWidth = math.max(1, (width * scale).round());
-      final scaledHeight = math.max(1, (height * scale).round());
-      gray = _resizeGray(
-        gray,
-        width: width,
-        height: height,
-        newWidth: scaledWidth,
-        newHeight: scaledHeight,
-      );
-      maskWidth = scaledWidth;
-      maskHeight = scaledHeight;
-    }
-
-    // Pad to the engine's centered-square mask requirement.
-    final side = math.max(maskWidth, maskHeight);
-    final alpha = Uint8List(side * side);
-    final offsetX = (side - maskWidth) ~/ 2;
-    final offsetY = (side - maskHeight) ~/ 2;
-    for (var y = 0; y < maskHeight; y += 1) {
-      alpha.setRange(
-        (offsetY + y) * side + offsetX,
-        (offsetY + y) * side + offsetX + maskWidth,
-        gray,
-        y * maskWidth,
-      );
-    }
-    return BrushTipMask(id: maskId, size: side, alpha: alpha);
-  } finally {
-    image.dispose();
-  }
-}
-
-/// Bilinear grayscale resize.
-Uint8List _resizeGray(
-  Uint8List source, {
-  required int width,
-  required int height,
-  required int newWidth,
-  required int newHeight,
-}) {
-  final output = Uint8List(newWidth * newHeight);
-  for (var y = 0; y < newHeight; y += 1) {
-    final sourceY = (y + 0.5) * height / newHeight - 0.5;
-    final y0 = sourceY.floor().clamp(0, height - 1);
-    final y1 = (y0 + 1).clamp(0, height - 1);
-    final fy = (sourceY - y0).clamp(0.0, 1.0);
-    for (var x = 0; x < newWidth; x += 1) {
-      final sourceX = (x + 0.5) * width / newWidth - 0.5;
-      final x0 = sourceX.floor().clamp(0, width - 1);
-      final x1 = (x0 + 1).clamp(0, width - 1);
-      final fx = (sourceX - x0).clamp(0.0, 1.0);
-      final top =
-          source[y0 * width + x0] * (1 - fx) + source[y0 * width + x1] * fx;
-      final bottom =
-          source[y1 * width + x0] * (1 - fx) + source[y1 * width + x1] * fx;
-      output[y * newWidth + x] = (top * (1 - fy) + bottom * fy).round();
-    }
-  }
-  return output;
-}
+// The PNG -> mask read (coverage from alpha and darkness, the >256px
+// downscale, the centered-square padding) moved to
+// `../brush_tip_image_codec.dart`, so a tip the user registers by hand and
+// one that arrives inside a .sut are read by exactly the same rules.
 
 String _hex(Uint8List bytes) {
   final buffer = StringBuffer();

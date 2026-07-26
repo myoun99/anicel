@@ -7,6 +7,7 @@ import '../../models/layer_id.dart';
 import '../../models/timeline_coverage.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
+import 'timeline_frame_span_layout.dart';
 
 /// How a grip reads right now. The ONLY thing a state change moves is the
 /// ink (R28 #3) — geometry is constant, so this is the whole visual state.
@@ -27,6 +28,21 @@ double blockEdgeGripHitExtent(double frameCellExtent) =>
     TimelineBlockEdgeGrip.hitExtent < frameCellExtent / 3
     ? TimelineBlockEdgeGrip.hitExtent
     : frameCellExtent / 3;
+
+/// Where a block-edge grip sits, as a frame-span placement: a third of the
+/// edge cell capped at [TimelineBlockEdgeGrip.hitExtent], hugging the block's
+/// start or end edge. The pixel form of exactly this is
+/// [blockEdgeGripHitExtent] — one rule, two ways of asking.
+TimelineFrameSpanPlacement timelineBlockEdgeGripPlacement({
+  required TimelineBlockEdge edge,
+  required int startIndex,
+  required int endIndexExclusive,
+}) => TimelineFrameSpanPlacement(
+  startIndex: edge == TimelineBlockEdge.start ? startIndex : endIndexExclusive,
+  mainExtentCells: 1 / 3,
+  maxMainExtent: TimelineBlockEdgeGrip.hitExtent,
+  anchorAtTrailingEdge: edge == TimelineBlockEdge.end,
+);
 
 /// The bar's rect INSIDE a hit strip whose origin is the strip's top-left:
 /// [hitExtent] along the frame axis, [crossAxisExtent] across it.
@@ -79,18 +95,37 @@ void paintBlockEdgeGripBar(Canvas canvas, Rect barRect, BlockEdgeGripInk ink) {
 /// (storyboard cut trim, SE spans, instruction rows) still mount a widget
 /// per grip, and this keeps their pixels identical to the painted rows'.
 class BlockEdgeGripBarPainter extends CustomPainter {
-  const BlockEdgeGripBarPainter({required this.barRect, required this.ink});
+  const BlockEdgeGripBarPainter({
+    required this.edge,
+    required this.axis,
+    required this.ink,
+  });
 
-  final Rect barRect;
+  final TimelineBlockEdge edge;
+  final Axis axis;
   final BlockEdgeGripInk ink;
 
+  /// The strip's own BOX gives the geometry — the grip is laid out at the
+  /// hit extent, so nothing needs the cell width passed in (that is what
+  /// used to drag every grip through a rebuild on each zoom step). Still the
+  /// shared [blockEdgeGripBarRect], so the painted rows cannot drift.
   @override
-  void paint(Canvas canvas, Size size) =>
-      paintBlockEdgeGripBar(canvas, barRect, ink);
+  void paint(Canvas canvas, Size size) => paintBlockEdgeGripBar(
+    canvas,
+    blockEdgeGripBarRect(
+      edge: edge,
+      hitExtent: axis == Axis.horizontal ? size.width : size.height,
+      crossAxisExtent: axis == Axis.horizontal ? size.height : size.width,
+      axis: axis,
+    ),
+    ink,
+  );
 
   @override
   bool shouldRepaint(covariant BlockEdgeGripBarPainter oldDelegate) =>
-      oldDelegate.barRect != barRect || oldDelegate.ink != ink;
+      oldDelegate.edge != edge ||
+      oldDelegate.axis != axis ||
+      oldDelegate.ink != ink;
 }
 
 /// The drag hooks a grip needs once its identity is already bound by the
@@ -128,39 +163,20 @@ class BlockEdgeGripHooks {
 class BlockEdgeGrip extends StatefulWidget {
   const BlockEdgeGrip({
     super.key,
-    required this.positionedKey,
     required this.edge,
-    required this.blockStartOffset,
-    required this.blockEndOffset,
-    required this.frameCellExtent,
-    required this.crossAxisExtent,
-    required this.hitExtent,
+    required this.resolveFrameCellExtent,
     required this.hooks,
     this.axis = Axis.horizontal,
     this.supportedDevices,
   });
 
-  /// Key for the emitted [Positioned] — the Stack child identity. It stays
-  /// on the Positioned (not on this widget) so existing finders and the
-  /// mid-drag remount rules are untouched.
-  final Key positionedKey;
-
   final TimelineBlockEdge edge;
 
-  /// Main-axis pixel offsets of the block's edges within the row/column
-  /// content (leading spacer included).
-  final double blockStartOffset;
-  final double blockEndOffset;
-
-  /// Main-axis extent of one frame cell (cell width in the horizontal
-  /// timeline, frame row height in the X-sheet).
-  final double frameCellExtent;
-
-  /// Cross-axis extent of the row (row height / column width).
-  final double crossAxisExtent;
-
-  /// Main-axis extent of the pointer-target strip.
-  final double hitExtent;
+  /// The cell extent, READ AT DRAG TIME rather than captured: the grip fills
+  /// whatever box its mount hands it, and a mount that positions by frame
+  /// span (the sparse rows) does not rebuild it on a zoom step — so a value
+  /// frozen at build time would convert pixels to frames at the wrong scale.
+  final double Function() resolveFrameCellExtent;
 
   final BlockEdgeGripHooks hooks;
 
@@ -185,10 +201,7 @@ class TimelineBlockEdgeGrip extends StatelessWidget {
     required this.blockStartIndex,
     required this.blockOrdinal,
     required this.edge,
-    required this.blockStartOffset,
-    required this.blockEndOffset,
-    required this.frameCellExtent,
-    required this.crossAxisExtent,
+    required this.resolveFrameCellExtent,
     required this.callbacks,
     this.axis = Axis.horizontal,
   });
@@ -206,17 +219,8 @@ class TimelineBlockEdgeGrip extends StatelessWidget {
   final int blockOrdinal;
   final TimelineBlockEdge edge;
 
-  /// Main-axis pixel offsets of the block's edges within the row/column
-  /// content (leading spacer included).
-  final double blockStartOffset;
-  final double blockEndOffset;
-
-  /// Main-axis extent of one frame cell (cell width in the horizontal
-  /// timeline, frame row height in the X-sheet).
-  final double frameCellExtent;
-
-  /// Cross-axis extent of the row (row height / column width).
-  final double crossAxisExtent;
+  /// See [BlockEdgeGrip.resolveFrameCellExtent].
+  final double Function() resolveFrameCellExtent;
 
   final TimelineCommaDragCallbacks callbacks;
 
@@ -227,30 +231,32 @@ class TimelineBlockEdgeGrip extends StatelessWidget {
   /// caps it against the cell width.
   static const double hitExtent = 12;
 
-  double get effectiveHitExtent => blockEdgeGripHitExtent(frameCellExtent);
+  /// The identity finders (and tests) look for. It rides a [KeyedSubtree]
+  /// rather than a `Positioned`, because WHERE a grip sits is now the mount
+  /// site's business: a frame-span layout on the sparse rows, a `Positioned`
+  /// on the storyboard.
+  Key get subtreeKey => ValueKey<String>(
+    'timeline-block-edge-grip-${edge.name}-$layerId-$blockOrdinal',
+  );
 
   @override
   Widget build(BuildContext context) {
-    return BlockEdgeGrip(
-      positionedKey: ValueKey<String>(
-        'timeline-block-edge-grip-${edge.name}-$layerId-$blockOrdinal',
-      ),
-      edge: edge,
-      blockStartOffset: blockStartOffset,
-      blockEndOffset: blockEndOffset,
-      frameCellExtent: frameCellExtent,
-      crossAxisExtent: crossAxisExtent,
-      hitExtent: effectiveHitExtent,
-      axis: axis,
-      // Drag-only grip: touch follows the timeline input policy (UI-R22F —
-      // when touch scrolls the timeline, a finger pan starting on a grip
-      // must scroll too, not comma-drag).
-      supportedDevices: AppInput.timelineEditPanDevices,
-      hooks: BlockEdgeGripHooks(
-        onBegin: () => callbacks.onBegin(layerId, blockStartIndex, edge),
-        onUpdate: callbacks.onUpdate,
-        onEnd: callbacks.onEnd,
-        onCancel: callbacks.onCancel,
+    return KeyedSubtree(
+      key: subtreeKey,
+      child: BlockEdgeGrip(
+        edge: edge,
+        resolveFrameCellExtent: resolveFrameCellExtent,
+        axis: axis,
+        // Drag-only grip: touch follows the timeline input policy (UI-R22F —
+        // when touch scrolls the timeline, a finger pan starting on a grip
+        // must scroll too, not comma-drag).
+        supportedDevices: AppInput.timelineEditPanDevices,
+        hooks: BlockEdgeGripHooks(
+          onBegin: () => callbacks.onBegin(layerId, blockStartIndex, edge),
+          onUpdate: callbacks.onUpdate,
+          onEnd: callbacks.onEnd,
+          onCancel: callbacks.onCancel,
+        ),
       ),
     );
   }
@@ -283,7 +289,7 @@ class _BlockEdgeGripState extends State<BlockEdgeGrip> {
     _accumulatedDelta += delta;
     final frames = commaDragFrameDelta(
       accumulatedDelta: _accumulatedDelta,
-      frameCellExtent: widget.frameCellExtent,
+      frameCellExtent: widget.resolveFrameCellExtent(),
     );
     if (frames == _lastReportedFrames) {
       return;
@@ -322,10 +328,6 @@ class _BlockEdgeGripState extends State<BlockEdgeGrip> {
   @override
   Widget build(BuildContext context) {
     final horizontal = widget.axis == Axis.horizontal;
-    final isStartEdge = widget.edge == TimelineBlockEdge.start;
-    final hitStart = isStartEdge
-        ? widget.blockStartOffset
-        : widget.blockEndOffset - widget.hitExtent;
     // R28 #3: the grip's GEOMETRY is constant — only its color reacts.
     // R27 #11 had a hover fatten the bar (longer and thicker), and the
     // size change read as the block itself resizing under the pointer.
@@ -338,12 +340,8 @@ class _BlockEdgeGripState extends State<BlockEdgeGrip> {
     // and these widget-mounted grips cannot drift apart.
     final bar = CustomPaint(
       painter: BlockEdgeGripBarPainter(
-        barRect: blockEdgeGripBarRect(
-          edge: widget.edge,
-          hitExtent: widget.hitExtent,
-          crossAxisExtent: widget.crossAxisExtent,
-          axis: widget.axis,
-        ),
+        edge: widget.edge,
+        axis: widget.axis,
         ink: _dragging
             ? BlockEdgeGripInk.dragging
             : _hovered
@@ -353,7 +351,7 @@ class _BlockEdgeGripState extends State<BlockEdgeGrip> {
       child: const SizedBox.expand(),
     );
 
-    final grip = MouseRegion(
+    return MouseRegion(
       cursor: horizontal
           ? SystemMouseCursors.resizeColumn
           : SystemMouseCursors.resizeRow,
@@ -376,25 +374,6 @@ class _BlockEdgeGripState extends State<BlockEdgeGrip> {
         onVerticalDragCancel: horizontal ? null : _cancelDrag,
         child: bar,
       ),
-    );
-
-    if (horizontal) {
-      return Positioned(
-        key: widget.positionedKey,
-        left: hitStart,
-        top: 0,
-        width: widget.hitExtent,
-        height: widget.crossAxisExtent,
-        child: grip,
-      );
-    }
-    return Positioned(
-      key: widget.positionedKey,
-      top: hitStart,
-      left: 0,
-      height: widget.hitExtent,
-      width: widget.crossAxisExtent,
-      child: grip,
     );
   }
 }

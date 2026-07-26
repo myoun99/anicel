@@ -5,6 +5,7 @@ import '../models/brush_group.dart';
 import '../models/brush_group_id.dart';
 import '../models/brush_preset.dart';
 import '../models/brush_preset_id.dart';
+import '../models/brush_tip_mask.dart';
 import 'brush_preset_defaults.dart';
 import 'persistence/app_support_path.dart';
 
@@ -41,12 +42,19 @@ class BrushPresetFileService {
   /// 3 turned groups into first-class entities: they live in their own
   /// `groups` list and presets reference one by id, where versions 1-2
   /// repeated the group NAME on every member. 4 filled the built-in roster
-  /// out into the Pencil / Ink / Paint / Texture groups.
-  static const int libraryVersion = 4;
+  /// out into the Pencil / Ink / Paint / Texture groups. 5 moved the tip
+  /// images out to the tip library, leaving an id behind.
+  static const int libraryVersion = 5;
 
   /// Reads the preset library; a missing or unreadable file yields the
   /// built-in defaults (nothing is written back until the next save).
-  Future<BrushPresetLibraryData> loadOrDefaults() async {
+  ///
+  /// [resolveTip] turns the tip ids a version 5 file stores back into masks.
+  /// An id it cannot answer leaves the brush on its parametric round tip —
+  /// a missing tip costs a brush its texture, never the editor.
+  Future<BrushPresetLibraryData> loadOrDefaults({
+    BrushTipResolver? resolveTip,
+  }) async {
     try {
       final file = File(filePath);
       if (!await file.exists()) {
@@ -59,7 +67,7 @@ class BrushPresetFileService {
       // An empty saved library is a valid user choice (all presets deleted).
       var presets = _withUniquePresetIds([
         for (final entry in entries)
-          BrushPreset.fromJson(entry as Map<String, dynamic>),
+          _presetWithResolvedTips(entry as Map<String, dynamic>, resolveTip),
       ]);
 
       final rawGroups = decoded['groups'] as List<dynamic>?;
@@ -212,8 +220,93 @@ class BrushPresetFileService {
       jsonEncode({
         'version': libraryVersion,
         'groups': [for (final group in library.groups) group.toJson()],
-        'presets': [for (final preset in library.presets) preset.toJson()],
+        'presets': [
+          for (final preset in library.presets) _presetJsonWithTipIds(preset),
+        ],
       }),
     );
   }
+
+  /// The three mask-valued settings, by json key.
+  static const List<String> _maskKeys = ['tipMask', 'dualMask', 'textureMask'];
+
+  /// Swaps each inline mask blob for its id on the way OUT.
+  ///
+  /// The swap lives here, at the file boundary, and nowhere else: settings
+  /// in memory keep carrying mask OBJECTS, so the dabs, the three
+  /// rasterizers and the parity tests never learn that a tip has an address.
+  static Map<String, dynamic> _presetJsonWithTipIds(BrushPreset preset) {
+    final json = preset.toJson();
+    final settings = Map<String, dynamic>.from(
+      json['settings'] as Map<String, dynamic>,
+    );
+    for (final key in _maskKeys) {
+      final mask = settings.remove(key);
+      if (mask is Map<String, dynamic>) {
+        settings['${key}Id'] = mask['id'];
+      }
+    }
+    json['settings'] = settings;
+    return json;
+  }
+
+  /// Puts the masks back on the way IN. Versions 4 and older stored the
+  /// blob itself, which [BrushPreset.fromJson] still reads — so a library
+  /// written before the tip library existed loads with its tips intact, and
+  /// the caller hoists them into the library afterwards.
+  static BrushPreset _presetWithResolvedTips(
+    Map<String, dynamic> json,
+    BrushTipResolver? resolveTip,
+  ) {
+    final preset = BrushPreset.fromJson(json);
+    if (resolveTip == null) {
+      return preset;
+    }
+    final settingsJson = json['settings'] as Map<String, dynamic>;
+    var settings = preset.settings;
+    for (final key in _maskKeys) {
+      final id = settingsJson['${key}Id'];
+      if (id is! String) {
+        continue;
+      }
+      final mask = resolveTip(id);
+      if (mask == null) {
+        continue;
+      }
+      settings = switch (key) {
+        'tipMask' => settings.copyWith(tipMask: mask),
+        'dualMask' => settings.copyWith(dualMask: mask),
+        _ => settings.copyWith(textureMask: mask),
+      };
+    }
+    return preset.copyWith(settings: settings);
+  }
+}
+
+/// Answers "what mask is behind this id?" for the preset loader — the tip
+/// library, in production.
+typedef BrushTipResolver = BrushTipMask? Function(String id);
+
+/// Every distinct mask carried by [presets].
+///
+/// The migration path uses this: a library written before tips had a home
+/// still has the images inline, and they have to be hoisted into the tip
+/// library or the next save would write ids pointing at nothing.
+List<({BrushTipMask mask, String name})> brushTipMasksIn(
+  Iterable<BrushPreset> presets,
+) {
+  final seen = <String>{};
+  final found = <({BrushTipMask mask, String name})>[];
+  for (final preset in presets) {
+    for (final mask in [
+      preset.settings.tipMask,
+      preset.settings.dualMask,
+      preset.settings.textureMask,
+    ]) {
+      if (mask != null && seen.add(mask.id)) {
+        found.add((mask: mask, name: preset.name));
+      }
+    }
+  }
+  return found;
 }
