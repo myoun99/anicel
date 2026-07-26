@@ -444,6 +444,48 @@ class AppStrings {
   String get tlArtLayer => _s('tlArtLayer');
   String get tlStoryboardLayer => _s('tlStoryboardLayer');
 
+  // --- The layer-controls header (column toggles, solo, section fold) ---
+  String get tlSections => _s('tlSections');
+  String get tlFoldSection => _s('tlFoldSection');
+  String get tlHideSectionLayers => _s('tlHideSectionLayers');
+  String get tlShowSectionLayers => _s('tlShowSectionLayers');
+  String get tlOnlyThisSection => _s('tlOnlyThisSection');
+  String get tlAllDisplayedLayers => _s('tlAllDisplayedLayers');
+  String get tlShowAll => _s('tlShowAll');
+  String get tlHideAll => _s('tlHideAll');
+  String get tlSoloActiveLayer => _s('tlSoloActiveLayer');
+  String get tlSoloKind => _s('tlSoloKind');
+  String get tlSoloColor => _s('tlSoloColor');
+  String get tlSoloFillReferences => _s('tlSoloFillReferences');
+  String get tlSoloFxOnRows => _s('tlSoloFxOnRows');
+  String get tlSoloSheetOnRows => _s('tlSoloSheetOnRows');
+  String get tlApplyAllFx => _s('tlApplyAllFx');
+  String get tlBypassAllFx => _s('tlBypassAllFx');
+  String get tlAllOnTimesheet => _s('tlAllOnTimesheet');
+  String get tlAllOffTimesheet => _s('tlAllOffTimesheet');
+  String get tlClearAllMarks => _s('tlClearAllMarks');
+  String get tlClearAllFillRefs => _s('tlClearAllFillRefs');
+  String get tlColVisibility => _s('tlColVisibility');
+  String get tlColLayerKind => _s('tlColLayerKind');
+  String get tlColOnionSkin => _s('tlColOnionSkin');
+  String get tlColOpacity => _s('tlColOpacity');
+  String get tlColBlendMode => _s('tlColBlendMode');
+  String get tlColFx => _s('tlColFx');
+  String get tlColMark => _s('tlColMark');
+  String get tlColFillReference => _s('tlColFillReference');
+  String get tlColTimesheet => _s('tlColTimesheet');
+  String get tlOpenOnionPanel => _s('tlOpenOnionPanel');
+  String get tlAddLayerHere => _s('tlAddLayerHere');
+  String get tlDissolveFolder => _s('tlDissolveFolder');
+  String get tlRenameFolder => _s('tlRenameFolder');
+  String get tlRemoveAudio => _s('tlRemoveAudio');
+  String get tlLayerMark => _s('tlLayerMark');
+  String get tlRepeat => _s('tlRepeat');
+  String get tlRepeatSelection => _s('tlRepeatSelection');
+
+  /// '{name}' is the speaker/effect name.
+  String get tlSeNameTemplate => _s('tlSeNameTemplate');
+
   // --- Timeline toolbar prompts ---
   String get setCommasTitle => _s('setCommasTitle');
   String get setCommasField => _s('setCommasField');
@@ -752,6 +794,44 @@ class AppStrings {
     'instructionEndLabel': 'End name (B)',
     'instructionMemoLabel': 'Memo (timesheet memo band)',
     'instructionEditSetButton': 'Edit instructions…',
+    'tlSections': 'Sections',
+    'tlFoldSection': 'Fold section',
+    'tlHideSectionLayers': 'Hide section layers',
+    'tlShowSectionLayers': 'Show section layers',
+    'tlOnlyThisSection': 'Only this section',
+    'tlAllDisplayedLayers': 'All displayed layers',
+    'tlShowAll': 'Show all',
+    'tlHideAll': 'Hide all',
+    'tlSoloActiveLayer': 'Solo active layer',
+    'tlSoloKind': 'Solo kind',
+    'tlSoloColor': 'Solo color',
+    'tlSoloFillReferences': 'Solo fill references',
+    'tlSoloFxOnRows': 'Solo fx-on rows',
+    'tlSoloSheetOnRows': 'Solo sheet-on rows',
+    'tlApplyAllFx': 'Apply all fx',
+    'tlBypassAllFx': 'Bypass all fx',
+    'tlAllOnTimesheet': 'All on timesheet',
+    'tlAllOffTimesheet': 'All off timesheet',
+    'tlClearAllMarks': 'Clear all marks',
+    'tlClearAllFillRefs': 'Clear all fill references',
+    'tlColVisibility': 'Visibility column',
+    'tlColLayerKind': 'Layer kind column',
+    'tlColOnionSkin': 'Onion skin column',
+    'tlColOpacity': 'Opacity column',
+    'tlColBlendMode': 'Blend mode column',
+    'tlColFx': 'FX column',
+    'tlColMark': 'Mark column',
+    'tlColFillReference': 'Fill reference column',
+    'tlColTimesheet': 'Timesheet column',
+    'tlOpenOnionPanel': 'Open onion skin panel',
+    'tlAddLayerHere': 'Add layer here',
+    'tlDissolveFolder': 'Dissolve folder',
+    'tlRenameFolder': 'Rename folder…',
+    'tlRemoveAudio': 'Remove audio',
+    'tlLayerMark': 'Layer mark',
+    'tlRepeat': 'Repeat',
+    'tlRepeatSelection': 'Repeat selection',
+    'tlSeNameTemplate': 'SE name {name}',
     'tlAddLayerHeader': 'Add layer',
     'tlSameAsSelected': 'Same as selected',
     'tlKindAnimation': 'Animation',
@@ -1157,6 +1237,44 @@ class AppStrings {
     'shortcutAction.timeline-comma-3': '3コマに設定',
     'shortcutAction.timeline-comma-4': '4コマに設定',
     'shortcutAction.timeline-comma-n': 'Nコマに設定…',
+    'tlSections': 'セクション',
+    'tlFoldSection': 'セクションを折りたたむ',
+    'tlHideSectionLayers': 'セクションのレイヤーを隠す',
+    'tlShowSectionLayers': 'セクションのレイヤーを表示',
+    'tlOnlyThisSection': 'このセクションだけ',
+    'tlAllDisplayedLayers': '表示中の全レイヤー',
+    'tlShowAll': 'すべて表示',
+    'tlHideAll': 'すべて隠す',
+    'tlSoloActiveLayer': 'アクティブレイヤーをソロ',
+    'tlSoloKind': '種類をソロ',
+    'tlSoloColor': '色をソロ',
+    'tlSoloFillReferences': '塗り参照をソロ',
+    'tlSoloFxOnRows': 'FXオンの行をソロ',
+    'tlSoloSheetOnRows': 'シートオンの行をソロ',
+    'tlApplyAllFx': 'FXをすべて適用',
+    'tlBypassAllFx': 'FXをすべてバイパス',
+    'tlAllOnTimesheet': 'すべてシートに載せる',
+    'tlAllOffTimesheet': 'すべてシートから外す',
+    'tlClearAllMarks': 'マークをすべて消去',
+    'tlClearAllFillRefs': '塗り参照をすべて解除',
+    'tlColVisibility': '表示列',
+    'tlColLayerKind': 'レイヤー種類列',
+    'tlColOnionSkin': 'オニオンスキン列',
+    'tlColOpacity': '不透明度列',
+    'tlColBlendMode': '合成モード列',
+    'tlColFx': 'FX列',
+    'tlColMark': 'マーク列',
+    'tlColFillReference': '塗り参照列',
+    'tlColTimesheet': 'タイムシート列',
+    'tlOpenOnionPanel': 'オニオンスキンパネルを開く',
+    'tlAddLayerHere': 'ここにレイヤーを追加',
+    'tlDissolveFolder': 'フォルダを解除',
+    'tlRenameFolder': 'フォルダ名を変更…',
+    'tlRemoveAudio': '音声を外す',
+    'tlLayerMark': 'レイヤーマーク',
+    'tlRepeat': 'リピート',
+    'tlRepeatSelection': '選択範囲をリピート',
+    'tlSeNameTemplate': 'SE名 {name}',
     'tlAddLayerHeader': 'レイヤーを追加',
     'tlSameAsSelected': '選択中と同じ種類',
     'tlKindAnimation': '動画',
@@ -1562,6 +1680,44 @@ class AppStrings {
     'shortcutAction.timeline-comma-3': '3코마로 설정',
     'shortcutAction.timeline-comma-4': '4코마로 설정',
     'shortcutAction.timeline-comma-n': 'N코마로 설정…',
+    'tlSections': '섹션',
+    'tlFoldSection': '섹션 접기',
+    'tlHideSectionLayers': '섹션 레이어 숨기기',
+    'tlShowSectionLayers': '섹션 레이어 표시',
+    'tlOnlyThisSection': '이 섹션만',
+    'tlAllDisplayedLayers': '표시 중인 모든 레이어',
+    'tlShowAll': '모두 표시',
+    'tlHideAll': '모두 숨기기',
+    'tlSoloActiveLayer': '활성 레이어 솔로',
+    'tlSoloKind': '종류 솔로',
+    'tlSoloColor': '색 솔로',
+    'tlSoloFillReferences': '채색 참조 솔로',
+    'tlSoloFxOnRows': 'FX 켜진 행 솔로',
+    'tlSoloSheetOnRows': '시트 켜진 행 솔로',
+    'tlApplyAllFx': 'FX 모두 적용',
+    'tlBypassAllFx': 'FX 모두 우회',
+    'tlAllOnTimesheet': '모두 시트에 올리기',
+    'tlAllOffTimesheet': '모두 시트에서 내리기',
+    'tlClearAllMarks': '마크 모두 지우기',
+    'tlClearAllFillRefs': '채색 참조 모두 해제',
+    'tlColVisibility': '표시 열',
+    'tlColLayerKind': '레이어 종류 열',
+    'tlColOnionSkin': '어니언 스킨 열',
+    'tlColOpacity': '불투명도 열',
+    'tlColBlendMode': '블렌드 모드 열',
+    'tlColFx': 'FX 열',
+    'tlColMark': '마크 열',
+    'tlColFillReference': '채색 참조 열',
+    'tlColTimesheet': '타임시트 열',
+    'tlOpenOnionPanel': '어니언 스킨 패널 열기',
+    'tlAddLayerHere': '여기에 레이어 추가',
+    'tlDissolveFolder': '폴더 해제',
+    'tlRenameFolder': '폴더 이름 변경…',
+    'tlRemoveAudio': '오디오 제거',
+    'tlLayerMark': '레이어 마크',
+    'tlRepeat': '반복',
+    'tlRepeatSelection': '선택 영역 반복',
+    'tlSeNameTemplate': 'SE 이름 {name}',
     'tlAddLayerHeader': '레이어 추가',
     'tlSameAsSelected': '선택한 것과 같은 종류',
     'tlKindAnimation': '동화',
@@ -1983,6 +2139,44 @@ class AppStrings {
     'shortcutAction.timeline-comma-3': 'Régler sur 3 commas',
     'shortcutAction.timeline-comma-4': 'Régler sur 4 commas',
     'shortcutAction.timeline-comma-n': 'Régler sur N commas…',
+    'tlSections': 'Sections',
+    'tlFoldSection': 'Replier la section',
+    'tlHideSectionLayers': 'Masquer les calques de la section',
+    'tlShowSectionLayers': 'Afficher les calques de la section',
+    'tlOnlyThisSection': 'Cette section uniquement',
+    'tlAllDisplayedLayers': 'Tous les calques affichés',
+    'tlShowAll': 'Tout afficher',
+    'tlHideAll': 'Tout masquer',
+    'tlSoloActiveLayer': 'Solo du calque actif',
+    'tlSoloKind': 'Solo par type',
+    'tlSoloColor': 'Solo par couleur',
+    'tlSoloFillReferences': 'Solo des références de remplissage',
+    'tlSoloFxOnRows': 'Solo des lignes avec FX',
+    'tlSoloSheetOnRows': 'Solo des lignes sur la feuille',
+    'tlApplyAllFx': 'Appliquer tous les FX',
+    'tlBypassAllFx': 'Contourner tous les FX',
+    'tlAllOnTimesheet': 'Tout mettre sur la feuille',
+    'tlAllOffTimesheet': 'Tout retirer de la feuille',
+    'tlClearAllMarks': 'Effacer tous les repères',
+    'tlClearAllFillRefs': 'Effacer toutes les références de remplissage',
+    'tlColVisibility': 'Colonne visibilité',
+    'tlColLayerKind': 'Colonne type de calque',
+    'tlColOnionSkin': "Colonne pelure d'oignon",
+    'tlColOpacity': 'Colonne opacité',
+    'tlColBlendMode': 'Colonne mode de fusion',
+    'tlColFx': 'Colonne FX',
+    'tlColMark': 'Colonne repère',
+    'tlColFillReference': 'Colonne référence de remplissage',
+    'tlColTimesheet': 'Colonne feuille de temps',
+    'tlOpenOnionPanel': "Ouvrir le panneau pelure d'oignon",
+    'tlAddLayerHere': 'Ajouter un calque ici',
+    'tlDissolveFolder': 'Dissoudre le dossier',
+    'tlRenameFolder': 'Renommer le dossier…',
+    'tlRemoveAudio': "Retirer l'audio",
+    'tlLayerMark': 'Repère de calque',
+    'tlRepeat': 'Répéter',
+    'tlRepeatSelection': 'Répéter la sélection',
+    'tlSeNameTemplate': 'Nom SE {name}',
     'tlAddLayerHeader': 'Ajouter un calque',
     'tlSameAsSelected': 'Comme la sélection',
     'tlKindAnimation': 'Animation',
@@ -2375,6 +2569,44 @@ class AppStrings {
     'shortcutAction.timeline-comma-3': '设为 3 格',
     'shortcutAction.timeline-comma-4': '设为 4 格',
     'shortcutAction.timeline-comma-n': '设为 N 格…',
+    'tlSections': '区段',
+    'tlFoldSection': '折叠区段',
+    'tlHideSectionLayers': '隐藏区段图层',
+    'tlShowSectionLayers': '显示区段图层',
+    'tlOnlyThisSection': '仅此区段',
+    'tlAllDisplayedLayers': '所有显示的图层',
+    'tlShowAll': '全部显示',
+    'tlHideAll': '全部隐藏',
+    'tlSoloActiveLayer': '独奏当前图层',
+    'tlSoloKind': '按类型独奏',
+    'tlSoloColor': '按颜色独奏',
+    'tlSoloFillReferences': '独奏填充参考',
+    'tlSoloFxOnRows': '独奏已开 FX 的行',
+    'tlSoloSheetOnRows': '独奏已上表的行',
+    'tlApplyAllFx': '应用全部 FX',
+    'tlBypassAllFx': '旁通全部 FX',
+    'tlAllOnTimesheet': '全部放上摄影表',
+    'tlAllOffTimesheet': '全部移出摄影表',
+    'tlClearAllMarks': '清除所有标记',
+    'tlClearAllFillRefs': '清除所有填充参考',
+    'tlColVisibility': '可见性列',
+    'tlColLayerKind': '图层类型列',
+    'tlColOnionSkin': '洋葱皮列',
+    'tlColOpacity': '不透明度列',
+    'tlColBlendMode': '混合模式列',
+    'tlColFx': 'FX 列',
+    'tlColMark': '标记列',
+    'tlColFillReference': '填充参考列',
+    'tlColTimesheet': '摄影表列',
+    'tlOpenOnionPanel': '打开洋葱皮面板',
+    'tlAddLayerHere': '在此添加图层',
+    'tlDissolveFolder': '解散文件夹',
+    'tlRenameFolder': '重命名文件夹…',
+    'tlRemoveAudio': '移除音频',
+    'tlLayerMark': '图层标记',
+    'tlRepeat': '重复',
+    'tlRepeatSelection': '重复所选',
+    'tlSeNameTemplate': 'SE 名称 {name}',
     'tlAddLayerHeader': '添加图层',
     'tlSameAsSelected': '与所选相同',
     'tlKindAnimation': '动画',

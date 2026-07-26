@@ -619,13 +619,13 @@ class TimelineLayerControlsRow extends StatelessWidget {
           PopupMenuItem<String>(
             key: ValueKey<String>('timeline-folder-rename-${layer.id}'),
             value: 'rename',
-            child: const Text('Rename Folder…'),
+            child: Text(AppText.strings.tlRenameFolder),
           ),
         if (onDissolveFolder != null)
           PopupMenuItem<String>(
             key: ValueKey<String>('timeline-folder-dissolve-${layer.id}'),
             value: 'dissolve',
-            child: const Text('Dissolve Folder'),
+            child: Text(AppText.strings.tlDissolveFolder),
           ),
       ],
     );

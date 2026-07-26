@@ -16,6 +16,7 @@ import 'timeline_exposure_comma_drag_handle.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_run_end_handles.dart';
+import '../text/app_strings.dart';
 
 /// One pointer target in a dense row's edit chrome. Its [rect] is the
 /// row-local hit area — the same rect the painter draws inside, so there is
@@ -780,7 +781,7 @@ class _TimelineRowEditChromeLayerState
         ),
         PanelFlyoutItem(
           keyValue: 'run-edge-mode-repeat',
-          label: 'Repeat',
+          label: AppText.strings.tlRepeat,
           checked:
               target.mode == TimelineRunEdgeMode.repeat && !target.hasPattern,
           onSelected: () => pick(TimelineRunEdgeMode.repeat),
@@ -791,7 +792,7 @@ class _TimelineRowEditChromeLayerState
         if (selectionScopes || target.hasPattern)
           PanelFlyoutItem(
             keyValue: 'run-edge-mode-repeat-selection',
-            label: 'Repeat selection',
+            label: AppText.strings.tlRepeatSelection,
             checked:
                 target.mode == TimelineRunEdgeMode.repeat && target.hasPattern,
             onSelected: () =>

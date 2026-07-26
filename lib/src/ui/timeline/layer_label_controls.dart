@@ -8,6 +8,7 @@ import '../../models/layer_mark.dart';
 import '../theme/app_theme.dart';
 import '../widgets/panel_flyout.dart';
 import 'upright_vertical_text.dart';
+import '../text/app_strings.dart';
 
 /// Layer-label chip controls shared by both timeline orientations
 /// (horizontal rows and XSheet column headers): the timesheet-output toggle
@@ -520,7 +521,7 @@ class LayerMarkChip extends StatelessWidget {
   Widget build(BuildContext context) {
     return PopupMenuButton<LayerMark>(
       key: ValueKey<String>('$keyPrefix-layer-mark-$layerId'),
-      tooltip: 'Layer mark',
+      tooltip: AppText.strings.tlLayerMark,
       popUpAnimationStyle: instantMenuAnimation,
       padding: EdgeInsets.zero,
       onSelected: (selected) => onMarkSelected(layerId, selected),
@@ -540,7 +541,7 @@ class LayerMarkChip extends StatelessWidget {
           ),
       ],
       child: Semantics(
-        label: 'Layer mark',
+        label: AppText.strings.tlLayerMark,
         button: true,
         child: _MarkSwatch(mark: mark),
       ),

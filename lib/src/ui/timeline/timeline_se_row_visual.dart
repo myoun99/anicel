@@ -14,6 +14,7 @@ import '../theme/app_theme.dart';
 import 'dialogue_fit_text.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_frame_coordinate_policy.dart';
+import '../text/app_strings.dart';
 
 /// SE rows reuse the drawing rows' white paper frame blocks (the cells
 /// themselves paint the paper); this overlay adds the sheet's SE writing on
@@ -500,11 +501,11 @@ class _AudioClipStrip extends StatelessWidget {
         Offset.zero & (overlay as RenderBox).size,
       ),
       popUpAnimationStyle: instantMenuAnimation,
-      items: const [
+      items: [
         PopupMenuItem<String>(
-          key: ValueKey<String>('audio-clip-menu-remove'),
+          key: const ValueKey<String>('audio-clip-menu-remove'),
           value: 'remove',
-          child: Text('Remove Audio'),
+          child: Text(AppText.strings.tlRemoveAudio),
         ),
       ],
     );

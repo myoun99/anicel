@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/layer_kind.dart';
 import '../widgets/panel_flyout.dart';
 import 'timeline_section_policy.dart';
+import '../text/app_strings.dart';
 
 /// The section flyout's commands (host-wired; null leaves the section tags
 /// display-only).
@@ -28,7 +29,7 @@ class TimelineSectionRailCallbacks {
   final ValueChanged<TimelineSection> onSoloSection;
 }
 
-/// The kind the section's 'Add layer here' creates.
+/// The kind the section's AppText.strings.tlAddLayerHere creates.
 LayerKind timelineSectionHomeKind(TimelineSection section) {
   return switch (section) {
     TimelineSection.drawing => LayerKind.animation,
@@ -52,33 +53,33 @@ List<PanelFlyoutEntry> timelineSectionFlyoutEntries(
     if (timelineSectionHideable(section))
       PanelFlyoutItem(
         keyValue: 'section-flyout-fold-$name',
-        label: 'Fold section',
+        label: AppText.strings.tlFoldSection,
         icon: Icons.unfold_less,
         onSelected: () => callbacks.onToggleSection(section),
       ),
     PanelFlyoutItem(
       keyValue: 'section-flyout-add-$name',
-      label: 'Add layer here',
+      label: AppText.strings.tlAddLayerHere,
       icon: Icons.add,
       onSelected: () =>
           callbacks.onAddLayerOfKind(timelineSectionHomeKind(section)),
     ),
     PanelFlyoutItem(
       keyValue: 'section-flyout-solo-$name',
-      label: 'Only this section',
+      label: AppText.strings.tlOnlyThisSection,
       icon: Icons.filter_center_focus,
       onSelected: () => callbacks.onSoloSection(section),
     ),
     const PanelFlyoutDivider(),
     PanelFlyoutItem(
       keyValue: 'section-flyout-show-$name',
-      label: 'Show section layers',
+      label: AppText.strings.tlShowSectionLayers,
       icon: Icons.visibility,
       onSelected: () => callbacks.onSetSectionLayersVisibility(section, true),
     ),
     PanelFlyoutItem(
       keyValue: 'section-flyout-hide-$name',
-      label: 'Hide section layers',
+      label: AppText.strings.tlHideSectionLayers,
       icon: Icons.visibility_off,
       onSelected: () => callbacks.onSetSectionLayersVisibility(section, false),
     ),
