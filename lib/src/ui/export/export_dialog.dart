@@ -441,20 +441,21 @@ class ExportDialogState extends State<ExportDialog> {
   List<ExportTimesheetPageTask> _timesheetPagePlan() {
     final tasks = <ExportTimesheetPageTask>[];
     for (final cut in _timesheetCuts()) {
-      final number = _cutNumberOf(cut);
+      final label = cut.name;
+      final fileLabel = sanitizeExportFileComponent(label);
       final (_, document, _) = _sheetDocFor(cut);
       final pageCount = document.pages.length;
       for (var page = 0; page < pageCount; page += 1) {
         tasks.add(
           ExportTimesheetPageTask(
             cut: cut,
-            cutNumber: number,
+            cutLabel: label,
             cutStartFrame: _trackStartOf(cut),
             pageIndex: page,
             pageCount: pageCount,
             fileName: pageCount == 1
-                ? 'CUT$number.png'
-                : 'CUT${number}_p${page + 1}.png',
+                ? 'CUT$fileLabel.png'
+                : 'CUT${fileLabel}_p${page + 1}.png',
           ),
         );
       }
@@ -495,17 +496,6 @@ class ExportDialogState extends State<ExportDialog> {
   @visibleForTesting
   void debugSetLocationForTests(String location) {
     setState(() => _location = location);
-  }
-
-  /// The 1-based position of [cut] within its track (sheet/XDTS number).
-  int _cutNumberOf(Cut cut) {
-    for (final track in _session.repository.requireProject().tracks) {
-      final index = track.cuts.indexWhere((entry) => entry.id == cut.id);
-      if (index != -1) {
-        return index + 1;
-      }
-    }
-    return 1;
   }
 
   String _sequenceFileNameFor(int index) {
@@ -738,7 +728,7 @@ class ExportDialogState extends State<ExportDialog> {
           return null;
         }
         final task = plan[_sheetPosition.clamp(0, plan.length - 1)];
-        return 'CUT${task.cutNumber} · p${task.pageIndex + 1}/'
+        return 'CUT${task.cutLabel} · p${task.pageIndex + 1}/'
             '${task.pageCount} · ${plan.length} '
             '${_plural(plan.length, 'page')}';
     }
@@ -828,7 +818,7 @@ class ExportDialogState extends State<ExportDialog> {
         final cuts = _timesheetCuts();
         return cuts.isEmpty
             ? '→ (no cuts)'
-            : '→ CUT${_cutNumberOf(cuts.first)}.xdts'
+            : '→ CUT${sanitizeExportFileComponent(cuts.first.name)}.xdts'
                   '${cuts.length > 1 ? ' …' : ''}';
     }
   }
@@ -1373,10 +1363,12 @@ class ExportDialogState extends State<ExportDialog> {
     for (final cut in cuts) {
       final content = buildXdtsContent(
         cut: cut,
-        cutNumber: _cutNumberOf(cut),
+        cutLabel: cut.name,
         instructionDefById: defById,
       );
-      final file = File(_joinLocation('CUT${_cutNumberOf(cut)}.xdts'));
+      final file = File(
+        _joinLocation('CUT${sanitizeExportFileComponent(cut.name)}.xdts'),
+      );
       await file.parent.create(recursive: true);
       await file.writeAsString(content, flush: true);
       written += 1;
@@ -1825,7 +1817,7 @@ class ExportDialogState extends State<ExportDialog> {
             ],
             captionOf: (position) {
               final task = plan[position.clamp(0, plan.length - 1)];
-              return 'CUT${task.cutNumber}·p${task.pageIndex + 1}';
+              return 'CUT${task.cutLabel}·p${task.pageIndex + 1}';
             },
           ),
           position: _sheetPosition,

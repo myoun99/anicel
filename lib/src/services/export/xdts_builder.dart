@@ -26,7 +26,11 @@ const String xdtsNullCell = 'SYMBOL_NULL_CELL';
 
 String buildXdtsContent({
   required Cut cut,
-  required int cutNumber,
+  /// The cut NUMBER as the sheet writes it — which is the cut's NAME, a
+  /// free string the user owns ('39', '39A', '39B/40'). It used to be the
+  /// cut's 1-based position, so reordering cuts silently renumbered every
+  /// sheet that had already been exported.
+  required String cutLabel,
   String scene = '1',
   CameraInstructionDef? Function(String instructionId)? instructionDefById,
 }) {
@@ -105,7 +109,7 @@ String buildXdtsContent({
   ];
 
   final json = <String, dynamic>{
-    'header': {'cut': '$cutNumber', 'scene': scene},
+    'header': {'cut': cutLabel, 'scene': scene},
     'timeTables': [
       {
         'duration': duration,

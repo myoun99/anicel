@@ -486,8 +486,10 @@ void main() {
       await tester.runAsync(state.export);
       await tester.pump();
 
-      expect(filesIn(temp), ['CUT1.png']);
-      final bytes = File('${temp.path}/CUT1.png').readAsBytesSync();
+      // The sheet is filed under the cut's NAME — its number, whatever the
+      // user called it — not its position in the track.
+      expect(filesIn(temp), ['CUTCut.png']);
+      final bytes = File('${temp.path}/CUTCut.png').readAsBytesSync();
       expect(bytes.sublist(0, 4), [0x89, 0x50, 0x4E, 0x47]);
       expect(statusText(tester), 'Exported 1 sheet page.');
     });
@@ -513,9 +515,9 @@ void main() {
       await tester.runAsync(state.export);
       await tester.pump();
 
-      expect(filesIn(temp), ['CUT1.xdts', 'CUT2.xdts']);
+      expect(filesIn(temp), ['CUTCut B.xdts', 'CUTCut.xdts']);
       expect(statusText(tester), 'Exported 2 XDTS sheets.');
-      final content = File('${temp.path}/CUT1.xdts').readAsStringSync();
+      final content = File('${temp.path}/CUTCut.xdts').readAsStringSync();
       expect(content, contains('exchangeDigitalTimeSheet'));
     });
   });
@@ -597,7 +599,7 @@ void main() {
       final transport = tester.widget<Text>(
         find.byKey(const ValueKey<String>('export-transport-line')),
       );
-      expect(transport.data, contains('CUT1 · p1/1'));
+      expect(transport.data, contains('CUTCut · p1/1'));
     });
 
     testWidgets('a flushed preview shows the rendered picture',
