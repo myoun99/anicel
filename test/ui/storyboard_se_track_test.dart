@@ -14,6 +14,7 @@ import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
+import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
 import 'package:quick_animaker_v2/src/ui/timeline/dialogue_fit_text.dart';
 
 Cut _cut(String id, int duration) {
@@ -30,6 +31,19 @@ Cut _cut(String id, int duration) {
         timeline: const {},
       ),
     ],
+  );
+}
+
+/// A point on the storyboard's S1 row over [globalFrame] — the cells
+/// press takes a position, so the tests state one instead of hunting for a
+/// per-block widget that no longer exists.
+Offset _storyboardSeRowPoint(WidgetTester tester, {required int globalFrame}) {
+  final panel = tester.widget<StoryboardPanel>(find.byType(StoryboardPanel));
+  final row = find.byKey(const ValueKey<String>('storyboard-se-row-0-1'));
+  final topLeft = tester.getTopLeft(row);
+  return Offset(
+    topLeft.dx + (globalFrame + 0.5) * panel.pixelsPerFrame,
+    topLeft.dy + tester.getSize(row).height / 2,
   );
 }
 
@@ -296,17 +310,14 @@ void main() {
       findsNothing,
     );
 
-    // Select cut-2 (tap its own SE block in the storyboard): the crossing
-    // block spills IN — ~ at the cut start instead of a start grip.
+    // Select cut-2 (press its S row inside cut 2 — the cells contract:
+    // the row press seeks, and the frame it lands on picks the cut): the
+    // crossing block spills IN — ~ at the cut start instead of a grip.
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
     );
     await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(
-        const ValueKey<String>('storyboard-se-block-select-se-row-1-10'),
-      ),
-    );
+    await tester.tapAt(_storyboardSeRowPoint(tester, globalFrame: 10));
     await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-mode-timeline-button')),

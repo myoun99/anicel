@@ -400,7 +400,24 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                 activeCutId: _session.playback.isActive
                     ? _session.playback.position?.cutId ?? _session.activeCutId
                     : _session.activeCutId,
-                onCutSelected: _session.selectCut,
+                // THE cells' press (the timeline's cell contract): pick the
+                // row, then seek to the frame under the pointer. The seek
+                // is the ruler's own, so a press in a GAP parks there — an
+                // empty cell is still a cell, and the two paths cannot
+                // disagree about what a frame means.
+                //
+                // The row half comes FIRST and does only the row: a track
+                // row that promoted the playhead's cut here would switch
+                // cuts twice, since the pressed frame decides the cut.
+                onRowFramePress: (row, globalFrame) {
+                  switch (row) {
+                    case LayerRowAddress(:final layerId):
+                      _session.selectLayer(layerId);
+                    case TrackRowAddress(:final trackId):
+                      _session.selectTrackRow(trackId);
+                  }
+                  seekStoryboardGlobalFrame(_session, globalFrame);
+                },
                 activeLayerId: _session.activeLayerId,
                 // The rail speaks ROW ADDRESSES: track rows and layer rows
                 // are one selection, so exactly one of them highlights.
@@ -551,13 +568,6 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                 cutPictureVisibleOf: _session.isCutPictureVisible,
                 onToggleCutPictureVisibility:
                     _session.toggleCutPictureVisibility,
-                // SE block tap-select: cut + layer + frame, like tapping
-                // the timeline's cells.
-                onSelectSeBlock: (cutId, layerId, blockStartFrame) {
-                  _session.selectCut(cutId);
-                  _session.selectLayer(layerId);
-                  _session.selectFrameIndex(blockStartFrame);
-                },
                 // The ACTIVE cut's SE blocks reuse the timeline's comma
                 // edge grips (live preview + ONE undo per drag).
                 // The strip passes GLOBAL block starts (UI-R7 #5: every

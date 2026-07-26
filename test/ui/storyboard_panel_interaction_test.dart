@@ -19,8 +19,10 @@ import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
+import 'package:quick_animaker_v2/src/models/timeline_row_address.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
+import 'package:quick_animaker_v2/src/ui/storyboard_timeline_layout.dart';
 import 'storyboard_cut_block_probe.dart';
 import 'timeline/timeline_row_chrome_probe.dart';
 
@@ -1208,7 +1210,20 @@ Future<void> _pumpStoryboardPanel(
         body: StoryboardPanel(
           project: project,
           activeCutId: activeCutId,
-          onCutSelected: onCutSelected,
+          // The HOST's landing verb, stood in for: a cells press states a
+          // row and a frame, and the seek behind it is what picks the cut
+          // (a frame in a gap picks none). These tests keep asserting on
+          // the cut so the press contract stays readable as "this cut".
+          onRowFramePress: (row, globalFrame) {
+            for (final entry in buildStoryboardTimelineLayout(project)) {
+              if (row == TrackRowAddress(entry.trackId) &&
+                  globalFrame >= entry.startFrame &&
+                  globalFrame < entry.endFrame) {
+                onCutSelected(entry.cutId);
+                return;
+              }
+            }
+          },
           cutTrim: cutTrim,
           cutMove: cutMove,
           cutSelect: cutSelect,

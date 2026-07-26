@@ -13,6 +13,7 @@ import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
+import 'package:quick_animaker_v2/src/ui/storyboard_timeline_layout.dart';
 import 'storyboard_cut_block_probe.dart';
 
 void main() {
@@ -245,7 +246,17 @@ Future<void> _pumpStoryboardPanel(
         body: StoryboardPanel(
           project: project,
           activeCutId: activeCutId,
-          onCutSelected: onCutSelected ?? (_) {},
+          onRowFramePress: onCutSelected == null
+              ? null
+              : (row, globalFrame) {
+                  for (final entry in buildStoryboardTimelineLayout(project)) {
+                    if (globalFrame >= entry.startFrame &&
+                        globalFrame < entry.endFrame) {
+                      onCutSelected(entry.cutId);
+                      return;
+                    }
+                  }
+                },
         ),
       ),
     ),

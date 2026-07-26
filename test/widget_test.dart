@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/main.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/models/timeline_row_address.dart';
 import 'package:quick_animaker_v2/src/ui/input/app_input_settings.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_timeline_layout.dart';
@@ -95,8 +96,11 @@ Future<void> _switchToCut(WidgetTester tester, String cutId) async {
   await _withStoryboardPanel(tester, (panel) async {
     final entries = buildStoryboardTimelineLayout(panel.project);
     expect(entries.map((entry) => entry.cutId.value), contains(cutId));
+    final entry = entries.firstWhere((entry) => entry.cutId.value == cutId);
 
-    panel.onCutSelected(CutId(cutId));
+    // The cells press: a row and a frame INSIDE the cut — the seek behind
+    // it is what makes that cut active.
+    panel.onRowFramePress!(TrackRowAddress(entry.trackId), entry.startFrame);
     await tester.pumpAndSettle();
   });
 }

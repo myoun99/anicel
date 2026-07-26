@@ -22,6 +22,7 @@ import 'package:quick_animaker_v2/src/ui/timeline/timeline_exposure_comma_drag_p
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
+import 'package:quick_animaker_v2/src/models/timeline_row_address.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/services/audio/audio_peaks_extractor.dart';
@@ -83,8 +84,7 @@ Future<void> _pumpPanel(
   ValueChanged<LayerId>? onToggleLayerVisibility,
   ValueChanged<LayerId>? onToggleLayerMuted,
   void Function(LayerId layerId, double opacity)? onLayerOpacityChanged,
-  void Function(CutId cutId, LayerId layerId, int blockStartFrame)?
-  onSelectSeBlock,
+  StoryboardRowFramePress? onRowFramePress,
   TimelineCommaDragCallbacks? seCommaDrag,
   void Function(LayerId layerId, int clipIndex, int offsetFrames)?
   onSetAudioClipOffset,
@@ -105,7 +105,7 @@ Future<void> _pumpPanel(
           builder: (context, setState) => StoryboardPanel(
             project: project,
             activeCutId: activeCutId,
-            onCutSelected: (_) {},
+            onRowFramePress: onRowFramePress,
             pixelsPerFrame: 12,
             projectFrameRate: const ProjectFrameRate.integer(24),
             audioPeaksFor: (path) => path == 'voice.wav' ? _peaks : null,
@@ -136,7 +136,6 @@ Future<void> _pumpPanel(
             onToggleLayerVisibility: onToggleLayerVisibility,
             onToggleLayerMuted: onToggleLayerMuted,
             onLayerOpacityChanged: onLayerOpacityChanged,
-            onSelectSeBlock: onSelectSeBlock,
             seCommaDrag: seCommaDrag,
             onSetAudioClipOffset: onSetAudioClipOffset,
             cutFxEnabledOf: cutFxEnabledOf,
@@ -668,25 +667,42 @@ void main() {
       expect(opacityChanges.last.$2, lessThan(1));
     });
 
-    testWidgets('tapping an SE block selects its cut/layer/frame '
-        '(timeline cell-tap parity)', (tester) async {
-      final selections = <(CutId, LayerId, int)>[];
+    testWidgets('pressing an S row selects the row and the frame under the '
+        'pointer — an EMPTY cell included (timeline cell parity)', (
+      tester,
+    ) async {
+      const pixelsPerFrame = 12.0;
+      final presses = <(TimelineRowAddress, int)>[];
       await _pumpPanel(
         tester,
         project: _project(),
-        onSelectSeBlock: (cutId, layerId, start) =>
-            selections.add((cutId, layerId, start)),
+        onRowFramePress: (row, globalFrame) => presses.add((row, globalFrame)),
       );
 
-      await tester.tap(
-        find.byKey(
-          const ValueKey<String>('storyboard-se-block-select-lane-se-0'),
-        ),
+      final rowLeft = tester
+          .getTopLeft(
+            find.byKey(const ValueKey<String>('storyboard-se-row-0-1')),
+          )
+          .dx;
+      final rowCentreY = tester
+          .getCenter(find.byKey(const ValueKey<String>('storyboard-se-row-0-1')))
+          .dy;
+
+      // Frame 2: inside the row's written block.
+      await tester.tapAt(
+        Offset(rowLeft + 2.5 * pixelsPerFrame, rowCentreY),
+      );
+      await tester.pumpAndSettle();
+      // Frame 6: past the writing, where the old per-BLOCK tap zones had
+      // nothing to answer with.
+      await tester.tapAt(
+        Offset(rowLeft + 6.5 * pixelsPerFrame, rowCentreY),
       );
       await tester.pumpAndSettle();
 
-      expect(selections, [
-        (const CutId('lane-cut'), const LayerId('lane-se'), 0),
+      expect(presses, [
+        (const LayerRowAddress(LayerId('lane-se')), 2),
+        (const LayerRowAddress(LayerId('lane-se')), 6),
       ]);
     });
 
