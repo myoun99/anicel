@@ -7,6 +7,7 @@ import '../../services/persistence/app_documents.dart'
     show appRecordingsDirectory;
 import '../../services/persistence/app_save_settings.dart';
 import '../editor_session_manager.dart';
+import '../text/app_strings.dart';
 
 /// SAVE-1: the autosave policy section (Preferences ▸ Autosave).
 ///
@@ -72,7 +73,7 @@ class AutosaveSettingsSection extends StatelessWidget {
               key: const ValueKey<String>('settings-sidecar-custom'),
               contentPadding: EdgeInsets.zero,
               dense: true,
-              title: const Text('Keep sidecars in a separate folder'),
+              title: Text(AppText.strings.autosaveSidecarFolder),
               subtitle: const Text(
                 'OFF (default): the sidecar sits beside the project file.\n'
                 'ON: every sidecar goes to one folder of your choosing — '
@@ -109,7 +110,7 @@ class AutosaveSettingsSection extends StatelessWidget {
                         );
                       }
                     },
-                    child: const Text('Choose…'),
+                    child: Text(AppText.strings.autosaveChoose),
                   ),
                 ],
               ),
@@ -162,7 +163,7 @@ class AutosaveSettingsSection extends StatelessWidget {
                         );
                       }
                     },
-                    child: const Text('Choose…'),
+                    child: Text(AppText.strings.autosaveChoose),
                   ),
                 ],
               ],

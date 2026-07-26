@@ -49,6 +49,7 @@ import '../timesheet/timesheet_document_painter.dart'
 import '../timesheet/timesheet_notation.dart';
 import '../widgets/app_window.dart';
 import '../dialogs/app_confirm_dialog.dart';
+import '../text/app_strings.dart';
 
 /// Picks the output directory (the Browse… button); `null` on cancel.
 typedef ExportDirectoryPicker = Future<String?> Function();
@@ -1496,7 +1497,7 @@ class ExportDialogState extends State<ExportDialog> {
       final strings = _session.uiStrings;
       return AppConfirmDialog(
         windowKey: const ValueKey<String>('export-dialog-no-cuts'),
-        title: 'Export',
+        title: AppText.strings.exExport,
         titleIcon: Icons.upload_file_outlined,
         message: strings.exportNoCuts,
         actions: [
@@ -1541,7 +1542,7 @@ class ExportDialogState extends State<ExportDialog> {
 
         return AppWindow(
           windowKey: const ValueKey<String>('export-dialog'),
-          title: 'Export',
+          title: AppText.strings.exExport,
           titleIcon: Icons.upload_file_outlined,
           onClose: _isExporting ? null : () => Navigator.of(context).pop(),
           width: width,
@@ -1607,12 +1608,12 @@ class ExportDialogState extends State<ExportDialog> {
                 onPressed: cancelExport,
               ),
             AppWindowAction(
-              label: 'Add to queue',
+              label: AppText.strings.exAddToQueue,
               actionKey: const ValueKey<String>('export-queue-add-button'),
               onPressed: _canExport ? addToQueue : null,
             ),
             AppWindowAction(
-              label: 'Export',
+              label: AppText.strings.exExport,
               actionKey: const ValueKey<String>('export-run-button'),
               emphasis: AppWindowActionEmphasis.primary,
               onPressed: _canExport ? () => unawaited(export()) : null,
@@ -1701,7 +1702,7 @@ class ExportDialogState extends State<ExportDialog> {
               visualDensity: VisualDensity.compact,
               padding: const EdgeInsets.symmetric(horizontal: 10),
             ),
-            child: const Text('Browse…'),
+            child: Text(AppText.strings.exBrowse),
           ),
         ],
       ),
@@ -1945,7 +1946,7 @@ class ExportDialogState extends State<ExportDialog> {
     final projectScope = spec.scope == ExportScopeKind.project;
     return [
       ExportAccordion(
-        title: 'Format',
+        title: AppText.strings.exFormat,
         summary: ExportFormatModule.summarize(spec.format),
         expanded: _expandedFor('format', fallback: true),
         onToggle: () => _toggleExpanded('format', fallback: true),
@@ -1979,7 +1980,7 @@ class ExportDialogState extends State<ExportDialog> {
         ),
       ),
       ExportAccordion(
-        title: 'Scope',
+        title: AppText.strings.exScope,
         summary: ExportScopeModule.summarize(spec.scope),
         expanded: _expandedFor('scope', fallback: true),
         onToggle: () => _toggleExpanded('scope', fallback: true),
@@ -2019,7 +2020,7 @@ class ExportDialogState extends State<ExportDialog> {
       ),
       if (spec.format.isVideo)
         ExportAccordion(
-          title: 'Audio',
+          title: AppText.strings.exAudio,
           summary: spec.includeAudio
               ? 'SE muxed · ${spec.format.videoCodec.isProRes ? 'PCM' : 'AAC'}'
               : 'Off',
@@ -2027,7 +2028,7 @@ class ExportDialogState extends State<ExportDialog> {
           onToggle: () => _toggleExpanded('audio'),
           child: ExportToggleRow(
             widgetKey: const ValueKey<String>('export-audio-toggle'),
-            label: 'Mux the SE mix into the video',
+            label: AppText.strings.exMuxSeMix,
             value: spec.includeAudio,
             onChanged: _isExporting
                 ? null
@@ -2036,7 +2037,7 @@ class ExportDialogState extends State<ExportDialog> {
         ),
       if (spec.format.isStill)
         ExportAccordion(
-          title: 'Naming',
+          title: AppText.strings.exNaming,
           summary: ExportSequenceNamingModule.summarize(
             spec.naming,
             spec.format.stillFormat.fileExtension,
@@ -2056,13 +2057,13 @@ class ExportDialogState extends State<ExportDialog> {
           ),
         ),
       ExportAccordion(
-        title: 'Options',
+        title: AppText.strings.exOptions,
         summary: spec.applyLayerFx ? 'FX on' : 'FX off',
         expanded: _expandedFor('options'),
         onToggle: () => _toggleExpanded('options'),
         child: ExportToggleRow(
           widgetKey: const ValueKey<String>('export-apply-fx-toggle'),
-          label: 'Apply layer FX (transforms and animated opacity)',
+          label: AppText.strings.exApplyLayerFxHelp,
           value: spec.applyLayerFx,
           onChanged: _isExporting
               ? null
@@ -2095,7 +2096,7 @@ class ExportDialogState extends State<ExportDialog> {
     final spec = _specs.image;
     return [
       ExportAccordion(
-        title: 'Format',
+        title: AppText.strings.exFormat,
         summary: ExportFormatModule.summarize(spec.format),
         expanded: _expandedFor('format', fallback: true),
         onToggle: () => _toggleExpanded('format', fallback: true),
@@ -2128,13 +2129,13 @@ class ExportDialogState extends State<ExportDialog> {
         ),
       ),
       ExportAccordion(
-        title: 'Options',
+        title: AppText.strings.exOptions,
         summary: spec.applyLayerFx ? 'FX on' : 'FX off',
         expanded: _expandedFor('options'),
         onToggle: () => _toggleExpanded('options'),
         child: ExportToggleRow(
           widgetKey: const ValueKey<String>('export-image-fx-toggle'),
-          label: 'Apply layer FX',
+          label: AppText.strings.exApplyLayerFx,
           value: spec.applyLayerFx,
           onChanged: _isExporting
               ? null
@@ -2321,7 +2322,7 @@ class ExportDialogState extends State<ExportDialog> {
         Divider(height: 8, color: theme.dividerColor),
         ExportToggleRow(
           widgetKey: const ValueKey<String>('export-cels-instruction-toggle'),
-          label: 'Instruction layer',
+          label: AppText.strings.exInstructionLayer,
           value: spec.includeInstructionLayers,
           onChanged: _isExporting
               ? null
@@ -2411,7 +2412,7 @@ class ExportDialogState extends State<ExportDialog> {
         Divider(height: 8, color: Theme.of(context).dividerColor),
         ExportToggleRow(
           widgetKey: const ValueKey<String>('export-cels-sync-toggle'),
-          label: 'Sync attach',
+          label: AppText.strings.exSyncAttach,
           value: spec.includeSyncedAttach,
           onChanged: _isExporting
               ? null
@@ -2420,7 +2421,7 @@ class ExportDialogState extends State<ExportDialog> {
         ),
         ExportToggleRow(
           widgetKey: const ValueKey<String>('export-cels-free-toggle'),
-          label: 'Free attach',
+          label: AppText.strings.exFreeAttach,
           value: spec.includeFreeAttach,
           onChanged: _isExporting
               ? null
@@ -2429,7 +2430,7 @@ class ExportDialogState extends State<ExportDialog> {
         ),
         ExportToggleRow(
           widgetKey: const ValueKey<String>('export-cels-folder-toggle'),
-          label: 'Folder 전부',
+          label: AppText.strings.exFolderMembers,
           value: spec.includeFolderMembers,
           onChanged: _isExporting
               ? null
@@ -2457,7 +2458,7 @@ class ExportDialogState extends State<ExportDialog> {
     final currentLabel = _currentCelLabel();
     return [
       ExportAccordion(
-        title: 'Cels',
+        title: AppText.strings.exCels,
         summary: '${_celGroupPlan().length} files',
         expanded: _expandedFor('cels', fallback: true),
         onToggle: () => _toggleExpanded('cels', fallback: true),
@@ -2479,7 +2480,7 @@ class ExportDialogState extends State<ExportDialog> {
           child: _celsLayersAccordionBody(currentLabel),
         ),
       ExportAccordion(
-        title: 'Format',
+        title: AppText.strings.exFormat,
         summary: ExportFormatModule.summarize(spec.format),
         expanded: _expandedFor('format', fallback: true),
         onToggle: () => _toggleExpanded('format', fallback: true),
@@ -2498,13 +2499,13 @@ class ExportDialogState extends State<ExportDialog> {
         ),
       ),
       ExportAccordion(
-        title: 'Filter',
+        title: AppText.strings.exFilter,
         summary: spec.onTimesheetOnly ? 'Sheet only' : 'All visible',
         expanded: _expandedFor('filter'),
         onToggle: () => _toggleExpanded('filter'),
         child: ExportToggleRow(
           widgetKey: const ValueKey<String>('export-cel-timesheet-only-toggle'),
-          label: 'On-timesheet layers only',
+          label: AppText.strings.exOnTimesheetOnly,
           value: spec.onTimesheetOnly,
           onChanged: _isExporting
               ? null
@@ -2527,7 +2528,7 @@ class ExportDialogState extends State<ExportDialog> {
         ),
       ),
       ExportAccordion(
-        title: 'Naming',
+        title: AppText.strings.exNaming,
         summary: ExportCelNamingModule.summarize(spec.naming),
         expanded: _expandedFor('naming'),
         onToggle: () => _toggleExpanded('naming'),
@@ -2544,7 +2545,7 @@ class ExportDialogState extends State<ExportDialog> {
         ),
       ),
       ExportAccordion(
-        title: 'Scope',
+        title: AppText.strings.exScope,
         summary: ExportScopeModule.summarize(spec.scope),
         expanded: _expandedFor('scope'),
         onToggle: () => _toggleExpanded('scope'),
@@ -2566,7 +2567,7 @@ class ExportDialogState extends State<ExportDialog> {
     final spec = _specs.timesheet;
     return [
       ExportAccordion(
-        title: 'Format',
+        title: AppText.strings.exFormat,
         summary: spec.format == ExportTimesheetFormat.sheetImage
             ? 'Sheet PNG · ${spec.sheetScale}x'
             : 'XDTS',
@@ -2580,7 +2581,7 @@ class ExportDialogState extends State<ExportDialog> {
               children: [
                 ExportChip(
                   key: const ValueKey<String>('export-tsformat-sheet'),
-                  label: 'Sheet PNG',
+                  label: AppText.strings.exSheetPng,
                   selected:
                       spec.format == ExportTimesheetFormat.sheetImage,
                   onTap: _isExporting
@@ -2606,7 +2607,7 @@ class ExportDialogState extends State<ExportDialog> {
             if (spec.format == ExportTimesheetFormat.sheetImage) ...[
               const SizedBox(height: 6),
               ExportModuleRow(
-                label: 'Scale',
+                label: AppText.strings.brScale,
                 child: Wrap(
                   spacing: 5,
                   children: [
@@ -2640,7 +2641,7 @@ class ExportDialogState extends State<ExportDialog> {
         ),
       ),
       ExportAccordion(
-        title: 'Scope',
+        title: AppText.strings.exScope,
         summary: ExportScopeModule.summarize(spec.scope),
         expanded: _expandedFor('scope', fallback: true),
         onToggle: () => _toggleExpanded('scope', fallback: true),

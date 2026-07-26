@@ -6,6 +6,7 @@ import 'package:quick_animaker_v2/src/models/canvas_size.dart';
 import 'package:quick_animaker_v2/src/models/canvas_viewport.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_canvas_defaults.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_canvas_panel.dart';
+import 'package:quick_animaker_v2/src/ui/brush/brush_cursor_overlay.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:quick_animaker_v2/src/ui/brush/brush_tool_state.dart';
 import 'package:quick_animaker_v2/src/ui/canvas/brush_edit_canvas_input_settings.dart';
@@ -1059,6 +1060,115 @@ void main() {
 
       expect(viewports, isNotEmpty);
       expect(viewports.last.zoom, closeTo(1.1, 1e-9));
+    });
+  });
+
+  group('brush cursor', () {
+    Future<void> pumpWithTool(WidgetTester tester, CanvasTool tool) async {
+      final frameKeys = BrushCanvasFixture.createFrameKeys();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: BrushCanvasPanel(
+              coordinator: BrushCanvasFixture.createCoordinator(
+                frameKeys: frameKeys,
+              ),
+              availableFrameKeys: frameKeys,
+              cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+              brushToolState: BrushToolState.clamped(size: 40, tool: tool),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    Future<void> hoverCanvas(WidgetTester tester) async {
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: Offset.zero);
+      addTearDown(mouse.removePointer);
+      await mouse.moveTo(canvasGlobalOffset(tester, const Offset(4, 4)));
+      await tester.pump();
+    }
+
+    testWidgets('the brush wears a tip outline once the pointer arrives', (
+      tester,
+    ) async {
+      await pumpWithTool(tester, CanvasTool.brush);
+      // Nothing is drawn before the pointer has been anywhere.
+      expect(
+        find.byKey(const ValueKey<String>('brush-cursor-overlay')),
+        findsNothing,
+      );
+
+      await hoverCanvas(tester);
+
+      final painter =
+          tester
+                  .widget<CustomPaint>(
+                    find.byKey(const ValueKey<String>('brush-cursor-overlay')),
+                  )
+                  .painter
+              as BrushCursorPainter;
+      // A 40px brush at 100% is an outline, not the small-brush crosshair.
+      expect(painter.shape, isNotNull);
+      expect(painter.shape!.majorRadius, closeTo(20, 1e-9));
+    });
+
+    testWidgets('the eraser wears it too', (tester) async {
+      await pumpWithTool(tester, CanvasTool.eraser);
+      await hoverCanvas(tester);
+
+      expect(
+        find.byKey(const ValueKey<String>('brush-cursor-overlay')),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('a tiny brush falls back to the crosshair', (tester) async {
+      final frameKeys = BrushCanvasFixture.createFrameKeys();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: BrushCanvasPanel(
+              coordinator: BrushCanvasFixture.createCoordinator(
+                frameKeys: frameKeys,
+              ),
+              availableFrameKeys: frameKeys,
+              cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+              brushToolState: BrushToolState.clamped(size: 1),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await hoverCanvas(tester);
+
+      final painter =
+          tester
+                  .widget<CustomPaint>(
+                    find.byKey(const ValueKey<String>('brush-cursor-overlay')),
+                  )
+                  .painter
+              as BrushCursorPainter;
+      expect(painter.shape, isNull);
+    });
+
+    testWidgets('the non-painting tools keep their own cursors', (
+      tester,
+    ) async {
+      for (final tool in [
+        CanvasTool.fill,
+        CanvasTool.selectRect,
+        CanvasTool.move,
+      ]) {
+        await pumpWithTool(tester, tool);
+        expect(
+          find.byKey(const ValueKey<String>('brush-cursor-region')),
+          findsNothing,
+          reason: '$tool must not wear the brush outline',
+        );
+      }
     });
   });
 }

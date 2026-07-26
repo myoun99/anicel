@@ -11,6 +11,7 @@ import '../widgets/field_slider.dart';
 import 'brush_settings_panel.dart';
 import 'brush_tool_state.dart';
 import 'canvas_selection_commands.dart';
+import '../text/app_strings.dart';
 
 /// The TOOL SETTINGS panel (R11-④, CSP's tool property palette): detailed
 /// knobs for the ACTIVE tool. Painting tools show the brush settings, the
@@ -129,7 +130,7 @@ class _SelectionSettings extends StatelessWidget {
         // R26 #12: the rectangle/lasso CHOICE lives in the tool library
         // (two tools there), so the settings panel no longer duplicates
         // it — only the mask knobs remain.
-        Text('Select', style: theme.textTheme.titleSmall),
+        Text(AppText.strings.toolSelect, style: theme.textTheme.titleSmall),
         // R26 #16: 갱신 / 추가 / 삭제 / 선택중 — how the next drag folds
         // into the region already selected. Default 추가 (유저 원문).
         if (commands != null) ...[
@@ -151,7 +152,7 @@ class _SelectionSettings extends StatelessWidget {
             max: 20,
             divisions: 40,
             value: maskOptions.growPx.toDouble().clamp(-20, 20),
-            label: 'Grow/Shrink',
+            label: AppText.strings.brGrowShrink,
             valueText: maskOptions.growPx == 0
                 ? 'off'
                 : '${maskOptions.growPx > 0 ? '+' : ''}${maskOptions.growPx} px',
@@ -165,7 +166,7 @@ class _SelectionSettings extends StatelessWidget {
             max: 50,
             divisions: 50,
             value: maskOptions.featherPx.clamp(0, 50),
-            label: 'Feather',
+            label: AppText.strings.brFeather,
             valueText: maskOptions.featherPx <= 0
                 ? 'off'
                 : '${maskOptions.featherPx.round()} px',
@@ -176,7 +177,7 @@ class _SelectionSettings extends StatelessWidget {
             key: const ValueKey<String>('selection-anti-alias-switch'),
             dense: true,
             contentPadding: EdgeInsets.zero,
-            title: const Text('Anti-alias edge'),
+            title: Text(AppText.strings.brAntiAliasEdge),
             value: maskOptions.antiAlias,
             onChanged: (value) =>
                 onMask(maskOptions.copyWith(antiAlias: value)),
@@ -339,7 +340,7 @@ class _MoveSettingsState extends State<_MoveSettings> {
         DragValueLabel(
           keyValue: keyValue,
           text: text,
-          tooltip: 'Drag / double-tap',
+          tooltip: AppText.strings.viewDragDoubleTap,
           width: 72,
           textStyle: const TextStyle(fontSize: 12),
           onDragDelta: onDrag,
@@ -364,7 +365,7 @@ class _MoveSettingsState extends State<_MoveSettings> {
       key: const ValueKey<String>('tool-settings-move'),
       padding: const EdgeInsets.all(12),
       children: [
-        Text('Move / Transform', style: theme.textTheme.titleSmall),
+        Text(AppText.strings.toolMove, style: theme.textTheme.titleSmall),
         const SizedBox(height: 4),
         Text(
           hasSelection
@@ -407,7 +408,7 @@ class _MoveSettingsState extends State<_MoveSettings> {
         const SizedBox(height: 4),
         _channel(
           keyValue: 'move-angle-field',
-          label: 'Angle',
+          label: AppText.strings.brAngle,
           text: '${_trim(_angleDeg)}°',
           onDrag: (units) {
             setState(() => _angleDeg += units);
@@ -421,7 +422,7 @@ class _MoveSettingsState extends State<_MoveSettings> {
         const SizedBox(height: 4),
         _channel(
           keyValue: 'move-scale-field',
-          label: 'Scale',
+          label: AppText.strings.brScale,
           text: '${_trim(_scalePct)}%',
           onDrag: (units) {
             setState(() => _scalePct = (_scalePct + units).clamp(1.0, 3200.0));
@@ -441,7 +442,7 @@ class _MoveSettingsState extends State<_MoveSettings> {
           key: const ValueKey<String>('move-mesh-warp-button'),
           onPressed: () => widget.selectionCommands?.beginMeshTransform(),
           icon: const Icon(Icons.grid_4x4, size: 16),
-          label: const Text('Mesh Warp'),
+          label: Text(AppText.strings.brMeshWarp),
         ),
       ],
     );
@@ -467,7 +468,7 @@ class _EyedropperSettings extends StatelessWidget {
       key: const ValueKey<String>('tool-settings-eyedropper'),
       padding: const EdgeInsets.all(12),
       children: [
-        Text('Eyedropper', style: theme.textTheme.titleSmall),
+        Text(AppText.strings.toolEyedropper, style: theme.textTheme.titleSmall),
         const SizedBox(height: 8),
         Text(
           'Reference',
@@ -481,14 +482,14 @@ class _EyedropperSettings extends StatelessWidget {
         SegmentedButton<CanvasColorSampleSource>(
           key: const ValueKey<String>('eyedropper-source-segments'),
           showSelectedIcon: false,
-          segments: const [
+          segments: [
             ButtonSegment<CanvasColorSampleSource>(
               value: CanvasColorSampleSource.display,
-              label: Text('Display'),
+              label: Text(AppText.strings.brDisplay),
             ),
             ButtonSegment<CanvasColorSampleSource>(
               value: CanvasColorSampleSource.layer,
-              label: Text('Layer'),
+              label: Text(AppText.strings.tlLayer),
             ),
           ],
           selected: {source},
@@ -532,7 +533,7 @@ class _FillSettings extends StatelessWidget {
           max: 128,
           divisions: 128,
           value: options.tolerance.toDouble().clamp(0, 128),
-          label: 'Tolerance',
+          label: AppText.strings.brTolerance,
           valueText: '${options.tolerance}',
           onChanged: (value) =>
               onChanged(options.copyWith(tolerance: value.round())),
@@ -544,7 +545,7 @@ class _FillSettings extends StatelessWidget {
           max: 4,
           divisions: 4,
           value: options.expandPx.toDouble().clamp(0, 4),
-          label: 'Expand',
+          label: AppText.strings.brExpand,
           valueText: '${options.expandPx} px',
           onChanged: (value) =>
               onChanged(options.copyWith(expandPx: value.round())),
@@ -556,7 +557,7 @@ class _FillSettings extends StatelessWidget {
           max: 8,
           divisions: 8,
           value: options.gapClosePx.toDouble().clamp(0, 8),
-          label: 'Gap Close',
+          label: AppText.strings.brGapClose,
           valueText: options.gapClosePx == 0
               ? 'off'
               : '${options.gapClosePx} px',
@@ -567,7 +568,7 @@ class _FillSettings extends StatelessWidget {
           key: const ValueKey<String>('fill-anti-alias-switch'),
           dense: true,
           contentPadding: EdgeInsets.zero,
-          title: const Text('Anti-alias'),
+          title: Text(AppText.strings.brAntiAlias),
           value: options.antiAlias,
           onChanged: (value) => onChanged(options.copyWith(antiAlias: value)),
         ),
@@ -575,8 +576,8 @@ class _FillSettings extends StatelessWidget {
           key: const ValueKey<String>('fill-extend-beyond-canvas-switch'),
           dense: true,
           contentPadding: EdgeInsets.zero,
-          title: const Text('Fill Beyond Canvas'),
-          subtitle: const Text('Open regions refuse to fill'),
+          title: Text(AppText.strings.brFillBeyondCanvas),
+          subtitle: Text(AppText.strings.brOpenRegionsRefuse),
           value: options.extendBeyondCanvas,
           onChanged: (value) =>
               onChanged(options.copyWith(extendBeyondCanvas: value)),

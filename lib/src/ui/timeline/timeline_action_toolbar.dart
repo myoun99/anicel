@@ -190,37 +190,37 @@ class TimelineActionToolbar extends StatelessWidget {
 
   List<PanelFlyoutEntry> _addLayerEntries() {
     return [
-      const PanelFlyoutHeader('Add layer'),
+      PanelFlyoutHeader(AppText.strings.tlAddLayerHeader),
       PanelFlyoutItem(
         keyValue: 'add-layer-kind-same',
-        label: 'Same as selected',
+        label: AppText.strings.tlSameAsSelected,
         icon: Icons.add,
         onSelected: onAddLayer,
       ),
       const PanelFlyoutDivider(),
       PanelFlyoutItem(
         keyValue: 'add-layer-kind-animation',
-        label: 'Animation',
+        label: AppText.strings.tlKindAnimation,
         onSelected: () => session.addLayerOfKind(LayerKind.animation),
       ),
       PanelFlyoutItem(
         keyValue: 'add-layer-kind-storyboard',
-        label: 'Storyboard',
+        label: AppText.strings.tlKindStoryboard,
         onSelected: () => session.addLayerOfKind(LayerKind.storyboard),
       ),
       PanelFlyoutItem(
         keyValue: 'add-layer-kind-art',
-        label: 'Art',
+        label: AppText.strings.tlKindArt,
         onSelected: () => session.addLayerOfKind(LayerKind.art),
       ),
       PanelFlyoutItem(
         keyValue: 'add-layer-kind-se',
-        label: 'SE',
+        label: AppText.strings.tlKindSe,
         onSelected: () => session.addLayerOfKind(LayerKind.se),
       ),
       PanelFlyoutItem(
         keyValue: 'add-layer-kind-instruction',
-        label: 'Instruction',
+        label: AppText.strings.tlKindInstruction,
         onSelected: () => session.addLayerOfKind(LayerKind.instruction),
       ),
       // Attach layers (W5, UI-R20 #8 / UI-R21 #3): the same entrance the
@@ -229,7 +229,7 @@ class TimelineActionToolbar extends StatelessWidget {
       const PanelFlyoutDivider(),
       PanelFlyoutItem(
         keyValue: 'add-layer-attach-free-above',
-        label: 'Attach free layer above',
+        label: AppText.strings.tlAttachFreeAbove,
         icon: Icons.north_east,
         enabled: session.canAddAttachedLayerToActive,
         onSelected: () => session.addAttachedLayer(
@@ -239,7 +239,7 @@ class TimelineActionToolbar extends StatelessWidget {
       ),
       PanelFlyoutItem(
         keyValue: 'add-layer-attach-free-below',
-        label: 'Attach free layer below',
+        label: AppText.strings.tlAttachFreeBelow,
         icon: Icons.south_east,
         enabled: session.canAddAttachedLayerToActive,
         onSelected: () => session.addAttachedLayer(
@@ -249,14 +249,14 @@ class TimelineActionToolbar extends StatelessWidget {
       ),
       PanelFlyoutItem(
         keyValue: 'add-layer-attach-above',
-        label: 'Attach synced layer above',
+        label: AppText.strings.tlAttachSyncedAbove,
         icon: Icons.north_east,
         enabled: session.canAddAttachedLayerToActive,
         onSelected: () => session.addAttachedLayer(AttachedPlacement.above),
       ),
       PanelFlyoutItem(
         keyValue: 'add-layer-attach-below',
-        label: 'Attach synced layer below',
+        label: AppText.strings.tlAttachSyncedBelow,
         icon: Icons.south_east,
         enabled: session.canAddAttachedLayerToActive,
         onSelected: () => session.addAttachedLayer(AttachedPlacement.below),
@@ -269,21 +269,21 @@ class TimelineActionToolbar extends StatelessWidget {
     return [
       PanelFlyoutItem(
         keyValue: 'rename-layer-button',
-        label: 'Rename layer…',
+        label: AppText.strings.tlRenameLayer,
         icon: Icons.drive_file_rename_outline,
         enabled: active != null,
         onSelected: onRenameLayer,
       ),
       PanelFlyoutItem(
         keyValue: 'duplicate-layer-button',
-        label: 'Duplicate layer',
+        label: AppText.strings.tlDuplicateLayer,
         icon: Icons.copy_outlined,
         enabled: active != null,
         onSelected: session.duplicateActiveLayer,
       ),
       PanelFlyoutItem(
         keyValue: 'copy-layer-button',
-        label: 'Copy layer',
+        label: AppText.strings.tlCopyLayer,
         icon: Icons.content_copy,
         enabled: active != null,
         onSelected: session.copyActiveLayer,
@@ -299,7 +299,7 @@ class TimelineActionToolbar extends StatelessWidget {
       ),
       PanelFlyoutItem(
         keyValue: 'import-audio-button',
-        label: 'Import audio…',
+        label: AppText.strings.tlImportAudio,
         icon: Icons.audio_file_outlined,
         enabled: session.canImportAudioToActiveLayer && onImportAudio != null,
         onSelected: onImportAudio,
@@ -310,21 +310,21 @@ class TimelineActionToolbar extends StatelessWidget {
       // where their result shows up.
       PanelFlyoutItem(
         keyValue: 'timeline-group-into-folder-button',
-        label: 'Group into folder',
+        label: AppText.strings.tlGroupIntoFolder,
         icon: Icons.create_new_folder_outlined,
         enabled: session.canGroupActiveLayerIntoFolder,
         onSelected: session.groupActiveLayerIntoFolder,
       ),
       PanelFlyoutItem(
         keyValue: 'timeline-link-duplicate-button',
-        label: 'Link duplicate layer',
+        label: AppText.strings.tlLinkDuplicateLayer,
         icon: Icons.link,
         enabled: session.canLinkDuplicateActiveLayer,
         onSelected: session.linkDuplicateActiveLayer,
       ),
       PanelFlyoutItem(
         keyValue: 'timeline-unlink-layer-button',
-        label: 'Unlink layer',
+        label: AppText.strings.tlUnlinkLayer,
         icon: Icons.link_off,
         enabled: session.canUnlinkActiveLayer,
         onSelected: session.unlinkActiveLayer,
@@ -332,7 +332,7 @@ class TimelineActionToolbar extends StatelessWidget {
       const PanelFlyoutDivider(),
       PanelFlyoutItem(
         keyValue: 'toggle-storyboard-layer-button',
-        label: 'Storyboard layer',
+        label: AppText.strings.tlStoryboardLayer,
         icon: Icons.auto_stories_outlined,
         enabled: session.canToggleTargetLayerKind,
         checked: active?.kind == LayerKind.storyboard ? true : null,
@@ -340,7 +340,7 @@ class TimelineActionToolbar extends StatelessWidget {
       ),
       PanelFlyoutItem(
         keyValue: 'toggle-art-layer-button',
-        label: 'Art layer',
+        label: AppText.strings.tlArtLayer,
         icon: Icons.landscape_outlined,
         enabled: session.canToggleTargetLayerArt,
         checked: active?.kind == LayerKind.art ? true : null,
@@ -349,7 +349,7 @@ class TimelineActionToolbar extends StatelessWidget {
       const PanelFlyoutDivider(),
       PanelFlyoutItem(
         keyValue: 'toggle-se-section-button',
-        label: 'Show SE rows',
+        label: AppText.strings.tlShowSeRows,
         icon: Icons.music_note_outlined,
         enabled: onToggleSection != null,
         checked: !hiddenSections.contains(TimelineSection.se),
@@ -357,7 +357,7 @@ class TimelineActionToolbar extends StatelessWidget {
       ),
       PanelFlyoutItem(
         keyValue: 'toggle-camera-section-button',
-        label: 'Show camera rows',
+        label: AppText.strings.tlShowCameraRows,
         icon: Icons.videocam_outlined,
         enabled: onToggleSection != null,
         checked: !hiddenSections.contains(TimelineSection.camera),
@@ -366,7 +366,7 @@ class TimelineActionToolbar extends StatelessWidget {
       const PanelFlyoutDivider(),
       PanelFlyoutItem(
         keyValue: 'delete-layer-button',
-        label: 'Delete layer',
+        label: AppText.strings.tlDeleteLayer,
         icon: Icons.delete_outline,
         danger: true,
         enabled: session.canDeleteActiveLayer,
@@ -402,7 +402,7 @@ class TimelineActionToolbar extends StatelessWidget {
       const PanelFlyoutDivider(),
       PanelFlyoutItem(
         keyValue: 'timeline-fps-custom',
-        label: 'Custom…',
+        label: AppText.strings.tlCustom,
         icon: Icons.edit_outlined,
         onSelected: () => unawaited(showTimelineFpsDialog(context, session)),
       ),
@@ -467,21 +467,21 @@ class TimelineActionToolbar extends StatelessWidget {
     return [
       PanelFlyoutItem(
         keyValue: 'rename-frame-button',
-        label: 'Edit instance…',
+        label: AppText.strings.tlEditInstance,
         icon: Icons.edit_outlined,
         enabled: _canEditInstance,
         onSelected: onEditInstance,
       ),
       PanelFlyoutItem(
         keyValue: 'copy-frame-button',
-        label: 'Copy frame',
+        label: AppText.strings.tlCopyFrame,
         icon: Icons.content_copy,
         enabled: session.canCopyFrameAtCurrentFrame,
         onSelected: session.copyFrameAtCurrentFrame,
       ),
       PanelFlyoutItem(
         keyValue: 'paste-linked-frame-button',
-        label: 'Paste linked frame',
+        label: AppText.strings.tlPasteLinkedFrame,
         icon: Icons.link,
         enabled: session.canPasteLinkedFrameAtCurrentFrame,
         onSelected: session.pasteLinkedFrameAtCurrentFrame,
@@ -489,7 +489,7 @@ class TimelineActionToolbar extends StatelessWidget {
       const PanelFlyoutDivider(),
       PanelFlyoutItem(
         keyValue: 'delete-cell-button',
-        label: 'Delete cell',
+        label: AppText.strings.tlDeleteCell,
         icon: Icons.delete_outline,
         danger: true,
         enabled: session.canDeleteCellAtCurrentFrame,
@@ -562,14 +562,19 @@ class TimelineActionToolbar extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Static (see [_StaticCommandGroup]): both buttons print fixed
-              // labels and build their entries at open time. The key is the
-              // hidden-section mask because the Layer flyout's show/hide
-              // checkmarks read `hiddenSections` from THIS closure.
+              // Static (see [_StaticCommandGroup]): both buttons build their
+              // entries at open time. The key is the hidden-section mask
+              // because the Layer flyout's show/hide checkmarks read
+              // `hiddenSections` from THIS closure — and the PROGRAM
+              // LANGUAGE, because the labels are no longer fixed: a cached
+              // group would keep printing the old language after a switch.
               _StaticCommandGroup(
-                rebuildKey: hiddenSections.fold<int>(
-                  0,
-                  (mask, section) => mask | (1 << section.index),
+                rebuildKey: Object.hash(
+                  hiddenSections.fold<int>(
+                    0,
+                    (mask, section) => mask | (1 << section.index),
+                  ),
+                  AppText.settings.value.programLanguage,
                 ),
                 builder: (context) => Row(
                   key: const ValueKey<String>('timeline-toolbar-layer-group'),
@@ -579,7 +584,7 @@ class TimelineActionToolbar extends StatelessWidget {
                       buttonKey: 'timeline-toolbar-add-layer-button',
                       menuKey: 'timeline-toolbar-add-layer-menu',
                       icon: Icons.add,
-                      tooltip: 'Add layer',
+                      tooltip: AppText.strings.tlAddLayerHeader,
                       accent: true,
                       onPressed: onAddLayer,
                       entriesBuilder: _addLayerEntries,
@@ -587,8 +592,8 @@ class TimelineActionToolbar extends StatelessWidget {
                     const SizedBox(width: 4),
                     PanelFlyoutButton(
                       key: const ValueKey<String>('timeline-layer-menu-button'),
-                      label: 'Layer',
-                      tooltip: 'Layer commands',
+                      label: AppText.strings.tlLayer,
+                      tooltip: AppText.strings.tlLayerCommands,
                       entriesBuilder: _layerEntries,
                     ),
                     // R27 #6: the layer BLEND dropdown left this toolbar for
@@ -604,13 +609,13 @@ class TimelineActionToolbar extends StatelessWidget {
                 children: [
                   _iconButton(
                     key: const ValueKey<String>('new-frame-button'),
-                    tooltip: 'Add',
+                    tooltip: AppText.strings.tlAdd,
                     icon: Icons.add_box_outlined,
                     onPressed: _canCreateInstance ? onCreateInstance : null,
                   ),
                   _iconButton(
                     key: const ValueKey<String>('blank-exposure-button'),
-                    tooltip: 'Blank / X',
+                    tooltip: AppText.strings.tlBlankX,
                     icon: Icons.close,
                     onPressed: session.canCutExposureAtCurrentFrame
                         ? session.cutExposureAtCurrentFrame
@@ -618,7 +623,7 @@ class TimelineActionToolbar extends StatelessWidget {
                   ),
                   _iconButton(
                     key: const ValueKey<String>('toggle-mark-button'),
-                    tooltip: 'Mark ●',
+                    tooltip: AppText.strings.tlMark,
                     icon: Icons.circle,
                     onPressed: session.canToggleMarkAtCurrentFrame
                         ? session.toggleMarkAtCurrentFrame
@@ -632,7 +637,10 @@ class TimelineActionToolbar extends StatelessWidget {
                     _commaButton(
                       key: ValueKey<String>('set-comma-$comma-button'),
                       label: '$comma',
-                      tooltip: 'Set $comma comma exposure',
+                      tooltip: AppText.strings.tlSetCommaTemplate.replaceAll(
+                        '{n}',
+                        '$comma',
+                      ),
                       onPressed: session.canSetCommaForSelectionOrCurrent
                           ? () => session.setCommaForSelectionOrCurrent(comma)
                           : null,
@@ -641,7 +649,7 @@ class TimelineActionToolbar extends StatelessWidget {
                     builder: (context) => _commaButton(
                       key: const ValueKey<String>('set-comma-n-button'),
                       label: 'N',
-                      tooltip: 'Set N commas…',
+                      tooltip: AppText.strings.tlSetCommasN,
                       onPressed: session.canSetCommaForSelectionOrCurrent
                           ? () => showTimelineCommaCountDialog(context, session)
                           : null,
@@ -650,8 +658,8 @@ class TimelineActionToolbar extends StatelessWidget {
                   const SizedBox(width: 4),
                   PanelFlyoutButton(
                     key: const ValueKey<String>('timeline-frame-menu-button'),
-                    label: 'Frame',
-                    tooltip: 'Frame commands',
+                    label: AppText.strings.tlFrame,
+                    tooltip: AppText.strings.tlFrameCommands,
                     entriesBuilder: _frameEntries,
                   ),
                   const SizedBox(width: 4),
@@ -660,7 +668,7 @@ class TimelineActionToolbar extends StatelessWidget {
                   PanelFlyoutButton(
                     key: const ValueKey<String>('timeline-fps-menu-button'),
                     label: session.projectFrameRate.label,
-                    tooltip: 'Project frame rate',
+                    tooltip: AppText.strings.projectFpsTitle,
                     entriesBuilder: () => _fpsEntries(context),
                   ),
                   const SizedBox(width: 4),
@@ -673,15 +681,17 @@ class TimelineActionToolbar extends StatelessWidget {
                     label: audioSampleRateLabel(
                       session.projectAudioSampleRate,
                     ),
-                    tooltip: 'Project audio sample rate',
+                    tooltip: AppText.strings.tlProjectAudioRate,
                     entriesBuilder: _audioSampleRateEntries,
                   ),
                 ],
               ),
               _groupDivider(context),
               // Static too: a New-cut split button and a Cut flyout, both
-              // fixed-label and lazily-built.
+              // lazily-built. Keyed on the language for the same reason as
+              // the layer group — the labels move when the setting does.
               _StaticCommandGroup(
+                rebuildKey: AppText.settings.value.programLanguage,
                 builder: (context) => CutCommandGroup(session: session),
               ),
             ],

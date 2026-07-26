@@ -12,6 +12,7 @@ import 'layer_label_controls.dart';
 import 'timeline_grid_metrics.dart';
 import 'timeline_row_filter.dart';
 import 'timeline_section_policy.dart';
+import '../text/app_strings.dart';
 
 /// The rail legend's bulk commands (session-backed; the host wires them).
 /// Project-state sweeps (sheet/mark/fill-ref) land as ONE undo; the
@@ -169,10 +170,10 @@ class TimelineLayerControlsHeader extends StatelessWidget {
 
   List<PanelFlyoutEntry> _sectionEntries() {
     return [
-      const PanelFlyoutHeader('Sections'),
+      PanelFlyoutHeader(AppText.strings.tlSections),
       PanelFlyoutItem(
         keyValue: 'legend-section-se',
-        label: 'Show SE rows',
+        label: AppText.strings.tlShowSeRows,
         icon: Icons.music_note_outlined,
         enabled: onToggleSection != null,
         checked: !hiddenSections.contains(TimelineSection.se),
@@ -180,7 +181,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
       ),
       PanelFlyoutItem(
         keyValue: 'legend-section-camera',
-        label: 'Show camera rows',
+        label: AppText.strings.tlShowCameraRows,
         icon: Icons.videocam_outlined,
         enabled: onToggleSection != null,
         checked: !hiddenSections.contains(TimelineSection.camera),
@@ -252,7 +253,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                   cell(
                     keyValue: 'legend-sections',
                     width: layerSectionLabelSlotWidth,
-                    tooltip: 'Sections',
+                    tooltip: AppText.strings.tlSections,
                     entriesBuilder: _sectionEntries,
                     child: Icon(
                       Icons.view_agenda_outlined,
@@ -292,19 +293,19 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                   cell(
                     keyValue: 'legend-sheet',
                     width: layerTimesheetSlotWidth,
-                    tooltip: 'Timesheet column',
+                    tooltip: AppText.strings.tlColTimesheet,
                     entriesBuilder: legend == null
                         ? null
                         : () => [
                             PanelFlyoutItem(
                               keyValue: 'legend-sheet-all-on',
-                              label: 'All on timesheet',
+                              label: AppText.strings.tlAllOnTimesheet,
                               icon: Icons.table_chart,
                               onSelected: legend.onSheetAllOn,
                             ),
                             PanelFlyoutItem(
                               keyValue: 'legend-sheet-all-off',
-                              label: 'All off timesheet',
+                              label: AppText.strings.tlAllOffTimesheet,
                               icon: Icons.table_chart_outlined,
                               onSelected: legend.onSheetAllOff,
                             ),
@@ -312,7 +313,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                               const PanelFlyoutDivider(),
                               PanelFlyoutItem(
                                 keyValue: 'legend-filter-sheet',
-                                label: 'Solo sheet-on rows',
+                                label: AppText.strings.tlSoloSheetOnRows,
                                 icon: Icons.center_focus_strong_outlined,
                                 checked: rowFilter.onTimesheetOnly,
                                 onSelected: legend.onToggleSheetOnlyFilter,
@@ -328,19 +329,19 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                   cell(
                     keyValue: 'legend-mark',
                     width: layerMarkSlotWidth,
-                    tooltip: 'Mark column',
+                    tooltip: AppText.strings.tlColMark,
                     entriesBuilder: legend == null
                         ? null
                         : () => [
                             PanelFlyoutItem(
                               keyValue: 'legend-mark-clear',
-                              label: 'Clear all marks',
+                              label: AppText.strings.tlClearAllMarks,
                               icon: Icons.label_off_outlined,
                               onSelected: legend.onClearAllMarks,
                             ),
                             if (showRowSolos && marksInUse.isNotEmpty) ...[
                               const PanelFlyoutDivider(),
-                              const PanelFlyoutHeader('Solo color'),
+                              PanelFlyoutHeader(AppText.strings.tlSoloColor),
                               for (final mark in LayerMark.values)
                                 if (mark != LayerMark.none &&
                                     marksInUse.contains(mark))
@@ -366,12 +367,12 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                   cell(
                     keyValue: 'legend-kind',
                     width: 18,
-                    tooltip: 'Layer kind column',
+                    tooltip: AppText.strings.tlColLayerKind,
                     entriesBuilder:
                         legend == null || kindsInUse.isEmpty || !showRowSolos
                         ? null
                         : () => [
-                            const PanelFlyoutHeader('Solo kind'),
+                            PanelFlyoutHeader(AppText.strings.tlSoloKind),
                             for (final kind in LayerKind.values)
                               if (kindsInUse.contains(kind))
                                 PanelFlyoutItem(
@@ -410,13 +411,13 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                   cell(
                     keyValue: 'legend-fill-ref',
                     width: layerFillReferenceSlotWidth,
-                    tooltip: 'Fill reference column',
+                    tooltip: AppText.strings.tlColFillReference,
                     entriesBuilder: legend == null
                         ? null
                         : () => [
                             PanelFlyoutItem(
                               keyValue: 'legend-fill-ref-clear',
-                              label: 'Clear all fill references',
+                              label: AppText.strings.tlClearAllFillRefs,
                               icon: Icons.format_color_reset_outlined,
                               onSelected: legend.onClearAllFillReferences,
                             ),
@@ -424,7 +425,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                               const PanelFlyoutDivider(),
                               PanelFlyoutItem(
                                 keyValue: 'legend-filter-fill-ref',
-                                label: 'Solo fill references',
+                                label: AppText.strings.tlSoloFillReferences,
                                 icon: Icons.center_focus_strong_outlined,
                                 checked: rowFilter.fillReferenceOnly,
                                 onSelected:
@@ -440,25 +441,25 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                   cell(
                     keyValue: 'legend-fx',
                     width: layerFxSlotWidth,
-                    tooltip: 'FX column',
+                    tooltip: AppText.strings.tlColFx,
                     entriesBuilder: legend == null
                         ? null
                         : () => [
                             PanelFlyoutItem(
                               keyValue: 'legend-fx-enable-all',
-                              label: 'Apply all fx',
+                              label: AppText.strings.tlApplyAllFx,
                               onSelected: legend.onEnableAllFx,
                             ),
                             PanelFlyoutItem(
                               keyValue: 'legend-fx-bypass-all',
-                              label: 'Bypass all fx',
+                              label: AppText.strings.tlBypassAllFx,
                               onSelected: legend.onBypassAllFx,
                             ),
                             if (showRowSolos) ...[
                               const PanelFlyoutDivider(),
                               PanelFlyoutItem(
                                 keyValue: 'legend-filter-fx',
-                                label: 'Solo fx-on rows',
+                                label: AppText.strings.tlSoloFxOnRows,
                                 icon: Icons.center_focus_strong_outlined,
                                 checked: rowFilter.fxOnly,
                                 onSelected: legend.onToggleFxOnlyFilter,
@@ -481,7 +482,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     cell(
                       keyValue: 'legend-onion',
                       width: layerOnionSlotWidth,
-                      tooltip: 'Onion skin column',
+                      tooltip: AppText.strings.tlColOnionSkin,
                       entriesBuilder:
                           legend == null ||
                               legend.onToggleOnionSkinForDisplayed == null
@@ -500,7 +501,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                               if (legend.onRevealOnionSkinPanel != null)
                                 PanelFlyoutItem(
                                   keyValue: 'legend-onion-open-panel',
-                                  label: 'Open onion skin panel',
+                                  label: AppText.strings.tlOpenOnionPanel,
                                   icon: Icons.open_in_new,
                                   onSelected: legend.onRevealOnionSkinPanel!,
                                 ),
@@ -513,25 +514,25 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                   cell(
                     keyValue: 'legend-eye',
                     width: layerVisibilitySlotWidth,
-                    tooltip: 'Visibility column',
+                    tooltip: AppText.strings.tlColVisibility,
                     entriesBuilder: legend == null
                         ? null
                         : () => [
                             PanelFlyoutItem(
                               keyValue: 'legend-eye-show-all',
-                              label: 'Show all',
+                              label: AppText.strings.tlShowAll,
                               icon: Icons.visibility,
                               onSelected: legend.onShowAllLayers,
                             ),
                             PanelFlyoutItem(
                               keyValue: 'legend-eye-hide-all',
-                              label: 'Hide all',
+                              label: AppText.strings.tlHideAll,
                               icon: Icons.visibility_off,
                               onSelected: legend.onHideAllLayers,
                             ),
                             PanelFlyoutItem(
                               keyValue: 'legend-eye-solo',
-                              label: 'Solo active layer',
+                              label: AppText.strings.tlSoloActiveLayer,
                               icon: Icons.center_focus_strong_outlined,
                               checked: visibilitySoloEnabled,
                               onSelected: legend.onToggleVisibilitySolo,
@@ -604,7 +605,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     cell(
                       keyValue: 'legend-opacity',
                       width: layerOpacitySlotWidth,
-                      tooltip: 'Opacity column',
+                      tooltip: AppText.strings.tlColOpacity,
                       child: Text(
                         'OPAC',
                         style: TextStyle(
@@ -625,9 +626,9 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     cell(
                       keyValue: 'legend-blend',
                       width: layerBlendSlotWidth,
-                      tooltip: 'Blend mode column',
+                      tooltip: AppText.strings.tlColBlendMode,
                       entriesBuilder: () => [
-                        const PanelFlyoutHeader('All displayed layers'),
+                        PanelFlyoutHeader(AppText.strings.tlAllDisplayedLayers),
                         // The bulk set writes DRAWING rows; pass-through is
                         // a group-only answer, so it never appears here.
                         for (final mode in LayerBlendMode.optionsFor(

@@ -153,7 +153,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
 
     return AppWindow(
       windowKey: const ValueKey<String>('shortcut-settings-dialog'),
-      title: 'Keyboard shortcuts',
+      title: AppText.strings.shortcutTitle,
       titleIcon: Icons.keyboard_outlined,
       onClose: () => Navigator.of(context).pop(),
       width: 520,
@@ -171,9 +171,9 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
               TextField(
                 key: const ValueKey<String>('shortcut-search-field'),
                 controller: _search,
-                decoration: const InputDecoration(
-                  prefixIcon: Icon(Icons.search, size: 18),
-                  hintText: 'Search actions',
+                decoration: InputDecoration(
+                  prefixIcon: const Icon(Icons.search, size: 18),
+                  hintText: AppText.strings.shortcutSearch,
                   isDense: true,
                 ),
                 onChanged: (_) => setState(() {}),
@@ -202,7 +202,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
       ),
       actions: [
         AppWindowAction(
-          label: 'Reset all',
+          label: AppText.strings.shortcutResetAll,
           actionKey: const ValueKey<String>('shortcut-reset-all-button'),
           emphasis: AppWindowActionEmphasis.danger,
           onPressed: bindings.resetAll,
@@ -239,7 +239,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 8),
               child: Text(
-                'Press keys… (Esc cancels)',
+                AppText.strings.shortcutRecordingHint,
                 key: const ValueKey<String>('shortcut-recording-hint'),
                 style: theme.textTheme.bodySmall?.copyWith(
                   color: theme.colorScheme.primary,
@@ -267,7 +267,7 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
           // as the key bindings, same conflict highlighting.
           PopupMenuButton<Object>(
             key: ValueKey<String>('shortcut-touch-${definition.id}'),
-            tooltip: 'Touch shortcut',
+            tooltip: AppText.strings.shortcutTouch,
             popUpAnimationStyle: instantMenuAnimation,
             // A popup item cannot carry a null VALUE (indistinguishable
             // from dismissal), so 'None' rides a sentinel string.
@@ -316,14 +316,14 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
           ),
           IconButton(
             key: ValueKey<String>('shortcut-record-${definition.id}'),
-            tooltip: 'Record new shortcut',
+            tooltip: AppText.strings.shortcutRecordNew,
             icon: const Icon(Icons.keyboard, size: 18),
             visualDensity: VisualDensity.compact,
             onPressed: () => _startRecording(definition.id),
           ),
           IconButton(
             key: ValueKey<String>('shortcut-reset-${definition.id}'),
-            tooltip: 'Reset to default',
+            tooltip: AppText.strings.shortcutResetToDefault,
             icon: const Icon(Icons.restart_alt, size: 18),
             visualDensity: VisualDensity.compact,
             onPressed:

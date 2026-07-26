@@ -13,6 +13,7 @@ import '../widgets/app_window.dart';
 import 'brush_preset_reorder.dart';
 import 'brush_stroke_preview.dart';
 import 'brush_tip_preview.dart';
+import '../text/app_strings.dart';
 
 /// Which row elements the brush list shows (every combination except
 /// all-hidden is allowed — the options menu disables the last visible one),
@@ -285,7 +286,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
       context: context,
       builder: (context) => _BrushNameDialog(
         keyPrefix: 'brush-preset-group-rename',
-        title: 'Rename group',
+        title: AppText.strings.brRenameGroup,
         titleIcon: Icons.drive_file_rename_outline,
         fieldLabel: 'Group name',
         initialName: group.name,
@@ -311,7 +312,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
       context: context,
       builder: (context) => AppConfirmDialog(
         windowKey: const ValueKey<String>('brush-preset-group-delete-dialog'),
-        title: 'Delete group',
+        title: AppText.strings.brDeleteGroup,
         titleIcon: Icons.delete_outline,
         message: memberCount == 0
             ? 'Delete the empty group "${group.name}"?'
@@ -351,7 +352,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
       context: context,
       builder: (context) => AppConfirmDialog(
         windowKey: const ValueKey<String>('brush-preset-reset-dialog'),
-        title: 'Reset brush library',
+        title: AppText.strings.brResetLibrary,
         titleIcon: Icons.restart_alt,
         message:
             'Replace the whole library — every group, imported pack and '
@@ -499,11 +500,11 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   List<PopupMenuEntry<_BrushPresetMenuAction>> _menuItems() {
     final actions = <PopupMenuEntry<_BrushPresetMenuAction>>[
       if (widget.onGroupCreated != null)
-        const PopupMenuItem<_BrushPresetMenuAction>(
+        PopupMenuItem<_BrushPresetMenuAction>(
           key: ValueKey<String>('brush-preset-menu-new-group'),
           value: _BrushPresetMenuAction.newGroup,
           height: 34,
-          child: Text('New group'),
+          child: Text(AppText.strings.brNewGroup),
         ),
       if (widget.onPresetRenamed != null)
         PopupMenuItem<_BrushPresetMenuAction>(
@@ -511,7 +512,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
           value: _BrushPresetMenuAction.rename,
           height: 34,
           enabled: widget.selectedPresetId != null,
-          child: const Text('Rename selected brush'),
+          child: Text(AppText.strings.brRenameSelected),
         ),
       if (widget.onPresetDeleted != null)
         PopupMenuItem<_BrushPresetMenuAction>(
@@ -519,15 +520,15 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
           value: _BrushPresetMenuAction.delete,
           height: 34,
           enabled: widget.selectedPresetId != null,
-          child: const Text('Delete selected brush'),
+          child: Text(AppText.strings.brDeleteSelected),
         ),
       if (widget.onLibraryReset != null) ...[
         const PopupMenuDivider(),
-        const PopupMenuItem<_BrushPresetMenuAction>(
+        PopupMenuItem<_BrushPresetMenuAction>(
           key: ValueKey<String>('brush-preset-menu-reset'),
           value: _BrushPresetMenuAction.reset,
           height: 34,
-          child: Text('Reset brush library'),
+          child: Text(AppText.strings.brResetLibrary),
         ),
       ],
     ];
@@ -538,7 +539,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
         height: 34,
         checked: _showTipIcon,
         enabled: _canToggleOff(_showTipIcon),
-        child: const Text('Tip icon'),
+        child: Text(AppText.strings.brTipIcon),
       ),
       CheckedPopupMenuItem<_BrushPresetMenuAction>(
         key: const ValueKey<String>('brush-preset-view-stroke-toggle'),
@@ -546,7 +547,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
         height: 34,
         checked: _showStrokePreview,
         enabled: _canToggleOff(_showStrokePreview),
-        child: const Text('Stroke preview'),
+        child: Text(AppText.strings.brStrokePreview),
       ),
       CheckedPopupMenuItem<_BrushPresetMenuAction>(
         key: const ValueKey<String>('brush-preset-view-name-toggle'),
@@ -578,7 +579,7 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
               key: const ValueKey<String>('brush-preset-import-button'),
               icon: const Icon(Icons.file_open_outlined, size: 16),
               visualDensity: VisualDensity.compact,
-              tooltip: 'Import brushes (.abr, .sut, .sutg)',
+              tooltip: AppText.strings.brImportBrushes,
               onPressed: widget.onPresetImportRequested,
             ),
           if (widget.onPresetSaveRequested != null)
@@ -586,12 +587,12 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
               key: const ValueKey<String>('brush-preset-save-button'),
               icon: const Icon(Icons.add, size: 16),
               visualDensity: VisualDensity.compact,
-              tooltip: 'Save current settings as preset',
+              tooltip: AppText.strings.brSaveAsPreset,
               onPressed: widget.onPresetSaveRequested,
             ),
           PopupMenuButton<_BrushPresetMenuAction>(
             key: const ValueKey<String>('brush-preset-menu-button'),
-            tooltip: 'Brush options',
+            tooltip: AppText.strings.brBrushOptions,
             popUpAnimationStyle: instantMenuAnimation,
             icon: const Icon(Icons.more_vert, size: 16),
             padding: EdgeInsets.zero,
@@ -748,7 +749,7 @@ class _BrushGroupHeader extends StatelessWidget {
           if (hasMenu)
             PopupMenuButton<_BrushGroupMenuAction>(
               key: ValueKey<String>('$keyValue-menu'),
-              tooltip: 'Group options',
+              tooltip: AppText.strings.brGroupOptions,
               popUpAnimationStyle: instantMenuAnimation,
               icon: Icon(
                 Icons.more_horiz,
@@ -771,18 +772,18 @@ class _BrushGroupHeader extends StatelessWidget {
               },
               itemBuilder: (context) => [
                 if (onRename != null)
-                  const PopupMenuItem<_BrushGroupMenuAction>(
+                  PopupMenuItem<_BrushGroupMenuAction>(
                     key: ValueKey<String>('brush-preset-group-menu-rename'),
                     value: _BrushGroupMenuAction.rename,
                     height: 34,
-                    child: Text('Rename group'),
+                    child: Text(AppText.strings.brRenameGroup),
                   ),
                 if (onDelete != null)
-                  const PopupMenuItem<_BrushGroupMenuAction>(
+                  PopupMenuItem<_BrushGroupMenuAction>(
                     key: ValueKey<String>('brush-preset-group-menu-delete'),
                     value: _BrushGroupMenuAction.delete,
                     height: 34,
-                    child: Text('Delete group'),
+                    child: Text(AppText.strings.brDeleteGroup),
                   ),
               ],
             ),

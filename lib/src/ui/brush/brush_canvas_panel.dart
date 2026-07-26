@@ -31,6 +31,7 @@ import '../canvas/canvas_viewport_gesture_layer.dart';
 import '../../models/project_background.dart';
 import '../theme/app_workspace_colors.dart';
 import '../widgets/color_swatch_button.dart';
+import 'brush_cursor_overlay.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart';
 import '../canvas/layer_pose_paint.dart';
 import 'brush_canvas_defaults.dart';
@@ -43,6 +44,7 @@ import 'canvas_viewport_pan_metrics.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/app_scrollbar.dart';
 import '../widgets/drag_value_label.dart';
+import '../text/app_strings.dart';
 
 /// A playback-follow reframe request for [BrushCanvasPanel.autoFrame]:
 /// whenever [token] changes between widget updates the panel reframes the
@@ -449,6 +451,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   bool get _fillCursorActive =>
       widget.brushToolState.tool == CanvasTool.fill && !_eyedropperCursorActive;
 
+  /// The brush/eraser tip outline. Alt-held sampling takes the pointer over
+  /// (the eyedropper is what the user is aiming with at that moment), and
+  /// the selection tools own it outright.
+  bool get _brushCursorActive =>
+      canvasToolPaints(widget.brushToolState.tool) && !_eyedropperCursorActive;
+
   /// Whether the eyedropper cursor + hover swatch are armed: the tool
   /// itself, or Alt held over a painting tool (the temporary pick).
   bool get _eyedropperCursorActive {
@@ -481,6 +489,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// same press, and sampling here too would double the composite read.
   void _noteCanvasPointer(Offset localPosition, {bool sample = true}) {
     _lastCanvasPointer = localPosition;
+    // The brush outline rides the same census — including the moves of a
+    // stroke already in flight, which is most of what it has to follow.
+    if (_brushCursorActive) {
+      _toolCursorHover.value = localPosition;
+    }
     if (!sample) {
       return;
     }
@@ -513,7 +526,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     }
     _eyedropperHoverSeeded = true;
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted && _eyedropperCursorActive && _eyedropperHover.value == null) {
+      if (mounted &&
+          _eyedropperCursorActive &&
+          _eyedropperHover.value == null) {
         _sampleEyedropperHover(position);
       }
     });
@@ -810,330 +825,388 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                         // than project data and it is painted here rather
                         // than by the canvas painter.
                         child: ColoredBox(
-                        color: Color(widget.pasteboardColor),
-                        // R27 #17: a passive census of where the pointer
-                        // is — button-held moves included — so a cursor
-                        // that arms mid-gesture knows where to appear.
-                        // Translucent and handler-only: it consumes
-                        // nothing.
-                        child: Listener(
-                          behavior: HitTestBehavior.translucent,
-                          onPointerHover: (event) =>
-                              _noteCanvasPointer(event.localPosition),
-                          onPointerDown: (event) =>
-                              _noteCanvasPointer(
-                                event.localPosition,
-                                sample: false,
-                              ),
-                          onPointerMove: (event) =>
-                              _noteCanvasPointer(event.localPosition),
-                          child:
-                            overlayBuilder == null &&
-                                underlayBuilder == null &&
-                                _toolTapHandler() == null &&
-                                !selectionLayerActive &&
-                                idleSelection == null &&
-                                !_eyedropperCursorActive
-                            ? canvasView
-                            : Stack(
-                                children: [
-                                  if (underlayBuilder != null)
-                                    Positioned.fill(
-                                      child: underlayBuilder(
-                                        context,
-                                        _viewport,
-                                        widget.coordinator == null
-                                            ? null
-                                            : widget._activeSurfacePainterFor(
-                                                widget.coordinator!,
-                                              ),
-                                      ),
-                                    ),
-                                  Positioned.fill(child: canvasView),
-                                  if (overlayBuilder != null)
-                                    Positioned.fill(
-                                      child: overlayBuilder(context, _viewport),
-                                    ),
-                                  // Non-painting tools (P5 eyedropper / P6
-                                  // fill): one tap layer ABOVE the canvas
-                                  // absorbs the pointer so no stroke starts.
-                                  if (_toolTapHandler() != null)
-                                    Positioned.fill(
-                                      child: Listener(
-                                        key: const ValueKey<String>(
-                                          'canvas-tool-tap-layer',
-                                        ),
-                                        behavior: HitTestBehavior.opaque,
-                                        onPointerDown: (event) {
-                                          // PRIMARY contact only (R22-B):
-                                          // the middle-button pan (the
-                                          // ancestor gesture layer) used
-                                          // to ALSO fire the tool here —
-                                          // every pan click deposited a
-                                          // stray fill, which is why one
-                                          // fill sometimes took two undos.
-                                          //
-                                          // R28 #8: the EYEDROPPER is
-                                          // exempt. Its whole point under a
-                                          // mapped hold (pen barrel /
-                                          // right-click) is that the held
-                                          // NON-primary button is what
-                                          // picks — the strict test meant
-                                          // the mapping switched the tool
-                                          // and then refused every press,
-                                          // so it "제대로 작동하지도않고".
-                                          // A pick writes no pixels, so
-                                          // there is no stray-edit hazard
-                                          // to guard against here.
-                                          if (widget.brushToolState.tool !=
-                                                  CanvasTool.eyedropper &&
-                                              event.buttons != kPrimaryButton) {
-                                            return;
-                                          }
-                                          _toolTapHandler()!(
-                                            _viewport.viewportToCanvas(
-                                              ViewportPoint(
-                                                x: event.localPosition.dx,
-                                                y: event.localPosition.dy,
-                                              ),
-                                            ),
-                                          );
-                                        },
-                                      ),
-                                    ),
-                                  // Eyedropper cursor (R11-②): crosshair +
-                                  // a hover swatch of the color under the
-                                  // pointer — for the tool AND the Alt-held
-                                  // temporary pick. Translucent: picks fall
-                                  // through to the tap layer / canvas below.
-                                  if (_eyedropperCursorActive) ...[
-                                    Positioned.fill(
-                                      child: MouseRegion(
-                                        // R26 #22: the eyedropper wears its
-                                        // OWN icon, not a crosshair — the
-                                        // system cursor hides and the icon
-                                        // below rides the pointer.
-                                        cursor: SystemMouseCursors.none,
-                                        opaque: false,
-                                        hitTestBehavior:
-                                            HitTestBehavior.translucent,
-                                        onExit: (_) =>
-                                            _eyedropperHover.value = null,
-                                        // R28 #8: the swatch/icon is fed by
-                                        // the panel's always-mounted pointer
-                                        // census, not by a tracker mounted
-                                        // here — one mounted at arming time
-                                        // is outside an in-flight pointer's
-                                        // route and hears nothing. This
-                                        // region only hides the system
-                                        // cursor and clears on exit.
-                                        child: const SizedBox.expand(
-                                          key: ValueKey<String>(
-                                            'eyedropper-hover-tracker',
+                          color: Color(widget.pasteboardColor),
+                          // R27 #17: a passive census of where the pointer
+                          // is — button-held moves included — so a cursor
+                          // that arms mid-gesture knows where to appear.
+                          // Translucent and handler-only: it consumes
+                          // nothing.
+                          child: Listener(
+                            behavior: HitTestBehavior.translucent,
+                            onPointerHover: (event) =>
+                                _noteCanvasPointer(event.localPosition),
+                            onPointerDown: (event) => _noteCanvasPointer(
+                              event.localPosition,
+                              sample: false,
+                            ),
+                            onPointerMove: (event) =>
+                                _noteCanvasPointer(event.localPosition),
+                            child:
+                                overlayBuilder == null &&
+                                    underlayBuilder == null &&
+                                    _toolTapHandler() == null &&
+                                    !selectionLayerActive &&
+                                    idleSelection == null &&
+                                    !_eyedropperCursorActive &&
+                                    !_brushCursorActive
+                                ? canvasView
+                                : Stack(
+                                    children: [
+                                      if (underlayBuilder != null)
+                                        Positioned.fill(
+                                          child: underlayBuilder(
+                                            context,
+                                            _viewport,
+                                            widget.coordinator == null
+                                                ? null
+                                                : widget
+                                                      ._activeSurfacePainterFor(
+                                                        widget.coordinator!,
+                                                      ),
                                           ),
                                         ),
-                                      ),
-                                    ),
-                                    ValueListenableBuilder<
-                                      ({Offset position, int color})?
-                                    >(
-                                      valueListenable: _eyedropperHover,
-                                      builder: (context, hover, _) {
-                                        if (hover == null) {
-                                          return const SizedBox.shrink();
-                                        }
-                                        return Positioned(
-                                          left: hover.position.dx + 14,
-                                          top: hover.position.dy - 34,
-                                          child: IgnorePointer(
-                                            child: Container(
-                                              key: const ValueKey<String>(
-                                                'eyedropper-hover-swatch',
-                                              ),
-                                              width: 26,
-                                              height: 26,
-                                              decoration: BoxDecoration(
-                                                color: Color(
-                                                  0xFF000000 | hover.color,
-                                                ),
-                                                shape: BoxShape.circle,
-                                                border: Border.all(
-                                                  color: Colors.white,
-                                                  width: 2,
-                                                ),
-                                                boxShadow: const [
-                                                  BoxShadow(
-                                                    color: Colors.black38,
-                                                    blurRadius: 3,
+                                      Positioned.fill(child: canvasView),
+                                      if (overlayBuilder != null)
+                                        Positioned.fill(
+                                          child: overlayBuilder(
+                                            context,
+                                            _viewport,
+                                          ),
+                                        ),
+                                      // Non-painting tools (P5 eyedropper / P6
+                                      // fill): one tap layer ABOVE the canvas
+                                      // absorbs the pointer so no stroke starts.
+                                      if (_toolTapHandler() != null)
+                                        Positioned.fill(
+                                          child: Listener(
+                                            key: const ValueKey<String>(
+                                              'canvas-tool-tap-layer',
+                                            ),
+                                            behavior: HitTestBehavior.opaque,
+                                            onPointerDown: (event) {
+                                              // PRIMARY contact only (R22-B):
+                                              // the middle-button pan (the
+                                              // ancestor gesture layer) used
+                                              // to ALSO fire the tool here —
+                                              // every pan click deposited a
+                                              // stray fill, which is why one
+                                              // fill sometimes took two undos.
+                                              //
+                                              // R28 #8: the EYEDROPPER is
+                                              // exempt. Its whole point under a
+                                              // mapped hold (pen barrel /
+                                              // right-click) is that the held
+                                              // NON-primary button is what
+                                              // picks — the strict test meant
+                                              // the mapping switched the tool
+                                              // and then refused every press,
+                                              // so it "제대로 작동하지도않고".
+                                              // A pick writes no pixels, so
+                                              // there is no stray-edit hazard
+                                              // to guard against here.
+                                              if (widget.brushToolState.tool !=
+                                                      CanvasTool.eyedropper &&
+                                                  event.buttons !=
+                                                      kPrimaryButton) {
+                                                return;
+                                              }
+                                              _toolTapHandler()!(
+                                                _viewport.viewportToCanvas(
+                                                  ViewportPoint(
+                                                    x: event.localPosition.dx,
+                                                    y: event.localPosition.dy,
                                                   ),
-                                                ],
+                                                ),
+                                              );
+                                            },
+                                          ),
+                                        ),
+                                      // Eyedropper cursor (R11-②): crosshair +
+                                      // a hover swatch of the color under the
+                                      // pointer — for the tool AND the Alt-held
+                                      // temporary pick. Translucent: picks fall
+                                      // through to the tap layer / canvas below.
+                                      if (_eyedropperCursorActive) ...[
+                                        Positioned.fill(
+                                          child: MouseRegion(
+                                            // R26 #22: the eyedropper wears its
+                                            // OWN icon, not a crosshair — the
+                                            // system cursor hides and the icon
+                                            // below rides the pointer.
+                                            cursor: SystemMouseCursors.none,
+                                            opaque: false,
+                                            hitTestBehavior:
+                                                HitTestBehavior.translucent,
+                                            onExit: (_) =>
+                                                _eyedropperHover.value = null,
+                                            // R28 #8: the swatch/icon is fed by
+                                            // the panel's always-mounted pointer
+                                            // census, not by a tracker mounted
+                                            // here — one mounted at arming time
+                                            // is outside an in-flight pointer's
+                                            // route and hears nothing. This
+                                            // region only hides the system
+                                            // cursor and clears on exit.
+                                            child: const SizedBox.expand(
+                                              key: ValueKey<String>(
+                                                'eyedropper-hover-tracker',
                                               ),
                                             ),
                                           ),
-                                        );
-                                      },
-                                    ),
-                                    // R26 #22: the eyedropper ICON as the
-                                    // cursor. Its tip is the hot spot, so
-                                    // the glyph hangs up-left of the point
-                                    // being sampled.
-                                    ValueListenableBuilder<
-                                      ({Offset position, int color})?
-                                    >(
-                                      valueListenable: _eyedropperHover,
-                                      builder: (context, hover, _) {
-                                        if (hover == null) {
-                                          return const SizedBox.shrink();
-                                        }
-                                        return Positioned(
-                                          left: hover.position.dx - 3,
-                                          top: hover.position.dy - 21,
-                                          child: const IgnorePointer(
-                                            child: _ToolCursorIcon(
-                                              keyValue:
-                                                  'eyedropper-cursor-icon',
-                                              icon: Icons.colorize,
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  ],
-                                  // R26 #23: the fill tool wears the bucket.
-                                  if (_fillCursorActive) ...[
-                                    Positioned.fill(
-                                      child: MouseRegion(
-                                        cursor: SystemMouseCursors.none,
-                                        opaque: false,
-                                        hitTestBehavior:
-                                            HitTestBehavior.translucent,
-                                        onExit: (_) =>
-                                            _toolCursorHover.value = null,
-                                        child: Listener(
-                                          key: const ValueKey<String>(
-                                            'fill-cursor-tracker',
-                                          ),
-                                          behavior: HitTestBehavior.translucent,
-                                          onPointerHover: (event) =>
-                                              _toolCursorHover.value =
-                                                  event.localPosition,
-                                          onPointerMove: (event) =>
-                                              _toolCursorHover.value =
-                                                  event.localPosition,
                                         ),
-                                      ),
-                                    ),
-                                    ValueListenableBuilder<Offset?>(
-                                      valueListenable: _toolCursorHover,
-                                      builder: (context, position, _) {
-                                        if (position == null) {
-                                          return const SizedBox.shrink();
-                                        }
-                                        return Positioned(
-                                          left: position.dx - 3,
-                                          top: position.dy - 20,
-                                          child: const IgnorePointer(
-                                            child: _ToolCursorIcon(
-                                              keyValue: 'fill-cursor-icon',
-                                              icon: Icons.format_color_fill,
-                                            ),
-                                          ),
-                                        );
-                                      },
-                                    ),
-                                  ],
-                                  // The P9 selection tools own the pointer
-                                  // while active (marquee/lasso/move) —
-                                  // strokes cannot start below the layer.
-                                  if (selectionLayerActive)
-                                    Positioned.fill(
-                                      child: CanvasSelectionLayer(
-                                        tool: switch (widget
-                                            .brushToolState
-                                            .tool) {
-                                          CanvasTool.lasso =>
-                                            CanvasSelectionTool.lasso,
-                                          CanvasTool.move =>
-                                            CanvasSelectionTool.move,
-                                          _ => CanvasSelectionTool.rect,
-                                        },
-                                        // R17-U: Move = 이동+변형 통합 툴
-                                        // — 핸들 상시.
-                                        alwaysShowTransformBox:
-                                            widget.brushToolState.tool ==
-                                            CanvasTool.move,
-                                        onShapeCommitted:
-                                            _recordSelectionChange,
-                                        viewport: _viewport,
-                                        canvasSize: widget.canvasSize,
-                                        // No frame = a stable sentinel:
-                                        // the selection survives until a
-                                        // real frame context arrives.
-                                        frameToken:
-                                            widget
-                                                .coordinator
-                                                ?.activeFrameKey ??
-                                            'selection-no-frame',
-                                        selectionCommands:
-                                            widget.selectionCommands,
-                                        onDragActiveChanged: (active) {
-                                          if (_selectionDragActive != active) {
-                                            widget.onSelectionInteractionChanged
-                                                ?.call(active);
-                                            setState(
-                                              () =>
-                                                  _selectionDragActive = active,
+                                        ValueListenableBuilder<
+                                          ({Offset position, int color})?
+                                        >(
+                                          valueListenable: _eyedropperHover,
+                                          builder: (context, hover, _) {
+                                            if (hover == null) {
+                                              return const SizedBox.shrink();
+                                            }
+                                            return Positioned(
+                                              left: hover.position.dx + 14,
+                                              top: hover.position.dy - 34,
+                                              child: IgnorePointer(
+                                                child: Container(
+                                                  key: const ValueKey<String>(
+                                                    'eyedropper-hover-swatch',
+                                                  ),
+                                                  width: 26,
+                                                  height: 26,
+                                                  decoration: BoxDecoration(
+                                                    color: Color(
+                                                      0xFF000000 | hover.color,
+                                                    ),
+                                                    shape: BoxShape.circle,
+                                                    border: Border.all(
+                                                      color: Colors.white,
+                                                      width: 2,
+                                                    ),
+                                                    boxShadow: const [
+                                                      BoxShadow(
+                                                        color: Colors.black38,
+                                                        blurRadius: 3,
+                                                      ),
+                                                    ],
+                                                  ),
+                                                ),
+                                              ),
                                             );
-                                          }
-                                        },
-                                        // R14-④: the Move tool lifts the
-                                        // selection's PIXELS (never whole
-                                        // strokes) — 유저 direction ⑧b.
-                                        onLiftRequested: _handleSelectionLift,
-                                        onLiftLanded: _handleLiftLanded,
-                                        onLiftConfirmed: _handleLiftConfirmed,
-                                        onLiftReverted: _handleLiftReverted,
-                                        // R26 #13 follow-up: the implicit
-                                        // whole-picture box frames the
-                                        // cel's tight ink bounds.
-                                        contentBoundsProvider:
-                                            _activeCelContentBounds,
-                                        // Pending move sessions hold the
-                                        // session's edit lock (seeks
-                                        // refused) WITHOUT locking
-                                        // viewport navigation.
-                                        onMoveSessionPendingChanged: widget
-                                            .onSelectionInteractionChanged,
-                                      ),
-                                    ),
-                                  // R28-S: the selection is a DOCUMENT
-                                  // fact, so its ants stay on screen under
-                                  // every other tool too — that is what
-                                  // makes "선택하고 다른 툴" legible (R26
-                                  // #18). Purely decorative: the layer
-                                  // above owns all interaction.
-                                  if (idleSelection != null)
-                                    Positioned.fill(
-                                      key: const ValueKey<String>(
-                                        'canvas-idle-selection-ants',
-                                      ),
-                                      child: IgnorePointer(
-                                        child: CustomPaint(
-                                          painter: SelectionAntsPainter(
-                                            repaint: _idleAnts,
-                                            viewport: _viewport,
-                                            committedRegion: idleSelection,
-                                            screenOffset: Offset.zero,
-                                            marqueeShape: null,
-                                            lassoTrail: const [],
-                                          ),
-                                          child: const SizedBox.expand(),
+                                          },
                                         ),
-                                      ),
-                                    ),
-                                ],
-                              ),
-                        ),
+                                        // R26 #22: the eyedropper ICON as the
+                                        // cursor. Its tip is the hot spot, so
+                                        // the glyph hangs up-left of the point
+                                        // being sampled.
+                                        ValueListenableBuilder<
+                                          ({Offset position, int color})?
+                                        >(
+                                          valueListenable: _eyedropperHover,
+                                          builder: (context, hover, _) {
+                                            if (hover == null) {
+                                              return const SizedBox.shrink();
+                                            }
+                                            return Positioned(
+                                              left: hover.position.dx - 3,
+                                              top: hover.position.dy - 21,
+                                              child: const IgnorePointer(
+                                                child: _ToolCursorIcon(
+                                                  keyValue:
+                                                      'eyedropper-cursor-icon',
+                                                  icon: Icons.colorize,
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                      ],
+                                      // R26 #23: the fill tool wears the bucket.
+                                      if (_fillCursorActive) ...[
+                                        Positioned.fill(
+                                          child: MouseRegion(
+                                            cursor: SystemMouseCursors.none,
+                                            opaque: false,
+                                            hitTestBehavior:
+                                                HitTestBehavior.translucent,
+                                            onExit: (_) =>
+                                                _toolCursorHover.value = null,
+                                            child: Listener(
+                                              key: const ValueKey<String>(
+                                                'fill-cursor-tracker',
+                                              ),
+                                              behavior:
+                                                  HitTestBehavior.translucent,
+                                              onPointerHover: (event) =>
+                                                  _toolCursorHover.value =
+                                                      event.localPosition,
+                                              onPointerMove: (event) =>
+                                                  _toolCursorHover.value =
+                                                      event.localPosition,
+                                            ),
+                                          ),
+                                        ),
+                                        ValueListenableBuilder<Offset?>(
+                                          valueListenable: _toolCursorHover,
+                                          builder: (context, position, _) {
+                                            if (position == null) {
+                                              return const SizedBox.shrink();
+                                            }
+                                            return Positioned(
+                                              left: position.dx - 3,
+                                              top: position.dy - 20,
+                                              child: const IgnorePointer(
+                                                child: _ToolCursorIcon(
+                                                  keyValue: 'fill-cursor-icon',
+                                                  icon: Icons.format_color_fill,
+                                                ),
+                                              ),
+                                            );
+                                          },
+                                        ),
+                                      ],
+                                      // The painting tools wear their own
+                                      // footprint: an outline of the tip that
+                                      // follows the pointer, so a stroke can be
+                                      // aimed before it starts.
+                                      if (_brushCursorActive) ...[
+                                        Positioned.fill(
+                                          child: MouseRegion(
+                                            key: const ValueKey<String>(
+                                              'brush-cursor-region',
+                                            ),
+                                            // The outline IS the cursor, so
+                                            // the system one steps aside.
+                                            // Its POSITION comes from the
+                                            // always-mounted census (R28
+                                            // #8): a tracker mounted here
+                                            // would sit outside an
+                                            // in-flight stroke's route and
+                                            // freeze the moment the pen
+                                            // touched down.
+                                            cursor: SystemMouseCursors.none,
+                                            opaque: false,
+                                            hitTestBehavior:
+                                                HitTestBehavior.translucent,
+                                            onExit: (_) =>
+                                                _toolCursorHover.value = null,
+                                            child: const SizedBox.expand(),
+                                          ),
+                                        ),
+                                        ValueListenableBuilder<Offset?>(
+                                          valueListenable: _toolCursorHover,
+                                          builder: (context, position, _) {
+                                            if (position == null) {
+                                              return const SizedBox.shrink();
+                                            }
+                                            return BrushCursorOverlay(
+                                              position: position,
+                                              viewport: _viewport,
+                                              size: widget.brushToolState.size,
+                                              roundness: widget
+                                                  .brushToolState
+                                                  .roundness,
+                                              angleDegrees: widget
+                                                  .brushToolState
+                                                  .angleDegrees,
+                                            );
+                                          },
+                                        ),
+                                      ],
+                                      // The P9 selection tools own the pointer
+                                      // while active (marquee/lasso/move) —
+                                      // strokes cannot start below the layer.
+                                      if (selectionLayerActive)
+                                        Positioned.fill(
+                                          child: CanvasSelectionLayer(
+                                            tool: switch (widget
+                                                .brushToolState
+                                                .tool) {
+                                              CanvasTool.lasso =>
+                                                CanvasSelectionTool.lasso,
+                                              CanvasTool.move =>
+                                                CanvasSelectionTool.move,
+                                              _ => CanvasSelectionTool.rect,
+                                            },
+                                            // R17-U: Move = 이동+변형 통합 툴
+                                            // — 핸들 상시.
+                                            alwaysShowTransformBox:
+                                                widget.brushToolState.tool ==
+                                                CanvasTool.move,
+                                            onShapeCommitted:
+                                                _recordSelectionChange,
+                                            viewport: _viewport,
+                                            canvasSize: widget.canvasSize,
+                                            // No frame = a stable sentinel:
+                                            // the selection survives until a
+                                            // real frame context arrives.
+                                            frameToken:
+                                                widget
+                                                    .coordinator
+                                                    ?.activeFrameKey ??
+                                                'selection-no-frame',
+                                            selectionCommands:
+                                                widget.selectionCommands,
+                                            onDragActiveChanged: (active) {
+                                              if (_selectionDragActive !=
+                                                  active) {
+                                                widget
+                                                    .onSelectionInteractionChanged
+                                                    ?.call(active);
+                                                setState(
+                                                  () => _selectionDragActive =
+                                                      active,
+                                                );
+                                              }
+                                            },
+                                            // R14-④: the Move tool lifts the
+                                            // selection's PIXELS (never whole
+                                            // strokes) — 유저 direction ⑧b.
+                                            onLiftRequested:
+                                                _handleSelectionLift,
+                                            onLiftLanded: _handleLiftLanded,
+                                            onLiftConfirmed:
+                                                _handleLiftConfirmed,
+                                            onLiftReverted: _handleLiftReverted,
+                                            // R26 #13 follow-up: the implicit
+                                            // whole-picture box frames the
+                                            // cel's tight ink bounds.
+                                            contentBoundsProvider:
+                                                _activeCelContentBounds,
+                                            // Pending move sessions hold the
+                                            // session's edit lock (seeks
+                                            // refused) WITHOUT locking
+                                            // viewport navigation.
+                                            onMoveSessionPendingChanged: widget
+                                                .onSelectionInteractionChanged,
+                                          ),
+                                        ),
+                                      // R28-S: the selection is a DOCUMENT
+                                      // fact, so its ants stay on screen under
+                                      // every other tool too — that is what
+                                      // makes "선택하고 다른 툴" legible (R26
+                                      // #18). Purely decorative: the layer
+                                      // above owns all interaction.
+                                      if (idleSelection != null)
+                                        Positioned.fill(
+                                          key: const ValueKey<String>(
+                                            'canvas-idle-selection-ants',
+                                          ),
+                                          child: IgnorePointer(
+                                            child: CustomPaint(
+                                              painter: SelectionAntsPainter(
+                                                repaint: _idleAnts,
+                                                viewport: _viewport,
+                                                committedRegion: idleSelection,
+                                                screenOffset: Offset.zero,
+                                                marqueeShape: null,
+                                                lassoTrail: const [],
+                                              ),
+                                              child: const SizedBox.expand(),
+                                            ),
+                                          ),
+                                        ),
+                                    ],
+                                  ),
+                          ),
                         ),
                       ),
                     );
@@ -1906,7 +1979,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
       if (onRotateCcw != null)
         _barIconButton(
           keyValue: 'canvas-viewport-rotate-ccw',
-          tooltip: 'Rotate View Left',
+          tooltip: AppText.strings.viewRotateLeft,
           icon: const Icon(Icons.rotate_left),
           onPressed: onRotateCcw,
           isSelected: rotationDegrees < 0,
@@ -1915,7 +1988,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
         DragValueLabel(
           keyValue: 'canvas-viewport-rotation-label',
           text: '$rotationDegrees°',
-          tooltip: 'View angle (drag / double-tap)',
+          tooltip: AppText.strings.viewAngleDrag,
           width: 40,
           textStyle: const TextStyle(fontSize: 11),
           onDragDelta: onRotateByDrag!,
@@ -1929,7 +2002,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
       if (onRotateCw != null)
         _barIconButton(
           keyValue: 'canvas-viewport-rotate-cw',
-          tooltip: 'Rotate View Right',
+          tooltip: AppText.strings.viewRotateRight,
           icon: const Icon(Icons.rotate_right),
           onPressed: onRotateCw,
           isSelected: rotationDegrees > 0,
@@ -1937,14 +2010,14 @@ class _CanvasViewportBottomBar extends StatelessWidget {
       if (onRotateReset != null)
         _barIconButton(
           keyValue: 'canvas-viewport-rotate-reset',
-          tooltip: 'Straighten View (0°)',
+          tooltip: AppText.strings.viewStraighten,
           icon: const Icon(Icons.refresh),
           onPressed: onRotateReset,
         ),
       if (onFlipHorizontal != null)
         _barIconButton(
           keyValue: 'canvas-viewport-flip',
-          tooltip: 'Flip View Horizontal',
+          tooltip: AppText.strings.viewFlipHorizontal,
           icon: const Icon(Icons.flip),
           onPressed: onFlipHorizontal,
           isSelected: viewport.flipHorizontal,
@@ -1952,7 +2025,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
       if (onFlipVertical != null)
         _barIconButton(
           keyValue: 'canvas-viewport-flip-vertical',
-          tooltip: 'Flip View Vertical',
+          tooltip: AppText.strings.viewFlipVertical,
           icon: const RotatedBox(quarterTurns: 1, child: Icon(Icons.flip)),
           onPressed: onFlipVertical,
           isSelected: viewport.flipVertical,
@@ -1964,13 +2037,13 @@ class _CanvasViewportBottomBar extends StatelessWidget {
     final zoomCluster = <Widget>[
       _barIconButton(
         keyValue: 'canvas-viewport-fit',
-        tooltip: 'Fit to View',
+        tooltip: AppText.strings.viewFitToView,
         icon: const Icon(Icons.fit_screen),
         onPressed: onFit,
       ),
       _barIconButton(
         keyValue: 'canvas-viewport-reset',
-        tooltip: 'Reset View (100%)',
+        tooltip: AppText.strings.viewResetView,
         icon: const Text(
           '1:1',
           style: TextStyle(
@@ -1983,7 +2056,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
       ),
       _barIconButton(
         keyValue: 'canvas-viewport-zoom-out',
-        tooltip: 'Zoom Out',
+        tooltip: AppText.strings.viewZoomOut,
         icon: const Icon(Icons.zoom_out),
         onPressed: onZoomOut,
       ),
@@ -1991,7 +2064,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
         keyValue: 'canvas-viewport-zoom-label',
         inputKeyValue: 'canvas-viewport-zoom-input',
         text: '${(viewport.zoom * 100).round()}%',
-        tooltip: 'Zoom (drag / double-tap)',
+        tooltip: AppText.strings.viewZoomDrag,
         width: 44,
         textStyle: const TextStyle(fontSize: 12),
         onDragDelta: (units) => onZoomSet(
@@ -2006,7 +2079,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
       ),
       _barIconButton(
         keyValue: 'canvas-viewport-zoom-in',
-        tooltip: 'Zoom In',
+        tooltip: AppText.strings.viewZoomIn,
         icon: const Icon(Icons.zoom_in),
         onPressed: onZoomIn,
       ),
@@ -2031,7 +2104,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
         ColorSwatchButton(
           keyValue: 'canvas-paper-color-button',
           title: 'Canvas',
-          tooltip: 'Canvas color',
+          tooltip: AppText.strings.viewCanvasColor,
           color: paperColor,
           onChanged: onPaper,
         ),
@@ -2040,7 +2113,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
         ColorSwatchButton(
           keyValue: 'canvas-pasteboard-color-button',
           title: 'Pasteboard',
-          tooltip: 'Pasteboard color',
+          tooltip: AppText.strings.viewPasteboardColor,
           color: pasteboardColor,
           onChanged: onPasteboard,
         ),
@@ -2086,10 +2159,7 @@ class _CanvasViewportBottomBar extends StatelessWidget {
                   ...joined([
                     leading,
                     viewControls,
-                    [
-                      SizedBox(width: 80, child: scrollbar()),
-                      ...colorControls,
-                    ],
+                    [SizedBox(width: 80, child: scrollbar()), ...colorControls],
                     zoomCluster,
                   ]),
                   const SizedBox(width: 4),

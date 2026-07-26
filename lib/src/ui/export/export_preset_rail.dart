@@ -5,6 +5,7 @@ import '../../models/export_size_mode.dart';
 import '../../models/export_spec.dart';
 import '../dialogs/app_prompt_dialog.dart';
 import 'export_settings_modules.dart';
+import '../text/app_strings.dart';
 
 /// The left drawer: per-tab presets (자동 규칙만). Selection highlight is
 /// value equality against the live spec — editing any knob visibly
@@ -31,8 +32,8 @@ class ExportPresetRail extends StatelessWidget {
 
   static String tabLabel(ExportTab tab) => switch (tab) {
     ExportTab.sequence => 'Sequence',
-    ExportTab.image => 'Image',
-    ExportTab.cels => 'Cels',
+    ExportTab.image => AppText.strings.exImage,
+    ExportTab.cels => AppText.strings.exCels,
     ExportTab.timesheet => 'Timesheet',
   };
 
@@ -210,16 +211,16 @@ class _PresetEntry extends StatelessWidget {
 Future<String?> showExportPresetNameDialog(BuildContext context) {
   return showDialog<String>(
     context: context,
-    builder: (context) => const AppPromptDialog(
-      windowKey: ValueKey<String>('export-preset-name-dialog'),
-      title: 'Save preset',
+    builder: (context) => AppPromptDialog(
+      windowKey: const ValueKey<String>('export-preset-name-dialog'),
+      title: AppText.strings.exSavePreset,
       titleIcon: Icons.bookmark_add_outlined,
-      fieldLabel: 'Preset name',
+      fieldLabel: AppText.strings.brName,
       initialValue: '',
-      confirmLabel: 'Save',
-      emptyError: 'Preset name cannot be empty.',
-      fieldKey: ValueKey<String>('export-preset-name-field'),
-      confirmKey: ValueKey<String>('export-preset-name-save'),
+      confirmLabel: AppText.strings.commonSave,
+      emptyError: AppText.strings.exPresetNameEmpty,
+      fieldKey: const ValueKey<String>('export-preset-name-field'),
+      confirmKey: const ValueKey<String>('export-preset-name-save'),
     ),
   );
 }

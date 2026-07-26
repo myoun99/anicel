@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/media_asset.dart';
 import '../dialogs/app_prompt_dialog.dart';
+import '../text/app_strings.dart';
 import '../theme/app_theme.dart' show instantMenuAnimation;
 import 'media_asset_drag_data.dart';
 
@@ -91,9 +92,7 @@ class MediaBrowserPanel extends StatelessWidget {
       return;
     }
     ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      const SnackBar(
-        content: Text('Still linked on SE rows — remove its sounds first.'),
-      ),
+      SnackBar(content: Text(AppText.strings.mediaStillLinked)),
     );
   }
 
@@ -135,7 +134,7 @@ class MediaBrowserPanel extends StatelessWidget {
               const SizedBox(width: 4),
               IconButton(
                 key: const ValueKey<String>('media-import-button'),
-                tooltip: 'Import Audio',
+                tooltip: AppText.strings.mediaImportAudio,
                 icon: const Icon(Icons.add, size: 18),
                 onPressed: _import,
               ),
@@ -231,7 +230,7 @@ class MediaBrowserPanel extends StatelessWidget {
             ),
           PopupMenuButton<String>(
             key: ValueKey<String>('media-asset-menu-${asset.path}'),
-            tooltip: 'Media actions',
+            tooltip: AppText.strings.mediaActions,
             popUpAnimationStyle: instantMenuAnimation,
             iconSize: 16,
             onSelected: (action) {
@@ -244,21 +243,21 @@ class MediaBrowserPanel extends StatelessWidget {
                   _remove(context, asset);
               }
             },
-            itemBuilder: (context) => const [
+            itemBuilder: (context) => [
               PopupMenuItem<String>(
-                key: ValueKey<String>('media-asset-menu-rename'),
+                key: const ValueKey<String>('media-asset-menu-rename'),
                 value: 'rename',
-                child: Text('Rename'),
+                child: Text(AppText.strings.commonRename),
               ),
               PopupMenuItem<String>(
-                key: ValueKey<String>('media-asset-menu-relink'),
+                key: const ValueKey<String>('media-asset-menu-relink'),
                 value: 'relink',
-                child: Text('Relink…'),
+                child: Text(AppText.strings.mediaRelink),
               ),
               PopupMenuItem<String>(
-                key: ValueKey<String>('media-asset-menu-remove'),
+                key: const ValueKey<String>('media-asset-menu-remove'),
                 value: 'remove',
-                child: Text('Remove'),
+                child: Text(AppText.strings.mediaRemove),
               ),
             ],
           ),
@@ -301,7 +300,7 @@ class _RenameMediaDialog extends StatelessWidget {
   Widget build(BuildContext context) {
     return AppPromptDialog(
       windowKey: const ValueKey<String>('media-rename-dialog'),
-      title: 'Rename media',
+      title: AppText.strings.mediaRename,
       titleIcon: Icons.drive_file_rename_outline,
       fieldLabel: 'Name',
       initialValue: initialName,
