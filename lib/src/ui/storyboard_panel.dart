@@ -43,11 +43,12 @@ import 'timeline/timeline_drag_preview.dart';
 import 'timeline/timeline_cell_style.dart'
     show timelineBaseGridAlpha, timelineDrawingInkColor;
 import 'timeline/timeline_exposure_comma_drag_handle.dart'
+    show TimelineBlockEdgeGrip, timelineBlockEdgeGripPlacement;
+import 'timeline/timeline_row_edit_chrome.dart'
     show
-        BlockEdgeGrip,
-        BlockEdgeGripHooks,
-        TimelineBlockEdgeGrip,
-        timelineBlockEdgeGripPlacement;
+        TimelineRowChromeResolver,
+        TimelineRowEditChromeLayer,
+        TimelineRowGripCallbacks;
 import 'timeline/timeline_frame_geometry.dart'
     show TimelineFrameGeometry, TimelineFrameGeometryHandle;
 import 'timeline/timeline_frame_range_gesture.dart'
@@ -3606,41 +3607,64 @@ class _StoryboardTrackRow extends StatelessWidget {
                 crossAxisExtent: StoryboardPanel._trackLaneHeight,
                 callbacks: rangeGesture,
               ),
-            // Trim grips paint over the block edges (their 12px strips win
-            // pointer contests there; the row gesture keeps the middle).
-            // The start grip SLIDES the cut (gap authoring) — every cut has
-            // one, the first included.
+            // Trim grips ride ABOVE the row gesture so the edges keep trim
+            // priority; the row gesture keeps the middle. The start grip
+            // SLIDES the cut (gap authoring) — every cut has one, the
+            // first included.
+            //
+            // THE timeline's chrome layer, not a cut-shaped copy of it: one
+            // painter and one gesture layer for the whole row, where this
+            // used to be two widgets a cut.
             if (cutTrim != null)
-              for (final entry in layoutEntries) ...[
-                _StoryboardCutEdgeGrip(
-                  cutId: entry.cutId,
-                  cutOrdinal: entry.cutIndex,
-                  edge: TimelineBlockEdge.start,
-                  blockStartOffset: timelineScale.leftForFrame(
-                    entry.startFrame,
-                  ),
-                  blockEndOffset:
-                      timelineScale.leftForFrame(entry.startFrame) +
-                      timelineScale.widthForDuration(entry.duration),
-                  frameCellExtent: timelineScale.pixelsPerFrame,
-                  crossAxisExtent: StoryboardPanel._trackLaneHeight,
-                  callbacks: cutTrim!,
+              Positioned.fill(
+                key: ValueKey<String>(
+                  'storyboard-edit-chrome-slot-${track.id.value}',
                 ),
-                _StoryboardCutEdgeGrip(
-                  cutId: entry.cutId,
-                  cutOrdinal: entry.cutIndex,
-                  edge: TimelineBlockEdge.end,
-                  blockStartOffset: timelineScale.leftForFrame(
-                    entry.startFrame,
+                child: TimelineRowEditChromeLayer(
+                  paintKey: ValueKey<String>(
+                    'storyboard-edit-chrome-${track.id.value}',
                   ),
-                  blockEndOffset:
-                      timelineScale.leftForFrame(entry.startFrame) +
-                      timelineScale.widthForDuration(entry.duration),
-                  frameCellExtent: timelineScale.pixelsPerFrame,
-                  crossAxisExtent: StoryboardPanel._trackLaneHeight,
-                  callbacks: cutTrim!,
+                  // No layer: a cut row's blocks are cuts, and it has no
+                  // run edges for a LayerId to name.
+                  layerId: null,
+                  resolver: TimelineRowChromeResolver(
+                    gripBlocks: [
+                      for (final entry in layoutEntries)
+                        (
+                          ordinal: entry.cutIndex,
+                          startIndex: entry.startFrame,
+                          endIndexExclusive: entry.endFrame,
+                          startGrip: true,
+                          endGrip: true,
+                        ),
+                    ],
+                    gripIdScope: track.id.value,
+                    layer: null,
+                    baseLayer: null,
+                    crossAxisExtent: StoryboardPanel._trackLaneHeight,
+                    axis: Axis.horizontal,
+                    includeRunEdges: false,
+                  ),
+                  geometry: frameGeometry,
+                  axis: Axis.horizontal,
+                  // The row closes the CUT identity in, by ordinal — the
+                  // grip hooks themselves know nothing about cuts.
+                  grips: TimelineRowGripCallbacks(
+                    onBegin: (_, ordinal, edge) {
+                      for (final entry in layoutEntries) {
+                        if (entry.cutIndex == ordinal) {
+                          return cutTrim!.onBegin(entry.cutId, edge);
+                        }
+                      }
+                      return false;
+                    },
+                    onUpdate: cutTrim!.onUpdate,
+                    onEnd: cutTrim!.onEnd,
+                    onCancel: cutTrim!.onCancel,
+                  ),
+                  runEdit: null,
                 ),
-              ],
+              ),
           ],
         ),
       ),
@@ -3726,68 +3750,5 @@ class _StoryboardFrameLinesPainter extends CustomPainter {
         oldDelegate.color != color ||
         oldDelegate.framesPerSecond != framesPerSecond ||
         oldDelegate.colorScheme != colorScheme;
-  }
-}
-
-/// One cut trim grip: binds the cut identity onto the SHARED
-/// [BlockEdgeGrip] (R28 #3).
-///
-/// This used to be a private copy of the timeline grip's visuals and state
-/// machine, and it had already drifted — the copy never grew a hover state,
-/// so a pointer resting on a cut edge said nothing while the same gesture in
-/// the timeline lit up. One widget now serves both surfaces, so the feel
-/// cannot diverge again.
-///
-/// The Positioned key derives from the cut ORDINAL, never its start frame —
-/// a roll drag moves the start every step, and a key change there would
-/// rebuild the gesture subtree mid-drag and kill it (same constraint as the
-/// timeline grips).
-class _StoryboardCutEdgeGrip extends StatelessWidget {
-  const _StoryboardCutEdgeGrip({
-    required this.cutId,
-    required this.cutOrdinal,
-    required this.edge,
-    required this.blockStartOffset,
-    required this.blockEndOffset,
-    required this.frameCellExtent,
-    required this.crossAxisExtent,
-    required this.callbacks,
-  });
-
-  final CutId cutId;
-  final int cutOrdinal;
-  final TimelineBlockEdge edge;
-  final double blockStartOffset;
-  final double blockEndOffset;
-  final double frameCellExtent;
-  final double crossAxisExtent;
-  final StoryboardCutTrimCallbacks callbacks;
-
-  static const double hitExtent = 12;
-
-  @override
-  Widget build(BuildContext context) {
-    // WHERE the grip sits is the mount's business now (the sparse rows place
-    // theirs by frame span); this strip already has its pixel offsets.
-    final isStart = edge == TimelineBlockEdge.start;
-    return Positioned(
-      key: ValueKey<String>(
-        'storyboard-cut-edge-grip-${edge.name}-$cutOrdinal',
-      ),
-      left: isStart ? blockStartOffset : blockEndOffset - hitExtent,
-      top: 0,
-      width: hitExtent,
-      height: crossAxisExtent,
-      child: BlockEdgeGrip(
-        edge: edge,
-        resolveFrameCellExtent: () => frameCellExtent,
-        hooks: BlockEdgeGripHooks(
-          onBegin: () => callbacks.onBegin(cutId, edge),
-          onUpdate: callbacks.onUpdate,
-          onEnd: callbacks.onEnd,
-          onCancel: callbacks.onCancel,
-        ),
-      ),
-    );
   }
 }

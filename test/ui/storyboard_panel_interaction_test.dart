@@ -22,6 +22,7 @@ import 'package:quick_animaker_v2/src/models/timeline_coverage.dart'
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
 import 'storyboard_cut_block_probe.dart';
+import 'timeline/timeline_row_chrome_probe.dart';
 
 void main() {
   group('StoryboardPanel cut selection interactions', () {
@@ -995,21 +996,25 @@ void main() {
 
       // The start grip SLIDES the cut (gap authoring, W3c) — every cut has
       // one, the FIRST included (its gap = black lead-in before the track).
+      // The grips are PAINTED targets on the timeline's chrome layer now,
+      // so they are read off its model rather than found by key.
       expect(
-        find.byKey(const ValueKey<String>('storyboard-cut-edge-grip-start-0')),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(const ValueKey<String>('storyboard-cut-edge-grip-start-1')),
-        findsOneWidget,
+        timelineRowChromeIds(tester, 'track-a', prefix: 'storyboard'),
+        containsAll(<String>[
+          'block-edge-grip-start-track-a-0',
+          'block-edge-grip-start-track-a-1',
+          'block-edge-grip-end-track-a-0',
+        ]),
       );
 
-      final endGrip = find.byKey(
-        const ValueKey<String>('storyboard-cut-edge-grip-end-0'),
+      final gesture = await tester.startGesture(
+        timelineRowChromeCenter(
+          tester,
+          'track-a',
+          'block-edge-grip-end-track-a-0',
+          prefix: 'storyboard',
+        ),
       );
-      expect(endGrip, findsOneWidget);
-
-      final gesture = await tester.startGesture(tester.getCenter(endGrip));
       await gesture.moveBy(const Offset(19, 0));
       await tester.pump();
       await gesture.moveBy(const Offset(16, 0));

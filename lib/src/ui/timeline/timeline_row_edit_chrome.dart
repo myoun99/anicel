@@ -144,8 +144,46 @@ class TimelineRowEditChromeModel {
   bool get isEmpty => targets.isEmpty && patternSpans.isEmpty;
 }
 
-/// Resolves a dense drawing row's edit chrome: the comma grips of every
-/// visible block plus each glued run's [+]/property cluster.
+/// One block a row hangs comma grips on, as the chrome model sees it.
+///
+/// A SPAN plus which of its two edges are editable — not a `Layer`'s
+/// exposure, because a dense row is not only a layer's: the storyboard's
+/// cut row hangs the same grips on cuts. Whose blocks these are, and which
+/// edges a rule suppresses (ghosts, spill-in starts), is the caller's to
+/// decide before it gets here.
+typedef TimelineChromeGripBlock = ({
+  int ordinal,
+  int startIndex,
+  int endIndexExclusive,
+  bool startGrip,
+  bool endGrip,
+});
+
+/// [layer]'s drawing blocks as grip material. Ghost repeat instances are
+/// DERIVED, so they carry no timing grips (UI-R8); a spill-in display
+/// block's start lives in an earlier cut, so it carries no start grip
+/// (UI-R7 #6, TrackSeWindow).
+List<TimelineChromeGripBlock> timelineLayerGripBlocks(
+  Layer layer, {
+  bool suppressStartGripAtZero = false,
+}) {
+  final blocks = drawingBlocks(layer.timeline);
+  return [
+    for (var ordinal = 0; ordinal < blocks.length; ordinal += 1)
+      if (!blocks[ordinal].entry.ghost)
+        (
+          ordinal: ordinal,
+          startIndex: blocks[ordinal].startIndex,
+          endIndexExclusive: blocks[ordinal].endIndexExclusive,
+          startGrip:
+              !(suppressStartGripAtZero && blocks[ordinal].startIndex == 0),
+          endGrip: true,
+        ),
+  ];
+}
+
+/// Resolves a dense row's edit chrome: the comma grips of every visible
+/// block plus (layer rows only) each glued run's [+]/property cluster.
 ///
 /// R28 #4 tier 2: these used to be a `Positioned` + `MouseRegion` +
 /// `GestureDetector` + `Align` + `Padding` + `Container` PER GRIP and a
@@ -155,14 +193,14 @@ class TimelineRowEditChromeModel {
 /// as the dominant half of a 736ms zoom step at 24 layers. One model, one
 /// painter and one row-level gesture layer replace them.
 TimelineRowEditChromeModel timelineRowEditChromeModel({
-  required Layer layer,
+  required List<TimelineChromeGripBlock> gripBlocks,
+  required String gripIdScope,
+  Layer? layer,
   Layer? baseLayer,
   required TimelineFrameGeometry geometry,
   required double crossAxisExtent,
   required Axis axis,
-  required bool includeGrips,
   required bool includeRunEdges,
-  bool suppressStartGripAtZero = false,
 }) {
   final targets = <TimelineRowChromeTarget>[];
   final patternSpans = <Rect>[];
@@ -175,54 +213,45 @@ TimelineRowEditChromeModel timelineRowEditChromeModel({
       ? Rect.fromLTWH(start, 0, extent, crossAxisExtent)
       : Rect.fromLTWH(0, start, crossAxisExtent, extent);
 
-  if (includeGrips) {
-    final hitExtent = blockEdgeGripHitExtent(frameCellExtent);
-    final blocks = drawingBlocks(layer.timeline);
-    for (var ordinal = 0; ordinal < blocks.length; ordinal += 1) {
-      final block = blocks[ordinal];
-      if (block.endIndexExclusive <= frameStartIndex ||
-          block.startIndex >= frameEndIndexExclusive) {
+  final hitExtent = blockEdgeGripHitExtent(frameCellExtent);
+  for (final block in gripBlocks) {
+    if (block.endIndexExclusive <= frameStartIndex ||
+        block.startIndex >= frameEndIndexExclusive) {
+      continue;
+    }
+    final blockStartOffset = geometry.edgeAt(block.startIndex);
+    final blockEndOffset = geometry.edgeAt(block.endIndexExclusive);
+    for (final edge in TimelineBlockEdge.values) {
+      if (edge == TimelineBlockEdge.start && !block.startGrip) {
         continue;
       }
-      // Ghost repeat instances are DERIVED — no timing grips (UI-R8).
-      if (block.entry.ghost) {
+      if (edge == TimelineBlockEdge.end && !block.endGrip) {
         continue;
       }
-      final blockStartOffset = geometry.edgeAt(block.startIndex);
-      final blockEndOffset = geometry.edgeAt(block.endIndexExclusive);
-      for (final edge in TimelineBlockEdge.values) {
-        // The spill-in display block's start is not editable here — its
-        // real start lives in an earlier cut (UI-R7 #6, TrackSeWindow).
-        if (suppressStartGripAtZero &&
-            edge == TimelineBlockEdge.start &&
-            block.startIndex == 0) {
-          continue;
-        }
-        final hitStart = edge == TimelineBlockEdge.start
-            ? blockStartOffset
-            : blockEndOffset - hitExtent;
-        final rect = mainRect(hitStart, hitExtent);
-        final bar = blockEdgeGripBarRect(
+      final hitStart = edge == TimelineBlockEdge.start
+          ? blockStartOffset
+          : blockEndOffset - hitExtent;
+      final rect = mainRect(hitStart, hitExtent);
+      final bar = blockEdgeGripBarRect(
+        edge: edge,
+        hitExtent: hitExtent,
+        crossAxisExtent: crossAxisExtent,
+        axis: axis,
+      );
+      targets.add(
+        TimelineRowGripTarget(
+          id: 'block-edge-grip-${edge.name}-$gripIdScope-${block.ordinal}',
+          rect: rect,
           edge: edge,
-          hitExtent: hitExtent,
-          crossAxisExtent: crossAxisExtent,
-          axis: axis,
-        );
-        targets.add(
-          TimelineRowGripTarget(
-            id: 'block-edge-grip-${edge.name}-${layer.id}-$ordinal',
-            rect: rect,
-            edge: edge,
-            blockStartIndex: block.startIndex,
-            blockOrdinal: ordinal,
-            barRect: bar.shift(rect.topLeft),
-          ),
-        );
-      }
+          blockStartIndex: block.startIndex,
+          blockOrdinal: block.ordinal,
+          barRect: bar.shift(rect.topLeft),
+        ),
+      );
     }
   }
 
-  if (includeRunEdges) {
+  if (includeRunEdges && layer != null) {
     final chrome = timelineRunEdgeChrome(
       layer: layer,
       baseLayer: baseLayer,
@@ -282,22 +311,25 @@ TimelineRowEditChromeModel timelineRowEditChromeModel({
 /// survives zoom steps, so a step re-derives rects and nothing else.
 class TimelineRowChromeResolver {
   TimelineRowChromeResolver({
+    required this.gripBlocks,
+    required this.gripIdScope,
     required this.layer,
     required this.baseLayer,
     required this.crossAxisExtent,
     required this.axis,
-    required this.includeGrips,
     required this.includeRunEdges,
-    required this.suppressStartGripAtZero,
   });
 
-  final Layer layer;
+  final List<TimelineChromeGripBlock> gripBlocks;
+  final String gripIdScope;
+
+  /// The row's layer — needed only for the run-edge half. Null on rows
+  /// that have blocks but no runs (the storyboard's cut row).
+  final Layer? layer;
   final Layer? baseLayer;
   final double crossAxisExtent;
   final Axis axis;
-  final bool includeGrips;
   final bool includeRunEdges;
-  final bool suppressStartGripAtZero;
 
   TimelineFrameGeometry? _lastGeometry;
   TimelineRowEditChromeModel? _lastModel;
@@ -307,11 +339,11 @@ class TimelineRowChromeResolver {
   bool matches(TimelineRowChromeResolver other) =>
       identical(other.layer, layer) &&
       identical(other.baseLayer, baseLayer) &&
+      listEquals(other.gripBlocks, gripBlocks) &&
+      other.gripIdScope == gripIdScope &&
       other.crossAxisExtent == crossAxisExtent &&
       other.axis == axis &&
-      other.includeGrips == includeGrips &&
-      other.includeRunEdges == includeRunEdges &&
-      other.suppressStartGripAtZero == suppressStartGripAtZero;
+      other.includeRunEdges == includeRunEdges;
 
   TimelineRowEditChromeModel resolve(TimelineFrameGeometry geometry) {
     final cached = _lastModel;
@@ -319,14 +351,14 @@ class TimelineRowChromeResolver {
       return cached;
     }
     final model = timelineRowEditChromeModel(
+      gripBlocks: gripBlocks,
+      gripIdScope: gripIdScope,
       layer: layer,
       baseLayer: baseLayer,
       geometry: geometry,
       crossAxisExtent: crossAxisExtent,
       axis: axis,
-      includeGrips: includeGrips,
       includeRunEdges: includeRunEdges,
-      suppressStartGripAtZero: suppressStartGripAtZero,
     );
     _lastGeometry = geometry;
     _lastModel = model;
@@ -480,6 +512,35 @@ class TimelineRowEditChromePainter extends CustomPainter {
 /// ([_ChromeHitGate]); everything else falls straight through to the range
 /// gesture layer and the cells below, which is what the small per-affordance
 /// boxes used to do implicitly.
+/// The chrome layer's own grip hooks — identity-free on purpose.
+///
+/// A grip drag is the same gesture whether the block is a layer's exposure
+/// or a track's cut; only what it re-times differs. The mount closes over
+/// WHOSE row it is (its `LayerId`, its `CutId` by ordinal) and hands the
+/// session the right verb, exactly the way the range gesture's row address
+/// works.
+class TimelineRowGripCallbacks {
+  const TimelineRowGripCallbacks({
+    required this.onBegin,
+    required this.onUpdate,
+    required this.onEnd,
+    required this.onCancel,
+  });
+
+  /// Returns whether the drag may start (e.g. the block still exists).
+  final bool Function(
+    int blockStartIndex,
+    int blockOrdinal,
+    TimelineBlockEdge edge,
+  )
+  onBegin;
+
+  /// Reports the cumulative whole-frame delta since drag start.
+  final ValueChanged<int> onUpdate;
+  final VoidCallback onEnd;
+  final VoidCallback onCancel;
+}
+
 class TimelineRowEditChromeLayer extends StatefulWidget {
   const TimelineRowEditChromeLayer({
     super.key,
@@ -488,7 +549,7 @@ class TimelineRowEditChromeLayer extends StatefulWidget {
     required this.resolver,
     required this.geometry,
     required this.axis,
-    required this.commaDrag,
+    required this.grips,
     required this.runEdit,
   });
 
@@ -496,7 +557,11 @@ class TimelineRowEditChromeLayer extends StatefulWidget {
   /// its render box, for target geometry) off this.
   final Key paintKey;
 
-  final LayerId layerId;
+  /// The row's layer — the RUN-edge half's identity. Null on rows whose
+  /// blocks are not a layer's (the storyboard's cut row), which is also
+  /// why the grip hooks below carry none: whoever mounts this layer knows
+  /// whose row it is and closes over it.
+  final LayerId? layerId;
 
   /// Resolves the targets for whatever geometry is live; rebuilt by the row
   /// only when the LAYER changes, never for a zoom step.
@@ -508,7 +573,7 @@ class TimelineRowEditChromeLayer extends StatefulWidget {
   final Axis axis;
 
   /// Comma-drag hooks; null when the row has no grip targets.
-  final TimelineCommaDragCallbacks? commaDrag;
+  final TimelineRowGripCallbacks? grips;
 
   /// Run-edge hooks; null when the row has no run targets.
   final TimelineRunEditCallbacks? runEdit;
@@ -584,7 +649,7 @@ class _TimelineRowEditChromeLayerState
     // session keeps the preview and the pointer-up never arrives here, so
     // land the operation rather than leaking an open session.
     if (_gripDragging) {
-      widget.commaDrag?.onEnd();
+      widget.grips?.onEnd();
     }
     if (_addDragging) {
       final callbacks = widget.runEdit;
@@ -603,11 +668,15 @@ class _TimelineRowEditChromeLayerState
 
   void _startGripDrag() {
     final target = _pressed;
-    final callbacks = widget.commaDrag;
+    final callbacks = widget.grips;
     if (target is! TimelineRowGripTarget || callbacks == null) {
       return;
     }
-    if (!callbacks.onBegin(widget.layerId, target.blockStartIndex, target.edge)) {
+    if (!callbacks.onBegin(
+      target.blockStartIndex,
+      target.blockOrdinal,
+      target.edge,
+    )) {
       return;
     }
     setState(() {
@@ -631,7 +700,7 @@ class _TimelineRowEditChromeLayerState
       return;
     }
     _gripLastReported = frames;
-    widget.commaDrag?.onUpdate(frames);
+    widget.grips?.onUpdate(frames);
   }
 
   void _endGripDrag() {
@@ -642,7 +711,7 @@ class _TimelineRowEditChromeLayerState
       _gripDragging = false;
       _gripTarget = null;
     });
-    widget.commaDrag?.onEnd();
+    widget.grips?.onEnd();
   }
 
   void _cancelGripDrag() {
@@ -653,7 +722,7 @@ class _TimelineRowEditChromeLayerState
       _gripDragging = false;
       _gripTarget = null;
     });
-    widget.commaDrag?.onCancel();
+    widget.grips?.onCancel();
   }
 
   // ---- run [+] add ---------------------------------------------------
@@ -661,11 +730,14 @@ class _TimelineRowEditChromeLayerState
   void _startAdd() {
     final target = _pressed;
     final callbacks = widget.runEdit;
-    if (target is! TimelineRowRunAddTarget || callbacks == null) {
+    final layerId = widget.layerId;
+    if (target is! TimelineRowRunAddTarget ||
+        callbacks == null ||
+        layerId == null) {
       return;
     }
     if (!callbacks.onAddBegin(
-      widget.layerId,
+      layerId,
       target.blockStartIndex,
       atEnd: target.atEnd,
     )) {
@@ -720,11 +792,15 @@ class _TimelineRowEditChromeLayerState
   void _tapAdd() {
     final target = _pressed;
     final callbacks = widget.runEdit;
-    if (_addDragging || target is! TimelineRowRunAddTarget || callbacks == null) {
+    final layerId = widget.layerId;
+    if (_addDragging ||
+        target is! TimelineRowRunAddTarget ||
+        callbacks == null ||
+        layerId == null) {
       return;
     }
     if (!callbacks.onAddBegin(
-      widget.layerId,
+      layerId,
       target.blockStartIndex,
       atEnd: target.atEnd,
     )) {
@@ -738,12 +814,13 @@ class _TimelineRowEditChromeLayerState
 
   Future<void> _openModeFlyout(TimelineRowRunTagTarget target) async {
     final callbacks = widget.runEdit;
-    if (callbacks == null) {
+    final layerId = widget.layerId;
+    if (callbacks == null || layerId == null) {
       return;
     }
     void pick(TimelineRunEdgeMode? mode, {bool scopeToSelection = false}) =>
         callbacks.onEdgeModeSelected(
-          widget.layerId,
+          layerId,
           target.blockStartIndex,
           target.side,
           mode,
@@ -754,7 +831,7 @@ class _TimelineRowEditChromeLayerState
     // ALWAYS means the whole run.
     final selectionScopes =
         callbacks.canScopeToSelection?.call(
-          widget.layerId,
+          layerId,
           target.blockStartIndex,
           target.side,
         ) ??

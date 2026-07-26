@@ -171,15 +171,21 @@ class TimelineFrameCellsRow extends StatelessWidget {
         !layerKindUsesSeSheetCells(layer.kind);
     final chromeResolver = wantsGrips || wantsRunEdges
         ? TimelineRowChromeResolver(
+            gripBlocks: wantsGrips
+                ? timelineLayerGripBlocks(
+                    layer,
+                    // The spill-in block's `~` replaces its start grip
+                    // (UI-R7 #6).
+                    suppressStartGripAtZero:
+                        seSpillsIn && layerKindUsesSeSheetCells(layer.kind),
+                  )
+                : const [],
+            gripIdScope: layer.id.value,
             layer: layer,
             baseLayer: baseLayer,
             crossAxisExtent: crossAxisExtent,
             axis: axis,
-            includeGrips: wantsGrips,
             includeRunEdges: wantsRunEdges,
-            // The spill-in block's `~` replaces its start grip (UI-R7 #6).
-            suppressStartGripAtZero:
-                seSpillsIn && layerKindUsesSeSheetCells(layer.kind),
           )
         : null;
 
@@ -390,7 +396,18 @@ class TimelineFrameCellsRow extends StatelessWidget {
               resolver: chromeResolver,
               geometry: geometry,
               axis: axis,
-              commaDrag: commaDrag,
+              // The row closes its LayerId into the identity-free grip
+              // hooks — the chrome layer serves cut rows too now, and a
+              // grip drag is the same gesture on both.
+              grips: commaDrag == null
+                  ? null
+                  : TimelineRowGripCallbacks(
+                      onBegin: (blockStartIndex, _, edge) =>
+                          commaDrag.onBegin(layer.id, blockStartIndex, edge),
+                      onUpdate: commaDrag.onUpdate,
+                      onEnd: commaDrag.onEnd,
+                      onCancel: commaDrag.onCancel,
+                    ),
               runEdit: runEdit,
             ),
           ),
