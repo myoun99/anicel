@@ -57,7 +57,6 @@ void main() {
           body: StoryboardPanel(
             project: project,
             activeCutId: const CutId('cut-a'),
-            onCutSelected: (_) {},
             playheadFrame: playhead,
             pixelsPerFrame: pixelsPerFrame,
           ),
@@ -93,7 +92,6 @@ void main() {
           body: StoryboardPanel(
             project: project,
             activeCutId: const CutId('cut-a'),
-            onCutSelected: (_) {},
             playheadFrame: playhead,
           ),
         ),

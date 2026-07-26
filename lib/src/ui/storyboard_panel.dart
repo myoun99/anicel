@@ -167,12 +167,20 @@ class StoryboardCutSelectCallbacks {
   final VoidCallback onClear;
 }
 
+/// A press on a row's CELLS: the row that was pressed and the track-global
+/// frame under the pointer. The timeline's cell contract (`onSelectLayer` +
+/// `onSelectFrame` on the raw pointer down) stated once for a rail whose
+/// rows are not all layers — the landing verbs differ per row kind, the
+/// press does not.
+typedef StoryboardRowFramePress =
+    void Function(TimelineRowAddress row, int globalFrame);
+
 class StoryboardPanel extends StatefulWidget {
   const StoryboardPanel({
     super.key,
     required this.project,
     required this.activeCutId,
-    required this.onCutSelected,
+    this.onRowFramePress,
     this.activeLayerId,
     this.selectedRow,
     this.onSelectLayer,
@@ -218,7 +226,6 @@ class StoryboardPanel extends StatefulWidget {
     this.onToggleCutFx,
     this.cutPictureVisibleOf,
     this.onToggleCutPictureVisibility,
-    this.onSelectSeBlock,
     this.seCommaDrag,
     this.onSetAudioClipOffset,
     this.dragPreview,
@@ -267,7 +274,11 @@ class StoryboardPanel extends StatefulWidget {
   /// Null = no cut selected (gap state, UI-R9 #3): no highlight,
   /// cut-scoped rail controls stand down.
   final CutId? activeCutId;
-  final ValueChanged<CutId> onCutSelected;
+
+  /// The cells' press — see [StoryboardRowFramePress]. It replaced a
+  /// cut-selected callback on the V row and a per-BLOCK tap zone on the S
+  /// rows, neither of which could answer for an empty cell.
+  final StoryboardRowFramePress? onRowFramePress;
 
   /// The session's active layer — the drawing target, and what the S rows'
   /// cut-scoped controls act on. It no longer decides the HIGHLIGHT: see
@@ -457,11 +468,6 @@ class StoryboardPanel extends StatefulWidget {
   final ValueChanged<CutId>? onToggleCutFx;
   final bool Function(CutId cutId)? cutPictureVisibleOf;
   final ValueChanged<CutId>? onToggleCutPictureVisibility;
-
-  /// SE block tap-select (timeline parity): selects the cut, its slot layer
-  /// and the block's start frame.
-  final void Function(CutId cutId, LayerId layerId, int blockStartFrame)?
-  onSelectSeBlock;
 
   /// The timeline's comma-drag hooks for the ACTIVE cut's SE blocks (the
   /// session's exposure edge drags are active-cut scoped — other cuts'
@@ -1061,7 +1067,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           track: track,
           layoutEntries: entries,
           activeCutId: widget.activeCutId,
-          onCutSelected: widget.onCutSelected,
+          onRowFramePress: widget.onRowFramePress,
           cutTrim: widget.cutTrim,
           cutMove: widget.cutMove,
           cutSelect: widget.cutSelect,
@@ -1115,7 +1121,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       timelineScale: scale,
       projectFrameRate: widget.projectFrameRate,
       audioPeaksFor: widget.audioPeaksFor,
-      onSelectSeBlock: widget.onSelectSeBlock,
+      onRowFramePress: widget.onRowFramePress,
       seCommaDrag: widget.seCommaDrag,
     );
     return [
@@ -2336,7 +2342,7 @@ class _StoryboardSeRow extends StatelessWidget {
     required this.timelineScale,
     required this.projectFrameRate,
     this.audioPeaksFor,
-    this.onSelectSeBlock,
+    this.onRowFramePress,
     this.seCommaDrag,
   });
 
@@ -2351,21 +2357,11 @@ class _StoryboardSeRow extends StatelessWidget {
   final ProjectFrameRate projectFrameRate;
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
 
-  /// Timeline parity: SE blocks tap-select (any cut) and EVERY block
-  /// carries the comma edge grips (UI-R7 #5 — global starts, any cut).
-  final void Function(CutId cutId, LayerId layerId, int blockStartFrame)?
-  onSelectSeBlock;
+  /// Timeline parity: the row's cells press (row + frame, empty cells
+  /// included) and EVERY block carries the comma edge grips (UI-R7 #5 —
+  /// global starts, any cut).
+  final StoryboardRowFramePress? onRowFramePress;
   final TimelineCommaDragCallbacks? seCommaDrag;
-
-  /// The layout entry whose cut window contains [globalFrame].
-  StoryboardTimelineLayoutEntry? _entryContaining(int globalFrame) {
-    for (final entry in layoutEntries) {
-      if (globalFrame >= entry.startFrame && globalFrame < entry.endFrame) {
-        return entry;
-      }
-    }
-    return null;
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -2483,37 +2479,35 @@ class _StoryboardSeRow extends StatelessWidget {
       // NO `~` continuation marks here (UI-R7 #6): the storyboard shows
       // the WHOLE flow — blocks simply run across cut boundaries; the
       // cut-scoped timeline view carries the continuation marks instead.
-      // Timeline parity: tap zones select the block (its OWNING cut +
-      // layer + the block's cut-local start — the session's contract)…
-      if (onSelectSeBlock != null) {
-        for (final block in blocks) {
-          final owner = _entryContaining(block.startIndex);
-          if (owner == null) {
-            continue;
-          }
-          spans.add(
-            Positioned(
-              left: timelineScale.leftForFrame(block.startIndex),
-              top: 0,
-              bottom: 0,
-              width:
-                  (block.endIndexExclusive - block.startIndex) *
-                  timelineScale.pixelsPerFrame,
-              child: GestureDetector(
-                key: ValueKey<String>(
-                  'storyboard-se-block-select-${layer.id}'
-                  '-${block.startIndex}',
-                ),
-                behavior: HitTestBehavior.opaque,
-                onTap: () => onSelectSeBlock!(
-                  owner.cut.id,
-                  layer.id,
-                  block.startIndex - owner.startFrame,
-                ),
-              ),
+      // Timeline parity: ONE row-wide press selects the row and seeks to
+      // the frame under the pointer. It used to be a tap zone per BLOCK,
+      // which meant an empty cell answered nothing and a block always
+      // landed the playhead on its START — neither is what a timeline cell
+      // does. Translucent and mounted BEFORE the grips, so the edges keep
+      // comma-drag priority…
+      if (onRowFramePress != null) {
+        spans.add(
+          Positioned.fill(
+            key: ValueKey<String>('storyboard-se-press-${layer.id}'),
+            child: Listener(
+              behavior: HitTestBehavior.translucent,
+              onPointerDown: (event) {
+                if (event.buttons != 0 &&
+                    (event.buttons & kPrimaryButton) == 0) {
+                  return;
+                }
+                if (timelineScale.pixelsPerFrame <= 0) {
+                  return;
+                }
+                onRowFramePress!(
+                  LayerRowAddress(layer.id),
+                  (event.localPosition.dx / timelineScale.pixelsPerFrame)
+                      .floor(),
+                );
+              },
             ),
-          );
-        }
+          ),
+        );
       }
       // …and EVERY block carries the timeline's own comma edge grips
       // (UI-R7 #5: the active-cut gate is gone — the strip is the whole
@@ -3416,7 +3410,7 @@ class _StoryboardTrackRow extends StatelessWidget {
     required this.track,
     required this.layoutEntries,
     required this.activeCutId,
-    required this.onCutSelected,
+    required this.onRowFramePress,
     required this.cutTrim,
     required this.cutMove,
     required this.cutSelect,
@@ -3436,7 +3430,7 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// Null = no cut selected (gap state, UI-R9 #3): no highlight,
   /// cut-scoped rail controls stand down.
   final CutId? activeCutId;
-  final ValueChanged<CutId> onCutSelected;
+  final StoryboardRowFramePress? onRowFramePress;
   final StoryboardCutTrimCallbacks? cutTrim;
   final StoryboardCutMoveCallbacks? cutMove;
   final StoryboardCutSelectCallbacks? cutSelect;
@@ -3517,21 +3511,24 @@ class _StoryboardTrackRow extends StatelessWidget {
     );
   }
 
-  /// Cut activation on the raw pointer DOWN, never a tap recognizer — the
-  /// timeline cells' contract (the arena must not delay a select), and the
-  /// only shape that leaves the row-wide tap free to clear the selection.
-  /// A press inside the live selection stays silent: it is starting a
-  /// move, not picking a cut.
+  /// The timeline cells' contract verbatim: the raw pointer DOWN selects
+  /// this row and seeks to the frame under it — never a tap recognizer (the
+  /// arena must not delay a select), which is also the only shape that
+  /// leaves the row-wide tap free to clear the selection.
+  ///
+  /// EVERY frame answers, gaps included: an empty cell is still a cell, so
+  /// there is no gap rule here — the seek parks, exactly as the ruler's
+  /// does. A press inside the live selection stays silent: it is starting a
+  /// move, not picking a frame.
   void _handlePressDown(PointerDownEvent event) {
     if (event.buttons != 0 && (event.buttons & kPrimaryButton) == 0) {
       return;
     }
     final frame = _frameAtX(event.localPosition.dx);
-    final entry = _cutAtFrame(frame);
-    if (entry == null || _isSelectedAt(frame)) {
+    if (_isSelectedAt(frame)) {
       return;
     }
-    onCutSelected(entry.cutId);
+    onRowFramePress?.call(TrackRowAddress(track.id), frame);
   }
 
   int _frameAtX(double x) => timelineScale.pixelsPerFrame <= 0

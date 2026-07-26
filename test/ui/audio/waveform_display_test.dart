@@ -132,7 +132,6 @@ void main() {
           body: StoryboardPanel(
             project: project,
             activeCutId: const CutId('wave-cut'),
-            onCutSelected: (_) {},
             pixelsPerFrame: 8,
             projectFrameRate: const ProjectFrameRate.integer(24),
             audioPeaksFor: (path) => path == 'voice.wav' ? _peaks : null,

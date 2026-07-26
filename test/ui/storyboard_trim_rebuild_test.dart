@@ -70,7 +70,6 @@ void main() {
             project: project,
             dragPreview: preview,
             activeCutId: const CutId('cut-1'),
-            onCutSelected: (_) {},
           ),
         ),
       ),
