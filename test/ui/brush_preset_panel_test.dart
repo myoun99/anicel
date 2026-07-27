@@ -451,6 +451,67 @@ void main() {
     expect(applied.single.id, const BrushPresetId('preset-marker'));
   });
 
+  testWidgets('the tab menu keeps to its corner', (tester) async {
+    // A bare PopupMenuButton carries an IconButton's 48px minimum tap
+    // target. On a 26px rail that covers the whole tab, so every click
+    // meant to open a group opens its menu instead.
+    await _pumpPanel(
+      tester,
+      groups: const [BrushGroup(id: _ink, name: 'Ink')],
+      presets: [_calligraphy().copyWith(groupId: _ink)],
+      onGroupRenamed: (_, _) {},
+    );
+
+    final menu = tester.getSize(
+      find.byKey(const ValueKey<String>('brush-preset-tab-ink-menu')),
+    );
+    final tab = tester.getSize(_tab('ink'));
+
+    expect(menu.width, lessThan(tab.width));
+    expect(menu.height, lessThan(tab.height));
+  });
+
+  testWidgets('rail tabs drop their tooltips while being dragged', (
+    tester,
+  ) async {
+    // A Tooltip is an OverlayPortal, and reordering re-parents items by
+    // global key. If autoscroll revives one mid-layout the portal adds
+    // itself to the overlay right then and takes the rail down with
+    // "a _RenderLayoutBuilder was mutated in performLayout".
+    await _pumpPanel(
+      tester,
+      groups: const [
+        BrushGroup(id: _ink, name: 'Ink'),
+        BrushGroup(id: _paint, name: 'Paint'),
+      ],
+      presets: [_calligraphy().copyWith(groupId: _ink)],
+      onGroupsReordered: (_) {},
+    );
+
+    expect(find.byType(Tooltip), findsWidgets);
+
+    final drag = await tester.startGesture(tester.getCenter(_tab('ink')));
+    await tester.pump(const Duration(milliseconds: 100));
+    // The rail uses an immediate drag listener, so it takes movement past
+    // the slop rather than a hold.
+    await drag.moveBy(const Offset(0, 24));
+    await tester.pump();
+    await drag.moveBy(const Offset(0, 24));
+    await tester.pump();
+
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('brush-preset-tab-rail')),
+        matching: find.byType(Tooltip),
+      ),
+      findsNothing,
+      reason: 'nothing in a dragging tab may reach for the overlay',
+    );
+
+    await drag.up();
+    await tester.pumpAndSettle();
+  });
+
   testWidgets('the open tab follows the selected brush', (tester) async {
     // Opening the panel should land where you are painting from, not on
     // whatever tab happens to be first.
