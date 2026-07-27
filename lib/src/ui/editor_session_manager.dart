@@ -6246,12 +6246,12 @@ class EditorSessionManager extends ChangeNotifier {
       anchorFrame: anchorGlobalFrame,
       headFrame: headGlobalFrame,
     );
-    // A span that only crosses a GAP selects nothing at all — not an empty
-    // range over the gap, which would still read as "inside the selection"
-    // and swallow the next press there. The cut row's blocks are cuts, so a
-    // range covering none of them is no selection.
-    if (span == null ||
-        axis.cutsIn(span.startIndex, span.endIndexExclusive).isEmpty) {
+    // A span that only crosses a GAP still selects: the cut row is a
+    // frame-block row like any other, and an empty cell is selectable on
+    // every one of them. It simply covers no cuts, so the verbs that act on
+    // cuts find nothing to act on — which is what an empty selection means
+    // everywhere else too.
+    if (span == null) {
       trackFrameRangeSelection.value = null;
       return;
     }
