@@ -658,11 +658,12 @@ void main() {
         ]),
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
-        cutTrim: StoryboardCutTrimCallbacks(
-          onBegin: (cutId, edge) {
+        stripEdges: StoryboardStripEdgeCallbacks(
+          onCutEdgeBegin: (cutId, edge) {
             trims.add(cutId);
             return true;
           },
+          onDivisionBegin: (_, _) => false,
           onUpdate: (_) {},
           onEnd: () {},
           onCancel: () {},
@@ -1007,19 +1008,22 @@ void main() {
         ]),
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
-        cutTrim: StoryboardCutTrimCallbacks(
-          onBegin: (cutId, edge) {
+        stripEdges: StoryboardStripEdgeCallbacks(
+          onCutEdgeBegin: (cutId, edge) {
             began.add((cutId, edge));
             return true;
           },
+          onDivisionBegin: (_, _) => false,
           onUpdate: updates.add,
           onEnd: () => ended += 1,
           onCancel: () {},
         ),
       );
 
-      // The start grip SLIDES the cut (gap authoring, W3c) — every cut has
-      // one, the FIRST included (its gap = black lead-in before the track).
+      // The start grip TRIMS the cut's front — every cut has one, the FIRST
+      // included (its leading gap = black lead-in before the track). These
+      // cuts have no storyboard row, so each is ONE panel and its two edges
+      // are the cut's own: the ordinals below are those panels'.
       // The grips are PAINTED targets on the timeline's chrome layer now,
       // so they are read off its model rather than found by key.
       expect(
@@ -1207,7 +1211,7 @@ Future<void> _pumpStoryboardPanel(
   Project project, {
   required CutId activeCutId,
   required ValueChanged<CutId> onCutSelected,
-  StoryboardCutTrimCallbacks? cutTrim,
+  StoryboardStripEdgeCallbacks? stripEdges,
   StoryboardCutMoveCallbacks? cutMove,
   StoryboardCutSelectCallbacks? cutSelect,
   StoryboardMovieEndCallbacks? movieEnd,
@@ -1246,7 +1250,7 @@ Future<void> _pumpStoryboardPanel(
               }
             }
           },
-          cutTrim: cutTrim,
+          stripEdges: stripEdges,
           cutMove: cutMove,
           cutSelect: cutSelect,
           movieEnd: movieEnd,

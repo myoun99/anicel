@@ -59,6 +59,7 @@ import '../models/project_frame_rate.dart';
 import '../models/row_block_shift.dart';
 import '../models/property_track.dart';
 import '../models/range_snap.dart';
+import '../models/storyboard_coverage.dart';
 import '../models/timeline_coverage.dart';
 import '../models/timeline_frame_range.dart';
 import '../models/timeline_repeat.dart';
@@ -6125,6 +6126,102 @@ class EditorSessionManager extends ChangeNotifier {
     _cutTrimEdge = null;
     _cutTrimOrder = null;
     _cutTrimIndex = null;
+    dragPreview.value = null;
+  }
+
+  // --- Storyboard division drags -------------------------------------------
+
+  Layer? _divisionDragBefore;
+  int? _divisionDragKey;
+  int? _divisionDragCutDuration;
+  Layer? _divisionDragAfter;
+
+  /// Starts a drag on the DIVISION keyed at [divisionIndex] (cut-local) of
+  /// [cutId]'s storyboard row — the boundary between two panels of the cut.
+  /// Returns false when that key is not a movable boundary.
+  ///
+  /// Its own verb rather than a comma drag, because it is a different
+  /// motion: a comma resizes one block and ripples the rest, while a
+  /// division just changes where two panels meet. Nothing else on the row
+  /// moves, and the cells' lengths follow because coverage derives them.
+  ///
+  /// Any cut's divisions drag, not only the active cut's: the row is read
+  /// through the cut rather than through the active-cut layer lookup, and
+  /// the commit reaches the layer wherever it lives.
+  bool beginStoryboardDivisionDrag({
+    required CutId cutId,
+    required int divisionIndex,
+  }) {
+    final cut = cutById(cutId);
+    if (cut == null) {
+      return false;
+    }
+    final layer = storyboardLayerForCut(cut);
+    if (layer == null ||
+        storyboardDivisionBounds(
+              timeline: layer.timeline,
+              cutDuration: cut.duration,
+              divisionIndex: divisionIndex,
+            ) ==
+            null) {
+      return false;
+    }
+    _divisionDragBefore = layer;
+    _divisionDragKey = divisionIndex;
+    _divisionDragCutDuration = cut.duration;
+    _divisionDragAfter = null;
+    return true;
+  }
+
+  /// Applies the drag's cumulative frame delta as a live preview on
+  /// [dragPreview] — the repository is NOT touched.
+  ///
+  /// The preview rides the ordinary layer-substitution channel, so the
+  /// strip, the timeline row and the conte all follow the same one.
+  void updateStoryboardDivisionDrag(int cumulativeDelta) {
+    final before = _divisionDragBefore;
+    final key = _divisionDragKey;
+    final cutDuration = _divisionDragCutDuration;
+    if (before == null || key == null || cutDuration == null) {
+      return;
+    }
+    final moved = storyboardTimelineWithDivisionMoved(
+      timeline: before.timeline,
+      cutDuration: cutDuration,
+      divisionIndex: key,
+      newIndex: key + cumulativeDelta,
+    );
+    final after = moved == null ? before : before.copyWith(timeline: moved);
+    _divisionDragAfter = after == before ? null : after;
+    dragPreview.value = after == before
+        ? null
+        : ExposureEdgeDragPreview(previewLayer: after);
+  }
+
+  /// Commits the drag as a single undo step (no-op when the division never
+  /// left its key).
+  void endStoryboardDivisionDrag() {
+    final before = _divisionDragBefore;
+    final after = _divisionDragAfter;
+    _divisionDragBefore = null;
+    _divisionDragKey = null;
+    _divisionDragCutDuration = null;
+    _divisionDragAfter = null;
+    dragPreview.value = null;
+    if (before == null || after == null) {
+      return;
+    }
+    _timelineController.commitLayerTimelineDrag(before: before, after: after);
+    _warmActiveCut();
+    notifyListeners();
+  }
+
+  /// Drops an in-flight division preview without touching history.
+  void cancelStoryboardDivisionDrag() {
+    _divisionDragBefore = null;
+    _divisionDragKey = null;
+    _divisionDragCutDuration = null;
+    _divisionDragAfter = null;
     dragPreview.value = null;
   }
 

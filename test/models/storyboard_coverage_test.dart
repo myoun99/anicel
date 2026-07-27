@@ -163,4 +163,176 @@ void main() {
       isNull,
     );
   });
+
+  group('moving a division', () {
+    test('the cut START is not a division: the first key refuses to move', () {
+      expect(
+        storyboardDivisionBounds(
+          timeline: _timeline({0: _drawing('a'), 4: _drawing('b')}),
+          cutDuration: 12,
+          divisionIndex: 0,
+        ),
+        isNull,
+      );
+    });
+
+    test('a division travels between its neighbours, both cells keeping a '
+        'frame', () {
+      final bounds = storyboardDivisionBounds(
+        timeline: _timeline({
+          0: _drawing('a'),
+          4: _drawing('b'),
+          8: _drawing('c'),
+        }),
+        cutDuration: 12,
+        divisionIndex: 4,
+      );
+
+      expect(bounds, (min: 1, max: 7));
+    });
+
+    test("the LAST division's room reaches to the cut end", () {
+      expect(
+        storyboardDivisionBounds(
+          timeline: _timeline({0: _drawing('a'), 4: _drawing('b')}),
+          cutDuration: 12,
+          divisionIndex: 4,
+        ),
+        (min: 1, max: 11),
+      );
+    });
+
+    test('two one-frame cells leave the edge exactly where it is — it is '
+        'still an edge, it just has nowhere to go', () {
+      expect(
+        storyboardDivisionBounds(
+          timeline: _timeline({0: _drawing('a'), 1: _drawing('b')}),
+          cutDuration: 2,
+          divisionIndex: 1,
+        ),
+        (min: 1, max: 1),
+      );
+    });
+
+    test('a key that is not a division at all refuses', () {
+      expect(
+        storyboardDivisionBounds(
+          timeline: _timeline({0: _drawing('a'), 4: _drawing('b')}),
+          cutDuration: 12,
+          divisionIndex: 5,
+        ),
+        isNull,
+      );
+    });
+
+    test('the move is a RE-KEY: the neighbours stay put and the cells resize '
+        'because coverage derives them', () {
+      final moved = storyboardTimelineWithDivisionMoved(
+        timeline: _timeline({
+          0: _drawing('a', length: 4),
+          4: _drawing('b', length: 4),
+          8: _drawing('c', length: 4),
+        }),
+        cutDuration: 12,
+        divisionIndex: 4,
+        newIndex: 2,
+      )!;
+
+      expect(moved.keys, [0, 2, 8]);
+      expect(storyboardCoverageCells(timeline: moved, cutDuration: 12), const [
+        StoryboardCoverageCell(
+          startIndex: 0,
+          endIndexExclusive: 2,
+          frameId: FrameId('a'),
+        ),
+        StoryboardCoverageCell(
+          startIndex: 2,
+          endIndexExclusive: 8,
+          frameId: FrameId('b'),
+        ),
+        StoryboardCoverageCell(
+          startIndex: 8,
+          endIndexExclusive: 12,
+          frameId: FrameId('c'),
+        ),
+      ]);
+    });
+
+    test('the STORED lengths follow, so the shared verbs read the same '
+        'picture the conte does', () {
+      final moved = storyboardTimelineWithDivisionMoved(
+        timeline: _timeline({
+          0: _drawing('a', length: 4),
+          4: _drawing('b', length: 8),
+        }),
+        cutDuration: 12,
+        divisionIndex: 4,
+        newIndex: 9,
+      )!;
+
+      expect(moved[0]!.length, 9);
+      expect(moved[9]!.length, 3);
+    });
+
+    test('a drag past a neighbour CLAMPS instead of reordering', () {
+      final moved = storyboardTimelineWithDivisionMoved(
+        timeline: _timeline({
+          0: _drawing('a', length: 4),
+          4: _drawing('b', length: 4),
+          8: _drawing('c', length: 4),
+        }),
+        cutDuration: 12,
+        divisionIndex: 4,
+        newIndex: -50,
+      )!;
+
+      expect(moved.keys, [0, 1, 8]);
+    });
+
+    test('the inbetween dots go with the frames they mark, across the '
+        'division in either direction', () {
+      // `a` holds [0,6) with a dot on frame 4; `b` holds [6,12) with one on
+      // frame 7. Pushing the division to 9 puts frame 7 inside a's cell.
+      final pushed = storyboardTimelineWithDivisionMoved(
+        timeline: _timeline({
+          0: TimelineExposure.drawing(
+            const FrameId('a'),
+            length: 6,
+            breakdownOffsets: const [4],
+          ),
+          6: TimelineExposure.drawing(
+            const FrameId('b'),
+            length: 6,
+            breakdownOffsets: const [1],
+          ),
+        }),
+        cutDuration: 12,
+        divisionIndex: 6,
+        newIndex: 9,
+      )!;
+
+      // Frame 7 (b's offset 1) now sits in a's cell, as a's offset 7.
+      expect(pushed[0]!.breakdownOffsets, [4, 7]);
+      expect(pushed[9]!.breakdownOffsets, isEmpty);
+
+      // And the other way: pulling the division back to 3 hands a's dot on
+      // frame 4 to b, one frame past its new start.
+      final pulled = storyboardTimelineWithDivisionMoved(
+        timeline: _timeline({
+          0: TimelineExposure.drawing(
+            const FrameId('a'),
+            length: 6,
+            breakdownOffsets: const [4],
+          ),
+          6: _drawing('b', length: 6),
+        }),
+        cutDuration: 12,
+        divisionIndex: 6,
+        newIndex: 3,
+      )!;
+
+      expect(pulled[0]!.breakdownOffsets, isEmpty);
+      expect(pulled[3]!.breakdownOffsets, [1]);
+    });
+  });
 }

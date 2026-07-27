@@ -70,6 +70,14 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   final Set<String> _expandedTransformTracks = {};
   final Set<String> _expandedTransformGroups = {};
 
+  /// Which session verb the live strip-edge drag belongs to.
+  ///
+  /// The strip has ONE shape of grip and its position decides its meaning
+  /// (the design's rule), so the continuations cannot re-derive it — they
+  /// carry a delta and nothing else. The answer is taken at begin and kept
+  /// here, where it outlives the per-step rebuilds the preview causes.
+  bool _edgeDragIsDivision = false;
+
   /// The storyboard playhead's track-global frame — the cursor-layer
   /// pattern (W4 perf pass): scrub moves, committed seeks, playback ticks
   /// and session changes update THIS notifier, and only the panel's
@@ -443,14 +451,31 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                 pixelsPerFrame: widget.pixelsPerFrame,
                 showSeconds: widget.showSeconds,
                 projectFrameRate: _session.projectFrameRate,
-                // Edge-grip trims preview live and commit ONE undo on
-                // release, like the timeline's comma drags.
-                cutTrim: StoryboardCutTrimCallbacks(
-                  onBegin: (cutId, edge) =>
-                      _session.beginCutEdgeDrag(cutId: cutId, edge: edge),
-                  onUpdate: _session.updateCutEdgeDrag,
-                  onEnd: _session.endCutEdgeDrag,
-                  onCancel: _session.cancelCutEdgeDrag,
+                // The strip's edges preview live and commit ONE undo on
+                // release, like the timeline's comma drags. Which verb a
+                // drag belongs to is settled at BEGIN — by where the grip
+                // sat — and the continuations follow that answer.
+                stripEdges: StoryboardStripEdgeCallbacks(
+                  onCutEdgeBegin: (cutId, edge) {
+                    _edgeDragIsDivision = false;
+                    return _session.beginCutEdgeDrag(cutId: cutId, edge: edge);
+                  },
+                  onDivisionBegin: (cutId, divisionIndex) {
+                    _edgeDragIsDivision = true;
+                    return _session.beginStoryboardDivisionDrag(
+                      cutId: cutId,
+                      divisionIndex: divisionIndex,
+                    );
+                  },
+                  onUpdate: (delta) => _edgeDragIsDivision
+                      ? _session.updateStoryboardDivisionDrag(delta)
+                      : _session.updateCutEdgeDrag(delta),
+                  onEnd: () => _edgeDragIsDivision
+                      ? _session.endStoryboardDivisionDrag()
+                      : _session.endCutEdgeDrag(),
+                  onCancel: () => _edgeDragIsDivision
+                      ? _session.cancelStoryboardDivisionDrag()
+                      : _session.cancelCutEdgeDrag(),
                 ),
                 // Whole-block moves (R10-④): a drag re-times the cut where
                 // it has room and REORDERS the track where it reaches past
