@@ -536,7 +536,10 @@ class _BlendModeRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final locked = state.tool == CanvasTool.eraser;
-    final mode = locked ? BrushBlendMode.erase : state.brushBlendMode;
+    // The brush's own lock, if it pinned one — distinct from the eraser
+    // tool's, which is not a blend choice at all.
+    final pinned = state.lockedBlendMode;
+    final mode = locked ? BrushBlendMode.erase : state.effectiveBlendMode;
     if (locked) {
       return Padding(
         padding: const EdgeInsets.only(bottom: 6),
@@ -587,10 +590,34 @@ class _BlendModeRow extends StatelessWidget {
                   keyValue: 'brush-tool-blend-${candidate.name}',
                   label: candidate.labelFor(language),
                   checked: candidate == mode,
-                  onSelected: () =>
-                      onChanged(state.copyWith(brushBlendMode: candidate)),
+                  // Editing a pinned brush edits its pin; the hand setting
+                  // is only touched when nothing is pinned.
+                  onSelected: () => onChanged(
+                    pinned == null
+                        ? state.copyWith(brushBlendMode: candidate)
+                        : state.copyWith(lockedBlendMode: candidate),
+                  ),
                 ),
             ],
+          ),
+          IconButton(
+            key: const ValueKey<String>('brush-tool-blend-lock-toggle'),
+            icon: Icon(
+              pinned == null ? Icons.lock_open_outlined : Icons.lock_outline,
+              size: 16,
+            ),
+            color: pinned == null
+                ? theme.colorScheme.onSurfaceVariant
+                : theme.colorScheme.primary,
+            tooltip: AppText.strings.brBlendLock,
+            visualDensity: VisualDensity.compact,
+            // Locking captures whatever is showing, so the stroke does not
+            // change under you at the moment you pin it.
+            onPressed: () => onChanged(
+              pinned == null
+                  ? state.copyWith(lockedBlendMode: mode)
+                  : state.copyWith(clearBlendLock: true),
+            ),
           ),
         ],
       ),

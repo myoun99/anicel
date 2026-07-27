@@ -338,14 +338,15 @@ void main() {
       expect(input.shape.colorStretch, closeTo(0.3, 1e-9));
     });
 
-    test('mixing forces plain srcOver so the blend is not applied twice', () {
-      // The dab already carries the ground colour; letting the blend mode
-      // combine with that same ground again would apply it visibly twice.
+    test('mixing leaves the blend mode alone', () {
+      // Clip Studio runs 下地混色 and a 乗算 composite together on the same
+      // brush — loading the brush and laying the stroke down are different
+      // stages — so suppressing the blend was a deviation, not a safeguard.
       final state = BrushToolState.fromBrushSettings(
         mixingPreset(),
       ).copyWith(brushBlendMode: BrushBlendMode.multiply);
 
-      expect(state.toInputSettings().blendMode, BrushBlendMode.color);
+      expect(state.toInputSettings().blendMode, BrushBlendMode.multiply);
     });
 
     test('the eraser still wins over mixing', () {
@@ -362,6 +363,63 @@ void main() {
       final state = BrushToolState(brushBlendMode: BrushBlendMode.multiply);
 
       expect(state.toInputSettings().blendMode, BrushBlendMode.multiply);
+    });
+  });
+
+  group('blend lock', () {
+    test('a pinned brush overrides the hand setting while selected', () {
+      final hand = BrushToolState(brushBlendMode: BrushBlendMode.screen);
+      final pinned = hand.copyWith(lockedBlendMode: BrushBlendMode.multiply);
+
+      expect(pinned.toInputSettings().blendMode, BrushBlendMode.multiply);
+      // The hand setting is not consumed — it is what comes back.
+      expect(pinned.brushBlendMode, BrushBlendMode.screen);
+      expect(
+        pinned.copyWith(clearBlendLock: true).toInputSettings().blendMode,
+        BrushBlendMode.screen,
+      );
+    });
+
+    test('an unpinned brush leaves the hand setting in charge', () {
+      final state = BrushToolState(brushBlendMode: BrushBlendMode.overlay);
+
+      expect(state.lockedBlendMode, isNull);
+      expect(state.effectiveBlendMode, BrushBlendMode.overlay);
+    });
+
+    test('a pin travels with the preset', () {
+      final settings = BrushSettings(lockedBlendMode: BrushBlendMode.multiply);
+      final applied = BrushToolState.fromBrushSettings(settings);
+
+      expect(applied.lockedBlendMode, BrushBlendMode.multiply);
+      expect(
+        BrushSettings.fromJson(settings.toJson()).lockedBlendMode,
+        BrushBlendMode.multiply,
+      );
+    });
+
+    test('an unpinned preset writes no lock at all', () {
+      // R26 #10 survives for everything that never pinned: a preset must
+      // not move the blend under you unless it was deliberately locked.
+      expect(BrushSettings().toJson().containsKey('lockedBlendMode'), isFalse);
+      expect(BrushSettings().lockedBlendMode, isNull);
+    });
+
+    test('a pinned brush still yields to the eraser tool', () {
+      final state = BrushToolState(
+        tool: CanvasTool.eraser,
+      ).copyWith(lockedBlendMode: BrushBlendMode.multiply);
+
+      expect(state.toInputSettings().blendMode, BrushBlendMode.erase);
+      expect(state.toInputSettings().erase, isTrue);
+    });
+
+    test('a pin of erase erases', () {
+      final state = BrushToolState().copyWith(
+        lockedBlendMode: BrushBlendMode.erase,
+      );
+
+      expect(state.toInputSettings().erase, isTrue);
     });
   });
 }

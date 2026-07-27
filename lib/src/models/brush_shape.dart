@@ -1,3 +1,4 @@
+import 'brush_blend_mode.dart';
 import 'brush_pressure_curve.dart';
 import 'brush_tip_mask.dart';
 import 'brush_tip_rotation_mode.dart';
@@ -53,6 +54,7 @@ class BrushShape {
     this.textureDensity = 1.0,
     this.roundnessJitter = 0.0,
     this.spacingJitter = 0.0,
+    this.lockedBlendMode,
     this.mixesGroundColor = false,
     this.paintAmount = 1.0,
     this.paintDensity = 1.0,
@@ -124,6 +126,21 @@ class BrushShape {
   /// different amount on every dab, which is how a textured stamp brush
   /// stops looking stamped.
   final double roundnessJitter;
+
+  /// The blend this brush PINS, or null to leave the hand setting alone.
+  ///
+  /// Null is "this brush does not say", and it keeps the R26 #10
+  /// independence rule intact: a preset never moves the blend under you
+  /// unless it was deliberately locked. A locked brush overrides the hand
+  /// setting only while it is selected — the hand setting is untouched and
+  /// comes back when you leave.
+  ///
+  /// Import locks only when the file asked for something OTHER than normal.
+  /// That is one rule for both source apps even though they disagree about
+  /// who owns a brush's composite (Photoshop files it under tool options,
+  /// Clip Studio under the sub tool): what matters is not which app it came
+  /// from but whether the file departed from the default.
+  final BrushBlendMode? lockedBlendMode;
 
   /// Random per-segment spacing reduction, 0..1 — Clip Studio drives this
   /// from its interval effector's random input source, which breaks up the
@@ -207,6 +224,7 @@ class BrushShape {
       textureDensity: textureDensity,
       roundnessJitter: roundnessJitter,
       spacingJitter: spacingJitter,
+      lockedBlendMode: lockedBlendMode,
       mixesGroundColor: mixesGroundColor,
       paintAmount: paintAmount,
       paintDensity: paintDensity,
@@ -236,6 +254,7 @@ class BrushShape {
       tipMask: slot == BrushMaskSlot.tip ? mask : tipMask,
       roundnessJitter: roundnessJitter,
       spacingJitter: spacingJitter,
+      lockedBlendMode: lockedBlendMode,
       mixesGroundColor: mixesGroundColor,
       paintAmount: paintAmount,
       paintDensity: paintDensity,
@@ -285,6 +304,10 @@ class BrushShape {
     double? roundnessJitter,
     double? spacingJitter,
     bool? mixesGroundColor,
+    // Unlocking needs to WRITE null, which `?? this` cannot express, so it
+    // rides its own flag rather than a nullable value.
+    bool clearBlendLock = false,
+    BrushBlendMode? lockedBlendMode,
     double? paintAmount,
     double? paintDensity,
     double? colorStretch,
@@ -319,6 +342,9 @@ class BrushShape {
       textureDensity: textureDensity ?? this.textureDensity,
       roundnessJitter: roundnessJitter ?? this.roundnessJitter,
       spacingJitter: spacingJitter ?? this.spacingJitter,
+      lockedBlendMode: clearBlendLock
+          ? null
+          : (lockedBlendMode ?? this.lockedBlendMode),
       mixesGroundColor: mixesGroundColor ?? this.mixesGroundColor,
       paintAmount: paintAmount ?? this.paintAmount,
       paintDensity: paintDensity ?? this.paintDensity,
@@ -358,6 +384,7 @@ class BrushShape {
           other.textureDensity == textureDensity &&
           other.roundnessJitter == roundnessJitter &&
           other.spacingJitter == spacingJitter &&
+          other.lockedBlendMode == lockedBlendMode &&
           other.mixesGroundColor == mixesGroundColor &&
           other.paintAmount == paintAmount &&
           other.paintDensity == paintDensity &&
@@ -393,6 +420,7 @@ class BrushShape {
     textureDensity,
     roundnessJitter,
     spacingJitter,
+    lockedBlendMode,
     mixesGroundColor,
     paintAmount,
     paintDensity,

@@ -608,6 +608,7 @@ class AppStrings {
   String get brStabilizer => _s('brStabilizer');
   String get brBlend => _s('brBlend');
   String get brBlendMode => _s('brBlendMode');
+  String get brBlendLock => _s('brBlendLock');
   String get brFeather => _s('brFeather');
   String get brTolerance => _s('brTolerance');
   String get brGapClose => _s('brGapClose');
@@ -1142,6 +1143,7 @@ class AppStrings {
     'brStabilizer': 'Stabilizer',
     'brBlend': 'Blend',
     'brBlendMode': 'Brush blend mode',
+    'brBlendLock': 'Pin this blend mode to the brush',
     'brFeather': 'Feather',
     'brTolerance': 'Tolerance',
     'brGapClose': 'Gap Close',
@@ -1765,6 +1767,7 @@ class AppStrings {
     'brStabilizer': '手ブレ補正',
     'brBlend': '合成',
     'brBlendMode': 'ブラシの合成モード',
+    'brBlendLock': '合成モードをブラシに固定',
     'brFeather': 'ぼかし',
     'brTolerance': '許容値',
     'brGapClose': '隙間閉じ',
@@ -2385,6 +2388,7 @@ class AppStrings {
     'brStabilizer': '손떨림 보정',
     'brBlend': '합성',
     'brBlendMode': '브러시 합성 모드',
+    'brBlendLock': '합성 모드를 브러시에 고정',
     'brFeather': '페더',
     'brTolerance': '허용치',
     'brGapClose': '틈 메우기',
@@ -3037,6 +3041,7 @@ class AppStrings {
     'brStabilizer': 'Stabilisateur',
     'brBlend': 'Fusion',
     'brBlendMode': 'Mode de fusion du pinceau',
+    'brBlendLock': 'Épingler ce mode de fusion au pinceau',
     'brFeather': 'Contour progressif',
     'brTolerance': 'Tolérance',
     'brGapClose': 'Fermeture des trous',
@@ -3638,6 +3643,7 @@ class AppStrings {
     'brStabilizer': '防抖',
     'brBlend': '混合',
     'brBlendMode': '画笔混合模式',
+    'brBlendLock': '将混合模式固定到画笔',
     'brFeather': '羽化',
     'brTolerance': '容差',
     'brGapClose': '闭合缝隙',

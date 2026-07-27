@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import '../../models/brush_blend_mode.dart';
 import '../../models/brush_preset.dart';
 import '../../models/brush_preset_id.dart';
 import '../../models/brush_pressure_curve.dart';
@@ -337,15 +338,19 @@ BrushPreset? _presetFromBrushDescriptor(
 
   // Photoshop keeps opacity, flow, blend mode and smoothing together in a
   // `toolOptions` sub-descriptor — the settings its "Include Tool Settings"
-  // checkbox bundles into a preset. We take opacity and flow, because this
-  // engine already carries both as preset fields (and the Clip Studio
-  // importer reads them, so dropping them here would make the same brush
-  // behave differently depending on which file it arrived in). Blend mode
-  // (`Md`) and smoothing stay UNREAD on purpose: they are hand settings that
-  // a preset must not overwrite (R26 #10), matching Photoshop's own split.
+  // checkbox bundles into a preset. Opacity and flow import outright,
+  // because this engine already carries both as preset fields.
+  //
+  // Blend mode locks the brush only when it is something OTHER than normal,
+  // the same rule the Clip Studio importer follows: a file that never left
+  // the default has nothing to pin, so R26 #10 still holds for it. Every
+  // brush in the packs to hand says `Nrml`, so nothing locks today.
+  //
+  // Smoothing stays unread — that one really is a hand setting.
   final toolOptions = entry.childDescriptor('toolOptions');
   final opacityPercent = toolOptions?.numberValue('Opct') ?? 100.0;
   final flowPercent = toolOptions?.numberValue('flow') ?? 100.0;
+  final blendLock = _blendLockOf(toolOptions?['Md  ']);
 
   // Dynamics live at the preset level (sibling of 'Brsh'), gated by the
   // useTipDynamics / usePaintDynamics switches. Control type ('bVTy')
@@ -510,8 +515,39 @@ BrushPreset? _presetFromBrushDescriptor(
       textureMask: textureMask,
       textureScale: textureScale,
       textureDensity: textureDensity,
+      lockedBlendMode: blendLock,
     ),
   );
+}
+
+/// The blend a Photoshop brush pins, or null to leave the hand setting be.
+///
+/// Photoshop names its blends with the PSD format's four-character keys.
+/// Only a non-normal one locks — see the Clip Studio importer for why the
+/// rule is shared. An unrecognised key simply does not lock, which is why
+/// Photoshop's "Clear" is deliberately absent: guessing its key wrong would
+/// turn a paint brush into an eraser.
+BrushBlendMode? _blendLockOf(Object? value) {
+  if (value is! PsEnum) {
+    return null;
+  }
+  return switch (value.value) {
+    'Nrml' => null,
+    'Mltp' => BrushBlendMode.multiply,
+    'Drkn' => BrushBlendMode.darken,
+    'CBrn' => BrushBlendMode.colorBurn,
+    'Lghn' => BrushBlendMode.lighten,
+    'Scrn' => BrushBlendMode.screen,
+    'CDdg' => BrushBlendMode.colorDodge,
+    'linearDodge' => BrushBlendMode.add,
+    'Ovrl' => BrushBlendMode.overlay,
+    'SftL' => BrushBlendMode.softLight,
+    'HrdL' => BrushBlendMode.hardLight,
+    'Dfrn' => BrushBlendMode.difference,
+    'Xclu' => BrushBlendMode.exclusion,
+    'Bhnd' => BrushBlendMode.behind,
+    _ => null,
+  };
 }
 
 /// Control type of a `brVr` dynamics descriptor (0 = off, 2 = pen
@@ -558,6 +594,7 @@ BrushSettings _settingsForTip(
   BrushTipMask? textureMask,
   double textureScale = 1.0,
   double textureDensity = 1.0,
+  BrushBlendMode? lockedBlendMode,
 }) {
   // Photoshop angles span -180..180; the ellipse repeats every 180.
   final normalizedAngle = ((angleDegrees % 180.0) + 180.0) % 180.0;
@@ -587,5 +624,6 @@ BrushSettings _settingsForTip(
     textureMask: textureMask,
     textureScale: textureScale,
     textureDensity: textureDensity,
+    lockedBlendMode: lockedBlendMode,
   );
 }

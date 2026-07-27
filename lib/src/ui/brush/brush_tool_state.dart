@@ -316,6 +316,13 @@ class BrushToolState {
   double get angleJitter => shape.angleJitter;
   double get roundnessJitter => shape.roundnessJitter;
   double get spacingJitter => shape.spacingJitter;
+
+  /// The blend this brush pins, or null when it leaves the hand setting be.
+  BrushBlendMode? get lockedBlendMode => shape.lockedBlendMode;
+
+  /// What actually composites: the lock when there is one, else the hand.
+  BrushBlendMode get effectiveBlendMode =>
+      shape.lockedBlendMode ?? brushBlendMode;
   double get scatterRadiusRatio => shape.scatterRadiusRatio;
   int get scatterCount => shape.scatterCount;
   bool get scatterBothAxes => shape.scatterBothAxes;
@@ -358,16 +365,20 @@ class BrushToolState {
       // The eraser tool IS the erase blend (locked); a brush whose blend
       // is erase rides the SAME dab flag and kernels.
       erase:
-          tool == CanvasTool.eraser || brushBlendMode == BrushBlendMode.erase,
-      // A mixing brush has already taken the ground colour into the dab it
-      // deposits, so letting the blend mode combine with that ground again
-      // would apply it twice — visibly. Mixing therefore forces plain
-      // srcOver. Erase still wins: it is the tool, not a blend choice.
+          tool == CanvasTool.eraser ||
+          (shape.lockedBlendMode ?? brushBlendMode) == BrushBlendMode.erase,
+      // A brush that pins a blend wins over the hand setting while it is
+      // selected; the hand setting itself is untouched, so leaving the brush
+      // restores it. Erase still wins over both: it is the tool, not a blend
+      // choice.
+      //
+      // Mixing does NOT force plain srcOver. Clip Studio runs 下地混色 and a
+      // 乗算 composite together on the same brush — they are different
+      // stages, one loading the brush and one laying the stroke down — so
+      // suppressing the blend was a deviation, not a safeguard.
       blendMode: tool == CanvasTool.eraser
           ? BrushBlendMode.erase
-          : (shape.mixesGroundColor && brushBlendMode != BrushBlendMode.erase
-                ? BrushBlendMode.color
-                : brushBlendMode),
+          : (shape.lockedBlendMode ?? brushBlendMode),
       stabilizerStrength: stabilizerStrength,
     );
   }
@@ -405,6 +416,8 @@ class BrushToolState {
     double? paintAmount,
     double? paintDensity,
     double? colorStretch,
+    bool clearBlendLock = false,
+    BrushBlendMode? lockedBlendMode,
     CanvasTool? tool,
     double? stabilizerStrength,
     BrushBlendMode? brushBlendMode,
@@ -444,6 +457,8 @@ class BrushToolState {
           paintAmount: paintAmount,
           paintDensity: paintDensity,
           colorStretch: colorStretch,
+          clearBlendLock: clearBlendLock,
+          lockedBlendMode: lockedBlendMode,
         ),
       ),
       tool: tool ?? this.tool,

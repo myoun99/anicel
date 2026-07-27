@@ -1,3 +1,4 @@
+import 'brush_blend_mode.dart';
 import 'brush_pressure_curve.dart';
 import 'brush_shape.dart';
 import 'brush_tip_mask.dart';
@@ -34,6 +35,7 @@ class BrushSettings {
     double textureDensity = 1.0,
     double roundnessJitter = 0.0,
     double spacingJitter = 0.0,
+    BrushBlendMode? lockedBlendMode,
     bool mixesGroundColor = false,
     double paintAmount = 1.0,
     double paintDensity = 1.0,
@@ -67,6 +69,7 @@ class BrushSettings {
          textureDensity: textureDensity,
          roundnessJitter: roundnessJitter,
          spacingJitter: spacingJitter,
+         lockedBlendMode: lockedBlendMode,
          mixesGroundColor: mixesGroundColor,
          paintAmount: paintAmount,
          paintDensity: paintDensity,
@@ -124,6 +127,9 @@ class BrushSettings {
   double get roundnessJitter => shape.roundnessJitter;
   double get spacingJitter => shape.spacingJitter;
 
+  /// The blend this brush pins — see [BrushShape.lockedBlendMode].
+  BrushBlendMode? get lockedBlendMode => shape.lockedBlendMode;
+
   /// Ground-colour mixing — see [BrushShape.mixesGroundColor].
   bool get mixesGroundColor => shape.mixesGroundColor;
   double get paintAmount => shape.paintAmount;
@@ -163,6 +169,8 @@ class BrushSettings {
     double? textureDensity,
     double? roundnessJitter,
     double? spacingJitter,
+    bool clearBlendLock = false,
+    BrushBlendMode? lockedBlendMode,
     bool? mixesGroundColor,
     double? paintAmount,
     double? paintDensity,
@@ -198,6 +206,9 @@ class BrushSettings {
       textureDensity: textureDensity ?? this.textureDensity,
       roundnessJitter: roundnessJitter ?? this.roundnessJitter,
       spacingJitter: spacingJitter ?? this.spacingJitter,
+      lockedBlendMode: clearBlendLock
+          ? null
+          : (lockedBlendMode ?? this.lockedBlendMode),
       mixesGroundColor: mixesGroundColor ?? this.mixesGroundColor,
       paintAmount: paintAmount ?? this.paintAmount,
       paintDensity: paintDensity ?? this.paintDensity,
@@ -230,6 +241,7 @@ class BrushSettings {
     'angleJitter': angleJitter,
     if (roundnessJitter > 0.0) 'roundnessJitter': roundnessJitter,
     if (spacingJitter > 0.0) 'spacingJitter': spacingJitter,
+    if (lockedBlendMode != null) 'lockedBlendMode': lockedBlendMode!.name,
     'scatterRadiusRatio': scatterRadiusRatio,
     'scatterCount': scatterCount,
     'scatterBothAxes': scatterBothAxes,
@@ -290,6 +302,7 @@ class BrushSettings {
       angleJitter: (json['angleJitter'] as num?)?.toDouble() ?? 0.0,
       roundnessJitter: (json['roundnessJitter'] as num?)?.toDouble() ?? 0.0,
       spacingJitter: (json['spacingJitter'] as num?)?.toDouble() ?? 0.0,
+      lockedBlendMode: _blendModeNamed(json['lockedBlendMode'] as String?),
       scatterRadiusRatio:
           (json['scatterRadiusRatio'] as num?)?.toDouble() ?? 0.0,
       scatterCount: json['scatterCount'] as int? ?? 1,
@@ -319,6 +332,20 @@ class BrushSettings {
 
   @override
   String toString() => 'BrushSettings(shape: $shape)';
+}
+
+/// The blend mode written under [name], or null when absent or unknown —
+/// an unreadable lock degrades to "not locked" rather than failing a load.
+BrushBlendMode? _blendModeNamed(String? name) {
+  if (name == null) {
+    return null;
+  }
+  for (final mode in BrushBlendMode.values) {
+    if (mode.name == name) {
+      return mode;
+    }
+  }
+  return null;
 }
 
 /// Throws [ArgumentError] if any parameter in [shape] is outside the model's

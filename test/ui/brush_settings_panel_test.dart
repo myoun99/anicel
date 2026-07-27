@@ -353,6 +353,28 @@ void main() {
       expect(read().spacingJitter, greaterThan(0));
     });
 
+    testWidgets('the blend lock pins and releases', (tester) async {
+      final read = await pumpPanel(tester);
+      final lock = find.byKey(
+        const ValueKey<String>('brush-tool-blend-lock-toggle'),
+      );
+
+      expect(read().lockedBlendMode, isNull);
+
+      await tester.ensureVisible(lock);
+      await tester.tap(lock);
+      await tester.pumpAndSettle();
+
+      // Locking captures what was showing, so the stroke does not change
+      // under you at the moment you pin it.
+      expect(read().lockedBlendMode, read().brushBlendMode);
+
+      await tester.tap(lock);
+      await tester.pumpAndSettle();
+
+      expect(read().lockedBlendMode, isNull);
+    });
+
     testWidgets('mixing hides its knobs until it is switched on', (
       tester,
     ) async {
