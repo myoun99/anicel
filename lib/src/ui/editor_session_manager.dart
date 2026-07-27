@@ -39,6 +39,7 @@ import '../models/transform_track.dart';
 import '../models/cut_id.dart';
 import '../models/cut_metadata.dart';
 import '../models/cut_move_plan.dart';
+import '../models/exposure_memo.dart';
 import '../models/layer_folder.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
@@ -6213,6 +6214,56 @@ class EditorSessionManager extends ChangeNotifier {
     }
     _timelineController.commitLayerTimelineDrag(before: before, after: after);
     _warmActiveCut();
+    notifyListeners();
+  }
+
+  /// The camera frame's aspect — what the conte's PICTURE column is shaped
+  /// by, so a cell's silhouette matches the cut's.
+  double get cameraFrameAspect {
+    final size = cameraFrameSize;
+    return size.height <= 0 ? 16 / 9 : size.width / size.height;
+  }
+
+  /// Writes a conte cell's ACTION text, undoably.
+  ///
+  /// A cell is a panel of the cut's storyboard row, so the text lands on the
+  /// exposure that OPENS it — block-owned like the inbetween dots, which is
+  /// what lets it ride every move and copy with no re-indexing. Typing into
+  /// a cut with no storyboard row does nothing yet: there is no block to
+  /// hang it on until the row exists.
+  void setStoryboardCellAction({
+    required CutId cutId,
+    required int cellIndex,
+    required String action,
+  }) {
+    final cut = cutById(cutId);
+    if (cut == null) {
+      return;
+    }
+    final layer = storyboardLayerForCut(cut);
+    if (layer == null) {
+      return;
+    }
+    final cells = storyboardCoverageCells(
+      timeline: layer.timeline,
+      cutDuration: cut.duration,
+    );
+    if (cellIndex < 0 || cellIndex >= cells.length) {
+      return;
+    }
+    final blockStart = cells[cellIndex].startIndex;
+    final entry = layer.timeline[blockStart];
+    if (entry == null || !entry.isDrawing || entry.ghost) {
+      return;
+    }
+    _cutCommandCoordinator.updateExposureMemo(
+      cutId: cutId,
+      layerId: layer.id,
+      blockStartIndex: blockStart,
+      memo: (entry.memo ?? const ExposureMemo.empty()).copyWith(
+        actionMemo: action,
+      ),
+    );
     notifyListeners();
   }
 

@@ -5,9 +5,9 @@ import 'package:flutter/foundation.dart' show ValueListenable, mapEquals;
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 
-import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/storyboard_coverage.dart';
+import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnailResolver;
 import '../models/timeline_row_address.dart';
 import '../models/track_frame_range.dart';
 import 'storyboard_layer_policy.dart';
@@ -31,7 +31,7 @@ class StoryboardCutBlockVisual {
     required this.layerLabel,
     required this.hasStoryboardLayer,
     required this.total,
-    required this.thumbnail,
+    required this.thumbnails,
     required this.cells,
     required Rect topBand,
     required Rect strip,
@@ -85,9 +85,10 @@ class StoryboardCutBlockVisual {
   /// or null when the block is too narrow to print it.
   final String? total;
 
-  /// The picture the block draws, or null while the render is pending (the
-  /// block shows its placeholder then). Owned by the thumbnail store.
-  final ui.Image? thumbnail;
+  /// One picture per [cells] entry, in the same order — null while a
+  /// render is pending (that cell shows its placeholder then). Owned by the
+  /// thumbnail store.
+  final List<ui.Image?> thumbnails;
 }
 
 /// The cut row's blocks, PAINTED (the storyboard's half of the timeline's
@@ -176,7 +177,7 @@ class StoryboardCutBlocksPainter extends CustomPainter {
 
   /// Painted, never disposed here: the thumbnail store owns the image.
   /// Asked ONLY for blocks inside the window, which is the point.
-  final ui.Image? Function(Cut cut)? thumbnailFor;
+  final StoryboardThumbnailResolver? thumbnailFor;
   final bool showThumbnails;
 
   final ValueListenable<int>? windowBucket;
@@ -282,6 +283,7 @@ class StoryboardCutBlocksPainter extends CustomPainter {
       final layerName = storyboardLayerNames[entry.cutId];
       final rect = Rect.fromLTWH(left, 0, width, crossAxisExtent);
       final bands = _bandsOf(rect);
+      final cells = storyboardCellsByCut[entry.cutId] ?? const [];
       visuals.add(
         StoryboardCutBlockVisual(
           cutId: entry.cutId,
@@ -289,7 +291,7 @@ class StoryboardCutBlocksPainter extends CustomPainter {
           topBand: bands.top,
           strip: bands.strip,
           bottomBand: bands.bottom,
-          cells: storyboardCellsByCut[entry.cutId] ?? const [],
+          cells: cells,
           isActive: entry.cutId == activeCutId,
           isRangeSelected:
               selection?.overlaps(entry.startFrame, entry.endFrame) ?? false,
@@ -305,8 +307,19 @@ class StoryboardCutBlocksPainter extends CustomPainter {
                 )
               : null,
           // Asked ONLY here, for blocks the window keeps: the row used to
-          // request every cut's picture on every build.
-          thumbnail: showThumbnails ? thumbnailFor?.call(entry.cut) : null,
+          // request every cut's picture on every build. One per PANEL now,
+          // each at the frame that panel is about.
+          thumbnails: [
+            if (showThumbnails && thumbnailFor != null)
+              for (final cell in cells)
+                thumbnailFor!(
+                  entry.cut,
+                  storyboardCellPictureFrame(
+                    cell,
+                    pinnedFrameIndex: entry.cut.metadata.thumbnailFrameIndex,
+                  ),
+                ),
+          ],
         ),
       );
     }
@@ -394,7 +407,7 @@ class StoryboardCutBlocksPainter extends CustomPainter {
     if (showThumbnails && inner.width > 0 && inner.height > 0) {
       canvas.save();
       canvas.clipRRect(rrect);
-      _paintThumbnail(canvas, block, inner);
+      _paintPanelPictures(canvas, block, inner);
       canvas.restore();
     }
     if (!block.bandsFolded) {
@@ -546,16 +559,55 @@ class StoryboardCutBlocksPainter extends CustomPainter {
     canvas.restore();
   }
 
-  void _paintThumbnail(
+  /// One picture per PANEL, each in its own slice of the strip.
+  ///
+  /// The slice is measured in FRAMES, like every other x on this row: a
+  /// panel's picture starts where its division does, so it lines up with
+  /// the ruler, the playhead and the SE rows. A block drawn at
+  /// [minBlockWidth] is wider than its frames, and its panels simply clip.
+  void _paintPanelPictures(
     Canvas canvas,
     StoryboardCutBlockVisual block,
     Rect inner,
   ) {
-    final image = block.thumbnail;
+    if (block.cells.isEmpty || block.thumbnails.length != block.cells.length) {
+      // No coverage reading (or a mid-rebuild mismatch): the block is one
+      // slot, and the placeholder covers it.
+      canvas.drawRect(
+        block.rect,
+        Paint()..color = colorScheme.surfaceContainerHighest,
+      );
+      return;
+    }
+    for (var index = 0; index < block.cells.length; index += 1) {
+      final cell = block.cells[index];
+      final left = _cellExtent <= 0
+          ? inner.left
+          : inner.left + cell.startIndex * _cellExtent;
+      final right = _cellExtent <= 0
+          ? inner.right
+          : inner.left + cell.endIndexExclusive * _cellExtent;
+      final slot = Rect.fromLTRB(
+        math.max(left, inner.left),
+        inner.top,
+        math.min(right, inner.right),
+        inner.bottom,
+      );
+      if (slot.width <= 0) {
+        continue;
+      }
+      canvas.save();
+      canvas.clipRect(slot);
+      _paintPanelPicture(canvas, block.thumbnails[index], slot);
+      canvas.restore();
+    }
+  }
+
+  void _paintPanelPicture(Canvas canvas, ui.Image? image, Rect slot) {
     if (image == null) {
       // The pending placeholder the empty thumbnail slot used to be.
       canvas.drawRect(
-        block.rect,
+        slot,
         Paint()..color = colorScheme.surfaceContainerHighest,
       );
       return;
@@ -567,20 +619,21 @@ class StoryboardCutBlocksPainter extends CustomPainter {
       image.height.toDouble(),
     );
     // The picture keeps the CAMERA's ratio and is sized to the strip's
-    // height, LEFT-aligned: a wide block leaves the right of its strip
-    // empty, which is the information "this cut is long". Stretching it or
-    // cropping to fill would spend that width saying nothing.
+    // height, LEFT-aligned in its own slot: a wide panel leaves the right
+    // of its slice empty, which is the information "this panel holds a long
+    // time". Stretching it or cropping to fill would spend that width
+    // saying nothing.
     final scale = math.min(
-      inner.width / source.width,
-      inner.height / source.height,
+      slot.width / source.width,
+      slot.height / source.height,
     );
     final drawn = Size(source.width * scale, source.height * scale);
     canvas.drawImageRect(
       image,
       source,
       Rect.fromLTWH(
-        inner.left,
-        inner.top + (inner.height - drawn.height) / 2,
+        slot.left,
+        slot.top + (slot.height - drawn.height) / 2,
         drawn.width,
         drawn.height,
       ),

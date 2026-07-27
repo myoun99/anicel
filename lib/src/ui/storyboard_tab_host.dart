@@ -1,5 +1,3 @@
-import 'dart:ui' as ui;
-
 import 'package:flutter/material.dart';
 
 import '../models/canvas_point.dart';
@@ -14,6 +12,7 @@ import 'editor_session_manager.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'playback/playback_transport_controls.dart';
 import 'storyboard_cut_fade_policy.dart';
+import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnailResolver;
 import 'storyboard_panel.dart';
 import 'timeline/property_lane_model.dart' show PropertyLaneEditCallbacks;
 import 'timeline/timeline_layer_controls_header.dart' show LayerLegendCallbacks;
@@ -21,6 +20,7 @@ import 'timeline/timeline_exposure_comma_drag_policy.dart'
     show TimelineCommaDragCallbacks;
 import 'storyboard_playhead_mapping.dart';
 import 'storyboard_timeline_layout.dart';
+import 'text/app_strings.dart';
 import 'timeline/timeline_shift_buttons.dart';
 import 'timeline/timeline_view_cluster.dart';
 import 'timeline/transform_lane_editing.dart';
@@ -37,6 +37,8 @@ class StoryboardTabHost extends StatefulWidget {
     required this.onPixelsPerFrameChanged,
     required this.showSeconds,
     required this.onShowSecondsChanged,
+    this.trackLaneHeight = StoryboardPanel.defaultTrackLaneHeight,
+    this.onTrackLaneHeightChanged,
     required this.thumbnailFor,
     this.cameraViewEnabled,
   });
@@ -47,9 +49,15 @@ class StoryboardTabHost extends StatefulWidget {
   final bool showSeconds;
   final ValueChanged<bool> onShowSecondsChanged;
 
+  /// The V rows' shared height, owned above the tabs so it survives a tab
+  /// switch like the zoom does. A null setter keeps the rows fixed and
+  /// stands the steppers down.
+  final double trackLaneHeight;
+  final ValueChanged<double>? onTrackLaneHeightChanged;
+
   /// Build-time thumbnail resolver, owned above the tabs so the cache
   /// survives tab switches.
-  final ui.Image? Function(Cut cut)? thumbnailFor;
+  final StoryboardThumbnailResolver? thumbnailFor;
 
   /// R28 #1: the workspace's camera-view state. The storyboard's command
   /// bar carries the same toggle the timeline's does — one notifier, so
@@ -360,6 +368,16 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     session: _session,
                     currentRow: _session.selectedRow,
                   ),
+                  const SizedBox(width: 4),
+                  // V ROW HEIGHT — one pair for every V track, because
+                  // there is one height (user's rule). A pair of steppers
+                  // rather than a slider: this panel is worked on an iPad,
+                  // and the push/pull pair beside it already reads this
+                  // way.
+                  _TrackLaneHeightButtons(
+                    height: widget.trackLaneHeight,
+                    onChanged: widget.onTrackLaneHeightChanged,
+                  ),
                 ],
               ),
             ),
@@ -449,6 +467,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                 onSelectTrack: (trackId) =>
                     _session.selectRow(TrackRowAddress(trackId)),
                 pixelsPerFrame: widget.pixelsPerFrame,
+                trackLaneHeight: widget.trackLaneHeight,
                 showSeconds: widget.showSeconds,
                 projectFrameRate: _session.projectFrameRate,
                 // The strip's edges preview live and commit ONE undo on
@@ -682,6 +701,58 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The V rows' height stepper — one pair for every V track.
+///
+/// Steppers rather than a slider: the panel is worked on an iPad, where a
+/// thin slider handle is the worst target on the bar, and the push/pull
+/// pair beside it already reads as "two buttons, one dimension".
+class _TrackLaneHeightButtons extends StatelessWidget {
+  const _TrackLaneHeightButtons({
+    required this.height,
+    required this.onChanged,
+  });
+
+  final double height;
+  final ValueChanged<double>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final onChanged = this.onChanged;
+    void step(double delta) => onChanged!(
+      (height + delta).clamp(
+        StoryboardPanel.minTrackLaneHeight,
+        StoryboardPanel.maxTrackLaneHeight,
+      ),
+    );
+
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        IconButton(
+          key: const ValueKey<String>('storyboard-row-shorter-button'),
+          tooltip: AppText.strings.sbShorterRows,
+          onPressed:
+              onChanged == null || height <= StoryboardPanel.minTrackLaneHeight
+              ? null
+              : () => step(-StoryboardPanel.trackLaneHeightStep),
+          icon: const Icon(Icons.unfold_less, size: 18),
+          visualDensity: VisualDensity.compact,
+        ),
+        IconButton(
+          key: const ValueKey<String>('storyboard-row-taller-button'),
+          tooltip: AppText.strings.sbTallerRows,
+          onPressed:
+              onChanged == null || height >= StoryboardPanel.maxTrackLaneHeight
+              ? null
+              : () => step(StoryboardPanel.trackLaneHeightStep),
+          icon: const Icon(Icons.unfold_more, size: 18),
+          visualDensity: VisualDensity.compact,
+        ),
+      ],
     );
   }
 }

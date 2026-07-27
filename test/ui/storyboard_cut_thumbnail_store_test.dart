@@ -54,7 +54,7 @@ void main() {
   testWidgets('renders lazily, once per signature', (tester) async {
     var renderCount = 0;
     final store = StoryboardCutThumbnailStore(
-      render: (_) {
+      render: (_, _) {
         renderCount += 1;
         return tinyImage();
       },
@@ -64,20 +64,20 @@ void main() {
     store.addListener(() => notified += 1);
 
     await tester.runAsync(() async {
-      expect(store.thumbnailFor(cut()), isNull);
+      expect(store.thumbnailFor(cut(), 0), isNull);
       await Future<void>.delayed(const Duration(milliseconds: 20));
     });
 
     expect(renderCount, 1);
     expect(notified, 1);
-    expect(store.thumbnailFor(cut()), isNotNull);
+    expect(store.thumbnailFor(cut(), 0), isNotNull);
     expect(renderCount, 1, reason: 'unchanged signature must not re-render');
   });
 
   testWidgets('layer visibility change re-renders', (tester) async {
     var renderCount = 0;
     final store = StoryboardCutThumbnailStore(
-      render: (_) {
+      render: (_, _) {
         renderCount += 1;
         return tinyImage();
       },
@@ -85,9 +85,9 @@ void main() {
     addTearDown(store.dispose);
 
     await tester.runAsync(() async {
-      store.thumbnailFor(cut());
+      store.thumbnailFor(cut(), 0);
       await Future<void>.delayed(const Duration(milliseconds: 20));
-      store.thumbnailFor(cut(layerVisible: false));
+      store.thumbnailFor(cut(layerVisible: false), 0);
       await Future<void>.delayed(const Duration(milliseconds: 20));
     });
     // The retired first image disposes on the next frame.
@@ -100,7 +100,7 @@ void main() {
     var renderCount = 0;
     final hub = EditorCacheInvalidationHub();
     final store = StoryboardCutThumbnailStore(
-      render: (_) {
+      render: (_, _) {
         renderCount += 1;
         return tinyImage();
       },
@@ -109,7 +109,7 @@ void main() {
     addTearDown(store.dispose);
 
     await tester.runAsync(() async {
-      store.thumbnailFor(cut());
+      store.thumbnailFor(cut(), 0);
       await Future<void>.delayed(const Duration(milliseconds: 20));
     });
     expect(renderCount, 1);
@@ -127,7 +127,7 @@ void main() {
     );
 
     await tester.runAsync(() async {
-      store.thumbnailFor(cut());
+      store.thumbnailFor(cut(), 0);
       await Future<void>.delayed(const Duration(milliseconds: 20));
     });
     await tester.pump();
@@ -140,7 +140,7 @@ void main() {
   ) async {
     var renderCount = 0;
     final store = StoryboardCutThumbnailStore(
-      render: (_) async {
+      render: (_, _) async {
         renderCount += 1;
         return null;
       },
@@ -148,9 +148,9 @@ void main() {
     addTearDown(store.dispose);
 
     await tester.runAsync(() async {
-      store.thumbnailFor(cut());
+      store.thumbnailFor(cut(), 0);
       await Future<void>.delayed(const Duration(milliseconds: 20));
-      expect(store.thumbnailFor(cut()), isNull);
+      expect(store.thumbnailFor(cut(), 0), isNull);
     });
 
     expect(renderCount, 1);
@@ -167,16 +167,16 @@ void main() {
     ) async {
       var renderCount = 0;
       final store = StoryboardCutThumbnailStore(
-        render: (_) {
+        render: (_, _) {
           renderCount += 1;
           return tinyImage();
         },
       );
       addTearDown(store.dispose);
       await tester.runAsync(() async {
-        store.thumbnailFor(before());
+        store.thumbnailFor(before(), 0);
         await Future<void>.delayed(const Duration(milliseconds: 20));
-        store.thumbnailFor(after());
+        store.thumbnailFor(after(), 0);
         await Future<void>.delayed(const Duration(milliseconds: 20));
       });
       await tester.pump();
@@ -264,7 +264,7 @@ void main() {
     addTearDown(() => FlutterError.onError = previousHandler);
 
     final store = StoryboardCutThumbnailStore(
-      render: (_) async {
+      render: (_, _) async {
         renderCount += 1;
         if (failFirst) {
           failFirst = false;
@@ -276,19 +276,19 @@ void main() {
     addTearDown(store.dispose);
 
     await tester.runAsync(() async {
-      store.thumbnailFor(cut());
+      store.thumbnailFor(cut(), 0);
       await Future<void>.delayed(const Duration(milliseconds: 20));
       // Same signature: the failure must NOT re-kick on every build.
-      store.thumbnailFor(cut());
+      store.thumbnailFor(cut(), 0);
       await Future<void>.delayed(const Duration(milliseconds: 20));
       expect(renderCount, 1);
       expect(errors, hasLength(1), reason: 'failures surface, never vanish');
 
       // A content change retries and succeeds.
-      store.thumbnailFor(cut(layerVisible: false));
+      store.thumbnailFor(cut(layerVisible: false), 0);
       await Future<void>.delayed(const Duration(milliseconds: 20));
       expect(renderCount, 2);
-      expect(store.thumbnailFor(cut(layerVisible: false)), isNotNull);
+      expect(store.thumbnailFor(cut(layerVisible: false), 0), isNotNull);
     });
     await tester.pump();
   });

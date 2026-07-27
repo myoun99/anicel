@@ -27,13 +27,13 @@ void main() {
       for (var attempt = 0; attempt < 20; attempt += 1) {
         await Future<void>.delayed(const Duration(milliseconds: 50));
         await tester.pump();
-        if (cutBlocks(tester).first.thumbnail != null) {
+        if (cutBlocks(tester).first.thumbnails.first != null) {
           break;
         }
       }
 
       expect(
-        cutBlocks(tester).first.thumbnail,
+        cutBlocks(tester).first.thumbnails.first,
         isNotNull,
         reason: 'the placeholder must give way to the rendered thumbnail',
       );

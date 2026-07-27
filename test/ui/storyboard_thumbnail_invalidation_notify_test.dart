@@ -20,7 +20,7 @@ void main() {
     fakeAsync((async) {
       final hub = EditorCacheInvalidationHub();
       final store = StoryboardCutThumbnailStore(
-        render: (_) async => null,
+        render: (_, _) async => null,
         invalidationHub: hub,
       );
       addTearDown(store.dispose);

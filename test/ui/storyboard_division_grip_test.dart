@@ -220,6 +220,59 @@ void main() {
     expect(_divisionsOf(tester, 'cut-2'), [0]);
   });
 
+  testWidgets('the LAST cut\'s trailing edge is reachable: the movie-end '
+      'handle no longer sits on top of it', (tester) async {
+    await _openStoryboard(tester);
+
+    // Cut 3 ends where the movie does, so its trailing edge grip and the
+    // end-line handle share a frame. The handle is grabbed from the empty
+    // side of the line now, which leaves the grip its own pixels.
+    await _dragGrip(tester, 'block-edge-grip-end-grip-track-4', 2);
+
+    expect(_cutById(tester, 'cut-3').duration, 8);
+  });
+
+  testWidgets('the V rows share ONE height, and the steppers change it', (
+    tester,
+  ) async {
+    await _openStoryboard(tester);
+
+    double rowHeight() => tester
+        .getSize(
+          find.byKey(
+            ValueKey<String>(
+              'storyboard-track-timeline-area-${_trackId.value}',
+            ),
+          ),
+        )
+        .height;
+    double railHeight() => tester
+        .getSize(
+          find.byKey(
+            ValueKey<String>('storyboard-track-label-row-${_trackId.value}'),
+          ),
+        )
+        .height;
+
+    final before = rowHeight();
+    expect(railHeight(), before, reason: 'rail and strip are one row');
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('storyboard-row-taller-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(rowHeight(), greaterThan(before));
+    expect(railHeight(), rowHeight());
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('storyboard-row-shorter-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(rowHeight(), before);
+  });
+
   testWidgets('ANY cut\'s divisions drag, not only the active one\'s — the '
       'edge reads its cut rather than the active-cut lookup', (tester) async {
     await _openStoryboard(tester);

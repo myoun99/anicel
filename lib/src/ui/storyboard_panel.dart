@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show Listenable, ValueListenable;
 import 'package:flutter/gestures.dart'
@@ -26,6 +25,7 @@ import '../services/cut_frame_composite_plan.dart' show layerIdentityPose;
 import 'audio/waveform_painter.dart';
 import 'storyboard_cut_fade_policy.dart';
 import 'storyboard_cut_blocks_painter.dart';
+import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnailResolver;
 import 'storyboard_layer_policy.dart';
 import 'storyboard_timeline_layout.dart';
 import 'theme/app_theme.dart';
@@ -303,6 +303,7 @@ class StoryboardPanel extends StatefulWidget {
     this.cutSelect,
     this.stripSelect,
     this.movieEnd,
+    this.trackLaneHeight = defaultTrackLaneHeight,
     this.pixelsPerFrame = 8,
     this.showSeconds = false,
     this.projectFrameRate = ProjectFrameRate.fps24,
@@ -363,8 +364,22 @@ class StoryboardPanel extends StatefulWidget {
   // rail rows share the timeline's slot grid and the legend header sits
   // on top, so the columns line up across both panels.
   static const double _trackLabelWidth = 372;
-  static const double _trackLaneHeight = 64;
   static const double _rulerHeight = 24;
+
+  /// The V rows' height, and the range the adjustment moves it through.
+  ///
+  /// ONE height for every V track, not one per track (user's rule): the
+  /// rows are the same kind of thing, and a rail whose rows disagree about
+  /// height stops reading as a rail. The S rows keep their own sizing —
+  /// they twirl audio lanes open, so height means something else there.
+  ///
+  /// The floor sits below [StoryboardCutBlocksPainter.bandsMinBlockHeight]
+  /// on purpose: shrinking past it FOLDS the bands, which is the compact
+  /// look, not a broken one.
+  static const double defaultTrackLaneHeight = 64;
+  static const double minTrackLaneHeight = 28;
+  static const double maxTrackLaneHeight = 160;
+  static const double trackLaneHeightStep = 12;
 
   /// The vertical scrollbar's lane width — the TIMELINE's
   /// [TimelineGridMetrics.verticalScrollbarWidth] by value (UI-R10 #15/#21
@@ -421,6 +436,10 @@ class StoryboardPanel extends StatefulWidget {
   /// cut (start, length), the ones between move a division. Null hides the
   /// grips.
   final StoryboardStripEdgeCallbacks? stripEdges;
+
+  /// Every V row's height — the rail's label row and the strip row read
+  /// the same number, because they are two columns of one row.
+  final double trackLaneHeight;
 
   /// Whole-block move hooks (R10-④): a horizontal drag on a block's body
   /// slides the cut (gap authoring + edge-style pushes). Null disables
@@ -479,7 +498,7 @@ class StoryboardPanel extends StatefulWidget {
   /// store behind it kicks async renders and re-notifies). The image stays
   /// OWNED BY THE RESOLVER — blocks paint it without disposing. Null hides
   /// the thumbnail strip.
-  final ui.Image? Function(Cut cut)? thumbnailFor;
+  final StoryboardThumbnailResolver? thumbnailFor;
 
   /// Waveform peaks per audio file for the SE rows (null hides waveforms).
   final AudioPeaks? Function(String filePath)? audioPeaksFor;
@@ -1081,6 +1100,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       _StoryboardTrackLabel(
         track: track,
         trackLabel: 'V${index + 1}',
+        laneHeight: widget.trackLaneHeight,
         laneExpanded: widget.expandedTransformTracks.contains(track.id.value),
         onToggleLane: widget.onToggleTrackLane == null
             ? null
@@ -1191,6 +1211,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           layoutEntries: entries,
           activeCutId: widget.activeCutId,
           onRowFramePress: widget.onRowFramePress,
+          laneHeight: widget.trackLaneHeight,
           stripEdges: widget.stripEdges,
           cutMove: widget.cutMove,
           cutSelect: widget.cutSelect,
@@ -1850,9 +1871,16 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                       if (totalFrames > 0 &&
                                           widget.movieEnd != null)
                                         _StoryboardEndLineHandle(
-                                          left:
-                                              scale.leftForFrame(totalFrames) -
-                                              5,
+                                          // Grabbed from the EMPTY side of
+                                          // the line, never straddling it:
+                                          // everything left of the movie's
+                                          // end belongs to the content, and
+                                          // the last cut's trailing edge
+                                          // grip is right there. Centring
+                                          // the handle put a full-height
+                                          // opaque box over that grip and
+                                          // made it unreachable.
+                                          left: scale.leftForFrame(totalFrames),
                                           pixelsPerFrame: scale.pixelsPerFrame,
                                           movieEnd: widget.movieEnd!,
                                         ),
@@ -3387,6 +3415,7 @@ class _StoryboardTrackLabel extends StatelessWidget {
   const _StoryboardTrackLabel({
     required this.track,
     required this.trackLabel,
+    required this.laneHeight,
     this.laneExpanded = false,
     this.onToggleLane,
     this.active = false,
@@ -3401,6 +3430,10 @@ class _StoryboardTrackLabel extends StatelessWidget {
 
   final Track track;
   final String trackLabel;
+
+  /// Kept in lockstep with the strip row's: the rail and the strips are two
+  /// columns of the same row and share no scaffolding to enforce it.
+  final double laneHeight;
 
   final bool laneExpanded;
   final VoidCallback? onToggleLane;
@@ -3439,7 +3472,7 @@ class _StoryboardTrackLabel extends StatelessWidget {
       child: Container(
         key: ValueKey<String>('storyboard-track-label-row-${track.id.value}'),
         width: StoryboardPanel._trackLabelWidth,
-        height: StoryboardPanel._trackLaneHeight,
+        height: laneHeight,
         padding: const EdgeInsets.only(right: 8),
         decoration: BoxDecoration(
           color: active
@@ -3679,6 +3712,7 @@ class _StoryboardTrackRow extends StatelessWidget {
     required this.layoutEntries,
     required this.activeCutId,
     required this.onRowFramePress,
+    required this.laneHeight,
     required this.stripEdges,
     required this.cutMove,
     required this.cutSelect,
@@ -3700,6 +3734,9 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// cut-scoped rail controls stand down.
   final CutId? activeCutId;
   final StoryboardRowFramePress? onRowFramePress;
+
+  /// This row's height — the rail's matching label row reads the same one.
+  final double laneHeight;
   final StoryboardStripEdgeCallbacks? stripEdges;
   final StoryboardCutMoveCallbacks? cutMove;
   final StoryboardCutSelectCallbacks? cutSelect;
@@ -3707,7 +3744,7 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// Range selection on the STRIP — the cut's own panels, on the cut's own
   /// axis. Null keeps the strip display-only.
   final StoryboardStripSelectCallbacks? stripSelect;
-  final ui.Image? Function(Cut cut)? thumbnailFor;
+  final StoryboardThumbnailResolver? thumbnailFor;
   final TimelineScale timelineScale;
 
   /// The panel's live frame-axis geometry — what the SHARED range gesture
@@ -3938,7 +3975,7 @@ class _StoryboardTrackRow extends StatelessWidget {
     // Where the panels are drawn is where their gestures and their EDGES
     // live — the picture and the pointer read one definition of the band.
     final stripBand = StoryboardCutBlocksPainter.stripBandOf(
-      StoryboardPanel._trackLaneHeight,
+      laneHeight,
     );
 
     return KeyedSubtree(
@@ -3948,7 +3985,7 @@ class _StoryboardTrackRow extends StatelessWidget {
           'storyboard-track-timeline-area-${track.id.value}',
         ),
         width: timelineWidth,
-        height: StoryboardPanel._trackLaneHeight,
+        height: laneHeight,
         child: Stack(
           children: [
             // THE blocks — one painter for the whole row (R28 #4's rule
@@ -3974,7 +4011,7 @@ class _StoryboardTrackRow extends StatelessWidget {
                     // coverage rule — the same reading the grips hang on.
                     storyboardCellsByCut: cellsByCut,
                     geometry: frameGeometry,
-                    crossAxisExtent: StoryboardPanel._trackLaneHeight,
+                    crossAxisExtent: laneHeight,
                     minBlockWidth: timelineScale.minBlockWidth,
                     activeCutId: activeCutId,
                     selectedRange: cutSelect?.selectedRange,
@@ -4021,7 +4058,7 @@ class _StoryboardTrackRow extends StatelessWidget {
                 ),
                 row: TrackRowAddress(track.id),
                 geometry: frameGeometry,
-                crossAxisExtent: StoryboardPanel._trackLaneHeight,
+                crossAxisExtent: laneHeight,
                 callbacks: rangeGesture,
               ),
             // THE STRIP's own gesture, over the band that draws the panels.

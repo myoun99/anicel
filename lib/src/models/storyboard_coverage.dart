@@ -233,6 +233,20 @@ SplayTreeMap<int, TimelineExposure>? storyboardTimelineWithDivisionMoved({
   return next;
 }
 
+/// The frame a cell's PICTURE is composited at.
+///
+/// A panel shows the cut at its own division — that is where its drawing
+/// begins, so it is what the panel is about. The cut's pinned thumbnail
+/// frame still wins inside the panel that holds it: pinning says "show the
+/// cut at THIS moment", and the panel covering that moment is the one it
+/// was said about.
+int storyboardCellPictureFrame(
+  StoryboardCoverageCell cell, {
+  int? pinnedFrameIndex,
+}) => pinnedFrameIndex != null && cell.covers(pinnedFrameIndex)
+    ? pinnedFrameIndex
+    : cell.startIndex;
+
 /// The cell covering [frameIndex], or null when the frame is outside the
 /// cut.
 StoryboardCoverageCell? storyboardCellAt({
