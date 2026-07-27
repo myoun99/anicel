@@ -180,6 +180,7 @@ class StoryboardSeSelectCallbacks {
     required this.selectedRange,
     required this.onDrag,
     required this.onClear,
+    this.move,
   });
 
   /// The live selection (null = none), shared with the cut row: the S rows
@@ -195,6 +196,27 @@ class StoryboardSeSelectCallbacks {
   })
   onDrag;
   final VoidCallback onClear;
+
+  /// Sliding the selected sounds — a drag that STARTS inside the
+  /// selection, the timeline's grammar. Null keeps the row select-only.
+  final StoryboardSeMoveCallbacks? move;
+}
+
+/// The S rows' half of the shared range gesture's MOVE mode: the selected
+/// sounds slide along the track's global axis, previewing live and
+/// committing once on release.
+class StoryboardSeMoveCallbacks {
+  const StoryboardSeMoveCallbacks({
+    required this.onBegin,
+    required this.onUpdate,
+    required this.onEnd,
+    required this.onCancel,
+  });
+
+  final bool Function(LayerId layerId) onBegin;
+  final ValueChanged<int> onUpdate;
+  final VoidCallback onEnd;
+  final VoidCallback onCancel;
 }
 
 /// A press on a row's CELLS: the row that was pressed and the track-global
@@ -2633,13 +2655,17 @@ class _StoryboardSeRow extends StatelessWidget {
                 headGlobalFrame: headIndex,
               ),
               onTapClear: (_) => seSelect.onClear(),
-              // MOVING a sound along the global axis is not wired yet: the
-              // row selects and the push/pull buttons shift, which is the
-              // grammar this round set out to give it.
-              onMoveBegin: (_, _) => false,
-              onMoveUpdate: (_, _) {},
-              onMoveEnd: () {},
-              onMoveCancel: () {},
+              // A drag that STARTS inside the selection slides the sounds.
+              // The row delta is DROPPED on purpose: a range moves only
+              // between rows of its own kind, and this rail's neighbours
+              // are a cut row and other sections — so the drag holds the
+              // row it began on instead of wandering into one whose blocks
+              // are not sounds.
+              onMoveBegin: (_, _) => seSelect.move?.onBegin(layer.id) ?? false,
+              onMoveUpdate: (frameDelta, _) =>
+                  seSelect.move?.onUpdate(frameDelta),
+              onMoveEnd: () => seSelect.move?.onEnd(),
+              onMoveCancel: () => seSelect.move?.onCancel(),
             ),
           ),
         );

@@ -7379,7 +7379,62 @@ class EditorSessionManager extends ChangeNotifier {
 
   // --- Frame RANGE move drag (UI-R8: drag the selected range) --------------
 
+  /// Whether the drag in flight belongs to the TRACK-axis selection (the
+  /// storyboard's rows) rather than the cut-local one.
+  ///
+  /// The machine itself is axis-free: it plans on its sources' COMMIT
+  /// forms, which for a track-SE row is the global layer either way. Only
+  /// two things depend on the axis — which selection object the live and
+  /// landed spans are published to, and which one a cancel restores — and
+  /// both go through [_rangeMoveSelection].
+  bool _rangeMoveOnTrackAxis = false;
+
+  /// THE selection this move reads and publishes, in the axis its sources
+  /// are keyed by. Every step of the drag writes through here instead of
+  /// touching a notifier directly, so the machine never has to know which
+  /// object owns it.
+  TimelineFrameRangeSelection? get _rangeMoveSelection {
+    if (!_rangeMoveOnTrackAxis) {
+      return frameRangeSelection.value;
+    }
+    final live = trackFrameRangeSelection.value;
+    final anchor = live?.anchorRow;
+    if (live == null || anchor is! LayerRowAddress) {
+      return null;
+    }
+    return TimelineFrameRangeSelection(
+      layerId: anchor.layerId,
+      startIndex: live.startFrame,
+      endIndexExclusive: live.endFrameExclusive,
+      layerIds: [
+        for (final row in live.spanRows)
+          if (row is LayerRowAddress) row.layerId,
+      ],
+    );
+  }
+
+  set _rangeMoveSelection(TimelineFrameRangeSelection? span) {
+    if (!_rangeMoveOnTrackAxis) {
+      frameRangeSelection.value = span;
+      return;
+    }
+    trackFrameRangeSelection.value = span == null
+        ? null
+        : TrackFrameRangeSelection(
+            trackId: selectedTrackId,
+            anchorRow: LayerRowAddress(span.layerId),
+            rows: [
+              for (final id in span.spanLayerIds) LayerRowAddress(id),
+            ],
+            startFrame: span.startIndex,
+            endFrameExclusive: span.endIndexExclusive,
+          );
+  }
+
   Layer? _rangeMoveSourceBefore;
+
+  /// The move's subject span as it stood at drag start, stated in the axis
+  /// its sources commit in (see [_rangeMoveSelection]).
   TimelineFrameRangeSelection? _rangeMoveSelectionBefore;
   int? _rangeMoveGroupStart;
   DrawingBlockMovePlan? _rangeMovePlan;
@@ -7454,8 +7509,71 @@ class EditorSessionManager extends ChangeNotifier {
   /// [grabLayerId] = the row the pointer went down on (R27 #8); null falls
   /// back to the selection's anchor row (the callers that have no pointer,
   /// e.g. tests of a single-row move).
+  /// A range-move drag on the TRACK axis — the storyboard's S rows.
+  ///
+  /// The same machine: it plans on its sources' COMMIT forms, and a
+  /// track-SE row's commit form is the global layer whichever rail asked.
+  /// What is different is only the axis the span is stated in, so the
+  /// sources take offset 0 (the range is ALREADY in their keys) where a
+  /// cut-local drag would carry the cut's start.
+  ///
+  /// Track rows are not movable subjects here: a cut row's blocks are cuts
+  /// and sliding those is the cut drag's job, which the storyboard's own V
+  /// row already mounts.
+  bool beginTrackRangeMoveDrag([LayerId? grabLayerId]) {
+    _rangeMoveOnTrackAxis = true;
+    final live = trackFrameRangeSelection.value;
+    if (live == null) {
+      return false;
+    }
+    final sources = <({Layer commit, int offset})>[];
+    for (final row in live.spanRows) {
+      if (row is! LayerRowAddress) {
+        continue;
+      }
+      final commit = trackSeGlobalLayerById(row.layerId);
+      if (commit == null) {
+        continue;
+      }
+      // Only rows that actually carry a WHOLE block inside the range move
+      // — the cross-layer slide's rule, unchanged.
+      final hasBlock = drawingBlocks(commit.timeline).any(
+        (block) =>
+            !block.entry.ghost &&
+            block.startIndex >= live.startFrame &&
+            block.endIndexExclusive <= live.endFrameExclusive,
+      );
+      if (hasBlock) {
+        sources.add((commit: commit, offset: 0));
+      }
+    }
+    if (sources.isEmpty) {
+      return false;
+    }
+    _rangeMoveGrabLayerId = grabLayerId;
+    _rangeMoveSourceBefore = null;
+    _rangeMoveGroupStart = null;
+    _rangeMovePlan = null;
+    _rangeMoveMultiPlans = null;
+    _rangeMoveMultiRowPlan = null;
+    _rangeMoveMultiSeRowChanges = null;
+    _rangeMoveCameraBefore = null;
+    _rangeMoveCameraLayerId = null;
+    _rangeMoveInstructionSources = null;
+    _rangeMoveCameraShifted = null;
+    _rangeMoveInstructionShifted = null;
+    _rangeMoveSeRowChange = null;
+    _rangeMoveInstructionRowChange = null;
+    _rangeMoveMultiSources = sources;
+    _rangeMoveSelectionBefore = _rangeMoveSelection;
+    return _rangeMoveSelectionBefore != null;
+  }
+
   bool beginFrameRangeMoveDrag([LayerId? grabLayerId]) {
-    final selection = frameRangeSelection.value;
+    // The axis is decided HERE and nowhere else: every begin states it, so
+    // no path can inherit the previous drag's answer.
+    _rangeMoveOnTrackAxis = false;
+    final selection = _rangeMoveSelection;
     if (selection == null || !_rangeSelectionEligible(selection.layerId)) {
       return false;
     }
@@ -7596,7 +7714,7 @@ class EditorSessionManager extends ChangeNotifier {
       _cameraKeysDragPreview = null;
       final newStart = selection.startIndex + frameDelta;
       if (newStart >= 0) {
-        frameRangeSelection.value = TimelineFrameRangeSelection(
+        _rangeMoveSelection = TimelineFrameRangeSelection(
           layerId: targetLayerId,
           startIndex: newStart,
           endIndexExclusive: selection.endIndexExclusive + frameDelta,
@@ -8013,7 +8131,7 @@ class EditorSessionManager extends ChangeNotifier {
     ];
     final newStart = selection.startIndex + frameDelta;
     if (newStart >= 0) {
-      frameRangeSelection.value = TimelineFrameRangeSelection(
+      _rangeMoveSelection = TimelineFrameRangeSelection(
         layerId: targetLayerId,
         startIndex: newStart,
         endIndexExclusive: selection.endIndexExclusive + frameDelta,
@@ -8102,7 +8220,7 @@ class EditorSessionManager extends ChangeNotifier {
     dragPreview.value = null;
     final selection = _rangeMoveSelectionBefore;
     if (selection != null) {
-      frameRangeSelection.value = selection;
+      _rangeMoveSelection = selection;
     }
   }
 
@@ -8248,7 +8366,7 @@ class EditorSessionManager extends ChangeNotifier {
       );
       final newStart = selection.startIndex + frameDelta;
       if (newStart >= 0) {
-        frameRangeSelection.value = TimelineFrameRangeSelection(
+        _rangeMoveSelection = TimelineFrameRangeSelection(
           layerId: selection.layerId,
           startIndex: newStart,
           endIndexExclusive: selection.endIndexExclusive + frameDelta,
@@ -8312,7 +8430,7 @@ class EditorSessionManager extends ChangeNotifier {
     final startShift = plan.destinationStartIndex - groupStart;
     final newStart = selection.startIndex + startShift;
     if (newStart >= 0) {
-      frameRangeSelection.value = TimelineFrameRangeSelection(
+      _rangeMoveSelection = TimelineFrameRangeSelection(
         layerId: landedLayerId,
         startIndex: newStart,
         endIndexExclusive: selection.endIndexExclusive + startShift,
@@ -8334,7 +8452,7 @@ class EditorSessionManager extends ChangeNotifier {
     final instructionRowChange = _rangeMoveInstructionRowChange;
     final multiRowPlan = _rangeMoveMultiRowPlan;
     final multiSeRowChanges = _rangeMoveMultiSeRowChanges;
-    final landedSelection = frameRangeSelection.value;
+    final landedSelection = _rangeMoveSelection;
     _rangeMoveSourceBefore = null;
     _rangeMoveSelectionBefore = null;
     _rangeMoveGrabLayerId = null;
@@ -8373,7 +8491,7 @@ class EditorSessionManager extends ChangeNotifier {
           ],
         ),
       );
-      frameRangeSelection.value = landedSelection;
+      _rangeMoveSelection = landedSelection;
       _layerController.selectLayer(seRowChange.targetId);
       _warmActiveCut();
       notifyListeners();
@@ -8403,12 +8521,12 @@ class EditorSessionManager extends ChangeNotifier {
             ],
           ),
         );
-        frameRangeSelection.value = landedSelection;
+        _rangeMoveSelection = landedSelection;
         _layerController.selectLayer(instructionRowChange.targetId);
         _warmActiveCut();
         notifyListeners();
       } else {
-        frameRangeSelection.value = selection;
+        _rangeMoveSelection = selection;
       }
       return;
     }
@@ -8498,7 +8616,7 @@ class EditorSessionManager extends ChangeNotifier {
         );
       }
       if (commands.isEmpty) {
-        frameRangeSelection.value = selection;
+        _rangeMoveSelection = selection;
         return;
       }
       _historyManager.execute(
@@ -8509,7 +8627,7 @@ class EditorSessionManager extends ChangeNotifier {
                 commands: commands,
               ),
       );
-      frameRangeSelection.value = landedSelection;
+      _rangeMoveSelection = landedSelection;
       if (landedSelection != null) {
         _layerController.selectLayer(landedSelection.layerId);
       }
@@ -8551,7 +8669,7 @@ class EditorSessionManager extends ChangeNotifier {
           ),
       ];
       if (commands.isEmpty) {
-        frameRangeSelection.value = selection;
+        _rangeMoveSelection = selection;
         return;
       }
       _historyManager.execute(
@@ -8562,7 +8680,7 @@ class EditorSessionManager extends ChangeNotifier {
                 commands: commands,
               ),
       );
-      frameRangeSelection.value = landedSelection;
+      _rangeMoveSelection = landedSelection;
       _warmActiveCut();
       notifyListeners();
       return;
@@ -8571,7 +8689,7 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     if (plan == null) {
-      frameRangeSelection.value = selection;
+      _rangeMoveSelection = selection;
       return;
     }
     _historyManager.execute(
@@ -8582,7 +8700,7 @@ class EditorSessionManager extends ChangeNotifier {
       ),
     );
     // The selection stays on the moved frames where they landed.
-    frameRangeSelection.value = landedSelection;
+    _rangeMoveSelection = landedSelection;
     if (plan.isCrossLayer) {
       _layerController.selectLayer(plan.targetAfter!.id);
     }
@@ -8612,7 +8730,7 @@ class EditorSessionManager extends ChangeNotifier {
     _cameraKeysDragPreview = null;
     dragPreview.value = null;
     if (selection != null) {
-      frameRangeSelection.value = selection;
+      _rangeMoveSelection = selection;
     }
   }
 

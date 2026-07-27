@@ -587,6 +587,19 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   selectedRange: _session.trackFrameRangeSelection,
                   onDrag: _session.updateTrackSeRangeSelectionByFrame,
                   onClear: _session.clearStoryboardCutSelection,
+                  // Sliding the selection: the timeline's own range-move
+                  // machine, entered on the track axis (its sources commit
+                  // to the global layer either way).
+                  move: StoryboardSeMoveCallbacks(
+                    onBegin: (layerId) =>
+                        _session.beginTrackRangeMoveDrag(layerId),
+                    onUpdate: (frameDelta) =>
+                        _session.updateFrameRangeMoveDrag(
+                          frameDelta: frameDelta,
+                        ),
+                    onEnd: _session.endFrameRangeMoveDrag,
+                    onCancel: _session.cancelFrameRangeMoveDrag,
+                  ),
                 ),
                 // The ACTIVE cut's SE blocks reuse the timeline's comma
                 // edge grips (live preview + ONE undo per drag).
