@@ -126,7 +126,7 @@ void main() {
       final s = twoBlockSession();
 
       s.selectFrameIndex(4);
-      expect(s.canPushFrames, isTrue);
+      expect(s.canPushFrames(), isTrue);
       s.pushFrames(3);
 
       expect(blocksOf(s), [(0, 1), (7, 8)]);
@@ -140,12 +140,12 @@ void main() {
       final s = twoBlockSession();
 
       s.selectFrameIndex(4);
-      expect(s.framePullSlack, 3);
+      expect(s.framePullSlack(), 3);
 
       // Asking for more than there is closes what there is.
       s.pullFrames(9);
       expect(blocksOf(s), [(0, 1), (1, 2)]);
-      expect(s.canPullFrames, isFalse);
+      expect(s.canPullFrames(), isFalse);
     });
 
     test('a block STRADDLING the anchor stays put — the anchor is a '

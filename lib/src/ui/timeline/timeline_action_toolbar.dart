@@ -9,6 +9,7 @@ import '../cut_command_group.dart';
 import '../dialogs/fps_audio_choice_dialog.dart';
 import '../editor_session_manager.dart';
 import '../widgets/app_icon_button.dart';
+import 'timeline_shift_buttons.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/split_icon_button.dart';
 import 'timeline_section_policy.dart';
@@ -631,23 +632,9 @@ class TimelineActionToolbar extends StatelessWidget {
                   ),
                   // Design D: the rigid shove a drag used to do, aimed.
                   // Scope = the live selection's rows, or the current row
-                  // at the current cell.
-                  _iconButton(
-                    key: const ValueKey<String>('push-frames-button'),
-                    tooltip: AppText.strings.tlPush,
-                    icon: Icons.keyboard_tab,
-                    onPressed: session.canPushFrames
-                        ? () => session.pushFrames(1)
-                        : null,
-                  ),
-                  _iconButton(
-                    key: const ValueKey<String>('pull-frames-button'),
-                    tooltip: AppText.strings.tlPull,
-                    icon: Icons.keyboard_backspace,
-                    onPressed: session.canPullFrames
-                        ? () => session.pullFrames(1)
-                        : null,
-                  ),
+                  // at the current cell. ONE pair for both axes — this
+                  // rail's rows are all layer rows, so it asks as itself.
+                  TimelineShiftButtons(session: session),
                   const SizedBox(width: 4),
                   // Comma set (UI-R17 #7, TVP-style): the current block —
                   // or the whole selection, packed — takes the pressed

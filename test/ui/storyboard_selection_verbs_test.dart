@@ -10,6 +10,7 @@ import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/project.dart';
 import 'package:quick_animaker_v2/src/models/project_id.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
+import 'package:quick_animaker_v2/src/models/timeline_row_address.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
@@ -160,7 +161,7 @@ void main() {
         anchorGlobalFrame: 3,
         headGlobalFrame: 3,
       );
-      expect(session.canPushFrames, isTrue);
+      expect(session.canPushFrames(), isTrue);
 
       session.pushFrames(2);
 
@@ -198,7 +199,7 @@ void main() {
 
       // The [9,12) sound sits 4 frames after the anchor's block end (5),
       // so the pull closes that gap and stops.
-      expect(session.framePullSlack, 4);
+      expect(session.framePullSlack(), 4);
       session.pullFrames(9);
 
       expect(seLayerOf(session).timeline.keys, [2, 5]);
@@ -209,10 +210,85 @@ void main() {
 
       // The active layer is cut 1's cel, which carries nothing — the frame
       // scope still resolves to it, not to any S row.
-      expect(session.canPushFrames, isTrue);
+      expect(session.canPushFrames(), isTrue);
       session.pushFrames(2);
 
       expect(seLayerOf(session).timeline.keys, [2, 9]);
+    });
+  });
+
+  group('ONE push/pull aimed at what is selected', () {
+    test('a CUT selection shoves cuts', () {
+      final session = sessionFor();
+      session.updateStoryboardCutSelectionByFrame(
+        trackId: _trackId,
+        anchorGlobalFrame: 9,
+        headGlobalFrame: 9,
+      );
+
+      expect(session.canPushBlocks(), isTrue);
+      session.pushBlocks(3);
+
+      // Cut 2's leading gap carries its whole run (design D); the sounds
+      // are on another axis and stay put.
+      expect(
+        session.repository
+            .requireProject()
+            .tracks
+            .single
+            .cuts
+            .last
+            .leadingGapFrames,
+        3,
+      );
+      expect(seLayerOf(session).timeline.keys, [2, 9]);
+    });
+
+    test('an S-ROW selection shoves sounds instead', () {
+      final session = sessionFor();
+      session.updateTrackSeRangeSelectionByFrame(
+        layerId: _seLayerId,
+        anchorGlobalFrame: 3,
+        headGlobalFrame: 3,
+      );
+
+      session.pushBlocks(2);
+
+      expect(seLayerOf(session).timeline.keys, [4, 11]);
+      expect(
+        session.repository
+            .requireProject()
+            .tracks
+            .single
+            .cuts
+            .last
+            .leadingGapFrames,
+        0,
+      );
+    });
+
+    test('with NOTHING selected the asking rail decides: a cut row shoves '
+        'cuts, an S row shoves sounds', () {
+      final cutRowSession = sessionFor();
+      cutRowSession.pushBlocks(
+        2,
+        currentRow: cutRowSession.selectedRow, // the V row by default
+      );
+      expect(
+        cutRowSession.repository
+            .requireProject()
+            .tracks
+            .single
+            .cuts
+            .first
+            .leadingGapFrames,
+        2,
+      );
+
+      final seRowSession = sessionFor();
+      seRowSession.selectRow(const LayerRowAddress(_seLayerId));
+      seRowSession.pushBlocks(2, currentRow: seRowSession.selectedRow);
+      expect(seLayerOf(seRowSession).timeline.keys, [4, 11]);
     });
   });
 }
