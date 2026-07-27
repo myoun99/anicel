@@ -152,6 +152,17 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   /// A preset is mid-drag: the rail watches the pointer so hovering a tab
   /// opens it, the way a spring-loaded folder does.
   bool _dragging = false;
+
+  /// True while a rail tab is being dragged.
+  ///
+  /// A `Tooltip` is an `OverlayPortal`, and reordering re-parents items
+  /// through the inactive list by global key. If autoscroll brings one back
+  /// while the panel's `LayoutBuilder` is mid-layout, the portal tries to
+  /// add itself to the overlay right then and trips
+  /// "a _RenderLayoutBuilder was mutated in performLayout" — which takes the
+  /// whole rail red. Dropping the tooltips for the duration of a drag leaves
+  /// nothing in the item that reaches for the overlay.
+  bool _railDragging = false;
   BrushGroupId? _springTarget;
   bool _springTargetIsRoot = false;
   Timer? _springTimer;
@@ -607,12 +618,15 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
           buildDefaultDragHandles: false,
           padding: const EdgeInsets.only(right: panelScrollbarGutter),
           itemCount: tabs.length,
+          onReorderStart: (_) => setState(() => _railDragging = true),
+          onReorderEnd: (_) => setState(() => _railDragging = false),
           onReorderItem: _handleTabReorder,
           itemBuilder: (context, index) {
             final group = tabs[index];
             final tab = _BrushGroupTab(
               keyValue: 'brush-preset-tab-${group?.id.value ?? 'root'}',
               label: group?.name ?? _rootSectionLabel,
+              showTooltip: !_railDragging,
               // The tab wears its group's first brush, so a chalk group
               // looks chalky and no one has to pick an icon.
               preview: _firstPresetIn(group?.id),
@@ -798,6 +812,7 @@ class _BrushGroupTab extends StatelessWidget {
     required this.preview,
     required this.selected,
     required this.onTap,
+    this.showTooltip = true,
     this.onRename,
     this.onDelete,
   });
@@ -813,6 +828,9 @@ class _BrushGroupTab extends StatelessWidget {
   final BrushPreset? preview;
   final bool selected;
   final VoidCallback onTap;
+
+  /// False while the rail is being reordered — see `_railDragging`.
+  final bool showTooltip;
   final VoidCallback? onRename;
   final VoidCallback? onDelete;
 
@@ -820,38 +838,36 @@ class _BrushGroupTab extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final hasMenu = onRename != null || onDelete != null;
-    final face = Tooltip(
-      message: label,
-      child: Material(
-        color: selected ? colorScheme.surfaceContainerHigh : Colors.transparent,
+    final body = Material(
+      color: selected ? colorScheme.surfaceContainerHigh : Colors.transparent,
+      borderRadius: BorderRadius.circular(4),
+      child: InkWell(
+        key: ValueKey<String>(keyValue),
+        onTap: onTap,
         borderRadius: BorderRadius.circular(4),
-        child: InkWell(
-          key: ValueKey<String>(keyValue),
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(4),
-          child: Container(
-            margin: const EdgeInsets.symmetric(vertical: 1),
-            decoration: BoxDecoration(
-              border: Border.all(
-                color: selected
-                    ? colorScheme.primary
-                    : colorScheme.outlineVariant,
-                width: selected ? 1.5 : 1,
-              ),
-              borderRadius: BorderRadius.circular(4),
+        child: Container(
+          margin: const EdgeInsets.symmetric(vertical: 1),
+          decoration: BoxDecoration(
+            border: Border.all(
+              color: selected
+                  ? colorScheme.primary
+                  : colorScheme.outlineVariant,
+              width: selected ? 1.5 : 1,
             ),
-            clipBehavior: Clip.antiAlias,
-            child: preview == null
-                ? Icon(
-                    Icons.folder_outlined,
-                    size: 13,
-                    color: colorScheme.onSurfaceVariant,
-                  )
-                : BrushTipPreview(settings: preview!.settings),
+            borderRadius: BorderRadius.circular(4),
           ),
+          clipBehavior: Clip.antiAlias,
+          child: preview == null
+              ? Icon(
+                  Icons.folder_outlined,
+                  size: 13,
+                  color: colorScheme.onSurfaceVariant,
+                )
+              : BrushTipPreview(settings: preview!.settings),
         ),
       ),
     );
+    final face = showTooltip ? Tooltip(message: label, child: body) : body;
     return SizedBox(
       height: extent,
       child: hasMenu
@@ -892,6 +908,10 @@ class _TabContextMenu extends StatelessWidget {
   }
 }
 
+/// Side of the ⋯ corner on a rail tab. Small enough that the rest of a
+/// 26px tab still belongs to the tab.
+const double _menuTapExtent = 12;
+
 /// Holds the popup itself, kept apart so the tab stays a plain widget.
 class _LegacyGroupMenuHost extends StatelessWidget {
   const _LegacyGroupMenuHost({
@@ -912,9 +932,15 @@ class _LegacyGroupMenuHost extends StatelessWidget {
     return Stack(
       children: [
         Positioned.fill(child: child),
+        // A bare PopupMenuButton keeps an IconButton's 48px minimum tap
+        // target, which on a 26px rail swallowed the whole tab: every click
+        // meant to open a group opened its menu instead. The box below is
+        // the corner it is allowed to have.
         Positioned(
           right: 0,
           bottom: 0,
+          width: _menuTapExtent,
+          height: _menuTapExtent,
           child: PopupMenuButton<_BrushGroupMenuAction>(
             key: ValueKey<String>('$keyValue-menu'),
             tooltip: AppText.strings.brGroupOptions,
@@ -929,6 +955,8 @@ class _LegacyGroupMenuHost extends StatelessWidget {
             style: const ButtonStyle(
               visualDensity: VisualDensity.compact,
               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+              minimumSize: WidgetStatePropertyAll<Size>(Size.zero),
+              padding: WidgetStatePropertyAll<EdgeInsets>(EdgeInsets.zero),
             ),
             onSelected: (action) {
               switch (action) {
