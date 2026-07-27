@@ -25,12 +25,36 @@ void main() {
     }
   });
 
-  Uint8List effector(int flags, {int minimumPercent = 0}) {
-    final bytes = ByteData(16)
+  /// An effector blob. [curve] appends the response-curve block Clip Studio
+  /// writes in the tail: a `12, <point count>, 16, 0, 0, 0, 0` marker at int
+  /// 11, then one (x, y) float64 pair per point BEYOND the implied origin.
+  Uint8List effector(
+    int flags, {
+    int minimumPercent = 0,
+    List<(double, double)>? curve,
+  }) {
+    if (curve == null) {
+      final bytes = ByteData(16)
+        ..setInt32(0, 44)
+        ..setInt32(4, 0xf0)
+        ..setInt32(8, flags)
+        ..setInt32(12, minimumPercent);
+      return bytes.buffer.asUint8List();
+    }
+    final length = 72 + curve.length * 16;
+    final bytes = ByteData(length)
       ..setInt32(0, 44)
-      ..setInt32(4, 0xf0)
+      ..setInt32(4, length)
       ..setInt32(8, flags)
-      ..setInt32(12, minimumPercent);
+      ..setInt32(12, minimumPercent)
+      ..setInt32(44, 12) // marker at int 11
+      ..setInt32(48, curve.length + 1) // count includes the implied origin
+      ..setInt32(52, 16);
+    for (var i = 0; i < curve.length; i += 1) {
+      bytes
+        ..setFloat64(72 + i * 16, curve[i].$1)
+        ..setFloat64(72 + i * 16 + 8, curve[i].$2);
+    }
     return bytes.buffer.asUint8List();
   }
 
@@ -72,6 +96,7 @@ void main() {
     int brushSizeUnit = 0,
     int sizeEffectorFlags = 0x10,
     int sizeEffectorMinimum = 59,
+    List<(double, double)>? sizeEffectorCurve,
     int flowEffectorFlags = 0x30,
     int flowEffectorMinimum = 0,
     int thicknessEffectorFlags = 0x00,
@@ -139,7 +164,11 @@ void main() {
       '1, 200.0, 4, ?, 182.0, 90, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         patternArray(catalogPath),
-        effector(sizeEffectorFlags, minimumPercent: sizeEffectorMinimum),
+        effector(
+          sizeEffectorFlags,
+          minimumPercent: sizeEffectorMinimum,
+          curve: sizeEffectorCurve,
+        ),
         effector(0x00),
         effector(flowEffectorFlags, minimumPercent: flowEffectorMinimum),
         texturePng == null ? null : patternArray(textureCatalogPath),
@@ -284,6 +313,61 @@ void main() {
     expect(round.settings.size, 8.0);
     expect(round.settings.hardness, closeTo(0.9, 1e-9));
     expect(round.settings.sizePressureCurve, isNull);
+  });
+
+  test('the effector response curve imports as a curve', () async {
+    // Clip Studio keeps the 筆압설정 graph in the effector's tail. The
+    // minimum is a SEPARATE control that lifts the curve's floor, so the
+    // stored y of 0 lands on the minimum and the stored 1 lands on full.
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      sizeEffectorMinimum: 40,
+      sizeEffectorCurve: const [(0.25, 0.1), (0.75, 0.9), (1.0, 1.0)],
+    );
+    final curve = (await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    )).presets.first.settings.sizePressureCurve!;
+
+    expect(curve.points, [
+      const BrushCurvePoint(0.0, 0.4),
+      const BrushCurvePoint(0.25, 0.4 + 0.6 * 0.1),
+      const BrushCurvePoint(0.75, 0.4 + 0.6 * 0.9),
+      const BrushCurvePoint(1.0, 1.0),
+    ]);
+  });
+
+  test('an untouched graph still reduces to the straight line', () async {
+    // Clip Studio writes a two-point block for a brush that never edited
+    // the graph; that has to stay byte-identical to the old floor line, or
+    // every already-imported brush shifts underfoot.
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      sizeEffectorMinimum: 59,
+      sizeEffectorCurve: const [(1.0, 1.0)],
+    );
+    final curve = (await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    )).presets.first.settings.sizePressureCurve;
+
+    expect(curve, BrushPressureCurve.linearFrom(0.59));
+  });
+
+  test('the effector minimum applies to opacity and flow too', () async {
+    // These used to import as a bare identity curve, throwing the floor
+    // away: ウェット水彩 asks for an opacity floor of 10%.
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      flowEffectorFlags: 0x10,
+      flowEffectorMinimum: 10,
+    );
+    final s = (await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    )).presets.first.settings;
+
+    expect(s.flowPressureCurve, BrushPressureCurve.linearFrom(0.10));
   });
 
   test('random input source drives the jitters', () async {
