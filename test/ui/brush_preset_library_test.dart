@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/brush_group.dart';
+import 'package:quick_animaker_v2/src/models/brush_group_icon.dart';
 import 'package:quick_animaker_v2/src/models/brush_group_id.dart';
 import 'package:quick_animaker_v2/src/models/brush_preset.dart';
 import 'package:quick_animaker_v2/src/models/brush_preset_id.dart';
@@ -103,17 +104,30 @@ void main() {
       );
     });
 
-    test('renameGroup leaves membership untouched', () async {
+    test('editGroup leaves membership untouched', () async {
       final library = await seeded();
       addTearDown(library.dispose);
 
-      library.renameGroup(_ink, 'Inking');
+      library.editGroup(_ink, 'Inking', BrushGroupIcon.pen);
 
       expect(library.groups.first.name, 'Inking');
+      expect(library.groups.first.icon, BrushGroupIcon.pen);
       expect(
         library.presets.where((p) => p.groupId == _ink).map((p) => p.id.value),
         ['i1', 'i2'],
       );
+    });
+
+    test('editGroup can take a group back to no icon', () async {
+      // Null has to be WRITABLE, not just absent: clearing is how a group
+      // goes back to wearing its first brush.
+      final library = await seeded();
+      addTearDown(library.dispose);
+
+      library.editGroup(_ink, 'Inking', BrushGroupIcon.pen);
+      library.editGroup(_ink, 'Inking', null);
+
+      expect(library.groups.first.icon, isNull);
     });
 
     test('deleteGroup drops the group AND its members', () async {

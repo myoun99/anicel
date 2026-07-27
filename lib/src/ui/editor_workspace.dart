@@ -854,7 +854,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                               unawaited(_importBrushFile());
                             },
                             onGroupCreated: _presetLibrary.createGroup,
-                            onGroupRenamed: _presetLibrary.renameGroup,
+                            onGroupEdited: _presetLibrary.editGroup,
                             onGroupDeleted: _presetLibrary.deleteGroup,
                             onGroupsReordered: _presetLibrary.reorderGroups,
                             onLibraryReset: _presetLibrary.resetToDefaults,

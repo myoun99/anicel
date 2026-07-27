@@ -29,7 +29,13 @@ class AppPromptDialog extends StatefulWidget {
     this.fieldKey,
     this.cancelKey,
     this.confirmKey,
+    this.extra,
   });
+
+  /// Optional content below the field — a picker that belongs to the same
+  /// edit as the name, so the two are confirmed together rather than
+  /// through two dialogs in a row.
+  final Widget? extra;
 
   final String title;
   final IconData? titleIcon;
@@ -95,10 +101,14 @@ class _AppPromptDialogState extends State<AppPromptDialog> {
       titleIcon: widget.titleIcon,
       onClose: () => Navigator.of(context).pop(),
       width: widget.multiline ? 420 : 300,
-      body: AppWindowField(
-        label: widget.fieldLabel,
-        emphasized: true,
-        child: TextField(
+      body: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          AppWindowField(
+            label: widget.fieldLabel,
+            emphasized: true,
+            child: TextField(
           key: widget.fieldKey,
           controller: _controller,
           autofocus: true,
@@ -118,8 +128,14 @@ class _AppPromptDialogState extends State<AppPromptDialog> {
               setState(() => _errorText = null);
             }
           },
-          onSubmitted: widget.multiline ? null : (_) => _submit(),
-        ),
+              onSubmitted: widget.multiline ? null : (_) => _submit(),
+            ),
+          ),
+          if (widget.extra != null) ...[
+            const SizedBox(height: 10),
+            widget.extra!,
+          ],
+        ],
       ),
       actions: [
         AppWindowAction(

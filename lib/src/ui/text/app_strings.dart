@@ -609,6 +609,9 @@ class AppStrings {
   String get brBlend => _s('brBlend');
   String get brBlendMode => _s('brBlendMode');
   String get brBlendLock => _s('brBlendLock');
+  String get brEditGroup => _s('brEditGroup');
+  String get brFolderIcon => _s('brFolderIcon');
+  String get brFolderName => _s('brFolderName');
   String get brFeather => _s('brFeather');
   String get brTolerance => _s('brTolerance');
   String get brGapClose => _s('brGapClose');
@@ -1144,6 +1147,9 @@ class AppStrings {
     'brBlend': 'Blend',
     'brBlendMode': 'Brush blend mode',
     'brBlendLock': 'Pin this blend mode to the brush',
+    'brEditGroup': 'Edit group',
+    'brFolderIcon': 'Folder icon',
+    'brFolderName': 'Folder name',
     'brFeather': 'Feather',
     'brTolerance': 'Tolerance',
     'brGapClose': 'Gap Close',
@@ -1768,6 +1774,9 @@ class AppStrings {
     'brBlend': '合成',
     'brBlendMode': 'ブラシの合成モード',
     'brBlendLock': '合成モードをブラシに固定',
+    'brEditGroup': 'グループを編集',
+    'brFolderIcon': 'フォルダーのアイコン',
+    'brFolderName': 'フォルダー名',
     'brFeather': 'ぼかし',
     'brTolerance': '許容値',
     'brGapClose': '隙間閉じ',
@@ -2389,6 +2398,9 @@ class AppStrings {
     'brBlend': '합성',
     'brBlendMode': '브러시 합성 모드',
     'brBlendLock': '합성 모드를 브러시에 고정',
+    'brEditGroup': '그룹 편집',
+    'brFolderIcon': '폴더 아이콘',
+    'brFolderName': '폴더 이름',
     'brFeather': '페더',
     'brTolerance': '허용치',
     'brGapClose': '틈 메우기',
@@ -3042,6 +3054,9 @@ class AppStrings {
     'brBlend': 'Fusion',
     'brBlendMode': 'Mode de fusion du pinceau',
     'brBlendLock': 'Épingler ce mode de fusion au pinceau',
+    'brEditGroup': 'Modifier le groupe',
+    'brFolderIcon': 'Icône du dossier',
+    'brFolderName': 'Nom du dossier',
     'brFeather': 'Contour progressif',
     'brTolerance': 'Tolérance',
     'brGapClose': 'Fermeture des trous',
@@ -3644,6 +3659,9 @@ class AppStrings {
     'brBlend': '混合',
     'brBlendMode': '画笔混合模式',
     'brBlendLock': '将混合模式固定到画笔',
+    'brEditGroup': '编辑分组',
+    'brFolderIcon': '文件夹图标',
+    'brFolderName': '文件夹名称',
     'brFeather': '羽化',
     'brTolerance': '容差',
     'brGapClose': '闭合缝隙',

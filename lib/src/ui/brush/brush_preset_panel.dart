@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../../models/brush_group.dart';
+import '../../models/brush_group_icon.dart';
 import '../../models/brush_group_id.dart';
 import '../../models/brush_preset.dart';
 import '../../models/brush_preset_id.dart';
@@ -24,6 +25,8 @@ enum _BrushPresetMenuAction {
   toggleIcon,
   toggleStroke,
   toggleName,
+  toggleRailIcon,
+  toggleRailName,
   newGroup,
   rename,
   delete,
@@ -68,7 +71,7 @@ class BrushPresetPanel extends StatefulWidget {
     this.onPresetRenamed,
     this.onPresetsReordered,
     this.onGroupCreated,
-    this.onGroupRenamed,
+    this.onGroupEdited,
     this.onGroupDeleted,
     this.onGroupsReordered,
     this.onLibraryReset,
@@ -101,7 +104,10 @@ class BrushPresetPanel extends StatefulWidget {
   /// Called with the new group's name.
   final ValueChanged<String>? onGroupCreated;
 
-  final void Function(BrushGroupId id, String name)? onGroupRenamed;
+  /// Saves a group's name AND face together — the rail's double tap and
+  /// the tab menu both land here.
+  final void Function(BrushGroupId id, String name, BrushGroupIcon? icon)?
+  onGroupEdited;
 
   /// Deletes the group AND every preset inside it (the panel confirms first,
   /// naming the count).
@@ -178,6 +184,21 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     return !currentlyVisible || _visibleElementCount > 1;
   }
 
+  /// The rail's own two, on the same rule: a tab must show something.
+  ///
+  /// These are view preferences, not library data — a brush library handed
+  /// to someone else must not carry how you like your rail. They belong
+  /// with panel layout and shortcuts in the workspace file, and go there
+  /// when that lands; until then they live for the session like the three
+  /// row toggles above.
+  bool _railShowIcon = true;
+  bool _railShowName = false;
+
+  bool _canToggleOffRail(bool currentlyVisible) {
+    return !currentlyVisible ||
+        (_railShowIcon ? 1 : 0) + (_railShowName ? 1 : 0) > 1;
+  }
+
   /// The group a preset displays under, treating an id no group carries as
   /// "root" so a stale reference can never hide a preset entirely.
   BrushGroupId? _ownerGroupId(BrushPreset preset) {
@@ -237,6 +258,10 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
         setState(() => _showStrokePreview = !_showStrokePreview);
       case _BrushPresetMenuAction.toggleName:
         setState(() => _showName = !_showName);
+      case _BrushPresetMenuAction.toggleRailIcon:
+        setState(() => _railShowIcon = !_railShowIcon);
+      case _BrushPresetMenuAction.toggleRailName:
+        setState(() => _railShowName = !_railShowName);
       case _BrushPresetMenuAction.newGroup:
         _createGroup();
       case _BrushPresetMenuAction.rename:
@@ -309,27 +334,38 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     onRenamed(selectedId, nextName);
   }
 
-  Future<void> _renameGroup(BrushGroup group) async {
-    final onRenamed = widget.onGroupRenamed;
-    if (onRenamed == null) {
+  /// The group's name and face, edited together.
+  ///
+  /// One editor with two ways in — a double tap on the tab, and the tab's
+  /// own menu — rather than a rename dialog and an icon dialog in a row.
+  Future<void> _editGroup(BrushGroup group) async {
+    final onEdited = widget.onGroupEdited;
+    if (onEdited == null) {
       return;
     }
+    var icon = group.icon;
     final nextName = await showDialog<String>(
       context: context,
-      builder: (context) => _BrushNameDialog(
-        keyPrefix: 'brush-preset-group-rename',
-        title: AppText.strings.brRenameGroup,
-        titleIcon: Icons.drive_file_rename_outline,
-        fieldLabel: 'Group name',
-        initialName: group.name,
-        confirmLabel: 'Rename',
-        emptyError: 'Group name cannot be empty.',
+      builder: (context) => StatefulBuilder(
+        builder: (context, setLocal) => _BrushNameDialog(
+          keyPrefix: 'brush-preset-group-rename',
+          title: AppText.strings.brEditGroup,
+          titleIcon: Icons.drive_file_rename_outline,
+          fieldLabel: 'Group name',
+          initialName: group.name,
+          confirmLabel: 'Save',
+          emptyError: 'Group name cannot be empty.',
+          extra: _GroupIconPicker(
+            selected: icon,
+            onPicked: (picked) => setLocal(() => icon = picked),
+          ),
+        ),
       ),
     );
     if (!mounted || nextName == null) {
       return;
     }
-    onRenamed(group.id, nextName);
+    onEdited(group.id, nextName, icon);
   }
 
   Future<void> _deleteGroup(BrushGroup group) async {
@@ -592,6 +628,23 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
         enabled: _canToggleOff(_showName),
         child: const Text('Name'),
       ),
+      const PopupMenuDivider(),
+      CheckedPopupMenuItem<_BrushPresetMenuAction>(
+        key: const ValueKey<String>('brush-preset-rail-icon-toggle'),
+        value: _BrushPresetMenuAction.toggleRailIcon,
+        height: 34,
+        checked: _railShowIcon,
+        enabled: _canToggleOffRail(_railShowIcon),
+        child: Text(AppText.strings.brFolderIcon),
+      ),
+      CheckedPopupMenuItem<_BrushPresetMenuAction>(
+        key: const ValueKey<String>('brush-preset-rail-name-toggle'),
+        value: _BrushPresetMenuAction.toggleRailName,
+        height: 34,
+        checked: _railShowName,
+        enabled: _canToggleOffRail(_railShowName),
+        child: Text(AppText.strings.brFolderName),
+      ),
       if (actions.isNotEmpty) const PopupMenuDivider(),
       ...actions,
     ];
@@ -609,7 +662,9 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     final reorderable = widget.onGroupsReordered != null;
     return SizedBox(
       key: _railKey,
-      width: _BrushGroupTab.extent + panelScrollbarGutter,
+      width:
+          (_railShowName ? _BrushGroupTab.namedWidth : _BrushGroupTab.extent) +
+          panelScrollbarGutter,
       child: PanelScrollbar(
         controller: _railController,
         child: ReorderableListView.builder(
@@ -626,15 +681,21 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
             final tab = _BrushGroupTab(
               keyValue: 'brush-preset-tab-${group?.id.value ?? 'root'}',
               label: group?.name ?? _rootSectionLabel,
+              icon: group?.icon,
+              showIcon: _railShowIcon,
+              showName: _railShowName,
               showTooltip: !_railDragging,
+              onEdit: group == null || widget.onGroupEdited == null
+                  ? null
+                  : () => _editGroup(group),
               // The tab wears its group's first brush, so a chalk group
               // looks chalky and no one has to pick an icon.
               preview: _firstPresetIn(group?.id),
               selected: group?.id == open,
               onTap: () => _openTab(group?.id),
-              onRename: group == null || widget.onGroupRenamed == null
+              onRename: group == null || widget.onGroupEdited == null
                   ? null
-                  : () => _renameGroup(group),
+                  : () => _editGroup(group),
               onDelete: group == null || widget.onGroupDeleted == null
                   ? null
                   : () => _deleteGroup(group),
@@ -812,7 +873,11 @@ class _BrushGroupTab extends StatelessWidget {
     required this.preview,
     required this.selected,
     required this.onTap,
+    this.icon,
+    this.showIcon = true,
+    this.showName = false,
     this.showTooltip = true,
+    this.onEdit,
     this.onRename,
     this.onDelete,
   });
@@ -820,6 +885,26 @@ class _BrushGroupTab extends StatelessWidget {
   /// Height of one tab. Fixed, because the rail turns a pointer offset into
   /// a tab index while a brush is being dragged over it.
   static const double extent = 26;
+
+  /// Rail width once names are showing. Wide enough for a short group name
+  /// beside the icon without taking the brush list below a usable width.
+  static const double namedWidth = 96;
+
+  /// The tab's picture: the group's chosen icon, else its first brush, else
+  /// a plain folder. Choosing is for when that guess reads wrong.
+  Widget _face(ColorScheme colorScheme) {
+    if (icon != null) {
+      return Icon(icon!.data, size: 13, color: colorScheme.onSurfaceVariant);
+    }
+    if (preview != null) {
+      return BrushTipPreview(settings: preview!.settings);
+    }
+    return Icon(
+      Icons.folder_outlined,
+      size: 13,
+      color: colorScheme.onSurfaceVariant,
+    );
+  }
 
   final String keyValue;
   final String label;
@@ -829,8 +914,19 @@ class _BrushGroupTab extends StatelessWidget {
   final bool selected;
   final VoidCallback onTap;
 
+  /// The group's chosen face, or null to fall back to its first brush.
+  final BrushGroupIcon? icon;
+
+  /// The rail's view toggles; at least one is always on.
+  final bool showIcon;
+  final bool showName;
+
   /// False while the rail is being reordered — see `_railDragging`.
   final bool showTooltip;
+
+  /// Opens the group's name/icon editor — a double tap, which cannot
+  /// collide with the single tap that switches group.
+  final VoidCallback? onEdit;
   final VoidCallback? onRename;
   final VoidCallback? onDelete;
 
@@ -844,6 +940,7 @@ class _BrushGroupTab extends StatelessWidget {
       child: InkWell(
         key: ValueKey<String>(keyValue),
         onTap: onTap,
+        onDoubleTap: onEdit,
         borderRadius: BorderRadius.circular(4),
         child: Container(
           margin: const EdgeInsets.symmetric(vertical: 1),
@@ -857,13 +954,35 @@ class _BrushGroupTab extends StatelessWidget {
             borderRadius: BorderRadius.circular(4),
           ),
           clipBehavior: Clip.antiAlias,
-          child: preview == null
-              ? Icon(
-                  Icons.folder_outlined,
-                  size: 13,
-                  color: colorScheme.onSurfaceVariant,
-                )
-              : BrushTipPreview(settings: preview!.settings),
+          child: Row(
+            children: [
+              // No fixed width: the selected tab's border is thicker, so a
+              // hard-sized box overflows it by a pixel.
+              if (showIcon)
+                showName
+                    ? SizedBox(width: 20, child: _face(colorScheme))
+                    : Expanded(child: _face(colorScheme)),
+              if (showName)
+                Expanded(
+                  child: Padding(
+                    padding: EdgeInsets.only(left: showIcon ? 0 : 5, right: 3),
+                    child: Text(
+                      label,
+                      maxLines: 1,
+                      // Group names run long — a pack keeps the file's name
+                      // — so the tail is what gives.
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: selected
+                            ? colorScheme.onSurface
+                            : colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -911,6 +1030,84 @@ class _TabContextMenu extends StatelessWidget {
 /// Side of the ⋯ corner on a rail tab. Small enough that the rest of a
 /// 26px tab still belongs to the tab.
 const double _menuTapExtent = 12;
+
+/// Picks a group's face from the fixed catalogue.
+///
+/// "None" is first and is the default: a tab with no icon wears its first
+/// brush, which usually reads better than any icon would. Choosing is for
+/// when that guess is wrong.
+class _GroupIconPicker extends StatelessWidget {
+  const _GroupIconPicker({required this.selected, required this.onPicked});
+
+  final BrushGroupIcon? selected;
+  final ValueChanged<BrushGroupIcon?> onPicked;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    Widget cell({
+      required String keyValue,
+      required Widget child,
+      required bool isSelected,
+      required VoidCallback onTap,
+    }) {
+      return InkWell(
+        key: ValueKey<String>(keyValue),
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(4),
+        child: Container(
+          width: 26,
+          height: 26,
+          decoration: BoxDecoration(
+            // Selection reads as colour only, never a checkmark.
+            color: isSelected
+                ? colorScheme.surfaceContainerHigh
+                : Colors.transparent,
+            border: Border.all(
+              color: isSelected
+                  ? colorScheme.primary
+                  : colorScheme.outlineVariant,
+              width: isSelected ? 1.5 : 1,
+            ),
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: child,
+        ),
+      );
+    }
+
+    return AppWindowField(
+      label: AppText.strings.brFolderIcon,
+      child: Wrap(
+        spacing: 4,
+        runSpacing: 4,
+        children: [
+          cell(
+            keyValue: 'brush-preset-group-icon-none',
+            isSelected: selected == null,
+            onTap: () => onPicked(null),
+            child: Icon(
+              Icons.block,
+              size: 13,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
+          for (final icon in BrushGroupIcon.values)
+            cell(
+              keyValue: 'brush-preset-group-icon-${icon.name}',
+              isSelected: selected == icon,
+              onTap: () => onPicked(icon),
+              child: Icon(
+                icon.data,
+                size: 13,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
 
 /// Holds the popup itself, kept apart so the tab stays a plain widget.
 class _LegacyGroupMenuHost extends StatelessWidget {
@@ -1000,6 +1197,7 @@ class _BrushNameDialog extends StatelessWidget {
     required this.initialName,
     required this.confirmLabel,
     required this.emptyError,
+    this.extra,
   });
 
   final String keyPrefix;
@@ -1010,9 +1208,13 @@ class _BrushNameDialog extends StatelessWidget {
   final String confirmLabel;
   final String emptyError;
 
+  /// Content confirmed alongside the name — the group editor's icon grid.
+  final Widget? extra;
+
   @override
   Widget build(BuildContext context) {
     return AppPromptDialog(
+      extra: extra,
       windowKey: ValueKey<String>('$keyPrefix-dialog'),
       title: title,
       titleIcon: titleIcon,

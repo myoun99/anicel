@@ -1,4 +1,5 @@
 import '../models/brush_group.dart';
+import '../models/brush_group_icon.dart';
 import '../models/brush_group_id.dart';
 import '../models/brush_preset.dart';
 import '../models/brush_preset_id.dart';
@@ -22,10 +23,18 @@ const BrushGroupId _textureGroup = BrushGroupId('builtin-texture-group');
 /// carries), so an "eraser brush" would only ever be a tip SHAPE — and those
 /// already live above. Pick any brush while the eraser is active.
 final List<BrushGroup> defaultBrushGroups = List.unmodifiable(<BrushGroup>[
-  const BrushGroup(id: _pencilGroup, name: 'Pencil'),
-  const BrushGroup(id: _inkGroup, name: 'Ink'),
-  const BrushGroup(id: _paintGroup, name: 'Paint'),
-  const BrushGroup(id: _textureGroup, name: 'Texture'),
+  const BrushGroup(
+    id: _pencilGroup,
+    name: 'Pencil',
+    icon: BrushGroupIcon.pencil,
+  ),
+  const BrushGroup(id: _inkGroup, name: 'Ink', icon: BrushGroupIcon.pen),
+  const BrushGroup(id: _paintGroup, name: 'Paint', icon: BrushGroupIcon.paint),
+  const BrushGroup(
+    id: _textureGroup,
+    name: 'Texture',
+    icon: BrushGroupIcon.texture,
+  ),
 ]);
 
 /// Built-in brush presets seeded when no user preset library exists yet.
