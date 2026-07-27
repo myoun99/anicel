@@ -446,6 +446,12 @@ class AppStrings {
   String get sbShorterRows => _s('sbShorterRows');
   String get sbTallerRows => _s('sbTallerRows');
 
+  /// The conte sheet panel.
+  String get cnPreviousPage => _s('cnPreviousPage');
+  String get cnNextPage => _s('cnNextPage');
+  String get cnActionColumn => _s('cnActionColumn');
+  String get cnConte => _s('cnConte');
+
   /// '{n}' is the comma count.
   String get tlSetCommaTemplate => _s('tlSetCommaTemplate');
   String get tlProjectAudioRate => _s('tlProjectAudioRate');
@@ -1264,6 +1270,10 @@ class AppStrings {
     'tlPull': 'Pull (close frames)',
     'sbShorterRows': 'Shorter rows',
     'sbTallerRows': 'Taller rows',
+    'cnPreviousPage': 'Previous page',
+    'cnNextPage': 'Next page',
+    'cnActionColumn': 'Action',
+    'cnConte': 'Conte',
     'tlBlankX': 'Blank / X',
     'tlMark': 'Mark ●',
     'tlSetCommasN': 'Set N commas…',
@@ -1893,6 +1903,10 @@ class AppStrings {
     'tlPull': '詰め（コマを詰める）',
     'sbShorterRows': '行を低く',
     'sbTallerRows': '行を高く',
+    'cnPreviousPage': '前のページ',
+    'cnNextPage': '次のページ',
+    'cnActionColumn': 'アクション',
+    'cnConte': '絵コンテ',
     'tlBlankX': '中割なし / ×',
     'tlMark': 'マーク ●',
     'tlSetCommasN': 'Nコマに設定…',
@@ -2519,6 +2533,10 @@ class AppStrings {
     'tlPull': '당기기(칸 닫기)',
     'sbShorterRows': '행 낮게',
     'sbTallerRows': '행 높게',
+    'cnPreviousPage': '이전 페이지',
+    'cnNextPage': '다음 페이지',
+    'cnActionColumn': '액션',
+    'cnConte': '콘티',
     'tlBlankX': '중간 없음 / ×',
     'tlMark': '마크 ●',
     'tlSetCommasN': 'N코마로 설정…',
@@ -3177,6 +3195,10 @@ class AppStrings {
     'tlPull': 'Tirer (fermer des images)',
     'sbShorterRows': 'Lignes plus basses',
     'sbTallerRows': 'Lignes plus hautes',
+    'cnPreviousPage': 'Page précédente',
+    'cnNextPage': 'Page suivante',
+    'cnActionColumn': 'Action',
+    'cnConte': 'Storyboard',
     'tlBlankX': 'Vide / X',
     'tlMark': 'Repère ●',
     'tlSetCommasN': 'Régler sur N commas…',
@@ -3784,6 +3806,10 @@ class AppStrings {
     'tlPull': '拉回（收拢帧）',
     'sbShorterRows': '行更矮',
     'sbTallerRows': '行更高',
+    'cnPreviousPage': '上一页',
+    'cnNextPage': '下一页',
+    'cnActionColumn': '动作',
+    'cnConte': '分镜',
     'tlBlankX': '空 / ×',
     'tlMark': '标记 ●',
     'tlSetCommasN': '设为 N 格…',

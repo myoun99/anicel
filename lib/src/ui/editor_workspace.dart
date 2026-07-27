@@ -42,6 +42,7 @@ import 'panels/workspace_layout_store.dart';
 import 'panels/workspace_panels_menu.dart';
 import 'keyed_keep_alive_stack.dart';
 import 'sliced_value_listenable_builder.dart';
+import 'conte/conte_tab_host.dart';
 import 'storyboard_cut_thumbnail_store.dart';
 import 'storyboard_panel.dart' show StoryboardPanel;
 import 'storyboard_playhead_mapping.dart';
@@ -155,6 +156,7 @@ class EditorWorkspace extends StatefulWidget {
   static const String mediaTabId = 'media';
   static const String timelineTabId = 'timeline';
   static const String storyboardTabId = 'storyboard';
+  static const String conteTabId = 'conte';
   static const String timesheetTabId = 'timesheet';
 
   /// The size frame-axis panels lay out at when docked somewhere smaller
@@ -213,7 +215,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     ],
     EditorWorkspace.bottomGroupId: [
       DockSection(
-        tabs: [EditorWorkspace.timelineTabId, EditorWorkspace.storyboardTabId],
+        tabs: [
+          EditorWorkspace.timelineTabId,
+          EditorWorkspace.storyboardTabId,
+          EditorWorkspace.conteTabId,
+        ],
         activeTabId: EditorWorkspace.timelineTabId,
       ),
     ],
@@ -673,9 +679,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     return ExportFrameRenderer(session: widget.session).renderComposite(
       ExportFrameTask(
         cut: cut,
-        frameIndex: frameIndex
-            .clamp(0, math.max(0, cut.duration - 1))
-            .toInt(),
+        frameIndex: frameIndex.clamp(0, math.max(0, cut.duration - 1)).toInt(),
       ),
       ExportSizeMode.camera,
       outputSize: CanvasSize(width: thumbnailWidth, height: height),
@@ -1171,6 +1175,30 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               // bar and the canvas overlay drive — one notifier, three
               // entrances.
               cameraViewEnabled: _cameraViewEnabled,
+            ),
+          ),
+        );
+      case EditorWorkspace.conteTabId:
+        return EditorPanelTab(
+          id: tabId,
+          label: 'Conte',
+          icon: Icons.grid_on_outlined,
+          buttonKey: const ValueKey<String>('timeline-mode-conte-button'),
+          minContentWidth: EditorWorkspace._frameAxisMinContentWidth,
+          minContentHeight: EditorWorkspace._frameAxisMinContentHeight,
+          locked: locked,
+          keepAlive: true,
+          // The sheet reads the project and the SAME picture store the
+          // storyboard strip draws from, so a cell and its strip panel are
+          // one render rather than two that must be kept in step.
+          builder: (context) => PanelAwareListenableBuilder(
+            listenable: Listenable.merge([
+              widget.session,
+              _storyboardThumbnails,
+            ]),
+            builder: (context) => ConteTabHost(
+              session: widget.session,
+              thumbnailFor: _storyboardThumbnails.thumbnailFor,
             ),
           ),
         );
