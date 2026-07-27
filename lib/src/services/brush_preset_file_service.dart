@@ -44,7 +44,7 @@ class BrushPresetFileService {
   /// repeated the group NAME on every member. 4 filled the built-in roster
   /// out into the Pencil / Ink / Paint / Texture groups. 5 moved the tip
   /// images out to the tip library, leaving an id behind.
-  static const int libraryVersion = 5;
+  static const int libraryVersion = 6;
 
   /// Reads the preset library; a missing or unreadable file yields the
   /// built-in defaults (nothing is written back until the next save).
@@ -88,8 +88,19 @@ class BrushPresetFileService {
       if (savedVersion < libraryVersion) {
         final knownGroupIds = {for (final group in groups) group.id};
         final knownPresetIds = {for (final preset in presets) preset.id};
+        // v6 gave the built-in groups faces. A library saved before that
+        // already HAS those groups, so appending would not reach them —
+        // they need the icon backfilled onto the row that is already there.
+        // Only where the user has not chosen one: a choice outranks ours.
+        final builtinIcons = {
+          for (final builtin in defaultBrushGroups)
+            if (builtin.icon != null) builtin.id: builtin.icon!,
+        };
         groups = [
-          ...groups,
+          for (final group in groups)
+            group.icon == null && builtinIcons.containsKey(group.id)
+                ? group.copyWith(icon: builtinIcons[group.id])
+                : group,
           for (final builtin in defaultBrushGroups)
             if (!knownGroupIds.contains(builtin.id)) builtin,
         ];

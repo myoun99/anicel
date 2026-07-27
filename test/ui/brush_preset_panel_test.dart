@@ -3,6 +3,7 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/brush_group.dart';
+import 'package:quick_animaker_v2/src/models/brush_group_icon.dart';
 import 'package:quick_animaker_v2/src/models/brush_group_id.dart';
 import 'package:quick_animaker_v2/src/models/brush_preset.dart';
 import 'package:quick_animaker_v2/src/models/brush_preset_id.dart';
@@ -68,7 +69,7 @@ class _PanelHost extends StatefulWidget {
     this.onPresetRenamed,
     this.onPresetsReordered,
     this.onGroupCreated,
-    this.onGroupRenamed,
+    this.onGroupEdited,
     this.onGroupDeleted,
     this.onGroupsReordered,
     this.onLibraryReset,
@@ -84,7 +85,8 @@ class _PanelHost extends StatefulWidget {
   final void Function(BrushPresetId id, String name)? onPresetRenamed;
   final ValueChanged<List<BrushPreset>>? onPresetsReordered;
   final ValueChanged<String>? onGroupCreated;
-  final void Function(BrushGroupId id, String name)? onGroupRenamed;
+  final void Function(BrushGroupId id, String name, BrushGroupIcon? icon)?
+  onGroupEdited;
   final ValueChanged<BrushGroupId>? onGroupDeleted;
   final ValueChanged<List<BrushGroup>>? onGroupsReordered;
   final VoidCallback? onLibraryReset;
@@ -114,7 +116,7 @@ class _PanelHostState extends State<_PanelHost> {
               onPresetRenamed: widget.onPresetRenamed,
               onPresetsReordered: widget.onPresetsReordered,
               onGroupCreated: widget.onGroupCreated,
-              onGroupRenamed: widget.onGroupRenamed,
+              onGroupEdited: widget.onGroupEdited,
               onGroupDeleted: widget.onGroupDeleted,
               onGroupsReordered: widget.onGroupsReordered == null
                   ? null
@@ -143,7 +145,8 @@ Future<void> _pumpPanel(
   void Function(BrushPresetId id, String name)? onPresetRenamed,
   ValueChanged<List<BrushPreset>>? onPresetsReordered,
   ValueChanged<String>? onGroupCreated,
-  void Function(BrushGroupId id, String name)? onGroupRenamed,
+  void Function(BrushGroupId id, String name, BrushGroupIcon? icon)?
+  onGroupEdited,
   ValueChanged<BrushGroupId>? onGroupDeleted,
   ValueChanged<List<BrushGroup>>? onGroupsReordered,
   VoidCallback? onLibraryReset,
@@ -160,7 +163,7 @@ Future<void> _pumpPanel(
       onPresetRenamed: onPresetRenamed,
       onPresetsReordered: onPresetsReordered,
       onGroupCreated: onGroupCreated,
-      onGroupRenamed: onGroupRenamed,
+      onGroupEdited: onGroupEdited,
       onGroupDeleted: onGroupDeleted,
       onGroupsReordered: onGroupsReordered,
       onLibraryReset: onLibraryReset,
@@ -459,7 +462,7 @@ void main() {
       tester,
       groups: const [BrushGroup(id: _ink, name: 'Ink')],
       presets: [_calligraphy().copyWith(groupId: _ink)],
-      onGroupRenamed: (_, _) {},
+      onGroupEdited: (_, _, _) {},
     );
 
     final menu = tester.getSize(
@@ -512,6 +515,89 @@ void main() {
     await tester.pumpAndSettle();
   });
 
+  testWidgets('a chosen icon replaces the first-brush face', (tester) async {
+    await _pumpPanel(
+      tester,
+      groups: const [
+        BrushGroup(id: _ink, name: 'Ink', icon: BrushGroupIcon.pen),
+        BrushGroup(id: _paint, name: 'Paint'),
+      ],
+      presets: [
+        _calligraphy().copyWith(groupId: _ink),
+        _sampled().copyWith(groupId: _paint),
+      ],
+    );
+
+    expect(
+      find.descendant(of: _tab('ink'), matching: find.byIcon(Icons.create)),
+      findsOneWidget,
+    );
+    // Paint chose nothing, so it keeps wearing its first brush.
+    expect(
+      find.descendant(of: _tab('paint'), matching: find.byIcon(Icons.create)),
+      findsNothing,
+    );
+  });
+
+  testWidgets('the rail shows names when asked, with the tail clipped', (
+    tester,
+  ) async {
+    await _pumpPanel(
+      tester,
+      groups: const [
+        BrushGroup(id: _ink, name: 'A very long group name indeed'),
+      ],
+      presets: [_calligraphy().copyWith(groupId: _ink)],
+    );
+
+    final railName = find.descendant(
+      of: find.byKey(const ValueKey<String>('brush-preset-tab-rail')),
+      matching: find.text('A very long group name indeed'),
+    );
+    expect(railName, findsNothing, reason: 'names start off');
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('brush-preset-menu-button')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('brush-preset-rail-name-toggle')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(railName, findsOneWidget);
+    // A long name gives at the tail rather than pushing the rail wider.
+    expect(tester.widget<Text>(railName).overflow, TextOverflow.ellipsis);
+  });
+
+  testWidgets('double-tapping a tab edits its name and icon', (tester) async {
+    final edits = <(String, BrushGroupIcon?)>[];
+    await _pumpPanel(
+      tester,
+      groups: const [BrushGroup(id: _ink, name: 'Ink')],
+      presets: [_calligraphy().copyWith(groupId: _ink)],
+      onGroupEdited: (_, name, icon) => edits.add((name, icon)),
+    );
+
+    await tester.tap(_tab('ink'));
+    await tester.pump(const Duration(milliseconds: 50));
+    await tester.tap(_tab('ink'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('brush-preset-group-icon-watercolor')),
+    );
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const ValueKey<String>('brush-preset-group-rename-text-field')),
+      'Watercolour',
+    );
+    await tester.tap(find.text('Save'));
+    await tester.pumpAndSettle();
+
+    expect(edits.single, ('Watercolour', BrushGroupIcon.watercolor));
+  });
+
   testWidgets('the open tab follows the selected brush', (tester) async {
     // Opening the panel should land where you are painting from, not on
     // whatever tab happens to be first.
@@ -549,7 +635,7 @@ void main() {
       tester,
       groups: const [BrushGroup(id: _ink, name: 'Ink')],
       presets: [_calligraphy().copyWith(groupId: _ink)],
-      onGroupRenamed: (id, name) => renames.add((id, name)),
+      onGroupEdited: (id, name, _) => renames.add((id, name)),
     );
 
     await tester.tap(
@@ -652,7 +738,7 @@ void main() {
         _calligraphy().copyWith(groupId: _ink),
         _marker(),
       ],
-      onGroupRenamed: (_, _) {},
+      onGroupEdited: (_, _, _) {},
       onGroupDeleted: (_) {},
     );
 

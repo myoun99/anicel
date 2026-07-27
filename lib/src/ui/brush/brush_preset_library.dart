@@ -5,6 +5,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart';
 
 import '../../models/brush_group.dart';
+import '../../models/brush_group_icon.dart';
 import '../../models/brush_group_id.dart';
 import '../../models/brush_preset.dart';
 import '../../models/brush_preset_id.dart';
@@ -185,10 +186,16 @@ class BrushPresetLibrary extends ChangeNotifier {
     _persist();
   }
 
-  void renameGroup(BrushGroupId id, String name) {
+  /// Saves a group's name and face together — they are edited in one
+  /// dialog, so they land in one write rather than two notifies.
+  void editGroup(BrushGroupId id, String name, BrushGroupIcon? icon) {
     _groups = [
       for (final group in _groups)
-        group.id == id ? group.copyWith(name: name) : group,
+        group.id == id
+            // A null icon means "no icon chosen", which has to be writable
+            // — that is how a group goes back to wearing its first brush.
+            ? group.copyWith(name: name, icon: icon, clearIcon: icon == null)
+            : group,
     ];
     _notify();
     _persist();

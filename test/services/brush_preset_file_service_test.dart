@@ -5,6 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/brush_tip_mask.dart';
 import 'package:quick_animaker_v2/src/models/brush_group.dart';
+import 'package:quick_animaker_v2/src/models/brush_group_icon.dart';
 import 'package:quick_animaker_v2/src/models/brush_group_id.dart';
 import 'package:quick_animaker_v2/src/models/brush_preset.dart';
 import 'package:quick_animaker_v2/src/models/brush_preset_id.dart';
@@ -215,6 +216,37 @@ void main() {
       expect(byId[movedByUser.id]!.groupId, const BrushGroupId('mine'));
       // A preset that is not a built-in is never re-homed.
       expect(byId[ownPreset.id]!.groupId, isNull);
+    });
+
+    test('built-in groups get their icon backfilled on upgrade', () async {
+      // Appending the shipped groups cannot reach a library that ALREADY has
+      // them, which is every library saved before icons existed — the row
+      // that is already there needs the icon written onto it.
+      final path = pathIn('icons.json');
+      final shipped = defaultBrushGroups.firstWhere((g) => g.icon != null);
+      final chosen = defaultBrushGroups.firstWhere(
+        (g) => g.icon != null && g.id != shipped.id,
+      );
+      await File(path).writeAsString(
+        jsonEncode({
+          'version': BrushPresetFileService.libraryVersion - 1,
+          'groups': [
+            // Saved before icons: no icon key at all.
+            {'id': shipped.id.toJson(), 'name': shipped.name},
+            // The user picked one; ours must not overwrite it.
+            chosen.copyWith(icon: BrushGroupIcon.star).toJson(),
+          ],
+          'presets': const <Object>[],
+        }),
+      );
+
+      final loaded = await BrushPresetFileService(
+        filePath: path,
+      ).loadOrDefaults();
+      final byId = {for (final group in loaded.groups) group.id: group};
+
+      expect(byId[shipped.id]!.icon, shipped.icon);
+      expect(byId[chosen.id]!.icon, BrushGroupIcon.star);
     });
 
     test(
