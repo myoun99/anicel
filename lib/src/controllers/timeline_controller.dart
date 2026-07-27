@@ -199,12 +199,19 @@ class TimelineController {
 
   // --- Drawing creation ------------------------------------------------------
 
-  /// A drawing can be created on any uncovered cell.
+  /// A drawing can be created on any uncovered cell — and INSIDE a block,
+  /// where it divides that block instead (user's rule 2026-07-27).
+  ///
+  /// `1-----` with the cell cursor on the third frame becomes `1--o--`: the
+  /// new drawing takes over the rest of the hold. Only a block's own START
+  /// refuses, because there is nothing there to divide — the drawing the
+  /// press would make is already there.
   bool canCreateDrawingAt({required Layer layer, required int frameIndex}) {
     if (frameIndex < 0) {
       return false;
     }
-    return coveringDrawingBlockAt(layer.timeline, frameIndex) == null;
+    final block = coveringDrawingBlockAt(layer.timeline, frameIndex);
+    return block == null || frameIndex > block.startIndex;
   }
 
   void createDrawingFrameForLayer({
@@ -230,19 +237,41 @@ class TimelineController {
       );
     }
 
-    final nextBlock = nextDrawingBlockAfter(before.timeline, frameIndex);
-    final maxLength = nextBlock == null
-        ? length
-        : nextBlock.startIndex - frameIndex;
-    final clampedLength = length > maxLength ? maxLength : length;
-
     final nextTimeline = SplayTreeMap<int, TimelineExposure>.from(
       before.timeline,
     );
-    nextTimeline[frameIndex] = TimelineExposure.drawing(
-      frameId,
-      length: clampedLength,
-    );
+    final int clampedLength;
+    // INSIDE a block: the press divides it, and the new drawing takes over
+    // the rest of the hold — the frames do not move, the division does.
+    final covering = coveringDrawingBlockAt(before.timeline, frameIndex);
+    if (covering != null) {
+      final splitOffset = frameIndex - covering.startIndex;
+      clampedLength = covering.endIndexExclusive - frameIndex;
+      nextTimeline[covering.startIndex] = covering.entry.copyWith(
+        length: splitOffset,
+      );
+      nextTimeline[frameIndex] = TimelineExposure.drawing(
+        frameId,
+        length: clampedLength,
+        // The dots are the BLOCK's (they time these very frames), so the
+        // ones past the division travel with the half they mark. The memo
+        // stays with the left half: it describes that drawing.
+        breakdownOffsets: [
+          for (final offset in covering.entry.breakdownOffsets)
+            if (offset > splitOffset) offset - splitOffset,
+        ],
+      );
+    } else {
+      final nextBlock = nextDrawingBlockAfter(before.timeline, frameIndex);
+      final maxLength = nextBlock == null
+          ? length
+          : nextBlock.startIndex - frameIndex;
+      clampedLength = length > maxLength ? maxLength : length;
+      nextTimeline[frameIndex] = TimelineExposure.drawing(
+        frameId,
+        length: clampedLength,
+      );
+    }
     final after = before.copyWith(
       frames: [
         ...before.frames,

@@ -146,7 +146,8 @@ void main() {
       expect(fixture.layer.timeline[4]!.length, 2);
     });
 
-    test('refuses covered cells', () {
+    test('DIVIDES a covered cell instead of refusing it: the new drawing '
+        'takes over the rest of the hold', () {
       final fixture = _fixture();
       fixture.controller.selectFrameIndex(1);
 
@@ -154,6 +155,31 @@ void main() {
         fixture.controller.canCreateDrawingAt(
           layer: fixture.layer,
           frameIndex: 1,
+        ),
+        isTrue,
+      );
+      fixture.controller.createDrawingFrameForLayer(
+        layerId: _layerId,
+        frameId: const FrameId('new'),
+      );
+
+      // The [0,3) block of 'a' divides at 1; the frames themselves do not
+      // move, only the division between them.
+      final timeline = fixture.layer.timeline;
+      expect(timeline[0]!.length, 1);
+      expect(timeline[0]!.frameId, const FrameId('a'));
+      expect(timeline[1]!.length, 2);
+      expect(timeline[1]!.frameId, const FrameId('new'));
+    });
+
+    test('refuses a block START: nothing there to divide', () {
+      final fixture = _fixture();
+      fixture.controller.selectFrameIndex(0);
+
+      expect(
+        fixture.controller.canCreateDrawingAt(
+          layer: fixture.layer,
+          frameIndex: 0,
         ),
         isFalse,
       );
