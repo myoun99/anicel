@@ -58,6 +58,7 @@ import 'timeline/timeline_frame_geometry.dart'
     show TimelineFrameGeometry, TimelineFrameGeometryHandle;
 import 'timeline/timeline_frame_range_gesture.dart'
     show TimelineFrameRangeGestureLayer, TimelineRangeGestureCallbacks;
+import '../models/storyboard_coverage.dart' show storyboardCoverageCells;
 import '../models/timeline_row_address.dart'
     show LayerRowAddress, TimelineRowAddress, TrackRowAddress;
 import '../models/track_frame_range.dart';
@@ -3764,6 +3765,19 @@ class _StoryboardTrackRow extends StatelessWidget {
                       for (final entry in layoutEntries)
                         if (storyboardLayerForCut(entry.cut) case final layer?)
                           entry.cutId: layer.name,
+                    },
+                    // The STRIP's content: the cut's panels, under the
+                    // coverage rule. A cut with no storyboard row still
+                    // answers — one cell over the whole cut — so the strip
+                    // has no empty case to draw.
+                    storyboardCellsByCut: {
+                      for (final entry in layoutEntries)
+                        entry.cutId: storyboardCoverageCells(
+                          timeline: storyboardLayerForCut(
+                            entry.cut,
+                          )?.timeline,
+                          cutDuration: entry.duration,
+                        ),
                     },
                     geometry: frameGeometry,
                     crossAxisExtent: StoryboardPanel._trackLaneHeight,

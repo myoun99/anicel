@@ -7,6 +7,7 @@ import 'package:flutter/semantics.dart' show SemanticsProperties;
 
 import '../models/cut.dart';
 import '../models/cut_id.dart';
+import '../models/storyboard_coverage.dart';
 import '../models/timeline_row_address.dart';
 import '../models/track_frame_range.dart';
 import 'storyboard_layer_policy.dart';
@@ -31,12 +32,42 @@ class StoryboardCutBlockVisual {
     required this.hasStoryboardLayer,
     required this.total,
     required this.thumbnail,
-  });
+    required this.cells,
+    required Rect topBand,
+    required Rect strip,
+    required Rect bottomBand,
+  }) : _topBand = topBand,
+       _strip = strip,
+       _bottomBand = bottomBand;
 
   final CutId cutId;
 
   /// The block's box in ROW-local coordinates.
   final Rect rect;
+
+  /// The three bands, in row-local coordinates. The STRIP is the picture:
+  /// the cut's panels live there and nothing is written over them. The two
+  /// thin bands carry the writing instead — the cut's number at the left
+  /// end of the top one, its length at the right end of the bottom one,
+  /// which is the conte sheet's CUT and TIME columns laid on their side.
+  ///
+  /// When the row is too short for three of anything the bands FOLD: both
+  /// are [Rect.zero] and the strip takes the whole block, with the writing
+  /// falling back over the picture the way it used to sit.
+  Rect get topBand => _topBand;
+  Rect get strip => _strip;
+  Rect get bottomBand => _bottomBand;
+
+  final Rect _topBand;
+  final Rect _strip;
+  final Rect _bottomBand;
+
+  /// Whether the bands folded away (a short row).
+  bool get bandsFolded => _topBand.height <= 0;
+
+  /// The cut's panels — the divisions the strip draws, under the coverage
+  /// rule. Never empty: a cut with no storyboard row still has one cell.
+  final List<StoryboardCoverageCell> cells;
 
   final bool isActive;
   final bool isRangeSelected;
@@ -76,6 +107,7 @@ class StoryboardCutBlocksPainter extends CustomPainter {
   StoryboardCutBlocksPainter({
     required this.entries,
     required this.storyboardLayerNames,
+    required this.storyboardCellsByCut,
     required this.geometry,
     required this.crossAxisExtent,
     required this.minBlockWidth,
@@ -109,6 +141,10 @@ class StoryboardCutBlocksPainter extends CustomPainter {
   /// throws when a cut somehow holds two storyboard layers, and a painter that
   /// throws takes the whole frame down instead of the widget that asked.
   final Map<CutId, String> storyboardLayerNames;
+
+  /// Each cut's panels (the coverage rule's cells), resolved by the row for
+  /// the same reason. A cut always has at least one.
+  final Map<CutId, List<StoryboardCoverageCell>> storyboardCellsByCut;
 
   /// The LIVE frame-axis geometry: a zoom step repaints instead of
   /// rebuilding the row that built this.
@@ -176,6 +212,36 @@ class StoryboardCutBlocksPainter extends CustomPainter {
     );
   }
 
+  /// The thin bands' height, and the shortest block that still gets them.
+  /// Below that the row has no room for three of anything, so they fold and
+  /// the writing falls back over the picture (the same grammar the
+  /// thumbnail's own fallbacks use).
+  static const double bandHeight = 13;
+  static const double bandsMinBlockHeight = 44;
+
+  /// A block's three bands. Folded (both bands [Rect.zero], the strip
+  /// taking everything) when the row is too short.
+  ({Rect top, Rect strip, Rect bottom}) _bandsOf(Rect rect) {
+    if (rect.height < bandsMinBlockHeight) {
+      return (top: Rect.zero, strip: rect, bottom: Rect.zero);
+    }
+    return (
+      top: Rect.fromLTWH(rect.left, rect.top, rect.width, bandHeight),
+      strip: Rect.fromLTWH(
+        rect.left,
+        rect.top + bandHeight,
+        rect.width,
+        rect.height - bandHeight * 2,
+      ),
+      bottom: Rect.fromLTWH(
+        rect.left,
+        rect.bottom - bandHeight,
+        rect.width,
+        bandHeight,
+      ),
+    );
+  }
+
   /// Every block this row would draw, in track order — THE probe surface.
   ///
   /// Off-window cuts are absent by construction, which is also what keeps
@@ -202,10 +268,16 @@ class StoryboardCutBlocksPainter extends CustomPainter {
         continue;
       }
       final layerName = storyboardLayerNames[entry.cutId];
+      final rect = Rect.fromLTWH(left, 0, width, crossAxisExtent);
+      final bands = _bandsOf(rect);
       visuals.add(
         StoryboardCutBlockVisual(
           cutId: entry.cutId,
-          rect: Rect.fromLTWH(left, 0, width, crossAxisExtent),
+          rect: rect,
+          topBand: bands.top,
+          strip: bands.strip,
+          bottomBand: bands.bottom,
+          cells: storyboardCellsByCut[entry.cutId] ?? const [],
           isActive: entry.cutId == activeCutId,
           isRangeSelected:
               selection?.overlaps(entry.startFrame, entry.endFrame) ?? false,
@@ -256,9 +328,6 @@ class StoryboardCutBlocksPainter extends CustomPainter {
   TextStyle get _emptyLayerStyle =>
       _labelStyle.copyWith(color: colorScheme.onSurfaceVariant);
 
-  TextStyle get _layerNameStyle =>
-      _labelStyle.copyWith(color: colorScheme.onPrimaryContainer);
-
   TextStyle get _totalStyle => _labelStyle.copyWith(
     color: colorScheme.onSurfaceVariant,
     // R27 #3: bold — the readout was too easy to miss.
@@ -277,6 +346,11 @@ class StoryboardCutBlocksPainter extends CustomPainter {
       block.rect,
       const Radius.circular(_radius),
     );
+    // The BACKGROUND carries the cut's own states. A range selection tints
+    // only what is NOT the picture (design: "a cut selection colours the
+    // area that is not a storyboard block") — the bands, when there are
+    // bands to tint. With none the block is all there is, so it all tints,
+    // which is one sentence with two results rather than two rules.
     canvas.drawRRect(
       rrect,
       Paint()
@@ -284,15 +358,37 @@ class StoryboardCutBlocksPainter extends CustomPainter {
           colorScheme,
           active: block.isActive,
           hovered: block.isHovered,
-          rangeSelected: block.isRangeSelected,
+          rangeSelected: block.isRangeSelected && block.bandsFolded,
         ),
     );
+    if (block.isRangeSelected && !block.bandsFolded) {
+      final tint = Paint()
+        ..color = storyboardCutBlockBackgroundColor(
+          colorScheme,
+          active: block.isActive,
+          hovered: block.isHovered,
+          rangeSelected: true,
+        );
+      canvas.save();
+      canvas.clipRRect(rrect);
+      canvas.drawRect(block.topBand, tint);
+      canvas.drawRect(block.bottomBand, tint);
+      canvas.restore();
+    }
 
-    final inner = block.rect.deflate(_padding);
+    final inner = block.bandsFolded
+        ? block.rect.deflate(_padding)
+        : block.strip;
     if (showThumbnails && inner.width > 0 && inner.height > 0) {
       canvas.save();
       canvas.clipRRect(rrect);
       _paintThumbnail(canvas, block, inner);
+      canvas.restore();
+    }
+    if (!block.bandsFolded) {
+      canvas.save();
+      canvas.clipRRect(rrect);
+      _paintCellDivisions(canvas, block);
       canvas.restore();
     }
 
@@ -312,42 +408,129 @@ class StoryboardCutBlocksPainter extends CustomPainter {
     if (inner.width <= 0 || inner.height <= 0) {
       return;
     }
+    if (block.bandsFolded) {
+      // FOLDED: nowhere to put the writing but over the picture, so the
+      // scrim comes back for exactly this case.
+      canvas.save();
+      canvas.clipRect(inner);
+      _paintScrimmed(
+        canvas,
+        text: block.title,
+        style: _titleStyle,
+        maxWidth: inner.width,
+        anchor: inner.topLeft,
+        alignRight: false,
+        alignBottom: false,
+      );
+      final total = block.total;
+      if (total != null) {
+        _paintScrimmed(
+          canvas,
+          text: total,
+          style: _totalStyle,
+          maxWidth: inner.width,
+          anchor: inner.bottomRight,
+          alignRight: true,
+          alignBottom: true,
+        );
+      }
+      canvas.restore();
+      return;
+    }
+
+    // THE BANDS carry the writing, so nothing is drawn over the picture and
+    // no scrim is needed. Number at the top band's left end, length at the
+    // bottom band's right end: the conte sheet's CUT and TIME columns sit
+    // outside the picture cell exactly this way, one above and one below,
+    // and this is that sheet turned on its side.
     canvas.save();
-    canvas.clipRect(inner);
-    _paintScrimmed(
+    canvas.clipRect(block.topBand);
+    _paintBandText(
       canvas,
       text: block.title,
       style: _titleStyle,
-      maxWidth: inner.width,
-      anchor: inner.topLeft,
+      band: block.topBand,
       alignRight: false,
-      alignBottom: false,
     );
-    if (block.hasStoryboardLayer) {
-      _paintLayerChip(canvas, block, inner);
-    } else {
-      _paintScrimmed(
+    canvas.restore();
+
+    canvas.save();
+    canvas.clipRect(block.bottomBand);
+    if (!block.hasStoryboardLayer) {
+      _paintBandText(
         canvas,
         text: block.layerLabel,
         style: _emptyLayerStyle,
-        maxWidth: math.max(0, inner.width * 0.6),
-        anchor: inner.bottomLeft,
+        band: block.bottomBand,
         alignRight: false,
-        alignBottom: true,
       );
     }
     final total = block.total;
     if (total != null) {
-      _paintScrimmed(
+      _paintBandText(
         canvas,
         text: total,
         style: _totalStyle,
-        maxWidth: inner.width,
-        anchor: inner.bottomRight,
+        band: block.bottomBand,
         alignRight: true,
-        alignBottom: true,
       );
     }
+    canvas.restore();
+  }
+
+  /// The divisions between the cut's panels, drawn ON the strip: the strip
+  /// fills the block's width edge to edge, so a division's x IS its frame's
+  /// x — the ruler, the playhead and the SE rows all line up with it.
+  void _paintCellDivisions(Canvas canvas, StoryboardCutBlockVisual block) {
+    if (block.cells.length < 2 || _cellExtent <= 0) {
+      return;
+    }
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1
+      ..color = storyboardCutBlockEdgeColor(
+        colorScheme,
+        brightness,
+        active: block.isActive,
+        hovered: block.isHovered,
+      );
+    final entryStart = block.rect.left;
+    for (final cell in block.cells.skip(1)) {
+      final x = entryStart + cell.startIndex * _cellExtent;
+      if (x <= block.rect.left || x >= block.rect.right) {
+        continue;
+      }
+      canvas.drawLine(
+        Offset(x, block.strip.top),
+        Offset(x, block.strip.bottom),
+        paint,
+      );
+    }
+  }
+
+  void _paintBandText(
+    Canvas canvas, {
+    required String text,
+    required TextStyle style,
+    required Rect band,
+    required bool alignRight,
+  }) {
+    if (text.isEmpty || band.width <= 0) {
+      return;
+    }
+    final glyph = timelineGlyphPainter(
+      text,
+      style,
+      maxWidth: math.max(0, band.width - _padding * 2),
+    );
+    final dx = alignRight
+        ? band.right - _padding - glyph.width
+        : band.left + _padding;
+    canvas.save();
+    glyph.paint(
+      canvas,
+      Offset(dx, band.top + (band.height - glyph.height) / 2),
+    );
     canvas.restore();
   }
 
@@ -371,48 +554,26 @@ class StoryboardCutBlocksPainter extends CustomPainter {
       image.width.toDouble(),
       image.height.toDouble(),
     );
-    // BoxFit.contain, centred — the picture keeps the camera's ratio.
+    // The picture keeps the CAMERA's ratio and is sized to the strip's
+    // height, LEFT-aligned: a wide block leaves the right of its strip
+    // empty, which is the information "this cut is long". Stretching it or
+    // cropping to fill would spend that width saying nothing.
     final scale = math.min(
-      block.rect.width / source.width,
-      block.rect.height / source.height,
+      inner.width / source.width,
+      inner.height / source.height,
     );
     final drawn = Size(source.width * scale, source.height * scale);
     canvas.drawImageRect(
       image,
       source,
       Rect.fromLTWH(
-        block.rect.left + (block.rect.width - drawn.width) / 2,
-        block.rect.top + (block.rect.height - drawn.height) / 2,
+        inner.left,
+        inner.top + (inner.height - drawn.height) / 2,
         drawn.width,
         drawn.height,
       ),
       Paint()..filterQuality = FilterQuality.low,
     );
-  }
-
-  void _paintLayerChip(
-    Canvas canvas,
-    StoryboardCutBlockVisual block,
-    Rect inner,
-  ) {
-    const chipPadding = EdgeInsets.symmetric(horizontal: 4);
-    final maxWidth = math.max(0.0, inner.width * 0.6 - chipPadding.horizontal);
-    final glyph = timelineGlyphPainter(
-      block.layerLabel,
-      _layerNameStyle,
-      maxWidth: maxWidth,
-    );
-    final chip = Rect.fromLTWH(
-      inner.left,
-      inner.bottom - glyph.height,
-      glyph.width + chipPadding.horizontal,
-      glyph.height,
-    );
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(chip, const Radius.circular(4)),
-      Paint()..color = colorScheme.primaryContainer,
-    );
-    glyph.paint(canvas, Offset(chip.left + chipPadding.left, chip.top));
   }
 
   /// A label on the translucent strip that keeps it readable over the
