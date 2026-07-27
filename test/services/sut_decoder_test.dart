@@ -4,6 +4,7 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:quick_animaker_v2/src/models/brush_blend_mode.dart';
 import 'package:quick_animaker_v2/src/models/brush_pressure_curve.dart';
 import 'package:quick_animaker_v2/src/services/sut/sut_decoder.dart';
 import 'package:sqlite3/sqlite3.dart';
@@ -107,6 +108,7 @@ void main() {
     int rotationRandomScale = 100,
     double dualSize = 30.0,
     int syncDualBrushSize = 0,
+    int compositeMode = 0,
     int useWaterColor = 0,
     int mixColor = 50,
     int mixAlpha = 50,
@@ -132,7 +134,8 @@ void main() {
         DualSize REAL, SyncDualBrushSize INTEGER,
         BrushUseWaterColor INTEGER, BrushMixColor INTEGER,
         BrushMixAlpha INTEGER, BrushMixColorExtension INTEGER,
-        BrushThicknessEffector BLOB, BrushIntervalEffector BLOB);
+        BrushThicknessEffector BLOB, BrushIntervalEffector BLOB,
+        CompositeMode INTEGER);
       CREATE TABLE MaterialFile(_PW_ID INTEGER PRIMARY KEY,
         CatalogPath TEXT, OriginalPath TEXT, FileData BLOB);
     ''');
@@ -159,9 +162,9 @@ void main() {
       'DualPatternImageArray, DualSize, SyncDualBrushSize, '
       'BrushUseWaterColor, BrushMixColor, BrushMixAlpha, '
       'BrushMixColorExtension, BrushThicknessEffector, '
-      'BrushIntervalEffector) '
+      'BrushIntervalEffector, CompositeMode) '
       'VALUES (9, 80, 50.0, 60, 70, 15.0, 40, 200.0, 1, ?, ?, ?, ?, '
-      '1, 200.0, 4, ?, 182.0, 90, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+      '1, 200.0, 4, ?, 182.0, 90, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
       [
         patternArray(catalogPath),
         effector(
@@ -192,6 +195,7 @@ void main() {
           intervalEffectorFlags,
           minimumPercent: intervalEffectorMinimum,
         ),
+        compositeMode,
       ],
     );
     // Round brush without pattern data.
@@ -488,6 +492,54 @@ void main() {
     )).presets.first.settings;
 
     expect(s.spacingJitter, closeTo(0.8, 1e-9));
+  });
+
+  test('a non-normal composite mode pins the brush', () async {
+    // ウェット水彩 composites with 乗算, and Clip Studio files that on the
+    // sub tool rather than the hand — so it travels with the brush.
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      compositeMode: 2,
+    );
+    final result = await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    );
+
+    expect(
+      result.presets.first.settings.lockedBlendMode,
+      BrushBlendMode.multiply,
+    );
+    expect(result.warnings, isEmpty);
+  });
+
+  test('a normal composite mode pins nothing', () async {
+    // The rule both importers share: a file that never left the default has
+    // nothing to say, so R26 #10 keeps holding for it.
+    final path = await buildFixture(tipPng: await blackPng(4, 4));
+    final result = await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    );
+
+    expect(result.presets.first.settings.lockedBlendMode, isNull);
+  });
+
+  test('an unrecognised composite mode warns instead of guessing', () async {
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      compositeMode: 37,
+    );
+    final result = await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    );
+
+    expect(result.presets.first.settings.lockedBlendMode, isNull);
+    expect(
+      result.warnings.any((w) => w.contains('blend mode 37')),
+      isTrue,
+    );
   });
 
   test('ground-colour mixing imports behind its gate', () async {

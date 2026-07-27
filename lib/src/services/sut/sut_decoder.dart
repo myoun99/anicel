@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:sqlite3/sqlite3.dart';
 
+import '../../models/brush_blend_mode.dart';
 import '../../models/brush_preset.dart';
 import '../../models/brush_preset_id.dart';
 import '../../models/brush_pressure_curve.dart';
@@ -350,7 +351,40 @@ BrushSettings _settingsFromVariant(
     paintAmount: paintAmount,
     paintDensity: paintDensity,
     colorStretch: colorStretch,
+    lockedBlendMode: _blendLockOf(
+      variant['CompositeMode'],
+      brushName: brushName,
+      warnings: warnings,
+    ),
   );
+}
+
+/// The blend a Clip Studio sub tool pins, or null to leave the hand alone.
+///
+/// Only a NON-normal mode locks. That is the same rule the Photoshop side
+/// uses, and it is what keeps a preset from moving the blend under you for
+/// no reason: a brush that simply never left the default has nothing to say.
+///
+/// Real files pin two of these outright — 0 is 通常 on nine brushes and 2 is
+/// 乗算 on ウェット水彩, both confirmed against Clip Studio's own panel. The
+/// rest of the enum has no witness yet, so it warns instead of guessing.
+BrushBlendMode? _blendLockOf(
+  Object? value, {
+  required String brushName,
+  required List<String> warnings,
+}) {
+  final mode = _intOf(value);
+  if (mode == null || mode == 0) {
+    return null;
+  }
+  if (mode == 2) {
+    return BrushBlendMode.multiply;
+  }
+  warnings.add(
+    'Brush "$brushName": blend mode $mode is not recognised; '
+    'imported without a blend lock.',
+  );
+  return null;
 }
 
 /// Reads a -100..100 percentage column as a -1..1 ratio, 0 neutral.
