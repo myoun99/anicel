@@ -217,6 +217,110 @@ void main() {
     });
   });
 
+  group('Range MOVE on an S row', () {
+    test('slides the selected sounds along the GLOBAL axis, one undo', () {
+      final session = sessionFor();
+      session.updateTrackSeRangeSelectionByFrame(
+        layerId: _seLayerId,
+        anchorGlobalFrame: 3,
+        headGlobalFrame: 3,
+      );
+
+      expect(session.beginTrackRangeMoveDrag(_seLayerId), isTrue);
+      session.updateFrameRangeMoveDrag(frameDelta: 2);
+      session.endFrameRangeMoveDrag();
+
+      // ONLY the selected sound moved — a shove would have carried the
+      // other one too.
+      expect(seLayerOf(session).timeline.keys, [4, 9]);
+
+      session.undo();
+      expect(seLayerOf(session).timeline.keys, [2, 9]);
+    });
+
+    test('the selection FOLLOWS the landing, and stays on the track axis', () {
+      final session = sessionFor();
+      session.updateTrackSeRangeSelectionByFrame(
+        layerId: _seLayerId,
+        anchorGlobalFrame: 3,
+        headGlobalFrame: 3,
+      );
+
+      session.beginTrackRangeMoveDrag(_seLayerId);
+      session.updateFrameRangeMoveDrag(frameDelta: 2);
+      session.endFrameRangeMoveDrag();
+
+      final landed = session.trackFrameRangeSelection.value!;
+      expect(landed.startFrame, 4);
+      expect(landed.endFrameExclusive, 7);
+      expect(landed.anchorRow, const LayerRowAddress(_seLayerId));
+      // The cut-local selection was never touched by a track-axis drag.
+      expect(session.frameRangeSelection.value, isNull);
+    });
+
+    test('a slide BULLDOZES its neighbour rather than passing it — the '
+        'timeline rule, on the track axis', () {
+      final session = sessionFor();
+      session.updateTrackSeRangeSelectionByFrame(
+        layerId: _seLayerId,
+        anchorGlobalFrame: 3,
+        headGlobalFrame: 3,
+      );
+
+      session.beginTrackRangeMoveDrag(_seLayerId);
+      // +7 drives [2,5) onto [9,12): the group never passes a neighbour,
+      // so the sound at 9 is shoved to 12 instead of being landed on.
+      session.updateFrameRangeMoveDrag(frameDelta: 7);
+      session.endFrameRangeMoveDrag();
+
+      expect(seLayerOf(session).timeline.keys, [9, 12]);
+    });
+
+    test('cancelling puts the selection back where it started', () {
+      final session = sessionFor();
+      session.updateTrackSeRangeSelectionByFrame(
+        layerId: _seLayerId,
+        anchorGlobalFrame: 3,
+        headGlobalFrame: 3,
+      );
+
+      session.beginTrackRangeMoveDrag(_seLayerId);
+      session.updateFrameRangeMoveDrag(frameDelta: 2);
+      session.cancelFrameRangeMoveDrag();
+
+      expect(seLayerOf(session).timeline.keys, [2, 9]);
+      expect(session.trackFrameRangeSelection.value!.startFrame, 2);
+    });
+
+    test('a track-axis drag leaves the cut-local machine unarmed: the next '
+        'timeline move publishes to its own selection', () {
+      final session = sessionFor();
+      session.updateTrackSeRangeSelectionByFrame(
+        layerId: _seLayerId,
+        anchorGlobalFrame: 3,
+        headGlobalFrame: 3,
+      );
+      session.beginTrackRangeMoveDrag(_seLayerId);
+      session.endFrameRangeMoveDrag();
+
+      // The SAME row, selected the other way: the timeline's cut-local
+      // view of it (cut 1 starts at 0, so the sound at 2 is local 2). The
+      // axis has to be re-stated by THIS begin, not inherited.
+      session.updateFrameRangeSelectionDrag(
+        layerId: _seLayerId,
+        anchorIndex: 2,
+        headIndex: 2,
+      );
+      expect(session.beginFrameRangeMoveDrag(), isTrue);
+      session.updateFrameRangeMoveDrag(frameDelta: 1);
+      session.cancelFrameRangeMoveDrag();
+
+      // The restore landed in the CUT-LOCAL object, not the track one.
+      expect(session.frameRangeSelection.value, isNotNull);
+      expect(session.trackFrameRangeSelection.value, isNull);
+    });
+  });
+
   group('ONE push/pull aimed at what is selected', () {
     test('a CUT selection shoves cuts', () {
       final session = sessionFor();
