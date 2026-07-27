@@ -526,7 +526,10 @@ void main() {
     expect(s.mixesGroundColor, isFalse);
   });
 
-  test('non-pixel brush size warns instead of mis-scaling', () async {
+  test('size unit 2 stores tenths of a pixel', () async {
+    // Confirmed against Clip Studio: 小さな雲 stores 15 and reads 150,
+    // 水彩うろこ雲 stores 30 and reads 300, while unit-0 brushes match
+    // their stored number exactly.
     final path = await buildFixture(
       tipPng: await blackPng(4, 4),
       brushSizeUnit: 2,
@@ -536,9 +539,23 @@ void main() {
       sourceName: 'fixture',
     );
 
+    expect(result.presets.first.settings.size, 500.0);
+    expect(result.warnings, isEmpty);
+  });
+
+  test('an unrecognised size unit warns instead of mis-scaling', () async {
+    final path = await buildFixture(
+      tipPng: await blackPng(4, 4),
+      brushSizeUnit: 7,
+    );
+    final result = await decodeSutBrushFile(
+      filePath: path,
+      sourceName: 'fixture',
+    );
+
     expect(result.presets.first.settings.size, 50.0);
     expect(
-      result.warnings.any((w) => w.contains('non-pixel unit')),
+      result.warnings.any((w) => w.contains('unrecognised unit')),
       isTrue,
     );
   });

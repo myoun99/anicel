@@ -7,6 +7,48 @@ import 'dart:typed_data';
 /// pure-Dart importers can honour it without dragging in `dart:ui`.
 const int maxBrushTipMaskSide = 256;
 
+/// Applies a paper texture's invert, brightness and contrast to [mask].
+///
+/// A mask holds COVERAGE — "how much paint" — which is the texture image
+/// inverted, so the three controls do not translate one for one. Contrast
+/// pivots on mid-grey and survives the inversion unchanged. Brightness does
+/// not: lightening the paper means less paint.
+///
+/// Brightness is a lerp toward white (or black, going negative) rather than
+/// an offset, which is what keeps it bounded — an offset of the size real
+/// files carry (ウェット水彩 asks for 75) subtracts more than any texture
+/// has, flattening the grain to nothing. Scaling cannot do that.
+///
+/// Baking these in keeps the samplers untouched: the tiled ones run off a
+/// separable per-axis lattice, so anything that changed what a texel means
+/// at sample time would cost every textured brush its fast path.
+BrushTipMask brushTipMaskWithLevels(
+  BrushTipMask mask, {
+  bool invert = false,
+  double brightness = 0.0,
+  double contrast = 0.0,
+}) {
+  if (!invert && brightness == 0.0 && contrast == 0.0) {
+    return mask;
+  }
+  final scale = 1.0 + contrast.clamp(-1.0, 1.0);
+  final shift = brightness.clamp(-1.0, 1.0);
+  final adjusted = Uint8List(mask.alpha.length);
+  for (var index = 0; index < mask.alpha.length; index += 1) {
+    var coverage = mask.alpha[index] / 255.0;
+    if (invert) {
+      coverage = 1.0 - coverage;
+    }
+    coverage = (coverage - 0.5) * scale + 0.5;
+    coverage = shift >= 0.0
+        ? coverage * (1.0 - shift)
+        : 1.0 - (1.0 - coverage) * (1.0 + shift);
+    adjusted[index] = (coverage * 255.0).round().clamp(0, 255);
+  }
+  return BrushTipMask(id: mask.id, size: mask.size, alpha: adjusted);
+}
+
+
 /// A sampled (bitmap) brush tip: a square grayscale alpha mask.
 ///
 /// This is the engine primitive Photoshop ABR "sampled brush" tips map onto:

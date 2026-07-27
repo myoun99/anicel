@@ -166,13 +166,13 @@ PsPattern? _readPatternRecord(AbrByteReader record) {
 ///
 /// Coverage reads the SAME way the shared tip codec reads an opaque image —
 /// dark means paint — so a Photoshop paper and a Clip Studio one behave
-/// alike. [invert] is the descriptor's `InvT` switch. Patterns larger than
+/// alike. Inverting, brightening and contrast are `brushTipMaskWithLevels`'
+/// job, shared with the Clip Studio importer. Patterns larger than
 /// [maxBrushTipMaskSide] are box-downscaled; paper tiles at that size, and a
 /// 2048px pattern would otherwise cost megabytes in every saved preset.
 BrushTipMask brushTipMaskFromPattern(
   PsPattern pattern, {
   required String id,
-  bool invert = false,
 }) {
   final side = pattern.width > pattern.height ? pattern.width : pattern.height;
   final scale = side > maxBrushTipMaskSide ? side / maxBrushTipMaskSide : 1.0;
@@ -209,7 +209,7 @@ BrushTipMask brushTipMaskFromPattern(
         continue;
       }
       final mean = total ~/ count;
-      alpha[y * maskSide + x] = invert ? mean : 255 - mean;
+      alpha[y * maskSide + x] = 255 - mean;
     }
   }
   return BrushTipMask(id: id, size: maskSide, alpha: alpha);
