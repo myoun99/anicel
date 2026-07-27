@@ -15,9 +15,11 @@ import 'package:sqlite3/sqlite3.dart';
 /// and `MaterialFile` rows whose FileData embeds PNGs.
 void main() {
   late Directory tempDirectory;
+  var fixtureIndex = 0;
 
   setUp(() async {
     tempDirectory = await Directory.systemTemp.createTemp('sut_decoder_test');
+    fixtureIndex = 0;
   });
 
   tearDown(() async {
@@ -114,7 +116,10 @@ void main() {
     int mixAlpha = 50,
     int mixColorExtension = 10,
   }) async {
-    final path = '${tempDirectory.path}/fixture.sut';
+    // Unique per call: a test that builds several fixtures would otherwise
+    // reopen the first one and fail on its existing tables.
+    fixtureIndex += 1;
+    final path = '${tempDirectory.path}/fixture$fixtureIndex.sut';
     final database = sqlite3.open(path);
     database.execute('''
       CREATE TABLE Node(_PW_ID INTEGER PRIMARY KEY, NodeUuid BLOB,
@@ -525,10 +530,49 @@ void main() {
     expect(result.presets.first.settings.lockedBlendMode, isNull);
   });
 
-  test('an unrecognised composite mode warns instead of guessing', () async {
+  test('the composite mode index runs the whole 合成モード menu', () async {
+    // `CompositeMode` is the index of Clip Studio's brush blend menu, which
+    // is what puts 乗算 at 2 — the value real files carry.
+    const expected = <int, BrushBlendMode>{
+      1: BrushBlendMode.darken,
+      2: BrushBlendMode.multiply,
+      3: BrushBlendMode.colorBurn,
+      7: BrushBlendMode.lighten,
+      8: BrushBlendMode.screen,
+      9: BrushBlendMode.colorDodge,
+      12: BrushBlendMode.add,
+      14: BrushBlendMode.overlay,
+      15: BrushBlendMode.softLight,
+      16: BrushBlendMode.hardLight,
+      17: BrushBlendMode.difference,
+      18: BrushBlendMode.erase,
+      19: BrushBlendMode.behind,
+      27: BrushBlendMode.exclusion,
+    };
+    for (final entry in expected.entries) {
+      final path = await buildFixture(
+        tipPng: await blackPng(4, 4),
+        compositeMode: entry.key,
+      );
+      final result = await decodeSutBrushFile(
+        filePath: path,
+        sourceName: 'fixture',
+      );
+      expect(
+        result.presets.first.settings.lockedBlendMode,
+        entry.value,
+        reason: 'menu index ${entry.key}',
+      );
+      expect(result.warnings, isEmpty, reason: 'menu index ${entry.key}');
+    }
+  });
+
+  test('a mode with no kernel yet warns by NAME, not by number', () async {
+    // 除算 is a real menu entry this engine cannot composite. Saying so by
+    // name is what tells you which kernel a brush would need.
     final path = await buildFixture(
       tipPng: await blackPng(4, 4),
-      compositeMode: 37,
+      compositeMode: 30,
     );
     final result = await decodeSutBrushFile(
       filePath: path,
@@ -536,10 +580,7 @@ void main() {
     );
 
     expect(result.presets.first.settings.lockedBlendMode, isNull);
-    expect(
-      result.warnings.any((w) => w.contains('blend mode 37')),
-      isTrue,
-    );
+    expect(result.warnings.any((w) => w.contains('除算')), isTrue);
   });
 
   test('ground-colour mixing imports behind its gate', () async {

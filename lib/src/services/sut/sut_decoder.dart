@@ -361,13 +361,18 @@ BrushSettings _settingsFromVariant(
 
 /// The blend a Clip Studio sub tool pins, or null to leave the hand alone.
 ///
-/// Only a NON-normal mode locks. That is the same rule the Photoshop side
-/// uses, and it is what keeps a preset from moving the blend under you for
-/// no reason: a brush that simply never left the default has nothing to say.
+/// `CompositeMode` is the INDEX of Clip Studio's 合成モード menu, read off
+/// the brush menu itself. Two entries had already been pinned by real files
+/// — 0 通常 across nine brushes, 2 乗算 on ウェット水彩 — and the menu's order
+/// puts 乗算 third, which is what confirmed the encoding rather than a
+/// coincidence of two numbers.
 ///
-/// Real files pin two of these outright — 0 is 通常 on nine brushes and 2 is
-/// 乗算 on ウェット水彩, both confirmed against Clip Studio's own panel. The
-/// rest of the enum has no witness yet, so it warns instead of guessing.
+/// Note the LAYER menu is a different, shorter list: it has no 消去, 背景,
+/// 透明度置換 or the (黒)/(白) burn and dodge variants, so its indices do not
+/// line up. This table is the brush menu's.
+///
+/// Only a non-normal mode locks — a brush that never left the default has
+/// nothing to say, so the hand setting keeps it.
 BrushBlendMode? _blendLockOf(
   Object? value, {
   required String brushName,
@@ -375,17 +380,61 @@ BrushBlendMode? _blendLockOf(
 }) {
   final mode = _intOf(value);
   if (mode == null || mode == 0) {
-    return null;
+    return null; // 通常
   }
-  if (mode == 2) {
-    return BrushBlendMode.multiply;
+  final mapped = switch (mode) {
+    1 => BrushBlendMode.darken, // 比較(暗)
+    2 => BrushBlendMode.multiply, // 乗算
+    3 => BrushBlendMode.colorBurn, // 焼き込みカラー
+    7 => BrushBlendMode.lighten, // 比較(明)
+    8 => BrushBlendMode.screen, // スクリーン
+    9 => BrushBlendMode.colorDodge, // 覆い焼きカラー
+    12 => BrushBlendMode.add, // 加算
+    14 => BrushBlendMode.overlay, // オーバーレイ
+    15 => BrushBlendMode.softLight, // ソフトライト
+    16 => BrushBlendMode.hardLight, // ハードライト
+    17 => BrushBlendMode.difference, // 差の絶対値
+    18 => BrushBlendMode.erase, // 消去
+    19 => BrushBlendMode.behind, // 背景
+    27 => BrushBlendMode.exclusion, // 除外
+    _ => null,
+  };
+  if (mapped != null) {
+    return mapped;
   }
+  // The rest of the menu exists, it just has no kernel on this engine yet.
+  // Naming it beats a bare number: it says what a brush would need.
   warnings.add(
-    'Brush "$brushName": blend mode $mode is not recognised; '
-    'imported without a blend lock.',
+    'Brush "$brushName": blend mode ${_clipStudioBlendName(mode)} has no '
+    'equivalent yet; imported without a blend lock.',
   );
   return null;
 }
+
+/// The 合成モード menu entry at [index], for warnings.
+String _clipStudioBlendName(int index) => switch (index) {
+  4 => '焼き込み(リニア)',
+  5 => '焼き込み(黒)',
+  6 => '減算',
+  10 => '覆い焼き(発光)',
+  11 => '覆い焼き(白)',
+  13 => '加算(発光)',
+  20 => '透明度置換',
+  21 => '比較(濃度)',
+  22 => '消去(比較)',
+  23 => 'ビビッドライト',
+  24 => 'リニアライト',
+  25 => 'ピンライト',
+  26 => 'ハードミックス',
+  28 => 'カラー比較(暗)',
+  29 => 'カラー比較(明)',
+  30 => '除算',
+  31 => '色相',
+  32 => '彩度',
+  33 => 'カラー',
+  34 => '輝度',
+  _ => '#$index',
+};
 
 /// Reads a -100..100 percentage column as a -1..1 ratio, 0 neutral.
 ///
