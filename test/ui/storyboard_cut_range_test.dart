@@ -71,7 +71,8 @@ void main() {
     ]);
   });
 
-  test('a span that only crosses a gap selects nothing', () {
+  test('a span that only crosses a gap still SELECTS — the cut row is a '
+      'frame-block row, and empty cells select on every one of them', () {
     final session = sessionWithGap();
     final axis = session.trackFrameAxis();
     final first = axis.entryFor(const CutId('cut-1'))!;
@@ -82,10 +83,12 @@ void main() {
       headGlobalFrame: second.startFrame - 1,
     );
 
+    final selection = session.trackFrameRangeSelection.value!;
+    expect(selection.startFrame, first.endFrame);
+    expect(selection.endFrameExclusive, second.startFrame);
+    // It covers no CUTS, so the verbs that act on cuts find nothing — the
+    // ordinary meaning of an empty selection.
     expect(session.storyboardSelectedCutIds, isEmpty);
-    // And no RANGE either: an empty range parked over the gap would still
-    // read as "inside the selection" and swallow the next press there.
-    expect(session.trackFrameRangeSelection.value, isNull);
   });
 
   test('a single frame inside a cut takes that whole cut', () {
