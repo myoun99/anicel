@@ -227,18 +227,15 @@ BrushSettings _settingsFromVariant(
   // BB-3: effectors map to pressure CURVES — the CSP minimum value is the
   // size curve's left endpoint. Opacity and flow effectors now import as
   // their own channels (they used to be OR-merged into one opacity bool).
-  final sizePressureCurve = _effectorUsesPressure(variant['BrushSizeEffector'])
-      ? BrushPressureCurve.linearFrom(
-          _effectorMinimumRatio(variant['BrushSizeEffector']),
-        )
-      : null;
-  final opacityPressureCurve =
-      _effectorUsesPressure(variant['BrushOpacityEffector'])
-      ? BrushPressureCurve.identity()
-      : null;
-  final flowPressureCurve = _effectorUsesPressure(variant['BrushFlowEffector'])
-      ? BrushPressureCurve.identity()
-      : null;
+  final sizePressureCurve = _effectorPressureCurve(
+    variant['BrushSizeEffector'],
+  );
+  final opacityPressureCurve = _effectorPressureCurve(
+    variant['BrushOpacityEffector'],
+  );
+  final flowPressureCurve = _effectorPressureCurve(
+    variant['BrushFlowEffector'],
+  );
 
   // Random input source (flag 0x80) drives the jitters. The engine shakes a
   // value DOWNWARD from its full setting (`v *= 1 - jitter * random`), which
@@ -407,6 +404,97 @@ bool _usesRandom(int? flags) => flags != null && (flags & 0x80) != 0;
 bool _effectorUsesPressure(Object? effector) {
   final flags = _effectorFlags(effector);
   return flags != null && (flags & 0x10) != 0;
+}
+
+/// The pen-pressure response curve an effector carries, or `null` when it
+/// does not answer to pressure.
+///
+/// Clip Studio stores the 筆압설정 graph in the effector's tail, and the
+/// engine's curve is the same shape of object — control points read by a
+/// monotone spline — so the graph imports as itself instead of being
+/// flattened to a line.
+///
+/// Layout: a `12, <point count>, 16, 0, 0, 0, 0` marker, then `count - 1`
+/// (x, y) float64 pairs; the origin (0, 0) is implied rather than stored.
+/// One block per input source, in ascending flag-bit order, so the pressure
+/// curve is the FIRST block whenever pressure (0x10) is set — it is the
+/// lowest source bit there is.
+///
+/// The 최소치 slider is a SEPARATE control: the stored curve spans the full
+/// 0..1 output and the minimum lifts its floor, which is why a brush that
+/// never touched the graph still lands on exactly the straight
+/// `min + (1 - min) * p` line this importer used to assume for everyone.
+BrushPressureCurve? _effectorPressureCurve(Object? effector) {
+  if (!_effectorUsesPressure(effector)) {
+    return null;
+  }
+  final minimum = _effectorMinimumRatio(effector);
+  final stored = effector is Uint8List ? _effectorCurvePoints(effector) : null;
+  if (stored == null || stored.isEmpty) {
+    return BrushPressureCurve.linearFrom(minimum);
+  }
+  final points = <BrushCurvePoint>[BrushCurvePoint(0.0, minimum)];
+  for (final point in stored) {
+    // The engine wants strictly increasing x inside the unit square; Clip
+    // Studio pads unused slots by repeating the last point.
+    if (point.x <= points.last.x || point.x > 1.0) {
+      continue;
+    }
+    points.add(
+      BrushCurvePoint(point.x, (minimum + (1.0 - minimum) * point.y).clamp(0.0, 1.0).toDouble()),
+    );
+  }
+  if (points.last.x < 1.0) {
+    points.add(const BrushCurvePoint(1.0, 1.0));
+  }
+  if (points.length < 2) {
+    return BrushPressureCurve.linearFrom(minimum);
+  }
+  try {
+    return BrushPressureCurve(points);
+  } on ArgumentError {
+    // Never fail an import over a curve; the straight line is the honest
+    // fallback the file already implies through its minimum.
+    return BrushPressureCurve.linearFrom(minimum);
+  }
+}
+
+/// The first curve block's stored points, origin excluded.
+List<BrushCurvePoint>? _effectorCurvePoints(Uint8List blob) {
+  final data = ByteData.sublistView(blob);
+  final intCount = blob.length ~/ 4;
+  for (var i = 0; i + 7 <= intCount; i += 1) {
+    if (data.getInt32(i * 4) != 12 || data.getInt32((i + 2) * 4) != 16) {
+      continue;
+    }
+    var padded = true;
+    for (var k = 3; k < 7; k += 1) {
+      padded &= data.getInt32((i + k) * 4) == 0;
+    }
+    if (!padded) {
+      continue;
+    }
+    final count = data.getInt32((i + 1) * 4);
+    if (count < 2 || count > 64) {
+      return null;
+    }
+    final start = (i + 7) * 4;
+    final points = <BrushCurvePoint>[];
+    for (var k = 0; k < count - 1; k += 1) {
+      final offset = start + k * 16;
+      if (offset + 16 > blob.length) {
+        break;
+      }
+      final x = data.getFloat64(offset);
+      final y = data.getFloat64(offset + 8);
+      if (!x.isFinite || !y.isFinite || x < 0.0 || y < 0.0) {
+        break;
+      }
+      points.add(BrushCurvePoint(x, y.clamp(0.0, 1.0).toDouble()));
+    }
+    return points;
+  }
+  return null;
 }
 
 /// Jitter amplitude for an effector driven by the random input source.
