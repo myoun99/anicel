@@ -271,7 +271,7 @@ void main() {
       expect(session.frameRangeSelection.value, isNull);
     });
 
-    test('a slide BULLDOZES its neighbour rather than passing it — the '
+    test('a slide stops at CONTACT rather than pushing its neighbour — the '
         'timeline rule, on the track axis', () {
       final session = sessionFor();
       session.updateTrackSeRangeSelectionByFrame(
@@ -281,12 +281,32 @@ void main() {
       );
 
       session.beginTrackRangeMoveDrag(_seLayerId);
-      // +7 drives [2,5) onto [9,12): the group never passes a neighbour,
-      // so the sound at 9 is shoved to 12 instead of being landed on.
+      // +3 keeps [2,5) on its own side of the neighbour's midpoint, so it
+      // re-times inside its free space and the sound at 9 holds still.
+      session.updateFrameRangeMoveDrag(frameDelta: 3);
+      session.endFrameRangeMoveDrag();
+
+      expect(seLayerOf(session).timeline.keys, [5, 9]);
+      expect(seLayerOf(session).timeline[5]!.frameId, const FrameId('se-one'));
+    });
+
+    test('reaching past the neighbour\'s midpoint REORDERS the sounds', () {
+      final session = sessionFor();
+      session.updateTrackSeRangeSelectionByFrame(
+        layerId: _seLayerId,
+        anchorGlobalFrame: 3,
+        headGlobalFrame: 3,
+      );
+
+      session.beginTrackRangeMoveDrag(_seLayerId);
+      // +7 drives [2,5) level with [9,12)'s midpoint: the two swap places,
+      // each carrying the lead-in it owns, so the row's total span holds.
       session.updateFrameRangeMoveDrag(frameDelta: 7);
       session.endFrameRangeMoveDrag();
 
-      expect(seLayerOf(session).timeline.keys, [9, 12]);
+      expect(seLayerOf(session).timeline.keys, [4, 9]);
+      expect(seLayerOf(session).timeline[4]!.frameId, const FrameId('se-two'));
+      expect(seLayerOf(session).timeline[9]!.frameId, const FrameId('se-one'));
     });
 
     test('lands on a SIBLING S row: the timeline row-change grammar, on '

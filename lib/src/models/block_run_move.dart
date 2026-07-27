@@ -1,0 +1,188 @@
+/// The ONE rule a block-run drag follows, on either axis.
+///
+/// A drag that stays in its own free space RE-TIMES: the run's leading gap
+/// grows or shrinks and the blocks around it hold still. A drag that
+/// reaches into a neighbour REORDERS: the sequence permutes and every gap
+/// stays with the block that owns it, so the run carries its own length and
+/// only the boundaries between blocks move (the design's ㉠).
+///
+/// The two are outcomes of ONE rule rather than two modes: the run's rank
+/// among the blocks it is not part of, measured against their ORIGINAL
+/// midpoints. Same rank = re-time, different rank = reorder. Measuring
+/// against the original positions is what makes the rule stable — a rank
+/// read off previewed positions would chase itself, since re-timing moves
+/// the very midpoints the next step compares to.
+///
+/// This started on the cut axis and the frame axis kept BULLDOZING — a
+/// slide that shoved its neighbours along. They are the same motion on two
+/// axes, so the rule lives here once, and the axes differ only in what a
+/// slot is made of and what a landing commits to.
+library;
+
+/// One block as the move planner sees it: the empty space in front of it,
+/// and its own length.
+///
+/// A cut's is its leading gap and its duration; a drawing block's is the
+/// distance from the previous block's end (frame 0 for the first) and its
+/// exposure length. Every block carrying its own leading space is what
+/// lets "the commas never change" be one sentence on both axes.
+typedef BlockMoveSlot = ({int leadingGap, int length});
+
+/// Where every slot sits after the move.
+class BlockRunMoveLayout {
+  BlockRunMoveLayout({
+    required List<BlockMoveSlot> slots,
+    required this.order,
+    required this.leadingGaps,
+  }) : assert(
+         order.length == leadingGaps.length,
+         'Every slot in the new order needs its leading gap.',
+       ),
+       starts = _startsFor(slots, order, leadingGaps);
+
+  /// The slots' ORIGINAL indices, in the order the release would leave.
+  final List<int> order;
+
+  /// Parallel to [order]: each slot's leading gap after the move. A reorder
+  /// changes none of them — only the sequence they are read in.
+  final List<int> leadingGaps;
+
+  /// Parallel to [order]: the frame each slot starts on.
+  final List<int> starts;
+
+  /// Whether the sequence changed rather than only the timing.
+  bool get isReorder {
+    for (var position = 0; position < order.length; position += 1) {
+      if (order[position] != position) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  /// Where the slot originally at [slotIndex] now starts.
+  int startOf(int slotIndex) => starts[order.indexOf(slotIndex)];
+
+  static List<int> _startsFor(
+    List<BlockMoveSlot> slots,
+    List<int> order,
+    List<int> leadingGaps,
+  ) {
+    final starts = <int>[];
+    var cursor = 0;
+    for (var position = 0; position < order.length; position += 1) {
+      cursor += leadingGaps[position];
+      starts.add(cursor);
+      cursor += slots[order[position]].length;
+    }
+    return starts;
+  }
+}
+
+/// Plans a move of `slots[runStart..runEnd]` (inclusive, contiguous) by
+/// [frameDelta] frames.
+///
+/// The run is clamped into the free space of whatever rank it lands at, so
+/// a slide never overlaps a neighbour and never pushes one: running out of
+/// room means the run stops at contact, and reaching past the neighbour's
+/// midpoint means the order changes instead. Pushing the followers along
+/// was the old shove — that behaviour belongs to the push/pull buttons,
+/// which take a scope, not to a drag.
+///
+/// [axisEndExclusive] is where the axis stops, for the axes that have an
+/// end. The LAST slot is otherwise unbounded on the right — the cut axis
+/// and an ordinary drawing row both want that, since a cut may run off the
+/// end of the movie and a block may sit past the end of its cut. A row that
+/// lives INSIDE something (the storyboard's, which tiles its cut) passes
+/// that thing's end, and then a gapless row is rigid in both directions:
+/// no free space anywhere, so every move it allows is a reorder.
+BlockRunMoveLayout planBlockRunMove({
+  required List<BlockMoveSlot> slots,
+  required int runStart,
+  required int runEnd,
+  required int frameDelta,
+  int? axisEndExclusive,
+}) {
+  final starts = <int>[];
+  var cursor = 0;
+  for (final slot in slots) {
+    cursor += slot.leadingGap;
+    starts.add(cursor);
+    cursor += slot.length;
+  }
+
+  final runFrom = starts[runStart];
+  final runTo = starts[runEnd] + slots[runEnd].length;
+  final runLength = runTo - runFrom;
+  final wanted = runFrom + frameDelta;
+
+  // The blocks that are NOT moving, at the positions they hold throughout
+  // the drag, plus the run's original rank among them.
+  final rest = <({int index, int start, int endExclusive})>[];
+  for (var index = 0; index < slots.length; index += 1) {
+    if (index >= runStart && index <= runEnd) {
+      continue;
+    }
+    rest.add((
+      index: index,
+      start: starts[index],
+      endExclusive: starts[index] + slots[index].length,
+    ));
+  }
+  // The run is contiguous, so the blocks before it in the list are exactly
+  // the ones before it in rank.
+  final originalRank = runStart;
+
+  // Midpoint against midpoint — the only comparison that reads the same
+  // dragging left and right. Comparing an EDGE to a midpoint would make
+  // one direction flip a whole run-length earlier than the other.
+  //
+  // Doubled, so an odd-length block's midpoint is exact: truncating it
+  // would shift the flip point by a frame for odd lengths only.
+  final wantedMidpointX2 = 2 * wanted + runLength;
+  var rank = 0;
+  for (final other in rest) {
+    if (other.start + other.endExclusive <= wantedMidpointX2) {
+      rank += 1;
+    }
+  }
+
+  if (rank != originalRank) {
+    final moving = [for (var i = runStart; i <= runEnd; i += 1) i];
+    final others = [for (final other in rest) other.index];
+    final order = <int>[...others.take(rank), ...moving, ...others.skip(rank)];
+    // Every gap travels with the block that owns it: the sequence changed
+    // and the timing did not, so the total span is preserved exactly.
+    return BlockRunMoveLayout(
+      slots: slots,
+      order: order,
+      leadingGaps: [for (final index in order) slots[index].leadingGap],
+    );
+  }
+
+  // Same rank: re-time inside the free space between the neighbours — or,
+  // past the last of them, up to the axis's own end when it has one.
+  final floor = rank == 0 ? 0 : rest[rank - 1].endExclusive;
+  final ceiling = rank == rest.length
+      ? (axisEndExclusive == null ? null : axisEndExclusive - runLength)
+      : rest[rank].start - runLength;
+  var landed = wanted < floor ? floor : wanted;
+  if (ceiling != null && landed > ceiling) {
+    landed = ceiling < floor ? floor : ceiling;
+  }
+
+  final gaps = [for (final slot in slots) slot.leadingGap];
+  if (landed != runFrom) {
+    gaps[runStart] = landed - floor;
+    // The follower absorbs the difference so everything past the run holds
+    // still — the run took its own space with it, not its neighbours'.
+    if (runEnd + 1 < slots.length) {
+      gaps[runEnd + 1] = slots[runEnd + 1].leadingGap + (runFrom - landed);
+    }
+  }
+  return BlockRunMoveLayout(
+    slots: slots,
+    order: [for (var index = 0; index < slots.length; index += 1) index],
+    leadingGaps: gaps,
+  );
+}

@@ -187,6 +187,43 @@ void main() {
     expect(panel.stripSelect!.selection.value, isNull);
   });
 
+  testWidgets('a drag that starts INSIDE the selection slides the panels — '
+      'and on a row that tiles its cut, sliding means reordering', (
+    tester,
+  ) async {
+    await _openStoryboard(tester);
+    // Take cut 1's first panel [0,5), then drag from inside it past the
+    // midpoint of the second.
+    await _drag(tester, _stripPoint(tester, 1), _stripPoint(tester, 2));
+    expect(
+      tester
+          .widget<StoryboardPanel>(find.byType(StoryboardPanel))
+          .stripSelect!
+          .selection
+          .value!
+          .endIndexExclusive,
+      5,
+    );
+
+    await _drag(tester, _stripPoint(tester, 2), _stripPoint(tester, 8));
+
+    final layer = tester
+        .widget<StoryboardPanel>(find.byType(StoryboardPanel))
+        .project
+        .tracks
+        .single
+        .cuts
+        .first
+        .layers
+        .firstWhere((layer) => layer.id == const LayerId('cut-1-sb'));
+    // The two panels swapped and the row still tiles [0,10) exactly: with
+    // no free space to re-time into, the only move a gapless row has is a
+    // reorder, which is why its panels can never leave the cut.
+    expect(layer.timeline.keys, [0, 5]);
+    expect(layer.timeline[0]!.frameId, const FrameId('cut-1-5'));
+    expect(layer.timeline[5]!.frameId, const FrameId('cut-1-0'));
+  });
+
   testWidgets('the two selections stay mutually exclusive: taking one on '
       'the strip drops the cut run', (tester) async {
     await _openStoryboard(tester);

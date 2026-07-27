@@ -216,7 +216,7 @@ class StoryboardSeSelectCallbacks {
 
   /// Sliding the selected sounds — a drag that STARTS inside the
   /// selection, the timeline's grammar. Null keeps the row select-only.
-  final StoryboardSeMoveCallbacks? move;
+  final StoryboardRangeMoveCallbacks? move;
 }
 
 /// Range selection on the cut block's STRIP — the cut's own panels.
@@ -230,6 +230,7 @@ class StoryboardStripSelectCallbacks {
     required this.selection,
     required this.onDrag,
     required this.onClear,
+    this.move,
   });
 
   /// The live cut-local selection (the session's own), so the strip can
@@ -244,13 +245,25 @@ class StoryboardStripSelectCallbacks {
   })
   onDrag;
   final VoidCallback onClear;
+
+  /// Sliding the selected PANELS — a drag that starts inside the
+  /// selection. On a row that tiles its cut there is no free space to
+  /// re-time into, so every move this allows is a reorder and the panels
+  /// can never leave the cut between them. Null keeps the strip
+  /// select-only.
+  final StoryboardRangeMoveCallbacks? move;
 }
 
-/// The S rows' half of the shared range gesture's MOVE mode: the selected
-/// sounds slide along the track's global axis, previewing live and
-/// committing once on release.
-class StoryboardSeMoveCallbacks {
-  const StoryboardSeMoveCallbacks({
+/// A row's half of the shared range gesture's MOVE mode: the selected
+/// blocks slide, previewing live and committing once on release.
+///
+/// One shape for every row of this panel — the S rows slide sounds along
+/// the track's global axis, the strip slides a cut's panels along the cut's
+/// own — because the gesture and the session's move machine are the same
+/// for both. What differs is which begin the mount hands over, and that is
+/// the mount's to know.
+class StoryboardRangeMoveCallbacks {
+  const StoryboardRangeMoveCallbacks({
     required this.onBegin,
     required this.onUpdate,
     required this.onEnd,
@@ -259,8 +272,9 @@ class StoryboardSeMoveCallbacks {
 
   final bool Function(LayerId layerId) onBegin;
 
-  /// [targetLayerId] is the S row the pointer has reached — null means it
-  /// never left the row it started on.
+  /// [targetLayerId] is the sibling row the pointer has reached — null
+  /// means it never left the row it started on, which is every step of a
+  /// strip drag (a cut has exactly one storyboard row to be on).
   final void Function(int frameDelta, LayerId? targetLayerId) onUpdate;
   final VoidCallback onEnd;
   final VoidCallback onCancel;
@@ -3826,11 +3840,21 @@ class _StoryboardTrackRow extends StatelessWidget {
         );
       },
       onTapClear: (_) => stripSelect.onClear(),
-      // Sliding the panels is the next round: the strip selects here.
-      onMoveBegin: (_, _) => false,
-      onMoveUpdate: (_, _) {},
-      onMoveEnd: () {},
-      onMoveCancel: () {},
+      // Sliding the panels: the same move the timeline's rows do, on the
+      // cut's own axis. The pressed frame says which cut — and therefore
+      // which storyboard row — the drag belongs to, exactly as the select
+      // half reads it.
+      onMoveBegin: (_, frame) {
+        final strip = stripAt(frame);
+        return strip != null &&
+            (stripSelect.move?.onBegin(strip.layer.id) ?? false);
+      },
+      // No target row is ever reported: a cut has exactly one storyboard
+      // row, so there is nowhere sideways to land.
+      onMoveUpdate: (frameDelta, _) =>
+          stripSelect.move?.onUpdate(frameDelta, null),
+      onMoveEnd: () => stripSelect.move?.onEnd(),
+      onMoveCancel: () => stripSelect.move?.onCancel(),
     );
   }
 

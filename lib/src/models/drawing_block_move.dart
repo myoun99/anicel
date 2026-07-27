@@ -1,11 +1,24 @@
 import 'dart:collection';
 import 'dart:math' as math;
 
+import 'block_run_move.dart';
 import 'frame.dart';
 import 'frame_id.dart';
 import 'layer.dart';
+import 'layer_kind.dart';
 import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
+
+/// Where the axis stops for [layer]'s blocks, given the cut is
+/// [cutFrameCount] frames long — or null when nothing stops them.
+///
+/// A row that TILES its cut lives inside it (the storyboard's), so its last
+/// block may not slide past the cut's end: coverage would stop making a
+/// panel for it and the drawing would drop off the conte while staying in
+/// the file. Every other row may sit past the end, which is data the cut
+/// simply does not show.
+int? _axisEndFor(Layer layer, int? cutFrameCount) =>
+    layerKindCoversWithoutGaps(layer.kind) ? cutFrameCount : null;
 
 /// The resolved result of a whole-block move drag (R10-④b): the affected
 /// layers with the block relocated. Same-layer slides carry only
@@ -41,15 +54,11 @@ class DrawingBlockMovePlan {
 /// by [frameDelta] frames onto [target] ([target] == [source] for a plain
 /// slide). Returns null when the move is impossible or a no-op:
 ///
-/// - blocks in the way get PUSHED in the direction of travel (R12-②):
-///   rightward (and pure cross-layer drops) push the blocks ahead to later
-///   frames, cascading; leftward pushes the blocks ahead toward frame 0,
-///   consuming the gaps between them, and the move CLAMPS when the chain
-///   hits the wall (cut-move precedent) — the block rests at the nearest
-///   spot the chain allows;
-/// - a landing (moved or pushed) whose start would overwrite a mark entry
-///   sharing that exact index is rejected (marks may sit INSIDE holds,
-///   never under a block start);
+/// - a SAME-LAYER slide follows the shared rank rule ([planBlockRunMove]):
+///   staying in its own free space re-times it, reaching past a
+///   neighbour's midpoint reorders instead. It never pushes anything;
+/// - a CROSS-LAYER drop pushes the blocks it lands among out of the way
+///   (R12-②), cascading, and clamps at the frame-0 wall on the way left;
 /// - cross-layer moves take the block's cel along, so a cel that other
 ///   timeline entries still reference (linked cels) stays put — the move
 ///   is rejected rather than splitting the link.
@@ -58,6 +67,7 @@ DrawingBlockMovePlan? planDrawingBlockMove({
   required Layer target,
   required int blockStartIndex,
   required int frameDelta,
+  int? cutFrameCount,
 }) {
   // Plan on ghost-free timelines: derived repeat/hold ghosts neither move
   // nor obstruct, and (sharing the moved cel's frameId) must never count
@@ -86,64 +96,65 @@ DrawingBlockMovePlan? planDrawingBlockMove({
   }
   final length = entry.length!;
 
+  // A same-layer slide is a run of one under the shared rule.
+  if (sameLayer) {
+    final blocks = drawingBlocks(sourceBase);
+    final runIndex = _indexOfBlockStarting(blocks, blockStartIndex);
+    final moved = _sameLayerRunMove(
+      blocks: blocks,
+      runStart: runIndex,
+      runEnd: runIndex,
+      frameDelta: frameDelta,
+      axisEndExclusive: _axisEndFor(source, cutFrameCount),
+    );
+    if (moved == null) {
+      return null;
+    }
+    return DrawingBlockMovePlan(
+      sourceAfter: source.copyWith(timeline: moved.timeline),
+      destinationStartIndex: moved.destinationStartIndex,
+    );
+  }
+
   // Cross-layer: the cel travels with the block. Linked cels (the same
   // frame exposed by another REAL entry) stay: rejecting keeps the link
   // intact.
+  final frameId = entry.frameId!;
   Frame? movedFrame;
-  if (!sameLayer) {
-    final frameId = entry.frameId!;
-    for (final candidate in sourceBase.entries) {
-      if (candidate.key != blockStartIndex &&
-          candidate.value.isDrawing &&
-          candidate.value.frameId == frameId) {
-        return null;
-      }
-    }
-    for (final frame in source.frames) {
-      if (frame.id == frameId) {
-        movedFrame = frame;
-        break;
-      }
-    }
-    if (movedFrame == null) {
+  for (final candidate in sourceBase.entries) {
+    if (candidate.key != blockStartIndex &&
+        candidate.value.isDrawing &&
+        candidate.value.frameId == frameId) {
       return null;
     }
   }
-
-  // Every other drawing block on the target timeline (the moved block's own
-  // entry is ignored when sliding within the source layer).
-  final others = [
-    for (final block in drawingBlocks(targetBase))
-      if (!(sameLayer && block.startIndex == blockStartIndex)) block,
-  ];
+  for (final frame in source.frames) {
+    if (frame.id == frameId) {
+      movedFrame = frame;
+      break;
+    }
+  }
+  if (movedFrame == null) {
+    return null;
+  }
 
   final resolved = _resolvePushedLanding(
-    others: others,
+    others: drawingBlocks(targetBase),
     requestedStart: blockStartIndex + frameDelta,
     movedLength: length,
     pushRight: frameDelta >= 0,
-    // Leftward moves clamp against the frame-0 wall; the moved block never
-    // ends up RIGHT of where it started on its own layer (a leftward drag
-    // must not teleport it forward).
-    leftwardCap: sameLayer ? blockStartIndex : math.max(0, blockStartIndex),
-    // Same-layer slides BULLDOZE (R12-B): the moved block may never pass
-    // a neighbour — everything in its path gets shoved along, order
-    // preserved. Cross-layer landings keep the plain overlap rules.
-    sameLayerStart: sameLayer ? blockStartIndex : null,
+    // Leftward drops clamp against the frame-0 wall, and never land RIGHT
+    // of where the block came from (a leftward drag must not teleport it
+    // forward).
+    leftwardCap: math.max(0, blockStartIndex),
   );
   if (resolved == null) {
     return null;
   }
   final (:destStart, :pushes) = resolved;
-  if (sameLayer && destStart == blockStartIndex && pushes.isEmpty) {
-    return null;
-  }
 
   SplayTreeMap<int, TimelineExposure> targetTimelineAfter() {
     final timeline = SplayTreeMap<int, TimelineExposure>.of(targetBase);
-    if (sameLayer) {
-      timeline.remove(blockStartIndex);
-    }
     for (final push in pushes) {
       timeline.remove(push.block.startIndex);
     }
@@ -154,14 +165,6 @@ DrawingBlockMovePlan? planDrawingBlockMove({
     return timeline;
   }
 
-  if (sameLayer) {
-    return DrawingBlockMovePlan(
-      sourceAfter: source.copyWith(timeline: targetTimelineAfter()),
-      destinationStartIndex: destStart,
-    );
-  }
-
-  final frameId = entry.frameId!;
   final sourceTimeline = SplayTreeMap<int, TimelineExposure>.of(sourceBase)
     ..remove(blockStartIndex);
   return DrawingBlockMovePlan(
@@ -175,7 +178,7 @@ DrawingBlockMovePlan? planDrawingBlockMove({
     targetBefore: target,
     targetAfter: target.copyWith(
       timeline: targetTimelineAfter(),
-      frames: [...target.frames, movedFrame!],
+      frames: [...target.frames, movedFrame],
     ),
     movedFrameIds: [frameId],
     destinationStartIndex: destStart,
@@ -189,9 +192,9 @@ DrawingBlockMovePlan? planDrawingBlockMove({
 /// the range always holds whole blocks.
 ///
 /// Same rules as [planDrawingBlockMove], applied group-wise:
-/// - same-layer slides bulldoze (the group never passes a neighbour);
-///   leftward clamps at frame 0;
-/// - any landing (moved or pushed) on a mark's exact index is rejected;
+/// - a same-layer slide follows the shared rank rule ([planBlockRunMove]):
+///   free space re-times, a neighbour's midpoint reorders, nothing is
+///   pushed;
 /// - cross-layer moves carry the moved cels; a cel referenced by an entry
 ///   OUTSIDE the moved set stays (rejected) to keep links intact — entries
 ///   linked WITHIN the range travel together sharing their cel.
@@ -205,6 +208,7 @@ DrawingBlockMovePlan? planDrawingRangeMove({
   required int rangeStartIndex,
   required int rangeEndIndexExclusive,
   required int frameDelta,
+  int? cutFrameCount,
 }) {
   if (rangeEndIndexExclusive <= rangeStartIndex) {
     return null;
@@ -252,68 +256,74 @@ DrawingBlockMovePlan? planDrawingRangeMove({
   final groupSpan = groupEndExclusive - groupStart;
   final movedStarts = {for (final block in moved) block.startIndex};
 
+  // A same-layer slide is the shared rank rule over the row's blocks. The
+  // moved ones are contiguous in that list (a partially covered block was
+  // rejected above), which is exactly the run the rule takes.
+  if (sameLayer) {
+    final blocks = drawingBlocks(sourceBase);
+    final runStart = _indexOfBlockStarting(blocks, groupStart);
+    final landed = _sameLayerRunMove(
+      blocks: blocks,
+      runStart: runStart,
+      runEnd: runStart + moved.length - 1,
+      frameDelta: frameDelta,
+      axisEndExclusive: _axisEndFor(source, cutFrameCount),
+    );
+    if (landed == null) {
+      return null;
+    }
+    return DrawingBlockMovePlan(
+      sourceAfter: source.copyWith(timeline: landed.timeline),
+      destinationStartIndex: landed.destinationStartIndex,
+    );
+  }
+
   // Cross-layer: the cels travel with the group. A cel referenced from
   // outside the moved set stays put (link preserved — move rejected).
   final movedFrames = <Frame>[];
   final movedFrameIds = <FrameId>[];
-  if (!sameLayer) {
-    final frameIds = <FrameId>{for (final block in moved) block.frameId};
-    // Read the ghost-FREE base: derived repeat/hold ghosts share the moved
-    // block's frameId but are not real links — counting them here voided
-    // every cross-row move of a repeat/hold-edge block (UI-R23 #5).
-    for (final candidate in sourceBase.entries) {
-      if (movedStarts.contains(candidate.key)) {
-        continue;
-      }
-      final entry = candidate.value;
-      if (entry.isDrawing && frameIds.contains(entry.frameId)) {
-        return null;
-      }
+  final frameIds = <FrameId>{for (final block in moved) block.frameId};
+  // Read the ghost-FREE base: derived repeat/hold ghosts share the moved
+  // block's frameId but are not real links — counting them here voided
+  // every cross-row move of a repeat/hold-edge block (UI-R23 #5).
+  for (final candidate in sourceBase.entries) {
+    if (movedStarts.contains(candidate.key)) {
+      continue;
     }
-    for (final frameId in frameIds) {
-      Frame? frame;
-      for (final candidate in source.frames) {
-        if (candidate.id == frameId) {
-          frame = candidate;
-          break;
-        }
-      }
-      if (frame == null) {
-        return null;
-      }
-      movedFrames.add(frame);
-      movedFrameIds.add(frameId);
+    final entry = candidate.value;
+    if (entry.isDrawing && frameIds.contains(entry.frameId)) {
+      return null;
     }
   }
-
-  final others = [
-    for (final block in drawingBlocks(targetBase))
-      if (!(sameLayer && movedStarts.contains(block.startIndex))) block,
-  ];
+  for (final frameId in frameIds) {
+    Frame? frame;
+    for (final candidate in source.frames) {
+      if (candidate.id == frameId) {
+        frame = candidate;
+        break;
+      }
+    }
+    if (frame == null) {
+      return null;
+    }
+    movedFrames.add(frame);
+    movedFrameIds.add(frameId);
+  }
 
   final resolved = _resolvePushedLanding(
-    others: others,
+    others: drawingBlocks(targetBase),
     requestedStart: groupStart + frameDelta,
     movedLength: groupSpan,
     pushRight: frameDelta >= 0,
-    leftwardCap: sameLayer ? groupStart : math.max(0, groupStart),
-    sameLayerStart: sameLayer ? groupStart : null,
+    leftwardCap: math.max(0, groupStart),
   );
   if (resolved == null) {
     return null;
   }
   final (:destStart, :pushes) = resolved;
-  if (sameLayer && destStart == groupStart && pushes.isEmpty) {
-    return null;
-  }
 
   SplayTreeMap<int, TimelineExposure> targetTimelineAfter() {
     final timeline = SplayTreeMap<int, TimelineExposure>.of(targetBase);
-    if (sameLayer) {
-      for (final start in movedStarts) {
-        timeline.remove(start);
-      }
-    }
     for (final push in pushes) {
       timeline.remove(push.block.startIndex);
     }
@@ -324,13 +334,6 @@ DrawingBlockMovePlan? planDrawingRangeMove({
       timeline[destStart + (block.startIndex - groupStart)] = block.entry;
     }
     return timeline;
-  }
-
-  if (sameLayer) {
-    return DrawingBlockMovePlan(
-      sourceAfter: source.copyWith(timeline: targetTimelineAfter()),
-      destinationStartIndex: destStart,
-    );
   }
 
   final movedFrameIdSet = {for (final id in movedFrameIds) id};
@@ -356,16 +359,69 @@ DrawingBlockMovePlan? planDrawingRangeMove({
   );
 }
 
+/// The index of the block starting at [startIndex] in [blocks].
+int _indexOfBlockStarting(List<TimelineDrawingBlock> blocks, int startIndex) {
+  for (var index = 0; index < blocks.length; index += 1) {
+    if (blocks[index].startIndex == startIndex) {
+      return index;
+    }
+  }
+  throw ArgumentError.value(
+    startIndex,
+    'startIndex',
+    'No drawing block starts there.',
+  );
+}
+
+/// A same-layer slide of `blocks[runStart..runEnd]`, under the shared rank
+/// rule. Null when the run does not move at all.
+///
+/// The row's blocks become slots — each carrying the empty space in front
+/// of it — so the whole timeline is REBUILT from the resulting layout
+/// rather than patched. That is what lets the reorder case exist: a
+/// permutation has no "how far did it shift" to patch with.
+({SplayTreeMap<int, TimelineExposure> timeline, int destinationStartIndex})?
+_sameLayerRunMove({
+  required List<TimelineDrawingBlock> blocks,
+  required int runStart,
+  required int runEnd,
+  required int frameDelta,
+  int? axisEndExclusive,
+}) {
+  final slots = <BlockMoveSlot>[];
+  var previousEnd = 0;
+  for (final block in blocks) {
+    slots.add((
+      leadingGap: block.startIndex - previousEnd,
+      length: block.length,
+    ));
+    previousEnd = block.endIndexExclusive;
+  }
+
+  final layout = planBlockRunMove(
+    slots: slots,
+    runStart: runStart,
+    runEnd: runEnd,
+    frameDelta: frameDelta,
+    axisEndExclusive: axisEndExclusive,
+  );
+  final destinationStartIndex = layout.startOf(runStart);
+  if (!layout.isReorder &&
+      destinationStartIndex == blocks[runStart].startIndex) {
+    return null;
+  }
+
+  final timeline = SplayTreeMap<int, TimelineExposure>();
+  for (var position = 0; position < layout.order.length; position += 1) {
+    timeline[layout.starts[position]] = blocks[layout.order[position]].entry;
+  }
+  return (timeline: timeline, destinationStartIndex: destinationStartIndex);
+}
+
 typedef _Push = ({TimelineDrawingBlock block, int newStart});
 
-/// Where the moved block lands and which blocks it shoves aside.
-///
-/// Same-layer slides ([sameLayerStart] non-null) BULLDOZE: the moved block
-/// never passes a neighbour — every block originally on its travel side
-/// that its span reaches (directly or through the chain) is shoved along,
-/// relative order preserved. Cross-layer landings ([sameLayerStart] null)
-/// keep the plain overlap rules: only blocks the landing actually touches
-/// move.
+/// Where a CROSS-LAYER drop lands and which of the target's blocks it
+/// shoves aside. Only blocks the landing actually touches move.
 ///
 /// Rightward ([pushRight]): the landing is exactly [requestedStart]; the
 /// shoved blocks shift to later frames, gaps between them absorbing first
@@ -383,20 +439,13 @@ typedef _Push = ({TimelineDrawingBlock block, int newStart});
   required int movedLength,
   required bool pushRight,
   required int leftwardCap,
-  required int? sameLayerStart,
 }) {
   if (pushRight) {
     final destStart = math.max(0, requestedStart);
     final pushes = <_Push>[];
     var frontier = destStart + movedLength;
     for (final block in others) {
-      // No-passing rule (same layer): every block originally BEHIND the
-      // moved one rides the frontier — a passed block would otherwise be
-      // left sitting before the landing. Cross-layer: touch-only.
-      final participates = sameLayerStart != null
-          ? block.startIndex > sameLayerStart
-          : block.endIndexExclusive > destStart;
-      if (!participates) {
+      if (block.endIndexExclusive <= destStart) {
         continue;
       }
       final newStart = math.max(block.startIndex, frontier);
@@ -417,14 +466,7 @@ typedef _Push = ({TimelineDrawingBlock block, int newStart});
     final pushes = <_Push>[];
     var frontier = destStart;
     for (final block in others.reversed) {
-      if (sameLayerStart != null) {
-        // No-passing rule (same layer): blocks originally AHEAD of the
-        // moved one never move on a leftward slide; everything originally
-        // before it may be bulldozed toward the wall.
-        if (block.startIndex > sameLayerStart) {
-          continue;
-        }
-      } else if (block.startIndex >= destStart + movedLength) {
+      if (block.startIndex >= destStart + movedLength) {
         continue;
       }
       final newStart = math.min(block.startIndex, frontier - block.length);
