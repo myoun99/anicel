@@ -63,7 +63,7 @@ void main() {
     );
     await tester.pump();
     final gesture = await tester.startGesture(
-      cutBlockCenter(tester, secondCut.id.value),
+      cutBlockBandCenter(tester, secondCut.id.value),
       kind: PointerDeviceKind.mouse,
     );
     await tester.pump();
