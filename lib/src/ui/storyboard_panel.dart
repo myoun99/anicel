@@ -58,7 +58,8 @@ import 'timeline/timeline_frame_geometry.dart'
     show TimelineFrameGeometry, TimelineFrameGeometryHandle;
 import 'timeline/timeline_frame_range_gesture.dart'
     show TimelineFrameRangeGestureLayer, TimelineRangeGestureCallbacks;
-import '../models/storyboard_coverage.dart' show storyboardCoverageCells;
+import '../models/storyboard_coverage.dart'
+    show StoryboardCoverageCell, storyboardCoverageCells;
 import '../models/timeline_frame_range.dart' show TimelineFrameRangeSelection;
 import '../models/timeline_row_address.dart'
     show LayerRowAddress, TimelineRowAddress, TrackRowAddress;
@@ -84,20 +85,32 @@ import 'timeline/timeline_se_row_visual.dart'
     show SePaperSpan, SeSpanVisual, timelineRowClipMarkerOverlays;
 import 'timeline/timeline_zoom_anchor_policy.dart';
 
-/// The trim-drag hooks the cut edge grips need, mirroring the timeline's
-/// comma-drag callbacks: wired to the session's
-/// begin/update/end/cancelCutEdgeDrag (live preview, ONE undo per drag).
-class StoryboardCutTrimCallbacks {
-  const StoryboardCutTrimCallbacks({
-    required this.onBegin,
+/// The drag hooks the STRIP's edges need, mirroring the timeline's
+/// comma-drag callbacks: live preview per step, ONE undo on release.
+///
+/// There is one shape of edge on this row, and where it sits decides what
+/// it re-times (design, user's rule 2026-07-25): the first panel's leading
+/// edge is the cut's START, the last panel's trailing edge is the cut's
+/// LENGTH, and every edge between two panels is a DIVISION. Hence two
+/// begins and one set of continuations — the grip that started decides
+/// which session verb the rest of the drag belongs to, and the mount that
+/// knows the geometry is the one that says so.
+class StoryboardStripEdgeCallbacks {
+  const StoryboardStripEdgeCallbacks({
+    required this.onCutEdgeBegin,
+    required this.onDivisionBegin,
     required this.onUpdate,
     required this.onEnd,
     required this.onCancel,
   });
 
-  /// Returns whether the drag may start (the first cut has no start grip
-  /// partner, deleted cuts refuse).
-  final bool Function(CutId cutId, TimelineBlockEdge edge) onBegin;
+  /// Trims the cut itself. Returns whether the drag may start (deleted
+  /// cuts refuse).
+  final bool Function(CutId cutId, TimelineBlockEdge edge) onCutEdgeBegin;
+
+  /// Moves the division keyed at [divisionIndex] (CUT-LOCAL) on [cutId]'s
+  /// storyboard row. Returns whether the drag may start.
+  final bool Function(CutId cutId, int divisionIndex) onDivisionBegin;
 
   /// Reports the cumulative whole-frame delta since drag start.
   final ValueChanged<int> onUpdate;
@@ -271,7 +284,7 @@ class StoryboardPanel extends StatefulWidget {
     this.selectedRow,
     this.onSelectLayer,
     this.onSelectTrack,
-    this.cutTrim,
+    this.stripEdges,
     this.cutMove,
     this.cutSelect,
     this.stripSelect,
@@ -390,10 +403,10 @@ class StoryboardPanel extends StatefulWidget {
   /// active cut. Null keeps V labels display-only.
   final ValueChanged<TrackId>? onSelectTrack;
 
-  /// Edge-grip trim hooks: the END grip changes a cut's duration (later
-  /// cuts ripple), the START grip rolls the boundary with the previous cut.
-  /// Null hides the grips.
-  final StoryboardCutTrimCallbacks? cutTrim;
+  /// Edge-grip hooks for the strip's panel edges: the outer two trim the
+  /// cut (start, length), the ones between move a division. Null hides the
+  /// grips.
+  final StoryboardStripEdgeCallbacks? stripEdges;
 
   /// Whole-block move hooks (R10-④): a horizontal drag on a block's body
   /// slides the cut (gap authoring + edge-style pushes). Null disables
@@ -1164,7 +1177,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           layoutEntries: entries,
           activeCutId: widget.activeCutId,
           onRowFramePress: widget.onRowFramePress,
-          cutTrim: widget.cutTrim,
+          stripEdges: widget.stripEdges,
           cutMove: widget.cutMove,
           cutSelect: widget.cutSelect,
           stripSelect: widget.stripSelect,
@@ -3630,13 +3643,29 @@ class _StoryboardEndLineHandleState extends State<_StoryboardEndLineHandle> {
   }
 }
 
+/// One panel of the strip as the edit chrome sees it: a global frame span,
+/// and what its two edges mean.
+typedef _StoryboardStripGrip = ({
+  CutId cutId,
+  int startFrame,
+  int endFrameExclusive,
+
+  /// Whether this is its cut's FIRST panel — the only one whose leading
+  /// edge carries a grip, and that grip is the cut's start trim.
+  bool isFirst,
+
+  /// The CUT-LOCAL key of the division this panel's trailing edge moves,
+  /// or null when that edge is the cut's own length instead.
+  int? endDivisionIndex,
+});
+
 class _StoryboardTrackRow extends StatelessWidget {
   const _StoryboardTrackRow({
     required this.track,
     required this.layoutEntries,
     required this.activeCutId,
     required this.onRowFramePress,
-    required this.cutTrim,
+    required this.stripEdges,
     required this.cutMove,
     required this.cutSelect,
     required this.stripSelect,
@@ -3657,7 +3686,7 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// cut-scoped rail controls stand down.
   final CutId? activeCutId;
   final StoryboardRowFramePress? onRowFramePress;
-  final StoryboardCutTrimCallbacks? cutTrim;
+  final StoryboardStripEdgeCallbacks? stripEdges;
   final StoryboardCutMoveCallbacks? cutMove;
   final StoryboardCutSelectCallbacks? cutSelect;
 
@@ -3699,6 +3728,54 @@ class _StoryboardTrackRow extends StatelessWidget {
     }
     return null;
   }
+
+  /// Each cut's panels, under the coverage rule — the strip's content AND
+  /// the row's grip material, resolved once for both. A cut with no
+  /// storyboard row still answers with ONE cell over the whole cut, so
+  /// neither consumer has an empty case to handle.
+  ///
+  /// Resolved here rather than in the painter: [storyboardLayerForCut]
+  /// throws when a cut somehow holds two storyboard layers, and a painter
+  /// that throws takes the whole frame down instead of the widget that
+  /// asked.
+  Map<CutId, List<StoryboardCoverageCell>> _cellsByCut() => {
+    for (final entry in layoutEntries)
+      entry.cutId: storyboardCoverageCells(
+        timeline: storyboardLayerForCut(entry.cut)?.timeline,
+        cutDuration: entry.duration,
+      ),
+  };
+
+  /// One entry per PANEL of the row, in track order — what the edit chrome
+  /// hangs its grips on.
+  ///
+  /// The cut has no edge grips of its own any more (design, user's rule
+  /// 2026-07-25): a cut edge is always ON the strip, so the first panel's
+  /// leading edge IS the cut's start and the last panel's trailing edge IS
+  /// its length. Each panel therefore carries exactly one edge — its END —
+  /// and only the first carries a start as well, which is what leaves ONE
+  /// grip per boundary instead of two facing each other across it.
+  ///
+  /// A cut with no storyboard row has a single panel spanning it, so it
+  /// grows exactly the two grips it had before: the new rule's degenerate
+  /// case IS the old behaviour, with no branch saying so.
+  List<_StoryboardStripGrip> _stripGrips(
+    Map<CutId, List<StoryboardCoverageCell>> cellsByCut,
+  ) => [
+    for (final entry in layoutEntries)
+      if (cellsByCut[entry.cutId] case final cells?)
+        for (var index = 0; index < cells.length; index += 1)
+          (
+            cutId: entry.cutId,
+            startFrame: entry.startFrame + cells[index].startIndex,
+            endFrameExclusive:
+                entry.startFrame + cells[index].endIndexExclusive,
+            isFirst: index == 0,
+            endDivisionIndex: index == cells.length - 1
+                ? null
+                : cells[index + 1].startIndex,
+          ),
+  ];
 
   /// The STRIP's half of the shared range gesture.
   ///
@@ -3832,6 +3909,13 @@ class _StoryboardTrackRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final timelineWidth = _timelineWidthFor(layoutEntries, timelineScale);
     final rangeGesture = _rangeGesture();
+    final cellsByCut = _cellsByCut();
+    final grips = _stripGrips(cellsByCut);
+    // Where the panels are drawn is where their gestures and their EDGES
+    // live — the picture and the pointer read one definition of the band.
+    final stripBand = StoryboardCutBlocksPainter.stripBandOf(
+      StoryboardPanel._trackLaneHeight,
+    );
 
     return KeyedSubtree(
       key: ValueKey<String>('storyboard-track-row-${track.id.value}'),
@@ -3863,18 +3947,8 @@ class _StoryboardTrackRow extends StatelessWidget {
                           entry.cutId: layer.name,
                     },
                     // The STRIP's content: the cut's panels, under the
-                    // coverage rule. A cut with no storyboard row still
-                    // answers — one cell over the whole cut — so the strip
-                    // has no empty case to draw.
-                    storyboardCellsByCut: {
-                      for (final entry in layoutEntries)
-                        entry.cutId: storyboardCoverageCells(
-                          timeline: storyboardLayerForCut(
-                            entry.cut,
-                          )?.timeline,
-                          cutDuration: entry.duration,
-                        ),
-                    },
+                    // coverage rule — the same reading the grips hang on.
+                    storyboardCellsByCut: cellsByCut,
                     geometry: frameGeometry,
                     crossAxisExtent: StoryboardPanel._trackLaneHeight,
                     minBlockWidth: timelineScale.minBlockWidth,
@@ -3938,10 +4012,8 @@ class _StoryboardTrackRow extends StatelessWidget {
                 ),
                 left: 0,
                 right: 0,
-                top: StoryboardCutBlocksPainter.bandHeight,
-                height:
-                    StoryboardPanel._trackLaneHeight -
-                    StoryboardCutBlocksPainter.bandHeight * 2,
+                top: stripBand.top,
+                height: stripBand.height,
                 // The gesture layer fills its Stack, so it needs one of its
                 // own here — a second Positioned around it would be two
                 // ParentDataWidgets on one render object.
@@ -3950,68 +4022,88 @@ class _StoryboardTrackRow extends StatelessWidget {
                     TimelineFrameRangeGestureLayer(
                       row: TrackRowAddress(track.id),
                       geometry: frameGeometry,
-                      crossAxisExtent:
-                          StoryboardPanel._trackLaneHeight -
-                          StoryboardCutBlocksPainter.bandHeight * 2,
+                      crossAxisExtent: stripBand.height,
                       callbacks: stripGesture,
                     ),
                   ],
                 ),
               ),
-            // Trim grips ride ABOVE the row gesture so the edges keep trim
-            // priority; the row gesture keeps the middle. The start grip
-            // SLIDES the cut (gap authoring) — every cut has one, the
-            // first included.
+            // THE EDGES, on the strip with the panels they divide. They ride
+            // ABOVE the strip and cut gestures so an edge keeps its priority
+            // over both; the middles keep the rest.
+            //
+            // One shape of grip, and where it sits decides what it does: the
+            // first panel's leading edge trims the cut's start, the last
+            // panel's trailing edge is the cut's length, everything between
+            // moves a division. The cut block itself has no edges any more.
             //
             // THE timeline's chrome layer, not a cut-shaped copy of it: one
             // painter and one gesture layer for the whole row, where this
             // used to be two widgets a cut.
-            if (cutTrim != null)
-              Positioned.fill(
+            if (stripEdges != null)
+              Positioned(
                 key: ValueKey<String>(
                   'storyboard-edit-chrome-slot-${track.id.value}',
                 ),
+                left: 0,
+                right: 0,
+                top: stripBand.top,
+                height: stripBand.height,
                 child: TimelineRowEditChromeLayer(
                   paintKey: ValueKey<String>(
                     'storyboard-edit-chrome-${track.id.value}',
                   ),
-                  // No layer: a cut row's blocks are cuts, and it has no
-                  // run edges for a LayerId to name.
+                  // No layer: these blocks are panels of many cuts, and the
+                  // row has no run edges for a LayerId to name.
                   layerId: null,
                   resolver: TimelineRowChromeResolver(
                     gripBlocks: [
-                      for (final entry in layoutEntries)
+                      for (var index = 0; index < grips.length; index += 1)
                         (
-                          ordinal: entry.cutIndex,
-                          startIndex: entry.startFrame,
-                          endIndexExclusive: entry.endFrame,
-                          startGrip: true,
+                          ordinal: index,
+                          startIndex: grips[index].startFrame,
+                          endIndexExclusive: grips[index].endFrameExclusive,
+                          // Only the first panel of a cut carries a start
+                          // grip: inside a cut the panels touch, so one grip
+                          // per boundary is the whole of it.
+                          startGrip: grips[index].isFirst,
                           endGrip: true,
                         ),
                     ],
                     gripIdScope: track.id.value,
                     layer: null,
                     baseLayer: null,
-                    crossAxisExtent: StoryboardPanel._trackLaneHeight,
+                    crossAxisExtent: stripBand.height,
                     axis: Axis.horizontal,
                     includeRunEdges: false,
                   ),
                   geometry: frameGeometry,
                   axis: Axis.horizontal,
-                  // The row closes the CUT identity in, by ordinal — the
-                  // grip hooks themselves know nothing about cuts.
+                  // The row closes the identity in, by ordinal — the grip
+                  // hooks themselves know nothing about cuts or panels.
                   grips: TimelineRowGripCallbacks(
                     onBegin: (_, ordinal, edge) {
-                      for (final entry in layoutEntries) {
-                        if (entry.cutIndex == ordinal) {
-                          return cutTrim!.onBegin(entry.cutId, edge);
-                        }
+                      if (ordinal < 0 || ordinal >= grips.length) {
+                        return false;
                       }
-                      return false;
+                      final grip = grips[ordinal];
+                      if (edge == TimelineBlockEdge.start) {
+                        return stripEdges!.onCutEdgeBegin(
+                          grip.cutId,
+                          TimelineBlockEdge.start,
+                        );
+                      }
+                      final division = grip.endDivisionIndex;
+                      return division == null
+                          ? stripEdges!.onCutEdgeBegin(
+                              grip.cutId,
+                              TimelineBlockEdge.end,
+                            )
+                          : stripEdges!.onDivisionBegin(grip.cutId, division);
                     },
-                    onUpdate: cutTrim!.onUpdate,
-                    onEnd: cutTrim!.onEnd,
-                    onCancel: cutTrim!.onCancel,
+                    onUpdate: stripEdges!.onUpdate,
+                    onEnd: stripEdges!.onEnd,
+                    onCancel: stripEdges!.onCancel,
                   ),
                   runEdit: null,
                 ),

@@ -219,20 +219,32 @@ class StoryboardCutBlocksPainter extends CustomPainter {
   static const double bandHeight = 13;
   static const double bandsMinBlockHeight = 44;
 
+  /// The STRIP's vertical slot in a row this tall, row-local. The panels
+  /// are drawn there, so the panel gestures and the panel EDGES are mounted
+  /// there too — one definition, or the picture and the pointer disagree.
+  /// A folded row has no bands, so the strip is the whole row.
+  static ({double top, double height}) stripBandOf(double rowHeight) =>
+      rowHeight < bandsMinBlockHeight
+      ? (top: 0, height: rowHeight)
+      : (top: bandHeight, height: rowHeight - bandHeight * 2);
+
   /// A block's three bands. Folded (both bands [Rect.zero], the strip
-  /// taking everything) when the row is too short.
+  /// taking everything) when the row is too short — which is [stripBandOf]
+  /// answering with the whole row, so the fold is decided in one place.
   ({Rect top, Rect strip, Rect bottom}) _bandsOf(Rect rect) {
-    if (rect.height < bandsMinBlockHeight) {
-      return (top: Rect.zero, strip: rect, bottom: Rect.zero);
+    final band = stripBandOf(rect.height);
+    final strip = Rect.fromLTWH(
+      rect.left,
+      rect.top + band.top,
+      rect.width,
+      band.height,
+    );
+    if (band.top <= 0) {
+      return (top: Rect.zero, strip: strip, bottom: Rect.zero);
     }
     return (
       top: Rect.fromLTWH(rect.left, rect.top, rect.width, bandHeight),
-      strip: Rect.fromLTWH(
-        rect.left,
-        rect.top + bandHeight,
-        rect.width,
-        rect.height - bandHeight * 2,
-      ),
+      strip: strip,
       bottom: Rect.fromLTWH(
         rect.left,
         rect.bottom - bandHeight,
