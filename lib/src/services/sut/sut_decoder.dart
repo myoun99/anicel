@@ -158,6 +158,27 @@ Future<SutImportResult> _decode(
         describe: 'paper texture',
         warnings: warnings,
       );
+      if (textureMask != null) {
+        textureMask = brushTipMaskWithLevels(
+          textureMask,
+          // 濃度反転 — the same switch the Photoshop importer honours as
+          // `InvT`, and it was going unread on this side.
+          invert: _intOf(variant['TextureReverseDensity']) == 1,
+          brightness: _signedPercent(variant['TextureBrightness']),
+          contrast: _signedPercent(variant['TextureContrast']),
+        );
+        // Rotation stays unmapped on purpose: the tiled samplers run off a
+        // separable per-axis lattice that exists precisely BECAUSE textures
+        // never rotate, so honouring one brush's angle would cost every
+        // textured brush its fast path.
+        final rotation = _doubleOf(variant['TextureRotate']) ?? 0.0;
+        if (rotation != 0.0) {
+          warnings.add(
+            'Brush "$name": paper texture rotation '
+            '(${rotation.round()}°) is not applied.',
+          );
+        }
+      }
     }
     // Dual brush: a second tip whose coverage multiplies the primary's,
     // referenced through its own pattern array.
@@ -204,16 +225,17 @@ BrushSettings _settingsFromVariant(
   BrushTipMask? textureMask,
   BrushTipMask? dualMask,
 }) {
-  final size = _doubleOf(variant['BrushSize']) ?? 24.0;
-  // `BrushSizeUnit` 0 means pixels — the only unit we can honour, since a
-  // physical unit resolves against a canvas resolution the brush file does
-  // not carry. Anything else imports at its raw number, so say so rather
-  // than let the brush come in silently mis-scaled.
+  // `BrushSizeUnit` scales the stored number: 0 stores pixels outright, 2
+  // stores tenths of one. Confirmed against Clip Studio itself — 小さな雲
+  // stores 15 and reads 150, 水彩うろこ雲 stores 30 and reads 300, while
+  // every unit-0 brush matches its stored number exactly.
   final sizeUnit = _intOf(variant['BrushSizeUnit']) ?? 0;
-  if (sizeUnit != 0) {
+  final rawSize = _doubleOf(variant['BrushSize']) ?? 24.0;
+  final size = sizeUnit == 2 ? rawSize * 10.0 : rawSize;
+  if (sizeUnit != 0 && sizeUnit != 2) {
     warnings.add(
-      'Brush "$brushName": size is stored in a non-pixel unit '
-      '(BrushSizeUnit $sizeUnit); imported as $size px, which may not '
+      'Brush "$brushName": size is stored in an unrecognised unit '
+      '(BrushSizeUnit $sizeUnit); imported as $rawSize px, which may not '
       'match Clip Studio.',
     );
   }
@@ -329,6 +351,18 @@ BrushSettings _settingsFromVariant(
     paintDensity: paintDensity,
     colorStretch: colorStretch,
   );
+}
+
+/// Reads a -100..100 percentage column as a -1..1 ratio, 0 neutral.
+///
+/// Real files pin the neutral point: brushes that never touched their paper
+/// controls store 0, not 100.
+double _signedPercent(Object? value) {
+  final percent = _doubleOf(value);
+  if (percent == null || !percent.isFinite) {
+    return 0.0;
+  }
+  return (percent / 100.0).clamp(-1.0, 1.0).toDouble();
 }
 
 /// Reads a 0-100 percentage column as a 0..1 ratio.

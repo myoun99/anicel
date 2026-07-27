@@ -439,10 +439,15 @@ BrushPreset? _presetFromBrushDescriptor(
         'embedded in this file; imported without it.',
       );
     } else {
-      textureMask = brushTipMaskFromPattern(
-        pattern,
-        id: 'abr-pattern-${pattern.id}',
+      textureMask = brushTipMaskWithLevels(
+        brushTipMaskFromPattern(pattern, id: 'abr-pattern-${pattern.id}'),
         invert: entry['InvT'] == true,
+        brightness: ((entry.numberValue('textureBrightness') ?? 0.0) / 100.0)
+            .clamp(-1.0, 1.0)
+            .toDouble(),
+        contrast: ((entry.numberValue('textureContrast') ?? 0.0) / 100.0)
+            .clamp(-1.0, 1.0)
+            .toDouble(),
       );
       final scalePercent = entry.numberValue('textureScale');
       if (scalePercent != null && scalePercent > 0) {
@@ -453,16 +458,6 @@ BrushPreset? _presetFromBrushDescriptor(
       final depthPercent = entry.numberValue('textureDepth');
       if (depthPercent != null) {
         textureDensity = (depthPercent / 100.0).clamp(0.0, 1.0).toDouble();
-      }
-      // The engine has no brightness/contrast on a paper texture, so say so
-      // rather than let the grain come in at the wrong strength silently.
-      final brightness = entry.numberValue('textureBrightness') ?? 0.0;
-      final contrast = entry.numberValue('textureContrast') ?? 0.0;
-      if (brightness != 0.0 || contrast != 0.0) {
-        warnings.add(
-          'Brush "$label": paper texture brightness/contrast '
-          '(${brightness.round()}/${contrast.round()}) are not applied.',
-        );
       }
     }
   }
