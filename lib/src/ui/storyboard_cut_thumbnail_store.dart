@@ -10,13 +10,27 @@ import '../models/cut_id.dart';
 import '../models/layer.dart';
 import '../services/playback/editor_cache_invalidation_hub.dart';
 
-/// Renders and caches the small first-frame composite each storyboard cut
-/// block shows.
+/// One picture the storyboard shows: a cut, composited at one of its
+/// frames.
+///
+/// A cut used to have exactly one, so the cut was the key. It has one per
+/// PANEL now — the conte's cells are panels of the cut, and each shows the
+/// composite at its own division — so the frame joins the key. A cut with
+/// no storyboard row still has a single panel and therefore a single
+/// picture, which is the old behaviour arriving as a special case of the
+/// new one.
+typedef StoryboardThumbnailKey = ({CutId cutId, int frameIndex});
+
+/// The build-time resolver the panel and the conte call.
+typedef StoryboardThumbnailResolver =
+    ui.Image? Function(Cut cut, int frameIndex);
+
+/// Renders and caches the small composites the storyboard's panels show.
 ///
 /// [thumbnailFor] is a synchronous build-time resolver: it returns whatever
 /// is cached (possibly stale, possibly null) and kicks one async render at
-/// thumbnail resolution when the cut's signature changed. Renders finish →
-/// [notifyListeners] → the panel rebuilds with the fresh image.
+/// thumbnail resolution when the panel's signature changed. Renders finish
+/// → [notifyListeners] → the panel rebuilds with the fresh image.
 ///
 /// Invalidation: a structural signature (canvas size, duration, per-layer
 /// visibility/opacity/frames/EXPOSURES, camera track, layer transforms and
@@ -25,64 +39,70 @@ import '../services/playback/editor_cache_invalidation_hub.dart';
 /// commit / undo / redo). Camera work, transform-lane edits and exposure
 /// moves used to be signature-blind (R4-⑩): a cut whose thumbnail first
 /// rendered empty stayed a white block forever unless a stroke landed.
+///
+/// The edit generation stays keyed by CUT: a stroke lands somewhere in the
+/// cut and the hub says which cut, so every panel of it re-renders. That is
+/// correct rather than merely convenient — a drawing may be exposed under
+/// several panels at once.
 class StoryboardCutThumbnailStore extends ChangeNotifier {
   StoryboardCutThumbnailStore({
-    required Future<ui.Image?> Function(Cut cut) render,
+    required Future<ui.Image?> Function(Cut cut, int frameIndex) render,
     EditorCacheInvalidationHub? invalidationHub,
   }) : _render = render,
        _hub = invalidationHub {
     _hub?.addBrushFrameListener(_onBrushFrameInvalidated);
   }
 
-  final Future<ui.Image?> Function(Cut cut) _render;
+  final Future<ui.Image?> Function(Cut cut, int frameIndex) _render;
   final EditorCacheInvalidationHub? _hub;
 
-  final Map<CutId, ui.Image> _images = {};
-  final Map<CutId, String> _renderedSignatures = {};
+  final Map<StoryboardThumbnailKey, ui.Image> _images = {};
+  final Map<StoryboardThumbnailKey, String> _renderedSignatures = {};
   final Map<CutId, int> _editGenerations = {};
-  final Set<CutId> _rendering = {};
+  final Set<StoryboardThumbnailKey> _rendering = {};
   bool _disposed = false;
 
-  /// The cached thumbnail for [cut]; kicks an async (re)render when the
-  /// cut's content signature changed, returning the stale image meanwhile.
-  ui.Image? thumbnailFor(Cut cut) {
-    final signature = _signatureFor(cut);
-    if (_renderedSignatures[cut.id] != signature &&
-        !_rendering.contains(cut.id)) {
-      _rendering.add(cut.id);
-      _startRender(cut, signature);
+  /// The cached thumbnail for [cut] at [frameIndex]; kicks an async
+  /// (re)render when the signature changed, returning the stale image
+  /// meanwhile.
+  ui.Image? thumbnailFor(Cut cut, int frameIndex) {
+    final key = (cutId: cut.id, frameIndex: frameIndex);
+    final signature = _signatureFor(cut, frameIndex);
+    if (_renderedSignatures[key] != signature && !_rendering.contains(key)) {
+      _rendering.add(key);
+      _startRender(cut, key, signature);
     }
-    return _images[cut.id];
+    return _images[key];
   }
 
-  void _startRender(Cut cut, String signature) {
+  void _startRender(Cut cut, StoryboardThumbnailKey key, String signature) {
     unawaited(
-      _render(cut)
+      _render(cut, key.frameIndex)
           .then((image) {
-            _rendering.remove(cut.id);
+            _rendering.remove(key);
             if (_disposed) {
               image?.dispose();
               return;
             }
-            final previous = _images.remove(cut.id);
+            final previous = _images.remove(key);
             if (previous != null) {
               _retire(previous);
             }
             if (image != null) {
-              _images[cut.id] = image;
+              _images[key] = image;
             }
             // A signature change DURING the render re-kicks on the rebuild
             // this notify triggers.
-            _renderedSignatures[cut.id] = signature;
+            _renderedSignatures[key] = signature;
             notifyListeners();
           })
           .catchError((Object error, StackTrace stack) {
-            _rendering.remove(cut.id);
+            _rendering.remove(key);
             // Remember the failed signature: silently swallowing AND
             // forgetting re-kicked the same failing render on every
             // rebuild (a hot loop behind a permanently empty block). The
             // next CONTENT change retries; the failure itself is surfaced.
-            _renderedSignatures[cut.id] = signature;
+            _renderedSignatures[key] = signature;
             FlutterError.reportError(
               FlutterErrorDetails(
                 exception: error,
@@ -90,7 +110,7 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
                 library: 'storyboard thumbnails',
                 context: ErrorDescription(
                   'rendering the storyboard thumbnail for cut '
-                  '${cut.id.value}',
+                  '${cut.id.value} at frame ${key.frameIndex}',
                 ),
               ),
             );
@@ -122,7 +142,7 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
     });
   }
 
-  String _signatureFor(Cut cut) {
+  String _signatureFor(Cut cut, int frameIndex) {
     final buffer = StringBuffer()
       ..write(cut.canvasSize.width)
       ..write('x')
@@ -131,9 +151,8 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
       ..write(_editGenerations[cut.id] ?? 0)
       ..write('#')
       ..write(cut.duration)
-      // Re-render when the pinned thumbnail frame changes.
-      ..write('#')
-      ..write(cut.metadata.thumbnailFrameIndex ?? -1)
+      ..write('#f')
+      ..write(frameIndex)
       // The thumbnail renders THROUGH the camera: camera work must
       // re-render it (was signature-blind — R4-⑩).
       ..write('#cam')

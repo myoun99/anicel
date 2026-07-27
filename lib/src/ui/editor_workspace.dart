@@ -43,6 +43,7 @@ import 'panels/workspace_panels_menu.dart';
 import 'keyed_keep_alive_stack.dart';
 import 'sliced_value_listenable_builder.dart';
 import 'storyboard_cut_thumbnail_store.dart';
+import 'storyboard_panel.dart' show StoryboardPanel;
 import 'storyboard_playhead_mapping.dart';
 import 'timeline/timeline_layer_nav.dart';
 import 'timeline/timeline_row_filter.dart';
@@ -319,6 +320,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     TimelinePanel.defaultPixelsPerFrame,
   );
   final ValueNotifier<double> _storyboardPixelsPerFrame = ValueNotifier(8);
+
+  /// The storyboard's V rows share ONE height (user's rule), kept here so
+  /// it survives a tab switch the way the zoom does.
+  final ValueNotifier<double> _storyboardTrackLaneHeight = ValueNotifier(
+    StoryboardPanel.defaultTrackLaneHeight,
+  );
 
   /// Shared frames↔seconds display toggle (conte-sheet 초+コマ notation).
   final ValueNotifier<bool> _showSecondsDisplay = ValueNotifier(false);
@@ -626,6 +633,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _timelineOrientation.dispose();
     _timelinePixelsPerFrame.dispose();
     _storyboardPixelsPerFrame.dispose();
+    _storyboardTrackLaneHeight.dispose();
     _showSecondsDisplay.dispose();
     _expandedLaneLayerIds.dispose();
     _expandedTransformGroupLayerIds.dispose();
@@ -651,20 +659,24 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// the shot actually frames — conte-sheet style), scaled to a small
   /// output; always current (a fresh renderer replays surfaces straight
   /// from the brush store).
-  Future<ui.Image?> _renderStoryboardThumbnail(Cut cut) {
+  /// [frameIndex] is the PANEL's frame — the store keys by it, and the
+  /// panel resolved which one it is (its own division, or the cut's pin
+  /// when that falls inside it). Clamped here so a later trim can never
+  /// break a request that was legal when it was made.
+  Future<ui.Image?> _renderStoryboardThumbnail(Cut cut, int frameIndex) {
     const thumbnailWidth = 128;
     final cameraSize = widget.session.cameraFrameSize;
     final height = math.max(
       1,
       (thumbnailWidth * cameraSize.height / cameraSize.width).round(),
     );
-    // The pinned frame when set (clamped so a later trim never breaks it),
-    // the first frame otherwise.
-    final frameIndex = (cut.metadata.thumbnailFrameIndex ?? 0)
-        .clamp(0, math.max(0, cut.duration - 1))
-        .toInt();
     return ExportFrameRenderer(session: widget.session).renderComposite(
-      ExportFrameTask(cut: cut, frameIndex: frameIndex),
+      ExportFrameTask(
+        cut: cut,
+        frameIndex: frameIndex
+            .clamp(0, math.max(0, cut.duration - 1))
+            .toInt(),
+      ),
       ExportSizeMode.camera,
       outputSize: CanvasSize(width: thumbnailWidth, height: height),
     );
@@ -1136,6 +1148,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               widget.session,
               widget.session.frameSeekCommitted,
               _storyboardPixelsPerFrame,
+              _storyboardTrackLaneHeight,
               _showSecondsDisplay,
               _storyboardThumbnails,
             ]),
@@ -1148,6 +1161,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               showSeconds: _showSecondsDisplay.value,
               onShowSecondsChanged: (show) {
                 _showSecondsDisplay.value = show;
+              },
+              trackLaneHeight: _storyboardTrackLaneHeight.value,
+              onTrackLaneHeightChanged: (value) {
+                _storyboardTrackLaneHeight.value = value;
               },
               thumbnailFor: _storyboardThumbnails.thumbnailFor,
               // R28 #1: the same camera-view state the timeline command

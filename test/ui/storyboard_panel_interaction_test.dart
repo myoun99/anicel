@@ -22,6 +22,9 @@ import 'package:quick_animaker_v2/src/models/timeline_coverage.dart'
 import 'package:quick_animaker_v2/src/models/timeline_row_address.dart';
 import 'package:quick_animaker_v2/src/models/track_frame_range.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
+import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
+import 'package:quick_animaker_v2/src/ui/storyboard_cut_thumbnail_store.dart'
+    show StoryboardThumbnailResolver;
 import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_timeline_layout.dart';
 import 'storyboard_cut_block_probe.dart';
@@ -830,11 +833,11 @@ void main() {
         ]),
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
-        thumbnailFor: (cut) => cut.id == const CutId('cut-a') ? image : null,
+        thumbnailFor: (cut, _) => cut.id == const CutId('cut-a') ? image : null,
       );
 
-      expect(requireCutBlock(tester, 'cut-a').thumbnail, isNotNull);
-      expect(requireCutBlock(tester, 'cut-b').thumbnail, isNull);
+      expect(requireCutBlock(tester, 'cut-a').thumbnails.first, isNotNull);
+      expect(requireCutBlock(tester, 'cut-b').thumbnails.first, isNull);
     });
 
     testWidgets('no thumbnails at all without a resolver', (tester) async {
@@ -846,7 +849,66 @@ void main() {
       );
 
       expect(cutBlocksPainter(tester).showThumbnails, isFalse);
-      expect(requireCutBlock(tester, 'cut-a').thumbnail, isNull);
+      // Not "one null picture" — no pictures asked for at all, which is
+      // what keeps the store idle when nothing can show its output.
+      expect(requireCutBlock(tester, 'cut-a').thumbnails, isEmpty);
+    });
+
+    testWidgets('each PANEL asks for its own picture, at its own frame', (
+      tester,
+    ) async {
+      final asked = <(CutId, int)>[];
+
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([
+          _cut(
+            'cut-a',
+            name: 'Cut A',
+            duration: 12,
+            layers: [
+              Layer(
+                id: const LayerId('sb-a'),
+                name: 'SB',
+                kind: LayerKind.storyboard,
+                frames: [
+                  Frame(
+                    id: const FrameId('sb-a-0'),
+                    duration: 1,
+                    strokes: const [],
+                  ),
+                  Frame(
+                    id: const FrameId('sb-a-5'),
+                    duration: 1,
+                    strokes: const [],
+                  ),
+                ],
+                timeline: const {
+                  0: TimelineExposure.drawing(FrameId('sb-a-0'), length: 5),
+                  5: TimelineExposure.drawing(FrameId('sb-a-5'), length: 7),
+                },
+              ),
+            ],
+          ),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+        thumbnailFor: (cut, frameIndex) {
+          asked.add((cut.id, frameIndex));
+          return null;
+        },
+      );
+
+      // Two panels, two pictures, each at the division it opens on — the
+      // conte's cells are panels, so this IS the sheet's picture column.
+      // Asked as a SET: the painter reads its blocks for painting, for
+      // hit-testing and for semantics, and the store answers a repeat from
+      // cache.
+      expect(asked.toSet(), {
+        (const CutId('cut-a'), 0),
+        (const CutId('cut-a'), 5),
+      });
+      expect(requireCutBlock(tester, 'cut-a').thumbnails, hasLength(2));
     });
 
     testWidgets('pixelsPerFrame rescales blocks, ruler and playhead', (
@@ -911,13 +973,13 @@ void main() {
         ]),
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
-        thumbnailFor: (cut) => cut.id == const CutId('cut-a') ? image : null,
+        thumbnailFor: (cut, _) => cut.id == const CutId('cut-a') ? image : null,
       );
 
-      expect(requireCutBlock(tester, 'cut-a').thumbnail, same(image));
+      expect(requireCutBlock(tester, 'cut-a').thumbnails.first, same(image));
       // Pending cuts have no picture yet — the block paints its
       // placeholder for them.
-      expect(requireCutBlock(tester, 'cut-b').thumbnail, isNull);
+      expect(requireCutBlock(tester, 'cut-b').thumbnails.first, isNull);
       // The old ACTIVE badge is gone.
       expect(find.text('ACTIVE'), findsNothing);
     });
@@ -1220,7 +1282,7 @@ Future<void> _pumpStoryboardPanel(
   ValueChanged<int>? onSeekGlobalFrame,
   ValueChanged<int>? onScrubGlobalFrame,
   VoidCallback? onScrubEnd,
-  ui.Image? Function(Cut cut)? thumbnailFor,
+  StoryboardThumbnailResolver? thumbnailFor,
   double pixelsPerFrame = 8,
   bool showSeconds = false,
   ProjectFrameRate projectFrameRate = const ProjectFrameRate.integer(24),

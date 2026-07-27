@@ -11,6 +11,7 @@ import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
+import 'package:quick_animaker_v2/src/models/storyboard_coverage.dart';
 import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_cut_thumbnail_store.dart';
@@ -66,12 +67,11 @@ void main() {
       ],
     );
 
-    testWidgets('re-renders when the pinned thumbnail frame changes', (
-      tester,
-    ) async {
+    testWidgets('the store renders once per (cut, FRAME) — the pin reaches '
+        'it as the frame the panel asks for', (tester) async {
       var renderCount = 0;
       final store = StoryboardCutThumbnailStore(
-        render: (_) {
+        render: (_, _) {
           renderCount += 1;
           return tinyImage();
         },
@@ -79,17 +79,37 @@ void main() {
       addTearDown(store.dispose);
 
       await tester.runAsync(() async {
-        store.thumbnailFor(cut());
+        store.thumbnailFor(cut(), 0);
         await Future<void>.delayed(const Duration(milliseconds: 20));
-        store.thumbnailFor(cut(thumbnailFrame: 12));
+        // A different frame is a different picture.
+        store.thumbnailFor(cut(), 12);
         await Future<void>.delayed(const Duration(milliseconds: 20));
-        // Unchanged pin does not re-render.
-        store.thumbnailFor(cut(thumbnailFrame: 12));
+        // The same one again is not.
+        store.thumbnailFor(cut(), 12);
         await Future<void>.delayed(const Duration(milliseconds: 20));
       });
       await tester.pump();
 
       expect(renderCount, 2);
+    });
+
+    test('a pinned frame wins inside the panel that COVERS it, and nowhere '
+        'else — pinning says "show the cut at this moment"', () {
+      const first = StoryboardCoverageCell(
+        startIndex: 0,
+        endIndexExclusive: 10,
+        frameId: FrameId('a'),
+      );
+      const second = StoryboardCoverageCell(
+        startIndex: 10,
+        endIndexExclusive: 20,
+        frameId: FrameId('b'),
+      );
+
+      expect(storyboardCellPictureFrame(first, pinnedFrameIndex: 12), 0);
+      expect(storyboardCellPictureFrame(second, pinnedFrameIndex: 12), 12);
+      // No pin: every panel shows its own division.
+      expect(storyboardCellPictureFrame(second), 10);
     });
   });
 
