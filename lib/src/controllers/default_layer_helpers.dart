@@ -1,6 +1,10 @@
 import '../models/cut.dart';
+import '../models/frame.dart';
+import '../models/frame_id.dart';
 import '../models/layer.dart';
 import '../models/layer_id.dart';
+import '../models/layer_kind.dart';
+import '../models/timeline_exposure.dart';
 
 LayerId defaultLayerIdForSequence(int sequence) {
   if (sequence < 1) {
@@ -56,5 +60,28 @@ Layer createDefaultAnimationLayer({
     name: nextCelLayerNameForCut(cut),
     frames: const [],
     timeline: const {},
+  );
+}
+
+/// A storyboard layer is born COVERING its cut — one cell, edge to edge
+/// (user's rule 2026-07-27).
+///
+/// This row has no empty cells at all: there is no "X" in its world, so a
+/// drawing holds to the end of the cut the way a division does. Starting
+/// full is what makes that true from the first instant instead of after
+/// the first edit — the cut cannot then shrink past it
+/// ([minimumCutDurationFor]), and the coverage rule never meets a hole.
+Layer createStoryboardLayer({
+  required LayerId layerId,
+  required FrameId frameId,
+  required Cut cut,
+}) {
+  final duration = cut.duration < 1 ? 1 : cut.duration;
+  return Layer(
+    id: layerId,
+    name: nextCelLayerNameForCut(cut),
+    kind: LayerKind.storyboard,
+    frames: [Frame(id: frameId, duration: duration, strokes: const [])],
+    timeline: {0: TimelineExposure.drawing(frameId, length: duration)},
   );
 }

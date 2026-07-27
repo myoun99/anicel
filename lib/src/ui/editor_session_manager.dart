@@ -91,6 +91,7 @@ import 'playback/layer_frame_image_cache.dart';
 import 'playback/playback_cache_budget.dart';
 import 'playback/playback_prerender_scheduler.dart';
 import 'storyboard_cut_fade_policy.dart';
+import 'storyboard_layer_policy.dart';
 import 'text/app_strings.dart';
 import '../models/track_frame_axis.dart';
 import 'storyboard_timeline_layout.dart';
@@ -2738,6 +2739,19 @@ class EditorSessionManager extends ChangeNotifier {
       case LayerKind.animation:
       case LayerKind.storyboard:
       case LayerKind.art:
+        // The STORYBOARD row is born covering its cut — one cell, edge to
+        // edge. There is no "X" in its world, so it never starts empty and
+        // then has to be filled.
+        Layer newLayerFor(Cut cut) => kind == LayerKind.storyboard
+            ? createStoryboardLayer(
+                layerId: layerId,
+                frameId: FrameId(_nextFrameId(layerId)),
+                cut: cut,
+              )
+            : createDefaultAnimationLayer(
+                layerId: layerId,
+                cut: cut,
+              ).copyWith(kind: kind);
         // An attach group is INDIVISIBLE (R26 #36): a new regular layer
         // lands past the whole group, never between a base and its attach
         // rows — whether the active row is the base itself or one of its
@@ -2754,16 +2768,13 @@ class EditorSessionManager extends ChangeNotifier {
           final baseIndex = cut.layers.indexWhere((l) => l.id == baseId);
           if (groupEnd > baseIndex + 1) {
             _layerController.addLayer(
-              layer: createDefaultAnimationLayer(
-                layerId: layerId,
-                cut: cut,
-              ).copyWith(kind: kind),
+              layer: newLayerFor(cut),
               insertionIndex: groupEnd,
             );
             break;
           }
         }
-        _layerController.addLayerWithDefaults(layerId: layerId, kind: kind);
+        _layerController.addLayer(layer: newLayerFor(requireActiveCut));
       case LayerKind.camera:
       // Folders are MADE, not added: 폴더 생성 wraps existing rows
       // ([groupActiveLayerIntoFolder]). Add Layer with a folder row active
@@ -5956,9 +5967,17 @@ class EditorSessionManager extends ChangeNotifier {
 
     final durations = <CutId, int>{};
     final gaps = <CutId, int>{};
+    // The floor is the STORYBOARD row's extent, not one frame: its cells
+    // are panels OF this cut, so the end cannot be dragged past the last
+    // division on it (delete the cells to shrink further). Cuts without a
+    // storyboard row keep the plain one-frame floor.
+    final trimmedCut = cutById(cutId);
+    final minDuration = trimmedCut == null
+        ? 1
+        : minimumCutDurationFor(trimmedCut);
     if (edge == TimelineBlockEdge.end) {
       final newDuration = math.max(
-        1,
+        minDuration,
         beforeDurations[cutId]! + cumulativeDelta,
       );
       durations[cutId] = newDuration;
@@ -5983,7 +6002,7 @@ class EditorSessionManager extends ChangeNotifier {
       // change cancel exactly at the end boundary.
       final beforeDuration = beforeDurations[cutId]!;
       if (cumulativeDelta >= 0) {
-        final moved = math.min(cumulativeDelta, beforeDuration - 1);
+        final moved = math.min(cumulativeDelta, beforeDuration - minDuration);
         durations[cutId] = beforeDuration - moved;
         gaps[cutId] = beforeGaps[cutId]! + moved;
       } else {
