@@ -20,6 +20,7 @@ import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
 /// not.
 const _trackId = TrackId('verbs-track');
 const _seLayerId = LayerId('verbs-se-1');
+const _seLayer2Id = LayerId('verbs-se-2');
 
 Cut _cut(String id, int duration) => Cut(
   id: CutId(id),
@@ -71,6 +72,15 @@ Project _project() => Project(
             9: TimelineExposure.drawing(FrameId('se-two'), length: 3),
           },
         ),
+        // An empty sibling row, so a MOVE has somewhere of its own kind
+        // to land.
+        Layer(
+          id: _seLayer2Id,
+          name: 'S2',
+          kind: LayerKind.se,
+          frames: const [],
+          timeline: const {},
+        ),
       ],
     ),
   ],
@@ -83,9 +93,12 @@ void main() {
     return session;
   }
 
-  /// The track's GLOBAL SE layer as the repository holds it now.
+  /// The track's GLOBAL SE layers as the repository holds them now.
   Layer seLayerOf(EditorSessionManager session) =>
-      session.repository.requireProject().tracks.single.seLayers.single;
+      session.repository.requireProject().tracks.single.seLayers.first;
+
+  Layer seLayer2Of(EditorSessionManager session) =>
+      session.repository.requireProject().tracks.single.seLayers.last;
 
   group('Delete on the storyboard selection', () {
     test('removes the covered blocks of the S row — the timeline block '
@@ -274,6 +287,68 @@ void main() {
       session.endFrameRangeMoveDrag();
 
       expect(seLayerOf(session).timeline.keys, [9, 12]);
+    });
+
+    test('lands on a SIBLING S row: the timeline row-change grammar, on '
+        'the track axis', () {
+      final session = sessionFor();
+      session.updateTrackSeRangeSelectionByFrame(
+        layerId: _seLayerId,
+        anchorGlobalFrame: 3,
+        headGlobalFrame: 3,
+      );
+
+      session.beginTrackRangeMoveDrag(_seLayerId);
+      session.updateFrameRangeMoveDrag(
+        frameDelta: 0,
+        targetLayerId: _seLayer2Id,
+      );
+      session.endFrameRangeMoveDrag();
+
+      // The sound left S1 for S2 at the SAME global frames — proof the
+      // row change read the span in the track axis (a cut-local reading
+      // would have offset it by the cut's start).
+      expect(seLayerOf(session).timeline.keys, [9]);
+      expect(seLayer2Of(session).timeline.keys, [2]);
+    });
+
+    test('the selection follows onto the row it landed on', () {
+      final session = sessionFor();
+      session.updateTrackSeRangeSelectionByFrame(
+        layerId: _seLayerId,
+        anchorGlobalFrame: 3,
+        headGlobalFrame: 3,
+      );
+
+      session.beginTrackRangeMoveDrag(_seLayerId);
+      session.updateFrameRangeMoveDrag(
+        frameDelta: 0,
+        targetLayerId: _seLayer2Id,
+      );
+      session.endFrameRangeMoveDrag();
+
+      expect(
+        session.trackFrameRangeSelection.value!.anchorRow,
+        const LayerRowAddress(_seLayer2Id),
+      );
+    });
+
+    test('a row change carries the frame delta with it', () {
+      final session = sessionFor();
+      session.updateTrackSeRangeSelectionByFrame(
+        layerId: _seLayerId,
+        anchorGlobalFrame: 3,
+        headGlobalFrame: 3,
+      );
+
+      session.beginTrackRangeMoveDrag(_seLayerId);
+      session.updateFrameRangeMoveDrag(
+        frameDelta: 4,
+        targetLayerId: _seLayer2Id,
+      );
+      session.endFrameRangeMoveDrag();
+
+      expect(seLayer2Of(session).timeline.keys, [6]);
     });
 
     test('cancelling puts the selection back where it started', () {

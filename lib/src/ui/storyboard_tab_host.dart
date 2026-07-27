@@ -593,9 +593,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   move: StoryboardSeMoveCallbacks(
                     onBegin: (layerId) =>
                         _session.beginTrackRangeMoveDrag(layerId),
-                    onUpdate: (frameDelta) =>
+                    onUpdate: (frameDelta, targetLayerId) =>
                         _session.updateFrameRangeMoveDrag(
                           frameDelta: frameDelta,
+                          targetLayerId: targetLayerId,
                         ),
                     onEnd: _session.endFrameRangeMoveDrag,
                     onCancel: _session.cancelFrameRangeMoveDrag,

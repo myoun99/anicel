@@ -32,7 +32,9 @@ import 'theme/app_theme.dart';
 import 'timeline/layer_label_controls.dart';
 import 'widgets/field_slider.dart';
 import 'timeline/property_lane_model.dart'
-    show PropertyLaneEditCallbacks, PropertyLaneRow;
+    show PropertyLaneEditCallbacks, PropertyLaneRow, TimelineDisplayRow;
+import 'timeline/timeline_row_span_resolver.dart'
+    show resolveBlockMoveTargetLayer;
 import 'timeline/se_audio_lane.dart' show SeAudioLaneFrameRow;
 import 'timeline/timeline_lane_rows.dart'
     show TimelineLaneControlsRow, TimelineLaneFrameRow;
@@ -214,7 +216,10 @@ class StoryboardSeMoveCallbacks {
   });
 
   final bool Function(LayerId layerId) onBegin;
-  final ValueChanged<int> onUpdate;
+
+  /// [targetLayerId] is the S row the pointer has reached — null means it
+  /// never left the row it started on.
+  final void Function(int frameDelta, LayerId? targetLayerId) onUpdate;
   final VoidCallback onEnd;
   final VoidCallback onCancel;
 }
@@ -1169,7 +1174,17 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     double width,
     TimelineScale scale,
   ) {
+    // The rail draws S rows TOP-DOWN from the highest slot, so the move's
+    // row delta walks them in that order (slot 0 sits just above the V
+    // row). Track-owned rows, so the global layers — never the display
+    // clones a move would refuse to commit to.
+    final seRowsInDisplayOrder = <TimelineDisplayRow>[
+      for (var slot = _seSlotCount(track) - 1; slot >= 0; slot -= 1)
+        if (_trackSeAt(track, slot) case final layer?)
+          TimelineDisplayRow.layer(layer, layerIndex: slot),
+    ];
     Widget seRow(int slot, Layer? layer) => _StoryboardSeRow(
+      seRowsInDisplayOrder: seRowsInDisplayOrder,
       trackIndex: index,
       slot: slot,
       layer: layer,
@@ -2405,10 +2420,16 @@ class _StoryboardSeRow extends StatelessWidget {
     this.seCommaDrag,
     this.seSelect,
     this.frameGeometry,
+    this.seRowsInDisplayOrder = const [],
   });
 
   final int trackIndex;
   final int slot;
+
+  /// This track's S rows top-to-bottom — what a MOVE's row delta walks.
+  /// Only S rows are in it, which is what keeps a drag from crossing into
+  /// a row whose blocks are not sounds.
+  final List<TimelineDisplayRow> seRowsInDisplayOrder;
 
   /// The track's GLOBAL SE layer behind this row (null = fewer rows).
   final Layer? layer;
@@ -2655,15 +2676,23 @@ class _StoryboardSeRow extends StatelessWidget {
                 headGlobalFrame: headIndex,
               ),
               onTapClear: (_) => seSelect.onClear(),
-              // A drag that STARTS inside the selection slides the sounds.
-              // The row delta is DROPPED on purpose: a range moves only
-              // between rows of its own kind, and this rail's neighbours
-              // are a cut row and other sections — so the drag holds the
-              // row it began on instead of wandering into one whose blocks
-              // are not sounds.
+              // A drag that STARTS inside the selection slides the sounds,
+              // and may cross onto a sibling S row — the timeline's own
+              // row-change grammar, resolved by the timeline's own
+              // resolver over THIS rail's row order.
+              //
+              // The list it walks holds only this track's S rows, so the
+              // clamp is the kind guard: a drag cannot wander onto the cut
+              // row (or any other section) because no such row is in it.
               onMoveBegin: (_, _) => seSelect.move?.onBegin(layer.id) ?? false,
-              onMoveUpdate: (frameDelta, _) =>
-                  seSelect.move?.onUpdate(frameDelta),
+              onMoveUpdate: (frameDelta, rowDelta) => seSelect.move?.onUpdate(
+                frameDelta,
+                resolveBlockMoveTargetLayer(
+                  rows: seRowsInDisplayOrder,
+                  sourceLayerId: layer.id,
+                  rowDelta: rowDelta,
+                ),
+              ),
               onMoveEnd: () => seSelect.move?.onEnd(),
               onMoveCancel: () => seSelect.move?.onCancel(),
             ),
