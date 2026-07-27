@@ -5,8 +5,20 @@ import 'block_run_move.dart';
 import 'frame.dart';
 import 'frame_id.dart';
 import 'layer.dart';
+import 'layer_kind.dart';
 import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
+
+/// Where the axis stops for [layer]'s blocks, given the cut is
+/// [cutFrameCount] frames long — or null when nothing stops them.
+///
+/// A row that TILES its cut lives inside it (the storyboard's), so its last
+/// block may not slide past the cut's end: coverage would stop making a
+/// panel for it and the drawing would drop off the conte while staying in
+/// the file. Every other row may sit past the end, which is data the cut
+/// simply does not show.
+int? _axisEndFor(Layer layer, int? cutFrameCount) =>
+    layerKindCoversWithoutGaps(layer.kind) ? cutFrameCount : null;
 
 /// The resolved result of a whole-block move drag (R10-④b): the affected
 /// layers with the block relocated. Same-layer slides carry only
@@ -55,6 +67,7 @@ DrawingBlockMovePlan? planDrawingBlockMove({
   required Layer target,
   required int blockStartIndex,
   required int frameDelta,
+  int? cutFrameCount,
 }) {
   // Plan on ghost-free timelines: derived repeat/hold ghosts neither move
   // nor obstruct, and (sharing the moved cel's frameId) must never count
@@ -92,6 +105,7 @@ DrawingBlockMovePlan? planDrawingBlockMove({
       runStart: runIndex,
       runEnd: runIndex,
       frameDelta: frameDelta,
+      axisEndExclusive: _axisEndFor(source, cutFrameCount),
     );
     if (moved == null) {
       return null;
@@ -194,6 +208,7 @@ DrawingBlockMovePlan? planDrawingRangeMove({
   required int rangeStartIndex,
   required int rangeEndIndexExclusive,
   required int frameDelta,
+  int? cutFrameCount,
 }) {
   if (rangeEndIndexExclusive <= rangeStartIndex) {
     return null;
@@ -252,6 +267,7 @@ DrawingBlockMovePlan? planDrawingRangeMove({
       runStart: runStart,
       runEnd: runStart + moved.length - 1,
       frameDelta: frameDelta,
+      axisEndExclusive: _axisEndFor(source, cutFrameCount),
     );
     if (landed == null) {
       return null;
@@ -370,6 +386,7 @@ _sameLayerRunMove({
   required int runStart,
   required int runEnd,
   required int frameDelta,
+  int? axisEndExclusive,
 }) {
   final slots = <BlockMoveSlot>[];
   var previousEnd = 0;
@@ -386,6 +403,7 @@ _sameLayerRunMove({
     runStart: runStart,
     runEnd: runEnd,
     frameDelta: frameDelta,
+    axisEndExclusive: axisEndExclusive,
   );
   final destinationStartIndex = layout.startOf(runStart);
   if (!layout.isReorder &&

@@ -88,11 +88,20 @@ class BlockRunMoveLayout {
 /// midpoint means the order changes instead. Pushing the followers along
 /// was the old shove — that behaviour belongs to the push/pull buttons,
 /// which take a scope, not to a drag.
+///
+/// [axisEndExclusive] is where the axis stops, for the axes that have an
+/// end. The LAST slot is otherwise unbounded on the right — the cut axis
+/// and an ordinary drawing row both want that, since a cut may run off the
+/// end of the movie and a block may sit past the end of its cut. A row that
+/// lives INSIDE something (the storyboard's, which tiles its cut) passes
+/// that thing's end, and then a gapless row is rigid in both directions:
+/// no free space anywhere, so every move it allows is a reorder.
 BlockRunMoveLayout planBlockRunMove({
   required List<BlockMoveSlot> slots,
   required int runStart,
   required int runEnd,
   required int frameDelta,
+  int? axisEndExclusive,
 }) {
   final starts = <int>[];
   var cursor = 0;
@@ -141,11 +150,7 @@ BlockRunMoveLayout planBlockRunMove({
   if (rank != originalRank) {
     final moving = [for (var i = runStart; i <= runEnd; i += 1) i];
     final others = [for (final other in rest) other.index];
-    final order = <int>[
-      ...others.take(rank),
-      ...moving,
-      ...others.skip(rank),
-    ];
+    final order = <int>[...others.take(rank), ...moving, ...others.skip(rank)];
     // Every gap travels with the block that owns it: the sequence changed
     // and the timing did not, so the total span is preserved exactly.
     return BlockRunMoveLayout(
@@ -155,9 +160,12 @@ BlockRunMoveLayout planBlockRunMove({
     );
   }
 
-  // Same rank: re-time inside the free space between the neighbours.
+  // Same rank: re-time inside the free space between the neighbours — or,
+  // past the last of them, up to the axis's own end when it has one.
   final floor = rank == 0 ? 0 : rest[rank - 1].endExclusive;
-  final ceiling = rank == rest.length ? null : rest[rank].start - runLength;
+  final ceiling = rank == rest.length
+      ? (axisEndExclusive == null ? null : axisEndExclusive - runLength)
+      : rest[rank].start - runLength;
   var landed = wanted < floor ? floor : wanted;
   if (ceiling != null && landed > ceiling) {
     landed = ceiling < floor ? floor : ceiling;

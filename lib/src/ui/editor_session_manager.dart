@@ -7382,6 +7382,7 @@ class EditorSessionManager extends ChangeNotifier {
             target: target,
             blockStartIndex: blockStart,
             frameDelta: frameDelta,
+            cutFrameCount: _activeCutFrameCount,
           );
     _blockMovePlan = plan;
     // Ghosts follow the moved run LIVE (UI-R8 rederive on the preview).
@@ -8404,6 +8405,7 @@ class EditorSessionManager extends ChangeNotifier {
           rangeStartIndex: selection.startIndex + source.offset,
           rangeEndIndexExclusive: selection.endIndexExclusive + source.offset,
           frameDelta: frameDelta,
+          cutFrameCount: _activeCutFrameCount,
         );
         if (plan == null) {
           illegal = true;
@@ -8525,6 +8527,7 @@ class EditorSessionManager extends ChangeNotifier {
             rangeStartIndex: selection.startIndex,
             rangeEndIndexExclusive: selection.endIndexExclusive,
             frameDelta: frameDelta,
+            cutFrameCount: _activeCutFrameCount,
           );
     if (plan == null) {
       // UI-R23 #10: a blocked / incompatible landing HOLDS the last valid

@@ -512,6 +512,19 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                         headIndex: headIndex,
                       ),
                   onClear: _session.clearFrameRangeSelection,
+                  // Sliding the panels is the CUT-LOCAL move — the same
+                  // one the timeline's rows use, because the strip's
+                  // selection is that same object on that same axis.
+                  move: StoryboardRangeMoveCallbacks(
+                    onBegin: _session.beginFrameRangeMoveDrag,
+                    onUpdate: (frameDelta, targetLayerId) =>
+                        _session.updateFrameRangeMoveDrag(
+                          frameDelta: frameDelta,
+                          targetLayerId: targetLayerId,
+                        ),
+                    onEnd: _session.endFrameRangeMoveDrag,
+                    onCancel: _session.cancelFrameRangeMoveDrag,
+                  ),
                 ),
                 // The end line edits the MOVIE length (UI-R20 #3): the
                 // project's trailing gap, never the cuts.
@@ -634,7 +647,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   // Sliding the selection: the timeline's own range-move
                   // machine, entered on the track axis (its sources commit
                   // to the global layer either way).
-                  move: StoryboardSeMoveCallbacks(
+                  move: StoryboardRangeMoveCallbacks(
                     onBegin: (layerId) =>
                         _session.beginTrackRangeMoveDrag(layerId),
                     onUpdate: (frameDelta, targetLayerId) =>

@@ -4,11 +4,13 @@ import 'package:quick_animaker_v2/src/models/frame.dart';
 import 'package:quick_animaker_v2/src/models/frame_id.dart';
 import 'package:quick_animaker_v2/src/models/layer.dart';
 import 'package:quick_animaker_v2/src/models/layer_id.dart';
+import 'package:quick_animaker_v2/src/models/layer_kind.dart';
 import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
 
-/// R10-④b + R12-②: whole-block move planning — slides remap the timeline
-/// entry, cross-layer moves carry the cel, and blocks in the way are PUSHED
-/// in the direction of travel (leftward pushes clamp at the frame-0 wall).
+/// Whole-block move planning. A SAME-LAYER slide follows the shared rank
+/// rule — free space re-times, a neighbour's midpoint reorders, nothing is
+/// pushed — while a CROSS-LAYER drop carries the cel and shoves the blocks
+/// it lands among (leftward pushes clamp at the frame-0 wall).
 void main() {
   Layer layerWith(
     String id,
@@ -212,6 +214,57 @@ void main() {
         9,
         reason: 'the total span is preserved exactly',
       );
+    });
+
+    test('a row that TILES its cut cannot drag its last block past the cut '
+        'end — the only direction that had no neighbour to stop it', () {
+      // A storyboard row covering [0,9): the last block has open axis to
+      // its right, so without the cut's end nothing would hold it.
+      final layer = Layer(
+        id: const LayerId('sb'),
+        name: 'SB',
+        kind: LayerKind.storyboard,
+        frames: [
+          Frame(id: const FrameId('sb-f1'), duration: 1, strokes: const []),
+          Frame(id: const FrameId('sb-f2'), duration: 1, strokes: const []),
+        ],
+        timeline: const {
+          0: TimelineExposure.drawing(FrameId('sb-f1'), length: 5),
+          5: TimelineExposure.drawing(FrameId('sb-f2'), length: 4),
+        },
+      );
+
+      expect(
+        planDrawingBlockMove(
+          source: layer,
+          target: layer,
+          blockStartIndex: 5,
+          frameDelta: 3,
+          cutFrameCount: 9,
+        ),
+        isNull,
+        reason: 'the row already fills the cut: there is nowhere to go',
+      );
+
+      // An ordinary drawing row keeps the open axis — a block may sit past
+      // the end of its cut, which is data the cut simply does not show.
+      final cel = layerWith(
+        'a',
+        {
+          0: const TimelineExposure.drawing(FrameId('a-f1'), length: 5),
+          5: const TimelineExposure.drawing(FrameId('a-f2'), length: 4),
+        },
+        frameIds: ['a-f1', 'a-f2'],
+      );
+      final past = planDrawingBlockMove(
+        source: cel,
+        target: cel,
+        blockStartIndex: 5,
+        frameDelta: 3,
+        cutFrameCount: 9,
+      );
+      expect(past, isNotNull);
+      expect(past!.destinationStartIndex, 8);
     });
 
     test('block-owned dots ride the moved block for free', () {
