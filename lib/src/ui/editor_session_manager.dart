@@ -5686,7 +5686,11 @@ class EditorSessionManager extends ChangeNotifier {
       if (display == null || commit == null) {
         continue;
       }
-      final starts = _selectionBlockStarts(display, selection);
+      final starts = _selectionBlockStarts(
+        display,
+        selection.startIndex,
+        selection.endIndexExclusive,
+      );
       if (starts.isEmpty) {
         continue;
       }
@@ -5703,14 +5707,18 @@ class EditorSessionManager extends ChangeNotifier {
     }
   }
 
-  /// The selection's real (non-ghost) drawing-block start keys, in order.
+  /// A span's real (non-ghost) drawing-block start keys on [layer], in
+  /// order. Axis-free on purpose: the caller states the span in whichever
+  /// axis its layer is keyed by, which is what lets the cut-local and the
+  /// track-global selections share this.
   List<int> _selectionBlockStarts(
     Layer layer,
-    TimelineFrameRangeSelection selection,
+    int startIndex,
+    int endIndexExclusive,
   ) => [
     for (final entry in layer.timeline.entries)
-      if (entry.key >= selection.startIndex &&
-          entry.key < selection.endIndexExclusive &&
+      if (entry.key >= startIndex &&
+          entry.key < endIndexExclusive &&
           entry.value.isDrawing &&
           !entry.value.ghost)
         entry.key,
@@ -6522,8 +6530,30 @@ class EditorSessionManager extends ChangeNotifier {
   // SCOPE: the live selection's rows, anchored at its start; with no
   // selection, the current row at the current index.
 
-  /// The frame-axis scope: which layer rows shift, and from where.
-  ({List<LayerId> layerIds, int anchorIndex})? _frameShiftScope() {
+  /// The frame-axis scope: which layer rows shift, from where, and which
+  /// AXIS that anchor is stated in.
+  ///
+  /// A track-axis selection (the storyboard's S rows) arrives already in
+  /// commit keys; a cut-local one has to be translated for those same rows.
+  /// Carrying the axis is what keeps the shove from translating twice.
+  ({List<LayerId> layerIds, int anchorIndex, bool anchorIsGlobal})?
+  _frameShiftScope() {
+    final trackSelection = trackFrameRangeSelection.value;
+    if (trackSelection != null) {
+      final rows = [
+        for (final row in trackSelection.spanRows)
+          if (row is LayerRowAddress &&
+              trackSeGlobalLayerById(row.layerId) != null)
+            row.layerId,
+      ];
+      if (rows.isNotEmpty) {
+        return (
+          layerIds: rows,
+          anchorIndex: trackSelection.startFrame,
+          anchorIsGlobal: true,
+        );
+      }
+    }
     final selection = frameRangeSelection.value;
     if (selection != null) {
       final rows = [
@@ -6532,15 +6562,40 @@ class EditorSessionManager extends ChangeNotifier {
       ];
       return rows.isEmpty
           ? null
-          : (layerIds: rows, anchorIndex: selection.startIndex);
+          : (
+              layerIds: rows,
+              anchorIndex: selection.startIndex,
+              anchorIsGlobal: false,
+            );
     }
     final layerId = activeLayerId;
     final index = _timelineController.currentFrameIndex;
     if (layerId == null || index < 0 || _rangeLayerById(layerId) == null) {
       return null;
     }
-    return (layerIds: [layerId], anchorIndex: index);
+    return (layerIds: [layerId], anchorIndex: index, anchorIsGlobal: false);
   }
+
+  /// The layer a shift MEASURES against, in the scope's own axis: the
+  /// global layer for a global anchor, the display clone for a cut-local
+  /// one (whose indexes only that clone is keyed by).
+  Layer? _shiftLayerFor(LayerId layerId, {required bool anchorIsGlobal}) =>
+      anchorIsGlobal && isTrackSeLayerId(layerId)
+      ? trackSeGlobalLayerById(layerId)
+      : _rangeLayerById(layerId);
+
+  /// The scope's anchor as [layerId]'s own timeline keys it.
+  int _shiftAnchorFor(
+    LayerId layerId,
+    int anchorIndex, {
+    required bool anchorIsGlobal,
+  }) =>
+      // Track-SE rows live on the GLOBAL axis, so a cut-local anchor has to
+      // be translated before it can address their blocks. A global one is
+      // already there.
+      !anchorIsGlobal && isTrackSeLayerId(layerId)
+      ? _commitBlockStart(layerId, anchorIndex)
+      : anchorIndex;
 
   bool get canPushFrames => _frameShiftScope() != null;
 
@@ -6553,7 +6608,10 @@ class EditorSessionManager extends ChangeNotifier {
     }
     var slack = 0x7fffffff;
     for (final layerId in scope.layerIds) {
-      final layer = _rangeLayerById(layerId);
+      final layer = _shiftLayerFor(
+        layerId,
+        anchorIsGlobal: scope.anchorIsGlobal,
+      );
       if (layer == null) {
         continue;
       }
@@ -6561,7 +6619,11 @@ class EditorSessionManager extends ChangeNotifier {
         slack,
         rowPullSlack(
           blocks: timelineShiftableBlocks(layer.timeline),
-          anchorIndex: scope.anchorIndex,
+          anchorIndex: _shiftAnchorFor(
+            layerId,
+            scope.anchorIndex,
+            anchorIsGlobal: scope.anchorIsGlobal,
+          ),
         ),
       );
     }
@@ -6592,11 +6654,11 @@ class EditorSessionManager extends ChangeNotifier {
       if (before == null) {
         continue;
       }
-      // Track-SE rows live on the GLOBAL axis, so a cut-local anchor has
-      // to be translated before it can address their blocks.
-      final anchor = isTrackSeLayerId(layerId)
-          ? _commitBlockStart(layerId, scope.anchorIndex)
-          : scope.anchorIndex;
+      final anchor = _shiftAnchorFor(
+        layerId,
+        scope.anchorIndex,
+        anchorIsGlobal: scope.anchorIsGlobal,
+      );
       final after = before.copyWith(
         timeline: timelineShiftedFrom(
           before.timeline,
@@ -8957,7 +9019,9 @@ class EditorSessionManager extends ChangeNotifier {
     final selectionTargets = _selectionBlockStartsByLayer();
     if (selectionTargets != null) {
       _timelineController.deleteBlocksForLayers(selectionTargets);
+      // Whichever axis answered: the leftover span covers empty cells now.
       clearFrameRangeSelection();
+      clearStoryboardCutSelection();
       notifyListeners();
       return;
     }
@@ -8970,11 +9034,18 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// The selection resolved to real block starts per spanned layer —
-  /// in COMMIT keys (track-SE rows map their display starts onto the
-  /// global axis, UI-R18 #1); null when there is no selection (or it
-  /// holds no real blocks anywhere).
-  Map<LayerId, List<int>>? _selectionBlockStartsByLayer() {
+  /// THE selection resolved to real block starts per layer, in COMMIT
+  /// keys; null when neither selection holds real blocks anywhere.
+  ///
+  /// Whichever axis the live selection is in: the cut-local one maps its
+  /// display starts onto the global axis for track-SE rows (UI-R18 #1),
+  /// the track-global one is already stated in commit keys. The two are
+  /// mutually exclusive, so at most one answers.
+  Map<LayerId, List<int>>? _selectionBlockStartsByLayer() =>
+      _cutLocalSelectionBlockStartsByLayer() ??
+      _trackSelectionBlockStartsByLayer();
+
+  Map<LayerId, List<int>>? _cutLocalSelectionBlockStartsByLayer() {
     final selection = frameRangeSelection.value;
     if (selection == null) {
       return null;
@@ -8985,11 +9056,46 @@ class EditorSessionManager extends ChangeNotifier {
       if (layer == null) {
         continue;
       }
-      final starts = _selectionBlockStarts(layer, selection);
+      final starts = _selectionBlockStarts(
+        layer,
+        selection.startIndex,
+        selection.endIndexExclusive,
+      );
       if (starts.isNotEmpty) {
         byLayer[id] = [
           for (final start in starts) _commitBlockStart(id, start),
         ];
+      }
+    }
+    return byLayer.isEmpty ? null : byLayer;
+  }
+
+  /// The storyboard's selection resolved the same way. Its LAYER rows are
+  /// the track-SE rows, whose global layer is the commit layer AND the one
+  /// the range is stated against — so there is nothing to translate here.
+  /// (Its track row's blocks are cuts; deleting those is
+  /// [deleteSelectedCuts]'s job, not a layer edit.)
+  Map<LayerId, List<int>>? _trackSelectionBlockStartsByLayer() {
+    final selection = trackFrameRangeSelection.value;
+    if (selection == null) {
+      return null;
+    }
+    final byLayer = <LayerId, List<int>>{};
+    for (final row in selection.spanRows) {
+      if (row is! LayerRowAddress) {
+        continue;
+      }
+      final layer = trackSeGlobalLayerById(row.layerId);
+      if (layer == null) {
+        continue;
+      }
+      final starts = _selectionBlockStarts(
+        layer,
+        selection.startFrame,
+        selection.endFrameExclusive,
+      );
+      if (starts.isNotEmpty) {
+        byLayer[row.layerId] = starts;
       }
     }
     return byLayer.isEmpty ? null : byLayer;
