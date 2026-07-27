@@ -21,6 +21,7 @@ import 'timeline/timeline_exposure_comma_drag_policy.dart'
     show TimelineCommaDragCallbacks;
 import 'storyboard_playhead_mapping.dart';
 import 'storyboard_timeline_layout.dart';
+import 'timeline/timeline_shift_buttons.dart';
 import 'timeline/timeline_view_cluster.dart';
 import 'timeline/transform_lane_editing.dart';
 
@@ -342,6 +343,15 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   ),
                   const SizedBox(width: 8),
                   CutCommandGroup(session: _session),
+                  const SizedBox(width: 4),
+                  // THE push/pull pair, the timeline rail's own widget: the
+                  // rail asks as ITSELF, so with nothing selected the shove
+                  // aims at the row this rail is on (a cut row shoves cuts,
+                  // an S row shoves sounds).
+                  TimelineShiftButtons(
+                    session: _session,
+                    currentRow: _session.selectedRow,
+                  ),
                 ],
               ),
             ),

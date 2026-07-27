@@ -6537,7 +6537,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// commit keys; a cut-local one has to be translated for those same rows.
   /// Carrying the axis is what keeps the shove from translating twice.
   ({List<LayerId> layerIds, int anchorIndex, bool anchorIsGlobal})?
-  _frameShiftScope() {
+  _frameShiftScope({TimelineRowAddress? currentRow}) {
     final trackSelection = trackFrameRangeSelection.value;
     if (trackSelection != null) {
       final rows = [
@@ -6568,6 +6568,17 @@ class EditorSessionManager extends ChangeNotifier {
               anchorIsGlobal: false,
             );
     }
+    // NO selection: the current row at the current cell — the timeline's
+    // rule, applied to whichever rail asked. The storyboard's current row
+    // is an S row on the global axis, so its anchor is the global playhead.
+    if (currentRow is LayerRowAddress &&
+        trackSeGlobalLayerById(currentRow.layerId) != null) {
+      return (
+        layerIds: [currentRow.layerId],
+        anchorIndex: editingGlobalFrame,
+        anchorIsGlobal: true,
+      );
+    }
     final layerId = activeLayerId;
     final index = _timelineController.currentFrameIndex;
     if (layerId == null || index < 0 || _rangeLayerById(layerId) == null) {
@@ -6597,12 +6608,13 @@ class EditorSessionManager extends ChangeNotifier {
       ? _commitBlockStart(layerId, anchorIndex)
       : anchorIndex;
 
-  bool get canPushFrames => _frameShiftScope() != null;
+  bool canPushFrames({TimelineRowAddress? currentRow}) =>
+      _frameShiftScope(currentRow: currentRow) != null;
 
   /// How far a frame PULL can travel: the LEAST slack across the scope's
   /// rows, so the whole scope stops where the first one touches.
-  int get framePullSlack {
-    final scope = _frameShiftScope();
+  int framePullSlack({TimelineRowAddress? currentRow}) {
+    final scope = _frameShiftScope(currentRow: currentRow);
     if (scope == null) {
       return 0;
     }
@@ -6630,18 +6642,23 @@ class EditorSessionManager extends ChangeNotifier {
     return slack == 0x7fffffff ? 0 : slack;
   }
 
-  bool get canPullFrames => framePullSlack > 0;
+  bool canPullFrames({TimelineRowAddress? currentRow}) =>
+      framePullSlack(currentRow: currentRow) > 0;
 
   /// Opens [count] frames at the anchor across the scope's rows; the
   /// blocks after it keep their own spacing (empty space is carried, not
   /// eaten). ONE undo step for every row it touches.
-  void pushFrames(int count) => _shiftFrames(count);
+  void pushFrames(int count, {TimelineRowAddress? currentRow}) =>
+      _shiftFrames(count, currentRow: currentRow);
 
   /// Closes up to [count] frames, clamped to [framePullSlack].
-  void pullFrames(int count) => _shiftFrames(-math.min(count, framePullSlack));
+  void pullFrames(int count, {TimelineRowAddress? currentRow}) => _shiftFrames(
+    -math.min(count, framePullSlack(currentRow: currentRow)),
+    currentRow: currentRow,
+  );
 
-  void _shiftFrames(int delta) {
-    final scope = _frameShiftScope();
+  void _shiftFrames(int delta, {TimelineRowAddress? currentRow}) {
+    final scope = _frameShiftScope(currentRow: currentRow);
     if (scope == null || delta == 0) {
       return;
     }
@@ -6767,6 +6784,53 @@ class EditorSessionManager extends ChangeNotifier {
     _refreshAfterCutCommand();
     notifyListeners();
   }
+
+  // --- ONE push / pull -----------------------------------------------------
+  //
+  // Push and pull are ONE verb aimed at whatever is selected, not two
+  // verbs the user picks between: a cut is a block on the cut row exactly
+  // as an exposure is a block on a layer row, so "shove from here" means
+  // the same thing on both and only the commit differs.
+  //
+  // [currentRow] is the asking rail's current row, used only when nothing
+  // is selected — the timeline's "current row at the current cell" rule,
+  // applied to whichever rail asked.
+
+  /// Whether a shove aims at the CUT axis: the selection is on a cut row,
+  /// or — with nothing selected — the asking rail is.
+  bool _shiftAimsAtCuts(TimelineRowAddress? currentRow) {
+    final trackSelection = trackFrameRangeSelection.value;
+    if (trackSelection != null) {
+      return trackSelection.spanRows.whereType<TrackRowAddress>().isNotEmpty;
+    }
+    if (frameRangeSelection.value != null) {
+      return false;
+    }
+    return currentRow is TrackRowAddress;
+  }
+
+  bool canPushBlocks({TimelineRowAddress? currentRow}) =>
+      _shiftAimsAtCuts(currentRow)
+      ? canPushCuts
+      : canPushFrames(currentRow: currentRow);
+
+  int blockPullSlack({TimelineRowAddress? currentRow}) =>
+      _shiftAimsAtCuts(currentRow)
+      ? cutPullSlack
+      : framePullSlack(currentRow: currentRow);
+
+  bool canPullBlocks({TimelineRowAddress? currentRow}) =>
+      blockPullSlack(currentRow: currentRow) > 0;
+
+  void pushBlocks(int count, {TimelineRowAddress? currentRow}) =>
+      _shiftAimsAtCuts(currentRow)
+      ? pushCuts(count)
+      : pushFrames(count, currentRow: currentRow);
+
+  void pullBlocks(int count, {TimelineRowAddress? currentRow}) =>
+      _shiftAimsAtCuts(currentRow)
+      ? pullCuts(count)
+      : pullFrames(count, currentRow: currentRow);
 
   // --- Frame RANGE selection (UI-R8, TVP-style) ----------------------------
 
