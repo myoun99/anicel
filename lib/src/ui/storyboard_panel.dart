@@ -59,6 +59,7 @@ import 'timeline/timeline_frame_geometry.dart'
 import 'timeline/timeline_frame_range_gesture.dart'
     show TimelineFrameRangeGestureLayer, TimelineRangeGestureCallbacks;
 import '../models/storyboard_coverage.dart' show storyboardCoverageCells;
+import '../models/timeline_frame_range.dart' show TimelineFrameRangeSelection;
 import '../models/timeline_row_address.dart'
     show LayerRowAddress, TimelineRowAddress, TrackRowAddress;
 import '../models/track_frame_range.dart';
@@ -205,6 +206,33 @@ class StoryboardSeSelectCallbacks {
   final StoryboardSeMoveCallbacks? move;
 }
 
+/// Range selection on the cut block's STRIP — the cut's own panels.
+///
+/// The strip is a CUT-OWNED row, so unlike every other row of this panel it
+/// speaks the cut's local axis: its selection is the ordinary cut-local one
+/// the timeline uses, on that cut's storyboard layer. The mount converts,
+/// which is why these callbacks take a cut-local index and a layer.
+class StoryboardStripSelectCallbacks {
+  const StoryboardStripSelectCallbacks({
+    required this.selection,
+    required this.onDrag,
+    required this.onClear,
+  });
+
+  /// The live cut-local selection (the session's own), so the strip can
+  /// answer whether a frame is inside it.
+  final ValueListenable<TimelineFrameRangeSelection?> selection;
+
+  /// A select-drag step in the anchor cut's LOCAL frames.
+  final void Function({
+    required LayerId layerId,
+    required int anchorIndex,
+    required int headIndex,
+  })
+  onDrag;
+  final VoidCallback onClear;
+}
+
 /// The S rows' half of the shared range gesture's MOVE mode: the selected
 /// sounds slide along the track's global axis, previewing live and
 /// committing once on release.
@@ -246,6 +274,7 @@ class StoryboardPanel extends StatefulWidget {
     this.cutTrim,
     this.cutMove,
     this.cutSelect,
+    this.stripSelect,
     this.movieEnd,
     this.pixelsPerFrame = 8,
     this.showSeconds = false,
@@ -376,6 +405,10 @@ class StoryboardPanel extends StatefulWidget {
   /// the selection slide (through [cutMove]); null keeps every body drag
   /// a direct slide.
   final StoryboardCutSelectCallbacks? cutSelect;
+
+  /// Range selection on the STRIP — the cut's own panels, on the cut's own
+  /// axis. Null keeps the strip display-only.
+  final StoryboardStripSelectCallbacks? stripSelect;
 
   /// Movie-end drag hooks (UI-R20 #3); null hides the end grip (the line
   /// still shows).
@@ -1134,6 +1167,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           cutTrim: widget.cutTrim,
           cutMove: widget.cutMove,
           cutSelect: widget.cutSelect,
+          stripSelect: widget.stripSelect,
           thumbnailFor: widget.thumbnailFor,
           timelineScale: scale,
           frameGeometry: _frameGeometry,
@@ -3605,6 +3639,7 @@ class _StoryboardTrackRow extends StatelessWidget {
     required this.cutTrim,
     required this.cutMove,
     required this.cutSelect,
+    required this.stripSelect,
     required this.thumbnailFor,
     required this.timelineScale,
     required this.frameGeometry,
@@ -3625,6 +3660,10 @@ class _StoryboardTrackRow extends StatelessWidget {
   final StoryboardCutTrimCallbacks? cutTrim;
   final StoryboardCutMoveCallbacks? cutMove;
   final StoryboardCutSelectCallbacks? cutSelect;
+
+  /// Range selection on the STRIP — the cut's own panels, on the cut's own
+  /// axis. Null keeps the strip display-only.
+  final StoryboardStripSelectCallbacks? stripSelect;
   final ui.Image? Function(Cut cut)? thumbnailFor;
   final TimelineScale timelineScale;
 
@@ -3659,6 +3698,63 @@ class _StoryboardTrackRow extends StatelessWidget {
       }
     }
     return null;
+  }
+
+  /// The STRIP's half of the shared range gesture.
+  ///
+  /// The strip is a CUT-OWNED row, so its selection is the cut-local one —
+  /// which is also why the drag never leaves the cut it started in: a
+  /// cut-local index cannot name a frame in another cut. That is the
+  /// "clip to the anchor cut" rule, arriving as arithmetic rather than as
+  /// a guard.
+  ///
+  /// The row address is ignored, as it is on the cut row: the pressed FRAME
+  /// says which cut, and therefore which storyboard layer, the drag is on.
+  TimelineRangeGestureCallbacks? _stripGesture() {
+    final stripSelect = this.stripSelect;
+    if (stripSelect == null) {
+      return null;
+    }
+    ({StoryboardTimelineLayoutEntry entry, Layer layer})? stripAt(int frame) {
+      final entry = _cutAtFrame(frame);
+      if (entry == null) {
+        return null;
+      }
+      final layer = storyboardLayerForCut(entry.cut);
+      return layer == null ? null : (entry: entry, layer: layer);
+    }
+
+    return TimelineRangeGestureCallbacks(
+      isInSelection: (_, frame) {
+        final strip = stripAt(frame);
+        final selection = stripSelect.selection.value;
+        return strip != null &&
+            selection != null &&
+            selection.coversLayer(strip.layer.id) &&
+            selection.contains(frame - strip.entry.startFrame);
+      },
+      onSelectUpdate: (_, anchorIndex, headIndex, _) {
+        final strip = stripAt(anchorIndex);
+        if (strip == null) {
+          return;
+        }
+        final start = strip.entry.startFrame;
+        final lastLocal = strip.entry.duration - 1;
+        int localOf(int globalFrame) =>
+            (globalFrame - start).clamp(0, lastLocal < 0 ? 0 : lastLocal);
+        stripSelect.onDrag(
+          layerId: strip.layer.id,
+          anchorIndex: localOf(anchorIndex),
+          headIndex: localOf(headIndex),
+        );
+      },
+      onTapClear: (_) => stripSelect.onClear(),
+      // Sliding the panels is the next round: the strip selects here.
+      onMoveBegin: (_, _) => false,
+      onMoveUpdate: (_, _) {},
+      onMoveEnd: () {},
+      onMoveCancel: () {},
+    );
   }
 
   /// Whether [frame] sits in the live selection — a plain range test now
@@ -3829,6 +3925,38 @@ class _StoryboardTrackRow extends StatelessWidget {
                 geometry: frameGeometry,
                 crossAxisExtent: StoryboardPanel._trackLaneHeight,
                 callbacks: rangeGesture,
+              ),
+            // THE STRIP's own gesture, over the band that draws the panels.
+            // It sits ABOVE the cut gesture and covers only the strip, so
+            // the split between "the bands are the cut, the strip is its
+            // panels" is hit-testing and not a branch: a press on a band
+            // simply misses this and lands on the cut gesture below.
+            if (_stripGesture() case final stripGesture?)
+              Positioned(
+                key: ValueKey<String>(
+                  'storyboard-strip-gesture-slot-${track.id.value}',
+                ),
+                left: 0,
+                right: 0,
+                top: StoryboardCutBlocksPainter.bandHeight,
+                height:
+                    StoryboardPanel._trackLaneHeight -
+                    StoryboardCutBlocksPainter.bandHeight * 2,
+                // The gesture layer fills its Stack, so it needs one of its
+                // own here — a second Positioned around it would be two
+                // ParentDataWidgets on one render object.
+                child: Stack(
+                  children: [
+                    TimelineFrameRangeGestureLayer(
+                      row: TrackRowAddress(track.id),
+                      geometry: frameGeometry,
+                      crossAxisExtent:
+                          StoryboardPanel._trackLaneHeight -
+                          StoryboardCutBlocksPainter.bandHeight * 2,
+                      callbacks: stripGesture,
+                    ),
+                  ],
+                ),
               ),
             // Trim grips ride ABOVE the row gesture so the edges keep trim
             // priority; the row gesture keeps the middle. The start grip

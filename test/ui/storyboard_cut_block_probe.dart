@@ -83,3 +83,21 @@ Rect cutBlockScreenRect(WidgetTester tester, String cutId, {String? trackId}) {
 
 Offset cutBlockCenter(WidgetTester tester, String cutId, {String? trackId}) =>
     cutBlockScreenRect(tester, cutId, trackId: trackId).center;
+
+/// A point on the cut's TOP BAND — the CUT's own handle.
+///
+/// The block's middle is the strip, and the strip belongs to the cut's
+/// panels, so a drag that means "this cut" (slide it, select the run) has
+/// to start on a band. The centre still works for a plain tap, which both
+/// gestures pass through to the cells press underneath.
+Offset cutBlockBandCenter(
+  WidgetTester tester,
+  String cutId, {
+  String? trackId,
+}) {
+  final rect = cutBlockScreenRect(tester, cutId, trackId: trackId);
+  return Offset(
+    rect.center.dx,
+    rect.top + StoryboardCutBlocksPainter.bandHeight / 2,
+  );
+}

@@ -16,6 +16,7 @@ import 'package:quick_animaker_v2/src/models/timeline_row_address.dart';
 import 'package:quick_animaker_v2/src/models/track.dart';
 import 'package:quick_animaker_v2/src/models/track_id.dart';
 import 'package:quick_animaker_v2/src/ui/home_page.dart';
+import 'package:quick_animaker_v2/src/ui/storyboard_cut_blocks_painter.dart';
 import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
 
 /// The storyboard's S rows select like every other frame-axis row.
@@ -170,7 +171,10 @@ void main() {
       ValueKey<String>('storyboard-track-timeline-area-${_trackId.value}'),
     );
     final cutRowTopLeft = tester.getTopLeft(cutRow);
-    final cutRowY = cutRowTopLeft.dy + tester.getSize(cutRow).height / 2;
+    // The cut's own handle is its BAND: the block's middle is the strip,
+    // which belongs to the cut's panels.
+    final cutRowY =
+        cutRowTopLeft.dy + StoryboardCutBlocksPainter.bandHeight / 2;
     final cutGesture = await tester.startGesture(
       Offset(cutRowTopLeft.dx + 1.5 * _pixelsPerFrame(tester), cutRowY),
       kind: PointerDeviceKind.mouse,

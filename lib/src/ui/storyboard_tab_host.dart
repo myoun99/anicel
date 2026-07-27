@@ -469,6 +469,25 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   onDrag: _session.updateStoryboardCutSelectionByFrame,
                   onClear: _session.clearStoryboardCutSelection,
                 ),
+                // The STRIP's selection is the CUT-LOCAL one — the same
+                // object the timeline uses, on that cut's storyboard layer.
+                // It has to be: a cut-local index can only name frames of
+                // the active cut, which the cells press has just made
+                // active by pressing there.
+                stripSelect: StoryboardStripSelectCallbacks(
+                  selection: _session.frameRangeSelection,
+                  onDrag:
+                      ({
+                        required layerId,
+                        required anchorIndex,
+                        required headIndex,
+                      }) => _session.updateFrameRangeSelectionDrag(
+                        layerId: layerId,
+                        anchorIndex: anchorIndex,
+                        headIndex: headIndex,
+                      ),
+                  onClear: _session.clearFrameRangeSelection,
+                ),
                 // The end line edits the MOVIE length (UI-R20 #3): the
                 // project's trailing gap, never the cuts.
                 movieEnd: StoryboardMovieEndCallbacks(
