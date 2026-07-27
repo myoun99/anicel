@@ -74,41 +74,11 @@ void main() {
       );
     });
 
-    test(
-      'rightward push: the block ahead shifts by the overlap, cascading',
-      () {
-        final layer = layerWith(
-          'a',
-          {
-            0: const TimelineExposure.drawing(FrameId('a-f1'), length: 2),
-            3: const TimelineExposure.drawing(FrameId('a-f2'), length: 2),
-            6: const TimelineExposure.drawing(FrameId('a-f3'), length: 2),
-          },
-          frameIds: ['a-f1', 'a-f2', 'a-f3'],
-        );
-
-        final plan = planDrawingBlockMove(
-          source: layer,
-          target: layer,
-          blockStartIndex: 0,
-          frameDelta: 3,
-        );
-
-        expect(plan, isNotNull);
-        final timeline = plan!.sourceAfter.timeline;
-        expect(plan.destinationStartIndex, 3);
-        expect(timeline[3]!.frameId, const FrameId('a-f1'));
-        // [3,5) pushed to [5,7); that push shoves [6,8) on to [7,9).
-        expect(timeline[5]!.frameId, const FrameId('a-f2'));
-        expect(timeline[7]!.frameId, const FrameId('a-f3'));
-        expect(timeline.length, 3);
-      },
-    );
-
-    test('leftward push: the block ahead slides toward frame 0, and the '
-        'move clamps when the wall stops the chain', () {
-      // A gap in front of the leading block: pushing can consume it.
-      final pushable = layerWith(
+    test('a drag stops at contact instead of pushing the neighbour', () {
+      // a[2,4) b[6,8): dragging b three frames left would put it over a, so
+      // it lands touching a instead — and a does not move. The frame axis
+      // used to bulldoze here, shoving a toward the wall to make room.
+      final layer = layerWith(
         'a',
         {
           2: const TimelineExposure.drawing(FrameId('a-f1'), length: 2),
@@ -116,43 +86,55 @@ void main() {
         },
         frameIds: ['a-f1', 'a-f2'],
       );
-      final pushed = planDrawingBlockMove(
-        source: pushable,
-        target: pushable,
+
+      final plan = planDrawingBlockMove(
+        source: layer,
+        target: layer,
         blockStartIndex: 6,
         frameDelta: -3,
       );
-      expect(pushed, isNotNull);
-      expect(pushed!.destinationStartIndex, 3);
-      expect(pushed.sourceAfter.timeline[1]!.frameId, const FrameId('a-f1'));
-      expect(pushed.sourceAfter.timeline[3]!.frameId, const FrameId('a-f2'));
 
-      // No gap anywhere: the chain hits the wall and the landing clamps
-      // flush against the leading block.
-      final packed = layerWith(
+      expect(plan, isNotNull);
+      expect(plan!.destinationStartIndex, 4);
+      expect(plan.sourceAfter.timeline[2]!.frameId, const FrameId('a-f1'));
+      expect(plan.sourceAfter.timeline[4]!.frameId, const FrameId('a-f2'));
+      expect(plan.sourceAfter.timeline.length, 2);
+    });
+
+    test('reaching past the neighbour\'s midpoint REORDERS instead, and '
+        'every gap travels with the block that owns it', () {
+      // a[0,2) b[3,5) c[6,8). Dragging a three right puts its own midpoint
+      // level with b's, so a lands after b. b keeps the one-frame lead-in
+      // it owns — now measured from frame 0 — and c never moves.
+      final layer = layerWith(
         'a',
         {
           0: const TimelineExposure.drawing(FrameId('a-f1'), length: 2),
-          5: const TimelineExposure.drawing(FrameId('a-f2'), length: 2),
+          3: const TimelineExposure.drawing(FrameId('a-f2'), length: 2),
+          6: const TimelineExposure.drawing(FrameId('a-f3'), length: 2),
         },
-        frameIds: ['a-f1', 'a-f2'],
+        frameIds: ['a-f1', 'a-f2', 'a-f3'],
       );
-      final clamped = planDrawingBlockMove(
-        source: packed,
-        target: packed,
-        blockStartIndex: 5,
-        frameDelta: -5,
+
+      final plan = planDrawingBlockMove(
+        source: layer,
+        target: layer,
+        blockStartIndex: 0,
+        frameDelta: 3,
       );
-      expect(clamped, isNotNull);
-      expect(clamped!.destinationStartIndex, 2);
-      expect(clamped.sourceAfter.timeline[0]!.frameId, const FrameId('a-f1'));
-      expect(clamped.sourceAfter.timeline[2]!.frameId, const FrameId('a-f2'));
+
+      expect(plan, isNotNull);
+      final timeline = plan!.sourceAfter.timeline;
+      expect(plan.destinationStartIndex, 3);
+      expect(timeline[1]!.frameId, const FrameId('a-f2'));
+      expect(timeline[3]!.frameId, const FrameId('a-f1'));
+      expect(timeline[6]!.frameId, const FrameId('a-f3'));
+      expect(timeline.length, 3);
     });
 
-    test('a slide never PASSES another block — the moved block bulldozes, '
-        'it does not slot into gaps beyond (R12-B)', () {
-      // Rightward: dragging far right does NOT jump over the neighbour
-      // into the empty space beyond — the neighbour rides the frontier.
+    test('a far drag is a reorder, not a landing in the space beyond', () {
+      // Rightward: a dragged well past b does not park in the empty space
+      // out there — it becomes the SECOND block, keeping its own lead-in.
       final rightward = layerWith(
         'a',
         {
@@ -168,18 +150,14 @@ void main() {
         frameDelta: 8,
       );
       expect(right, isNotNull);
-      expect(right!.destinationStartIndex, 8);
-      expect(right.sourceAfter.timeline[8]!.frameId, const FrameId('a-f1'));
-      expect(
-        right.sourceAfter.timeline[10]!.frameId,
-        const FrameId('a-f2'),
-        reason: 'the passed neighbour is carried BEHIND the moved block',
-      );
+      // b carries its three-frame lead-in to the front; a follows flush.
+      expect(right!.destinationStartIndex, 5);
+      expect(right.sourceAfter.timeline[3]!.frameId, const FrameId('a-f2'));
+      expect(right.sourceAfter.timeline[5]!.frameId, const FrameId('a-f1'));
       expect(right.sourceAfter.timeline.length, 2);
 
-      // Leftward: dragging far left does NOT slot into the space before
-      // the leading block — the leading block is bulldozed to the wall
-      // and the moved block rests flush behind it.
+      // Leftward reads the same way: b becomes the FIRST block with its own
+      // two-frame lead-in, and a follows with the four it owns.
       final leftward = layerWith(
         'a',
         {
@@ -196,9 +174,44 @@ void main() {
       );
       expect(left, isNotNull);
       expect(left!.destinationStartIndex, 2);
-      expect(left.sourceAfter.timeline[0]!.frameId, const FrameId('a-f1'));
       expect(left.sourceAfter.timeline[2]!.frameId, const FrameId('a-f2'));
+      expect(left.sourceAfter.timeline[8]!.frameId, const FrameId('a-f1'));
       expect(left.sourceAfter.timeline.length, 2);
+    });
+
+    test('a row with no gaps has no free space, so every move is a reorder '
+        'and the row\'s total length never changes', () {
+      // The storyboard row's shape: blocks tile their span edge to edge.
+      final layer = layerWith(
+        'a',
+        {
+          0: const TimelineExposure.drawing(FrameId('a-f1'), length: 3),
+          3: const TimelineExposure.drawing(FrameId('a-f2'), length: 2),
+          5: const TimelineExposure.drawing(FrameId('a-f3'), length: 4),
+        },
+        frameIds: ['a-f1', 'a-f2', 'a-f3'],
+      );
+
+      final plan = planDrawingBlockMove(
+        source: layer,
+        target: layer,
+        blockStartIndex: 0,
+        frameDelta: 3,
+      );
+
+      expect(plan, isNotNull);
+      final timeline = plan!.sourceAfter.timeline;
+      // a and b swapped; the row still tiles [0,9) with no hole and no
+      // overhang, which is why a gapless row can never overflow its cut.
+      expect(timeline.keys, [0, 2, 5]);
+      expect(timeline[0]!.frameId, const FrameId('a-f2'));
+      expect(timeline[2]!.frameId, const FrameId('a-f1'));
+      expect(timeline[5]!.frameId, const FrameId('a-f3'));
+      expect(
+        timeline.keys.last + timeline[timeline.keys.last]!.length!,
+        9,
+        reason: 'the total span is preserved exactly',
+      );
     });
 
     test('block-owned dots ride the moved block for free', () {
