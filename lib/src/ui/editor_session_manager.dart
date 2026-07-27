@@ -7431,6 +7431,14 @@ class EditorSessionManager extends ChangeNotifier {
           );
   }
 
+  /// The display→commit offset the move applies to [layerId]'s span. ZERO
+  /// on the track axis: the span is already stated in commit keys, and
+  /// translating it again would address another cut's frames.
+  int _rangeMoveCommitOffset(LayerId layerId, int spanStart) =>
+      _rangeMoveOnTrackAxis
+      ? 0
+      : _commitBlockStart(layerId, spanStart) - spanStart;
+
   Layer? _rangeMoveSourceBefore;
 
   /// The move's subject span as it stood at drag start, stated in the axis
@@ -7646,9 +7654,7 @@ class EditorSessionManager extends ChangeNotifier {
         if (hasBlock) {
           sources.add((
             commit: commit,
-            offset:
-                _commitBlockStart(id, selection.startIndex) -
-                selection.startIndex,
+            offset: _rangeMoveCommitOffset(id, selection.startIndex),
           ));
         }
       }
@@ -7730,9 +7736,10 @@ class EditorSessionManager extends ChangeNotifier {
         keepLastValid();
         return true;
       }
-      final offset =
-          _commitBlockStart(selection.layerId, selection.startIndex) -
-          selection.startIndex;
+      final offset = _rangeMoveCommitOffset(
+        selection.layerId,
+        selection.startIndex,
+      );
       final plan = planSeRangeRowMove(
         source: sourceGlobal,
         target: targetGlobal,
@@ -8172,9 +8179,7 @@ class EditorSessionManager extends ChangeNotifier {
       }
       final source = seLattice[sourceIndex];
       final target = seLattice[targetIndex];
-      final offset =
-          _commitBlockStart(sourceId, selection.startIndex) -
-          selection.startIndex;
+      final offset = _rangeMoveCommitOffset(sourceId, selection.startIndex);
       final plan = planSeRangeRowMove(
         source: source,
         target: target,
