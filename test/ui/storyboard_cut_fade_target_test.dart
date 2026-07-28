@@ -1,18 +1,18 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/canvas_point.dart';
-import 'package:quick_animaker_v2/src/models/canvas_size.dart';
-import 'package:quick_animaker_v2/src/models/cut.dart';
-import 'package:quick_animaker_v2/src/models/cut_id.dart';
-import 'package:quick_animaker_v2/src/models/cut_metadata.dart';
-import 'package:quick_animaker_v2/src/models/property_track.dart';
-import 'package:quick_animaker_v2/src/models/transform_track.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
-import 'package:quick_animaker_v2/src/ui/export/export_frame_renderer.dart';
-import 'package:quick_animaker_v2/src/ui/export/export_plan.dart';
-import 'package:quick_animaker_v2/src/ui/storyboard_cut_fade_policy.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/cut_metadata.dart';
+import 'package:anicel/src/models/property_track.dart';
+import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/export/export_frame_renderer.dart';
+import 'package:anicel/src/ui/export/export_plan.dart';
+import 'package:anicel/src/ui/storyboard_cut_fade_policy.dart';
 
 /// R4-⑨ fade target: FO=black (default) / WO=white, shared by playback and
 /// the MP4 bake through cutFadeTargetColor.

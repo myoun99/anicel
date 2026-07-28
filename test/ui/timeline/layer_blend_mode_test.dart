@@ -1,19 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/app_language.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/layer.dart';
-import 'package:quick_animaker_v2/src/models/layer_blend_mode.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_kind.dart';
-import 'package:quick_animaker_v2/src/services/cut_frame_composite_plan.dart';
-import 'package:quick_animaker_v2/src/services/playback/cut_frame_composite_signature.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_action_toolbar.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_layer_controls_row.dart';
-import 'package:quick_animaker_v2/src/ui/widgets/panel_flyout.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/services/cut_frame_composite_plan.dart';
+import 'package:anicel/src/services/playback/cut_frame_composite_signature.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 /// R26 #30/#30-1: the layer's composite blend mode — model round-trip,
 /// the shared composite visit, cache identity, the session commit and

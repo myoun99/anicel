@@ -1,11 +1,11 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
-import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
-import 'package:quick_animaker_v2/src/models/canvas_size.dart';
-import 'package:quick_animaker_v2/src/models/tile_coord.dart';
-import 'package:quick_animaker_v2/src/services/brush_ground_color_sampling.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/services/brush_ground_color_sampling.dart';
 
 const int _tileSize = 32;
 

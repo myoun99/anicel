@@ -1,27 +1,27 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
-import 'package:quick_animaker_v2/src/models/canvas_size.dart';
-import 'package:quick_animaker_v2/src/models/canvas_viewport.dart';
-import 'package:quick_animaker_v2/main.dart';
-import 'package:quick_animaker_v2/src/controllers/default_cut_helpers.dart';
-import 'package:quick_animaker_v2/src/models/cut.dart';
-import 'package:quick_animaker_v2/src/models/cut_id.dart';
-import 'package:quick_animaker_v2/src/models/frame.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/layer.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/project.dart';
-import 'package:quick_animaker_v2/src/models/project_id.dart';
-import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
-import 'package:quick_animaker_v2/src/models/track.dart';
-import 'package:quick_animaker_v2/src/models/track_id.dart';
-import 'package:quick_animaker_v2/src/services/project_repository.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_canvas_panel.dart';
-import 'package:quick_animaker_v2/src/ui/brush/canvas_viewport_pan_metrics.dart';
-import 'package:quick_animaker_v2/src/ui/brush/main_canvas_brush_host.dart';
-import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
-import 'package:quick_animaker_v2/src/ui/home_page.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/main.dart';
+import 'package:anicel/src/controllers/default_cut_helpers.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/project_repository.dart';
+import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
+import 'package:anicel/src/ui/brush/canvas_viewport_pan_metrics.dart';
+import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
+import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:anicel/src/ui/home_page.dart';
 
 import '../helpers/panel_finders.dart';
 
@@ -29,7 +29,7 @@ void main() {
   testWidgets('HomePage mounts production brush host in the main canvas area', (
     tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     expect(
       find.byKey(const ValueKey<String>('main-canvas-mode-toggle')),
@@ -54,7 +54,7 @@ void main() {
   testWidgets(
     'production brush host shows the blank canvas without active drawing frame',
     (tester) async {
-      await tester.pumpWidget(const QuickAnimakerApp());
+      await tester.pumpWidget(const AnicelApp());
       await tester.pumpAndSettle();
 
       expect(
@@ -545,7 +545,7 @@ void main() {
   testWidgets('separate Brush Workspace route entry is retired', (
     tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     expect(
       find.byKey(const ValueKey<String>('brush-workspace-entry')),

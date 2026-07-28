@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/layer_kind.dart';
-import 'package:quick_animaker_v2/src/models/timeline_repeat.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/timeline_repeat.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// Design E: the STORYBOARD row refuses repeat/hold regions. A derived
 /// instance would look exactly like a conte panel while owning no memo of

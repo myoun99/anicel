@@ -1,9 +1,9 @@
 import 'dart:collection';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// ADD FRAME inside a block DIVIDES it (user's rule 2026-07-27):
 /// `1-----` pressed on the third frame reads `1--o--` afterwards, the new

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/models/brush_tip_shape.dart';
 
 void main() {
   group('BrushTipShape', () {

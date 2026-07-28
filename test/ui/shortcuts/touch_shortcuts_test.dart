@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/shortcuts/editor_action_registry.dart';
-import 'package:quick_animaker_v2/src/ui/shortcuts/editor_shortcut_bindings.dart';
-import 'package:quick_animaker_v2/src/ui/shortcuts/touch_shortcuts.dart';
+import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
+import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
+import 'package:anicel/src/ui/shortcuts/touch_shortcuts.dart';
 
 /// R11-⑨: multi-finger touch shortcuts — the gesture recognizer, the
 /// per-action bindings (defaults + overrides + persistence payload) and

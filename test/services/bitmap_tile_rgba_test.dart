@@ -1,10 +1,10 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
-import 'package:quick_animaker_v2/src/models/rgba_color.dart';
-import 'package:quick_animaker_v2/src/models/tile_coord.dart';
-import 'package:quick_animaker_v2/src/services/bitmap_tile_rgba.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/rgba_color.dart';
+import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 
 void main() {
   group('readRgbaColorFromBitmapTile', () {

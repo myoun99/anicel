@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/services/input/pencil_interaction_service.dart';
-import 'package:quick_animaker_v2/src/ui/home_page.dart';
+import 'package:anicel/src/services/input/pencil_interaction_service.dart';
+import 'package:anicel/src/ui/home_page.dart';
 
 /// PEN-5: the shell maps Pencil double-taps onto the tool notifier —
 /// brush↔eraser for the switch actions, no-ops otherwise.

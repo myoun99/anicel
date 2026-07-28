@@ -4,24 +4,24 @@ library;
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/brush_dab.dart';
-import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
-import 'package:quick_animaker_v2/src/models/brush_history_policy.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
-import 'package:quick_animaker_v2/src/models/canvas_point.dart';
-import 'package:quick_animaker_v2/src/models/canvas_size.dart';
-import 'package:quick_animaker_v2/src/models/cut_id.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/project_id.dart';
-import 'package:quick_animaker_v2/src/models/track_id.dart';
-import 'package:quick_animaker_v2/src/services/brush_frame_edit_session_store.dart';
-import 'package:quick_animaker_v2/src/services/brush_frame_editing_coordinator.dart';
-import 'package:quick_animaker_v2/src/services/brush_frame_store.dart';
-import 'package:quick_animaker_v2/src/services/brush_live_stroke_rasterizer.dart';
-import 'package:quick_animaker_v2/src/services/brush_stroke_commit_data.dart';
-import 'package:quick_animaker_v2/src/services/commands/brush_stroke_history_command.dart';
-import 'package:quick_animaker_v2/src/services/history_manager.dart';
+import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/brush_history_policy.dart';
+import 'package:anicel/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
+import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
+import 'package:anicel/src/services/brush_frame_store.dart';
+import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
+import 'package:anicel/src/services/brush_stroke_commit_data.dart';
+import 'package:anicel/src/services/commands/brush_stroke_history_command.dart';
+import 'package:anicel/src/services/history_manager.dart';
 
 /// CROSS-CEL accumulation microbenchmark (not a correctness test): an
 /// animation working session draws on many different cels, and the

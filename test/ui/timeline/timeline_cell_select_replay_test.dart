@@ -1,10 +1,10 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/layer.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_exposure_block_visual.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_cell.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_exposure_block_visual.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_cell.dart';
 
 /// Selection must NEVER rewind: with onDoubleTap registered, an InkWell
 /// onTap resolves ~300ms late, so tapping cell B right after cell A used to

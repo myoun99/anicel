@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/layer_folder.dart';
-import 'package:quick_animaker_v2/src/services/project_repository.dart';
-import 'package:quick_animaker_v2/src/ui/debug/input_inspector.dart';
-import 'package:quick_animaker_v2/src/ui/debug/measurement_mode.dart';
-import 'package:quick_animaker_v2/src/ui/home_page.dart';
+import 'package:anicel/src/models/layer_folder.dart';
+import 'package:anicel/src/services/project_repository.dart';
+import 'package:anicel/src/ui/debug/input_inspector.dart';
+import 'package:anicel/src/ui/debug/measurement_mode.dart';
+import 'package:anicel/src/ui/home_page.dart';
 
 /// The top menu bar (W2): every submenu lists its commands, enablement
 /// tracks the session's `can*` gates, the Window menu keeps the retired

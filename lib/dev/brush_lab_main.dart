@@ -43,7 +43,7 @@ class _BrushLabApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
-      title: 'QuickAnimaker Brush Lab',
+      title: 'Anicel Brush Lab',
       theme: buildAppTheme(),
       home: const _BrushLabDriver(child: HomePage()),
     );

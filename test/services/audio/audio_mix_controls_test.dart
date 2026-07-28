@@ -2,14 +2,14 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/audio_clip.dart';
-import 'package:quick_animaker_v2/src/models/frame.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/layer.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_kind.dart';
-import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
-import 'package:quick_animaker_v2/src/services/audio/audio_mixer_reference.dart';
+import 'package:anicel/src/models/audio_clip.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/services/audio/audio_mixer_reference.dart';
 
 /// AUDIO-PRO R1: the mix-control primitives — pan law, fade curves, the
 /// volume envelope — pinned on the Dart reference (the parity suite then

@@ -1,11 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/frame.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/layer.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/onion_skin_settings.dart';
-import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
-import 'package:quick_animaker_v2/src/services/onion_skin_plan.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/onion_skin_settings.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/services/onion_skin_plan.dart';
 
 void main() {
   Frame frame(String id) =>

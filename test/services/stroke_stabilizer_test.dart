@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/canvas_point.dart';
-import 'package:quick_animaker_v2/src/services/stroke_stabilizer.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/services/stroke_stabilizer.dart';
 
 void main() {
   test('the brush stays put while the pen is inside the rope', () {

@@ -1,11 +1,11 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/canvas_point.dart';
-import 'package:quick_animaker_v2/src/models/transform_track.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
-import 'package:quick_animaker_v2/src/ui/storyboard_tab_host.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'storyboard_cut_block_probe.dart';
 
 /// R12-⑧ repro: the cut-block slide (gap authoring) must keep working when

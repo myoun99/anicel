@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_scale.dart';
+import 'package:anicel/src/ui/timeline/timeline_scale.dart';
 
 void main() {
   test('leftForFrame maps frames to pixels', () {

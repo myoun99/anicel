@@ -1,10 +1,10 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/services/canvas_flood_fill.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_tool_state.dart';
-import 'package:quick_animaker_v2/src/ui/brush/canvas_selection_commands.dart';
-import 'package:quick_animaker_v2/src/ui/brush/tool_settings_panel.dart';
+import 'package:anicel/src/services/canvas_flood_fill.dart';
+import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
+import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 
 /// R26 #14: the Move/Transform settings' x/y/angle/scale are the shared
 /// DRAG VALUE readouts (the canvas bar's zoom/angle vocabulary) — a

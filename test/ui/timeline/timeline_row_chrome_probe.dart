@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_row_edit_chrome.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_edit_chrome.dart';
 
 /// Test probes for a dense row's PAINTED edit chrome (R28 #4 tier 2): the
 /// comma grips and the run-edge [+]/property clusters are canvas work now,

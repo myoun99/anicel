@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/canvas_point.dart';
-import 'package:quick_animaker_v2/src/services/canvas_selection.dart';
-import 'package:quick_animaker_v2/src/services/canvas_selection_region.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/services/canvas_selection.dart';
+import 'package:anicel/src/services/canvas_selection_region.dart';
 
 /// R26 #16: the composite region model — the four modes fold into ONE
 /// membership rule that the hit test, the lift mask and the ants all read.

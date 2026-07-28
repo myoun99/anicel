@@ -1,19 +1,19 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/services/brush_stroke_commit_data.dart';
-import 'package:quick_animaker_v2/src/models/canvas_size.dart';
-import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
-import 'package:quick_animaker_v2/src/models/cut_id.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/project_id.dart';
-import 'package:quick_animaker_v2/src/models/track_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/services/brush_frame_edit_session_store.dart';
-import 'package:quick_animaker_v2/src/ui/canvas/brush_edit_canvas_input_settings.dart';
-import 'package:quick_animaker_v2/src/ui/canvas/canvas_touch_contacts.dart';
-import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
-import 'package:quick_animaker_v2/src/ui/input/app_input_settings.dart';
+import 'package:anicel/src/services/brush_stroke_commit_data.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
+import 'package:anicel/src/ui/canvas/brush_edit_canvas_input_settings.dart';
+import 'package:anicel/src/ui/canvas/canvas_touch_contacts.dart';
+import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:anicel/src/ui/input/app_input_settings.dart';
 
 /// R26 #5: the finger census is APP-WIDE. The timesheet mounts one ink
 /// view per sheet window, so a two-finger pinch lands one contact on each

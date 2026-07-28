@@ -1,8 +1,8 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
-import 'package:quick_animaker_v2/src/services/audio/audio_peaks_extractor.dart';
+import 'package:anicel/src/models/project_frame_rate.dart';
+import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
 
 /// The waveform envelope computed from decoded PCM, taking the loudest
 /// channel instead of a mono downmix.

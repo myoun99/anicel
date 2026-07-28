@@ -2,8 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/services/persistence/app_documents.dart';
-import 'package:quick_animaker_v2/src/ui/dialogs/file_browser_dialog.dart';
+import 'package:anicel/src/services/persistence/app_documents.dart';
+import 'package:anicel/src/ui/dialogs/file_browser_dialog.dart';
 
 /// SAVE-1c: the in-app file browser — the mobile open/save surface of
 /// the real-path model.

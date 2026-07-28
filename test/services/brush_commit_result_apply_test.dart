@@ -1,14 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
-import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
-import 'package:quick_animaker_v2/src/models/brush_commit_result.dart';
-import 'package:quick_animaker_v2/src/models/cache_invalidation_plan.dart';
-import 'package:quick_animaker_v2/src/models/canvas_size.dart';
-import 'package:quick_animaker_v2/src/models/dirty_tile_set.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/tile_coord.dart';
-import 'package:quick_animaker_v2/src/services/brush_commit_result_apply.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_commit_result.dart';
+import 'package:anicel/src/models/cache_invalidation_plan.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/dirty_tile_set.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/services/brush_commit_result_apply.dart';
 
 void main() {
   group('applyBrushCommitResultToBitmapSurface', () {

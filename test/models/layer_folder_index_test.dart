@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/layer.dart';
-import 'package:quick_animaker_v2/src/models/layer_folder.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_folder.dart';
+import 'package:anicel/src/models/layer_id.dart';
 
 /// [LayerFolderIndex] exists only to answer the SAME questions
 /// [LayerFolderQueries] answers, without re-scanning the stack per probe.

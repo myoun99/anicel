@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/project_background.dart';
-import 'package:quick_animaker_v2/src/ui/dialogs/project_background_dialog.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/project_background.dart';
+import 'package:anicel/src/ui/dialogs/project_background_dialog.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// R10-⑥: the project background — model round trip, the session's
 /// one-undo setter and the File-menu dialog.

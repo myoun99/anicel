@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/exposure_memo.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/exposure_memo.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
 
 /// The memo belongs to the exposure BLOCK, not to the drawing. That is what
 /// makes two exposures of the same cel carry two memos, and it is what lets

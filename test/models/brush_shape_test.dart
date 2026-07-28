@@ -1,11 +1,11 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/brush_pressure_curve.dart';
-import 'package:quick_animaker_v2/src/models/brush_shape.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_mask.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_rotation_mode.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/models/brush_pressure_curve.dart';
+import 'package:anicel/src/models/brush_shape.dart';
+import 'package:anicel/src/models/brush_tip_mask.dart';
+import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
+import 'package:anicel/src/models/brush_tip_shape.dart';
 
 BrushTipMask _maskFor(String id) => BrushTipMask(
   id: id,

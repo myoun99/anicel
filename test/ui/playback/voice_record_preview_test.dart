@@ -2,16 +2,16 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/timeline_coverage.dart'
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/timeline_coverage.dart'
     show drawingBlocks;
-import 'package:quick_animaker_v2/src/services/audio/audio_conform_pipeline.dart';
-import 'package:quick_animaker_v2/src/ui/audio/audio_conform_store.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
-import 'package:quick_animaker_v2/src/ui/playback/audio_recorder.dart';
-import 'package:quick_animaker_v2/src/ui/storyboard_tab_host.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_orientation.dart';
-import 'package:quick_animaker_v2/src/ui/timeline_tab_host.dart';
+import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
+import 'package:anicel/src/ui/audio/audio_conform_store.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/playback/audio_recorder.dart';
+import 'package:anicel/src/ui/storyboard_tab_host.dart';
+import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
+import 'package:anicel/src/ui/timeline_tab_host.dart';
 
 /// The live take preview (REC1-C): while a take rolls, the armed lane
 /// shows the planner's would-be landing — real block, real waveform lane,

@@ -1,10 +1,10 @@
 import 'dart:ui' show BlendMode;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/app_language.dart';
-import 'package:quick_animaker_v2/src/models/brush_blend_mode.dart';
-import 'package:quick_animaker_v2/src/models/layer_blend_mode.dart';
-import 'package:quick_animaker_v2/src/models/separable_blend_mode.dart';
+import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/models/brush_blend_mode.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
+import 'package:anicel/src/models/separable_blend_mode.dart';
 
 /// The single source of truth this test pins: each separable mode's GPU blend,
 /// English label, and Japanese label. BrushBlendMode and LayerBlendMode both

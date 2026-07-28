@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_tool_state.dart';
-import 'package:quick_animaker_v2/src/ui/brush/paint_tool_state_notifier.dart';
+import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/brush/paint_tool_state_notifier.dart';
 
 /// R11-④: the brush and the eraser keep separate settings — switching
 /// stashes the outgoing paint tool and restores the incoming one; color

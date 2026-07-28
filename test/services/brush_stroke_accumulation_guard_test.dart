@@ -1,25 +1,25 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/brush_dab.dart';
-import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
-import 'package:quick_animaker_v2/src/models/brush_history_policy.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
-import 'package:quick_animaker_v2/src/models/canvas_point.dart';
-import 'package:quick_animaker_v2/src/models/canvas_size.dart';
-import 'package:quick_animaker_v2/src/models/cut_id.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_tile_cache_key.dart';
-import 'package:quick_animaker_v2/src/models/project_id.dart';
-import 'package:quick_animaker_v2/src/models/tile_coord.dart';
-import 'package:quick_animaker_v2/src/models/track_id.dart';
-import 'package:quick_animaker_v2/src/services/brush_frame_edit_session_store.dart';
-import 'package:quick_animaker_v2/src/services/brush_frame_editing_coordinator.dart';
-import 'package:quick_animaker_v2/src/services/brush_frame_store.dart';
-import 'package:quick_animaker_v2/src/services/brush_stroke_commit_data.dart';
-import 'package:quick_animaker_v2/src/services/command.dart';
-import 'package:quick_animaker_v2/src/services/commands/brush_stroke_history_command.dart';
-import 'package:quick_animaker_v2/src/services/history_manager.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
+import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/brush_history_policy.dart';
+import 'package:anicel/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_tile_cache_key.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
+import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
+import 'package:anicel/src/services/brush_frame_store.dart';
+import 'package:anicel/src/services/brush_stroke_commit_data.dart';
+import 'package:anicel/src/services/command.dart';
+import 'package:anicel/src/services/commands/brush_stroke_history_command.dart';
+import 'package:anicel/src/services/history_manager.dart';
+import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 
 /// Accumulation regression guards (R8-B): every per-stroke structure the
 /// brush stack retains must stay BOUNDED as strokes pile up — "draws fine,

@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/frame.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/layer.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_double_tap.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_row_cells_painter.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/ui/timeline/timeline_cell_double_tap.dart';
+import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 import 'timeline_frame_geometry_probe.dart';
 

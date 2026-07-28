@@ -1,8 +1,8 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/services/persistence/app_save_settings.dart';
-import 'package:quick_animaker_v2/src/services/persistence/app_save_settings_store.dart';
+import 'package:anicel/src/services/persistence/app_save_settings.dart';
+import 'package:anicel/src/services/persistence/app_save_settings_store.dart';
 
 /// SAVE-1: the save/autosave policy — defaults, persistence, and the
 /// sidecar location resolution (beside the file vs the user's sidecar

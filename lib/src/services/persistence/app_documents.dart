@@ -8,8 +8,8 @@ import 'app_save_settings.dart';
 /// every save/open surface starts in (the initial-save window, Save As,
 /// Open). Deliberately a folder ordinary file managers show:
 ///
-/// - Windows: `%USERPROFILE%/Documents/QuickAnimaker`
-/// - macOS/Linux: `$HOME/Documents/QuickAnimaker`
+/// - Windows: `%USERPROFILE%/Documents/Anicel`
+/// - macOS/Linux: `$HOME/Documents/Anicel`
 /// - Android: the PUBLIC Documents folder ("내 파일" shows it) via the
 ///   qa_storage channel (SAVE-1c)
 /// - iOS: the sandbox Documents dir, Files-app visible (SAVE-1d flags)
@@ -22,11 +22,11 @@ String appDocumentsDirectory() {
   final home = environment['USERPROFILE'] ?? environment['HOME'];
   if (home != null && home.isNotEmpty) {
     final normalized = home.replaceAll('\\', '/');
-    return '$normalized/Documents/QuickAnimaker';
+    return '$normalized/Documents/Anicel';
   }
   // Environment-less platforms before the channel answers: the system
   // temp keeps dev/test harmless.
-  return '${Directory.systemTemp.path.replaceAll('\\', '/')}/QuickAnimaker';
+  return '${Directory.systemTemp.path.replaceAll('\\', '/')}/Anicel';
 }
 
 /// REC1-B2: the take shelf — where a never-saved project's voice takes

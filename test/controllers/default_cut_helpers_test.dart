@@ -1,14 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_cut_helpers.dart';
-import 'package:quick_animaker_v2/src/core/timeline/timeline_defaults.dart';
-import 'package:quick_animaker_v2/src/models/canvas_size.dart';
-import 'package:quick_animaker_v2/src/models/cut_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_kind.dart';
-import 'package:quick_animaker_v2/src/models/project.dart';
-import 'package:quick_animaker_v2/src/models/project_id.dart';
-import 'package:quick_animaker_v2/src/models/track.dart';
-import 'package:quick_animaker_v2/src/models/track_id.dart';
+import 'package:anicel/src/controllers/default_cut_helpers.dart';
+import 'package:anicel/src/core/timeline/timeline_defaults.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_id.dart';
 
 void main() {
   group('createDefaultCut', () {

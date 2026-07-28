@@ -1,11 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/camera_pose.dart';
-import 'package:quick_animaker_v2/src/models/canvas_point.dart';
-import 'package:quick_animaker_v2/src/models/layer_kind.dart';
-import 'package:quick_animaker_v2/src/models/property_track.dart';
-import 'package:quick_animaker_v2/src/models/transform_track.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/camera_pose.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/property_track.dart';
+import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 
 void main() {
   group('layer fx bypass (session view state)', () {

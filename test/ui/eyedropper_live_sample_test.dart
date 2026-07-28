@@ -1,14 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/brush_dab.dart';
-import 'package:quick_animaker_v2/src/models/brush_history_policy.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
-import 'package:quick_animaker_v2/src/models/canvas_point.dart';
-import 'package:quick_animaker_v2/src/models/layer_kind.dart';
-import 'package:quick_animaker_v2/src/services/brush_frame_edit_session_store.dart';
-import 'package:quick_animaker_v2/src/services/brush_frame_editing_coordinator.dart';
-import 'package:quick_animaker_v2/src/services/canvas_color_sampler.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_history_policy.dart';
+import 'package:anicel/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
+import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
+import 'package:anicel/src/services/canvas_color_sampler.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// R28 #7: the eyedropper against the REAL session, not a stub resolver.
 ///

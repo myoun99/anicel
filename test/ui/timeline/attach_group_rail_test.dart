@@ -1,17 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/attached_layer_resolve.dart';
-import 'package:quick_animaker_v2/src/models/attached_mode.dart';
-import 'package:quick_animaker_v2/src/models/attached_placement.dart';
-import 'package:quick_animaker_v2/src/models/frame.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/layer.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
-import 'package:quick_animaker_v2/src/ui/home_page.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/layer_timeline_grid.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_drag_preview.dart';
+import 'package:anicel/src/models/attached_layer_resolve.dart';
+import 'package:anicel/src/models/attached_mode.dart';
+import 'package:anicel/src/models/attached_placement.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
+import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 
 /// UI-R20 P6 (#8–#11): the attach-layer rail — placement arrows instead
 /// of kind icons, the group fold twirl, and the + flyout entrance.

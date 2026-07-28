@@ -2,10 +2,10 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/export_preset.dart';
-import 'package:quick_animaker_v2/src/models/export_spec.dart';
-import 'package:quick_animaker_v2/src/services/persistence/app_export_settings.dart';
-import 'package:quick_animaker_v2/src/services/persistence/app_export_settings_store.dart';
+import 'package:anicel/src/models/export_preset.dart';
+import 'package:anicel/src/models/export_spec.dart';
+import 'package:anicel/src/services/persistence/app_export_settings.dart';
+import 'package:anicel/src/services/persistence/app_export_settings_store.dart';
 
 void main() {
   late Directory temp;

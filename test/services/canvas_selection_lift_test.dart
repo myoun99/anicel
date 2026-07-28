@@ -1,18 +1,18 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/core/floor_math.dart';
-import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
-import 'package:quick_animaker_v2/src/models/brush_dab.dart';
-import 'package:quick_animaker_v2/src/models/brush_dab_sequence.dart';
-import 'package:quick_animaker_v2/src/models/brush_stamp_image.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
-import 'package:quick_animaker_v2/src/models/canvas_point.dart';
-import 'package:quick_animaker_v2/src/models/canvas_size.dart';
-import 'package:quick_animaker_v2/src/models/tile_coord.dart';
-import 'package:quick_animaker_v2/src/services/canvas_selection_region.dart';
-import 'package:quick_animaker_v2/src/services/bitmap_surface_brush_commit.dart';
-import 'package:quick_animaker_v2/src/services/canvas_selection.dart';
+import 'package:anicel/src/core/floor_math.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_dab_sequence.dart';
+import 'package:anicel/src/models/brush_stamp_image.dart';
+import 'package:anicel/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/services/canvas_selection_region.dart';
+import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
+import 'package:anicel/src/services/canvas_selection.dart';
 
 /// R14-④ lift builder: the erase+stamp pair cuts EXACTLY the selection's
 /// pixels, a zero-move drop is byte-identical, and a translated stamp

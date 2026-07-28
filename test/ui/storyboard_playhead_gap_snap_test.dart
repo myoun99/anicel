@@ -1,10 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/cut_id.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
-import 'package:quick_animaker_v2/src/ui/playback/canvas_playback_controller.dart';
-import 'package:quick_animaker_v2/src/ui/storyboard_playhead_mapping.dart';
-import 'package:quick_animaker_v2/src/ui/storyboard_timeline_layout.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
+import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
+import 'package:anicel/src/ui/storyboard_timeline_layout.dart';
 
 /// R14-① (was R10-⑤b) + UI-R9 #3/#4: the editing playhead LANDS in cut
 /// gaps — and a gap landing means NO CUT IS SELECTED (activeCutId null,

@@ -2,8 +2,8 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/theme/app_theme.dart';
-import 'package:quick_animaker_v2/src/ui/widgets/field_slider.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/widgets/field_slider.dart';
 
 void main() {
   const sliderKey = ValueKey<String>('field-slider-under-test');

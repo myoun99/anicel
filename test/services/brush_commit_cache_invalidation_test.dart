@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/dirty_tile_set.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/tile_coord.dart';
-import 'package:quick_animaker_v2/src/services/brush_commit_cache_invalidation.dart';
+import 'package:anicel/src/models/dirty_tile_set.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/services/brush_commit_cache_invalidation.dart';
 
 void main() {
   group('cacheInvalidationPlanForDirtyTiles', () {

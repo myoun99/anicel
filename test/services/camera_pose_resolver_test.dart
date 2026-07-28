@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/camera_pose.dart';
-import 'package:quick_animaker_v2/src/models/canvas_point.dart';
-import 'package:quick_animaker_v2/src/models/canvas_size.dart';
-import 'package:quick_animaker_v2/src/models/cut_camera.dart';
-import 'package:quick_animaker_v2/src/services/camera_pose_resolver.dart';
+import 'package:anicel/src/models/camera_pose.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut_camera.dart';
+import 'package:anicel/src/services/camera_pose_resolver.dart';
 
 void main() {
   const canvasSize = CanvasSize(width: 2000, height: 1000);

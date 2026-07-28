@@ -1,4 +1,4 @@
-/// QuickAnimaker's native core, packaged so every platform's toolchain
+/// Anicel's native core, packaged so every platform's toolchain
 /// compiles the same C sources.
 ///
 /// There is deliberately no API here. The engine is consumed through

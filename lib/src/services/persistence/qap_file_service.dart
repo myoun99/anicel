@@ -340,7 +340,7 @@ class QapFileService {
       }
       final projectEntry = layout.entryNamed('project.json');
       if (projectEntry == null) {
-        throw const FormatException('Not a QuickAnimaker project (.qap).');
+        throw const FormatException('Not an Anicel project (.qap).');
       }
       final raf = File(filePath).openSync();
       try {
@@ -374,7 +374,7 @@ class QapFileService {
         jsonDecode(utf8.decode(projectJsonBytes)) as Map<String, dynamic>;
     if ((decoded['formatVersion'] as int? ?? 0) > qapFormatVersion) {
       throw const FormatException(
-        'This project was saved by a newer QuickAnimaker.',
+        'This project was saved by a newer Anicel.',
       );
     }
     final project = Project.fromJson(

@@ -1,19 +1,19 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
-import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
-import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
-import 'package:quick_animaker_v2/src/models/canvas_size.dart';
-import 'package:quick_animaker_v2/src/models/cut_id.dart';
-import 'package:quick_animaker_v2/src/models/dirty_tile_set.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_link_registry.dart';
-import 'package:quick_animaker_v2/src/models/project_id.dart';
-import 'package:quick_animaker_v2/src/models/tile_coord.dart';
-import 'package:quick_animaker_v2/src/models/track_id.dart';
-import 'package:quick_animaker_v2/src/services/brush_frame_store.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/dirty_tile_set.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_link_registry.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/brush_frame_store.dart';
 
 /// R19 P3b store contract: the baked raster IS the cel; the drawing
 /// state is a mutation ledger; display caches are aliases.

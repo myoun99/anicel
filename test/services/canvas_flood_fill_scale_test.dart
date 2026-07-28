@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/services/canvas_flood_fill.dart';
+import 'package:anicel/src/services/canvas_flood_fill.dart';
 
 /// R14-② fill performance instrument: a large enclosed region (the user's
 /// real case — filling a background/figure on a big canvas) with the

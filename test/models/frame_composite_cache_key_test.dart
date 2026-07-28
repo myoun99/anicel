@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import '../helpers/json_round_trip.dart';
-import 'package:quick_animaker_v2/src/models/cut_id.dart';
-import 'package:quick_animaker_v2/src/models/frame_composite_cache_key.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame_composite_cache_key.dart';
 
 void main() {
   group('FrameCompositeCacheKey', () {

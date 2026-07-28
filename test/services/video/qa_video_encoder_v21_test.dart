@@ -2,8 +2,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/native/qa_engine_abi.dart';
-import 'package:quick_animaker_v2/src/native/qa_video_encoder.dart';
+import 'package:anicel/src/native/qa_engine_abi.dart';
+import 'package:anicel/src/native/qa_video_encoder.dart';
 
 import '../../helpers/native_engine_path.dart';
 

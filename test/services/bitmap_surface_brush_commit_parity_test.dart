@@ -1,24 +1,24 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/core/floor_math.dart';
-import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
-import 'package:quick_animaker_v2/src/models/pasteboard_bounds.dart';
-import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
-import 'package:quick_animaker_v2/src/models/brush_dab.dart';
-import 'package:quick_animaker_v2/src/models/brush_dab_sequence.dart';
-import 'package:quick_animaker_v2/src/models/brush_pixel_blend_operation.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_mask.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
-import 'package:quick_animaker_v2/src/models/canvas_point.dart';
-import 'package:quick_animaker_v2/src/models/canvas_size.dart';
-import 'package:quick_animaker_v2/src/models/dirty_tile_set.dart';
-import 'package:quick_animaker_v2/src/models/rgba_color.dart';
-import 'package:quick_animaker_v2/src/models/tile_coord.dart';
-import 'package:quick_animaker_v2/src/services/bitmap_surface_brush_commit.dart';
-import 'package:quick_animaker_v2/src/services/bitmap_tile_operation_materialization.dart';
-import 'package:quick_animaker_v2/src/services/bitmap_tile_rgba.dart';
-import 'package:quick_animaker_v2/src/services/brush_dab_sequence_blend.dart';
+import 'package:anicel/src/core/floor_math.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_dab_sequence.dart';
+import 'package:anicel/src/models/brush_pixel_blend_operation.dart';
+import 'package:anicel/src/models/brush_tip_mask.dart';
+import 'package:anicel/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/dirty_tile_set.dart';
+import 'package:anicel/src/models/rgba_color.dart';
+import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
+import 'package:anicel/src/services/bitmap_tile_operation_materialization.dart';
+import 'package:anicel/src/services/bitmap_tile_rgba.dart';
+import 'package:anicel/src/services/brush_dab_sequence_blend.dart';
 
 /// Reference implementation of the stroke-commit rasterization, built from the
 /// retained per-pixel-operation pipeline (`brushPixelBlendOperationsForDabSequence`

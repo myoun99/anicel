@@ -43,3 +43,11 @@ app.*.map.json
 /android/app/debug
 /android/app/profile
 /android/app/release
+
+# Signing material — never commit. CI reads these from repository secrets.
+*.p8
+*.p12
+*.cer
+*.certSigningRequest
+*.mobileprovision
+AuthKey_*.p8

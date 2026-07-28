@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/main.dart';
-import 'package:quick_animaker_v2/src/models/cut_id.dart';
-import 'package:quick_animaker_v2/src/models/timeline_row_address.dart';
-import 'package:quick_animaker_v2/src/ui/input/app_input_settings.dart';
-import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
-import 'package:quick_animaker_v2/src/ui/storyboard_timeline_layout.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_row_cells_painter.dart';
-import 'package:quick_animaker_v2/src/ui/widgets/field_slider.dart';
+import 'package:anicel/main.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/ui/input/app_input_settings.dart';
+import 'package:anicel/src/ui/storyboard_panel.dart';
+import 'package:anicel/src/ui/storyboard_timeline_layout.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
+import 'package:anicel/src/ui/widgets/field_slider.dart';
 
 import 'ui/storyboard_cut_block_probe.dart';
 import 'ui/timeline/timeline_cell_probe.dart';
@@ -589,14 +589,14 @@ void _withTouchScroll() {
 
 void main() {
   testWidgets('shows placeholder app shell', (WidgetTester tester) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     expect(find.byType(MaterialApp), findsOneWidget);
     // PEN-8 #1: the editor body sits inside a SafeArea so tablet OS
     // chrome (status bar, gesture areas) never overlaps the app.
     expect(find.byType(SafeArea), findsWidgets);
     // R26 #24: the app-name label is gone from the top strip.
-    expect(find.text('QuickAnimaker'), findsNothing);
+    expect(find.text('Anicel'), findsNothing);
     expect(
       find.byKey(const ValueKey<String>('new-frame-button')),
       findsOneWidget,
@@ -634,7 +634,7 @@ void main() {
     WidgetTester tester,
   ) async {
     _withTouchScroll();
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     // The bottom dock runs between the two vertical tool bars, so the
     // grid viewport is 88px narrower than the window — scroll far enough
@@ -654,7 +654,7 @@ void main() {
     WidgetTester tester,
   ) async {
     _withTouchScroll();
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     // Painterized ruler (UI-R13 #1): headers past the base exist exactly
     // when the painter's window reaches past 48.
@@ -694,7 +694,7 @@ void main() {
   testWidgets('timeline zoom buttons rescale the frame axis', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     // 24 at 100% — the slim default (R-toolbar round); the painterized
     // ruler (UI-R13 #1) reports geometry/labels through its painter.
@@ -744,7 +744,7 @@ void main() {
   testWidgets('xsheet zoom rescales the frame row height', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
     await _tapToolbarButton(
       tester,
       const ValueKey<String>('timeline-orientation-toggle-button'),
@@ -768,7 +768,7 @@ void main() {
   testWidgets('the time display toggle switches the counter to seconds', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     String counterText() => tester
         .widget<Text>(
@@ -797,7 +797,7 @@ void main() {
     WidgetTester tester,
   ) async {
     _withTouchScroll();
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
     await _tapToolbarButton(
       tester,
       const ValueKey<String>('timeline-orientation-toggle-button'),
@@ -837,7 +837,7 @@ void main() {
   testWidgets('top row keeps cut switching and undo redo reachable', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     // The old top chips bar is retired; cut switching lives in the
     // storyboard panel now.
@@ -867,7 +867,7 @@ void main() {
   testWidgets('dragging Cut 2 before Cut 1 keeps Cut 2 active', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
     await _createSecondCut(tester);
 
     await _switchToCut(tester, 'cut-1');
@@ -888,7 +888,7 @@ void main() {
   testWidgets('dragging Cut 1 after Cut 2 supports undo and redo', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
     await _createSecondCut(tester);
     await _switchToCut(tester, 'default-cut-1');
 
@@ -921,7 +921,7 @@ void main() {
   testWidgets('move cut buttons reorder active cut left with undo and redo', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
     await _createSecondCut(tester);
 
     await _switchToCut(tester, 'cut-1');
@@ -951,7 +951,7 @@ void main() {
   testWidgets('move cut buttons reorder active cut right with undo and redo', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
     await _createSecondCut(tester);
     await _switchToCut(tester, 'default-cut-1');
 
@@ -981,7 +981,7 @@ void main() {
   testWidgets('move cut buttons are disabled at cut list edges', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
     await _createSecondCut(tester);
     await _switchToCut(tester, 'default-cut-1');
     // The move buttons live in the storyboard panel's toolbar.
@@ -1023,7 +1023,7 @@ void main() {
   testWidgets('creates a new cut from the cut list command', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     await _expectCutExists(tester, 'cut-1', exists: false);
 
@@ -1042,7 +1042,7 @@ void main() {
   testWidgets('duplicates the active cut from the cut list command', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     await _expectCutExists(tester, 'cut-1', exists: false);
 
@@ -1063,7 +1063,7 @@ void main() {
   testWidgets('deletes the active cut from the cut list command', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
     await _createSecondCut(tester);
     await _switchToCut(tester, 'default-cut-1');
 
@@ -1085,7 +1085,7 @@ void main() {
       'stands in the no-active-cut state instead of conjuring a stand-in', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     await _tapCutCommandButton(
       tester,
@@ -1102,7 +1102,7 @@ void main() {
   testWidgets('long multi-line cut note remains editable and savable', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     const longNote = '''Line 1
 Line 2
@@ -1146,7 +1146,7 @@ Line 8''';
   testWidgets('different cuts keep separate cut notes', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
     await _createSecondCut(tester);
     await _switchToCut(tester, 'default-cut-1');
 
@@ -1166,7 +1166,7 @@ Line 8''';
   testWidgets('undo and redo update the correct cut note', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
     await _createSecondCut(tester);
     await _switchToCut(tester, 'default-cut-1');
 
@@ -1202,7 +1202,7 @@ Line 8''';
   testWidgets('edit cut note button opens dialog with current note', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     await _saveCutNote(tester, 'Old note');
     await _openCutNoteDialog(tester);
@@ -1228,7 +1228,7 @@ Line 8''';
   testWidgets(
     'saving cut note supports undo and redo without changing active cut',
     (WidgetTester tester) async {
-      await tester.pumpWidget(const QuickAnimakerApp());
+      await tester.pumpWidget(const AnicelApp());
 
       await _saveCutNote(tester, 'Old note');
       expect(await _currentCutNoteFromDialog(tester), 'Old note');
@@ -1259,7 +1259,7 @@ Line 8''';
   testWidgets(
     'canceling cut note dialog does not change note or create history',
     (WidgetTester tester) async {
-      await tester.pumpWidget(const QuickAnimakerApp());
+      await tester.pumpWidget(const AnicelApp());
 
       await _openCutNoteDialog(tester);
       await tester.enterText(
@@ -1284,7 +1284,7 @@ Line 8''';
   testWidgets('saving unchanged cut note skips history entry', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     await _openCutNoteDialog(tester);
     expect(_cutNoteFieldText(tester), '');
@@ -1305,7 +1305,7 @@ Line 8''';
   testWidgets('opens and cancels rename cut dialog without mutation', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     await _tapCutCommandButton(
       tester,
@@ -1351,7 +1351,7 @@ Line 8''';
   testWidgets('renames active cut and supports undo and redo', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     await _renameActiveCut(tester, 'Scene A');
 
@@ -1376,7 +1376,7 @@ Line 8''';
   });
 
   testWidgets('ignores empty rename cut input', (WidgetTester tester) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     await _renameActiveCut(tester, '   ');
 
@@ -1391,7 +1391,7 @@ Line 8''';
   testWidgets('allows duplicate cut names without merging cuts', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
     await _createSecondCut(tester);
 
     await _renameActiveCut(tester, '1');
@@ -1407,7 +1407,7 @@ Line 8''';
   testWidgets('uses the sample cut resolved from the project by default', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     await _expectCutName(tester, 'default-cut-1', '1');
     await _expectCutsNamed(tester, 'Cut 2', 0);
@@ -1430,7 +1430,7 @@ Line 8''';
   testWidgets('initial timeline layer shows animation kind icon', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     expect(
       find.byKey(
@@ -1446,7 +1446,7 @@ Line 8''';
   testWidgets('Add Layer creates an animation kind icon for active B', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     await _addLayer(tester);
 
@@ -1464,7 +1464,7 @@ Line 8''';
   testWidgets('storyboard toggle updates the active layer kind icon', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     expect(_layerKindIcon(tester, 'default-layer-1'), Icons.brush_outlined);
 
@@ -1491,7 +1491,7 @@ Line 8''';
   testWidgets('multiple layers can show different layer kind icons', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
     await _addLayer(tester);
 
     await _tapToolbarButton(
@@ -1523,7 +1523,7 @@ Line 8''';
   testWidgets('pressing Add Layer creates B then C above active layers', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     _expectActiveLayerName('A');
     expect(
@@ -1620,7 +1620,7 @@ Line 8''';
   testWidgets('XSheet keeps raw layer order after adding B and C', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     await _addLayer(tester);
     await _addLayer(tester);
@@ -1680,7 +1680,7 @@ Line 8''';
   testWidgets('switches between existing sample cuts', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
     await _createSecondCut(tester);
     await _switchToCut(tester, 'default-cut-1');
 
@@ -1715,7 +1715,7 @@ Line 8''';
   testWidgets('StoryboardPanel cut selection syncs active cut surfaces', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
     await _createSecondCut(tester);
     await _switchToCut(tester, 'default-cut-1');
     await _showStoryboardPanel(tester);
@@ -1748,7 +1748,7 @@ Line 8''';
   testWidgets('cut switching updates StoryboardPanel highlight', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
     await _createSecondCut(tester);
     await _showStoryboardPanel(tester);
 
@@ -1763,7 +1763,7 @@ Line 8''';
   testWidgets('new frame after switching to Cut 2 stays scoped to Cut 2', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
     await _createSecondCut(tester);
 
     await _switchToCut(tester, 'cut-1');
@@ -1797,7 +1797,7 @@ Line 8''';
   testWidgets(
     'blank and mark edits after switching to Cut 2 do not affect Cut 1',
     (WidgetTester tester) async {
-      await tester.pumpWidget(const QuickAnimakerApp());
+      await tester.pumpWidget(const AnicelApp());
       await _createSecondCut(tester);
 
       await _switchToCut(tester, 'cut-1');
@@ -1852,7 +1852,7 @@ Line 8''';
   testWidgets('exposure edit after switching to Cut 2 stays on Cut 2 entry', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
     await _createSecondCut(tester);
 
     await _switchToCut(tester, 'cut-1');
@@ -1880,7 +1880,7 @@ Line 8''';
   testWidgets(
     'comma edge grips ripple blocks TVPaint-style with one undo per drag',
     (WidgetTester tester) async {
-      await tester.pumpWidget(const QuickAnimakerApp());
+      await tester.pumpWidget(const AnicelApp());
 
       // The drawing row sits at the bottom below the camera/CAM/SE fixture
       // rows; scroll it into view via its RAIL row (cell-level ensureVisible
@@ -1968,7 +1968,7 @@ Line 8''';
   testWidgets(
     'cut switching clears copied frame before cross-cut linked paste',
     (WidgetTester tester) async {
-      await tester.pumpWidget(const QuickAnimakerApp());
+      await tester.pumpWidget(const AnicelApp());
       await _createSecondCut(tester);
       await _switchToCut(tester, 'default-cut-1');
 
@@ -2011,7 +2011,7 @@ Line 8''';
   testWidgets('undo and redo smoke after cut switching keeps Cut 2 active', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
     await _createSecondCut(tester);
 
     await _switchToCut(tester, 'cut-1');
@@ -2037,7 +2037,7 @@ Line 8''';
   testWidgets('timeline action toolbar hosts cell action controls', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     final toolbar = find.byKey(
       const ValueKey<String>('timeline-action-toolbar'),
@@ -2085,7 +2085,7 @@ Line 8''';
   testWidgets('initial layer starts with a blank exposure at frame 1', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     _expectCellText('default-layer-1', 0, 'X');
     expect(
@@ -2103,7 +2103,7 @@ Line 8''';
   testWidgets(
     'selected cell state updates for blank, drawing, name, and mark',
     (WidgetTester tester) async {
-      await tester.pumpWidget(const QuickAnimakerApp());
+      await tester.pumpWidget(const AnicelApp());
 
       _expectActiveLayerName('A');
       _expectCurrentFrame(tester, 1);
@@ -2154,7 +2154,7 @@ Line 8''';
   testWidgets('selection status and toolbar state distinguish held cells', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     // delete/rename live in the Frame ▾ flyout now; enablement reads open
     // the menu themselves.
@@ -2240,7 +2240,7 @@ Line 8''';
   testWidgets(
     'mark button toggles a held-cell dot without changing the drawing start',
     (WidgetTester tester) async {
-      await tester.pumpWidget(const QuickAnimakerApp());
+      await tester.pumpWidget(const AnicelApp());
 
       final markButton = find.byKey(
         const ValueKey<String>('toggle-mark-button'),
@@ -2297,7 +2297,7 @@ Line 8''';
   testWidgets(
     'new frame replaces selected layer blank exposure with drawing start',
     (WidgetTester tester) async {
-      await tester.pumpWidget(const QuickAnimakerApp());
+      await tester.pumpWidget(const AnicelApp());
       await _addLayer(tester);
       await _tapTimelineCell(
         tester,
@@ -2328,7 +2328,7 @@ Line 8''';
   testWidgets(
     'frame editing toolbar buttons, rename dialog, and delete cell work',
     (WidgetTester tester) async {
-      await tester.pumpWidget(const QuickAnimakerApp());
+      await tester.pumpWidget(const AnicelApp());
 
       final newFrameButton = find.byKey(
         const ValueKey<String>('new-frame-button'),
@@ -2430,7 +2430,7 @@ Line 8''';
   );
 
   testWidgets('rename to empty clears frame name', (WidgetTester tester) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
     await _renameCurrentFrame(tester, 'A1');
@@ -2444,7 +2444,7 @@ Line 8''';
   testWidgets('conflicting frame name dialog cancel leaves frames unchanged', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
     await _renameCurrentFrame(tester, 'A1');
@@ -2478,7 +2478,7 @@ Line 8''';
   testWidgets('conflicting frame name link merges into existing material', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     await _tapToolbarButton(tester, const ValueKey<String>('new-frame-button'));
     await _renameCurrentFrame(tester, 'A1');
@@ -2498,7 +2498,7 @@ Line 8''';
   testWidgets('rename cancel leaves frame marker unchanged', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     final newFrameButton = find.byKey(
       const ValueKey<String>('new-frame-button'),
@@ -2527,7 +2527,7 @@ Line 8''';
   testWidgets('linked frame copy and paste buttons link authored exposures', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     // Copy/paste-linked live in the Frame ▾ flyout (R-toolbar round);
     // enablement reads open the menu themselves.
@@ -2586,7 +2586,7 @@ Line 8''';
     'linked paste on a dot-held cell: the drawing wins and the cut-off '
     'dot drops',
     (WidgetTester tester) async {
-      await tester.pumpWidget(const QuickAnimakerApp());
+      await tester.pumpWidget(const AnicelApp());
 
       await _tapToolbarButton(
         tester,
@@ -2642,7 +2642,7 @@ Line 8''';
   testWidgets('Copy and Paste Layer buttons expose in-memory clipboard UI', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     const copyKey = ValueKey<String>('copy-layer-button');
     const pasteKey = ValueKey<String>('paste-layer-button');
@@ -2667,7 +2667,7 @@ Line 8''';
   testWidgets(
     'Paste Layer creates another A, selects it, and undo/redo works',
     (WidgetTester tester) async {
-      await tester.pumpWidget(const QuickAnimakerApp());
+      await tester.pumpWidget(const AnicelApp());
 
       await _tapToolbarButton(
         tester,
@@ -2707,7 +2707,7 @@ Line 8''';
   testWidgets('pasted layer can be renamed and deleted', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     await _tapToolbarButton(
       tester,
@@ -2747,7 +2747,7 @@ Line 8''';
   testWidgets(
     'Duplicate Layer button duplicates active layer and selects copy',
     (WidgetTester tester) async {
-      await tester.pumpWidget(const QuickAnimakerApp());
+      await tester.pumpWidget(const AnicelApp());
 
       expect(
         await _isActionButtonEnabled(
@@ -2778,7 +2778,7 @@ Line 8''';
   testWidgets('duplicated layer can be renamed and deleted', (
     WidgetTester tester,
   ) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     await _tapToolbarButton(
       tester,

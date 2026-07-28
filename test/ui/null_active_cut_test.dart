@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/cut_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_kind.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
-import 'package:quick_animaker_v2/src/ui/playback/canvas_playback_controller.dart';
-import 'package:quick_animaker_v2/src/ui/storyboard_playhead_mapping.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
+import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
 
 /// UI-R9 #3: standing in a GAP means NO cut is selected — the session's
 /// activeCutId goes NULL, cut-scoped surfaces empty out and cut-scoped

@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
+import 'package:anicel/src/models/project_frame_rate.dart';
 
 void main() {
   group('the fraction', () {

@@ -2,13 +2,13 @@ import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
 import '../helpers/json_round_trip.dart';
-import 'package:quick_animaker_v2/src/models/brush_dab.dart';
-import 'package:quick_animaker_v2/src/models/brush_input_sample.dart';
-import 'package:quick_animaker_v2/src/models/brush_pressure_curve.dart';
-import 'package:quick_animaker_v2/src/models/brush_settings.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_mask.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
-import 'package:quick_animaker_v2/src/models/canvas_point.dart';
+import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_input_sample.dart';
+import 'package:anicel/src/models/brush_pressure_curve.dart';
+import 'package:anicel/src/models/brush_settings.dart';
+import 'package:anicel/src/models/brush_tip_mask.dart';
+import 'package:anicel/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 
 void main() {
   group('BrushDab', () {

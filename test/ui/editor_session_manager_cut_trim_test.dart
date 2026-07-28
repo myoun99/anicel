@@ -1,14 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/cut_id.dart';
-import 'package:quick_animaker_v2/src/models/property_track.dart';
-import 'package:quick_animaker_v2/src/models/timeline_coverage.dart'
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/property_track.dart';
+import 'package:anicel/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
-import 'package:quick_animaker_v2/src/models/transform_track.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
-import 'package:quick_animaker_v2/src/ui/storyboard_cut_fade_policy.dart';
-import 'package:quick_animaker_v2/src/ui/storyboard_timeline_layout.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_drag_preview.dart';
+import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/storyboard_cut_fade_policy.dart';
+import 'package:anicel/src/ui/storyboard_timeline_layout.dart';
+import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 
 void main() {
   /// Two cuts on the default track; returns (session, first id, second id).

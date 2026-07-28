@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/services/persistence/project_autosave_service.dart';
+import 'package:anicel/src/services/persistence/project_autosave_service.dart';
 
 /// PEN-12 #8: a NEVER-SAVED project autosaves nowhere — a dirty tick asks
 /// the shell to prompt for a real file instead of piling sidecars into

@@ -3,17 +3,17 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_mask.dart';
-import 'package:quick_animaker_v2/src/models/brush_group.dart';
-import 'package:quick_animaker_v2/src/models/brush_group_icon.dart';
-import 'package:quick_animaker_v2/src/models/brush_group_id.dart';
-import 'package:quick_animaker_v2/src/models/brush_preset.dart';
-import 'package:quick_animaker_v2/src/models/brush_preset_id.dart';
-import 'package:quick_animaker_v2/src/models/brush_pressure_curve.dart';
-import 'package:quick_animaker_v2/src/models/brush_settings.dart';
-import 'package:quick_animaker_v2/src/services/brush_preset_defaults.dart';
-import 'package:quick_animaker_v2/src/services/brush_preset_file_service.dart';
-import 'package:quick_animaker_v2/src/services/brush_tip_defaults.dart';
+import 'package:anicel/src/models/brush_tip_mask.dart';
+import 'package:anicel/src/models/brush_group.dart';
+import 'package:anicel/src/models/brush_group_icon.dart';
+import 'package:anicel/src/models/brush_group_id.dart';
+import 'package:anicel/src/models/brush_preset.dart';
+import 'package:anicel/src/models/brush_preset_id.dart';
+import 'package:anicel/src/models/brush_pressure_curve.dart';
+import 'package:anicel/src/models/brush_settings.dart';
+import 'package:anicel/src/services/brush_preset_defaults.dart';
+import 'package:anicel/src/services/brush_preset_file_service.dart';
+import 'package:anicel/src/services/brush_tip_defaults.dart';
 
 /// What the tip library answers for the generated tips — production always
 /// has those loaded, so a test that saves a built-in preset needs them too.
@@ -342,7 +342,7 @@ void main() {
 
     test('default path points into the per-user app-data directory', () {
       final path = BrushPresetFileService.defaultBrushPresetFilePath();
-      expect(path, endsWith('quick_animaker_v2/brush_presets.json'));
+      expect(path, endsWith('anicel/brush_presets.json'));
     });
   });
 

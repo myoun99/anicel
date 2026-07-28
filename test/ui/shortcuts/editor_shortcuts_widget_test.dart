@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/canvas_viewport.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_tool_state.dart';
-import 'package:quick_animaker_v2/src/ui/brush/main_canvas_brush_host.dart';
-import 'package:quick_animaker_v2/src/ui/brush/tools_panel.dart';
-import 'package:quick_animaker_v2/src/ui/home_page.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_layer_controls_row.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
+import 'package:anicel/src/ui/brush/tools_panel.dart';
+import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 
 /// P1: the app-level shortcut layer end to end — flipping, tools, undo,
 /// the text-field bare-letter guard and live re-recording through the

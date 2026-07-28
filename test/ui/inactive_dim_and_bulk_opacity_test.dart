@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/layer_kind.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// Numeric bulk opacity (session bulk setter). The R2 lighttable dim was
 /// retired in UI-R5 (user: unnecessary) — the master opacity bar and the

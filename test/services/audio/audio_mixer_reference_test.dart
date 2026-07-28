@@ -1,8 +1,8 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
-import 'package:quick_animaker_v2/src/services/audio/audio_mixer_reference.dart';
+import 'package:anicel/src/models/project_frame_rate.dart';
+import 'package:anicel/src/services/audio/audio_mixer_reference.dart';
 
 /// Behavioural pins for the mixer's Dart reference. The native byte-parity
 /// suite proves the C AGREES with this file; this file proves the answers

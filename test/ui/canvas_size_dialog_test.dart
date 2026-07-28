@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/canvas_resize_anchor.dart';
-import 'package:quick_animaker_v2/src/models/canvas_size.dart';
-import 'package:quick_animaker_v2/src/ui/dialogs/canvas_size_dialog.dart';
+import 'package:anicel/src/models/canvas_resize_anchor.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/ui/dialogs/canvas_size_dialog.dart';
 
 void main() {
   CanvasResizeRequest? dialogResult;

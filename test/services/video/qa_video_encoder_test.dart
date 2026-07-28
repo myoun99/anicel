@@ -3,11 +3,11 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
-import 'package:quick_animaker_v2/src/native/qa_engine_abi.dart';
-import 'package:quick_animaker_v2/src/native/qa_video_encoder.dart';
-import 'package:quick_animaker_v2/src/services/audio/conform_wav_codec.dart';
-import 'package:quick_animaker_v2/src/ui/export/video_export_service.dart';
+import 'package:anicel/src/models/project_frame_rate.dart';
+import 'package:anicel/src/native/qa_engine_abi.dart';
+import 'package:anicel/src/native/qa_video_encoder.dart';
+import 'package:anicel/src/services/audio/conform_wav_codec.dart';
+import 'package:anicel/src/ui/export/video_export_service.dart';
 
 import '../../helpers/native_engine_path.dart';
 

@@ -1,15 +1,15 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/brush_dab.dart';
-import 'package:quick_animaker_v2/src/models/brush_history_policy.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
-import 'package:quick_animaker_v2/src/models/canvas_point.dart';
-import 'package:quick_animaker_v2/src/services/brush_frame_edit_session_store.dart';
-import 'package:quick_animaker_v2/src/services/brush_frame_editing_coordinator.dart';
-import 'package:quick_animaker_v2/src/services/persistence/project_autosave_service.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_history_policy.dart';
+import 'package:anicel/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
+import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
+import 'package:anicel/src/services/persistence/project_autosave_service.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// P3 through the session: save/open round-trip, the load→edit→undo
 /// lifecycle (both undo stacks clear on load), the dirty flag and the

@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import '../helpers/json_round_trip.dart';
-import 'package:quick_animaker_v2/src/models/brush_pixel_coverage.dart';
+import 'package:anicel/src/models/brush_pixel_coverage.dart';
 
 void main() {
   group('BrushPixelCoverage', () {

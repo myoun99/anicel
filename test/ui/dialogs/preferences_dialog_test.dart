@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/services/persistence/app_documents.dart'
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/services/persistence/app_documents.dart'
     show appRecordingsDirectory;
-import 'package:quick_animaker_v2/src/services/persistence/app_save_settings.dart';
-import 'package:quick_animaker_v2/src/ui/dialogs/preferences_dialog.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
-import 'package:quick_animaker_v2/src/ui/input/app_input_settings.dart';
-import 'package:quick_animaker_v2/src/ui/playback/audio_sync_settings.dart';
+import 'package:anicel/src/services/persistence/app_save_settings.dart';
+import 'package:anicel/src/ui/dialogs/preferences_dialog.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/input/app_input_settings.dart';
+import 'package:anicel/src/ui/playback/audio_sync_settings.dart';
 
 /// SAVE-1: the unified Preferences dialog — sections switch in place and
 /// the Autosave section drives the live save policy.

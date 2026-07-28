@@ -1,10 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/brush_group.dart';
-import 'package:quick_animaker_v2/src/models/brush_group_id.dart';
-import 'package:quick_animaker_v2/src/models/brush_preset.dart';
-import 'package:quick_animaker_v2/src/models/brush_preset_id.dart';
-import 'package:quick_animaker_v2/src/models/brush_settings.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_preset_reorder.dart';
+import 'package:anicel/src/models/brush_group.dart';
+import 'package:anicel/src/models/brush_group_id.dart';
+import 'package:anicel/src/models/brush_preset.dart';
+import 'package:anicel/src/models/brush_preset_id.dart';
+import 'package:anicel/src/models/brush_settings.dart';
+import 'package:anicel/src/ui/brush/brush_preset_reorder.dart';
 
 const _watercolor = BrushGroupId('watercolor');
 const _ink = BrushGroupId('ink');

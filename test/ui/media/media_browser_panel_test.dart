@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/media_asset.dart';
-import 'package:quick_animaker_v2/src/ui/media/media_browser_panel.dart';
+import 'package:anicel/src/models/media_asset.dart';
+import 'package:anicel/src/ui/media/media_browser_panel.dart';
 
 class _Callbacks {
   final imported = <String>[];

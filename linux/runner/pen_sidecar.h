@@ -4,7 +4,7 @@
 #include <flutter_linux/flutter_linux.h>
 #include <gtk/gtk.h>
 
-// QuickAnimaker pen sidecar (pen program, PEN-4 — Linux). Registers the
+// Anicel pen sidecar (pen program, PEN-4 — Linux). Registers the
 // 'qa_pen/linux' event channel and hooks the window's GDK events to
 // stream pen pressure/tilt (which the Flutter Linux embedder drops,
 // flutter/flutter#63209). Call once from my_application_activate after

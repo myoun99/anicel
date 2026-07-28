@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_body_cut_end_boundary.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_ruler_cut_end_boundary.dart';
+import 'package:anicel/src/ui/timeline/timeline_body_cut_end_boundary.dart';
+import 'package:anicel/src/ui/timeline/timeline_ruler_cut_end_boundary.dart';
 
 void main() {
   const rulerBoundaryKey = ValueKey<String>('timeline-cut-end-boundary-ruler');

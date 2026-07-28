@@ -3,18 +3,18 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/camera_instruction.dart';
-import 'package:quick_animaker_v2/src/models/canvas_size.dart';
-import 'package:quick_animaker_v2/src/models/cut.dart';
-import 'package:quick_animaker_v2/src/models/cut_id.dart';
-import 'package:quick_animaker_v2/src/models/layer.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_kind.dart';
-import 'package:quick_animaker_v2/src/models/timesheet_document.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_geometry.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_span_layout.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_instruction_row_visual.dart';
-import 'package:quick_animaker_v2/src/ui/timesheet/timesheet_document_painter.dart';
+import 'package:anicel/src/models/camera_instruction.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/timesheet_document.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_span_layout.dart';
+import 'package:anicel/src/ui/timeline/timeline_instruction_row_visual.dart';
+import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
 
 /// R7-①/R8-① pins: a NAMELESS bar endpoint carries the solid triangle
 /// mark (real Japanese sheets) with the duration line running through its

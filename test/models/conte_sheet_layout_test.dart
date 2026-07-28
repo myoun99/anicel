@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/conte/conte_sheet_layout.dart';
-import 'package:quick_animaker_v2/src/models/conte/conte_sheet_source.dart';
-import 'package:quick_animaker_v2/src/models/cut_id.dart';
-import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_range_policy.dart';
+import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
+import 'package:anicel/src/models/conte/conte_sheet_source.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/project_frame_rate.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_range_policy.dart';
 
 /// The conte page: five cells, CUT/TIME merged per cut, and a cell that
 /// does not fit moves WHOLE to the next page leaving a marked hole.

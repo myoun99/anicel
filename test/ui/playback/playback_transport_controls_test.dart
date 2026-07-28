@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/canvas_size.dart';
-import 'package:quick_animaker_v2/src/models/cut.dart';
-import 'package:quick_animaker_v2/src/models/cut_id.dart';
-import 'package:quick_animaker_v2/src/models/playback_quality.dart';
-import 'package:quick_animaker_v2/src/models/project.dart';
-import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
-import 'package:quick_animaker_v2/src/models/project_id.dart';
-import 'package:quick_animaker_v2/src/models/track.dart';
-import 'package:quick_animaker_v2/src/models/track_id.dart';
-import 'package:quick_animaker_v2/src/ui/playback/canvas_playback_controller.dart';
-import 'package:quick_animaker_v2/src/ui/playback/playback_transport_controls.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/playback_quality.dart';
+import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_frame_rate.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
+import 'package:anicel/src/ui/playback/playback_transport_controls.dart';
 
 void main() {
   Project project() => Project(

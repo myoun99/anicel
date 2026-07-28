@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/onion_skin_settings.dart';
-import 'package:quick_animaker_v2/src/ui/panels/onion_skin_panel.dart';
-import 'package:quick_animaker_v2/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/models/onion_skin_settings.dart';
+import 'package:anicel/src/ui/panels/onion_skin_panel.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart';
 
 /// The onion panel's light-table graph: every peg on screen at once, the
 /// bars that carry the opacity, zero as the only off, and the two mode

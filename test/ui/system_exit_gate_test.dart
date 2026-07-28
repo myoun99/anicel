@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/home_page.dart';
+import 'package:anicel/src/ui/home_page.dart';
 
 /// PEN-11: the Android back button never silently kills the editor — a
 /// system pop lands in the exit dialog, and Cancel keeps the app alive.

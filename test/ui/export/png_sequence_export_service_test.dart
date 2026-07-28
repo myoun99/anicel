@@ -2,7 +2,7 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/export/png_sequence_export_service.dart';
+import 'package:anicel/src/ui/export/png_sequence_export_service.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();

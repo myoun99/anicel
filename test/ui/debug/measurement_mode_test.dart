@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/main.dart';
-import 'package:quick_animaker_v2/src/ui/debug/measurement_mode.dart';
+import 'package:anicel/main.dart';
+import 'package:anicel/src/ui/debug/measurement_mode.dart';
 
 /// The frame-timing overlay is a measurement switch, so what is worth
 /// pinning is that it stays OFF unless asked for — an overlay left on
@@ -33,7 +33,7 @@ void main() {
     MaterialApp appOf(WidgetTester tester) =>
         tester.widget<MaterialApp>(find.byType(MaterialApp));
 
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
     // HomePage is heavy; settle only what the shell needs.
     await tester.pump();
     expect(appOf(tester).showPerformanceOverlay, isFalse);

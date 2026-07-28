@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/canvas_size.dart';
-import 'package:quick_animaker_v2/src/models/playback_quality.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/playback_quality.dart';
 
 void main() {
   test('quality scales', () {

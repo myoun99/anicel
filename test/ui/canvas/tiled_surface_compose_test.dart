@@ -2,13 +2,13 @@ import 'dart:typed_data';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
-import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
-import 'package:quick_animaker_v2/src/models/canvas_size.dart';
-import 'package:quick_animaker_v2/src/models/tile_coord.dart';
-import 'package:quick_animaker_v2/src/ui/camera/camera_frame_render_service.dart';
-import 'package:quick_animaker_v2/src/ui/canvas/bitmap_tile_image_cache.dart';
-import 'package:quick_animaker_v2/src/ui/canvas/tiled_surface_compose.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
+import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
+import 'package:anicel/src/ui/canvas/tiled_surface_compose.dart';
 
 /// The per-tile GPU compose must be byte-identical to the CPU assembly
 /// path ([bitmapSurfaceToImage]) — with and without cache reuse — and turn

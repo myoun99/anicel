@@ -1,10 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/brush_dab.dart';
-import 'package:quick_animaker_v2/src/models/brush_pixel_coverage.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
-import 'package:quick_animaker_v2/src/models/canvas_point.dart';
-import 'package:quick_animaker_v2/src/models/rgba_color.dart';
-import 'package:quick_animaker_v2/src/services/brush_pixel_blend.dart';
+import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_pixel_coverage.dart';
+import 'package:anicel/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/rgba_color.dart';
+import 'package:anicel/src/services/brush_pixel_blend.dart';
 
 void main() {
   BrushDab dab({int color = 0xFFFF0000, double opacity = 1, double flow = 1}) {

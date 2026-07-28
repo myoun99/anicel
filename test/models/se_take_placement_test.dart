@@ -1,14 +1,14 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/audio_clip.dart';
-import 'package:quick_animaker_v2/src/models/frame.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/layer.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_kind.dart';
-import 'package:quick_animaker_v2/src/models/se_take_placement.dart';
-import 'package:quick_animaker_v2/src/models/timeline_coverage.dart'
+import 'package:anicel/src/models/audio_clip.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/se_take_placement.dart';
+import 'package:anicel/src/models/timeline_coverage.dart'
     show drawingBlocks;
-import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
 
 const _takeId = FrameId('take');
 const _sound = r'C:\snd\line.wav';

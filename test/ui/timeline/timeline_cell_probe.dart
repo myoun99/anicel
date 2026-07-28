@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show SemanticsNode;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_row_cells_painter.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 
 /// Test probes for the PAINTED drawing-row cells (UI-R9 #12b): cells are
 /// canvas work now, so `find.byKey('timeline-cell-…')` only exists for the

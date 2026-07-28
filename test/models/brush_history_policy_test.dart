@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/brush_history_policy.dart';
+import 'package:anicel/src/models/brush_history_policy.dart';
 
 void main() {
   group('BrushHistoryPolicy', () {

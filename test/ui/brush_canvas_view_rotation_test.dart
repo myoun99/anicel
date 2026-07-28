@@ -1,16 +1,16 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/canvas_point.dart';
-import 'package:quick_animaker_v2/src/models/canvas_viewport.dart';
-import 'package:quick_animaker_v2/src/models/viewport_point.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_canvas_panel.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_tool_state.dart';
-import 'package:quick_animaker_v2/src/ui/brush/canvas_view_commands.dart';
-import 'package:quick_animaker_v2/src/ui/canvas/canvas_viewport_gesture_layer.dart';
-import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
-import 'package:quick_animaker_v2/src/ui/theme/app_theme.dart' show AppColors;
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/viewport_point.dart';
+import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
+import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
+import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/brush/canvas_view_commands.dart';
+import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
+import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 
 import '../helpers/brush_canvas_fixture.dart';
 

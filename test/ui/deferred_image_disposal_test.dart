@@ -2,7 +2,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/canvas/deferred_image_disposal.dart';
+import 'package:anicel/src/ui/canvas/deferred_image_disposal.dart';
 
 /// Retired display images must outlive the frames that may still reference
 /// them: disposing an image in step with its replacement races the raster

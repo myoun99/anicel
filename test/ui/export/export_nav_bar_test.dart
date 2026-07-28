@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/export/export_nav_bar.dart';
+import 'package:anicel/src/ui/export/export_nav_bar.dart';
 
 void main() {
   Future<void> pumpBar(

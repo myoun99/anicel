@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/canvas_point.dart';
-import 'package:quick_animaker_v2/src/models/property_track.dart';
-import 'package:quick_animaker_v2/src/models/transform_track.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/property_track.dart';
+import 'package:anicel/src/models/transform_track.dart';
 
 TransformPose _pose(double x, {double zoom = 1.0, double rotation = 0.0}) {
   return TransformPose(

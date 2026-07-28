@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/camera_pose.dart';
-import 'package:quick_animaker_v2/src/models/canvas_point.dart';
-import 'package:quick_animaker_v2/src/models/layer_kind.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/camera_pose.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// UI-R20 #1: cut commands must not steal the layer selection — adding a
 /// camera keyframe used to rebuild the controllers with a null preferred

@@ -1,14 +1,14 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/brush_blend_mode.dart';
-import 'package:quick_animaker_v2/src/models/brush_pressure_curve.dart';
-import 'package:quick_animaker_v2/src/models/brush_settings.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_mask.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_rotation_mode.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_tool_state.dart';
-import 'package:quick_animaker_v2/src/ui/canvas/brush_edit_canvas_input_settings.dart';
+import 'package:anicel/src/models/brush_blend_mode.dart';
+import 'package:anicel/src/models/brush_pressure_curve.dart';
+import 'package:anicel/src/models/brush_settings.dart';
+import 'package:anicel/src/models/brush_tip_mask.dart';
+import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
+import 'package:anicel/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/canvas/brush_edit_canvas_input_settings.dart';
 
 void main() {
   group('BrushToolState', () {

@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/brush_input_sample.dart';
-import 'package:quick_animaker_v2/src/models/stroke_point.dart';
-import 'package:quick_animaker_v2/src/services/brush_input_sampling.dart';
+import 'package:anicel/src/models/brush_input_sample.dart';
+import 'package:anicel/src/models/stroke_point.dart';
+import 'package:anicel/src/services/brush_input_sampling.dart';
 
 void main() {
   group('brushInputSamplesToStrokePoints', () {

@@ -1,7 +1,7 @@
 import 'dart:io';
 
 /// The app-support path for [fileName]:
-/// `<base>/quick_animaker_v2/<fileName>`, where base is `%APPDATA%` on
+/// `<base>/anicel/<fileName>`, where base is `%APPDATA%` on
 /// Windows, `$HOME` or `%USERPROFILE%` elsewhere, and the temp directory as
 /// a last resort.
 ///
@@ -17,5 +17,5 @@ String appSupportFilePath(String fileName) {
       environment['USERPROFILE'] ??
       Directory.systemTemp.path;
   final normalizedBase = base.replaceAll('\\', '/');
-  return '$normalizedBase/quick_animaker_v2/$fileName';
+  return '$normalizedBase/anicel/$fileName';
 }

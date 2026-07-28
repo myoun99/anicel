@@ -98,7 +98,7 @@ class EditorMenuBar extends StatelessWidget {
       // SAVE-1: pickers start in the app's project home (앱 문서 폴더).
       initialDirectory: await ensuredAppDocumentsDirectory(),
       acceptedTypeGroups: const [
-        XTypeGroup(label: 'QuickAnimaker project', extensions: ['qap']),
+        XTypeGroup(label: 'Anicel project', extensions: ['qap']),
       ],
     );
     return file?.path;
@@ -710,9 +710,9 @@ class EditorMenuBar extends StatelessWidget {
   List<Widget> _helpItems(BuildContext context) => [
     _item(
       id: 'help-about',
-      label: 'About QuickAnimaker',
+      label: 'About Anicel',
       onPressed: () =>
-          showAboutDialog(context: context, applicationName: 'QuickAnimaker'),
+          showAboutDialog(context: context, applicationName: 'Anicel'),
     ),
   ];
 
@@ -843,7 +843,7 @@ Future<String?> _defaultQapSavePicker(
     suggestedName: suggestedName,
     initialDirectory: initialDirectory,
     acceptedTypeGroups: const [
-      XTypeGroup(label: 'QuickAnimaker project', extensions: ['qap']),
+      XTypeGroup(label: 'Anicel project', extensions: ['qap']),
     ],
   );
   return location?.path;

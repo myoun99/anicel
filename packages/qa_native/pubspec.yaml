@@ -1,6 +1,6 @@
 name: qa_native
 description: >-
-  QuickAnimaker's native core as an FFI plugin: ONE portable C source,
+  Anicel's native core as an FFI plugin: ONE portable C source,
   compiled into the app by each platform's own toolchain.
 version: 0.0.1
 publish_to: none

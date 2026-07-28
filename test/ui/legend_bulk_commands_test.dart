@@ -1,10 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/layer_kind.dart';
-import 'package:quick_animaker_v2/src/models/layer_mark.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/layer_timeline_display_adapter.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_section_policy.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timeline/layer_timeline_display_adapter.dart';
+import 'package:anicel/src/ui/timeline/timeline_section_policy.dart';
 
 /// The rail legend's bulk commands (R-toolbar round): project-state sweeps
 /// (sheet/mark/fill-ref) land as ONE undo entry; the view-ish sweeps

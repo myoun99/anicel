@@ -4,16 +4,16 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/native_engine_path.dart';
-import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
-import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
-import 'package:quick_animaker_v2/src/models/brush_blend_mode.dart';
-import 'package:quick_animaker_v2/src/models/canvas_size.dart';
-import 'package:quick_animaker_v2/src/models/dirty_region.dart';
-import 'package:quick_animaker_v2/src/models/tile_coord.dart';
-import 'package:quick_animaker_v2/src/native/qa_engine_abi.dart';
-import 'package:quick_animaker_v2/src/native/qa_native_engine.dart';
-import 'package:quick_animaker_v2/src/services/bitmap_surface_brush_commit.dart';
-import 'package:quick_animaker_v2/src/services/bitmap_surface_geometry.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_blend_mode.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/dirty_region.dart';
+import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/native/qa_engine_abi.dart';
+import 'package:anicel/src/native/qa_native_engine.dart';
+import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
+import 'package:anicel/src/services/bitmap_surface_geometry.dart';
 
 /// BB-N1 (ABI 22): the native stroke-blend tile kernel and the alpha-
 /// bounds scan must be BYTE-IDENTICAL to their Dart references — every

@@ -1,10 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/layer_kind.dart';
-import 'package:quick_animaker_v2/src/models/storyboard_coverage.dart';
-import 'package:quick_animaker_v2/src/models/timeline_coverage.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
-import 'package:quick_animaker_v2/src/ui/storyboard_layer_policy.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/storyboard_coverage.dart';
+import 'package:anicel/src/models/timeline_coverage.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/storyboard_layer_policy.dart';
 
 /// The storyboard row lives INSIDE its cut, edge to edge, from the first
 /// instant: born covering it, and the cut cannot then shrink past the

@@ -1,12 +1,12 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/audio_clip.dart';
-import 'package:quick_animaker_v2/src/models/frame.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
-import 'package:quick_animaker_v2/src/services/project_repository.dart';
-import 'package:quick_animaker_v2/src/ui/home_page.dart';
+import 'package:anicel/src/models/audio_clip.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/services/project_repository.dart';
+import 'package:anicel/src/ui/home_page.dart';
 
 /// UI-R22 #1: the SE row-change gesture SURVIVES the whole drag — the
 /// preview's overlay churn on the source row must never remount the

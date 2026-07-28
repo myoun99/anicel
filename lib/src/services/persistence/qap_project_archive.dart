@@ -121,14 +121,14 @@ QapArchiveContents parseQapArchiveBytes(Uint8List bytes) {
 
   final projectEntry = archive.find('project.json');
   if (projectEntry == null) {
-    throw const FormatException('Not a QuickAnimaker project (.qap).');
+    throw const FormatException('Not an Anicel project (.qap).');
   }
   final decoded =
       jsonDecode(utf8.decode(projectEntry.readBytes()!))
           as Map<String, dynamic>;
   if ((decoded['formatVersion'] as int? ?? 0) > qapFormatVersion) {
     throw const FormatException(
-      'This project was saved by a newer QuickAnimaker.',
+      'This project was saved by a newer Anicel.',
     );
   }
   final project = Project.fromJson(decoded['project'] as Map<String, dynamic>);

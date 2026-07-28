@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/services/persistence/audio_sync_settings_store.dart';
-import 'package:quick_animaker_v2/src/ui/playback/audio_sync_settings.dart';
+import 'package:anicel/src/services/persistence/audio_sync_settings_store.dart';
+import 'package:anicel/src/ui/playback/audio_sync_settings.dart';
 
 void main() {
   late Directory temp;
@@ -71,7 +71,7 @@ void main() {
     // The offset describes the RIG, not the film — it belongs with the
     // language and input settings, never in the .qap.
     final defaultPath = AudioSyncSettingsStore.defaultFilePath();
-    expect(defaultPath, contains('quick_animaker_v2'));
+    expect(defaultPath, contains('anicel'));
     expect(defaultPath, endsWith('audio_sync_settings.json'));
   });
 }

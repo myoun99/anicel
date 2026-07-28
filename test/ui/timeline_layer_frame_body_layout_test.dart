@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_layer_frame_body_layout.dart';
+import 'package:anicel/src/ui/timeline/timeline_layer_frame_body_layout.dart';
 
 void main() {
   group('TimelineLayerFrameBodyLayout', () {

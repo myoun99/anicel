@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/project.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/project.dart';
 
 /// EXPORT-AUDIO ③: the audio rate is PROJECT state, defaulting to the
 /// film-standard 48k and omitted from JSON at the default so existing

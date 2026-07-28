@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import '../helpers/json_round_trip.dart';
-import 'package:quick_animaker_v2/src/models/canvas_point.dart';
-import 'package:quick_animaker_v2/src/models/canvas_viewport.dart';
-import 'package:quick_animaker_v2/src/models/viewport_point.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/viewport_point.dart';
 
 void main() {
   group('CanvasViewport', () {

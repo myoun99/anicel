@@ -1,12 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/layer.dart';
-import 'package:quick_animaker_v2/src/models/layer_folder.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
-import 'package:quick_animaker_v2/src/models/transform_track.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/property_lane_model.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/transform_lane_policy.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_folder.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/ui/timeline/property_lane_model.dart';
+import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 
 /// Folder rows in the timeline display list. A folder is a LAYER now, so
 /// the builder synthesizes nothing: the row is already in the stack,

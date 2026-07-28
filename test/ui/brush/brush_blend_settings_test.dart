@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/app_language.dart';
-import 'package:quick_animaker_v2/src/models/brush_blend_mode.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_settings_panel.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/models/brush_blend_mode.dart';
+import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
+import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 
 /// BB-2 (R26 #9/#10/#11): the CSP-grouped brush settings — the ink
 /// group's blend dropdown, the eraser lock, the retired color/tip rows,

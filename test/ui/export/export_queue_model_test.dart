@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/export_spec.dart';
-import 'package:quick_animaker_v2/src/ui/export/export_job.dart';
+import 'package:anicel/src/models/export_spec.dart';
+import 'package:anicel/src/ui/export/export_job.dart';
 
 void main() {
   group('ExportQueueModel', () {

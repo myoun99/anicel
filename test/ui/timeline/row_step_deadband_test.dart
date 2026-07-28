@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_exposure_comma_drag_policy.dart';
+import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_policy.dart';
 
 /// R27 #12: the row axis of a move drag has a deadband. A fast horizontal
 /// sweep wobbles vertically; on the old half-cell rounding every wobble

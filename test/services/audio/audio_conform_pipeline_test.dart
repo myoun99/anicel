@@ -2,9 +2,9 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/services/audio/audio_conform_pipeline.dart';
-import 'package:quick_animaker_v2/src/services/audio/audio_resampler_reference.dart';
-import 'package:quick_animaker_v2/src/services/audio/conform_wav_codec.dart';
+import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
+import 'package:anicel/src/services/audio/audio_resampler_reference.dart';
+import 'package:anicel/src/services/audio/conform_wav_codec.dart';
 
 void main() {
   late Directory temp;

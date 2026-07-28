@@ -2,9 +2,9 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_mask.dart';
-import 'package:quick_animaker_v2/src/services/brush_tip_mask_defaults.dart';
-import 'package:quick_animaker_v2/src/services/brush_tip_mask_sampling.dart';
+import 'package:anicel/src/models/brush_tip_mask.dart';
+import 'package:anicel/src/services/brush_tip_mask_defaults.dart';
+import 'package:anicel/src/services/brush_tip_mask_sampling.dart';
 
 void main() {
   group('BrushTipMask', () {

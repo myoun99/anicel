@@ -2,13 +2,13 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/services/audio/audio_conform_pipeline.dart';
-import 'package:quick_animaker_v2/src/services/persistence/app_documents.dart';
-import 'package:quick_animaker_v2/src/services/persistence/app_save_settings.dart';
-import 'package:quick_animaker_v2/src/ui/audio/audio_conform_store.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
-import 'package:quick_animaker_v2/src/ui/playback/audio_recorder.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
+import 'package:anicel/src/services/persistence/app_documents.dart';
+import 'package:anicel/src/services/persistence/app_save_settings.dart';
+import 'package:anicel/src/ui/audio/audio_conform_store.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/playback/audio_recorder.dart';
 
 /// REC1-B2: the take shelf. A never-saved project records into the
 /// visible app Recordings folder (never the hidden OS temp), and the

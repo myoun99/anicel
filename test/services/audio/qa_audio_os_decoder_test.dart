@@ -3,11 +3,11 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/native/qa_audio_decoder.dart';
-import 'package:quick_animaker_v2/src/native/qa_engine_abi.dart';
-import 'package:quick_animaker_v2/src/services/audio/audio_conform_pipeline.dart';
-import 'package:quick_animaker_v2/src/services/audio/audio_conform_runner.dart';
-import 'package:quick_animaker_v2/src/services/audio/conform_wav_codec.dart';
+import 'package:anicel/src/native/qa_audio_decoder.dart';
+import 'package:anicel/src/native/qa_engine_abi.dart';
+import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
+import 'package:anicel/src/services/audio/audio_conform_runner.dart';
+import 'package:anicel/src/services/audio/conform_wav_codec.dart';
 
 import '../../helpers/native_engine_path.dart';
 

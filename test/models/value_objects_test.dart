@@ -1,10 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/brush_preset_id.dart';
-import 'package:quick_animaker_v2/src/models/brush_settings.dart';
-import 'package:quick_animaker_v2/src/models/canvas_size.dart';
-import 'package:quick_animaker_v2/src/models/frame.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/stroke_point.dart';
+import 'package:anicel/src/models/brush_preset_id.dart';
+import 'package:anicel/src/models/brush_settings.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/stroke_point.dart';
 
 void main() {
   group('value objects', () {

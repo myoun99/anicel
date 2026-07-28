@@ -15,10 +15,10 @@
 // exactly one of.
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_canvas_panel.dart';
-import 'package:quick_animaker_v2/src/ui/brush/main_canvas_brush_host.dart';
-import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
-import 'package:quick_animaker_v2/src/ui/timesheet_tab_host.dart';
+import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
+import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
+import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
 /// The drawing canvas panel (the editor's center dock).
 Finder mainCanvasPanel() => find.byType(MainCanvasBrushHost);

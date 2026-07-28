@@ -4,22 +4,22 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/native_engine_path.dart';
-import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
-import 'package:quick_animaker_v2/src/models/bitmap_tile.dart';
-import 'package:quick_animaker_v2/src/models/brush_blend_mode.dart';
-import 'package:quick_animaker_v2/src/models/brush_dab.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
-import 'package:quick_animaker_v2/src/models/canvas_point.dart';
-import 'package:quick_animaker_v2/src/models/canvas_size.dart';
-import 'package:quick_animaker_v2/src/models/dirty_region.dart';
-import 'package:quick_animaker_v2/src/models/tile_coord.dart';
-import 'package:quick_animaker_v2/src/native/qa_engine_abi.dart';
-import 'package:quick_animaker_v2/src/native/qa_native_engine.dart';
-import 'package:quick_animaker_v2/src/services/bitmap_surface_brush_commit.dart';
-import 'package:quick_animaker_v2/src/services/brush_live_stroke_rasterizer.dart';
-import 'package:quick_animaker_v2/src/services/brush_stroke_blend.dart';
-import 'package:quick_animaker_v2/src/services/canvas_selection.dart';
-import 'package:quick_animaker_v2/src/services/canvas_selection_region.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/bitmap_tile.dart';
+import 'package:anicel/src/models/brush_blend_mode.dart';
+import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/dirty_region.dart';
+import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/native/qa_engine_abi.dart';
+import 'package:anicel/src/native/qa_native_engine.dart';
+import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
+import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
+import 'package:anicel/src/services/brush_stroke_blend.dart';
+import 'package:anicel/src/services/canvas_selection.dart';
+import 'package:anicel/src/services/canvas_selection_region.dart';
 
 /// R27 #4: the live overlay's PRE-BLEND must be byte-identical to the
 /// pen-up commit — for EVERY brush blend mode, erase included, against

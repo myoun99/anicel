@@ -1,4 +1,4 @@
-// QuickAnimaker Wintab sidecar (pen program, PEN-2) - Windows only.
+// Anicel Wintab sidecar (pen program, PEN-2) - Windows only.
 //
 // The CSP-style second tablet backend: talks to the tablet DRIVER
 // directly through wintab32.dll, bypassing the OS pointer

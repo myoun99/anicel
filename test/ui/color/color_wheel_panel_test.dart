@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/color/color_wheel_panel.dart';
+import 'package:anicel/src/ui/color/color_wheel_panel.dart';
 
 void main() {
   group('ColorWheelGeometry', () {

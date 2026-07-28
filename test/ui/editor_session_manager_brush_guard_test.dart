@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/layer_kind.dart';
-import 'package:quick_animaker_v2/src/ui/canvas/canvas_layer_stack_view.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// R6-④: the brush only lands on drawing-section layers — SE cels are
 /// timing/dialogue data and instruction/camera rows are notation, so they

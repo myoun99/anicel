@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_mask.dart';
+import 'package:anicel/src/models/brush_tip_mask.dart';
 
 BrushTipMask maskOf(List<int> alpha) =>
     BrushTipMask(id: 't', size: 2, alpha: Uint8List.fromList(alpha));

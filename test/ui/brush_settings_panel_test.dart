@@ -1,13 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/brush_pressure_curve.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_rotation_mode.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_preset_panel.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_settings_panel.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_tool_state.dart';
-import 'package:quick_animaker_v2/src/ui/panels/editor_panel_dock.dart';
-import 'package:quick_animaker_v2/src/ui/panels/editor_panel_frame.dart';
+import 'package:anicel/src/models/brush_pressure_curve.dart';
+import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
+import 'package:anicel/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
+import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
+import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/panels/editor_panel_dock.dart';
+import 'package:anicel/src/ui/panels/editor_panel_frame.dart';
 
 void main() {
   testWidgets('EditorPanelFrame renders toolbar and body at small sizes', (

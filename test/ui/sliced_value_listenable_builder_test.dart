@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/sliced_value_listenable_builder.dart';
+import 'package:anicel/src/ui/sliced_value_listenable_builder.dart';
 
 void main() {
   testWidgets('rebuilds only when the slice changes', (tester) async {

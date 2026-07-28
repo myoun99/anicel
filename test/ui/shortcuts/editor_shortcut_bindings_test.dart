@@ -3,10 +3,10 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/shortcuts/editor_action_registry.dart';
-import 'package:quick_animaker_v2/src/ui/shortcuts/editor_shortcut_bindings.dart';
-import 'package:quick_animaker_v2/src/ui/shortcuts/shortcut_activator_codec.dart';
-import 'package:quick_animaker_v2/src/ui/shortcuts/shortcut_settings_store.dart';
+import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
+import 'package:anicel/src/ui/shortcuts/editor_shortcut_bindings.dart';
+import 'package:anicel/src/ui/shortcuts/shortcut_activator_codec.dart';
+import 'package:anicel/src/ui/shortcuts/shortcut_settings_store.dart';
 
 void main() {
   test('defaults feed the shortcuts map; every registry action resolves', () {

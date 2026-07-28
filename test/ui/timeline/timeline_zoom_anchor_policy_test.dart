@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_zoom_anchor_policy.dart';
+import 'package:anicel/src/ui/timeline/timeline_zoom_anchor_policy.dart';
 
 /// Shared zoom anchoring: the playhead pins its on-screen spot through a
 /// zoom step when visible; off-screen (or absent) playheads fall back to

@@ -1,19 +1,19 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/brush_dab.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
-import 'package:quick_animaker_v2/src/models/canvas_point.dart';
-import 'package:quick_animaker_v2/src/models/canvas_size.dart';
-import 'package:quick_animaker_v2/src/models/canvas_viewport.dart';
-import 'package:quick_animaker_v2/src/models/cut.dart';
-import 'package:quick_animaker_v2/src/models/cut_id.dart';
-import 'package:quick_animaker_v2/src/models/timesheet_document.dart';
-import 'package:quick_animaker_v2/src/services/brush_stroke_commit_data.dart';
-import 'package:quick_animaker_v2/src/services/history_manager.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_tool_state.dart';
-import 'package:quick_animaker_v2/src/ui/timesheet/timesheet_document_painter.dart';
-import 'package:quick_animaker_v2/src/ui/timesheet/timesheet_ink_controller.dart';
-import 'package:quick_animaker_v2/src/ui/timesheet/timesheet_ink_layer.dart';
+import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/timesheet_document.dart';
+import 'package:anicel/src/services/brush_stroke_commit_data.dart';
+import 'package:anicel/src/services/history_manager.dart';
+import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
+import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart';
+import 'package:anicel/src/ui/timesheet/timesheet_ink_layer.dart';
 
 const _cutId = CutId('cut-1');
 

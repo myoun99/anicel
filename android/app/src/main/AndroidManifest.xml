@@ -13,7 +13,7 @@
     <!-- AUDIO-PRO R5: guide-voice recording. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <application
-        android:label="quick_animaker_v2"
+        android:label="Anicel"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity

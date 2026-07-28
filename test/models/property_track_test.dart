@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/property_track.dart';
+import 'package:anicel/src/models/property_track.dart';
 
 double _lerp(double a, double b, double t) => a + (b - a) * t;
 

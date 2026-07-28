@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/canvas_viewport.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
-import 'package:quick_animaker_v2/src/ui/theme/app_theme.dart';
-import 'package:quick_animaker_v2/src/ui/timesheet_tab_host.dart';
-import 'package:quick_animaker_v2/src/ui/widgets/app_icon_button.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/timesheet_tab_host.dart';
+import 'package:anicel/src/ui/widgets/app_icon_button.dart';
 
 /// R26 #42: the canvas bottom bar's icon style is the app's DEFAULT icon
 /// UI now, so it lives in one widget and other surfaces mount that widget

@@ -2,9 +2,9 @@ import 'dart:io';
 
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/native/qa_engine_abi.dart';
-import 'package:quick_animaker_v2/src/native/qa_native_engine.dart';
-import 'package:quick_animaker_v2/src/services/canvas_flood_fill.dart';
+import 'package:anicel/src/native/qa_engine_abi.dart';
+import 'package:anicel/src/native/qa_native_engine.dart';
+import 'package:anicel/src/services/canvas_flood_fill.dart';
 
 /// NOT tagged `benchmark`: the tag skips the WHOLE file, and the
 /// assertions here (the flooded region's exact bounds, the mask length,

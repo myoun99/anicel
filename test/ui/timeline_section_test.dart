@@ -1,15 +1,15 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/frame.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/layer.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_kind.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/layer_timeline_display_adapter.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_orientation.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_panel.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_section_policy.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/ui/timeline/layer_timeline_display_adapter.dart';
+import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
+import 'package:anicel/src/ui/timeline/timeline_panel.dart';
+import 'package:anicel/src/ui/timeline/timeline_section_policy.dart';
 
 Layer _layer(String id, LayerKind kind) {
   return Layer(

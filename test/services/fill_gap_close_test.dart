@@ -3,9 +3,9 @@ import 'dart:math';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/native/qa_engine_abi.dart';
-import 'package:quick_animaker_v2/src/native/qa_native_engine.dart';
-import 'package:quick_animaker_v2/src/services/canvas_flood_fill.dart';
+import 'package:anicel/src/native/qa_engine_abi.dart';
+import 'package:anicel/src/native/qa_native_engine.dart';
+import 'package:anicel/src/services/canvas_flood_fill.dart';
 
 /// R20-C1 close-gap fill: line-art gaps narrower than ~2× the gap radius
 /// stop leaks; the region still grows back to the REAL barriers. The C

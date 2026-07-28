@@ -1,9 +1,9 @@
 import 'dart:math' as math;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/canvas_point.dart';
-import 'package:quick_animaker_v2/src/models/canvas_viewport.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_cursor_geometry.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/ui/brush/brush_cursor_geometry.dart';
 
 /// Screen position of a canvas point, computed straight from the viewport
 /// contract rather than from the geometry helper — the axes are checked

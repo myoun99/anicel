@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/camera_pose.dart';
-import 'package:quick_animaker_v2/src/models/canvas_point.dart';
-import 'package:quick_animaker_v2/src/models/property_track.dart';
-import 'package:quick_animaker_v2/src/models/transform_track.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/camera_key_edit.dart';
+import 'package:anicel/src/models/camera_pose.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/property_track.dart';
+import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/ui/timeline/camera_key_edit.dart';
 
 final _pose = CameraPose(center: CanvasPoint(x: 320, y: 180));
 

@@ -2,8 +2,8 @@ import 'dart:convert';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
-import 'package:quick_animaker_v2/src/services/audio/conform_wav_codec.dart';
+import 'package:anicel/src/models/project_frame_rate.dart';
+import 'package:anicel/src/services/audio/conform_wav_codec.dart';
 
 void main() {
   const fingerprint = ConformSourceFingerprint(

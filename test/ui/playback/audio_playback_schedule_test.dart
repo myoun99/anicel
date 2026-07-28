@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
-import 'package:quick_animaker_v2/src/ui/playback/audio_playback_schedule.dart';
+import 'package:anicel/src/models/project_frame_rate.dart';
+import 'package:anicel/src/ui/playback/audio_playback_schedule.dart';
 
 void main() {
   group('audioMixScheduleFrom', () {
