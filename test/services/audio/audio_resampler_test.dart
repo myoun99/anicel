@@ -2,7 +2,7 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/services/audio/audio_resampler_reference.dart';
+import 'package:anicel/src/services/audio/audio_resampler_reference.dart';
 
 /// Resampler quality, MEASURED rather than listened to.
 ///

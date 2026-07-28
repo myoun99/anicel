@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/text/dialogue_fit_layout.dart';
+import 'package:anicel/src/ui/text/dialogue_fit_layout.dart';
 
 void main() {
   test('glyph centers distribute evenly across the extent', () {

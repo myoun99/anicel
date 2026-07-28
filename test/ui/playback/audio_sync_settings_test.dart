@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
-import 'package:quick_animaker_v2/src/ui/playback/audio_sync_settings.dart';
+import 'package:anicel/src/models/project_frame_rate.dart';
+import 'package:anicel/src/ui/playback/audio_sync_settings.dart';
 
 void main() {
   test('device choices round-trip by NAME, defaulting to the system '

@@ -1,18 +1,18 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/attached_layer_resolve.dart';
-import 'package:quick_animaker_v2/src/models/attached_mode.dart';
-import 'package:quick_animaker_v2/src/models/attached_placement.dart';
-import 'package:quick_animaker_v2/src/models/layer.dart';
-import 'package:quick_animaker_v2/src/models/timeline_coverage.dart'
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/attached_layer_resolve.dart';
+import 'package:anicel/src/models/attached_mode.dart';
+import 'package:anicel/src/models/attached_placement.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
-import 'package:quick_animaker_v2/src/models/timeline_repeat.dart'
+import 'package:anicel/src/models/timeline_repeat.dart'
     show
         TimelineRunEdgeMode,
         TimelineRunEdgeSide,
         runBehaviorOwningGhostAt,
         timelineIndexIsGhost;
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// W5 attach layers through the session: creation/placement, the attach
 /// cel flow (Create Drawing = cel + link), edit guards and the cascade

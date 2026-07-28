@@ -2,11 +2,11 @@ import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_entry.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_mask.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_settings_panel.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_tip_picker.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/models/brush_tip_entry.dart';
+import 'package:anicel/src/models/brush_tip_mask.dart';
+import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
+import 'package:anicel/src/ui/brush/brush_tip_picker.dart';
+import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 
 BrushTipMask _mask(String id, {int value = 200}) => BrushTipMask(
   id: id,

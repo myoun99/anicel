@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/app_language.dart';
-import 'package:quick_animaker_v2/src/services/audio/audio_conform_pipeline.dart';
-import 'package:quick_animaker_v2/src/ui/audio/audio_conform_store.dart';
-import 'package:quick_animaker_v2/src/ui/dialogs/audio_settings_section.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
+import 'package:anicel/src/ui/audio/audio_conform_store.dart';
+import 'package:anicel/src/ui/dialogs/audio_settings_section.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// The audio UI reads in the PROGRAM language (the UI-R10 #7 setting):
 /// the tables are complete by construction (const constructors refuse a

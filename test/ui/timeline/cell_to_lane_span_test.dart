@@ -1,11 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/layer.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/property_lane_model.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_row_span_resolver.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/transform_lane_policy.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timeline/property_lane_model.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_span_resolver.dart';
+import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 
 /// R27 #14 잔여: a cell drag reaching DOWN into the layer's own property
 /// lanes selects cell → lane → lane and stops where the pointer is

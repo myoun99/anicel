@@ -1,11 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/canvas_point.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/property_track.dart';
-import 'package:quick_animaker_v2/src/models/timeline_frame_range.dart';
-import 'package:quick_animaker_v2/src/models/transform_track.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/transform_lane_editing.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/transform_lane_policy.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/property_track.dart';
+import 'package:anicel/src/models/timeline_frame_range.dart';
+import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/ui/timeline/transform_lane_editing.dart';
+import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 
 /// R26 #3: the lane selection becomes the cells' grammar — multi-lane
 /// spans (Excel rule on lane rows), the group header as the whole-group

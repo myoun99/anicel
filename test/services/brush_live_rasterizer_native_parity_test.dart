@@ -3,14 +3,14 @@
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/native_engine_path.dart';
-import 'package:quick_animaker_v2/src/models/brush_dab.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
-import 'package:quick_animaker_v2/src/models/canvas_point.dart';
-import 'package:quick_animaker_v2/src/models/canvas_size.dart';
-import 'package:quick_animaker_v2/src/native/qa_engine_abi.dart';
-import 'package:quick_animaker_v2/src/native/qa_native_engine.dart';
-import 'package:quick_animaker_v2/src/services/brush_live_stroke_rasterizer.dart';
-import 'package:quick_animaker_v2/src/services/brush_tip_stamp_cache.dart';
+import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/native/qa_engine_abi.dart';
+import 'package:anicel/src/native/qa_native_engine.dart';
+import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
+import 'package:anicel/src/services/brush_tip_stamp_cache.dart';
 
 /// R21: the live stroke rasterizer's native path (the SAME C kernel the
 /// commit uses, srcOver-only) must be byte-identical to the Dart loop —

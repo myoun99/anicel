@@ -1,25 +1,25 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/frame.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/layer.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_kind.dart';
-import 'package:quick_animaker_v2/src/models/timeline_coverage.dart';
-import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
-import 'package:quick_animaker_v2/src/models/timeline_frame_range.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/timeline_coverage.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/timeline_frame_range.dart';
 
 import 'timeline_cell_probe.dart';
-import 'package:quick_animaker_v2/src/ui/input/app_input_settings.dart';
-import 'package:quick_animaker_v2/src/ui/theme/app_theme.dart' show AppColors;
-import 'package:quick_animaker_v2/src/ui/timeline/layer_timeline_grid.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/property_lane_model.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_drag_preview.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_range_gesture.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/xsheet_timeline_grid.dart';
+import 'package:anicel/src/ui/input/app_input_settings.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
+import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
+import 'package:anicel/src/ui/timeline/property_lane_model.dart';
+import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_range_gesture.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
 /// UI-R8: the row-wide range gesture layer — a cell drag SELECTS a frame
 /// range, a drag starting inside the selection MOVES it (frame steps along

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/widgets/panel_flyout.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 /// R-toolbar round: these command keys moved from standalone toolbar
 /// buttons into the Layer ▾ / Frame ▾ / Cut ▾ flyouts. Key strings were

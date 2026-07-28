@@ -1,13 +1,13 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_cut_helpers.dart';
-import 'package:quick_animaker_v2/src/controllers/default_layer_helpers.dart';
-import 'package:quick_animaker_v2/src/models/cut.dart';
-import 'package:quick_animaker_v2/src/models/cut_id.dart';
-import 'package:quick_animaker_v2/src/models/project.dart';
-import 'package:quick_animaker_v2/src/models/project_id.dart';
-import 'package:quick_animaker_v2/src/models/track.dart';
-import 'package:quick_animaker_v2/src/models/track_id.dart';
-import 'package:quick_animaker_v2/src/services/commands/cut_command_coordinator.dart';
+import 'package:anicel/src/controllers/default_cut_helpers.dart';
+import 'package:anicel/src/controllers/default_layer_helpers.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/commands/cut_command_coordinator.dart';
 
 /// The cut NAME is the cut number: a free string the user owns. Naming a
 /// new cut therefore offers candidates and takes the first free one, so a

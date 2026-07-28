@@ -1,15 +1,15 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/frame.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_kind.dart';
-import 'package:quick_animaker_v2/src/models/storyboard_coverage.dart';
-import 'package:quick_animaker_v2/src/models/timeline_coverage.dart'
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/storyboard_coverage.dart';
+import 'package:anicel/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
-import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
-import 'package:quick_animaker_v2/src/ui/storyboard_layer_policy.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/storyboard_layer_policy.dart';
 
 /// A cut and its storyboard row are ONE thing (feedback #9): the cut ends
 /// where the row ends, always. These drive the seams where the two could

@@ -1,12 +1,12 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/input/app_input_settings.dart';
-import 'package:quick_animaker_v2/src/models/camera_pose.dart';
-import 'package:quick_animaker_v2/src/models/canvas_point.dart';
-import 'package:quick_animaker_v2/src/models/canvas_size.dart';
-import 'package:quick_animaker_v2/src/models/canvas_viewport.dart';
-import 'package:quick_animaker_v2/src/ui/camera/camera_frame_overlay.dart';
+import 'package:anicel/src/ui/input/app_input_settings.dart';
+import 'package:anicel/src/models/camera_pose.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/ui/camera/camera_frame_overlay.dart';
 
 void main() {
   const frameSize = CanvasSize(width: 1920, height: 1080);

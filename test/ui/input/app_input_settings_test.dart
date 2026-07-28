@@ -2,8 +2,8 @@ import 'dart:io';
 
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/services/persistence/app_input_settings_store.dart';
-import 'package:quick_animaker_v2/src/ui/input/app_input_settings.dart';
+import 'package:anicel/src/services/persistence/app_input_settings_store.dart';
+import 'package:anicel/src/ui/input/app_input_settings.dart';
 
 /// UI-R22 #6 / UI-R22F #1: ONE owner decides what a touch contact means
 /// on the timeline — scroll (the PRODUCT default) or edit (the R17-⑥

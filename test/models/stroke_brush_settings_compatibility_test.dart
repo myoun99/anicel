@@ -1,13 +1,13 @@
 ﻿import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/brush_input_sample.dart';
-import 'package:quick_animaker_v2/src/models/brush_preset.dart';
-import 'package:quick_animaker_v2/src/models/brush_pressure_curve.dart';
-import 'package:quick_animaker_v2/src/models/brush_preset_id.dart';
-import 'package:quick_animaker_v2/src/models/brush_settings.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
-import 'package:quick_animaker_v2/src/models/stroke.dart';
-import 'package:quick_animaker_v2/src/models/stroke_id.dart';
-import 'package:quick_animaker_v2/src/models/stroke_point.dart';
+import 'package:anicel/src/models/brush_input_sample.dart';
+import 'package:anicel/src/models/brush_preset.dart';
+import 'package:anicel/src/models/brush_pressure_curve.dart';
+import 'package:anicel/src/models/brush_preset_id.dart';
+import 'package:anicel/src/models/brush_settings.dart';
+import 'package:anicel/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/models/stroke.dart';
+import 'package:anicel/src/models/stroke_id.dart';
+import 'package:anicel/src/models/stroke_point.dart';
 
 void main() {
   group('Stroke BrushSettings compatibility', () {

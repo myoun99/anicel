@@ -1,10 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_cut_helpers.dart';
-import 'package:quick_animaker_v2/src/models/cut_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/project.dart';
-import 'package:quick_animaker_v2/src/models/project_id.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_canvas_defaults.dart';
+import 'package:anicel/src/controllers/default_cut_helpers.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/ui/brush/brush_canvas_defaults.dart';
 
 void main() {
   test('Project defaults to the Brush T2 camera size', () {

@@ -1,7 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/pen_friendly_scroll_controller.dart';
+import 'package:anicel/src/ui/timeline/pen_friendly_scroll_controller.dart';
 
 /// PEN-10: while [PenFriendlyScrollPosition.penNearby] is set, a COASTING
 /// viewport keeps its children hittable (the framework hides them for the

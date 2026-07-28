@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/core/collection_equality.dart';
+import 'package:anicel/src/core/collection_equality.dart';
 
 /// These three helpers back the `==` of most model classes, yet nothing
 /// named them directly — they were only exercised through those models'

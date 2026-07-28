@@ -1,8 +1,8 @@
 ﻿import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/brush_input_sample.dart';
-import 'package:quick_animaker_v2/src/models/brush_pressure_curve.dart';
-import 'package:quick_animaker_v2/src/models/brush_settings.dart';
-import 'package:quick_animaker_v2/src/services/brush_dab_placement.dart';
+import 'package:anicel/src/models/brush_input_sample.dart';
+import 'package:anicel/src/models/brush_pressure_curve.dart';
+import 'package:anicel/src/models/brush_settings.dart';
+import 'package:anicel/src/services/brush_dab_placement.dart';
 
 void main() {
   group('brushInputSamplesToBrushDabs', () {

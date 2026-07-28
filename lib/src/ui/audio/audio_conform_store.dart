@@ -59,7 +59,7 @@ class AudioConformStore extends ChangeNotifier {
 
   /// Where [sourcePath]'s conform lives, or null for memory-only (no
   /// project file yet). Injected rather than computed here because only
-  /// the session knows the current `.qap` path.
+  /// the session knows the current `.anicel` path.
   final String? Function(String sourcePath) resolveConformPath;
 
   final ConformRunner _runner;

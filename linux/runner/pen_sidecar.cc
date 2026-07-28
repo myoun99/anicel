@@ -1,4 +1,4 @@
-// QuickAnimaker pen sidecar (pen program, PEN-4 — Linux).
+// Anicel pen sidecar (pen program, PEN-4 — Linux).
 //
 // Flutter's Linux embedder delivers neither stylus device kinds nor
 // pressure (flutter/flutter#63209): GDK sees the pen (GDK_SOURCE_PEN,

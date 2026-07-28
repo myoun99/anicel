@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// The session's link verbs (L4 wiring): 링크 복제, 독립시키기, 겸용컷
 /// 생성/변경 — thin session entrances over the L2 coordinator verbs, plus

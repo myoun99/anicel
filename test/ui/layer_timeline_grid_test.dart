@@ -2,21 +2,21 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/frame.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/layer.dart';
-import 'package:quick_animaker_v2/src/models/layer_kind.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/layer_timeline_grid.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_horizontal_scrollbar_rail.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
+import 'package:anicel/src/ui/timeline/timeline_horizontal_scrollbar_rail.dart';
 
 import 'timeline/timeline_cell_probe.dart';
 import 'timeline/timeline_ruler_probe.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_style.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_range_policy.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_playhead.dart';
+import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_range_policy.dart';
+import 'package:anicel/src/ui/timeline/timeline_playhead.dart';
 
 /// Classic 48×52 geometry for this file's pixel oracles (the slim 24×28
 /// default is pinned in timeline_grid_metrics_test).

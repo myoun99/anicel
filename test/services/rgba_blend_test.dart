@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/rgba_color.dart';
-import 'package:quick_animaker_v2/src/services/rgba_blend.dart';
+import 'package:anicel/src/models/rgba_color.dart';
+import 'package:anicel/src/services/rgba_blend.dart';
 
 void main() {
   group('rgbaDestinationOut', () {

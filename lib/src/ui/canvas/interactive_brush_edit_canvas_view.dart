@@ -666,7 +666,7 @@ class _InteractiveBrushEditCanvasViewState
       _previousBaseDab = initialDabs.last;
     }
     // R20-B: dabs resolve through the tip-stamp cache HERE, at generation
-    // — the overlay, the commit, undo replay and the .qap all see the
+    // — the overlay, the commit, undo replay and the .anicel all see the
     // same resolved (quantized, prerotated-mask) dabs.
     final emitted = BrushTipStampCache.instance.resolveDabs(
       _withGroundMixing(

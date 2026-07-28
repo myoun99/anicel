@@ -1,6 +1,6 @@
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/services/input/pencil_interaction_service.dart';
+import 'package:anicel/src/services/input/pencil_interaction_service.dart';
 
 /// PEN-5: the Apple Pencil double-tap channel consumer.
 void main() {

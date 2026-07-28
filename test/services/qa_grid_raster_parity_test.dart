@@ -5,9 +5,9 @@ import 'dart:ui' show Color;
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/native_engine_path.dart';
-import 'package:quick_animaker_v2/src/native/qa_engine_abi.dart';
-import 'package:quick_animaker_v2/src/native/qa_native_engine.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_tile_ops.dart';
+import 'package:anicel/src/native/qa_engine_abi.dart';
+import 'package:anicel/src/native/qa_native_engine.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_tile_ops.dart';
 
 /// UI-R18 O7 T1: the native grid-tile rasterizer must be BYTE-IDENTICAL
 /// to the Dart reference — randomized op streams (rects, lines, atlas

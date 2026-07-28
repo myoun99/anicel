@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/export_format_selection.dart';
-import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
-import 'package:quick_animaker_v2/src/ui/export/video_export_service.dart';
+import 'package:anicel/src/models/export_format_selection.dart';
+import 'package:anicel/src/models/project_frame_rate.dart';
+import 'package:anicel/src/ui/export/video_export_service.dart';
 
 void main() {
   List<String> args({

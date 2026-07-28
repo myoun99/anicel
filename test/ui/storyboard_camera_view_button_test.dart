@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/ui/camera/camera_view_toggle_button.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
-import 'package:quick_animaker_v2/src/ui/storyboard_tab_host.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/ui/camera/camera_view_toggle_button.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/storyboard_tab_host.dart';
 
 /// R28 #1: camera view is a VIEW MODE, so the toggle sits beside the
 /// transport on every panel that has one — the storyboard included. Both

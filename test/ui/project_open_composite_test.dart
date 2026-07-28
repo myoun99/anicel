@@ -2,30 +2,30 @@ import 'dart:io';
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/bitmap_surface.dart';
-import 'package:quick_animaker_v2/src/models/brush_dab.dart';
-import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
-import 'package:quick_animaker_v2/src/models/brush_history_policy.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_shape.dart';
-import 'package:quick_animaker_v2/src/models/canvas_point.dart';
-import 'package:quick_animaker_v2/src/models/canvas_size.dart';
-import 'package:quick_animaker_v2/src/models/cut_id.dart';
-import 'package:quick_animaker_v2/src/models/frame.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/playback_quality.dart';
-import 'package:quick_animaker_v2/src/models/project_id.dart';
-import 'package:quick_animaker_v2/src/models/track_id.dart';
-import 'package:quick_animaker_v2/src/services/brush_frame_display_cache_service.dart';
-import 'package:quick_animaker_v2/src/services/brush_frame_edit_session_store.dart';
-import 'package:quick_animaker_v2/src/services/brush_frame_editing_coordinator.dart';
-import 'package:quick_animaker_v2/src/services/brush_frame_store.dart';
-import 'package:quick_animaker_v2/src/services/persistence/brush_drawing_binary_codec.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
-import 'package:quick_animaker_v2/src/ui/export/export_frame_renderer.dart';
-import 'package:quick_animaker_v2/src/ui/export/export_plan.dart';
-import 'package:quick_animaker_v2/src/ui/playback/layer_frame_image_cache.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/bitmap_surface.dart';
+import 'package:anicel/src/models/brush_dab.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/brush_history_policy.dart';
+import 'package:anicel/src/models/brush_tip_shape.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/playback_quality.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/brush_frame_display_cache_service.dart';
+import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
+import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
+import 'package:anicel/src/services/brush_frame_store.dart';
+import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/export/export_frame_renderer.dart';
+import 'package:anicel/src/ui/export/export_plan.dart';
+import 'package:anicel/src/ui/playback/layer_frame_image_cache.dart';
 
 /// R19 P3a regression pins: a bake-only OPEN carries no paint commands —
 /// the cel's picture is its baked raster — so every composite consumer
@@ -35,7 +35,7 @@ void main() {
   late Directory directory;
 
   setUp(() async {
-    directory = await Directory.systemTemp.createTemp('qap-open-composite');
+    directory = await Directory.systemTemp.createTemp('anicel-open-composite');
   });
 
   tearDown(() => directory.delete(recursive: true));
@@ -77,7 +77,7 @@ void main() {
         ),
       ],
     );
-    final path = '${directory.path}/scene.qap';
+    final path = '${directory.path}/scene.anicel';
     await s.saveProjectToFile(path);
     await s.openProjectFromFile(path);
     // Sanity: the open restored the baked raster truth.
@@ -167,7 +167,7 @@ void main() {
     // R20-A1: opens land cels COLD (encoded blobs) — the rebuild path
     // must materialize and serve the same pixels.
     store.restoreBaked({
-      key: QapCelBlob.encode(QapCelEntry.fromSurface(key, baked)),
+      key: AnicelCelBlob.encode(AnicelCelEntry.fromSurface(key, baked)),
     });
     // The cache seeds on first materialization; drop it to simulate any
     // invalidation and force the service down its rebuild path.

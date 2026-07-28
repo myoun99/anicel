@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/export_cel_naming.dart';
-import 'package:quick_animaker_v2/src/models/export_format_selection.dart';
-import 'package:quick_animaker_v2/src/models/export_preset.dart';
-import 'package:quick_animaker_v2/src/models/export_size_mode.dart';
-import 'package:quick_animaker_v2/src/models/export_spec.dart';
+import 'package:anicel/src/models/export_cel_naming.dart';
+import 'package:anicel/src/models/export_format_selection.dart';
+import 'package:anicel/src/models/export_preset.dart';
+import 'package:anicel/src/models/export_size_mode.dart';
+import 'package:anicel/src/models/export_spec.dart';
 
 void main() {
   group('SequenceExportSpec', () {

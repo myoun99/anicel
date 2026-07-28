@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/canvas_point.dart';
-import 'package:quick_animaker_v2/src/models/canvas_size.dart';
-import 'package:quick_animaker_v2/src/services/canvas_segment_clipper.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/services/canvas_segment_clipper.dart';
 
 /// The stroke segment clipper clips to the PASTEBOARD, not the stage:
 /// off-canvas drawing is real drawing (user feedback — the pointer must

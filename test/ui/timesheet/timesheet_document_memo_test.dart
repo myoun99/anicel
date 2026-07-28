@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/timesheet_document.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
-import 'package:quick_animaker_v2/src/ui/timesheet/timesheet_document_painter.dart';
-import 'package:quick_animaker_v2/src/ui/timesheet_tab_host.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/timesheet_document.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
+import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
 /// The sheet document/layout memo: most session notifies (fx toggles,
 /// selections, waveform loads) change none of the document's inputs — the

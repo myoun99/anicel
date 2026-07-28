@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/brush_pressure_curve.dart';
-import 'package:quick_animaker_v2/src/models/brush_settings.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_stroke_preview.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_stroke_preview_cache.dart';
+import 'package:anicel/src/models/brush_pressure_curve.dart';
+import 'package:anicel/src/models/brush_settings.dart';
+import 'package:anicel/src/ui/brush/brush_stroke_preview.dart';
+import 'package:anicel/src/ui/brush/brush_stroke_preview_cache.dart';
 
 /// UI-R18 R18-B: the stroke-preview raster moved into an app-wide LRU
 /// image cache filled off the UI isolate — a preset rasterizes ONCE per

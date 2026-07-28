@@ -2,15 +2,15 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/app_language.dart';
-import 'package:quick_animaker_v2/src/models/timesheet_info.dart';
-import 'package:quick_animaker_v2/src/services/persistence/app_language_settings_store.dart';
-import 'package:quick_animaker_v2/src/ui/dialogs/language_settings_dialog.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
-import 'package:quick_animaker_v2/src/ui/text/app_strings.dart';
-import 'package:quick_animaker_v2/src/ui/timesheet/timesheet_document_painter.dart';
-import 'package:quick_animaker_v2/src/ui/timesheet/timesheet_notation.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/models/timesheet_info.dart';
+import 'package:anicel/src/services/persistence/app_language_settings_store.dart';
+import 'package:anicel/src/ui/dialogs/language_settings_dialog.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
+import 'package:anicel/src/ui/timesheet/timesheet_notation.dart';
 
 /// UI-R10 #7: TWO language settings — program (app chrome) and notation
 /// (what prints on submissions). Defaults: program=en, notation=ja.

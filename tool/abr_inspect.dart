@@ -5,8 +5,8 @@
 import 'dart:io';
 import 'dart:typed_data';
 
-import 'package:quick_animaker_v2/src/services/abr/abr_byte_reader.dart';
-import 'package:quick_animaker_v2/src/services/abr/photoshop_descriptor.dart';
+import 'package:anicel/src/services/abr/abr_byte_reader.dart';
+import 'package:anicel/src/services/abr/photoshop_descriptor.dart';
 
 void main(List<String> args) {
   final bytes = File(args[0]).readAsBytesSync();

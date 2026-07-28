@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/project_background.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_canvas_panel.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
-import 'package:quick_animaker_v2/src/ui/theme/app_workspace_colors.dart';
-import 'package:quick_animaker_v2/src/ui/widgets/color_swatch_button.dart';
+import 'package:anicel/src/models/project_background.dart';
+import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
+import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
+import 'package:anicel/src/ui/theme/app_workspace_colors.dart';
+import 'package:anicel/src/ui/widgets/color_swatch_button.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
 

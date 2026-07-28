@@ -1,5 +1,5 @@
 import 'package:flutter/foundation.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_geometry.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_geometry.dart';
 
 /// A geometry handle for tests that pump a row or a painter on their own.
 ///

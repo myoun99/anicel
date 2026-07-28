@@ -1,19 +1,19 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
-import 'package:quick_animaker_v2/src/models/layer_kind.dart';
-import 'package:quick_animaker_v2/src/models/app_language.dart';
-import 'package:quick_animaker_v2/src/models/playback_quality.dart';
-import 'package:quick_animaker_v2/src/ui/playback/playback_transport_controls.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_section_policy.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_action_toolbar.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_layer_controls_header.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_layer_controls_row.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_orientation.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_panel.dart';
-import 'package:quick_animaker_v2/src/ui/timeline_tab_host.dart';
-import 'package:quick_animaker_v2/src/ui/timesheet_tab_host.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/models/playback_quality.dart';
+import 'package:anicel/src/ui/playback/playback_transport_controls.dart';
+import 'package:anicel/src/ui/timeline/timeline_section_policy.dart';
+import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart';
+import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
+import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
+import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
+import 'package:anicel/src/ui/timeline/timeline_panel.dart';
+import 'package:anicel/src/ui/timeline_tab_host.dart';
+import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
 /// R13-2 playhead rebuild guards: committed seeks and cursor moves must
 /// not rebuild what they don't change — measured on device as the

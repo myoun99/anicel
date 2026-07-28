@@ -1,6 +1,6 @@
 # Third-party components
 
-QuickAnimaker v2 itself is **all rights reserved** (see `LICENSE`). The
+Anicel itself is **all rights reserved** (see `LICENSE`). The
 components listed here are other people's work and keep their own
 licenses — those licenses govern those components, not this project.
 

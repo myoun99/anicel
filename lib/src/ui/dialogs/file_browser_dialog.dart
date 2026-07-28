@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 
+import '../../services/persistence/anicel_project_archive.dart';
 import '../../services/persistence/app_documents.dart';
 import '../widgets/app_window.dart';
 import 'app_confirm_dialog.dart';
@@ -19,7 +20,7 @@ import '../text/app_strings.dart';
 /// says so instead of pretending a Drive document could open in place.
 enum FileBrowserMode { open, saveAs }
 
-Future<String?> showQapFileBrowser(
+Future<String?> showAnicelFileBrowser(
   BuildContext context, {
   required FileBrowserMode mode,
   String? suggestedName,
@@ -100,7 +101,7 @@ class _FileBrowserDialogState extends State<_FileBrowserDialog> {
           for (final entry in listing)
             if (entry is Directory ||
                 (widget.mode == FileBrowserMode.open &&
-                    _nameOf(entry).toLowerCase().endsWith('.qap')))
+                    _nameOf(entry).toLowerCase().endsWith(anicelProjectSuffix)))
               entry,
         ];
         _error = null;
@@ -163,8 +164,8 @@ class _FileBrowserDialogState extends State<_FileBrowserDialog> {
     if (name.isEmpty) {
       return;
     }
-    if (!name.toLowerCase().endsWith('.qap')) {
-      name = '$name.qap';
+    if (!name.toLowerCase().endsWith(anicelProjectSuffix)) {
+      name = '$name$anicelProjectSuffix';
     }
     final path = '$_directory/$name';
     if (File(path).existsSync()) {
@@ -315,7 +316,9 @@ class _FileBrowserDialogState extends State<_FileBrowserDialog> {
                 child: TextField(
                   key: const ValueKey<String>('file-browser-name'),
                   controller: _name,
-                  decoration: const InputDecoration(suffixText: '.qap'),
+                  decoration: const InputDecoration(
+                    suffixText: anicelProjectSuffix,
+                  ),
                   onSubmitted: (_) => _saveHere(),
                 ),
               ),

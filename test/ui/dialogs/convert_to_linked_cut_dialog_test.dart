@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/cut_id.dart';
-import 'package:quick_animaker_v2/src/services/commands/convert_to_linked_cut_plan.dart';
-import 'package:quick_animaker_v2/src/ui/dialogs/convert_to_linked_cut_dialog.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/services/commands/convert_to_linked_cut_plan.dart';
+import 'package:anicel/src/ui/dialogs/convert_to_linked_cut_dialog.dart';
 
 /// 겸용 변경 dialog (L4): the 안내문 spells out links, 원본 승리
 /// replacements and appearing layers before anything executes; Link pops

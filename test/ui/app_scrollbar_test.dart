@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/widgets/app_scrollbar.dart';
+import 'package:anicel/src/ui/widgets/app_scrollbar.dart';
 
 void main() {
   group('AppScrollbarGeometry', () {

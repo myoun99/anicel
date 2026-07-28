@@ -1,7 +1,7 @@
 import Flutter
 import UIKit
 
-/// QuickAnimaker pen features (pen program, PEN-5 — iPadOS).
+/// Anicel pen features (pen program, PEN-5 — iPadOS).
 ///
 /// Apple Pencil classification/pressure already arrive natively through
 /// Flutter (UITouch .pencil → stylus, hover included on M2/Pro); the
@@ -54,7 +54,7 @@ import UIKit
         let documents = FileManager.default.urls(
           for: .documentDirectory, in: .userDomainMask
         ).first!
-        result(documents.appendingPathComponent("QuickAnimaker").path)
+        result(documents.appendingPathComponent("Anicel").path)
       case "isAllFilesAccessGranted":
         // iOS sandboxing: the app folder is always writable; foreign
         // folders arrive per-document via pickers.

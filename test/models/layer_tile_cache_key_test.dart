@@ -1,9 +1,9 @@
 import 'package:flutter_test/flutter_test.dart';
 import '../helpers/json_round_trip.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_tile_cache_key.dart';
-import 'package:quick_animaker_v2/src/models/tile_coord.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_tile_cache_key.dart';
+import 'package:anicel/src/models/tile_coord.dart';
 
 void main() {
   group('LayerTileCacheKey', () {

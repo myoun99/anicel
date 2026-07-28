@@ -1,17 +1,17 @@
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/frame.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/layer.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/timeline_coverage.dart';
-import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_exposure_comma_drag_handle.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_exposure_comma_drag_policy.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_cells_row.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_run_end_handles.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/timeline_coverage.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_handle.dart';
+import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_policy.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
+import 'package:anicel/src/ui/timeline/timeline_run_end_handles.dart';
 
 import 'timeline_frame_geometry_probe.dart';
 import 'timeline_row_chrome_probe.dart';

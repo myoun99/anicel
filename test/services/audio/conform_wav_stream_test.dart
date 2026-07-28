@@ -2,8 +2,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/services/audio/conform_wav_codec.dart';
-import 'package:quick_animaker_v2/src/services/audio/conform_wav_stream.dart';
+import 'package:anicel/src/services/audio/conform_wav_codec.dart';
+import 'package:anicel/src/services/audio/conform_wav_stream.dart';
 
 /// The disk half of streaming (AUDIO-PRO R6): windowed reads out of a
 /// conform WAV must return byte-for-byte what a full decode would have —

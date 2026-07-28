@@ -17,11 +17,11 @@ void main() {
   // SAVE-1c: resolve the mobile app-documents home once (desktop no-op).
   WidgetsFlutterBinding.ensureInitialized();
   unawaited(AppStorage.ensureInitialized());
-  runApp(const QuickAnimakerApp());
+  runApp(const AnicelApp());
 }
 
-class QuickAnimakerApp extends StatelessWidget {
-  const QuickAnimakerApp({super.key});
+class AnicelApp extends StatelessWidget {
+  const AnicelApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -39,7 +39,7 @@ class QuickAnimakerApp extends StatelessWidget {
         MeasurementMode.frameTimingOverlay,
       ]),
       builder: (context, _) => MaterialApp(
-        title: 'QuickAnimaker',
+        title: 'Anicel',
         theme: buildAppTheme(),
         showPerformanceOverlay: MeasurementMode.frameTimingOverlay.value,
         home: const HomePage(),

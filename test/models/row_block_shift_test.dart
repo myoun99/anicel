@@ -1,9 +1,9 @@
 import 'dart:collection';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/row_block_shift.dart';
-import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/row_block_shift.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
 
 /// PUSH and PULL are one rule for two axes: the blocks at or after an anchor
 /// travel rigidly, carrying the empty space between them.

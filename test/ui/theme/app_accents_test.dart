@@ -2,9 +2,9 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/services/persistence/app_accent_settings_store.dart';
-import 'package:quick_animaker_v2/src/ui/theme/app_accents.dart';
-import 'package:quick_animaker_v2/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/services/persistence/app_accent_settings_store.dart';
+import 'package:anicel/src/ui/theme/app_accents.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart';
 
 /// UI-R22 #5: the two program accents — accent 2 defaults to accent 1's
 /// COMPLEMENT and both persist.

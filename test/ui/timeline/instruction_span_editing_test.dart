@@ -1,8 +1,8 @@
 import 'dart:collection';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/camera_instruction.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/instruction_span_editing.dart';
+import 'package:anicel/src/models/camera_instruction.dart';
+import 'package:anicel/src/ui/timeline/instruction_span_editing.dart';
 
 SplayTreeMap<int, InstructionEvent> _map(Map<int, InstructionEvent> entries) {
   return SplayTreeMap.of(entries);

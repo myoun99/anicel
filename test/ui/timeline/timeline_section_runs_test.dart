@@ -1,11 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/layer.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_kind.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/property_lane_model.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_grid_metrics.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_section_policy.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_section_runs.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/ui/timeline/property_lane_model.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/timeline_section_policy.dart';
+import 'package:anicel/src/ui/timeline/timeline_section_runs.dart';
 
 Layer _layer(String id, LayerKind kind) => Layer(
   id: LayerId(id),

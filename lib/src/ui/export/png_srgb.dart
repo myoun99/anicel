@@ -1,7 +1,7 @@
 import 'dart:typed_data';
 
-import '../../services/persistence/qap_incremental_writer.dart'
-    show qapCrc32;
+import '../../services/persistence/anicel_incremental_writer.dart'
+    show anicelCrc32;
 
 /// C1-v1 (R28): stamps a PNG as sRGB.
 ///
@@ -35,7 +35,7 @@ Uint8List tagPngAsSrgb(Uint8List png) {
     final header = ByteData(4)..setUint32(0, data.length);
     out.add(header.buffer.asUint8List());
     out.add(typeAndData);
-    final crc = ByteData(4)..setUint32(0, qapCrc32(typeAndData));
+    final crc = ByteData(4)..setUint32(0, anicelCrc32(typeAndData));
     out.add(crc.buffer.asUint8List());
     return out.takeBytes();
   }

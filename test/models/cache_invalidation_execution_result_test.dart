@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/cache_invalidation_execution_result.dart';
+import 'package:anicel/src/models/cache_invalidation_execution_result.dart';
 
 void main() {
   group('CacheInvalidationExecutionResult', () {

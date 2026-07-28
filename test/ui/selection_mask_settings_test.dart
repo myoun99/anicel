@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/services/canvas_flood_fill.dart';
-import 'package:quick_animaker_v2/src/services/canvas_selection.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_tool_state.dart';
-import 'package:quick_animaker_v2/src/ui/brush/tool_settings_panel.dart';
+import 'package:anicel/src/services/canvas_flood_fill.dart';
+import 'package:anicel/src/services/canvas_selection.dart';
+import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 
 /// R26 (C2): the Select tool's mask knobs — sliders/switch render and
 /// plumb SelectionMaskOptions changes back out.

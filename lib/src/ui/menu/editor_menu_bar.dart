@@ -8,6 +8,7 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
 import '../../models/cut_id.dart';
+import '../../services/persistence/anicel_project_archive.dart';
 import '../../services/persistence/app_documents.dart';
 import '../../services/persistence/app_save_settings.dart';
 import '../../services/persistence/project_autosave_service.dart';
@@ -51,16 +52,16 @@ class EditorMenuBar extends StatelessWidget {
     required this.session,
     required this.panelsMenu,
     this.shortcuts,
-    this.qapOpenFilePicker,
-    this.qapSaveFilePicker,
+    this.anicelOpenFilePicker,
+    this.anicelSaveFilePicker,
   });
 
   final EditorSessionManager session;
   final WorkspacePanelsMenuController panelsMenu;
 
   /// Injectable for tests; default to the platform file dialogs.
-  final Future<String?> Function()? qapOpenFilePicker;
-  final Future<String?> Function(String suggestedName)? qapSaveFilePicker;
+  final Future<String?> Function()? anicelOpenFilePicker;
+  final Future<String?> Function(String suggestedName)? anicelSaveFilePicker;
 
   /// The customizable shortcut bindings (P1); null hides the shortcut
   /// labels and disables the settings entry (focused widget tests).
@@ -98,7 +99,7 @@ class EditorMenuBar extends StatelessWidget {
       // SAVE-1: pickers start in the app's project home (앱 문서 폴더).
       initialDirectory: await ensuredAppDocumentsDirectory(),
       acceptedTypeGroups: const [
-        XTypeGroup(label: 'QuickAnimaker project', extensions: ['qap']),
+        XTypeGroup(label: 'Anicel project', extensions: [anicelProjectExtension]),
       ],
     );
     return file?.path;
@@ -111,13 +112,13 @@ class EditorMenuBar extends StatelessWidget {
   }
 
   Future<void> _openProject(BuildContext context) async {
-    final path = qapOpenFilePicker != null
-        ? await qapOpenFilePicker!()
+    final path = anicelOpenFilePicker != null
+        ? await anicelOpenFilePicker!()
         // SAVE-1c: mobile routes to the in-app browser (the OS pickers
         // hand out content URIs the real-path save stack cannot edit in
         // place); desktop keeps the OS dialog.
         : useInAppBrowserForPickers
-        ? await showQapFileBrowser(context, mode: FileBrowserMode.open)
+        ? await showAnicelFileBrowser(context, mode: FileBrowserMode.open)
         : await _defaultOpenPicker();
     if (path == null || !context.mounted) {
       return;
@@ -174,7 +175,7 @@ class EditorMenuBar extends StatelessWidget {
   }
 
   Future<void> _saveProjectAs(BuildContext context) =>
-      promptSaveProjectAs(context, session, savePicker: qapSaveFilePicker);
+      promptSaveProjectAs(context, session, savePicker: anicelSaveFilePicker);
 
   Future<void> _saveProject(BuildContext context) async {
     final path = session.projectFilePath;
@@ -710,9 +711,9 @@ class EditorMenuBar extends StatelessWidget {
   List<Widget> _helpItems(BuildContext context) => [
     _item(
       id: 'help-about',
-      label: 'About QuickAnimaker',
+      label: 'About Anicel',
       onPressed: () =>
-          showAboutDialog(context: context, applicationName: 'QuickAnimaker'),
+          showAboutDialog(context: context, applicationName: 'Anicel'),
     ),
   ];
 
@@ -800,7 +801,8 @@ Future<void> promptSaveProjectAs(
   Future<String?> Function(String suggestedName)? savePicker,
 }) async {
   final suggested =
-      '${sanitizeExportFileComponent(session.repository.requireProject().name)}.qap';
+      '${sanitizeExportFileComponent(session.repository.requireProject().name)}'
+      '$anicelProjectSuffix';
   final currentPath = session.projectFilePath?.replaceAll('\\', '/');
   final initialDirectory = currentPath != null && currentPath.contains('/')
       ? currentPath.substring(0, currentPath.lastIndexOf('/'))
@@ -811,18 +813,18 @@ Future<void> promptSaveProjectAs(
   var path = savePicker != null
       ? await savePicker(suggested)
       : useInAppBrowserForPickers
-      ? await showQapFileBrowser(
+      ? await showAnicelFileBrowser(
           context,
           mode: FileBrowserMode.saveAs,
           suggestedName: suggested,
           initialDirectory: initialDirectory,
         )
-      : await _defaultQapSavePicker(suggested, initialDirectory);
+      : await _defaultAnicelSavePicker(suggested, initialDirectory);
   if (path == null || !context.mounted) {
     return;
   }
-  if (!path.toLowerCase().endsWith('.qap')) {
-    path = '$path.qap';
+  if (!path.toLowerCase().endsWith(anicelProjectSuffix)) {
+    path = '$path$anicelProjectSuffix';
   }
   try {
     await session.saveProjectToFile(path);
@@ -835,7 +837,7 @@ Future<void> promptSaveProjectAs(
   }
 }
 
-Future<String?> _defaultQapSavePicker(
+Future<String?> _defaultAnicelSavePicker(
   String suggestedName,
   String initialDirectory,
 ) async {
@@ -843,7 +845,7 @@ Future<String?> _defaultQapSavePicker(
     suggestedName: suggestedName,
     initialDirectory: initialDirectory,
     acceptedTypeGroups: const [
-      XTypeGroup(label: 'QuickAnimaker project', extensions: ['qap']),
+      XTypeGroup(label: 'Anicel project', extensions: [anicelProjectExtension]),
     ],
   );
   return location?.path;

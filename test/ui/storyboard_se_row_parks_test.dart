@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/timeline_row_address.dart';
-import 'package:quick_animaker_v2/src/ui/home_page.dart';
-import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/storyboard_panel.dart';
 
 /// Pressing an SE row says WHERE you are, not WHICH cut you are editing
 /// (feedback #7): the active cut is released even where the V row has one

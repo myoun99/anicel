@@ -2,16 +2,16 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/canvas_size.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/tile_coord.dart';
-import 'package:quick_animaker_v2/src/ui/canvas/brush_canvas_smoke_screen.dart';
-import 'package:quick_animaker_v2/src/ui/canvas/brush_edit_canvas_input_settings.dart';
-import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_canvas_smoke_host.dart';
-import 'package:quick_animaker_v2/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
-import 'package:quick_animaker_v2/src/ui/storyboard_panel.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_panel.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/ui/canvas/brush_canvas_smoke_screen.dart';
+import 'package:anicel/src/ui/canvas/brush_edit_canvas_input_settings.dart';
+import 'package:anicel/src/ui/canvas/interactive_brush_canvas_smoke_host.dart';
+import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
+import 'package:anicel/src/ui/storyboard_panel.dart';
+import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 
 import 'brush_canvas_test_helpers.dart';
 

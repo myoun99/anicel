@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/timesheet_info.dart';
+import 'package:anicel/src/models/timesheet_info.dart';
 
 void main() {
   group('TimesheetInfo', () {

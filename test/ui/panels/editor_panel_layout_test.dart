@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/panels/editor_panel_layout.dart';
+import 'package:anicel/src/ui/panels/editor_panel_layout.dart';
 
 EditorPanelLayoutModel _model() => EditorPanelLayoutModel(
   docks: {

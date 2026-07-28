@@ -1,7 +1,7 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/export/export_preview_engine.dart';
+import 'package:anicel/src/ui/export/export_preview_engine.dart';
 
 void main() {
   Future<ui.Image> makeImage() async {

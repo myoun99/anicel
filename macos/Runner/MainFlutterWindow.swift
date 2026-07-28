@@ -1,7 +1,7 @@
 import Cocoa
 import FlutterMacOS
 
-/// QuickAnimaker pen sidecar (pen program, PEN-4 — macOS).
+/// Anicel pen sidecar (pen program, PEN-4 — macOS).
 ///
 /// Flutter's macOS embedder does not deliver tablet pressure/tilt from
 /// external tablets (flutter/flutter#146387): Wacom-style drivers

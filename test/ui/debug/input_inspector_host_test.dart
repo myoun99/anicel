@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/debug/input_inspector.dart';
+import 'package:anicel/src/ui/debug/input_inspector.dart';
 
 /// R26 #33: toggling the Input Inspector must not REMOUNT the editor
 /// under it — the old host swapped its child between bare and wrapped,

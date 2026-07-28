@@ -1,15 +1,15 @@
 ﻿import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/brush_frame_cache_invalidation.dart';
-import 'package:quick_animaker_v2/src/models/brush_frame_key.dart';
-import 'package:quick_animaker_v2/src/models/cut_id.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/project_id.dart';
-import 'package:quick_animaker_v2/src/models/track_id.dart';
-import 'package:quick_animaker_v2/src/services/playback/editor_cache_invalidation_hub.dart';
-import 'package:quick_animaker_v2/src/ui/storyboard_cut_thumbnail_store.dart';
+import 'package:anicel/src/models/brush_frame_cache_invalidation.dart';
+import 'package:anicel/src/models/brush_frame_key.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/services/playback/editor_cache_invalidation_hub.dart';
+import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart';
 
 /// R5 regression: brush strokes never notify the session, so the
 /// thumbnail store itself must notify on hub invalidations - otherwise a

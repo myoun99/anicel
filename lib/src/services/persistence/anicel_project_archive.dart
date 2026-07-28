@@ -1,4 +1,4 @@
-/// The .qap container (P3): ONE self-contained ZIP — `project.json`
+/// The .anicel container (P3): ONE self-contained ZIP — `project.json`
 /// (timeline + metadata, with a formatVersion) and `cels/<n>.bin` (baked
 /// tile rasters; deflate does the rest). Drawings live INSIDE the file
 /// (user direction: no scattered sidecars); media stays EXTERNAL
@@ -16,6 +16,15 @@ import '../../models/brush_frame_key.dart';
 import '../../models/project.dart';
 import 'brush_drawing_binary_codec.dart';
 
+/// The project file's extension, without the dot — what a picker filter
+/// wants. Every filter, suffix check and suggested filename reads it from
+/// here; spelled out at each site instead, a rename would have to find
+/// eight of them and would silently half-work if it missed one.
+const String anicelProjectExtension = 'anicel';
+
+/// The same thing with the dot, for `endsWith` and filename building.
+const String anicelProjectSuffix = '.$anicelProjectExtension';
+
 /// v3 (R20-A1 cold-cel tiering): cels persist as PRE-DEFLATED blobs
 /// (`cels/<n>.celz`, STORE'd — the payload is already compressed). The
 /// blob layout is identical to the in-RAM cold-cel form, so untouched
@@ -24,21 +33,21 @@ import 'brush_drawing_binary_codec.dart';
 /// is DELETED (R20-E3) and the v2 raw-cel reader retired with the format
 /// bump: no production file of either version exists (user-confirmed);
 /// legacy entries are simply ignored.
-const int qapFormatVersion = 3;
+const int anicelFormatVersion = 3;
 
-/// A parsed .qap archive: the project (media paths NOT yet resolved — see
+/// A parsed .anicel archive: the project (media paths NOT yet resolved — see
 /// [remapProjectMediaPaths]), its baked cels in COLD form (headers parsed,
 /// pixels still deflated) and the saved relative-path manifest
 /// ({absolute path at save time: save-dir-relative path}).
-class QapArchiveContents {
-  const QapArchiveContents({
+class AnicelArchiveContents {
+  const AnicelArchiveContents({
     required this.project,
     required this.cels,
     required this.mediaRelativePaths,
   });
 
   final Project project;
-  final List<QapCelBlob> cels;
+  final List<AnicelCelBlob> cels;
   final Map<String, String> mediaRelativePaths;
 }
 
@@ -46,7 +55,7 @@ class QapArchiveContents {
 /// alone, so an incremental append of the same cel SHADOWS its previous
 /// entry by name. Base64url over the NUL-joined key parts — reversible,
 /// collision-free, and filename-safe regardless of what the ids contain.
-String qapCelEntryName(BrushFrameKey key) {
+String anicelCelEntryName(BrushFrameKey key) {
   final joined = [
     key.projectId.value,
     key.trackId.value,
@@ -63,7 +72,7 @@ String qapCelEntryName(BrushFrameKey key) {
 /// identical entry. [saveDirectory] (the file's parent, normalized with
 /// forward slashes) keys the relative-path manifest: media living under
 /// it is recorded relative, everything else stays absolute-only.
-Uint8List buildQapProjectJsonBytes({
+Uint8List buildAnicelProjectJsonBytes({
   required Project project,
   String? saveDirectory,
 }) {
@@ -79,7 +88,7 @@ Uint8List buildQapProjectJsonBytes({
   return Uint8List.fromList(
     utf8.encode(
       jsonEncode({
-        'formatVersion': qapFormatVersion,
+        'formatVersion': anicelFormatVersion,
         'project': project.toJson(),
         if (mediaRelativePaths.isNotEmpty) 'mediaPaths': mediaRelativePaths,
       }),
@@ -87,10 +96,10 @@ Uint8List buildQapProjectJsonBytes({
   );
 }
 
-/// Builds the .qap bytes whole (full save / compaction).
-Uint8List buildQapArchiveBytes({
+/// Builds the .anicel bytes whole (full save / compaction).
+Uint8List buildAnicelArchiveBytes({
   required Project project,
-  required List<QapCelBlob> cels,
+  required List<AnicelCelBlob> cels,
   String? saveDirectory,
 }) {
   // R22-C: EVERY entry is STORE'd — readers (and the file-backed cold
@@ -99,7 +108,7 @@ Uint8List buildQapArchiveBytes({
     ..add(
       ArchiveFile.bytes(
         'project.json',
-        buildQapProjectJsonBytes(project: project, saveDirectory: saveDirectory),
+        buildAnicelProjectJsonBytes(project: project, saveDirectory: saveDirectory),
       )..compression = CompressionType.none,
     );
   // v3: cel blobs are already deflated — STORE them as-is (an inner
@@ -107,28 +116,28 @@ Uint8List buildQapArchiveBytes({
   // key so later incremental appends shadow them.
   for (final cel in cels) {
     archive.add(
-      ArchiveFile.bytes(qapCelEntryName(cel.key), cel.bytes)
+      ArchiveFile.bytes(anicelCelEntryName(cel.key), cel.bytes)
         ..compression = CompressionType.none,
     );
   }
   return ZipEncoder().encodeBytes(archive);
 }
 
-/// Parses .qap bytes; throws [FormatException] on a newer format or a
+/// Parses .anicel bytes; throws [FormatException] on a newer format or a
 /// missing project entry.
-QapArchiveContents parseQapArchiveBytes(Uint8List bytes) {
+AnicelArchiveContents parseAnicelArchiveBytes(Uint8List bytes) {
   final archive = ZipDecoder().decodeBytes(bytes);
 
   final projectEntry = archive.find('project.json');
   if (projectEntry == null) {
-    throw const FormatException('Not a QuickAnimaker project (.qap).');
+    throw const FormatException('Not an Anicel project (.anicel).');
   }
   final decoded =
       jsonDecode(utf8.decode(projectEntry.readBytes()!))
           as Map<String, dynamic>;
-  if ((decoded['formatVersion'] as int? ?? 0) > qapFormatVersion) {
+  if ((decoded['formatVersion'] as int? ?? 0) > anicelFormatVersion) {
     throw const FormatException(
-      'This project was saved by a newer QuickAnimaker.',
+      'This project was saved by a newer Anicel.',
     );
   }
   final project = Project.fromJson(decoded['project'] as Map<String, dynamic>);
@@ -143,13 +152,13 @@ QapArchiveContents parseQapArchiveBytes(Uint8List bytes) {
   // v3 truth: cold cel blobs — header parse only, pixels stay deflated
   // until the store's first access. (v1 drawings/tips and v2 cels/*.bin
   // entries are ignored — readers deleted, no production file exists.)
-  final cels = <QapCelBlob>[
+  final cels = <AnicelCelBlob>[
     for (final file in archive.files)
       if (file.isFile && file.name.endsWith('.celz'))
-        QapCelBlob(file.readBytes()!),
+        AnicelCelBlob(file.readBytes()!),
   ];
 
-  return QapArchiveContents(
+  return AnicelArchiveContents(
     project: project,
     cels: cels,
     mediaRelativePaths: mediaRelativePaths,

@@ -1,11 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/layer.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_kind.dart';
-import 'package:quick_animaker_v2/src/models/layer_mark.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_layer_nav.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_row_filter.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_section_policy.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/ui/timeline/timeline_layer_nav.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
+import 'package:anicel/src/ui/timeline/timeline_section_policy.dart';
 
 Layer _layer(
   String id, {

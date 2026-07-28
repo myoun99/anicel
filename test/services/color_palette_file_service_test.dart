@@ -1,7 +1,7 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/services/color_palette_file_service.dart';
+import 'package:anicel/src/services/color_palette_file_service.dart';
 
 void main() {
   test('recent colors dedupe to the front and cap at the limit', () {

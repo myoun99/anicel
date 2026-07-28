@@ -2,11 +2,11 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/brush_pressure_curve.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_rotation_mode.dart';
-import 'package:quick_animaker_v2/src/services/abr/abr_byte_reader.dart';
-import 'package:quick_animaker_v2/src/services/abr/abr_decoder.dart';
-import 'package:quick_animaker_v2/src/services/abr/photoshop_descriptor.dart';
+import 'package:anicel/src/models/brush_pressure_curve.dart';
+import 'package:anicel/src/models/brush_tip_rotation_mode.dart';
+import 'package:anicel/src/services/abr/abr_byte_reader.dart';
+import 'package:anicel/src/services/abr/abr_decoder.dart';
+import 'package:anicel/src/services/abr/photoshop_descriptor.dart';
 
 /// Big-endian byte builder mirroring the ABR/descriptor wire format, used
 /// to construct synthetic fixture files.

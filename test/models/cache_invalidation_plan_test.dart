@@ -1,15 +1,15 @@
 import 'package:flutter_test/flutter_test.dart';
 import '../helpers/json_round_trip.dart';
-import 'package:quick_animaker_v2/src/models/cache_invalidation_plan.dart';
-import 'package:quick_animaker_v2/src/models/canvas_size.dart';
-import 'package:quick_animaker_v2/src/models/cut_id.dart';
-import 'package:quick_animaker_v2/src/models/frame_composite_cache_key.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_tile_cache_key.dart';
-import 'package:quick_animaker_v2/src/models/playback_preview_cache_key.dart';
-import 'package:quick_animaker_v2/src/models/tile_coord.dart';
-import 'package:quick_animaker_v2/src/models/dirty_tile_set.dart';
+import 'package:anicel/src/models/cache_invalidation_plan.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame_composite_cache_key.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_tile_cache_key.dart';
+import 'package:anicel/src/models/playback_preview_cache_key.dart';
+import 'package:anicel/src/models/tile_coord.dart';
+import 'package:anicel/src/models/dirty_tile_set.dart';
 
 void main() {
   group('CacheInvalidationPlan', () {

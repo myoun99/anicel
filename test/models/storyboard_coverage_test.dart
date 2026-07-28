@@ -1,9 +1,9 @@
 import 'dart:collection';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/storyboard_coverage.dart';
-import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/storyboard_coverage.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
 
 /// The storyboard row TILES its cut: no gaps, no overlaps, every frame in
 /// exactly one cell. These drive the rule from the store's side, because

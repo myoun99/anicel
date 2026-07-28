@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 
 void main() {
   group('LayerKind', () {

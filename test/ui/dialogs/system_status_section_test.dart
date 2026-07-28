@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/native/qa_native_engine.dart';
-import 'package:quick_animaker_v2/src/services/runtime_path_report.dart';
-import 'package:quick_animaker_v2/src/ui/dialogs/system_status_section.dart';
+import 'package:anicel/src/native/qa_native_engine.dart';
+import 'package:anicel/src/services/runtime_path_report.dart';
+import 'package:anicel/src/ui/dialogs/system_status_section.dart';
 
 /// Preferences ▸ System (user rule 07-22): every runtime-selected
 /// implementation path is REPORTED — the report's subsystem roster is a

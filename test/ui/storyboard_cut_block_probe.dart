@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/cut_id.dart';
-import 'package:quick_animaker_v2/src/ui/storyboard_cut_blocks_painter.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
 
 /// The cut row's blocks are PAINTED, so tests read them off the painter's
 /// probe instead of hunting for a widget key per cut.

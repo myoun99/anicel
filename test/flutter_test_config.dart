@@ -1,10 +1,10 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:quick_animaker_v2/src/models/app_language.dart';
-import 'package:quick_animaker_v2/src/services/persistence/app_documents.dart';
-import 'package:quick_animaker_v2/src/ui/input/app_input_settings.dart';
-import 'package:quick_animaker_v2/src/ui/text/app_strings.dart';
+import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/services/persistence/app_documents.dart';
+import 'package:anicel/src/ui/input/app_input_settings.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 
 /// Corpus-wide input baseline (UI-R22F #1).
 ///

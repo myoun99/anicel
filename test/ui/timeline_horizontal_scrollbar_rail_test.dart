@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_horizontal_scrollbar_rail.dart';
+import 'package:anicel/src/ui/timeline/timeline_horizontal_scrollbar_rail.dart';
 
 void main() {
   const scrollbarKey = ValueKey<String>('timeline-horizontal-scrollbar');

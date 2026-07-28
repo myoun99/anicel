@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/theme/app_theme.dart';
-import 'package:quick_animaker_v2/src/ui/widgets/panel_flyout.dart';
-import 'package:quick_animaker_v2/src/ui/widgets/split_icon_button.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart';
+import 'package:anicel/src/ui/widgets/split_icon_button.dart';
 
 void main() {
   Widget harness(Widget child) {

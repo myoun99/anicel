@@ -2,14 +2,14 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/audio_clip.dart'
+import 'package:anicel/src/models/audio_clip.dart'
     show AudioVolumeKey;
-import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
-import 'package:quick_animaker_v2/src/services/audio/audio_mixer_reference.dart';
-import 'package:quick_animaker_v2/src/services/audio/conform_wav_codec.dart';
-import 'package:quick_animaker_v2/src/services/audio/conform_wav_stream.dart';
-import 'package:quick_animaker_v2/src/ui/export/export_audio_mix.dart';
-import 'package:quick_animaker_v2/src/ui/playback/audio_playback_schedule.dart';
+import 'package:anicel/src/models/project_frame_rate.dart';
+import 'package:anicel/src/services/audio/audio_mixer_reference.dart';
+import 'package:anicel/src/services/audio/conform_wav_codec.dart';
+import 'package:anicel/src/services/audio/conform_wav_stream.dart';
+import 'package:anicel/src/ui/export/export_audio_mix.dart';
+import 'package:anicel/src/ui/playback/audio_playback_schedule.dart';
 
 /// The export mix renderer: the same mixer that carries playback writes
 /// the WAV, and the WAV says so — exact length, exact levels, output-stage

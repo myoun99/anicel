@@ -1,8 +1,8 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/brush_tip_mask.dart';
-import 'package:quick_animaker_v2/src/services/brush_tip_image_codec.dart';
+import 'package:anicel/src/models/brush_tip_mask.dart';
+import 'package:anicel/src/services/brush_tip_image_codec.dart';
 
 /// A mask with a recognisable gradient plus a hard hole, so a round trip
 /// that quantises, premultiplies or flips anything shows up immediately.

@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/panels/editor_panel_tabs.dart';
-import 'package:quick_animaker_v2/src/ui/panels/panel_visibility_scope.dart';
+import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
+import 'package:anicel/src/ui/panels/panel_visibility_scope.dart';
 
 /// R10-②: keep-alive tabs stay mounted offstage across switches (instant
 /// switch-back, state preserved); plain tabs unmount as before.

@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import '../helpers/json_round_trip.dart';
-import 'package:quick_animaker_v2/src/models/brush_pixel_blend_operation.dart';
-import 'package:quick_animaker_v2/src/models/rgba_color.dart';
+import 'package:anicel/src/models/brush_pixel_blend_operation.dart';
+import 'package:anicel/src/models/rgba_color.dart';
 
 void main() {
   final before = RgbaColor(r: 0, g: 0, b: 0, a: 0);

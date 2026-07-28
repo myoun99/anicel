@@ -1,19 +1,19 @@
 import 'dart:ui' as ui;
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_cut_helpers.dart';
-import 'package:quick_animaker_v2/src/models/canvas_size.dart';
-import 'package:quick_animaker_v2/src/models/cut.dart';
-import 'package:quick_animaker_v2/src/models/cut_id.dart';
-import 'package:quick_animaker_v2/src/models/frame.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/layer.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/timesheet_document.dart';
-import 'package:quick_animaker_v2/src/models/timesheet_info.dart';
-import 'package:quick_animaker_v2/src/ui/export/export_timesheet_render.dart';
-import 'package:quick_animaker_v2/src/ui/timesheet/timesheet_document_painter.dart';
-import 'package:quick_animaker_v2/src/ui/timesheet/timesheet_notation.dart';
+import 'package:anicel/src/controllers/default_cut_helpers.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/timesheet_document.dart';
+import 'package:anicel/src/models/timesheet_info.dart';
+import 'package:anicel/src/ui/export/export_timesheet_render.dart';
+import 'package:anicel/src/ui/timesheet/timesheet_document_painter.dart';
+import 'package:anicel/src/ui/timesheet/timesheet_notation.dart';
 
 void main() {
   Frame frame(String id) =>

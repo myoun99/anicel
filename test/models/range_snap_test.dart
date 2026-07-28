@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/range_snap.dart';
+import 'package:anicel/src/models/range_snap.dart';
 
 /// THE block-snapping rule, tested on its own material rather than through
 /// a layer or a track — the point of extracting it is that both axes get

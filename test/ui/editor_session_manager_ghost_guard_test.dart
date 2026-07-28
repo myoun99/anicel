@@ -1,8 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/timeline_repeat.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/timeline_repeat.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// UI-R19 → R19b (user decision): ghost frames (derived repeat/hold
 /// instances) resolve to their ANCHOR cel for rename and drawing — a

@@ -1,28 +1,28 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/main.dart';
-import 'package:quick_animaker_v2/src/models/brush_settings.dart';
-import 'package:quick_animaker_v2/src/models/canvas_size.dart';
-import 'package:quick_animaker_v2/src/models/cut.dart';
-import 'package:quick_animaker_v2/src/models/cut_id.dart';
-import 'package:quick_animaker_v2/src/models/cut_metadata.dart';
-import 'package:quick_animaker_v2/src/models/frame.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/layer.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_kind.dart';
-import 'package:quick_animaker_v2/src/models/project.dart';
-import 'package:quick_animaker_v2/src/models/project_id.dart';
-import 'package:quick_animaker_v2/src/models/stroke.dart';
-import 'package:quick_animaker_v2/src/models/stroke_id.dart';
-import 'package:quick_animaker_v2/src/models/stroke_point.dart';
-import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
-import 'package:quick_animaker_v2/src/models/track.dart';
-import 'package:quick_animaker_v2/src/models/track_id.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/services/project_repository.dart';
-import 'package:quick_animaker_v2/src/ui/brush/main_canvas_brush_host.dart';
-import 'package:quick_animaker_v2/src/ui/home_page.dart';
+import 'package:anicel/main.dart';
+import 'package:anicel/src/models/brush_settings.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/cut_metadata.dart';
+import 'package:anicel/src/models/frame.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/stroke.dart';
+import 'package:anicel/src/models/stroke_id.dart';
+import 'package:anicel/src/models/stroke_point.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/services/project_repository.dart';
+import 'package:anicel/src/ui/brush/main_canvas_brush_host.dart';
+import 'package:anicel/src/ui/home_page.dart';
 
 import 'flyout_test_helpers.dart';
 
@@ -155,7 +155,7 @@ Project _projectWithNoLayers() {
 
 void main() {
   testWidgets('toggle lives in the Layer flyout', (tester) async {
-    await tester.pumpWidget(const QuickAnimakerApp());
+    await tester.pumpWidget(const AnicelApp());
 
     // Not a standalone toolbar button anymore (R-toolbar round)…
     expect(find.byKey(_toggleKey), findsNothing);

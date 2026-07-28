@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/panels/editor_panel_layout.dart';
-import 'package:quick_animaker_v2/src/ui/panels/editor_panel_tabs.dart';
+import 'package:anicel/src/ui/panels/editor_panel_layout.dart';
+import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
 
 /// Two draggable single-section tab groups wired to one layout model, the
 /// way the workspace dock sections are.

@@ -1,9 +1,9 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/canvas_viewport.dart';
-import 'package:quick_animaker_v2/src/ui/canvas/canvas_viewport_gesture_layer.dart';
-import 'package:quick_animaker_v2/src/ui/input/app_input_settings.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/ui/canvas/canvas_viewport_gesture_layer.dart';
+import 'package:anicel/src/ui/input/app_input_settings.dart';
 
 /// PEN-7b: the CONTROL-mode touch engine — finger-count slots, the
 /// lock-then-modifier rule, snap constraints. Everything runs under the

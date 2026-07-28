@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/native/qa_tablet_bridge.dart';
-import 'package:quick_animaker_v2/src/services/input/wintab_pen_service.dart';
-import 'package:quick_animaker_v2/src/ui/input/app_input_settings.dart';
+import 'package:anicel/src/native/qa_tablet_bridge.dart';
+import 'package:anicel/src/services/input/wintab_pen_service.dart';
+import 'package:anicel/src/ui/input/app_input_settings.dart';
 
 /// PEN-2: the Wintab pressure sidecar — settings model + the polling
 /// service against a fake driver stream.

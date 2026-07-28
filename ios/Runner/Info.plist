@@ -7,7 +7,7 @@
 	<key>CFBundleDevelopmentRegion</key>
 	<string>$(DEVELOPMENT_LANGUAGE)</string>
 	<key>CFBundleDisplayName</key>
-	<string>Quick Animaker V2</string>
+	<string>Anicel</string>
 	<key>CFBundleExecutable</key>
 	<string>$(EXECUTABLE_NAME)</string>
 	<key>CFBundleIdentifier</key>
@@ -15,7 +15,7 @@
 	<key>CFBundleInfoDictionaryVersion</key>
 	<string>6.0</string>
 	<key>CFBundleName</key>
-	<string>quick_animaker_v2</string>
+	<string>Anicel</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Records guide voice takes onto the timeline.</string>
 	<key>CFBundlePackageType</key>

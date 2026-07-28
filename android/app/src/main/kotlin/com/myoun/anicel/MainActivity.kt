@@ -1,4 +1,4 @@
-package com.example.quick_animaker_v2
+package com.myoun.anicel
 
 import android.content.Intent
 import android.net.Uri
@@ -121,6 +121,6 @@ class MainActivity : FlutterActivity() {
         } else {
             getExternalFilesDir(null) ?: filesDir
         }
-        return "${base.absolutePath}/QuickAnimaker"
+        return "${base.absolutePath}/Anicel"
     }
 }

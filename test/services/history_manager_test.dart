@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/services/command.dart';
-import 'package:quick_animaker_v2/src/services/history_manager.dart';
+import 'package:anicel/src/services/command.dart';
+import 'package:anicel/src/services/history_manager.dart';
 
 void main() {
   group('HistoryManager', () {

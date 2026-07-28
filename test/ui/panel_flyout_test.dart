@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/widgets/panel_flyout.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 /// The shared flyout's opening direction (UI-R6 #1): plenty of room below
 /// opens downward as always; a cramped bottom anchor opens the whole list

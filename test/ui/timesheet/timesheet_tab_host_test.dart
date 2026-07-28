@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/canvas_viewport.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_tool_state.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
-import 'package:quick_animaker_v2/src/ui/timesheet/timesheet_ink_controller.dart';
-import 'package:quick_animaker_v2/src/ui/timesheet_tab_host.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timesheet/timesheet_ink_controller.dart';
+import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
 const _inkLayerKey = ValueKey<String>('timesheet-ink-layer');
 const _inkToggleKey = ValueKey<String>('timesheet-ink-toggle-button');

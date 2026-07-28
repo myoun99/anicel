@@ -11,18 +11,18 @@
 /// convert on import, Premiere writes a `.cfa`, Avid transcodes to MXF —
 /// all the same move.
 ///
-/// Layout, beside the `.qap` rather than inside it (user decision,
+/// Layout, beside the `.anicel` rather than inside it (user decision,
 /// 2026-07-21): the project file stays light, and the parts that CAN be
 /// regenerated are visibly separate from the parts that cannot.
 ///
 /// ```
-/// 프로젝트.qap
+/// 프로젝트.anicel
 /// 프로젝트.assets/
 ///   Media/      대사.m4a      the original — deleting this loses work
 ///   Conformed/  대사.m4a.wav  regenerable; deleting it costs only time
 /// ```
 ///
-/// `Media/` sits under the save directory, so the .qap's existing
+/// `Media/` sits under the save directory, so the .anicel's existing
 /// relative-path manifest picks it up for free and a folder moved to
 /// another machine relinks itself.
 library;
@@ -117,7 +117,7 @@ class ConformResult {
 class ProjectAssetLayout {
   const ProjectAssetLayout(this.projectFilePath);
 
-  /// The `.qap` this layout belongs to.
+  /// The `.anicel` this layout belongs to.
   final String projectFilePath;
 
   static String _withoutExtension(String path) {
@@ -225,7 +225,7 @@ class AudioConformPipeline {
   /// touching the disk. That is the unsaved-project case — there is no
   /// `.assets` directory to write beside a file that does not exist yet,
   /// and a conform is derived data anyway: once the project is saved, the
-  /// next ensure writes it beside the `.qap` like any other.
+  /// next ensure writes it beside the `.anicel` like any other.
   ConformResult ensureConform({
     required String sourcePath,
     required String? conformPath,

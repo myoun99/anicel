@@ -1,7 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/debug/input_inspector.dart';
+import 'package:anicel/src/ui/debug/input_inspector.dart';
 
 /// PEN-1: the input inspector — the pen program's diagnosis overlay.
 void main() {

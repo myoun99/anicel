@@ -1,10 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/native/qa_tablet_bridge.dart';
-import 'package:quick_animaker_v2/src/services/input/pen_sidecars.dart';
-import 'package:quick_animaker_v2/src/services/input/platform_pen_channel_service.dart';
-import 'package:quick_animaker_v2/src/services/input/wintab_pen_service.dart';
+import 'package:anicel/src/native/qa_tablet_bridge.dart';
+import 'package:anicel/src/services/input/pen_sidecars.dart';
+import 'package:anicel/src/services/input/platform_pen_channel_service.dart';
+import 'package:anicel/src/services/input/wintab_pen_service.dart';
 
 /// PEN-4: the macOS/Linux channel sidecars + the cross-platform facade.
 void main() {

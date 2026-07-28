@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/app_language.dart';
-import 'package:quick_animaker_v2/src/ui/shortcuts/editor_action_registry.dart';
-import 'package:quick_animaker_v2/src/ui/text/app_strings.dart';
+import 'package:anicel/src/models/app_language.dart';
+import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 
 /// The key contract behind the fallback table.
 ///

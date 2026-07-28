@@ -7,20 +7,20 @@ import '../../models/brush_frame_key.dart';
 import '../../models/project.dart';
 import '../brush_frame_store.dart';
 import 'brush_drawing_binary_codec.dart';
-import 'qap_incremental_writer.dart';
-import 'qap_project_archive.dart';
+import 'anicel_incremental_writer.dart';
+import 'anicel_project_archive.dart';
 
-/// A loaded .qap: the project with media paths already RESOLVED (relative
+/// A loaded .anicel: the project with media paths already RESOLVED (relative
 /// manifest entries that exist next to the file win over the stored
 /// absolute paths — the Drive-portability rule) plus every baked cel as a
-/// FILE REF into the .qap itself (R22-C): opening costs a central-
+/// FILE REF into the .anicel itself (R22-C): opening costs a central-
 /// directory walk plus one tiny header read per cel — no pixel bytes
 /// load until a cel is first shown.
-class QapOpenResult {
-  const QapOpenResult({required this.project, required this.cels});
+class AnicelOpenResult {
+  const AnicelOpenResult({required this.project, required this.cels});
 
   final Project project;
-  final Map<BrushFrameKey, QapCelFileRef> cels;
+  final Map<BrushFrameKey, AnicelCelFileRef> cels;
 }
 
 /// One dirty cel's save payload, resolved on the UI isolate to a
@@ -38,8 +38,8 @@ class _CelWork {
 
   final BrushFrameKey key;
   final String name;
-  final QapCelEntry? hotEntry;
-  final QapCelBlob? coldBlob;
+  final AnicelCelEntry? hotEntry;
+  final AnicelCelBlob? coldBlob;
   final String? refPath;
   final int refOffset;
   final int refLength;
@@ -47,25 +47,25 @@ class _CelWork {
   /// The blob to write, resolved INSIDE the save isolate: hot encodes,
   /// cold passes through, a file ref reads back — and a stale key label
   /// (rekeyed cel) re-splices the header without touching pixels.
-  QapCelBlob resolveBlob() {
+  AnicelCelBlob resolveBlob() {
     if (hotEntry != null) {
-      return QapCelBlob.encode(hotEntry!);
+      return AnicelCelBlob.encode(hotEntry!);
     }
     var blob = coldBlob;
     if (blob == null) {
       final raf = File(refPath!).openSync();
       try {
         raf.setPositionSync(refOffset);
-        blob = QapCelBlob(raf.readSync(refLength));
+        blob = AnicelCelBlob(raf.readSync(refLength));
       } finally {
         raf.closeSync();
       }
     }
-    return blob.key == key ? blob : QapCelBlob.reKeyed(blob, key);
+    return blob.key == key ? blob : AnicelCelBlob.reKeyed(blob, key);
   }
 }
 
-/// Saves/loads .qap project files (P3 / R22-C).
+/// Saves/loads .anicel project files (P3 / R22-C).
 ///
 /// Two save paths:
 ///  - INCREMENTAL (the normal autosave/manual-save path): only cels
@@ -78,10 +78,10 @@ class _CelWork {
 ///    durability point of the append contract.
 ///
 /// After every successful save the store adopts file refs for the
-/// written cels, so their RAM copies can drop for free — the saved .qap
+/// written cels, so their RAM copies can drop for free — the saved .anicel
 /// IS the disk tier (no scratch/temp files, user rule).
-class QapFileService {
-  const QapFileService();
+class AnicelFileService {
+  const AnicelFileService();
 
   /// A full rewrite is forced when shadowed/removed garbage exceeds this
   /// fraction of the file.
@@ -145,18 +145,18 @@ class QapFileService {
     BrushFrameKey key,
     ({
       Map<BrushFrameKey, BitmapSurface> hot,
-      Map<BrushFrameKey, QapCelBlob> cold,
-      Map<BrushFrameKey, QapCelFileRef> fileRefs,
+      Map<BrushFrameKey, AnicelCelBlob> cold,
+      Map<BrushFrameKey, AnicelCelFileRef> fileRefs,
     })
     baked,
   ) {
-    final name = qapCelEntryName(key);
+    final name = anicelCelEntryName(key);
     final hot = baked.hot[key];
     if (hot != null) {
       return _CelWork(
         key: key,
         name: name,
-        hotEntry: QapCelEntry.fromSurface(key, hot),
+        hotEntry: AnicelCelEntry.fromSurface(key, hot),
       );
     }
     final cold = baked.cold[key];
@@ -181,12 +181,12 @@ class QapFileService {
   /// Appends only the dirty cels (+ a superseding project.json). Returns
   /// the refs to adopt, or null when the file needs a full rewrite
   /// instead (unparseable tail, or garbage past the threshold).
-  Future<Map<BrushFrameKey, QapCelFileRef>?> _saveIncremental({
+  Future<Map<BrushFrameKey, AnicelCelFileRef>?> _saveIncremental({
     required Project project,
     required ({
       Map<BrushFrameKey, BitmapSurface> hot,
-      Map<BrushFrameKey, QapCelBlob> cold,
-      Map<BrushFrameKey, QapCelFileRef> fileRefs,
+      Map<BrushFrameKey, AnicelCelBlob> cold,
+      Map<BrushFrameKey, AnicelCelFileRef> fileRefs,
     })
     baked,
     required Set<BrushFrameKey> dirty,
@@ -198,16 +198,16 @@ class QapFileService {
     for (final key in dirty) {
       final work = _workForDirtyKey(key, baked);
       if (work == null) {
-        removeNames.add(qapCelEntryName(key));
+        removeNames.add(anicelCelEntryName(key));
       } else {
         works.add(work);
       }
     }
 
     return Isolate.run(() {
-      final QapZipLayout layout;
+      final AnicelZipLayout layout;
       try {
-        layout = parseQapZipLayoutFile(filePath);
+        layout = parseAnicelZipLayoutFile(filePath);
       } on FormatException {
         return null; // Torn tail — compaction is the recovery.
       }
@@ -220,13 +220,13 @@ class QapFileService {
         return null; // Garbage-heavy — compact instead of appending more.
       }
 
-      final blobs = <(BrushFrameKey, String, QapCelBlob)>[
+      final blobs = <(BrushFrameKey, String, AnicelCelBlob)>[
         for (final work in works) (work.key, work.name, work.resolveBlob()),
       ];
-      final appended = appendQapEntries(
+      final appended = appendAnicelEntries(
         path: filePath,
         newEntries: {
-          'project.json': buildQapProjectJsonBytes(
+          'project.json': buildAnicelProjectJsonBytes(
             project: project,
             saveDirectory: saveDirectory,
           ),
@@ -236,7 +236,7 @@ class QapFileService {
       );
       return {
         for (final (key, name, blob) in blobs)
-          key: QapCelFileRef(
+          key: AnicelCelFileRef(
             filePath: filePath,
             dataOffset: appended.entryNamed(name)!.dataOffset,
             length: blob.bytes.length,
@@ -252,12 +252,12 @@ class QapFileService {
   /// may be a DIFFERENT path on save-as), cold blobs pass through
   /// byte-identically, hot cels encode — all off the UI isolate. Returns
   /// refs into the finished file for every cel.
-  Future<Map<BrushFrameKey, QapCelFileRef>> _saveFull({
+  Future<Map<BrushFrameKey, AnicelCelFileRef>> _saveFull({
     required Project project,
     required ({
       Map<BrushFrameKey, BitmapSurface> hot,
-      Map<BrushFrameKey, QapCelBlob> cold,
-      Map<BrushFrameKey, QapCelFileRef> fileRefs,
+      Map<BrushFrameKey, AnicelCelBlob> cold,
+      Map<BrushFrameKey, AnicelCelFileRef> fileRefs,
     })
     baked,
     required Set<BrushFrameKey> dirty,
@@ -278,7 +278,7 @@ class QapFileService {
         works.add(
           _CelWork(
             key: key,
-            name: qapCelEntryName(key),
+            name: anicelCelEntryName(key),
             refPath: ref.filePath,
             refOffset: ref.dataOffset,
             refLength: ref.length,
@@ -290,20 +290,20 @@ class QapFileService {
     }
 
     final (bytes, refs) = await Isolate.run(() {
-      final blobs = <(BrushFrameKey, QapCelBlob)>[
+      final blobs = <(BrushFrameKey, AnicelCelBlob)>[
         for (final work in works) (work.key, work.resolveBlob()),
       ];
-      final archiveBytes = buildQapArchiveBytes(
+      final archiveBytes = buildAnicelArchiveBytes(
         project: project,
         cels: [for (final (_, blob) in blobs) blob],
         saveDirectory: saveDirectory,
       );
-      final layout = parseQapZipLayout(archiveBytes);
-      final refs = <BrushFrameKey, QapCelFileRef>{
+      final layout = parseAnicelZipLayout(archiveBytes);
+      final refs = <BrushFrameKey, AnicelCelFileRef>{
         for (final (key, blob) in blobs)
-          key: QapCelFileRef(
+          key: AnicelCelFileRef(
             filePath: filePath,
-            dataOffset: layout.entryNamed(qapCelEntryName(key))!.dataOffset,
+            dataOffset: layout.entryNamed(anicelCelEntryName(key))!.dataOffset,
             length: blob.bytes.length,
             canvasSize: blob.canvasSize,
             tileSize: blob.tileSize,
@@ -322,31 +322,31 @@ class QapFileService {
     return refs;
   }
 
-  Future<QapOpenResult> open({required String filePath}) async {
+  Future<AnicelOpenResult> open({required String filePath}) async {
     // Everything off the UI isolate; only the project + small refs come
     // back. No pixel bytes load here — each cel is a ~200-byte header
     // read for its key + geometry.
     final (:projectJsonBytes, :cels) = await Isolate.run(() {
-      QapZipLayout layout;
+      AnicelZipLayout layout;
       try {
-        layout = parseQapZipLayoutFile(filePath);
+        layout = parseAnicelZipLayoutFile(filePath);
       } on FormatException {
         // Torn tail (an append crashed mid-rewrite): reconstruct from
         // the intact local entries (R24-D1). The file stays torn on
         // disk until the next save — which the service forces down the
         // FULL path (the incremental precondition re-parses this same
         // tail and fails) — so opening is enough to heal on save.
-        layout = recoverQapZipLayoutFile(filePath);
+        layout = recoverAnicelZipLayoutFile(filePath);
       }
       final projectEntry = layout.entryNamed('project.json');
       if (projectEntry == null) {
-        throw const FormatException('Not a QuickAnimaker project (.qap).');
+        throw const FormatException('Not an Anicel project (.anicel).');
       }
       final raf = File(filePath).openSync();
       try {
         raf.setPositionSync(projectEntry.dataOffset);
         final projectJsonBytes = raf.readSync(projectEntry.length);
-        final cels = <BrushFrameKey, QapCelFileRef>{};
+        final cels = <BrushFrameKey, AnicelCelFileRef>{};
         for (final entry in layout.entries) {
           if (!entry.name.endsWith('.celz')) {
             continue;
@@ -355,8 +355,8 @@ class QapFileService {
           final headerBytes = raf.readSync(
             entry.length < 4096 ? entry.length : 4096,
           );
-          final header = QapCelBlob(headerBytes); // Header-only parse.
-          cels[header.key] = QapCelFileRef(
+          final header = AnicelCelBlob(headerBytes); // Header-only parse.
+          cels[header.key] = AnicelCelFileRef(
             filePath: filePath,
             dataOffset: entry.dataOffset,
             length: entry.length,
@@ -372,9 +372,9 @@ class QapFileService {
 
     final decoded =
         jsonDecode(utf8.decode(projectJsonBytes)) as Map<String, dynamic>;
-    if ((decoded['formatVersion'] as int? ?? 0) > qapFormatVersion) {
+    if ((decoded['formatVersion'] as int? ?? 0) > anicelFormatVersion) {
       throw const FormatException(
-        'This project was saved by a newer QuickAnimaker.',
+        'This project was saved by a newer Anicel.',
       );
     }
     final project = Project.fromJson(
@@ -389,7 +389,7 @@ class QapFileService {
     };
 
     // Relative media resolution: an entry whose relative path exists next
-    // to the .qap wins (the folder traveled whole); otherwise the stored
+    // to the .anicel wins (the folder traveled whole); otherwise the stored
     // absolute path stays and the existing missing-media relink flow takes
     // over.
     final directory = _parentDirectory(filePath);
@@ -401,7 +401,7 @@ class QapFileService {
       }
     }
 
-    return QapOpenResult(
+    return AnicelOpenResult(
       project: remapProjectMediaPaths(project, remap),
       cels: cels,
     );

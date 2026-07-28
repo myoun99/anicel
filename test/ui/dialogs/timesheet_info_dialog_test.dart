@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/timesheet_info.dart';
-import 'package:quick_animaker_v2/src/ui/dialogs/timesheet_info_dialog.dart';
+import 'package:anicel/src/models/timesheet_info.dart';
+import 'package:anicel/src/ui/dialogs/timesheet_info_dialog.dart';
 
 Future<void> _openDialog(
   WidgetTester tester,

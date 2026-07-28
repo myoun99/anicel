@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_scroll_viewport.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_scroll_viewport.dart';
 
 void main() {
   const horizontalScrollbarViewportKey = ValueKey<String>(

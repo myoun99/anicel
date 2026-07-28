@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/selected_exposure_display_range_policy.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_exposure_range_resolver.dart';
+import 'package:anicel/src/ui/timeline/selected_exposure_display_range_policy.dart';
+import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_exposure_range_resolver.dart';
 
 void main() {
   group('resolveSelectedExposureDisplayRange', () {

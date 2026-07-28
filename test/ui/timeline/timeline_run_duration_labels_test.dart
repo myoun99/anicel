@@ -1,16 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/frame_id.dart';
-import 'package:quick_animaker_v2/src/models/layer.dart';
-import 'package:quick_animaker_v2/src/models/layer_id.dart';
-import 'package:quick_animaker_v2/src/models/layer_kind.dart';
-import 'package:quick_animaker_v2/src/models/timeline_exposure.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_cell_exposure_state.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_cells_row.dart';
+import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
+import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
 
 import 'timeline_cell_probe.dart';
 import 'timeline_frame_geometry_probe.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_row_run_labels_painter.dart';
+import 'package:anicel/src/ui/timeline/timeline_row_run_labels_painter.dart';
 
 /// R26 #7 + R27 #3: every frame block prints ITS OWN length — one label
 /// per block (never the glued run's total), bare number (no `f`), bold,

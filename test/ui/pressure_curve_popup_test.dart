@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/brush_pressure_curve.dart';
-import 'package:quick_animaker_v2/src/ui/widgets/pressure_curve_popup.dart';
+import 'package:anicel/src/models/brush_pressure_curve.dart';
+import 'package:anicel/src/ui/widgets/pressure_curve_popup.dart';
 
 /// BB-3: the shared pressure-curve editor popup — the CSP editing grammar
 /// (drag points, press-to-add, drag-out-to-remove, switch = on/off).

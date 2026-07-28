@@ -2,11 +2,11 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
-import 'package:quick_animaker_v2/src/services/audio/audio_conform_pipeline.dart';
-import 'package:quick_animaker_v2/src/services/audio/conform_wav_codec.dart';
-import 'package:quick_animaker_v2/src/ui/audio/audio_conform_store.dart';
-import 'package:quick_animaker_v2/src/ui/playback/audio_playback_schedule.dart';
+import 'package:anicel/src/models/project_frame_rate.dart';
+import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
+import 'package:anicel/src/services/audio/conform_wav_codec.dart';
+import 'package:anicel/src/ui/audio/audio_conform_store.dart';
+import 'package:anicel/src/ui/playback/audio_playback_schedule.dart';
 
 /// The shared windowed upload (AUDIO-PRO R6): what the transport AND the
 /// scrubber hand the device when a schedule mixes resident and streaming

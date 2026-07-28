@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/services/commands/cut_commands.dart';
+import 'package:anicel/src/services/commands/cut_commands.dart';
 
 void main() {
   test('exports user-level cut command types', () {

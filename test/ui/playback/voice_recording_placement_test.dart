@@ -2,15 +2,15 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/models/timeline_coverage.dart'
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/timeline_coverage.dart'
     show drawingBlocks;
-import 'package:quick_animaker_v2/src/services/audio/audio_conform_pipeline.dart';
-import 'package:quick_animaker_v2/src/services/audio/conform_wav_codec.dart';
-import 'package:quick_animaker_v2/src/ui/audio/audio_conform_store.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
-import 'package:quick_animaker_v2/src/ui/playback/audio_recorder.dart';
-import 'package:quick_animaker_v2/src/ui/playback/canvas_playback_controller.dart';
+import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
+import 'package:anicel/src/services/audio/conform_wav_codec.dart';
+import 'package:anicel/src/ui/audio/audio_conform_store.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/playback/audio_recorder.dart';
+import 'package:anicel/src/ui/playback/canvas_playback_controller.dart';
 
 /// The landing half of recording (AUDIO-PRO R5 → REC1-B rolling record):
 /// a finished take becomes a WAV named `<lane>_T<n>`, a pool entry and a
@@ -60,7 +60,7 @@ void main() {
   test('REC1-B: a take lands on the given lane — <lane>_T01 WAV, pool '
       'entry, block at the anchor, ONE undo strips it all', () async {
     final manager = session();
-    await manager.saveProjectToFile('${directory.path}/scene.qap');
+    await manager.saveProjectToFile('${directory.path}/scene.anicel');
     final lane = manager.activeTrack.seLayers.first;
 
     final placed = manager.placeVoiceRecording(
@@ -101,7 +101,7 @@ void main() {
   test('REC1-B: recording along trims the monitoring latency off the head',
       () async {
     final manager = session();
-    await manager.saveProjectToFile('${directory.path}/scene.qap');
+    await manager.saveProjectToFile('${directory.path}/scene.anicel');
     final lane = manager.activeTrack.seLayers.first;
 
     final placed = manager.placeVoiceRecording(
@@ -122,7 +122,7 @@ void main() {
   test('REC1-B: a take shorter than the latency it rode on places nothing',
       () async {
     final manager = session();
-    await manager.saveProjectToFile('${directory.path}/scene.qap');
+    await manager.saveProjectToFile('${directory.path}/scene.anicel');
     expect(
       manager.placeVoiceRecording(
         takeOfSeconds(0.1),
@@ -138,7 +138,7 @@ void main() {
   test('REC1-B: a second take over the first TRIMS it, tape-style — same '
       'lane, no new row, both files kept', () async {
     final manager = session();
-    await manager.saveProjectToFile('${directory.path}/scene.qap');
+    await manager.saveProjectToFile('${directory.path}/scene.anicel');
     final laneId = manager.activeTrack.seLayers.first.id;
     final rowsBefore = manager.activeTrack.seLayers.length;
 
@@ -177,7 +177,7 @@ void main() {
 
   test('REC1-B: the punch window clamps the take — block AND file', () async {
     final manager = session();
-    await manager.saveProjectToFile('${directory.path}/scene.qap');
+    await manager.saveProjectToFile('${directory.path}/scene.anicel');
     final laneId = manager.activeTrack.seLayers.first.id;
 
     expect(
@@ -217,7 +217,7 @@ void main() {
   test('REC1-B: a null lane refuses the take rather than landing it '
       'anywhere', () async {
     final manager = session();
-    await manager.saveProjectToFile('${directory.path}/scene.qap');
+    await manager.saveProjectToFile('${directory.path}/scene.anicel');
     expect(
       manager.placeVoiceRecording(
         takeOfSeconds(0.5),

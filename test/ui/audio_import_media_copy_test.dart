@@ -1,10 +1,10 @@
 import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/controllers/default_project_helpers.dart';
-import 'package:quick_animaker_v2/src/services/audio/audio_conform_pipeline.dart';
-import 'package:quick_animaker_v2/src/ui/audio/audio_conform_store.dart';
-import 'package:quick_animaker_v2/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
+import 'package:anicel/src/ui/audio/audio_conform_store.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// Copy-on-import (audio program wiring): an imported sound is copied into
 /// `<project>.assets/Media/` so the project folder owns its sounds — with
@@ -43,7 +43,7 @@ void main() {
   test('a saved project copies imports into Media/, reuses byte-identical '
       're-imports and unique-names true collisions', () async {
     final session = sessionWithFakeConforms();
-    await session.saveProjectToFile('${directory.path}/scene.qap');
+    await session.saveProjectToFile('${directory.path}/scene.anicel');
     // The asset layout normalizes to forward slashes (fine on Windows too).
     final mediaDirectory =
         '${directory.path.replaceAll('\\', '/')}/scene.assets/Media';
@@ -77,7 +77,7 @@ void main() {
 
   test('the media browser import registers the COPY in the pool', () async {
     final session = sessionWithFakeConforms();
-    await session.saveProjectToFile('${directory.path}/scene.qap');
+    await session.saveProjectToFile('${directory.path}/scene.anicel');
     final source = File('${directory.path}/bgm.wav')
       ..writeAsBytesSync([5, 6, 7]);
 
@@ -92,7 +92,7 @@ void main() {
   test('a failed copy falls back to referencing the original '
       '(import must degrade, never refuse)', () async {
     final session = sessionWithFakeConforms();
-    await session.saveProjectToFile('${directory.path}/scene.qap');
+    await session.saveProjectToFile('${directory.path}/scene.anicel');
     final missing = '${directory.path}/없는파일.wav';
     expect(session.importAudioFile(missing), missing);
     session.dispose();

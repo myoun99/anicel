@@ -1,7 +1,7 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/stylus_glide_stop.dart';
+import 'package:anicel/src/ui/timeline/stylus_glide_stop.dart';
 
 /// PEN-9: a stylus approach stops a COASTING scroll (mid-glide the
 /// viewport ignore-pointers its children, so a pen landing right after a

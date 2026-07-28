@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/core/timeline/timeline_defaults.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_range_policy.dart';
+import 'package:anicel/src/core/timeline/timeline_defaults.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_range_policy.dart';
 
 void main() {
   group('TimelineFrameRange', () {

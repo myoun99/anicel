@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/models/camera_instruction.dart';
-import 'package:quick_animaker_v2/src/ui/dialogs/instance_edit_preview.dart';
-import 'package:quick_animaker_v2/src/ui/dialogs/instruction_event_dialog.dart';
-import 'package:quick_animaker_v2/src/ui/dialogs/se_instance_dialog.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/dialogue_fit_text.dart';
-import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_cell.dart';
+import 'package:anicel/src/models/camera_instruction.dart';
+import 'package:anicel/src/ui/dialogs/instance_edit_preview.dart';
+import 'package:anicel/src/ui/dialogs/instruction_event_dialog.dart';
+import 'package:anicel/src/ui/dialogs/se_instance_dialog.dart';
+import 'package:anicel/src/ui/timeline/dialogue_fit_text.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_cell.dart';
 
 /// Opens [dialog] through a real route so pops deliver results.
 Future<void> _openDialog<T>(

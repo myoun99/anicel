@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:quick_animaker_v2/src/ui/brush/brush_tool_state.dart';
-import 'package:quick_animaker_v2/src/ui/brush/paint_tool_state_notifier.dart';
-import 'package:quick_animaker_v2/src/ui/widgets/cursor_notice.dart';
+import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/brush/paint_tool_state_notifier.dart';
+import 'package:anicel/src/ui/widgets/cursor_notice.dart';
 
 /// R26 #35/#13: the shared refusal channel — one controller, one overlay,
 /// and a tool-switch guard every entrance writes through.
