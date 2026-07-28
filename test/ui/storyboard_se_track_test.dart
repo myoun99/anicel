@@ -34,12 +34,13 @@ Cut _cut(String id, int duration) {
   );
 }
 
-/// A point on the storyboard's S1 row over [globalFrame] — the cells
-/// press takes a position, so the tests state one instead of hunting for a
-/// per-block widget that no longer exists.
-Offset _storyboardSeRowPoint(WidgetTester tester, {required int globalFrame}) {
+/// A point on the storyboard's CUT row over [globalFrame] — the row that
+/// owns cuts, and so the one that takes one active.
+Offset _storyboardCutRowPoint(WidgetTester tester, {required int globalFrame}) {
   final panel = tester.widget<StoryboardPanel>(find.byType(StoryboardPanel));
-  final row = find.byKey(const ValueKey<String>('storyboard-se-row-0-1'));
+  final row = find.byKey(
+    const ValueKey<String>('storyboard-track-timeline-area-sb-se-track'),
+  );
   final topLeft = tester.getTopLeft(row);
   return Offset(
     topLeft.dx + (globalFrame + 0.5) * panel.pixelsPerFrame,
@@ -311,14 +312,15 @@ void main() {
       findsNothing,
     );
 
-    // Select cut-2 (press its S row inside cut 2 — the cells contract:
-    // the row press seeks, and the frame it lands on picks the cut): the
-    // crossing block spills IN — ~ at the cut start instead of a grip.
+    // Select cut-2 through the CUT row: taking a cut active is that row's
+    // own verb (feedback #7 — an S row press moves the playhead and
+    // RELEASES the cut, so it can no longer stand in for this). The
+    // crossing block then spills IN — ~ at the cut start instead of a grip.
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
     );
     await tester.pumpAndSettle();
-    await tester.tapAt(_storyboardSeRowPoint(tester, globalFrame: 10));
+    await tester.tapAt(_storyboardCutRowPoint(tester, globalFrame: 10));
     await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-mode-timeline-button')),

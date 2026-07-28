@@ -10399,6 +10399,26 @@ class EditorSessionManager extends ChangeNotifier {
   /// and PARKS there — the stored global addresses the gap exactly,
   /// including the leading gap before the first cut, and the canvas shows
   /// the no-cut void.
+  /// Moves the playhead to [globalFrame] and takes NO cut active — the
+  /// parked state, whatever sits at that frame.
+  ///
+  /// A gap has always landed here because there is no cut to take. The
+  /// storyboard's SE rows land here too (feedback #7): pressing a sound
+  /// says where you are, not which cut you are editing, and the active cut
+  /// is meant to answer only to picking a cut on the row that HAS cuts.
+  void parkGlobalFrame(int globalFrame) {
+    if (editingInteractionBusy) {
+      return;
+    }
+    if (trackFrameAxis().isEmpty) {
+      return;
+    }
+    _gapGlobalFrame = globalFrame;
+    _deselectActiveCutForGap();
+    frameSeekCommitted.value += 1;
+    notifyListeners();
+  }
+
   void selectGlobalFrame(int globalFrame) {
     if (editingInteractionBusy) {
       return;
@@ -10410,10 +10430,7 @@ class EditorSessionManager extends ChangeNotifier {
     final local = axis.localOf(globalFrame);
     if (local == null || axis.isGap(globalFrame)) {
       // A GAP (leading or mid-track): no cut there — park + deselect.
-      _gapGlobalFrame = globalFrame;
-      _deselectActiveCutForGap();
-      frameSeekCommitted.value += 1;
-      notifyListeners();
+      parkGlobalFrame(globalFrame);
       return;
     }
     if (local.cutId != activeCutId) {
