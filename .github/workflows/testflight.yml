@@ -1,0 +1,68 @@
+name: TestFlight (iOS)
+
+# The DELIVERY tier. `apple.yml` answers "does it compile on Apple?"; this
+# one answers "can I hold it on the iPad?" — a signed device build pushed
+# to TestFlight.
+#
+# Manual only. A build costs a slot in App Store Connect and minutes on a
+# macOS runner, so it runs when somebody wants to test, not on every push.
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: testflight
+  cancel-in-progress: false
+
+env:
+  FLUTTER_VERSION: '3.44.2'
+
+jobs:
+  testflight:
+    name: Signed device build -> TestFlight
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+
+      # Flutter's own artifacts first (the Dart AOT snapshot, the engine,
+      # the qa_native pod). fastlane's build_app then archives and signs
+      # what this produced — signing here would be thrown away.
+      - name: Build Flutter iOS artifacts
+        run: flutter build ios --release --no-codesign
+
+      - uses: ruby/setup-ruby@v1
+        with:
+          ruby-version: '3.3'
+          bundler-cache: true
+          working-directory: ios
+
+      - name: Build and upload
+        working-directory: ios
+        env:
+          ASC_KEY_ID: ${{ secrets.APP_STORE_CONNECT_KEY_ID }}
+          ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
+          ASC_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
+          FASTLANE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # Non-interactive: a prompt on a runner is a 6-hour hang.
+          FASTLANE_SKIP_UPDATE_CHECK: '1'
+          FASTLANE_HIDE_CHANGELOG: '1'
+        run: bundle exec fastlane beta
+
+      # The logs are where a signing failure explains itself, and they
+      # outlive the runner only if we say so.
+      - name: Upload build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: fastlane-logs
+          path: |
+            ios/build/*.ipa
+            /Users/runner/Library/Logs/gym/*.log
+          if-no-files-found: ignore
+          retention-days: 7
