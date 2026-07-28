@@ -42,6 +42,7 @@ import 'panels/workspace_layout_store.dart';
 import 'panels/workspace_panels_menu.dart';
 import 'keyed_keep_alive_stack.dart';
 import 'sliced_value_listenable_builder.dart';
+import 'conte/conte_ink.dart';
 import 'conte/conte_tab_host.dart';
 import 'storyboard_cut_thumbnail_store.dart';
 import 'storyboard_panel.dart' show StoryboardPanel;
@@ -434,6 +435,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// survive tab switches; separate from the session's cel stroke store.
   final TimesheetInkController _timesheetInk = TimesheetInkController();
 
+  /// Conte tab view state (#16 — the conte rides the same canvas shell):
+  /// the sheet viewport and its ink toggle, owned here like the
+  /// timesheet's. Ink starts BLOCKED: the conte's first verb is reading
+  /// and selecting cells.
+  final ValueNotifier<CanvasViewport?> _conteViewport = ValueNotifier(null);
+  final ValueNotifier<bool> _conteInkEnabled = ValueNotifier(false);
+  final ConteInkController _conteInk = ConteInkController();
+
   late final StoryboardCutThumbnailStore _storyboardThumbnails;
 
   @override
@@ -652,6 +661,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _timesheetViewport.dispose();
     _timesheetInkEnabled.dispose();
     _timesheetInk.dispose();
+    _conteViewport.dispose();
+    _conteInkEnabled.dispose();
+    _conteInk.dispose();
     _draggingTab.dispose();
     widget.layerNav?.unbind();
     widget.panelsMenu?.detach();
@@ -1191,14 +1203,35 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           // The sheet reads the project and the SAME picture store the
           // storyboard strip draws from, so a cell and its strip panel are
           // one render rather than two that must be kept in step.
+          // _brushTool is deliberately NOT merged (R18 UI-3): only the
+          // ink overlay consumes it, through its own boundary builder.
           builder: (context) => PanelAwareListenableBuilder(
             listenable: Listenable.merge([
               widget.session,
               _storyboardThumbnails,
+              _conteViewport,
+              _conteInkEnabled,
+              _conteInk,
+              // The locale reprints the sheet chrome (labels/tooltips).
+              widget.session.languageSettings,
             ]),
             builder: (context) => ConteTabHost(
               session: widget.session,
               thumbnailFor: _storyboardThumbnails.thumbnailFor,
+              // A landed thumbnail render repaints the page painter
+              // directly (its compared fields don't change for async
+              // pictures).
+              thumbnailRepaint: _storyboardThumbnails,
+              viewport: _conteViewport.value,
+              onViewportChanged: (viewport) {
+                _conteViewport.value = viewport;
+              },
+              inkController: _conteInk,
+              brushToolState: _brushTool,
+              inkEnabled: _conteInkEnabled.value,
+              onInkEnabledChanged: (enabled) {
+                _conteInkEnabled.value = enabled;
+              },
             ),
           ),
         );
