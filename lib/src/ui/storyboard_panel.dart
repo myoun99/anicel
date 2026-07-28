@@ -182,10 +182,15 @@ class StoryboardCutSelectCallbacks {
   /// gesture of its own; frames are the axis the shared range gesture
   /// already speaks, and the session snaps them to whole cuts with the
   /// same rule the timeline snaps cells with.
+  /// [headRowDelta] is the Excel-style cross-row reach (feedback #14): how
+  /// many rows DOWN the rail the pointer has travelled from the one the
+  /// drag started on. The session walks its own row order with it, so this
+  /// stays a plain integer rather than a row the panel had to name.
   final void Function({
     required TrackId trackId,
     required int anchorGlobalFrame,
     required int headGlobalFrame,
+    int headRowDelta,
   })
   onDrag;
   final VoidCallback onClear;
@@ -207,11 +212,13 @@ class StoryboardSeSelectCallbacks {
   /// here is what takes it off the cut row.
   final ValueListenable<TrackFrameRangeSelection?> selectedRange;
 
-  /// A select-drag step on the track's GLOBAL frame axis.
+  /// A select-drag step on the track's GLOBAL frame axis. [headRowDelta]
+  /// reaches across the rail's rows exactly as the cut row's does.
   final void Function({
     required LayerId layerId,
     required int anchorGlobalFrame,
     required int headGlobalFrame,
+    int headRowDelta,
   })
   onDrag;
   final VoidCallback onClear;
@@ -2797,11 +2804,13 @@ class _StoryboardSeRow extends StatelessWidget {
             crossAxisExtent: _seRowHeight,
             callbacks: TimelineRangeGestureCallbacks(
               isInSelection: (_, frame) => _isSelectedAt(frame),
-              onSelectUpdate: (_, anchorIndex, headIndex, _) => seSelect.onDrag(
-                layerId: layer.id,
-                anchorGlobalFrame: anchorIndex,
-                headGlobalFrame: headIndex,
-              ),
+              onSelectUpdate: (_, anchorIndex, headIndex, headRowDelta) =>
+                  seSelect.onDrag(
+                    layerId: layer.id,
+                    anchorGlobalFrame: anchorIndex,
+                    headGlobalFrame: headIndex,
+                    headRowDelta: headRowDelta,
+                  ),
               onTapClear: (_) => seSelect.onClear(),
               // A drag that STARTS inside the selection slides the sounds,
               // and may cross onto a sibling S row — the timeline's own
@@ -3974,11 +3983,13 @@ class _StoryboardTrackRow extends StatelessWidget {
       // every press is a move press — what the block body did before the
       // row had a range gesture. [onMoveBegin] still refuses gaps.
       isInSelection: (_, frame) => cutSelect == null || _isSelectedAt(frame),
-      onSelectUpdate: (_, anchorIndex, headIndex, _) => cutSelect?.onDrag(
-        trackId: track.id,
-        anchorGlobalFrame: anchorIndex,
-        headGlobalFrame: headIndex,
-      ),
+      onSelectUpdate: (_, anchorIndex, headIndex, headRowDelta) =>
+          cutSelect?.onDrag(
+            trackId: track.id,
+            anchorGlobalFrame: anchorIndex,
+            headGlobalFrame: headIndex,
+            headRowDelta: headRowDelta,
+          ),
       onTapClear: (_) => cutSelect?.onClear(),
       onMoveBegin: (_, frame) {
         final entry = _cutAtFrame(frame);
