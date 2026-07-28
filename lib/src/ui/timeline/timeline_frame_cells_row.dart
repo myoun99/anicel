@@ -212,6 +212,7 @@ class TimelineFrameCellsRow extends StatelessWidget {
         ...timelineRowAudioOverlays(
           layer: layer,
           frameStartIndex: frames.frameStartIndex,
+          frameEndIndexExclusive: frames.frameEndIndexExclusive,
           axis: axis,
           frameRate: projectFrameRate,
           audioPeaksFor: audioPeaksFor!,

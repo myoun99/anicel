@@ -482,6 +482,11 @@ class TimesheetDocumentPainter extends CustomPainter {
     }
     if (_drawContent) {
       _paintCutEndLine(canvas);
+      // A text glyph: it honors the same zoom threshold every per-cell
+      // text does (the paper-overview zoom hides the writing).
+      if (drawTexts) {
+        _paintSeCrossingMarks(canvas);
+      }
     }
 
     canvas.restore();
@@ -631,6 +636,56 @@ class TimesheetDocumentPainter extends CustomPainter {
         ..color = AppColors.danger
         ..strokeWidth = 2.4,
     );
+  }
+
+  /// The timeline's `~` continuation marks, printed (SE globalization
+  /// round: "타임시트에도 동일하게 추가"). END: a sound starting inside
+  /// this cut runs past its end — the mark straddles the red cut-end
+  /// line, centred on its SE column. START: a sound from an earlier cut
+  /// spills into row 0 — the mark sits on the column's first row edge.
+  /// Pure display, exactly the timeline rows' meaning.
+  void _paintSeCrossingMarks(Canvas canvas) {
+    final endLine = layout.cutEndLine;
+    final startTop = layout.frameRowTop(0);
+    final startPosition = layout.positionOfFrame(0);
+    for (var column = 0; column < document.columns.length; column += 1) {
+      final spec = document.columns[column];
+      if (spec.kind != TimesheetColumnKind.se ||
+          (!spec.crossesCutEnd && !spec.spillsInAtStart)) {
+        continue;
+      }
+      final columnWidth = layout.columnWidthFor(spec.kind);
+      if (spec.crossesCutEnd &&
+          document.playbackFrameCount >= 1 &&
+          document.playbackFrameCount <= document.rowCount &&
+          layout.visiblePageIndexes.contains(endLine.page)) {
+        final left =
+            layout.halfLeft(endLine.page, endLine.half) +
+            layout.columnLeftInHalf(column);
+        _text(
+          canvas,
+          '~',
+          Offset(left + columnWidth / 2, endLine.y - 5),
+          fontSize: 10,
+          bold: true,
+          centeredAtX: true,
+        );
+      }
+      if (spec.spillsInAtStart &&
+          layout.visiblePageIndexes.contains(startPosition.page)) {
+        final left =
+            layout.halfLeft(startPosition.page, startPosition.half) +
+            layout.columnLeftInHalf(column);
+        _text(
+          canvas,
+          '~',
+          Offset(left + columnWidth / 2, startTop - 5),
+          fontSize: 10,
+          bold: true,
+          centeredAtX: true,
+        );
+      }
+    }
   }
 
   void _paintHalf(
