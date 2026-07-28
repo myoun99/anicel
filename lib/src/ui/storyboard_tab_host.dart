@@ -441,10 +441,17 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   switch (row) {
                     case LayerRowAddress():
                       _session.selectRow(row);
+                      // An SE row owns no cuts, so pressing one says where
+                      // you ARE without saying which cut you are editing
+                      // (feedback #7): the playhead lands and the active
+                      // cut is RELEASED, even where the V row has one. The
+                      // canvas then shows the parked composite. Taking a
+                      // cut active is the cut row's own verb.
+                      parkStoryboardGlobalFrame(_session, globalFrame);
                     case TrackRowAddress(:final trackId):
                       _session.selectTrackRow(trackId);
+                      seekStoryboardGlobalFrame(_session, globalFrame);
                   }
-                  seekStoryboardGlobalFrame(_session, globalFrame);
                 },
                 activeLayerId: _session.activeLayerId,
                 // The rail speaks ROW ADDRESSES, and its selection is its

@@ -140,8 +140,8 @@ void main() {
     expect(_frameCounter(tester), startsWith('10 · '));
   });
 
-  testWidgets('pressing an S row takes the row AND the frame, over an empty '
-      'cell too', (tester) async {
+  testWidgets('pressing an S row takes the row AND the frame — but RELEASES '
+      'the cut, over an empty cell too', (tester) async {
     await _openStoryboard(tester);
 
     await tester.tapAt(_seRowPoint(tester, 14));
@@ -161,8 +161,12 @@ void main() {
       find.byKey(const ValueKey<String>('storyboard-selected-row')),
       findsOneWidget,
     );
-    expect(requireCutBlock(tester, 'cut-2').isActive, isTrue);
-    expect(_frameCounter(tester), '15 · 3');
+    // The frame landed…
+    expect(_frameCounter(tester), startsWith('15 · '));
+    // …and no cut was taken (feedback #7): an S row owns none, so pressing
+    // one says WHERE you are, not WHICH cut you are editing. The block
+    // under that very frame stays inactive.
+    expect(requireCutBlock(tester, 'cut-2').isActive, isFalse);
   });
 
   testWidgets('pressing the cut row hands the row back to the V row after an '

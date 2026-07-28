@@ -134,6 +134,21 @@ void seekStoryboardGlobalFrame(EditorSessionManager session, int globalFrame) {
   session.selectGlobalFrame(globalFrame);
 }
 
+/// A press on a row that owns no cuts — the storyboard's SE rows
+/// (feedback #7): the playhead goes there and NO cut is taken active,
+/// however many cuts sit under that frame on the V row.
+///
+/// The playback half is [seekStoryboardGlobalFrame]'s verbatim: a running
+/// clock is being told where to go, and "which cut am I editing" is not a
+/// question playback asks. Only the EDITING landing differs.
+void parkStoryboardGlobalFrame(EditorSessionManager session, int globalFrame) {
+  if (session.playback.isActive) {
+    seekStoryboardGlobalFrame(session, globalFrame);
+    return;
+  }
+  session.parkGlobalFrame(globalFrame);
+}
+
 /// Ruler drag moves: playback keeps seeking the clock per move; editing
 /// scrubs are the session's global-axis scrub (cursor path inside the
 /// active cut's territory, full seek on cut crossings).
