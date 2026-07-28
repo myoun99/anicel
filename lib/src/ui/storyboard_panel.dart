@@ -68,6 +68,8 @@ import 'timeline/timeline_frame_span_layout.dart'
     show TimelineFixedFrameSpanLayer, TimelineFrameSpan;
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
     show TimelineCommaDragCallbacks;
+import 'timeline/timeline_frame_coordinate_policy.dart'
+    show frameIndexFromLocalX;
 import 'timeline/timeline_frame_range_policy.dart'
     show endlessTrailingFrames, endlessViewportFillFrames;
 import '../models/layer_kind.dart';
@@ -2045,30 +2047,59 @@ class _StoryboardRulerState extends State<_StoryboardRuler> {
 
   void _resetScrubTracking() => _lastScrubbedFrame = null;
 
-  void _scrubAt(double dx) {
+  /// The scrub's VIEWPORT-local x for a pointer at [globalPosition], or
+  /// null before this row has a box (the timeline's
+  /// `_rulerViewportLocalXFromGlobal`).
+  ///
+  /// Resolved LIVE, through the render object, every event — which is the
+  /// whole of feedback #13. A gesture's `localPosition` is transformed by
+  /// what was captured when the pointer went DOWN, and this strip is
+  /// translated by the scroll: the moment an edge auto-pan moves it, that
+  /// captured transform is stale and every later move reports a frame
+  /// that has drifted by however far the axis has panned. Leaving the
+  /// viewport and coming back is exactly how a drag accumulates that pan.
+  double? _viewportLocalX(Offset globalPosition) {
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) {
+      return null;
+    }
+    // This row IS the content strip, so its own local x is content-local;
+    // the viewport-local one the edge test and the shared frame policy
+    // both speak is that minus the live offset.
+    return box.globalToLocal(globalPosition).dx - widget.viewportOffset.value;
+  }
+
+  void _scrubAtGlobal(Offset globalPosition) {
     if (widget.contentFrames <= 0 || widget.renderedFrames <= 0) {
       return;
     }
-    _autoPanAt(dx);
-    final frame = (dx / widget.timelineScale.pixelsPerFrame).floor().clamp(
-      0,
-      widget.renderedFrames - 1,
+    final localX = _viewportLocalX(globalPosition);
+    if (localX == null) {
+      return;
+    }
+    _autoPanAt(localX);
+    // THE shared frame policy, the one the timeline ruler and the X-sheet
+    // already call — viewport-local x plus the live offset (feedback #13:
+    // "로직도 똑같이 통일하라는거니까").
+    final frame = frameIndexFromLocalX(
+      localX: localX,
+      horizontalScrollOffset: widget.viewportOffset.value,
+      frameCellWidth: widget.timelineScale.pixelsPerFrame,
+      visibleFrameCount: widget.renderedFrames,
     );
-    if (frame == _lastScrubbedFrame) {
+    if (frame == null || frame == _lastScrubbedFrame) {
       return;
     }
     _lastScrubbedFrame = frame;
     (widget.onScrubGlobalFrame ?? widget.onSeekGlobalFrame)?.call(frame);
   }
 
-  /// [dx] is content-strip local (the gesture rides the translated
-  /// full-width strip); the edge test needs the VIEWPORT-relative x.
-  void _autoPanAt(double dx) {
+  /// [viewportX] is VIEWPORT-relative — what the edge test needs.
+  void _autoPanAt(double viewportX) {
     final onEdgeAutoPan = widget.onEdgeAutoPan;
     if (onEdgeAutoPan == null || widget.viewportWidth <= 0) {
       return;
     }
-    final viewportX = dx - widget.viewportOffset.value;
     final delta = edgeAutoPanDelta(viewportX, widget.viewportWidth);
     if (delta != 0) {
       onEdgeAutoPan(delta);
@@ -2097,15 +2128,21 @@ class _StoryboardRulerState extends State<_StoryboardRuler> {
       behavior: HitTestBehavior.translucent,
       onPointerDown: (event) {
         _resetScrubTracking();
-        _scrubAt(event.localPosition.dx);
+        _scrubAtGlobal(event.position);
       },
       onPointerUp: (_) => widget.onScrubEnd?.call(),
       onPointerCancel: (_) => widget.onScrubEnd?.call(),
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
         dragStartBehavior: DragStartBehavior.down,
-        onHorizontalDragStart: (details) => _scrubAt(details.localPosition.dx),
-        onHorizontalDragUpdate: (details) => _scrubAt(details.localPosition.dx),
+        // GLOBAL positions, resolved live against this row's box — a
+        // gesture's own localPosition rides a transform captured at
+        // pointer-down, which the edge auto-pan invalidates mid-drag
+        // (feedback #13).
+        onHorizontalDragStart: (details) =>
+            _scrubAtGlobal(details.globalPosition),
+        onHorizontalDragUpdate: (details) =>
+            _scrubAtGlobal(details.globalPosition),
         onHorizontalDragEnd: (_) => _resetScrubTracking(),
         onHorizontalDragCancel: _resetScrubTracking,
         child: SizedBox(
