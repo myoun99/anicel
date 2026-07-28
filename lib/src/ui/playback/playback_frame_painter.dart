@@ -37,12 +37,14 @@ class PlaybackFramePainter extends CustomPainter {
     this.cutPose,
     this.cutAnchorPoint,
     this.fadeOpacity = 1,
+    this.imageOpacity = 1,
     this.fadeColor = const Color(0xFF000000),
     this.letterboxColor = const Color(0xFF15191C),
     // R28 #9: the one paper constant, not a repeated literal.
     this.paperColor = const Color(ProjectBackground.defaultPaperArgb),
     this.paperBackground,
     this.paintPaper = true,
+    this.paintLetterbox = true,
   }) : assert(
          cameraPose == null || cameraFrameSize != null,
          'Camera mode needs the camera frame size.',
@@ -78,6 +80,12 @@ class PlaybackFramePainter extends CustomPainter {
   /// toward [fadeColor]. 1 costs nothing.
   final double fadeOpacity;
 
+  /// Alpha on the composite draw itself. The stacked parked view fades a
+  /// NON-bottom track through this instead of [fadeOpacity]: the full-
+  /// frame fade wash would blank the tracks below, but a track above the
+  /// stage fading away should reveal them. 1 costs nothing.
+  final double imageOpacity;
+
   /// What the fade fades TO (cutFadeTargetColor: FO=black, WO=white) — an
   /// overlay at (1 − [fadeOpacity]) over the canvas rect, matching the MP4
   /// bake exactly.
@@ -94,6 +102,11 @@ class PlaybackFramePainter extends CustomPainter {
   /// background shows through — the same void the gap-parked scrub
   /// preview shows. There is no cut in a gap, so there is no paper.
   final bool paintPaper;
+
+  /// False = camera mode fills nothing outside the frame (stays
+  /// transparent). The multitrack stack paints one frame per track: only
+  /// the bottom one letterboxes, the ones above composite over it.
+  final bool paintLetterbox;
 
   void _paintPaper(Canvas canvas, Rect rect) {
     if (!paintPaper) {
@@ -119,7 +132,7 @@ class PlaybackFramePainter extends CustomPainter {
     // canvas viewport into neighboring panels.
     canvas.clipRect(Offset.zero & size);
 
-    if (pose != null) {
+    if (pose != null && paintLetterbox) {
       canvas.drawRect(Offset.zero & size, Paint()..color = letterboxColor);
     }
     final resolvedViewport = viewport;
@@ -182,7 +195,7 @@ class PlaybackFramePainter extends CustomPainter {
       _paintPaper(canvas, canvasRect);
     }
     final composite = image;
-    if (composite != null) {
+    if (composite != null && imageOpacity > 0) {
       canvas.drawImageRect(
         composite,
         Rect.fromLTWH(
@@ -193,7 +206,9 @@ class PlaybackFramePainter extends CustomPainter {
         ),
         // The dst upscale is what shows Half/Quarter caches at canvas size.
         canvasRect,
-        Paint()..filterQuality = FilterQuality.low,
+        Paint()
+          ..filterQuality = FilterQuality.low
+          ..color = Color.fromRGBO(0, 0, 0, imageOpacity.clamp(0.0, 1.0)),
       );
     }
     if (pose != null) {
@@ -228,9 +243,11 @@ class PlaybackFramePainter extends CustomPainter {
       oldDelegate.cutPose != cutPose ||
       oldDelegate.cutAnchorPoint != cutAnchorPoint ||
       oldDelegate.fadeOpacity != fadeOpacity ||
+      oldDelegate.imageOpacity != imageOpacity ||
       oldDelegate.fadeColor != fadeColor ||
       oldDelegate.letterboxColor != letterboxColor ||
       oldDelegate.paperColor != paperColor ||
       oldDelegate.paperBackground != paperBackground ||
-      oldDelegate.paintPaper != paintPaper;
+      oldDelegate.paintPaper != paintPaper ||
+      oldDelegate.paintLetterbox != paintLetterbox;
 }

@@ -77,6 +77,7 @@ class CutFrameCompositeCache {
       {};
   final Map<CutFrameCompositeSignature, _CompositeEntry> _images = {};
   int _useCounter = 0;
+  bool _disposed = false;
 
   CutFrameCompositeSignature _signatureFor(
     Cut cut,
@@ -133,17 +134,15 @@ class CutFrameCompositeCache {
     }
 
     final image = await _composeImage(cut, signature);
-    final entry = _CompositeEntry(image: image!)..lastUsed = ++_useCounter;
-    _images[signature] = entry;
-    _pointIndexAt(indexKey, signature);
-    return image;
+    return _storeComposed(indexKey, signature, image!);
   }
 
   /// [prepareComposite] that can stand down mid-build: [shouldAbort] is
   /// checked between per-layer prepares; an abort returns null with nothing
-  /// cached, and the warm loop retries once the editor is quiet again. The
-  /// on-demand display path keeps [prepareComposite] — only the
-  /// opportunistic warmer may abandon work (R13-3).
+  /// cached, and the caller retries when its own signal says so (the warm
+  /// loop once the editor is quiet, the parked track stack on the next
+  /// parking move). Abandonable work only — the always-on display paths
+  /// keep [prepareComposite] (R13-3).
   Future<ui.Image?> prepareCompositeInterruptible({
     required Cut cut,
     required int frameIndex,
@@ -163,6 +162,34 @@ class CutFrameCompositeCache {
     final image = await _composeImage(cut, signature, shouldAbort: shouldAbort);
     if (image == null) {
       return null;
+    }
+    if (_disposed) {
+      // Torn down while composing: caching into the disposed maps would
+      // leak the image forever (dispose never runs again).
+      DeferredImageDisposer.instance.retire(image);
+      return null;
+    }
+    return _storeComposed(indexKey, signature, image);
+  }
+
+  /// The store step both prepare paths share. The compose awaited, so a
+  /// CONCURRENT prepare for the same signature may have stored meanwhile —
+  /// held exposures share one signature across frame indexes, and the
+  /// warmer runs in parallel with on-demand display requests. The first
+  /// store wins: overwriting would orphan its entry while index keys still
+  /// hold reference counts on it, and the orphan's image could never be
+  /// released (the leak the parked track stack surfaced).
+  ui.Image _storeComposed(
+    (CutId, int, PlaybackQuality) indexKey,
+    CutFrameCompositeSignature signature,
+    ui.Image image,
+  ) {
+    final landed = _images[signature];
+    if (landed != null) {
+      image.dispose();
+      landed.lastUsed = ++_useCounter;
+      _pointIndexAt(indexKey, signature);
+      return landed.image;
     }
     final entry = _CompositeEntry(image: image)..lastUsed = ++_useCounter;
     _images[signature] = entry;
@@ -386,6 +413,7 @@ class CutFrameCompositeCache {
   }
 
   void dispose() {
+    _disposed = true;
     for (final key in _index.keys.toList()) {
       _releaseIndexEntry(key);
     }

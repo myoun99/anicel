@@ -125,6 +125,68 @@ void main() {
     });
   });
 
+  testWidgets('CONCURRENT prepares for one signature keep the first store '
+      '(the check-then-store race): both callers land on the same image '
+      'and the loser compose is disposed, never orphaned', (tester) async {
+    await tester.runAsync(() async {
+      final (store, _) = storeWithStroke();
+      final cache = cacheFor(store);
+
+      // Frames 0 and 7 sit inside ONE held exposure → equal signatures.
+      // Both prepares start before either stores (the parked track stack
+      // scrubbing across a held exposure, or on-demand racing the
+      // warmer): the second store used to overwrite the first entry,
+      // orphaning it with a live reference count — an image nothing could
+      // ever release.
+      final images = await Future.wait([
+        cache.prepareComposite(
+          cut: cut(),
+          frameIndex: 0,
+          quality: PlaybackQuality.full,
+        ),
+        cache.prepareComposite(
+          cut: cut(),
+          frameIndex: 7,
+          quality: PlaybackQuality.full,
+        ),
+      ]);
+
+      expect(identical(images[0], images[1]), isTrue);
+      // One stored image, both index keys valid against it.
+      expect(cache.estimatedBytes, 8 * 8 * 4);
+      for (final frameIndex in const [0, 7]) {
+        expect(
+          cache.validCompositeOrNull(
+            cut: cut(),
+            frameIndex: frameIndex,
+            quality: PlaybackQuality.full,
+          ),
+          isNotNull,
+        );
+      }
+      cache.dispose();
+    });
+  });
+
+  testWidgets('an interruptible prepare finishing after dispose retires '
+      'its image instead of caching into the disposed maps', (tester) async {
+    await tester.runAsync(() async {
+      final (store, _) = storeWithStroke();
+      final cache = cacheFor(store);
+
+      final pending = cache.prepareCompositeInterruptible(
+        cut: cut(),
+        frameIndex: 0,
+        quality: PlaybackQuality.full,
+        shouldAbort: () => false,
+      );
+      cache.dispose();
+
+      expect(await pending, isNull, reason: 'nothing cached after teardown');
+      expect(cache.estimatedBytes, 0);
+    });
+  });
+
   testWidgets('pasteboard content stays OUT of the composite: adding an '
       'off-canvas stroke leaves the canvas-cropped bytes identical', (
     tester,

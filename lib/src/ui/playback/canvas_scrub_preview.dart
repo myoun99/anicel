@@ -35,6 +35,7 @@ class CanvasScrubPreview extends StatefulWidget {
     this.viewport,
     this.paperBackground = ProjectBackground.defaultBackground,
     this.gapParking,
+    this.gapContentBuilder,
   });
 
   final ValueListenable<int> frameCursor;
@@ -50,6 +51,12 @@ class CanvasScrubPreview extends StatefulWidget {
   /// the cursor: the leading gap pins the cut-local cursor at 0, so the
   /// parking is the only move signal there. Null = never parked.
   final ValueListenable<int?>? gapParking;
+
+  /// What a gap parking shows INSTEAD of the void (the multitrack display
+  /// path): the scrubbed track gaps here, but another track may cover the
+  /// frame — the builder mounts the parked track stack, which follows the
+  /// parking per move on its own. Null = the void.
+  final WidgetBuilder? gapContentBuilder;
 
   /// The canvas-space cut pose per cursor frame (fx-gated by the caller —
   /// the same sample the editing canvas wraps with, R9-B). Null = identity.
@@ -117,9 +124,15 @@ class _CanvasScrubPreviewState extends State<CanvasScrubPreview> {
   @override
   Widget build(BuildContext context) {
     final cut = widget.cut;
-    // A gap parking (or the no-cut state itself) shows the VOID (R16-⑥
-    // semantics, live during the drag — UI-R7 #9): no paper, no frame.
+    // A gap parking (or the no-cut state itself): the track stack when a
+    // builder is wired (the multitrack display path), else the VOID
+    // (R16-⑥ semantics, live during the drag — UI-R7 #9): no paper, no
+    // frame.
     if (cut == null || widget.gapParking?.value != null) {
+      final gapContent = widget.gapContentBuilder;
+      if (gapContent != null) {
+        return gapContent(context);
+      }
       return const SizedBox.expand(
         key: ValueKey<String>('canvas-scrub-preview-gap-void'),
       );

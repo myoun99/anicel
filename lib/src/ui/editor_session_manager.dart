@@ -452,10 +452,17 @@ class EditorSessionManager extends ChangeNotifier {
         idleDelay: Platform.environment['FLUTTER_TEST'] == 'true'
             ? Duration.zero
             : const Duration(milliseconds: 1200),
-        afterFrameCached: () => _playbackCacheBudgetEnforcer.enforce(
-          protect: _playbackProtectedRanges(),
-        ),
+        afterFrameCached: enforcePlaybackCacheBudget,
       );
+
+  /// The composite-cache budget trim, runnable by every producer: the
+  /// warmer after each cached frame, and the parked track stack after each
+  /// on-demand build (its composites would otherwise grow the cache with
+  /// nothing trimming until the next warm run). LRU: what is on screen was
+  /// just touched, so it survives its own trim; held clones cover the rest.
+  void enforcePlaybackCacheBudget() => _playbackCacheBudgetEnforcer.enforce(
+    protect: _playbackProtectedRanges(),
+  );
 
   /// What budget eviction must never touch: the full PLAYING playlist while
   /// playback is active (a looping pass must keep every cut warm so the
@@ -10333,6 +10340,18 @@ class EditorSessionManager extends ChangeNotifier {
     return trackFrameAxis().clampedToCutGlobalOf(cutId, currentFrameIndex) ??
         currentFrameIndex;
   }
+
+  /// The multitrack display resolution: every track's covered cut at
+  /// [globalFrame], STRICT containment, in project track order. Unlike
+  /// [trackFrameAxis] this is never scoped to the selected track and has
+  /// no whole-layout fallback — a track that gaps here simply contributes
+  /// nothing. The parked canvas stacks these (one camera-projected
+  /// composite per covered track).
+  List<PlaybackPosition> trackStackPositionsAt(int globalFrame) =>
+      resolveTrackStackPositions(
+        layout: buildStoryboardTimelineLayout(repository.requireProject()),
+        globalFrameIndex: globalFrame,
+      );
 
   /// Deselects the active cut for a GAP landing (UI-R9 #3): standing in a
   /// gap means NO cut is selected — the timeline/timesheet show their
