@@ -410,12 +410,9 @@ class StoryboardCutBlocksPainter extends CustomPainter {
       _paintPanelPictures(canvas, block, inner);
       canvas.restore();
     }
-    if (!block.bandsFolded) {
-      canvas.save();
-      canvas.clipRRect(rrect);
-      _paintCellDivisions(canvas, block);
-      canvas.restore();
-    }
+    // No division rules on the strip for now (user, 2026-07-28): the
+    // panels' own left-aligned pictures already say where each begins, and
+    // a line every division read as clutter. A divider treatment is open.
 
     canvas.drawRRect(
       rrect.deflate(block.isActive ? 1 : 0.5),
@@ -503,36 +500,6 @@ class StoryboardCutBlocksPainter extends CustomPainter {
     canvas.restore();
   }
 
-  /// The divisions between the cut's panels, drawn ON the strip: the strip
-  /// fills the block's width edge to edge, so a division's x IS its frame's
-  /// x — the ruler, the playhead and the SE rows all line up with it.
-  void _paintCellDivisions(Canvas canvas, StoryboardCutBlockVisual block) {
-    if (block.cells.length < 2 || _cellExtent <= 0) {
-      return;
-    }
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1
-      ..color = storyboardCutBlockEdgeColor(
-        colorScheme,
-        brightness,
-        active: block.isActive,
-        hovered: block.isHovered,
-      );
-    final entryStart = block.rect.left;
-    for (final cell in block.cells.skip(1)) {
-      final x = entryStart + cell.startIndex * _cellExtent;
-      if (x <= block.rect.left || x >= block.rect.right) {
-        continue;
-      }
-      canvas.drawLine(
-        Offset(x, block.strip.top),
-        Offset(x, block.strip.bottom),
-        paint,
-      );
-    }
-  }
-
   void _paintBandText(
     Canvas canvas, {
     required String text,
@@ -618,25 +585,18 @@ class StoryboardCutBlocksPainter extends CustomPainter {
       image.width.toDouble(),
       image.height.toDouble(),
     );
-    // The picture keeps the CAMERA's ratio and is sized to the strip's
-    // height, LEFT-aligned in its own slot: a wide panel leaves the right
-    // of its slice empty, which is the information "this panel holds a long
-    // time". Stretching it or cropping to fill would spend that width
-    // saying nothing.
-    final scale = math.min(
-      slot.width / source.width,
-      slot.height / source.height,
-    );
+    // The picture is sized by the ROW's height alone and LEFT-aligned: a
+    // shorter comma shows LESS of it, never a smaller copy of it (user,
+    // 2026-07-28). Fitting the width instead made the picture shrink as
+    // the block narrowed, so a row of short holds read as a row of tiny
+    // thumbnails rather than as short holds. The caller clips to the slot,
+    // which is what turns "less width" into "less picture".
+    final scale = slot.height / source.height;
     final drawn = Size(source.width * scale, source.height * scale);
     canvas.drawImageRect(
       image,
       source,
-      Rect.fromLTWH(
-        slot.left,
-        slot.top + (slot.height - drawn.height) / 2,
-        drawn.width,
-        drawn.height,
-      ),
+      Rect.fromLTWH(slot.left, slot.top, drawn.width, drawn.height),
       Paint()..filterQuality = FilterQuality.low,
     );
   }

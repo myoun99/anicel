@@ -233,6 +233,48 @@ SplayTreeMap<int, TimelineExposure>? storyboardTimelineWithDivisionMoved({
   return next;
 }
 
+/// [timeline] rewritten so its STORED blocks tile `[0, cutDuration)` — the
+/// shape a row must be in to become a storyboard row.
+///
+/// Returns null when there is nothing to tile with (no drawing inside the
+/// cut): the caller makes a fresh blank panel instead, which is what a new
+/// storyboard row is born as.
+///
+/// The rewrite is exactly what [storyboardCoverageCells] already READS, so
+/// nothing about the picture changes — the first block reaches back to the
+/// cut start, every block runs to the next division, and the last runs to
+/// the cut end. Making the store say it too is what stops the row from
+/// showing "X" cells in the timeline while the strip shows none.
+SplayTreeMap<int, TimelineExposure>? storyboardTimelineFilledToCover({
+  required SplayTreeMap<int, TimelineExposure>? timeline,
+  required int cutDuration,
+}) {
+  if (cutDuration <= 0 || timeline == null) {
+    return null;
+  }
+  final cells = storyboardCoverageCells(
+    timeline: timeline,
+    cutDuration: cutDuration,
+  );
+  if (cells.isEmpty || cells.first.frameId == null) {
+    return null;
+  }
+  final next = SplayTreeMap<int, TimelineExposure>();
+  final keys = storyboardDivisionKeys(
+    timeline: timeline,
+    cutDuration: cutDuration,
+  );
+  for (var index = 0; index < cells.length; index += 1) {
+    final cell = cells[index];
+    // The entry keeps its own memo and dots; only where it starts and how
+    // long it holds are rewritten.
+    next[cell.startIndex] = timeline[keys[index]]!.copyWith(
+      length: cell.length,
+    );
+  }
+  return next;
+}
+
 /// The frame a cell's PICTURE is composited at.
 ///
 /// A panel shows the cut at its own division — that is where its drawing

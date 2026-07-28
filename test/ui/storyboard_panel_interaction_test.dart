@@ -1082,10 +1082,10 @@ void main() {
         ),
       );
 
-      // The start grip TRIMS the cut's front — every cut has one, the FIRST
-      // included (its leading gap = black lead-in before the track). These
-      // cuts have no storyboard row, so each is ONE panel and its two edges
-      // are the cut's own: the ordinals below are those panels'.
+      // These cuts have no storyboard row, so each is ONE panel and its two
+      // edges are the cut's own: the ordinals below are those panels'. The
+      // TRAILING edge is the cut's length and reaches these hooks; the
+      // leading one is the first panel's comma and has its own verb.
       // The grips are PAINTED targets on the timeline's chrome layer now,
       // so they are read off its model rather than found by key.
       expect(

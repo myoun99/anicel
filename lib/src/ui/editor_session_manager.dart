@@ -5112,15 +5112,61 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Why the storyboard toggle is refused, or null when it is allowed.
+  ///
+  /// A cut holds at most ONE storyboard row: the conte has one strip per
+  /// cut and the coverage rule has one row to tile it. The toggle says so
+  /// rather than silently doing nothing, and rather than making the second
+  /// row that used to red-screen the V row.
+  String? get targetLayerStoryboardRefusal {
+    final targetLayer = _targetLayerForKindToggle;
+    if (targetLayer == null || targetLayer.kind == LayerKind.storyboard) {
+      return null;
+    }
+    final cut = activeCutOrNull;
+    if (cut == null ||
+        cutAcceptsAnotherStoryboardLayer(cut, exceptLayerId: targetLayer.id)) {
+      return null;
+    }
+    return AppText.strings.sbOneStoryboardRowPerCut;
+  }
+
   void toggleTargetLayerKind() {
     final targetLayer = _targetLayerForKindToggle;
-    if (targetLayer == null) {
+    if (targetLayer == null || targetLayerStoryboardRefusal != null) {
       return;
     }
 
-    final nextKind = targetLayer.kind == LayerKind.storyboard
-        ? LayerKind.animation
-        : LayerKind.storyboard;
+    final toStoryboard = targetLayer.kind != LayerKind.storyboard;
+    final nextKind = toStoryboard
+        ? LayerKind.storyboard
+        : LayerKind.animation;
+
+    // A storyboard row TILES its cut, so a row that becomes one is filled
+    // to cover before it changes kind — otherwise its holes would show as
+    // "X" cells in the timeline while the strip, which reads the coverage
+    // rule, showed none. An empty row becomes a fresh blank panel, which
+    // is what a new storyboard row is born as.
+    if (toStoryboard) {
+      final cut = requireActiveCut;
+      final filled = storyboardTimelineFilledToCover(
+        timeline: targetLayer.timeline,
+        cutDuration: cut.duration,
+      );
+      final covered = filled == null
+          ? createStoryboardLayer(
+              layerId: targetLayer.id,
+              frameId: FrameId(_nextFrameId(targetLayer.id)),
+              cut: cut,
+            ).copyWith(name: targetLayer.name)
+          : targetLayer.copyWith(timeline: filled);
+      if (covered != targetLayer) {
+        _timelineController.commitLayerTimelineDrag(
+          before: targetLayer,
+          after: covered,
+        );
+      }
+    }
 
     _cutCommandCoordinator.updateLayerKind(
       cutId: requireActiveCut.id,
@@ -6129,6 +6175,7 @@ class EditorSessionManager extends ChangeNotifier {
     _cutTrimIndex = null;
     dragPreview.value = null;
   }
+
 
   // --- Storyboard division drags -------------------------------------------
 

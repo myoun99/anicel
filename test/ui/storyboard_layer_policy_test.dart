@@ -62,7 +62,9 @@ void main() {
       expect(storyboardLayerForCut(cut)?.id, storyboardLayer.id);
     });
 
-    test('throws StateError when a cut has multiple storyboard layers', () {
+    test('a cut that somehow holds two takes the FIRST as its row rather '
+        'than throwing — the read is a painter\'s, and a throw there is a '
+        'red screen where an editor should be', () {
       final cut = _cut(
         layers: [
           _layer('storyboard-a', LayerKind.storyboard),
@@ -71,7 +73,39 @@ void main() {
         ],
       );
 
-      expect(() => storyboardLayerForCut(cut), throwsStateError);
+      expect(storyboardLayerForCut(cut)?.id.value, 'storyboard-a');
+      // The duplicate is still findable, for whoever wants to SAY something
+      // about it.
+      expect(storyboardLayersOfCut(cut).map((layer) => layer.id.value), [
+        'storyboard-a',
+        'storyboard-b',
+      ]);
+      // And the verbs that could make a second one refuse.
+      expect(cutAcceptsAnotherStoryboardLayer(cut), isFalse);
+      expect(
+        cutAcceptsAnotherStoryboardLayer(
+          cut,
+          exceptLayerId: const LayerId('storyboard-a'),
+        ),
+        isFalse,
+        reason: 'the OTHER one still blocks it',
+      );
+    });
+
+    test('a cut with none accepts one, and re-applying the kind to the row '
+        'that already is one is not a second row', () {
+      final empty = _cut(layers: [_layer('animation-a', LayerKind.animation)]);
+      expect(cutAcceptsAnotherStoryboardLayer(empty), isTrue);
+
+      final one = _cut(layers: [_layer('sb', LayerKind.storyboard)]);
+      expect(cutAcceptsAnotherStoryboardLayer(one), isFalse);
+      expect(
+        cutAcceptsAnotherStoryboardLayer(
+          one,
+          exceptLayerId: const LayerId('sb'),
+        ),
+        isTrue,
+      );
     });
 
     test('does not mutate the Cut', () {

@@ -446,6 +446,9 @@ class AppStrings {
   String get sbShorterRows => _s('sbShorterRows');
   String get sbTallerRows => _s('sbTallerRows');
 
+  /// Refused: a cut holds at most one storyboard row.
+  String get sbOneStoryboardRowPerCut => _s('sbOneStoryboardRowPerCut');
+
   /// The conte sheet panel.
   String get cnPreviousPage => _s('cnPreviousPage');
   String get cnNextPage => _s('cnNextPage');
@@ -1270,6 +1273,8 @@ class AppStrings {
     'tlPull': 'Pull (close frames)',
     'sbShorterRows': 'Shorter rows',
     'sbTallerRows': 'Taller rows',
+    'sbOneStoryboardRowPerCut':
+        'This cut already has a storyboard row. A cut can hold only one.',
     'cnPreviousPage': 'Previous page',
     'cnNextPage': 'Next page',
     'cnActionColumn': 'Action',
@@ -1903,6 +1908,7 @@ class AppStrings {
     'tlPull': '詰め（コマを詰める）',
     'sbShorterRows': '行を低く',
     'sbTallerRows': '行を高く',
+    'sbOneStoryboardRowPerCut': 'このカットには既に絵コンテレイヤーがあります。カットにつき1つだけです。',
     'cnPreviousPage': '前のページ',
     'cnNextPage': '次のページ',
     'cnActionColumn': 'アクション',
@@ -2533,6 +2539,7 @@ class AppStrings {
     'tlPull': '당기기(칸 닫기)',
     'sbShorterRows': '행 낮게',
     'sbTallerRows': '행 높게',
+    'sbOneStoryboardRowPerCut': '이 컷에는 이미 스토리보드 레이어가 있습니다. 컷당 하나만 가능합니다.',
     'cnPreviousPage': '이전 페이지',
     'cnNextPage': '다음 페이지',
     'cnActionColumn': '액션',
@@ -3195,6 +3202,8 @@ class AppStrings {
     'tlPull': 'Tirer (fermer des images)',
     'sbShorterRows': 'Lignes plus basses',
     'sbTallerRows': 'Lignes plus hautes',
+    'sbOneStoryboardRowPerCut':
+        'Ce plan a déjà un calque storyboard. Un seul par plan.',
     'cnPreviousPage': 'Page précédente',
     'cnNextPage': 'Page suivante',
     'cnActionColumn': 'Action',
@@ -3806,6 +3815,7 @@ class AppStrings {
     'tlPull': '拉回（收拢帧）',
     'sbShorterRows': '行更矮',
     'sbTallerRows': '行更高',
+    'sbOneStoryboardRowPerCut': '该镜头已有分镜图层，每个镜头只能有一个。',
     'cnPreviousPage': '上一页',
     'cnNextPage': '下一页',
     'cnActionColumn': '动作',

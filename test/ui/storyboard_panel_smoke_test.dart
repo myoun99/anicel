@@ -156,15 +156,18 @@ void main() {
       expect(block.layerLabel, 'Animation Named Layer');
     });
 
-    testWidgets('surfaces multiple storyboard layers with StateError', (
-      tester,
-    ) async {
+    testWidgets('a cut holding two storyboard layers still DRAWS: the row '
+        'takes the first as its own rather than red-screening', (tester) async {
       await _pumpStoryboardPanel(
         tester,
         _projectWithMultipleStoryboardLayers(),
       );
 
-      expect(tester.takeException(), isA<StateError>());
+      expect(tester.takeException(), isNull);
+      expect(
+        find.byKey(const ValueKey<String>('storyboard-track-row-track-a')),
+        findsOneWidget,
+      );
     });
 
     testWidgets('renders multi-track rows as storyboard overview', (
