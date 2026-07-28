@@ -84,7 +84,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// (the design's rule), so the continuations cannot re-derive it — they
   /// carry a delta and nothing else. The answer is taken at begin and kept
   /// here, where it outlives the per-step rebuilds the preview causes.
-  bool _edgeDragIsDivision = false;
+  _StripEdgeDrag _edgeDrag = _StripEdgeDrag.cutTrim;
 
   /// The storyboard playhead's track-global frame — the cursor-layer
   /// pattern (W4 perf pass): scrub moves, committed seeks, playback ticks
@@ -476,25 +476,31 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                 // sat — and the continuations follow that answer.
                 stripEdges: StoryboardStripEdgeCallbacks(
                   onCutEdgeBegin: (cutId, edge) {
-                    _edgeDragIsDivision = false;
+                    _edgeDrag = _StripEdgeDrag.cutTrim;
                     return _session.beginCutEdgeDrag(cutId: cutId, edge: edge);
                   },
                   onDivisionBegin: (cutId, divisionIndex) {
-                    _edgeDragIsDivision = true;
+                    _edgeDrag = _StripEdgeDrag.division;
                     return _session.beginStoryboardDivisionDrag(
                       cutId: cutId,
                       divisionIndex: divisionIndex,
                     );
                   },
-                  onUpdate: (delta) => _edgeDragIsDivision
-                      ? _session.updateStoryboardDivisionDrag(delta)
-                      : _session.updateCutEdgeDrag(delta),
-                  onEnd: () => _edgeDragIsDivision
-                      ? _session.endStoryboardDivisionDrag()
-                      : _session.endCutEdgeDrag(),
-                  onCancel: () => _edgeDragIsDivision
-                      ? _session.cancelStoryboardDivisionDrag()
-                      : _session.cancelCutEdgeDrag(),
+                  onUpdate: (delta) => switch (_edgeDrag) {
+                    _StripEdgeDrag.cutTrim => _session.updateCutEdgeDrag(delta),
+                    _StripEdgeDrag.division => _session
+                        .updateStoryboardDivisionDrag(delta),
+                  },
+                  onEnd: () => switch (_edgeDrag) {
+                    _StripEdgeDrag.cutTrim => _session.endCutEdgeDrag(),
+                    _StripEdgeDrag.division => _session
+                        .endStoryboardDivisionDrag(),
+                  },
+                  onCancel: () => switch (_edgeDrag) {
+                    _StripEdgeDrag.cutTrim => _session.cancelCutEdgeDrag(),
+                    _StripEdgeDrag.division => _session
+                        .cancelStoryboardDivisionDrag(),
+                  },
                 ),
                 // Whole-block moves (R10-④): a drag re-times the cut where
                 // it has room and REORDERS the track where it reaches past
@@ -755,4 +761,14 @@ class _TrackLaneHeightButtons extends StatelessWidget {
       ],
     );
   }
+}
+
+/// Which verb a live strip-edge drag belongs to. One shape of grip, three
+/// meanings, decided by where it sat when the drag began.
+enum _StripEdgeDrag {
+  /// The LAST panel's trailing edge — the cut's length.
+  cutTrim,
+
+  /// An edge between two panels — a division.
+  division,
 }

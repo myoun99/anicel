@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 
@@ -20,19 +22,42 @@ const double _gripBarInset = 2.5;
 /// CONSTANT. Hover and drag change the bar's color, never its size.
 const double _gripBarLengthFactor = 0.55;
 
-/// Pointer-target strip anchored inside the block edge — capped at a THIRD
-/// of the cell extent so a one-frame block at the slim 24px zoom keeps a
-/// tappable cell body between its two grips (fixed 12px strips covered the
-/// whole cell and swallowed cell selection).
-double blockEdgeGripHitExtent(double frameCellExtent) =>
-    TimelineBlockEdgeGrip.hitExtent < frameCellExtent / 3
-    ? TimelineBlockEdgeGrip.hitExtent
-    : frameCellExtent / 3;
+/// A third of the edge CELL, never thinner than [_minimumHitExtent] where
+/// the block can afford it, and never wider than [TimelineBlockEdgeGrip.hitExtent].
+///
+/// The cell measure is what keeps a block's body tappable: the fixed 12px
+/// strips this replaced covered whole cells and swallowed cell selection,
+/// and widening it back to a third of the BLOCK brings that straight back
+/// (six timeline cell-edit tests said so).
+///
+/// The FLOOR is the storyboard's half of it (user, 2026-07-28). A cut row
+/// draws at 8px a frame, so a third of a cell is under three pixels and the
+/// edges answered only on the boundary line itself — nothing like the
+/// timeline's feel. A floor fixes that wherever the block is wide enough to
+/// give the pixels up, and a one-frame block still keeps its body because
+/// the floor itself is capped by a third of the block.
+double blockEdgeGripHitExtent(double frameCellExtent, {double? blockExtent}) {
+  final byCell = frameCellExtent / 3;
+  final floor = blockExtent == null
+      ? 0.0
+      : math.min(_minimumHitExtent, blockExtent / 3);
+  final wanted = byCell > floor ? byCell : floor;
+  return wanted > TimelineBlockEdgeGrip.hitExtent
+      ? TimelineBlockEdgeGrip.hitExtent
+      : wanted;
+}
 
-/// Where a block-edge grip sits, as a frame-span placement: a third of the
-/// edge cell capped at [TimelineBlockEdgeGrip.hitExtent], hugging the block's
-/// start or end edge. The pixel form of exactly this is
-/// [blockEdgeGripHitExtent] — one rule, two ways of asking.
+/// Thin enough to leave a long block's middle alone, thick enough to aim
+/// at with a finger on a zoomed-out row.
+const double _minimumHitExtent = 6;
+
+/// Where a block-edge grip sits on a SPARSE row, as a frame-span placement:
+/// a third of the edge cell capped at [TimelineBlockEdgeGrip.hitExtent].
+///
+/// Still measured on the CELL, unlike [blockEdgeGripHitExtent]: the rows
+/// that use this form (instruction spans, the storyboard's SE strips) draw
+/// crossing marks and run tags in the same cells, and widening the grips
+/// there covers them.
 TimelineFrameSpanPlacement timelineBlockEdgeGripPlacement({
   required TimelineBlockEdge edge,
   required int startIndex,

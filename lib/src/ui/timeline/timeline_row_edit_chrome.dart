@@ -213,7 +213,6 @@ TimelineRowEditChromeModel timelineRowEditChromeModel({
       ? Rect.fromLTWH(start, 0, extent, crossAxisExtent)
       : Rect.fromLTWH(0, start, crossAxisExtent, extent);
 
-  final hitExtent = blockEdgeGripHitExtent(frameCellExtent);
   for (final block in gripBlocks) {
     if (block.endIndexExclusive <= frameStartIndex ||
         block.startIndex >= frameEndIndexExclusive) {
@@ -221,6 +220,12 @@ TimelineRowEditChromeModel timelineRowEditChromeModel({
     }
     final blockStartOffset = geometry.edgeAt(block.startIndex);
     final blockEndOffset = geometry.edgeAt(block.endIndexExclusive);
+    // The block's own width joins the measure, so a long one keeps a grip
+    // you can aim at however far out the axis is zoomed.
+    final hitExtent = blockEdgeGripHitExtent(
+      frameCellExtent,
+      blockExtent: blockEndOffset - blockStartOffset,
+    );
     for (final edge in TimelineBlockEdge.values) {
       if (edge == TimelineBlockEdge.start && !block.startGrip) {
         continue;
@@ -481,28 +486,29 @@ class TimelineRowEditChromePainter extends CustomPainter {
       oldDelegate.draggingGripId != draggingGripId;
 
   @override
-  SemanticsBuilderCallback get semanticsBuilder => (size) => [
-    // The glyphs these replaced were `Text` widgets, each carrying its own
-    // semantics node; dropping them would take the row away from screen
-    // readers (tier 1's lesson, applied before it can bite).
-    for (final target in resolver.resolve(geometry.value).targets)
-      if (target is TimelineRowRunAddTarget)
-        CustomPainterSemantics(
-          rect: target.rect,
-          properties: const SemanticsProperties(
-            label: '+',
-            textDirection: TextDirection.ltr,
-          ),
-        )
-      else if (target is TimelineRowRunTagTarget)
-        CustomPainterSemantics(
-          rect: target.rect,
-          properties: SemanticsProperties(
-            label: target.letter,
-            textDirection: TextDirection.ltr,
-          ),
-        ),
-  ];
+  SemanticsBuilderCallback get semanticsBuilder =>
+      (size) => [
+        // The glyphs these replaced were `Text` widgets, each carrying its own
+        // semantics node; dropping them would take the row away from screen
+        // readers (tier 1's lesson, applied before it can bite).
+        for (final target in resolver.resolve(geometry.value).targets)
+          if (target is TimelineRowRunAddTarget)
+            CustomPainterSemantics(
+              rect: target.rect,
+              properties: const SemanticsProperties(
+                label: '+',
+                textDirection: TextDirection.ltr,
+              ),
+            )
+          else if (target is TimelineRowRunTagTarget)
+            CustomPainterSemantics(
+              rect: target.rect,
+              properties: SemanticsProperties(
+                label: target.letter,
+                textDirection: TextDirection.ltr,
+              ),
+            ),
+      ];
 }
 
 /// A dense row's edit chrome: ONE painter for every grip bar and run glyph,
@@ -654,7 +660,9 @@ class _TimelineRowEditChromeLayerState
     if (_addDragging) {
       final callbacks = widget.runEdit;
       if (callbacks != null) {
-        WidgetsBinding.instance.addPostFrameCallback((_) => callbacks.onAddEnd());
+        WidgetsBinding.instance.addPostFrameCallback(
+          (_) => callbacks.onAddEnd(),
+        );
       }
     }
     _gripDrag.dispose();
@@ -938,9 +946,10 @@ class _TimelineRowEditChromeLayerState
       }
       return switch (target) {
         TimelineRowRunTagTarget() => SystemMouseCursors.click,
-        _ => _horizontal
-            ? SystemMouseCursors.resizeColumn
-            : SystemMouseCursors.resizeRow,
+        _ =>
+          _horizontal
+              ? SystemMouseCursors.resizeColumn
+              : SystemMouseCursors.resizeRow,
       };
     }
     return MouseCursor.defer;

@@ -109,10 +109,17 @@ class CutTrimDragPreview extends TimelineDragPreview {
     required this.previewDurations,
     this.previewGaps = const {},
     this.previewOrder = const {},
+    this.previewLayers = const {},
   });
 
   final Map<CutId, int> previewDurations;
   final Map<CutId, int> previewGaps;
+
+  /// Rows re-keyed by the same drag. The storyboard row and its cut's
+  /// LENGTH are one thing (design D): shrinking the cut's first panel
+  /// shortens the cut, and the row's later divisions come left with it, so
+  /// one drag previews both or the picture tears in half mid-drag.
+  final Map<LayerId, Layer> previewLayers;
 
   /// Per track, the cut sequence as the release would leave it. A move
   /// drag resolves to gaps OR to an order, never both: re-timing and
@@ -124,6 +131,7 @@ class CutTrimDragPreview extends TimelineDragPreview {
       other is CutTrimDragPreview &&
       mapEquals(other.previewDurations, previewDurations) &&
       mapEquals(other.previewGaps, previewGaps) &&
+      mapEquals(other.previewLayers, previewLayers) &&
       _orderEquals(other.previewOrder, previewOrder);
 
   @override
@@ -239,8 +247,9 @@ Project projectWithTimelineDragPreview(
       :final previewDurations,
       :final previewGaps,
       :final previewOrder,
+      :final previewLayers,
     ):
-      return project.copyWith(
+      final resized = project.copyWith(
         tracks: [
           for (final track in project.tracks)
             track.copyWith(
@@ -260,6 +269,9 @@ Project projectWithTimelineDragPreview(
             ),
         ],
       );
+      return previewLayers.isEmpty
+          ? resized
+          : _projectWithLayersSubstituted(resized, previewLayers);
     case ExposureEdgeDragPreview(:final previewLayer):
       return _projectWithLayersSubstituted(project, {
         previewLayer.id: previewLayer,
