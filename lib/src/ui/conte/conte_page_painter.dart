@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 
+import '../../models/canvas_viewport.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
 
@@ -17,16 +18,26 @@ import '../../models/conte/conte_sheet_source.dart';
 /// The paper is WHITE and the ink is black whatever the app theme is: this
 /// is a printed page shown on a screen, not a panel.
 class ContePagePainter extends CustomPainter {
-  const ContePagePainter({
+  ContePagePainter({
     required this.page,
     required this.source,
     this.pictureFor,
     this.selectedCell,
     this.showPaper = true,
+    this.viewport,
+    // The thumbnail store (async pictures): a landed render must repaint
+    // this painter even though none of the compared fields changed —
+    // without it the cells stayed blank until the next pan/zoom.
+    super.repaint,
   });
 
   final ContePageLayout page;
   final ConteSheetSource source;
+
+  /// The panel's pan/zoom (the canvas-shell mount, #16): document space IS
+  /// page space and this transform places it, exactly like the timesheet
+  /// painter. Null keeps the legacy fit-to-size scaling (export paths).
+  final CanvasViewport? viewport;
 
   /// The finished composite for a cell, or null while it renders (the cell
   /// prints its rules and text either way — a conte with no pictures yet is
@@ -53,12 +64,21 @@ class ContePagePainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final scale = math.min(
-      size.width / metrics.pageWidth,
-      size.height / metrics.pageHeight,
-    );
+    final resolvedViewport = viewport;
     canvas.save();
-    canvas.scale(scale);
+    if (resolvedViewport != null) {
+      // The canvas shell: crisp vector redraw at any zoom, no raster
+      // cache — the timesheet painter's transform.
+      canvas.clipRect(Offset.zero & size);
+      canvas.translate(resolvedViewport.panX, resolvedViewport.panY);
+      canvas.scale(resolvedViewport.zoom, resolvedViewport.zoom);
+    } else {
+      final scale = math.min(
+        size.width / metrics.pageWidth,
+        size.height / metrics.pageHeight,
+      );
+      canvas.scale(scale);
+    }
     _paintPage(canvas);
     canvas.restore();
   }
@@ -368,10 +388,12 @@ class ContePagePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant ContePagePainter oldDelegate) =>
+      // pictureFor is deliberately absent: it is a fresh closure every
+      // build, and comparing it made every rebuild a full-page repaint.
       oldDelegate.page != page ||
       oldDelegate.source != source ||
       oldDelegate.selectedCell != selectedCell ||
-      oldDelegate.pictureFor != pictureFor;
+      oldDelegate.viewport != viewport;
 }
 
 /// The conte's text measurement, shared by the painter and the PDF writer.

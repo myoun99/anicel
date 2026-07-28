@@ -13,10 +13,16 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
+import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
+import 'package:anicel/src/services/history_manager.dart';
+import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/conte/conte_ink.dart';
 import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_layer_policy.dart';
+import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 
 /// The conte panel IS the sheet: it draws the renderer the export draws, a
 /// cell press picks that cut and frame, and the ACTION text lands on the
@@ -112,7 +118,8 @@ void main() {
     expect(source.cuts.last.cumulativeEndFrames, 22);
   });
 
-  testWidgets('the panel draws a page and steps through pages', (tester) async {
+  testWidgets('the panel draws a page inside the canvas shell and reports '
+      'its pages', (tester) async {
     await _pumpConte(tester);
 
     expect(find.byKey(const ValueKey<String>('conte-page')), findsOneWidget);
@@ -123,10 +130,13 @@ void main() {
     // Three cells over two cuts: one page.
     expect(
       tester
-          .widget<Text>(
-            find.byKey(const ValueKey<String>('conte-page-readout')),
+          .widget<DragValueLabel>(
+            find.ancestor(
+              of: find.byKey(const ValueKey<String>('conte-page-readout')),
+              matching: find.byType(DragValueLabel),
+            ),
           )
-          .data,
+          .text,
       '1 / 1',
     );
   });
@@ -137,13 +147,20 @@ void main() {
     session.selectCut(const CutId('40'));
     await tester.pumpAndSettle();
 
-    // The second cell of cut 39 — press its picture.
-    final page = find.byKey(const ValueKey<String>('conte-page'));
-    final box = tester.getRect(page);
-    // Cell 2 of cut 39 sits on the sheet's second row.
-    await tester.tapAt(
-      Offset(box.left + box.width * 0.35, box.top + box.height * 0.32),
+    // The second cell of cut 39 — press its picture, through the shell's
+    // viewport (identity at rest: document space = content-local space).
+    final source = buildConteSheetSource(session.repository.requireProject());
+    final pages = layoutConteSheet(
+      source,
+      metrics: ConteSheetMetrics(cameraAspect: session.cameraFrameAspect),
     );
+    final cell = pages.first.cells.firstWhere(
+      (cell) => cell.cutId == '39' && cell.cellIndex == 1,
+    );
+    final pageTopLeft = tester.getTopLeft(
+      find.byKey(const ValueKey<String>('conte-page')),
+    );
+    await tester.tapAt(pageTopLeft + cell.pictureRect.center);
     await tester.pumpAndSettle();
 
     expect(session.activeCutOrNull?.id, const CutId('39'));
@@ -165,5 +182,74 @@ void main() {
       ).cuts.first.cells.last.action,
       'ハヤト走る',
     );
+  });
+
+  testWidgets('#16: a stroke on the conte page lands on its ink surface '
+      'through the app history — one undo clears it', (tester) async {
+    final source = buildConteSheetSource(_project());
+    final pages = layoutConteSheet(
+      source,
+      metrics: const ConteSheetMetrics(cameraAspect: 16 / 9),
+    );
+    final metrics = pages.first.metrics;
+    final controller = ConteInkController();
+    controller.syncGeometry(
+      pageWidth: metrics.pageWidth,
+      pageHeight: metrics.pageHeight,
+    );
+    final historyManager = HistoryManager();
+    final strokeActive = ValueNotifier<bool>(false);
+    addTearDown(strokeActive.dispose);
+
+    await tester.binding.setSurfaceSize(
+      Size(metrics.pageWidth + 40, metrics.pageHeight + 40),
+    );
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Align(
+            alignment: Alignment.topLeft,
+            child: SizedBox(
+              width: metrics.pageWidth,
+              height: metrics.pageHeight,
+              child: ConteInkLayer(
+                controller: controller,
+                page: 0,
+                pageWidth: metrics.pageWidth,
+                pageHeight: metrics.pageHeight,
+                brushToolState: BrushToolState.defaults,
+                historyManager: historyManager,
+                viewport: CanvasViewport(),
+                strokeActive: strokeActive,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final page0 = ConteInkController.pageKey(0);
+    expect(controller.hasInkFor(page0), isFalse);
+
+    final layerBox = tester.getTopLeft(find.byType(ConteInkLayer));
+    final gesture = await tester.startGesture(
+      layerBox + const Offset(120, 120),
+      pointer: 7,
+    );
+    await tester.pump();
+    expect(strokeActive.value, isTrue, reason: 'nav holds during strokes');
+    await gesture.moveTo(layerBox + const Offset(180, 150));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+    expect(strokeActive.value, isFalse);
+
+    expect(controller.hasInkFor(page0), isTrue);
+
+    historyManager.undo();
+    expect(controller.hasInkFor(page0), isFalse);
+    historyManager.redo();
+    expect(controller.hasInkFor(page0), isTrue);
   });
 }

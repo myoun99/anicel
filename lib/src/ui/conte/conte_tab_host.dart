@@ -1,29 +1,52 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../../models/canvas_size.dart';
+import '../../models/canvas_viewport.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/project.dart';
+import '../../models/viewport_point.dart';
+import '../brush/brush_canvas_panel.dart';
+import '../brush/brush_edit_cache_invalidation_sink.dart';
+import '../brush/brush_tool_state.dart';
 import '../editor_session_manager.dart';
 import '../storyboard_cut_thumbnail_store.dart'
     show StoryboardThumbnailResolver;
 import '../text/app_strings.dart';
+import '../widgets/app_icon_button.dart';
+import '../widgets/drag_value_label.dart';
+import 'conte_ink.dart';
 import 'conte_page_painter.dart';
 import 'conte_sheet_builder.dart';
 
-/// The conte PANEL: the sheet as paper, not as a table.
+/// The conte PANEL: the sheet as paper inside the canvas panel shell —
+/// the timesheet's architecture with conte content (#16, "콘티 패널 =
+/// 타임시트 패널과 통일 — 캔버스 베이스, 그리기 가능").
 ///
-/// It draws the very renderer the export does ([ContePagePainter]), so what
-/// is on screen is the page — there is no preview approximation to drift
-/// from the output. Clicking a cell selects that cut, its storyboard row
-/// and the cell's frame, which is how the other panels follow along.
+/// It draws the very renderer the export does ([ContePagePainter]), so
+/// what is on screen is the page. Navigation is the drawing canvas's:
+/// wheel zoom, middle-drag/two-finger pan, panbars, Fit. With an
+/// [inkController] and [brushToolState] the sheet takes freehand ink with
+/// the current brush/eraser; ink blocked, clicking a cell selects that
+/// cut, its storyboard row and the cell's frame, which is how the other
+/// panels follow along.
 class ConteTabHost extends StatefulWidget {
   const ConteTabHost({
     super.key,
     required this.session,
     required this.thumbnailFor,
+    this.thumbnailRepaint,
+    this.viewport,
+    this.onViewportChanged,
+    this.inkController,
+    this.brushToolState,
+    this.inkEnabled = false,
+    this.onInkEnabledChanged,
   });
 
   final EditorSessionManager session;
@@ -32,6 +55,30 @@ class ConteTabHost extends StatefulWidget {
   /// draws from, so a cell and its strip panel are one render.
   final StoryboardThumbnailResolver? thumbnailFor;
 
+  /// The picture store's change signal: a landed thumbnail render must
+  /// REPAINT the page (the painter's compared fields don't change when an
+  /// async picture arrives). Usually the thumbnail store itself.
+  final Listenable? thumbnailRepaint;
+
+  /// Owned above the tab group so zoom/pan survive tab switches.
+  final CanvasViewport? viewport;
+  final ValueChanged<CanvasViewport>? onViewportChanged;
+
+  /// Conte ink store, owned above the tab group so annotations survive
+  /// tab switches. Null renders the sheet read-only.
+  final ConteInkController? inkController;
+
+  /// The editor's current brush/eraser LISTENABLE (R18 UI-3): only the
+  /// ink overlay subscribes — tool switches never rebuild the document.
+  final ValueListenable<BrushToolState>? brushToolState;
+
+  /// The sheet-ink allow toggle: blocked ink protects the page from stray
+  /// pen marks AND turns taps back into cell selection (the tap layer
+  /// sits under the ink window). Off by default — the conte's first verb
+  /// is reading and selecting, not annotating.
+  final bool inkEnabled;
+  final ValueChanged<bool>? onInkEnabledChanged;
+
   @override
   State<ConteTabHost> createState() => _ConteTabHostState();
 }
@@ -39,24 +86,80 @@ class ConteTabHost extends StatefulWidget {
 class _ConteTabHostState extends State<ConteTabHost> {
   EditorSessionManager get _session => widget.session;
 
+  /// Commit sink required by the panel API; conte ink invalidations stay
+  /// local (synthetic ink keys never reach the playback caches).
+  final BrushEditCacheInvalidationSink _cacheInvalidationSink =
+      BrushEditCacheInvalidationSink();
+
   int _page = 0;
   final TextEditingController _action = TextEditingController();
 
   /// The cell under edit, as `(cutId, cellIndex)`.
   (String, int)? _selected;
 
+  /// Raised while an ink stroke is in progress so the panel gesture layer
+  /// holds navigation.
+  final ValueNotifier<bool> _inkStrokeActive = ValueNotifier<bool>(false);
+
+  // Memoized sheet source + pages: the source reads the WHOLE project, so
+  // it is rebuilt only when the project object (or the camera aspect that
+  // shapes the cells) actually changes — the immutable repository makes
+  // identity the staleness check, the timesheet host's pattern.
+  ConteSheetSource? _source;
+  List<ContePageLayout>? _pages;
+  Object? _sourceProject;
+  double? _sourceCameraAspect;
+
+  /// Ink strokes hold the prerender warmer exactly like canvas strokes.
+  void _syncInkWarmHold() {
+    _session.setBrushInputActive(_inkStrokeActive.value);
+  }
+
+  @override
+  void initState() {
+    super.initState();
+    _inkStrokeActive.addListener(_syncInkWarmHold);
+  }
+
+  @override
+  void didUpdateWidget(covariant ConteTabHost oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // Blocking ink unmounts the window mid-stroke; clear the hold so the
+    // gesture layer never stays pinned on a stroke that can't finish.
+    if (!widget.inkEnabled && oldWidget.inkEnabled) {
+      _inkStrokeActive.value = false;
+    }
+  }
+
   @override
   void dispose() {
+    if (_inkStrokeActive.value) {
+      _session.setBrushInputActive(false);
+    }
+    _inkStrokeActive.dispose();
     _action.dispose();
     super.dispose();
   }
 
-  ConteSheetSource _source() =>
-      buildConteSheetSource(_session.repository.requireProject());
+  (ConteSheetSource, List<ContePageLayout>) _resolveSheet() {
+    final Project project = _session.repository.requireProject();
+    final aspect = _session.cameraFrameAspect;
+    if (_source == null ||
+        !identical(project, _sourceProject) ||
+        aspect != _sourceCameraAspect) {
+      _sourceProject = project;
+      _sourceCameraAspect = aspect;
+      _source = buildConteSheetSource(project);
+      _pages = layoutConteSheet(
+        _source!,
+        metrics: ConteSheetMetrics(cameraAspect: aspect),
+      );
+    }
+    return (_source!, _pages!);
+  }
 
-  /// A cell press: the cut, its storyboard row and the frame — the design's
-  /// "칸 클릭 = selectCut + selectLayer + selectFrameIndex", which is what
-  /// makes the canvas and the timeline follow the sheet.
+  /// A cell press: the cut, its storyboard row and the frame — the
+  /// design's "칸 클릭 = selectCut + selectLayer + selectFrameIndex".
   void _selectCell(ContePlacedCell cell) {
     final cutId = CutId(cell.cutId);
     if (_session.activeCutOrNull?.id != cutId) {
@@ -89,110 +192,6 @@ class _ConteTabHostState extends State<ConteTabHost> {
     );
   }
 
-  @override
-  Widget build(BuildContext context) {
-    final source = _source();
-    final pages = layoutConteSheet(
-      source,
-      metrics: ConteSheetMetrics(cameraAspect: _session.cameraFrameAspect),
-    );
-    final page = pages.isEmpty ? null : pages[_page.clamp(0, pages.length - 1)];
-
-    return ColoredBox(
-      key: const ValueKey<String>('conte-panel'),
-      color: Theme.of(context).colorScheme.surfaceContainerHighest,
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          _pageBar(pages.length),
-          Expanded(
-            child: page == null
-                ? const SizedBox.shrink()
-                : _paper(context, page, source),
-          ),
-          if (_selected != null) _actionEditor(context),
-        ],
-      ),
-    );
-  }
-
-  Widget _pageBar(int pageCount) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-      child: Row(
-        children: [
-          IconButton(
-            key: const ValueKey<String>('conte-previous-page-button'),
-            tooltip: AppText.strings.cnPreviousPage,
-            onPressed: _page <= 0 ? null : () => setState(() => _page -= 1),
-            icon: const Icon(Icons.chevron_left, size: 18),
-            visualDensity: VisualDensity.compact,
-          ),
-          Text(
-            '${pageCount == 0 ? 0 : _page + 1} / $pageCount',
-            key: const ValueKey<String>('conte-page-readout'),
-          ),
-          IconButton(
-            key: const ValueKey<String>('conte-next-page-button'),
-            tooltip: AppText.strings.cnNextPage,
-            onPressed: _page >= pageCount - 1
-                ? null
-                : () => setState(() => _page += 1),
-            icon: const Icon(Icons.chevron_right, size: 18),
-            visualDensity: VisualDensity.compact,
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _paper(
-    BuildContext context,
-    ContePageLayout page,
-    ConteSheetSource source,
-  ) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final metrics = page.metrics;
-        final scale = (constraints.maxHeight / metrics.pageHeight).clamp(
-          0.0,
-          constraints.maxWidth / metrics.pageWidth,
-        );
-        final size = Size(
-          metrics.pageWidth * scale,
-          metrics.pageHeight * scale,
-        );
-        return Center(
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTapUp: (details) {
-              if (scale <= 0) {
-                return;
-              }
-              final point = details.localPosition / scale;
-              for (final cell in page.cells) {
-                if (cell.pictureRect.contains(point)) {
-                  _selectCell(cell);
-                  return;
-                }
-              }
-            },
-            child: CustomPaint(
-              key: const ValueKey<String>('conte-page'),
-              size: size,
-              painter: ContePagePainter(
-                page: page,
-                source: source,
-                selectedCell: _selected,
-                pictureFor: (cutId, frame) => _pictureFor(cutId, frame),
-              ),
-            ),
-          ),
-        );
-      },
-    );
-  }
-
   ui.Image? _pictureFor(String cutId, int frame) {
     final resolver = widget.thumbnailFor;
     if (resolver == null) {
@@ -208,9 +207,228 @@ class _ConteTabHostState extends State<ConteTabHost> {
     return null;
   }
 
+  void _turnToPage(int page, int pageCount) {
+    final next = pageCount <= 0 ? 0 : page.clamp(0, pageCount - 1);
+    if (next != _page) {
+      setState(() => _page = next);
+    }
+  }
+
+  List<Widget> _statusStripActions() {
+    return [
+      if (widget.onInkEnabledChanged != null && widget.inkController != null)
+        AppIconButton(
+          keyValue: 'conte-ink-toggle-button',
+          tooltip: widget.inkEnabled ? 'Block Sheet Ink' : 'Allow Sheet Ink',
+          icon: Icon(widget.inkEnabled ? Icons.draw : Icons.edit_off),
+          isSelected: widget.inkEnabled,
+          size: AppIconButtonSize.strip,
+          onPressed: () => widget.onInkEnabledChanged!(!widget.inkEnabled),
+        ),
+    ];
+  }
+
+  /// The page cluster in the panel's bottom bar — the timesheet's ◀ n/N ▶
+  /// grammar, drag/type on the readout included.
+  List<Widget> _bottomBarLeading(int pageIndex, int pageCount) {
+    final paged = pageCount > 1;
+    return [
+      AppIconButton(
+        keyValue: 'conte-previous-page-button',
+        tooltip: AppText.strings.cnPreviousPage,
+        icon: const Icon(Icons.chevron_left),
+        onPressed: paged && pageIndex > 0
+            ? () => _turnToPage(pageIndex - 1, pageCount)
+            : null,
+      ),
+      DragValueLabel(
+        keyValue: 'conte-page-readout',
+        inputKeyValue: 'conte-page-input',
+        text: '${pageCount == 0 ? 0 : pageIndex + 1} / $pageCount',
+        tooltip: AppText.strings.sheetPageDrag,
+        width: 48,
+        textStyle: const TextStyle(fontSize: 11),
+        unitsPerPixel: 1 / 8,
+        onDragDelta: paged
+            ? (units) => _turnToPage(pageIndex + units.round(), pageCount)
+            : _noDrag,
+        onEditSubmit: (text) {
+          if (!paged) {
+            return;
+          }
+          final parsed = int.tryParse(text.split('/').first.trim());
+          if (parsed != null) {
+            _turnToPage(parsed - 1, pageCount);
+          }
+        },
+      ),
+      AppIconButton(
+        keyValue: 'conte-next-page-button',
+        tooltip: AppText.strings.cnNextPage,
+        icon: const Icon(Icons.chevron_right),
+        onPressed: paged && pageIndex < pageCount - 1
+            ? () => _turnToPage(pageIndex + 1, pageCount)
+            : null,
+      ),
+    ];
+  }
+
+  static void _noDrag(double units) {}
+
+  @override
+  Widget build(BuildContext context) {
+    final strings = AppStrings.of(
+      _session.languageSettings.value.programLanguage,
+    );
+    final (source, pages) = _resolveSheet();
+    final pageCount = pages.length;
+    // The page INDEX is clamped everywhere it is read (readout included):
+    // deleting cuts can shrink the count under a stored _page, and an
+    // unclamped readout printed "5 / 2" with no way back.
+    final pageIndex = pageCount == 0 ? 0 : _page.clamp(0, pageCount - 1);
+    final page = pageCount == 0 ? null : pages[pageIndex];
+    final inkController = widget.inkController;
+    final brushToolState = widget.brushToolState;
+    final metrics = page?.metrics;
+    if (inkController != null && metrics != null) {
+      inkController.syncGeometry(
+        pageWidth: metrics.pageWidth,
+        pageHeight: metrics.pageHeight,
+      );
+    }
+    // The ink view unmounts with the last page — nothing is left to
+    // finish a stroke, so the nav/warm hold must not stay pinned.
+    if (page == null && _inkStrokeActive.value) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted && _inkStrokeActive.value) {
+          _inkStrokeActive.value = false;
+        }
+      });
+    }
+
+    final panel = BrushCanvasPanel(
+      coordinator: null,
+      availableFrameKeys: const [],
+      cacheInvalidationSink: _cacheInvalidationSink,
+      canvasSize: metrics == null
+          // The empty-project stand-in matches the real page's PORTRAIT
+          // A4 so the stage geometry holds when pages appear.
+          ? const CanvasSize(width: 596, height: 842)
+          : CanvasSize(
+              width: metrics.pageWidth.ceil(),
+              height: metrics.pageHeight.ceil(),
+            ),
+      viewport: widget.viewport,
+      onViewportChanged: widget.onViewportChanged,
+      selectionLabels: CanvasEditorSelectionLabels(
+        projectLabel: _session.repository.requireProject().name,
+        cutLabel: 'Conte',
+        layerLabel:
+            '${strings.pageLabel} ${pageCount == 0 ? 0 : pageIndex + 1}',
+        frameLabel: '-',
+      ),
+      // The paper never rotates (the timesheet's rule).
+      allowViewRotation: false,
+      statusStripActions: _statusStripActions(),
+      bottomBarLeading: _bottomBarLeading(pageIndex, pageCount),
+      bottomBarLeadingToken: (pageIndex, pageCount),
+      fitFocusRect: metrics == null
+          ? null
+          : Rect.fromLTWH(0, 0, metrics.pageWidth, metrics.pageHeight),
+      contentStrokeActive:
+          inkController == null || !widget.inkEnabled ? null : _inkStrokeActive,
+      contentOverride: (context, viewport) => Stack(
+        children: [
+          Positioned.fill(
+            child: ColoredBox(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+            ),
+          ),
+          if (page != null)
+            Positioned.fill(
+              child: RepaintBoundary(
+                child: CustomPaint(
+                  key: const ValueKey<String>('conte-page'),
+                  painter: ContePagePainter(
+                    page: page,
+                    source: source,
+                    selectedCell: _selected,
+                    pictureFor: _pictureFor,
+                    viewport: viewport,
+                    repaint: widget.thumbnailRepaint,
+                  ),
+                  child: const SizedBox.expand(),
+                ),
+              ),
+            ),
+          // Under the ink window: reachable exactly when ink is blocked
+          // (the toggle doubles as the edit-mode switch, the timesheet's
+          // header-edit rule).
+          if (page != null)
+            Positioned.fill(
+              child: GestureDetector(
+                key: const ValueKey<String>('conte-cell-tap-layer'),
+                behavior: HitTestBehavior.translucent,
+                onTapUp: (details) {
+                  final canvasPoint = viewport.viewportToCanvas(
+                    ViewportPoint(
+                      x: details.localPosition.dx,
+                      y: details.localPosition.dy,
+                    ),
+                  );
+                  final point = Offset(canvasPoint.x, canvasPoint.y);
+                  for (final cell in page.cells) {
+                    if (cell.pictureRect.contains(point)) {
+                      _selectCell(cell);
+                      return;
+                    }
+                  }
+                },
+              ),
+            ),
+          if (page != null &&
+              inkController != null &&
+              brushToolState != null &&
+              widget.inkEnabled)
+            Positioned.fill(
+              // The tool-state boundary (R18 UI-3): only this overlay
+              // follows the brush/eraser.
+              child: ValueListenableBuilder<BrushToolState>(
+                valueListenable: brushToolState,
+                builder: (context, toolState, _) => ConteInkLayer(
+                  key: const ValueKey<String>('conte-ink-layer'),
+                  controller: inkController,
+                  page: pageIndex,
+                  pageWidth: metrics!.pageWidth,
+                  pageHeight: metrics.pageHeight,
+                  brushToolState: toolState,
+                  historyManager: _session.historyManager,
+                  viewport: viewport,
+                  strokeActive: _inkStrokeActive,
+                  cacheInvalidationSink: _cacheInvalidationSink,
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+
+    return ColoredBox(
+      key: const ValueKey<String>('conte-panel'),
+      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Expanded(child: panel),
+          if (_selected != null) _actionEditor(context),
+        ],
+      ),
+    );
+  }
+
   Widget _actionEditor(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 0, 8, 8),
+      padding: const EdgeInsets.fromLTRB(8, 4, 8, 8),
       child: TextField(
         key: const ValueKey<String>('conte-action-field'),
         controller: _action,
