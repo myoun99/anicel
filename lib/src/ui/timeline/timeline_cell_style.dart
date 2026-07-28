@@ -37,6 +37,12 @@ BoxDecoration get timelineRangeSelectionBandDecoration => BoxDecoration(
 /// blocks; the usual light on-surface text would vanish there.
 const Color timelineDrawingInkColor = Color(0xFF26282B);
 
+/// The mirror of [timelineDrawingInkColor] for chrome that sits on a DARK
+/// lane instead of on the paper — the storyboard strip's cut blocks
+/// (feedback #11: "배경이 흰색일경우의 엣지랑 컷블록처럼 배경이 어두울
+/// 때의 엣지"). The near-black bar vanished against them.
+const Color timelineLaneInkColor = Color(0xFFF2F4F6);
+
 /// R26 #44 / R27 #13: ACTION-section blocks whose cel holds NO picture
 /// yet read as the paper at LOW OPACITY — the user's ask ("흰색에서 그냥
 /// 불투명도 낮추는 느낌… 투명감나게"). Against the dark lane the alpha

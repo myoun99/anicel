@@ -380,6 +380,7 @@ class TimelineRowEditChromePainter extends CustomPainter {
     required this.hoveredId,
     required this.operatingId,
     required this.draggingGripId,
+    this.gripSurface = Brightness.light,
   }) : super(repaint: geometry);
 
   final TimelineRowChromeResolver resolver;
@@ -401,6 +402,10 @@ class TimelineRowEditChromePainter extends CustomPainter {
 
   /// The grip currently being comma-dragged.
   final String? draggingGripId;
+
+  /// The brightness of what the grips sit ON (feedback #11) — the paper of
+  /// a timeline row, or the cut block under the storyboard strip.
+  final Brightness gripSurface;
 
   /// Every target this row would draw, in hit order — THE probe surface,
   /// the successor of `find.byKey` on the widgets these replaced.
@@ -444,6 +449,7 @@ class TimelineRowEditChromePainter extends CustomPainter {
                 : target.id == hoveredId
                 ? BlockEdgeGripInk.hovered
                 : BlockEdgeGripInk.rest,
+            surface: gripSurface,
           );
         case TimelineRowRunAddTarget():
           paintTimelineRunGlyph(
@@ -483,7 +489,8 @@ class TimelineRowEditChromePainter extends CustomPainter {
       oldDelegate.colorScheme != colorScheme ||
       oldDelegate.hoveredId != hoveredId ||
       oldDelegate.operatingId != operatingId ||
-      oldDelegate.draggingGripId != draggingGripId;
+      oldDelegate.draggingGripId != draggingGripId ||
+      oldDelegate.gripSurface != gripSurface;
 
   @override
   SemanticsBuilderCallback get semanticsBuilder =>
@@ -557,6 +564,7 @@ class TimelineRowEditChromeLayer extends StatefulWidget {
     required this.axis,
     required this.grips,
     required this.runEdit,
+    this.gripSurface = Brightness.light,
   });
 
   /// Key placed on the [CustomPaint] itself: tests read the painter (and
@@ -583,6 +591,12 @@ class TimelineRowEditChromeLayer extends StatefulWidget {
 
   /// Run-edge hooks; null when the row has no run targets.
   final TimelineRunEditCallbacks? runEdit;
+
+  /// The brightness of the surface under the grips (feedback #11). The
+  /// default is the timeline's paper, which is near-white in every theme;
+  /// the storyboard strip passes the theme's, because its cut blocks
+  /// follow it.
+  final Brightness gripSurface;
 
   @override
   State<TimelineRowEditChromeLayer> createState() =>
@@ -981,6 +995,7 @@ class _TimelineRowEditChromeLayerState
         hoveredId: _hoveredId,
         operatingId: _addDragging ? _addTarget?.id : _menuOpenId,
         draggingGripId: _gripDragging ? _gripTarget?.id : null,
+        gripSurface: widget.gripSurface,
       ),
       child: _ChromeHitGate(
         // Off-target pixels belong to the cells: the gate keeps the
