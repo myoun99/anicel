@@ -165,4 +165,110 @@ void main() {
     // The playback clock runs THROUGH the gap: total = last end.
     expect(playlistTotalFrames(entries), 13);
   });
+
+  group('resolveTrackStackPositions (multitrack display path)', () {
+    // track-1: cut-a [0,4) then cut-b [7,13) (3-frame gap between).
+    // track-2: cut-c [2,12) (2-frame leading gap). Axes overlap on
+    // purpose: every track starts at global 0 independently.
+    List<StoryboardTimelineLayoutEntry> layout() {
+      return buildStoryboardTimelineLayout(
+        Project(
+          id: const ProjectId('stack-project'),
+          name: 'Stack',
+          tracks: [
+            Track(
+              id: const TrackId('track-1'),
+              name: 'One',
+              cuts: [
+                cut('cut-a', 4),
+                Cut(
+                  id: const CutId('cut-b'),
+                  name: 'cut-b',
+                  layers: const [],
+                  duration: 6,
+                  leadingGapFrames: 3,
+                  canvasSize: const CanvasSize(width: 8, height: 8),
+                ),
+              ],
+            ),
+            Track(
+              id: const TrackId('track-2'),
+              name: 'Two',
+              cuts: [
+                Cut(
+                  id: const CutId('cut-c'),
+                  name: 'cut-c',
+                  layers: const [],
+                  duration: 10,
+                  leadingGapFrames: 2,
+                  canvasSize: const CanvasSize(width: 8, height: 8),
+                ),
+              ],
+            ),
+          ],
+          createdAt: DateTime.utc(2026),
+        ),
+      );
+    }
+
+    test('a frame covered on both tracks answers once per track, in track '
+        'order (paint order: later tracks on top)', () {
+      final positions = resolveTrackStackPositions(
+        layout: layout(),
+        globalFrameIndex: 3,
+      );
+      expect(positions, hasLength(2));
+      expect(positions[0].cutId, const CutId('cut-a'));
+      expect(positions[0].localFrameIndex, 3);
+      expect(positions[1].cutId, const CutId('cut-c'));
+      expect(positions[1].localFrameIndex, 1);
+    });
+
+    test('a gap on one track drops just that track', () {
+      // Frame 5 gaps on track-1 (between cut-a and cut-b).
+      final positions = resolveTrackStackPositions(
+        layout: layout(),
+        globalFrameIndex: 5,
+      );
+      expect(positions, hasLength(1));
+      expect(positions.single.cutId, const CutId('cut-c'));
+      expect(positions.single.localFrameIndex, 3);
+    });
+
+    test('strict containment: past a short track\'s last cut is ABSENT — '
+        'never the editing axis\'s owner-rule runway', () {
+      // Frame 12: track-2's cut-c ended at 12 (exclusive); track-1's
+      // cut-b still covers.
+      final positions = resolveTrackStackPositions(
+        layout: layout(),
+        globalFrameIndex: 12,
+      );
+      expect(positions, hasLength(1));
+      expect(positions.single.cutId, const CutId('cut-b'));
+      expect(positions.single.localFrameIndex, 5);
+    });
+
+    test('leading gaps and frames past every track resolve empty', () {
+      expect(
+        resolveTrackStackPositions(layout: layout(), globalFrameIndex: 0),
+        [isA<PlaybackPosition>()],
+        reason: 'frame 0: only track-1 (track-2 still in its leading gap)',
+      );
+      expect(
+        resolveTrackStackPositions(
+          layout: layout(),
+          globalFrameIndex: 0,
+        ).single.cutId,
+        const CutId('cut-a'),
+      );
+      expect(
+        resolveTrackStackPositions(layout: layout(), globalFrameIndex: 13),
+        isEmpty,
+      );
+      expect(
+        resolveTrackStackPositions(layout: layout(), globalFrameIndex: -1),
+        isEmpty,
+      );
+    });
+  });
 }

@@ -56,3 +56,32 @@ PlaybackPosition? resolvePlaybackPosition({
 int playlistTotalFrames(List<StoryboardTimelineLayoutEntry> playlist) {
   return playlist.isEmpty ? 0 : playlist.last.endFrame;
 }
+
+/// The multitrack display resolution: [globalFrameIndex] answered by EVERY
+/// track of a multi-track [layout] — at most one position per track, the
+/// entry that STRICTLY contains the frame. Gap frames and frames past a
+/// track's last cut contribute nothing (never the owner-rule runway the
+/// editing axis uses), so a track without picture at this frame is simply
+/// absent from the result.
+///
+/// Track axes each start at global frame 0 (buildStoryboardTimelineLayout
+/// resets per track), so one shared index addresses all tracks in parallel;
+/// entries within one track never overlap, and cross-track startFrame
+/// overlap is fine because containment is tested per entry. The result
+/// keeps layout order (= project track order): painting it in order stacks
+/// later tracks on top.
+List<PlaybackPosition> resolveTrackStackPositions({
+  required List<StoryboardTimelineLayoutEntry> layout,
+  required int globalFrameIndex,
+}) {
+  return [
+    for (final entry in layout)
+      if (globalFrameIndex >= entry.startFrame &&
+          globalFrameIndex < entry.endFrame)
+        PlaybackPosition(
+          cut: entry.cut,
+          localFrameIndex: globalFrameIndex - entry.startFrame,
+          globalFrameIndex: globalFrameIndex,
+        ),
+  ];
+}

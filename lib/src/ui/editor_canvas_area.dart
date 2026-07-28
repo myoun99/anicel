@@ -25,6 +25,7 @@ import 'canvas/layer_pose_paint.dart';
 import 'canvas/layer_position_gizmo.dart';
 import 'editor_session_manager.dart';
 import 'playback/canvas_playback_view.dart';
+import 'playback/canvas_track_stack_view.dart';
 import 'playback/recording_streamer_overlay.dart';
 import 'playback/canvas_scrub_preview.dart';
 import 'storyboard_cut_fade_policy.dart' show cutFadeTargetColor;
@@ -254,6 +255,29 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     );
   }
 
+  /// The parked track stack (multitrack display path): one camera-frame
+  /// projection per covered track, following the gap parking per move.
+  /// Shared by the parked contentOverride and the scrub preview's gap
+  /// branch — one construction, two mounts.
+  Widget _buildTrackStackView(
+    EditorSessionManager session,
+    CanvasViewport viewport,
+  ) {
+    return CanvasTrackStackView(
+      globalFrame: session.gapParkingListenable,
+      positionsOf: session.trackStackPositionsAt,
+      compositeCache: session.cutFrameCompositeCache,
+      qualityOf: () => session.playbackQuality,
+      cameraFrameSize: session.cameraFrameSize,
+      cameraPoseOf: session.cameraPoseForCut,
+      cutFxEnabledOf: session.isCutFxEnabled,
+      cutPictureVisibleOf: session.isCutPictureVisible,
+      onFrameCached: session.enforcePlaybackCacheBudget,
+      viewport: viewport,
+      background: session.projectBackground,
+    );
+  }
+
   /// Wraps editing-canvas content in the CUT pose (R9-B) — identity
   /// pass-through when [sample] is null. Content only: the paper, the
   /// camera overlay chrome and the fade wash stay outside.
@@ -310,6 +334,12 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     // paperless VOID: no editable cel, no layer content, no paper.
     final inGap =
         !isPlaybackActive && !isScrubbing && session.editingPlayheadInGap;
+    // The camera overlay authors the ACTIVE cut's pose — with no cut (a
+    // gap parking) there is nothing to author and reading the pose would
+    // throw (requireActiveCut); the parked track stack renders its own
+    // camera framing per covered cut instead.
+    final cameraOverlayVisible =
+        showCameraOverlay && session.activeCutOrNull != null;
     final layerStack = inGap
         ? (nodes: const <CanvasLayerStackNode>[], activeLayerOpacity: 1.0)
         : session.editingCanvasStack;
@@ -585,7 +615,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               // the only way a group buffer can span the active layer. What
               // is left in the overlay is chrome.
               viewportOverlayBuilder:
-                  (showCameraOverlay || showPositionGizmo || showFadeWash) &&
+                  (cameraOverlayVisible ||
+                          showPositionGizmo ||
+                          showFadeWash) &&
                       !isPlaybackActive
                   ? (context, viewport) => Stack(
                       children: [
@@ -615,7 +647,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                               ),
                             ),
                           ),
-                        if (showCameraOverlay)
+                        if (cameraOverlayVisible)
                           Positioned.fill(
                             // The cursor subscription keeps the frame gliding
                             // along its animated pose during scrubs (and after
@@ -706,9 +738,12 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                       cut: session.activeCutOrNull,
                       qualityOf: () => session.playbackQuality,
                       // Gap scrubs park per move (UI-R7 #9): the preview
-                      // shows the no-cut void, not the owner cut's last
-                      // frame.
+                      // shows the parked track stack there (multitrack
+                      // display path) — with no covered track it stays
+                      // the void, never the owner cut's last frame.
                       gapParking: session.gapParkingListenable,
+                      gapContentBuilder: (context) =>
+                          _buildTrackStackView(session, viewport),
                       // The cut pose AND fade follow the editing canvas
                       // (R9-B/C): fx-gated per cursor frame, identity when off.
                       cutPoseSampleAt: (frame) =>
@@ -721,6 +756,14 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                       viewport: viewport,
                       paperBackground: session.projectBackground,
                     )
+                  // The parked state (no active cut): the multitrack
+                  // display path — every covered track's composite stacks
+                  // in camera-frame space where the void used to be. An
+                  // uncovered frame still shows the void (the stack view
+                  // renders nothing there).
+                  : inGap
+                  ? (context, viewport) =>
+                        _buildTrackStackView(session, viewport)
                   : null,
             );
           },
