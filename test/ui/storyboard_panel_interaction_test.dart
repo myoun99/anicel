@@ -360,6 +360,7 @@ void main() {
                 required TrackId trackId,
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
+                int headRowDelta = 0,
               }) {
                 dragSteps.add((trackId, anchorGlobalFrame, headGlobalFrame));
               },
@@ -408,6 +409,7 @@ void main() {
                 required TrackId trackId,
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
+                int headRowDelta = 0,
               }) {
                 dragSteps.add((anchorGlobalFrame, headGlobalFrame));
               },
@@ -472,6 +474,7 @@ void main() {
                 required TrackId trackId,
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
+                int headRowDelta = 0,
               }) => selectDrags += 1,
           onClear: () => selection.value = null,
         ),
@@ -545,6 +548,7 @@ void main() {
                 required TrackId trackId,
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
+                int headRowDelta = 0,
               }) {},
           onClear: () {
             clears += 1;
@@ -591,6 +595,7 @@ void main() {
                 required TrackId trackId,
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
+                int headRowDelta = 0,
               }) {},
           onClear: () => selection.value = null,
         ),

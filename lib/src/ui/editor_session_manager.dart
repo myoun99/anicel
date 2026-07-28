@@ -6951,18 +6951,106 @@ class EditorSessionManager extends ChangeNotifier {
     required int anchorGlobalFrame,
     required int headGlobalFrame,
     TrackId? trackId,
+    int headRowDelta = 0,
   }) {
     final row = trackId ?? selectedTrackId;
-    final axis = _axisForTrack(row);
-    final span = axis.snapSpanToCuts(
-      anchorFrame: anchorGlobalFrame,
-      headFrame: headGlobalFrame,
+    _updateTrackRangeSelection(
+      trackId: row,
+      anchorRow: TrackRowAddress(row),
+      anchorGlobalFrame: anchorGlobalFrame,
+      headGlobalFrame: headGlobalFrame,
+      headRowDelta: headRowDelta,
     );
-    // A span that only crosses a GAP still selects: the cut row is a
-    // frame-block row like any other, and an empty cell is selectable on
-    // every one of them. It simply covers no cuts, so the verbs that act on
-    // cuts find nothing to act on — which is what an empty selection means
-    // everywhere else too.
+  }
+
+  /// The storyboard rail's rows for [trackId], in the order the panel
+  /// stacks them: the CUT row, then that track's SE rows.
+  ///
+  /// A range drag walks THIS list (feedback #14, the timeline's Excel-style
+  /// cross-row select). Only track-GLOBAL rows are on it — the strip is a
+  /// cut-owned row on the other axis, so it cannot be reached by a row
+  /// delta, and the clamp below is therefore the whole of the kind guard
+  /// (the row-move precedent: what is not on the list is unreachable, so
+  /// there is nothing to refuse).
+  List<TimelineRowAddress> _storyboardRailRows(TrackId trackId) {
+    final track = _trackById(trackId);
+    return [
+      TrackRowAddress(trackId),
+      if (track != null)
+        for (final layer in track.seLayers) LayerRowAddress(layer.id),
+    ];
+  }
+
+  Track? _trackById(TrackId trackId) {
+    for (final track in _repository.requireProject().tracks) {
+      if (track.id == trackId) {
+        return track;
+      }
+    }
+    return null;
+  }
+
+  /// "Where does this row's blocks live" as a snap lane, or null for a row
+  /// that has none to snap to.
+  RangeBlock? Function(int)? _trackRowSnapLane(
+    TimelineRowAddress row,
+    TrackFrameAxis axis,
+  ) {
+    switch (row) {
+      case TrackRowAddress():
+        return axis.cutBlockAt;
+      case LayerRowAddress(:final layerId):
+        final layer = trackSeGlobalLayerById(layerId);
+        return layer == null ? null : (index) => exposureBlockAt(layer, index);
+    }
+  }
+
+  /// THE track-axis select-drag step, whichever storyboard row started it.
+  ///
+  /// The span snaps against EVERY row it covers at once (the union snap):
+  /// reaching a cut row expands the range to whole cuts, reaching an SE row
+  /// expands it to whole sounds, and a drag across both gets the union —
+  /// which is what makes "the selection covers these rows" a single fact
+  /// rather than one per row.
+  void _updateTrackRangeSelection({
+    required TrackId trackId,
+    required TimelineRowAddress anchorRow,
+    required int anchorGlobalFrame,
+    required int headGlobalFrame,
+    required int headRowDelta,
+  }) {
+    final railRows = _storyboardRailRows(trackId);
+    final anchorIndex = railRows.indexOf(anchorRow);
+    final List<TimelineRowAddress> spanned;
+    if (anchorIndex < 0 || railRows.length < 2) {
+      spanned = [anchorRow];
+    } else {
+      // The clamp IS the guard: a delta past either end simply stops at the
+      // rail's last row.
+      final headIndex = (anchorIndex + headRowDelta).clamp(
+        0,
+        railRows.length - 1,
+      );
+      final first = math.min(anchorIndex, headIndex);
+      final last = math.max(anchorIndex, headIndex);
+      spanned = railRows.sublist(first, last + 1);
+    }
+
+    final axis = _axisForTrack(trackId);
+    final lanes = <RangeBlock? Function(int)>[
+      for (final row in spanned) ?_trackRowSnapLane(row, axis),
+    ];
+    final span = lanes.isEmpty
+        ? null
+        : snapSpanToBlocks(
+            lanes: lanes,
+            anchorIndex: anchorGlobalFrame,
+            headIndex: headGlobalFrame,
+          );
+    // A span that only crosses a GAP still selects: these are frame-block
+    // rows like any other, and an empty cell is selectable on every one of
+    // them. It simply covers no blocks, so the verbs that act on them find
+    // nothing to act on — what an empty selection means everywhere else.
     if (span == null) {
       trackFrameRangeSelection.value = null;
       return;
@@ -6972,8 +7060,12 @@ class EditorSessionManager extends ChangeNotifier {
     // (the timeline's own frame ⊥ lane rule, one level up).
     clearFrameRangeSelection();
     trackFrameRangeSelection.value = TrackFrameRangeSelection(
-      trackId: row,
-      anchorRow: TrackRowAddress(row),
+      trackId: trackId,
+      anchorRow: anchorRow,
+      // Single-row drags leave this empty, which is what `spanRows` reads
+      // as "the anchor alone" — no caller has to special-case the common
+      // case.
+      rows: spanned.length > 1 ? spanned : const [],
       startFrame: span.startIndex,
       endFrameExclusive: span.endIndexExclusive,
     );
@@ -6997,28 +7089,19 @@ class EditorSessionManager extends ChangeNotifier {
     required LayerId layerId,
     required int anchorGlobalFrame,
     required int headGlobalFrame,
+    int headRowDelta = 0,
   }) {
-    final layer = trackSeGlobalLayerById(layerId);
-    if (layer == null) {
+    if (trackSeGlobalLayerById(layerId) == null) {
       return;
     }
-    final span = snapSpanToBlocks(
-      lanes: [(index) => exposureBlockAt(layer, index)],
-      anchorIndex: anchorGlobalFrame,
-      headIndex: headGlobalFrame,
-    );
-    if (span == null) {
-      trackFrameRangeSelection.value = null;
-      return;
-    }
-    // Starting a TRACK-axis selection clears the cut-local one (the same
-    // exclusion the cut row's entry point applies).
-    clearFrameRangeSelection();
-    trackFrameRangeSelection.value = TrackFrameRangeSelection(
+    // The SAME path the cut row takes — one select-drag step for the rail,
+    // not one per row kind.
+    _updateTrackRangeSelection(
       trackId: selectedTrackId,
       anchorRow: LayerRowAddress(layerId),
-      startFrame: span.startIndex,
-      endFrameExclusive: span.endIndexExclusive,
+      anchorGlobalFrame: anchorGlobalFrame,
+      headGlobalFrame: headGlobalFrame,
+      headRowDelta: headRowDelta,
     );
   }
 
