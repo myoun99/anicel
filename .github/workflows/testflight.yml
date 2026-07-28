@@ -33,8 +33,16 @@ jobs:
       # Flutter's own artifacts first (the Dart AOT snapshot, the engine,
       # the qa_native pod). fastlane's build_app then archives and signs
       # what this produced — signing here would be thrown away.
+      #
+      # --build-number is how the version reaches the bundle at all:
+      # CFBundleVersion is $(FLUTTER_BUILD_NUMBER), which lands in
+      # Generated.xcconfig from right here. It has to climb, because App
+      # Store Connect rejects a build number it has already seen, and the
+      # run number climbs on its own.
       - name: Build Flutter iOS artifacts
-        run: flutter build ios --release --no-codesign
+        run: |
+          flutter build ios --release --no-codesign \
+            --build-number=${{ github.run_number }}
 
       - uses: ruby/setup-ruby@v1
         with:

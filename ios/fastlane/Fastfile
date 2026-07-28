@@ -26,13 +26,10 @@ platform :ios do
     cert(api_key: key)
     sigh(api_key: key, force: true)
 
-    # The build number must climb; App Store Connect rejects a repeat.
-    # The run number is monotonic and needs no state of our own.
-    increment_build_number(
-      build_number: ENV.fetch("GITHUB_RUN_NUMBER", "1"),
-      xcodeproj: "Runner.xcodeproj",
-    )
-
+    # No increment_build_number here on purpose: CFBundleVersion resolves
+    # to $(FLUTTER_BUILD_NUMBER), which Flutter writes into
+    # Generated.xcconfig. agvtool would edit a field nothing reads. The
+    # workflow passes --build-number to `flutter build` instead.
     build_app(
       workspace: "Runner.xcworkspace",
       scheme: "Runner",
