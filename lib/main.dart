@@ -1,6 +1,9 @@
 import 'dart:async' show unawaited;
 
+import 'package:flutter/foundation.dart'
+    show LicenseEntryWithLineBreaks, LicenseRegistry;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show rootBundle;
 
 import 'src/services/input/pen_sidecars.dart';
 import 'src/services/persistence/app_documents.dart' show AppStorage;
@@ -16,6 +19,19 @@ void main() {
   PenSidecars.bind();
   // SAVE-1c: resolve the mobile app-documents home once (desktop no-op).
   WidgetsFlutterBinding.ensureInitialized();
+  // The bundled conte-PDF fonts are OFL: their license must SHIP with the
+  // binary that redistributes them, not just sit in the repo — the About
+  // dialog's license page surfaces these entries (THIRD_PARTY.md).
+  LicenseRegistry.addLicense(() async* {
+    yield LicenseEntryWithLineBreaks(
+      const ['M PLUS 1p'],
+      await rootBundle.loadString('assets/fonts/OFL-MPLUS1p.txt'),
+    );
+    yield LicenseEntryWithLineBreaks(
+      const ['IBM Plex Sans KR'],
+      await rootBundle.loadString('assets/fonts/OFL-IBMPlexSansKR.txt'),
+    );
+  });
   unawaited(AppStorage.ensureInitialized());
   runApp(const AnicelApp());
 }

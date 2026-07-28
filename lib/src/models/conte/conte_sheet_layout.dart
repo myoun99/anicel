@@ -109,6 +109,25 @@ class ContePlacedCell {
   final int rowOnPage;
 }
 
+/// The lines that START in [cell]'s span, in the sheet's printed shape —
+/// the ONE reading both renderers (panel painter and PDF writer) share.
+/// Dialogue is the SE blocks' (design G), so a cell prints whatever was
+/// said while it was on screen.
+String contePrintedDialogueFor(ConteSheetSource source, ContePlacedCell cell) {
+  for (final cut in source.cuts) {
+    if (cut.cutId.value != cell.cutId) {
+      continue;
+    }
+    return [
+      for (final line in cut.dialogue)
+        if (line.startFrame >= cell.source.startFrame &&
+            line.startFrame < cell.source.endFrameExclusive)
+          line.printed,
+    ].join('\n');
+  }
+  return '';
+}
+
 /// A cut's CUT/TIME band on a page — merged across the cut's cells (design:
 /// the number sits top-left of the merged box, the length bottom-right).
 class ContePlacedCutBand {

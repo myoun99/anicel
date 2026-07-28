@@ -44,6 +44,7 @@ dependencies:
   # compiles packages/qa_native/src and ships the result with the app.
   qa_native:
     path: packages/qa_native
+  pdf: ^3.13.0
 
 dev_dependencies:
   flutter_test:
@@ -66,6 +67,13 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # The conte PDF's embedded text fonts (OFL, see THIRD_PARTY.md):
+  # M PLUS 1p carries Latin + kana + kanji, IBM Plex Sans KR the Hangul
+  # fallback. Loaded via rootBundle by the PDF writer — the app UI keeps
+  # the platform fonts.
+  assets:
+    - assets/fonts/
 
   # To add assets to your application, add an assets section, like this:
   # assets:
