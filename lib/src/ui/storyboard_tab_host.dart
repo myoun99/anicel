@@ -78,14 +78,6 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   final Set<String> _expandedTransformTracks = {};
   final Set<String> _expandedTransformGroups = {};
 
-  /// Which session verb the live strip-edge drag belongs to.
-  ///
-  /// The strip has ONE shape of grip and its position decides its meaning
-  /// (the design's rule), so the continuations cannot re-derive it — they
-  /// carry a delta and nothing else. The answer is taken at begin and kept
-  /// here, where it outlives the per-step rebuilds the preview causes.
-  _StripEdgeDrag _edgeDrag = _StripEdgeDrag.cutTrim;
-
   /// The storyboard playhead's track-global frame — the cursor-layer
   /// pattern (W4 perf pass): scrub moves, committed seeks, playback ticks
   /// and session changes update THIS notifier, and only the panel's
@@ -473,34 +465,21 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                 // The strip's edges preview live and commit ONE undo on
                 // release, like the timeline's comma drags. Which verb a
                 // drag belongs to is settled at BEGIN — by where the grip
-                // sat — and the continuations follow that answer.
+                // sat — and the SESSION keeps that answer (feedback #5's
+                // first attempt kept it here, where a rebuild mid-drag
+                // could re-route the release onto a verb whose fields
+                // were never set): the continuations are one funnel.
                 stripEdges: StoryboardStripEdgeCallbacks(
-                  onCutEdgeBegin: (cutId, edge) {
-                    _edgeDrag = _StripEdgeDrag.cutTrim;
-                    return _session.beginCutEdgeDrag(cutId: cutId, edge: edge);
-                  },
-                  onDivisionBegin: (cutId, divisionIndex) {
-                    _edgeDrag = _StripEdgeDrag.division;
-                    return _session.beginStoryboardDivisionDrag(
-                      cutId: cutId,
-                      divisionIndex: divisionIndex,
-                    );
-                  },
-                  onUpdate: (delta) => switch (_edgeDrag) {
-                    _StripEdgeDrag.cutTrim => _session.updateCutEdgeDrag(delta),
-                    _StripEdgeDrag.division => _session
-                        .updateStoryboardDivisionDrag(delta),
-                  },
-                  onEnd: () => switch (_edgeDrag) {
-                    _StripEdgeDrag.cutTrim => _session.endCutEdgeDrag(),
-                    _StripEdgeDrag.division => _session
-                        .endStoryboardDivisionDrag(),
-                  },
-                  onCancel: () => switch (_edgeDrag) {
-                    _StripEdgeDrag.cutTrim => _session.cancelCutEdgeDrag(),
-                    _StripEdgeDrag.division => _session
-                        .cancelStoryboardDivisionDrag(),
-                  },
+                  onCutEdgeBegin: (cutId, edge) =>
+                      _session.beginCutEdgeDrag(cutId: cutId, edge: edge),
+                  onDivisionBegin: (cutId, divisionIndex) =>
+                      _session.beginStoryboardDivisionDrag(
+                        cutId: cutId,
+                        divisionIndex: divisionIndex,
+                      ),
+                  onUpdate: _session.updateCutEdgeDrag,
+                  onEnd: _session.endCutEdgeDrag,
+                  onCancel: _session.cancelCutEdgeDrag,
                 ),
                 // Whole-block moves (R10-④): a drag re-times the cut where
                 // it has room and REORDERS the track where it reaches past
@@ -761,14 +740,4 @@ class _TrackLaneHeightButtons extends StatelessWidget {
       ],
     );
   }
-}
-
-/// Which verb a live strip-edge drag belongs to. One shape of grip, three
-/// meanings, decided by where it sat when the drag began.
-enum _StripEdgeDrag {
-  /// The LAST panel's trailing edge — the cut's length.
-  cutTrim,
-
-  /// An edge between two panels — a division.
-  division,
 }

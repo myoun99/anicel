@@ -11,7 +11,9 @@ import '../models/layer_id.dart';
 import '../models/timeline_coverage.dart';
 import '../models/timeline_exposure.dart';
 import '../models/timeline_repeat.dart';
+import '../models/transform_track.dart';
 import '../services/command.dart';
+import '../services/commands/update_cut_durations_command.dart';
 import '../services/commands/update_layer_timeline_command.dart';
 import '../services/history_manager.dart';
 import '../services/project_repository.dart';
@@ -643,6 +645,46 @@ class TimelineController {
           _layerEditCommand(before: edit.before, after: edit.after),
     ];
     _executeCommands(commands, description: 'Adjust selected exposures');
+  }
+
+  /// Commits already-previewed layer drags TOGETHER with the cut duration
+  /// and gap changes they imply, as ONE undo step.
+  ///
+  /// A storyboard row and its cut's length are one thing (feedback #5/#9):
+  /// re-timing the row's commas moves the cut's end, and undoing half of
+  /// that would leave a drawing outside its cut. The transform maps carry
+  /// the fade re-anchor exactly as [UpdateCutDurationsCommand] documents.
+  void commitLayerTimelineDragsWithCutDurations({
+    required List<({Layer before, Layer after})> edits,
+    required Map<CutId, int> beforeDurations,
+    required Map<CutId, int> afterDurations,
+    Map<CutId, int> beforeGaps = const {},
+    Map<CutId, int> afterGaps = const {},
+    Map<CutId, TransformTrack> beforeTransforms = const {},
+    Map<CutId, TransformTrack> afterTransforms = const {},
+    required String description,
+  }) {
+    final durationsChanged =
+        afterDurations.entries.any(
+          (entry) => beforeDurations[entry.key] != entry.value,
+        ) ||
+        afterGaps.entries.any((entry) => beforeGaps[entry.key] != entry.value);
+    final commands = <Command>[
+      for (final edit in edits)
+        if (edit.before != edit.after)
+          _layerEditCommand(before: edit.before, after: edit.after),
+      if (durationsChanged)
+        UpdateCutDurationsCommand(
+          repository: _repository,
+          before: beforeDurations,
+          after: afterDurations,
+          beforeGaps: beforeGaps,
+          afterGaps: afterGaps,
+          beforeTransforms: beforeTransforms,
+          afterTransforms: afterTransforms,
+        ),
+    ];
+    _executeCommands(commands, description: description);
   }
 
   void _executeCommands(List<Command> commands, {required String description}) {

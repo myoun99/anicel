@@ -5645,7 +5645,134 @@ class EditorSessionManager extends ChangeNotifier {
   /// it before publishing.
   TrackSeWindow? _edgeDragWindow;
 
+  /// Non-null while the dragged (or bulk-spanned) row is a cut-owned
+  /// STORYBOARD row (feedback #9): its stored extent and its cut's length
+  /// are one thing, so a comma that moves the row's end moves the cut's
+  /// end with it — previewed together, committed as ONE undo step.
+  ({
+    CutId cutId,
+    LayerId layerId,
+    int beforeDuration,
+    int beforeRowEnd,
+    CutId? nextCutId,
+    int nextBeforeGap,
+  })?
+  _edgeDragCutSync;
+
+  /// The synced cut resize the release commits (null while the row's end
+  /// has not moved). Fields, never the preview channel: a consumer
+  /// clearing [dragPreview] mid-drag must not void the commit.
+  Map<CutId, int>? _edgeDragAfterDurations;
+  Map<CutId, int>? _edgeDragAfterGaps;
+
   bool get isExposureEdgeDragActive => _edgeDragBefore != null;
+
+  /// Where [layer]'s stored row ends — the cut-length twin the sync rule
+  /// keeps the cut's duration equal to.
+  int _storedRowEndOf(Layer layer) {
+    var end = 0;
+    for (final entry in layer.timeline.entries) {
+      if (!entry.value.isDrawing || entry.value.ghost) {
+        continue;
+      }
+      final blockEnd = entry.key + (entry.value.length ?? 1);
+      if (blockEnd > end) {
+        end = blockEnd;
+      }
+    }
+    return end;
+  }
+
+  /// Snapshots the cut-sync half of a storyboard row's comma drag.
+  ({
+    CutId cutId,
+    LayerId layerId,
+    int beforeDuration,
+    int beforeRowEnd,
+    CutId? nextCutId,
+    int nextBeforeGap,
+  })
+  _cutSyncSnapshotFor({required Cut cut, required Layer row}) {
+    final next = _nextCutInTrack(cut.id);
+    return (
+      cutId: cut.id,
+      layerId: row.id,
+      beforeDuration: cut.duration,
+      beforeRowEnd: _storedRowEndOf(row),
+      nextCutId: next?.id,
+      nextBeforeGap: next?.leadingGapFrames ?? 0,
+    );
+  }
+
+  /// The synced durations/gaps for the row's end having moved to
+  /// [afterRowEnd], or null when it has not moved.
+  ///
+  /// The cut ENDS WHERE THE ROW ENDS — that is what "always synced" means,
+  /// and taking it literally is also what makes the floor structural: a
+  /// row's end is its last block's end, so the duration can never land
+  /// before the last division (the `minimumCutDurationFor` guarantee the
+  /// plain trim clamps for by hand). Deriving the duration from a DELTA
+  /// instead would decouple the two the moment a stored row end differs
+  /// from the cut duration, and then the row's last comma clamps at one
+  /// frame while the duration keeps absorbing the whole delta.
+  ({Map<CutId, int> durations, Map<CutId, int> gaps})? _cutSyncResizeFor(
+    int afterRowEnd,
+  ) {
+    final sync = _edgeDragCutSync;
+    if (sync == null) {
+      return null;
+    }
+    // Nothing moved on the row = nothing to sync (a drag that never left
+    // its frame must not snap a mismatched pair on its own).
+    if (afterRowEnd == sync.beforeRowEnd) {
+      return null;
+    }
+    final duration = math.max(1, afterRowEnd);
+    return (
+      durations: {sync.cutId: duration},
+      gaps: {
+        // The FOLLOWING cut rides the cut's end, so its gap answers to how
+        // far that end actually moved — not to how far the row's did.
+        ?sync.nextCutId: _followingGapAfterEndMove(
+          baseGap: sync.nextBeforeGap,
+          growth: duration - sync.beforeDuration,
+        ),
+      },
+    );
+  }
+
+  /// Starts the strip's trailing-edge drag on [cut]'s storyboard row: the
+  /// LAST cell's comma, with the cut's length riding it (feedback #9 — the
+  /// cut block's last edge is the ROW's edge when the row exists). Joins
+  /// the ordinary exposure comma machinery, so the strip, the timeline row
+  /// and the X-sheet are one verb.
+  bool _beginStoryboardLastCommaDrag(Cut cut, Layer row) {
+    int? lastKey;
+    for (final entry in row.timeline.entries) {
+      if (entry.value.isDrawing && !entry.value.ghost) {
+        lastKey = entry.key;
+      }
+    }
+    if (lastKey == null) {
+      return false;
+    }
+    // Every field the comma machinery reads, set from scratch. A press
+    // that never moves commits whatever _edgeDragAfter holds, so a value
+    // left by an earlier drag would land on release without the pointer
+    // ever having asked for it.
+    _edgeDragBefore = row;
+    _edgeDragEdge = TimelineBlockEdge.end;
+    _edgeDragBlockStart = lastKey;
+    _edgeDragAfter = null;
+    _edgeDragWindow = null;
+    _edgeDragBulkStartsByLayer = null;
+    _edgeDragBulkBefore = null;
+    _edgeDragBulkEdits = null;
+    _edgeDragAfterDurations = null;
+    _edgeDragAfterGaps = null;
+    _edgeDragCutSync = _cutSyncSnapshotFor(cut: cut, row: row);
+    return true;
+  }
 
   /// Starts a comma drag on [edge] of the block starting at
   /// [blockStartIndex] (as DISPLAYED — cut-local); returns false when
@@ -5688,10 +5815,18 @@ class EditorSessionManager extends ChangeNotifier {
       _edgeDragEdge = edge;
       _edgeDragBlockStart = globalStart;
       _edgeDragWindow = window;
+      _edgeDragCutSync = null;
       // SE rows join the selection bulk (UI-R18 #1) — display-local
       // starts only (the storyboard's global-keyed grips stand down).
       if (!blockStartIsGlobal) {
         _captureEdgeBulk(layerId, blockStartIndex, isDrawingBlock: true);
+        // The bulk can reach DOWN to the cut's storyboard row, and that row
+        // brings its cut's length with it wherever the drag was anchored
+        // (feedback #9). The anchor's own kind must not be what decides:
+        // an SE-anchored bulk used to retime the row and leave the cut
+        // behind, which is the "drawing outside its cut" state this round
+        // exists to make unreachable.
+        _captureEdgeDragCutSync(null);
       }
       return true;
     }
@@ -5717,7 +5852,36 @@ class EditorSessionManager extends ChangeNotifier {
     // (UI-R17 #3/#8) — every selected block on every spanned layer
     // follows the delta live, one undo step on release.
     _captureEdgeBulk(layerId, blockStartIndex, isDrawingBlock: isDrawingBlock);
+    _captureEdgeDragCutSync(layer);
     return true;
+  }
+
+  /// Snapshots the cut-length half of an exposure comma drag (feedback #9).
+  ///
+  /// A storyboard row ANYWHERE in the drag brings its cut's length along —
+  /// whether it is the row the pointer grabbed ([anchor]) or one the bulk
+  /// selection reaches. Both entry paths call this so the anchor's kind
+  /// cannot be what decides whether the pair stays synced.
+  void _captureEdgeDragCutSync(Layer? anchor) {
+    final bulkBefore = _edgeDragBulkBefore;
+    Layer? syncRow;
+    if (bulkBefore != null) {
+      for (final candidate in bulkBefore.values) {
+        if (layerKindCoversWithoutGaps(candidate.kind)) {
+          syncRow = candidate;
+          break;
+        }
+      }
+    } else if (anchor != null && layerKindCoversWithoutGaps(anchor.kind)) {
+      syncRow = anchor;
+    }
+    final activeId = activeCutId;
+    final activeCut = syncRow == null || activeId == null
+        ? null
+        : cutById(activeId);
+    _edgeDragCutSync = syncRow == null || activeCut == null
+        ? null
+        : _cutSyncSnapshotFor(cut: activeCut, row: syncRow);
   }
 
   /// Captures the bulk-retime set when the dragged edge sits inside the
@@ -5852,8 +6016,28 @@ class EditorSessionManager extends ChangeNotifier {
         }
       }
       _edgeDragBulkEdits = edits.isEmpty ? null : edits;
+      // A storyboard row in the bulk drags its cut's length along
+      // (feedback #9) — one preview, one release.
+      ({Map<CutId, int> durations, Map<CutId, int> gaps})? resize;
+      final sync = _edgeDragCutSync;
+      if (sync != null) {
+        for (final edit in edits) {
+          if (edit.after.id == sync.layerId) {
+            resize = _cutSyncResizeFor(_storedRowEndOf(edit.after));
+            break;
+          }
+        }
+      }
+      _edgeDragAfterDurations = resize?.durations;
+      _edgeDragAfterGaps = resize?.gaps;
       dragPreview.value = previews.isEmpty
           ? null
+          : resize != null
+          ? CutTrimDragPreview(
+              previewDurations: resize.durations,
+              previewGaps: resize.gaps,
+              previewLayers: previews,
+            )
           : previews.length == 1
           ? ExposureEdgeDragPreview(previewLayer: previews.values.single)
           : BlockMoveDragPreview(previewLayers: previews);
@@ -5871,6 +6055,21 @@ class EditorSessionManager extends ChangeNotifier {
     // and the idle gate's REAL-time delay would leave timers pending under
     // the fake test clock.
     _edgeDragAfter = after == before ? null : after;
+    // A storyboard row's comma moves its cut's end with it (feedback #9):
+    // the resize previews and commits WITH the row, never beside it.
+    final resize = after == before
+        ? null
+        : _cutSyncResizeFor(_storedRowEndOf(after));
+    _edgeDragAfterDurations = resize?.durations;
+    _edgeDragAfterGaps = resize?.gaps;
+    if (resize != null) {
+      dragPreview.value = CutTrimDragPreview(
+        previewDurations: resize.durations,
+        previewGaps: resize.gaps,
+        previewLayers: {after.id: after},
+      );
+      return;
+    }
     // Track-SE drags: the preview channel carries the DISPLAY form (the
     // row gates render cut-local clones) PLUS the global form for the
     // storyboard's track-global strips (UI-R7 #7); the commit uses
@@ -5885,11 +6084,17 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   /// Commits the drag as a single undo step (no-op when nothing changed):
-  /// the command's execute applies the final result to the repository.
+  /// the command's execute applies the final result to the repository —
+  /// and, for a storyboard row, the cut resize its comma implied
+  /// (feedback #9: one undo restores both or a drawing lands outside its
+  /// cut).
   void endExposureEdgeDrag() {
     final before = _edgeDragBefore;
     final after = _edgeDragAfter;
     final bulkEdits = _edgeDragBulkEdits;
+    final sync = _edgeDragCutSync;
+    final afterDurations = _edgeDragAfterDurations;
+    final afterGaps = _edgeDragAfterGaps;
     _edgeDragBefore = null;
     _edgeDragEdge = null;
     _edgeDragBlockStart = null;
@@ -5898,12 +6103,18 @@ class EditorSessionManager extends ChangeNotifier {
     _edgeDragBulkEdits = null;
     _edgeDragAfter = null;
     _edgeDragWindow = null;
+    _edgeDragCutSync = null;
+    _edgeDragAfterDurations = null;
+    _edgeDragAfterGaps = null;
     dragPreview.value = null;
     if (bulkEdits != null) {
       // The selection covers the same cels after the retime (starts kept).
-      _timelineController.commitLayerTimelineDrags(bulkEdits);
-      _warmActiveCut();
-      notifyListeners();
+      _commitEdgeDragEdits(
+        edits: bulkEdits,
+        sync: sync,
+        afterDurations: afterDurations,
+        afterGaps: afterGaps,
+      );
       return;
     }
     if (before == null) {
@@ -5913,7 +6124,55 @@ class EditorSessionManager extends ChangeNotifier {
     if (after == null || after == before) {
       return;
     }
-    _timelineController.commitLayerTimelineDrag(before: before, after: after);
+    _commitEdgeDragEdits(
+      edits: [(before: before, after: after)],
+      sync: sync,
+      afterDurations: afterDurations,
+      afterGaps: afterGaps,
+    );
+  }
+
+  /// One release, one undo step: the layer edits, plus the synced cut
+  /// resize when a storyboard row's end moved.
+  void _commitEdgeDragEdits({
+    required List<({Layer before, Layer after})> edits,
+    required ({
+      CutId cutId,
+      LayerId layerId,
+      int beforeDuration,
+      int beforeRowEnd,
+      CutId? nextCutId,
+      int nextBeforeGap,
+    })?
+    sync,
+    required Map<CutId, int>? afterDurations,
+    required Map<CutId, int>? afterGaps,
+  }) {
+    if (sync == null || afterDurations == null || afterGaps == null) {
+      _timelineController.commitLayerTimelineDrags(edits);
+      _warmActiveCut();
+      notifyListeners();
+      return;
+    }
+    final beforeDurations = <CutId, int>{sync.cutId: sync.beforeDuration};
+    final fades = _cutFadeRewritesFor(
+      beforeDurations: beforeDurations,
+      afterDurations: afterDurations,
+    );
+    _timelineController.commitLayerTimelineDragsWithCutDurations(
+      edits: edits,
+      beforeDurations: beforeDurations,
+      afterDurations: afterDurations,
+      beforeGaps: {
+        if (sync.nextCutId != null && afterGaps.containsKey(sync.nextCutId))
+          sync.nextCutId!: sync.nextBeforeGap,
+      },
+      afterGaps: afterGaps,
+      beforeTransforms: fades.before,
+      afterTransforms: fades.after,
+      description: 'Retime storyboard cells',
+    );
+    _refreshAfterCutCommand();
     _warmActiveCut();
     notifyListeners();
   }
@@ -5922,6 +6181,8 @@ class EditorSessionManager extends ChangeNotifier {
 
   Map<CutId, int>? _cutTrimBeforeDurations;
   Map<CutId, int>? _cutTrimBeforeGaps;
+  Map<CutId, int>? _cutTrimAfterDurations;
+  Map<CutId, int>? _cutTrimAfterGaps;
   CutId? _cutTrimCutId;
   CutId? _cutTrimNextCutId;
   TimelineBlockEdge? _cutTrimEdge;
@@ -5931,12 +6192,110 @@ class EditorSessionManager extends ChangeNotifier {
   List<CutId>? _cutTrimOrder;
   int? _cutTrimIndex;
 
-  /// Starts a storyboard edge drag on [cutId]'s [edge]. The END edge trims
-  /// the duration (growth eats the following gap first); the START edge
-  /// TRIMS from the front (R12-B, timeline start-comma parity): the end
-  /// stays put, the length changes, and the start's movement adjusts the
-  /// leading gaps. Any cut's start may trim, the first one included.
+  /// Which verb the in-flight cut-edge drag belongs to. One shape of edge,
+  /// and where it sits decides what it re-times — the answer is taken at
+  /// BEGIN and kept HERE, in the session the continuations already reach,
+  /// so a host rebuild mid-drag cannot re-route the release onto a verb
+  /// whose fields were never set (the failure that sank the first #5
+  /// attempt).
+  _CutEdgeDragVerb? _cutEdgeDragVerb;
+
+  /// Starts a cut edge drag on [cutId]'s [edge], choosing the verb by what
+  /// the edge sits on (feedback #5/#9: when the cut has a storyboard row,
+  /// its edges are the ROW's edges):
+  ///
+  /// - a storyboard row's leading edge re-times the cut's LEAD — the first
+  ///   cell's comma changes, the later cells and the following cuts come
+  ///   along, and the cut start stays put (NOT a start trim);
+  /// - its trailing edge is the LAST cell's comma, and the cut's length
+  ///   follows it (the always-synced pair);
+  /// - a cut with no row keeps the plain trims: the END edge trims the
+  ///   duration (growth eats the following gap first); the START edge
+  ///   TRIMS from the front (R12-B, timeline start-comma parity).
+  ///
+  /// The continuations ([updateCutEdgeDrag], [endCutEdgeDrag],
+  /// [cancelCutEdgeDrag]) follow whichever verb began — they carry a delta
+  /// and nothing else.
   bool beginCutEdgeDrag({
+    required CutId cutId,
+    required TimelineBlockEdge edge,
+  }) {
+    final cut = cutById(cutId);
+    final row = cut == null ? null : storyboardLayerForCut(cut);
+    if (cut != null && row != null) {
+      if (edge == TimelineBlockEdge.start &&
+          _beginStoryboardLeadDrag(cut, row)) {
+        _cutEdgeDragVerb = _CutEdgeDragVerb.leadRetime;
+        return true;
+      }
+      if (edge == TimelineBlockEdge.end &&
+          _beginStoryboardLastCommaDrag(cut, row)) {
+        _cutEdgeDragVerb = _CutEdgeDragVerb.lastComma;
+        return true;
+      }
+    }
+    if (_beginCutTrimDrag(cutId: cutId, edge: edge)) {
+      _cutEdgeDragVerb = _CutEdgeDragVerb.cutTrim;
+      return true;
+    }
+    _cutEdgeDragVerb = null;
+    return false;
+  }
+
+  /// Applies the drag's cumulative frame delta to whichever verb
+  /// [beginCutEdgeDrag] (or [beginStoryboardDivisionDrag]) chose.
+  void updateCutEdgeDrag(int cumulativeDelta) {
+    switch (_cutEdgeDragVerb) {
+      case null:
+        return;
+      case _CutEdgeDragVerb.cutTrim:
+        _updateCutTrimDrag(cumulativeDelta);
+      case _CutEdgeDragVerb.leadRetime:
+        _updateStoryboardLeadDrag(cumulativeDelta);
+      case _CutEdgeDragVerb.lastComma:
+        updateExposureEdgeDrag(cumulativeDelta);
+      case _CutEdgeDragVerb.division:
+        updateStoryboardDivisionDrag(cumulativeDelta);
+    }
+  }
+
+  /// Commits whichever verb began, as a single undo step.
+  void endCutEdgeDrag() {
+    final verb = _cutEdgeDragVerb;
+    _cutEdgeDragVerb = null;
+    switch (verb) {
+      case null:
+        return;
+      case _CutEdgeDragVerb.cutTrim:
+        _endCutTrimDrag();
+      case _CutEdgeDragVerb.leadRetime:
+        _endStoryboardLeadDrag();
+      case _CutEdgeDragVerb.lastComma:
+        endExposureEdgeDrag();
+      case _CutEdgeDragVerb.division:
+        endStoryboardDivisionDrag();
+    }
+  }
+
+  /// Drops whichever verb began without touching history.
+  void cancelCutEdgeDrag() {
+    final verb = _cutEdgeDragVerb;
+    _cutEdgeDragVerb = null;
+    switch (verb) {
+      case null:
+        return;
+      case _CutEdgeDragVerb.cutTrim:
+        _cancelCutTrimDrag();
+      case _CutEdgeDragVerb.leadRetime:
+        _cancelStoryboardLeadDrag();
+      case _CutEdgeDragVerb.lastComma:
+        cancelExposureEdgeDrag();
+      case _CutEdgeDragVerb.division:
+        cancelStoryboardDivisionDrag();
+    }
+  }
+
+  bool _beginCutTrimDrag({
     required CutId cutId,
     required TimelineBlockEdge edge,
   }) {
@@ -5986,6 +6345,11 @@ class EditorSessionManager extends ChangeNotifier {
     _cutTrimCutId = cutId;
     _cutTrimNextCutId = next?.cutId;
     _cutTrimEdge = edge;
+    // The release commits from these, so a new drag must not inherit the
+    // previous one's result: a press that never moves would otherwise land
+    // an edit the pointer never asked for.
+    _cutTrimAfterDurations = null;
+    _cutTrimAfterGaps = null;
     return true;
   }
 
@@ -6001,7 +6365,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// the LENGTH changes; leftward growth consumes its own gap then pushes
   /// the predecessors (cascade, frame-0 clamp), rightward shrink opens
   /// its gap (length clamps at 1).
-  void updateCutEdgeDrag(int cumulativeDelta) {
+  void _updateCutTrimDrag(int cumulativeDelta) {
     final beforeDurations = _cutTrimBeforeDurations;
     final beforeGaps = _cutTrimBeforeGaps;
     final cutId = _cutTrimCutId;
@@ -6031,14 +6395,10 @@ class EditorSessionManager extends ChangeNotifier {
       durations[cutId] = newDuration;
       final nextId = _cutTrimNextCutId;
       if (nextId != null) {
-        final growth = newDuration - beforeDurations[cutId]!;
-        final baseGap = beforeGaps[nextId]!;
-        // Growth: consume the gap, then push. Shrink: an attached next
-        // cut (gap 0 at drag start) ripples with the boundary; a DETACHED
-        // one holds its global position — the gap absorbs the shrink.
-        gaps[nextId] = growth > 0
-            ? math.max(0, baseGap - growth)
-            : (baseGap > 0 ? baseGap - growth : 0);
+        gaps[nextId] = _followingGapAfterEndMove(
+          baseGap: beforeGaps[nextId]!,
+          growth: newDuration - beforeDurations[cutId]!,
+        );
       }
     } else {
       // START edge = a TRIM (R12-B, timeline start-comma parity): the
@@ -6072,6 +6432,11 @@ class EditorSessionManager extends ChangeNotifier {
     final changed =
         durations[cutId] != beforeDurations[cutId] ||
         gaps.entries.any((entry) => beforeGaps[entry.key] != entry.value);
+    // The release commits from THESE, never from the preview channel: a
+    // consumer clearing [dragPreview] mid-drag must not be able to void
+    // the commit.
+    _cutTrimAfterDurations = changed ? durations : null;
+    _cutTrimAfterGaps = changed ? gaps : null;
     dragPreview.value = changed
         ? CutTrimDragPreview(previewDurations: durations, previewGaps: gaps)
         : null;
@@ -6084,47 +6449,45 @@ class EditorSessionManager extends ChangeNotifier {
   /// the cut's end. Hand-keyed opacity lanes are left untouched (the
   /// "Opacity lane = fade envelope" invariant only owns the canonical
   /// shape).
-  void endCutEdgeDrag() {
+  void _endCutTrimDrag() {
     final beforeDurations = _cutTrimBeforeDurations;
     final beforeGaps = _cutTrimBeforeGaps;
-    final preview = dragPreview.value;
-    _cutTrimBeforeDurations = null;
-    _cutTrimBeforeGaps = null;
-    _cutTrimCutId = null;
-    _cutTrimNextCutId = null;
-    _cutTrimEdge = null;
-    _cutTrimOrder = null;
-    _cutTrimIndex = null;
-    dragPreview.value = null;
-    if (beforeDurations == null || beforeGaps == null) {
+    final afterDurations = _cutTrimAfterDurations;
+    final afterGaps = _cutTrimAfterGaps;
+    _cancelCutTrimDrag();
+    if (beforeDurations == null ||
+        beforeGaps == null ||
+        afterDurations == null ||
+        afterGaps == null) {
       return;
     }
 
-    final previewDurations = preview is CutTrimDragPreview
-        ? preview.previewDurations
-        : const <CutId, int>{};
-    final previewGaps = preview is CutTrimDragPreview
-        ? preview.previewGaps
-        : const <CutId, int>{};
-    final afterDurations = {
-      for (final id in beforeDurations.keys)
-        id: previewDurations[id] ?? beforeDurations[id]!,
-    };
-    final afterGaps = {
-      for (final id in beforeGaps.keys) id: previewGaps[id] ?? beforeGaps[id]!,
-    };
-    final changed =
-        afterDurations.entries.any(
-          (entry) => beforeDurations[entry.key] != entry.value,
-        ) ||
-        afterGaps.entries.any((entry) => beforeGaps[entry.key] != entry.value);
-    if (!changed) {
-      return;
-    }
+    final fades = _cutFadeRewritesFor(
+      beforeDurations: beforeDurations,
+      afterDurations: afterDurations,
+    );
+    _cutCommandCoordinator.commitCutDurationDrag(
+      beforeDurations: {
+        for (final id in afterDurations.keys) id: beforeDurations[id]!,
+      },
+      afterDurations: afterDurations,
+      beforeGaps: {for (final id in afterGaps.keys) id: beforeGaps[id]!},
+      afterGaps: afterGaps,
+      beforeTransforms: fades.before,
+      afterTransforms: fades.after,
+    );
+    _refreshAfterCutCommand();
+    notifyListeners();
+  }
 
-    // Fade durability: re-anchor each resized cut's canonical fade to its
-    // new duration. cutFadeLengths returns (0, 0) for unkeyed AND for
-    // hand-keyed (non-canonical) lanes — both stay untouched.
+  /// Fade durability (W4): re-anchor each resized cut's canonical fade to
+  /// its new duration. cutFadeLengths returns (0, 0) for unkeyed AND for
+  /// hand-keyed (non-canonical) lanes — both stay untouched.
+  ({Map<CutId, TransformTrack> before, Map<CutId, TransformTrack> after})
+  _cutFadeRewritesFor({
+    required Map<CutId, int> beforeDurations,
+    required Map<CutId, int> afterDurations,
+  }) {
     final beforeTransforms = <CutId, TransformTrack>{};
     final afterTransforms = <CutId, TransformTrack>{};
     for (final entry in afterDurations.entries) {
@@ -6150,24 +6513,25 @@ class EditorSessionManager extends ChangeNotifier {
       beforeTransforms[entry.key] = cut.transformTrack;
       afterTransforms[entry.key] = rebuilt;
     }
-
-    _cutCommandCoordinator.commitCutDurationDrag(
-      beforeDurations: beforeDurations,
-      afterDurations: afterDurations,
-      beforeGaps: beforeGaps,
-      afterGaps: afterGaps,
-      beforeTransforms: beforeTransforms,
-      afterTransforms: afterTransforms,
-    );
-    _refreshAfterCutCommand();
-    notifyListeners();
+    return (before: beforeTransforms, after: afterTransforms);
   }
+
+  /// The END-boundary gap rule every verb that moves a cut's end shares.
+  /// Growth: consume the following cut's gap, then push. Shrink: an
+  /// ATTACHED next cut (gap 0 at drag start) rides the boundary; a
+  /// DETACHED one holds its global position — the gap absorbs the shrink.
+  int _followingGapAfterEndMove({required int baseGap, required int growth}) =>
+      growth > 0
+      ? math.max(0, baseGap - growth)
+      : (baseGap > 0 ? baseGap - growth : 0);
 
   /// Drops an in-flight trim preview without touching history (the
   /// repository was never written during the drag).
-  void cancelCutEdgeDrag() {
+  void _cancelCutTrimDrag() {
     _cutTrimBeforeDurations = null;
     _cutTrimBeforeGaps = null;
+    _cutTrimAfterDurations = null;
+    _cutTrimAfterGaps = null;
     _cutTrimCutId = null;
     _cutTrimNextCutId = null;
     _cutTrimEdge = null;
@@ -6176,6 +6540,153 @@ class EditorSessionManager extends ChangeNotifier {
     dragPreview.value = null;
   }
 
+  // --- Storyboard lead re-time drags (feedback #5) --------------------------
+  //
+  // The first panel's leading edge. NOT a cut start trim: the cut's start
+  // stays put, the FIRST cell's comma changes, every later division comes
+  // along keeping its own comma, and the cut's duration follows — which is
+  // what keeps the last cell ending at the cut's end and the following
+  // cuts attached. Equivalent to an END trim of -d plus a -d shift of
+  // every division key, committed as ONE undo step.
+
+  Layer? _leadDragBefore;
+  CutId? _leadDragCutId;
+  int? _leadDragBeforeDuration;
+  CutId? _leadDragNextCutId;
+  int? _leadDragNextBeforeGap;
+  Layer? _leadDragAfter;
+  Map<CutId, int>? _leadDragAfterDurations;
+  Map<CutId, int>? _leadDragAfterGaps;
+
+  bool _beginStoryboardLeadDrag(Cut cut, Layer row) {
+    if (storyboardLeadRetimeMaxShrink(
+          timeline: row.timeline,
+          cutDuration: cut.duration,
+        ) ==
+        null) {
+      return false;
+    }
+    final next = _nextCutInTrack(cut.id);
+    _leadDragBefore = row;
+    _leadDragCutId = cut.id;
+    _leadDragBeforeDuration = cut.duration;
+    _leadDragNextCutId = next?.id;
+    _leadDragNextBeforeGap = next?.leadingGapFrames;
+    _leadDragAfter = null;
+    _leadDragAfterDurations = null;
+    _leadDragAfterGaps = null;
+    return true;
+  }
+
+  void _updateStoryboardLeadDrag(int cumulativeDelta) {
+    final before = _leadDragBefore;
+    final cutId = _leadDragCutId;
+    final beforeDuration = _leadDragBeforeDuration;
+    if (before == null || cutId == null || beforeDuration == null) {
+      return;
+    }
+    final moved = storyboardTimelineWithLeadRetimed(
+      timeline: before.timeline,
+      cutDuration: beforeDuration,
+      delta: cumulativeDelta,
+    );
+    if (moved == null) {
+      _leadDragAfter = null;
+      _leadDragAfterDurations = null;
+      _leadDragAfterGaps = null;
+      dragPreview.value = null;
+      return;
+    }
+    final after = before.copyWith(timeline: moved);
+    // The duration rides the row: the last cell's END must stay the cut's
+    // end, so the cut shrinks (or grows) by exactly what the lead did.
+    final maxShrink = storyboardLeadRetimeMaxShrink(
+      timeline: before.timeline,
+      cutDuration: beforeDuration,
+    )!;
+    final applied = cumulativeDelta > maxShrink ? maxShrink : cumulativeDelta;
+    final durations = <CutId, int>{cutId: beforeDuration - applied};
+    final gaps = <CutId, int>{
+      ?_leadDragNextCutId: _followingGapAfterEndMove(
+        baseGap: _leadDragNextBeforeGap ?? 0,
+        growth: -applied,
+      ),
+    };
+    _leadDragAfter = after;
+    _leadDragAfterDurations = durations;
+    _leadDragAfterGaps = gaps;
+    dragPreview.value = CutTrimDragPreview(
+      previewDurations: durations,
+      previewGaps: gaps,
+      previewLayers: {after.id: after},
+    );
+  }
+
+  void _endStoryboardLeadDrag() {
+    final before = _leadDragBefore;
+    final after = _leadDragAfter;
+    final beforeDuration = _leadDragBeforeDuration;
+    final cutId = _leadDragCutId;
+    final nextId = _leadDragNextCutId;
+    final nextBeforeGap = _leadDragNextBeforeGap;
+    final afterDurations = _leadDragAfterDurations;
+    final afterGaps = _leadDragAfterGaps;
+    _cancelStoryboardLeadDrag();
+    if (before == null ||
+        after == null ||
+        cutId == null ||
+        beforeDuration == null ||
+        afterDurations == null ||
+        afterGaps == null) {
+      return;
+    }
+    final beforeDurations = <CutId, int>{cutId: beforeDuration};
+    final fades = _cutFadeRewritesFor(
+      beforeDurations: beforeDurations,
+      afterDurations: afterDurations,
+    );
+    _timelineController.commitLayerTimelineDragsWithCutDurations(
+      edits: [(before: before, after: after)],
+      beforeDurations: beforeDurations,
+      afterDurations: afterDurations,
+      beforeGaps: {
+        if (nextId != null && afterGaps.containsKey(nextId))
+          nextId: nextBeforeGap!,
+      },
+      afterGaps: afterGaps,
+      beforeTransforms: fades.before,
+      afterTransforms: fades.after,
+      description: 'Retime cut lead',
+    );
+    _refreshAfterCutCommand();
+    _warmActiveCut();
+    notifyListeners();
+  }
+
+  void _cancelStoryboardLeadDrag() {
+    _leadDragBefore = null;
+    _leadDragCutId = null;
+    _leadDragBeforeDuration = null;
+    _leadDragNextCutId = null;
+    _leadDragNextBeforeGap = null;
+    _leadDragAfter = null;
+    _leadDragAfterDurations = null;
+    _leadDragAfterGaps = null;
+    dragPreview.value = null;
+  }
+
+  /// The cut after [cutId] on its own track, or null at the track's end.
+  Cut? _nextCutInTrack(CutId cutId) {
+    for (final track in _repository.requireProject().tracks) {
+      final cuts = track.cuts;
+      for (var index = 0; index < cuts.length; index += 1) {
+        if (cuts[index].id == cutId) {
+          return index + 1 < cuts.length ? cuts[index + 1] : null;
+        }
+      }
+    }
+    return null;
+  }
 
   // --- Storyboard division drags -------------------------------------------
 
@@ -6202,6 +6713,7 @@ class EditorSessionManager extends ChangeNotifier {
   }) {
     final cut = cutById(cutId);
     if (cut == null) {
+      _cutEdgeDragVerb = null;
       return false;
     }
     final layer = storyboardLayerForCut(cut);
@@ -6212,12 +6724,17 @@ class EditorSessionManager extends ChangeNotifier {
               divisionIndex: divisionIndex,
             ) ==
             null) {
+      _cutEdgeDragVerb = null;
       return false;
     }
     _divisionDragBefore = layer;
     _divisionDragKey = divisionIndex;
     _divisionDragCutDuration = cut.duration;
     _divisionDragAfter = null;
+    // Joins the cut-edge continuations ([updateCutEdgeDrag] and friends):
+    // the strip's grips share one set of hooks, and which verb a drag
+    // belongs to is the session's to remember, not the host's.
+    _cutEdgeDragVerb = _CutEdgeDragVerb.division;
     return true;
   }
 
@@ -6700,6 +7217,9 @@ class EditorSessionManager extends ChangeNotifier {
     _edgeDragBulkEdits = null;
     _edgeDragAfter = null;
     _edgeDragWindow = null;
+    _edgeDragCutSync = null;
+    _edgeDragAfterDurations = null;
+    _edgeDragAfterGaps = null;
     dragPreview.value = null;
   }
 
@@ -10491,4 +11011,24 @@ class _CopiedFrameReference {
   final LayerId layerId;
   final FrameId frameId;
   final String? frameName;
+}
+
+/// Which verb an in-flight cut-edge drag belongs to (feedback #5/#9). One
+/// shape of edge, and where it sat when the drag began decides what it
+/// re-times; the session keeps the answer so the continuations cannot be
+/// re-routed by anything a live preview rebuilds.
+enum _CutEdgeDragVerb {
+  /// A cut with no storyboard row: the plain duration/gap trims.
+  cutTrim,
+
+  /// The first panel's leading edge: the cut's LEAD re-times (the first
+  /// cell's comma, the cut start pinned).
+  leadRetime,
+
+  /// The last panel's trailing edge: the LAST cell's comma, the cut's
+  /// length riding it.
+  lastComma,
+
+  /// An edge between two panels: a division moves.
+  division,
 }

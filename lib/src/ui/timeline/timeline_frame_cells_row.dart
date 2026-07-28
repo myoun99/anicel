@@ -178,9 +178,14 @@ class TimelineFrameCellsRow extends StatelessWidget {
                 ? timelineLayerGripBlocks(
                     layer,
                     // The spill-in block's `~` replaces its start grip
-                    // (UI-R7 #6).
+                    // (UI-R7 #6). A storyboard row's first block has no
+                    // start grip either (feedback #10): its leading edge
+                    // IS the cut's start, and the cut-internal timeline
+                    // has no cut-start axis to move it on — that edge
+                    // lives on the storyboard strip.
                     suppressStartGripAtZero:
-                        seSpillsIn && layerKindUsesSeSheetCells(layer.kind),
+                        (seSpillsIn && layerKindUsesSeSheetCells(layer.kind)) ||
+                        layerKindCoversWithoutGaps(layer.kind),
                   )
                 : const [],
             gripIdScope: layer.id.value,
