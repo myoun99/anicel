@@ -112,7 +112,7 @@ void main() {
         manager.activeTrack.seLayers.first.audioClips.single.filePath;
     expect(shelfPath, startsWith('$shelf/'));
 
-    await manager.saveProjectToFile('${directory.path}/scene.qap');
+    await manager.saveProjectToFile('${directory.path}/scene.anicel');
 
     final adopted =
         manager.activeTrack.seLayers.first.audioClips.single.filePath;
@@ -155,12 +155,12 @@ void main() {
         manager.activeTrack.seLayers.first.audioClips.single.filePath;
     manager.undo();
 
-    await manager.saveProjectToFile('${directory.path}/scene.qap');
+    await manager.saveProjectToFile('${directory.path}/scene.anicel');
 
     expect(File(shelfPath).existsSync(), isTrue,
         reason: 'a discarded take is still findable on the shelf');
     final media = Directory(
-      ProjectAssetLayout('${directory.path}/scene.qap').mediaDirectory,
+      ProjectAssetLayout('${directory.path}/scene.anicel').mediaDirectory,
     );
     expect(
       !media.existsSync() || media.listSync().isEmpty,

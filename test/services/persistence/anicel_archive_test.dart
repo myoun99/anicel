@@ -17,7 +17,7 @@ import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
-import 'package:anicel/src/services/persistence/qap_project_archive.dart';
+import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 
 void main() {
   const key = BrushFrameKey(
@@ -53,13 +53,13 @@ void main() {
       },
     );
 
-    final blob = QapCelBlob.encode(QapCelEntry.fromSurface(key, surface));
-    final bytes = buildQapArchiveBytes(
+    final blob = AnicelCelBlob.encode(AnicelCelEntry.fromSurface(key, surface));
+    final bytes = buildAnicelArchiveBytes(
       project: project,
       cels: [blob],
       saveDirectory: r'D:\work\proj',
     );
-    final contents = parseQapArchiveBytes(bytes);
+    final contents = parseAnicelArchiveBytes(bytes);
 
     expect(contents.project, project);
     expect(contents.cels, hasLength(1));
@@ -114,8 +114,8 @@ void main() {
       },
     );
 
-    final blob = QapCelBlob.encode(QapCelEntry.fromSurface(key, surface));
-    final reopened = QapCelBlob(blob.bytes).decode().toSurface();
+    final blob = AnicelCelBlob.encode(AnicelCelEntry.fromSurface(key, surface));
+    final reopened = AnicelCelBlob(blob.bytes).decode().toSurface();
     expect(
       reopened.tiles[TileCoord(x: -1, y: -2)]!.pixels,
       pixels,
@@ -140,7 +140,7 @@ void main() {
       ..add(ArchiveFile.bytes('drawings/0.bin', Uint8List.fromList([2, 0, 0])));
     final v1Bytes = ZipEncoder().encodeBytes(archive);
 
-    final contents = parseQapArchiveBytes(Uint8List.fromList(v1Bytes));
+    final contents = parseAnicelArchiveBytes(Uint8List.fromList(v1Bytes));
     expect(contents.project, isNotNull);
     expect(contents.cels, isEmpty);
   });
@@ -171,14 +171,14 @@ void main() {
   });
 
   test('a newer formatVersion refuses to load with a clear error', () {
-    final bytes = buildQapArchiveBytes(
+    final bytes = buildAnicelArchiveBytes(
       project: createDefaultProject(),
       cels: const [],
     );
-    expect(parseQapArchiveBytes(bytes).project, isNotNull);
+    expect(parseAnicelArchiveBytes(bytes).project, isNotNull);
 
     expect(
-      () => parseQapArchiveBytes(Uint8List.fromList([1, 2, 3])),
+      () => parseAnicelArchiveBytes(Uint8List.fromList([1, 2, 3])),
       throwsA(anything),
     );
   });

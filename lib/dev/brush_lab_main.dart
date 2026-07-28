@@ -22,6 +22,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
 import '../src/models/brush_tip_mask.dart';
+import '../src/services/persistence/anicel_project_archive.dart';
 import '../src/models/canvas_resize_anchor.dart';
 import '../src/models/canvas_size.dart';
 import '../src/native/qa_native_engine.dart';
@@ -636,12 +637,12 @@ class _BrushLabDriverState extends State<_BrushLabDriver> {
 
     // Variant B (R27): SAVED project + zero hot budget — the cel
     // free-drops to its FILE ref on the way out and rematerializes
-    // from the .qap on return (the R22-C tier the user's session
+    // from the .anicel on return (the R22-C tier the user's session
     // likely exercised via autosave).
     try {
       final savePath =
           '${Directory.systemTemp.path}/r27_repro_'
-          '${DateTime.now().microsecondsSinceEpoch}.qap';
+          '${DateTime.now().microsecondsSinceEpoch}$anicelProjectSuffix';
       await session.saveProjectToFile(savePath);
       session.brushFrameStore.hotCelByteBudget = 0;
       _log('fill-roundtrip B: saved + hot budget 0');

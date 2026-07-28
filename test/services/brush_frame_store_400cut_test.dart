@@ -15,7 +15,7 @@ import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
-import 'package:anicel/src/services/persistence/qap_file_service.dart';
+import 'package:anicel/src/services/persistence/anicel_file_service.dart';
 
 /// R22-C verdict lab (400-cut scenario): a TV-scale project — 400 HD
 /// cels — must full-save fast, open at archive speed (zero pixel decode,
@@ -71,9 +71,9 @@ void main() {
       }
 
       final encodeWatch = Stopwatch()..start();
-      final blobs = <BrushFrameKey, QapCelBlob>{
+      final blobs = <BrushFrameKey, AnicelCelBlob>{
         for (var i = 0; i < cels; i += 1)
-          key(i): QapCelBlob.encode(QapCelEntry.fromSurface(key(i), inked(i))),
+          key(i): AnicelCelBlob.encode(AnicelCelEntry.fromSurface(key(i), inked(i))),
       };
       encodeWatch.stop();
       var blobBytes = 0;
@@ -90,12 +90,12 @@ void main() {
       expect(store.hotBakedBytes, 0, reason: 'no pixel decode on landing');
 
       // FULL SAVE: cold blobs pass through byte-identically; afterwards
-      // every cel is FILE-BACKED (the .qap is the disk tier) and the RAM
+      // every cel is FILE-BACKED (the .anicel is the disk tier) and the RAM
       // blobs are gone.
-      final path = '${directory.path}/tv400.qap';
+      final path = '${directory.path}/tv400.anicel';
       final project = createDefaultProject();
       final saveWatch = Stopwatch()..start();
-      await const QapFileService().save(
+      await const AnicelFileService().save(
         project: project,
         brushFrameStore: store,
         filePath: path,
@@ -110,7 +110,7 @@ void main() {
       store.storeBakedSurface(key(3), inked(9999));
       expect(store.dirtyCelKeysSinceSave.length, 1);
       final incrementalWatch = Stopwatch()..start();
-      await const QapFileService().save(
+      await const AnicelFileService().save(
         project: project,
         brushFrameStore: store,
         filePath: path,
@@ -129,7 +129,7 @@ void main() {
       // OPEN: central-directory walk + per-cel header reads — cels come
       // back file-backed, still zero pixel decode.
       final openWatch = Stopwatch()..start();
-      final result = await const QapFileService().open(filePath: path);
+      final result = await const AnicelFileService().open(filePath: path);
       openWatch.stop();
       expect(result.cels.length, cels);
 

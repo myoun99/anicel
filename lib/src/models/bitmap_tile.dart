@@ -23,7 +23,7 @@ import 'tile_coord.dart';
 /// With the engine loaded, buffers come from the C free-list allocator
 /// (R20-E1) and the finalizer parks them for reuse — tile churn (decode,
 /// commit adoption, undo drops) recycles instead of malloc/freeing.
-/// NOTE — Finalizable objects cannot cross isolates: the .qap save/open
+/// NOTE — Finalizable objects cannot cross isolates: the .anicel save/open
 /// paths snapshot tiles to plain byte records at the isolate boundary.
 class BitmapTile implements Finalizable {
   factory BitmapTile({

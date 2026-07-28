@@ -35,7 +35,7 @@ void main() {
   late Directory directory;
 
   setUp(() async {
-    directory = await Directory.systemTemp.createTemp('qap-open-composite');
+    directory = await Directory.systemTemp.createTemp('anicel-open-composite');
   });
 
   tearDown(() => directory.delete(recursive: true));
@@ -77,7 +77,7 @@ void main() {
         ),
       ],
     );
-    final path = '${directory.path}/scene.qap';
+    final path = '${directory.path}/scene.anicel';
     await s.saveProjectToFile(path);
     await s.openProjectFromFile(path);
     // Sanity: the open restored the baked raster truth.
@@ -167,7 +167,7 @@ void main() {
     // R20-A1: opens land cels COLD (encoded blobs) — the rebuild path
     // must materialize and serve the same pixels.
     store.restoreBaked({
-      key: QapCelBlob.encode(QapCelEntry.fromSurface(key, baked)),
+      key: AnicelCelBlob.encode(AnicelCelEntry.fromSurface(key, baked)),
     });
     // The cache seeds on first materialization; drop it to simulate any
     // invalidation and force the service down its rebuild path.

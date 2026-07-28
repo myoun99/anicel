@@ -23,7 +23,7 @@ import 'brush_tip_mask_sampling.dart';
 ///  - live == commit parity holds by construction: dabs resolve ONCE at
 ///    generation (the same place stroke dynamics run), and the resolved
 ///    dab is what the overlay rasterizer, the commit materializer, undo
-///    replay and the .qap all see.
+///    replay and the .anicel all see.
 ///
 /// Quantization (user-approved: stroke bytes may change vs the old
 /// direct-analytic path): size 1/4 px steps up to 64 px then ~1.1%

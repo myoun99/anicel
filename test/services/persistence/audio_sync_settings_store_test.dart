@@ -69,7 +69,7 @@ void main() {
 
   test('the default path sits beside the other app settings', () {
     // The offset describes the RIG, not the film — it belongs with the
-    // language and input settings, never in the .qap.
+    // language and input settings, never in the .anicel.
     final defaultPath = AudioSyncSettingsStore.defaultFilePath();
     expect(defaultPath, contains('anicel'));
     expect(defaultPath, endsWith('audio_sync_settings.json'));

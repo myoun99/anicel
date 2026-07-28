@@ -14,8 +14,8 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
-import 'package:anicel/src/services/persistence/qap_incremental_writer.dart';
-import 'package:anicel/src/services/persistence/qap_project_archive.dart';
+import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
+import 'package:anicel/src/services/persistence/anicel_project_archive.dart';
 
 /// R22-C incremental appender: appended entries shadow same-named ones,
 /// the standard reader sees only the latest state, and cel data offsets
@@ -24,7 +24,7 @@ void main() {
   late Directory directory;
 
   setUp(() async {
-    directory = await Directory.systemTemp.createTemp('qap-incr');
+    directory = await Directory.systemTemp.createTemp('anicel-incr');
   });
 
   tearDown(() => directory.delete(recursive: true));
@@ -37,13 +37,13 @@ void main() {
     frameId: FrameId(frame),
   );
 
-  QapCelBlob blob(String frame, int seed) {
+  AnicelCelBlob blob(String frame, int seed) {
     final pixels = Uint8List(4 * 4 * 4);
     for (var i = 0; i < pixels.length; i += 1) {
       pixels[i] = (i * seed + 3) & 0xFF;
     }
-    return QapCelBlob.encode(
-      QapCelEntry.fromSurface(
+    return AnicelCelBlob.encode(
+      AnicelCelEntry.fromSurface(
         key(frame),
         BitmapSurface(
           canvasSize: const CanvasSize(width: 4, height: 4),
@@ -62,22 +62,22 @@ void main() {
 
   test('append adds cels, shadows project.json, and the standard reader '
       'sees only the LATEST state; offsets read back byte-exactly', () {
-    final path = '${directory.path}/incr.qap';
+    final path = '${directory.path}/incr.anicel';
     final first = blob('f1', 1);
     File(path).writeAsBytesSync(
-      buildQapArchiveBytes(project: createDefaultProject(), cels: [first]),
+      buildAnicelArchiveBytes(project: createDefaultProject(), cels: [first]),
     );
 
     // Incremental save: one new cel + a superseding project.json.
     final second = blob('f2', 9);
-    final layout = appendQapEntries(
+    final layout = appendAnicelEntries(
       path: path,
       newEntries: {
         'cels/1.celz': second.bytes,
         'project.json': Uint8List.fromList(
           File(path).readAsBytesSync().isEmpty
               ? <int>[]
-              : '{"formatVersion": $qapFormatVersion, '
+              : '{"formatVersion": $anicelFormatVersion, '
                         '"project": ${'null'}}'
                     .codeUnits,
         ),
@@ -92,7 +92,7 @@ void main() {
     // Round 2 append: replace cel 1's content under a NEW name and shadow
     // the old name outright.
     final third = blob('f1', 5);
-    final layout2 = appendQapEntries(
+    final layout2 = appendAnicelEntries(
       path: path,
       newEntries: {'cels/0.celz': third.bytes},
     );
@@ -124,19 +124,19 @@ void main() {
       reason: 'the shadowing entry is the one the offsets point at',
     );
 
-    // parseQapZipLayout round trip on the appended file.
-    final reparsed = parseQapZipLayout(Uint8List.fromList(bytes));
+    // parseAnicelZipLayout round trip on the appended file.
+    final reparsed = parseAnicelZipLayout(Uint8List.fromList(bytes));
     expect(reparsed.entries.length, layout2.entries.length);
   });
 
   test('a file produced ONLY by full saves parses with the incremental '
       'layout reader (STORE entries, data offsets exact)', () {
-    final path = '${directory.path}/full.qap';
+    final path = '${directory.path}/full.anicel';
     final cel = blob('f1', 7);
     File(path).writeAsBytesSync(
-      buildQapArchiveBytes(project: createDefaultProject(), cels: [cel]),
+      buildAnicelArchiveBytes(project: createDefaultProject(), cels: [cel]),
     );
-    final layout = parseQapZipLayout(
+    final layout = parseAnicelZipLayout(
       Uint8List.fromList(File(path).readAsBytesSync()),
     );
     final entry = layout.entries.singleWhere(

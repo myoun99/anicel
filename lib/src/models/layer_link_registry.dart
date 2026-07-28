@@ -52,7 +52,7 @@ class LayerLinkMember {
 /// One link group: layers that share ONE cel bank ("the picture exists
 /// once; the members are windows onto it"). The FIRST member is the
 /// CANONICAL one — its (cut, layer) address keys the physical cels in the
-/// brush frame store and the .qap archive; every other member's cel reads
+/// brush frame store and the .anicel archive; every other member's cel reads
 /// and writes resolve to it.
 class LayerLinkGroup {
   LayerLinkGroup({required this.id, required List<LayerLinkMember> members})

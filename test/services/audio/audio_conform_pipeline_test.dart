@@ -81,7 +81,7 @@ void main() {
 
   group('layout', () {
     test('assets sit beside the project, not inside it', () {
-      const layout = ProjectAssetLayout('/work/내작업/프로젝트.qap');
+      const layout = ProjectAssetLayout('/work/내작업/프로젝트.anicel');
       expect(layout.assetsDirectory, '/work/내작업/프로젝트.assets');
       expect(layout.mediaDirectory, '/work/내작업/프로젝트.assets/Media');
       expect(
@@ -92,7 +92,7 @@ void main() {
 
     test('the conform path is derived from the media name, not recorded', () {
       // Nothing to keep in sync, and project.json stays small.
-      const layout = ProjectAssetLayout('/work/p.qap');
+      const layout = ProjectAssetLayout('/work/p.anicel');
       expect(
         layout.conformPathFor('/work/p.assets/Media/대사.m4a'),
         '/work/p.assets/Conformed/대사.m4a.wav',
@@ -100,7 +100,7 @@ void main() {
     });
 
     test('a windows path with backslashes resolves the same', () {
-      const layout = ProjectAssetLayout(r'C:\work\p.qap');
+      const layout = ProjectAssetLayout(r'C:\work\p.anicel');
       expect(layout.assetsDirectory, 'C:/work/p.assets');
       expect(
         layout.conformPathFor(r'C:\work\p.assets\Media\a.wav'),
@@ -109,7 +109,7 @@ void main() {
     });
 
     test('a project name containing dots keeps all but the last', () {
-      const layout = ProjectAssetLayout('/work/ep.01.final.qap');
+      const layout = ProjectAssetLayout('/work/ep.01.final.anicel');
       expect(layout.assetsDirectory, '/work/ep.01.final.assets');
     });
   });

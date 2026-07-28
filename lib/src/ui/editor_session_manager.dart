@@ -114,7 +114,7 @@ import '../services/commands/update_project_frame_rate_command.dart';
 import '../services/commands/update_project_trailing_frames_command.dart';
 import '../services/onion_skin_plan.dart';
 import '../services/persistence/project_autosave_service.dart';
-import '../services/persistence/qap_file_service.dart';
+import '../services/persistence/anicel_file_service.dart';
 import '../services/commands/cut_reorder_planner.dart';
 import '../native/qa_audio_native.dart' show QaAudioNative;
 import '../native/qa_audio_device.dart'
@@ -378,7 +378,7 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// The user's A/V offset — the residual correction for THIS machine's
   /// output path (screen pipeline, Bluetooth, an AV receiver). App state,
-  /// not project state: a rig's delay must not travel inside a `.qap`.
+  /// not project state: a rig's delay must not travel inside a `.anicel`.
   final ValueNotifier<AudioSyncSettings> audioSyncSettings =
       ValueNotifier<AudioSyncSettings>(AudioSyncSettings.defaults);
 
@@ -10571,9 +10571,9 @@ class EditorSessionManager extends ChangeNotifier {
     ];
   }
 
-  // --- Project persistence (P3: the .qap container) -------------------------
+  // --- Project persistence (P3: the .anicel container) -------------------------
 
-  static const QapFileService _qapFileService = QapFileService();
+  static const AnicelFileService _anicelFileService = AnicelFileService();
 
   String? _projectFilePath;
 
@@ -10604,23 +10604,23 @@ class EditorSessionManager extends ChangeNotifier {
   /// the parent folder (a custom sidecar directory may not exist yet).
   Future<void> writeAutosaveSnapshot(String path) async {
     await File(path).parent.create(recursive: true);
-    await _qapFileService.save(
+    await _anicelFileService.save(
       project: _repository.requireProject(),
       brushFrameStore: brushFrameStore,
       filePath: path,
     );
   }
 
-  /// Saves the project + every drawn frame into ONE .qap file (atomic
+  /// Saves the project + every drawn frame into ONE .anicel file (atomic
   /// temp-then-rename write; media stays external with relative paths
   /// recorded for Drive portability). A successful save retires the
   /// autosave sidecar.
   Future<void> saveProjectToFile(String filePath) async {
     final previousSidecar = autosaveSidecarPath;
     // Before serializing: the first save adopts the session's shelf
-    // takes into Media/ so the .qap carries the adopted paths.
+    // takes into Media/ so the .anicel carries the adopted paths.
     final adoptedTakePaths = _adoptShelfTakesForSave(filePath);
-    await _qapFileService.save(
+    await _anicelFileService.save(
       project: _repository.requireProject(),
       brushFrameStore: brushFrameStore,
       filePath: filePath,
@@ -10648,16 +10648,16 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Opens a .qap file, replacing the WHOLE session state: project,
+  /// Opens a .anicel file, replacing the WHOLE session state: project,
   /// drawings, selection (first cut, frame 0) — and BOTH undo stacks
   /// (loaded state has no history; the load→draw→undo path is pinned by
   /// test). [recoverAs] opens autosave SIDECAR bytes while keeping the
   /// real file as the project path (the recovery flow).
   Future<void> openProjectFromFile(String filePath, {String? recoverAs}) async {
-    final result = await _qapFileService.open(filePath: filePath);
+    final result = await _anicelFileService.open(filePath: filePath);
     playback.stop();
     _repository.replaceProject(result.project);
-    // R22-C: opens land every cel FILE-BACKED — pixels stay in the .qap
+    // R22-C: opens land every cel FILE-BACKED — pixels stay in the .anicel
     // until a cel is first shown (near-zero RAM for 1500-cut projects).
     brushFrameStore.restoreFromFile(result.cels);
     _historyManager.clear();

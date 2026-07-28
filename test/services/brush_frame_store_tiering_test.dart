@@ -15,7 +15,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/persistence/brush_drawing_binary_codec.dart';
-import 'package:anicel/src/services/persistence/qap_file_service.dart';
+import 'package:anicel/src/services/persistence/anicel_file_service.dart';
 
 /// R20-A1 two-tier baked truth: cold cels are encoded+deflated blobs
 /// (the same bytes the archive stores), materialize byte-exactly on
@@ -50,8 +50,8 @@ void main() {
     );
   }
 
-  QapCelBlob blobOf(BrushFrameKey k, BitmapSurface surface) =>
-      QapCelBlob.encode(QapCelEntry.fromSurface(k, surface));
+  AnicelCelBlob blobOf(BrushFrameKey k, BitmapSurface surface) =>
+      AnicelCelBlob.encode(AnicelCelEntry.fromSurface(k, surface));
 
   test('a restored (cold) cel counts as content, materializes byte-exactly '
       'on first access and promotes to hot', () {
@@ -192,7 +192,7 @@ void main() {
     final path = '${directory.path}/cel.bin';
     File(path).writeAsBytesSync(blob.bytes);
     store.restoreFromFile({
-      k: QapCelFileRef(
+      k: AnicelCelFileRef(
         filePath: path,
         dataOffset: 0,
         length: blob.bytes.length,
@@ -249,8 +249,8 @@ void main() {
     expect(store.dirtyCelKeysSinceSave, {k});
 
     store.adoptSavedFile({
-      k: QapCelFileRef(
-        filePath: 'unused.qap',
+      k: AnicelCelFileRef(
+        filePath: 'unused.anicel',
         dataOffset: 0,
         length: 1,
         canvasSize: canvasSize,
@@ -290,8 +290,8 @@ void main() {
     final s = inkSurface(seed: 17);
     store.restoreBaked({k: blobOf(k, s)});
 
-    final path = '${directory.path}/full.qap';
-    await const QapFileService().save(
+    final path = '${directory.path}/full.anicel';
+    await const AnicelFileService().save(
       project: createDefaultProject(),
       brushFrameStore: store,
       filePath: path,
@@ -299,12 +299,12 @@ void main() {
     expect(
       store.isCelFileBacked(k),
       isTrue,
-      reason: 'the saved .qap IS the disk tier now',
+      reason: 'the saved .anicel IS the disk tier now',
     );
     expect(store.isCelCold(k), isFalse, reason: 'the RAM blob is redundant');
     expect(store.dirtyCelKeysSinceSave, isEmpty);
 
-    final result = await const QapFileService().open(filePath: path);
+    final result = await const AnicelFileService().open(filePath: path);
     expect(result.cels.keys, [k]);
     final store2 = BrushFrameStore()..restoreFromFile(result.cels);
     expect(store2.isCelFileBacked(k), isTrue);
@@ -319,7 +319,7 @@ void main() {
       'its exact data offset and the file grows (garbage retained)', () async {
     final directory = await Directory.systemTemp.createTemp('qa-incr-save');
     addTearDown(() => directory.delete(recursive: true));
-    const service = QapFileService();
+    const service = AnicelFileService();
     final store = BrushFrameStore();
     final k1 = key(frame: 'f1');
     final k2 = key(frame: 'f2');
@@ -327,7 +327,7 @@ void main() {
     store.storeBakedSurface(k1, s1);
     store.storeBakedSurface(k2, inkSurface(seed: 7));
 
-    final path = '${directory.path}/incr.qap';
+    final path = '${directory.path}/incr.anicel';
     final project = createDefaultProject();
     await service.save(
       project: project,
@@ -365,7 +365,7 @@ void main() {
           'silent full rewrite would land near the original size',
     );
 
-    final result = await const QapFileService().open(filePath: path);
+    final result = await const AnicelFileService().open(filePath: path);
     final store2 = BrushFrameStore()..restoreFromFile(result.cels);
     expect(
       store2.bakedSurfaceOrNull(k1)!.tiles[TileCoord(x: 0, y: 0)]!.pixels,
@@ -382,13 +382,13 @@ void main() {
       'save', () async {
     final directory = await Directory.systemTemp.createTemp('qa-remove-save');
     addTearDown(() => directory.delete(recursive: true));
-    const service = QapFileService();
+    const service = AnicelFileService();
     final store = BrushFrameStore();
     final k1 = key(frame: 'f1');
     final k2 = key(frame: 'f2');
     store.storeBakedSurface(k1, inkSurface(seed: 5));
     store.storeBakedSurface(k2, inkSurface(seed: 7));
-    final path = '${directory.path}/remove.qap';
+    final path = '${directory.path}/remove.anicel';
     final project = createDefaultProject();
     await service.save(
       project: project,
@@ -415,13 +415,13 @@ void main() {
       'with its pixels intact', () async {
     final directory = await Directory.systemTemp.createTemp('qa-rekey-save');
     addTearDown(() => directory.delete(recursive: true));
-    const service = QapFileService();
+    const service = AnicelFileService();
     final store = BrushFrameStore();
     final from = key(layer: 'a');
     final to = key(layer: 'b');
     final s = inkSurface(seed: 23);
     store.storeBakedSurface(from, s);
-    final path = '${directory.path}/rekey.qap';
+    final path = '${directory.path}/rekey.anicel';
     final project = createDefaultProject();
     await service.save(
       project: project,
@@ -451,7 +451,7 @@ void main() {
       'and every ref stays valid', () async {
     final directory = await Directory.systemTemp.createTemp('qa-compact');
     addTearDown(() => directory.delete(recursive: true));
-    const service = QapFileService();
+    const service = AnicelFileService();
     final store = BrushFrameStore();
     final k = key();
 
@@ -477,7 +477,7 @@ void main() {
       );
     }
 
-    final path = '${directory.path}/compact.qap';
+    final path = '${directory.path}/compact.anicel';
     final project = createDefaultProject();
     final lengths = <int>[];
     var latestSeed = 0;
@@ -542,8 +542,8 @@ void main() {
     );
     store.storeBakedSurface(otherCutKey, big);
     store.adoptSavedFile({
-      otherCutKey: QapCelFileRef(
-        filePath: 'unused.qap',
+      otherCutKey: AnicelCelFileRef(
+        filePath: 'unused.anicel',
         dataOffset: 0,
         length: 1,
         canvasSize: const CanvasSize(width: 32, height: 32),

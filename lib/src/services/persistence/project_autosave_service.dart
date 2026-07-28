@@ -26,7 +26,7 @@ class ProjectAutosaveService {
   /// Whether unsaved changes exist (the session's dirty flag).
   final bool Function() isDirty;
 
-  /// Writes the current session snapshot to [path] (the session's .qap
+  /// Writes the current session snapshot to [path] (the session's .anicel
   /// writer pointed at the sidecar — atomic like a manual save).
   final Future<void> Function(String path) writeSnapshot;
 

@@ -1,8 +1,8 @@
 import 'dart:typed_data';
 
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/services/persistence/qap_incremental_writer.dart'
-    show qapCrc32;
+import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart'
+    show anicelCrc32;
 import 'package:anicel/src/ui/export/png_srgb.dart';
 
 /// C1-v1 (R28): exported PNGs carry the sRGB/gAMA/cHRM trio right
@@ -16,7 +16,7 @@ void main() {
       ..add((ByteData(4)..setUint32(0, data.length)).buffer.asUint8List())
       ..add(typeAndData)
       ..add(
-        (ByteData(4)..setUint32(0, qapCrc32(typeAndData))).buffer.asUint8List(),
+        (ByteData(4)..setUint32(0, anicelCrc32(typeAndData))).buffer.asUint8List(),
       );
     return out.takeBytes();
   }
@@ -57,7 +57,7 @@ void main() {
       );
       expect(
         data.getUint32(offset + 8 + length),
-        qapCrc32(typeAndData),
+        anicelCrc32(typeAndData),
         reason: 'CRC of ${types.last}',
       );
       offset += 12 + length;

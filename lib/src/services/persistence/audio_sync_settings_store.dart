@@ -9,7 +9,7 @@ import 'app_support_path.dart';
 /// APP state, not project state — deliberately. The offset describes the
 /// machine's output path (its screen, its device buffer, whichever
 /// headphones are paired), so it belongs to the rig and not to the film.
-/// Storing it in the `.qap` would carry one person's Bluetooth delay into
+/// Storing it in the `.anicel` would carry one person's Bluetooth delay into
 /// everyone else's copy of the project.
 ///
 /// Same shape as the language/accent/input stores beside it: an

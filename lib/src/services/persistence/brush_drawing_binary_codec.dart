@@ -1,4 +1,4 @@
-/// Compact binary encoding for the .qap container's cel payloads: one
+/// Compact binary encoding for the .anicel container's cel payloads: one
 /// entry per baked cel — key, canvas geometry, then raw straight-alpha
 /// RGBA tile bytes. Little-endian throughout. (The v1 command-drawing
 /// codec lived here until R20-E3 — deleted with the v1 reader; no
@@ -20,24 +20,24 @@ import '../../models/layer_id.dart';
 import '../../models/project_id.dart';
 import '../../models/track_id.dart';
 
-/// One cel's BAKED raster — the persistence TRUTH from .qap format v2 on
+/// One cel's BAKED raster — the persistence TRUTH from .anicel format v2 on
 /// (R19 bake-only): what you saved is exactly what reopens, byte for
 /// byte, with no re-materialization ever.
 ///
 /// R19-Z: this is a PLAIN-BYTES snapshot ((coordX, coordY, rgba) records),
 /// not a [BitmapSurface] — native-backed tiles are Finalizable and cannot
 /// cross the save/open isolate boundary, so the boundary ships bytes and
-/// each side converts with [QapCelEntry.fromSurface]/[toSurface].
-class QapCelEntry {
-  const QapCelEntry({
+/// each side converts with [AnicelCelEntry.fromSurface]/[toSurface].
+class AnicelCelEntry {
+  const AnicelCelEntry({
     required this.key,
     required this.canvasSize,
     required this.tileSize,
     required this.tiles,
   });
 
-  factory QapCelEntry.fromSurface(BrushFrameKey key, BitmapSurface surface) {
-    return QapCelEntry(
+  factory AnicelCelEntry.fromSurface(BrushFrameKey key, BitmapSurface surface) {
+    return AnicelCelEntry(
       key: key,
       canvasSize: surface.canvasSize,
       tileSize: surface.tileSize,
@@ -71,14 +71,14 @@ class QapCelEntry {
 
 /// v2 (pasteboard): tile coords are SIGNED i32 — pasteboard tiles sit at
 /// negative coords. v1 files (u32 coords) still decode.
-const int qapCelBinaryVersion = 2;
+const int anicelCelBinaryVersion = 2;
 
 /// Encodes a baked cel: key, canvas geometry, then each tile's coord and
 /// RAW straight-alpha RGBA bytes (the ZIP container's deflate compresses
 /// line art extremely well — no inner compression layer).
-Uint8List encodeCelEntry(QapCelEntry entry) {
+Uint8List encodeCelEntry(AnicelCelEntry entry) {
   final writer = _ByteWriter()
-    ..u8(qapCelBinaryVersion)
+    ..u8(anicelCelBinaryVersion)
     ..string(entry.key.projectId.value)
     ..string(entry.key.trackId.value)
     ..string(entry.key.cutId.value)
@@ -97,10 +97,10 @@ Uint8List encodeCelEntry(QapCelEntry entry) {
   return writer.takeBytes();
 }
 
-QapCelEntry decodeCelEntry(Uint8List bytes) {
+AnicelCelEntry decodeCelEntry(Uint8List bytes) {
   final reader = _ByteReader(bytes);
   final version = reader.u8();
-  if (version > qapCelBinaryVersion) {
+  if (version > anicelCelBinaryVersion) {
     throw const FormatException('Unsupported cel entry version.');
   }
   final key = BrushFrameKey(
@@ -115,7 +115,7 @@ QapCelEntry decodeCelEntry(Uint8List bytes) {
   final tileSize = reader.u16();
   final tileCount = reader.u32();
   final tileByteLength = tileSize * tileSize * BitmapTile.bytesPerPixel;
-  return QapCelEntry(
+  return AnicelCelEntry(
     key: key,
     canvasSize: CanvasSize(width: width, height: height),
     tileSize: tileSize,
@@ -130,21 +130,21 @@ QapCelEntry decodeCelEntry(Uint8List bytes) {
   );
 }
 
-const int _qapCelBlobVersion = 1;
+const int _anicelCelBlobVersion = 1;
 
 /// A cel in its COLD form (R20-A1): a tiny plain header (key + canvas
 /// geometry, readable WITHOUT inflating) followed by the deflated
 /// [encodeCelEntry] stream.
 ///
 /// This one byte layout is BOTH the in-RAM cold-cel form (the store's
-/// tier-1 compression) and the .qap v3 archive entry (STORE'd, since the
+/// tier-1 compression) and the .anicel v3 archive entry (STORE'd, since the
 /// payload is already deflated) — so an untouched cel saves with zero
 /// re-encode and a project opens without decoding a single pixel.
-class QapCelBlob {
-  QapCelBlob(this.bytes) {
+class AnicelCelBlob {
+  AnicelCelBlob(this.bytes) {
     final reader = _ByteReader(bytes);
     final version = reader.u8();
-    if (version > _qapCelBlobVersion) {
+    if (version > _anicelCelBlobVersion) {
       throw const FormatException('Unsupported cel blob version.');
     }
     key = BrushFrameKey(
@@ -162,9 +162,9 @@ class QapCelBlob {
   /// Rewrites ONLY the header's key label, splicing the deflate stream
   /// through untouched — a rekeyed cel (cross-layer block move) has
   /// identical pixels, so re-encoding them would be pure waste (R22-C).
-  factory QapCelBlob.reKeyed(QapCelBlob source, BrushFrameKey key) {
+  factory AnicelCelBlob.reKeyed(AnicelCelBlob source, BrushFrameKey key) {
     final writer = _ByteWriter()
-      ..u8(_qapCelBlobVersion)
+      ..u8(_anicelCelBlobVersion)
       ..string(key.projectId.value)
       ..string(key.trackId.value)
       ..string(key.cutId.value)
@@ -174,14 +174,14 @@ class QapCelBlob {
       ..u32(source.canvasSize.height)
       ..u16(source.tileSize)
       ..bytes(Uint8List.sublistView(source.bytes, source._deflatedOffset));
-    return QapCelBlob(writer.takeBytes());
+    return AnicelCelBlob(writer.takeBytes());
   }
 
-  factory QapCelBlob.encode(QapCelEntry entry) {
+  factory AnicelCelBlob.encode(AnicelCelEntry entry) {
     final body = encodeCelEntry(entry);
     final deflated = ZLibEncoder().convert(body);
     final writer = _ByteWriter()
-      ..u8(_qapCelBlobVersion)
+      ..u8(_anicelCelBlobVersion)
       ..string(entry.key.projectId.value)
       ..string(entry.key.trackId.value)
       ..string(entry.key.cutId.value)
@@ -191,7 +191,7 @@ class QapCelBlob {
       ..u32(entry.canvasSize.height)
       ..u16(entry.tileSize)
       ..bytes(deflated);
-    return QapCelBlob(writer.takeBytes());
+    return AnicelCelBlob(writer.takeBytes());
   }
 
   /// The whole blob — header + deflate stream. Archive entries carry
@@ -205,7 +205,7 @@ class QapCelBlob {
 
   int get byteLength => bytes.length;
 
-  QapCelEntry decode() {
+  AnicelCelEntry decode() {
     final inflated = ZLibDecoder().convert(
       Uint8List.sublistView(bytes, _deflatedOffset),
     );

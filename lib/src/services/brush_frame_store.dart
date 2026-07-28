@@ -25,7 +25,7 @@ class BrushFrameStore {
   ///
   /// Invariant: because writes resolve too, NON-canonical keys never
   /// enter the maps — enumeration and persistence stay canonical-only
-  /// (the .qap saves each linked bank exactly once). Cut-scoped physical
+  /// (the .anicel saves each linked bank exactly once). Cut-scoped physical
   /// ops (rekey/translate/resize/snapshot) intentionally stay RAW: they
   /// manage canonical storage directly.
   BrushFrameKey Function(BrushFrameKey key) _canonicalize = _identityKey;
@@ -125,10 +125,10 @@ class BrushFrameStore {
   //
   //  - HOT: a BitmapSurface, insertion-ordered as an LRU (access
   //    re-inserts). Byte-budgeted by [hotCelByteBudget].
-  //  - COLD-RAM: a [QapCelBlob] — the cel encoded + deflated, the SAME
-  //    bytes the .qap archive stores. Over-budget hot cels cool here in
+  //  - COLD-RAM: a [AnicelCelBlob] — the cel encoded + deflated, the SAME
+  //    bytes the .anicel archive stores. Over-budget hot cels cool here in
   //    a background isolate; unsaved (dirty) cels never leave RAM.
-  //  - COLD-FILE: {the .qap itself, offset, length} — cels whose bytes
+  //  - COLD-FILE: {the .anicel itself, offset, length} — cels whose bytes
   //    are ALREADY in the saved project file drop their RAM entirely
   //    after a save; opens land every cel here (near-zero RAM).
   //
@@ -141,8 +141,8 @@ class BrushFrameStore {
   // surface references (HistoryManager.retainedByteBudget).
 
   final Map<BrushFrameKey, BitmapSurface> _bakedSurfaces = {};
-  final Map<BrushFrameKey, QapCelBlob> _coldCels = {};
-  final Map<BrushFrameKey, QapCelFileRef> _fileCels = {};
+  final Map<BrushFrameKey, AnicelCelBlob> _coldCels = {};
+  final Map<BrushFrameKey, AnicelCelFileRef> _fileCels = {};
   final Map<BrushFrameKey, int> _hotByteEstimates = {};
   int _hotBytes = 0;
   int _coldBytes = 0;
@@ -177,7 +177,7 @@ class BrushFrameStore {
 
   /// The cel's baked raster truth, or null for a never-drawn cel. A cold
   /// cel materializes (inflate + decode) and promotes to hot right here;
-  /// a file-backed cel reads its bytes from the saved .qap first — this
+  /// a file-backed cel reads its bytes from the saved .anicel first — this
   /// is the ONE seam every pixel consumer goes through.
   BitmapSurface? bakedSurfaceOrNull(BrushFrameKey key) {
     key = _canonicalize(key);
@@ -194,7 +194,7 @@ class BrushFrameStore {
       }
       // The ref stays: the file still holds these exact bytes, so a
       // later cooling of this (clean) cel is a free drop.
-      cold = QapCelBlob(_readFileRefBytes(fileRef));
+      cold = AnicelCelBlob(_readFileRefBytes(fileRef));
     } else {
       _coldCels.remove(key);
       _coldBytes -= cold.bytes.length;
@@ -208,7 +208,7 @@ class BrushFrameStore {
     return surface;
   }
 
-  static Uint8List _readFileRefBytes(QapCelFileRef ref) {
+  static Uint8List _readFileRefBytes(AnicelCelFileRef ref) {
     final raf = File(ref.filePath).openSync();
     try {
       raf.setPositionSync(ref.dataOffset);
@@ -275,13 +275,13 @@ class BrushFrameStore {
 
   /// Every baked cel for the save payload: hot surfaces (the saver
   /// encodes them), cold blobs (already archive bytes — written through
-  /// with ZERO re-encode) and file refs (already IN the saved .qap; a
+  /// with ZERO re-encode) and file refs (already IN the saved .anicel; a
   /// compaction reads them back, an incremental save skips them
   /// entirely).
   ({
     Map<BrushFrameKey, BitmapSurface> hot,
-    Map<BrushFrameKey, QapCelBlob> cold,
-    Map<BrushFrameKey, QapCelFileRef> fileRefs,
+    Map<BrushFrameKey, AnicelCelBlob> cold,
+    Map<BrushFrameKey, AnicelCelFileRef> fileRefs,
   })
   bakedSnapshotForSave() {
     return (
@@ -311,7 +311,7 @@ class BrushFrameStore {
 
   /// Replaces the WHOLE store with loaded cels as COLD-RAM blobs (tests
   /// and non-file flows). Frames reseed at sourceRevision 1.
-  void restoreBaked(Map<BrushFrameKey, QapCelBlob> cels) {
+  void restoreBaked(Map<BrushFrameKey, AnicelCelBlob> cels) {
     _clearAllTiers();
     for (final entry in cels.entries) {
       _frames[entry.key] = BrushFrameDrawingState(
@@ -325,9 +325,9 @@ class BrushFrameStore {
   }
 
   /// Replaces the WHOLE store with FILE-BACKED cels (project open,
-  /// R22-C): near-zero RAM — every cel reads from the .qap on first
+  /// R22-C): near-zero RAM — every cel reads from the .anicel on first
   /// access. No temp files, ever.
-  void restoreFromFile(Map<BrushFrameKey, QapCelFileRef> cels) {
+  void restoreFromFile(Map<BrushFrameKey, AnicelCelFileRef> cels) {
     _clearAllTiers();
     for (final entry in cels.entries) {
       _frames[entry.key] = BrushFrameDrawingState(
@@ -344,7 +344,7 @@ class BrushFrameStore {
   /// the bytes for free), cold blobs are redundant with the file and
   /// drop, and the dirty set clears — the next incremental save starts
   /// from a clean slate.
-  void adoptSavedFile(Map<BrushFrameKey, QapCelFileRef> saved) {
+  void adoptSavedFile(Map<BrushFrameKey, AnicelCelFileRef> saved) {
     for (final entry in saved.entries) {
       final cold = _coldCels.remove(entry.key);
       if (cold != null) {
@@ -433,7 +433,7 @@ class BrushFrameStore {
     while (_hotBytes > hotCelByteBudget && _bakedSurfaces.length > 1) {
       final key = _bakedSurfaces.keys.first;
       if (_fileCels.containsKey(key)) {
-        // Clean file-backed cel (edits kill the ref): the saved .qap
+        // Clean file-backed cel (edits kill the ref): the saved .anicel
         // already holds its exact bytes — cooling is a free drop.
         _bakedSurfaces.remove(key);
         _hotBytes -= _hotByteEstimates.remove(key)!;
@@ -441,8 +441,8 @@ class BrushFrameStore {
         continue;
       }
       final surface = _bakedSurfaces[key]!;
-      final entry = QapCelEntry.fromSurface(key, surface);
-      final blob = await Isolate.run(() => QapCelBlob.encode(entry));
+      final entry = AnicelCelEntry.fromSurface(key, surface);
+      final blob = await Isolate.run(() => AnicelCelBlob.encode(entry));
       if (identical(_bakedSurfaces[key], surface)) {
         _bakedSurfaces.remove(key);
         _hotBytes -= _hotByteEstimates.remove(key)!;
@@ -456,7 +456,7 @@ class BrushFrameStore {
 
   /// Completes when no background tiering pass is running (tests).
   /// R22-C: cooling is the only background pass left — the scratch-disk
-  /// spill is gone (the saved .qap itself is the disk tier).
+  /// spill is gone (the saved .anicel itself is the disk tier).
   Future<void> drainTiering() => drainCooling();
 
   /// Re-homes stored drawings under new keys (a cross-layer block move,
@@ -587,8 +587,8 @@ class BrushFrameStore {
       if (cold.canvasSize == canvasSize) {
         continue;
       }
-      final resized = QapCelBlob.encode(
-        QapCelEntry.fromSurface(
+      final resized = AnicelCelBlob.encode(
+        AnicelCelEntry.fromSurface(
           key,
           resizeBitmapSurfaceCanvas(cold.decode().toSurface(), canvasSize),
         ),
@@ -605,13 +605,13 @@ class BrushFrameStore {
       if (fileRef.canvasSize == canvasSize) {
         continue;
       }
-      // The .qap is read-only from here — a resized file-backed cel
+      // The .anicel is read-only from here — a resized file-backed cel
       // promotes to a COLD-RAM blob (it is now dirty anyway).
-      final resized = QapCelBlob.encode(
-        QapCelEntry.fromSurface(
+      final resized = AnicelCelBlob.encode(
+        AnicelCelEntry.fromSurface(
           key,
           resizeBitmapSurfaceCanvas(
-            QapCelBlob(_readFileRefBytes(fileRef)).decode().toSurface(),
+            AnicelCelBlob(_readFileRefBytes(fileRef)).decode().toSurface(),
             canvasSize,
           ),
         ),
@@ -724,14 +724,14 @@ class BrushFrameStore {
   }
 }
 
-/// A cel backed by the SAVED PROJECT FILE itself (R22-C): the .qap's
-/// STORE'd entry bytes ARE the [QapCelBlob], so {offset, length} into
+/// A cel backed by the SAVED PROJECT FILE itself (R22-C): the .anicel's
+/// STORE'd entry bytes ARE the [AnicelCelBlob], so {offset, length} into
 /// the file is a complete cold reference — no temp files, ever. Canvas
 /// geometry rides along so size checks never touch the disk. Offsets
 /// stay valid across incremental appends (appends never move existing
 /// entry data); a compaction rewrites the file and re-issues refs.
-class QapCelFileRef {
-  const QapCelFileRef({
+class AnicelCelFileRef {
+  const AnicelCelFileRef({
     required this.filePath,
     required this.dataOffset,
     required this.length,

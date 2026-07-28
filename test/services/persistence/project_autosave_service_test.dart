@@ -12,7 +12,7 @@ void main() {
     final service = ProjectAutosaveService(
       isDirty: () => true,
       writeSnapshot: (path) async => written.add(path),
-      autosavePath: () => '/projects/x.qap.autosave',
+      autosavePath: () => '/projects/x.anicel.autosave',
       needsProjectFile: () => !hasFile,
       onUnsavedProject: () => prompts += 1,
     );
@@ -24,7 +24,7 @@ void main() {
     // Saved (a real file exists): ticks snapshot the sidecar as ever.
     hasFile = true;
     await service.tick();
-    expect(written, ['/projects/x.qap.autosave']);
+    expect(written, ['/projects/x.anicel.autosave']);
     expect(prompts, 1);
   });
 
@@ -43,7 +43,7 @@ void main() {
     final service = ProjectAutosaveService(
       isDirty: () => false,
       writeSnapshot: (path) async => written.add(path),
-      autosavePath: () => '/projects/x.qap.autosave',
+      autosavePath: () => '/projects/x.anicel.autosave',
       needsProjectFile: () => true,
       onUnsavedProject: () => prompts += 1,
     );

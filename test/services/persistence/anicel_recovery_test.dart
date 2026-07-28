@@ -14,8 +14,8 @@ import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
-import 'package:anicel/src/services/persistence/qap_file_service.dart';
-import 'package:anicel/src/services/persistence/qap_incremental_writer.dart';
+import 'package:anicel/src/services/persistence/anicel_file_service.dart';
+import 'package:anicel/src/services/persistence/anicel_incremental_writer.dart';
 
 /// R24-D1 torn-tail recovery: an append crash destroys only the file's
 /// tail (central directory + EOCD), so the local-header walk must
@@ -26,7 +26,7 @@ void main() {
   late Directory directory;
 
   setUp(() async {
-    directory = await Directory.systemTemp.createTemp('qap-recovery');
+    directory = await Directory.systemTemp.createTemp('anicel-recovery');
   });
 
   tearDown(() => directory.delete(recursive: true));
@@ -59,10 +59,10 @@ void main() {
 
   /// A saved file with two cels + one incremental append (k2 edited),
   /// returning the path and the healthy layout for reference.
-  Future<(String, QapZipLayout, BrushFrameStore)> buildAppendedFile({
-    String name = 'torn.qap',
+  Future<(String, AnicelZipLayout, BrushFrameStore)> buildAppendedFile({
+    String name = 'torn.anicel',
   }) async {
-    const service = QapFileService();
+    const service = AnicelFileService();
     final store = BrushFrameStore();
     store.storeBakedSurface(key('f1'), inked(3));
     store.storeBakedSurface(key('f2'), inked(5));
@@ -79,7 +79,7 @@ void main() {
       brushFrameStore: store,
       filePath: path,
     );
-    return (path, parseQapZipLayoutFile(path), store);
+    return (path, parseAnicelZipLayoutFile(path), store);
   }
 
   test('a tail truncation (crash mid central-directory rewrite) recovers '
@@ -93,12 +93,12 @@ void main() {
       ..truncateSync(healthy.centralDirectoryOffset + 7)
       ..closeSync();
     expect(
-      () => parseQapZipLayoutFile(path),
+      () => parseAnicelZipLayoutFile(path),
       throwsFormatException,
       reason: 'the tail is really gone',
     );
 
-    final recovered = recoverQapZipLayoutFile(path);
+    final recovered = recoverAnicelZipLayoutFile(path);
     expect(
       {for (final entry in recovered.entries) entry.name},
       {for (final entry in healthy.entries) entry.name},
@@ -128,7 +128,7 @@ void main() {
       ..truncateSync(last.dataOffset + last.length ~/ 2)
       ..closeSync();
 
-    final recovered = recoverQapZipLayoutFile(path);
+    final recovered = recoverAnicelZipLayoutFile(path);
     final fallback = recovered.entryNamed(last.name)!;
     expect(
       fallback.localHeaderOffset,
@@ -140,8 +140,8 @@ void main() {
     // Case 2 (fresh healthy file): append a BRAND-NEW name, tear its
     // data — the name must vanish entirely (it never had a complete
     // version).
-    final (path2, _, _) = await buildAppendedFile(name: 'torn2.qap');
-    final repaired = appendQapEntries(
+    final (path2, _, _) = await buildAppendedFile(name: 'torn2.anicel');
+    final repaired = appendAnicelEntries(
       path: path2,
       newEntries: {
         'cels/brand-new.celz': Uint8List.fromList([1, 2, 3, 4]),
@@ -151,7 +151,7 @@ void main() {
     File(path2).openSync(mode: FileMode.append)
       ..truncateSync(fresh.dataOffset + 2)
       ..closeSync();
-    final recovered2 = recoverQapZipLayoutFile(path2);
+    final recovered2 = recoverAnicelZipLayoutFile(path2);
     expect(recovered2.entryNamed('cels/brand-new.celz'), isNull);
   });
 
@@ -172,7 +172,7 @@ void main() {
     rw.truncateSync(last.dataOffset + last.length);
     rw.closeSync();
 
-    final recovered = recoverQapZipLayoutFile(path);
+    final recovered = recoverAnicelZipLayoutFile(path);
     final entry = recovered.entryNamed(last.name);
     if (entry != null) {
       expect(
@@ -191,7 +191,7 @@ void main() {
       ..truncateSync(healthy.centralDirectoryOffset + 3)
       ..closeSync();
 
-    const service = QapFileService();
+    const service = AnicelFileService();
     final result = await service.open(filePath: path);
     expect(result.cels.length, 2, reason: 'recovery finds both cels');
 
@@ -212,7 +212,7 @@ void main() {
       brushFrameStore: reopened,
       filePath: path,
     );
-    final healed = parseQapZipLayoutFile(path);
+    final healed = parseAnicelZipLayoutFile(path);
     expect(healed.entries.where((e) => e.name.endsWith('.celz')).length, 2);
     // Unused but keeps the original store alive through the test body.
     expect(store.fileCelKeys.length, greaterThanOrEqualTo(0));

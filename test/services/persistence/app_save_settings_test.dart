@@ -60,32 +60,32 @@ void main() {
   test('sidecar resolution: beside by default; the custom directory gets '
       'an origin-encoded name (no cross-folder collisions)', () {
     expect(
-      AppSave.sidecarPathFor('/projects/scene.qap'),
-      '/projects/scene.qap.autosave',
+      AppSave.sidecarPathFor('/projects/scene.anicel'),
+      '/projects/scene.anicel.autosave',
     );
 
     AppSave.settings.value = const AppSaveSettings(
       sidecarDirectory: '/sidecars',
     );
-    final a = AppSave.sidecarPathFor('/projects/a/scene.qap');
-    final b = AppSave.sidecarPathFor('/projects/b/scene.qap');
-    expect(a, startsWith('/sidecars/scene.qap.'));
+    final a = AppSave.sidecarPathFor('/projects/a/scene.anicel');
+    final b = AppSave.sidecarPathFor('/projects/b/scene.anicel');
+    expect(a, startsWith('/sidecars/scene.anicel.'));
     expect(a, endsWith('.autosave'));
     expect(a, isNot(b), reason: 'same basename, different folders');
     expect(
-      AppSave.sidecarPathFor('/projects/a/scene.qap'),
+      AppSave.sidecarPathFor('/projects/a/scene.anicel'),
       a,
       reason: 'the encoding is stable across calls/runs',
     );
     // Windows separators normalize into the same encoding.
     expect(
-      AppSave.sidecarPathFor('\\projects\\a\\scene.qap'),
+      AppSave.sidecarPathFor('\\projects\\a\\scene.anicel'),
       a,
       reason: 'backslash and slash forms are the same origin',
     );
 
-    expect(AppSave.sidecarCandidatesFor('/projects/a/scene.qap'), [
-      '/projects/a/scene.qap.autosave',
+    expect(AppSave.sidecarCandidatesFor('/projects/a/scene.anicel'), [
+      '/projects/a/scene.anicel.autosave',
       a,
     ]);
   });
@@ -94,7 +94,7 @@ void main() {
       'locations', () async {
     final directory = await Directory.systemTemp.createTemp('sidecar-loc');
     addTearDown(() => directory.delete(recursive: true));
-    final projectPath = '${directory.path}/scene.qap'.replaceAll('\\', '/');
+    final projectPath = '${directory.path}/scene.anicel'.replaceAll('\\', '/');
     final sidecarDir = '${directory.path}/sidecars'.replaceAll('\\', '/');
     AppSave.settings.value = AppSaveSettings(sidecarDirectory: sidecarDir);
 

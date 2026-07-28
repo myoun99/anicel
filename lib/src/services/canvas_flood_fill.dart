@@ -1047,7 +1047,7 @@ void _chamferDistance(
 
 /// The whole P6 tap: compose → fill from [point] → the region as ONE
 /// mask-tipped dab ("fill = one dab"), committed through the exact stroke
-/// funnel — three-route parity, undo and .qap serialization come free.
+/// funnel — three-route parity, undo and .anicel serialization come free.
 /// Null when nothing fills (seed off the fill raster), or when an
 /// EXTENDED fill's flood reaches the apron wall — the region is not
 /// closed; [onOpenRegion] fires so the UI can say so instead of silently

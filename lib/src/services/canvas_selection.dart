@@ -661,7 +661,7 @@ void _bicubicSampleInto(
 /// selection's pixels out of the layer at their origin, and a stamp dab
 /// carrying those exact pixels — the Move tool commits the pair (origin
 /// vanishes), then drags the STAMP dab alone. Both ride the ordinary
-/// stroke funnel, so undo and .qap serialization come free, and a
+/// stroke funnel, so undo and .anicel serialization come free, and a
 /// zero-move drop is byte-identical to the original by construction
 /// (hard-edged mask: full erase + source-over of the same pixels).
 class SelectionLiftDabs {

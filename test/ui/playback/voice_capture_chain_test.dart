@@ -59,7 +59,7 @@ void main() {
 
   test('REC1-D: the landed WAV carries the baked gain', () async {
     final manager = session();
-    await manager.saveProjectToFile('${directory.path}/scene.qap');
+    await manager.saveProjectToFile('${directory.path}/scene.anicel');
     final laneId = manager.activeTrack.seLayers.first.id;
 
     expect(
@@ -82,7 +82,7 @@ void main() {
   test('REC1-D: an over-hot take flags the clip on the landed AudioClip '
       'and the toast obeys the notice toggle', () async {
     final manager = session();
-    await manager.saveProjectToFile('${directory.path}/scene.qap');
+    await manager.saveProjectToFile('${directory.path}/scene.anicel');
     final laneId = manager.activeTrack.seLayers.first.id;
     manager.selectLayer(laneId);
 

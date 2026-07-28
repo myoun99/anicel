@@ -18,7 +18,7 @@ void main() {
   late Directory directory;
 
   setUp(() async {
-    directory = await Directory.systemTemp.createTemp('qap-session-test');
+    directory = await Directory.systemTemp.createTemp('anicel-session-test');
   });
 
   tearDown(() => directory.delete(recursive: true));
@@ -68,7 +68,7 @@ void main() {
         .first
         .cuts
         .length;
-    final path = '${directory.path}/scene.qap';
+    final path = '${directory.path}/scene.anicel';
     await s.saveProjectToFile(path);
     expect(s.projectFilePath, path);
     expect(s.hasUnsavedChanges, isFalse);
@@ -106,19 +106,19 @@ void main() {
   test('the atomic write leaves no temp residue and replaces an existing '
       'file in place', () async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
-    final path = '${directory.path}/scene.qap';
+    final path = '${directory.path}/scene.anicel';
     await s.saveProjectToFile(path);
     s.createCut();
     await s.saveProjectToFile(path);
 
     final entries = directory.listSync().map((e) => e.uri.pathSegments.last);
-    expect(entries, ['scene.qap']);
+    expect(entries, ['scene.anicel']);
   });
 
   test('the autosave service snapshots only DIRTY sessions into the '
       'sidecar; a manual save retires it', () async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
-    final path = '${directory.path}/scene.qap';
+    final path = '${directory.path}/scene.anicel';
     await s.saveProjectToFile(path);
 
     final autosave = ProjectAutosaveService(
@@ -153,7 +153,7 @@ void main() {
   test('recovery opens the SIDECAR bytes under the real file path and '
       'stays dirty until saved', () async {
     final s = EditorSessionManager(initialProject: createDefaultProject());
-    final path = '${directory.path}/scene.qap';
+    final path = '${directory.path}/scene.anicel';
     await s.saveProjectToFile(path);
 
     // A newer autosave with one extra cut.

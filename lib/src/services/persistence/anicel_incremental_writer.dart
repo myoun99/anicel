@@ -1,14 +1,14 @@
-/// Incremental .qap appender (R22-C): the container is ordinary ZIP with
+/// Incremental .anicel appender (R22-C): the container is ordinary ZIP with
 /// every entry STORE'd (cel blobs carry their own deflate), which makes
 /// appends trivial and spec-legal — new local entries write over the old
 /// central directory's position, then a fresh central directory + EOCD
 /// close the file. Standard readers (including our own
-/// `parseQapArchiveBytes`) see only the LATEST central directory, so a
+/// `parseAnicelArchiveBytes`) see only the LATEST central directory, so a
 /// re-saved `project.json` or a superseded cel simply shadows its old
 /// bytes (garbage until compaction rewrites the file whole).
 ///
 /// Crash contract: the central-directory rewrite is the only destructive
-/// step. `appendQapEntries` first reads the old central directory into
+/// step. `appendAnicelEntries` first reads the old central directory into
 /// memory; a crash mid-append leaves a file without a valid EOCD tail —
 /// the caller keeps compaction (full atomic rewrite) as the recovery and
 /// the periodic durability point.
@@ -18,8 +18,8 @@ import 'dart:io';
 import 'dart:typed_data';
 
 /// One parsed central-directory record we care about.
-class QapZipEntry {
-  QapZipEntry({
+class AnicelZipEntry {
+  AnicelZipEntry({
     required this.name,
     required this.localHeaderOffset,
     required this.dataOffset,
@@ -36,16 +36,16 @@ class QapZipEntry {
   final int crc32;
 }
 
-/// The parsed tail of a .qap: every ACTIVE entry (latest central
+/// The parsed tail of a .anicel: every ACTIVE entry (latest central
 /// directory) plus the offset where the central directory begins — the
 /// append position.
-class QapZipLayout {
-  QapZipLayout({required this.entries, required this.centralDirectoryOffset});
+class AnicelZipLayout {
+  AnicelZipLayout({required this.entries, required this.centralDirectoryOffset});
 
-  final List<QapZipEntry> entries;
+  final List<AnicelZipEntry> entries;
   final int centralDirectoryOffset;
 
-  QapZipEntry? entryNamed(String name) {
+  AnicelZipEntry? entryNamed(String name) {
     for (final entry in entries) {
       if (entry.name == name) {
         return entry;
@@ -59,10 +59,10 @@ const int _eocdSignature = 0x06054b50;
 const int _centralSignature = 0x02014b50;
 const int _localSignature = 0x04034b50;
 
-/// Parses the central directory of [bytes] (a complete .qap). Throws
+/// Parses the central directory of [bytes] (a complete .anicel). Throws
 /// [FormatException] when no EOCD is found (torn append — the caller
 /// falls back to recovery/compaction).
-QapZipLayout parseQapZipLayout(Uint8List bytes) {
+AnicelZipLayout parseAnicelZipLayout(Uint8List bytes) {
   final data = ByteData.sublistView(bytes);
   // EOCD: scan back over a possible comment (max 64KB + 22).
   final scanFloor = bytes.length - 22 - 65535 < 0
@@ -81,7 +81,7 @@ QapZipLayout parseQapZipLayout(Uint8List bytes) {
   final entryCount = data.getUint16(eocd + 10, Endian.little);
   final centralOffset = data.getUint32(eocd + 16, Endian.little);
 
-  final entries = <QapZipEntry>[];
+  final entries = <AnicelZipEntry>[];
   var cursor = centralOffset;
   for (var i = 0; i < entryCount; i += 1) {
     if (data.getUint32(cursor, Endian.little) != _centralSignature) {
@@ -100,7 +100,7 @@ QapZipLayout parseQapZipLayout(Uint8List bytes) {
     final localNameLength = data.getUint16(localOffset + 26, Endian.little);
     final localExtraLength = data.getUint16(localOffset + 28, Endian.little);
     entries.add(
-      QapZipEntry(
+      AnicelZipEntry(
         name: name,
         localHeaderOffset: localOffset,
         dataOffset: localOffset + 30 + localNameLength + localExtraLength,
@@ -110,14 +110,14 @@ QapZipLayout parseQapZipLayout(Uint8List bytes) {
     );
     cursor += 46 + nameLength + extraLength + commentLength;
   }
-  return QapZipLayout(entries: entries, centralDirectoryOffset: centralOffset);
+  return AnicelZipLayout(entries: entries, centralDirectoryOffset: centralOffset);
 }
 
 /// Parses the layout straight from the FILE with tail-only reads (EOCD
 /// scan window + central directory + 4 bytes per local header) — a
 /// multi-gigabyte project must never load whole just to append a few
 /// cels or list its entries.
-QapZipLayout parseQapZipLayoutFile(String path) {
+AnicelZipLayout parseAnicelZipLayoutFile(String path) {
   final raf = File(path).openSync();
   try {
     final fileLength = raf.lengthSync();
@@ -148,7 +148,7 @@ QapZipLayout parseQapZipLayoutFile(String path) {
     raf.setPositionSync(centralOffset);
     final central = raf.readSync(eocdAbsolute - centralOffset);
     final data = ByteData.sublistView(central);
-    final entries = <QapZipEntry>[];
+    final entries = <AnicelZipEntry>[];
     var cursor = 0;
     for (var i = 0; i < entryCount; i += 1) {
       if (cursor + 46 > central.length ||
@@ -167,7 +167,7 @@ QapZipLayout parseQapZipLayoutFile(String path) {
       raf.setPositionSync(localOffset + 26);
       final localLengths = ByteData.sublistView(raf.readSync(4));
       entries.add(
-        QapZipEntry(
+        AnicelZipEntry(
           name: name,
           localHeaderOffset: localOffset,
           dataOffset:
@@ -181,7 +181,7 @@ QapZipLayout parseQapZipLayoutFile(String path) {
       );
       cursor += 46 + nameLength + extraLength + commentLength;
     }
-    return QapZipLayout(
+    return AnicelZipLayout(
       entries: entries,
       centralDirectoryOffset: centralOffset,
     );
@@ -204,16 +204,16 @@ QapZipLayout parseQapZipLayoutFile(String path) {
 /// entry, so the file stays append-able; the next FULL save (which the
 /// service forces because the tail no longer parses) rewrites the file
 /// whole and heals it.
-QapZipLayout recoverQapZipLayoutFile(String path) {
+AnicelZipLayout recoverAnicelZipLayoutFile(String path) {
   final raf = File(path).openSync();
   try {
     final fileLength = raf.lengthSync();
-    final byName = <String, QapZipEntry>{};
+    final byName = <String, AnicelZipEntry>{};
     final order = <String>[];
     var cursor = 0;
     var lastCompleteEnd = 0;
     String? lastName;
-    QapZipEntry? shadowedByLast;
+    AnicelZipEntry? shadowedByLast;
     while (cursor + 30 <= fileLength) {
       raf.setPositionSync(cursor);
       final header = raf.readSync(30);
@@ -235,7 +235,7 @@ QapZipLayout recoverQapZipLayoutFile(String path) {
         order.add(name);
       }
       shadowedByLast = byName[name];
-      byName[name] = QapZipEntry(
+      byName[name] = AnicelZipEntry(
         name: name,
         localHeaderOffset: cursor,
         dataOffset: dataOffset,
@@ -255,7 +255,7 @@ QapZipLayout recoverQapZipLayoutFile(String path) {
           last.dataOffset + last.length == lastCompleteEnd) {
         raf.setPositionSync(last.dataOffset);
         final bytes = raf.readSync(last.length);
-        if (qapCrc32(bytes) != last.crc32) {
+        if (anicelCrc32(bytes) != last.crc32) {
           // Corrupt final entry: its earlier shadowed version (if any)
           // wins again, exactly as if the torn append never happened.
           if (shadowedByLast != null) {
@@ -268,7 +268,7 @@ QapZipLayout recoverQapZipLayoutFile(String path) {
         }
       }
     }
-    return QapZipLayout(
+    return AnicelZipLayout(
       entries: [for (final name in order) byName[name]!],
       centralDirectoryOffset: lastCompleteEnd,
     );
@@ -292,7 +292,7 @@ Uint32List _buildCrcTable() {
   return table;
 }
 
-int qapCrc32(Uint8List bytes) {
+int anicelCrc32(Uint8List bytes) {
   var c = 0xFFFFFFFF;
   for (var i = 0; i < bytes.length; i += 1) {
     c = _crcTable[(c ^ bytes[i]) & 0xFF] ^ (c >> 8);
@@ -300,7 +300,7 @@ int qapCrc32(Uint8List bytes) {
   return (c ^ 0xFFFFFFFF) & 0xFFFFFFFF;
 }
 
-/// Appends [newEntries] ({name: raw bytes, STORE'd}) to the .qap at
+/// Appends [newEntries] ({name: raw bytes, STORE'd}) to the .anicel at
 /// [path] IN PLACE: new locals write from the old central directory's
 /// offset, then the merged central directory (old actives minus shadowed
 /// names minus [removeNames], plus the new entries) and a fresh EOCD
@@ -308,14 +308,14 @@ int qapCrc32(Uint8List bytes) {
 /// became empty or moved away) — their bytes turn to garbage like any
 /// shadowed entry, reclaimed at the next compaction. Returns the
 /// resulting layout (offsets valid for the rewritten file).
-QapZipLayout appendQapEntries({
+AnicelZipLayout appendAnicelEntries({
   required String path,
   required Map<String, Uint8List> newEntries,
   Set<String> removeNames = const {},
 }) {
   final file = File(path);
   // Tail-only parse: the append must not scale with file size.
-  final layout = parseQapZipLayoutFile(path);
+  final layout = parseAnicelZipLayoutFile(path);
 
   final survivors = [
     for (final entry in layout.entries)
@@ -325,7 +325,7 @@ QapZipLayout appendQapEntries({
   ];
 
   final builder = BytesBuilder(copy: false);
-  final appended = <QapZipEntry>[];
+  final appended = <AnicelZipEntry>[];
   var writeOffset = layout.centralDirectoryOffset;
 
   Uint8List localHeader(String name, Uint8List bytes, int crc) {
@@ -348,10 +348,10 @@ QapZipLayout appendQapEntries({
   }
 
   for (final entry in newEntries.entries) {
-    final crc = qapCrc32(entry.value);
+    final crc = anicelCrc32(entry.value);
     final header = localHeader(entry.key, entry.value, crc);
     appended.add(
-      QapZipEntry(
+      AnicelZipEntry(
         name: entry.key,
         localHeaderOffset: writeOffset,
         dataOffset: writeOffset + header.length,
@@ -409,5 +409,5 @@ QapZipLayout appendQapEntries({
     raf.closeSync();
   }
 
-  return QapZipLayout(entries: all, centralDirectoryOffset: centralOffset);
+  return AnicelZipLayout(entries: all, centralDirectoryOffset: centralOffset);
 }
