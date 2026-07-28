@@ -198,6 +198,11 @@ Layer? timelineDragPreviewLayerFor(
     }
     return preview.previewLayers[layerId];
   }
+  if (preview is CutTrimDragPreview) {
+    // A storyboard row re-keyed by its cut's edge drag (feedback #5/#9):
+    // the timeline row follows the same one preview the strip renders.
+    return preview.previewLayers[layerId];
+  }
   return null;
 }
 

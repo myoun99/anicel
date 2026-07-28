@@ -118,18 +118,29 @@ void main() {
       );
     });
 
-    test('a START trim stops there too', () {
+    test('a START drag re-times the LEAD, not the front (feedback #5): the '
+        'first cell shrinks to a frame, the rest comes along, and the cut '
+        'start stays put', () {
       final session = sessionFor();
       session.addLayerOfKind(LayerKind.storyboard);
       session.selectFrameIndex(5);
       session.createDrawingAtCurrentFrame();
       final cutId = session.activeCutId!;
+      final duration = session.requireActiveCut.duration;
 
       session.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.start);
       session.updateCutEdgeDrag(100);
       session.endCutEdgeDrag();
 
-      expect(session.requireActiveCut.duration, 6);
+      // The first cell clamps at one frame (it was 5, so the lead lost 4);
+      // the later division keeps its own comma and comes left by the same
+      // 4, and the cut's DURATION — never its start — absorbs the change.
+      expect(session.requireActiveCut.duration, duration - 4);
+      expect(session.requireActiveCut.leadingGapFrames, 0);
+      final layer = storyboardLayerForCut(session.requireActiveCut)!;
+      expect(layer.timeline.keys, [0, 1]);
+      expect(layer.timeline[0]!.length, 1);
+      expect(layer.timeline[1]!.length, duration - 5);
     });
 
     test('a cut with no storyboard row still trims down to one frame', () {

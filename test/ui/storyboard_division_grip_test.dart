@@ -199,15 +199,18 @@ void main() {
     expect(_divisionsOf(tester, 'cut-1'), [0, 5]);
   });
 
-  testWidgets('the LAST panel\'s trailing edge is still the cut\'s LENGTH', (
-    tester,
-  ) async {
+  testWidgets('the LAST panel\'s trailing edge is still the cut\'s LENGTH — '
+      'and the stored comma moves with it (feedback #9)', (tester) async {
     await _openStoryboard(tester);
 
     await _dragGrip(tester, 'block-edge-grip-end-grip-track-1', 3);
 
     expect(_cutById(tester, 'cut-1').duration, 13);
     expect(_divisionsOf(tester, 'cut-1'), [0, 5]);
+    // The edge is the ROW's edge: the last cell's stored comma grew by the
+    // same 3 the cut did, so store and coverage stay one picture.
+    final layer = storyboardLayerForCut(_cutById(tester, 'cut-1'))!;
+    expect(layer.timeline[5]!.length, 8);
   });
 
   testWidgets('a cut with ONE panel keeps exactly the two grips it had: the '
@@ -285,4 +288,127 @@ void main() {
     expect(_divisionsOf(tester, 'cut-3'), [0, 2]);
     expect(_divisionsOf(tester, 'cut-1'), [0, 5]);
   });
+
+  group('the leading edge re-times the LEAD (feedback #5)', () {
+    testWidgets('the first cell shrinks, the later division and the next '
+        'cut come left, and the cut\'s start stays put', (tester) async {
+      await _openStoryboard(tester);
+
+      await _dragGrip(tester, 'block-edge-grip-start-grip-track-0', 2);
+
+      // NOT a start trim: no gap opens in front of the cut. The first
+      // cell's comma lost the 2 frames; the second panel kept its own 5
+      // and re-keyed left; the cut is 2 shorter and cut 2 — attached —
+      // rides the boundary in.
+      final cut = _cutById(tester, 'cut-1');
+      expect(cut.duration, 8);
+      expect(cut.leadingGapFrames, 0);
+      expect(_divisionsOf(tester, 'cut-1'), [0, 3]);
+      final layer = storyboardLayerForCut(cut)!;
+      expect(layer.timeline[0]!.length, 3);
+      expect(layer.timeline[3]!.length, 5);
+      expect(_cutById(tester, 'cut-2').leadingGapFrames, 0);
+    });
+
+    testWidgets('ONE undo restores the row AND the cut length together', (
+      tester,
+    ) async {
+      await _openStoryboard(tester);
+
+      await _dragGrip(tester, 'block-edge-grip-start-grip-track-0', 2);
+      expect(_cutById(tester, 'cut-1').duration, 8);
+
+      await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
+      await tester.pumpAndSettle();
+
+      expect(_cutById(tester, 'cut-1').duration, 10);
+      expect(_divisionsOf(tester, 'cut-1'), [0, 5]);
+      final layer = storyboardLayerForCut(_cutById(tester, 'cut-1'))!;
+      expect(layer.timeline[0]!.length, 5);
+    });
+  });
+
+  group('the cut-internal timeline (feedback #9/#10)', () {
+    testWidgets('the row\'s end comma drags the cut\'s end along — the '
+        'always-synced pair, ONE undo', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1500, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(initialProject: _project())),
+      );
+      await tester.pumpAndSettle();
+
+      // Still on the TIMELINE tab: drag the storyboard row's last block
+      // end grip 2 frames out.
+      await _dragTimelineGrip(
+        tester,
+        'cut-1-sb',
+        'block-edge-grip-end-cut-1-sb-1',
+        2,
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
+      );
+      await tester.pumpAndSettle();
+
+      final layer = storyboardLayerForCut(_cutById(tester, 'cut-1'))!;
+      expect(layer.timeline[5]!.length, 7);
+      expect(_cutById(tester, 'cut-1').duration, 12);
+      // Cut 2 was attached and stays attached — it rode the boundary out.
+      expect(_cutById(tester, 'cut-2').leadingGapFrames, 0);
+
+      await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
+      await tester.pumpAndSettle();
+
+      expect(_cutById(tester, 'cut-1').duration, 10);
+      expect(
+        storyboardLayerForCut(_cutById(tester, 'cut-1'))!.timeline[5]!.length,
+        5,
+      );
+    });
+
+    testWidgets('the first block has NO start grip here (feedback #10): '
+        'that edge is the cut\'s start, which lives on the strip', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(1500, 800));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(initialProject: _project())),
+      );
+      await tester.pumpAndSettle();
+
+      final ids = timelineRowChromeIds(tester, 'cut-1-sb');
+      expect(ids, isNot(contains('block-edge-grip-start-cut-1-sb-0')));
+      // Every other edge stays: the division's start grip and both end
+      // commas are the row's own to drag.
+      expect(ids, contains('block-edge-grip-start-cut-1-sb-1'));
+      expect(ids, contains('block-edge-grip-end-cut-1-sb-0'));
+      expect(ids, contains('block-edge-grip-end-cut-1-sb-1'));
+    });
+  });
+}
+
+/// Drags the TIMELINE row chrome target [id] on [layerId]'s row by
+/// [frames] whole frames, reading the axis scale off the row's own
+/// painter.
+Future<void> _dragTimelineGrip(
+  WidgetTester tester,
+  String layerId,
+  String id,
+  int frames,
+) async {
+  final extent = timelineRowChromePainter(tester, layerId)!.frameCellExtent;
+  final gesture = await tester.startGesture(
+    timelineRowChromeCenter(tester, layerId, id),
+    kind: PointerDeviceKind.mouse,
+  );
+  await tester.pump();
+  await gesture.moveBy(Offset(frames * extent / 2, 0));
+  await tester.pump();
+  await gesture.moveBy(Offset(frames * extent / 2, 0));
+  await tester.pump();
+  await gesture.up();
+  await tester.pumpAndSettle();
 }

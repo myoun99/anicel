@@ -233,6 +233,85 @@ SplayTreeMap<int, TimelineExposure>? storyboardTimelineWithDivisionMoved({
   return next;
 }
 
+/// How far the cut's LEAD may shrink (feedback #5), or null when the row
+/// has no drawing inside the cut to re-time.
+///
+/// The first cell keeps one frame — the same one-frame floor every other
+/// boundary rule here has. Growth (a negative delta) is unbounded: the
+/// cut's own end is what absorbs it, and that side has no wall.
+int? storyboardLeadRetimeMaxShrink({
+  required SplayTreeMap<int, TimelineExposure>? timeline,
+  required int cutDuration,
+}) {
+  final keys = storyboardDivisionKeys(
+    timeline: timeline,
+    cutDuration: cutDuration,
+  );
+  if (keys.isEmpty) {
+    return null;
+  }
+  final firstKey = keys.first < 0 ? 0 : keys.first;
+  final firstCellEnd = keys.length > 1 ? keys[1] : cutDuration;
+  final room = firstCellEnd - firstKey - 1;
+  return room < 0 ? 0 : room;
+}
+
+/// [timeline] with the cut's LEAD re-timed by [delta] frames (feedback #5:
+/// the first panel's leading edge shrinks the FIRST picture, not the one
+/// at the back), or null when there is nothing to re-time or the clamped
+/// delta is zero.
+///
+/// The cut's start stays put — this is not a start trim. The first cell's
+/// comma changes by -[delta], and every later entry shifts by -[delta] so
+/// it keeps its own comma; the caller shrinks the cut's DURATION by the
+/// same amount, which is what keeps the last cell ending exactly at the
+/// cut's end. On screen the divisions and the following cuts all come left
+/// together while the frames behind the first division keep their picture.
+///
+/// A positive [delta] shrinks the lead (a rightward drag on the leading
+/// edge, the timeline's start-comma direction); a negative one grows it.
+SplayTreeMap<int, TimelineExposure>? storyboardTimelineWithLeadRetimed({
+  required SplayTreeMap<int, TimelineExposure>? timeline,
+  required int cutDuration,
+  required int delta,
+}) {
+  final maxShrink = storyboardLeadRetimeMaxShrink(
+    timeline: timeline,
+    cutDuration: cutDuration,
+  );
+  if (maxShrink == null) {
+    return null;
+  }
+  final applied = delta > maxShrink ? maxShrink : delta;
+  if (applied == 0) {
+    return null;
+  }
+  final keys = storyboardDivisionKeys(
+    timeline: timeline,
+    cutDuration: cutDuration,
+  );
+  final firstKey = keys.first;
+  final firstCellEnd = keys.length > 1 ? keys[1] : cutDuration;
+  final source = timeline!;
+  final next = SplayTreeMap<int, TimelineExposure>();
+  for (final entry in source.entries) {
+    if (entry.key == firstKey) {
+      // The first block keeps its key; only its comma changes. copyWith
+      // drops the inbetween dots a shrink cut off.
+      next[entry.key] = entry.value.copyWith(
+        length: firstCellEnd - applied - (firstKey < 0 ? 0 : firstKey),
+      );
+    } else if (entry.key > firstKey) {
+      // Every later entry rides, comma intact — overhanging junk data past
+      // the cut end included, so its distance to the end stays what it was.
+      next[entry.key - applied] = entry.value;
+    } else {
+      next[entry.key] = entry.value;
+    }
+  }
+  return next;
+}
+
 /// [timeline] rewritten so its STORED blocks tile `[0, cutDuration)` — the
 /// shape a row must be in to become a storyboard row.
 ///
