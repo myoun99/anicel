@@ -20,7 +20,7 @@ class TimelineRunLabel {
   final int startIndex;
   final int endIndexExclusive;
 
-  /// The printed number ('48' or '2+00' — never an `f` suffix).
+  /// The printed number ('48' or '2+0' — never an `f` suffix).
   final String text;
 
   /// The point the glyph centres on: the block's LAST cell, bottom-centre

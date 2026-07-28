@@ -3,7 +3,6 @@ import 'package:flutter/material.dart';
 
 import '../widgets/app_icon_button.dart';
 import '../widgets/field_slider.dart';
-import 'timeline_frame_range_policy.dart' show timelineSecondsLabel;
 import 'timeline_panel.dart' show TimelinePanel;
 
 import '../../models/project_frame_rate.dart';
@@ -51,7 +50,7 @@ class TimelineViewCluster extends StatelessWidget {
   final List<Widget> trailing;
 
   String _frameLabel(int oneBasedFrame) => showSeconds
-      ? timelineSecondsLabel(oneBasedFrame, projectFrameRate.countingBase)
+      ? secondsPlusFramesLabel(oneBasedFrame, projectFrameRate.countingBase)
       : '$oneBasedFrame';
 
   /// One −/+ button step (UI-R11 #11): multiplicative (×1.25) like editor

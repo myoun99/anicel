@@ -136,14 +136,3 @@ class ConteSheetSource {
 
   final int framesPerSecond;
 }
-
-/// The sheet's time notation: whole seconds plus leftover frames, WITHOUT
-/// the timeline's zero padding — `2+3`, `2+12` (user's rule for the conte).
-///
-/// The timeline pads to two digits so its column stays rectangular under a
-/// changing readout; paper does not have that problem and the convention
-/// there is bare digits.
-String conteTimeLabel(int frames, int framesPerSecond) {
-  final fps = framesPerSecond < 1 ? 1 : framesPerSecond;
-  return '${frames ~/ fps}+${frames % fps}';
-}

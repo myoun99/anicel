@@ -1007,7 +1007,7 @@ void main() {
         showSeconds: true,
         projectFrameRate: const ProjectFrameRate.integer(24),
       );
-      expect(requireCutBlock(tester, 'cut-b').total, '2+00');
+      expect(requireCutBlock(tester, 'cut-b').total, '2+0');
     });
 
     testWidgets('frame axis: scrolling stays CLAMPED to the built cells; '

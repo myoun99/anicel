@@ -114,8 +114,9 @@ void main() {
         showSeconds: true,
       ),
     );
-    // 6 frames at the default 24-base: under a second.
-    expect(textsOf(tester), ['0+06']);
+    // 6 frames at the default 24-base: under a second. Bare digits, the
+    // conte sheet's notation (feedback #12) — this used to read `0+06`.
+    expect(textsOf(tester), ['0+6']);
   });
 
   testWidgets('R27 #3: GLUED blocks each label their own length', (

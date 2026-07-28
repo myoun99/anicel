@@ -2,6 +2,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:quick_animaker_v2/src/models/conte/conte_sheet_layout.dart';
 import 'package:quick_animaker_v2/src/models/conte/conte_sheet_source.dart';
 import 'package:quick_animaker_v2/src/models/cut_id.dart';
+import 'package:quick_animaker_v2/src/models/project_frame_rate.dart';
+import 'package:quick_animaker_v2/src/ui/timeline/timeline_frame_range_policy.dart';
 
 /// The conte page: five cells, CUT/TIME merged per cut, and a cell that
 /// does not fit moves WHOLE to the next page leaving a marked hole.
@@ -115,10 +117,17 @@ void main() {
     expect(pages.single.pageTotalLabel, '2+12');
   });
 
-  test('the time notation drops the padding the timeline keeps', () {
-    expect(conteTimeLabel(51, 24), '2+3');
-    expect(conteTimeLabel(60, 24), '2+12');
-    expect(conteTimeLabel(0, 24), '0+0');
+  test('the time notation is bare digits — and it is the TIMELINE\'s too '
+      '(feedback #12: one notation, not one per surface)', () {
+    expect(secondsPlusFramesLabel(51, 24), '2+3');
+    expect(secondsPlusFramesLabel(60, 24), '2+12');
+    expect(secondsPlusFramesLabel(0, 24), '0+0');
+    // What the timeline prints for the same count, through its own entry
+    // point: the two used to differ by a zero pad.
+    expect(
+      timelineDurationLabel(51, showSeconds: true, countingBase: 24),
+      secondsPlusFramesLabel(51, 24),
+    );
   });
 
   test('the picture column keeps the camera ratio and the text takes what '

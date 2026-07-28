@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
 import '../../core/timeline/timeline_defaults.dart';
+import '../../models/project_frame_rate.dart' show secondsPlusFramesLabel;
 import 'timeline_grid_metrics.dart';
 
 class TimelineFrameRange {
@@ -46,25 +47,20 @@ double timelineCutEndBoundaryX({
   return playbackFrameCount * metrics.frameCellWidth;
 }
 
-/// Conte-sheet time notation for a frame COUNT: whole seconds plus leftover
-/// frames — 54 frames at 24fps reads `2+06` (秒+コマ).
-String timelineSecondsLabel(int frames, int fps) {
-  final safeFps = math.max(1, fps);
-  final seconds = frames ~/ safeFps;
-  final leftover = frames % safeFps;
-  return '$seconds+${leftover.toString().padLeft(2, '0')}';
-}
-
 /// R27 #3: the ONE duration readout every block-length label prints —
 /// seconds+frames under the seconds toggle, otherwise the bare frame
 /// COUNT. No `f` suffix: the column reads as numbers (user: "프레임이라고
 /// 해서 뒤에 f붙이지마. 그냥 숫자만"), and the timeline and the storyboard
 /// must not drift apart on that.
+///
+/// The seconds form is [secondsPlusFramesLabel] — the conte sheet's, with
+/// no zero padding (feedback #12). It used to be a second, padded copy
+/// here, so 51 frames read `2+03` on screen and `2+3` on paper.
 String timelineDurationLabel(
   int frames, {
   required bool showSeconds,
   required int countingBase,
-}) => showSeconds ? timelineSecondsLabel(frames, countingBase) : '$frames';
+}) => showSeconds ? secondsPlusFramesLabel(frames, countingBase) : '$frames';
 
 /// The endless frame axis' contract (UI-R12 #16, unifying the timeline,
 /// the X-sheet and the storyboard): cells exist exactly because they are
