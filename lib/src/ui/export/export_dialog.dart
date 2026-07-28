@@ -24,8 +24,13 @@ import '../../models/export_overrides.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/conte/conte_sheet_layout.dart';
+import '../../models/conte/conte_sheet_source.dart';
+import '../conte/conte_sheet_builder.dart';
+import 'conte_pdf_writer.dart';
 import 'export_audio_mix.dart';
 import 'export_cel_group_plan.dart';
+import 'export_conte_render.dart';
 import 'export_cels_rows.dart';
 import 'export_cels_selection.dart';
 import 'export_cut_grid.dart';
@@ -128,10 +133,14 @@ class ExportDialogState extends State<ExportDialog> {
   late int _imageFrame;
   int _celPosition = 0;
   int _sheetPosition = 0;
+  int _contePosition = 0;
   // Sheet documents are chunky to derive; the modal dialog memoizes per
   // cut IDENTITY (the film cannot change under an open dialog).
   final Map<CutId, (Cut, TimesheetDocument, TimesheetDocumentLayout)>
       _sheetDocs = {};
+  // The conte sheet reads the WHOLE project — memoized on its identity
+  // (the film cannot change under an open dialog).
+  (Object, ConteSheetSource, List<ContePageLayout>)? _conteSheetCache;
   static const int _previewMaxWidth = 316;
   static const int _previewMaxHeight = 300;
 
@@ -463,6 +472,78 @@ class ExportDialogState extends State<ExportDialog> {
     return tasks;
   }
 
+  /// The conte sheet, laid out — pages the plan/preview/nav all read.
+  (ConteSheetSource, List<ContePageLayout>) _conteSheet() {
+    final project = _session.repository.requireProject();
+    final cached = _conteSheetCache;
+    if (cached != null && identical(cached.$1, project)) {
+      return (cached.$2, cached.$3);
+    }
+    final source = buildConteSheetSource(project);
+    final pages = layoutConteSheet(
+      source,
+      metrics: ConteSheetMetrics(cameraAspect: _session.cameraFrameAspect),
+    );
+    _conteSheetCache = (project, source, pages);
+    return (source, pages);
+  }
+
+  String _contePageFileName(int index, int pageCount) =>
+      pageCount == 1 ? 'conte.png' : 'conte_p${index + 1}.png';
+
+  Cut? _conteCutById(String cutId) {
+    for (final track in _session.repository.requireProject().tracks) {
+      for (final cut in track.cuts) {
+        if (cut.id.value == cutId) {
+          return cut;
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Renders every cell's picture once, camera-framed at [width] — fresh
+  /// composites straight from the brush store (the storyboard thumbnail
+  /// rule: the cache is panel-resolution, an export re-renders).
+  Future<Map<(String, int), ui.Image>> _renderContePictures(
+    List<ContePageLayout> pages, {
+    required int width,
+  }) async {
+    final renderer = ExportFrameRenderer(session: _session);
+    final cameraSize = _session.cameraFrameSize;
+    final height = math.max(
+      1,
+      (width * cameraSize.height / cameraSize.width).round(),
+    );
+    final images = <(String, int), ui.Image>{};
+    try {
+      for (final page in pages) {
+        for (final cell in page.cells) {
+          final key = (cell.cutId, cell.source.pictureFrame);
+          if (images.containsKey(key) || _cancelRequested) {
+            continue;
+          }
+          final cut = _conteCutById(cell.cutId);
+          if (cut == null) {
+            continue;
+          }
+          images[key] = await renderer.renderComposite(
+            ExportFrameTask(cut: cut, frameIndex: cell.source.pictureFrame),
+            ExportSizeMode.camera,
+            outputSize: CanvasSize(width: width, height: height),
+          );
+        }
+      }
+    } on Object {
+      // A failed render must not strand the ones already made.
+      for (final image in images.values) {
+        image.dispose();
+      }
+      rethrow;
+    }
+    return images;
+  }
+
   Set<CanvasSize> _scopeCanvasSizes(ExportScopeKind scope) {
     return resolveExportCuts(
       project: _session.repository.requireProject(),
@@ -655,6 +736,43 @@ class ExportDialogState extends State<ExportDialog> {
                 : CanvasSize(width: fitted.width, height: fitted.height),
           ),
         );
+      case ExportTab.conte:
+        final (source, pages) = _conteSheet();
+        if (pages.isEmpty) {
+          _preview.clear();
+          return;
+        }
+        _contePosition = _contePosition.clamp(0, pages.length - 1);
+        final page = pages[_contePosition];
+        final fitted = previewOutputSize(
+          sourceWidth: page.metrics.pageWidth.round(),
+          sourceHeight: page.metrics.pageHeight.round(),
+          maxWidth: _previewMaxWidth,
+          maxHeight: _previewMaxHeight,
+        );
+        _preview.request(
+          key: 'conte:${page.pageIndex}',
+          caption: 'p${page.pageIndex + 1}',
+          render: () async {
+            // Preview pictures at panel resolution — fast, and the run
+            // re-renders sharper ones anyway.
+            final pictures = await _renderContePictures([page], width: 128);
+            try {
+              return await renderContePageImage(
+                page: page,
+                source: source,
+                pictureFor: (cutId, frame) => pictures[(cutId, frame)],
+                outputSize: fitted == null
+                    ? null
+                    : CanvasSize(width: fitted.width, height: fitted.height),
+              );
+            } finally {
+              for (final image in pictures.values) {
+                image.dispose();
+              }
+            }
+          },
+        );
     }
   }
 
@@ -731,6 +849,14 @@ class ExportDialogState extends State<ExportDialog> {
         return 'CUT${task.cutLabel} · p${task.pageIndex + 1}/'
             '${task.pageCount} · ${plan.length} '
             '${_plural(plan.length, 'page')}';
+      case ExportTab.conte:
+        final (_, pages) = _conteSheet();
+        if (pages.isEmpty) {
+          return null;
+        }
+        final position = _contePosition.clamp(0, pages.length - 1);
+        return 'p${position + 1} / ${pages.length} · '
+            '${pages.length} ${_plural(pages.length, 'page')}';
     }
   }
 
@@ -783,6 +909,15 @@ class ExportDialogState extends State<ExportDialog> {
         final count = _timesheetCuts().length;
         return '$count XDTS ${_plural(count, 'sheet')} '
             '(cels + serifu + camerawork columns).';
+      case ExportTab.conte:
+        final (_, pages) = _conteSheet();
+        if (_specs.conte.format == ExportConteFormat.pdf) {
+          return '${pages.length} conte ${_plural(pages.length, 'page')} as '
+              'ONE vector PDF — rules and text as vectors, pictures '
+              'embedded.';
+        }
+        return '${pages.length} conte ${_plural(pages.length, 'page')} as '
+            "A4 PNG — the panel's own paper, offscreen.";
     }
   }
 
@@ -820,6 +955,16 @@ class ExportDialogState extends State<ExportDialog> {
             ? '→ (no cuts)'
             : '→ CUT${sanitizeExportFileComponent(cuts.first.name)}.xdts'
                   '${cuts.length > 1 ? ' …' : ''}';
+      case ExportTab.conte:
+        final (_, pages) = _conteSheet();
+        if (pages.isEmpty) {
+          return '→ (no cuts)';
+        }
+        if (_specs.conte.format == ExportConteFormat.pdf) {
+          return '→ conte.pdf';
+        }
+        return '→ ${_contePageFileName(0, pages.length)}'
+            '${pages.length > 1 ? ' …' : ''}';
     }
   }
 
@@ -936,6 +1081,8 @@ class ExportDialogState extends State<ExportDialog> {
         return _specs.timesheet.format == ExportTimesheetFormat.sheetImage
             ? _timesheetPagePlan().isNotEmpty
             : _timesheetCuts().isNotEmpty;
+      case ExportTab.conte:
+        return _conteSheet().$2.isNotEmpty;
     }
   }
 
@@ -1001,6 +1148,8 @@ class ExportDialogState extends State<ExportDialog> {
         return _specs.timesheet.format == ExportTimesheetFormat.sheetImage
             ? _exportSheetImages()
             : _exportXdts();
+      case ExportTab.conte:
+        return _exportConte();
     }
   }
 
@@ -1199,6 +1348,104 @@ class ExportDialogState extends State<ExportDialog> {
     }
     return 'Exported ${summary.written} sheet '
         '${_plural(summary.written, 'page')}.';
+  }
+
+  Future<String> _exportConte() async {
+    final (source, pages) = _conteSheet();
+    final spec = _specs.conte;
+    if (spec.format == ExportConteFormat.pageImage) {
+      // Streamed like every image export: ONE page's cell pictures live
+      // at a time (a cut spanning two pages re-renders once per page —
+      // cheaper than holding the whole film's cells).
+      final cellWidth = 320 * spec.sheetScale;
+      final summary = await _exportService.exportImages(
+        count: pages.length,
+        renderImage: (index) async {
+          final page = pages[index];
+          final pictures = await _renderContePictures(
+            [page],
+            width: cellWidth,
+          );
+          try {
+            return await renderContePageImage(
+              page: page,
+              source: source,
+              pictureFor: (cutId, frame) => pictures[(cutId, frame)],
+              scale: spec.sheetScale.toDouble(),
+            );
+          } finally {
+            for (final image in pictures.values) {
+              image.dispose();
+            }
+          }
+        },
+        fileNameFor: (index) => _contePageFileName(index, pages.length),
+        directoryPath: _location!,
+        isCancelled: () => _cancelRequested,
+        onProgress: _reportProgress,
+      );
+      if (summary.processed < pages.length) {
+        return 'Export cancelled after ${summary.written} '
+            '${_plural(summary.written, 'page')}.';
+      }
+      return 'Exported ${summary.written} conte '
+          '${_plural(summary.written, 'page')}.';
+    }
+    // Vector PDF: one document, the layout's own points as page geometry.
+    // Each cell renders, converts to raw bytes and FREES its ui.Image
+    // before the next renders — only the raw copies (the document's own
+    // material) live to the end.
+    _reportProgress(0, pages.length + 1);
+    final renderer = ExportFrameRenderer(session: _session);
+    final cameraSize = _session.cameraFrameSize;
+    const pictureWidth = 640;
+    final pictureHeight = math.max(
+      1,
+      (pictureWidth * cameraSize.height / cameraSize.width).round(),
+    );
+    final pdfPictures = <(String, int), ContePdfPicture>{};
+    for (final page in pages) {
+      for (final cell in page.cells) {
+        final key = (cell.cutId, cell.source.pictureFrame);
+        if (pdfPictures.containsKey(key) || _cancelRequested) {
+          continue;
+        }
+        final cut = _conteCutById(cell.cutId);
+        if (cut == null) {
+          continue;
+        }
+        final image = await renderer.renderComposite(
+          ExportFrameTask(cut: cut, frameIndex: cell.source.pictureFrame),
+          ExportSizeMode.camera,
+          outputSize: CanvasSize(width: pictureWidth, height: pictureHeight),
+        );
+        try {
+          final picture = await ContePdfPicture.fromImage(image);
+          if (picture != null) {
+            pdfPictures[key] = picture;
+          }
+        } finally {
+          image.dispose();
+        }
+      }
+    }
+    if (_cancelRequested) {
+      return 'Export cancelled.';
+    }
+    final fonts = await ContePdfFonts.load();
+    _reportProgress(pages.length, pages.length + 1);
+    final bytes = await writeContePdf(
+      source: source,
+      pages: pages,
+      fonts: fonts,
+      pictures: pdfPictures,
+    );
+    final file = File(_joinLocation('conte.pdf'));
+    await file.parent.create(recursive: true);
+    await file.writeAsBytes(bytes, flush: true);
+    _reportProgress(pages.length + 1, pages.length + 1);
+    return 'Exported conte.pdf (${pages.length} '
+        '${_plural(pages.length, 'page')}).';
   }
 
   Future<String> _exportVideo() async {
@@ -1718,6 +1965,14 @@ class ExportDialogState extends State<ExportDialog> {
           return plan.isEmpty ? '(no cuts)' : plan.first.fileName;
         }
         return 'CUT1.xdts';
+      case ExportTab.conte:
+        if (_specs.conte.format == ExportConteFormat.pdf) {
+          return 'conte.pdf';
+        }
+        final (_, pages) = _conteSheet();
+        return pages.isEmpty
+            ? '(no cuts)'
+            : _contePageFileName(0, pages.length);
       case ExportTab.image:
         return '';
     }
@@ -1827,6 +2082,21 @@ class ExportDialogState extends State<ExportDialog> {
             _refreshPreview();
           },
         );
+      case ExportTab.conte:
+        final (_, pages) = _conteSheet();
+        return ExportNavBar(
+          axis: ExportNavAxis(
+            length: pages.length,
+            captionOf: (position) =>
+                'p${position.clamp(0, math.max(0, pages.length - 1)) + 1}',
+          ),
+          position: _contePosition,
+          enabled: !_isExporting,
+          onChanged: (position) {
+            setState(() => _contePosition = position);
+            _refreshPreview();
+          },
+        );
     }
   }
 
@@ -1916,6 +2186,7 @@ class ExportDialogState extends State<ExportDialog> {
       ExportTab.image => _imageModules(),
       ExportTab.cels => _celsModules(),
       ExportTab.timesheet => _timesheetModules(),
+      ExportTab.conte => _conteModules(),
     };
     // A plain scroll view (not a lazy list): a handful of modules, and
     // collapsed accordions must exist for finders/ensureVisible.
@@ -2645,6 +2916,82 @@ class ExportDialogState extends State<ExportDialog> {
           child: spec.scope == ExportScopeKind.project
               ? _scopeCutGrid()
               : null,
+        ),
+      ),
+    ];
+  }
+
+  List<Widget> _conteModules() {
+    final spec = _specs.conte;
+    return [
+      ExportAccordion(
+        title: AppText.strings.exFormat,
+        summary: spec.format == ExportConteFormat.pdf
+            ? 'Vector PDF'
+            : 'Page PNG · ${spec.sheetScale}x',
+        expanded: _expandedFor('format', fallback: true),
+        onToggle: () => _toggleExpanded('format', fallback: true),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              spacing: 5,
+              children: [
+                ExportChip(
+                  key: const ValueKey<String>('export-conteformat-pdf'),
+                  label: 'PDF',
+                  selected: spec.format == ExportConteFormat.pdf,
+                  onTap: _isExporting
+                      ? null
+                      : () => _updateSpec(
+                          spec.copyWith(format: ExportConteFormat.pdf),
+                        ),
+                ),
+                ExportChip(
+                  key: const ValueKey<String>('export-conteformat-png'),
+                  label: AppText.strings.exSheetPng,
+                  selected: spec.format == ExportConteFormat.pageImage,
+                  onTap: _isExporting
+                      ? null
+                      : () => _updateSpec(
+                          spec.copyWith(format: ExportConteFormat.pageImage),
+                        ),
+                ),
+              ],
+            ),
+            if (spec.format == ExportConteFormat.pageImage) ...[
+              const SizedBox(height: 6),
+              ExportModuleRow(
+                label: AppText.strings.brScale,
+                child: Wrap(
+                  spacing: 5,
+                  children: [
+                    for (final scale in const [1, 2, 3, 4])
+                      ExportChip(
+                        key: ValueKey<String>('export-contescale-$scale'),
+                        label: '${scale}x',
+                        selected: spec.sheetScale == scale,
+                        onTap: _isExporting
+                            ? null
+                            : () => _updateSpec(
+                                spec.copyWith(sheetScale: scale),
+                              ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 5),
+            exportModuleNote(
+              context,
+              spec.format == ExportConteFormat.pdf
+                  ? 'One A4 PDF of the whole picture conte — rules and '
+                        'text as vectors (embedded OFL fonts), cell '
+                        'pictures as images.'
+                  : "The panel's A4 paper rendered per page — what the "
+                        'Conte tab shows is what prints.',
+            ),
+          ],
         ),
       ),
     ];

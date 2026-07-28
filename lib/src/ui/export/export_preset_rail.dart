@@ -35,6 +35,7 @@ class ExportPresetRail extends StatelessWidget {
     ExportTab.image => AppText.strings.exImage,
     ExportTab.cels => AppText.strings.exCels,
     ExportTab.timesheet => 'Timesheet',
+    ExportTab.conte => 'Conte',
   };
 
   /// One-line rule summary under the preset name.
@@ -49,6 +50,10 @@ class ExportPresetRail extends StatelessWidget {
     TimesheetExportSpec() => switch (spec.format) {
       ExportTimesheetFormat.sheetImage => 'Sheet image',
       ExportTimesheetFormat.xdts => 'XDTS',
+    },
+    ConteExportSpec() => switch (spec.format) {
+      ExportConteFormat.pdf => 'Vector PDF',
+      ExportConteFormat.pageImage => 'Page image',
     },
   };
 

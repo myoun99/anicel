@@ -23,6 +23,23 @@ None yet.
 
 ## Assets
 
-The app ships no third-party artwork, brush files, sound files or fonts.
-Sample/preset files sourced from other applications must never be
-committed or bundled.
+### Bundled fonts (`assets/fonts/`)
+
+Embedded ONLY into exported conte PDFs (the app UI keeps the platform
+fonts). All three are licensed under the **SIL Open Font License 1.1**
+(OFL), obtained from the Google Fonts collection
+(`github.com/google/fonts`, `ofl/` tree):
+
+| File | Family | Copyright |
+| --- | --- | --- |
+| `MPLUS1p-Regular.ttf` | M PLUS 1p | The M+ FONTS Project Authors |
+| `MPLUS1p-Bold.ttf` | M PLUS 1p | The M+ FONTS Project Authors |
+| `IBMPlexSansKR-Regular.ttf` | IBM Plex Sans KR | IBM Corp. |
+
+The OFL permits bundling and embedding; the fonts remain under their own
+license, and their reserved font names are not used for any derivative.
+License text: <https://openfontlicense.org>.
+
+Beyond those fonts the app ships no third-party artwork, brush files or
+sound files. Sample/preset files sourced from other applications must
+never be committed or bundled.

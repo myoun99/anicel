@@ -258,24 +258,12 @@ class ContePagePainter extends CustomPainter {
       }
     }
     _text(canvas, cell.source.action, cell.actionRect.deflate(4), _style(9));
-    _text(canvas, _dialogueFor(cell), cell.dialogueRect.deflate(4), _style(9));
-  }
-
-  /// The lines that START in this cell's span. Dialogue is the SE blocks'
-  /// (design G), so a cell prints whatever was said while it was on screen.
-  String _dialogueFor(ContePlacedCell cell) {
-    for (final cut in source.cuts) {
-      if (cut.cutId.value != cell.cutId) {
-        continue;
-      }
-      return [
-        for (final line in cut.dialogue)
-          if (line.startFrame >= cell.source.startFrame &&
-              line.startFrame < cell.source.endFrameExclusive)
-            line.printed,
-      ].join('\n');
-    }
-    return '';
+    _text(
+      canvas,
+      contePrintedDialogueFor(source, cell),
+      cell.dialogueRect.deflate(4),
+      _style(9),
+    );
   }
 
   void _paintPicture(Canvas canvas, ui.Image image, Rect slot) {
@@ -359,9 +347,11 @@ class ContePagePainter extends CustomPainter {
 
   /// Lays text into [slot], shrinking a step at a time before it clips.
   ///
-  /// [TextPainter] is the layout TRUTH here (design): the PDF emits the
-  /// LINES this produces rather than re-wrapping, so the screen and the
-  /// page can never disagree about where a line broke.
+  /// [TextPainter] is the panel's layout truth. The PDF writer wraps by
+  /// its EMBEDDED fonts' own metrics instead (conte_pdf_writer.dart) —
+  /// the panel renders in each OS's default family, so its break
+  /// positions are not portable; both surfaces share the geometry and
+  /// the text content, and each wraps self-consistently.
   void _text(
     Canvas canvas,
     String text,

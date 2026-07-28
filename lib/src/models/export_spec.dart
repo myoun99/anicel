@@ -12,7 +12,8 @@ enum ExportTab {
   sequence,
   image,
   cels,
-  timesheet;
+  timesheet,
+  conte;
 
   String get jsonValue => name;
 
@@ -92,6 +93,21 @@ enum ExportTimesheetFormat {
   };
 }
 
+/// What the Conte tab writes: one vector PDF of the whole sheet (text as
+/// embedded-font runs, pictures as raster cells), or the pages as images
+/// (the timesheet's sheet-image shape).
+enum ExportConteFormat {
+  pdf,
+  pageImage;
+
+  String get jsonValue => name;
+
+  static ExportConteFormat fromJson(Object? json) => switch (json) {
+    'pageImage' => ExportConteFormat.pageImage,
+    _ => ExportConteFormat.pdf,
+  };
+}
+
 sealed class ExportTabSpec {
   const ExportTabSpec();
 
@@ -107,6 +123,7 @@ ExportTabSpec exportTabSpecFromJson(ExportTab tab, Map<String, dynamic> json) {
     ExportTab.image => ImageExportSpec.fromJson(json),
     ExportTab.cels => CelsExportSpec.fromJson(json),
     ExportTab.timesheet => TimesheetExportSpec.fromJson(json),
+    ExportTab.conte => ConteExportSpec.fromJson(json),
   };
 }
 
@@ -473,6 +490,50 @@ class TimesheetExportSpec extends ExportTabSpec {
   int get hashCode => Object.hash(format, scope, sheetScale);
 }
 
+/// The Conte tab: the storyboard sheet as one vector PDF (or page images).
+class ConteExportSpec extends ExportTabSpec {
+  const ConteExportSpec({
+    this.format = ExportConteFormat.pdf,
+    this.sheetScale = 2,
+  });
+
+  final ExportConteFormat format;
+
+  /// Page-image raster scale over the page's logical size (1..4);
+  /// PDF output is vector and ignores it.
+  final int sheetScale;
+
+  @override
+  ExportTab get tab => ExportTab.conte;
+
+  ConteExportSpec copyWith({ExportConteFormat? format, int? sheetScale}) =>
+      ConteExportSpec(
+        format: format ?? this.format,
+        sheetScale: (sheetScale ?? this.sheetScale).clamp(1, 4),
+      );
+
+  @override
+  Map<String, dynamic> toJson() => {
+    if (format != ExportConteFormat.pdf) 'format': format.jsonValue,
+    if (sheetScale != 2) 'sheetScale': sheetScale,
+  };
+
+  static ConteExportSpec fromJson(Map<String, dynamic> json) =>
+      ConteExportSpec(
+        format: ExportConteFormat.fromJson(json['format']),
+        sheetScale: ((json['sheetScale'] as num?)?.round() ?? 2).clamp(1, 4),
+      );
+
+  @override
+  bool operator ==(Object other) =>
+      other is ConteExportSpec &&
+      other.format == format &&
+      other.sheetScale == sheetScale;
+
+  @override
+  int get hashCode => Object.hash(format, sheetScale);
+}
+
 /// The dialog's last-used spec per tab (app state, persisted with the
 /// presets in the export settings file).
 class ExportTabSpecs {
@@ -481,18 +542,21 @@ class ExportTabSpecs {
     this.image = const ImageExportSpec(),
     this.cels = const CelsExportSpec(),
     this.timesheet = const TimesheetExportSpec(),
+    this.conte = const ConteExportSpec(),
   });
 
   final SequenceExportSpec sequence;
   final ImageExportSpec image;
   final CelsExportSpec cels;
   final TimesheetExportSpec timesheet;
+  final ConteExportSpec conte;
 
   ExportTabSpec specFor(ExportTab tab) => switch (tab) {
     ExportTab.sequence => sequence,
     ExportTab.image => image,
     ExportTab.cels => cels,
     ExportTab.timesheet => timesheet,
+    ExportTab.conte => conte,
   };
 
   ExportTabSpecs withSpec(ExportTabSpec spec) => switch (spec) {
@@ -500,6 +564,7 @@ class ExportTabSpecs {
     ImageExportSpec() => copyWith(image: spec),
     CelsExportSpec() => copyWith(cels: spec),
     TimesheetExportSpec() => copyWith(timesheet: spec),
+    ConteExportSpec() => copyWith(conte: spec),
   };
 
   ExportTabSpecs copyWith({
@@ -507,11 +572,13 @@ class ExportTabSpecs {
     ImageExportSpec? image,
     CelsExportSpec? cels,
     TimesheetExportSpec? timesheet,
+    ConteExportSpec? conte,
   }) => ExportTabSpecs(
     sequence: sequence ?? this.sequence,
     image: image ?? this.image,
     cels: cels ?? this.cels,
     timesheet: timesheet ?? this.timesheet,
+    conte: conte ?? this.conte,
   );
 
   Map<String, dynamic> toJson() => {
@@ -519,6 +586,7 @@ class ExportTabSpecs {
     'image': image.toJson(),
     'cels': cels.toJson(),
     'timesheet': timesheet.toJson(),
+    'conte': conte.toJson(),
   };
 
   static ExportTabSpecs fromJson(Map<String, dynamic> json) => ExportTabSpecs(
@@ -536,6 +604,9 @@ class ExportTabSpecs {
         : TimesheetExportSpec.fromJson(
             json['timesheet'] as Map<String, dynamic>,
           ),
+    conte: json['conte'] == null
+        ? const ConteExportSpec()
+        : ConteExportSpec.fromJson(json['conte'] as Map<String, dynamic>),
   );
 
   @override
@@ -545,8 +616,9 @@ class ExportTabSpecs {
           other.sequence == sequence &&
           other.image == image &&
           other.cels == cels &&
-          other.timesheet == timesheet;
+          other.timesheet == timesheet &&
+          other.conte == conte;
 
   @override
-  int get hashCode => Object.hash(sequence, image, cels, timesheet);
+  int get hashCode => Object.hash(sequence, image, cels, timesheet, conte);
 }
