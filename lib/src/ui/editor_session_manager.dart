@@ -7349,11 +7349,15 @@ class EditorSessionManager extends ChangeNotifier {
     return (layerIds: [layerId], anchorIndex: index, anchorIsGlobal: false);
   }
 
-  /// The layer a shift MEASURES against, in the scope's own axis: the
-  /// global layer for a global anchor, the display clone for a cut-local
-  /// one (whose indexes only that clone is keyed by).
-  Layer? _shiftLayerFor(LayerId layerId, {required bool anchorIsGlobal}) =>
-      anchorIsGlobal && isTrackSeLayerId(layerId)
+  /// The layer a shift MEASURES against, in the axis the anchor will be
+  /// translated to: track-SE rows ALWAYS answer with the global layer —
+  /// [_shiftAnchorFor] puts every anchor on that axis for them — and
+  /// everything else with the cut-local range layer, matching a cut-local
+  /// anchor. Measuring the SE display clone against the translated global
+  /// anchor mixed the axes: the pull verb read zero slack in any cut past
+  /// the first, and a mixed selection's pull sailed past the SE wall into
+  /// an overlap crash.
+  Layer? _shiftLayerFor(LayerId layerId) => isTrackSeLayerId(layerId)
       ? trackSeGlobalLayerById(layerId)
       : _rangeLayerById(layerId);
 
@@ -7382,10 +7386,7 @@ class EditorSessionManager extends ChangeNotifier {
     }
     var slack = 0x7fffffff;
     for (final layerId in scope.layerIds) {
-      final layer = _shiftLayerFor(
-        layerId,
-        anchorIsGlobal: scope.anchorIsGlobal,
-      );
+      final layer = _shiftLayerFor(layerId);
       if (layer == null) {
         continue;
       }
@@ -9897,8 +9898,12 @@ class EditorSessionManager extends ChangeNotifier {
   /// Creates an SE entry at the current cell carrying [name] (the sheet's
   /// dialogue text) and the optional [seName] (speaker/effect, the accent
   /// box) in ONE undo step. The entry takes [lengthFrames] (the dialog's
-  /// length input), clamped into the room to the next entry / cut end;
-  /// null falls back to filling that room (legacy behavior).
+  /// length input); null falls back to filling to the cut end (legacy).
+  ///
+  /// The cut end no longer clamps the length (SE globalization): a sound
+  /// may run past it — the `~` crossing mark says so — and the NEXT
+  /// entry bounds the length in the controller, on the global axis, so
+  /// the neighbouring cuts' sounds count as walls too.
   void createSeEntryAtCurrentFrame({
     required String name,
     String? seName,
@@ -9913,12 +9918,13 @@ class EditorSessionManager extends ChangeNotifier {
 
     final remaining =
         requireActiveCut.duration - _timelineController.currentFrameIndex;
-    final available = remaining < 1 ? 1 : remaining;
+    final toCutEnd = remaining < 1 ? 1 : remaining;
+    final requested = lengthFrames ?? toCutEnd;
     _frameSequence += 1;
     _timelineController.createDrawingFrameForLayer(
       layerId: layer.id,
       frameId: FrameId(_nextFrameId(layer.id)),
-      length: (lengthFrames ?? available).clamp(1, available),
+      length: requested < 1 ? 1 : requested,
       name: name,
       seName: seName,
     );

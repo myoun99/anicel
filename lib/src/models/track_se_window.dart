@@ -10,14 +10,21 @@ import 'transform_track.dart';
 /// produces a read-only display clone whose timeline is rebased to the
 /// cut's local frames:
 ///
-/// - Entries starting inside the window keep their TRUE length — a block
-///   may extend past the cut end (the cut-cross case); renderers clip it
-///   visually and draw a continuation mark.
-/// - A block spilling IN from an earlier cut synthesizes a display entry
-///   at local 0 carrying the remaining length. It is display-only: edits
-///   must convert through [toGlobalFrame] and operate on the GLOBAL layer
-///   (the clone is never written back), and a start-edge grab on the
-///   spill entry is rejected — its real start lives in an earlier cut.
+/// - The window is OPEN-ENDED on the right (SE globalization): every
+///   entry at or after the cut start rides, rebased — scroll the ruler
+///   past the cut end and the NEXT cuts' sounds are simply there, on the
+///   endless runway, editable like any other block. The `~` continuation
+///   mark keeps saying exactly "this block crosses the current cut's
+///   end" — pure display, not a clip.
+/// - Entries keep their TRUE length — a block may extend past the cut
+///   end (the cut-cross case).
+/// - The LEFT side stays a wall: the cut-local axis cannot go below 0,
+///   so entries starting before the cut appear only as the synthesized
+///   spill-in entry at local 0 carrying the remaining length. It is
+///   display-only: edits must convert through [toGlobalFrame] and
+///   operate on the GLOBAL layer (the clone is never written back), and
+///   a start-edge grab on the spill entry is rejected — its real start
+///   lives in an earlier cut.
 ///
 /// All local↔global conversion lives HERE; nothing else adds cut starts.
 class TrackSeWindow {
@@ -68,19 +75,26 @@ class TrackSeWindow {
   /// stripped: its keys are global and would render at wrong local
   /// positions; SE transform lanes stand down for track SE layers until
   /// the lane editing converts through the window too.
+  ///
+  /// Open-ended on the right (SE globalization): keys at or beyond the
+  /// cut end ride too, so the runway shows the neighbours' sounds. The
+  /// degenerate no-cut window (duration 0) shows nothing — without a cut
+  /// there is no local axis to rebase onto.
   Layer displayLayer(Layer globalLayer) {
     final local = <int, TimelineExposure>{};
-    globalLayer.timeline.forEach((key, exposure) {
-      if (key >= cutStartFrame && key < cutEndFrameExclusive) {
-        local[toLocalFrame(key)] = exposure;
+    if (cutDurationFrames > 0) {
+      globalLayer.timeline.forEach((key, exposure) {
+        if (key >= cutStartFrame) {
+          local[toLocalFrame(key)] = exposure;
+        }
+      });
+      final spill = spillInBlock(globalLayer);
+      if (spill != null) {
+        local[0] = TimelineExposure.drawing(
+          spill.frameId,
+          length: spill.endIndexExclusive - cutStartFrame,
+        );
       }
-    });
-    final spill = spillInBlock(globalLayer);
-    if (spill != null) {
-      local[0] = TimelineExposure.drawing(
-        spill.frameId,
-        length: spill.endIndexExclusive - cutStartFrame,
-      );
     }
     return globalLayer.copyWith(
       timeline: local,

@@ -10,8 +10,9 @@ import 'track_id.dart';
 /// other axis. The two exist because a CUT owns its own axis: the timeline
 /// shows one cut at a time and its selection dies with the cut switch,
 /// while a track row spans the whole movie and a cut-local index cannot
-/// even name a frame outside the active cut — the SE display clone is
-/// windowed to the cut, so a sound two cuts away has no local address.
+/// name a frame BEFORE the active cut — the local axis has no negatives,
+/// so an earlier cut's sound has no local address (the display window is
+/// open-ended on the right now, but the left wall stands).
 ///
 /// The two are mutually exclusive on screen: starting one clears the other,
 /// so there is never a question of which axis the highlight is in.

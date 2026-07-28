@@ -533,4 +533,61 @@ void main() {
       ]);
     });
   });
+
+  group('SE globalization on the printed sheet', () {
+    // A 24-frame cut starting at global 24. The track SE row: a sound
+    // spilling in from the previous cut, one CROSSING this cut's end
+    // (starts frame 40, runs to 52), and one wholly in the NEXT cut (50…
+    // no — 56, past the cut end at 48).
+    Layer trackSe() => Layer(
+      id: const LayerId('track-se'),
+      name: 'S1',
+      kind: LayerKind.se,
+      frames: [
+        Frame(id: const FrameId('sp'), duration: 8, strokes: const []),
+        Frame(id: const FrameId('cr'), duration: 12, strokes: const []),
+        Frame(id: const FrameId('nx'), duration: 4, strokes: const []),
+      ],
+      timeline: {
+        20: const TimelineExposure.drawing(FrameId('sp'), length: 8),
+        40: const TimelineExposure.drawing(FrameId('cr'), length: 12),
+        56: const TimelineExposure.drawing(FrameId('nx'), length: 4),
+      },
+    );
+
+    TimesheetColumn seColumn() => TimesheetDocument.fromCut(
+      cut: _cut(duration: 24),
+      projectName: 'Project',
+      fps: 24,
+      pageSeconds: 1,
+      trackSeLayers: [trackSe()],
+      cutStartFrame: 24,
+    ).columns.firstWhere((column) => column.kind == TimesheetColumnKind.se);
+
+    test('the sheet stays the CUT\'s page: the display window is open-'
+        'ended now, but sounds starting at or past the cut end stay off '
+        'the printed rows', () {
+      final column = seColumn();
+      // The next cut's sound (global 56 = local 32, past duration 24)
+      // must not land in ANY row — the sheet's rowCount (a page multiple)
+      // is larger than the cut, and its slack rows print nothing.
+      for (var row = 24; row < column.cells.length; row += 1) {
+        expect(
+          column.cells[row].kind == TimesheetCellKind.drawing,
+          isFalse,
+          reason: 'row $row must not carry the next cut\'s entry',
+        );
+      }
+      // The crossing sound (local 16, runs to 28) still prints, held rows
+      // past the red line included.
+      expect(column.cells[16].kind, TimesheetCellKind.drawing);
+    });
+
+    test('the sheet carries the timeline\'s crossing marks: ~ flags for '
+        'the cut-end crossing AND the spill-in start', () {
+      final column = seColumn();
+      expect(column.crossesCutEnd, isTrue, reason: 'sound runs past 48');
+      expect(column.spillsInAtStart, isTrue, reason: 'sound from before 24');
+    });
+  });
 }

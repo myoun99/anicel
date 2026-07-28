@@ -134,6 +134,8 @@ class TimesheetColumn {
     this.layerName,
     this.layerId,
     this.previewCellsBuilder,
+    this.crossesCutEnd = false,
+    this.spillsInAtStart = false,
   });
 
   final TimesheetColumnKind kind;
@@ -159,6 +161,15 @@ class TimesheetColumn {
   /// camera instruction) without knowing each kind's cell recipe. Null
   /// for unbacked slots.
   final List<TimesheetCell> Function(Layer layer)? previewCellsBuilder;
+
+  /// SE columns: whether a sound starting inside this cut runs past its
+  /// end — the timeline's `~` continuation mark, printed on the sheet at
+  /// the cut-end line (SE globalization round). Pure display.
+  final bool crossesCutEnd;
+
+  /// SE columns: whether a sound from an earlier cut spills into row 0 —
+  /// the timeline's start-side `~`, printed at the column's first row.
+  final bool spillsInAtStart;
 }
 
 /// One paper page: [frameCount] rows starting at [startFrame], laid out in
@@ -255,18 +266,50 @@ class TimesheetDocument {
           layer,
     ];
     // SE rows are track-owned: window their global timelines to this cut
-    // (spill-in synthesizes a display block; cut-crossing blocks clip at
-    // the sheet's frame rows naturally). Cut-owned SE layers remain for
-    // legacy fixtures.
+    // (spill-in synthesizes a display block). Cut-owned SE layers remain
+    // for legacy fixtures.
     final seWindow = TrackSeWindow(
       cutStartFrame: cutStartFrame,
       cutDurationFrames: cut.duration,
     );
-    final seLayers = [
+    // The display window is open-ended on the right now (SE globalization
+    // — the timeline's runway shows the neighbours' sounds), but a
+    // printed page is no runway: entries starting at or past the cut end
+    // stay off the sheet. Crossing blocks keep their true length — their
+    // held rows print past the red cut-end line like before, and the
+    // sheet marks them with the timeline's `~`.
+    Layer clipToSheet(Layer displayClone) => displayClone.copyWith(
+      timeline: {
+        for (final entry in displayClone.timeline.entries)
+          if (entry.key < playbackFrameCount) entry.key: entry.value,
+      },
+    );
+    bool crossesCutEnd(Layer clone) {
+      for (final entry in clone.timeline.entries) {
+        if (entry.value.isDrawing &&
+            !entry.value.ghost &&
+            entry.key < playbackFrameCount &&
+            entry.key + (entry.value.length ?? 1) > playbackFrameCount) {
+          return true;
+        }
+      }
+      return false;
+    }
+
+    final seSlots = [
       for (final layer in cut.layers)
-        if (layer.kind == LayerKind.se && layer.onTimesheet) layer,
+        if (layer.kind == LayerKind.se && layer.onTimesheet)
+          (layer: layer, crosses: crossesCutEnd(layer), spills: false),
       for (final layer in trackSeLayers)
-        if (layer.onTimesheet) seWindow.displayLayer(layer),
+        if (layer.onTimesheet)
+          () {
+            final clone = clipToSheet(seWindow.displayLayer(layer));
+            return (
+              layer: clone,
+              crosses: crossesCutEnd(clone),
+              spills: seWindow.spillInBlock(layer) != null,
+            );
+          }(),
     ];
     final instructionLayers = [
       for (final layer in cut.layers)
@@ -317,17 +360,21 @@ class TimesheetDocument {
                 )
               : null,
         ),
-      for (var slot = 0; slot < _slotCount(seColumnCount, seLayers); slot += 1)
+      for (var slot = 0; slot < _slotCount(seColumnCount, seSlots); slot += 1)
         TimesheetColumn(
           kind: TimesheetColumnKind.se,
           // The layer's stored name — the same label the timeline and
           // storyboard rows show (W3 ordering unification).
-          label: slot < seLayers.length ? seLayers[slot].name : 'S${slot + 1}',
-          layerName: slot < seLayers.length ? seLayers[slot].name : null,
-          layerId: slot < seLayers.length ? seLayers[slot].id : null,
-          cells: slot < seLayers.length
+          label: slot < seSlots.length
+              ? seSlots[slot].layer.name
+              : 'S${slot + 1}',
+          layerName: slot < seSlots.length ? seSlots[slot].layer.name : null,
+          layerId: slot < seSlots.length ? seSlots[slot].layer.id : null,
+          crossesCutEnd: slot < seSlots.length && seSlots[slot].crosses,
+          spillsInAtStart: slot < seSlots.length && seSlots[slot].spills,
+          cells: slot < seSlots.length
               ? timesheetLayerCells(
-                  layer: seLayers[slot],
+                  layer: seSlots[slot].layer,
                   rowCount: rowCount,
                   playbackFrameCount: playbackFrameCount,
                   // SE columns stay blank between entries on paper — no X;
@@ -338,11 +385,11 @@ class TimesheetDocument {
                 )
               : _blankCells(rowCount),
           // SE drags preview live (UI-R18 #7): the timeline publishes
-          // the DISPLAY clone under the same id, so the recipe applies
-          // unchanged.
-          previewCellsBuilder: slot < seLayers.length
+          // the DISPLAY clone under the same id — open-ended now, so the
+          // sheet's own end clip applies before the recipe.
+          previewCellsBuilder: slot < seSlots.length
               ? (layer) => timesheetLayerCells(
-                  layer: layer,
+                  layer: clipToSheet(layer),
                   rowCount: rowCount,
                   playbackFrameCount: playbackFrameCount,
                   markEmptyRuns: false,
@@ -471,7 +518,7 @@ class TimesheetDocument {
   String get durationLabel =>
       '${playbackFrameCount ~/ fps}+${playbackFrameCount % fps}';
 
-  static int _slotCount(int fixedSlots, List<Layer> layers) {
+  static int _slotCount(int fixedSlots, List<Object> layers) {
     return layers.length > fixedSlots ? layers.length : fixedSlots;
   }
 

@@ -142,6 +142,7 @@ List<Widget> timelineRowSeContinuationMarks({
 List<Widget> timelineRowAudioOverlays({
   required Layer layer,
   required int frameStartIndex,
+  int frameEndIndexExclusive = 1 << 30,
   required Axis axis,
   required ProjectFrameRate frameRate,
   required AudioPeaks? Function(String filePath) audioPeaksFor,
@@ -151,6 +152,13 @@ List<Widget> timelineRowAudioOverlays({
 }) {
   final overlays = <Widget>[];
   for (final span in seAudioSpans(layer)) {
+    // Windowed like every sibling builder: the open-ended SE display
+    // clone carries every downstream sound now, and an off-window
+    // waveform strip is layout weight nobody can see.
+    if (span.startFrame + span.lengthFrames <= frameStartIndex ||
+        span.startFrame >= frameEndIndexExclusive) {
+      continue;
+    }
     final peaks = audioPeaksFor(span.clip.filePath);
     if (peaks == null) {
       continue;

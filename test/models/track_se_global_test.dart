@@ -169,5 +169,36 @@ void main() {
       expect(display.timeline[0], isNull);
       expect(cleanWindow.isSpillInStart(global, 0), isFalse);
     });
+
+    test('the window is OPEN-ENDED on the right (SE globalization): '
+        'entries at or beyond the cut end ride too, rebased — the runway '
+        'shows the neighbours\' sounds', () {
+      // Window [20, 32): block B [30, 38) starts inside; a third block at
+      // 40 sits entirely BEYOND the cut end — it used to be dropped.
+      final withNeighbour = global.copyWith(
+        timeline: {
+          ...global.timeline,
+          40: const TimelineExposure.drawing(FrameId('fc'), length: 5),
+        },
+      );
+      final display = window.displayLayer(withNeighbour);
+
+      expect(display.timeline[10]!.frameId, const FrameId('fb'));
+      expect(
+        display.timeline[20]!.frameId,
+        const FrameId('fc'),
+        reason: 'global 40 rebases to local 20, past the 12-frame cut',
+      );
+      expect(display.timeline[20]!.length, 5);
+      // And the conversion round-trips: editing the runway block
+      // addresses global 40.
+      expect(window.globalBlockStartFor(withNeighbour, 20), 40);
+    });
+
+    test('the degenerate no-cut window (duration 0) shows nothing — '
+        'without a cut there is no local axis to rebase onto', () {
+      const parked = TrackSeWindow(cutStartFrame: 0, cutDurationFrames: 0);
+      expect(parked.displayLayer(global).timeline, isEmpty);
+    });
   });
 }
