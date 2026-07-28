@@ -671,7 +671,7 @@ void main() {
             trims.add(cutId);
             return true;
           },
-          onDivisionBegin: (_, _) => false,
+          onCommaBegin: (_, _) => false,
           onUpdate: (_) {},
           onEnd: () {},
           onCancel: () {},
@@ -1080,7 +1080,7 @@ void main() {
             began.add((cutId, edge));
             return true;
           },
-          onDivisionBegin: (_, _) => false,
+          onCommaBegin: (_, _) => false,
           onUpdate: updates.add,
           onEnd: () => ended += 1,
           onCancel: () {},

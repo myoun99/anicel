@@ -214,8 +214,9 @@ bool layerKindTakesTimesheetColumn(LayerKind kind) {
 /// holes — a panel covers frames until the next panel begins. So a block's
 /// length is not stored so much as implied: growing the cut extends the last
 /// block, deleting a block hands its frames to the one before it, and an
-/// edge drag MOVES a division rather than resizing one thing and leaving a
-/// hole beside it.
+/// edge drag is the ordinary comma resize with the cut's length riding the
+/// row end (edge unification — the row has no front-edge grips, so no drag
+/// can open a hole).
 ///
 /// Every other drawing kind keeps real gaps — an animation row with nothing
 /// on frame 7 means nothing is drawn on frame 7.

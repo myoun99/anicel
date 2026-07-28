@@ -73,14 +73,32 @@ int timelineGridLineEveryFrames(double frameCellExtent) => frameCellExtent >= 16
 /// Text used to blank out below ~14px cells; the user's rule is "엄청
 /// 작아지는 한이 있어도 절대 안 사라지도록" — so the type shrinks with the
 /// cell instead, down to a hard floor that still reads as a mark.
-double timelineFittedGlyphFontSize(double baseFontSize, double frameCellExtent) {
-  if (frameCellExtent >= 14) {
-    return baseFontSize;
-  }
+///
+/// [crossExtent] is the cell's OTHER dimension (#15's vertical half of
+/// the same rule): the fit takes whichever axis is tighter, so squeezing
+/// a row's height shrinks its text exactly like squeezing its cells'
+/// width does. Callers pass their own axes — on the X-sheet the main
+/// extent is already the height and the cross extent the width, and the
+/// min makes that swap irrelevant.
+double timelineFittedGlyphFontSize(
+  double baseFontSize,
+  double frameCellExtent, {
+  double? crossExtent,
+}) {
   const floor = 4.0;
-  final fitted = frameCellExtent * 0.78;
-  return fitted.clamp(floor, baseFontSize);
+  double fit(double extent) => extent >= 14
+      ? baseFontSize
+      : (extent * 0.78).clamp(floor, baseFontSize);
+  final main = fit(frameCellExtent);
+  final cross = crossExtent == null ? baseFontSize : fit(crossExtent);
+  return main < cross ? main : cross;
 }
+
+/// The outline stroke width for an outlined glyph at [fontSize] (#15):
+/// proportional so the floor-sized marks are not swallowed by their own
+/// outline.
+double timelineGlyphOutlineWidthFor(double fontSize) =>
+    (fontSize / 4.5).clamp(1.0, 2.0);
 
 /// The plain grid's border ink — FLAT faint (UI-R18 #8: the zoom fade is
 /// gone; density is handled by [timelineGridLineEveryFrames]).

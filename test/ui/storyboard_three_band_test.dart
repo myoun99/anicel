@@ -174,4 +174,74 @@ void main() {
     expect(block.topBand, Rect.zero);
     expect(block.bottomBand, Rect.zero);
   });
+
+  testWidgets('#15: each panel carries its frame NAME (or ○ unnamed — ● '
+      'stays the inbetween mark\'s) and its own comma count — the timeline '
+      'row conventions carried over', (tester) async {
+    final layer = Layer(
+      id: const LayerId('cut-1-sb'),
+      name: 'SB',
+      kind: LayerKind.storyboard,
+      frames: [
+        Frame(
+          id: const FrameId('cut-1-a'),
+          duration: 1,
+          strokes: const [],
+          name: 'LO',
+        ),
+        Frame(id: const FrameId('cut-1-b'), duration: 1, strokes: const []),
+        Frame(id: const FrameId('cut-1-c'), duration: 1, strokes: const []),
+      ],
+      timeline: {
+        0: TimelineExposure.drawing(const FrameId('cut-1-a'), length: 4),
+        4: TimelineExposure.drawing(const FrameId('cut-1-b'), length: 5),
+        9: TimelineExposure.drawing(const FrameId('cut-1-c'), length: 3),
+      },
+    );
+    await _pump(tester, storyboardLayer: layer);
+    final block = requireCutBlock(tester, 'cut-1');
+
+    expect(block.cellNames, ['LO', '○', '○']);
+    expect(block.cellCommaLabels, ['4', '5', '3']);
+  });
+
+  testWidgets('#15: the no-row cut\'s single placeholder panel prints no '
+      'writing at all', (tester) async {
+    await _pump(tester);
+    final block = requireCutBlock(tester, 'cut-1');
+
+    expect(block.cellNames, ['']);
+    expect(block.cellCommaLabels, ['']);
+  });
+
+  testWidgets('#15: a FOLDED block omits the panel writing at the source — '
+      'folding that far means watching the cuts, not the panels', (
+    tester,
+  ) async {
+    await _pump(tester, storyboardLayer: _dividedStoryboardLayer('cut-1'));
+    final painter = cutBlocksPainter(tester);
+    final short = StoryboardCutBlocksPainter(
+      entries: painter.entries,
+      storyboardLayerNames: painter.storyboardLayerNames,
+      storyboardCellsByCut: painter.storyboardCellsByCut,
+      geometry: painter.geometry,
+      crossAxisExtent: StoryboardCutBlocksPainter.bandsMinBlockHeight - 1,
+      minBlockWidth: painter.minBlockWidth,
+      activeCutId: painter.activeCutId,
+      selectedRange: painter.selectedRange,
+      rowAddress: painter.rowAddress,
+      hoveredCutId: painter.hoveredCutId,
+      colorScheme: painter.colorScheme,
+      brightness: painter.brightness,
+      baseTextStyle: painter.baseTextStyle,
+      showSeconds: painter.showSeconds,
+      countingBase: painter.countingBase,
+    );
+    final block = short.blocks().single;
+
+    expect(block.bandsFolded, isTrue);
+    expect(block.cells, hasLength(3), reason: 'the panels themselves stay');
+    expect(block.cellNames, isEmpty);
+    expect(block.cellCommaLabels, isEmpty);
+  });
 }

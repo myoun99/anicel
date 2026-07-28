@@ -7,8 +7,10 @@
 /// DIVISION, and the cell it opens runs until the next division or the end
 /// of the cut. Hence [layerKindCoversWithoutGaps] — and hence the
 /// consequences the design lists: growing the cut lengthens the last cell,
-/// deleting a block hands its frames to the one before it, and dragging an
-/// edge moves a division rather than resizing one thing and leaving a hole.
+/// deleting a block hands its frames to the one before it, and dragging a
+/// trailing edge is the ordinary comma resize with the cut's length riding
+/// the row end (edge unification — the row has no front-edge grips, so no
+/// drag can open a hole).
 ///
 /// The cells are DERIVED here rather than maintained in the store, so the
 /// invariant cannot be broken by an edit path that forgot about it. Stored
@@ -136,101 +138,6 @@ List<int> storyboardDivisionKeys({
     }
   }
   return keys;
-}
-
-/// How far the division keyed at [divisionIndex] may travel, or null when
-/// that key is not a movable boundary.
-///
-/// A division may not pass its neighbours, and both cells it separates keep
-/// at least one frame — that is the whole rule, because nothing else moves
-/// with it. The cut's own start (the first division) is not one of these:
-/// dragging there trims the cut, which is a different verb on a different
-/// axis.
-({int min, int max})? storyboardDivisionBounds({
-  required SplayTreeMap<int, TimelineExposure>? timeline,
-  required int cutDuration,
-  required int divisionIndex,
-}) {
-  final keys = storyboardDivisionKeys(
-    timeline: timeline,
-    cutDuration: cutDuration,
-  );
-  final index = keys.indexOf(divisionIndex);
-  if (index < 1) {
-    return null;
-  }
-  // Never before frame 1: the first cell reaches back to the cut start
-  // whatever its own key says, so it keeps a frame even from junk data.
-  final previousKey = keys[index - 1];
-  final min = previousKey < 0 ? 1 : previousKey + 1;
-  final max = (index == keys.length - 1 ? cutDuration : keys[index + 1]) - 1;
-  return min > max ? null : (min: min, max: max);
-}
-
-/// [timeline] with the division at [divisionIndex] moved to [newIndex]
-/// (clamped by [storyboardDivisionBounds]), or null when there is no such
-/// division to move.
-///
-/// This is a RE-KEY, not a resize: no other block on the row shifts, and
-/// the two cells' new lengths are simply what coverage now derives. The
-/// stored lengths are written to match, so the shared verbs that read them
-/// (delete, push/pull, move) see the same picture the conte does.
-///
-/// The inbetween DOTS time these very frames, so each one goes to whichever
-/// cell now covers its frame — the same rule the divide-on-create split
-/// follows, read in both directions.
-SplayTreeMap<int, TimelineExposure>? storyboardTimelineWithDivisionMoved({
-  required SplayTreeMap<int, TimelineExposure>? timeline,
-  required int cutDuration,
-  required int divisionIndex,
-  required int newIndex,
-}) {
-  final bounds = storyboardDivisionBounds(
-    timeline: timeline,
-    cutDuration: cutDuration,
-    divisionIndex: divisionIndex,
-  );
-  if (bounds == null) {
-    return null;
-  }
-  final moveTo = newIndex.clamp(bounds.min, bounds.max);
-  final keys = storyboardDivisionKeys(
-    timeline: timeline,
-    cutDuration: cutDuration,
-  );
-  final index = keys.indexOf(divisionIndex);
-  final previousIndex = keys[index - 1];
-  final cellEndExclusive = index == keys.length - 1
-      ? cutDuration
-      : keys[index + 1];
-
-  final source = timeline!;
-  final previous = source[previousIndex]!;
-  final moved = source[divisionIndex]!;
-  // The dots as FRAMES, so the reassignment below is one comparison rather
-  // than two rebasing rules that have to agree with each other.
-  final dotFrames = <int>[
-    for (final offset in previous.breakdownOffsets) previousIndex + offset,
-    for (final offset in moved.breakdownOffsets) divisionIndex + offset,
-  ];
-
-  final next = SplayTreeMap<int, TimelineExposure>.from(source)
-    ..remove(divisionIndex);
-  next[previousIndex] = previous.copyWith(
-    length: moveTo - previousIndex,
-    breakdownOffsets: [
-      for (final frame in dotFrames)
-        if (frame < moveTo) frame - previousIndex,
-    ],
-  );
-  next[moveTo] = moved.copyWith(
-    length: cellEndExclusive - moveTo,
-    breakdownOffsets: [
-      for (final frame in dotFrames)
-        if (frame >= moveTo) frame - moveTo,
-    ],
-  );
-  return next;
 }
 
 /// How far the cut's LEAD may shrink (feedback #5), or null when the row

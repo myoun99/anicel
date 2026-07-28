@@ -5763,13 +5763,21 @@ class EditorSessionManager extends ChangeNotifier {
     if (lastKey == null) {
       return false;
     }
-    // Every field the comma machinery reads, set from scratch. A press
-    // that never moves commits whatever _edgeDragAfter holds, so a value
-    // left by an earlier drag would land on release without the pointer
-    // ever having asked for it.
+    _seedStoryboardCommaDrag(cut, row, lastKey);
+    return true;
+  }
+
+  /// Seeds the comma machinery for a drag on [row]'s block keyed
+  /// [blockKey], with [cut]'s length riding the row end (feedback #9).
+  ///
+  /// Every field the comma machinery reads, set from scratch. A press
+  /// that never moves commits whatever _edgeDragAfter holds, so a value
+  /// left by an earlier drag would land on release without the pointer
+  /// ever having asked for it.
+  void _seedStoryboardCommaDrag(Cut cut, Layer row, int blockKey) {
     _edgeDragBefore = row;
     _edgeDragEdge = TimelineBlockEdge.end;
-    _edgeDragBlockStart = lastKey;
+    _edgeDragBlockStart = blockKey;
     _edgeDragAfter = null;
     _edgeDragWindow = null;
     _edgeDragBulkStartsByLayer = null;
@@ -5778,6 +5786,44 @@ class EditorSessionManager extends ChangeNotifier {
     _edgeDragAfterDurations = null;
     _edgeDragAfterGaps = null;
     _edgeDragCutSync = _cutSyncSnapshotFor(cut: cut, row: row);
+  }
+
+  /// Starts a comma drag on the block keyed [blockStartIndex] (cut-local)
+  /// of [cutId]'s storyboard row — an INNER panel's trailing edge on the
+  /// strip. The edge unification: every trailing edge on a storyboard row
+  /// is the SAME comma verb, so the panel's comma resizes, the later
+  /// panels ripple along glued, and the cut's length rides the row end
+  /// (feedback #9) — where the retired division verb moved a boundary and
+  /// pinned the length. Returns false when there is no such drawing block.
+  ///
+  /// Any cut's panels drag, not only the active cut's: the row is read
+  /// through the cut, which is why this does NOT go through
+  /// [beginExposureEdgeDrag] — that path resolves the layer and the cut
+  /// sync through the ACTIVE cut and would sync the wrong one.
+  bool beginStoryboardCommaDrag({
+    required CutId cutId,
+    required int blockStartIndex,
+  }) {
+    final cut = cutById(cutId);
+    final row = cut == null ? null : storyboardLayerForCut(cut);
+    final entry = row?.timeline[blockStartIndex];
+    // A negative key is junk data the coverage rule merely tolerates
+    // (folded onto frame 0 for display) — resizing it would throw in the
+    // comma shift's before-zero guard mid-drag, so refuse at begin.
+    if (cut == null ||
+        row == null ||
+        entry == null ||
+        !entry.isDrawing ||
+        entry.ghost ||
+        blockStartIndex < 0) {
+      _cutEdgeDragVerb = null;
+      return false;
+    }
+    _seedStoryboardCommaDrag(cut, row, blockStartIndex);
+    // Joins the cut-edge continuations ([updateCutEdgeDrag] and friends):
+    // the strip's grips share one set of hooks, and which verb a drag
+    // belongs to is the session's to remember, not the host's.
+    _cutEdgeDragVerb = _CutEdgeDragVerb.comma;
     return true;
   }
 
@@ -6237,7 +6283,7 @@ class EditorSessionManager extends ChangeNotifier {
       }
       if (edge == TimelineBlockEdge.end &&
           _beginStoryboardLastCommaDrag(cut, row)) {
-        _cutEdgeDragVerb = _CutEdgeDragVerb.lastComma;
+        _cutEdgeDragVerb = _CutEdgeDragVerb.comma;
         return true;
       }
     }
@@ -6250,7 +6296,7 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   /// Applies the drag's cumulative frame delta to whichever verb
-  /// [beginCutEdgeDrag] (or [beginStoryboardDivisionDrag]) chose.
+  /// [beginCutEdgeDrag] (or [beginStoryboardCommaDrag]) chose.
   void updateCutEdgeDrag(int cumulativeDelta) {
     switch (_cutEdgeDragVerb) {
       case null:
@@ -6259,10 +6305,8 @@ class EditorSessionManager extends ChangeNotifier {
         _updateCutTrimDrag(cumulativeDelta);
       case _CutEdgeDragVerb.leadRetime:
         _updateStoryboardLeadDrag(cumulativeDelta);
-      case _CutEdgeDragVerb.lastComma:
+      case _CutEdgeDragVerb.comma:
         updateExposureEdgeDrag(cumulativeDelta);
-      case _CutEdgeDragVerb.division:
-        updateStoryboardDivisionDrag(cumulativeDelta);
     }
   }
 
@@ -6277,10 +6321,8 @@ class EditorSessionManager extends ChangeNotifier {
         _endCutTrimDrag();
       case _CutEdgeDragVerb.leadRetime:
         _endStoryboardLeadDrag();
-      case _CutEdgeDragVerb.lastComma:
+      case _CutEdgeDragVerb.comma:
         endExposureEdgeDrag();
-      case _CutEdgeDragVerb.division:
-        endStoryboardDivisionDrag();
     }
   }
 
@@ -6295,10 +6337,8 @@ class EditorSessionManager extends ChangeNotifier {
         _cancelCutTrimDrag();
       case _CutEdgeDragVerb.leadRetime:
         _cancelStoryboardLeadDrag();
-      case _CutEdgeDragVerb.lastComma:
+      case _CutEdgeDragVerb.comma:
         cancelExposureEdgeDrag();
-      case _CutEdgeDragVerb.division:
-        cancelStoryboardDivisionDrag();
     }
   }
 
@@ -6695,99 +6735,6 @@ class EditorSessionManager extends ChangeNotifier {
     return null;
   }
 
-  // --- Storyboard division drags -------------------------------------------
-
-  Layer? _divisionDragBefore;
-  int? _divisionDragKey;
-  int? _divisionDragCutDuration;
-  Layer? _divisionDragAfter;
-
-  /// Starts a drag on the DIVISION keyed at [divisionIndex] (cut-local) of
-  /// [cutId]'s storyboard row — the boundary between two panels of the cut.
-  /// Returns false when that key is not a movable boundary.
-  ///
-  /// Its own verb rather than a comma drag, because it is a different
-  /// motion: a comma resizes one block and ripples the rest, while a
-  /// division just changes where two panels meet. Nothing else on the row
-  /// moves, and the cells' lengths follow because coverage derives them.
-  ///
-  /// Any cut's divisions drag, not only the active cut's: the row is read
-  /// through the cut rather than through the active-cut layer lookup, and
-  /// the commit reaches the layer wherever it lives.
-  bool beginStoryboardDivisionDrag({
-    required CutId cutId,
-    required int divisionIndex,
-  }) {
-    final cut = cutById(cutId);
-    if (cut == null) {
-      _cutEdgeDragVerb = null;
-      return false;
-    }
-    final layer = storyboardLayerForCut(cut);
-    if (layer == null ||
-        storyboardDivisionBounds(
-              timeline: layer.timeline,
-              cutDuration: cut.duration,
-              divisionIndex: divisionIndex,
-            ) ==
-            null) {
-      _cutEdgeDragVerb = null;
-      return false;
-    }
-    _divisionDragBefore = layer;
-    _divisionDragKey = divisionIndex;
-    _divisionDragCutDuration = cut.duration;
-    _divisionDragAfter = null;
-    // Joins the cut-edge continuations ([updateCutEdgeDrag] and friends):
-    // the strip's grips share one set of hooks, and which verb a drag
-    // belongs to is the session's to remember, not the host's.
-    _cutEdgeDragVerb = _CutEdgeDragVerb.division;
-    return true;
-  }
-
-  /// Applies the drag's cumulative frame delta as a live preview on
-  /// [dragPreview] — the repository is NOT touched.
-  ///
-  /// The preview rides the ordinary layer-substitution channel, so the
-  /// strip, the timeline row and the conte all follow the same one.
-  void updateStoryboardDivisionDrag(int cumulativeDelta) {
-    final before = _divisionDragBefore;
-    final key = _divisionDragKey;
-    final cutDuration = _divisionDragCutDuration;
-    if (before == null || key == null || cutDuration == null) {
-      return;
-    }
-    final moved = storyboardTimelineWithDivisionMoved(
-      timeline: before.timeline,
-      cutDuration: cutDuration,
-      divisionIndex: key,
-      newIndex: key + cumulativeDelta,
-    );
-    final after = moved == null ? before : before.copyWith(timeline: moved);
-    _divisionDragAfter = after == before ? null : after;
-    dragPreview.value = after == before
-        ? null
-        : ExposureEdgeDragPreview(previewLayer: after);
-  }
-
-  /// Commits the drag as a single undo step (no-op when the division never
-  /// left its key).
-  void endStoryboardDivisionDrag() {
-    final before = _divisionDragBefore;
-    final after = _divisionDragAfter;
-    _divisionDragBefore = null;
-    _divisionDragKey = null;
-    _divisionDragCutDuration = null;
-    _divisionDragAfter = null;
-    dragPreview.value = null;
-    if (before == null || after == null) {
-      return;
-    }
-    _timelineController.commitLayerTimelineDrag(before: before, after: after);
-    _warmActiveCut();
-    notifyListeners();
-  }
-
   /// The camera frame's aspect — what the conte's PICTURE column is shaped
   /// by, so a cell's silhouette matches the cut's.
   double get cameraFrameAspect {
@@ -6836,15 +6783,6 @@ class EditorSessionManager extends ChangeNotifier {
       ),
     );
     notifyListeners();
-  }
-
-  /// Drops an in-flight division preview without touching history.
-  void cancelStoryboardDivisionDrag() {
-    _divisionDragBefore = null;
-    _divisionDragKey = null;
-    _divisionDragCutDuration = null;
-    _divisionDragAfter = null;
-    dragPreview.value = null;
   }
 
   // --- Movie-end drag (UI-R20 #3) -------------------------------------------
@@ -11144,10 +11082,8 @@ enum _CutEdgeDragVerb {
   /// cell's comma, the cut start pinned).
   leadRetime,
 
-  /// The last panel's trailing edge: the LAST cell's comma, the cut's
-  /// length riding it.
-  lastComma,
-
-  /// An edge between two panels: a division moves.
-  division,
+  /// ANY panel's trailing edge: that cell's comma, the later panels
+  /// rippling glued and the cut's length riding the row end (feedback
+  /// #9; the edge unification retired the division verb this replaced).
+  comma,
 }

@@ -22,10 +22,11 @@ import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'timeline/timeline_row_chrome_probe.dart';
 
 /// The cut block has no edge grips of its own any more: a cut edge is always
-/// ON the strip. The first panel's leading edge trims the cut's start, the
-/// last panel's trailing edge is the cut's length, and every edge between
-/// two panels moves a DIVISION. One shape of grip; where it sits decides
-/// what it re-times.
+/// ON the strip. The first panel's leading edge re-times the cut's LEAD, and
+/// EVERY trailing edge — inner and last alike — is its panel's comma: the
+/// later panels ripple along glued and the cut's length rides the row end
+/// (edge unification; the division verb is gone). One shape of grip; where
+/// it sits decides what it re-times.
 const _trackId = TrackId('grip-track');
 
 Layer _storyboardLayer(String cutId, Map<int, int> divisions) => Layer(
@@ -172,31 +173,39 @@ void main() {
     expect(grip.height, band.height);
   });
 
-  testWidgets('an edge BETWEEN two panels moves the division — the cut keeps '
-      'its length and no other block shifts', (tester) async {
+  testWidgets('an edge BETWEEN two panels is that panel\'s COMMA (edge '
+      'unification): the later panel ripples along glued and the cut\'s '
+      'length rides the row end', (tester) async {
     await _openStoryboard(tester);
     expect(_divisionsOf(tester, 'cut-1'), [0, 5]);
 
     await _dragGrip(tester, 'block-edge-grip-end-grip-track-0', 2);
 
+    // The first panel's comma grew by 2; the second kept its own 5 and
+    // re-keyed right; the cut is 2 longer — where the retired division
+    // verb moved the boundary and pinned the length.
     expect(_divisionsOf(tester, 'cut-1'), [0, 7]);
-    expect(_cutById(tester, 'cut-1').duration, 10);
-    // The cell lengths follow, because coverage derives them from the keys.
+    expect(_cutById(tester, 'cut-1').duration, 12);
     final layer = storyboardLayerForCut(_cutById(tester, 'cut-1'))!;
     expect(layer.timeline[0]!.length, 7);
-    expect(layer.timeline[7]!.length, 3);
+    expect(layer.timeline[7]!.length, 5);
+    // Cut 2 was attached and stays attached — it rode the boundary out.
+    expect(_cutById(tester, 'cut-2').leadingGapFrames, 0);
   });
 
-  testWidgets('the division drag is ONE undo step', (tester) async {
+  testWidgets('the inner-comma drag is ONE undo step — row and cut length '
+      'restore together', (tester) async {
     await _openStoryboard(tester);
 
     await _dragGrip(tester, 'block-edge-grip-end-grip-track-0', 2);
     expect(_divisionsOf(tester, 'cut-1'), [0, 7]);
+    expect(_cutById(tester, 'cut-1').duration, 12);
 
     await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
     await tester.pumpAndSettle();
 
     expect(_divisionsOf(tester, 'cut-1'), [0, 5]);
+    expect(_cutById(tester, 'cut-1').duration, 10);
   });
 
   testWidgets('the LAST panel\'s trailing edge is still the cut\'s LENGTH — '
@@ -276,8 +285,9 @@ void main() {
     expect(rowHeight(), before);
   });
 
-  testWidgets('ANY cut\'s divisions drag, not only the active one\'s — the '
-      'edge reads its cut rather than the active-cut lookup', (tester) async {
+  testWidgets('ANY cut\'s inner edges drag, not only the active one\'s — '
+      'the edge reads its cut rather than the active-cut lookup (and syncs '
+      'THAT cut\'s length, not the active one\'s)', (tester) async {
     await _openStoryboard(tester);
     // Cut 1 is the active one; cut 3's row is not reachable through the
     // active-cut layer lookup at all.
@@ -286,7 +296,9 @@ void main() {
     await _dragGrip(tester, 'block-edge-grip-end-grip-track-3', -1);
 
     expect(_divisionsOf(tester, 'cut-3'), [0, 2]);
+    expect(_cutById(tester, 'cut-3').duration, 5, reason: 'its own cut rides');
     expect(_divisionsOf(tester, 'cut-1'), [0, 5]);
+    expect(_cutById(tester, 'cut-1').duration, 10, reason: 'not the active');
   });
 
   group('the leading edge re-times the LEAD (feedback #5)', () {
@@ -368,8 +380,9 @@ void main() {
       );
     });
 
-    testWidgets('the first block has NO start grip here (feedback #10): '
-        'that edge is the cut\'s start, which lives on the strip', (
+    testWidgets('the storyboard row has NO start grips here (edge '
+        'unification): the row\'s front edge is the cut\'s start on the '
+        'strip, and every inner boundary is a trailing edge', (
       tester,
     ) async {
       await tester.binding.setSurfaceSize(const Size(1500, 800));
@@ -380,10 +393,13 @@ void main() {
       await tester.pumpAndSettle();
 
       final ids = timelineRowChromeIds(tester, 'cut-1-sb');
+      // NO start grips at all (edge unification widened feedback #10's
+      // at-zero rule): every boundary on a gapless row belongs to the
+      // trailing edge on its left, so a front grip would only be the same
+      // boundary's second handle — and the block-1 one used to push
+      // block 0 off frame 0 (the ripple defect this removal retires).
       expect(ids, isNot(contains('block-edge-grip-start-cut-1-sb-0')));
-      // Every other edge stays: the division's start grip and both end
-      // commas are the row's own to drag.
-      expect(ids, contains('block-edge-grip-start-cut-1-sb-1'));
+      expect(ids, isNot(contains('block-edge-grip-start-cut-1-sb-1')));
       expect(ids, contains('block-edge-grip-end-cut-1-sb-0'));
       expect(ids, contains('block-edge-grip-end-cut-1-sb-1'));
     });

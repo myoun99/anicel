@@ -75,7 +75,13 @@ class TimelineRowRunLabelsPainter extends CustomPainter {
   /// The resolved label style — public so the bold/scale contract stays
   /// assertable now that there is no `Text` widget to read it off.
   TextStyle get labelStyle => TextStyle(
-    fontSize: timelineFittedGlyphFontSize(9, frameCellExtent),
+    fontSize: timelineFittedGlyphFontSize(
+      9,
+      frameCellExtent,
+      // The vertical half of the fit rule (#15): a squeezed row shrinks
+      // its numbers like a squeezed cell does.
+      crossExtent: crossAxisExtent,
+    ),
     fontWeight: FontWeight.w700,
     color: timelineDrawingInkColor.withValues(alpha: 0.72),
   );
@@ -141,7 +147,17 @@ class TimelineRowRunLabelsPainter extends CustomPainter {
               (crossAxisExtent - glyph.width) / 2,
               label.anchor.dy - glyph.height / 2,
             );
-      glyph.paint(canvas, offset);
+      // Outlined (#15, one rule on every surface): the bright stroke
+      // carries the number over pictures; on the near-white paper here it
+      // sinks in unseen.
+      paintTimelineOutlinedGlyph(
+        canvas,
+        offset,
+        label.text,
+        style,
+        outlineColor: timelineLaneInkColor,
+        outlineWidth: timelineGlyphOutlineWidthFor(style.fontSize ?? 9),
+      );
       canvas.restore();
     }
   }

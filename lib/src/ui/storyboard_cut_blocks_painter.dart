@@ -6,6 +6,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/semantics.dart' show SemanticsProperties;
 
 import '../models/cut_id.dart';
+import '../models/frame.dart';
+import '../models/frame_id.dart';
 import '../models/storyboard_coverage.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnailResolver;
 import '../models/timeline_row_address.dart';
@@ -33,6 +35,8 @@ class StoryboardCutBlockVisual {
     required this.total,
     required this.thumbnails,
     required this.cells,
+    this.cellNames = const [],
+    this.cellCommaLabels = const [],
     required Rect topBand,
     required Rect strip,
     required Rect bottomBand,
@@ -68,6 +72,18 @@ class StoryboardCutBlockVisual {
   /// The cut's panels — the divisions the strip draws, under the coverage
   /// rule. Never empty: a cut with no storyboard row still has one cell.
   final List<StoryboardCoverageCell> cells;
+
+  /// Each panel's frame NAME (#15: the timeline convention — the name, or
+  /// `○` when unnamed; `●` stays the inbetween mark's), parallel to
+  /// [cells]; empty string on the no-row placeholder cell. EMPTY LISTS
+  /// when the bands fold — folding that far means watching the cuts, not
+  /// the panels, so the writing is omitted at the source (probe-visible).
+  final List<String> cellNames;
+
+  /// Each panel's printed length (#15: the timeline's comma count, at the
+  /// panel's last cell bottom-centre), parallel to [cells]; empty on the
+  /// no-row placeholder cell, EMPTY LISTS when the bands fold.
+  final List<String> cellCommaLabels;
 
   final bool isActive;
   final bool isRangeSelected;
@@ -138,13 +154,16 @@ class StoryboardCutBlocksPainter extends CustomPainter {
 
   /// Each cut's storyboard layer NAME, or absent when the cut has none.
   ///
-  /// Resolved by the row at build time rather than here: [storyboardLayerForCut]
-  /// throws when a cut somehow holds two storyboard layers, and a painter that
-  /// throws takes the whole frame down instead of the widget that asked.
+  /// Resolved by the row at build time as shared inputs (the grips read
+  /// the same cells). [storyboardLayerForCut] stopped throwing on
+  /// duplicate rows (#760) — "the first one is the row" — so the painter
+  /// may also call it directly where it needs more than these carry (the
+  /// per-panel frame names).
   final Map<CutId, String> storyboardLayerNames;
 
-  /// Each cut's panels (the coverage rule's cells), resolved by the row for
-  /// the same reason. A cut always has at least one.
+  /// Each cut's panels (the coverage rule's cells), resolved by the row —
+  /// the strip's content AND its grip material, one resolution for both.
+  /// A cut always has at least one.
   final Map<CutId, List<StoryboardCoverageCell>> storyboardCellsByCut;
 
   /// The LIVE frame-axis geometry: a zoom step repaints instead of
@@ -284,6 +303,18 @@ class StoryboardCutBlocksPainter extends CustomPainter {
       final rect = Rect.fromLTWH(left, 0, width, crossAxisExtent);
       final bands = _bandsOf(rect);
       final cells = storyboardCellsByCut[entry.cutId] ?? const [];
+      // The panels' writing (#15): frame name + comma count per cell, the
+      // timeline row's conventions (`○` unnamed head — `●` would read as
+      // an inbetween mark). Safe to resolve here — the row lookup no
+      // longer throws on duplicates (#760). A folded block carries no
+      // writing at all: folding that far means watching the cuts.
+      final folded = bands.top.height <= 0;
+      final frameNames = <FrameId, String?>{
+        if (!folded)
+          for (final frame
+              in storyboardLayerForCut(entry.cut)?.frames ?? const <Frame>[])
+            frame.id: frame.name,
+      };
       visuals.add(
         StoryboardCutBlockVisual(
           cutId: entry.cutId,
@@ -292,6 +323,26 @@ class StoryboardCutBlocksPainter extends CustomPainter {
           strip: bands.strip,
           bottomBand: bands.bottom,
           cells: cells,
+          cellNames: [
+            if (!folded)
+              for (final cell in cells)
+                cell.frameId == null
+                    ? ''
+                    : ((frameNames[cell.frameId] ?? '').isEmpty
+                          ? '○'
+                          : frameNames[cell.frameId]!),
+          ],
+          cellCommaLabels: [
+            if (!folded)
+              for (final cell in cells)
+                cell.frameId == null
+                    ? ''
+                    : timelineDurationLabel(
+                        cell.endIndexExclusive - cell.startIndex,
+                        showSeconds: showSeconds,
+                        countingBase: countingBase,
+                      ),
+          ],
           isActive: entry.cutId == activeCutId,
           isRangeSelected:
               selection?.overlaps(entry.startFrame, entry.endFrame) ?? false,
@@ -410,9 +461,9 @@ class StoryboardCutBlocksPainter extends CustomPainter {
       _paintPanelPictures(canvas, block, inner);
       canvas.restore();
     }
-    // No division rules on the strip for now (user, 2026-07-28): the
-    // panels' own left-aligned pictures already say where each begins, and
-    // a line every division read as clutter. A divider treatment is open.
+    // The panels separate through their own SILHOUETTE borders (#15,
+    // painted per slot above) — the divider question #760 left open is
+    // closed by those, not by a rule of their own.
 
     canvas.drawRRect(
       rrect.deflate(block.isActive ? 1 : 0.5),
@@ -566,7 +617,102 @@ class StoryboardCutBlocksPainter extends CustomPainter {
       canvas.save();
       canvas.clipRect(slot);
       _paintPanelPicture(canvas, block.thumbnails[index], slot);
+      if (!block.bandsFolded) {
+        _paintPanelWriting(canvas, block, index, slot);
+      }
       canvas.restore();
+      if (block.hasStoryboardLayer && !block.bandsFolded) {
+        // The panel's SILHOUETTE (#15): each block outlines itself, which
+        // is what separates two touching panels — the seam the removed
+        // division rules used to draw, without a rule of its own. Folded
+        // rows omit it with the rest of the panel info: their slots ride
+        // the 4px-deflated inner rect, so a border there would sit off
+        // the true frame edges the grips are mounted on.
+        canvas.drawRect(
+          slot.deflate(0.5),
+          Paint()
+            ..style = PaintingStyle.stroke
+            ..strokeWidth = 1
+            ..color = storyboardCutBlockEdgeColor(
+              colorScheme,
+              brightness,
+              active: false,
+              hovered: false,
+            ),
+        );
+      }
+    }
+  }
+
+  /// A panel's own writing (#15, the timeline row's conventions carried
+  /// over): the frame NAME centred in the panel's first frame cell, the
+  /// COMMA COUNT bottom-centred in its last — both outlined, so they read
+  /// over the picture. Folded bands omit all of it (the caller's gate):
+  /// folding that far means watching the cuts, not the panels.
+  void _paintPanelWriting(
+    Canvas canvas,
+    StoryboardCutBlockVisual block,
+    int index,
+    Rect slot,
+  ) {
+    if (index >= block.cellNames.length ||
+        index >= block.cellCommaLabels.length ||
+        _cellExtent <= 0) {
+      return;
+    }
+    final name = block.cellNames[index];
+    if (name.isNotEmpty) {
+      final nameStyle = baseTextStyle.copyWith(
+        color: timelineDrawingInkColor,
+        fontWeight: FontWeight.bold,
+        fontSize: timelineFittedGlyphFontSize(
+          baseTextStyle.fontSize ?? 12,
+          _cellExtent,
+          crossExtent: slot.height,
+        ),
+      );
+      final glyph = timelineGlyphPainter(name, nameStyle);
+      final firstCellCentre =
+          slot.left + math.min(_cellExtent, slot.width) / 2;
+      paintTimelineOutlinedGlyph(
+        canvas,
+        Offset(
+          firstCellCentre - glyph.width / 2,
+          slot.top + (slot.height - glyph.height) / 2,
+        ),
+        name,
+        nameStyle,
+        outlineColor: timelineLaneInkColor,
+        outlineWidth: timelineGlyphOutlineWidthFor(nameStyle.fontSize ?? 12),
+      );
+    }
+    final comma = block.cellCommaLabels[index];
+    if (comma.isNotEmpty) {
+      final commaStyle = TextStyle(
+        fontSize: timelineFittedGlyphFontSize(
+          9,
+          _cellExtent,
+          crossExtent: slot.height,
+        ),
+        fontWeight: FontWeight.w700,
+        color: timelineDrawingInkColor.withValues(alpha: 0.72),
+      );
+      final glyph = timelineGlyphPainter(comma, commaStyle);
+      // The block's LAST cell, bottom-centre, 1px inset — the timeline
+      // run label's anchor, in the panel's own coordinates (the slot's
+      // edges ARE the cell edges: panels tile the strip).
+      final lastCellCentre = slot.right - _cellExtent / 2;
+      paintTimelineOutlinedGlyph(
+        canvas,
+        Offset(
+          lastCellCentre - glyph.width / 2,
+          slot.bottom - glyph.height - 1,
+        ),
+        comma,
+        commaStyle,
+        outlineColor: timelineLaneInkColor,
+        outlineWidth: timelineGlyphOutlineWidthFor(commaStyle.fontSize ?? 9),
+      );
     }
   }
 
