@@ -59,7 +59,10 @@ import 'timeline/timeline_frame_geometry.dart'
 import 'timeline/timeline_frame_range_gesture.dart'
     show TimelineFrameRangeGestureLayer, TimelineRangeGestureCallbacks;
 import '../models/storyboard_coverage.dart'
-    show StoryboardCoverageCell, storyboardCoverageCells;
+    show
+        StoryboardCoverageCell,
+        storyboardCoverageCells,
+        storyboardDivisionKeys;
 import '../models/timeline_frame_range.dart' show TimelineFrameRangeSelection;
 import '../models/timeline_row_address.dart'
     show LayerRowAddress, TimelineRowAddress, TrackRowAddress;
@@ -91,16 +94,17 @@ import 'timeline/timeline_zoom_anchor_policy.dart';
 /// comma-drag callbacks: live preview per step, ONE undo on release.
 ///
 /// There is one shape of edge on this row, and where it sits decides what
-/// it re-times (design, user's rule 2026-07-25): the first panel's leading
-/// edge is the cut's START, the last panel's trailing edge is the cut's
-/// LENGTH, and every edge between two panels is a DIVISION. Hence two
-/// begins and one set of continuations — the grip that started decides
-/// which session verb the rest of the drag belongs to, and the mount that
-/// knows the geometry is the one that says so.
+/// it re-times (design, user's rule 2026-07-25; edge unification
+/// 2026-07-28): the first panel's leading edge is the cut's START, and
+/// EVERY trailing edge — inner and last alike — is that panel's comma,
+/// with the cut's length riding the row end. Hence two begins and one set
+/// of continuations — the grip that started decides which session verb
+/// the rest of the drag belongs to, and the mount that knows the geometry
+/// is the one that says so.
 class StoryboardStripEdgeCallbacks {
   const StoryboardStripEdgeCallbacks({
     required this.onCutEdgeBegin,
-    required this.onDivisionBegin,
+    required this.onCommaBegin,
     required this.onUpdate,
     required this.onEnd,
     required this.onCancel,
@@ -110,9 +114,11 @@ class StoryboardStripEdgeCallbacks {
   /// cuts refuse).
   final bool Function(CutId cutId, TimelineBlockEdge edge) onCutEdgeBegin;
 
-  /// Moves the division keyed at [divisionIndex] (CUT-LOCAL) on [cutId]'s
-  /// storyboard row. Returns whether the drag may start.
-  final bool Function(CutId cutId, int divisionIndex) onDivisionBegin;
+  /// Resizes the comma of the panel whose block is keyed at
+  /// [blockStartIndex] (CUT-LOCAL) on [cutId]'s storyboard row — an inner
+  /// trailing edge; the later panels ripple and the cut's length follows.
+  /// Returns whether the drag may start.
+  final bool Function(CutId cutId, int blockStartIndex) onCommaBegin;
 
   /// Reports the cumulative whole-frame delta since drag start.
   final ValueChanged<int> onUpdate;
@@ -441,9 +447,10 @@ class StoryboardPanel extends StatefulWidget {
   /// active cut. Null keeps V labels display-only.
   final ValueChanged<TrackId>? onSelectTrack;
 
-  /// Edge-grip hooks for the strip's panel edges: the outer two trim the
-  /// cut (start, length), the ones between move a division. Null hides the
-  /// grips.
+  /// Edge-grip hooks for the strip's panel edges: the first panel's front
+  /// edge re-times the cut's lead, and every trailing edge is its panel's
+  /// comma with the cut's length riding the row end (edge unification).
+  /// Null hides the grips.
   final StoryboardStripEdgeCallbacks? stripEdges;
 
   /// Every V row's height — the rail's label row and the strip row read
@@ -3762,9 +3769,11 @@ typedef _StoryboardStripGrip = ({
   /// edge carries a grip, and that grip is the cut's start trim.
   bool isFirst,
 
-  /// The CUT-LOCAL key of the division this panel's trailing edge moves,
-  /// or null when that edge is the cut's own length instead.
-  int? endDivisionIndex,
+  /// The CUT-LOCAL timeline key of the block this panel's trailing edge
+  /// comma-resizes, or null when that edge is the cut's own length
+  /// instead (the last panel — it goes through the cut-edge begin, which
+  /// also serves cuts with no storyboard row at all).
+  int? commaBlockKey,
 });
 
 class _StoryboardTrackRow extends StatelessWidget {
@@ -3845,11 +3854,6 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// the row's grip material, resolved once for both. A cut with no
   /// storyboard row still answers with ONE cell over the whole cut, so
   /// neither consumer has an empty case to handle.
-  ///
-  /// Resolved here rather than in the painter: [storyboardLayerForCut]
-  /// throws when a cut somehow holds two storyboard layers, and a painter
-  /// that throws takes the whole frame down instead of the widget that
-  /// asked.
   Map<CutId, List<StoryboardCoverageCell>> _cellsByCut() => {
     for (final entry in layoutEntries)
       entry.cutId: storyboardCoverageCells(
@@ -3871,22 +3875,35 @@ class _StoryboardTrackRow extends StatelessWidget {
   /// A cut with no storyboard row has a single panel spanning it, so it
   /// grows exactly the two grips it had before: the new rule's degenerate
   /// case IS the old behaviour, with no branch saying so.
+  ///
+  /// An inner trailing edge needs its panel's own TIMELINE key (the block
+  /// its comma resizes), which the coverage cell cannot answer — the first
+  /// cell's startIndex is clamped to 0 whatever its key says — so the keys
+  /// are read off the row alongside the cells.
   List<_StoryboardStripGrip> _stripGrips(
     Map<CutId, List<StoryboardCoverageCell>> cellsByCut,
   ) => [
     for (final entry in layoutEntries)
       if (cellsByCut[entry.cutId] case final cells?)
-        for (var index = 0; index < cells.length; index += 1)
-          (
-            cutId: entry.cutId,
-            startFrame: entry.startFrame + cells[index].startIndex,
-            endFrameExclusive:
-                entry.startFrame + cells[index].endIndexExclusive,
-            isFirst: index == 0,
-            endDivisionIndex: index == cells.length - 1
-                ? null
-                : cells[index + 1].startIndex,
-          ),
+        ...() {
+          final keys = storyboardDivisionKeys(
+            timeline: storyboardLayerForCut(entry.cut)?.timeline,
+            cutDuration: entry.duration,
+          );
+          return [
+            for (var index = 0; index < cells.length; index += 1)
+              (
+                cutId: entry.cutId,
+                startFrame: entry.startFrame + cells[index].startIndex,
+                endFrameExclusive:
+                    entry.startFrame + cells[index].endIndexExclusive,
+                isFirst: index == 0,
+                commaBlockKey: index == cells.length - 1 || index >= keys.length
+                    ? null
+                    : keys[index],
+              ),
+          ];
+        }(),
   ];
 
   /// The STRIP's half of the shared range gesture.
@@ -4157,9 +4174,10 @@ class _StoryboardTrackRow extends StatelessWidget {
             // over both; the middles keep the rest.
             //
             // One shape of grip, and where it sits decides what it does: the
-            // first panel's leading edge trims the cut's start, the last
-            // panel's trailing edge is the cut's length, everything between
-            // moves a division. The cut block itself has no edges any more.
+            // first panel's leading edge re-times the cut's lead, and every
+            // trailing edge is its panel's comma with the cut's length
+            // riding the row end (edge unification — the division verb is
+            // gone). The cut block itself has no edges any more.
             //
             // THE timeline's chrome layer, not a cut-shaped copy of it: one
             // painter and one gesture layer for the whole row, where this
@@ -4221,13 +4239,13 @@ class _StoryboardTrackRow extends StatelessWidget {
                           TimelineBlockEdge.start,
                         );
                       }
-                      final division = grip.endDivisionIndex;
-                      return division == null
+                      final commaKey = grip.commaBlockKey;
+                      return commaKey == null
                           ? stripEdges!.onCutEdgeBegin(
                               grip.cutId,
                               TimelineBlockEdge.end,
                             )
-                          : stripEdges!.onDivisionBegin(grip.cutId, division);
+                          : stripEdges!.onCommaBegin(grip.cutId, commaKey);
                     },
                     onUpdate: stripEdges!.onUpdate,
                     onEnd: stripEdges!.onEnd,

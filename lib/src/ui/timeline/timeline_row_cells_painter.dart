@@ -587,15 +587,24 @@ class TimelineRowCellsPainter extends CustomPainter {
 
   /// The glyph's resolved text style (ink + the bold rule) — the shared
   /// glyph cache and the tile emitter's bake key both read this.
+  ///
+  /// Deliberately NOT outlined (#15's one deviation): the tile emitter
+  /// bakes cell glyphs as single-tint A8 coverage, which cannot carry a
+  /// two-color outline+fill, and outlining only the classic pass would
+  /// break the classic↔tile swap parity. These glyphs sit on the
+  /// near-white paper blocks, where the bright outline is invisible
+  /// anyway — the rule's own rationale for being one rule.
   TextStyle glyphStyleFor(TimelineRowCellModel model) {
     final isEmptyX = model.exposureState == TimelineCellExposureState.uncovered;
     return baseTextStyle.copyWith(
       color: foregroundInkFor(model),
       // R26 #38/#4: names and marks SHRINK with the cell instead of
-      // blanking out below ~14px — "절대 안 사라지도록".
+      // blanking out below ~14px — "절대 안 사라지도록". #15 adds the
+      // vertical half: a squeezed row shrinks them the same way.
       fontSize: timelineFittedGlyphFontSize(
         baseTextStyle.fontSize ?? 12,
         frameCellExtent,
+        crossExtent: crossAxisExtent,
       ),
       fontWeight:
           !model.ghost &&

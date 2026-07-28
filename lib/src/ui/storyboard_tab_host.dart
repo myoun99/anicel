@@ -479,10 +479,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                 stripEdges: StoryboardStripEdgeCallbacks(
                   onCutEdgeBegin: (cutId, edge) =>
                       _session.beginCutEdgeDrag(cutId: cutId, edge: edge),
-                  onDivisionBegin: (cutId, divisionIndex) =>
-                      _session.beginStoryboardDivisionDrag(
+                  onCommaBegin: (cutId, blockStartIndex) =>
+                      _session.beginStoryboardCommaDrag(
                         cutId: cutId,
-                        divisionIndex: divisionIndex,
+                        blockStartIndex: blockStartIndex,
                       ),
                   onUpdate: _session.updateCutEdgeDrag,
                   onEnd: _session.endCutEdgeDrag,

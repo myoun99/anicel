@@ -217,6 +217,7 @@ class TimelineFrameRulerPainter extends CustomPainter {
                 fontSize: timelineFittedGlyphFontSize(
                   11,
                   metrics.frameCellWidth,
+                  crossExtent: metrics.layerRowHeight,
                 ),
                 color: colorScheme.onSurface,
               )
