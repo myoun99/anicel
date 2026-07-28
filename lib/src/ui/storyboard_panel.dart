@@ -3435,6 +3435,15 @@ class _StoryboardTrackLabel extends StatelessWidget {
   /// columns of the same row and share no scaffolding to enforce it.
   final double laneHeight;
 
+  /// Whether there is room for the track NAME under the V label. The bold
+  /// label and the 11pt name stack to about 36px, so the floor height (28)
+  /// fits exactly one of them.
+  bool get _showsSecondLine => laneHeight >= _twoLineLaneHeight;
+
+  /// The height two stacked label lines need. Below it the rail prints the
+  /// V label alone.
+  static const double _twoLineLaneHeight = 40;
+
   final bool laneExpanded;
   final VoidCallback? onToggleLane;
 
@@ -3538,7 +3547,13 @@ class _StoryboardTrackLabel extends StatelessWidget {
                       softWrap: false,
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
-                    if (track.name.isNotEmpty)
+                    // The NAME stands down on a short row (feedback #8): two
+                    // stacked lines need more than the floor height gives,
+                    // and the row used to overflow its bottom by 9px there.
+                    // The same grammar as the cut block's bands folding —
+                    // a height threshold drops the detail, never the label
+                    // that says which row this is.
+                    if (track.name.isNotEmpty && _showsSecondLine)
                       Text(
                         track.name,
                         maxLines: 1,
@@ -4114,6 +4129,10 @@ class _StoryboardTrackRow extends StatelessWidget {
                   paintKey: ValueKey<String>(
                     'storyboard-edit-chrome-${track.id.value}',
                   ),
+                  // These grips sit on the CUT BLOCK, not on paper
+                  // (feedback #11): its background follows the theme, so
+                  // the bars take the light ink where it goes dark.
+                  gripSurface: Theme.of(context).brightness,
                   // No layer: these blocks are panels of many cuts, and the
                   // row has no run edges for a LayerId to name.
                   layerId: null,

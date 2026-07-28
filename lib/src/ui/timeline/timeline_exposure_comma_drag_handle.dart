@@ -101,18 +101,42 @@ Rect blockEdgeGripBarRect({
 
 /// Quiet at rest, full on hover, accent while dragging — state carried by
 /// ink ALONE (R28 #3).
-Color blockEdgeGripBarColor(BlockEdgeGripInk ink) => switch (ink) {
-  BlockEdgeGripInk.dragging => timelineSelectedFrameBorderColor,
-  BlockEdgeGripInk.hovered => timelineDrawingInkColor.withValues(alpha: 0.95),
-  BlockEdgeGripInk.rest => timelineDrawingInkColor.withValues(alpha: 0.38),
-};
+///
+/// [surface] is the brightness of what the bar sits ON, not the theme's
+/// (feedback #11). The timeline's blocks are fixed near-white paper
+/// whatever the theme, so their grips stay dark; the storyboard strip is
+/// the cut block, which follows the theme and goes dark — and a near-black
+/// bar disappeared there. The accent of a live drag reads on both and is
+/// left alone: a drag in progress must not change colour with its row.
+Color blockEdgeGripBarColor(
+  BlockEdgeGripInk ink, {
+  Brightness surface = Brightness.light,
+}) {
+  if (ink == BlockEdgeGripInk.dragging) {
+    return timelineSelectedFrameBorderColor;
+  }
+  final onDark = surface == Brightness.dark;
+  final base = onDark ? timelineLaneInkColor : timelineDrawingInkColor;
+  // A light bar needs more alpha than a dark one to read as the same
+  // weight — the same asymmetry [storyboardCutBlockEdgeColor] carries.
+  return base.withValues(
+    alpha: ink == BlockEdgeGripInk.hovered
+        ? (onDark ? 0.98 : 0.95)
+        : (onDark ? 0.55 : 0.38),
+  );
+}
 
 /// Draws one grip bar at [barRect]. THE drawing source, shared by the widget
 /// grip and the dense rows' row-wide chrome painter.
-void paintBlockEdgeGripBar(Canvas canvas, Rect barRect, BlockEdgeGripInk ink) {
+void paintBlockEdgeGripBar(
+  Canvas canvas,
+  Rect barRect,
+  BlockEdgeGripInk ink, {
+  Brightness surface = Brightness.light,
+}) {
   canvas.drawRRect(
     RRect.fromRectAndRadius(barRect, const Radius.circular(2)),
-    Paint()..color = blockEdgeGripBarColor(ink),
+    Paint()..color = blockEdgeGripBarColor(ink, surface: surface),
   );
 }
 

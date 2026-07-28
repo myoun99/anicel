@@ -207,6 +207,21 @@ class ProjectFrameRate {
 /// Integer division rounding up, for non-negative operands.
 int _ceilDiv(int a, int b) => (a + b - 1) ~/ b;
 
+/// THE seconds+frames notation (秒+コマ): `2+3`, `2+12`, `0+0`.
+///
+/// One function for every surface that prints a duration this way — the
+/// timeline's block labels and counter, the storyboard's cut blocks, and
+/// the conte sheet's TIME column. They used to be two that differed only
+/// in zero padding, which meant the same 51 frames read `2+03` on screen
+/// and `2+3` on paper (user: "타임라인도 0패딩 없애자. 통일하게").
+///
+/// [framesPerSecond] is the COUNTING base, never the exact fraction: this
+/// is the integer-frame surface ProjectFrameRate.countingBase exists for.
+String secondsPlusFramesLabel(int frames, int framesPerSecond) {
+  final fps = framesPerSecond < 1 ? 1 : framesPerSecond;
+  return '${frames ~/ fps}+${frames % fps}';
+}
+
 /// The audio pull that keeps every sound's exact FRAME span across a
 /// [from]→[to] rate change, or null when the question does not arise
 /// (EXPORT-AUDIO ④, the RT conform semantics).

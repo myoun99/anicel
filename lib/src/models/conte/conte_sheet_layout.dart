@@ -12,6 +12,7 @@ library;
 import 'dart:math' as math;
 import 'dart:ui' show Rect;
 
+import '../project_frame_rate.dart' show secondsPlusFramesLabel;
 import 'conte_sheet_source.dart';
 
 /// The sheet's fixed measurements.
@@ -210,7 +211,7 @@ List<ContePageLayout> layoutConteSheet(
             metrics.bodyRight,
             bottom,
           ),
-          lengthLabel: conteTimeLabel(
+          lengthLabel: secondsPlusFramesLabel(
             cut.durationFrames,
             source.framesPerSecond,
           ),
@@ -229,7 +230,7 @@ List<ContePageLayout> layoutConteSheet(
         cells: cells,
         cutBands: bands,
         emptyRowsFrom: hole ? row : null,
-        pageTotalLabel: conteTimeLabel(total, source.framesPerSecond),
+        pageTotalLabel: secondsPlusFramesLabel(total, source.framesPerSecond),
         metrics: metrics,
       ),
     );

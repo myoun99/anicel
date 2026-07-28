@@ -781,8 +781,9 @@ void main() {
       tester,
       const ValueKey<String>('timeline-time-display-toggle-button'),
     );
-    // Frame 1 at 24fps in conte notation.
-    expect(counterText(), '0+01');
+    // Frame 1 at 24fps in conte notation — bare digits, the sheet's own
+    // (feedback #12); this used to read `0+01`.
+    expect(counterText(), '0+1');
 
     await _tapToolbarButton(
       tester,
