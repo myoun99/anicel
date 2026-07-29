@@ -783,15 +783,15 @@ void main() {
         fixture.coordinator.updateLayerKind(
           cutId: const CutId('cut-1'),
           layerId: const LayerId('base'),
-          kind: LayerKind.art,
+          kind: LayerKind.image,
         );
 
         Layer layerOf(LayerId id) => requireCut(
           fixture.project,
           const CutId('cut-1'),
         ).layers.firstWhere((layer) => layer.id == id);
-        expect(layerOf(const LayerId('base')).kind, LayerKind.art);
-        expect(layerOf(baseCopyId).kind, LayerKind.art,
+        expect(layerOf(const LayerId('base')).kind, LayerKind.image);
+        expect(layerOf(baseCopyId).kind, LayerKind.image,
             reason: 'kind mirrors to every link member');
         expect(layerOf(const LayerId('unrelated')).kind, LayerKind.animation);
 

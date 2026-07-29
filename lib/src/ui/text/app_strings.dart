@@ -417,7 +417,7 @@ class AppStrings {
   String get tlSameAsSelected => _s('tlSameAsSelected');
   String get tlKindAnimation => _s('tlKindAnimation');
   String get tlKindStoryboard => _s('tlKindStoryboard');
-  String get tlKindArt => _s('tlKindArt');
+  String get tlKindImage => _s('tlKindImage');
   String get tlKindSe => _s('tlKindSe');
   String get tlKindInstruction => _s('tlKindInstruction');
   String get tlAttachFreeAbove => _s('tlAttachFreeAbove');
@@ -470,7 +470,6 @@ class AppStrings {
   String get tlCustom => _s('tlCustom');
   String get tlShowSeRows => _s('tlShowSeRows');
   String get tlShowCameraRows => _s('tlShowCameraRows');
-  String get tlArtLayer => _s('tlArtLayer');
   String get tlStoryboardLayer => _s('tlStoryboardLayer');
 
   // --- The cut command group ---
@@ -1262,7 +1261,7 @@ class AppStrings {
     'tlSameAsSelected': 'Same as selected',
     'tlKindAnimation': 'Animation',
     'tlKindStoryboard': 'Storyboard',
-    'tlKindArt': 'Art',
+    'tlKindImage': 'Image',
     'tlKindSe': 'SE',
     'tlKindInstruction': 'Instruction',
     'tlAttachFreeAbove': 'Attach free layer above',
@@ -1304,7 +1303,6 @@ class AppStrings {
     'tlCustom': 'Custom…',
     'tlShowSeRows': 'Show SE rows',
     'tlShowCameraRows': 'Show camera rows',
-    'tlArtLayer': 'Art layer',
     'tlStoryboardLayer': 'Storyboard layer',
     'setCommasTitle': 'Set commas',
     'setCommasField': 'Exposure frames',
@@ -1905,7 +1903,7 @@ class AppStrings {
     'tlSameAsSelected': '選択中と同じ種類',
     'tlKindAnimation': '動画',
     'tlKindStoryboard': '絵コンテ',
-    'tlKindArt': '美術',
+    'tlKindImage': '画像',
     'tlKindSe': 'SE',
     'tlKindInstruction': '指示',
     'tlAttachFreeAbove': '上にフリーの付属レイヤー',
@@ -1946,7 +1944,6 @@ class AppStrings {
     'tlCustom': 'カスタム…',
     'tlShowSeRows': 'SE行を表示',
     'tlShowCameraRows': 'カメラ行を表示',
-    'tlArtLayer': '美術レイヤー',
     'tlStoryboardLayer': '絵コンテレイヤー',
     'setCommasTitle': 'コマ数の設定',
     'setCommasField': '露光フレーム数',
@@ -2544,7 +2541,7 @@ class AppStrings {
     'tlSameAsSelected': '선택한 것과 같은 종류',
     'tlKindAnimation': '동화',
     'tlKindStoryboard': '콘티',
-    'tlKindArt': '미술',
+    'tlKindImage': '이미지',
     'tlKindSe': 'SE',
     'tlKindInstruction': '지시',
     'tlAttachFreeAbove': '위에 프리 부속 레이어',
@@ -2585,7 +2582,6 @@ class AppStrings {
     'tlCustom': '사용자 지정…',
     'tlShowSeRows': 'SE 행 표시',
     'tlShowCameraRows': '카메라 행 표시',
-    'tlArtLayer': '미술 레이어',
     'tlStoryboardLayer': '콘티 레이어',
     'setCommasTitle': '코마 수 설정',
     'setCommasField': '노출 프레임 수',
@@ -3215,7 +3211,7 @@ class AppStrings {
     'tlSameAsSelected': 'Comme la sélection',
     'tlKindAnimation': 'Animation',
     'tlKindStoryboard': 'Storyboard',
-    'tlKindArt': 'Décor',
+    'tlKindImage': 'Image',
     'tlKindSe': 'SE',
     'tlKindInstruction': 'Indication',
     'tlAttachFreeAbove': 'Calque attaché libre au-dessus',
@@ -3257,7 +3253,6 @@ class AppStrings {
     'tlCustom': 'Personnalisé…',
     'tlShowSeRows': 'Afficher les lignes SE',
     'tlShowCameraRows': 'Afficher les lignes caméra',
-    'tlArtLayer': 'Calque décor',
     'tlStoryboardLayer': 'Calque storyboard',
     'setCommasTitle': 'Définir les commas',
     'setCommasField': "Images d'exposition",
@@ -3835,7 +3830,7 @@ class AppStrings {
     'tlSameAsSelected': '与所选相同',
     'tlKindAnimation': '动画',
     'tlKindStoryboard': '分镜',
-    'tlKindArt': '美术',
+    'tlKindImage': '图像',
     'tlKindSe': 'SE',
     'tlKindInstruction': '指示',
     'tlAttachFreeAbove': '在上方添加自由附属图层',
@@ -3876,7 +3871,6 @@ class AppStrings {
     'tlCustom': '自定义…',
     'tlShowSeRows': '显示 SE 行',
     'tlShowCameraRows': '显示摄影机行',
-    'tlArtLayer': '美术图层',
     'tlStoryboardLayer': '分镜图层',
     'setCommasTitle': '设置格数',
     'setCommasField': '曝光帧数',

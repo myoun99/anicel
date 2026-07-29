@@ -15,7 +15,6 @@ const Map<String, String> flyoutOwnerByItemKey = {
   'delete-layer-button': 'timeline-layer-menu-button',
   'import-audio-button': 'timeline-layer-menu-button',
   'toggle-storyboard-layer-button': 'timeline-layer-menu-button',
-  'toggle-art-layer-button': 'timeline-layer-menu-button',
   'toggle-se-section-button': 'timeline-layer-menu-button',
   'toggle-camera-section-button': 'timeline-layer-menu-button',
   'rename-frame-button': 'timeline-frame-menu-button',

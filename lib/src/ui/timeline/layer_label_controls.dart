@@ -217,7 +217,7 @@ class LayerBlendModeChip extends StatelessWidget {
 }
 
 /// Every layer kind that PRINTS carries the timesheet-output toggle — one
-/// entrance for every row (unified layer controls, user rule): cel/art/SE
+/// entrance for every row (unified layer controls, user rule): cel/image/SE
 /// gate their sheet columns and the CAMERA layer gates the printed CAM
 /// column. A folder prints nothing of its own, so its slot stays reserved
 /// but empty.
@@ -419,7 +419,7 @@ IconData layerKindIcon(LayerKind kind) {
   return switch (kind) {
     LayerKind.animation => Icons.brush_outlined,
     LayerKind.storyboard => Icons.auto_stories_outlined,
-    LayerKind.art => Icons.landscape_outlined,
+    LayerKind.image => Icons.image_outlined,
     LayerKind.se => Icons.music_note_outlined,
     LayerKind.instruction => Icons.theaters_outlined,
     LayerKind.camera => Icons.videocam_outlined,
@@ -432,7 +432,7 @@ String layerKindDisplayName(LayerKind kind) {
   return switch (kind) {
     LayerKind.animation => 'Animation',
     LayerKind.storyboard => 'Storyboard',
-    LayerKind.art => 'Art',
+    LayerKind.image => 'Image',
     LayerKind.se => 'SE',
     LayerKind.instruction => 'Instruction',
     LayerKind.camera => 'Camera',

@@ -2,10 +2,15 @@ enum LayerKind {
   animation('animation'),
   storyboard('storyboard'),
 
-  /// Art cel for backgrounds and books (BG/BOOK). Draws and composites
-  /// exactly like an animation layer and shares the drawing timeline
-  /// section; the kind only marks the material for icons and sheet roles.
-  art('art'),
+  /// A PICTURE layer (BG/BOOK, imported stills): ONE cel by definition,
+  /// held over the whole cut — the covering grammar the storyboard row
+  /// speaks ("the row end IS the cut end"), minus the conte semantics.
+  /// Frame names default to none (the layer's own name addresses the
+  /// picture); a normal image layer is drawn on like any cel, a
+  /// REFERENCED one ([Layer.mediaReference]) shows a library asset and
+  /// refuses the brush. Replaces the old `art` kind, which drew and
+  /// composited exactly like animation and only differed in icon.
+  image('image'),
 
   /// A GROUP: a layer that holds structure instead of a picture — "그림만
   /// 못 그릴 뿐인 레이어" (user, 2026-07-23). It has no cels, no timesheet
@@ -40,6 +45,12 @@ enum LayerKind {
   String toJson() => jsonValue;
 
   static LayerKind fromJson(Object? json) {
+    // Legacy alias: the retired `art` kind drew and composited exactly
+    // like animation (its enum doc said as much) — old dev files load as
+    // what they always behaved as.
+    if (json == 'art') {
+      return LayerKind.animation;
+    }
     for (final kind in LayerKind.values) {
       if (json == kind.jsonValue) {
         return kind;
@@ -63,7 +74,7 @@ bool layerKindHoldsDrawings(LayerKind kind) {
   return switch (kind) {
     LayerKind.animation ||
     LayerKind.storyboard ||
-    LayerKind.art ||
+    LayerKind.image ||
     LayerKind.se => true,
     LayerKind.instruction || LayerKind.camera || LayerKind.folder => false,
   };
@@ -74,7 +85,7 @@ bool layerKindHoldsDrawings(LayerKind kind) {
 /// bases, cel export — asks this rather than listing the three kinds again.
 bool layerKindIsDrawingCel(LayerKind kind) {
   return switch (kind) {
-    LayerKind.animation || LayerKind.storyboard || LayerKind.art => true,
+    LayerKind.animation || LayerKind.storyboard || LayerKind.image => true,
     LayerKind.se ||
     LayerKind.instruction ||
     LayerKind.camera ||
@@ -111,7 +122,7 @@ bool layerKindComposites(LayerKind kind) {
   return switch (kind) {
     LayerKind.animation ||
     LayerKind.storyboard ||
-    LayerKind.art ||
+    LayerKind.image ||
     LayerKind.se ||
     LayerKind.instruction ||
     LayerKind.folder => true,
@@ -135,7 +146,7 @@ bool layerKindHasPictureOpacity(LayerKind kind) {
   return switch (kind) {
     LayerKind.animation ||
     LayerKind.storyboard ||
-    LayerKind.art ||
+    LayerKind.image ||
     LayerKind.se ||
     LayerKind.instruction ||
     LayerKind.folder => true,
@@ -150,7 +161,7 @@ bool layerKindHasLayerTransform(LayerKind kind) {
   return switch (kind) {
     LayerKind.animation ||
     LayerKind.storyboard ||
-    LayerKind.art ||
+    LayerKind.image ||
     LayerKind.se ||
     LayerKind.instruction ||
     LayerKind.folder => true,
@@ -167,7 +178,7 @@ bool layerKindIsClipboardCopyable(LayerKind kind) {
   return switch (kind) {
     LayerKind.animation ||
     LayerKind.storyboard ||
-    LayerKind.art ||
+    LayerKind.image ||
     LayerKind.instruction => true,
     LayerKind.se || LayerKind.camera || LayerKind.folder => false,
   };
@@ -187,7 +198,7 @@ bool layerKindExportsCels(LayerKind kind) {
   return switch (kind) {
     LayerKind.animation ||
     LayerKind.storyboard ||
-    LayerKind.art ||
+    LayerKind.image ||
     LayerKind.instruction => true,
     LayerKind.se || LayerKind.camera || LayerKind.folder => false,
   };
@@ -195,15 +206,16 @@ bool layerKindExportsCels(LayerKind kind) {
 
 /// Whether [kind] takes a CEL column on the printed timesheet. The camera
 /// prints in the CAM group (its own column, driven by the cut's camera
-/// track) and rows that only group other rows print nothing.
+/// track), rows that only group other rows print nothing, and an IMAGE
+/// row is one nameless held picture — a column of blank cells would say
+/// nothing (the real sheets keep BG out of the cel columns).
 bool layerKindTakesTimesheetColumn(LayerKind kind) {
   return switch (kind) {
     LayerKind.animation ||
     LayerKind.storyboard ||
-    LayerKind.art ||
     LayerKind.se ||
     LayerKind.instruction => true,
-    LayerKind.camera || LayerKind.folder => false,
+    LayerKind.image || LayerKind.camera || LayerKind.folder => false,
   };
 }
 
@@ -220,7 +232,21 @@ bool layerKindTakesTimesheetColumn(LayerKind kind) {
 ///
 /// Every other drawing kind keeps real gaps — an animation row with nothing
 /// on frame 7 means nothing is drawn on frame 7.
-bool layerKindCoversWithoutGaps(LayerKind kind) => kind == LayerKind.storyboard;
+///
+/// The IMAGE row speaks the same covering grammar: one cel by definition,
+/// held from the cut's first frame to its last (a BG has no "off"
+/// frames). The single block is the degenerate no-divisions case, and the
+/// repository's covering normalization keeps the stored block equal to
+/// the cut length through every duration change.
+bool layerKindCoversWithoutGaps(LayerKind kind) =>
+    kind == LayerKind.storyboard || kind == LayerKind.image;
+
+/// Whether [kind] holds ONE cel by definition — the image layer's
+/// contract: the picture is the layer, so a second cel (and the
+/// create-drawing verb once one exists) has nothing to mean. Cross-cut
+/// paper switching happens through cel NAMES and the 겸용 link banks,
+/// never through a second cel in the same cut.
+bool layerKindHoldsSingleCel(LayerKind kind) => kind == LayerKind.image;
 
 /// Whether [kind] may carry REPEAT/hold regions (the `N/H/R` run edges).
 ///

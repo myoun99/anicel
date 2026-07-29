@@ -291,7 +291,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           ..._collapsibleTransformGroup(layer, _layerTransformLanes(layer)),
         ];
       case LayerKind.animation:
-      case LayerKind.art:
+      case LayerKind.image:
       case LayerKind.storyboard:
       case LayerKind.instruction:
       // A folder's FX lanes ARE layer lanes (R27 #26 asked for the layer
@@ -532,7 +532,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         // A folder's band is the members' aggregate: nothing of its own
         // to edit at a cell.
         break;
-      case LayerKind.animation || LayerKind.storyboard || LayerKind.art:
+      case LayerKind.animation || LayerKind.storyboard || LayerKind.image:
         await _renameSelectedFrame();
     }
   }
@@ -572,7 +572,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       case LayerKind.folder:
         // Nothing to create on a folder row — it holds rows, not cels.
         break;
-      case LayerKind.animation || LayerKind.storyboard || LayerKind.art:
+      case LayerKind.animation || LayerKind.storyboard || LayerKind.image:
         _session.createDrawingAtCurrentFrame();
     }
   }

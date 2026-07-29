@@ -202,6 +202,9 @@ PasteLayerCommandInputPlan planPasteLayerCommandInput({
     isVisible: payload.isVisible,
     opacity: payload.opacity,
     kind: pastedKind,
+    // The reference is kind-agnostic (§6-z23's second axis): the pasted
+    // copy shows the same library asset.
+    mediaReference: payload.mediaReference,
   );
 
   return PasteLayerCommandInputPlan(
@@ -229,10 +232,15 @@ class CreateLinkedCutCommandInputPlan {
 }
 
 /// Whether a row of [kind] copies into a 겸용컷: the drawing layers whose
-/// pictures are shared, plus the folder rows that hold them ("폴더 존재/
-/// 멤버십은 공유 구조"). SE/instruction/camera rows are per-use fixtures.
+/// pictures are shared — IMAGE rows included (the shared BG is the
+/// classic 겸용 case; the linked copy shares the cel id and the covering
+/// normalization re-covers it) — plus the folder rows that hold them
+/// ("폴더 존재/멤버십은 공유 구조"). SE/instruction/camera rows are
+/// per-use fixtures.
 bool _linksIntoLinkedCut(LayerKind kind) =>
-    kind == LayerKind.animation || layerKindGroupsLayers(kind);
+    kind == LayerKind.animation ||
+    kind == LayerKind.image ||
+    layerKindGroupsLayers(kind);
 
 /// Plans a 겸용컷 생성 (L2): a new cut id, one linked-copy id per linked
 /// row of [sourceCut] (drawing layers and their folders), and registry

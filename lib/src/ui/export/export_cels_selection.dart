@@ -71,7 +71,7 @@ ExportCelsSelection resolveExportCelsSelection({
         return !spec.onTimesheetOnly || layer.onTimesheet;
       case LayerKind.animation:
       case LayerKind.storyboard:
-      case LayerKind.art:
+      case LayerKind.image:
         if (!layer.isVisible) {
           return false;
         }

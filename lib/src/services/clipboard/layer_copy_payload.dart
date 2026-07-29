@@ -5,6 +5,7 @@ import '../../models/camera_instruction.dart';
 import '../../models/frame.dart';
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
+import '../../models/media_reference.dart';
 import '../../models/timeline_exposure.dart';
 
 class LayerCopyPayload {
@@ -17,6 +18,7 @@ class LayerCopyPayload {
     required Map<int, TimelineExposure> timeline,
     Map<int, InstructionEvent> instructions = const {},
     List<AudioClip> audioClips = const [],
+    this.mediaReference,
   }) : frames = List.unmodifiable(frames),
        timeline = UnmodifiableMapView(
          SplayTreeMap<int, TimelineExposure>.of(timeline),
@@ -38,6 +40,10 @@ class LayerCopyPayload {
 
   /// Audio clips ride copies so duplicating an SE row keeps its sound.
   final List<AudioClip> audioClips;
+
+  /// The media reference rides copies so duplicating a referenced layer
+  /// keeps its picture (the copy shows the same library asset).
+  final MediaReference? mediaReference;
 }
 
 LayerCopyPayload copyLayerToPayload(Layer source) {
@@ -50,5 +56,6 @@ LayerCopyPayload copyLayerToPayload(Layer source) {
     timeline: source.timeline,
     instructions: source.instructions,
     audioClips: source.audioClips,
+    mediaReference: source.mediaReference,
   );
 }
