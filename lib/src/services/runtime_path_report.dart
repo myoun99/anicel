@@ -6,6 +6,7 @@ import '../native/qa_engine_abi.dart';
 import '../native/qa_native_engine.dart';
 import '../native/qa_tablet_bridge.dart';
 import '../native/qa_video_encoder.dart';
+import 'pdf/pdf_render_service.dart';
 
 /// One runtime-selected implementation path, reported to the user
 /// (Preferences > System).
@@ -116,6 +117,26 @@ List<RuntimePathEntry> collectRuntimePathReport() {
           'MP4 export renders through the operating system\'s own '
           'hardware-capable encoder; ffmpeg is the fallback for '
           'platforms without one (e.g. Linux).',
+    ),
+  );
+
+  // --- PDF renderer: PDFium via pdfrx's native assets. UNLIKE the rows
+  // above there is no fallback implementation at all — absence means PDF
+  // import/viewing are disabled outright, which is exactly why it must
+  // be visible here.
+  final pdfAvailable = PdfRenderService.availability;
+  entries.add(
+    RuntimePathEntry(
+      subsystem: 'PDF renderer',
+      active: pdfAvailable == true
+          ? 'PDFium (pdfrx, chromium prebuilt)'
+          : 'Not loaded — PDF import and viewing are disabled',
+      isPrimary: pdfAvailable == true,
+      detail:
+          'PDF pages rasterize through PDFium (Chromium\'s PDF engine), '
+          'bundled at build time. There is no substitute path: without '
+          'it the importer and the media viewer state the absence '
+          'instead of degrading.',
     ),
   );
 

@@ -93,16 +93,15 @@ void main() {
       );
 
       expect(restored, isNotNull);
-      // 'ghost-panel' dropped; 'camera' kept with its saved section.
-      expect(restored!.docks['left']!.first.tabs, ['camera']);
-      expect(restored.docks['left']!.first.weight, 2);
-      // Tabs the save never placed ('tools', 'brushes' via the unknown
-      // dock, 'canvas') return to their default docks.
+      // 'ghost-panel' dropped; 'camera' kept with its saved section, and
+      // 'brushes' (lost to the unknown dock) JOINS that section — its
+      // default-section sibling survived, so no split appears.
+      expect(restored!.docks['left']!.single.tabs, ['camera', 'brushes']);
+      expect(restored.docks['left']!.single.weight, 2);
+      // Tabs the save never placed ('tools', 'canvas') return to their
+      // default docks.
       expect(restored.docks['tool-left']!.single.tabs, ['tools']);
       expect(restored.docks['center']!.single.tabs, ['canvas']);
-      expect([
-        for (final section in restored.docks['left']!) ...section.tabs,
-      ], containsAll(['camera', 'brushes']));
       expect(restored.dockExtents, {'left': 300.0});
       expect(restored.lockedTabIds, {'canvas'});
     });
@@ -129,15 +128,56 @@ void main() {
       );
 
       // The duplicate 'camera' in center is dropped; 'brushes' (never
-      // placed by the save) returns to its default dock as a new section.
+      // placed by the save) joins the section holding its sibling.
       expect(
         [for (final section in restored!.docks['left']!) section.tabs],
         [
-          ['camera'],
-          ['brushes'],
+          ['camera', 'brushes'],
         ],
       );
       expect(restored.docks['center']!.single.tabs, ['canvas']);
+    });
+
+    test('an update-added panel joins the saved sibling section instead of '
+        'splitting the dock', () {
+      // The save predates 'camera' (an app update added it): its default
+      // section sibling 'brushes' was saved alone, with a resized weight
+      // and itself active.
+      final restored = restoreWorkspaceLayout(
+        payload: {
+          'layout': {
+            'docks': {
+              'left': [
+                {
+                  'tabs': ['brushes'],
+                  'active': 'brushes',
+                  'weight': 3,
+                },
+              ],
+              'center': [
+                {
+                  'tabs': ['canvas'],
+                },
+              ],
+              'tool-left': [
+                {
+                  'tabs': ['tools'],
+                },
+              ],
+            },
+          },
+        },
+        defaults: _defaults(),
+      );
+
+      // ONE section: the new tab slipped into the strip (fresh-install
+      // shape), keeping the saved active tab and weight — not a second
+      // section halving the dock with an empty panel.
+      final left = restored!.docks['left']!;
+      expect(left, hasLength(1));
+      expect(left.single.tabs, ['brushes', 'camera']);
+      expect(left.single.activeTabId, 'brushes');
+      expect(left.single.weight, 3);
     });
 
     test('a payload without a layout is rejected', () {

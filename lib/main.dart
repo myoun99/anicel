@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show rootBundle;
 
 import 'src/services/input/pen_sidecars.dart';
+import 'src/services/pdf/pdf_render_service.dart';
 import 'src/services/persistence/app_documents.dart' show AppStorage;
 import 'src/ui/debug/measurement_mode.dart';
 import 'src/ui/home_page.dart';
@@ -38,8 +39,21 @@ void main() {
       const ['IBM Plex Sans KR'],
       await rootBundle.loadString('assets/fonts/OFL-IBMPlexSansKR.txt'),
     );
+    // PDFium binaries bundle at build time (pdfrx native assets); their
+    // license requires the notice to ship with binary redistributions —
+    // pub's automatic NOTICES only covers the Dart packages, not the
+    // downloaded engine itself.
+    yield LicenseEntryWithLineBreaks(
+      const ['PDFium'],
+      await rootBundle.loadString('assets/licenses/LICENSE-PDFium.txt'),
+    );
   });
   unawaited(AppStorage.ensureInitialized());
+  // Probe PDFium once at startup (loads the bundled library, ~ms): the
+  // import window and Preferences > System then have a settled answer
+  // instead of probing mid-flow. Absence is a reported state, not an
+  // error.
+  unawaited(PdfRenderService.ensureAvailable());
   runApp(const AnicelApp());
 }
 

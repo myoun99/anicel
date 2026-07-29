@@ -125,6 +125,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.onStrokeInputActiveChanged,
     this.onSelectionInteractionChanged,
     this.allowViewRotation = true,
+    this.toolCursorsEnabled = true,
     this.statusStripActions = const <Widget>[],
     this.bottomBarLeading = const <Widget>[],
     this.bottomBarLeadingToken,
@@ -306,6 +307,11 @@ class BrushCanvasPanel extends StatefulWidget {
   /// only (the timesheet's ink and header-edit overlays).
   final bool allowViewRotation;
 
+  /// False suppresses the tool cursors (brush tip outline, fill icon) —
+  /// for strictly read-only hosts (the media viewer), where a paint
+  /// cursor over undrawable content is a false affordance.
+  final bool toolCursorsEnabled;
+
   @override
   State<BrushCanvasPanel> createState() => _BrushCanvasPanelState();
 }
@@ -457,13 +463,17 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   /// R26 #23: the fill tool's own cursor icon (no sampling involved).
   bool get _fillCursorActive =>
-      widget.brushToolState.tool == CanvasTool.fill && !_eyedropperCursorActive;
+      widget.toolCursorsEnabled &&
+      widget.brushToolState.tool == CanvasTool.fill &&
+      !_eyedropperCursorActive;
 
   /// The brush/eraser tip outline. Alt-held sampling takes the pointer over
   /// (the eyedropper is what the user is aiming with at that moment), and
   /// the selection tools own it outright.
   bool get _brushCursorActive =>
-      canvasToolPaints(widget.brushToolState.tool) && !_eyedropperCursorActive;
+      widget.toolCursorsEnabled &&
+      canvasToolPaints(widget.brushToolState.tool) &&
+      !_eyedropperCursorActive;
 
   /// Whether the eyedropper cursor + hover swatch are armed: the tool
   /// itself, or Alt held over a painting tool (the temporary pick).

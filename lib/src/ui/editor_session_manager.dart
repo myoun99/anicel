@@ -12,6 +12,7 @@ import '../models/import/cut_folder_parse.dart';
 import '../services/commands/import_media_command.dart';
 import '../services/import/media_import_planner.dart';
 import '../services/import/raster_cel_import.dart';
+import '../services/pdf/pdf_render_service.dart';
 import '../models/app_language.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/app_accent_settings_store.dart';
@@ -3921,6 +3922,188 @@ class EditorSessionManager extends ChangeNotifier {
     _refreshAfterCutCommand(preferredActiveLayerId: layer.id);
     notifyListeners();
     return true;
+  }
+
+  /// Imports a PDF: pages become cels at canvas resolution — §6-m's full
+  /// pre-conversion, with the CEL STORE as the persistent home (it saves
+  /// inside the .anicel, so placement rides every display/export path
+  /// untouched; no separate disk cache). 1 page = 1 frame (§6-k).
+  /// Returns false when the renderer is absent
+  /// ([PdfRenderService.availability] says which), the destination
+  /// refuses, or the document has no pages; a corrupt/locked file throws
+  /// at open. A single page failing to RENDER leaves its cel empty and
+  /// reports through [onPageRenderFailed] — the import still completes.
+  Future<bool> importPdfFile({
+    required String path,
+    required ImportDestination destination,
+    bool rasterize = false,
+    MediaFitMode fit = MediaFitMode.contain,
+    void Function(int done, int total)? onRenderProgress,
+    void Function(int pageIndex)? onPageRenderFailed,
+  }) async {
+    // The destination gate runs BEFORE any native work — a refused
+    // import must not have opened a document to leak.
+    final targetCut = destination == ImportDestination.activeCutLayer
+        ? activeCutOrNull
+        : null;
+    if (destination == ImportDestination.activeCutLayer && targetCut == null) {
+      return false;
+    }
+    final document = await PdfRenderService.open(path);
+    if (document == null) {
+      return false; // Renderer absent — the honest-absence state.
+    }
+    try {
+      final pageCount = document.pageCount;
+      if (pageCount <= 0) {
+        return false;
+      }
+      final project = _repository.requireProject();
+      final mint = _importIdMint();
+      final storedPath = rasterize ? path : _copyIntoProjectMedia(path);
+      final sourceStamp = _mediaSourceStampFor(path);
+      final displayName = mediaAssetDefaultName(path);
+      final cutId = targetCut?.id ?? mint.nextCutId();
+
+      final Layer layer;
+      final List<PlannedCelBake> bakes;
+      final List<MediaAsset> assets;
+      if (pageCount == 1) {
+        // A one-page PDF is a still: an image-kind layer holding over the
+        // cut, exactly like a placed PNG.
+        final stillDuration = destination == ImportDestination.activeCutLayer
+            ? (targetCut!.duration < 1 ? 1 : targetCut.duration)
+            : project.fps;
+        final plan = planStillImageLayer(
+          sourceFile: storedPath,
+          displayName: displayName,
+          cutId: cutId,
+          duration: stillDuration,
+          fit: fit,
+          rasterize: rasterize,
+          mint: mint,
+          sourcePath: storedPath == path ? null : path,
+          sourceStamp: sourceStamp,
+          assetKind: MediaAssetKind.pdf,
+          pageCount: pageCount,
+        );
+        layer = plan.layer;
+        bakes = plan.bakes;
+        assets = plan.assets;
+      } else {
+        // Pages never fold (the fingerprint is the page index): a conte's
+        // pages can repeat a layout, but page 12 is still page 12.
+        final plan = planSequenceLayer(
+          sourceFiles: List<String>.filled(pageCount, storedPath),
+          frameFingerprints: [for (var i = 0; i < pageCount; i += 1) i],
+          displayName: displayName,
+          cutId: cutId,
+          fit: fit,
+          rasterize: rasterize,
+          mint: mint,
+          referencePath: storedPath,
+          sourcePath: storedPath == path ? null : path,
+          sourceStamp: sourceStamp,
+          assetKind: MediaAssetKind.pdf,
+          pageCount: pageCount,
+        );
+        layer = plan.layer;
+        bakes = plan.bakes;
+        assets = plan.assets;
+      }
+
+      if (destination == ImportDestination.activeCutLayer) {
+        _historyManager.execute(
+          ImportMediaCommand(
+            repository: _repository,
+            editingSession: _editingSession,
+            targetCutId: cutId,
+            newLayers: [layer],
+            assetAdditions: assets,
+            description: 'Import $displayName',
+          ),
+        );
+      } else {
+        final canvasSize = activeCutOrNull?.canvasSize ?? defaultCutCanvasSize;
+        final defaultCut = createDefaultCut(
+          cutId: cutId,
+          name: displayName,
+          layerId: mint.nextLayerId(),
+          canvasSize: canvasSize,
+        );
+        final fixtureLayers = [
+          for (final fixture in defaultCut.layers)
+            if (fixture.kind != LayerKind.animation) fixture,
+        ];
+        final cut = defaultCut.copyWith(
+          duration: pageCount > 1 ? _sequenceLength(layer) : project.fps,
+          layers: [layer, ...fixtureLayers],
+        );
+        _historyManager.execute(
+          ImportMediaCommand(
+            repository: _repository,
+            editingSession: _editingSession,
+            trackId: selectedTrackId,
+            newCuts: [cut],
+            assetAdditions: assets,
+            description: 'Import $displayName',
+          ),
+        );
+      }
+
+      // Bake AFTER the structure exists, one page at a time: render the
+      // page at exactly its placement size (the vector source rasters
+      // once, at the size it will live at — no second resample), then
+      // donate through the ordinary cel path. Each page guards itself
+      // (the importCutFolder contract): the command is already committed,
+      // so one damaged page must leave its cel empty and be REPORTED —
+      // never abort into a half-baked import the dialog would retry as a
+      // duplicate.
+      final bakedCut = _cutById(cutId);
+      if (bakedCut != null) {
+        var done = 0;
+        for (final bake in bakes) {
+          try {
+            final pageSize = document.pageSize(bake.sourceFrameIndex);
+            final placement = placementRectFor(
+              sourceWidth: pageSize.width.round().clamp(1, 1 << 13).toInt(),
+              sourceHeight: pageSize.height.round().clamp(1, 1 << 13).toInt(),
+              canvas: bakedCut.canvasSize,
+              fit: bake.fit,
+            );
+            final image = await document.renderPage(
+              bake.sourceFrameIndex,
+              width: placement.width.round().clamp(1, 1 << 13).toInt(),
+              height: placement.height.round().clamp(1, 1 << 13).toInt(),
+            );
+            try {
+              final surface = await rasterizeImageToSurface(
+                image: image,
+                canvas: bakedCut.canvasSize,
+                fit: bake.fit,
+              );
+              bakeCelSurface(
+                brushFrameStore,
+                brushFrameKeyForCut(bakedCut, bake.layerId, bake.frameId),
+                surface,
+              );
+            } finally {
+              image.dispose();
+            }
+          } on Object {
+            onPageRenderFailed?.call(bake.sourceFrameIndex);
+          }
+          done += 1;
+          onRenderProgress?.call(done, bakes.length);
+        }
+      }
+
+      _refreshAfterCutCommand(preferredActiveLayerId: layer.id);
+      notifyListeners();
+      return true;
+    } finally {
+      await document.dispose();
+    }
   }
 
   int _sequenceLength(Layer layer) {

@@ -66,6 +66,40 @@ void main() {
     expect(plan.assets.single.kind, MediaAssetKind.image);
   });
 
+  test('a PDF plan (assetKind: pdf) registers pageCount instead of '
+      'frameCount, on both the sequence and the still shapes', () {
+    final sequence = planSequenceLayer(
+      sourceFiles: List<String>.filled(3, 'C:/media/conte.pdf'),
+      frameFingerprints: const [0, 1, 2],
+      displayName: 'conte.pdf',
+      cutId: const CutId('cut-1'),
+      fit: MediaFitMode.contain,
+      rasterize: false,
+      mint: mint(),
+      referencePath: 'C:/media/conte.pdf',
+      assetKind: MediaAssetKind.pdf,
+      pageCount: 3,
+    );
+    expect(sequence.assets.single.kind, MediaAssetKind.pdf);
+    expect(sequence.assets.single.pageCount, 3);
+    expect(sequence.assets.single.frameCount, isNull);
+    expect(sequence.bakes, hasLength(3), reason: 'indexes never fold');
+
+    final still = planStillImageLayer(
+      sourceFile: 'C:/media/page.pdf',
+      displayName: 'page.pdf',
+      cutId: const CutId('cut-1'),
+      duration: 24,
+      fit: MediaFitMode.contain,
+      rasterize: false,
+      mint: mint(),
+      assetKind: MediaAssetKind.pdf,
+      pageCount: 1,
+    );
+    expect(still.assets.single.kind, MediaAssetKind.pdf);
+    expect(still.assets.single.pageCount, 1);
+  });
+
   test('planCutFolderImport builds a legal stack: pictures at the bottom, '
       'each symbol as [attach, organizer, base], fixtures last — and the '
       'folder structure validates', () {

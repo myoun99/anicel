@@ -12,6 +12,7 @@ import '../models/brush_preset_id.dart';
 import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/layer_id.dart';
+import '../models/media_asset.dart' show MediaAsset;
 import '../services/brush_preset_file_service.dart';
 import '../services/brush_tip_library_service.dart';
 import '../services/canvas_color_sampler.dart' show CanvasColorSampleSource;
@@ -34,6 +35,7 @@ import 'export/export_frame_renderer.dart';
 import 'export/export_plan.dart';
 import 'import/import_dialog.dart';
 import 'media/media_browser_panel.dart';
+import 'media/media_viewer_tab_host.dart';
 import 'panels/editor_dock_host.dart';
 import 'panels/editor_panel_dock.dart';
 import 'panels/editor_panel_layout.dart';
@@ -162,6 +164,7 @@ class EditorWorkspace extends StatefulWidget {
   static const String storyboardTabId = 'storyboard';
   static const String conteTabId = 'conte';
   static const String timesheetTabId = 'timesheet';
+  static const String mediaViewerTabId = 'media-viewer';
 
   /// The size frame-axis panels lay out at when docked somewhere smaller
   /// (their label rails and toolbars assume a wide region); the tab shell
@@ -223,6 +226,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           EditorWorkspace.timelineTabId,
           EditorWorkspace.storyboardTabId,
           EditorWorkspace.conteTabId,
+          // The media viewer (R4, §6-h) joins the paper-family tabs; it
+          // fronts itself when the browser opens something into it.
+          EditorWorkspace.mediaViewerTabId,
         ],
         activeTabId: EditorWorkspace.timelineTabId,
       ),
@@ -445,6 +451,15 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   final ValueNotifier<CanvasViewport?> _conteViewport = ValueNotifier(null);
   final ValueNotifier<bool> _conteInkEnabled = ValueNotifier(false);
 
+  /// Media viewer state (R4, §6-h): what it looks at and its zoom/pan —
+  /// owned here so both survive tab switches and re-docking.
+  final ValueNotifier<MediaViewerRequest?> _mediaViewerRequest = ValueNotifier(
+    null,
+  );
+  final ValueNotifier<CanvasViewport?> _mediaViewerViewport = ValueNotifier(
+    null,
+  );
+
   /// The cel stores are the SESSION's (R5): the archive saves and loads
   /// them with the project; this controller owns only the edit sessions.
   late final ConteInkController _conteInk = ConteInkController(
@@ -576,6 +591,18 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// into their default dock; an already-open panel fronts its tab and
   /// FLASHES so the user sees where it lives. Every non-Window "open
   /// panel" affordance should route here.
+  /// A browser "open" (double-click or the row menu): point the viewer at
+  /// the asset and reveal its panel — the common reveal verb, so an
+  /// already-open viewer fronts and flashes instead of duplicating.
+  void _openAssetInViewer(MediaAsset asset) {
+    _mediaViewerRequest.value = MediaViewerRequest(
+      path: asset.path,
+      kind: asset.kind,
+      name: asset.name,
+    );
+    _revealPanel(EditorWorkspace.mediaViewerTabId);
+  }
+
   void _revealPanel(String tabId) {
     final location = _layout.locateTab(tabId);
     if (location == null) {
@@ -676,6 +703,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _conteViewport.dispose();
     _conteInkEnabled.dispose();
     _conteInk.dispose();
+    _mediaViewerRequest.dispose();
+    _mediaViewerViewport.dispose();
     _draggingTab.dispose();
     widget.layerNav?.unbind();
     widget.panelsMenu?.detach();
@@ -1081,6 +1110,32 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               onRenameAsset: widget.session.renameMediaAsset,
               onRelinkAsset: widget.session.relinkMediaAsset,
               onRemoveAsset: widget.session.removeMediaAsset,
+              onOpenAsset: _openAssetInViewer,
+            ),
+          ),
+        );
+      case EditorWorkspace.mediaViewerTabId:
+        return EditorPanelTab(
+          id: tabId,
+          label: AppText.strings.panelMediaViewer,
+          icon: Icons.preview_outlined,
+          locked: locked,
+          // Keeps its decoded pages/PDF document across tab switches.
+          keepAlive: true,
+          builder: (context) => PanelAwareListenableBuilder(
+            // The request is the HOST's own subscription; only the
+            // viewport value and the locale chrome rebuild from here.
+            listenable: Listenable.merge([
+              _mediaViewerViewport,
+              widget.session.languageSettings,
+            ]),
+            builder: (context) => MediaViewerTabHost(
+              session: widget.session,
+              request: _mediaViewerRequest,
+              viewport: _mediaViewerViewport.value,
+              onViewportChanged: (viewport) {
+                _mediaViewerViewport.value = viewport;
+              },
             ),
           ),
         );

@@ -52,6 +52,7 @@ dependencies:
     path: packages/qa_native
   pdf: ^3.13.0
   desktop_drop: ^0.7.1
+  pdfrx: ^2.4.7
 
 dev_dependencies:
   flutter_test:
@@ -81,6 +82,7 @@ flutter:
   # the platform fonts.
   assets:
     - assets/fonts/
+    - assets/licenses/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

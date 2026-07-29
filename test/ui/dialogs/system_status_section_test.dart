@@ -22,12 +22,23 @@ void main() {
       'Audio engine',
       'Audio import decoder',
       'Video export encoder',
+      'PDF renderer',
       'Pen tablet driver',
     ]);
     for (final entry in entries) {
       expect(entry.active, isNotEmpty, reason: entry.subsystem);
       expect(entry.detail, isNotEmpty, reason: entry.subsystem);
     }
+  });
+
+  test('an unloaded PDF renderer reports its absence honestly', () {
+    // flutter_tester never loads PDFium (no Dart fallback exists for it),
+    // so the report must show the disabled state, tinted as non-primary.
+    final pdf = collectRuntimePathReport().singleWhere(
+      (entry) => entry.subsystem == 'PDF renderer',
+    );
+    expect(pdf.isPrimary, isFalse);
+    expect(pdf.active, contains('disabled'));
   });
 
   test('a missing raster engine reports the Dart fallback honestly', () {

@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show kDoubleTapMinTime;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/media_asset.dart';
@@ -8,6 +9,7 @@ class _Callbacks {
   final renamed = <(String, String)>[];
   final relinked = <(String, String)>[];
   final removed = <String>[];
+  final opened = <MediaAsset>[];
   bool removeResult = true;
   Set<String> referencedPaths = {};
   Set<String> existingPaths = {};
@@ -35,6 +37,7 @@ Future<void> _pump(
               callbacks.removed.add(path);
               return callbacks.removeResult;
             },
+            onOpenAsset: callbacks.opened.add,
             audioFilePicker: picker,
             fileExists: callbacks.existingPaths.contains,
           ),
@@ -155,6 +158,32 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(callbacks.relinked, [(foot, moved)]);
+  });
+
+  testWidgets('open in viewer: the row menu item and a double-click both '
+      'hand the asset out', (tester) async {
+    final callbacks = _Callbacks()..existingPaths = {foot};
+    await _pump(
+      tester,
+      callbacks,
+      assets: const [MediaAsset(path: foot, name: 'foot.wav')],
+    );
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('media-asset-menu-$foot')),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('media-asset-menu-open')),
+    );
+    await tester.pumpAndSettle();
+    expect(callbacks.opened.map((asset) => asset.path), [foot]);
+
+    await tester.tap(find.text('foot.wav'));
+    await tester.pump(kDoubleTapMinTime);
+    await tester.tap(find.text('foot.wav'));
+    await tester.pumpAndSettle();
+    expect(callbacks.opened, hasLength(2));
   });
 
   testWidgets('remove: refused removals explain themselves', (tester) async {

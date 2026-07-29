@@ -279,9 +279,16 @@ void main() {
     'mediaRelink': (s) => s.mediaRelink,
     'mediaRemove': (s) => s.mediaRemove,
     'mediaStillLinked': (s) => s.mediaStillLinked,
+    'mediaOpenInViewer': (s) => s.mediaOpenInViewer,
+    'mediaViewerEmpty': (s) => s.mediaViewerEmpty,
+    'mediaViewerOpenFile': (s) => s.mediaViewerOpenFile,
+    'mediaViewerLoadFailed': (s) => s.mediaViewerLoadFailed,
+    'mediaViewerCannotDisplay': (s) => s.mediaViewerCannotDisplay,
+    'mediaViewerNoPdfRenderer': (s) => s.mediaViewerNoPdfRenderer,
     'panelCanvas': (s) => s.panelCanvas,
     'panelColor': (s) => s.panelColor,
     'panelMedia': (s) => s.panelMedia,
+    'panelMediaViewer': (s) => s.panelMediaViewer,
     'panelOnionSkin': (s) => s.panelOnionSkin,
     'panelStoryboard': (s) => s.panelStoryboard,
     'panelTimeline': (s) => s.panelTimeline,
@@ -533,6 +540,6 @@ void main() {
   test('the reader table covers every getter the class declares', () {
     // Guards the guard: a string added without a line here would other-
     // wise be silently unchecked.
-    expect(readers, hasLength(478));
+    expect(readers, hasLength(485));
   });
 }
