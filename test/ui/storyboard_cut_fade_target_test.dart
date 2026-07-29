@@ -18,7 +18,9 @@ import 'package:anicel/src/ui/storyboard_cut_fade_policy.dart';
 /// per-cut FO/WO target died with the wash (a white-out is a white
 /// backdrop, or a white cut on a lower track). The bake lands on
 /// [Project.backdropArgb] wherever a fade thins the frame away or a pose
-/// uncovers the ground.
+/// uncovers the ground. R4 moved the fade/pose lanes onto the TRACK, so
+/// the fixtures key the track and the bake looks the cut's track up
+/// through the session.
 void main() {
   Cut cut() => Cut(
     id: const CutId('fade-cut'),
@@ -26,6 +28,33 @@ void main() {
     duration: 12,
     canvasSize: const CanvasSize(width: 8, height: 8),
     layers: const [],
+  );
+
+  /// A session whose only cut is the 8×8 fixture and whose TRACK carries
+  /// [transformTrack] — the bake resolves the lanes through the session.
+  EditorSessionManager sessionWith(
+    TransformTrack transformTrack, {
+    int backdropArgb = 0xFF000000,
+  }) {
+    final base = createDefaultProject().copyWith(backdropArgb: backdropArgb);
+    return EditorSessionManager(
+      initialProject: base.copyWith(
+        tracks: [
+          base.tracks.first.copyWith(
+            cuts: [cut()],
+            transformTrack: transformTrack,
+          ),
+        ],
+      ),
+    );
+  }
+
+  TransformTrack fadeOut11() => trackTransformWithCutFade(
+    TransformTrack.empty(),
+    startFrame: 0,
+    duration: 12,
+    fadeInFrames: 0,
+    fadeOutFrames: 11,
   );
 
   test('CutMetadata carries no fade target any more — legacy keys are '
@@ -44,21 +73,10 @@ void main() {
       'backdrop)', (tester) async {
     await tester.runAsync(() async {
       Future<(int, int, int)> centerPixelUnder(int backdropArgb) async {
-        final session = EditorSessionManager(
-          initialProject: createDefaultProject().copyWith(
-            backdropArgb: backdropArgb,
-          ),
-        );
-        final faded = cut().copyWith(
-          transformTrack: cutTransformWithFade(
-            cut(),
-            fadeInFrames: 0,
-            fadeOutFrames: 11,
-          ),
-        );
+        final session = sessionWith(fadeOut11(), backdropArgb: backdropArgb);
         final image = await ExportFrameRenderer(session: session)
             .renderCompositeForVideo(
-              ExportFrameTask(cut: faded, frameIndex: 11),
+              ExportFrameTask(cut: session.requireActiveCut, frameIndex: 11),
               ExportSizeMode.canvas,
             );
         final bytes = await image.toByteData(
@@ -82,21 +100,25 @@ void main() {
     });
   });
 
-  testWidgets('the MP4 bake applies the CUT pose (V track) over the output '
-      'space — uncovered ground is the backdrop, and a full fade lands the '
-      'whole frame there', (tester) async {
+  testWidgets('the MP4 bake applies the TRACK pose (V lanes) over the '
+      'output space — uncovered ground is the backdrop, and a full fade '
+      'lands the whole frame there', (tester) async {
     await tester.runAsync(() async {
-      final session = EditorSessionManager(
-        initialProject: createDefaultProject().copyWith(
+      Future<(int, int, int)> pixelOf(
+        TransformTrack transformTrack,
+        int frameIndex,
+        int x,
+      ) async {
+        final session = sessionWith(
+          transformTrack,
           backdropArgb: 0xFF102030,
-        ),
-      );
-      addTearDown(session.dispose);
-
-      Future<(int, int, int)> pixelOf(Cut task, int frameIndex, int x) async {
+        );
         final image = await ExportFrameRenderer(session: session)
             .renderCompositeForVideo(
-              ExportFrameTask(cut: task, frameIndex: frameIndex),
+              ExportFrameTask(
+                cut: session.requireActiveCut,
+                frameIndex: frameIndex,
+              ),
               ExportSizeMode.canvas,
             );
         final bytes = await image.toByteData(
@@ -104,6 +126,7 @@ void main() {
         );
         final offset = ((image.height ~/ 2) * image.width + x) * 4;
         image.dispose();
+        session.dispose();
         return (
           bytes!.getUint8(offset),
           bytes.getUint8(offset + 1),
@@ -115,12 +138,10 @@ void main() {
       // 8,4): the uncovered left half shows the BACKDROP ground, the
       // right half the picture (compare against the unposed render rather
       // than assuming its color).
-      final posed = cut().copyWith(
-        transformTrack: TransformTrack.empty().copyWith(
-          position: PropertyTrack<CanvasPoint>.empty().withKey(
-            0,
-            CanvasPoint(x: 8, y: 4),
-          ),
+      final posed = TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>.empty().withKey(
+          0,
+          CanvasPoint(x: 8, y: 4),
         ),
       );
       final ground = await pixelOf(posed, 0, 1);
@@ -130,24 +151,17 @@ void main() {
         reason: 'uncovered output = the backdrop',
       );
       final moved = await pixelOf(posed, 0, 6);
-      final original = await pixelOf(cut(), 0, 2);
+      final original = await pixelOf(TransformTrack.empty(), 0, 2);
       expect(moved, original, reason: 'the picture shifted +4 px intact');
 
       // Pose + full fade-out: the whole frame thins away to the backdrop
       // — the ground where the pose uncovered it, and THROUGH the picture
       // where it did not.
-      final posedFaded = cut().copyWith(
-        transformTrack:
-            cutTransformWithFade(
-              cut(),
-              fadeInFrames: 0,
-              fadeOutFrames: 11,
-            ).copyWith(
-              position: PropertyTrack<CanvasPoint>.empty().withKey(
-                0,
-                CanvasPoint(x: 8, y: 4),
-              ),
-            ),
+      final posedFaded = fadeOut11().copyWith(
+        position: PropertyTrack<CanvasPoint>.empty().withKey(
+          0,
+          CanvasPoint(x: 8, y: 4),
+        ),
       );
       expect(await pixelOf(posedFaded, 11, 1), (0x10, 0x20, 0x30));
       expect(await pixelOf(posedFaded, 11, 6), (0x10, 0x20, 0x30));

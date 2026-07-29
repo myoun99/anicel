@@ -178,36 +178,55 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// committed as ONE undo through the session — the same command the
   /// fade handles use, so fades and pose keys share history cleanly.
   /// The carrier Layer the substrate hands back is synthetic; the cut is
-  /// captured here.
+  /// captured here. R4a: the strips still SPEAK cut-local frames, but the
+  /// data is the owning TRACK's — every edit runs on the cut's WINDOW of
+  /// the track lanes and writes back through the window merge, so keys
+  /// outside the cut (other cuts' effects) never move.
   PropertyLaneEditCallbacks _cutLaneEditFor(Cut cut) {
-    void commit(TransformTrack? next, String description) {
-      if (next == null) {
+    final owner = _session.trackOwningCut(cut.id);
+    final startFrame = _session.trackGlobalFrameOf(cut.id, 0);
+    final window = trackTransformCutWindow(
+      owner?.transformTrack ?? TransformTrack.empty(),
+      startFrame: startFrame,
+      duration: cut.duration,
+    );
+    void commit(TransformTrack? nextWindow, String description) {
+      if (nextWindow == null || owner == null) {
         return;
       }
-      _session.updateCutTransformTrack(cut.id, next, description: description);
+      _session.updateTrackTransformTrack(
+        owner.id,
+        trackTransformWithCutWindow(
+          owner.transformTrack,
+          nextWindow,
+          startFrame: startFrame,
+          duration: cut.duration,
+        ),
+        description: description,
+      );
     }
 
-    // The cut pose lives in DISPLAY space (the camera's output frame —
-    // what playback and the MP4 bake apply it over), so resolved values
-    // freeze against that space's identity.
+    // The pose lives in DISPLAY space (the camera's output frame — what
+    // playback and the MP4 bake apply it over), so resolved values freeze
+    // against that space's identity.
     final displaySize = _session.cameraFrameSize;
     return PropertyLaneEditCallbacks(
       onToggleKeyAt: (_, lane, frameIndex) => commit(
         transformTrackWithLaneKeyToggled(
-          cut.transformTrack,
+          window,
           laneId: lane.laneId,
           frameIndex: frameIndex,
-          resolvedPose: cutPoseAt(cut, frameIndex, displaySize),
+          resolvedPose: trackPoseAt(window, frameIndex, displaySize),
           resolvedAnchorPoint:
-              cutAnchorPointAt(cut, frameIndex) ??
+              trackAnchorPointAt(window, frameIndex) ??
               CanvasPoint(x: displaySize.width / 2, y: displaySize.height / 2),
-          resolvedOpacity: cut.fadeOpacityAt(frameIndex),
+          resolvedOpacity: trackFadeOpacityAt(window, frameIndex),
         ),
         '${lane.label} keyframe at frame ${frameIndex + 1}',
       ),
       onMoveKey: (_, lane, fromFrame, toFrame) => commit(
         transformTrackWithLaneKeyMoved(
-          cut.transformTrack,
+          window,
           laneId: lane.laneId,
           fromFrame: fromFrame,
           toFrame: toFrame,
@@ -216,7 +235,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
       ),
       onRemoveKey: (_, lane, frameIndex) => commit(
         transformTrackWithLaneKeyRemoved(
-          cut.transformTrack,
+          window,
           laneId: lane.laneId,
           frameIndex: frameIndex,
         ),
@@ -224,7 +243,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
       ),
       onToggleHold: (_, lane, frameIndex) => commit(
         transformTrackWithLaneHoldToggled(
-          cut.transformTrack,
+          window,
           laneId: lane.laneId,
           frameIndex: frameIndex,
         ),
@@ -232,7 +251,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
       ),
       onSetValue: (_, lane, frameIndex, input) => commit(
         transformTrackWithLaneValueEdited(
-          cut.transformTrack,
+          window,
           laneId: lane.laneId,
           frameIndex: frameIndex,
           input: input,

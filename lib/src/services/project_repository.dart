@@ -357,18 +357,26 @@ class ProjectRepository {
     });
   }
 
-  void updateCutTransform({
-    required CutId cutId,
+  void updateTrackTransform({
+    required TrackId trackId,
     required TransformTrack transformTrack,
   }) {
     updateProject((project) {
-      final next = updateCutAnywhere(
-        project,
-        cutId,
-        (cut) => cut.copyWith(transformTrack: transformTrack),
+      var found = false;
+      final next = project.copyWith(
+        tracks: [
+          for (final track in project.tracks)
+            if (track.id == trackId)
+              (() {
+                found = true;
+                return track.copyWith(transformTrack: transformTrack);
+              })()
+            else
+              track,
+        ],
       );
-      if (next == null) {
-        throw StateError('Cut not found: $cutId');
+      if (!found) {
+        throw StateError('Track not found: $trackId');
       }
       return next;
     });

@@ -9,8 +9,8 @@ import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'storyboard_cut_block_probe.dart';
 
 /// R12-⑧ repro: the cut-block slide (gap authoring) must keep working when
-/// the cut carries fx transform keys — with the Transform strips twirled
-/// open too (the state the keys get authored in).
+/// the TRACK carries fx transform keys (R4: track-owned lanes) — with the
+/// Transform strips twirled open too (the state the keys get authored in).
 void main() {
   Future<EditorSessionManager> pumpHost(WidgetTester tester) async {
     // The rail widened to the timeline's 372 (UI-R5): the default 800px
@@ -75,41 +75,41 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('slide works with fx transform keys on the cut', (tester) async {
+  testWidgets('slide works with fx transform keys on the track', (
+    tester,
+  ) async {
     final manager = await pumpHost(tester);
-    final secondCut = manager.activeTrack.cuts[1];
-    manager.updateCutTransformTrack(
-      secondCut.id,
-      TransformTrack(
-        keyframes: {
-          0: TransformPose(
-            center: CanvasPoint(x: 100, y: 100),
-            zoom: 1.2,
-            rotationDegrees: 0,
-          ),
-          8: TransformPose(
-            center: CanvasPoint(x: 200, y: 100),
-            zoom: 1.0,
-            rotationDegrees: 10,
-          ),
-        },
-      ),
+    final keyed = TransformTrack(
+      keyframes: {
+        0: TransformPose(
+          center: CanvasPoint(x: 100, y: 100),
+          zoom: 1.2,
+          rotationDegrees: 0,
+        ),
+        8: TransformPose(
+          center: CanvasPoint(x: 200, y: 100),
+          zoom: 1.0,
+          rotationDegrees: 10,
+        ),
+      },
     );
+    manager.updateTrackTransformTrack(manager.activeTrack.id, keyed);
     await tester.pumpAndSettle();
 
     await dragSecondCut(tester, manager);
 
     // 48px at 12 px/frame = the cut slid 4 frames: its leading gap opened.
     expect(manager.activeTrack.cuts[1].leadingGapFrames, 4);
+    // R4 independence: the slide moved the CUT, not the track's keys.
+    expect(manager.activeTrack.transformTrack, keyed);
   });
 
   testWidgets('slide works with the Transform strips twirled open', (
     tester,
   ) async {
     final manager = await pumpHost(tester);
-    final secondCut = manager.activeTrack.cuts[1];
-    manager.updateCutTransformTrack(
-      secondCut.id,
+    manager.updateTrackTransformTrack(
+      manager.activeTrack.id,
       TransformTrack(
         keyframes: {
           0: TransformPose(

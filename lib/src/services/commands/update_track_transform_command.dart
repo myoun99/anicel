@@ -1,21 +1,21 @@
-import '../../models/cut_id.dart';
 import '../../models/project.dart';
+import '../../models/track_id.dart';
 import '../../models/transform_track.dart';
 import '../command.dart';
 import '../project_repository.dart';
 
-/// Replaces a cut's CUT-level transform track (the V-track's track
-/// transforms — cut fades key the opacity lane) in one undo step.
-class UpdateCutTransformCommand implements Command {
-  UpdateCutTransformCommand({
+/// Replaces a TRACK's transform lanes (R4: the V effects on the global
+/// axis — fades key the opacity lane) in one undo step.
+class UpdateTrackTransformCommand implements Command {
+  UpdateTrackTransformCommand({
     required this.repository,
-    required this.cutId,
+    required this.trackId,
     required this.transformTrack,
     required this.description,
   });
 
   final ProjectRepository repository;
-  final CutId cutId;
+  final TrackId trackId;
   final TransformTrack transformTrack;
 
   @override
@@ -26,7 +26,10 @@ class UpdateCutTransformCommand implements Command {
   @override
   void execute() {
     _previousProject = repository.requireProject();
-    repository.updateCutTransform(cutId: cutId, transformTrack: transformTrack);
+    repository.updateTrackTransform(
+      trackId: trackId,
+      transformTrack: transformTrack,
+    );
   }
 
   @override

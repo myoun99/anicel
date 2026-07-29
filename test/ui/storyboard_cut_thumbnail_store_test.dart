@@ -15,7 +15,6 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project_id.dart';
-import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
@@ -238,19 +237,11 @@ void main() {
       );
     });
 
-    testWidgets('cut fade edits re-render', (tester) async {
-      expect(
-        await renderCountAfter(
-          tester,
-          cut,
-          () => cut().copyWith(
-            transformTrack: TransformTrack.empty().copyWith(
-              opacity: PropertyTrack<double>().withKey(0, 0.5),
-            ),
-          ),
-        ),
-        2,
-      );
+    testWidgets('an unchanged cut does NOT re-render — fades left the cut '
+        'for the track (R4), so they no longer churn thumbnails', (
+      tester,
+    ) async {
+      expect(await renderCountAfter(tester, cut, cut), 1);
     });
   });
 

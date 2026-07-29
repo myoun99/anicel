@@ -30,27 +30,20 @@ void main() {
   const canvasSize = CanvasSize(width: 8, height: 8);
   const cameraFrameSize = CanvasSize(width: 4, height: 2);
 
-  Cut cutOf(
-    String id,
-    int duration, {
-    int leadingGap = 0,
-    TransformTrack? transformTrack,
-  }) => Cut(
+  Cut cutOf(String id, int duration, {int leadingGap = 0}) => Cut(
     id: CutId(id),
     name: id,
     layers: const [],
     duration: duration,
     leadingGapFrames: leadingGap,
     canvasSize: canvasSize,
-    transformTrack: transformTrack,
   );
 
   /// track-1: cut-a [0,4) — track-2: cut-c [2,12). Frame 3 is covered by
-  /// both; frame 5 by track-2 alone; frame 12+ by nobody.
-  Project project({
-    TransformTrack? cutATransformTrack,
-    TransformTrack? cutCTransformTrack,
-  }) => Project(
+  /// both; frame 5 by track-2 alone; frame 12+ by nobody. The V effects
+  /// live on each TRACK now (R4) and reach the view via [pumpView]'s
+  /// `transformTrackOf` callback, keyed on the GLOBAL frame axis.
+  Project project() => Project(
     id: const ProjectId('project'),
     name: 'Project',
     cameraSize: cameraFrameSize,
@@ -58,14 +51,12 @@ void main() {
       Track(
         id: const TrackId('track-1'),
         name: 'One',
-        cuts: [cutOf('cut-a', 4, transformTrack: cutATransformTrack)],
+        cuts: [cutOf('cut-a', 4)],
       ),
       Track(
         id: const TrackId('track-2'),
         name: 'Two',
-        cuts: [
-          cutOf('cut-c', 10, leadingGap: 2, transformTrack: cutCTransformTrack),
-        ],
+        cuts: [cutOf('cut-c', 10, leadingGap: 2)],
       ),
     ],
     createdAt: DateTime.utc(2026),
@@ -85,10 +76,7 @@ void main() {
     ValueNotifier<int?> frame,
     List<StoryboardTimelineLayoutEntry> layout,
   })
-  fixture({
-    TransformTrack? cutATransformTrack,
-    TransformTrack? cutCTransformTrack,
-  }) {
+  fixture() {
     final store = BrushFrameStore();
     final composites = CutFrameCompositeCache(
       layerImages: LayerFrameImageCache(frameStore: store),
@@ -98,12 +86,7 @@ void main() {
     return (
       composites: composites,
       frame: ValueNotifier<int?>(null),
-      layout: buildStoryboardTimelineLayout(
-        project(
-          cutATransformTrack: cutATransformTrack,
-          cutCTransformTrack: cutCTransformTrack,
-        ),
-      ),
+      layout: buildStoryboardTimelineLayout(project()),
     );
   }
 
@@ -114,6 +97,7 @@ void main() {
     required List<StoryboardTimelineLayoutEntry> layout,
     bool Function(CutId cutId)? cutFxEnabledOf,
     bool Function(CutId cutId)? cutPictureVisibleOf,
+    TransformTrack Function(CutId cutId)? transformTrackOf,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -131,6 +115,7 @@ void main() {
                 CameraPose(center: CanvasPoint(x: 4, y: 4)),
             cutFxEnabledOf: cutFxEnabledOf,
             cutPictureVisibleOf: cutPictureVisibleOf,
+            transformTrackOf: transformTrackOf,
           ),
         ),
       ),
@@ -305,18 +290,19 @@ void main() {
   });
 
   testWidgets('the V-row display gates apply per track: fx off bypasses '
-      'the cut pose AND fade, the eye off drops that track\'s picture '
+      'the track pose AND fade, the eye off drops that track\'s picture '
       'alone', (tester) async {
-    // cut-a carries a geometric key + an opacity key: posed and fading.
-    final posed = fixture(
-      cutATransformTrack: TransformTrack.empty().copyWith(
-        position: PropertyTrack<CanvasPoint>.empty().withKey(
-          0,
-          CanvasPoint(x: 6, y: 4),
-        ),
-        opacity: PropertyTrack<double>.empty().withKey(0, 0.5),
+    // track-1 carries a geometric key + an opacity key: posed and fading.
+    final trackOne = TransformTrack.empty().copyWith(
+      position: PropertyTrack<CanvasPoint>.empty().withKey(
+        0,
+        CanvasPoint(x: 6, y: 4),
       ),
+      opacity: PropertyTrack<double>.empty().withKey(0, 0.5),
     );
+    TransformTrack transformTrackOf(CutId cutId) =>
+        cutId == const CutId('cut-a') ? trackOne : TransformTrack.empty();
+    final posed = fixture();
     await warm(tester, posed.composites, posed.layout, [
       ('cut-a', 3),
       ('cut-c', 1),
@@ -327,6 +313,7 @@ void main() {
       composites: posed.composites,
       frame: posed.frame,
       layout: posed.layout,
+      transformTrackOf: transformTrackOf,
     );
     expect(paintersOf(tester)[0].cutPose, isNotNull);
     expect(paintersOf(tester)[0].fadeOpacity, 0.5);
@@ -336,6 +323,7 @@ void main() {
       composites: posed.composites,
       frame: posed.frame,
       layout: posed.layout,
+      transformTrackOf: transformTrackOf,
       cutFxEnabledOf: (cutId) => cutId != const CutId('cut-a'),
     );
     expect(paintersOf(tester)[0].cutPose, isNull, reason: 'pose bypassed');
@@ -346,6 +334,7 @@ void main() {
       composites: posed.composites,
       frame: posed.frame,
       layout: posed.layout,
+      transformTrackOf: transformTrackOf,
       cutPictureVisibleOf: (cutId) => cutId != const CutId('cut-a'),
     );
     expect(paintersOf(tester)[0].image, isNull, reason: 'eye off');
@@ -357,15 +346,16 @@ void main() {
   testWidgets('fades split by stack position: the bottom track washes the '
       'frame (playback parity), an upper track thins its own contribution '
       'instead of blanking the stage below', (tester) async {
-    // Both cuts mid-fade at the parked frame.
-    final fading = fixture(
-      cutATransformTrack: TransformTrack.empty().copyWith(
+    // Both tracks mid-fade at the parked frame.
+    final trackFades = <CutId, TransformTrack>{
+      const CutId('cut-a'): TransformTrack.empty().copyWith(
         opacity: PropertyTrack<double>.empty().withKey(0, 0.5),
       ),
-      cutCTransformTrack: TransformTrack.empty().copyWith(
+      const CutId('cut-c'): TransformTrack.empty().copyWith(
         opacity: PropertyTrack<double>.empty().withKey(0, 0.25),
       ),
-    );
+    };
+    final fading = fixture();
     await warm(tester, fading.composites, fading.layout, [
       ('cut-a', 3),
       ('cut-c', 1),
@@ -376,6 +366,8 @@ void main() {
       composites: fading.composites,
       frame: fading.frame,
       layout: fading.layout,
+      transformTrackOf: (cutId) =>
+          trackFades[cutId] ?? TransformTrack.empty(),
     );
 
     final painters = paintersOf(tester);

@@ -24,6 +24,7 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
 import 'package:anicel/src/ui/storyboard_cut_fade_policy.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
@@ -45,7 +46,11 @@ Layer _seLayer() => Layer(
   ],
 );
 
-Project _project({Cut Function(Cut cut)? mapCut, List<Layer>? seLayers}) {
+Project _project({
+  Cut Function(Cut cut)? mapCut,
+  List<Layer>? seLayers,
+  TransformTrack? transformTrack,
+}) {
   var cut = Cut(
     id: const CutId('lane-cut'),
     name: 'Lane Cut',
@@ -67,6 +72,8 @@ Project _project({Cut Function(Cut cut)? mapCut, List<Layer>? seLayers}) {
         cuts: [cut],
         // SE rows are TRACK-owned (global frame axis).
         seLayers: seLayers ?? [_seLayer()],
+        // The V effects too (R4): lanes keyed on the track's global axis.
+        transformTrack: transformTrack,
       ),
     ],
   );
@@ -362,19 +369,17 @@ void main() {
     }
   });
 
-  testWidgets('the V Transform lanes edit the CUT-level track: key toggles '
-      'route the per-cut lane edit hooks and keyed frames show as markers '
-      'on the cut\'s span', (tester) async {
+  testWidgets('the V Transform lanes edit the TRACK through the cut\'s '
+      'window: key toggles route the per-cut lane edit hooks and keyed '
+      'frames show as markers on the cut\'s span', (tester) async {
     final toggles = <(String, String, int)>[];
     await _pumpPanel(
       tester,
       project: _project(
-        mapCut: (cut) => cut.copyWith(
-          transformTrack: cut.transformTrack.copyWith(
-            position: PropertyTrack<CanvasPoint>.empty().withKey(
-              2,
-              CanvasPoint(x: 10, y: 20),
-            ),
+        transformTrack: TransformTrack.empty().copyWith(
+          position: PropertyTrack<CanvasPoint>.empty().withKey(
+            2,
+            CanvasPoint(x: 10, y: 20),
           ),
         ),
       ),
@@ -578,12 +583,12 @@ void main() {
     await _pumpPanel(
       tester,
       project: _project(
-        mapCut: (cut) => cut.copyWith(
-          transformTrack: cutTransformWithFade(
-            cut,
-            fadeInFrames: 2,
-            fadeOutFrames: 0,
-          ),
+        transformTrack: trackTransformWithCutFade(
+          TransformTrack.empty(),
+          startFrame: 0,
+          duration: 10,
+          fadeInFrames: 2,
+          fadeOutFrames: 0,
         ),
       ),
       onSetCutFade: (cutId, fadeIn, fadeOut) =>

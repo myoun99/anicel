@@ -49,7 +49,7 @@ import 'relink_media_asset_command.dart';
 import 'update_camera_instruction_set_command.dart';
 import 'update_cut_camera_command.dart';
 import 'update_cut_note_command.dart';
-import 'update_cut_transform_command.dart';
+import 'update_track_transform_command.dart';
 import 'update_cut_thumbnail_frame_command.dart';
 import 'update_layer_audio_clips_command.dart';
 import 'update_layer_instructions_command.dart';
@@ -240,16 +240,14 @@ class CutCommandCoordinator {
   }
 
   /// Commits a storyboard edge drag as one undoable step: durations (end
-  /// trims), leading gaps (start slides / gap consumption) AND the fade
-  /// re-anchor rewrites (canonical fade envelopes recomputed for the new
-  /// duration — W4 fade durability) together.
+  /// trims) and leading gaps (start slides / gap consumption) together.
+  /// The fade re-anchor rewrites are gone (R4: fade keys are TRACK data
+  /// on the global axis — a trim moves none of them).
   void commitCutDurationDrag({
     required Map<CutId, int> beforeDurations,
     required Map<CutId, int> afterDurations,
     Map<CutId, int> beforeGaps = const {},
     Map<CutId, int> afterGaps = const {},
-    Map<CutId, TransformTrack> beforeTransforms = const {},
-    Map<CutId, TransformTrack> afterTransforms = const {},
   }) {
     historyManager.execute(
       UpdateCutDurationsCommand(
@@ -258,8 +256,6 @@ class CutCommandCoordinator {
         after: afterDurations,
         beforeGaps: beforeGaps,
         afterGaps: afterGaps,
-        beforeTransforms: beforeTransforms,
-        afterTransforms: afterTransforms,
       ),
     );
   }
@@ -381,22 +377,27 @@ class CutCommandCoordinator {
     );
   }
 
-  /// Replaces the cut's CUT-level transform track in one undo step (the
-  /// V-track's track transforms; cut fades key the opacity lane).
-  void updateCutTransform({
-    required CutId cutId,
+  /// Replaces a TRACK's transform lanes in one undo step (R4: the V
+  /// effects are track data on the global axis; fades key the opacity
+  /// lane through the same write).
+  void updateTrackTransform({
+    required TrackId trackId,
     required TransformTrack transformTrack,
-    String description = 'Edit cut transform',
+    String description = 'Edit track transform',
   }) {
-    final cut = _requireCut(cutId);
-    if (cut.transformTrack == transformTrack) {
-      return;
+    for (final track in repository.requireProject().tracks) {
+      if (track.id == trackId) {
+        if (track.transformTrack == transformTrack) {
+          return;
+        }
+        break;
+      }
     }
 
     historyManager.execute(
-      UpdateCutTransformCommand(
+      UpdateTrackTransformCommand(
         repository: repository,
-        cutId: cutId,
+        trackId: trackId,
         transformTrack: transformTrack,
         description: description,
       ),

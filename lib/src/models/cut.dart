@@ -5,7 +5,6 @@ import 'cut_id.dart';
 import 'cut_metadata.dart';
 import 'layer.dart';
 import 'layer_section_defaults.dart';
-import 'transform_track.dart';
 
 class Cut {
   Cut({
@@ -17,11 +16,9 @@ class Cut {
     this.metadata = const CutMetadata.empty(),
     this.leadingGapFrames = 0,
     CutCamera? camera,
-    TransformTrack? transformTrack,
   }) : assert(leadingGapFrames >= 0),
        layers = List.unmodifiable(layers),
-       camera = camera ?? CutCamera.empty(),
-       transformTrack = transformTrack ?? TransformTrack.empty();
+       camera = camera ?? CutCamera.empty();
 
   final CutId id;
   final String name;
@@ -38,25 +35,10 @@ class Cut {
   final CutMetadata metadata;
   final CutCamera camera;
 
-  /// CUT-level transform on the cut's playback frame axis — the V-track's
-  /// track-level effects. Only the opacity lane is consumed today (cut
-  /// fade in/out over the whole composed frame); the other lanes wait for
-  /// V-track transform UI. Applied at playback/export display time, never
-  /// baked into composites (a fade would shard the composite cache per
-  /// frame).
-  final TransformTrack transformTrack;
-
-  /// The composed frame's opacity at [frameIndex] (the cut fade), 1 when
-  /// the opacity lane is unkeyed.
-  double fadeOpacityAt(int frameIndex) {
-    return transformTrack.opacity
-        .resolveAt(
-          frameIndex: frameIndex,
-          orElse: () => 1.0,
-          lerp: (a, b, t) => a + (b - a) * t,
-        )
-        .clamp(0.0, 1.0);
-  }
+  // The V-track transform/fade left the cut (R4): the effects live on
+  // [Track.transformTrack], keys on the GLOBAL frame axis — moving a cut
+  // does not move them, and a legacy cut-level 'transform' entry is
+  // lifted onto the track at load (track_transform_migration.dart).
 
   Cut copyWith({
     CutId? id,
@@ -67,7 +49,6 @@ class Cut {
     CutMetadata? metadata,
     int? leadingGapFrames,
     CutCamera? camera,
-    TransformTrack? transformTrack,
   }) {
     return Cut(
       id: id ?? this.id,
@@ -78,7 +59,6 @@ class Cut {
       metadata: metadata ?? this.metadata,
       leadingGapFrames: leadingGapFrames ?? this.leadingGapFrames,
       camera: camera ?? this.camera,
-      transformTrack: transformTrack ?? this.transformTrack,
     );
   }
 
@@ -92,7 +72,6 @@ class Cut {
     // Omitted at 0: legacy files load gap-free with no migration.
     if (leadingGapFrames > 0) 'leadingGap': leadingGapFrames,
     'camera': camera.toJson(),
-    if (transformTrack.isNotEmpty) 'transform': transformTrack.toJson(),
   };
 
   factory Cut.fromJson(Map<String, dynamic> json) {
@@ -119,12 +98,9 @@ class Cut {
       camera: json['camera'] == null
           ? null
           : CutCamera.fromJson(json['camera'] as Map<String, dynamic>),
-      // Pre-absorption files carried a separate `folders` table; folders
-      // are layers now and the key is ignored (no production data —
-      // [[no-production-data-yet]]).
-      transformTrack: json['transform'] == null
-          ? null
-          : TransformTrack.fromJson(json['transform'] as Map<String, dynamic>),
+      // Legacy 'transform' entries are read by Track.fromJson's lift, not
+      // here — the cut model carries no transform any more (R4). The old
+      // 'folders' table stays ignored the same way (no production data).
     );
   }
 
@@ -139,8 +115,7 @@ class Cut {
           other.canvasSize == canvasSize &&
           other.metadata == metadata &&
           other.leadingGapFrames == leadingGapFrames &&
-          other.camera == camera &&
-          other.transformTrack == transformTrack;
+          other.camera == camera;
 
   @override
   int get hashCode => Object.hash(
@@ -152,10 +127,9 @@ class Cut {
     metadata,
     leadingGapFrames,
     camera,
-    transformTrack,
   );
 
   @override
   String toString() =>
-      'Cut(id: $id, name: $name, layers: $layers, duration: $duration, canvasSize: $canvasSize, metadata: $metadata, camera: $camera, transformTrack: $transformTrack)';
+      'Cut(id: $id, name: $name, layers: $layers, duration: $duration, canvasSize: $canvasSize, metadata: $metadata, camera: $camera)';
 }

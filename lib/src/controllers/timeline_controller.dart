@@ -11,7 +11,6 @@ import '../models/layer_id.dart';
 import '../models/timeline_coverage.dart';
 import '../models/timeline_exposure.dart';
 import '../models/timeline_repeat.dart';
-import '../models/transform_track.dart';
 import '../services/command.dart';
 import '../services/commands/update_cut_durations_command.dart';
 import '../services/commands/update_layer_timeline_command.dart';
@@ -652,16 +651,15 @@ class TimelineController {
   ///
   /// A storyboard row and its cut's length are one thing (feedback #5/#9):
   /// re-timing the row's commas moves the cut's end, and undoing half of
-  /// that would leave a drawing outside its cut. The transform maps carry
-  /// the fade re-anchor exactly as [UpdateCutDurationsCommand] documents.
+  /// that would leave a drawing outside its cut. The fade re-anchor maps
+  /// are gone (R4): fade keys are TRACK data on the global axis, and a
+  /// cut resize moves none of them.
   void commitLayerTimelineDragsWithCutDurations({
     required List<({Layer before, Layer after})> edits,
     required Map<CutId, int> beforeDurations,
     required Map<CutId, int> afterDurations,
     Map<CutId, int> beforeGaps = const {},
     Map<CutId, int> afterGaps = const {},
-    Map<CutId, TransformTrack> beforeTransforms = const {},
-    Map<CutId, TransformTrack> afterTransforms = const {},
     required String description,
   }) {
     final durationsChanged =
@@ -680,8 +678,6 @@ class TimelineController {
           after: afterDurations,
           beforeGaps: beforeGaps,
           afterGaps: afterGaps,
-          beforeTransforms: beforeTransforms,
-          afterTransforms: afterTransforms,
         ),
     ];
     _executeCommands(commands, description: description);

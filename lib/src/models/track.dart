@@ -4,6 +4,8 @@ import 'layer.dart';
 import 'layer_section_defaults.dart';
 import 'track_id.dart';
 import 'track_se_migration.dart';
+import 'track_transform_migration.dart';
+import 'transform_track.dart';
 
 enum TrackType { video, audio }
 
@@ -13,9 +15,11 @@ class Track {
     required this.name,
     required List<Cut> cuts,
     List<Layer> seLayers = const [],
+    TransformTrack? transformTrack,
     this.type = TrackType.video,
   }) : cuts = List.unmodifiable(cuts),
-       seLayers = List.unmodifiable(seLayers);
+       seLayers = List.unmodifiable(seLayers),
+       transformTrack = transformTrack ?? TransformTrack.empty();
 
   final TrackId id;
   final String name;
@@ -29,6 +33,14 @@ class Track {
   /// cut-crossing sounds).
   final List<Layer> seLayers;
 
+  /// The V track's own effects (R4): pose lanes + the fade's opacity lane,
+  /// keys on the track's GLOBAL frame axis — TRACK-owned, exactly like
+  /// [seLayers]. Cut trims/reorders do NOT move these keys, keys exist
+  /// with no cut under them, and moving them together is a SELECTION (the
+  /// user's independence rule, 2026-07-29). Display/export resolve per
+  /// global frame; never baked into composites.
+  final TransformTrack transformTrack;
+
   final TrackType type;
 
   Track copyWith({
@@ -36,6 +48,7 @@ class Track {
     String? name,
     List<Cut>? cuts,
     List<Layer>? seLayers,
+    TransformTrack? transformTrack,
     TrackType? type,
   }) {
     return Track(
@@ -43,6 +56,7 @@ class Track {
       name: name ?? this.name,
       cuts: cuts ?? this.cuts,
       seLayers: seLayers ?? this.seLayers,
+      transformTrack: transformTrack ?? this.transformTrack,
       type: type ?? this.type,
     );
   }
@@ -52,14 +66,21 @@ class Track {
     'name': name,
     'cuts': cuts.map((cut) => cut.toJson()).toList(),
     'seLayers': seLayers.map((layer) => layer.toJson()).toList(),
+    if (transformTrack.isNotEmpty) 'transform': transformTrack.toJson(),
     'type': type.name,
   };
 
   factory Track.fromJson(Map<String, dynamic> json) {
     final id = TrackId.fromJson(json['id'] as Map<String, dynamic>);
-    final cuts = (json['cuts'] as List<dynamic>)
-        .map((cut) => Cut.fromJson(cut as Map<String, dynamic>))
-        .toList();
+    final cutsJson = (json['cuts'] as List<dynamic>).cast<Map<String, dynamic>>();
+    final cuts = cutsJson.map(Cut.fromJson).toList();
+    // Legacy shape (no track transform key): the V effects lived on each
+    // cut — lift them onto the global axis (shape-based migration, the SE
+    // lift's convention; Cut.fromJson itself ignores 'transform' now).
+    final transformJson = json['transform'];
+    final transformTrack = transformJson is Map<String, dynamic>
+        ? TransformTrack.fromJson(transformJson)
+        : liftCutTransformsToTrack(cutsJson);
     final seLayersJson = json['seLayers'] as List<dynamic>?;
     if (seLayersJson != null) {
       return Track(
@@ -72,6 +93,7 @@ class Track {
               .map((layer) => Layer.fromJson(layer as Map<String, dynamic>))
               .toList(),
         ),
+        transformTrack: transformTrack,
         type: TrackType.values.byName(json['type'] as String),
       );
     }
@@ -85,6 +107,7 @@ class Track {
       name: json['name'] as String,
       cuts: lifted.cuts,
       seLayers: lifted.seLayers,
+      transformTrack: transformTrack,
       type: TrackType.values.byName(json['type'] as String),
     );
   }
@@ -97,6 +120,7 @@ class Track {
           other.name == name &&
           listEquals(other.cuts, cuts) &&
           listEquals(other.seLayers, seLayers) &&
+          other.transformTrack == transformTrack &&
           other.type == type;
 
   @override
@@ -105,11 +129,12 @@ class Track {
     name,
     Object.hashAll(cuts),
     Object.hashAll(seLayers),
+    transformTrack,
     type,
   );
 
   @override
   String toString() =>
       'Track(id: $id, name: $name, cuts: $cuts, seLayers: $seLayers, '
-      'type: $type)';
+      'transform: $transformTrack, type: $type)';
 }
