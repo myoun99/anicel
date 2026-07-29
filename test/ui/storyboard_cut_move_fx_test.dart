@@ -132,7 +132,7 @@ void main() {
     await tester.tap(
       find.byKey(
         ValueKey<String>(
-          'storyboard-lane-group-toggle-v-$trackId-transform-group',
+          'storyboard-lane-group-toggle-v-track:$trackId-transform-group',
         ),
       ),
     );

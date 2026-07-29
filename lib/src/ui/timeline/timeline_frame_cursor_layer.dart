@@ -19,6 +19,7 @@ import 'timeline_grid_metrics.dart';
 import 'timeline_instruction_row_visual.dart';
 import 'timeline_playhead.dart';
 import 'timeline_selected_exposure_outline.dart';
+import 'transform_lane_policy.dart' show laneSelectionCoversBandRow;
 
 /// Everything of a timeline grid that moves with the frame cursor — the
 /// playhead tint, the active layer's selected-cell ring (carrying the
@@ -235,8 +236,17 @@ class TimelineCursorLayer extends StatelessWidget {
           for (var index = 0; index < rows.length; index += 1) {
             final row = rows[index];
             final lane = row.lane;
+            // The BAND-ROW predicate, not the raw span (R4b fix): the
+            // transform-group HEADER row counts as covered when the
+            // selection spans its whole member group — with the group
+            // COLLAPSED the header is the only lane row on screen, and
+            // the raw check left the selection with no band at all.
             if (lane == null ||
-                !laneRange.coversLane(row.layer.id, lane.laneId)) {
+                !laneSelectionCoversBandRow(
+                  laneRange,
+                  row.layer.id,
+                  lane.laneId,
+                )) {
               continue;
             }
             laneRowIndex ??= index;

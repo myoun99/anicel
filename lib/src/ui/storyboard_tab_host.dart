@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 
 import '../models/canvas_point.dart';
-import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/layer_id.dart';
 import '../models/timeline_row_address.dart';
+import '../models/track.dart';
+import '../models/track_transform_lane_carrier.dart';
 import '../models/transform_track.dart';
 import 'camera/camera_view_toggle_button.dart';
 import 'cut_command_group.dart';
@@ -21,9 +22,13 @@ import 'timeline/timeline_exposure_comma_drag_policy.dart'
 import 'storyboard_playhead_mapping.dart';
 import 'storyboard_timeline_layout.dart';
 import 'text/app_strings.dart';
+import 'timeline/timeline_frame_range_gesture.dart'
+    show TimelineLaneRangeCallbacks;
 import 'timeline/timeline_shift_buttons.dart';
 import 'timeline/timeline_view_cluster.dart';
 import 'timeline/transform_lane_editing.dart';
+import 'timeline/transform_lane_policy.dart'
+    show transformGroupHeaderLane, transformLaneDisplayOrder;
 
 /// The Storyboard tab's content: its own toolbar row (frame counter,
 /// seconds toggle, zoom slider — the same keys as the timeline tab's, only
@@ -173,37 +178,20 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     });
   }
 
-  /// Lane edit hooks for one CUT's Transform lanes (the V track): the
-  /// timeline's per-lane track edits applied to the cut-level transform,
-  /// committed as ONE undo through the session — the same command the
-  /// fade handles use, so fades and pose keys share history cleanly.
-  /// The carrier Layer the substrate hands back is synthetic; the cut is
-  /// captured here. R4a: the strips still SPEAK cut-local frames, but the
-  /// data is the owning TRACK's — every edit runs on the cut's WINDOW of
-  /// the track lanes and writes back through the window merge, so keys
-  /// outside the cut (other cuts' effects) never move.
-  PropertyLaneEditCallbacks _cutLaneEditFor(Cut cut) {
-    final owner = _session.trackOwningCut(cut.id);
-    final startFrame = _session.trackGlobalFrameOf(cut.id, 0);
-    final window = trackTransformCutWindow(
-      owner?.transformTrack ?? TransformTrack.empty(),
-      startFrame: startFrame,
-      duration: cut.duration,
-    );
-    void commit(TransformTrack? nextWindow, String description) {
-      if (nextWindow == null || owner == null) {
+  /// Lane edit hooks for the V TRACK's own Transform lanes (R4b): the
+  /// timeline's per-lane track edits applied straight to
+  /// [Track.transformTrack] at GLOBAL frames — the continuous rows and
+  /// the rail both speak the track's axis now, so there is no window
+  /// translation and no cut in the loop ("keys exist with no cut under
+  /// them"). Committed as ONE undo through the session — the same command
+  /// the fade handles use, so fades and pose keys share history cleanly.
+  PropertyLaneEditCallbacks _trackLaneEditFor(Track track) {
+    final transform = track.transformTrack;
+    void commit(TransformTrack? next, String description) {
+      if (next == null) {
         return;
       }
-      _session.updateTrackTransformTrack(
-        owner.id,
-        trackTransformWithCutWindow(
-          owner.transformTrack,
-          nextWindow,
-          startFrame: startFrame,
-          duration: cut.duration,
-        ),
-        description: description,
-      );
+      _session.updateTrackTransformTrack(track.id, next, description: description);
     }
 
     // The pose lives in DISPLAY space (the camera's output frame — what
@@ -213,20 +201,20 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     return PropertyLaneEditCallbacks(
       onToggleKeyAt: (_, lane, frameIndex) => commit(
         transformTrackWithLaneKeyToggled(
-          window,
+          transform,
           laneId: lane.laneId,
           frameIndex: frameIndex,
-          resolvedPose: trackPoseAt(window, frameIndex, displaySize),
+          resolvedPose: trackPoseAt(transform, frameIndex, displaySize),
           resolvedAnchorPoint:
-              trackAnchorPointAt(window, frameIndex) ??
+              trackAnchorPointAt(transform, frameIndex) ??
               CanvasPoint(x: displaySize.width / 2, y: displaySize.height / 2),
-          resolvedOpacity: trackFadeOpacityAt(window, frameIndex),
+          resolvedOpacity: trackFadeOpacityAt(transform, frameIndex),
         ),
         '${lane.label} keyframe at frame ${frameIndex + 1}',
       ),
       onMoveKey: (_, lane, fromFrame, toFrame) => commit(
         transformTrackWithLaneKeyMoved(
-          window,
+          transform,
           laneId: lane.laneId,
           fromFrame: fromFrame,
           toFrame: toFrame,
@@ -235,7 +223,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
       ),
       onRemoveKey: (_, lane, frameIndex) => commit(
         transformTrackWithLaneKeyRemoved(
-          window,
+          transform,
           laneId: lane.laneId,
           frameIndex: frameIndex,
         ),
@@ -243,7 +231,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
       ),
       onToggleHold: (_, lane, frameIndex) => commit(
         transformTrackWithLaneHoldToggled(
-          window,
+          transform,
           laneId: lane.laneId,
           frameIndex: frameIndex,
         ),
@@ -251,7 +239,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
       ),
       onSetValue: (_, lane, frameIndex, input) => commit(
         transformTrackWithLaneValueEdited(
-          window,
+          transform,
           laneId: lane.laneId,
           frameIndex: frameIndex,
           input: input,
@@ -259,6 +247,39 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
         'Set ${lane.label} at frame ${frameIndex + 1}',
       ),
     );
+  }
+
+  /// The storyboard's lane-span head mapping (R26 #3 Excel rule): the
+  /// pointer's row offset from the anchor lane row, walked over the V
+  /// lanes' DISPLAYED rows — the header alone when the group is folded,
+  /// header + members when twirled open (the Opacity slot is the fade
+  /// envelope row, not a lane band row).
+  String? _laneSpanHeadLane(
+    LayerId carrierId,
+    String anchorLaneId,
+    int headRowDelta,
+  ) {
+    if (headRowDelta == 0) {
+      return null;
+    }
+    final trackId = trackIdOfTransformLaneCarrier(carrierId);
+    if (trackId == null) {
+      return null;
+    }
+    // Screen rows only: the Opacity slot is the fade-envelope row, so the
+    // walk skips it (a header endpoint still spans the whole group,
+    // opacity included — [transformLaneSpan]'s rule).
+    final rows = [
+      transformGroupHeaderLane.laneId,
+      if (_expandedTransformGroups.contains(trackId.value))
+        ...transformLaneDisplayOrder.where((laneId) => laneId != 'opacity'),
+    ];
+    final anchor = rows.indexOf(anchorLaneId);
+    if (anchor < 0) {
+      return null;
+    }
+    final head = (anchor + headRowDelta).clamp(0, rows.length - 1).toInt();
+    return rows[head];
   }
 
   /// Lane edit hooks for the S rows' Transform lanes — the timeline
@@ -609,10 +630,32 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                 expandedTransformGroups: _expandedTransformGroups,
                 onToggleTransformGroup: (groupKey) =>
                     _toggleSetEntry(_expandedTransformGroups, groupKey),
-                // The V track's cut-level Transform lanes (AE precomp:
-                // the whole cut moving on the screen) and the S rows'
-                // layer Transform lanes.
-                cutLaneEditFor: _cutLaneEditFor,
+                // The V track's OWN Transform lanes (AE precomp: the
+                // whole picture moving on the screen; R4b: global axis,
+                // no cut needed) and the S rows' layer Transform lanes.
+                trackLaneEditFor: _trackLaneEditFor,
+                laneRange: TimelineLaneRangeCallbacks(
+                  selection: _session.laneRangeSelection,
+                  onSelectUpdate:
+                      (layerId, laneId, anchorIndex, headIndex, headRowDelta) =>
+                          _session.updateLaneRangeSelectionDrag(
+                            layerId: layerId,
+                            laneId: laneId,
+                            anchorIndex: anchorIndex,
+                            headIndex: headIndex,
+                            headLaneId: _laneSpanHeadLane(
+                              layerId,
+                              laneId,
+                              headRowDelta,
+                            ),
+                          ),
+                  onTapClear: _session.clearLaneRangeSelection,
+                  onMoveBegin: _session.beginLaneRangeMoveDrag,
+                  onMoveUpdate: (frameDelta) =>
+                      _session.updateLaneRangeMoveDrag(frameDelta: frameDelta),
+                  onMoveEnd: _session.endLaneRangeMoveDrag,
+                  onMoveCancel: _session.cancelLaneRangeMoveDrag,
+                ),
                 layerLaneEdit: _layerLaneEdit,
                 activeCutFrameIndex: _session.currentFrameIndex,
                 onSelectFrameIndex: _session.selectFrameIndex,

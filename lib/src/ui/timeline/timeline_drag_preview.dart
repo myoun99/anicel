@@ -10,6 +10,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/project.dart';
 import '../../models/track_id.dart';
+import '../../models/transform_track.dart';
 
 /// The scoped edit-drag preview channel.
 ///
@@ -61,12 +62,18 @@ class ExposureEdgeDragPreview extends TimelineDragPreview {
 class BlockMoveDragPreview extends TimelineDragPreview {
   const BlockMoveDragPreview({
     required this.previewLayers,
+    this.previewTrackTransforms,
     this.cameraCutId,
     this.cameraKeyframes,
     this.cameraMarkerLayer,
   });
 
   final Map<LayerId, Layer> previewLayers;
+
+  /// A V-track LANE key move in flight (R4b): the previewed
+  /// [Track.transformTrack] per track — the storyboard's continuous lane
+  /// rows render this form while the drag rides the carrier route.
+  final Map<TrackId, TransformTrack>? previewTrackTransforms;
 
   /// KEY-RANGE moves (P3b-2): the previewed CAMERA keyframes for
   /// [cameraCutId] ride along when the selection spans the camera row.
@@ -81,6 +88,7 @@ class BlockMoveDragPreview extends TimelineDragPreview {
   bool operator ==(Object other) =>
       other is BlockMoveDragPreview &&
       mapEquals(other.previewLayers, previewLayers) &&
+      mapEquals(other.previewTrackTransforms, previewTrackTransforms) &&
       other.cameraCutId == cameraCutId &&
       mapEquals(other.cameraKeyframes, cameraKeyframes) &&
       identical(other.cameraMarkerLayer, cameraMarkerLayer);
@@ -90,6 +98,13 @@ class BlockMoveDragPreview extends TimelineDragPreview {
     Object.hashAllUnordered(
       previewLayers.entries.map((e) => Object.hash(e.key, e.value)),
     ),
+    previewTrackTransforms == null
+        ? null
+        : Object.hashAllUnordered(
+            previewTrackTransforms!.entries.map(
+              (e) => Object.hash(e.key, e.value),
+            ),
+          ),
     cameraCutId,
     cameraKeyframes == null
         ? null
