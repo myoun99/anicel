@@ -334,9 +334,15 @@ void main() {
     );
 
     await openMenu(tester, 'panels-menu-button');
-    await tester.tap(
-      find.byKey(const ValueKey<String>('menu-window-reset-layout')),
+    // The Window menu grew past the test viewport (one checkbox per
+    // panel) — the reset item at the bottom needs scrolling into view,
+    // the long-Edit-menu pattern.
+    final resetItem = find.byKey(
+      const ValueKey<String>('menu-window-reset-layout'),
     );
+    await tester.ensureVisible(resetItem);
+    await tester.pumpAndSettle();
+    await tester.tap(resetItem);
     await tester.pumpAndSettle();
 
     expect(
