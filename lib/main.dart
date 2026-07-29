@@ -13,12 +13,19 @@ import 'src/ui/input/app_input_settings.dart' show AppInput;
 import 'src/ui/theme/app_theme.dart';
 
 void main() {
+  // FIRST, before anything reaches for a platform channel. The pen
+  // sidecars do: PencilInteractionService installs a handler on
+  // `qa_pen/ios`, and a MethodChannel needs the binding's messenger to
+  // exist. That call is iOS-ONLY — every other platform returns before
+  // touching the channel — so binding late cost nothing on Windows,
+  // Android, macOS or Linux, and stopped the app dead at a white screen
+  // on iPad and iPhone. CI could not see it either: it builds for iOS,
+  // it does not launch there.
+  WidgetsFlutterBinding.ensureInitialized();
   // The pen sidecars (PEN-2/PEN-4): Wintab follows the input settings;
   // the macOS/Linux channel streams start on their platform. Absent
   // drivers/handlers stay permanently idle.
   PenSidecars.bind();
-  // SAVE-1c: resolve the mobile app-documents home once (desktop no-op).
-  WidgetsFlutterBinding.ensureInitialized();
   // The bundled conte-PDF fonts are OFL: their license must SHIP with the
   // binary that redistributes them, not just sit in the repo — the About
   // dialog's license page surfaces these entries (THIRD_PARTY.md).
