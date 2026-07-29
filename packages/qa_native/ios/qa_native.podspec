@@ -1,9 +1,9 @@
 Pod::Spec.new do |s|
   s.name             = 'qa_native'
   s.version          = '0.0.1'
-  s.summary          = 'QuickAnimaker native core (FFI).'
+  s.summary          = 'Anicel native core (FFI).'
   s.description      = 'The portable C hot loops, compiled into the app.'
-  s.homepage         = 'https://github.com/myoun99/quick_animaker_v2'
+  s.homepage         = 'https://github.com/myoun99/anicel'
   s.license          = { :file => '../../../LICENSE' }
   s.author           = { 'PARK GUNWOO' => 'noreply@example.com' }
   s.source           = { :path => '.' }

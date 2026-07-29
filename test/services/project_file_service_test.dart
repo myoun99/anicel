@@ -27,7 +27,7 @@ void main() {
     late Directory tempDir;
 
     setUp(() {
-      tempDir = Directory.systemTemp.createTempSync('quick_animaker_project_');
+      tempDir = Directory.systemTemp.createTempSync('anicel_project_');
     });
 
     tearDown(() {
