@@ -16,9 +16,12 @@ PROFILE_NAME = "match AppStore #{APP_IDENTIFIER}".freeze
 platform :ios do
   desc "Build a signed .ipa and ship it to TestFlight"
   lane :beta do
+    # .strip on every single-line secret: a value pasted with a trailing
+    # newline reaches CI intact, and the failure it causes names something
+    # else entirely.
     key = app_store_connect_api_key(
-      key_id: ENV.fetch("ASC_KEY_ID"),
-      issuer_id: ENV.fetch("ASC_ISSUER_ID"),
+      key_id: ENV.fetch("ASC_KEY_ID").strip,
+      issuer_id: ENV.fetch("ASC_ISSUER_ID").strip,
       key_content: ENV.fetch("ASC_KEY_CONTENT"),
       in_house: false,
     )
@@ -34,10 +37,20 @@ platform :ios do
       api_key: key,
       type: "appstore",
       app_identifier: APP_IDENTIFIER,
-      git_url: ENV.fetch("MATCH_GIT_URL"),
+      git_url: ENV.fetch("MATCH_GIT_URL").strip,
       storage_mode: "git",
       readonly: false,
     )
+
+    # The team comes from the profile match just installed, not from a
+    # secret: they have to agree, and only one of them is authoritative.
+    # A stray newline in the secret is what made Xcode report "No profile
+    # for team '<blank line>XXXX'" — the profile existed, the project was
+    # asking for a team whose name had a line break in it.
+    team_id = (
+      ENV["sigh_#{APP_IDENTIFIER}_appstore_team-id"] ||
+      ENV.fetch("FASTLANE_TEAM_ID")
+    ).strip
 
     # Automatic signing would let Xcode pick its own identity and undo the
     # point of match, so the target is pinned to the profile match just
@@ -45,7 +58,7 @@ platform :ios do
     update_code_signing_settings(
       use_automatic_signing: false,
       path: "Runner.xcodeproj",
-      team_id: ENV.fetch("FASTLANE_TEAM_ID"),
+      team_id: team_id,
       code_sign_identity: "Apple Distribution",
       profile_name: PROFILE_NAME,
       targets: ["Runner"],
