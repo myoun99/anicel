@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../models/import/cut_folder_parse.dart';
 import '../../models/media_asset.dart';
 import '../../services/import/media_import_planner.dart';
+import '../../services/pdf/pdf_render_service.dart';
 import '../editor_session_manager.dart';
 import '../export/export_settings_modules.dart';
 import '../widgets/app_window.dart';
@@ -92,7 +93,7 @@ class _ImportDialogState extends State<ImportDialog> {
               XTypeGroup(
                 label: 'Media',
                 extensions: [
-                  'png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif',
+                  'png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'pdf',
                   'mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg',
                 ],
               ),
@@ -183,11 +184,10 @@ class _ImportDialogState extends State<ImportDialog> {
   bool get _canImport =>
       !_running && (_files.isNotEmpty || (_folder != null && _parsed != null));
 
-  /// Kinds this round does not place yet (R4 brings the viewer and the
-  /// sequence sources): named honestly instead of failing as a decode.
+  /// Kinds not placeable yet (video needs a decode engine): named
+  /// honestly instead of failing as a decode. PDF left this set in R4.
   static const Set<MediaAssetKind> _unplaceableKinds = {
     MediaAssetKind.video,
-    MediaAssetKind.pdf,
   };
 
   Future<void> _runImport() async {
@@ -239,19 +239,39 @@ class _ImportDialogState extends State<ImportDialog> {
             );
             continue;
           }
-          final ok = await session.importImageFile(
-            path: path,
-            destination: _destination,
-            rasterize: _rasterize,
-            fit: _fit,
-          );
+          final ok = kind == MediaAssetKind.pdf
+              ? await session.importPdfFile(
+                  path: path,
+                  destination: _destination,
+                  rasterize: _rasterize,
+                  fit: _fit,
+                  // A 100-page conte renders for seconds — the footer says
+                  // where it is instead of looking hung.
+                  onRenderProgress: (rendered, total) {
+                    if (mounted) {
+                      setState(
+                        () => _status = 'Rendering PDF page $rendered/$total…',
+                      );
+                    }
+                  },
+                )
+              : await session.importImageFile(
+                  path: path,
+                  destination: _destination,
+                  rasterize: _rasterize,
+                  fit: _fit,
+                );
           if (ok) {
             imported += 1;
             done.add(path);
           } else {
             warnings.add(
-              _destination == ImportDestination.activeCutLayer &&
-                      session.activeCutOrNull == null
+              kind == MediaAssetKind.pdf &&
+                      PdfRenderService.availability != true
+                  ? '${mediaAssetDefaultName(path)}: no PDF renderer in '
+                        'this build.'
+                  : _destination == ImportDestination.activeCutLayer &&
+                        session.activeCutOrNull == null
                   ? 'No active cut — pick "New cut" or leave the gap.'
                   : 'Could not import ${mediaAssetDefaultName(path)}.',
             );

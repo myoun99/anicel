@@ -21,6 +21,27 @@ None yet.
 > to it. A component whose license requires a notice in shipped binaries
 > must also appear in the app's about/licenses screen.
 
+## Downloaded native binaries
+
+### PDFium
+
+Chromium's PDF rendering engine. Its upstream `LICENSE` carries a
+**BSD 3-Clause notice followed by the Apache License 2.0**; the full
+text is bundled at `assets/licenses/LICENSE-PDFium.txt` and surfaced in
+the app's About ▸ licenses screen (binary redistribution requires the
+notice to ship). Not vendored:
+the `pdfrx` package's build hook downloads prebuilt binaries at build
+time — `pdfium.dll` / `libpdfium.so` / `libpdfium.dylib` from
+`github.com/bblanchon/pdfium-binaries` releases (Android, Windows,
+Linux, macOS), and an XCFramework from
+`github.com/espresso3389/pdfium-xcframework` (iOS/macOS via
+CocoaPods/SwiftPM) — and bundles them with the app. The pinned release
+tag lives in the `pdfium_dart`/`pdfium_flutter` package versions in
+`pubspec.lock`. License text:
+<https://pdfium.googlesource.com/pdfium/+/main/LICENSE>. The pdfrx
+packages themselves are MIT (covered by the pub-packages section
+above).
+
 ## Assets
 
 ### Bundled fonts (`assets/fonts/`)

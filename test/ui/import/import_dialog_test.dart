@@ -7,8 +7,11 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
+
+import '../../helpers/fake_pdf_document.dart';
 
 /// The import/placement window: the interpretation table shows the parse
 /// (dropped files included), the settings answer with filled defaults,
@@ -159,5 +162,101 @@ void main() {
       isTrue,
       reason: 'the default is reference mode',
     );
+  });
+
+  testWidgets('a PDF places through the window (R4): the fake renderer '
+      'lands its pages as a new cut', (tester) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    addTearDown(PdfRenderService.debugResetForTests);
+    PdfRenderService.debugOpenerOverride = (path) async => FakePdfDocument(
+      pageSizes: const [ui.Size(595, 842), ui.Size(595, 842)],
+    );
+    final pdfPath = await tester.runAsync(() async {
+      final file = File('${tempDir.path}${Platform.pathSeparator}conte.pdf');
+      await file.writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
+      return file.path;
+    });
+    final cutsBefore = s.repository.requireProject().tracks.first.cuts.length;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ImportDialog(session: s, initialPaths: [pdfPath!]),
+        ),
+      ),
+    );
+    await tester.pump();
+    expect(
+      find.textContaining('placement not available'),
+      findsNothing,
+      reason: 'PDF left the unplaceable set in R4',
+    );
+
+    await tester.tap(find.byKey(const ValueKey<String>('import-destination-cut')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    for (var tries = 0; tries < 100; tries += 1) {
+      if (s.repository.requireProject().tracks.first.cuts.length >
+          cutsBefore) {
+        break;
+      }
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+
+    final track = s.repository.requireProject().tracks.first;
+    expect(track.cuts.length, cutsBefore + 1);
+    expect(track.cuts.last.duration, 2, reason: '1 page = 1 frame');
+    expect(s.mediaAssets.single.pageCount, 2);
+  });
+
+  testWidgets('a PDF with NO renderer warns honestly instead of failing '
+      'as a decode', (tester) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    addTearDown(PdfRenderService.debugResetForTests);
+    // No override: flutter_tester's probe reports absent.
+    final pdfPath = await tester.runAsync(() async {
+      final file = File('${tempDir.path}${Platform.pathSeparator}none.pdf');
+      await file.writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
+      return file.path;
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ImportDialog(session: s, initialPaths: [pdfPath!]),
+        ),
+      ),
+    );
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey<String>('import-destination-cut')));
+    await tester.pump();
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    for (var tries = 0; tries < 100; tries += 1) {
+      final status = tester.widgetList<Text>(
+        find.byKey(const ValueKey<String>('import-status')),
+      );
+      if (status.isNotEmpty &&
+          (status.first.data ?? '').contains('no PDF renderer')) {
+        break;
+      }
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+
+    expect(
+      find.textContaining('no PDF renderer'),
+      findsOneWidget,
+      reason: 'the absence is a stated condition, not a decode failure',
+    );
+    expect(s.mediaAssets, isEmpty);
   });
 }

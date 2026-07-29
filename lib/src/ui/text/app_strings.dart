@@ -491,11 +491,20 @@ class AppStrings {
   String get mediaRelink => _s('mediaRelink');
   String get mediaRemove => _s('mediaRemove');
   String get mediaStillLinked => _s('mediaStillLinked');
+  String get mediaOpenInViewer => _s('mediaOpenInViewer');
+
+  // --- The media viewer (R4, §6-h) ---
+  String get mediaViewerEmpty => _s('mediaViewerEmpty');
+  String get mediaViewerOpenFile => _s('mediaViewerOpenFile');
+  String get mediaViewerLoadFailed => _s('mediaViewerLoadFailed');
+  String get mediaViewerCannotDisplay => _s('mediaViewerCannotDisplay');
+  String get mediaViewerNoPdfRenderer => _s('mediaViewerNoPdfRenderer');
 
   // --- Workspace panel names ---
   String get panelCanvas => _s('panelCanvas');
   String get panelColor => _s('panelColor');
   String get panelMedia => _s('panelMedia');
+  String get panelMediaViewer => _s('panelMediaViewer');
   String get panelOnionSkin => _s('panelOnionSkin');
   String get panelStoryboard => _s('panelStoryboard');
   String get panelTimeline => _s('panelTimeline');
@@ -1057,6 +1066,16 @@ class AppStrings {
     'mediaRelink': 'Relink…',
     'mediaRemove': 'Remove',
     'mediaStillLinked': 'Still linked on SE rows — remove its sounds first.',
+    'mediaOpenInViewer': 'Open in Viewer',
+    'mediaViewerEmpty':
+        'Nothing to view yet.\nDouble-click a file in the media browser, '
+        'or open one with the folder button above.',
+    'mediaViewerOpenFile': 'Open File…',
+    'mediaViewerLoadFailed': 'Could not read this file.',
+    'mediaViewerCannotDisplay': 'This media kind has no viewer yet.',
+    'mediaViewerNoPdfRenderer':
+        'No PDF renderer in this build — PDF pages cannot be shown.',
+    'panelMediaViewer': 'Viewer',
     'panelCanvas': 'Canvas',
     'panelColor': 'Color',
     'panelMedia': 'Media',
@@ -1700,6 +1719,16 @@ class AppStrings {
     'mediaRelink': '再リンク…',
     'mediaRemove': '削除',
     'mediaStillLinked': 'SE行でまだ使われています — 先に音を外してください。',
+    'mediaOpenInViewer': 'ビューアで開く',
+    'mediaViewerEmpty':
+        '表示するものがありません。\nメディアブラウザのファイルをダブルクリックするか、'
+        '上のボタンからファイルを開いてください。',
+    'mediaViewerOpenFile': 'ファイルを開く…',
+    'mediaViewerLoadFailed': 'このファイルを読み込めませんでした。',
+    'mediaViewerCannotDisplay': 'この種類のメディアはまだ表示できません。',
+    'mediaViewerNoPdfRenderer':
+        'このビルドにはPDFレンダラーがありません — PDFページを表示できません。',
+    'panelMediaViewer': 'ビューア',
     'panelCanvas': 'カンバス',
     'panelColor': 'カラー',
     'panelMedia': 'メディア',
@@ -2342,6 +2371,16 @@ class AppStrings {
     'mediaRelink': '다시 연결…',
     'mediaRemove': '제거',
     'mediaStillLinked': 'SE 행에서 아직 쓰이고 있습니다 — 소리를 먼저 빼세요.',
+    'mediaOpenInViewer': '뷰어에서 열기',
+    'mediaViewerEmpty':
+        '표시할 것이 없습니다.\n미디어 브라우저의 파일을 더블클릭하거나 '
+        '위 버튼으로 파일을 여세요.',
+    'mediaViewerOpenFile': '파일 열기…',
+    'mediaViewerLoadFailed': '이 파일을 읽지 못했습니다.',
+    'mediaViewerCannotDisplay': '이 종류의 미디어는 아직 표시할 수 없습니다.',
+    'mediaViewerNoPdfRenderer':
+        '이 빌드에는 PDF 렌더러가 없습니다 — PDF 페이지를 표시할 수 없습니다.',
+    'panelMediaViewer': '뷰어',
     'panelCanvas': '캔버스',
     'panelColor': '색',
     'panelMedia': '미디어',
@@ -3008,6 +3047,18 @@ class AppStrings {
     'mediaRename': 'Renommer le média',
     'mediaRelink': 'Relier…',
     'mediaRemove': 'Retirer',
+    'mediaOpenInViewer': 'Ouvrir dans la visionneuse',
+    'mediaViewerEmpty':
+        'Rien à afficher.\nDouble-cliquez un fichier du navigateur de '
+        'médias, ou ouvrez-en un avec le bouton ci-dessus.',
+    'mediaViewerOpenFile': 'Ouvrir un fichier…',
+    'mediaViewerLoadFailed': 'Impossible de lire ce fichier.',
+    'mediaViewerCannotDisplay':
+        'Ce type de média ne peut pas encore être affiché.',
+    'mediaViewerNoPdfRenderer':
+        'Pas de moteur PDF dans cette version — les pages PDF ne peuvent '
+        'pas être affichées.',
+    'panelMediaViewer': 'Visionneuse',
     'mediaStillLinked':
         "Encore lié sur des lignes SE — retirez d'abord ses sons.",
     'panelCanvas': 'Canevas',
@@ -3635,6 +3686,13 @@ class AppStrings {
     'mediaRelink': '重新链接…',
     'mediaRemove': '移除',
     'mediaStillLinked': 'SE 行仍在使用 — 请先移除它的声音。',
+    'mediaOpenInViewer': '在查看器中打开',
+    'mediaViewerEmpty': '暂无可查看的内容。\n双击媒体浏览器中的文件，或用上方按钮打开文件。',
+    'mediaViewerOpenFile': '打开文件…',
+    'mediaViewerLoadFailed': '无法读取此文件。',
+    'mediaViewerCannotDisplay': '此类媒体暂时无法查看。',
+    'mediaViewerNoPdfRenderer': '此版本没有 PDF 渲染器 — 无法显示 PDF 页面。',
+    'panelMediaViewer': '查看器',
     'panelCanvas': '画布',
     'panelColor': '颜色',
     'panelMedia': '媒体',

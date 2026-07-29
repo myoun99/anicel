@@ -9,7 +9,10 @@ import 'package:anicel/src/models/import/cut_folder_parse.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
+import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+
+import '../helpers/fake_pdf_document.dart';
 
 /// The R3b import verbs end to end: a real PNG on disk becomes a layer /
 /// cut whose cels live in the brush-frame store like drawn ones, with
@@ -236,6 +239,127 @@ void main() {
     );
     expect(group, isNotNull, reason: 'the extra cut links the cel banks');
     expect(group!.members, hasLength(2));
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('importPdfFile as a NEW CUT: pages become cels 1:1 on an '
+      'animation reference layer, the asset registers as pdf with its '
+      'page count, pages render at placement resolution; one undo removes '
+      'everything', (tester) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    addTearDown(PdfRenderService.debugResetForTests);
+    final fake = FakePdfDocument(
+      // A4 portrait in points; three pages = three frames (§6-k).
+      pageSizes: const [ui.Size(595, 842), ui.Size(595, 842), ui.Size(595, 842)],
+    );
+    PdfRenderService.debugOpenerOverride = (path) async => fake;
+    final cutsBefore = s.repository.requireProject().tracks.first.cuts.length;
+
+    final progress = <(int, int)>[];
+    final imported = await tester.runAsync(() async {
+      final file = File('${tempDir.path}${Platform.pathSeparator}conte.pdf');
+      await file.writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
+      return s.importPdfFile(
+        path: file.path,
+        destination: ImportDestination.newCut,
+        onRenderProgress: (done, total) => progress.add((done, total)),
+      );
+    });
+    expect(imported, isTrue);
+    expect(fake.disposed, isTrue, reason: 'the document handle releases');
+    expect(progress, [(1, 3), (2, 3), (3, 3)]);
+
+    final track = s.repository.requireProject().tracks.first;
+    expect(track.cuts.length, cutsBefore + 1);
+    final cut = track.cuts.last;
+    expect(cut.duration, 3, reason: '1 page = 1 frame');
+    final layer = cut.layers.firstWhere(
+      (layer) => layer.mediaReference != null,
+    );
+    expect(layer.kind, LayerKind.animation, reason: '§6-z23: PDF rides the '
+        'animation kind; the reference field is the second axis');
+    expect(layer.frames, hasLength(3), reason: 'pages never fold');
+    for (var frame = 0; frame < 3; frame += 1) {
+      expect(
+        s.celHasContentForLayer(layer, frame),
+        isTrue,
+        reason: 'page ${frame + 1} baked into the store',
+      );
+    }
+    final asset = s.mediaAssets.single;
+    expect(asset.kind, MediaAssetKind.pdf);
+    expect(asset.pageCount, 3);
+    expect(asset.frameCount, isNull, reason: 'pageCount is the pdf slot');
+
+    // §6-m pre-conversion: the render request is the CONTAIN placement of
+    // an A4 page on the default canvas, not the page's 72dpi point size.
+    final canvas = cut.canvasSize;
+    final scale = (canvas.width / 595) < (canvas.height / 842)
+        ? canvas.width / 595
+        : canvas.height / 842;
+    expect(fake.renderRequests, hasLength(3));
+    expect(fake.renderRequests.first.$2, (595 * scale).round());
+    expect(fake.renderRequests.first.$3, (842 * scale).round());
+
+    s.undo();
+    final afterUndo = s.repository.requireProject();
+    expect(afterUndo.tracks.first.cuts.length, cutsBefore);
+    expect(afterUndo.mediaAssets, isEmpty);
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('importPdfFile: a ONE-page PDF lands as an image-kind still, '
+      'and rasterize mode registers nothing', (tester) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    addTearDown(PdfRenderService.debugResetForTests);
+    PdfRenderService.debugOpenerOverride = (path) async =>
+        FakePdfDocument(pageSizes: const [ui.Size(595, 842)]);
+
+    final imported = await tester.runAsync(() async {
+      final file = File('${tempDir.path}${Platform.pathSeparator}page.pdf');
+      await file.writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
+      return s.importPdfFile(
+        path: file.path,
+        destination: ImportDestination.activeCutLayer,
+        rasterize: true,
+      );
+    });
+    expect(imported, isTrue);
+
+    final cut = s.requireActiveCut;
+    final layer = cut.layers.firstWhere(
+      (layer) => layer.kind == LayerKind.image,
+    );
+    expect(layer.mediaReference, isNull, reason: 'rasterize = no reference');
+    expect(s.mediaAssets, isEmpty, reason: 'absorbed pixels register nothing');
+    expect(s.celHasContentForLayer(layer, 0), isTrue);
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('importPdfFile with NO renderer refuses honestly: false, no '
+      'cut, no asset, no leftover undo step', (tester) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    addTearDown(PdfRenderService.debugResetForTests);
+    // No override: under flutter_tester the probe reports absent.
+    final cutsBefore = s.repository.requireProject().tracks.first.cuts.length;
+    final canUndoBefore = s.canUndo;
+
+    final imported = await tester.runAsync(() async {
+      final file = File('${tempDir.path}${Platform.pathSeparator}none.pdf');
+      await file.writeAsBytes(const [0x25, 0x50, 0x44, 0x46]);
+      return s.importPdfFile(
+        path: file.path,
+        destination: ImportDestination.newCut,
+      );
+    });
+    expect(imported, isFalse);
+    expect(PdfRenderService.availability, isFalse);
+    expect(s.repository.requireProject().tracks.first.cuts.length, cutsBefore);
+    expect(s.mediaAssets, isEmpty);
+    expect(s.canUndo, canUndoBefore);
     await tester.pumpAndSettle();
   });
 

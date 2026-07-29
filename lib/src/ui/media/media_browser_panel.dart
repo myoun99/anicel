@@ -25,6 +25,7 @@ class MediaBrowserPanel extends StatelessWidget {
     required this.onRenameAsset,
     required this.onRelinkAsset,
     required this.onRemoveAsset,
+    this.onOpenAsset,
     this.audioFilePicker,
     this.fileExists,
   });
@@ -41,6 +42,10 @@ class MediaBrowserPanel extends StatelessWidget {
 
   /// Returns false when the asset is still referenced (kept in the pool).
   final bool Function(String path) onRemoveAsset;
+
+  /// Opens the asset in the media viewer (double-click or the row menu);
+  /// null hides both entrances.
+  final void Function(MediaAsset asset)? onOpenAsset;
 
   /// Injectable file dialog; defaults to the platform audio picker.
   final Future<String?> Function()? audioFilePicker;
@@ -206,25 +211,34 @@ class MediaBrowserPanel extends StatelessWidget {
                 ),
           const SizedBox(width: 6),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  asset.name,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 12),
-                ),
-                Text(
-                  asset.path,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontSize: 9,
-                    color: colorScheme.onSurfaceVariant,
+            // The double-click zone is the NAME AREA only: a double-tap
+            // recognizer over the whole row would hold the menu button's
+            // taps in the gesture arena for the double-tap window.
+            child: GestureDetector(
+              onDoubleTap: onOpenAsset == null
+                  ? null
+                  : () => onOpenAsset!(asset),
+              behavior: HitTestBehavior.opaque,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    asset.name,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 12),
                   ),
-                ),
-              ],
+                  Text(
+                    asset.path,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 9,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
           if (referenced)
@@ -244,6 +258,8 @@ class MediaBrowserPanel extends StatelessWidget {
             iconSize: 16,
             onSelected: (action) {
               switch (action) {
+                case 'open':
+                  onOpenAsset?.call(asset);
                 case 'rename':
                   _rename(context, asset);
                 case 'relink':
@@ -253,6 +269,12 @@ class MediaBrowserPanel extends StatelessWidget {
               }
             },
             itemBuilder: (context) => [
+              if (onOpenAsset != null)
+                PopupMenuItem<String>(
+                  key: const ValueKey<String>('media-asset-menu-open'),
+                  value: 'open',
+                  child: Text(AppText.strings.mediaOpenInViewer),
+                ),
               PopupMenuItem<String>(
                 key: const ValueKey<String>('media-asset-menu-rename'),
                 value: 'rename',

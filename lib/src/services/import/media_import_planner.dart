@@ -97,6 +97,8 @@ ImageLayerImportPlan planStillImageLayer({
   required ImportIdMint mint,
   String? sourcePath,
   String? sourceStamp,
+  MediaAssetKind assetKind = MediaAssetKind.image,
+  int? pageCount,
 }) {
   final layerId = mint.nextLayerId();
   final frameId = mint.nextFrameId(layerId);
@@ -126,10 +128,11 @@ ImageLayerImportPlan planStillImageLayer({
             MediaAsset(
               path: sourceFile,
               name: mediaAssetDefaultName(sourceFile),
-              kind: MediaAssetKind.image,
+              kind: assetKind,
               fitMode: fit,
               sourcePath: sourcePath,
               sourceStamp: sourceStamp,
+              pageCount: pageCount,
             ),
           ],
   );
@@ -163,6 +166,8 @@ SequenceLayerImportPlan planSequenceLayer({
   String? sourcePath,
   String? sourceStamp,
   double? sourceFps,
+  MediaAssetKind assetKind = MediaAssetKind.image,
+  int? pageCount,
 }) {
   assert(sourceFiles.length == frameFingerprints.length);
   final layerId = mint.nextLayerId();
@@ -235,12 +240,17 @@ SequenceLayerImportPlan planSequenceLayer({
             MediaAsset(
               path: referencePath,
               name: mediaAssetDefaultName(referencePath),
-              kind: MediaAssetKind.image,
+              kind: assetKind,
               fitMode: fit,
               sourcePath: sourcePath,
               sourceStamp: sourceStamp,
               sourceFps: sourceFps,
-              frameCount: sourceFiles.length,
+              // A PDF's page count is its own field; frameCount stays the
+              // image-sequence/video detection slot (§6-z10).
+              frameCount: assetKind == MediaAssetKind.pdf
+                  ? null
+                  : sourceFiles.length,
+              pageCount: pageCount,
             ),
           ],
   );
