@@ -1,10 +1,17 @@
 import 'dart:async' show Timer, unawaited;
 import 'dart:io';
 import 'dart:math' as math;
+import 'dart:ui' as ui show ImageByteFormat;
 
 import 'package:flutter/foundation.dart';
 
+import '../controllers/default_cut_helpers.dart'
+    show createDefaultCut, defaultCutCanvasSize;
 import '../controllers/default_layer_helpers.dart';
+import '../models/import/cut_folder_parse.dart';
+import '../services/commands/import_media_command.dart';
+import '../services/import/media_import_planner.dart';
+import '../services/import/raster_cel_import.dart';
 import '../models/app_language.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/app_accent_settings_store.dart';
@@ -3684,9 +3691,434 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   /// The media browser's import: same copy-in as a timeline import, pool
-  /// only (no clip link).
+  /// only (no clip link). Non-audio kinds register with their detected
+  /// kind (R3b) — the batch stays one undo through [addMediaAssets].
   void importMediaFiles(List<String> paths) {
-    addMediaAssets([for (final path in paths) importAudioFile(path)]);
+    final pool = mediaAssets;
+    final known = {for (final asset in pool) asset.path};
+    final added = <MediaAsset>[];
+    for (final path in paths) {
+      final kind = mediaAssetKindForPath(path) ?? MediaAssetKind.image;
+      final effectivePath = kind == MediaAssetKind.audio
+          ? importAudioFile(path)
+          : _copyIntoProjectMedia(path);
+      if (!known.add(effectivePath)) {
+        continue;
+      }
+      added.add(
+        MediaAsset(
+          path: effectivePath,
+          name: mediaAssetDefaultName(effectivePath),
+          kind: kind,
+          sourcePath: effectivePath == path ? null : path,
+          sourceStamp: _mediaSourceStampFor(path),
+        ),
+      );
+    }
+    if (added.isEmpty) {
+      return;
+    }
+    _cutCommandCoordinator.updateMediaAssets([...pool, ...added]);
+    notifyListeners();
+  }
+
+  String? _mediaSourceStampFor(String path) {
+    try {
+      final stat = File(path).statSync();
+      return mediaSourceStamp(
+        lengthBytes: stat.size,
+        modifiedMillis: stat.modified.millisecondsSinceEpoch,
+      );
+    } on Object {
+      return null;
+    }
+  }
+
+  // --- Media import (R3b): stills, GIF sequences, cut folders -------------
+
+  int _importCutSequence = 0;
+
+  ImportIdMint _importIdMint() => ImportIdMint(
+    nextLayerId: () {
+      _layerSequence += 1;
+      return defaultLayerIdForSequence(_layerSequence);
+    },
+    nextFrameId: (layerId) => FrameId(_nextFrameId(layerId)),
+    nextCutId: () {
+      _importCutSequence += 1;
+      final usedIds = {
+        for (final track in _repository.requireProject().tracks)
+          for (final cut in track.cuts) cut.id.value,
+      };
+      var candidate = 'import-cut-$_importCutSequence';
+      while (usedIds.contains(candidate)) {
+        _importCutSequence += 1;
+        candidate = 'import-cut-$_importCutSequence';
+      }
+      return CutId(candidate);
+    },
+  );
+
+  /// Imports one still or animated image file (PNG/JPEG/GIF…) — the
+  /// import window's core verb. Reference mode (default) copies into
+  /// `.assets/Media/`, registers the asset and stamps
+  /// [Layer.mediaReference]; rasterize absorbs the pixels with no
+  /// registration (§3). One undo step; the baked cels display through
+  /// the ordinary store paths. Returns false when nothing imported.
+  Future<bool> importImageFile({
+    required String path,
+    required ImportDestination destination,
+    bool rasterize = false,
+    MediaFitMode fit = MediaFitMode.contain,
+    int? lengthFrames,
+  }) async {
+    // The destination gate runs BEFORE any decode: a refused import must
+    // not have images to leak.
+    final targetCut = destination == ImportDestination.activeCutLayer
+        ? activeCutOrNull
+        : null;
+    if (destination == ImportDestination.activeCutLayer && targetCut == null) {
+      return false;
+    }
+    final Uint8List bytes;
+    try {
+      bytes = await File(path).readAsBytes();
+    } on Object {
+      return false;
+    }
+    final List<DecodedImageFrame> decoded;
+    try {
+      decoded = await decodeImageFrames(bytes);
+    } on Object {
+      return false;
+    }
+    if (decoded.isEmpty) {
+      return false;
+    }
+    final canvasSize =
+        targetCut?.canvasSize ??
+        activeCutOrNull?.canvasSize ??
+        defaultCutCanvasSize;
+    final project = _repository.requireProject();
+    final mint = _importIdMint();
+    final storedPath = rasterize ? path : _copyIntoProjectMedia(path);
+    final sourceStamp = _mediaSourceStampFor(path);
+    final displayName = mediaAssetDefaultName(path);
+
+    final cutId = targetCut?.id ?? mint.nextCutId();
+    final stillDuration = destination == ImportDestination.activeCutLayer
+        ? (targetCut!.duration < 1 ? 1 : targetCut.duration)
+        : (lengthFrames ?? project.fps);
+
+    final Layer layer;
+    final List<PlannedCelBake> bakes;
+    final List<MediaAsset> assets;
+    if (decoded.length == 1) {
+      final plan = planStillImageLayer(
+        sourceFile: storedPath,
+        displayName: displayName,
+        cutId: cutId,
+        duration: stillDuration,
+        fit: fit,
+        rasterize: rasterize,
+        mint: mint,
+        sourcePath: storedPath == path ? null : path,
+        sourceStamp: sourceStamp,
+      );
+      layer = plan.layer;
+      bakes = plan.bakes;
+      assets = plan.assets;
+    } else {
+      // Animated (GIF): frames become cels with duplicate folding; the
+      // fingerprint is a cheap fold over each frame's RGBA bytes.
+      final fingerprints = <Object?>[];
+      for (final frame in decoded) {
+        final data = await frame.image.toByteData(
+          format: ui.ImageByteFormat.rawStraightRgba,
+        );
+        fingerprints.add(data == null ? null : _foldBytes(data));
+      }
+      final plan = planSequenceLayer(
+        sourceFiles: List<String>.filled(decoded.length, storedPath),
+        frameFingerprints: fingerprints,
+        displayName: displayName,
+        cutId: cutId,
+        fit: fit,
+        rasterize: rasterize,
+        mint: mint,
+        referencePath: storedPath,
+        sourcePath: storedPath == path ? null : path,
+        sourceStamp: sourceStamp,
+      );
+      layer = plan.layer;
+      bakes = plan.bakes;
+      assets = plan.assets;
+    }
+
+    if (destination == ImportDestination.activeCutLayer) {
+      _historyManager.execute(
+        ImportMediaCommand(
+          repository: _repository,
+          editingSession: _editingSession,
+          targetCutId: cutId,
+          newLayers: [layer],
+          assetAdditions: assets,
+          description: 'Import $displayName',
+        ),
+      );
+    } else {
+      final defaultCut = createDefaultCut(
+        cutId: cutId,
+        name: displayName,
+        layerId: mint.nextLayerId(),
+        canvasSize: canvasSize,
+      );
+      final fixtureLayers = [
+        for (final fixture in defaultCut.layers)
+          if (fixture.kind != LayerKind.animation) fixture,
+      ];
+      final cut = defaultCut.copyWith(
+        duration: decoded.length > 1 ? _sequenceLength(layer) : stillDuration,
+        layers: [layer, ...fixtureLayers],
+      );
+      _historyManager.execute(
+        ImportMediaCommand(
+          repository: _repository,
+          editingSession: _editingSession,
+          trackId: selectedTrackId,
+          newCuts: [cut],
+          assetAdditions: assets,
+          description: 'Import $displayName',
+        ),
+      );
+    }
+
+    // Bake pixels AFTER the structure exists (keys resolve the owner
+    // track through the inserted cut). Duplicate folding compresses the
+    // bake list, so every bake names its SOURCE frame index.
+    try {
+      final bakedCut = _cutById(cutId);
+      if (bakedCut != null) {
+        for (final bake in bakes) {
+          final surface = await rasterizeImageToSurface(
+            image: decoded[bake.sourceFrameIndex].image,
+            canvas: bakedCut.canvasSize,
+            fit: bake.fit,
+          );
+          bakeCelSurface(
+            brushFrameStore,
+            brushFrameKeyForCut(bakedCut, bake.layerId, bake.frameId),
+            surface,
+          );
+        }
+      }
+    } finally {
+      for (final frame in decoded) {
+        frame.image.dispose();
+      }
+    }
+
+    _refreshAfterCutCommand(preferredActiveLayerId: layer.id);
+    notifyListeners();
+    return true;
+  }
+
+  int _sequenceLength(Layer layer) {
+    var end = 1;
+    for (final entry in layer.timeline.entries) {
+      final length = entry.value.length ?? 1;
+      if (entry.key + length > end) {
+        end = entry.key + length;
+      }
+    }
+    return end;
+  }
+
+  Object _foldBytes(ByteData data) {
+    // Every 4th PIXEL, all four channels — a fold that read one channel
+    // would merge frames whose change hides in the others.
+    var hash = 0x811c9dc5;
+    for (var i = 0; i + 3 < data.lengthInBytes; i += 16) {
+      hash = (hash ^ data.getUint32(i)) * 0x01000193 & 0xFFFFFFFF;
+    }
+    return Object.hash(hash, data.lengthInBytes);
+  }
+
+  Cut? _cutById(CutId cutId) {
+    for (final track in _repository.requireProject().tracks) {
+      for (final cut in track.cuts) {
+        if (cut.id == cutId) {
+          return cut;
+        }
+      }
+    }
+    return null;
+  }
+
+  /// Imports a CUT FOLDER (the field's delivery structure) parsed by
+  /// [parseCutFolder]: one fully-formed cut — symbol layers with named
+  /// cels one comma each, `_BG`/`_BOOK` picture layers, archived-process
+  /// attach folders when opted in — plus reference registrations, in one
+  /// undo. Multi-cut folders (rule H) follow up with linked-cut creation
+  /// per extra number (the field 겸용컷; separate undo steps).
+  /// Returns the parse-and-plan warnings, or null when nothing imported.
+  Future<List<String>?> importCutFolder({
+    required String folderPath,
+    CutFolderParseConfig config = const CutFolderParseConfig(),
+    MediaFitMode fit = MediaFitMode.contain,
+  }) async {
+    final directory = Directory(folderPath);
+    if (!directory.existsSync()) {
+      return null;
+    }
+    final entries = <CutFolderEntry>[];
+    final prefixLength = directory.path.length + 1;
+    try {
+      await for (final entity in directory.list(recursive: true)) {
+        final relative = entity.path.length > prefixLength
+            ? entity.path.substring(prefixLength)
+            : entity.path;
+        entries.add(
+          CutFolderEntry(
+            relative.replaceAll('\\', '/'),
+            isDirectory: entity is Directory,
+          ),
+        );
+      }
+    } on FileSystemException {
+      return null; // Unreadable folder (permissions, vanished share).
+    }
+    final folderName = mediaAssetDefaultName(folderPath);
+    final parentName = directory.parent.path.isEmpty
+        ? null
+        : mediaAssetDefaultName(directory.parent.path);
+    final parsed = parseCutFolder(
+      folderName: folderName,
+      entries: entries,
+      config: config,
+      parentFolderName: parentName,
+    );
+
+    final canvasSize = activeCutOrNull?.canvasSize ?? defaultCutCanvasSize;
+    final mint = _importIdMint();
+    final plan = planCutFolderImport(
+      parsed: parsed,
+      resolveFile: (relativePath) => '$folderPath/$relativePath',
+      canvasSize: canvasSize,
+      fit: fit,
+      mint: mint,
+    );
+    if (plan.bakes.isEmpty && plan.assets.isEmpty) {
+      return plan.warnings;
+    }
+
+    // References copy into the project's media folder like any import.
+    final copiedAssets = [
+      for (final asset in plan.assets)
+        asset.copyWith(
+          path: _copyIntoProjectMedia(asset.path),
+          sourcePath: asset.path,
+          sourceStamp: _mediaSourceStampFor(asset.path),
+        ),
+    ];
+
+    _historyManager.execute(
+      ImportMediaCommand(
+        repository: _repository,
+        editingSession: _editingSession,
+        trackId: selectedTrackId,
+        newCuts: [plan.cut],
+        assetAdditions: copiedAssets,
+        description: 'Import folder $folderName',
+      ),
+    );
+
+    final bakedCut = _cutById(plan.cut.id);
+    if (bakedCut != null) {
+      // Each file bakes exactly once — decode, bake, dispose, so the
+      // peak stays ONE image no matter how large the folder (the
+      // measured folders run past 100 scanned cels).
+      for (final bake in plan.bakes) {
+        final List<DecodedImageFrame> frames;
+        try {
+          frames = await decodeImageFrames(
+            await File(bake.sourceFile).readAsBytes(),
+          );
+        } on Object {
+          continue; // Unreadable file — the cel stays empty.
+        }
+        if (frames.isEmpty) {
+          continue;
+        }
+        try {
+          final surface = await rasterizeImageToSurface(
+            image: frames.first.image,
+            canvas: bakedCut.canvasSize,
+            fit: bake.fit,
+          );
+          bakeCelSurface(
+            brushFrameStore,
+            brushFrameKeyForCut(bakedCut, bake.layerId, bake.frameId),
+            surface,
+          );
+        } finally {
+          for (final frame in frames) {
+            frame.image.dispose();
+          }
+        }
+      }
+    }
+
+    // Rule H: the folder's extra cut numbers become 겸용컷 copies of the
+    // imported cut, sharing its cel banks.
+    for (final extraNumber in plan.extraCutNumbers) {
+      _cutCommandCoordinator.createLinkedCut(
+        sourceCutId: plan.cut.id,
+        name: extraNumber,
+      );
+    }
+
+    _refreshAfterCutCommand();
+    notifyListeners();
+    return plan.warnings;
+  }
+
+  /// Rasterize (§6-f): the ONE verb for every reference layer — nulls
+  /// [Layer.mediaReference] (the pixels are already the cels), and drops
+  /// the asset registration when nothing else uses it (§6-t).
+  bool get canRasterizeActiveLayer =>
+      activeLayer?.mediaReference != null;
+
+  void rasterizeActiveLayer() {
+    final layer = activeLayer;
+    final reference = layer?.mediaReference;
+    final cutId = _editingSession.activeCutId;
+    if (layer == null || reference == null || cutId == null) {
+      return;
+    }
+    // The asset survives when ANY OTHER layer still references its path
+    // (audio clips count through the ordinary reference check) — only
+    // the last referrer's rasterize unregisters (§6-t).
+    var othersReference = false;
+    outer:
+    for (final track in _repository.requireProject().tracks) {
+      for (final cut in track.cuts) {
+        for (final other in cut.layers) {
+          if (other.id != layer.id &&
+              other.mediaReference?.assetPath == reference.assetPath) {
+            othersReference = true;
+            break outer;
+          }
+        }
+      }
+    }
+    _cutCommandCoordinator.rasterizeLayerReference(
+      cutId: cutId,
+      layerId: layer.id,
+      assetStillReferenced: othersReference,
+    );
+    _refreshAfterCutCommand(preferredActiveLayerId: layer.id);
+    notifyListeners();
   }
 
   // --- Guide voice recording (AUDIO-PRO R5) --------------------------------

@@ -47,6 +47,7 @@ import 'update_cut_durations_command.dart';
 import 'reorder_cut_command.dart';
 import 'resize_cut_canvas_command.dart';
 import 'relink_media_asset_command.dart';
+import 'rasterize_layer_reference_command.dart';
 import 'update_camera_instruction_set_command.dart';
 import 'update_cut_camera_command.dart';
 import 'update_cut_note_command.dart';
@@ -854,6 +855,32 @@ class CutCommandCoordinator {
     );
 
     return plan.layer.id;
+  }
+
+  /// RASTERIZE (§6-f): nulls the layer's media reference — the pixels are
+  /// already its cels — and unregisters the asset when this was its last
+  /// referrer. One undo step; no-op on non-reference layers.
+  void rasterizeLayerReference({
+    required CutId cutId,
+    required LayerId layerId,
+    bool assetStillReferenced = false,
+  }) {
+    final layer = requireLayer(
+      repository.requireProject(),
+      cutId: cutId,
+      layerId: layerId,
+    );
+    if (layer.mediaReference == null) {
+      return;
+    }
+    historyManager.execute(
+      RasterizeLayerReferenceCommand(
+        repository: repository,
+        cutId: cutId,
+        layerId: layerId,
+        assetStillReferenced: assetStillReferenced,
+      ),
+    );
   }
 
   /// Project-level sheet-header text; one undo step, no-op when unchanged.

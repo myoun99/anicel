@@ -51,6 +51,7 @@ dependencies:
   qa_native:
     path: packages/qa_native
   pdf: ^3.13.0
+  desktop_drop: ^0.7.1
 
 dev_dependencies:
   flutter_test:

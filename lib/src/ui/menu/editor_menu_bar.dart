@@ -30,6 +30,7 @@ import '../editor_session_manager.dart';
 import '../export/ae_keyframe_data.dart';
 import '../../services/persistence/app_export_settings_store.dart';
 import '../export/export_dialog.dart';
+import '../import/import_dialog.dart';
 import '../export/export_plan.dart' show sanitizeExportFileComponent;
 import '../panels/workspace_panels_menu.dart';
 import '../playback/canvas_playback_controller.dart';
@@ -223,6 +224,18 @@ class EditorMenuBar extends StatelessWidget {
       },
     ),
     const Divider(height: 8),
+    _item(
+      id: 'file-import',
+      label: 'Import / Place…',
+      onPressed: () {
+        unawaited(
+          showDialog<void>(
+            context: context,
+            builder: (context) => ImportDialog(session: session),
+          ),
+        );
+      },
+    ),
     _item(
       id: 'file-export',
       label: 'Export…',
@@ -625,6 +638,15 @@ class EditorMenuBar extends StatelessWidget {
       id: 'layer-rename',
       label: 'Rename layer…',
       onPressed: () => unawaited(_renameActiveLayer(context)),
+    ),
+    // RASTERIZE (§6-f): the one verb for every media-reference layer —
+    // pixels stay (they were always the cels), the link lets go.
+    _item(
+      id: 'layer-rasterize',
+      label: 'Rasterize layer',
+      onPressed: session.canRasterizeActiveLayer
+          ? session.rasterizeActiveLayer
+          : null,
     ),
     const Divider(height: 8),
     _item(
