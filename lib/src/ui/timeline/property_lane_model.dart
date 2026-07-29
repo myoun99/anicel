@@ -1,5 +1,6 @@
 import 'dart:ui' show Offset;
 
+import '../../models/attached_layer_resolve.dart';
 import '../../models/layer.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
@@ -243,17 +244,22 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
   final folders = LayerFolderIndex(modelStack);
   for (var index = 0; index < layers.length; index += 1) {
     final layer = layers[index];
-    // The attach run ends at the first layer that is NOT an attach of the
-    // pending base (row-emission skips below never end it: a folded
-    // attach row still belongs to the group).
+    // An ORGANIZER folder row ([연출]/[작감]… inside an attach group)
+    // belongs to its base's group: the group fold hides it and the lane
+    // deferral treats it as part of the attach run.
+    final organizerBaseId = attachOrganizerBaseOf(layer, modelStack);
+    // The attach run ends at the first layer that is NOT an attach (or
+    // organizer folder) of the pending base (row-emission skips below
+    // never end it: a folded attach row still belongs to the group).
     if (pendingLaneBaseId != null &&
-        layer.attachedToLayerId != pendingLaneBaseId) {
+        layer.attachedToLayerId != pendingLaneBaseId &&
+        organizerBaseId != pendingLaneBaseId) {
       flushPendingLanes();
     }
     if (hiddenSections.contains(timelineSectionForLayerKind(layer.kind))) {
       continue;
     }
-    final attachBaseId = layer.attachedToLayerId;
+    final attachBaseId = layer.attachedToLayerId ?? organizerBaseId;
     if (attachBaseId != null &&
         layer.id != activeLayerId &&
         collapsedAttachBaseIds.contains(attachBaseId)) {

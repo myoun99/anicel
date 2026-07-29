@@ -11,6 +11,7 @@ import '../../models/cut.dart';
 import '../../models/cut_camera.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
+import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
@@ -468,9 +469,9 @@ class CutCommandCoordinator {
     final source = requireLayer(project, cutId: cutId, layerId: layerId);
     final baseId = source.attachedToLayerId ?? source.id;
     final endIndex = attachedGroupEndIndex(baseId, cut.layers);
-    final baseIndex = cut.layers.indexWhere((layer) => layer.id == baseId);
+    final startIndex = attachedGroupStartIndex(baseId, cut.layers);
     final anyLinked = cut.layers
-        .sublist(baseIndex, endIndex)
+        .sublist(startIndex, endIndex)
         .any(
           (member) =>
               project.linkRegistry.groupOf(
@@ -549,9 +550,12 @@ class CutCommandCoordinator {
 
   /// 폴더 생성: folds [layerId]'s whole attach group into a new folder ROW
   /// inserted directly above the group (attach groups never split across a
-  /// folder boundary; the group is already a contiguous stack run).
-  /// Mirrors into 겸용 cuts. Returns the new folder layer's id in [cutId],
-  /// null when the layer can't fold (non-drawing kinds).
+  /// folder boundary; the group is a contiguous stack run — belows and
+  /// their organizer folder rows included). Only the slice's TOP-LEVEL
+  /// rows re-folder: attach rows inside an ORGANIZER ([연출]/[작감]…) keep
+  /// their organizer, which is itself a member — inner structure survives
+  /// the fold. Mirrors into 겸용 cuts. Returns the new folder layer's id
+  /// in [cutId], null when the layer can't fold (non-drawing kinds).
   ///
   /// Renaming the folder afterwards is just [renameLayer] — a folder is a
   /// layer, so it needs no command of its own.
@@ -567,13 +571,14 @@ class CutCommandCoordinator {
       return null;
     }
     final baseId = source.attachedToLayerId ?? source.id;
-    final baseIndex = cut.layers.indexWhere((layer) => layer.id == baseId);
+    final base = requireLayer(project, cutId: cutId, layerId: baseId);
+    final slice = cut.layers.sublist(
+      attachedGroupStartIndex(baseId, cut.layers),
+      attachedGroupEndIndex(baseId, cut.layers),
+    );
     final memberIds = [
-      for (final layer in cut.layers.sublist(
-        baseIndex,
-        attachedGroupEndIndex(baseId, cut.layers),
-      ))
-        layer.id,
+      for (final layer in slice)
+        if (layer.folderId == base.folderId) layer.id,
     ];
     final plan = planCreateFolderCommandInput(
       project: project,
@@ -592,6 +597,57 @@ class CutCommandCoordinator {
       ),
     );
     return plan.folderIdByCut[cutId];
+  }
+
+  /// 공정 폴더 생성: wraps ONE attach row in an ORGANIZER folder
+  /// ([연출]/[작감]…) INSIDE its attach group. The attach relation stays
+  /// direct to the base — the folder organizes and display-controls only.
+  /// Siblings join through [EditorSessionManager.addAttachedLayer]'s
+  /// sibling rule (adding from a row inside an organizer lands next to
+  /// it). Organizers are FLAT: a row already inside one refuses (null).
+  ///
+  /// Deliberately PER-CUT — no 겸용 mirror, no link-group membership. The
+  /// flat rule can only be checked against THIS cut, and a mirrored
+  /// organizer nesting under a diverged counterpart's folder would break
+  /// that cut's group span; an unlinked folder row also keeps deletes and
+  /// dissolves from fanning out into other cuts' structures.
+  LayerId? createAttachOrganizerFolder({
+    required CutId cutId,
+    required LayerId layerId,
+    String? name,
+  }) {
+    final project = repository.requireProject();
+    final cut = requireCut(project, cutId);
+    final source = requireLayer(project, cutId: cutId, layerId: layerId);
+    if (!isAttachedLayer(source)) {
+      return null;
+    }
+    final currentFolder = cut.layers.folderById(source.folderId);
+    if (currentFolder != null &&
+        attachOrganizerBaseOf(currentFolder, cut.layers) != null) {
+      return null;
+    }
+    final memberIds = [source.id];
+    final plan = planCreateFolderCommandInput(
+      project: project,
+      cutId: cutId,
+      memberLayerIds: memberIds,
+    );
+    final folderId = plan.folderIdByCut[cutId]!;
+    historyManager.execute(
+      CreateFolderCommand(
+        repository: repository,
+        cutId: cutId,
+        name: name ?? nextFolderName(cut),
+        memberLayerIds: memberIds,
+        // Origin cut only: mirror cuts are deliberately excluded (see
+        // the doc above) — the command skips any cut absent from this
+        // map.
+        folderIdByCut: {cutId: folderId},
+        groupId: plan.folderGroupId,
+      ),
+    );
+    return folderId;
   }
 
   /// 폴더 해산: releases members to the parent and removes the folder row
@@ -665,9 +721,47 @@ class CutCommandCoordinator {
       }
     }
 
-    // Deleting a BASE cascades over its attach rows (they cannot stand
-    // alone) — ONE undo step; the composite undoes in reverse, restoring
-    // each layer at its captured index.
+    // Deleting the LAST attach row of an ORGANIZER folder takes the
+    // now-empty folder row with it (an empty organizer belongs to no
+    // group and would strand outside the span) — one undo step. Only for
+    // UNLINKED folder rows (organizers are created per-cut and unlinked;
+    // a linked folder's delete fans out group-wide, and this cut's member
+    // count says nothing about a diverged counterpart's).
+    if (isAttachedLayer(layer)) {
+      final organizer = cut.layers.folderById(layer.folderId);
+      if (organizer != null &&
+          attachOrganizerBaseOf(organizer, cut.layers) != null &&
+          cut.layers.directMembersOf(organizer.id).length == 1 &&
+          repository
+                  .requireProject()
+                  .linkRegistry
+                  .groupOf(cutId: cutId, layerId: organizer.id) ==
+              null) {
+        historyManager.execute(
+          CompositeCommand(
+            description: 'Delete layer ${layer.name} and its empty folder',
+            commands: [
+              DeleteLayerCommand(
+                repository: repository,
+                cutId: cutId,
+                layerId: layerId,
+              ),
+              DeleteLayerCommand(
+                repository: repository,
+                cutId: cutId,
+                layerId: organizer.id,
+              ),
+            ],
+          ),
+        );
+        return;
+      }
+    }
+
+    // Deleting a BASE cascades over its attach rows AND their organizer
+    // folder rows (neither can stand alone) — ONE undo step; the
+    // composite undoes in reverse, restoring each layer at its captured
+    // index.
     final attachedRows = attachedLayersOf(layerId, cut.layers);
     if (attachedRows.isEmpty) {
       historyManager.execute(
@@ -679,6 +773,10 @@ class CutCommandCoordinator {
       );
       return;
     }
+    final organizerRows = [
+      for (final row in cut.layers)
+        if (attachOrganizerBaseOf(row, cut.layers) == layerId) row,
+    ];
     historyManager.execute(
       CompositeCommand(
         description: 'Delete layer ${layer.name} and its attach layers',
@@ -688,6 +786,12 @@ class CutCommandCoordinator {
               repository: repository,
               cutId: cutId,
               layerId: attached.id,
+            ),
+          for (final organizer in organizerRows)
+            DeleteLayerCommand(
+              repository: repository,
+              cutId: cutId,
+              layerId: organizer.id,
             ),
           DeleteLayerCommand(
             repository: repository,

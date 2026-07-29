@@ -48,12 +48,13 @@ class UnlinkLayerCommand implements Command {
     final cut = requireCut(project, cutId);
     final source = requireLayer(project, cutId: cutId, layerId: sourceLayerId);
     final baseId = source.attachedToLayerId ?? source.id;
-    final baseIndex = cut.layers.indexWhere((layer) => layer.id == baseId);
-    if (baseIndex == -1) {
+    if (!cut.layers.any((layer) => layer.id == baseId)) {
       throw StateError('Attach base not found: $baseId');
     }
+    // The whole contiguous group — below-placement rows and organizer
+    // folder rows included (the gate scans the same slice).
     final members = cut.layers.sublist(
-      baseIndex,
+      attachedGroupStartIndex(baseId, cut.layers),
       attachedGroupEndIndex(baseId, cut.layers),
     );
 

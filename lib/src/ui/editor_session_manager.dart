@@ -96,6 +96,7 @@ import 'playback/playback_prerender_scheduler.dart';
 import 'storyboard_cut_fade_policy.dart';
 import 'storyboard_layer_policy.dart';
 import 'text/app_strings.dart';
+import 'widgets/cursor_notice.dart';
 import '../models/track_frame_axis.dart';
 import 'storyboard_timeline_layout.dart';
 import '../models/drawing_block_move.dart';
@@ -2832,7 +2833,8 @@ class EditorSessionManager extends ChangeNotifier {
         // An attach group is INDIVISIBLE (R26 #36): a new regular layer
         // lands past the whole group, never between a base and its attach
         // rows — whether the active row is the base itself or one of its
-        // attach rows (W5).
+        // attach rows (W5). BOTH sides count: a below-only group used to
+        // slip through the above-only check and the new row split it.
         final active = activeLayer;
         final baseId = active == null
             ? null
@@ -2842,8 +2844,8 @@ class EditorSessionManager extends ChangeNotifier {
         if (baseId != null) {
           final cut = requireActiveCut;
           final groupEnd = attachedGroupEndIndex(baseId, cut.layers);
-          final baseIndex = cut.layers.indexWhere((l) => l.id == baseId);
-          if (groupEnd > baseIndex + 1) {
+          final groupStart = attachedGroupStartIndex(baseId, cut.layers);
+          if (groupEnd - groupStart > 1) {
             _layerController.addLayer(
               layer: newLayerFor(cut),
               insertionIndex: groupEnd,
@@ -2901,16 +2903,28 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     // [below…, base, above…]: a new below goes bottommost (before the
-    // existing belows), a new above topmost (past the group).
-    final insertionIndex = placement == AttachedPlacement.below
-        ? baseIndex -
-              attachedLayersOf(base.id, cut.layers)
-                  .where(
-                    (layer) =>
-                        layer.attachedPlacement == AttachedPlacement.below,
-                  )
-                  .length
+    // existing belows and their organizer folders), a new above topmost
+    // (past the group). The new row INHERITS the base's folderId — the
+    // group shares the base's folder, and a null row inside a folder's
+    // contiguous run would break the folder invariant.
+    var insertionIndex = placement == AttachedPlacement.below
+        ? attachedGroupStartIndex(base.id, cut.layers)
         : attachedGroupEndIndex(base.id, cut.layers);
+    var folderId = base.folderId;
+    // SIBLING rule: adding from an attach row that lives in an ORGANIZER
+    // folder ([연출]/[작감]…) with the same placement joins that folder —
+    // "add another part to this 공정" — landing right where the folder
+    // row sits (which keeps the folder's member run contiguous).
+    final activeOrganizer = cut.layers.folderById(active.folderId);
+    if (activeOrganizer != null &&
+        isAttachedLayer(active) &&
+        active.attachedPlacement == placement &&
+        attachOrganizerBaseOf(activeOrganizer, cut.layers) == base.id) {
+      folderId = activeOrganizer.id;
+      insertionIndex = cut.layers.indexWhere(
+        (layer) => layer.id == activeOrganizer.id,
+      );
+    }
     // UI-R23 #7 v2: the row is added EMPTY — the repository's
     // always-mirror reconciliation fills one own cel + base link per base
     // cel in the same write (and keeps doing so live as the base gains
@@ -2926,6 +2940,7 @@ class EditorSessionManager extends ChangeNotifier {
         attachedToLayerId: base.id,
         attachedPlacement: placement,
         attachedMode: mode,
+        folderId: folderId,
       ),
       insertionIndex: insertionIndex,
     );
@@ -3002,6 +3017,37 @@ class EditorSessionManager extends ChangeNotifier {
     }
     final activeLayerId = activeLayer!.id;
     _cutCommandCoordinator.createFolderFromLayer(
+      cutId: requireActiveCut.id,
+      layerId: activeLayerId,
+    );
+    _refreshAfterCutCommand(preferredActiveLayerId: activeLayerId);
+    notifyListeners();
+  }
+
+  /// Whether the active layer can be wrapped in an ATTACH-ORGANIZER
+  /// folder ([연출]/[작감]… — 공정별 묶음): an attach row not already
+  /// inside one (organizers are deliberately FLAT — one level, the brush
+  /// groups' precedent; constraints are easy to loosen and hard to
+  /// tighten).
+  bool get canGroupActiveAttachIntoFolder {
+    final active = activeLayer;
+    if (active == null || !isAttachedLayer(active)) {
+      return false;
+    }
+    final layers = activeCutOrNull?.layers ?? const <Layer>[];
+    final folder = layers.folderById(active.folderId);
+    return folder == null || attachOrganizerBaseOf(folder, layers) == null;
+  }
+
+  /// 공정 폴더 생성: wraps the active ATTACH row in an organizer folder
+  /// inside its group. Siblings join via [addAttachedLayer]'s sibling
+  /// rule; renaming is plain [renameLayer].
+  void groupActiveAttachIntoFolder() {
+    if (!canGroupActiveAttachIntoFolder) {
+      return;
+    }
+    final activeLayerId = activeLayer!.id;
+    _cutCommandCoordinator.createAttachOrganizerFolder(
       cutId: requireActiveCut.id,
       layerId: activeLayerId,
     );
@@ -6025,6 +6071,15 @@ class EditorSessionManager extends ChangeNotifier {
     final startsByLayer = <LayerId, List<int>>{};
     final beforeByLayer = <LayerId, Layer>{};
     for (final id in selection.spanLayerIds) {
+      // SYNCED attach rows never join a bulk retime: their commit form is
+      // the DISPLAY CLONE, and committing it would write the derived
+      // timeline onto the stored-empty row (the mirror follows the base's
+      // retime by derivation anyway). Id-gated — the synced-block UI
+      // stopped marking mirror entries ghost, so the non-ghost block scan
+      // below no longer excludes them.
+      if (_isSyncedAttachedLayerId(id)) {
+        continue;
+      }
       final display = _rangeLayerById(id);
       final commit = _commitLayerById(id);
       if (display == null || commit == null) {
@@ -7366,9 +7421,12 @@ class EditorSessionManager extends ChangeNotifier {
     }
     final selection = frameRangeSelection.value;
     if (selection != null) {
+      // SYNCED attach rows shift by DERIVATION (the base's shift carries
+      // the mirror); committing their display clone would write the
+      // derived timeline onto the stored-empty row.
       final rows = [
         for (final id in selection.spanLayerIds)
-          if (_rangeLayerById(id) != null) id,
+          if (!_isSyncedAttachedLayerId(id) && _rangeLayerById(id) != null) id,
       ];
       return rows.isEmpty
           ? null
@@ -7391,7 +7449,10 @@ class EditorSessionManager extends ChangeNotifier {
     }
     final layerId = activeLayerId;
     final index = _timelineController.currentFrameIndex;
-    if (layerId == null || index < 0 || _rangeLayerById(layerId) == null) {
+    if (layerId == null ||
+        index < 0 ||
+        _isSyncedAttachedLayerId(layerId) ||
+        _rangeLayerById(layerId) == null) {
       return null;
     }
     return (layerIds: [layerId], anchorIndex: index, anchorIsGlobal: false);
@@ -8077,6 +8138,7 @@ class EditorSessionManager extends ChangeNotifier {
     required int blockStartIndex,
   }) {
     if (!_blockMoveEligible(layerId)) {
+      _noticeSyncedAttachRefusal(layerId);
       return false;
     }
     final layer = _layerById(layerId);
@@ -8495,6 +8557,14 @@ class EditorSessionManager extends ChangeNotifier {
         instructionSources.isNotEmpty) {
       final sources = <({Layer commit, int offset})>[];
       for (final id in selection.spanLayerIds) {
+        // SYNCED attach rows never source a move (their commit form owns
+        // no timing) — they stay PASSENGERS, carried by the base's slide
+        // through derivation. Id-gated: the synced-block UI stopped
+        // marking mirror entries ghost, so the block filter below no
+        // longer excludes them.
+        if (_isSyncedAttachedLayerId(id)) {
+          continue;
+        }
         final display = _rangeLayerById(id);
         final commit = _commitLayerById(id);
         if (display == null || commit == null) {
@@ -8516,6 +8586,9 @@ class EditorSessionManager extends ChangeNotifier {
       if (sources.isEmpty &&
           cameraBefore == null &&
           instructionSources.isEmpty) {
+        // An all-synced span dies here — say why at the cursor, like the
+        // single-row path does.
+        _noticeSyncedAttachRefusal(selection.layerId);
         return false;
       }
       _rangeMoveMultiSources = sources;
@@ -8526,6 +8599,14 @@ class EditorSessionManager extends ChangeNotifier {
           : instructionSources;
       _rangeMoveSelectionBefore = selection;
       return true;
+    }
+    // A SYNCED attach row's blocks are borrowed exposures — the move
+    // refuses with the "edit the owner" pill (the synced-block UI made
+    // the row look grabbable; before it, the all-ghost timeline fell out
+    // of the block scan below on its own).
+    if (_isSyncedAttachedLayerId(selection.layerId)) {
+      _noticeSyncedAttachRefusal(selection.layerId);
+      return false;
     }
     final layer = _layerById(selection.layerId);
     if (layer == null) {
@@ -9870,6 +9951,16 @@ class EditorSessionManager extends ChangeNotifier {
     return null;
   }
 
+  /// The "edit the owner" cursor pill for a grab that landed on a SYNCED
+  /// attach row: the synced-block UI makes those rows look like ordinary
+  /// blocks, so a refused drag must SAY why instead of dying silently
+  /// (the pre-block ghost rows never invited the drag in the first place).
+  void _noticeSyncedAttachRefusal(LayerId layerId) {
+    if (_isSyncedAttachedLayerId(layerId)) {
+      cursorNotices.show(AppText.strings.noticeEditAttachOwner);
+    }
+  }
+
   /// Whether [layerId] names one of the active cut's SYNCED attach rows —
   /// the timing standdowns key off THIS (free attach rows author their
   /// own timeline like any drawing layer, UI-R21 #3).
@@ -10101,6 +10192,13 @@ class EditorSessionManager extends ChangeNotifier {
     }
     final byLayer = <LayerId, List<int>>{};
     for (final id in selection.spanLayerIds) {
+      // SYNCED attach rows hold no editable blocks of their own — their
+      // mirror blocks are non-ghost now (the synced-block UI), so without
+      // this gate a mirror-only selection would light up delete/comma
+      // verbs that then no-op against the stored-empty row.
+      if (_isSyncedAttachedLayerId(id)) {
+        continue;
+      }
       final layer = _rangeLayerById(id);
       if (layer == null) {
         continue;

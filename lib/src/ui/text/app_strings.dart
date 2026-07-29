@@ -78,6 +78,10 @@ class AppStrings {
   String get noticeLayerNotDrawable => _s('noticeLayerNotDrawable');
   String get noticeNothingToTransform => _s('noticeNothingToTransform');
 
+  /// Synced attach rows look like blocks but own no timing — a grab
+  /// redirects to the owner (the synced-block UI's cursor guidance).
+  String get noticeEditAttachOwner => _s('noticeEditAttachOwner');
+
   /// Shared dialog verbs — tabled once, reused by every dialog that
   /// adopts localization.
   String get commonCancel => _s('commonCancel');
@@ -747,6 +751,7 @@ class AppStrings {
     'noticeNoFrameHere': 'No frame here',
     'noticeLayerNotDrawable': 'This layer cannot be drawn on',
     'noticeNothingToTransform': 'Nothing to transform',
+    'noticeEditAttachOwner': 'Edit the owner layer',
     'commonCancel': 'Cancel',
     'commonApply': 'Apply',
     'commonRefresh': 'Refresh',
@@ -1319,6 +1324,7 @@ class AppStrings {
     'noticeNoFrameHere': 'フレームがありません',
     'noticeLayerNotDrawable': 'このレイヤーには描けません',
     'noticeNothingToTransform': '変形する絵がありません',
+    'noticeEditAttachOwner': '親レイヤーを編集してください',
     'commonCancel': 'キャンセル',
     'commonApply': '適用',
     'commonRefresh': '更新',
@@ -1960,6 +1966,7 @@ class AppStrings {
     'noticeNoFrameHere': '프레임이 존재하지 않습니다',
     'noticeLayerNotDrawable': '드로잉이 허용되지 않은 레이어입니다',
     'noticeNothingToTransform': '변형할 그림이 없습니다',
+    'noticeEditAttachOwner': '주인 레이어를 편집하세요',
     'commonCancel': '취소',
     'commonApply': '적용',
     'commonRefresh': '새로고침',
@@ -2598,6 +2605,7 @@ class AppStrings {
     'noticeNoFrameHere': 'Aucune image ici',
     'noticeLayerNotDrawable': 'Ce calque n\'accepte pas le dessin',
     'noticeNothingToTransform': 'Rien a transformer',
+    'noticeEditAttachOwner': 'Modifiez le calque parent',
     'commonCancel': 'Annuler',
     'commonApply': 'Appliquer',
     'commonRefresh': 'Actualiser',
@@ -3269,6 +3277,7 @@ class AppStrings {
     'noticeNoFrameHere': '此处没有帧',
     'noticeLayerNotDrawable': '该图层不可绘制',
     'noticeNothingToTransform': '没有可变形的内容',
+    'noticeEditAttachOwner': '请编辑父图层',
     'commonCancel': '取消',
     'commonApply': '应用',
     'commonRefresh': '刷新',

@@ -9,6 +9,7 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -53,22 +54,40 @@ void main() {
   });
 
   test('the display timeline mirrors the base blocks through the links as '
-      'GHOST exposures (same starts and lengths; unlinked and orphan '
-      'blocks stay empty)', () {
+      'ordinary BLOCK exposures (same starts and lengths; unlinked and '
+      'orphan blocks stay empty; the base\'s own ghosts stay ghost)', () {
     final timeline = attachedDisplayTimeline(attached: attached, base: base);
 
     expect(timeline.keys, [0, 5]);
-    // Ghost entries (UI-R20 #8): the attach row reads as a text-only
-    // mirror of the base — no block chrome, timing affordances stand
-    // down; drawing and playback still resolve the cels through them.
+    // The synced-block UI: mirror cels are real drawable cels, so the
+    // mirrored entries read as normal blocks — chrome, content tint and
+    // the active-cell ring all follow. Timing stand-downs are enforced
+    // row-wise (session gates + grip kind gates), not through ghost.
     expect(
       timeline[0],
-      const TimelineExposure.drawing(FrameId('a1'), length: 3, ghost: true),
+      const TimelineExposure.drawing(FrameId('a1'), length: 3),
     );
     expect(
       timeline[5],
-      const TimelineExposure.drawing(FrameId('a1'), length: 2, ghost: true),
+      const TimelineExposure.drawing(FrameId('a1'), length: 2),
     );
+
+    // The base's OWN ghost entries (repeat/hold instances) mirror WITH
+    // the flag — derived twice over, they stay text-only.
+    final ghostBase = base.copyWith(
+      timeline: {
+        ...base.timeline,
+        9: const TimelineExposure.drawing(
+          FrameId('b1'),
+          length: 2,
+          ghost: true,
+          ghostOwnerId: 'b1',
+        ),
+      },
+    );
+    final mirrored = attachedDisplayTimeline(attached: attached, base: ghostBase);
+    expect(mirrored[9]!.ghost, isTrue, reason: 'base ghosts inherit');
+    expect(mirrored[0]!.ghost, isFalse);
 
     // An orphan link (cel deleted off the attach layer) shows nothing.
     final orphaned = attached.copyWith(frames: const []);
@@ -171,6 +190,11 @@ void main() {
       const LayerId('attach'),
     ]);
     expect(attachedGroupEndIndex(const LayerId('base'), layers), 3);
+    expect(
+      attachedGroupStartIndex(const LayerId('base'), layers),
+      0,
+      reason: 'the group slice starts at the below side',
+    );
     // Signed, per-side numbering (UI-R20 #11) on the BASE's name
     // (R26 #29): one above and one below exist, so the next of each side
     // is A+2 / A-2.
@@ -181,5 +205,68 @@ void main() {
       'A-1',
       reason: 'each side numbers its own count',
     );
+  });
+
+  test('the group span swallows ATTACH-ORGANIZER folder rows on both '
+      'sides; foreign and empty folders end it', () {
+    final organizer = createFolderLayer(
+      id: const LayerId('공정'),
+      name: '연출',
+    );
+    final organized = attached.copyWith(
+      id: const LayerId('attach-b'),
+      folderId: const LayerId('공정'),
+    );
+    final belowOrganizer = createFolderLayer(
+      id: const LayerId('공정-below'),
+      name: '작감',
+    );
+    final organizedBelow = attached.copyWith(
+      id: const LayerId('attach-below-b'),
+      attachedPlacement: AttachedPlacement.below,
+      folderId: const LayerId('공정-below'),
+    );
+    final layers = [
+      organizedBelow,
+      belowOrganizer,
+      base,
+      attached,
+      organized,
+      organizer,
+    ];
+
+    expect(attachOrganizerBaseOf(organizer, layers), const LayerId('base'));
+    expect(
+      attachOrganizerBaseOf(belowOrganizer, layers),
+      const LayerId('base'),
+    );
+    expect(attachedGroupStartIndex(const LayerId('base'), layers), 0);
+    expect(attachedGroupEndIndex(const LayerId('base'), layers), 6);
+
+    // An EMPTY folder row cannot be attributed to a base — the span ends.
+    final emptyFolder = createFolderLayer(
+      id: const LayerId('empty'),
+      name: 'Empty',
+    );
+    final withEmpty = [base, attached, emptyFolder];
+    expect(attachOrganizerBaseOf(emptyFolder, withEmpty), isNull);
+    expect(attachedGroupEndIndex(const LayerId('base'), withEmpty), 2);
+
+    // A folder holding a NON-attach row is no organizer either.
+    final mixed = createFolderLayer(id: const LayerId('mixed'), name: 'M');
+    final stray = Layer(
+      id: const LayerId('stray'),
+      name: 'S',
+      frames: const [],
+      timeline: const {},
+      folderId: const LayerId('mixed'),
+    );
+    final withMixed = [
+      base,
+      attached.copyWith(folderId: const LayerId('mixed')),
+      stray,
+      mixed,
+    ];
+    expect(attachOrganizerBaseOf(mixed, withMixed), isNull);
   });
 }

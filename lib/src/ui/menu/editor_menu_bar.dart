@@ -611,6 +611,16 @@ class EditorMenuBar extends StatelessWidget {
           ? session.groupActiveLayerIntoFolder
           : null,
     ),
+    // 공정 폴더: wraps the active ATTACH row in an organizer folder inside
+    // its group ([연출]/[작감]… — adding from a row inside one lands its
+    // siblings there too). Flat: rows already inside an organizer refuse.
+    _item(
+      id: 'layer-group-attach-into-folder',
+      label: 'New attach folder',
+      onPressed: session.canGroupActiveAttachIntoFolder
+          ? session.groupActiveAttachIntoFolder
+          : null,
+    ),
     _item(
       id: 'layer-rename',
       label: 'Rename layer…',

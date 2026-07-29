@@ -258,5 +258,31 @@ String? folderStructureProblem(List<Layer> layers) {
       return 'Folder ${folder.id} does not sit directly above its members.';
     }
   }
+  // A folder holding attach rows is either the group's shared OUTER
+  // folder (the base lives in it too) or an ATTACH-ORGANIZER
+  // ([연출]/[작감]…) holding NOTHING BUT one base's attaches. Anything
+  // else — attaches of two bases, an attach mixed with unrelated rows, a
+  // folder nested inside an organizer — breaks the group-span derivation
+  // and would split the attach group across a folder boundary. (This is
+  // also what keeps organizers FLAT: a nested folder is a non-attach
+  // member.)
+  for (final folder in layers.folderLayers) {
+    final members = layers.directMembersOf(folder.id);
+    final attachBases = <LayerId>{
+      for (final member in members)
+        if (member.attachedToLayerId != null) member.attachedToLayerId!,
+    };
+    if (attachBases.isEmpty) {
+      continue;
+    }
+    final holdsBase = members.any((member) => attachBases.contains(member.id));
+    final pureOrganizer =
+        attachBases.length == 1 &&
+        members.every((member) => member.attachedToLayerId != null);
+    if (!holdsBase && !pureOrganizer) {
+      return 'Folder ${folder.id} mixes attach rows with other rows — it '
+          'must be the group\'s shared folder or a flat attach organizer.';
+    }
+  }
   return null;
 }
