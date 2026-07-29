@@ -62,7 +62,10 @@ void main() {
     expect(s.currentFrameIndex, 2);
   });
 
-  test('a GAP on the tapped track is a no-op (the V-row fx/eye rule)', () {
+  test('a GAP on the tapped track PARKS there — selecting a row makes its '
+      'current index the active state, and with no cut to take that state '
+      'is the parked stack (user 2026-07-29, superseding the UI-R18 #6 '
+      'no-op)', () {
     final s = twoTrackSession();
     addTearDown(s.dispose);
     // Slide track B's only cut right by 4: global 0..3 become its
@@ -74,11 +77,12 @@ void main() {
 
     s.selectTrackCutAtPlayhead(const TrackId('track-b'));
 
-    expect(s.activeCutId, const CutId('default-cut-1'));
-    expect(s.currentFrameIndex, 0);
+    expect(s.activeCutId, isNull, reason: 'the gap releases the cut');
+    expect(s.gapParkedGlobalFrame, 0, reason: 'parked where it stood');
+    expect(s.selectedTrackId, const TrackId('track-b'));
 
     // Past the gap the selection works and re-maps the local frame.
-    s.selectFrameIndex(6);
+    s.selectGlobalFrame(6);
     s.selectTrackCutAtPlayhead(const TrackId('track-b'));
     expect(s.activeCutId, const CutId('cut-b1'));
     expect(s.currentFrameIndex, 2, reason: 'global 6 - start 4');

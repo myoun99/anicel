@@ -90,17 +90,17 @@ void main() {
     expect(session.selectedTrackId, const TrackId('track-b'));
   });
 
-  test('tapping a track with a gap under the playhead stays a no-op', () {
+  test('tapping a track with a gap under the playhead PARKS there — the '
+      'row pick lands its current index even with no cut to take (user '
+      '2026-07-29, superseding UI-R18 #6\'s no-op)', () {
     final session = sessionForTwoTracks();
 
     // The playhead sits at global frame 0, which is track B's LEADING GAP.
-    // UI-R18 #6 keeps that a no-op for the ACTIVE CUT, and an active cut
-    // wins the selection reconciliation — so the addressed track does not
-    // move either.
     session.selectTrackCutAtPlayhead(const TrackId('track-b'));
 
-    expect(session.activeCutId, const CutId('cut-a'));
-    expect(session.selectedTrackId, const TrackId('track-a'));
+    expect(session.activeCutId, isNull, reason: 'the gap releases the cut');
+    expect(session.gapParkedGlobalFrame, 0);
+    expect(session.selectedTrackId, const TrackId('track-b'));
   });
 
   test('tapping a track takes the cut under the playhead when there is one', () {

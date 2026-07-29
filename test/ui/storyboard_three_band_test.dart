@@ -1,3 +1,5 @@
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -14,6 +16,8 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
+import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart'
+    show StoryboardThumbnailResolver;
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'storyboard_cut_block_probe.dart';
 
@@ -73,6 +77,7 @@ Future<void> _pump(
   WidgetTester tester, {
   Layer? storyboardLayer,
   double pixelsPerFrame = 12,
+  StoryboardThumbnailResolver? thumbnailFor,
 }) async {
   await tester.binding.setSurfaceSize(const Size(1400, 700));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -83,12 +88,43 @@ Future<void> _pump(
           project: _project(storyboardLayer: storyboardLayer),
           activeCutId: const CutId('cut-1'),
           pixelsPerFrame: pixelsPerFrame,
+          thumbnailFor: thumbnailFor,
         ),
       ),
     ),
   );
   await tester.pumpAndSettle();
 }
+
+/// Records every paragraph the painter lays down. An OUTLINED glyph is two
+/// paragraphs at one offset (outline pass + fill pass); a plain one is a
+/// single paragraph — so "two at the same spot" is the outline's
+/// fingerprint, and the offset itself is the anchor contract.
+class _ParagraphOffsetSpy implements Canvas {
+  final List<Offset> offsets = [];
+
+  @override
+  void drawParagraph(ui.Paragraph paragraph, Offset offset) {
+    offsets.add(offset);
+  }
+
+  @override
+  dynamic noSuchMethod(Invocation invocation) => null;
+}
+
+List<Offset> _paintedParagraphOffsets(WidgetTester tester) {
+  final spy = _ParagraphOffsetSpy();
+  cutBlocksPainter(tester).paint(
+    spy,
+    tester.getSize(
+      find.byKey(const ValueKey<String>('storyboard-cut-blocks-band-track')),
+    ),
+  );
+  return spy.offsets;
+}
+
+int _paragraphsAt(List<Offset> offsets, bool Function(Offset) where) =>
+    offsets.where(where).length;
 
 void main() {
   testWidgets('the block is three bands, and they tile it exactly', (
@@ -243,5 +279,57 @@ void main() {
     expect(block.cells, hasLength(3), reason: 'the panels themselves stay');
     expect(block.cellNames, isEmpty);
     expect(block.cellCommaLabels, isEmpty);
+  });
+
+  group('#15 R3 — the writing anchors (user 2026-07-29)', () {
+    testWidgets('a panel\'s frame name sits at its slot\'s TOP-LEFT — the '
+        'cut block title\'s anchor — and is OUTLINED: two paragraphs share '
+        'the offset', (tester) async {
+      await _pump(
+        tester,
+        storyboardLayer: _dividedStoryboardLayer('cut-1'),
+        thumbnailFor: (cut, frame) => null,
+      );
+      final block = requireCutBlock(tester, 'cut-1');
+      final offsets = _paintedParagraphOffsets(tester);
+
+      // Panel b starts at frame 4; 12 px/frame; the name's inset is half
+      // the block padding (2) with 1px down — the title corner, not the
+      // block-display centre it used to be.
+      final expected = Offset(
+        block.rect.left + 4 * 12.0 + 2,
+        block.strip.top + 1,
+      );
+      expect(
+        _paragraphsAt(offsets, (o) => (o - expected).distance < 0.01),
+        greaterThanOrEqualTo(2),
+        reason: 'outline pass + fill pass, one anchor',
+      );
+    });
+
+    testWidgets('the cut TITLE is outlined too — the cells\' one writing '
+        'rule on every label, no scrim anywhere', (tester) async {
+      await _pump(tester, storyboardLayer: _dividedStoryboardLayer('cut-1'));
+      final block = requireCutBlock(tester, 'cut-1');
+      final offsets = _paintedParagraphOffsets(tester);
+
+      // The title hangs at the top band's left end (padding 4). Its glyph
+      // height floats with the theme — a glyph taller than the band
+      // centres a hair ABOVE its top — so the pin is the column plus "two
+      // paragraphs, one offset" in the band's neighbourhood over the strip.
+      final titleHits = offsets
+          .where(
+            (o) =>
+                (o.dx - (block.rect.left + 4)).abs() < 0.01 &&
+                o.dy < block.strip.top,
+          )
+          .toList();
+      expect(titleHits.length, greaterThanOrEqualTo(2));
+      expect(
+        titleHits.toSet().length,
+        lessThan(titleHits.length),
+        reason: 'at least one offset carries BOTH passes',
+      );
+    });
   });
 }

@@ -399,13 +399,21 @@ class StoryboardCutBlocksPainter extends CustomPainter {
   TextStyle get _labelStyle =>
       baseTextStyle.merge(const TextStyle(fontSize: 11));
 
-  TextStyle get _titleStyle => _labelStyle;
+  // The CELLS' writing convention on every cut-block label too (user
+  // 2026-07-29, "cut blocks and storyboard blocks read as one"): panel ink
+  // carried by the shared outline — one rule on any ground, band or
+  // picture, in place of scrims and per-surface colours.
+  TextStyle get _titleStyle => _labelStyle.copyWith(
+    color: timelineDrawingInkColor,
+    fontWeight: FontWeight.bold,
+  );
 
-  TextStyle get _emptyLayerStyle =>
-      _labelStyle.copyWith(color: colorScheme.onSurfaceVariant);
+  TextStyle get _emptyLayerStyle => _labelStyle.copyWith(
+    color: timelineDrawingInkColor.withValues(alpha: 0.72),
+  );
 
   TextStyle get _totalStyle => _labelStyle.copyWith(
-    color: colorScheme.onSurfaceVariant,
+    color: timelineDrawingInkColor.withValues(alpha: 0.72),
     // R27 #3: bold — the readout was too easy to miss.
     fontWeight: FontWeight.w700,
   );
@@ -482,11 +490,13 @@ class StoryboardCutBlocksPainter extends CustomPainter {
       return;
     }
     if (block.bandsFolded) {
-      // FOLDED: nowhere to put the writing but over the picture, so the
-      // scrim comes back for exactly this case.
+      // FOLDED: nowhere to put the writing but over the picture — the
+      // shared outline keeps it readable there, exactly as it does on
+      // every panel cell (the scrim this replaced was a second answer to
+      // the same question).
       canvas.save();
       canvas.clipRect(inner);
-      _paintScrimmed(
+      _paintAnchoredLabel(
         canvas,
         text: block.title,
         style: _titleStyle,
@@ -497,7 +507,7 @@ class StoryboardCutBlocksPainter extends CustomPainter {
       );
       final total = block.total;
       if (total != null) {
-        _paintScrimmed(
+        _paintAnchoredLabel(
           canvas,
           text: total,
           style: _totalStyle,
@@ -561,20 +571,48 @@ class StoryboardCutBlocksPainter extends CustomPainter {
     if (text.isEmpty || band.width <= 0) {
       return;
     }
-    final glyph = timelineGlyphPainter(
-      text,
-      style,
-      maxWidth: math.max(0, band.width - _padding * 2),
-    );
+    final maxWidth = math.max(0.0, band.width - _padding * 2);
+    final glyph = timelineGlyphPainter(text, style, maxWidth: maxWidth);
     final dx = alignRight
         ? band.right - _padding - glyph.width
         : band.left + _padding;
-    canvas.save();
-    glyph.paint(
+    paintTimelineOutlinedGlyph(
       canvas,
       Offset(dx, band.top + (band.height - glyph.height) / 2),
+      text,
+      style,
+      maxWidth: maxWidth,
+      outlineColor: timelineLaneInkColor,
+      outlineWidth: timelineGlyphOutlineWidthFor(style.fontSize ?? 11),
     );
-    canvas.restore();
+  }
+
+  /// A corner-anchored outlined label — the folded block's writing (and
+  /// nothing else's: band text centres itself vertically instead).
+  void _paintAnchoredLabel(
+    Canvas canvas, {
+    required String text,
+    required TextStyle style,
+    required double maxWidth,
+    required Offset anchor,
+    required bool alignRight,
+    required bool alignBottom,
+  }) {
+    if (text.isEmpty || maxWidth <= 0) {
+      return;
+    }
+    final glyph = timelineGlyphPainter(text, style, maxWidth: maxWidth);
+    final left = alignRight ? anchor.dx - glyph.width : anchor.dx;
+    final top = alignBottom ? anchor.dy - glyph.height : anchor.dy;
+    paintTimelineOutlinedGlyph(
+      canvas,
+      Offset(left, top),
+      text,
+      style,
+      maxWidth: maxWidth,
+      outlineColor: timelineLaneInkColor,
+      outlineWidth: timelineGlyphOutlineWidthFor(style.fontSize ?? 11),
+    );
   }
 
   /// One picture per PANEL, each in its own slice of the strip.
@@ -671,15 +709,13 @@ class StoryboardCutBlocksPainter extends CustomPainter {
           crossExtent: slot.height,
         ),
       );
-      final glyph = timelineGlyphPainter(name, nameStyle);
-      final firstCellCentre =
-          slot.left + math.min(_cellExtent, slot.width) / 2;
+      // TOP-LEFT, the cut block title's own anchor (user 2026-07-29):
+      // thumbnail-display writing sits where the sheet's cut number does,
+      // not centred the way block-display glyphs are — the two thumbnail
+      // surfaces read as one.
       paintTimelineOutlinedGlyph(
         canvas,
-        Offset(
-          firstCellCentre - glyph.width / 2,
-          slot.top + (slot.height - glyph.height) / 2,
-        ),
+        Offset(slot.left + _padding / 2, slot.top + 1),
         name,
         nameStyle,
         outlineColor: timelineLaneInkColor,
@@ -744,41 +780,6 @@ class StoryboardCutBlocksPainter extends CustomPainter {
       source,
       Rect.fromLTWH(slot.left, slot.top, drawn.width, drawn.height),
       Paint()..filterQuality = FilterQuality.low,
-    );
-  }
-
-  /// A label on the translucent strip that keeps it readable over the
-  /// picture (the widget scrim, painted).
-  void _paintScrimmed(
-    Canvas canvas, {
-    required String text,
-    required TextStyle style,
-    required double maxWidth,
-    required Offset anchor,
-    required bool alignRight,
-    required bool alignBottom,
-  }) {
-    if (text.isEmpty || maxWidth <= 0) {
-      return;
-    }
-    const scrimPadding = EdgeInsets.symmetric(horizontal: 3, vertical: 1);
-    final glyph = timelineGlyphPainter(
-      text,
-      style,
-      maxWidth: math.max(0, maxWidth - scrimPadding.horizontal),
-    );
-    final width = glyph.width + scrimPadding.horizontal;
-    final height = glyph.height + scrimPadding.vertical;
-    final left = alignRight ? anchor.dx - width : anchor.dx;
-    final top = alignBottom ? anchor.dy - height : anchor.dy;
-    final scrim = Rect.fromLTWH(left, top, width, height);
-    canvas.drawRRect(
-      RRect.fromRectAndRadius(scrim, const Radius.circular(3)),
-      Paint()..color = colorScheme.surface.withValues(alpha: 0.65),
-    );
-    glyph.paint(
-      canvas,
-      Offset(scrim.left + scrimPadding.left, scrim.top + scrimPadding.top),
     );
   }
 
