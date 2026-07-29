@@ -14,11 +14,15 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_section_defaults.dart'
+    show createTrackSeLayer, seLayerIdForTrack;
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
+import 'package:anicel/src/models/timeline_frame_range.dart'
+    show TimelineFrameRangeSelection;
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track_frame_range.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -1271,6 +1275,270 @@ void main() {
       expect(rulerShift, blockShift);
     });
   });
+
+  group('selection unification (2026-07-29 real-device round)', () {
+    Track trackWithSound(List<Cut> cuts) => Track(
+      id: const TrackId('track-a'),
+      name: 'Track A',
+      cuts: cuts,
+      seLayers: [createTrackSeLayer(trackId: const TrackId('track-a'), slot: 1)],
+    );
+
+    testWidgets('dragging DOWN from an S row reports a POSITIVE row reach — '
+        'the rail stacks S rows above the V row, and the real-device '
+        'inversion lived exactly here', (tester) async {
+      final selection = ValueNotifier<TrackFrameRangeSelection?>(null);
+      addTearDown(selection.dispose);
+      final deltas = <int>[];
+
+      await _pumpStoryboardPanel(
+        tester,
+        _project([
+          trackWithSound([_cut('cut-a', name: 'Cut A')]),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+        seSelect: StoryboardSeSelectCallbacks(
+          selectedRange: selection,
+          onDrag:
+              ({
+                required LayerId layerId,
+                required int anchorGlobalFrame,
+                required int headGlobalFrame,
+                int headRowDelta = 0,
+              }) {
+                deltas.add(headRowDelta);
+              },
+          onClear: () => selection.value = null,
+        ),
+      );
+
+      final seRow = tester.getRect(
+        find.byKey(
+          ValueKey<String>(
+            'storyboard-se-press-${seLayerIdForTrack(const TrackId('track-a'), 1)}',
+          ),
+        ),
+      );
+      // Press mid-row, then pull one full S-row height DOWNWARD — into the
+      // V row sitting below.
+      final gesture = await tester.startGesture(
+        Offset(seRow.left + 8 * 3.0, seRow.top + seRow.height / 2),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      await gesture.moveBy(Offset(8 * 2.0, seRow.height));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(deltas, isNotEmpty);
+      expect(
+        deltas.last,
+        1,
+        reason: 'downward on screen must read as +1 — toward the V row',
+      );
+    });
+
+    testWidgets('the V row answers a select drag PAST its last cut: an '
+        'empty cell out there is still a cell', (tester) async {
+      final selection = ValueNotifier<TrackFrameRangeSelection?>(null);
+      addTearDown(selection.dispose);
+      final dragSteps = <(int, int)>[];
+
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([
+          _cut('cut-a', name: 'Cut A'),
+          _cut('cut-b', name: 'Cut B'),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+        cutSelect: StoryboardCutSelectCallbacks(
+          selectedRange: selection,
+          onDrag:
+              ({
+                required TrackId trackId,
+                required int anchorGlobalFrame,
+                required int headGlobalFrame,
+                int headRowDelta = 0,
+              }) {
+                dragSteps.add((anchorGlobalFrame, headGlobalFrame));
+              },
+          onClear: () => selection.value = null,
+        ),
+      );
+
+      // Both cuts end at frame 48; press at frame 60, in the endless
+      // runway where no block has ever been.
+      final row = tester.getRect(
+        find.byKey(
+          const ValueKey<String>('storyboard-track-timeline-area-track-a'),
+        ),
+      );
+      final gesture = await tester.startGesture(
+        Offset(row.left + 8 * 60.0 + 4, row.center.dy),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      await gesture.moveBy(const Offset(8 * 6.0, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(dragSteps, isNotEmpty);
+      expect(dragSteps.first.$1, 60);
+      expect(dragSteps.last.$2, 66);
+    });
+
+    testWidgets('the strip gesture claims only where a strip EXISTS: over '
+        'the cut it selects panels, over a gap the drag falls through to '
+        'the cut-axis gesture instead of dying', (tester) async {
+      final trackSelection = ValueNotifier<TrackFrameRangeSelection?>(null);
+      final stripSelection = ValueNotifier<TimelineFrameRangeSelection?>(null);
+      addTearDown(trackSelection.dispose);
+      addTearDown(stripSelection.dispose);
+      final cutDrags = <(int, int)>[];
+      final stripDrags = <(LayerId, int, int)>[];
+
+      await _pumpStoryboardPanel(
+        tester,
+        _singleTrackProject([
+          _cut(
+            'cut-a',
+            name: 'Cut A',
+            layers: [_animationLayer('anim-a'), _storyboardLayer('sb-a')],
+          ),
+          // A 10-frame gap before cut-b: frames 24..33 belong to no cut.
+          _cut('cut-b', name: 'Cut B').copyWith(leadingGapFrames: 10),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+        cutSelect: StoryboardCutSelectCallbacks(
+          selectedRange: trackSelection,
+          onDrag:
+              ({
+                required TrackId trackId,
+                required int anchorGlobalFrame,
+                required int headGlobalFrame,
+                int headRowDelta = 0,
+              }) {
+                cutDrags.add((anchorGlobalFrame, headGlobalFrame));
+              },
+          onClear: () => trackSelection.value = null,
+        ),
+        stripSelect: StoryboardStripSelectCallbacks(
+          selection: stripSelection,
+          onDrag:
+              ({
+                required LayerId layerId,
+                required int anchorIndex,
+                required int headIndex,
+              }) {
+                stripDrags.add((layerId, anchorIndex, headIndex));
+              },
+          onClear: () {},
+        ),
+      );
+
+      final blockA = cutBlockScreenRect(tester, 'cut-a');
+
+      // ON the cut (it has a storyboard row): the strip owns the drag.
+      var gesture = await tester.startGesture(
+        Offset(blockA.left + 8 * 4.0, blockA.center.dy),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      await gesture.moveBy(const Offset(8 * 4.0, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(stripDrags, isNotEmpty);
+      expect(stripDrags.last.$1, const LayerId('sb-a'));
+      expect(cutDrags, isEmpty);
+
+      // IN the gap, same height: the strip has nothing there — the press
+      // must fall through and paint a cut-axis run.
+      stripDrags.clear();
+      gesture = await tester.startGesture(
+        Offset(blockA.left + 8 * 28.0, blockA.center.dy),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      await gesture.moveBy(const Offset(8 * 4.0, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(stripDrags, isEmpty);
+      expect(cutDrags, isNotEmpty);
+      expect(cutDrags.first.$1, 28);
+    });
+
+    testWidgets('the range selection draws the timeline\'s ONE band across '
+        'its spanned rows — S row top to V row bottom, rounded and '
+        'bordered', (tester) async {
+      final selection = ValueNotifier<TrackFrameRangeSelection?>(null);
+      addTearDown(selection.dispose);
+      const seLayerId = LayerId('track-a-se-1');
+
+      await _pumpStoryboardPanel(
+        tester,
+        _project([
+          trackWithSound([_cut('cut-a', name: 'Cut A')]),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+        cutSelect: StoryboardCutSelectCallbacks(
+          selectedRange: selection,
+          onDrag:
+              ({
+                required TrackId trackId,
+                required int anchorGlobalFrame,
+                required int headGlobalFrame,
+                int headRowDelta = 0,
+              }) {},
+          onClear: () => selection.value = null,
+        ),
+      );
+
+      expect(
+        find.byKey(const ValueKey<String>('storyboard-frame-range-selection')),
+        findsNothing,
+      );
+
+      selection.value = const TrackFrameRangeSelection(
+        trackId: TrackId('track-a'),
+        anchorRow: LayerRowAddress(seLayerId),
+        rows: [
+          LayerRowAddress(seLayerId),
+          TrackRowAddress(TrackId('track-a')),
+        ],
+        startFrame: 0,
+        endFrameExclusive: 24,
+      );
+      await tester.pump();
+
+      final band = tester.getRect(
+        find.byKey(const ValueKey<String>('storyboard-frame-range-selection')),
+      );
+      final seRow = tester.getRect(
+        find.byKey(
+          const ValueKey<String>('storyboard-se-press-track-a-se-1'),
+        ),
+      );
+      final vRow = tester.getRect(
+        find.byKey(
+          const ValueKey<String>('storyboard-track-timeline-area-track-a'),
+        ),
+      );
+      expect(band.top, moreOrLessEquals(seRow.top, epsilon: 0.01));
+      expect(band.bottom, moreOrLessEquals(vRow.bottom, epsilon: 0.01));
+      expect(band.left, moreOrLessEquals(vRow.left, epsilon: 0.01));
+      expect(band.width, moreOrLessEquals(8.0 * 24, epsilon: 0.01));
+    });
+  });
 }
 
 Future<void> _pumpStoryboardPanel(
@@ -1281,6 +1549,8 @@ Future<void> _pumpStoryboardPanel(
   StoryboardStripEdgeCallbacks? stripEdges,
   StoryboardCutMoveCallbacks? cutMove,
   StoryboardCutSelectCallbacks? cutSelect,
+  StoryboardSeSelectCallbacks? seSelect,
+  StoryboardStripSelectCallbacks? stripSelect,
   StoryboardMovieEndCallbacks? movieEnd,
   ValueChanged<TrackId>? onSelectTrack,
   int? playheadGlobalFrame,
@@ -1320,6 +1590,8 @@ Future<void> _pumpStoryboardPanel(
           stripEdges: stripEdges,
           cutMove: cutMove,
           cutSelect: cutSelect,
+          seSelect: seSelect,
+          stripSelect: stripSelect,
           movieEnd: movieEnd,
           onSelectTrack: onSelectTrack,
           playheadFrame: playheadGlobalFrame == null

@@ -140,26 +140,17 @@ void main() {
       findsOneWidget,
     );
 
-    // The TIMELINE does not follow: its rail shows the CUT's row — the
-    // drawing target, which this pick has no business moving (the two row
-    // selections are separate). The S row it draws is a cut-local
-    // projection of the same track layer, but selecting the projection and
-    // selecting the original are different acts.
+    // The pick LANDS the editing focus (user 2026-07-29, superseding
+    // #741's "row picks never move it"): the active cut is RELEASED and
+    // the playhead parks in place — so the timeline, a cut-scoped panel,
+    // has no selected cel row to show until a cut is taken again.
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-mode-timeline-button')),
     );
     await tester.pumpAndSettle();
     expect(
-      find.descendant(
-        of: find.byKey(const ValueKey<String>('timeline-layer-row-se-row-1')),
-        matching: find.byKey(const ValueKey<String>('timeline-selected-layer')),
-      ),
-      findsNothing,
-    );
-    // Still exactly one selected row THERE, on the cut's own cel.
-    expect(
       find.byKey(const ValueKey<String>('timeline-selected-layer')),
-      findsOneWidget,
+      findsNothing,
     );
   });
 

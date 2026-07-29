@@ -792,11 +792,21 @@ class EditorSessionManager extends ChangeNotifier {
   /// selection's business.
   void selectRow(TimelineRowAddress row) {
     switch (row) {
-      case LayerRowAddress():
+      case LayerRowAddress(:final layerId):
         if (editingInteractionBusy) {
           return;
         }
-        if (_storeStoryboardRow(row)) {
+        // The row lives on a track, so picking it picks that track too —
+        // the rail's row selection and the track selection must not
+        // disagree (the range drag that follows a press resolves its rows
+        // against the SELECTED track's rail).
+        final owner = _trackSeAnywhere(layerId)?.track;
+        var trackMoved = false;
+        if (owner != null && selectedTrackId != owner.id) {
+          _editingSession.setSelectedTrackId(owner.id);
+          trackMoved = true;
+        }
+        if (_storeStoryboardRow(row) || trackMoved) {
           notifyListeners();
         }
       case TrackRowAddress(:final trackId):
@@ -6909,20 +6919,27 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   /// The storyboard rail's rows for [trackId], in the order the panel
-  /// stacks them: the CUT row, then that track's SE rows.
+  /// stacks them: the SE rows top-down (highest slot first — slot 0 sits
+  /// just above the cut row), then the CUT row at the bottom.
   ///
   /// A range drag walks THIS list (feedback #14, the timeline's Excel-style
-  /// cross-row select). Only track-GLOBAL rows are on it — the strip is a
-  /// cut-owned row on the other axis, so it cannot be reached by a row
-  /// delta, and the clamp below is therefore the whole of the kind guard
-  /// (the row-move precedent: what is not on the list is unreachable, so
-  /// there is nothing to refuse).
+  /// cross-row select), so the list order IS the visual order — a positive
+  /// row delta must mean "downward on screen". It used to lead with the
+  /// cut row, which inverted every cross-row drag: dragging from an S row
+  /// down toward the V row walked the list AWAY from it (the real-device
+  /// "row-span select does nothing" report).
+  ///
+  /// Only track-GLOBAL rows are on it — the strip is a cut-owned row on
+  /// the other axis, so it cannot be reached by a row delta, and the clamp
+  /// below is therefore the whole of the kind guard (the row-move
+  /// precedent: what is not on the list is unreachable, so there is
+  /// nothing to refuse).
   List<TimelineRowAddress> _storyboardRailRows(TrackId trackId) {
     final track = _trackById(trackId);
     return [
-      TrackRowAddress(trackId),
       if (track != null)
-        for (final layer in track.seLayers) LayerRowAddress(layer.id),
+        for (final layer in track.seLayers.reversed) LayerRowAddress(layer.id),
+      TrackRowAddress(trackId),
     ];
   }
 
@@ -6930,6 +6947,22 @@ class EditorSessionManager extends ChangeNotifier {
     for (final track in _repository.requireProject().tracks) {
       if (track.id == trackId) {
         return track;
+      }
+    }
+    return null;
+  }
+
+  /// The track that owns [layerId] as one of its SE lanes, with the GLOBAL
+  /// layer itself — ANY track, not just the selected one. A storyboard
+  /// drag anchors on whatever row sits under the pointer, and resolving
+  /// through [selectedTrackId]/[trackSeGlobalLayerById] (both active-track
+  /// bound) made every verb on an unselected track's row a silent no-op.
+  ({Track track, Layer layer})? _trackSeAnywhere(LayerId layerId) {
+    for (final track in _repository.requireProject().tracks) {
+      for (final layer in track.seLayers) {
+        if (layer.id == layerId) {
+          return (track: track, layer: layer);
+        }
       }
     }
     return null;
@@ -6945,7 +6978,9 @@ class EditorSessionManager extends ChangeNotifier {
       case TrackRowAddress():
         return axis.cutBlockAt;
       case LayerRowAddress(:final layerId):
-        final layer = trackSeGlobalLayerById(layerId);
+        // Resolved on the row's OWN track: the active-track lookup left
+        // every unselected track's sounds snapless.
+        final layer = _trackSeAnywhere(layerId)?.layer;
         return layer == null ? null : (index) => exposureBlockAt(layer, index);
     }
   }
@@ -7036,13 +7071,18 @@ class EditorSessionManager extends ChangeNotifier {
     required int headGlobalFrame,
     int headRowDelta = 0,
   }) {
-    if (trackSeGlobalLayerById(layerId) == null) {
+    // The anchor row names its own track: gating on the ACTIVE track's SE
+    // list (and stating the selection on [selectedTrackId]) killed every
+    // drag that anchored on an unselected track's row — the rail lookup
+    // missed, so a cross-row reach collapsed to the anchor alone.
+    final owner = _trackSeAnywhere(layerId)?.track;
+    if (owner == null) {
       return;
     }
     // The SAME path the cut row takes — one select-drag step for the rail,
     // not one per row kind.
     _updateTrackRangeSelection(
-      trackId: selectedTrackId,
+      trackId: owner.id,
       anchorRow: LayerRowAddress(layerId),
       anchorGlobalFrame: anchorGlobalFrame,
       headGlobalFrame: headGlobalFrame,
@@ -10350,11 +10390,12 @@ class EditorSessionManager extends ChangeNotifier {
         return;
       }
     }
-    // A GAP on the tapped track stays a no-op for the active cut (UI-R18
-    // #6, the V-row fx/eye rule). The tapped track is still RECORDED
-    // above, so it is what the session addresses the moment the active cut
-    // goes away — a scrub into a gap no longer throws the selection back
-    // to the first track.
+    // A GAP on the tapped track PARKS there (user 2026-07-29, superseding
+    // UI-R18 #6's no-op): selecting a row makes its current index the
+    // active state, and with no cut to take that state is the parked
+    // track stack — the display path (#768) that made a gap worth
+    // standing on.
+    parkGlobalFrame(globalFrame);
   }
 
   /// THE canonical seek: a global frame in. Inside a cut it selects

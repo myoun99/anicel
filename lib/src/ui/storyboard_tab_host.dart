@@ -454,15 +454,21 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   }
                 },
                 activeLayerId: _session.activeLayerId,
-                // The rail speaks ROW ADDRESSES, and its selection is its
-                // OWN: picking a row here never moves the drawing target
-                // (the CUT's row, which the timeline rail highlights and
-                // each cut remembers). A V row still promotes that track's
-                // playhead-index cut (UI-R18 #6) — that is the track
-                // selection landing, not a row selection following.
+                // The rail speaks ROW ADDRESSES, and selecting one lands
+                // the editing focus on it (user 2026-07-29, superseding
+                // #741's "row picks never move the focus"): an S row
+                // releases the active cut and PARKS where the playhead
+                // stands — the same landing its own cell press makes — and
+                // a V row promotes that track's playhead-index cut (gap =
+                // park, the same sentence).
                 selectedRow: _session.selectedRow,
-                onSelectLayer: (layerId) =>
-                    _session.selectRow(LayerRowAddress(layerId)),
+                onSelectLayer: (layerId) {
+                  _session.selectRow(LayerRowAddress(layerId));
+                  final frame = storyboardPlayheadFrame(_session);
+                  if (frame != null) {
+                    parkStoryboardGlobalFrame(_session, frame);
+                  }
+                },
                 onSelectTrack: (trackId) =>
                     _session.selectRow(TrackRowAddress(trackId)),
                 pixelsPerFrame: widget.pixelsPerFrame,

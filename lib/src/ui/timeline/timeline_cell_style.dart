@@ -145,8 +145,11 @@ Color storyboardCutBlockBackgroundColor(
   if (!rangeSelected) {
     return base;
   }
+  // 0.12 = the timeline's selected-CELL tint: the shared range-selection
+  // band ([timelineRangeSelectionBandDecoration], 0.18) rides above this,
+  // and the pair must sum to the timeline's look, not overshoot it.
   return Color.alphaBlend(
-    timelineSelectedFrameBorderColor.withValues(alpha: 0.28),
+    timelineSelectedFrameBorderColor.withValues(alpha: 0.12),
     base,
   );
 }

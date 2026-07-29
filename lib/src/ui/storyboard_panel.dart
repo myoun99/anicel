@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show Listenable, ValueListenable;
 import 'package:flutter/gestures.dart'
     show DragStartBehavior, PointerHoverEvent, kPrimaryButton;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart' show BoxHitTestResult, RenderProxyBox;
 
 import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
@@ -46,6 +47,7 @@ import 'timeline/timeline_cell_style.dart'
     show
         timelineBaseGridAlpha,
         timelineDrawingInkColor,
+        timelineRangeSelectionBandDecoration,
         timelineSelectedFrameBorderColor;
 import 'timeline/timeline_exposure_comma_drag_handle.dart'
     show TimelineBlockEdgeGrip, timelineBlockEdgeGripPlacement;
@@ -1206,6 +1208,125 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     );
   }
 
+  /// One track's whole strip section: its rows in a column, with the
+  /// track-axis range selection drawn OVER them as the timeline's one
+  /// selection band (R27 #14 — cells, lanes and now this rail draw exactly
+  /// the same band, so a storyboard span cannot read as a different kind
+  /// of selection).
+  Widget _trackGroupSection(
+    Track track,
+    int index,
+    List<StoryboardTimelineLayoutEntry> entries,
+    double width,
+    TimelineScale scale,
+    List<Widget> seRows,
+  ) {
+    return Stack(
+      children: [
+        Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: _stripRowsForTrack(
+            track,
+            index,
+            entries,
+            width,
+            scale,
+            seRows,
+          ),
+        ),
+        Positioned.fill(
+          child: IgnorePointer(child: _trackRangeBand(track, scale)),
+        ),
+      ],
+    );
+  }
+
+  /// The band itself: [selection.spanRows] top to bottom — intervening
+  /// twirled-open lanes ride under it, exactly as the timeline's band
+  /// covers lanes between two covered layer rows.
+  Widget _trackRangeBand(Track track, TimelineScale scale) {
+    final selectedRange =
+        widget.cutSelect?.selectedRange ?? widget.seSelect?.selectedRange;
+    if (selectedRange == null) {
+      return const SizedBox.shrink();
+    }
+    return ValueListenableBuilder<TrackFrameRangeSelection?>(
+      valueListenable: selectedRange,
+      builder: (context, selection, _) {
+        if (selection == null ||
+            selection.trackId != track.id ||
+            scale.pixelsPerFrame <= 0) {
+          return const SizedBox.shrink();
+        }
+        final spanned = selection.spanRows.toSet();
+        double y = 0;
+        double? top;
+        double? bottom;
+        for (final (address, height) in _trackGroupRowGeometry(track)) {
+          if (address != null && spanned.contains(address)) {
+            top ??= y;
+            bottom = y + height;
+          }
+          y += height;
+        }
+        if (top == null || bottom == null) {
+          return const SizedBox.shrink();
+        }
+        return Stack(
+          children: [
+            Positioned(
+              left: scale.leftForFrame(selection.startFrame),
+              top: top,
+              width: selection.lengthFrames * scale.pixelsPerFrame,
+              height: bottom - top,
+              child: Semantics(
+                key: const ValueKey<String>(
+                  'storyboard-frame-range-selection',
+                ),
+                label: 'selected frame range',
+                container: true,
+                child: DecoratedBox(
+                  decoration: timelineRangeSelectionBandDecoration,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  /// The group's rows in VISUAL order with their heights — mirrored from
+  /// [_seStripRowsForTrack] and [_stripRowsForTrack] row for row. A new
+  /// row kind must land in both, or the band drifts off its rows.
+  List<(TimelineRowAddress?, double)> _trackGroupRowGeometry(Track track) {
+    final slots = <(TimelineRowAddress?, double)>[];
+    for (var slot = _seSlotCount(track) - 1; slot >= 0; slot--) {
+      final layer = _trackSeAt(track, slot);
+      slots.add((
+        layer == null ? null : LayerRowAddress(layer.id),
+        _seRowHeight,
+      ));
+      if (widget.expandedSeAudioRows.contains(
+        StoryboardPanel.seRowKey(track, slot),
+      )) {
+        slots.add((null, _audioLaneHeight));
+        // The SE transform strips: the group header, plus the property
+        // lanes when twirled open ([_seTransformLaneStrips]'s shape).
+        slots.add((null, _transformLaneHeight));
+        if (widget.expandedTransformGroups.contains(
+          StoryboardPanel.seRowKey(track, slot),
+        )) {
+          for (var lane = 0; lane < 5; lane++) {
+            slots.add((null, _transformLaneHeight));
+          }
+        }
+      }
+    }
+    slots.add((TrackRowAddress(track.id), widget.trackLaneHeight));
+    return slots;
+  }
+
   /// One track group's strip rows, mirroring [_railRowsForTrack] row for
   /// row (heights must stay in lockstep — the two columns share no
   /// scaffolding).
@@ -1228,6 +1349,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           activeCutId: widget.activeCutId,
           onRowFramePress: widget.onRowFramePress,
           laneHeight: widget.trackLaneHeight,
+          width: width,
           stripEdges: widget.stripEdges,
           cutMove: widget.cutMove,
           cutSelect: widget.cutSelect,
@@ -1802,7 +1924,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                               index < project.tracks.length;
                                               index++
                                             )
-                                              ..._stripRowsForTrack(
+                                              _trackGroupSection(
                                                 project.tracks[index],
                                                 index,
                                                 layoutEntries
@@ -2728,7 +2850,9 @@ class _StoryboardSeRow extends StatelessWidget {
       // does. Translucent and mounted BEFORE the grips, so the edges keep
       // comma-drag priority…
       // The selection wash — colour only, over the row's content the way
-      // the timeline's selected cells tint their paper.
+      // the timeline's selected cells tint their paper (0.12, their very
+      // value: the shared range band rides ABOVE this at 0.18, and the two
+      // must sum to the timeline's look, not double it).
       final seSelect = this.seSelect;
       if (seSelect != null) {
         spans.add(
@@ -2754,7 +2878,7 @@ class _StoryboardSeRow extends StatelessWidget {
                             timelineScale.pixelsPerFrame,
                         child: ColoredBox(
                           color: timelineSelectedFrameBorderColor.withValues(
-                            alpha: 0.28,
+                            alpha: 0.12,
                           ),
                         ),
                       ),
@@ -3783,6 +3907,7 @@ class _StoryboardTrackRow extends StatelessWidget {
     required this.activeCutId,
     required this.onRowFramePress,
     required this.laneHeight,
+    required this.width,
     required this.stripEdges,
     required this.cutMove,
     required this.cutSelect,
@@ -3799,6 +3924,12 @@ class _StoryboardTrackRow extends StatelessWidget {
 
   final Track track;
   final List<StoryboardTimelineLayoutEntry> layoutEntries;
+
+  /// The scroll content's full width — the SE rows' own. The row used to
+  /// size itself to its cuts, which left NO widget (no press, no range
+  /// gesture) past the last cut or on an empty track, while every empty
+  /// cell there is still a cell ("빈 칸도 칸").
+  final double width;
 
   /// Null = no cut selected (gap state, UI-R9 #3): no highlight,
   /// cut-scoped rail controls stand down.
@@ -3916,23 +4047,27 @@ class _StoryboardTrackRow extends StatelessWidget {
   ///
   /// The row address is ignored, as it is on the cut row: the pressed FRAME
   /// says which cut, and therefore which storyboard layer, the drag is on.
+  /// The strip under [frame]: the covering cut and its storyboard row —
+  /// null in gaps and on cuts without one. The strip GESTURE and its
+  /// hit-test gate read this one answer, so what the callbacks would
+  /// refuse is exactly what the gate lets fall through.
+  ({StoryboardTimelineLayoutEntry entry, Layer layer})? _stripAt(int frame) {
+    final entry = _cutAtFrame(frame);
+    if (entry == null) {
+      return null;
+    }
+    final layer = storyboardLayerForCut(entry.cut);
+    return layer == null ? null : (entry: entry, layer: layer);
+  }
+
   TimelineRangeGestureCallbacks? _stripGesture() {
     final stripSelect = this.stripSelect;
     if (stripSelect == null) {
       return null;
     }
-    ({StoryboardTimelineLayoutEntry entry, Layer layer})? stripAt(int frame) {
-      final entry = _cutAtFrame(frame);
-      if (entry == null) {
-        return null;
-      }
-      final layer = storyboardLayerForCut(entry.cut);
-      return layer == null ? null : (entry: entry, layer: layer);
-    }
-
     return TimelineRangeGestureCallbacks(
       isInSelection: (_, frame) {
-        final strip = stripAt(frame);
+        final strip = _stripAt(frame);
         final selection = stripSelect.selection.value;
         return strip != null &&
             selection != null &&
@@ -3940,7 +4075,7 @@ class _StoryboardTrackRow extends StatelessWidget {
             selection.contains(frame - strip.entry.startFrame);
       },
       onSelectUpdate: (_, anchorIndex, headIndex, _) {
-        final strip = stripAt(anchorIndex);
+        final strip = _stripAt(anchorIndex);
         if (strip == null) {
           return;
         }
@@ -3960,7 +4095,7 @@ class _StoryboardTrackRow extends StatelessWidget {
       // which storyboard row — the drag belongs to, exactly as the select
       // half reads it.
       onMoveBegin: (_, frame) {
-        final strip = stripAt(frame);
+        final strip = _stripAt(frame);
         return strip != null &&
             (stripSelect.move?.onBegin(strip.layer.id) ?? false);
       },
@@ -4064,7 +4199,7 @@ class _StoryboardTrackRow extends StatelessWidget {
         key: ValueKey<String>(
           'storyboard-track-timeline-area-${track.id.value}',
         ),
-        width: timelineWidth,
+        width: math.max(timelineWidth, width),
         height: laneHeight,
         child: Stack(
           children: [
@@ -4155,18 +4290,27 @@ class _StoryboardTrackRow extends StatelessWidget {
                 right: 0,
                 top: stripBand.top,
                 height: stripBand.height,
-                // The gesture layer fills its Stack, so it needs one of its
-                // own here — a second Positioned around it would be two
-                // ParentDataWidgets on one render object.
-                child: Stack(
-                  children: [
-                    TimelineFrameRangeGestureLayer(
-                      row: TrackRowAddress(track.id),
-                      geometry: frameGeometry,
-                      crossAxisExtent: stripBand.height,
-                      callbacks: stripGesture,
-                    ),
-                  ],
+                // Hit-testing gates the strip gesture to frames that HAVE a
+                // strip: its pan claims the arena at DOWN (eager), so a
+                // press it cannot answer — a gap, a cut without a
+                // storyboard row — must never reach it, or the cut-axis
+                // gesture below is starved and the drag dies silently (the
+                // real-device "no selection where there is no cut block").
+                child: _FrameHitGate(
+                  claimsDx: (dx) => _stripAt(_frameAtX(dx)) != null,
+                  // The gesture layer fills its Stack, so it needs one of
+                  // its own here — a second Positioned around it would be
+                  // two ParentDataWidgets on one render object.
+                  child: Stack(
+                    children: [
+                      TimelineFrameRangeGestureLayer(
+                        row: TrackRowAddress(track.id),
+                        geometry: frameGeometry,
+                        crossAxisExtent: stripBand.height,
+                        callbacks: stripGesture,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             // THE EDGES, on the strip with the panels they divide. They ride
@@ -4281,6 +4425,39 @@ class _StoryboardTrackRow extends StatelessWidget {
             ) +
         trailingPadding;
   }
+}
+
+/// Admits pointers only where [claimsDx] says yes — the STRIP gesture's
+/// hit-test gate. An eager pan claims the arena the moment it is hit, so a
+/// gesture layer that would answer a position with nothing must not be hit
+/// there at all; refusing in the callbacks is too late.
+class _FrameHitGate extends SingleChildRenderObjectWidget {
+  const _FrameHitGate({required this.claimsDx, super.child});
+
+  /// Whether a pointer at this row-local x belongs to the gated child.
+  final bool Function(double dx) claimsDx;
+
+  @override
+  RenderObject createRenderObject(BuildContext context) =>
+      _RenderFrameHitGate(claimsDx);
+
+  @override
+  void updateRenderObject(
+    BuildContext context,
+    _RenderFrameHitGate renderObject,
+  ) {
+    renderObject.claimsDx = claimsDx;
+  }
+}
+
+class _RenderFrameHitGate extends RenderProxyBox {
+  _RenderFrameHitGate(this.claimsDx);
+
+  bool Function(double dx) claimsDx;
+
+  @override
+  bool hitTest(BoxHitTestResult result, {required Offset position}) =>
+      claimsDx(position.dx) && super.hitTest(result, position: position);
 }
 
 /// Vertical frame-boundary lines behind the cut blocks (the timeline grid's
