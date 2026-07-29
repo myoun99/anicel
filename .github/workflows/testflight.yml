@@ -4,9 +4,15 @@ name: TestFlight (iOS)
 # one answers "can I hold it on the iPad?" — a signed device build pushed
 # to TestFlight.
 #
-# Manual only. A build costs a slot in App Store Connect and minutes on a
-# macOS runner, so it runs when somebody wants to test, not on every push.
+# Once a night, and on demand. Not on every push: master takes ten or more
+# merges on a working day, and since a build cannot start while another is
+# running they would queue for hours to deliver versions nobody asked to
+# look at. A night build carries the whole day's work instead, and is on
+# the iPad before the next one starts.
 on:
+  schedule:
+    # 21:00 UTC = 06:00 JST — after the late merges, before the morning.
+    - cron: '0 21 * * *'
   workflow_dispatch:
 
 concurrency:
