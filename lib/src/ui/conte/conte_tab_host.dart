@@ -20,6 +20,7 @@ import '../storyboard_cut_thumbnail_store.dart'
 import '../text/app_strings.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/drag_value_label.dart';
+import 'conte_fonts.dart';
 import 'conte_ink.dart';
 import 'conte_page_painter.dart';
 import 'conte_sheet_builder.dart';
@@ -119,6 +120,15 @@ class _ConteTabHostState extends State<ConteTabHost> {
   void initState() {
     super.initState();
     _inkStrokeActive.addListener(_syncInkWarmHold);
+    // The sheet sets its type in the embedded faces (conte_fonts). The
+    // workspace warms them at startup, so this await is normally a no-op;
+    // on a cold open the one rebuild below reflows the text out of the
+    // fallback face the first frames measured in.
+    ensureConteFontsLoaded().then((_) {
+      if (mounted) {
+        setState(() {});
+      }
+    });
   }
 
   @override

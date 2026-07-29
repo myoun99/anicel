@@ -5,6 +5,7 @@ import '../../models/cut.dart';
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_coverage.dart';
+import '../../models/track_se_window.dart';
 
 /// Builds an XDTS (exchange digital time sheet, OpenToonz/Toei) document
 /// for one cut, straight from the unified timeline model.
@@ -33,6 +34,14 @@ String buildXdtsContent({
   required String cutLabel,
   String scene = '1',
   CameraInstructionDef? Function(String instructionId)? instructionDefById,
+
+  /// The owning track's SE lanes (GLOBAL frame axis) and this cut's start
+  /// on that axis. SE rows are track-owned now, so a sheet built from
+  /// [cut.layers] alone writes an empty DIALOG column — the sounds live
+  /// one level up and reach the sheet the print timesheet's way: windowed
+  /// to the cut, spill-in synthesized, starts past the cut end clipped.
+  List<Layer> trackSeLayers = const [],
+  int cutStartFrame = 0,
 }) {
   final duration = cut.duration < 1 ? 1 : cut.duration;
   final celLayers = [
@@ -41,9 +50,18 @@ String buildXdtsContent({
           layer.onTimesheet)
         layer,
   ];
+  final seWindow = TrackSeWindow(
+    cutStartFrame: cutStartFrame,
+    cutDurationFrames: cut.duration,
+  );
   final seLayers = [
+    // Cut-owned SE layers remain for legacy fixtures (the print sheet
+    // keeps the same pair of sources).
     for (final layer in cut.layers)
       if (layer.kind == LayerKind.se && layer.onTimesheet) layer,
+    for (final layer in trackSeLayers)
+      if (layer.onTimesheet)
+        clipLayerStartsBefore(seWindow.displayLayer(layer), duration),
   ];
   final instructionLayers = [
     for (final layer in cut.layers)

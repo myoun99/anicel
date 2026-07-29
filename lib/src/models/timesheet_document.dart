@@ -275,15 +275,12 @@ class TimesheetDocument {
     // The display window is open-ended on the right now (SE globalization
     // — the timeline's runway shows the neighbours' sounds), but a
     // printed page is no runway: entries starting at or past the cut end
-    // stay off the sheet. Crossing blocks keep their true length — their
-    // held rows print past the red cut-end line like before, and the
-    // sheet marks them with the timeline's `~`.
-    Layer clipToSheet(Layer displayClone) => displayClone.copyWith(
-      timeline: {
-        for (final entry in displayClone.timeline.entries)
-          if (entry.key < playbackFrameCount) entry.key: entry.value,
-      },
-    );
+    // stay off the sheet, crossing blocks keep their true length and the
+    // sheet marks them with the timeline's `~`. One clip for every
+    // cut-scoped export ([clipLayerStartsBefore] — the XDTS sheet reads
+    // the same projection).
+    Layer clipToSheet(Layer displayClone) =>
+        clipLayerStartsBefore(displayClone, playbackFrameCount);
     bool crossesCutEnd(Layer clone) {
       for (final entry in clone.timeline.entries) {
         if (entry.value.isDrawing &&

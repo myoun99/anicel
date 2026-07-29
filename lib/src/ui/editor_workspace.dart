@@ -42,6 +42,7 @@ import 'panels/workspace_layout_store.dart';
 import 'panels/workspace_panels_menu.dart';
 import 'keyed_keep_alive_stack.dart';
 import 'sliced_value_listenable_builder.dart';
+import 'conte/conte_fonts.dart';
 import 'conte/conte_ink.dart';
 import 'conte/conte_tab_host.dart';
 import 'storyboard_cut_thumbnail_store.dart';
@@ -457,6 +458,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     // Tips first: presets reference them by id, so the library has to be
     // able to answer before the presets that ask are read.
     unawaited(_tipLibrary.load().then((_) => _presetLibrary.load()));
+    // Warm the conte's embedded faces so the sheet opens with its type
+    // ready (the tab host still awaits, for the cold path).
+    unawaited(ensureConteFontsLoaded());
     _paletteService = Platform.environment['FLUTTER_TEST'] == 'true'
         ? null
         : ColorPaletteFileService();
