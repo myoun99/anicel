@@ -3,6 +3,7 @@ import 'dart:io' show Platform;
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:desktop_drop/desktop_drop.dart';
 import 'package:flutter/material.dart';
 
 import '../models/brush_group_id.dart';
@@ -31,6 +32,7 @@ import 'editor_canvas_area.dart';
 import 'editor_session_manager.dart';
 import 'export/export_frame_renderer.dart';
 import 'export/export_plan.dart';
+import 'import/import_dialog.dart';
 import 'media/media_browser_panel.dart';
 import 'panels/editor_dock_host.dart';
 import 'panels/editor_panel_dock.dart';
@@ -1428,8 +1430,32 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     return _buildDockHost(EditorWorkspace.centerGroupId);
   }
 
+  /// OS drag-and-drop (§6-i, confirmed): wherever the drop lands, the
+  /// import/placement window opens with the dropped paths — never an
+  /// instant import. Folders drop too (the cut-folder parser's entrance).
+  void _onOsFilesDropped(DropDoneDetails details) {
+    final paths = [for (final file in details.files) file.path];
+    if (paths.isEmpty) {
+      return;
+    }
+    unawaited(
+      showDialog<void>(
+        context: context,
+        builder: (context) =>
+            ImportDialog(session: widget.session, initialPaths: paths),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    return DropTarget(
+      onDragDone: _onOsFilesDropped,
+      child: _buildWorkspace(context),
+    );
+  }
+
+  Widget _buildWorkspace(BuildContext context) {
     return ListenableBuilder(
       listenable: _layout,
       builder: (context, _) {

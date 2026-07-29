@@ -48,13 +48,17 @@ class MediaBrowserPanel extends StatelessWidget {
   /// Injectable existence probe; defaults to the real file system.
   final bool Function(String path)? fileExists;
 
+  static const List<String> _mediaExtensions = [
+    'mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg',
+    'png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif',
+    'mp4', 'mov', 'avi', 'mkv', 'webm',
+    'pdf',
+  ];
+
   static Future<String?> _pickAudioFile() async {
     final file = await openFile(
       acceptedTypeGroups: const [
-        XTypeGroup(
-          label: 'Audio',
-          extensions: ['mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg'],
-        ),
+        XTypeGroup(label: 'Media', extensions: _mediaExtensions),
       ],
     );
     return file?.path;
@@ -182,7 +186,12 @@ class MediaBrowserPanel extends StatelessWidget {
         children: [
           exists
               ? Icon(
-                  Icons.music_note_outlined,
+                  switch (asset.kind) {
+                    MediaAssetKind.audio => Icons.music_note_outlined,
+                    MediaAssetKind.image => Icons.image_outlined,
+                    MediaAssetKind.video => Icons.movie_outlined,
+                    MediaAssetKind.pdf => Icons.picture_as_pdf_outlined,
+                  },
                   size: 16,
                   color: colorScheme.onSurfaceVariant,
                 )
