@@ -1,0 +1,387 @@
+/* Anicel — the site reads like the room the tool is used in: a dark studio
+   with one lit surface. Nothing here is an image, so the page stays a few
+   kilobytes and never waits on a CDN. */
+
+:root {
+  --ink: #12100d;
+  --ink-raised: #1b1815;
+  --paper: #f6ecd9;
+  --paper-dim: #cfc5b3;
+  --glow: #f0b64e;
+  --glow-soft: rgba(240, 182, 78, 0.16);
+  --line: rgba(246, 236, 217, 0.13);
+  --text: #ded6c8;
+  --text-muted: #948c7e;
+
+  --measure: 68ch;
+  --gutter: clamp(1.25rem, 5vw, 3rem);
+
+  --font: -apple-system, BlinkMacSystemFont, "Hiragino Sans", "Hiragino Kaku Gothic ProN",
+    "Yu Gothic", "Noto Sans JP", "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html { -webkit-text-size-adjust: 100%; }
+
+body {
+  margin: 0;
+  background: var(--ink);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: clamp(1rem, 0.96rem + 0.2vw, 1.0625rem);
+  line-height: 1.75;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* The language switch: both languages ship in the markup, and only one is
+   ever shown. No round trip, no second page to keep in step. */
+html[lang="ja"] [data-lang="en"],
+html[lang="en"] [data-lang="ja"] { display: none; }
+
+a { color: var(--glow); text-decoration-thickness: 1px; text-underline-offset: 3px; }
+a:hover { color: var(--paper); }
+
+.wrap {
+  width: min(100%, 72rem);
+  margin-inline: auto;
+  padding-inline: var(--gutter);
+}
+
+/* ---- header ---------------------------------------------------------- */
+
+.site-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-block: 1.5rem;
+}
+
+.wordmark {
+  font-size: 1.05rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--paper);
+  text-decoration: none;
+}
+
+.wordmark span { color: var(--text-muted); font-weight: 400; }
+
+.lang-switch {
+  display: flex;
+  gap: 1px;
+  padding: 1px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--ink-raised);
+}
+
+.lang-switch button {
+  padding: 0.3rem 0.85rem;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.8rem;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+}
+
+.lang-switch button[aria-pressed="true"] {
+  background: var(--paper);
+  color: var(--ink);
+}
+
+/* ---- hero ------------------------------------------------------------ */
+
+.hero {
+  display: grid;
+  gap: clamp(2.5rem, 6vw, 5rem);
+  align-items: center;
+  padding-block: clamp(3rem, 9vw, 7rem) clamp(3rem, 8vw, 6rem);
+}
+
+@media (min-width: 60rem) {
+  .hero { grid-template-columns: 1.15fr 1fr; }
+}
+
+.hero h1 {
+  margin: 0 0 1rem;
+  font-size: clamp(2.6rem, 1.6rem + 4.6vw, 4.75rem);
+  line-height: 1.02;
+  letter-spacing: -0.03em;
+  font-weight: 600;
+  color: var(--paper);
+}
+
+.hero .lede {
+  margin: 0 0 1.5rem;
+  max-width: 34ch;
+  font-size: clamp(1.1rem, 1rem + 0.5vw, 1.35rem);
+  line-height: 1.6;
+  color: var(--text);
+}
+
+.byline {
+  margin: 0;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  letter-spacing: 0.1em;
+  color: var(--text-muted);
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 1.75rem;
+  padding: 0.35rem 0.85rem;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  font-size: 0.78rem;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+}
+
+.status-pill::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--glow);
+  box-shadow: 0 0 0 3px var(--glow-soft);
+}
+
+/* ---- the light table ------------------------------------------------- */
+
+/* Stacked cels over a lit surface. The frames sit at the same offsets an
+   onion skin would put them at, which is the whole idea of the picture. */
+
+.lighttable {
+  position: relative;
+  aspect-ratio: 4 / 3;
+  display: grid;
+  place-items: center;
+  isolation: isolate;
+}
+
+/* The lit glass under the paper. Everything above it reads as translucent
+   only because this is genuinely brighter than the page. */
+.lighttable::before {
+  content: "";
+  position: absolute;
+  inset: 14% 10%;
+  border-radius: 6px;
+  background: radial-gradient(
+    ellipse at 50% 55%,
+    rgba(255, 226, 168, 0.5),
+    rgba(240, 182, 78, 0.16) 55%,
+    transparent 78%
+  );
+  filter: blur(18px);
+  z-index: -1;
+}
+
+.cel {
+  position: absolute;
+  width: 60%;
+  aspect-ratio: 4 / 3;
+  border: 1px solid rgba(246, 236, 217, 0.4);
+  border-radius: 3px;
+  background: linear-gradient(
+    150deg,
+    rgba(255, 244, 224, 0.26),
+    rgba(255, 240, 214, 0.1)
+  );
+}
+
+/* Three pegs along the bottom edge — the tap every sheet is punched for. */
+.cel::after {
+  content: "";
+  position: absolute;
+  bottom: 3px;
+  left: 50%;
+  translate: -50% 0;
+  width: 30%;
+  height: 6px;
+  background:
+    radial-gradient(circle at 10% 50%, rgba(18, 16, 13, 0.55) 46%, transparent 52%),
+    radial-gradient(circle at 50% 50%, rgba(18, 16, 13, 0.55) 34%, transparent 40%),
+    radial-gradient(circle at 90% 50%, rgba(18, 16, 13, 0.55) 46%, transparent 52%);
+}
+
+/* One drawing across three sheets: the ball everyone animates first. Seen
+   together they are an onion skin, which is the point of the picture. */
+.cel .ball {
+  position: absolute;
+  width: 13%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  border: 2px solid rgba(24, 20, 14, 0.75);
+}
+
+.cel:nth-of-type(1) { translate: -15% -11%; rotate: -3.4deg; opacity: 0.34; }
+.cel:nth-of-type(2) { translate: -6% -4%; rotate: -1.2deg; opacity: 0.58; }
+.cel:nth-of-type(3) {
+  translate: 5% 5%;
+  rotate: 1.5deg;
+  background: linear-gradient(150deg, rgba(255, 246, 229, 0.5), rgba(255, 240, 214, 0.24));
+  border-color: rgba(255, 248, 232, 0.6);
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.55);
+}
+
+.cel:nth-of-type(1) .ball { left: 16%; top: 16%; }
+.cel:nth-of-type(2) .ball { left: 40%; top: 40%; }
+.cel:nth-of-type(3) .ball {
+  left: 63%;
+  top: 64%;
+  border-color: rgba(24, 20, 14, 0.9);
+  background: rgba(24, 20, 14, 0.08);
+}
+
+/* The exposure ticks of a sheet, running down the right. */
+.sheet-ticks {
+  position: absolute;
+  top: 8%;
+  right: 4%;
+  display: grid;
+  gap: 7px;
+  font-family: var(--font-mono);
+  font-size: 0.6rem;
+  color: var(--text-muted);
+  text-align: right;
+}
+
+.sheet-ticks span { display: block; }
+.sheet-ticks span::before {
+  content: "";
+  display: inline-block;
+  width: 14px;
+  height: 1px;
+  margin-right: 6px;
+  vertical-align: middle;
+  background: var(--line);
+}
+.sheet-ticks span.on { color: var(--glow); }
+.sheet-ticks span.on::before { background: var(--glow); width: 22px; }
+
+/* ---- sections -------------------------------------------------------- */
+
+section { padding-block: clamp(3rem, 7vw, 5.5rem); border-top: 1px solid var(--line); }
+
+.section-label {
+  margin: 0 0 2.5rem;
+  font-family: var(--font-mono);
+  font-size: 0.75rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+h2 {
+  margin: 0 0 0.6rem;
+  font-size: clamp(1.5rem, 1.2rem + 1.2vw, 2.1rem);
+  line-height: 1.2;
+  letter-spacing: -0.02em;
+  font-weight: 600;
+  color: var(--paper);
+}
+
+.features {
+  display: grid;
+  gap: clamp(1.75rem, 4vw, 3rem) clamp(2rem, 5vw, 4rem);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 17rem), 1fr));
+}
+
+.feature h3 {
+  margin: 0 0 0.4rem;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--paper);
+}
+
+.feature p { margin: 0; color: var(--text-muted); font-size: 0.95rem; line-height: 1.7; }
+
+.feature .kicker {
+  display: block;
+  margin-bottom: 0.7rem;
+  font-family: var(--font-mono);
+  font-size: 0.7rem;
+  letter-spacing: 0.14em;
+  color: var(--glow);
+}
+
+/* ---- downloads ------------------------------------------------------- */
+
+.platforms {
+  display: grid;
+  gap: 1px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+  background: var(--line);
+}
+
+.platform {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.5rem 1rem;
+  padding: 1.15rem clamp(1rem, 3vw, 1.75rem);
+  background: var(--ink-raised);
+}
+
+.platform .name { flex: 1 1 10rem; font-weight: 600; color: var(--paper); }
+.platform .detail { flex: 1 1 14rem; font-size: 0.88rem; color: var(--text-muted); }
+
+.platform .state {
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.platform .state.ready { color: var(--glow); }
+
+.note {
+  margin: 1.5rem 0 0;
+  max-width: var(--measure);
+  font-size: 0.88rem;
+  color: var(--text-muted);
+}
+
+/* ---- prose (privacy) ------------------------------------------------- */
+
+.prose { max-width: var(--measure); }
+.prose h2 { margin-top: 2.5rem; font-size: 1.25rem; }
+.prose h2:first-of-type { margin-top: 0; }
+.prose p, .prose li { color: var(--text); }
+.prose ul { padding-left: 1.2rem; }
+.prose li { margin-bottom: 0.4rem; }
+.prose .updated { font-family: var(--font-mono); font-size: 0.78rem; color: var(--text-muted); }
+
+/* ---- footer ---------------------------------------------------------- */
+
+.site-foot {
+  padding-block: 2.5rem 3.5rem;
+  border-top: 1px solid var(--line);
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem 2rem;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 0.85rem;
+  color: var(--text-muted);
+}
+
+.site-foot nav { display: flex; gap: 1.5rem; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .cel { transition: translate 0.5s ease, rotate 0.5s ease; }
+}
