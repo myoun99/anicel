@@ -102,16 +102,15 @@ Frame? resolveAttachedFrameAt({
 /// orphan links show as empty cells). Read-only display material — the
 /// attach layer's stored timeline stays empty.
 ///
-/// Every entry is a GHOST exposure (UI-R20 #8): the row reads as a mirror
-/// of the base — text-only cells, no block chrome, and the timing
-/// affordances stand down like on any derived exposure. Drawing and
-/// playback still treat ghosts as ordinary exposures, so the attach cels
-/// keep editing and compositing through them.
-///
-/// The base's OWN ghost entries (repeat/hold run-edge instances) mirror
-/// with their [TimelineExposure.ghostOwnerId] intact (UI-R24 #2): paired
-/// with the base's runBehaviors on the display clone, the mirror row
-/// prints the base's hold dashes / repeat notation exactly.
+/// Mirrored entries render as ordinary BLOCKS (the synced-block UI): the
+/// mirror cels are real drawable cels, so the row reads like a normal
+/// drawing row — block chrome, the per-cell "no picture yet" tint, the
+/// active-cell ring. What stands down is TIMING, and that is enforced
+/// row-wise (the session's synced-row gates + the grip/run-edge kind
+/// gates), not through the ghost flag. Only the base's OWN ghost entries
+/// (repeat/hold run-edge instances) keep [ghost] — derived twice over,
+/// they still print text-only with their [TimelineExposure.ghostOwnerId]
+/// intact (UI-R24 #2), paired with the base's runBehaviors on the clone.
 SplayTreeMap<int, TimelineExposure> attachedDisplayTimeline({
   required Layer attached,
   required Layer base,
@@ -131,7 +130,7 @@ SplayTreeMap<int, TimelineExposure> attachedDisplayTimeline({
     timeline[entry.key] = TimelineExposure.drawing(
       linked,
       length: length,
-      ghost: true,
+      ghost: entry.value.ghost,
       ghostOwnerId: entry.value.ghostOwnerId,
     );
   }
@@ -225,15 +224,77 @@ Cut cutWithReconciledAttachedMirrors(Cut cut) {
   return nextLayers == null ? cut : cut.copyWith(layers: nextLayers);
 }
 
+/// The base whose attaches [folder] ORGANIZES, or null when [folder] is
+/// not an attach-organizer folder.
+///
+/// An attach-organizer folder is the 공정 folder inside an attach group
+/// ([연출]/[작감]…): a folder row whose direct members are all attach rows
+/// of ONE base. The attach relation stays direct to the base — the folder
+/// only organizes and display-controls (eye/opacity/blend/FX) — so the
+/// group's resolution never chains. Organizer folders are deliberately
+/// FLAT (no folder inside one; the brush groups' precedent): the commands
+/// refuse to create nesting there.
+LayerId? attachOrganizerBaseOf(Layer folder, List<Layer> layers) {
+  if (!layerKindGroupsLayers(folder.kind)) {
+    return null;
+  }
+  LayerId? baseId;
+  for (final layer in layers) {
+    if (layer.folderId != folder.id) {
+      continue;
+    }
+    final memberBase = layer.attachedToLayerId;
+    if (memberBase == null || (baseId != null && memberBase != baseId)) {
+      return null;
+    }
+    baseId = memberBase;
+  }
+  return baseId;
+}
+
+/// The index of [baseId]'s attach group's FIRST row — the below-placement
+/// attach rows (and their organizer folders) that sit before the base in
+/// the stack. Equal to the base's index when nothing rides below. A
+/// missing base answers [layers.length] — paired with
+/// [attachedGroupEndIndex]'s same answer, the slice is EMPTY rather than
+/// silently spanning the whole stack.
+int attachedGroupStartIndex(LayerId baseId, List<Layer> layers) {
+  var start = layers.indexWhere((layer) => layer.id == baseId);
+  if (start == -1) {
+    return layers.length;
+  }
+  while (start > 0) {
+    final layer = layers[start - 1];
+    final inGroup =
+        layer.attachedToLayerId == baseId ||
+        attachOrganizerBaseOf(layer, layers) == baseId;
+    if (!inGroup) {
+      break;
+    }
+    start -= 1;
+  }
+  return start;
+}
+
 /// The index just past [baseId]'s attach group — base plus its contiguous
-/// attach rows — in [layers]; insertion point for "add above the group".
+/// attach rows AND their organizer folder rows — in [layers]; insertion
+/// point for "add above the group". (A group slice is
+/// `[attachedGroupStartIndex, attachedGroupEndIndex)` — the start walks
+/// the below side the same way.)
 int attachedGroupEndIndex(LayerId baseId, List<Layer> layers) {
   var end = layers.indexWhere((layer) => layer.id == baseId);
   if (end == -1) {
     return layers.length;
   }
   end += 1;
-  while (end < layers.length && layers[end].attachedToLayerId == baseId) {
+  while (end < layers.length) {
+    final layer = layers[end];
+    final inGroup =
+        layer.attachedToLayerId == baseId ||
+        attachOrganizerBaseOf(layer, layers) == baseId;
+    if (!inGroup) {
+      break;
+    }
     end += 1;
   }
   return end;

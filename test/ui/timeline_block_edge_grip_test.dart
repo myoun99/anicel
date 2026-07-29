@@ -67,6 +67,20 @@ void main() {
       expect(timelineRowChromeIds(tester, 'layer-a'), isEmpty);
     });
 
+    testWidgets('SYNCED attach rows show no grips even though their '
+        'mirror blocks paint as real blocks (the synced-block UI: timing '
+        'belongs to the owner)', (tester) async {
+      await tester.pumpWidget(
+        _rowHarness(
+          layer: _twoBlockLayer().copyWith(
+            attachedToLayerId: const LayerId('base'),
+          ),
+        ),
+      );
+
+      expect(timelineRowChromeIds(tester, 'layer-a'), isEmpty);
+    });
+
     testWidgets('no grips without commaDrag callbacks', (tester) async {
       await tester.pumpWidget(
         _rowHarness(layer: _twoBlockLayer(), commaDrag: null),

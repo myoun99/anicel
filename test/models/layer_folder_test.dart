@@ -117,6 +117,45 @@ void main() {
       );
     });
 
+    test('attach folders: a pure organizer and the shared outer folder '
+        'pass; a folder mixing attach rows with other rows is reported', () {
+      Layer attach(String id, {required String base, String? folderId}) =>
+          cel(id, folderId: folderId).copyWith(
+            attachedToLayerId: LayerId(base),
+          );
+
+      // Pure organizer: nothing but one base's attaches.
+      expect(
+        folderStructureProblem([
+          cel('base'),
+          attach('a1', base: 'base', folderId: 'org'),
+          attach('a2', base: 'base', folderId: 'org'),
+          folder('org'),
+        ]),
+        isNull,
+      );
+      // Shared OUTER folder: the base lives in it too.
+      expect(
+        folderStructureProblem([
+          cel('base', folderId: 'outer'),
+          attach('a1', base: 'base', folderId: 'outer'),
+          folder('outer'),
+        ]),
+        isNull,
+      );
+      // Mixing an attach with an unrelated row (no base member) would
+      // split the group across a folder boundary.
+      expect(
+        folderStructureProblem([
+          cel('base'),
+          attach('a1', base: 'base', folderId: 'bad'),
+          cel('stray', folderId: 'bad'),
+          folder('bad'),
+        ]),
+        contains('mixes attach rows'),
+      );
+    });
+
     test('a non-contiguous folder run is reported', () {
       expect(
         folderStructureProblem([

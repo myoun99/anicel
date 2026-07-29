@@ -216,7 +216,11 @@ void main() {
     );
     await tester.pump();
     expect(built!.timeline[0]!.length, 5);
-    expect(built!.timeline[0]!.ghost, isTrue, reason: 'mirror stays ghost');
+    expect(
+      built!.timeline[0]!.ghost,
+      isFalse,
+      reason: 'the mirror re-derives as a real block (synced-block UI)',
+    );
     expect(built!.timeline[0]!.frameId, const FrameId('a1'));
 
     // Clearing the preview returns the repository mirror.

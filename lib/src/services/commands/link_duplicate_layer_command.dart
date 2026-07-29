@@ -2,6 +2,7 @@ import '../../models/attached_layer_resolve.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart';
 import '../../models/layer_link_registry.dart';
 import '../../models/project.dart';
 import '../command.dart';
@@ -63,27 +64,40 @@ class LinkDuplicateLayerCommand implements Command {
         cutId: cutId,
         layerId: sourceLayerId,
       );
-      // Resolve to the group's base, then take the contiguous run.
+      // Resolve to the group's base, then take the contiguous run —
+      // below-side rows and organizer folder rows included.
       final baseId = source.attachedToLayerId ?? source.id;
-      final baseIndex = cut.layers.indexWhere((layer) => layer.id == baseId);
-      if (baseIndex == -1) {
+      if (!cut.layers.any((layer) => layer.id == baseId)) {
         throw StateError('Attach base not found: $baseId');
       }
+      final startIndex = attachedGroupStartIndex(baseId, cut.layers);
       final endIndex = attachedGroupEndIndex(baseId, cut.layers);
-      final members = cut.layers.sublist(baseIndex, endIndex);
+      final members = cut.layers.sublist(startIndex, endIndex);
 
       final copies = <Layer>[
         for (final member in members)
-          member.copyWith(
-            id: _requireCopyId(member.id),
-            // The copied group is FREE, but its INTERNAL attach glue
-            // stays: members re-attach to the copied base.
-            attachedToLayerId: member.attachedToLayerId == null
+          () {
+            final copy = member.copyWith(
+              id: _requireCopyId(member.id),
+              // The copied group is FREE, but its INTERNAL attach glue
+              // stays: members re-attach to the copied base.
+              attachedToLayerId: member.attachedToLayerId == null
+                  ? null
+                  : _requireCopyId(member.attachedToLayerId!),
+              // Frames / timeline / FX all carry over via copyWith
+              // defaults — same FrameIds IS the link.
+            );
+            // An ORGANIZER folder copied with the group re-parents its
+            // member copies onto the copied folder row; folder pointers
+            // OUT of the slice (the group's shared outer folder) carry
+            // over unchanged.
+            final remappedFolderId = member.folderId == null
                 ? null
-                : _requireCopyId(member.attachedToLayerId!),
-            // Frames / timeline / FX / folderId all carry over via
-            // copyWith defaults — same FrameIds IS the link.
-          ),
+                : layerIdMap[member.folderId!];
+            return remappedFolderId == null
+                ? copy
+                : copy.copyWith(folderId: remappedFolderId);
+          }(),
       ];
 
       final nextLayers = [...cut.layers]..insertAll(endIndex, copies);
@@ -91,6 +105,13 @@ class LinkDuplicateLayerCommand implements Command {
       _registryBefore = project.linkRegistry;
       var groups = [...project.linkRegistry.groups];
       for (final member in members) {
+        // FOLDER rows (organizers riding in the slice) never join link
+        // groups: linking shares cel banks, and a folder has none —
+        // joining the ORIGINAL organizer's group would make deleting the
+        // copy dissolve the original's mirror in another cut.
+        if (layerKindGroupsLayers(member.kind)) {
+          continue;
+        }
         final copyMember = LayerLinkMember(
           trackId: track.id,
           cutId: cutId,

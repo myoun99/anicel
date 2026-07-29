@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import '../../models/attached_layer_resolve.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
@@ -164,14 +165,21 @@ class TimelineFrameCellsRow extends StatelessWidget {
     final frames = geometry.value;
     // Grips ride every drawing-holding kind; the run clusters skip the SE
     // sheet rows (their spans are sound clips, not glued cel runs).
-    final wantsGrips = commaDrag != null && layerKindHoldsDrawings(layer.kind);
+    // SYNCED attach rows show NEITHER (the synced-block UI): their blocks
+    // are borrowed exposures — timing belongs to the owner, so the row
+    // renders block-shaped but edge-less.
+    final wantsGrips =
+        commaDrag != null &&
+        layerKindHoldsDrawings(layer.kind) &&
+        !isSyncedAttachedLayer(layer);
     // The run clusters carry the N/H/R property tag, so the rows that
     // refuse repeat regions (the storyboard's, design E) show no cluster
     // rather than one whose menu is dead.
     final wantsRunEdges =
         runEdit != null &&
         layerKindAcceptsRepeatRegions(layer.kind) &&
-        !layerKindUsesSeSheetCells(layer.kind);
+        !layerKindUsesSeSheetCells(layer.kind) &&
+        !isSyncedAttachedLayer(layer);
     final chromeResolver = wantsGrips || wantsRunEdges
         ? TimelineRowChromeResolver(
             gripBlocks: wantsGrips
