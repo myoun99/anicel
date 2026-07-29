@@ -136,6 +136,7 @@ void main() {
     ValueListenable<PrerenderProgress>? progress,
     bool Function(CutId cutId)? cutFxEnabledOf,
     bool Function(CutId cutId)? cutPictureVisibleOf,
+    Widget? trackStack,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -152,6 +153,7 @@ void main() {
                 CameraPose(center: CanvasPoint(x: 4, y: 4)),
             cutFxEnabledOf: cutFxEnabledOf,
             cutPictureVisibleOf: cutPictureVisibleOf,
+            trackStack: trackStack,
           ),
         ),
       ),
@@ -538,6 +540,43 @@ void main() {
 
     f.controller.stop();
     await tester.pump();
+    f.composites.dispose();
+  });
+
+  testWidgets('with a trackStack the STACK is the frame (R3a): no single-'
+      'cut painter runs, and the view keeps its own jobs — the ticker and '
+      'tap-to-stop', (tester) async {
+    final f = fixture();
+    f.controller.play(scope: PlaybackScope.allCuts);
+
+    await pumpView(
+      tester,
+      controller: f.controller,
+      composites: f.composites,
+      trackStack: const ColoredBox(
+        key: ValueKey<String>('stack-stand-in'),
+        color: Color(0xFF000000),
+      ),
+    );
+
+    expect(find.byKey(const ValueKey<String>('stack-stand-in')), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('canvas-playback-view')),
+        matching: find.byWidgetPredicate(
+          (widget) =>
+              widget is CustomPaint && widget.painter is PlaybackFramePainter,
+        ),
+      ),
+      findsNothing,
+      reason: 'the stack paints the frame; the single-cut painter stands down',
+    );
+
+    expect(f.controller.isActive, isTrue);
+    await tester.tap(find.byKey(const ValueKey<String>('canvas-playback-view')));
+    await tester.pump();
+    expect(f.controller.isActive, isFalse, reason: 'tap-to-stop survives');
+
     f.composites.dispose();
   });
 }

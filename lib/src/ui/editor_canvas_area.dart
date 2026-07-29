@@ -24,6 +24,7 @@ import 'canvas/canvas_layer_stack_view.dart';
 import 'canvas/layer_pose_paint.dart';
 import 'canvas/layer_position_gizmo.dart';
 import 'editor_session_manager.dart';
+import 'playback/canvas_playback_controller.dart' show PlaybackScope;
 import 'playback/canvas_playback_view.dart';
 import 'playback/canvas_track_stack_view.dart';
 import 'playback/recording_streamer_overlay.dart';
@@ -255,16 +256,18 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     );
   }
 
-  /// The parked track stack (multitrack display path): one camera-frame
-  /// projection per covered track, following the gap parking per move.
-  /// Shared by the parked contentOverride and the scrub preview's gap
-  /// branch — one construction, two mounts.
+  /// The track stack (multitrack display path): one camera-frame
+  /// projection per covered track, following [globalFrame] per move.
+  /// Three mounts, one construction: the parked contentOverride, the
+  /// scrub preview's gap branch (both on the gap parking) and ALL-CUTS
+  /// playback (on the clock's global frame, R3a).
   Widget _buildTrackStackView(
     EditorSessionManager session,
-    CanvasViewport viewport,
-  ) {
+    CanvasViewport viewport, {
+    ValueListenable<int?>? globalFrame,
+  }) {
     return CanvasTrackStackView(
-      globalFrame: session.gapParkingListenable,
+      globalFrame: globalFrame ?? session.gapParkingListenable,
       positionsOf: session.trackStackPositionsAt,
       compositeCache: session.cutFrameCompositeCache,
       qualityOf: () => session.playbackQuality,
@@ -726,6 +729,22 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                           cutPictureVisibleOf: session.isCutPictureVisible,
                           viewport: viewport,
                           background: session.projectBackground,
+                          // ALL-CUTS playback watches the whole stage: the
+                          // frame is the track stack on the clock's global
+                          // axis (R3a) — a selected-track gap shows what
+                          // the OTHER tracks hold there instead of the
+                          // void. Single-cut playback keeps its
+                          // single-cut frame (the editing context).
+                          trackStack:
+                              session.playback.scope == PlaybackScope.allCuts
+                              ? _buildTrackStackView(
+                                  session,
+                                  viewport,
+                                  globalFrame: session
+                                      .playback
+                                      .globalFrameIndexListenable,
+                                )
+                              : null,
                         ),
                         RecordingStreamerOverlay(session: session),
                       ],
