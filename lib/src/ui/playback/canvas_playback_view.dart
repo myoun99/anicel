@@ -41,6 +41,7 @@ class CanvasPlaybackView extends StatefulWidget {
     this.cutPictureVisibleOf,
     this.viewport,
     this.background = ProjectBackground.defaultBackground,
+    this.trackStack,
   });
 
   final CanvasPlaybackController controller;
@@ -65,6 +66,14 @@ class CanvasPlaybackView extends StatefulWidget {
   /// The project background (R10-⑥): the paper AND what playlist gaps
   /// show (a gap frame is background-only — no picture, no fade).
   final ProjectBackground background;
+
+  /// The multitrack display path for ALL-CUTS playback (R3a): when set,
+  /// the FRAME is this widget — the parked canvas's track stack, following
+  /// the clock's global frame — and this view keeps everything else it
+  /// owns: the ticker it vends the controller, the tap-to-stop surface and
+  /// the warm-progress bar. Null = the single-cut painter (the activeCut
+  /// scope, where the editing context IS one cut).
+  final Widget? trackStack;
 
   @override
   State<CanvasPlaybackView> createState() => _CanvasPlaybackViewState();
@@ -108,6 +117,19 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
 
   @override
   Widget build(BuildContext context) {
+    if (widget.trackStack case final stack?) {
+      // The stack paints the frame; no composite is read or held here —
+      // the stack view runs its own hold/clone lifecycle per covered cut.
+      return GestureDetector(
+        key: const ValueKey<String>('canvas-playback-view'),
+        behavior: HitTestBehavior.opaque,
+        onTap: widget.controller.stop,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [stack, _prerenderProgressBar(context)],
+        ),
+      );
+    }
     final position = widget.controller.position;
     if (position != null) {
       final composite = widget.compositeCache.validCompositeOrNull(
@@ -211,36 +233,40 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
                   : const Color(0xFF000000),
             ),
           ),
-          Positioned(
-            left: 0,
-            right: 0,
-            bottom: 0,
-            child: ValueListenableBuilder<PrerenderProgress>(
-              valueListenable: widget.prerenderProgress,
-              builder: (context, progress, _) {
-                if (progress.total == 0 || progress.isComplete) {
-                  return const SizedBox.shrink();
-                }
-                return Column(
-                  key: const ValueKey<String>('canvas-playback-progress'),
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    Text(
-                      'caching ${progress.cached}/${progress.total}',
-                      textAlign: TextAlign.right,
-                      style: Theme.of(context).textTheme.labelSmall,
-                    ),
-                    LinearProgressIndicator(
-                      value: progress.cached / progress.total,
-                      minHeight: 2,
-                    ),
-                  ],
-                );
-              },
-            ),
-          ),
+          _prerenderProgressBar(context),
         ],
+      ),
+    );
+  }
+
+  Widget _prerenderProgressBar(BuildContext context) {
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: ValueListenableBuilder<PrerenderProgress>(
+        valueListenable: widget.prerenderProgress,
+        builder: (context, progress, _) {
+          if (progress.total == 0 || progress.isComplete) {
+            return const SizedBox.shrink();
+          }
+          return Column(
+            key: const ValueKey<String>('canvas-playback-progress'),
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Text(
+                'caching ${progress.cached}/${progress.total}',
+                textAlign: TextAlign.right,
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
+              LinearProgressIndicator(
+                value: progress.cached / progress.total,
+                minHeight: 2,
+              ),
+            ],
+          );
+        },
       ),
     );
   }
