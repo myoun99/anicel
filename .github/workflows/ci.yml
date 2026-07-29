@@ -95,6 +95,25 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
 
+  # The app the user actually runs every day, compiled the way it ships:
+  # runner + plugin registrants + native linking. flutter test can't see any
+  # of that — a method-channel plugin missing from generated_plugins.cmake
+  # passes the whole suite and then fails on the user's desk. This job is
+  # the observability that native-dependency changes (pdfrx and friends)
+  # were blocked on.
+  windows-app:
+    name: Windows app build
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+      - uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build windows --debug
+
   windows:
     name: Windows + native DLL
     runs-on: windows-latest

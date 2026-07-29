@@ -19,6 +19,12 @@ on:
       - 'ios/**'
       - 'macos/**'
       - '.github/workflows/apple.yml'
+      # A new plugin dependency changes CocoaPods/XCFramework linkage while
+      # touching neither ios/ nor macos/ sources — without these two, that
+      # breakage waits for the nightly to surface, and the nightly feeds
+      # the TestFlight pipeline.
+      - 'pubspec.yaml'
+      - 'pubspec.lock'
 
 concurrency:
   group: apple-${{ github.ref }}
