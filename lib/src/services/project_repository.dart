@@ -3,6 +3,7 @@ import '../models/attached_layer_resolve.dart'
 import '../models/audio_clip.dart';
 import '../models/camera_instruction.dart';
 import '../models/canvas_size.dart';
+import '../models/covering_image_normalize.dart';
 import '../models/cut.dart';
 import '../models/cut_camera.dart';
 import '../models/cut_id.dart';
@@ -71,11 +72,18 @@ class ProjectRepository {
     );
   }
 
-  /// The ALWAYS-MIRROR invariant (UI-R23 #7 v2): every write leaves every
-  /// synced attach row a complete mirror of its base — one own cel + link
-  /// per base cel — no matter how the base gained the cel (create, move,
-  /// paste, undo/redo replay, file load). Identity-preserving on no-ops,
-  /// so an already-complete project passes through untouched.
+  /// The write-time invariants, applied to every cut on every write:
+  /// 1. COVERING IMAGE rows ([cutWithCoveringImageRows]): an image
+  ///    layer's stored block always equals the cut length — runs FIRST so
+  ///    the mirror pass below sees the final base timeline (an image row
+  ///    can be an attach base).
+  /// 2. The ALWAYS-MIRROR invariant (UI-R23 #7 v2,
+  ///    [cutWithReconciledAttachedMirrors]): every synced attach row a
+  ///    complete mirror of its base — one own cel + link per base cel —
+  ///    no matter how the base gained the cel (create, move, paste,
+  ///    undo/redo replay, file load).
+  /// Identity-preserving on no-ops, so an already-normal project passes
+  /// through untouched.
   static Project _reconcileAttachedMirrors(Project project) {
     List<Track>? nextTracks;
     for (var t = 0; t < project.tracks.length; t += 1) {
@@ -83,7 +91,9 @@ class ProjectRepository {
       List<Cut>? nextCuts;
       for (var c = 0; c < track.cuts.length; c += 1) {
         final cut = track.cuts[c];
-        final reconciled = cutWithReconciledAttachedMirrors(cut);
+        final reconciled = cutWithReconciledAttachedMirrors(
+          cutWithCoveringImageRows(cut),
+        );
         if (identical(reconciled, cut)) {
           continue;
         }

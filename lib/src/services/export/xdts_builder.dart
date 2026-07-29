@@ -46,9 +46,7 @@ String buildXdtsContent({
   final duration = cut.duration < 1 ? 1 : cut.duration;
   final celLayers = [
     for (final layer in cut.layers)
-      if ((layer.kind == LayerKind.animation || layer.kind == LayerKind.art) &&
-          layer.onTimesheet)
-        layer,
+      if (layer.kind == LayerKind.animation && layer.onTimesheet) layer,
   ];
   final seWindow = TrackSeWindow(
     cutStartFrame: cutStartFrame,

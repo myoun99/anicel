@@ -63,25 +63,36 @@ Layer createDefaultAnimationLayer({
   );
 }
 
-/// A storyboard layer is born COVERING its cut — one cell, edge to edge
-/// (user's rule 2026-07-27).
+/// A COVERING layer ([layerKindCoversWithoutGaps]) is born covering its
+/// cut — one cell, edge to edge (user's rule 2026-07-27 for storyboard;
+/// the image layer speaks the same grammar).
 ///
-/// This row has no empty cells at all: there is no "X" in its world, so a
-/// drawing holds to the end of the cut the way a division does. Starting
-/// full is what makes that true from the first instant instead of after
-/// the first edit — the cut cannot then shrink past it
+/// These rows have no empty cells at all: there is no "X" in their world,
+/// so a drawing holds to the end of the cut the way a division does.
+/// Starting full is what makes that true from the first instant instead
+/// of after the first edit — the cut cannot then shrink past it
 /// ([minimumCutDurationFor]), and the coverage rule never meets a hole.
-Layer createStoryboardLayer({
+Layer createCoveringLayer({
   required LayerId layerId,
   required FrameId frameId,
   required Cut cut,
+  LayerKind kind = LayerKind.storyboard,
 }) {
+  assert(layerKindCoversWithoutGaps(kind));
   final duration = cut.duration < 1 ? 1 : cut.duration;
   return Layer(
     id: layerId,
     name: nextCelLayerNameForCut(cut),
-    kind: LayerKind.storyboard,
+    kind: kind,
     frames: [Frame(id: frameId, duration: duration, strokes: const [])],
     timeline: {0: TimelineExposure.drawing(frameId, length: duration)},
   );
 }
+
+/// The storyboard-kind shorthand for [createCoveringLayer] (its original
+/// name — the storyboard row was the first covering kind).
+Layer createStoryboardLayer({
+  required LayerId layerId,
+  required FrameId frameId,
+  required Cut cut,
+}) => createCoveringLayer(layerId: layerId, frameId: frameId, cut: cut);

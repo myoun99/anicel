@@ -240,27 +240,24 @@ void main() {
     expect(await _isCommandEnabled(tester, _toggleKey), isFalse);
   });
 
-  testWidgets('art toggle flips animation to art and back with undo', (
-    tester,
-  ) async {
-    late ProjectRepository repository;
-    await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
+  // The ART kind (and its toggle) is retired: art always behaved exactly
+  // like animation, so the kind collapsed into it. Picture rows are the
+  // IMAGE kind now, created through Add Layer — never by conversion.
+  testWidgets('the art toggle is gone from the Layer flyout', (tester) async {
+    await _pumpHome(tester);
 
-    await _tapKey(tester, _artToggleKey);
-
-    expect(_layer(repository).kind, LayerKind.art);
-    expect(find.bySemanticsLabel('Art layer'), findsOneWidget);
-    // Art rows use their own toggle; the storyboard toggle stays off.
-    expect(await _isCommandEnabled(tester, _toggleKey), isFalse);
-
-    await _tapKey(tester, _undoKey);
-    expect(_layer(repository).kind, LayerKind.animation);
-
-    await _tapKey(tester, _redoKey);
-    expect(_layer(repository).kind, LayerKind.art);
-
-    await _tapKey(tester, _artToggleKey);
-    expect(_layer(repository).kind, LayerKind.animation);
+    // Flyout items only exist while the popup is open — open it, then
+    // assert the retired toggle is not among the items.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-layer-menu-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('toggle-storyboard-layer-button')),
+      findsOneWidget,
+      reason: 'the flyout is open (its surviving sibling shows)',
+    );
+    expect(find.byKey(_artToggleKey), findsNothing);
   });
 
   // The dedicated instruction-add button is retired: the unified Add Layer
@@ -294,7 +291,6 @@ void main() {
     expect(layers[1].name, 'CAM 1');
     // No kind toggle applies to instruction rows.
     expect(await _isCommandEnabled(tester, _toggleKey), isFalse);
-    expect(await _isCommandEnabled(tester, _artToggleKey), isFalse);
   });
 
   testWidgets('Add Layer with an SE row active adds the next S-numbered '

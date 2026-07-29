@@ -40,7 +40,7 @@ class ExportLayerRow extends StatelessWidget {
   static IconData kindIcon(LayerKind kind) => switch (kind) {
     LayerKind.animation => Icons.edit_outlined,
     LayerKind.storyboard => Icons.sticky_note_2_outlined,
-    LayerKind.art => Icons.grid_on_outlined,
+    LayerKind.image => Icons.image_outlined,
     LayerKind.se => Icons.volume_up_outlined,
     LayerKind.instruction => Icons.swipe_right_alt_outlined,
     LayerKind.camera => Icons.videocam_outlined,

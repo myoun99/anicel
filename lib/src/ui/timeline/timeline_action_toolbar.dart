@@ -210,9 +210,9 @@ class TimelineActionToolbar extends StatelessWidget {
         onSelected: () => session.addLayerOfKind(LayerKind.storyboard),
       ),
       PanelFlyoutItem(
-        keyValue: 'add-layer-kind-art',
-        label: AppText.strings.tlKindArt,
-        onSelected: () => session.addLayerOfKind(LayerKind.art),
+        keyValue: 'add-layer-kind-image',
+        label: AppText.strings.tlKindImage,
+        onSelected: () => session.addLayerOfKind(LayerKind.image),
       ),
       PanelFlyoutItem(
         keyValue: 'add-layer-kind-se',
@@ -338,14 +338,6 @@ class TimelineActionToolbar extends StatelessWidget {
         enabled: session.canToggleTargetLayerKind,
         checked: active?.kind == LayerKind.storyboard ? true : null,
         onSelected: session.toggleTargetLayerKind,
-      ),
-      PanelFlyoutItem(
-        keyValue: 'toggle-art-layer-button',
-        label: AppText.strings.tlArtLayer,
-        icon: Icons.landscape_outlined,
-        enabled: session.canToggleTargetLayerArt,
-        checked: active?.kind == LayerKind.art ? true : null,
-        onSelected: session.toggleTargetLayerArt,
       ),
       const PanelFlyoutDivider(),
       PanelFlyoutItem(

@@ -89,6 +89,8 @@ Layer duplicateLayerAsIndependentCopy({
     kind: kind ?? source.kind,
     onTimesheet: source.onTimesheet,
     mark: source.mark,
+    // The duplicated layer shows the same library asset (§6-z23).
+    mediaReference: source.mediaReference,
     transformTrack: source.transformTrack,
     instructions: source.instructions,
     audioClips: [

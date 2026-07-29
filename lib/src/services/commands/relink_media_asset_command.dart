@@ -46,7 +46,9 @@ class RelinkMediaAssetCommand implements Command {
   }
 
   Layer _relinkedLayer(Layer layer, {required bool Function() markChanged}) {
-    if (!layer.audioClips.any((clip) => clip.filePath == oldPath)) {
+    final referencesAsset = layer.mediaReference?.assetPath == oldPath;
+    if (!referencesAsset &&
+        !layer.audioClips.any((clip) => clip.filePath == oldPath)) {
       return layer;
     }
     markChanged();
@@ -55,6 +57,10 @@ class RelinkMediaAssetCommand implements Command {
         for (final clip in layer.audioClips)
           clip.filePath == oldPath ? clip.copyWith(filePath: newPath) : clip,
       ],
+      // The layer's MEDIA REFERENCE (§6-z23) rides the same relink walk.
+      mediaReference: referencesAsset
+          ? layer.mediaReference!.copyWith(assetPath: newPath)
+          : layer.mediaReference,
     );
   }
 

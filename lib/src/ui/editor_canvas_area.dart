@@ -31,7 +31,7 @@ import 'playback/recording_streamer_overlay.dart';
 import 'playback/canvas_scrub_preview.dart';
 import 'text/app_strings.dart';
 import 'timeline/layer_label_controls.dart';
-import '../models/layer_kind.dart' show layerKindAcceptsBrushInput;
+import '../models/layer.dart' show layerAcceptsBrushInput;
 import 'widgets/cursor_notice.dart';
 import 'timeline/transform_lane_editing.dart';
 
@@ -320,9 +320,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final activeLayer = session.activeLayer;
     // R27 #16: the question is whether THIS LAYER takes strokes, not
     // which section it sits in — the CAM section is no longer uniformly
-    // undrawable in the user's model, so the refusal names the layer.
-    final drawable =
-        activeLayer != null && layerKindAcceptsBrushInput(activeLayer.kind);
+    // undrawable in the user's model, so the refusal names the layer
+    // (media-REFERENCE layers included: strokes wait for a rasterize).
+    final drawable = activeLayer != null && layerAcceptsBrushInput(activeLayer);
     return drawable
         ? strings.noticeNoFrameHere
         : strings.noticeLayerNotDrawable;

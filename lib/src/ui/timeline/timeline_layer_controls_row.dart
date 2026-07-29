@@ -688,7 +688,7 @@ String _semanticLabelForLayerKind(LayerKind kind) {
   return switch (kind) {
     LayerKind.animation => 'Animation layer',
     LayerKind.storyboard => 'Storyboard layer',
-    LayerKind.art => 'Art layer',
+    LayerKind.image => 'Image layer',
     LayerKind.se => 'SE layer',
     LayerKind.instruction => 'Instruction layer',
     LayerKind.camera => 'Camera layer',

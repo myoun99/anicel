@@ -1597,11 +1597,12 @@ class EditorSessionManager extends ChangeNotifier {
             blendMode: blendMode,
           );
         case CutFrameCompositeEntryLeaf(:final entry):
-          // A brush-banned active layer (SE/instruction, R6-④) has no
-          // interactive surface — it composites like any other stack row
-          // so its existing cels keep displaying read-only.
+          // A brush-banned active layer (SE/instruction, R6-④; a media
+          // REFERENCE layer, §6-z23) has no interactive surface — it
+          // composites like any other stack row so its existing cels keep
+          // displaying read-only.
           if (entry.layer.id == activeLayerId &&
-              layerKindAcceptsBrushInput(entry.layer.kind)) {
+              layerAcceptsBrushInput(entry.layer)) {
             activeLayerOpacity = !entry.layer.isVisible
                 ? 0.0
                 : _stackLayerOpacity(entry.layer, stackCut.layers, frameIndex);
@@ -1639,15 +1640,15 @@ class EditorSessionManager extends ChangeNotifier {
     // An ACTIVE layer with nothing exposed at this frame resolves no entry
     // at all, so the walk above never reaches it. It still needs its node:
     // the interactive surface is where the next stroke lands.
-    if (activeLayerId != null &&
+    final activeStackLayer = activeLayerId == null
+        ? null
+        : stackCut.layers.byId(activeLayerId);
+    if (activeStackLayer != null &&
         !_treeHoldsActiveLayer(nodes) &&
-        layerKindAcceptsBrushInput(
-          stackCut.layers.byId(activeLayerId)?.kind ?? LayerKind.camera,
-        )) {
-      final active = stackCut.layers.byId(activeLayerId)!;
-      activeLayerOpacity = !active.isVisible
+        layerAcceptsBrushInput(activeStackLayer)) {
+      activeLayerOpacity = !activeStackLayer.isVisible
           ? 0.0
-          : _stackLayerOpacity(active, stackCut.layers, frameIndex);
+          : _stackLayerOpacity(activeStackLayer, stackCut.layers, frameIndex);
       nodes.add(CanvasActiveLayerNode(opacity: activeLayerOpacity));
     }
 
@@ -2328,8 +2329,9 @@ class EditorSessionManager extends ChangeNotifier {
     // stays refused on ghosts.
     // R6-④: SE/instruction cels are data rows — no editable brush target,
     // so the canvas never accepts strokes on them (the drawn stack still
-    // composites them read-only).
-    if (!layerKindAcceptsBrushInput(activeLayer.kind)) {
+    // composites them read-only). A media-REFERENCE layer (§6-z23) shows
+    // a library asset: no strokes until it is rasterized.
+    if (!layerAcceptsBrushInput(activeLayer)) {
       return null;
     }
     // R4 #1: a hidden layer takes no strokes either — you would be drawing
@@ -2383,7 +2385,7 @@ class EditorSessionManager extends ChangeNotifier {
       // its members are rows of their own and survive.
       LayerKind.animation ||
       LayerKind.storyboard ||
-      LayerKind.art ||
+      LayerKind.image ||
       LayerKind.folder => true,
     };
   }
@@ -2816,20 +2818,18 @@ class EditorSessionManager extends ChangeNotifier {
         );
       case LayerKind.animation:
       case LayerKind.storyboard:
-      case LayerKind.art:
-        // The STORYBOARD row is born covering its cut — one cell, edge to
-        // edge. There is no "X" in its world, so it never starts empty and
-        // then has to be filled.
-        Layer newLayerFor(Cut cut) => kind == LayerKind.storyboard
-            ? createStoryboardLayer(
+      case LayerKind.image:
+        // The COVERING kinds (storyboard, image) are born covering their
+        // cut — one cell, edge to edge. There is no "X" in their world,
+        // so they never start empty and then have to be filled.
+        Layer newLayerFor(Cut cut) => layerKindCoversWithoutGaps(kind)
+            ? createCoveringLayer(
                 layerId: layerId,
                 frameId: FrameId(_nextFrameId(layerId)),
                 cut: cut,
+                kind: kind,
               )
-            : createDefaultAnimationLayer(
-                layerId: layerId,
-                cut: cut,
-              ).copyWith(kind: kind);
+            : createDefaultAnimationLayer(layerId: layerId, cut: cut);
         // An attach group is INDIVISIBLE (R26 #36): a new regular layer
         // lands past the whole group, never between a base and its attach
         // rows — whether the active row is the base itself or one of its
@@ -5030,7 +5030,12 @@ class EditorSessionManager extends ChangeNotifier {
   bool isMediaAssetReferenced(String path) {
     // Only clips that resolve to a live frame count (REC1-A): a dangling
     // link is inaudible everywhere, so it must not hold the pool hostage.
+    // A layer's MEDIA REFERENCE (§6-z23) counts too — a referenced still
+    // or sequence keeps its asset in the pool.
     bool layerReferences(Layer layer) {
+      if (layer.mediaReference?.assetPath == path) {
+        return true;
+      }
       Set<FrameId>? liveIds;
       for (final clip in layer.audioClips) {
         if (clip.filePath != path) {
@@ -5172,7 +5177,7 @@ class EditorSessionManager extends ChangeNotifier {
   bool get canToggleTargetLayerKind {
     final targetLayer = _targetLayerForKindToggle;
     // Only the animation ⇄ storyboard pair; other kinds have their own
-    // toggles (SE/art) or are fixed (camera/instruction/attach rows).
+    // toggles (SE) or are fixed (camera/instruction/attach rows).
     if (targetLayer == null ||
         isAttachedLayer(targetLayer) ||
         targetLayer.kind != LayerKind.animation &&
@@ -5197,40 +5202,13 @@ class EditorSessionManager extends ChangeNotifier {
     return switch (targetLayer?.kind) {
       LayerKind.animation => 'Animation Layer',
       LayerKind.storyboard => 'Storyboard Layer',
-      LayerKind.art => 'Art Layer',
+      LayerKind.image => 'Image Layer',
       LayerKind.se => 'SE Layer',
       LayerKind.instruction => 'Instruction Layer',
       LayerKind.camera => 'Camera Layer',
       LayerKind.folder => 'Folder',
       null => 'No Layer',
     };
-  }
-
-  /// Art toggle: animation ⇄ art (BG/BOOK cels behave like animation cels;
-  /// only the material differs).
-  bool get canToggleTargetLayerArt {
-    final targetLayer = _targetLayerForKindToggle;
-    return targetLayer != null &&
-        !isAttachedLayer(targetLayer) &&
-        (targetLayer.kind == LayerKind.animation ||
-            targetLayer.kind == LayerKind.art);
-  }
-
-  void toggleTargetLayerArt() {
-    final targetLayer = _targetLayerForKindToggle;
-    if (targetLayer == null || !canToggleTargetLayerArt) {
-      return;
-    }
-
-    _cutCommandCoordinator.updateLayerKind(
-      cutId: requireActiveCut.id,
-      layerId: targetLayer.id,
-      kind: targetLayer.kind == LayerKind.art
-          ? LayerKind.animation
-          : LayerKind.art,
-    );
-    _refreshAfterCutCommand();
-    notifyListeners();
   }
 
   /// Why the storyboard toggle is refused, or null when it is allowed.
@@ -5316,6 +5294,17 @@ class EditorSessionManager extends ChangeNotifier {
     if (isSyncedAttachedLayer(layer)) {
       return false;
     }
+    // A REFERENCE layer's picture comes from the library (any kind) —
+    // nothing to author until rasterized. An IMAGE layer holds ONE cel by
+    // definition — once it exists there is no second cel to create (paper
+    // switching is cel NAMES + link banks, never another cel in the same
+    // cut).
+    if (layer.mediaReference != null) {
+      return false;
+    }
+    if (layerKindHoldsSingleCel(layer.kind) && layer.frames.isNotEmpty) {
+      return false;
+    }
 
     return _timelineController.canCreateDrawingAt(
       layer: layer,
@@ -5379,8 +5368,11 @@ class EditorSessionManager extends ChangeNotifier {
     final layer = activeLayer;
     // SYNCED attach rows have no timing of their own (the base owns it);
     // free attach rows cut exposures like any drawing layer (UI-R21 #3).
+    // SINGLE-CEL (image) rows hold one covering block by definition — an
+    // X-here would be reverted by the covering normalization.
     if (layer == null ||
         !layerKindHoldsDrawings(layer.kind) ||
+        layerKindHoldsSingleCel(layer.kind) ||
         isSyncedAttachedLayer(layer)) {
       return false;
     }
@@ -5848,7 +5840,16 @@ class EditorSessionManager extends ChangeNotifier {
     if (afterRowEnd == sync.beforeRowEnd) {
       return null;
     }
-    final duration = math.max(1, afterRowEnd);
+    // The structural floor above holds when the sync row IS the
+    // storyboard row. With a second covering kind (image) able to anchor
+    // the sync, the storyboard row's divisions are somebody else's data —
+    // clamp to their floor explicitly so shrinking through the IMAGE row
+    // can never strand a division outside the cut.
+    final syncedCut = activeCutOrNull?.id == sync.cutId
+        ? activeCutOrNull
+        : null;
+    final floor = syncedCut == null ? 1 : minimumCutDurationFor(syncedCut);
+    final duration = math.max(floor, afterRowEnd);
     return (
       durations: {sync.cutId: duration},
       gaps: {
@@ -7371,6 +7372,10 @@ class EditorSessionManager extends ChangeNotifier {
   /// Whether [layerId] can take part in a block move (source or target):
   /// a plain drawing-section layer. Track-SE rows live on the global axis
   /// with audio attached and attach rows own no timing — both stand down.
+  /// SINGLE-CEL rows (image) stand down too: their one covering block is
+  /// immovable by definition, and a cel dropped ONTO one would collide
+  /// with the covering normalization (two entries, one survives — silent
+  /// cel loss).
   bool _blockMoveEligible(LayerId layerId) {
     // Synced attach rows own no timing; FREE attach rows move blocks
     // like any drawing layer (UI-R21 #3).
@@ -7380,6 +7385,7 @@ class EditorSessionManager extends ChangeNotifier {
     final layer = _layerById(layerId);
     return layer != null &&
         layerKindHoldsDrawings(layer.kind) &&
+        !layerKindHoldsSingleCel(layer.kind) &&
         layer.kind != LayerKind.se;
   }
 
@@ -7423,10 +7429,14 @@ class EditorSessionManager extends ChangeNotifier {
     if (selection != null) {
       // SYNCED attach rows shift by DERIVATION (the base's shift carries
       // the mirror); committing their display clone would write the
-      // derived timeline onto the stored-empty row.
+      // derived timeline onto the stored-empty row. SINGLE-CEL (image)
+      // rows' covering block is pinned by the write normalization.
       final rows = [
         for (final id in selection.spanLayerIds)
-          if (!_isSyncedAttachedLayerId(id) && _rangeLayerById(id) != null) id,
+          if (!_isSyncedAttachedLayerId(id) &&
+              !_isSingleCelLayerId(id) &&
+              _rangeLayerById(id) != null)
+            id,
       ];
       return rows.isEmpty
           ? null
@@ -7452,6 +7462,7 @@ class EditorSessionManager extends ChangeNotifier {
     if (layerId == null ||
         index < 0 ||
         _isSyncedAttachedLayerId(layerId) ||
+        _isSingleCelLayerId(layerId) ||
         _rangeLayerById(layerId) == null) {
       return null;
     }
@@ -8561,8 +8572,9 @@ class EditorSessionManager extends ChangeNotifier {
         // no timing) — they stay PASSENGERS, carried by the base's slide
         // through derivation. Id-gated: the synced-block UI stopped
         // marking mirror entries ghost, so the block filter below no
-        // longer excludes them.
-        if (_isSyncedAttachedLayerId(id)) {
+        // longer excludes them. SINGLE-CEL (image) rows stand down too:
+        // their covering block is pinned by the write normalization.
+        if (_isSyncedAttachedLayerId(id) || _isSingleCelLayerId(id)) {
           continue;
         }
         final display = _rangeLayerById(id);
@@ -8603,9 +8615,13 @@ class EditorSessionManager extends ChangeNotifier {
     // A SYNCED attach row's blocks are borrowed exposures — the move
     // refuses with the "edit the owner" pill (the synced-block UI made
     // the row look grabbable; before it, the all-ghost timeline fell out
-    // of the block scan below on its own).
+    // of the block scan below on its own). A SINGLE-CEL (image) row's
+    // covering block is immovable — the normalization would revert it.
     if (_isSyncedAttachedLayerId(selection.layerId)) {
       _noticeSyncedAttachRefusal(selection.layerId);
+      return false;
+    }
+    if (_isSingleCelLayerId(selection.layerId)) {
       return false;
     }
     final layer = _layerById(selection.layerId);
@@ -9329,7 +9345,7 @@ class EditorSessionManager extends ChangeNotifier {
           ? _layerById(targetLayerId)
           : null;
       // Cross-row drops stay within the SAME SECTION (UI-R20 #2 P3b-3:
-      // 행이동도 같은 섹션 내 — animation/storyboard/art interchange
+      // 행이동도 같은 섹션 내 — animation/storyboard/image interchange
       // freely now; an animation range still never lands on the SE or
       // camera sections).
       if (target != null &&
@@ -9961,6 +9977,16 @@ class EditorSessionManager extends ChangeNotifier {
     }
   }
 
+  /// Whether [layerId] names a SINGLE-CEL (image) row of the active cut:
+  /// its one covering block is pinned by the write normalization, so the
+  /// reshaping verbs (range move, push/pull, comma set, X-here) stand
+  /// down — committing them would be reverted in the same write, leaving
+  /// a phantom no-op on the undo stack.
+  bool _isSingleCelLayerId(LayerId layerId) {
+    final layer = _layerById(layerId);
+    return layer != null && layerKindHoldsSingleCel(layer.kind);
+  }
+
   /// Whether [layerId] names one of the active cut's SYNCED attach rows —
   /// the timing standdowns key off THIS (free attach rows author their
   /// own timeline like any drawing layer, UI-R21 #3).
@@ -10266,8 +10292,17 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     final selection = frameRangeSelection.value;
-    final selectionTargets = _selectionBlockStartsByLayer();
-    if (selection != null && selectionTargets != null) {
+    // SINGLE-CEL (image) rows never retime: the covering normalization
+    // would revert the commit in the same write (a phantom undo entry).
+    final selectionTargets = _selectionBlockStartsByLayer() == null
+        ? null
+        : {
+            for (final entry in _selectionBlockStartsByLayer()!.entries)
+              if (!_isSingleCelLayerId(entry.key)) entry.key: entry.value,
+          };
+    if (selection != null &&
+        selectionTargets != null &&
+        selectionTargets.isNotEmpty) {
       _timelineController.retimeBlocksForLayers({
         for (final entry in selectionTargets.entries)
           entry.key: {for (final start in entry.value) start: comma},
@@ -10278,8 +10313,11 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     final layer = activeLayer;
-    // Synced attach rows own no timing (free rows retime normally).
-    if (layer == null || isSyncedAttachedLayer(layer)) {
+    // Synced attach rows own no timing (free rows retime normally);
+    // single-cel rows are pinned by the covering normalization.
+    if (layer == null ||
+        isSyncedAttachedLayer(layer) ||
+        layerKindHoldsSingleCel(layer.kind)) {
       return;
     }
     final block = coveringDrawingBlockAt(

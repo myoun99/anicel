@@ -78,13 +78,17 @@ ConvertToLinkedCutPlan planConvertToLinkedCut({
   required Cut originCut,
   required Cut targetCut,
 }) {
+  // Animation AND image rows link (the shared BG is the classic 겸용
+  // case); layer pairing stays by NAME for both.
+  bool linksIntoLinkedCut(Layer layer) =>
+      layer.kind == LayerKind.animation || layer.kind == LayerKind.image;
   final originDrawing = [
     for (final layer in originCut.layers)
-      if (layer.kind == LayerKind.animation) layer,
+      if (linksIntoLinkedCut(layer)) layer,
   ];
   final targetDrawing = [
     for (final layer in targetCut.layers)
-      if (layer.kind == LayerKind.animation) layer,
+      if (linksIntoLinkedCut(layer)) layer,
   ];
   final targetByName = <String, Layer>{
     for (final layer in targetDrawing) layer.name: layer,
@@ -97,7 +101,11 @@ ConvertToLinkedCutPlan planConvertToLinkedCut({
   var joining = 0;
   for (final origin in originDrawing) {
     final target = targetByName[origin.name];
-    if (target == null) {
+    // Pairs are SAME-KIND only: image and animation rows draw names from
+    // the same A/B/C pool, and a cross-kind link group would hand a BG
+    // picture to a drawing row (and make updateLayerKind's kind-mirror
+    // meaningless). A name collision across kinds simply doesn't match.
+    if (target == null || target.kind != origin.kind) {
       continue;
     }
     matchedTargetIds.add(target.id);
@@ -172,9 +180,26 @@ LayerMergeResolution resolveLayerMerge({
 
   final retargeted = <FrameId, FrameId>{};
   final joiningIds = <FrameId>[];
+  // The IMAGE-LAYER exception (§6-z23 ③, user-confirmed): an image row
+  // holds ONE cel by definition and its name defaults to none, so the
+  // single unnamed cels match each other by POSITION — the shared BG
+  // links without anyone naming a frame. Guarded to the single-cel case
+  // on both sides so ambiguity cannot arise; drawing layers keep the
+  // unnamed-never-conflicts rule below (unnamed cels can be many).
+  final imageSingleCelPair =
+      layerKindHoldsSingleCel(origin.kind) &&
+      layerKindHoldsSingleCel(target.kind) &&
+      origin.frames.length == 1 &&
+      target.frames.length == 1 &&
+      origin.frames.single.name == null &&
+      target.frames.single.name == null;
   for (final frame in target.frames) {
     if (originIds.contains(frame.id)) {
       continue; // Already the same physical cel.
+    }
+    if (imageSingleCelPair) {
+      retargeted[frame.id] = origin.frames.single.id;
+      continue;
     }
     final originId = originByName[frame.name];
     // UNNAMED frames never conflict (no identity to match on) — they

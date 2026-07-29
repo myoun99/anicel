@@ -12,6 +12,7 @@ import 'layer_blend_mode.dart';
 import 'layer_id.dart';
 import 'layer_kind.dart';
 import 'layer_mark.dart';
+import 'media_reference.dart';
 import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
 import 'timeline_repeat.dart';
@@ -43,6 +44,7 @@ class Layer {
     this.onTimesheet = true,
     this.mark = LayerMark.none,
     this.isFillReference = false,
+    this.mediaReference,
     TransformTrack? transformTrack,
     this.attachedToLayerId,
     this.attachedPlacement = AttachedPlacement.above,
@@ -121,6 +123,13 @@ class Layer {
   /// Display/export composite untouched.
   final bool isFillReference;
 
+  /// Non-null makes this a REFERENCE layer showing an external media
+  /// asset (§6-z23's second axis): the brush refuses
+  /// ([layerAcceptsBrushInput]), the pixels come from the library, and
+  /// RASTERIZING bakes them into cels and nulls only this field — the
+  /// kind never changes.
+  final MediaReference? mediaReference;
+
   /// The layer's keyframed transform (the AE Transform group), applied at
   /// COMPOSITE time — playback, export, thumbnails and the editing canvas's
   /// layer stack — never baked into the artwork. Empty = identity (the
@@ -183,6 +192,7 @@ class Layer {
     Map<FrameId, FrameId>? baseFrameLinks,
     List<TimelineRunBehavior>? runBehaviors,
     Object? folderId = copyWithSentinel,
+    Object? mediaReference = copyWithSentinel,
   }) {
     final nextFrames = frames ?? this.frames;
     return Layer(
@@ -216,6 +226,11 @@ class Layer {
       folderId: identical(folderId, copyWithSentinel)
           ? this.folderId
           : folderId as LayerId?,
+      // Sentinel: RASTERIZING clears the reference to null — that edit
+      // must be expressible.
+      mediaReference: identical(mediaReference, copyWithSentinel)
+          ? this.mediaReference
+          : mediaReference as MediaReference?,
     );
   }
 
@@ -242,6 +257,7 @@ class Layer {
     'onTimesheet': onTimesheet,
     'mark': mark.toJson(),
     if (isFillReference) 'fillReference': true,
+    if (mediaReference != null) 'mediaReference': mediaReference!.toJson(),
     if (folderId != null) 'folderId': folderId!.toJson(),
     if (runBehaviors.isNotEmpty)
       'runBehaviors': [for (final behavior in runBehaviors) behavior.toJson()],
@@ -323,6 +339,11 @@ class Layer {
           ? LayerMark.fromJson(json['mark'])
           : LayerMark.none,
       isFillReference: json['fillReference'] as bool? ?? false,
+      mediaReference: json['mediaReference'] == null
+          ? null
+          : MediaReference.fromJson(
+              json['mediaReference'] as Map<String, dynamic>,
+            ),
       // Legacy 'repeatRegions' JSON is ignored (no production data): its
       // stale ghost entries strip on the first rederive.
       runBehaviors: json['runBehaviors'] == null
@@ -377,6 +398,7 @@ class Layer {
           other.onTimesheet == onTimesheet &&
           other.mark == mark &&
           other.isFillReference == isFillReference &&
+          other.mediaReference == mediaReference &&
           other.transformTrack == transformTrack &&
           other.attachedToLayerId == attachedToLayerId &&
           other.attachedPlacement == attachedPlacement &&
@@ -406,7 +428,8 @@ class Layer {
     kind,
     onTimesheet,
     mark,
-    isFillReference,
+    // Folded with isFillReference: Object.hash caps at 20 positional args.
+    Object.hash(isFillReference, mediaReference),
     transformTrack,
     attachedToLayerId,
     Object.hash(attachedPlacement, attachedMode),
@@ -426,6 +449,15 @@ class Layer {
       'isVisible: $isVisible, opacity: $opacity, kind: $kind, '
       'onTimesheet: $onTimesheet, mark: $mark)';
 }
+
+/// Whether the brush may land on THIS layer's cels: the KIND must accept
+/// it AND the pixels must be the layer's own — a media-REFERENCE layer
+/// (§6-z23's second axis) shows a library asset, so strokes have nowhere
+/// to live until it is rasterized (which nulls [Layer.mediaReference] and
+/// changes nothing else). The layer-level question; kind-only callers
+/// keep [layerKindAcceptsBrushInput].
+bool layerAcceptsBrushInput(Layer layer) =>
+    layerKindAcceptsBrushInput(layer.kind) && layer.mediaReference == null;
 
 /// Stack-shaped queries over a cut's flat layer list. The list is the
 /// single truth of render/timeline order, so everything that needs to find

@@ -713,7 +713,7 @@ class CutCommandCoordinator {
         // R28 #14: no drawing floor — the action section may empty out.
         LayerKind.animation ||
         LayerKind.storyboard ||
-        LayerKind.art ||
+        LayerKind.image ||
         LayerKind.folder => false,
       };
       if (refused) {

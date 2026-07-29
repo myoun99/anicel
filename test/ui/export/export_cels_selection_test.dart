@@ -49,7 +49,7 @@ void main() {
     final selection = resolveExportCelsSelection(
       cut: cut([
         layer('a'),
-        layer('bg', kind: LayerKind.art),
+        layer('bg', kind: LayerKind.image),
         layer('se', kind: LayerKind.se),
         layer('inst', kind: LayerKind.instruction),
         layer('cam', kind: LayerKind.camera),

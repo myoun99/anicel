@@ -17,7 +17,7 @@ TimelineSection timelineSectionForLayerKind(LayerKind kind) {
     // section with them.
     LayerKind.animation ||
     LayerKind.storyboard ||
-    LayerKind.art ||
+    LayerKind.image ||
     LayerKind.folder => TimelineSection.drawing,
     LayerKind.se => TimelineSection.se,
     LayerKind.instruction || LayerKind.camera => TimelineSection.camera,
