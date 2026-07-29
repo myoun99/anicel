@@ -1,9 +1,11 @@
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/conte/conte_ink_keys.dart';
 import 'package:anicel/src/models/conte/conte_sheet_layout.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -22,6 +24,7 @@ import 'package:anicel/src/services/persistence/app_export_settings.dart';
 import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/export/conte_pdf_writer.dart';
+import 'package:anicel/src/ui/export/export_conte_render.dart';
 import 'package:anicel/src/ui/export/export_dialog.dart';
 import 'package:anicel/src/ui/export/export_format_availability.dart';
 
@@ -138,6 +141,126 @@ void main() {
     // The embedded fonts SUBSET: only the used glyphs ship, so the file
     // stays kilobytes despite the 6MB font assets.
     expect(bytes.length, greaterThan(2000));
+  });
+
+  Future<ui.Image> solidInk(int width, int height) async {
+    final recorder = ui.PictureRecorder();
+    ui.Canvas(recorder).drawRect(
+      Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+      Paint()..color = const Color(0xFFFF0000),
+    );
+    final picture = recorder.endRecording();
+    try {
+      return await picture.toImage(width, height);
+    } finally {
+      picture.dispose();
+    }
+  }
+
+  Future<(int, int, int)> pixelAt(ui.Image image, int x, int y) async {
+    final data = await image.toByteData(format: ui.ImageByteFormat.rawRgba);
+    final offset = (y * image.width + x) * 4;
+    return (
+      data!.getUint8(offset),
+      data.getUint8(offset + 1),
+      data.getUint8(offset + 2),
+    );
+  }
+
+  testWidgets('R5: cell ink draws on the page render inside its ROW BAND '
+      'and is clipped to it — the PNG export inherits it from the same '
+      'painter', (tester) async {
+    await tester.runAsync(() async {
+      final source = buildConteSheetSource(project());
+      final pages = layoutConteSheet(
+        source,
+        metrics: const ConteSheetMetrics(cameraAspect: 16 / 9),
+      );
+      final page = pages.first;
+      final metrics = page.metrics;
+      final cell = page.cells.first;
+      final band = cell.rowBandRect(metrics);
+      final rowKey = conteInkRowKey(
+        CutId(cell.cutId),
+        cell.source.frameId!,
+      );
+      final ink = await solidInk(
+        (band.width * 4).ceil(),
+        (band.height * 4).ceil(),
+      );
+      try {
+        final rendered = await renderContePageImage(
+          page: page,
+          source: source,
+          inkImageFor: (key) => key == rowKey ? ink : null,
+        );
+        try {
+          final inside = await pixelAt(
+            rendered,
+            band.center.dx.round(),
+            band.center.dy.round(),
+          );
+          expect(inside.$1, greaterThan(200), reason: 'band center is inked');
+          expect(inside.$2, lessThan(60));
+          final above = await pixelAt(
+            rendered,
+            band.center.dx.round(),
+            (metrics.margin + 4).round(),
+          );
+          expect(
+            above,
+            (255, 255, 255),
+            reason: 'the header stays paper — the band clips its ink',
+          );
+        } finally {
+          rendered.dispose();
+        }
+      } finally {
+        ink.dispose();
+      }
+    });
+  });
+
+  testWidgets('R5: the PDF embeds the cell ink raster (the file grows by '
+      'an image object and stays a PDF)', (tester) async {
+    final (without, withInk) = (await tester.runAsync(() async {
+      final source = buildConteSheetSource(project());
+      final pages = layoutConteSheet(
+        source,
+        metrics: const ConteSheetMetrics(cameraAspect: 16 / 9),
+      );
+      final cell = pages.first.cells.first;
+      final band = cell.rowBandRect(pages.first.metrics);
+      final rowKey = conteInkRowKey(CutId(cell.cutId), cell.source.frameId!);
+      final ink = await solidInk(
+        (band.width * 4).ceil(),
+        (band.height * 4).ceil(),
+      );
+      try {
+        final fonts = await ContePdfFonts.load();
+        final plain = await writeContePdf(
+          source: source,
+          pages: pages,
+          fonts: fonts,
+        );
+        final inked = await writeContePdf(
+          source: source,
+          pages: pages,
+          fonts: fonts,
+          inkPictures: {rowKey: (await ContePdfPicture.fromImage(ink))!},
+        );
+        return (plain, inked);
+      } finally {
+        ink.dispose();
+      }
+    }))!;
+
+    expect(isPdf(withInk), isTrue);
+    expect(
+      withInk.length,
+      greaterThan(without.length),
+      reason: 'the ink raster embeds as an image object',
+    );
   });
 
   testWidgets('the dialog\'s Conte tab exports conte.pdf into the chosen '

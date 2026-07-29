@@ -4,8 +4,11 @@ import 'dart:ui' as ui;
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:pdf/pdf.dart';
 
+import '../../models/brush_frame_key.dart';
+import '../../models/conte/conte_ink_keys.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
+import '../../models/cut_id.dart';
 import '../conte/conte_fonts.dart';
 import '../conte/conte_page_painter.dart' show conteWrappedLines;
 
@@ -83,12 +86,16 @@ class ContePdfPicture {
 /// Writes [pages] as one PDF document. [pictures] maps
 /// `(cutId, pictureFrame)` to the pre-rendered cell composites; absent
 /// entries print the empty framed cell, like the panel does while a
-/// render is pending.
+/// render is pending. [inkPictures] maps a sheet-ink window's
+/// [BrushFrameKey] to its composed raster (R5) — the page plane and each
+/// cell's row band, drawn over the finished page exactly like the panel
+/// (pen over paper).
 Future<Uint8List> writeContePdf({
   required ConteSheetSource source,
   required List<ContePageLayout> pages,
   required ContePdfFonts fonts,
   Map<(String, int), ContePdfPicture> pictures = const {},
+  Map<BrushFrameKey, ContePdfPicture> inkPictures = const {},
 }) async {
   // The wrap is measured by the ENGINE's registration of these faces
   // (conteWrappedLines) — make sure a headless export path cannot measure
@@ -103,6 +110,15 @@ Future<Uint8List> writeContePdf({
     korean: PdfTtfFont(document, fonts.korean),
     pictures: {
       for (final entry in pictures.entries)
+        entry.key: PdfImage(
+          document,
+          image: entry.value.rgba,
+          width: entry.value.width,
+          height: entry.value.height,
+        ),
+    },
+    inkPictures: {
+      for (final entry in inkPictures.entries)
         entry.key: PdfImage(
           document,
           image: entry.value.rgba,
@@ -125,6 +141,7 @@ class _ContePdfPageWriter {
     required this.bold,
     required this.korean,
     required this.pictures,
+    required this.inkPictures,
   });
 
   final PdfDocument document;
@@ -133,6 +150,7 @@ class _ContePdfPageWriter {
   final PdfTtfFont bold;
   final PdfTtfFont korean;
   final Map<(String, int), PdfImage> pictures;
+  final Map<BrushFrameKey, PdfImage> inkPictures;
 
   static final PdfColor _ink = PdfColor.fromInt(0xFF101010);
   static final PdfColor _rule = PdfColor.fromInt(0xFF404040);
@@ -175,6 +193,51 @@ class _ContePdfPageWriter {
     }
     _hole();
     _footer();
+    _sheetInk(page);
+  }
+
+  /// The sheet ink, above everything the page prints — the painter's
+  /// draw order mirrored: the page plane, then each cell's row band,
+  /// each clipped to its window. The rasters cover the window at
+  /// [ContePagePainter.conteInkScale], so they draw 1:1 onto the rect.
+  void _sheetInk(ContePageLayout page) {
+    void draw(BrushFrameKey key, ui.Rect windowRect) {
+      final image = inkPictures[key];
+      if (image == null) {
+        return;
+      }
+      _g.saveContext();
+      _g.drawRect(
+        windowRect.left,
+        _y(windowRect.bottom),
+        windowRect.width,
+        windowRect.height,
+      );
+      _g.clipPath();
+      _g.drawImage(
+        image,
+        windowRect.left,
+        _y(windowRect.bottom),
+        windowRect.width,
+        windowRect.height,
+      );
+      _g.restoreContext();
+    }
+
+    draw(
+      conteInkPageKey(page.pageIndex),
+      ui.Rect.fromLTWH(0, 0, _metrics.pageWidth, _metrics.pageHeight),
+    );
+    for (final cell in page.cells) {
+      final frameId = cell.source.frameId;
+      if (frameId == null) {
+        continue;
+      }
+      draw(
+        conteInkRowKey(CutId(cell.cutId), frameId),
+        cell.rowBandRect(_metrics),
+      );
+    }
   }
 
   // ---- primitives ------------------------------------------------------

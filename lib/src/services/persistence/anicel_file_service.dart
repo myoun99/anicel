@@ -90,11 +90,37 @@ class AnicelFileService {
   Future<void> save({
     required Project project,
     required BrushFrameStore brushFrameStore,
+    List<BrushFrameStore> auxCelStores = const [],
     required String filePath,
   }) async {
-    final baked = brushFrameStore.bakedSnapshotForSave();
-    final dirty = brushFrameStore.dirtyCelKeysSinceSave;
+    // Aux stores (the conte sheet ink, R5) ride the same archive: their
+    // keys live in their own namespace, so the snapshots merge without
+    // collision and each store adopts back exactly its own refs.
+    final stores = [brushFrameStore, ...auxCelStores];
+    final snapshots = [for (final store in stores) store.bakedSnapshotForSave()];
+    final baked = (
+      hot: {for (final s in snapshots) ...s.hot},
+      cold: {for (final s in snapshots) ...s.cold},
+      fileRefs: {for (final s in snapshots) ...s.fileRefs},
+    );
+    final dirtySets = [for (final store in stores) store.dirtyCelKeysSinceSave];
+    final dirty = <BrushFrameKey>{for (final set in dirtySets) ...set};
     final saveDirectory = _parentDirectory(filePath);
+
+    void adoptEach(Map<BrushFrameKey, AnicelCelFileRef> adopted) {
+      for (var index = 0; index < stores.length; index += 1) {
+        final ownKeys = <BrushFrameKey>{
+          ...snapshots[index].hot.keys,
+          ...snapshots[index].cold.keys,
+          ...snapshots[index].fileRefs.keys,
+          ...dirtySets[index],
+        };
+        stores[index].adoptSavedFile({
+          for (final entry in adopted.entries)
+            if (ownKeys.contains(entry.key)) entry.key: entry.value,
+        });
+      }
+    }
 
     // Incremental soundness: the target must already exist and every cel
     // we would NOT write must already be IN that exact file (a fresh
@@ -122,13 +148,13 @@ class AnicelFileService {
         saveDirectory: saveDirectory,
       );
       if (adopted != null) {
-        brushFrameStore.adoptSavedFile(adopted);
+        adoptEach(adopted);
         return;
       }
       // Torn tail or garbage over threshold → compaction below.
     }
 
-    brushFrameStore.adoptSavedFile(
+    adoptEach(
       await _saveFull(
         project: project,
         baked: baked,

@@ -1,11 +1,15 @@
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 
+import '../../models/brush_frame_key.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/conte/conte_ink_keys.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
+import '../../models/cut_id.dart';
 import 'conte_fonts.dart';
 
 /// The conte sheet's ONE renderer.
@@ -26,6 +30,8 @@ class ContePagePainter extends CustomPainter {
     this.selectedCell,
     this.showPaper = true,
     this.viewport,
+    this.inkImageFor,
+    this.liveInkKeys = const {},
     // The thumbnail store (async pictures): a landed render must repaint
     // this painter even though none of the compared fields changed —
     // without it the cells stayed blank until the next pan/zoom.
@@ -52,6 +58,20 @@ class ContePagePainter extends CustomPainter {
   /// False when the page is drawn onto paper that already exists (the PDF's
   /// own page), so the white fill is not painted twice.
   final bool showPaper;
+
+  /// The sheet ink's display raster for one window key (R5) — the page's
+  /// surface and each cell's row-band surface, at [conteInkScale] over
+  /// document points. Null (the resolver or the image) draws no ink.
+  /// The PNG export inherits the ink through this exactly like the panel.
+  final ui.Image? Function(BrushFrameKey key)? inkImageFor;
+
+  /// Keys whose ink a LIVE input window is already showing (the ink-mode
+  /// overlay): the painter skips them so translucent ink never composites
+  /// twice.
+  final Set<BrushFrameKey> liveInkKeys;
+
+  /// [ConteInkController.inkScale] without importing the UI controller.
+  static const int conteInkScale = 4;
 
   ConteSheetMetrics get metrics => page.metrics;
 
@@ -101,6 +121,56 @@ class ContePagePainter extends CustomPainter {
     }
     _paintHole(canvas);
     _paintFooter(canvas);
+    _paintInk(canvas);
+  }
+
+  /// The sheet ink, above everything the page prints (it was drawn over
+  /// the finished sheet — pen over paper): the page plane first, then each
+  /// cell's row band, each clipped to its own window so a band's strokes
+  /// never bleed onto a neighbour.
+  void _paintInk(Canvas canvas) {
+    final resolve = inkImageFor;
+    if (resolve == null) {
+      return;
+    }
+    void draw(BrushFrameKey key, Rect windowRect) {
+      if (liveInkKeys.contains(key)) {
+        return;
+      }
+      final image = resolve(key);
+      if (image == null) {
+        return;
+      }
+      canvas.save();
+      canvas.clipRect(windowRect);
+      canvas.drawImageRect(
+        image,
+        Rect.fromLTWH(
+          0,
+          0,
+          windowRect.width * conteInkScale,
+          windowRect.height * conteInkScale,
+        ),
+        windowRect,
+        Paint()..filterQuality = FilterQuality.medium,
+      );
+      canvas.restore();
+    }
+
+    draw(
+      conteInkPageKey(page.pageIndex),
+      Rect.fromLTWH(0, 0, metrics.pageWidth, metrics.pageHeight),
+    );
+    for (final cell in page.cells) {
+      final frameId = cell.source.frameId;
+      if (frameId == null) {
+        continue;
+      }
+      draw(
+        conteInkRowKey(CutId(cell.cutId), frameId),
+        cell.rowBandRect(metrics),
+      );
+    }
   }
 
   // ---- header / footer -------------------------------------------------
@@ -375,12 +445,15 @@ class ContePagePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant ContePagePainter oldDelegate) =>
-      // pictureFor is deliberately absent: it is a fresh closure every
-      // build, and comparing it made every rebuild a full-page repaint.
+      // pictureFor/inkImageFor are deliberately absent: fresh closures
+      // every build, and comparing them made every rebuild a full-page
+      // repaint. Ink content changes repaint through `repaint` (the ink
+      // controller notifies per stroke/undo).
       oldDelegate.page != page ||
       oldDelegate.source != source ||
       oldDelegate.selectedCell != selectedCell ||
-      oldDelegate.viewport != viewport;
+      oldDelegate.viewport != viewport ||
+      !setEquals(oldDelegate.liveInkKeys, liveInkKeys);
 }
 
 /// The conte's text measurement, shared by the painter and the PDF writer.

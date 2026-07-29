@@ -107,6 +107,17 @@ class ContePlacedCell {
   final Rect dialogueRect;
 
   final int rowOnPage;
+
+  /// The cell's whole ROW BAND — cut column through the TIME column, the
+  /// full rows the cell claims. The conte ink's anchor rect (R5) and the
+  /// clip that keeps a cell's strokes off its neighbours; built exactly
+  /// like [ContePlacedCutBand]'s merged box, per cell.
+  Rect rowBandRect(ConteSheetMetrics metrics) => Rect.fromLTRB(
+    metrics.cutColumnLeft,
+    metrics.rowTop(rowOnPage),
+    metrics.bodyRight,
+    metrics.rowTop(rowOnPage + source.rowSpan),
+  );
 }
 
 /// The lines that START in [cell]'s span, in the sheet's printed shape —

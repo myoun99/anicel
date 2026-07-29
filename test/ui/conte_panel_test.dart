@@ -184,19 +184,20 @@ void main() {
     );
   });
 
-  testWidgets('#16: a stroke on the conte page lands on its ink surface '
-      'through the app history — one undo clears it', (tester) async {
+  testWidgets('R5: a stroke STARTING on a cell\'s row band lands on that '
+      'CELL\'s ink surface (block-FrameId key); the margins land on the '
+      'page plane — one undo clears each, through the app history', (
+    tester,
+  ) async {
     final source = buildConteSheetSource(_project());
     final pages = layoutConteSheet(
       source,
       metrics: const ConteSheetMetrics(cameraAspect: 16 / 9),
     );
-    final metrics = pages.first.metrics;
+    final page = pages.first;
+    final metrics = page.metrics;
     final controller = ConteInkController();
-    controller.syncGeometry(
-      pageWidth: metrics.pageWidth,
-      pageHeight: metrics.pageHeight,
-    );
+    controller.syncGeometry(metrics);
     final historyManager = HistoryManager();
     final strokeActive = ValueNotifier<bool>(false);
     addTearDown(strokeActive.dispose);
@@ -215,9 +216,7 @@ void main() {
               height: metrics.pageHeight,
               child: ConteInkLayer(
                 controller: controller,
-                page: 0,
-                pageWidth: metrics.pageWidth,
-                pageHeight: metrics.pageHeight,
+                page: page,
                 brushToolState: BrushToolState.defaults,
                 historyManager: historyManager,
                 viewport: CanvasViewport(),
@@ -229,9 +228,17 @@ void main() {
       ),
     );
 
+    final firstCell = page.cells.first;
+    final rowKey = ConteInkController.rowKey(
+      CutId(firstCell.cutId),
+      firstCell.source.frameId!,
+    );
     final page0 = ConteInkController.pageKey(0);
-    expect(controller.hasInkFor(page0), isFalse);
+    expect(controller.hasInkFor(ConteInkPlane.row, rowKey), isFalse);
+    expect(controller.hasInkFor(ConteInkPlane.page, page0), isFalse);
 
+    // (120,120) sits inside the first cell's row band: the stroke binds
+    // to ITS surface — the start cell owns the whole stroke.
     final layerBox = tester.getTopLeft(find.byType(ConteInkLayer));
     final gesture = await tester.startGesture(
       layerBox + const Offset(120, 120),
@@ -245,11 +252,32 @@ void main() {
     await tester.pump();
     expect(strokeActive.value, isFalse);
 
-    expect(controller.hasInkFor(page0), isTrue);
+    expect(controller.hasInkFor(ConteInkPlane.row, rowKey), isTrue);
+    expect(
+      controller.hasInkFor(ConteInkPlane.page, page0),
+      isFalse,
+      reason: 'the band claimed the stroke; the paper got nothing',
+    );
 
+    // The header sits above the body: paper-anchored, the page plane's.
+    final headerStroke = await tester.startGesture(
+      layerBox + Offset(120, metrics.margin + 10),
+      pointer: 8,
+    );
+    await tester.pump();
+    await headerStroke.moveTo(layerBox + Offset(200, metrics.margin + 14));
+    await tester.pump();
+    await headerStroke.up();
+    await tester.pump();
+    expect(controller.hasInkFor(ConteInkPlane.page, page0), isTrue);
+
+    // App-history undo parity, per plane, newest first.
     historyManager.undo();
-    expect(controller.hasInkFor(page0), isFalse);
+    expect(controller.hasInkFor(ConteInkPlane.page, page0), isFalse);
+    expect(controller.hasInkFor(ConteInkPlane.row, rowKey), isTrue);
+    historyManager.undo();
+    expect(controller.hasInkFor(ConteInkPlane.row, rowKey), isFalse);
     historyManager.redo();
-    expect(controller.hasInkFor(page0), isTrue);
+    expect(controller.hasInkFor(ConteInkPlane.row, rowKey), isTrue);
   });
 }
