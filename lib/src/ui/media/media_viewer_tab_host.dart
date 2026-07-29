@@ -101,9 +101,14 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
   /// Guards every async landing against a newer load.
   int _generation = 0;
 
-  /// The page+scale render in flight (one at a time — PDFium serializes
-  /// anyway, and the newest need wins).
-  (int, double)? _pdfRenderInFlight;
+  /// Renders in flight, one marker per (page, scale) — landings remove
+  /// their own marker, so a stale landing can never wipe a newer one.
+  final Set<(int, double)> _pdfRendersInFlight = {};
+
+  /// Token that changes once per successfully LOADED document — drives
+  /// the panel's auto-reframe so a preserved deep zoom/pan from the
+  /// previous asset can never leave the new one entirely off-screen.
+  Object? _loadedToken;
 
   @override
   void initState() {
@@ -148,7 +153,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
       page.image.dispose();
     }
     _pdfPageCache.clear();
-    _pdfRenderInFlight = null;
+    _pdfRendersInFlight.clear();
     final pdf = _pdf;
     _pdf = null;
     pdf?.dispose();
@@ -193,6 +198,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
         }
         setState(() {
           _frames = frames;
+          _loadedToken = generation;
         });
       case MediaAssetKind.pdf:
         final PdfDocumentHandle? document;
@@ -217,6 +223,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
             _message = strings.mediaViewerNoPdfRenderer;
           } else {
             _pdf = document;
+            _loadedToken = generation;
           }
         });
     }
@@ -248,10 +255,12 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
     if (cached != null && cached.scale == scale) {
       return;
     }
-    if (_pdfRenderInFlight == (pageIndex, scale)) {
+    // One marker PER (page, scale): a shared single slot got wiped by
+    // whichever render landed first, and the wipe re-issued duplicates
+    // of work already queued on PDFium's serial worker.
+    if (!_pdfRendersInFlight.add((pageIndex, scale))) {
       return;
     }
-    _pdfRenderInFlight = (pageIndex, scale);
     final generation = _generation;
     final pageSize = pdf.pageSize(pageIndex);
     () async {
@@ -264,7 +273,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
         );
       } on Object {
         if (mounted && generation == _generation) {
-          setState(() => _pdfRenderInFlight = null);
+          setState(() => _pdfRendersInFlight.remove((pageIndex, scale)));
         }
         return;
       }
@@ -273,18 +282,19 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
         return;
       }
       setState(() {
-        _pdfRenderInFlight = null;
+        _pdfRendersInFlight.remove((pageIndex, scale));
         _pdfPageCache[pageIndex]?.image.dispose();
         _pdfPageCache[pageIndex] = _RenderedPdfPage(scale: scale, image: image);
-        // A small LRU-ish window: keep the pages nearest the one on
-        // screen, drop the rest (a 100-page conte must not accumulate).
-        if (_pdfPageCache.length > 4) {
-          final farthest = _pdfPageCache.keys.reduce(
-            (a, b) => (a - _page).abs() >= (b - _page).abs() ? a : b,
-          );
-          if (farthest != pageIndex) {
-            _pdfPageCache.remove(farthest)?.image.dispose();
-          }
+        // Keep the pages nearest the one on screen, drop the rest (a
+        // 100-page conte must not accumulate). Drain in a LOOP excluding
+        // the just-landed page: a landing for a page already paged away
+        // from is itself the farthest entry, and a single-shot eviction
+        // that skipped it ratcheted the cache up scrub after scrub.
+        while (_pdfPageCache.length > 4) {
+          final farthest = _pdfPageCache.keys
+              .where((page) => page != pageIndex)
+              .reduce((a, b) => (a - _page).abs() >= (b - _page).abs() ? a : b);
+          _pdfPageCache.remove(farthest)?.image.dispose();
         }
       });
     }();
@@ -432,6 +442,19 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
       ),
       // Paper rule: the viewer never rotates the view.
       allowViewRotation: false,
+      // Read-only host: a brush-tip cursor over undrawable content is a
+      // false affordance.
+      toolCursorsEnabled: false,
+      // Reframe ONCE per loaded document: the workspace-owned viewport
+      // survives asset switches, and a deep zoom/pan from a large scan
+      // would otherwise leave a small next document entirely off-screen
+      // — a blank panel this viewer promises never to show.
+      autoFrame: message == null && _loadedToken != null
+          ? CanvasAutoFrameRequest(
+              token: _loadedToken!,
+              rect: Rect.fromLTWH(0, 0, docSize.width, docSize.height),
+            )
+          : null,
       statusStripActions: [
         AppIconButton(
           keyValue: 'media-viewer-open-file-button',

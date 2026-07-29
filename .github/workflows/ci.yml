@@ -50,6 +50,15 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
+      # Build hooks (pdfium_dart, sqlite3) download prebuilt binaries from
+      # GitHub releases during ANY flutter build/test; both short-circuit
+      # when their shared output already exists, so caching it makes a
+      # releases outage a once-per-lockfile risk instead of an every-run
+      # one.
+      - uses: actions/cache@v4
+        with:
+          path: .dart_tool/hooks_runner/shared
+          key: hooks-shared-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
       - run: flutter pub get
       - run: flutter analyze
       # The parity suites resolve a locally built engine or SKIP. This job
@@ -86,6 +95,10 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
+      - uses: actions/cache@v4
+        with:
+          path: .dart_tool/hooks_runner/shared
+          key: hooks-shared-android-${{ hashFiles('pubspec.lock') }}
       - run: flutter pub get
       - run: flutter build apk --debug
       - uses: actions/upload-artifact@v5
@@ -111,6 +124,10 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
+      - uses: actions/cache@v4
+        with:
+          path: .dart_tool/hooks_runner/shared
+          key: hooks-shared-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
       - run: flutter pub get
       - run: flutter build windows --debug
 
@@ -124,6 +141,10 @@ jobs:
           flutter-version: ${{ env.FLUTTER_VERSION }}
           channel: stable
           cache: true
+      - uses: actions/cache@v4
+        with:
+          path: .dart_tool/hooks_runner/shared
+          key: hooks-shared-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
       - run: flutter pub get
       # The engine DLL the parity tests need; without it those tests skip
       # loudly rather than fail, so building it here is what actually

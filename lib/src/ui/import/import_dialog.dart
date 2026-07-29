@@ -239,28 +239,49 @@ class _ImportDialogState extends State<ImportDialog> {
             );
             continue;
           }
-          final ok = kind == MediaAssetKind.pdf
-              ? await session.importPdfFile(
-                  path: path,
-                  destination: _destination,
-                  rasterize: _rasterize,
-                  fit: _fit,
-                  // A 100-page conte renders for seconds — the footer says
-                  // where it is instead of looking hung.
-                  onRenderProgress: (rendered, total) {
-                    if (mounted) {
-                      setState(
-                        () => _status = 'Rendering PDF page $rendered/$total…',
-                      );
-                    }
-                  },
-                )
-              : await session.importImageFile(
-                  path: path,
-                  destination: _destination,
-                  rasterize: _rasterize,
-                  fit: _fit,
-                );
+          final failedPages = <int>[];
+          final bool ok;
+          try {
+            ok = kind == MediaAssetKind.pdf
+                ? await session.importPdfFile(
+                    path: path,
+                    destination: _destination,
+                    rasterize: _rasterize,
+                    fit: _fit,
+                    // A 100-page conte renders for seconds — the footer
+                    // says where it is instead of looking hung.
+                    onRenderProgress: (rendered, total) {
+                      if (mounted) {
+                        setState(
+                          () =>
+                              _status = 'Rendering PDF page $rendered/$total…',
+                        );
+                      }
+                    },
+                    onPageRenderFailed: failedPages.add,
+                  )
+                : await session.importImageFile(
+                    path: path,
+                    destination: _destination,
+                    rasterize: _rasterize,
+                    fit: _fit,
+                  );
+          } on Object {
+            // A corrupt/locked file must not abort the rest of the batch —
+            // it gets its named warning and the loop moves on (the image
+            // path's per-file contract).
+            warnings.add(
+              '${mediaAssetDefaultName(path)} could not be opened — '
+              'corrupt or password-locked.',
+            );
+            continue;
+          }
+          if (failedPages.isNotEmpty) {
+            warnings.add(
+              '${mediaAssetDefaultName(path)}: ${failedPages.length} '
+              'page(s) failed to render — their cels stay empty.',
+            );
+          }
           if (ok) {
             imported += 1;
             done.add(path);

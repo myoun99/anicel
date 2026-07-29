@@ -3930,13 +3930,16 @@ class EditorSessionManager extends ChangeNotifier {
   /// untouched; no separate disk cache). 1 page = 1 frame (§6-k).
   /// Returns false when the renderer is absent
   /// ([PdfRenderService.availability] says which), the destination
-  /// refuses, or the document has no pages; a corrupt/locked file throws.
+  /// refuses, or the document has no pages; a corrupt/locked file throws
+  /// at open. A single page failing to RENDER leaves its cel empty and
+  /// reports through [onPageRenderFailed] — the import still completes.
   Future<bool> importPdfFile({
     required String path,
     required ImportDestination destination,
     bool rasterize = false,
     MediaFitMode fit = MediaFitMode.contain,
     void Function(int done, int total)? onRenderProgress,
+    void Function(int pageIndex)? onPageRenderFailed,
   }) async {
     // The destination gate runs BEFORE any native work — a refused
     // import must not have opened a document to leak.
@@ -4051,36 +4054,44 @@ class EditorSessionManager extends ChangeNotifier {
       // Bake AFTER the structure exists, one page at a time: render the
       // page at exactly its placement size (the vector source rasters
       // once, at the size it will live at — no second resample), then
-      // donate through the ordinary cel path.
+      // donate through the ordinary cel path. Each page guards itself
+      // (the importCutFolder contract): the command is already committed,
+      // so one damaged page must leave its cel empty and be REPORTED —
+      // never abort into a half-baked import the dialog would retry as a
+      // duplicate.
       final bakedCut = _cutById(cutId);
       if (bakedCut != null) {
         var done = 0;
         for (final bake in bakes) {
-          final pageSize = document.pageSize(bake.sourceFrameIndex);
-          final placement = placementRectFor(
-            sourceWidth: pageSize.width.round().clamp(1, 1 << 13).toInt(),
-            sourceHeight: pageSize.height.round().clamp(1, 1 << 13).toInt(),
-            canvas: bakedCut.canvasSize,
-            fit: bake.fit,
-          );
-          final image = await document.renderPage(
-            bake.sourceFrameIndex,
-            width: placement.width.round().clamp(1, 1 << 13).toInt(),
-            height: placement.height.round().clamp(1, 1 << 13).toInt(),
-          );
           try {
-            final surface = await rasterizeImageToSurface(
-              image: image,
+            final pageSize = document.pageSize(bake.sourceFrameIndex);
+            final placement = placementRectFor(
+              sourceWidth: pageSize.width.round().clamp(1, 1 << 13).toInt(),
+              sourceHeight: pageSize.height.round().clamp(1, 1 << 13).toInt(),
               canvas: bakedCut.canvasSize,
               fit: bake.fit,
             );
-            bakeCelSurface(
-              brushFrameStore,
-              brushFrameKeyForCut(bakedCut, bake.layerId, bake.frameId),
-              surface,
+            final image = await document.renderPage(
+              bake.sourceFrameIndex,
+              width: placement.width.round().clamp(1, 1 << 13).toInt(),
+              height: placement.height.round().clamp(1, 1 << 13).toInt(),
             );
-          } finally {
-            image.dispose();
+            try {
+              final surface = await rasterizeImageToSurface(
+                image: image,
+                canvas: bakedCut.canvasSize,
+                fit: bake.fit,
+              );
+              bakeCelSurface(
+                brushFrameStore,
+                brushFrameKeyForCut(bakedCut, bake.layerId, bake.frameId),
+                surface,
+              );
+            } finally {
+              image.dispose();
+            }
+          } on Object {
+            onPageRenderFailed?.call(bake.sourceFrameIndex);
           }
           done += 1;
           onRenderProgress?.call(done, bakes.length);

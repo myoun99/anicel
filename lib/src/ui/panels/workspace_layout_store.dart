@@ -125,7 +125,13 @@ RestoredWorkspaceLayout? restoreWorkspaceLayout({
   }
 
   // Panels the user CLOSED stay closed; anything else missing from the
-  // save (panels added by an app update) returns to its default dock.
+  // save (panels added by an app update) returns to its default dock —
+  // JOINING the restored section that already holds a default-section
+  // sibling when one survived (an update-added tab slips into the
+  // existing strip invisibly, matching fresh-install defaults), and only
+  // getting a trailing section of its own when none did. A trailing
+  // section is a visible SPLIT of the dock — the wrong migration for a
+  // tab whose siblings are all still there.
   final hiddenJson = payload['hiddenTabs'];
   final hiddenTabs = <String>{
     if (hiddenJson is List)
@@ -138,8 +144,22 @@ RestoredWorkspaceLayout? restoreWorkspaceLayout({
         for (final tab in section.tabs)
           if (!hiddenTabs.contains(tab) && seen.add(tab)) tab,
       ];
-      if (missing.isNotEmpty) {
-        docks[entry.key]!.add(DockSection(tabs: missing));
+      if (missing.isEmpty) {
+        continue;
+      }
+      final sections = docks[entry.key]!;
+      final siblingIndex = sections.indexWhere(
+        (restored) => restored.tabs.any(section.tabs.contains),
+      );
+      if (siblingIndex >= 0) {
+        final sibling = sections[siblingIndex];
+        sections[siblingIndex] = DockSection(
+          tabs: [...sibling.tabs, ...missing],
+          activeTabId: sibling.activeTabId,
+          weight: sibling.weight,
+        );
+      } else {
+        sections.add(DockSection(tabs: missing));
       }
     }
   }

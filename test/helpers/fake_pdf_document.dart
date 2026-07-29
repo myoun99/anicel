@@ -24,10 +24,12 @@ class FakePdfDocument implements PdfDocumentHandle {
   @override
   ui.Size pageSize(int pageIndex) => pageSizes[pageIndex];
 
-  /// The color page [pageIndex] fills with (distinct per page so folding
-  /// or misindexed bakes would be visible).
+  /// The color page [pageIndex] fills with — distinct per page so folding
+  /// or misindexed bakes would be visible. 0x35 is coprime with 0xFF, so
+  /// the red channel cycles through all 255 values before repeating (the
+  /// old 0x40-step version collided every four pages).
   static ui.Color pageColor(int pageIndex) =>
-      ui.Color(0xFF000000 | ((0x40 * (pageIndex + 1)) & 0xFF) << 16 | 0x33);
+      ui.Color(0xFF000033 | (((0x35 * (pageIndex + 1)) % 0xFF) << 16));
 
   @override
   Future<ui.Image> renderPage(
