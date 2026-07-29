@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/conte/conte_ink_keys.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
 import '../../models/cut_id.dart';
@@ -301,10 +302,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
     final brushToolState = widget.brushToolState;
     final metrics = page?.metrics;
     if (inkController != null && metrics != null) {
-      inkController.syncGeometry(
-        pageWidth: metrics.pageWidth,
-        pageHeight: metrics.pageHeight,
-      );
+      inkController.syncGeometry(metrics);
     }
     // The ink view unmounts with the last page — nothing is left to
     // finish a stroke, so the nav/warm hold must not stay pinned.
@@ -365,7 +363,30 @@ class _ConteTabHostState extends State<ConteTabHost> {
                     selectedCell: _selected,
                     pictureFor: _pictureFor,
                     viewport: viewport,
-                    repaint: widget.thumbnailRepaint,
+                    // Saved sheet ink shows whatever the ink mode says
+                    // (R5); a live input window's key stands down so
+                    // translucent ink never composites twice.
+                    inkImageFor: inkController == null
+                        ? null
+                        : (key) => inkController.displayImageFor(
+                            key.layerId == conteInkRowLayerId
+                                ? ConteInkPlane.row
+                                : ConteInkPlane.page,
+                            key,
+                          ),
+                    liveInkKeys: !widget.inkEnabled || inkController == null
+                        ? const {}
+                        : {
+                            for (final window in conteInkWindows(page))
+                              window.key,
+                          },
+                    repaint: inkController == null
+                        ? widget.thumbnailRepaint
+                        : Listenable.merge([
+                            if (widget.thumbnailRepaint != null)
+                              widget.thumbnailRepaint!,
+                            inkController,
+                          ]),
                   ),
                   child: const SizedBox.expand(),
                 ),
@@ -408,9 +429,7 @@ class _ConteTabHostState extends State<ConteTabHost> {
                 builder: (context, toolState, _) => ConteInkLayer(
                   key: const ValueKey<String>('conte-ink-layer'),
                   controller: inkController,
-                  page: pageIndex,
-                  pageWidth: metrics!.pageWidth,
-                  pageHeight: metrics.pageHeight,
+                  page: page,
                   brushToolState: toolState,
                   historyManager: _session.historyManager,
                   viewport: viewport,

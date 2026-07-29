@@ -442,7 +442,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// and selecting cells.
   final ValueNotifier<CanvasViewport?> _conteViewport = ValueNotifier(null);
   final ValueNotifier<bool> _conteInkEnabled = ValueNotifier(false);
-  final ConteInkController _conteInk = ConteInkController();
+
+  /// The cel stores are the SESSION's (R5): the archive saves and loads
+  /// them with the project; this controller owns only the edit sessions.
+  late final ConteInkController _conteInk = ConteInkController(
+    rowStore: widget.session.conteInkRowStore,
+    pageStore: widget.session.conteInkPageStore,
+  );
 
   late final StoryboardCutThumbnailStore _storyboardThumbnails;
 

@@ -28,6 +28,7 @@ import '../models/attached_placement.dart';
 import '../models/bitmap_surface.dart';
 import '../models/audio_clip.dart';
 import '../models/brush_frame_key.dart';
+import '../models/conte/conte_ink_keys.dart';
 import '../models/camera_instruction.dart';
 import '../models/camera_pose.dart';
 import '../models/canvas_point.dart';
@@ -425,6 +426,16 @@ class EditorSessionManager extends ChangeNotifier {
       (key) =>
           _repository.currentProject?.linkRegistry.canonicalCelKey(key) ?? key,
     );
+
+  /// The conte sheet ink's cel stores (R5) — SESSION-owned so the .anicel
+  /// archive can persist them (the second cel namespace), while the ink
+  /// controller (workspace UI) keeps the coordinators. The ROW store's
+  /// keys carry storyboard block [FrameId]s: entries whose block no longer
+  /// exists are pruned at LOAD (never at save — a deleted block's ink must
+  /// survive its own undo), so "ink dies with the drawing" lands at the
+  /// session boundary.
+  final BrushFrameStore conteInkRowStore = BrushFrameStore();
+  final BrushFrameStore conteInkPageStore = BrushFrameStore();
 
   /// Production sink for brush edit invalidations; playback caches and the
   /// prerender scheduler listen here.
@@ -10651,6 +10662,7 @@ class EditorSessionManager extends ChangeNotifier {
     await _anicelFileService.save(
       project: _repository.requireProject(),
       brushFrameStore: brushFrameStore,
+      auxCelStores: [conteInkRowStore, conteInkPageStore],
       filePath: path,
     );
   }
@@ -10667,6 +10679,7 @@ class EditorSessionManager extends ChangeNotifier {
     await _anicelFileService.save(
       project: _repository.requireProject(),
       brushFrameStore: brushFrameStore,
+      auxCelStores: [conteInkRowStore, conteInkPageStore],
       filePath: filePath,
     );
     _projectFilePath = filePath;
@@ -10703,7 +10716,36 @@ class EditorSessionManager extends ChangeNotifier {
     _repository.replaceProject(result.project);
     // R22-C: opens land every cel FILE-BACKED — pixels stay in the .anicel
     // until a cel is first shown (near-zero RAM for 1500-cut projects).
-    brushFrameStore.restoreFromFile(result.cels);
+    // The conte ink namespace routes to its own stores (R5); a ROW entry
+    // whose storyboard block no longer exists in the loaded project is
+    // pruned HERE — the load boundary is where "ink dies with the
+    // drawing" becomes permanent (saving never prunes, so an undone
+    // delete keeps its ink within the session).
+    final mainCels = <BrushFrameKey, AnicelCelFileRef>{};
+    final inkRowCels = <BrushFrameKey, AnicelCelFileRef>{};
+    final inkPageCels = <BrushFrameKey, AnicelCelFileRef>{};
+    Set<FrameId>? liveFrameIds;
+    for (final entry in result.cels.entries) {
+      final key = entry.key;
+      if (!isConteInkKey(key)) {
+        mainCels[key] = entry.value;
+      } else if (key.layerId == conteInkRowLayerId) {
+        liveFrameIds ??= {
+          for (final track in result.project.tracks)
+            for (final cut in track.cuts)
+              for (final layer in cut.layers)
+                for (final frame in layer.frames) frame.id,
+        };
+        if (liveFrameIds.contains(key.frameId)) {
+          inkRowCels[key] = entry.value;
+        }
+      } else {
+        inkPageCels[key] = entry.value;
+      }
+    }
+    brushFrameStore.restoreFromFile(mainCels);
+    conteInkRowStore.restoreFromFile(inkRowCels);
+    conteInkPageStore.restoreFromFile(inkPageCels);
     _historyManager.clear();
     _copiedFrame = null;
     _layerClipboard = null;

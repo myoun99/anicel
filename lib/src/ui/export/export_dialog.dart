@@ -24,8 +24,13 @@ import '../../models/export_overrides.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/brush_frame_key.dart';
+import '../../models/conte/conte_ink_keys.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
+import '../../services/brush_frame_store.dart';
+import '../canvas/bitmap_tile_image_cache.dart';
+import '../canvas/tiled_surface_compose.dart';
 import '../conte/conte_sheet_builder.dart';
 import 'conte_pdf_writer.dart';
 import 'export_audio_mix.dart';
@@ -491,6 +496,49 @@ class ExportDialogState extends State<ExportDialog> {
   String _contePageFileName(int index, int pageCount) =>
       pageCount == 1 ? 'conte.png' : 'conte_p${index + 1}.png';
 
+  /// The sheet ink rasters for [pages] (R5), composed from the session's
+  /// ink stores: the page plane plus each cell's row band. Caller
+  /// disposes the images.
+  Future<Map<BrushFrameKey, ui.Image>> _renderConteInk(
+    List<ContePageLayout> pages,
+  ) async {
+    final images = <BrushFrameKey, ui.Image>{};
+    Future<void> compose(BrushFrameStore store, BrushFrameKey key) async {
+      if (images.containsKey(key)) {
+        return;
+      }
+      final surface = store.bakedSurfaceOrNull(key);
+      if (surface == null) {
+        return;
+      }
+      final image = await composeTiledSurfaceImage(
+        surface,
+        reuse: BitmapTileImageCache.instance,
+      );
+      if (image != null) {
+        images[key] = image;
+      }
+    }
+
+    for (final page in pages) {
+      await compose(
+        _session.conteInkPageStore,
+        conteInkPageKey(page.pageIndex),
+      );
+      for (final cell in page.cells) {
+        final frameId = cell.source.frameId;
+        if (frameId == null) {
+          continue;
+        }
+        await compose(
+          _session.conteInkRowStore,
+          conteInkRowKey(CutId(cell.cutId), frameId),
+        );
+      }
+    }
+    return images;
+  }
+
   Cut? _conteCutById(String cutId) {
     for (final track in _session.repository.requireProject().tracks) {
       for (final cut in track.cuts) {
@@ -757,17 +805,22 @@ class ExportDialogState extends State<ExportDialog> {
             // Preview pictures at panel resolution — fast, and the run
             // re-renders sharper ones anyway.
             final pictures = await _renderContePictures([page], width: 128);
+            final ink = await _renderConteInk([page]);
             try {
               return await renderContePageImage(
                 page: page,
                 source: source,
                 pictureFor: (cutId, frame) => pictures[(cutId, frame)],
+                inkImageFor: (key) => ink[key],
                 outputSize: fitted == null
                     ? null
                     : CanvasSize(width: fitted.width, height: fitted.height),
               );
             } finally {
               for (final image in pictures.values) {
+                image.dispose();
+              }
+              for (final image in ink.values) {
                 image.dispose();
               }
             }
@@ -1366,15 +1419,20 @@ class ExportDialogState extends State<ExportDialog> {
             [page],
             width: cellWidth,
           );
+          final ink = await _renderConteInk([page]);
           try {
             return await renderContePageImage(
               page: page,
               source: source,
               pictureFor: (cutId, frame) => pictures[(cutId, frame)],
+              inkImageFor: (key) => ink[key],
               scale: spec.sheetScale.toDouble(),
             );
           } finally {
             for (final image in pictures.values) {
+              image.dispose();
+            }
+            for (final image in ink.values) {
               image.dispose();
             }
           }
@@ -1432,6 +1490,22 @@ class ExportDialogState extends State<ExportDialog> {
     if (_cancelRequested) {
       return 'Export cancelled.';
     }
+    // The sheet ink (R5): compose per window, convert to raw bytes, free
+    // the ui.Images — the same lifecycle the cell pictures follow.
+    final inkImages = await _renderConteInk(pages);
+    final inkPictures = <BrushFrameKey, ContePdfPicture>{};
+    try {
+      for (final entry in inkImages.entries) {
+        final picture = await ContePdfPicture.fromImage(entry.value);
+        if (picture != null) {
+          inkPictures[entry.key] = picture;
+        }
+      }
+    } finally {
+      for (final image in inkImages.values) {
+        image.dispose();
+      }
+    }
     final fonts = await ContePdfFonts.load();
     _reportProgress(pages.length, pages.length + 1);
     final bytes = await writeContePdf(
@@ -1439,6 +1513,7 @@ class ExportDialogState extends State<ExportDialog> {
       pages: pages,
       fonts: fonts,
       pictures: pdfPictures,
+      inkPictures: inkPictures,
     );
     final file = File(_joinLocation('conte.pdf'));
     await file.parent.create(recursive: true);
