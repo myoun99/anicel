@@ -62,21 +62,21 @@ class PlaybackFramePainter extends CustomPainter {
   final CameraPose? cameraPose;
   final CanvasSize? cameraFrameSize;
 
-  /// The CUT-level pose (the V track's Transform — AE precomp semantics):
-  /// the cut's finished picture moves on the DISPLAY space, above the
-  /// camera projection. Resolved by cutPoseAt over the same space this
-  /// painter draws (camera frame in camera mode, canvas otherwise); null =
-  /// identity, zero cost. Display-time only, never baked into composites
-  /// (the cut fade's rule). Canvas mode keeps the PAPER static and moves
-  /// only the merged content, clipped to the canvas (R7-③: "the canvas
-  /// stays put, the contents move as one") — the paper is the panel's
-  /// stage, not part of the cut's picture there.
+  /// The V track's pose (Track.transformTrack — AE precomp semantics):
+  /// the finished picture moves on the DISPLAY space, above the camera
+  /// projection. Resolved by trackPoseAt at the frame's GLOBAL position
+  /// over the same space this painter draws (camera frame in camera mode,
+  /// canvas otherwise); null = identity, zero cost. Display-time only,
+  /// never baked into composites (the fade's rule). Canvas mode keeps the
+  /// PAPER static and moves only the merged content, clipped to the
+  /// canvas (R7-③: "the canvas stays put, the contents move as one") —
+  /// the paper is the panel's stage, not part of the cut's picture there.
   final TransformPose? cutPose;
 
   /// The cut pose's anchor; null = the display-space center.
   final CanvasPoint? cutAnchorPoint;
 
-  /// The cut fade (Cut.fadeOpacityAt): the cut's WHOLE contribution —
+  /// The fade (the track's opacity lane): the cut's WHOLE contribution —
   /// stage and picture together — thins as one (R3b, "fade is
   /// transparency"): what a fade reveals is whatever lies BEHIND the cut
   /// (the tracks below, then the backdrop), never a painted-on wash. The

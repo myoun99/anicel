@@ -12,6 +12,7 @@ import '../../models/playback_quality.dart';
 import '../../models/project.dart'
     show defaultProjectBackdropArgb, defaultProjectPasteboardArgb;
 import '../../models/project_background.dart';
+import '../../models/transform_track.dart';
 import '../../services/playback/playback_frame_mapping.dart';
 import '../canvas/paper_background.dart'
     show AlphaCheckerboardPainter;
@@ -57,6 +58,7 @@ class CanvasTrackStackView extends StatefulWidget {
     this.backdropArgb = defaultProjectBackdropArgb,
     this.pasteboardArgb = defaultProjectPasteboardArgb,
     this.showAlphaCheckerboard = false,
+    this.transformTrackOf,
   });
 
   /// The parked global frame (the session's gap parking): moves per
@@ -103,6 +105,10 @@ class CanvasTrackStackView extends StatefulWidget {
   /// Alpha preview (display-only): the backdrop renders as the alpha
   /// checkerboard, showing what an alpha export leaves open.
   final bool showAlphaCheckerboard;
+
+  /// The owning TRACK's transform lanes per cut (R4: pose + fade on the
+  /// global axis). Null = no effects (tests, plain fixtures).
+  final TransformTrack Function(CutId cutId)? transformTrackOf;
 
   @override
   State<CanvasTrackStackView> createState() => _CanvasTrackStackViewState();
@@ -264,11 +270,17 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
       final cutPictureVisible =
           widget.cutPictureVisibleOf?.call(cut.id) ?? true;
 
-      // The cut-level pose (V track, AE precomp semantics), display-time
-      // only — resolved over the CAMERA frame, the space its lanes author
-      // in (R8-③).
-      final poseActive = cutFxEnabled && cutPoseIsActive(cut);
-      final fade = cutFxEnabled ? cut.fadeOpacityAt(localFrame) : 1.0;
+      // The TRACK-level pose (R4: the V effects live on the track's
+      // global axis), display-time only — resolved over the CAMERA frame,
+      // the space its lanes author in (R8-③), at the frame's GLOBAL
+      // position (this stack's own axis).
+      final transformTrack =
+          widget.transformTrackOf?.call(cut.id) ?? TransformTrack.empty();
+      final globalFrame = position.globalFrameIndex;
+      final poseActive = cutFxEnabled && trackPoseIsActive(transformTrack);
+      final fade = cutFxEnabled
+          ? trackFadeOpacityAt(transformTrack, globalFrame)
+          : 1.0;
       layers.add(
         CustomPaint(
           painter: PlaybackFramePainter(
@@ -282,10 +294,10 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
             cameraPose: widget.cameraPoseOf(cut, localFrame),
             cameraFrameSize: widget.cameraFrameSize,
             cutPose: poseActive
-                ? cutPoseAt(cut, localFrame, widget.cameraFrameSize)
+                ? trackPoseAt(transformTrack, globalFrame, widget.cameraFrameSize)
                 : null,
             cutAnchorPoint: poseActive
-                ? cutAnchorPointAt(cut, localFrame)
+                ? trackAnchorPointAt(transformTrack, globalFrame)
                 : null,
             paperBackground: widget.background,
             // The bottom covered track is the stage: letterbox, the

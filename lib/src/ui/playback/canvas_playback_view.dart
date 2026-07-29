@@ -43,6 +43,8 @@ class CanvasPlaybackView extends StatefulWidget {
     this.viewport,
     this.background = ProjectBackground.defaultBackground,
     this.pasteboardArgb = defaultProjectPasteboardArgb,
+    this.transformTrackOf,
+    this.trackGlobalFrameOf,
     this.trackStack,
   });
 
@@ -72,6 +74,15 @@ class CanvasPlaybackView extends StatefulWidget {
   /// The project pasteboard (R3b): the stage apron the camera view shows
   /// past the paper's edge, fading with the cut unit.
   final int pasteboardArgb;
+
+  /// The owning TRACK's transform lanes per cut (R4: pose + fade on the
+  /// global axis). Null = no effects (tests, plain fixtures).
+  final TransformTrack Function(CutId cutId)? transformTrackOf;
+
+  /// The GLOBAL frame of a cut-local index on the cut's track — what the
+  /// track lanes are keyed in. Null falls back to the local index (a
+  /// single-track fixture whose cut starts at 0).
+  final int Function(CutId cutId, int localFrame)? trackGlobalFrameOf;
 
   /// The multitrack display path for ALL-CUTS playback (R3a): when set,
   /// the FRAME is this widget — the parked canvas's track stack, following
@@ -172,29 +183,36 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
     final cutPictureVisible =
         cut == null || (widget.cutPictureVisibleOf?.call(cut.id) ?? true);
 
-    // The cut-level transform (V track, AE precomp semantics), display-time
-    // only — never baked into the composite cache. Camera mode resolves the
-    // pose over the camera frame (the space the lanes author in); CANVAS
-    // mode remaps that same camera-space pose onto the canvas
-    // (cutPoseForCanvasPreview) — resolving over the canvas instead read
-    // every key in the wrong space and snapped the picture top-left (R8-③).
+    // The TRACK-level transform (R4: the V effects on the global axis),
+    // display-time only — never baked into the composite cache. Camera
+    // mode resolves the pose over the camera frame (the space the lanes
+    // author in); CANVAS mode remaps that same camera-space pose onto the
+    // canvas — resolving over the canvas instead read every key in the
+    // wrong space and snapped the picture top-left (R8-③).
+    final transformTrack = cut == null
+        ? TransformTrack.empty()
+        : widget.transformTrackOf?.call(cut.id) ?? TransformTrack.empty();
+    final trackFrame = cut != null && position != null
+        ? widget.trackGlobalFrameOf?.call(cut.id, position.localFrameIndex) ??
+              position.localFrameIndex
+        : 0;
     TransformPose? cutPose;
     CanvasPoint? cutAnchorPoint;
     if (cut != null &&
         position != null &&
         cutFxEnabled &&
-        cutPoseIsActive(cut)) {
+        trackPoseIsActive(transformTrack)) {
       if (widget.cameraViewEnabled) {
-        cutPose = cutPoseAt(
-          cut,
-          position.localFrameIndex,
+        cutPose = trackPoseAt(
+          transformTrack,
+          trackFrame,
           widget.cameraFrameSize,
         );
-        cutAnchorPoint = cutAnchorPointAt(cut, position.localFrameIndex);
+        cutAnchorPoint = trackAnchorPointAt(transformTrack, trackFrame);
       } else {
-        final preview = cutPoseForCanvasPreview(
-          cut,
-          position.localFrameIndex,
+        final preview = trackPoseForCanvasPreview(
+          transformTrack,
+          trackFrame,
           cameraFrameSize: widget.cameraFrameSize,
           canvasSize: canvasSize,
         );
@@ -238,7 +256,7 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
                   : null,
               fadeOpacity:
                   !inGap && cut != null && position != null && cutFxEnabled
-                  ? cut.fadeOpacityAt(position.localFrameIndex)
+                  ? trackFadeOpacityAt(transformTrack, trackFrame)
                   : 1,
             ),
           ),

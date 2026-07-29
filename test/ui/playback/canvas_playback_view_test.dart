@@ -46,12 +46,11 @@ void main() {
         frameId: frameId,
       );
 
-  Cut cut({TransformTrack? transformTrack}) => Cut(
+  Cut cut() => Cut(
     id: const CutId('cut'),
     name: 'Cut',
     duration: 2,
     canvasSize: canvasSize,
-    transformTrack: transformTrack,
     layers: [
       Layer(
         id: const LayerId('layer'),
@@ -66,23 +65,19 @@ void main() {
     ],
   );
 
-  Project project({TransformTrack? transformTrack}) => Project(
+  Project project() => Project(
     id: const ProjectId('project'),
     name: 'Project',
     frameRate: const ProjectFrameRate.integer(10),
     cameraSize: const CanvasSize(width: 4, height: 2),
     tracks: [
-      Track(
-        id: const TrackId('track'),
-        name: 'Track',
-        cuts: [cut(transformTrack: transformTrack)],
-      ),
+      Track(id: const TrackId('track'), name: 'Track', cuts: [cut()]),
     ],
     createdAt: DateTime.utc(2026),
   );
 
   ({CutFrameCompositeCache composites, CanvasPlaybackController controller})
-  fixture({TransformTrack? transformTrack}) {
+  fixture() {
     final store = BrushFrameStore();
     BrushFrameEditingCoordinator(
       initialFrameKey: frameKey(
@@ -120,7 +115,7 @@ void main() {
       frameKeyOf: frameKey,
     );
     final controller = CanvasPlaybackController(
-      resolveProject: () => project(transformTrack: transformTrack),
+      resolveProject: project,
       resolveActiveCutId: () => const CutId('cut'),
       resolveActiveTrackId: () => const TrackId('track'),
       resolveFrameRate: () => const ProjectFrameRate.integer(10),
@@ -137,6 +132,9 @@ void main() {
     bool Function(CutId cutId)? cutFxEnabledOf,
     bool Function(CutId cutId)? cutPictureVisibleOf,
     Widget? trackStack,
+    // The TRACK's V lanes (R4). The fixture's single cut starts at global
+    // 0, so local == global and the identity frame map below is exact.
+    TransformTrack? transformTrack,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
@@ -154,6 +152,10 @@ void main() {
             cutFxEnabledOf: cutFxEnabledOf,
             cutPictureVisibleOf: cutPictureVisibleOf,
             trackStack: trackStack,
+            transformTrackOf: transformTrack == null
+                ? null
+                : (_) => transformTrack,
+            trackGlobalFrameOf: (cutId, localFrame) => localFrame,
           ),
         ),
       ),
@@ -221,26 +223,25 @@ void main() {
     f.composites.dispose();
   });
 
-  testWidgets('the CUT pose (V track) reaches the painter — resolved in '
+  testWidgets('the TRACK pose (V lanes) reaches the painter — resolved in '
       'CAMERA space and remapped onto the canvas (R8-③) — while fade-only '
-      'cuts stay on the pose-free path', (tester) async {
+      'tracks stay on the pose-free path', (tester) async {
     // A geometric key activates the pose; the opacity lane alone must not.
     // Keys author in camera space (frame 4×2, center (2,1)); the canvas
     // (8×8) preview shifts center AND anchor by d = canvasC − frameC =
     // (2,3), so the camera-space delta replays 1:1 on the canvas.
-    final posed = fixture(
+    final posed = fixture();
+    posed.controller.play(scope: PlaybackScope.activeCut);
+    await pumpView(
+      tester,
+      controller: posed.controller,
+      composites: posed.composites,
       transformTrack: TransformTrack.empty().copyWith(
         position: PropertyTrack<CanvasPoint>.empty().withKey(
           0,
           CanvasPoint(x: 6, y: 4),
         ),
       ),
-    );
-    posed.controller.play(scope: PlaybackScope.activeCut);
-    await pumpView(
-      tester,
-      controller: posed.controller,
-      composites: posed.composites,
     );
     final canvasPose = painterOf(tester).cutPose;
     expect(canvasPose, isNotNull);
@@ -255,19 +256,18 @@ void main() {
     // The top-left snap regression: an UNTOUCHED key (= the camera-frame
     // center) must read as identity motion on the canvas — center and
     // anchor both land on the canvas center.
-    final untouched = fixture(
+    final untouched = fixture();
+    untouched.controller.play(scope: PlaybackScope.activeCut);
+    await pumpView(
+      tester,
+      controller: untouched.controller,
+      composites: untouched.composites,
       transformTrack: TransformTrack.empty().copyWith(
         position: PropertyTrack<CanvasPoint>.empty().withKey(
           0,
           CanvasPoint(x: 2, y: 1),
         ),
       ),
-    );
-    untouched.controller.play(scope: PlaybackScope.activeCut);
-    await pumpView(
-      tester,
-      controller: untouched.controller,
-      composites: untouched.composites,
     );
     expect(painterOf(tester).cutPose!.center, CanvasPoint(x: 4, y: 4));
     expect(painterOf(tester).cutAnchorPoint, CanvasPoint(x: 4, y: 4));
@@ -276,16 +276,15 @@ void main() {
     await tester.pump();
     untouched.composites.dispose();
 
-    final fadeOnly = fixture(
-      transformTrack: TransformTrack.empty().copyWith(
-        opacity: PropertyTrack<double>.empty().withKey(0, 0.5),
-      ),
-    );
+    final fadeOnly = fixture();
     fadeOnly.controller.play(scope: PlaybackScope.activeCut);
     await pumpView(
       tester,
       controller: fadeOnly.controller,
       composites: fadeOnly.composites,
+      transformTrack: TransformTrack.empty().copyWith(
+        opacity: PropertyTrack<double>.empty().withKey(0, 0.5),
+      ),
     );
     expect(painterOf(tester).cutPose, isNull, reason: 'zero-cost fade path');
     expect(painterOf(tester).fadeOpacity, 0.5);
@@ -295,12 +294,18 @@ void main() {
     fadeOnly.composites.dispose();
   });
 
-  testWidgets('the V-row display gates (R9): fx off bypasses the cut pose '
-      'AND the fade; the eye off drops the picture (paper only)', (
+  testWidgets('the V-row display gates (R9): fx off bypasses the track '
+      'pose AND the fade; the eye off drops the picture (paper only)', (
     tester,
   ) async {
-    // fx off: a posed + faded cut plays pose-free at full opacity.
-    final posed = fixture(
+    // fx off: a posed + faded track plays pose-free at full opacity.
+    final posed = fixture();
+    posed.controller.play(scope: PlaybackScope.activeCut);
+    await pumpView(
+      tester,
+      controller: posed.controller,
+      composites: posed.composites,
+      cutFxEnabledOf: (_) => false,
       transformTrack: TransformTrack.empty().copyWith(
         position: PropertyTrack<CanvasPoint>.empty().withKey(
           0,
@@ -308,13 +313,6 @@ void main() {
         ),
         opacity: PropertyTrack<double>.empty().withKey(0, 0.5),
       ),
-    );
-    posed.controller.play(scope: PlaybackScope.activeCut);
-    await pumpView(
-      tester,
-      controller: posed.controller,
-      composites: posed.composites,
-      cutFxEnabledOf: (_) => false,
     );
     expect(painterOf(tester).cutPose, isNull, reason: 'pose bypassed');
     expect(painterOf(tester).fadeOpacity, 1, reason: 'fade bypassed');

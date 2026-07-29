@@ -154,14 +154,11 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
       ..write('#f')
       ..write(frameIndex)
       // The thumbnail renders THROUGH the camera: camera work must
-      // re-render it (was signature-blind — R4-⑩).
+      // re-render it (was signature-blind — R4-⑩). The fade component is
+      // gone with the cut transform (R4): the effects are TRACK data and
+      // never bake into the thumbnail's composite.
       ..write('#cam')
-      ..write(cut.camera.track.hashCode)
-      // The cut fade bakes into video frames only, but the fade keys live
-      // on the cut transform track — cheap to include, keeps the door
-      // open for fade-aware thumbs.
-      ..write('#fade')
-      ..write(cut.transformTrack.hashCode);
+      ..write(cut.camera.track.hashCode);
     for (final layer in cut.layers) {
       buffer
         ..write('|')

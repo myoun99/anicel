@@ -1748,37 +1748,79 @@ class EditorSessionManager extends ChangeNotifier {
     return null;
   }
 
-  /// The ACTIVE cut's cut-level pose over the CANVAS at [frameIndex]
+  /// The track that owns [cutId] — the V effects' home (R4: the transform
+  /// lanes are TRACK data on the global axis, like the SE rows).
+  Track? trackOwningCut(CutId cutId) {
+    for (final track in _repository.requireProject().tracks) {
+      for (final cut in track.cuts) {
+        if (cut.id == cutId) {
+          return track;
+        }
+      }
+    }
+    return null;
+  }
+
+  /// [cutId]'s owning track's transform lanes; empty for an orphan.
+  TransformTrack transformTrackForCut(CutId cutId) =>
+      trackOwningCut(cutId)?.transformTrack ?? TransformTrack.empty();
+
+  /// The GLOBAL frame of [cutId]'s local [frameIndex] on its track's axis
+  /// — what the track-owned lanes are keyed in.
+  int trackGlobalFrameOf(CutId cutId, int frameIndex) {
+    for (final entry in buildStoryboardTimelineLayout(
+      _repository.requireProject(),
+    )) {
+      if (entry.cutId == cutId) {
+        return entry.startFrame + frameIndex;
+      }
+    }
+    return frameIndex;
+  }
+
+  /// The ACTIVE cut's V-track pose over the CANVAS at [frameIndex]
   /// (default: the playhead) — the storyboard V-row fx preview on the
   /// EDITING canvas and the scrub preview (R9-B). Non-null only while the
-  /// cut's geometric lanes carry keys AND its fx apply; canvas-space via
-  /// the camera-frame conjugation (cutPoseForCanvasPreview — the exact
-  /// remap playback uses, R8-③).
+  /// TRACK's geometric lanes carry keys AND the cut's fx apply;
+  /// canvas-space via the camera-frame conjugation (the exact remap
+  /// playback uses, R8-③). Resolved at the frame's GLOBAL position (R4).
   LayerPoseSample? activeCutCanvasPoseSample({int? frameIndex}) {
     final cut = activeCutOrNull;
-    if (cut == null || !isCutFxEnabled(cut.id) || !cutPoseIsActive(cut)) {
+    if (cut == null || !isCutFxEnabled(cut.id)) {
       return null;
     }
-    final preview = cutPoseForCanvasPreview(
-      cut,
-      frameIndex ?? _timelineController.currentFrameIndex,
+    final track = transformTrackForCut(cut.id);
+    if (!trackPoseIsActive(track)) {
+      return null;
+    }
+    final preview = trackPoseForCanvasPreview(
+      track,
+      trackGlobalFrameOf(
+        cut.id,
+        frameIndex ?? _timelineController.currentFrameIndex,
+      ),
       cameraFrameSize: cameraFrameSize,
       canvasSize: cut.canvasSize,
     );
     return (pose: preview.pose, anchorPoint: preview.anchorPoint);
   }
 
-  /// The cut fade the editing canvas (and the scrub preview) shows at
-  /// [frameIndex] (default: the playhead) — the resolved opacity while the
-  /// cut's fx apply, 1 when bypassed. R9-C rule: fx ALWAYS reflects; dark
-  /// faded frames are worked with the fx switch off.
+  /// The fade the editing canvas (and the scrub preview) shows at
+  /// [frameIndex] (default: the playhead) — the TRACK's opacity at the
+  /// frame's global position while the cut's fx apply, 1 when bypassed.
+  /// R9-C rule: fx ALWAYS reflects; dark faded frames are worked with the
+  /// fx switch off.
   double activeCutEditingFadeOpacity({int? frameIndex}) {
     final cut = activeCutOrNull;
     if (cut == null || !isCutFxEnabled(cut.id)) {
       return 1;
     }
-    return cut.fadeOpacityAt(
-      frameIndex ?? _timelineController.currentFrameIndex,
+    return trackFadeOpacityAt(
+      transformTrackForCut(cut.id),
+      trackGlobalFrameOf(
+        cut.id,
+        frameIndex ?? _timelineController.currentFrameIndex,
+      ),
     );
   }
 
@@ -1903,42 +1945,44 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   /// Sets [cutId]'s fade in/out lengths (the storyboard V-track's fade
-  /// handles): rewrites the cut-level transform's opacity lane to the
-  /// canonical fade shape; one undo step, no-op when unchanged.
+  /// handles): rewrites the canonical fade shape into the CUT'S WINDOW of
+  /// the owning TRACK's opacity lane (R4 — keys outside the window are
+  /// other cuts' fades and stay put); one undo step, no-op when unchanged.
   void setCutFade(
     CutId cutId, {
     required int fadeInFrames,
     required int fadeOutFrames,
   }) {
+    final owner = trackOwningCut(cutId);
     final cut = cutById(cutId);
-    if (cut == null) {
+    if (owner == null || cut == null) {
       return;
     }
-    _cutCommandCoordinator.updateCutTransform(
-      cutId: cutId,
-      transformTrack: cutTransformWithFade(
-        cut,
+    updateTrackTransformTrack(
+      owner.id,
+      trackTransformWithCutFade(
+        owner.transformTrack,
+        startFrame: trackGlobalFrameOf(cutId, 0),
+        duration: cut.duration,
         fadeInFrames: fadeInFrames,
         fadeOutFrames: fadeOutFrames,
       ),
       description: 'Fade cut',
     );
-    _refreshAfterCutCommand();
-    notifyListeners();
   }
 
-  /// Replaces [cutId]'s cut-level transform track (the storyboard V
-  /// track's Transform lanes — the whole cut's finished picture moving on
-  /// the display space, applied at display time like the fade, never
-  /// baked into composites); one undo step, no-op when unchanged. The
-  /// fade handles keep writing the same track through [setCutFade].
-  void updateCutTransformTrack(
-    CutId cutId,
+  /// Replaces [trackId]'s transform lanes (the storyboard V track's
+  /// Transform — the whole composed picture moving on the display space,
+  /// keys on the GLOBAL axis, applied at display time and never baked
+  /// into composites); one undo step, no-op when unchanged. The fade
+  /// handles keep writing the same track through [setCutFade].
+  void updateTrackTransformTrack(
+    TrackId trackId,
     TransformTrack track, {
-    String description = 'Edit cut transform',
+    String description = 'Edit track transform',
   }) {
-    _cutCommandCoordinator.updateCutTransform(
-      cutId: cutId,
+    _cutCommandCoordinator.updateTrackTransform(
+      trackId: trackId,
       transformTrack: track,
       description: description,
     );
@@ -6220,10 +6264,8 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     final beforeDurations = <CutId, int>{sync.cutId: sync.beforeDuration};
-    final fades = _cutFadeRewritesFor(
-      beforeDurations: beforeDurations,
-      afterDurations: afterDurations,
-    );
+    // No fade re-anchor rides along any more (R4): the fade keys are the
+    // TRACK's, on the global axis — a cut resize edits the cut, not them.
     _timelineController.commitLayerTimelineDragsWithCutDurations(
       edits: edits,
       beforeDurations: beforeDurations,
@@ -6233,8 +6275,6 @@ class EditorSessionManager extends ChangeNotifier {
           sync.nextCutId!: sync.nextBeforeGap,
       },
       afterGaps: afterGaps,
-      beforeTransforms: fades.before,
-      afterTransforms: fades.after,
       description: 'Retime storyboard cells',
     );
     _refreshAfterCutCommand();
@@ -6521,10 +6561,6 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
 
-    final fades = _cutFadeRewritesFor(
-      beforeDurations: beforeDurations,
-      afterDurations: afterDurations,
-    );
     _cutCommandCoordinator.commitCutDurationDrag(
       beforeDurations: {
         for (final id in afterDurations.keys) id: beforeDurations[id]!,
@@ -6532,48 +6568,14 @@ class EditorSessionManager extends ChangeNotifier {
       afterDurations: afterDurations,
       beforeGaps: {for (final id in afterGaps.keys) id: beforeGaps[id]!},
       afterGaps: afterGaps,
-      beforeTransforms: fades.before,
-      afterTransforms: fades.after,
     );
     _refreshAfterCutCommand();
     notifyListeners();
   }
 
-  /// Fade durability (W4): re-anchor each resized cut's canonical fade to
-  /// its new duration. cutFadeLengths returns (0, 0) for unkeyed AND for
-  /// hand-keyed (non-canonical) lanes — both stay untouched.
-  ({Map<CutId, TransformTrack> before, Map<CutId, TransformTrack> after})
-  _cutFadeRewritesFor({
-    required Map<CutId, int> beforeDurations,
-    required Map<CutId, int> afterDurations,
-  }) {
-    final beforeTransforms = <CutId, TransformTrack>{};
-    final afterTransforms = <CutId, TransformTrack>{};
-    for (final entry in afterDurations.entries) {
-      if (entry.value == beforeDurations[entry.key]) {
-        continue;
-      }
-      final cut = cutById(entry.key);
-      if (cut == null) {
-        continue;
-      }
-      final lengths = cutFadeLengths(cut);
-      if (lengths.fadeInFrames == 0 && lengths.fadeOutFrames == 0) {
-        continue;
-      }
-      final rebuilt = cutTransformWithFade(
-        cut.copyWith(duration: entry.value),
-        fadeInFrames: lengths.fadeInFrames,
-        fadeOutFrames: lengths.fadeOutFrames,
-      );
-      if (rebuilt == cut.transformTrack) {
-        continue;
-      }
-      beforeTransforms[entry.key] = cut.transformTrack;
-      afterTransforms[entry.key] = rebuilt;
-    }
-    return (before: beforeTransforms, after: afterTransforms);
-  }
+  // Fade durability (W4) retired by R4: the fade keys live on the TRACK's
+  // global axis now — a cut trim is a cut edit and moves no keys (the
+  // user's independence rule, the SE precedent's sentence).
 
   /// The END-boundary gap rule every verb that moves a cut's end shares.
   /// Growth: consume the following cut's gap, then push. Shrink: an
@@ -6700,10 +6702,6 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     final beforeDurations = <CutId, int>{cutId: beforeDuration};
-    final fades = _cutFadeRewritesFor(
-      beforeDurations: beforeDurations,
-      afterDurations: afterDurations,
-    );
     _timelineController.commitLayerTimelineDragsWithCutDurations(
       edits: [(before: before, after: after)],
       beforeDurations: beforeDurations,
@@ -6713,8 +6711,6 @@ class EditorSessionManager extends ChangeNotifier {
           nextId: nextBeforeGap!,
       },
       afterGaps: afterGaps,
-      beforeTransforms: fades.before,
-      afterTransforms: fades.after,
       description: 'Retime cut lead',
     );
     _refreshAfterCutCommand();
@@ -7260,8 +7256,6 @@ class EditorSessionManager extends ChangeNotifier {
       afterDurations: const {},
       beforeGaps: beforeGaps,
       afterGaps: afterGaps,
-      beforeTransforms: const {},
-      afterTransforms: const {},
     );
     _refreshAfterCutCommand();
     notifyListeners();
@@ -7583,8 +7577,6 @@ class EditorSessionManager extends ChangeNotifier {
       afterDurations: const {},
       beforeGaps: {anchor.id: anchor.leadingGapFrames},
       afterGaps: {anchor.id: after},
-      beforeTransforms: const {},
-      afterTransforms: const {},
     );
     _refreshAfterCutCommand();
     notifyListeners();

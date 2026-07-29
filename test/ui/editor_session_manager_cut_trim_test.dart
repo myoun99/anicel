@@ -269,70 +269,110 @@ void main() {
     expect(layoutStart(s, second), firstDuration - 3);
   });
 
-  test('a trim re-anchors the CANONICAL fade to the new duration — the '
-      'fade-out keeps riding the cut end, in the SAME undo step (W4 fade '
-      'durability)', () {
+  test('a trim NEVER moves transform keys — the track owns the lanes (R4 '
+      'independence: "the transform is not the block\'s")', () {
     final (s, first, _) = twoCutSession();
     final duration = s.cutById(first)!.duration;
     s.setCutFade(first, fadeInFrames: 0, fadeOutFrames: 6);
+    final keyed = s.transformTrackForCut(first);
+    expect(keyed.opacity.keyAt(duration - 1)!.value, 0.0);
 
     s.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
     s.updateCutEdgeDrag(-4);
     s.endCutEdgeDrag();
 
-    final trimmed = s.cutById(first)!;
-    expect(trimmed.duration, duration - 4);
-    expect(cutFadeLengths(trimmed), (fadeInFrames: 0, fadeOutFrames: 6));
-    final trimmedLast = trimmed.duration - 1;
-    expect(trimmed.transformTrack.opacity.keyAt(trimmedLast)!.value, 0.0);
-    expect(trimmed.transformTrack.opacity.keyAt(trimmedLast - 6)!.value, 1.0);
+    expect(s.cutById(first)!.duration, duration - 4);
+    expect(
+      s.transformTrackForCut(first),
+      keyed,
+      reason: 'keys hold their global frames through the trim',
+    );
+    // The shortened window no longer reaches the fade keys, so the cut's
+    // handles read no fade — the keys still sit on the axis, past the end.
+    expect(
+      trackFadeLengthsInWindow(
+        s.transformTrackForCut(first),
+        startFrame: 0,
+        duration: duration - 4,
+      ),
+      (fadeInFrames: 0, fadeOutFrames: 0),
+    );
 
-    // ONE undo restores the duration AND the original fade keys exactly.
+    // ONE undo restores the duration; the keys never changed.
     s.undo();
-    final restored = s.cutById(first)!;
-    expect(restored.duration, duration);
-    expect(cutFadeLengths(restored), (fadeInFrames: 0, fadeOutFrames: 6));
-    expect(restored.transformTrack.opacity.keyAt(duration - 1)!.value, 0.0);
-    expect(restored.transformTrack.opacity.keyAt(duration - 1 - 6)!.value, 1.0);
+    expect(s.cutById(first)!.duration, duration);
+    expect(s.transformTrackForCut(first), keyed);
+    expect(
+      trackFadeLengthsInWindow(
+        s.transformTrackForCut(first),
+        startFrame: 0,
+        duration: duration,
+      ),
+      (fadeInFrames: 0, fadeOutFrames: 6),
+    );
 
-    // Growth re-anchors the same way: the fade-out rides the new end.
+    // Growth leaves them alone the same way.
     s.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
     s.updateCutEdgeDrag(5);
     s.endCutEdgeDrag();
-    final grown = s.cutById(first)!;
-    expect(grown.duration, duration + 5);
-    expect(grown.transformTrack.opacity.keyAt(grown.duration - 1)!.value, 0.0);
-    expect(cutFadeLengths(grown), (fadeInFrames: 0, fadeOutFrames: 6));
+    expect(s.cutById(first)!.duration, duration + 5);
+    expect(s.transformTrackForCut(first), keyed);
   });
 
   test('a hand-keyed (non-canonical) opacity lane survives a trim '
-      'untouched — the invariant only owns the canonical fade shape', () {
+      'untouched', () {
     final (s, first, _) = twoCutSession();
+    final trackId = s.trackOwningCut(first)!.id;
     final custom = TransformTrack.empty().copyWith(
       opacity: PropertyTrack<double>.empty().withKey(3, 0.4).withKey(7, 0.9),
     );
-    s.updateCutTransformTrack(first, custom);
+    s.updateTrackTransformTrack(trackId, custom);
 
     s.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
     s.updateCutEdgeDrag(-4);
     s.endCutEdgeDrag();
 
-    expect(s.cutById(first)!.transformTrack.opacity, custom.opacity);
+    expect(s.transformTrackForCut(first).opacity, custom.opacity);
   });
 
-  test('a start-edge TRIM re-anchors the canonical fade to the new length '
-      '(the fade-out keeps riding the end — same durability as end trims)', () {
+  test('a start-edge drag shifts the cut\'s WINDOW, not the keys — the '
+      'fade stays at its global frames and reads shifted from the cut', () {
     final (s, _, second) = twoCutSession();
     s.setCutFade(second, fadeInFrames: 2, fadeOutFrames: 3);
+    final keyed = s.transformTrackForCut(second);
+    final startBefore = layoutStart(s, second);
+    final durationBefore = s.cutById(second)!.duration;
 
     s.beginCutEdgeDrag(cutId: second, edge: TimelineBlockEdge.start);
     s.updateCutEdgeDrag(5);
     s.endCutEdgeDrag();
 
     expect(s.cutById(second)!.leadingGapFrames, 5);
-    final lengths = cutFadeLengths(s.cutById(second)!);
-    expect(lengths.fadeInFrames, 2);
-    expect(lengths.fadeOutFrames, 3);
+    expect(
+      s.transformTrackForCut(second),
+      keyed,
+      reason: 'keys hold their global frames through the window shift',
+    );
+    // Read through the moved window: the fade-in ramp now starts BEFORE
+    // the cut and vanishes from the handles — but the END edge never
+    // moved, so the fade-out still lands exactly on the cut's last frame.
+    expect(
+      trackFadeLengthsInWindow(
+        s.transformTrackForCut(second),
+        startFrame: layoutStart(s, second),
+        duration: s.cutById(second)!.duration,
+      ),
+      (fadeInFrames: 0, fadeOutFrames: 3),
+    );
+    // The ORIGINAL window still reads the full canonical shape.
+    expect(
+      trackFadeLengthsInWindow(
+        s.transformTrackForCut(second),
+        startFrame: startBefore,
+        duration: durationBefore,
+      ),
+      (fadeInFrames: 2, fadeOutFrames: 3),
+    );
   });
 
   test('cancel drops the preview without touching history or the repo', () {

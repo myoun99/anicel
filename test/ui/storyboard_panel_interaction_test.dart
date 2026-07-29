@@ -274,8 +274,8 @@ void main() {
       expect(began, isEmpty);
     });
 
-    testWidgets('the slide still works when the cut carries fx transform '
-        'keys (R12-⑧)', (tester) async {
+    testWidgets('the slide still works when the track carries fx transform '
+        'keys (R12-⑧, R4: track-owned lanes)', (tester) async {
       final began = <CutId>[];
       final updates = <int>[];
 
@@ -285,24 +285,30 @@ void main() {
         duration: 24,
         canvasSize: const CanvasSize(width: 1280, height: 720),
         layers: [_animationLayer('animation-cut-b')],
-        transformTrack: TransformTrack(
-          keyframes: {
-            0: TransformPose(
-              center: CanvasPoint(x: 640, y: 360),
-              zoom: 1.2,
-              rotationDegrees: 0,
-            ),
-            12: TransformPose(
-              center: CanvasPoint(x: 700, y: 360),
-              zoom: 1.0,
-              rotationDegrees: 5,
-            ),
-          },
-        ),
       );
+      final base = _singleTrackProject([_cut('cut-a', name: 'Cut A'), keyed]);
       await _pumpStoryboardPanel(
         tester,
-        _singleTrackProject([_cut('cut-a', name: 'Cut A'), keyed]),
+        base.copyWith(
+          tracks: [
+            base.tracks.first.copyWith(
+              transformTrack: TransformTrack(
+                keyframes: {
+                  0: TransformPose(
+                    center: CanvasPoint(x: 640, y: 360),
+                    zoom: 1.2,
+                    rotationDegrees: 0,
+                  ),
+                  12: TransformPose(
+                    center: CanvasPoint(x: 700, y: 360),
+                    zoom: 1.0,
+                    rotationDegrees: 5,
+                  ),
+                },
+              ),
+            ),
+          ],
+        ),
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
         cutMove: StoryboardCutMoveCallbacks(

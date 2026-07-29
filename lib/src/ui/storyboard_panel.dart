@@ -888,33 +888,58 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   Layer _vLaneCarrier(String seed) =>
       Layer(id: LayerId('v-$seed'), name: 'V', frames: const []);
 
+  /// The cut's WINDOW of its owning TRACK's transform lanes (R4a): the
+  /// per-cut strips and labels still speak cut-local frames; this is the
+  /// projection they read — the SE display clone's idiom for the V
+  /// effects.
+  TransformTrack _cutWindowTransformOf(Cut cut) {
+    for (final track in widget.project.tracks) {
+      var start = 0;
+      for (final candidate in track.cuts) {
+        start += candidate.leadingGapFrames;
+        if (candidate.id == cut.id) {
+          return trackTransformCutWindow(
+            track.transformTrack,
+            startFrame: start,
+            duration: cut.duration,
+          );
+        }
+        start += candidate.duration;
+      }
+    }
+    return TransformTrack.empty();
+  }
+
   /// The Transform-group member lanes of one V track, header first: the
-  /// AE lane list valued against the ACTIVE cut (label-only rows while the
-  /// active cut lives elsewhere). The Opacity lane stays LAST — its strip
-  /// is the cut-fade envelope row, and the labels must line up.
+  /// AE lane list valued against the ACTIVE cut's window (label-only rows
+  /// while the active cut lives elsewhere). The Opacity lane stays LAST —
+  /// its strip is the cut-fade envelope row, and the labels must line up.
   List<PropertyLaneRow> _cutTransformLanes(Track track, Cut? activeCut) {
     final expanded = widget.expandedTransformGroups.contains(track.id.value);
     final displaySize = widget.poseDisplaySize;
+    final window = activeCut == null
+        ? TransformTrack.empty()
+        : _cutWindowTransformOf(activeCut);
     final lanes = activeCut == null
         ? transformPropertyLanes(
             TransformTrack.empty(),
             includeAnchorAndOpacity: true,
           )
         : transformPropertyLanes(
-            activeCut.transformTrack,
+            window,
             includeAnchorAndOpacity: true,
             poseAt: displaySize == null
                 ? null
-                : (frame) => cutPoseAt(activeCut, frame, displaySize),
+                : (frame) => trackPoseAt(window, frame, displaySize),
             anchorAt: displaySize == null
                 ? null
                 : (frame) =>
-                      cutAnchorPointAt(activeCut, frame) ??
+                      trackAnchorPointAt(window, frame) ??
                       CanvasPoint(
                         x: displaySize.width / 2,
                         y: displaySize.height / 2,
                       ),
-            opacityAt: activeCut.fadeOpacityAt,
+            opacityAt: (frame) => trackFadeOpacityAt(window, frame),
           );
     return [
       transformGroupHeader(expanded: expanded),
@@ -1494,7 +1519,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       activeCutId: widget.activeCutId,
       laneOf: (cut) => (
         _vLaneCarrier(cut.id.value),
-        _laneOfTrack(cut.transformTrack, laneId),
+        // The cut's WINDOW of the track lanes (R4a): the strip renders
+        // cut-local frames, so it reads the projection.
+        _laneOfTrack(_cutWindowTransformOf(cut), laneId),
       ),
       laneEditFor: widget.cutLaneEditFor,
     );
@@ -1510,6 +1537,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           layoutEntries: entries,
           width: width,
           timelineScale: scale,
+          windowOf: _cutWindowTransformOf,
           onSetCutFade: widget.onSetCutFade,
         ),
       ],
@@ -3228,6 +3256,7 @@ class _StoryboardOpacityLaneRow extends StatelessWidget {
     required this.layoutEntries,
     required this.width,
     required this.timelineScale,
+    required this.windowOf,
     this.onSetCutFade,
   });
 
@@ -3235,6 +3264,11 @@ class _StoryboardOpacityLaneRow extends StatelessWidget {
   final List<StoryboardTimelineLayoutEntry> layoutEntries;
   final double width;
   final TimelineScale timelineScale;
+
+  /// The cut's window of the owning track's lanes (R4a) — the envelope's
+  /// reading.
+  final TransformTrack Function(Cut cut) windowOf;
+
   final void Function(CutId cutId, int fadeInFrames, int fadeOutFrames)?
   onSetCutFade;
 
@@ -3257,6 +3291,7 @@ class _StoryboardOpacityLaneRow extends StatelessWidget {
                   'storyboard-cut-fade-span-${entry.cut.id.value}',
                 ),
                 cut: entry.cut,
+                transformWindow: windowOf(entry.cut),
                 frameCellExtent: timelineScale.pixelsPerFrame,
                 onSetFade: onSetCutFade == null
                     ? null
@@ -3271,17 +3306,24 @@ class _StoryboardOpacityLaneRow extends StatelessWidget {
 }
 
 /// One cut's fade-envelope span. The opacity envelope paints from the
-/// cut's own lane (any key shape), while dragging an EDGE ZONE previews
-/// and commits the canonical fade shape for that end.
+/// cut's WINDOW of the track lane (R4a — any key shape), while dragging
+/// an EDGE ZONE previews and commits the canonical fade shape for that
+/// end.
 class _CutFadeSpan extends StatefulWidget {
   const _CutFadeSpan({
     super.key,
     required this.cut,
+    required this.transformWindow,
     required this.frameCellExtent,
     this.onSetFade,
   });
 
   final Cut cut;
+
+  /// The cut's window of the owning track's lanes, LOCAL frames — what
+  /// the envelope samples and the handles parse.
+  final TransformTrack transformWindow;
+
   final double frameCellExtent;
   final void Function(int fadeInFrames, int fadeOutFrames)? onSetFade;
 
@@ -3300,8 +3342,15 @@ class _CutFadeSpanState extends State<_CutFadeSpan> {
 
   int get _maxFade => math.max(0, widget.cut.duration - 1);
 
+  ({int fadeInFrames, int fadeOutFrames}) get _baseLengths =>
+      trackFadeLengthsInWindow(
+        widget.transformWindow,
+        startFrame: 0,
+        duration: widget.cut.duration,
+      );
+
   int get _previewFadeIn {
-    final base = cutFadeLengths(widget.cut).fadeInFrames;
+    final base = _baseLengths.fadeInFrames;
     if (!_dragging || _draggingOut) {
       return base;
     }
@@ -3309,7 +3358,7 @@ class _CutFadeSpanState extends State<_CutFadeSpan> {
   }
 
   int get _previewFadeOut {
-    final base = cutFadeLengths(widget.cut).fadeOutFrames;
+    final base = _baseLengths.fadeOutFrames;
     if (!_dragging || !_draggingOut) {
       return base;
     }
@@ -3319,7 +3368,7 @@ class _CutFadeSpanState extends State<_CutFadeSpan> {
   void _endDrag() {
     final fadeIn = _previewFadeIn;
     final fadeOut = _previewFadeOut;
-    final base = cutFadeLengths(widget.cut);
+    final base = _baseLengths;
     setState(() {
       _dragging = false;
       _dragDelta = 0;
@@ -3329,14 +3378,14 @@ class _CutFadeSpanState extends State<_CutFadeSpan> {
     }
   }
 
-  /// Per-frame opacity samples: the cut's own lane at rest, the canonical
+  /// Per-frame opacity samples: the window's lane at rest, the canonical
   /// preview shape while a handle drags.
   List<double> _envelopeSamples() {
     final duration = math.max(1, widget.cut.duration);
     if (!_dragging) {
       return [
         for (var frame = 0; frame < duration; frame += 1)
-          widget.cut.fadeOpacityAt(frame),
+          trackFadeOpacityAt(widget.transformWindow, frame),
       ];
     }
     final fadeIn = _previewFadeIn;

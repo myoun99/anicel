@@ -190,8 +190,11 @@ class ExportFrameRenderer {
       }
     }
     final image = await renderComposite(task, mode);
-    final fade = task.cut.fadeOpacityAt(task.frameIndex);
-    final poseActive = cutPoseIsActive(task.cut);
+    // The V effects are TRACK data on the global axis now (R4).
+    final transformTrack = session.transformTrackForCut(task.cut.id);
+    final trackFrame = session.trackGlobalFrameOf(task.cut.id, task.frameIndex);
+    final fade = trackFadeOpacityAt(transformTrack, trackFrame);
+    final poseActive = trackPoseIsActive(transformTrack);
     if (fade >= 1 && !poseActive) {
       return image;
     }
@@ -227,9 +230,9 @@ class ExportFrameRenderer {
       canvas.save();
       applyLayerPoseTransform(
         canvas,
-        cutPoseAt(task.cut, task.frameIndex, space),
+        trackPoseAt(transformTrack, trackFrame, space),
         space,
-        anchorPoint: cutAnchorPointAt(task.cut, task.frameIndex),
+        anchorPoint: trackAnchorPointAt(transformTrack, trackFrame),
       );
     }
     canvas.drawImage(image, ui.Offset.zero, ui.Paint());
@@ -323,18 +326,24 @@ class ExportFrameRenderer {
           cameraFrameSize: cut.canvasSize,
         );
         images.add(image);
-        final fade = cut.fadeOpacityAt(position.localFrameIndex);
-        final poseActive = cutPoseIsActive(cut);
+        // Track effects at the frame's GLOBAL position (R4) — the stack's
+        // own axis.
+        final transformTrack = session.transformTrackForCut(cut.id);
+        final fade = trackFadeOpacityAt(
+          transformTrack,
+          position.globalFrameIndex,
+        );
+        final poseActive = trackPoseIsActive(transformTrack);
         PlaybackFramePainter(
           image: image,
           canvasSize: cut.canvasSize,
           cameraPose: session.cameraPoseForCut(cut, position.localFrameIndex),
           cameraFrameSize: size,
           cutPose: poseActive
-              ? cutPoseAt(cut, position.localFrameIndex, size)
+              ? trackPoseAt(transformTrack, position.globalFrameIndex, size)
               : null,
           cutAnchorPoint: poseActive
-              ? cutAnchorPointAt(cut, position.localFrameIndex)
+              ? trackAnchorPointAt(transformTrack, position.globalFrameIndex)
               : null,
           paperBackground: session.projectBackground,
           // The stage is the bottom covered track's: its pasteboard

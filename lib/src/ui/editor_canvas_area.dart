@@ -282,6 +282,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       backdropArgb: project.backdropArgb,
       pasteboardArgb: project.pasteboardArgb,
       showAlphaCheckerboard: alphaPreviewEnabled.value,
+      transformTrackOf: session.transformTrackForCut,
     );
   }
 
@@ -742,6 +743,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                           pasteboardArgb: session.repository
                               .requireProject()
                               .pasteboardArgb,
+                          transformTrackOf: session.transformTrackForCut,
+                          trackGlobalFrameOf: session.trackGlobalFrameOf,
                           // ALL-CUTS playback watches the whole stage: the
                           // frame is the track stack on the clock's global
                           // axis (R3a) — a selected-track gap shows what
