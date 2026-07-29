@@ -16,7 +16,13 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 # https://developer.apple.com/library/archive/documentation/General/Reference/InfoPlistKeyReference/Articles/CoreFoundationKeys.html
 # In Windows, build-name is used as the major, minor, and patch parts
 # of the product and file versions while build-number is used as the build suffix.
-version: 1.0.0+1
+# 0.x while the save format is still free to change. This string is also
+# what decides how often TestFlight's external testers wait: Apple runs a
+# Beta App Review on the first build of every VERSION, so bumping even the
+# patch digit costs a day. The build number carries the churn instead — CI
+# passes --build-number from the run number — so this line should sit
+# still until a real milestone.
+version: 0.1.0+1
 
 environment:
   sdk: ^3.11.3
