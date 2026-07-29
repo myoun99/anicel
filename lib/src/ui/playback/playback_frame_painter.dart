@@ -38,11 +38,11 @@ class PlaybackFramePainter extends CustomPainter {
     this.cutAnchorPoint,
     this.fadeOpacity = 1,
     this.imageOpacity = 1,
-    this.fadeColor = const Color(0xFF000000),
     this.letterboxColor = const Color(0xFF15191C),
     // R28 #9: the one paper constant, not a repeated literal.
     this.paperColor = const Color(ProjectBackground.defaultPaperArgb),
     this.paperBackground,
+    this.pasteboardColor,
     this.paintPaper = true,
     this.paintLetterbox = true,
   }) : assert(
@@ -76,27 +76,34 @@ class PlaybackFramePainter extends CustomPainter {
   /// The cut pose's anchor; null = the display-space center.
   final CanvasPoint? cutAnchorPoint;
 
-  /// The cut fade (Cut.fadeOpacityAt): paper and composite fade together
-  /// toward [fadeColor]. 1 costs nothing.
+  /// The cut fade (Cut.fadeOpacityAt): the cut's WHOLE contribution —
+  /// stage and picture together — thins as one (R3b, "fade is
+  /// transparency"): what a fade reveals is whatever lies BEHIND the cut
+  /// (the tracks below, then the backdrop), never a painted-on wash. The
+  /// old per-cut FO/WO target color is gone with the wash; a white-out is
+  /// a white cut on a lower track now. 1 costs nothing (no saveLayer).
   final double fadeOpacity;
 
-  /// Alpha on the composite draw itself. The stacked parked view fades a
-  /// NON-bottom track through this instead of [fadeOpacity]: the full-
-  /// frame fade wash would blank the tracks below, but a track above the
-  /// stage fading away should reveal them. 1 costs nothing.
+  /// Alpha on the composite draw itself. The stacked views fade a
+  /// NON-bottom track through this instead of [fadeOpacity]: the bottom
+  /// track's fade takes its stage along, but a track above the stage
+  /// fading away should reveal it. 1 costs nothing.
   final double imageOpacity;
-
-  /// What the fade fades TO (cutFadeTargetColor: FO=black, WO=white) — an
-  /// overlay at (1 − [fadeOpacity]) over the canvas rect, matching the MP4
-  /// bake exactly.
-  final Color fadeColor;
 
   final Color letterboxColor;
   final Color paperColor;
 
-  /// The project background (R10-⑥); when set it wins over [paperColor]
-  /// and may render the transparent checkerboard.
+  /// The project PAPER (R10-⑥); when set it wins over [paperColor] —
+  /// alpha included (R3b): a thinned paper reveals the pasteboard and the
+  /// backdrop behind it.
   final ProjectBackground? paperBackground;
+
+  /// The PASTEBOARD fill behind the paper (R3b, camera mode only): the
+  /// bottom covered track's stage fills its whole output frame with this
+  /// before the paper lands — the cut unit the fade thins is
+  /// pasteboard + paper + picture. Null = no stage fill (upper tracks,
+  /// canvas mode where the panel supplies its own surroundings).
+  final Color? pasteboardColor;
 
   /// False = no paper at all (playlist GAPS, UI-R9 #2): the panel's own
   /// background shows through — the same void the gap-parked scrub
@@ -160,6 +167,25 @@ class PlaybackFramePainter extends CustomPainter {
       );
       canvas.clipRect(frameRect);
     }
+
+    // The FADE is transparency now (R3b): the cut's whole contribution —
+    // stage fill, paper, picture — thins as one layer, revealing whatever
+    // lies behind (the tracks below, then the backdrop). Only a mid-fade
+    // frame pays the saveLayer.
+    final fading = fadeOpacity < 1;
+    if (fading) {
+      canvas.saveLayer(
+        frameRect ?? canvasRect,
+        Paint()
+          ..color = Color.fromRGBO(0, 0, 0, fadeOpacity.clamp(0.0, 1.0)),
+      );
+    }
+    if (pose != null && pasteboardColor != null) {
+      // The stage's apron: the camera sees the pasteboard wherever it
+      // reaches past the paper — part of the cut unit, so it fades with
+      // it.
+      canvas.drawRect(frameRect!, Paint()..color = pasteboardColor!);
+    }
     // The cut pose (AE precomp semantics) transforms the cut's FINISHED
     // picture over the display space — outermost, above the camera
     // projection; the fade overlay below stays a screen dip on top.
@@ -217,18 +243,8 @@ class PlaybackFramePainter extends CustomPainter {
     if (resolvedCutPose != null) {
       canvas.restore();
     }
-    if (fadeOpacity < 1) {
-      // The picture fades TO the target color (FO=black / WO=white): a
-      // plain overlay at (1 − fade) — cheaper than the old saveLayer and
-      // it matches the MP4 bake pixel-for-pixel. Camera mode fades the
-      // whole output frame (like the bake); canvas mode fades the paper.
-      canvas.drawRect(
-        frameRect ?? canvasRect,
-        Paint()
-          ..color = fadeColor.withValues(
-            alpha: (1 - fadeOpacity).clamp(0.0, 1.0),
-          ),
-      );
+    if (fading) {
+      canvas.restore();
     }
     canvas.restore();
   }
@@ -244,10 +260,10 @@ class PlaybackFramePainter extends CustomPainter {
       oldDelegate.cutAnchorPoint != cutAnchorPoint ||
       oldDelegate.fadeOpacity != fadeOpacity ||
       oldDelegate.imageOpacity != imageOpacity ||
-      oldDelegate.fadeColor != fadeColor ||
       oldDelegate.letterboxColor != letterboxColor ||
       oldDelegate.paperColor != paperColor ||
       oldDelegate.paperBackground != paperBackground ||
+      oldDelegate.pasteboardColor != pasteboardColor ||
       oldDelegate.paintPaper != paintPaper ||
       oldDelegate.paintLetterbox != paintLetterbox;
 }

@@ -13,6 +13,15 @@ import 'track.dart';
 
 const defaultProjectCameraSize = CanvasSize(width: 1920, height: 1080);
 
+/// The default BACKDROP (R3b): black — the filmic floor a fade-out lands
+/// on, replacing the per-cut FO/WO wash the transparency model retired.
+const defaultProjectBackdropArgb = 0xFF000000;
+
+/// The default PASTEBOARD: the historical editor grey the app-level
+/// setting carried while the pasteboard was app state (R28 #9, reversed
+/// 2026-07-29).
+const defaultProjectPasteboardArgb = 0xFF2B2F33;
+
 /// The default audio rate (EXPORT-AUDIO ③): 48 kHz is the film/video
 /// production standard (44.1k is the CD/music one) and what the conform
 /// pipeline has targeted since 2B.
@@ -27,6 +36,8 @@ class Project {
     this.frameRate = ProjectFrameRate.fps24,
     this.cameraSize = defaultProjectCameraSize,
     this.background = ProjectBackground.defaultBackground,
+    int backdropArgb = defaultProjectBackdropArgb,
+    this.pasteboardArgb = defaultProjectPasteboardArgb,
     this.timesheetInfo = TimesheetInfo.empty,
     CameraInstructionSet? cameraInstructions,
     List<MediaAsset> mediaAssets = const [],
@@ -36,7 +47,8 @@ class Project {
     int audioSpeedNumerator = 1,
     int audioSpeedDenominator = 1,
     ExportProjectOverrides? exportOverrides,
-  }) : tracks = List.unmodifiable(tracks),
+  }) : backdropArgb = 0xFF000000 | backdropArgb,
+       tracks = List.unmodifiable(tracks),
        exportOverrides = exportOverrides ?? ExportProjectOverrides.empty,
        cameraInstructions = cameraInstructions ?? CameraInstructionSet.standard,
        mediaAssets = immutableMediaAssetList(mediaAssets),
@@ -70,9 +82,24 @@ class Project {
   /// + this.
   final int trailingFrames;
 
-  /// The paper/background color (R10-⑥): canvas paper, playback gap fill
-  /// and export backing. Transparent = display-only checkerboard.
+  /// The PAPER (R10-⑥ / R3b): the sheet under the artwork, alpha-capable
+  /// — one plane of the four-plane stage this project displays and
+  /// prints with (backdrop → pasteboard → paper → pictures).
   final ProjectBackground background;
+
+  /// The BACKDROP: the panel-wide floor behind everything — what a fade
+  /// reveals, and what an opaque export bakes where nothing covers.
+  /// Opaque by contract (it is the stage's final answer; an alpha here
+  /// would only re-ask the question — user 2026-07-29). The constructor
+  /// forces the alpha byte, so no setter path can thin it.
+  final int backdropArgb;
+
+  /// The PASTEBOARD: the apron around the paper, RGBA — thinning it
+  /// reveals the backdrop. PROJECT data now, not app state: a camera
+  /// reaching past the paper prints it, and what prints travels with the
+  /// project (R28 #9 reversed by the user, 2026-07-29 — the app-level
+  /// value demoted to a new-project default).
+  final int pasteboardArgb;
 
   /// Sheet-header text (title/episode/artist) the timesheet document reads.
   final TimesheetInfo timesheetInfo;
@@ -126,6 +153,8 @@ class Project {
     ProjectFrameRate? frameRate,
     CanvasSize? cameraSize,
     ProjectBackground? background,
+    int? backdropArgb,
+    int? pasteboardArgb,
     TimesheetInfo? timesheetInfo,
     CameraInstructionSet? cameraInstructions,
     List<MediaAsset>? mediaAssets,
@@ -144,6 +173,8 @@ class Project {
       frameRate: frameRate ?? this.frameRate,
       cameraSize: cameraSize ?? this.cameraSize,
       background: background ?? this.background,
+      backdropArgb: backdropArgb ?? this.backdropArgb,
+      pasteboardArgb: pasteboardArgb ?? this.pasteboardArgb,
       timesheetInfo: timesheetInfo ?? this.timesheetInfo,
       cameraInstructions: cameraInstructions ?? this.cameraInstructions,
       mediaAssets: mediaAssets ?? this.mediaAssets,
@@ -170,6 +201,11 @@ class Project {
     'cameraSize': cameraSize.toJson(),
     if (background != ProjectBackground.defaultBackground)
       'background': background.toJson(),
+    // Omitted at the defaults: pre-stage projects keep their exact JSON.
+    if (backdropArgb != defaultProjectBackdropArgb)
+      'backdropArgb': backdropArgb,
+    if (pasteboardArgb != defaultProjectPasteboardArgb)
+      'pasteboardArgb': pasteboardArgb,
     'timesheetInfo': timesheetInfo.toJson(),
     'cameraInstructions': cameraInstructions.toJson(),
     'mediaAssets': mediaAssets.map((asset) => asset.toJson()).toList(),
@@ -217,6 +253,10 @@ class Project {
           : ProjectBackground.fromJson(
               json['background'] as Map<String, dynamic>,
             ),
+      backdropArgb:
+          (json['backdropArgb'] as int?) ?? defaultProjectBackdropArgb,
+      pasteboardArgb:
+          (json['pasteboardArgb'] as int?) ?? defaultProjectPasteboardArgb,
       timesheetInfo: json['timesheetInfo'] == null
           ? TimesheetInfo.empty
           : TimesheetInfo.fromJson(

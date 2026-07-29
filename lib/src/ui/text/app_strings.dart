@@ -308,6 +308,11 @@ class AppStrings {
   String get backgroundTransparent => _s('backgroundTransparent');
   String get backgroundCustom => _s('backgroundCustom');
   String get backgroundHelp => _s('backgroundHelp');
+  String get stagePaperSection => _s('stagePaperSection');
+  String get stagePasteboardSection => _s('stagePasteboardSection');
+  String get stageBackdropSection => _s('stageBackdropSection');
+  String get stageAlphaLabel => _s('stageAlphaLabel');
+  String get menuAlphaPreview => _s('menuAlphaPreview');
 
   // --- Input settings ---
   String get inputTitle => _s('inputTitle');
@@ -920,11 +925,18 @@ class AppStrings {
     'backgroundPaper': 'Paper (default)',
     'backgroundWhite': 'White',
     'backgroundBlack': 'Black',
-    'backgroundTransparent': 'Transparent (checker)',
+    'backgroundTransparent': 'Transparent',
     'backgroundCustom': 'Custom',
     'backgroundHelp':
-        'The background shows on the canvas, in playback gaps and behind '
-        'exports. Transparent is display-only — exports bake white.',
+        'The stage is four planes: backdrop, pasteboard, paper, pictures. '
+        'Paper and pasteboard carry alpha — thinning them reveals the '
+        'planes behind, on screen and in exports alike. The backdrop is '
+        'opaque: it is what fades reveal and what empty frames print.',
+    'stagePaperSection': 'Paper',
+    'stagePasteboardSection': 'Pasteboard',
+    'stageBackdropSection': 'Backdrop',
+    'stageAlphaLabel': 'Alpha',
+    'menuAlphaPreview': 'Alpha preview',
     'inputTitle': 'Input settings',
     'inputTouchScroll': 'Touch scrolls the timeline',
     'inputTouchScrollHelp':
@@ -1521,11 +1533,18 @@ class AppStrings {
     'backgroundPaper': '紙（既定）',
     'backgroundWhite': '白',
     'backgroundBlack': '黒',
-    'backgroundTransparent': '透明（市松）',
+    'backgroundTransparent': '透明',
     'backgroundCustom': 'カスタム',
+    'stagePaperSection': '紙',
+    'stagePasteboardSection': 'ペーストボード',
+    'stageBackdropSection': '背景',
+    'stageAlphaLabel': '不透明度',
+    'menuAlphaPreview': 'アルファプレビュー',
     'backgroundHelp':
-        '背景はカンバス、再生中の空き、書き出しの背後に表示されます。'
-        '透明は表示のみで、書き出しは白で焼き込まれます。',
+        'ステージは背景・ペーストボード・紙・絵の4層です。紙とペースト'
+        'ボードは不透明度を持ち、薄くすると背後の層が画面でも書き出し'
+        'でも透けます。背景は不透明の最終面で、フェードや空きフレーム'
+        'が行き着く色です。',
     'inputTitle': '入力設定',
     'inputTouchScroll': 'タッチでタイムラインをスクロール',
     'inputTouchScrollHelp':
@@ -2156,11 +2175,18 @@ class AppStrings {
     'backgroundPaper': '종이 (기본)',
     'backgroundWhite': '흰색',
     'backgroundBlack': '검정',
-    'backgroundTransparent': '투명 (체커)',
+    'backgroundTransparent': '투명',
     'backgroundCustom': '사용자 지정',
+    'stagePaperSection': '종이',
+    'stagePasteboardSection': '페이스트보드',
+    'stageBackdropSection': '배경',
+    'stageAlphaLabel': '불투명도',
+    'menuAlphaPreview': '알파 미리보기',
     'backgroundHelp':
-        '배경은 캔버스, 재생 중 빈 구간, 출력 뒤에 표시됩니다. 투명은 '
-        '화면 전용이고 출력에는 흰색으로 구워집니다.',
+        '무대는 배경·페이스트보드·종이·그림의 4층입니다. 종이와 '
+        '페이스트보드는 불투명도를 가지며, 낮추면 화면에서도 출력에서도 '
+        '뒤 층이 비칩니다. 배경은 불투명한 최종 면으로, 페이드와 빈 '
+        '프레임이 도달하는 색입니다.',
     'inputTitle': '입력 설정',
     'inputTouchScroll': '터치로 타임라인 스크롤',
     'inputTouchScrollHelp':
@@ -2801,12 +2827,19 @@ class AppStrings {
     'backgroundPaper': 'Papier (par défaut)',
     'backgroundWhite': 'Blanc',
     'backgroundBlack': 'Noir',
-    'backgroundTransparent': 'Transparent (damier)',
+    'backgroundTransparent': 'Transparent',
     'backgroundCustom': 'Personnalisé',
+    'stagePaperSection': 'Papier',
+    'stagePasteboardSection': 'Table de montage',
+    'stageBackdropSection': 'Fond',
+    'stageAlphaLabel': 'Alpha',
+    'menuAlphaPreview': 'Aperçu alpha',
     'backgroundHelp':
-        "L'arrière-plan apparaît sur le canevas, dans les vides de lecture "
-        "et derrière les exports. Le transparent est purement d'affichage — "
-        'les exports gravent du blanc.',
+        'La scène a quatre plans : fond, table de montage, papier, images. '
+        'Le papier et la table portent un alpha — les amincir révèle les '
+        "plans derrière, à l'écran comme à l'export. Le fond est opaque : "
+        "c'est ce que révèlent les fondus et ce qu'impriment les images "
+        'vides.',
     'inputTitle': 'Paramètres de saisie',
     'inputTouchScroll': 'Le toucher fait défiler la timeline',
     'inputTouchScrollHelp':
@@ -3439,11 +3472,17 @@ class AppStrings {
     'backgroundPaper': '纸（默认）',
     'backgroundWhite': '白色',
     'backgroundBlack': '黑色',
-    'backgroundTransparent': '透明（棋盘格）',
+    'backgroundTransparent': '透明',
     'backgroundCustom': '自定义',
+    'stagePaperSection': '纸',
+    'stagePasteboardSection': '粘贴板',
+    'stageBackdropSection': '背景',
+    'stageAlphaLabel': '不透明度',
+    'menuAlphaPreview': '透明度预览',
     'backgroundHelp':
-        '背景会显示在画布上、播放空隙处以及导出内容的后面。透明仅用于显示 — '
-        '导出时会烘焙为白色。',
+        '舞台由四层组成：背景、粘贴板、纸、图画。纸和粘贴板带有透明度 — '
+        '调低后，屏幕和导出都会透出后面的层。背景是不透明的最终面：'
+        '淡出与空帧最终落在这个颜色上。',
     'inputTitle': '输入设置',
     'inputTouchScroll': '触摸滚动时间轴',
     'inputTouchScrollHelp':

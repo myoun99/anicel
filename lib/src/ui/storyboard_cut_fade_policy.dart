@@ -1,10 +1,8 @@
 import 'dart:math' as math;
-import 'dart:ui' show Color;
 
 import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
 import '../models/cut.dart';
-import '../models/cut_metadata.dart';
 import '../models/property_track.dart';
 import '../models/transform_track.dart';
 import '../services/cut_frame_composite_plan.dart' show layerIdentityPose;
@@ -57,16 +55,6 @@ import '../services/cut_frame_composite_plan.dart' show layerIdentityPose;
     }
   }
   return (fadeInFrames: fadeIn, fadeOutFrames: fadeOut);
-}
-
-/// What [cut]'s fade fades TO as a paint color — FO=black (default),
-/// WO=white. Playback overlays this color at (1 − fadeOpacity); the MP4
-/// bake draws the frame over it. ONE function so every consumer agrees.
-Color cutFadeTargetColor(Cut cut) {
-  return switch (cut.metadata.fadeTarget) {
-    CutFadeTarget.black => const Color(0xFF000000),
-    CutFadeTarget.white => const Color(0xFFFFFFFF),
-  };
 }
 
 /// Whether the cut's GEOMETRIC pose lanes carry any keys — the display

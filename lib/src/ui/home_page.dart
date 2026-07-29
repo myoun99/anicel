@@ -21,6 +21,7 @@ import '../services/persistence/project_autosave_service.dart';
 import '../services/project_repository.dart';
 import 'brush/brush_tool_state.dart';
 import 'brush/paint_tool_state_notifier.dart';
+import 'theme/app_workspace_colors.dart';
 import 'debug/input_inspector.dart';
 import '../services/input/pencil_interaction_service.dart';
 import 'shortcuts/touch_shortcuts.dart';
@@ -117,7 +118,15 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
-    final project = widget.initialProject ?? createDefaultProject();
+    // A NEW project seeds its pasteboard from the app-level default —
+    // all that remains of the old app-state pasteboard (R3b promotion,
+    // R28 #9 reversed): the color is project data now, and this is where
+    // the "default for the next project" lands in one.
+    final project =
+        widget.initialProject ??
+        createDefaultProject().copyWith(
+          pasteboardArgb: AppWorkspaceColors.settings.value.pasteboardArgb,
+        );
     _session = EditorSessionManager(
       initialProject: project,
       // Language + accent settings persist app-side (UI-R10 #7 /

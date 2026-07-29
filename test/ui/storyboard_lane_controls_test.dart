@@ -7,7 +7,6 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
-import 'package:anicel/src/models/cut_metadata.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -80,7 +79,6 @@ Future<void> _pumpPanel(
   required Project project,
   CutId? activeCutId = const CutId('lane-cut'),
   void Function(CutId cutId, int fadeInFrames, int fadeOutFrames)? onSetCutFade,
-  void Function(CutId cutId, CutFadeTarget fadeTarget)? onSetCutFadeTarget,
   ValueChanged<LayerId>? onToggleLayerVisibility,
   ValueChanged<LayerId>? onToggleLayerMuted,
   void Function(LayerId layerId, double opacity)? onLayerOpacityChanged,
@@ -132,7 +130,6 @@ Future<void> _pumpPanel(
             layerLaneEdit: layerLaneEdit,
             poseDisplaySize: const CanvasSize(width: 640, height: 360),
             onSetCutFade: onSetCutFade,
-            onSetCutFadeTarget: onSetCutFadeTarget,
             onToggleLayerVisibility: onToggleLayerVisibility,
             onToggleLayerMuted: onToggleLayerMuted,
             onLayerOpacityChanged: onLayerOpacityChanged,
@@ -605,15 +602,10 @@ void main() {
     expect(commits, [(const CutId('lane-cut'), 4, 0)]);
   });
 
-  testWidgets('the fade span\'s context menu sets the fade TARGET '
-      '(FO=black default, WO=white)', (tester) async {
-    final targets = <(CutId, CutFadeTarget)>[];
-    await _pumpPanel(
-      tester,
-      project: _project(),
-      onSetCutFade: (_, _, _) {},
-      onSetCutFadeTarget: (cutId, target) => targets.add((cutId, target)),
-    );
+  testWidgets('the fade span carries NO target menu any more (R3b): the '
+      'fade is transparency toward the backdrop, so a long-press does '
+      'nothing here', (tester) async {
+    await _pumpPanel(tester, project: _project(), onSetCutFade: (_, _, _) {});
 
     await _expandVTransform(tester);
 
@@ -622,13 +614,10 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    // Black is checked by default; picking White commits.
-    await tester.tap(
-      find.byKey(const ValueKey<String>('cut-fade-target-white')),
-    );
-    await tester.pumpAndSettle();
-
-    expect(targets, [(const CutId('lane-cut'), CutFadeTarget.white)]);
+    expect(find.byKey(const ValueKey<String>('cut-fade-target-white')),
+        findsNothing);
+    expect(find.byKey(const ValueKey<String>('cut-fade-target-black')),
+        findsNothing);
   });
 
   group('timeline-parity S rows (R4-⑨ 완벽통일)', () {
