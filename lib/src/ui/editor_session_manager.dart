@@ -37,7 +37,6 @@ import '../models/cut.dart';
 import '../models/cut_camera.dart';
 import '../models/transform_track.dart';
 import '../models/cut_id.dart';
-import '../models/cut_metadata.dart';
 import '../models/cut_move_plan.dart';
 import '../models/exposure_memo.dart';
 import '../models/layer_folder.dart';
@@ -301,9 +300,10 @@ class EditorSessionManager extends ChangeNotifier {
   /// Injectable persistence; null (tests) keeps the in-memory defaults.
   final AppWorkspaceColorsStore? _workspaceColorsStore;
 
-  /// The PASTEBOARD color is app state (the accents' idiom): it is the
-  /// working environment around the stage, never part of the artwork.
-  /// The canvas paper is the project's, through [setProjectBackground].
+  /// The app-level workspace colors are the NEW-PROJECT DEFAULTS now
+  /// (R3b): the pasteboard itself became project data — it prints, so it
+  /// travels with the project (R28 #9 reversed by the user, 2026-07-29).
+  /// This restore keeps the stored default alive for the next project.
   Future<void> _restoreWorkspaceColors() async {
     final restored = await _workspaceColorsStore?.load();
     if (restored != null) {
@@ -311,7 +311,13 @@ class EditorSessionManager extends ChangeNotifier {
     }
   }
 
+  /// One undo step; no-op when unchanged. Writes the PROJECT's pasteboard
+  /// (R3b promotion) — and remembers the choice as the app-level default
+  /// for the NEXT project, which is all that remains of the old app-state
+  /// pasteboard.
   void setPasteboardColor(int argb) {
+    _cutCommandCoordinator.setProjectPasteboard(argb);
+    notifyListeners();
     final next = AppWorkspaceColors.settings.value.copyWith(
       pasteboardArgb: argb,
     );
@@ -323,6 +329,14 @@ class EditorSessionManager extends ChangeNotifier {
     if (store != null) {
       unawaited(store.save(next));
     }
+  }
+
+  /// One undo step; no-op when unchanged. The BACKDROP (R3b): the stage's
+  /// opaque floor — what a fade reveals and what an opaque export bakes
+  /// where nothing covers.
+  void setProjectBackdrop(int argb) {
+    _cutCommandCoordinator.setProjectBackdrop(argb);
+    notifyListeners();
   }
 
   // --- Input settings (UI-R22 #6) -------------------------------------------
@@ -1927,18 +1941,6 @@ class EditorSessionManager extends ChangeNotifier {
       cutId: cutId,
       transformTrack: track,
       description: description,
-    );
-    _refreshAfterCutCommand();
-    notifyListeners();
-  }
-
-  /// Sets what [cutId]'s fade fades TO — black (FO) or white (WO); one
-  /// undo step, no-op when unchanged. Playback and the MP4 bake share the
-  /// value.
-  void setCutFadeTarget(CutId cutId, CutFadeTarget fadeTarget) {
-    _cutCommandCoordinator.updateCutFadeTarget(
-      cutId: cutId,
-      fadeTarget: fadeTarget,
     );
     _refreshAfterCutCommand();
     notifyListeners();

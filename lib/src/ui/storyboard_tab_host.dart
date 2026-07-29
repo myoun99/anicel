@@ -604,7 +604,6 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   fadeOutFrames: fadeOut,
                 ),
                 // FO=black / WO=white — the fade span's context menu.
-                onSetCutFadeTarget: _session.setCutFadeTarget,
                 // Timeline-parity layer controls on the ACTIVE cut's SE
                 // rows — the SAME session hooks the timeline host wires.
                 onToggleLayerVisibility: _session.toggleLayerVisibility,

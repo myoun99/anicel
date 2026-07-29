@@ -31,7 +31,6 @@ class CanvasScrubPreview extends StatefulWidget {
     required this.qualityOf,
     this.cutPoseSampleAt,
     this.cutFadeOpacityAt,
-    this.fadeColor = const Color(0xFF000000),
     this.viewport,
     this.paperBackground = ProjectBackground.defaultBackground,
     this.gapParking,
@@ -62,10 +61,10 @@ class CanvasScrubPreview extends StatefulWidget {
   /// the same sample the editing canvas wraps with, R9-B). Null = identity.
   final LayerPoseSample? Function(int frameIndex)? cutPoseSampleAt;
 
-  /// The cut fade per cursor frame (fx-gated by the caller, R9-C — the
-  /// editing canvas's wash) toward [fadeColor]. Null = no fade.
+  /// The cut fade per cursor frame (fx-gated by the caller, R9-C → R3b:
+  /// transparency — the painter thins the cut's unit, revealing the
+  /// panel's stage behind it). Null = no fade.
   final double Function(int frameIndex)? cutFadeOpacityAt;
-  final Color fadeColor;
 
   /// The panel's live pan/zoom; identity when null.
   final CanvasViewport? viewport;
@@ -162,7 +161,6 @@ class _CanvasScrubPreviewState extends State<CanvasScrubPreview> {
           cutAnchorPoint: poseSample?.anchorPoint,
           paperBackground: widget.paperBackground,
           fadeOpacity: widget.cutFadeOpacityAt?.call(frameIndex) ?? 1,
-          fadeColor: widget.fadeColor,
         ),
       ),
     );

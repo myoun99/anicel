@@ -10,6 +10,7 @@ import '../../models/canvas_viewport.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/playback_quality.dart';
+import '../../models/project.dart' show defaultProjectPasteboardArgb;
 import '../../models/project_background.dart';
 import '../../models/transform_track.dart';
 import '../storyboard_cut_fade_policy.dart';
@@ -41,6 +42,7 @@ class CanvasPlaybackView extends StatefulWidget {
     this.cutPictureVisibleOf,
     this.viewport,
     this.background = ProjectBackground.defaultBackground,
+    this.pasteboardArgb = defaultProjectPasteboardArgb,
     this.trackStack,
   });
 
@@ -66,6 +68,10 @@ class CanvasPlaybackView extends StatefulWidget {
   /// The project background (R10-⑥): the paper AND what playlist gaps
   /// show (a gap frame is background-only — no picture, no fade).
   final ProjectBackground background;
+
+  /// The project pasteboard (R3b): the stage apron the camera view shows
+  /// past the paper's edge, fading with the cut unit.
+  final int pasteboardArgb;
 
   /// The multitrack display path for ALL-CUTS playback (R3a): when set,
   /// the FRAME is this widget — the parked canvas's track stack, following
@@ -224,13 +230,16 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
               cutAnchorPoint: cutAnchorPoint,
               paperBackground: widget.background,
               paintPaper: !inGap,
+              // The stage's apron rides the camera view (R3b): the camera
+              // sees the pasteboard wherever it reaches past the paper,
+              // and the fade thins the whole unit (transparency, no wash).
+              pasteboardColor: widget.cameraViewEnabled && !inGap
+                  ? Color(widget.pasteboardArgb)
+                  : null,
               fadeOpacity:
                   !inGap && cut != null && position != null && cutFxEnabled
                   ? cut.fadeOpacityAt(position.localFrameIndex)
                   : 1,
-              fadeColor: cut != null
-                  ? cutFadeTargetColor(cut)
-                  : const Color(0xFF000000),
             ),
           ),
           _prerenderProgressBar(context),

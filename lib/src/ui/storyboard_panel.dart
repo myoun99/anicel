@@ -10,7 +10,6 @@ import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
-import '../models/cut_metadata.dart';
 import '../models/layer.dart';
 import '../models/layer_id.dart';
 import '../models/layer_mark.dart';
@@ -346,7 +345,6 @@ class StoryboardPanel extends StatefulWidget {
     this.onSelectFrameIndex,
     this.poseDisplaySize,
     this.onSetCutFade,
-    this.onSetCutFadeTarget,
     this.onToggleLayerVisibility,
     this.onToggleLayerMuted,
     this.onLayerOpacityChanged,
@@ -572,14 +570,10 @@ class StoryboardPanel extends StatefulWidget {
   final CanvasSize? poseDisplaySize;
 
   /// Commits a cut-fade handle drag (one undo); null makes the Opacity
-  /// lane display-only.
+  /// lane display-only. The fade is transparency (R3b) — no per-cut
+  /// target color rides along any more.
   final void Function(CutId cutId, int fadeInFrames, int fadeOutFrames)?
   onSetCutFade;
-
-  /// Sets what a cut's fade fades TO (FO=black / WO=white) — the fade
-  /// span's context menu. Null hides the menu.
-  final void Function(CutId cutId, CutFadeTarget fadeTarget)?
-  onSetCutFadeTarget;
 
   // --- Timeline-parity layer controls ('완벽통일', R4-⑨) -------------------
   // The S rows carry the SAME layer controls as the timeline rows, acting
@@ -1517,7 +1511,6 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           width: width,
           timelineScale: scale,
           onSetCutFade: widget.onSetCutFade,
-          onSetCutFadeTarget: widget.onSetCutFadeTarget,
         ),
       ],
     ];
@@ -3236,7 +3229,6 @@ class _StoryboardOpacityLaneRow extends StatelessWidget {
     required this.width,
     required this.timelineScale,
     this.onSetCutFade,
-    this.onSetCutFadeTarget,
   });
 
   final int trackIndex;
@@ -3245,8 +3237,6 @@ class _StoryboardOpacityLaneRow extends StatelessWidget {
   final TimelineScale timelineScale;
   final void Function(CutId cutId, int fadeInFrames, int fadeOutFrames)?
   onSetCutFade;
-  final void Function(CutId cutId, CutFadeTarget fadeTarget)?
-  onSetCutFadeTarget;
 
   @override
   Widget build(BuildContext context) {
@@ -3272,9 +3262,6 @@ class _StoryboardOpacityLaneRow extends StatelessWidget {
                     ? null
                     : (fadeIn, fadeOut) =>
                           onSetCutFade!(entry.cut.id, fadeIn, fadeOut),
-                onSetFadeTarget: onSetCutFadeTarget == null
-                    ? null
-                    : (target) => onSetCutFadeTarget!(entry.cut.id, target),
               ),
             ),
         ],
@@ -3292,16 +3279,11 @@ class _CutFadeSpan extends StatefulWidget {
     required this.cut,
     required this.frameCellExtent,
     this.onSetFade,
-    this.onSetFadeTarget,
   });
 
   final Cut cut;
   final double frameCellExtent;
   final void Function(int fadeInFrames, int fadeOutFrames)? onSetFade;
-
-  /// Sets what the fade fades TO (FO=black / WO=white) — the span's
-  /// right-click/long-press menu. Null hides the menu.
-  final ValueChanged<CutFadeTarget>? onSetFadeTarget;
 
   @override
   State<_CutFadeSpan> createState() => _CutFadeSpanState();
@@ -3408,79 +3390,33 @@ class _CutFadeSpanState extends State<_CutFadeSpan> {
     );
   }
 
-  Future<void> _showFadeTargetMenu(Offset globalPosition) async {
-    final onSetFadeTarget = widget.onSetFadeTarget;
-    if (onSetFadeTarget == null) {
-      return;
-    }
-    final overlay =
-        Overlay.of(context).context.findRenderObject()! as RenderBox;
-    final current = widget.cut.metadata.fadeTarget;
-    final selected = await showMenu<CutFadeTarget>(
-      context: context,
-      position: RelativeRect.fromRect(
-        globalPosition & const Size(1, 1),
-        Offset.zero & overlay.size,
-      ),
-      popUpAnimationStyle: instantMenuAnimation,
-      items: [
-        for (final target in CutFadeTarget.values)
-          CheckedPopupMenuItem<CutFadeTarget>(
-            key: ValueKey<String>('cut-fade-target-${target.name}'),
-            value: target,
-            checked: target == current,
-            child: Text(
-              target == CutFadeTarget.black
-                  ? 'Fade to Black (FO)'
-                  : 'Fade to White (WO)',
-            ),
-          ),
-      ],
-    );
-    if (selected != null && selected != current) {
-      onSetFadeTarget(selected);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final editable = widget.onSetFade != null && widget.cut.duration > 1;
     final fadeIn = _previewFadeIn;
     final fadeOut = _previewFadeOut;
-    // The envelope tints toward the fade TARGET so a white fade reads at a
-    // glance (FO=accent as before, WO=near-white line).
-    final fadeToWhite = widget.cut.metadata.fadeTarget == CutFadeTarget.white;
-    final envelopeColor = fadeToWhite
-        ? const Color(0xFFE8E6E1)
-        : AppColors.accent;
+    // One envelope color: the fade is transparency now (R3b) — there is
+    // no per-cut target to tint toward, and a white-out is a white cut on
+    // a lower track.
+    final envelopeColor = AppColors.accent;
 
     return Stack(
       clipBehavior: Clip.hardEdge,
       children: [
         Positioned.fill(
-          // Right-click/long-press: the fade-target menu (FO/WO).
-          child: GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onSecondaryTapUp: widget.onSetFadeTarget == null
-                ? null
-                : (details) => _showFadeTargetMenu(details.globalPosition),
-            onLongPressStart: widget.onSetFadeTarget == null
-                ? null
-                : (details) => _showFadeTargetMenu(details.globalPosition),
-            child: DecoratedBox(
-              decoration: BoxDecoration(
-                color: colorScheme.surfaceContainerLow.withValues(alpha: 0.6),
-                borderRadius: const BorderRadius.all(Radius.circular(3)),
-                border: Border.all(color: colorScheme.outlineVariant),
-              ),
-              child: CustomPaint(
-                painter: _CutFadeEnvelopePainter(
-                  samples: _envelopeSamples(),
-                  pixelsPerFrame: widget.frameCellExtent,
-                  lineColor: envelopeColor,
-                  fillColor: envelopeColor.withValues(alpha: 0.15),
-                ),
+          child: DecoratedBox(
+            decoration: BoxDecoration(
+              color: colorScheme.surfaceContainerLow.withValues(alpha: 0.6),
+              borderRadius: const BorderRadius.all(Radius.circular(3)),
+              border: Border.all(color: colorScheme.outlineVariant),
+            ),
+            child: CustomPaint(
+              painter: _CutFadeEnvelopePainter(
+                samples: _envelopeSamples(),
+                pixelsPerFrame: widget.frameCellExtent,
+                lineColor: envelopeColor,
+                fillColor: envelopeColor.withValues(alpha: 0.15),
               ),
             ),
           ),

@@ -7,7 +7,6 @@ import '../models/canvas_size.dart';
 import '../models/canvas_viewport.dart';
 import '../models/layer_id.dart';
 import '../models/project_background.dart';
-import 'theme/app_workspace_colors.dart';
 import '../services/canvas_color_sampler.dart';
 import '../services/canvas_flood_fill.dart';
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
@@ -24,12 +23,12 @@ import 'canvas/canvas_layer_stack_view.dart';
 import 'canvas/layer_pose_paint.dart';
 import 'canvas/layer_position_gizmo.dart';
 import 'editor_session_manager.dart';
+import 'canvas/paper_background.dart' show alphaPreviewEnabled;
 import 'playback/canvas_playback_controller.dart' show PlaybackScope;
 import 'playback/canvas_playback_view.dart';
 import 'playback/canvas_track_stack_view.dart';
 import 'playback/recording_streamer_overlay.dart';
 import 'playback/canvas_scrub_preview.dart';
-import 'storyboard_cut_fade_policy.dart' show cutFadeTargetColor;
 import 'text/app_strings.dart';
 import 'timeline/layer_label_controls.dart';
 import '../models/layer_kind.dart' show layerKindAcceptsBrushInput;
@@ -210,10 +209,11 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         widget.cameraViewEnabled,
         widget.cameraDimOpacity,
         ?widget.expandedLaneLayerIds,
-        // R28 #9: the pasteboard color is app state — the backdrop and
-        // the swatch both read it, so the area follows it the way it
-        // follows camera view.
-        AppWorkspaceColors.settings,
+        // The pasteboard is PROJECT data now (R3b, R28 #9 reversed): its
+        // changes arrive through the session subscription above. The
+        // alpha-preview toggle is app VIEW state and repaints the stage
+        // floors here.
+        alphaPreviewEnabled,
       ]),
       builder: (context, _) {
         // Playback swaps only the viewport CONTENT (via the panel's
@@ -266,6 +266,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     CanvasViewport viewport, {
     ValueListenable<int?>? globalFrame,
   }) {
+    final project = session.repository.requireProject();
     return CanvasTrackStackView(
       globalFrame: globalFrame ?? session.gapParkingListenable,
       positionsOf: session.trackStackPositionsAt,
@@ -278,6 +279,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       onFrameCached: session.enforcePlaybackCacheBudget,
       viewport: viewport,
       background: session.projectBackground,
+      backdropArgb: project.backdropArgb,
+      pasteboardArgb: project.pasteboardArgb,
+      showAlphaCheckerboard: alphaPreviewEnabled.value,
     );
   }
 
@@ -466,14 +470,17 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                     CanvasColorSampleSource.display,
                 activeLayerId: session.activeLayer?.id,
               ),
-              // R28 #9: the canvas paper is PROJECT data (it goes out in
-              // exports, so it undoes with everything else); the
-              // pasteboard is app state that outlives the project.
+              // BOTH stage colors are PROJECT data now (R3b): they go out
+              // in exports, so they undo with everything else — the
+              // pasteboard's app-state era (R28 #9) survives only as the
+              // new-project default.
               paperColor: session.projectBackground.argb,
               onPaperColorChanged: (argb) =>
                   session.setProjectBackground(ProjectBackground.color(argb)),
-              pasteboardColor: AppWorkspaceColors.settings.value.pasteboardArgb,
+              pasteboardColor:
+                  session.repository.requireProject().pasteboardArgb,
               onPasteboardColorChanged: session.setPasteboardColor,
+              backdropArgb: session.repository.requireProject().backdropArgb,
               onEyedropperPick: (color) => widget.onBrushToolStateChanged?.call(
                 widget.brushToolState.value.copyWith(color: color),
               ),
@@ -626,20 +633,23 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                       children: [
                         if (showFadeWash)
                           Positioned.fill(
-                            // The cut fade as a wash of the fade target color
-                            // over the canvas (R9-C) — above every layer,
-                            // below the chrome; matches playback's overlay at
-                            // (1 − fade).
+                            // The cut fade on the EDITING canvas (R9-C →
+                            // R3b): the fade is transparency, and here the
+                            // whole viewport IS the cut's unit (pasteboard,
+                            // paper, pictures) over the backdrop — so a
+                            // backdrop-colored wash at (1 − fade) is
+                            // pixel-equal to thinning the unit, without
+                            // re-compositing the editing stack.
                             child: IgnorePointer(
                               child: CustomPaint(
                                 painter: _CutFadeWashPainter(
                                   viewport: viewport,
                                   canvasSize: canvasSize,
-                                  // A visible fade wash implies a cut (the
-                                  // fade opacity defaults to 1 without one).
                                   color:
-                                      cutFadeTargetColor(
-                                        session.requireActiveCut,
+                                      Color(
+                                        session.repository
+                                            .requireProject()
+                                            .backdropArgb,
                                       ).withValues(
                                         alpha: (1 - cutFadeOpacity).clamp(
                                           0.0,
@@ -729,6 +739,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                           cutPictureVisibleOf: session.isCutPictureVisible,
                           viewport: viewport,
                           background: session.projectBackground,
+                          pasteboardArgb: session.repository
+                              .requireProject()
+                              .pasteboardArgb,
                           // ALL-CUTS playback watches the whole stage: the
                           // frame is the track stack on the clock's global
                           // axis (R3a) — a selected-track gap shows what
@@ -764,14 +777,13 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                       gapContentBuilder: (context) =>
                           _buildTrackStackView(session, viewport),
                       // The cut pose AND fade follow the editing canvas
-                      // (R9-B/C): fx-gated per cursor frame, identity when off.
+                      // (R9-B/C): fx-gated per cursor frame, identity when
+                      // off. The fade is transparency now (R3b) — the
+                      // painter thins the unit; nothing to color here.
                       cutPoseSampleAt: (frame) =>
                           session.activeCutCanvasPoseSample(frameIndex: frame),
                       cutFadeOpacityAt: (frame) => session
                           .activeCutEditingFadeOpacity(frameIndex: frame),
-                      fadeColor: session.activeCutOrNull == null
-                          ? const Color(0xFF000000)
-                          : cutFadeTargetColor(session.requireActiveCut),
                       viewport: viewport,
                       paperBackground: session.projectBackground,
                     )

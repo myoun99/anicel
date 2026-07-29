@@ -28,8 +28,9 @@ void main() {
     expect(restoredTransparent.transparent, isTrue);
     expect(
       restoredTransparent.argb,
-      0xFFFFFFFF,
-      reason: 'transparent bakes white in exports',
+      0x00FFFFFF,
+      reason: 'transparent IS alpha-0 paper now (R3b) — the alpha is real, '
+          'on screen and in exports alike',
     );
   });
 

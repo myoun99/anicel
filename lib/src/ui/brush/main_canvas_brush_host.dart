@@ -9,6 +9,7 @@ import '../../models/brush_history_policy.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/project.dart' show defaultProjectBackdropArgb;
 import '../../models/project_background.dart';
 import '../theme/app_workspace_colors.dart';
 import '../../services/brush_frame_edit_session_store.dart';
@@ -59,6 +60,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.onPaperColorChanged,
     this.pasteboardColor = AppWorkspaceColors.defaultPasteboardArgb,
     this.onPasteboardColorChanged,
+    this.backdropArgb = defaultProjectBackdropArgb,
     this.onTemporaryToolHold,
     this.onTemporaryToolRelease,
     this.onInvokeAction,
@@ -137,6 +139,10 @@ class MainCanvasBrushHost extends StatefulWidget {
   final ValueChanged<int>? onPaperColorChanged;
   final int pasteboardColor;
   final ValueChanged<int>? onPasteboardColorChanged;
+
+  /// The BACKDROP behind the pasteboard (R3b) — project data, like the
+  /// two colors above it in the stage.
+  final int backdropArgb;
 
   /// PEN-7a mapped-hold pass-through (canvas right/wheel mappings).
   final void Function(CanvasTool tool)? onTemporaryToolHold;
@@ -287,6 +293,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       onPaperColorChanged: widget.onPaperColorChanged,
       pasteboardColor: widget.pasteboardColor,
       onPasteboardColorChanged: widget.onPasteboardColorChanged,
+      backdropArgb: widget.backdropArgb,
       onTemporaryToolHold: widget.onTemporaryToolHold,
       onTemporaryToolRelease: widget.onTemporaryToolRelease,
       onInvokeAction: widget.onInvokeAction,

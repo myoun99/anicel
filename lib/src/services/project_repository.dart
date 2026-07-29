@@ -105,6 +105,18 @@ class ProjectRepository {
     updateProject((project) => project.copyWith(background: background));
   }
 
+  /// R3b: the stage's outer planes — the opaque backdrop and the RGBA
+  /// pasteboard. Null leaves that side untouched (one write serves both,
+  /// so one undo can restore both).
+  void updateProjectStageColors({int? backdropArgb, int? pasteboardArgb}) {
+    updateProject(
+      (project) => project.copyWith(
+        backdropArgb: backdropArgb,
+        pasteboardArgb: pasteboardArgb,
+      ),
+    );
+  }
+
   /// The movie's trailing gap (UI-R20 #3).
   /// R26 #32: the project's frame rate — one axis for the whole project.
   void updateProjectFrameRate(ProjectFrameRate frameRate) {

@@ -10,7 +10,6 @@ import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/cut_camera.dart';
 import '../../models/cut_id.dart';
-import '../../models/cut_metadata.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -51,7 +50,6 @@ import 'update_camera_instruction_set_command.dart';
 import 'update_cut_camera_command.dart';
 import 'update_cut_note_command.dart';
 import 'update_cut_transform_command.dart';
-import 'update_cut_fade_target_command.dart';
 import 'update_cut_thumbnail_frame_command.dart';
 import 'update_layer_audio_clips_command.dart';
 import 'update_layer_instructions_command.dart';
@@ -63,6 +61,7 @@ import 'update_layer_timesheet_command.dart';
 import 'update_layer_transform_command.dart';
 import 'update_media_assets_command.dart';
 import 'update_project_background_command.dart';
+import 'update_project_stage_colors_command.dart';
 import 'update_timesheet_info_command.dart';
 import 'update_exposure_memo_command.dart';
 
@@ -292,26 +291,6 @@ class CutCommandCoordinator {
         repository: repository,
         cutId: cutId,
         frameIndex: frameIndex,
-      ),
-    );
-  }
-
-  /// Sets what the cut fade fades TO (FO=black, WO=white); one undo step,
-  /// no-op when unchanged.
-  void updateCutFadeTarget({
-    required CutId cutId,
-    required CutFadeTarget fadeTarget,
-  }) {
-    final cut = _requireCut(cutId);
-    if (cut.metadata.fadeTarget == fadeTarget) {
-      return;
-    }
-
-    historyManager.execute(
-      UpdateCutFadeTargetCommand(
-        repository: repository,
-        cutId: cutId,
-        fadeTarget: fadeTarget,
       ),
     );
   }
@@ -791,6 +770,37 @@ class CutCommandCoordinator {
       UpdateProjectBackgroundCommand(
         repository: repository,
         background: background,
+      ),
+    );
+  }
+
+  /// One undo step; no-op when unchanged. The backdrop is opaque by
+  /// contract (R3b) — the alpha byte is forced here, so no caller can
+  /// thin the stage's final answer.
+  void setProjectBackdrop(int argb) {
+    final opaque = 0xFF000000 | argb;
+    if (repository.requireProject().backdropArgb == opaque) {
+      return;
+    }
+    historyManager.execute(
+      UpdateProjectStageColorsCommand(
+        repository: repository,
+        backdropArgb: opaque,
+      ),
+    );
+  }
+
+  /// One undo step; no-op when unchanged. RGBA — a thinned pasteboard
+  /// reveals the backdrop (R3b; project data since the promotion, R28 #9
+  /// reversed).
+  void setProjectPasteboard(int argb) {
+    if (repository.requireProject().pasteboardArgb == argb) {
+      return;
+    }
+    historyManager.execute(
+      UpdateProjectStageColorsCommand(
+        repository: repository,
+        pasteboardArgb: argb,
       ),
     );
   }

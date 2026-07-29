@@ -28,7 +28,10 @@ import '../canvas/active_stroke_overlay.dart';
 import '../canvas/canvas_selection_layer.dart';
 import '../canvas/selection_ants_painter.dart';
 import '../canvas/canvas_viewport_gesture_layer.dart';
+import '../../models/project.dart' show defaultProjectBackdropArgb;
 import '../../models/project_background.dart';
+import '../canvas/paper_background.dart'
+    show AlphaCheckerboardPainter, alphaPreviewEnabled;
 import '../theme/app_workspace_colors.dart';
 import '../widgets/color_swatch_button.dart';
 import 'brush_cursor_overlay.dart';
@@ -106,6 +109,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.onPaperColorChanged,
     this.pasteboardColor = AppWorkspaceColors.defaultPasteboardArgb,
     this.onPasteboardColorChanged,
+    this.backdropArgb = defaultProjectBackdropArgb,
     this.onTemporaryToolHold,
     this.onTemporaryToolRelease,
     this.onInvokeAction,
@@ -247,6 +251,10 @@ class BrushCanvasPanel extends StatefulWidget {
   final ValueChanged<int>? onPaperColorChanged;
   final int pasteboardColor;
   final ValueChanged<int>? onPasteboardColorChanged;
+
+  /// The BACKDROP behind the pasteboard (R3b): the stage's opaque floor,
+  /// or the alpha checkerboard while the preview toggle is on.
+  final int backdropArgb;
 
   /// A committed eyedropper pick (switches back to the painting tool).
   final ValueChanged<int>? onEyedropperPick;
@@ -819,13 +827,16 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                       // Nothing drawn in the viewport (canvas, playback
                       // frames, camera overlay) may paint outside the panel.
                       child: ClipRect(
-                        // R28 #9: the PASTEBOARD — the surface the stage
-                        // floats on. It is the user's working environment,
-                        // never artwork, so it is an app setting rather
-                        // than project data and it is painted here rather
-                        // than by the canvas painter.
-                        child: ColoredBox(
-                          color: Color(widget.pasteboardColor),
+                        // The stage's outer planes (R3b): the BACKDROP
+                        // fills the panel and the PASTEBOARD rides on it,
+                        // RGBA and project data now (R28 #9 reversed) —
+                        // thinning it reveals the floor, on screen exactly
+                        // as in an export. The alpha-preview toggle swaps
+                        // BOTH for the checkerboard: an alpha export
+                        // excludes them, so the preview must too.
+                        child: _StageBackdrop(
+                          backdropArgb: widget.backdropArgb,
+                          pasteboardArgb: widget.pasteboardColor,
                           // R27 #17: a passive census of where the pointer
                           // is — button-held moves included — so a cursor
                           // that arms mid-gesture knows where to appear.
@@ -2354,6 +2365,37 @@ class _ToolCursorIcon extends StatelessWidget {
           child: Icon(icon, size: 20, color: Colors.white),
         ),
       ],
+    );
+  }
+}
+
+/// The stage's outer planes behind the artwork (R3b): the opaque backdrop
+/// with the RGBA pasteboard over it — or the alpha checkerboard in place
+/// of BOTH while [alphaPreviewEnabled] is on (an alpha export excludes
+/// them, so the preview must too; only the paper's own alpha stays real).
+/// Subscribed here so every BrushCanvasPanel shell (canvas, timesheet,
+/// conte) follows the toggle without leaning on an ancestor rebuild.
+class _StageBackdrop extends StatelessWidget {
+  const _StageBackdrop({
+    required this.backdropArgb,
+    required this.pasteboardArgb,
+    required this.child,
+  });
+
+  final int backdropArgb;
+  final int pasteboardArgb;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: alphaPreviewEnabled,
+      builder: (context, preview, _) => preview
+          ? CustomPaint(painter: const AlphaCheckerboardPainter(), child: child)
+          : ColoredBox(
+              color: Color(backdropArgb),
+              child: ColoredBox(color: Color(pasteboardArgb), child: child),
+            ),
     );
   }
 }

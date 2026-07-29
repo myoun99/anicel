@@ -143,9 +143,10 @@ class ExportFrameRenderer {
   /// OWN canvas space, and there is no shared space to stack differently
   /// sized canvases in (the camera frame is that space). The bake mirrors
   /// playback: the finished frame posed over the output space (V track
-  /// Transform, AE precomp semantics), then the fade TARGET color
-  /// (cutFadeTargetColor) at (1 − fade) on top. PNG sequences deliberately
-  /// stay unposed and unfaded (they are compositing sources).
+  /// Transform, AE precomp semantics), thinned by the fade (R3b:
+  /// transparency over the backdrop, no target-color wash). PNG sequences
+  /// deliberately stay unposed and unfaded (they are compositing
+  /// sources).
   ///
   /// [preserveAlpha] (ProRes 4444 α): gap frames and the uncovered ground
   /// stay TRANSPARENT instead of baking an opaque backing — the fade
@@ -159,9 +160,9 @@ class ExportFrameRenderer {
       return _renderTrackStackForVideo(task, preserveAlpha: preserveAlpha);
     }
     if (task.isGap) {
-      // A leading-gap frame: nothing plays — the project background,
-      // exactly what playback shows in the gap (R10-⑥). Opaque codecs
-      // bake the fallback; an alpha master keeps the gap transparent.
+      // A leading-gap frame: nothing plays — the BACKDROP (R3b), exactly
+      // what playback shows in the gap. Opaque codecs bake the floor; an
+      // alpha master keeps the gap transparent.
       final size = mode == ExportSizeMode.camera
           ? session.cameraFrameSize
           : task.cut.canvasSize;
@@ -175,7 +176,10 @@ class ExportFrameRenderer {
             size.width.toDouble(),
             size.height.toDouble(),
           ),
-          ui.Paint()..color = ui.Color(session.projectBackground.argb),
+          ui.Paint()
+            ..color = ui.Color(
+              session.repository.requireProject().backdropArgb,
+            ),
         );
       }
       final picture = recorder.endRecording();
@@ -199,11 +203,24 @@ class ExportFrameRenderer {
       image.width.toDouble(),
       image.height.toDouble(),
     );
-    // Black ground: the pose can uncover the output edges; without a pose
-    // the frame covers everything and the ground never shows. An alpha
-    // master leaves the uncovered edges transparent instead.
+    // The BACKDROP ground (R3b): the pose can uncover the output edges,
+    // and a fade thins the frame down to it. An alpha master leaves both
+    // transparent instead.
     if (!preserveAlpha) {
-      canvas.drawRect(bounds, ui.Paint()..color = const ui.Color(0xFF000000));
+      canvas.drawRect(
+        bounds,
+        ui.Paint()
+          ..color = ui.Color(session.repository.requireProject().backdropArgb),
+      );
+    }
+    // The fade is transparency (R3b): the frame — pose and all — thins as
+    // one layer over the ground; no target-color wash.
+    if (fade < 1) {
+      canvas.saveLayer(
+        bounds,
+        ui.Paint()
+          ..color = ui.Color.fromRGBO(0, 0, 0, fade.clamp(0.0, 1.0)),
+      );
     }
     if (poseActive) {
       final space = CanvasSize(width: image.width, height: image.height);
@@ -220,13 +237,7 @@ class ExportFrameRenderer {
       canvas.restore();
     }
     if (fade < 1) {
-      canvas.drawRect(
-        bounds,
-        ui.Paint()
-          ..color = cutFadeTargetColor(
-            task.cut,
-          ).withValues(alpha: (1 - fade).clamp(0.0, 1.0)),
-      );
+      canvas.restore();
     }
     final picture = recorder.endRecording();
     try {
@@ -273,14 +284,16 @@ class ExportFrameRenderer {
     final recorder = ui.PictureRecorder();
     final canvas = ui.Canvas(recorder);
     if (!preserveAlpha) {
-      // The GROUND, everywhere the stack leaves uncovered: gap frames,
-      // the camera reaching past a canvas edge, a posed cut sliding off.
-      // One fill — the project background — where the old bake had three
-      // different answers (background, renderer white, black). An alpha
-      // master stays transparent instead.
+      // The BACKDROP (R3b), everywhere the stack leaves uncovered: gap
+      // frames, a posed stage sliding off, a fade thinning the stack
+      // away. The stage's floor is the one ground; an alpha master stays
+      // transparent instead.
       canvas.drawRect(
         ui.Rect.fromLTWH(0, 0, size.width.toDouble(), size.height.toDouble()),
-        ui.Paint()..color = ui.Color(session.projectBackground.argb),
+        ui.Paint()
+          ..color = ui.Color(
+            session.repository.requireProject().backdropArgb,
+          ),
       );
     }
     final images = <ui.Image>[];
@@ -324,16 +337,22 @@ class ExportFrameRenderer {
               ? cutAnchorPointAt(cut, position.localFrameIndex)
               : null,
           paperBackground: session.projectBackground,
-          // The stage is the bottom covered track's: its paper, its
-          // full-frame wash. Tracks above composite transparently and
-          // fade their OWN contribution (the parked stack's sentence).
+          // The stage is the bottom covered track's: its pasteboard
+          // apron, its paper — and its fade thins the whole unit (R3b:
+          // transparency, revealing the backdrop). Tracks above composite
+          // transparently and fade their OWN contribution.
           paintPaper: i == 0,
+          // The alpha matrix (user 2026-07-29): alpha masters exclude the
+          // backdrop AND the pasteboard — they are compositing sources,
+          // and the paper carries its own alpha.
+          pasteboardColor: i == 0 && !preserveAlpha
+              ? ui.Color(session.repository.requireProject().pasteboardArgb)
+              : null,
           // The output IS the camera frame — there is no outside to
           // letterbox, and an alpha master needs the ground transparent.
           paintLetterbox: false,
           fadeOpacity: i == 0 ? fade : 1,
           imageOpacity: i == 0 ? 1 : fade,
-          fadeColor: cutFadeTargetColor(cut),
         ).paint(
           canvas,
           ui.Size(size.width.toDouble(), size.height.toDouble()),

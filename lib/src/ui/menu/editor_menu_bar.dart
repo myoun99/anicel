@@ -20,6 +20,7 @@ import '../dialogs/convert_to_linked_cut_dialog.dart';
 import '../dialogs/delete_layer_dialog.dart';
 import '../dialogs/file_browser_dialog.dart';
 import '../dialogs/preferences_dialog.dart';
+import '../canvas/paper_background.dart' show alphaPreviewEnabled;
 import '../debug/input_inspector.dart';
 import '../debug/measurement_mode.dart';
 import '../dialogs/project_background_dialog.dart';
@@ -352,6 +353,18 @@ class EditorMenuBar extends StatelessWidget {
         MeasurementMode.frameTimingOverlay.value =
             !MeasurementMode.frameTimingOverlay.value;
       },
+    ),
+    // R3b: the BACKDROP plane rendered as the alpha checkerboard —
+    // display-only, showing exactly what an alpha export leaves open.
+    KeyedSubtree(
+      key: const ValueKey<String>('menu-edit-alpha-preview'),
+      child: CheckboxMenuButton(
+        value: alphaPreviewEnabled.value,
+        onChanged: (checked) {
+          alphaPreviewEnabled.value = checked == true;
+        },
+        child: Text(AppText.strings.menuAlphaPreview),
+      ),
     ),
   ];
 

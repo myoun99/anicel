@@ -9,8 +9,12 @@ import '../../models/canvas_viewport.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/playback_quality.dart';
+import '../../models/project.dart'
+    show defaultProjectBackdropArgb, defaultProjectPasteboardArgb;
 import '../../models/project_background.dart';
 import '../../services/playback/playback_frame_mapping.dart';
+import '../canvas/paper_background.dart'
+    show AlphaCheckerboardPainter;
 import '../storyboard_cut_fade_policy.dart';
 import 'cut_frame_composite_cache.dart';
 import 'playback_frame_painter.dart';
@@ -50,6 +54,9 @@ class CanvasTrackStackView extends StatefulWidget {
     this.onFrameCached,
     this.viewport,
     this.background = ProjectBackground.defaultBackground,
+    this.backdropArgb = defaultProjectBackdropArgb,
+    this.pasteboardArgb = defaultProjectPasteboardArgb,
+    this.showAlphaCheckerboard = false,
   });
 
   /// The parked global frame (the session's gap parking): moves per
@@ -84,6 +91,18 @@ class CanvasTrackStackView extends StatefulWidget {
 
   /// The project background: the paper of the bottom covered track.
   final ProjectBackground background;
+
+  /// The BACKDROP (R3b): the panel-wide floor this stack sits on — what
+  /// an uncovered frame shows (the old void) and what every fade reveals.
+  final int backdropArgb;
+
+  /// The bottom covered track's stage apron (R3b): fills its camera frame
+  /// under the paper, and fades with the cut unit.
+  final int pasteboardArgb;
+
+  /// Alpha preview (display-only): the backdrop renders as the alpha
+  /// checkerboard, showing what an alpha export leaves open.
+  final bool showAlphaCheckerboard;
 
   @override
   State<CanvasTrackStackView> createState() => _CanvasTrackStackViewState();
@@ -199,16 +218,28 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
         ? const <PlaybackPosition>[]
         : widget.positionsOf(frame);
     _pruneStale([for (final position in positions) position.cutId]);
+    // The BACKDROP floor (R3b): the void is retired — an uncovered frame
+    // shows the stage's floor (or the alpha checkerboard under the
+    // preview toggle), exactly what an opaque export bakes there.
+    final floor = widget.showAlphaCheckerboard
+        ? const CustomPaint(
+            key: ValueKey<String>('canvas-track-stack-floor'),
+            painter: AlphaCheckerboardPainter(),
+            child: SizedBox.expand(),
+          )
+        : ColoredBox(
+            key: const ValueKey<String>('canvas-track-stack-floor'),
+            color: Color(widget.backdropArgb),
+          );
     if (positions.isEmpty) {
-      // A frame no track covers (or no parking at all): the void — the
-      // panel's own background shows through, like playback gaps.
-      return const SizedBox.expand(
-        key: ValueKey<String>('canvas-track-stack-void'),
+      return SizedBox.expand(
+        key: const ValueKey<String>('canvas-track-stack-void'),
+        child: floor,
       );
     }
 
     final quality = widget.qualityOf();
-    final layers = <Widget>[];
+    final layers = <Widget>[floor];
     for (var i = 0; i < positions.length; i++) {
       final position = positions[i];
       final cut = position.cut;
@@ -257,16 +288,17 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
                 ? cutAnchorPointAt(cut, localFrame)
                 : null,
             paperBackground: widget.background,
-            // The bottom covered track is the stage: letterbox, paper,
-            // and the full-frame fade wash (single-track = playback
-            // parity). The tracks above composite transparently, and
-            // their fades thin THEIR contribution only — a full-frame
-            // wash would blank the stage below instead of revealing it.
+            // The bottom covered track is the stage: letterbox, the
+            // pasteboard apron, the paper. Its fade thins the WHOLE stage
+            // (R3b: fade is transparency — the backdrop behind shows
+            // through); the tracks above composite transparently and
+            // their fades thin THEIR contribution only, revealing the
+            // stage instead of blanking it.
             paintPaper: i == 0,
             paintLetterbox: i == 0,
+            pasteboardColor: i == 0 ? Color(widget.pasteboardArgb) : null,
             fadeOpacity: i == 0 ? fade : 1,
             imageOpacity: i == 0 ? 1 : fade,
-            fadeColor: cutFadeTargetColor(cut),
           ),
         ),
       );

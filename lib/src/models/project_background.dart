@@ -1,21 +1,25 @@
-/// The project's background (R10-⑥): the paper under the artwork on the
-/// canvas, what playback shows in cut gaps, and the blank-canvas color.
+/// The project's PAPER (R10-⑥, reshaped by R3b's four-plane stage:
+/// backdrop → pasteboard → paper → pictures): the sheet under the artwork
+/// on the canvas and the bottom covered track's stage in every composed
+/// view.
 ///
-/// TRANSPARENT is display-only (the canvas shows an alpha checkerboard
-/// for checking transparent regions while drawing); exports always bake
-/// the opaque [argb] fallback — video formats carry no alpha, and the
-/// user chose "표시 전용" over per-export choices.
+/// The color carries its own ALPHA now (user 2026-07-29): a thinned paper
+/// reveals the pasteboard and the backdrop behind it, on screen and in
+/// print alike — the old display-only "transparent" flag collapsed into
+/// alpha 0, and the alpha checkerboard moved to the backdrop's
+/// alpha-preview toggle where it says what it means (what an alpha export
+/// leaves open).
 class ProjectBackground {
-  const ProjectBackground.color(this.argb) : transparent = false;
+  const ProjectBackground.color(this.argb);
 
-  const ProjectBackground.transparent() : transparent = true, argb = 0xFFFFFFFF;
+  const ProjectBackground.transparent() : argb = 0x00FFFFFF;
 
-  /// Whether the screen renders the alpha checkerboard instead of a
-  /// solid color.
-  final bool transparent;
+  /// Fully see-through paper (alpha 0) — the old boolean's meaning, kept
+  /// as a getter so the sentence "is the paper transparent" still reads.
+  bool get transparent => argb >>> 24 == 0;
 
-  /// The opaque ARGB the background paints with — and, under
-  /// [transparent], the color exports bake instead.
+  /// The ARGB the paper paints with — alpha included, everywhere: canvas,
+  /// playback, bakes. What you see is what exports.
   final int argb;
 
   /// The default paper — R28 #9: PURE white.
@@ -34,12 +38,10 @@ class ProjectBackground {
   static const ProjectBackground white = ProjectBackground.color(0xFFFFFFFF);
   static const ProjectBackground black = ProjectBackground.color(0xFF000000);
 
-  Map<String, dynamic> toJson() => {
-    if (transparent) 'transparent': true,
-    'argb': argb,
-  };
+  Map<String, dynamic> toJson() => {'argb': argb};
 
   factory ProjectBackground.fromJson(Map<String, dynamic> json) {
+    // Legacy shape: the display-only transparent flag → alpha-0 paper.
     if (json['transparent'] == true) {
       return const ProjectBackground.transparent();
     }
@@ -49,15 +51,12 @@ class ProjectBackground {
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is ProjectBackground &&
-          other.transparent == transparent &&
-          other.argb == argb;
+      other is ProjectBackground && other.argb == argb;
 
   @override
-  int get hashCode => Object.hash(transparent, argb);
+  int get hashCode => argb.hashCode;
 
   @override
   String toString() =>
-      'ProjectBackground(transparent: $transparent, '
-      'argb: 0x${argb.toRadixString(16).toUpperCase()})';
+      'ProjectBackground(argb: 0x${argb.toRadixString(16).toUpperCase()})';
 }

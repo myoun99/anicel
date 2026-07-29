@@ -1,26 +1,7 @@
-/// The cut fade's TARGET: fade-out to black (FO, the default convention)
-/// or to white (WO). One target per cut — it colors both fade ramps.
-enum CutFadeTarget {
-  black,
-  white;
-
-  String toJson() => name;
-
-  static CutFadeTarget fromJson(Object? json) =>
-      values.asNameMap()[json] ?? CutFadeTarget.black;
-}
-
 class CutMetadata {
-  const CutMetadata({
-    this.note = '',
-    this.thumbnailFrameIndex,
-    this.fadeTarget = CutFadeTarget.black,
-  });
+  const CutMetadata({this.note = '', this.thumbnailFrameIndex});
 
-  const CutMetadata.empty()
-    : note = '',
-      thumbnailFrameIndex = null,
-      fadeTarget = CutFadeTarget.black;
+  const CutMetadata.empty() : note = '', thumbnailFrameIndex = null;
 
   final String note;
 
@@ -29,37 +10,30 @@ class CutMetadata {
   /// later trim never breaks it.
   final int? thumbnailFrameIndex;
 
-  /// What the cut fade fades TO (FO=black default, WO=white) — playback and
-  /// the MP4 bake consume the same value.
-  final CutFadeTarget fadeTarget;
-
   /// [thumbnailFrameIndex] passes as a closure so callers can CLEAR the pin
   /// (`() => null`) — the plain-nullable convention cannot express that.
-  CutMetadata copyWith({
-    String? note,
-    int? Function()? thumbnailFrameIndex,
-    CutFadeTarget? fadeTarget,
-  }) {
+  CutMetadata copyWith({String? note, int? Function()? thumbnailFrameIndex}) {
     return CutMetadata(
       note: note ?? this.note,
       thumbnailFrameIndex: thumbnailFrameIndex == null
           ? this.thumbnailFrameIndex
           : thumbnailFrameIndex(),
-      fadeTarget: fadeTarget ?? this.fadeTarget,
     );
   }
 
   Map<String, dynamic> toJson() => {
     'note': note,
     if (thumbnailFrameIndex != null) 'thumbnailFrame': thumbnailFrameIndex,
-    if (fadeTarget != CutFadeTarget.black) 'fadeTarget': fadeTarget.toJson(),
+    // The per-cut fade TARGET (FO/WO) is gone (R3b): the fade is
+    // transparency toward the project backdrop, and a white-out is a
+    // white cut on a lower track — legacy 'fadeTarget' keys are ignored
+    // on read.
   };
 
   factory CutMetadata.fromJson(Map<String, dynamic> json) {
     return CutMetadata(
       note: json['note'] as String? ?? '',
       thumbnailFrameIndex: json['thumbnailFrame'] as int?,
-      fadeTarget: CutFadeTarget.fromJson(json['fadeTarget']),
     );
   }
 
@@ -68,14 +42,12 @@ class CutMetadata {
       identical(this, other) ||
       other is CutMetadata &&
           other.note == note &&
-          other.thumbnailFrameIndex == thumbnailFrameIndex &&
-          other.fadeTarget == fadeTarget;
+          other.thumbnailFrameIndex == thumbnailFrameIndex;
 
   @override
-  int get hashCode => Object.hash(note, thumbnailFrameIndex, fadeTarget);
+  int get hashCode => Object.hash(note, thumbnailFrameIndex);
 
   @override
   String toString() =>
-      'CutMetadata(note: $note, thumbnailFrameIndex: $thumbnailFrameIndex, '
-      'fadeTarget: $fadeTarget)';
+      'CutMetadata(note: $note, thumbnailFrame: $thumbnailFrameIndex)';
 }
