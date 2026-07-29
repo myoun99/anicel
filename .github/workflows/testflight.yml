@@ -57,10 +57,25 @@ jobs:
           ASC_ISSUER_ID: ${{ secrets.APP_STORE_CONNECT_ISSUER_ID }}
           ASC_KEY_CONTENT: ${{ secrets.APP_STORE_CONNECT_PRIVATE_KEY }}
           FASTLANE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          # The private repository holding the encrypted signing identity,
+          # and the passphrase that opens it.
+          MATCH_GIT_URL: ${{ secrets.MATCH_GIT_URL }}
+          MATCH_PASSWORD: ${{ secrets.MATCH_PASSWORD }}
+          MATCH_GIT_TOKEN: ${{ secrets.MATCH_GIT_TOKEN }}
           # Non-interactive: a prompt on a runner is a 6-hour hang.
           FASTLANE_SKIP_UPDATE_CHECK: '1'
           FASTLANE_HIDE_CHANGELOG: '1'
-        run: bundle exec fastlane beta
+        run: |
+          # match clones over HTTPS, so the token has to arrive the way git
+          # expects it — base64 of "user:token". Built here rather than
+          # stored pre-encoded, so the secret stays a plain token.
+          # tr strips the wrap GNU base64 would add; a newline in the
+          # header is an auth failure that reads like a wrong token.
+          MATCH_GIT_BASIC_AUTHORIZATION=$(
+            printf 'x-access-token:%s' "$MATCH_GIT_TOKEN" | base64 | tr -d '\n'
+          )
+          export MATCH_GIT_BASIC_AUTHORIZATION
+          bundle exec fastlane beta
 
       # The logs are where a signing failure explains itself, and they
       # outlive the runner only if we say so.
