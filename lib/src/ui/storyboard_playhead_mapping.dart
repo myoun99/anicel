@@ -150,8 +150,10 @@ void parkStoryboardGlobalFrame(EditorSessionManager session, int globalFrame) {
 }
 
 /// Ruler drag moves: playback keeps seeking the clock per move; editing
-/// scrubs are the session's global-axis scrub (cursor path inside the
-/// active cut's territory, full seek on cut crossings).
+/// scrubs are the session's global-axis scrub — the cursor path inside
+/// the active cut's territory, and a QUIET per-move parking everywhere
+/// else (gaps and other cuts' frames alike). Nothing commits per move;
+/// the release lands the one full seek.
 void scrubStoryboardGlobalFrame(EditorSessionManager session, int globalFrame) {
   if (session.playback.isActive) {
     seekStoryboardGlobalFrame(session, globalFrame);
@@ -165,7 +167,13 @@ void scrubStoryboardGlobalFrame(EditorSessionManager session, int globalFrame) {
 void commitStoryboardScrub(EditorSessionManager session) {
   if (!session.playback.isActive) {
     session.commitFrameScrub();
+    return;
   }
+  // Playback took the transport mid-drag: there is no editing seek to
+  // commit, but the preview flag must not leak past the gesture — stuck
+  // true it would freeze the canvas in scrub-preview mode after the
+  // playback stops.
+  session.frameScrubActive.value = false;
 }
 
 /// Switching into the storyboard clamps an over-end playhead back onto the

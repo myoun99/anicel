@@ -79,18 +79,19 @@ void main() {
     expect(s.gapParkedGlobalFrame, aEnd + 1);
   });
 
-  test('a gap scrub deselects the cut IMMEDIATELY (UI-R10 #13): the empty '
-      'states show during the drag, the release is a no-op backstop', () {
+  test('a gap scrub parks QUIETLY mid-drag — the deselect lands on the '
+      'release (the whole drag is a preview; the old immediate deselect '
+      'was the gap-entry hitch), with the parking surviving', () {
     final (s, first, _, aEnd) = gappedSession();
     addTearDown(s.dispose);
     s.selectCut(first);
 
     scrubStoryboardGlobalFrame(s, aEnd + 2);
-    expect(s.activeCutId, isNull, reason: 'mid-drag already no-cut');
+    expect(s.activeCutId, first, reason: 'moves never deselect mid-drag');
     expect(s.gapParkedGlobalFrame, aEnd + 2);
 
     commitStoryboardScrub(s);
-    expect(s.activeCutId, isNull);
+    expect(s.activeCutId, isNull, reason: 'the release commits no-cut');
     expect(s.gapParkedGlobalFrame, aEnd + 2, reason: 'parking survives');
     expect(storyboardPlayheadFrame(s), aEnd + 2);
   });
