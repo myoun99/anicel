@@ -69,6 +69,7 @@ import '../models/track.dart';
 import '../models/track_frame_range.dart';
 import '../models/track_id.dart';
 import '../models/track_se_window.dart';
+import '../models/track_transform_lane_carrier.dart';
 import '../services/brush_frame_store.dart';
 import '../services/camera_pose_resolver.dart';
 import '../services/clipboard/layer_copy_payload.dart';
@@ -7660,13 +7661,25 @@ class EditorSessionManager extends ChangeNotifier {
     required int headIndex,
     String? headLaneId,
   }) {
-    if (_layerById(layerId) == null) {
-      return;
-    }
-    if (activeLayerId != layerId) {
-      // selectLayer first: it drops the OLD selection (a different
-      // layer's), then the fresh span lands for the new active layer.
-      selectLayer(layerId);
+    final carrierTrackId = trackIdOfTransformLaneCarrier(layerId);
+    if (carrierTrackId != null) {
+      // The V track's lanes (R4b): the carrier id routes the selection
+      // onto the TRACK's lanes — global frame indexes, no layer to
+      // activate. Selecting the row keeps the rail's answer honest,
+      // without promoting a cut (the drag is about keys, not cuts).
+      if (_trackById(carrierTrackId) == null) {
+        return;
+      }
+      selectTrackRow(carrierTrackId);
+    } else {
+      if (_layerById(layerId) == null) {
+        return;
+      }
+      if (activeLayerId != layerId) {
+        // selectLayer first: it drops the OLD selection (a different
+        // layer's), then the fresh span lands for the new active layer.
+        selectLayer(layerId);
+      }
     }
     clearFrameRangeSelection();
     final start = math.max(0, math.min(anchorIndex, headIndex));
@@ -7692,8 +7705,10 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// The in-flight lane range move (UI-R23 #3 part 2): the drag-start
   /// snapshots plus the last VALID shifted track (blocked steps HOLD it,
-  /// the #10 policy).
-  ({Layer layer, TimelineLaneSelection selection})? _laneMoveBefore;
+  /// the #10 policy). Exactly one of [layer]/[track] is set — a layer's
+  /// lanes or the V TRACK's own lanes (R4b, the carrier route).
+  ({Layer? layer, Track? track, TimelineLaneSelection selection})?
+  _laneMoveBefore;
   TransformTrack? _laneMoveShifted;
 
   /// Starts moving the current lane selection; false when there is none
@@ -7702,6 +7717,26 @@ class EditorSessionManager extends ChangeNotifier {
     final selection = laneRangeSelection.value;
     if (selection == null) {
       return false;
+    }
+    final carrierTrackId = trackIdOfTransformLaneCarrier(selection.layerId);
+    if (carrierTrackId != null) {
+      final track = _trackById(carrierTrackId);
+      if (track == null) {
+        return false;
+      }
+      final keyed = selection.spanLaneIds.any(
+        (laneId) => transformLaneKeyFrames(
+          track.transformTrack,
+          laneId,
+        ).any(selection.contains),
+      );
+      if (!keyed) {
+        return false;
+      }
+      _laneMoveBefore = (layer: null, track: track, selection: selection);
+      _laneMoveShifted = null;
+
+      return true;
     }
     final layer = _layerById(selection.layerId);
     if (layer == null || isAttachedLayer(layer)) {
@@ -7716,7 +7751,7 @@ class EditorSessionManager extends ChangeNotifier {
     if (!keyed) {
       return false;
     }
-    _laneMoveBefore = (layer: layer, selection: selection);
+    _laneMoveBefore = (layer: layer, track: null, selection: selection);
     _laneMoveShifted = null;
 
     return true;
@@ -7738,8 +7773,10 @@ class EditorSessionManager extends ChangeNotifier {
       laneRangeSelection.value = before.selection;
       return;
     }
+    final sourceTrack =
+        before.layer?.transformTrack ?? before.track!.transformTrack;
     final shifted = transformTrackWithLaneSpanKeysShifted(
-      before.layer.transformTrack,
+      sourceTrack,
       laneIds: before.selection.spanLaneIds,
       rangeStartIndex: before.selection.startIndex,
       rangeEndIndexExclusive: before.selection.endIndexExclusive,
@@ -7751,11 +7788,15 @@ class EditorSessionManager extends ChangeNotifier {
     }
     _laneMoveShifted = shifted;
 
-    dragPreview.value = BlockMoveDragPreview(
-      previewLayers: {
-        before.layer.id: before.layer.copyWith(transformTrack: shifted),
-      },
-    );
+    final layer = before.layer;
+    dragPreview.value = layer != null
+        ? BlockMoveDragPreview(
+            previewLayers: {layer.id: layer.copyWith(transformTrack: shifted)},
+          )
+        : BlockMoveDragPreview(
+            previewLayers: const {},
+            previewTrackTransforms: {before.track!.id: shifted},
+          );
     final newStart = before.selection.startIndex + frameDelta;
     if (newStart >= 0) {
       laneRangeSelection.value = TimelineLaneSelection(
@@ -7784,11 +7825,16 @@ class EditorSessionManager extends ChangeNotifier {
       }
       return;
     }
-    updateLayerTransformTrack(
-      before.layer.id,
-      shifted,
-      description: 'Move lane keys',
-    );
+    final layer = before.layer;
+    if (layer != null) {
+      updateLayerTransformTrack(layer.id, shifted, description: 'Move lane keys');
+    } else {
+      updateTrackTransformTrack(
+        before.track!.id,
+        shifted,
+        description: 'Move lane keys',
+      );
+    }
     laneRangeSelection.value = landed;
   }
 

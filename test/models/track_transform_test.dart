@@ -256,35 +256,6 @@ void main() {
       expect(window.scale.keys.keys.toList(), [2]);
     });
 
-    test('trackTransformWithCutWindow writes local edits back at the '
-        'offset and preserves outside keys', () {
-      final edited = TransformTrack.empty().copyWith(
-        opacity: PropertyTrack<double>.empty().withKey(1, 0.5),
-        // Out-of-window local keys never leak back onto the axis.
-        scale: PropertyTrack<double>.empty().withKey(2, 3.0).withKey(11, 9.0),
-      );
-      final merged = trackTransformWithCutWindow(
-        global(),
-        edited,
-        startFrame: 12,
-        duration: 10,
-      );
-      expect(merged.opacity.keys.keys.toList(), [5, 13, 30]);
-      expect(merged.opacity.keyAt(13)?.value, 0.5);
-      expect(merged.scale.keys.keys.toList(), [14]);
-      expect(merged.scale.keyAt(14)?.value, 3.0);
-    });
-
-    test('an unchanged window round-trips the track exactly', () {
-      final track = global();
-      final roundTripped = trackTransformWithCutWindow(
-        track,
-        trackTransformCutWindow(track, startFrame: 12, duration: 10),
-        startFrame: 12,
-        duration: 10,
-      );
-      expect(roundTripped, track);
-    });
   });
 
   group('track pose policy (V track full transform)', () {

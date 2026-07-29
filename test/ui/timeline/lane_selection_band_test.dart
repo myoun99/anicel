@@ -8,6 +8,8 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cursor_layer.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
+    show transformGroupHeaderLane, transformLaneDisplayOrder;
 
 /// R27 #14: a LANE (fx/key) span and a CELL span are the same selection
 /// idea, so they draw the same band — same overlay, same geometry, same
@@ -148,5 +150,62 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-lane-range-selection')),
       findsNothing,
     );
+  });
+
+  testWidgets('a whole-group selection bands the HEADER row when the group '
+      'is COLLAPSED — the header is the only lane row on screen (R4b fix: '
+      'the raw span check left no band at all)', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 600,
+            height: 200,
+            child: Stack(
+              children: [
+                TimelineCursorLayer(
+                  frameCursor: ValueNotifier<int>(0),
+                  rows: [
+                    TimelineDisplayRow.layer(layer, layerIndex: 0),
+                    TimelineDisplayRow.lane(
+                      layer,
+                      transformGroupHeaderLane,
+                      layerIndex: 0,
+                    ),
+                  ],
+                  activeLayerId: const LayerId('a'),
+                  frameStartIndex: 0,
+                  frameEndIndexExclusive: 20,
+                  leadingFrameSpacerWidth: 0,
+                  metrics: metrics,
+                  exposureStateForLayer: (_, _) =>
+                      TimelineCellExposureState.uncovered,
+                  crossAxisExtent: 2 * metrics.layerRowHeight,
+                  frameRangeSelection:
+                      ValueNotifier<TimelineFrameRangeSelection?>(null),
+                  laneRangeSelection: ValueNotifier<TimelineLaneSelection?>(
+                    const TimelineLaneSelection(
+                      layerId: LayerId('a'),
+                      laneId: 'anchor-point',
+                      startIndex: 1,
+                      endIndexExclusive: 4,
+                      laneIds: transformLaneDisplayOrder,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+
+    final rect = tester.getRect(
+      find.byKey(const ValueKey<String>('timeline-lane-range-selection')),
+    );
+    final origin = tester.getTopLeft(find.byType(TimelineCursorLayer));
+    // Rows: layer(0), group header(1) → the band sits on the header row.
+    expect(rect.top - origin.dy, moreOrLessEquals(metrics.layerRowHeight));
+    expect(rect.height, moreOrLessEquals(metrics.layerRowHeight));
   });
 }

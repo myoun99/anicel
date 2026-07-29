@@ -93,7 +93,7 @@ Future<void> _pumpPanel(
   TimelineCommaDragCallbacks? seCommaDrag,
   void Function(LayerId layerId, int clipIndex, int offsetFrames)?
   onSetAudioClipOffset,
-  PropertyLaneEditCallbacks? Function(Cut cut)? cutLaneEditFor,
+  PropertyLaneEditCallbacks? Function(Track track)? trackLaneEditFor,
   PropertyLaneEditCallbacks? layerLaneEdit,
   bool Function(CutId cutId)? cutFxEnabledOf,
   ValueChanged<CutId>? onToggleCutFx,
@@ -133,7 +133,7 @@ Future<void> _pumpPanel(
                 expandedGroups.remove(groupKey);
               }
             }),
-            cutLaneEditFor: cutLaneEditFor,
+            trackLaneEditFor: trackLaneEditFor,
             layerLaneEdit: layerLaneEdit,
             poseDisplaySize: const CanvasSize(width: 640, height: 360),
             onSetCutFade: onSetCutFade,
@@ -166,7 +166,7 @@ Future<void> _expandVTransform(WidgetTester tester) async {
   await tester.tap(
     find.byKey(
       const ValueKey<String>(
-        'storyboard-lane-group-toggle-v-lane-track-transform-group',
+        'storyboard-lane-group-toggle-v-track:lane-track-transform-group',
       ),
     ),
   );
@@ -202,7 +202,7 @@ void main() {
     // Collapsed: no lane rows at all.
     expect(
       find.byKey(
-        const ValueKey<String>('storyboard-cut-lane-row-0-transform-group'),
+        const ValueKey<String>('storyboard-track-lane-row-0-transform-group'),
       ),
       findsNothing,
     );
@@ -222,7 +222,7 @@ void main() {
     expect(
       find.byKey(
         const ValueKey<String>(
-          'storyboard-lane-label-v-lane-track-transform-group',
+          'storyboard-lane-label-v-track:lane-track-transform-group',
         ),
       ),
       findsOneWidget,
@@ -232,14 +232,14 @@ void main() {
       findsNothing,
     );
     expect(
-      find.byKey(const ValueKey<String>('storyboard-cut-lane-row-0-position')),
+      find.byKey(const ValueKey<String>('storyboard-track-lane-row-0-position')),
       findsNothing,
     );
 
     await tester.tap(
       find.byKey(
         const ValueKey<String>(
-          'storyboard-lane-group-toggle-v-lane-track-transform-group',
+          'storyboard-lane-group-toggle-v-track:lane-track-transform-group',
         ),
       ),
     );
@@ -250,18 +250,18 @@ void main() {
     for (final laneId in ['anchor-point', 'position', 'scale', 'rotation']) {
       expect(
         find.byKey(
-          ValueKey<String>('storyboard-lane-label-v-lane-track-$laneId'),
+          ValueKey<String>('storyboard-lane-label-v-track:lane-track-$laneId'),
         ),
         findsOneWidget,
       );
       expect(
-        find.byKey(ValueKey<String>('storyboard-cut-lane-row-0-$laneId')),
+        find.byKey(ValueKey<String>('storyboard-track-lane-row-0-$laneId')),
         findsOneWidget,
       );
     }
     expect(
       find.byKey(
-        const ValueKey<String>('storyboard-lane-label-v-lane-track-opacity'),
+        const ValueKey<String>('storyboard-lane-label-v-track:lane-track-opacity'),
       ),
       findsOneWidget,
     );
@@ -287,7 +287,7 @@ void main() {
     );
     expect(
       find.byKey(
-        const ValueKey<String>('storyboard-cut-lane-row-0-transform-group'),
+        const ValueKey<String>('storyboard-track-lane-row-0-transform-group'),
       ),
       findsNothing,
     );
@@ -369,9 +369,9 @@ void main() {
     }
   });
 
-  testWidgets('the V Transform lanes edit the TRACK through the cut\'s '
-      'window: key toggles route the per-cut lane edit hooks and keyed '
-      'frames show as markers on the cut\'s span', (tester) async {
+  testWidgets('the V Transform lanes edit the TRACK on its global axis '
+      '(R4b): key toggles route the track lane edit hooks and keyed '
+      'frames show as markers on the continuous row', (tester) async {
     final toggles = <(String, String, int)>[];
     await _pumpPanel(
       tester,
@@ -383,9 +383,9 @@ void main() {
           ),
         ),
       ),
-      cutLaneEditFor: (cut) => PropertyLaneEditCallbacks(
+      trackLaneEditFor: (track) => PropertyLaneEditCallbacks(
         onToggleKeyAt: (_, lane, frame) =>
-            toggles.add((cut.id.value, lane.laneId, frame)),
+            toggles.add((track.id.value, lane.laneId, frame)),
         onMoveKey: (_, _, _, _) {},
         onRemoveKey: (_, _, _) {},
         onToggleHold: (_, _, _) {},
@@ -393,19 +393,23 @@ void main() {
     );
     await _expandVTransform(tester);
 
-    // The keyed frame rides the cut's OWN span (cut-local frame 2).
+    // The keyed frame sits at its GLOBAL position on the continuous row.
     expect(
       find.byKey(
-        const ValueKey<String>('storyboard-lane-key-v-lane-cut-position-2'),
+        const ValueKey<String>(
+          'storyboard-lane-key-v-track:lane-track-position-2',
+        ),
       ),
       findsOneWidget,
     );
-    // The value column resolves the cut pose over the display space —
+    // The value column resolves the track pose over the display space —
     // unkeyed lanes read the identity (display center).
     expect(
       find.descendant(
         of: find.byKey(
-          const ValueKey<String>('storyboard-lane-value-v-lane-track-scale'),
+          const ValueKey<String>(
+            'storyboard-lane-value-v-track:lane-track-scale',
+          ),
         ),
         matching: find.text('100%'),
       ),
@@ -415,12 +419,12 @@ void main() {
     await tester.tap(
       find.byKey(
         const ValueKey<String>(
-          'storyboard-lane-key-toggle-v-lane-track-position',
+          'storyboard-lane-key-toggle-v-track:lane-track-position',
         ),
       ),
     );
     await tester.pumpAndSettle();
-    expect(toggles, [('lane-cut', 'position', 0)]);
+    expect(toggles, [('lane-track', 'position', 0)]);
   });
 
   testWidgets('the S-row Transform lanes edit the slot LAYER\'s track '

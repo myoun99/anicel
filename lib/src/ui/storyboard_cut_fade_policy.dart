@@ -174,43 +174,9 @@ TransformTrack trackTransformCutWindow(
   );
 }
 
-/// [track] with the WINDOW's keys replaced by [window]'s (local frames,
-/// rebased back by +[startFrame]) — the projection's write-back. Keys
-/// outside the window stay untouched: they are other cuts' effects, or
-/// free-standing keys on the axis.
-TransformTrack trackTransformWithCutWindow(
-  TransformTrack track,
-  TransformTrack window, {
-  required int startFrame,
-  required int duration,
-}) {
-  PropertyTrack<T> merge<T>(PropertyTrack<T> lane, PropertyTrack<T> edited) {
-    var next = lane;
-    for (final frame in lane.keys.keys.toList()) {
-      if (frame >= startFrame && frame < startFrame + duration) {
-        next = next.withoutKey(frame);
-      }
-    }
-    edited.keys.forEach((frame, key) {
-      if (frame >= 0 && frame < duration) {
-        next = next.withKey(
-          startFrame + frame,
-          key.value,
-          interpolation: key.interpolation,
-        );
-      }
-    });
-    return next;
-  }
-
-  return TransformTrack.properties(
-    anchorPoint: merge(track.anchorPoint, window.anchorPoint),
-    position: merge(track.position, window.position),
-    scale: merge(track.scale, window.scale),
-    rotation: merge(track.rotation, window.rotation),
-    opacity: merge(track.opacity, window.opacity),
-  );
-}
+// The general window WRITE-BACK (trackTransformWithCutWindow) retired
+// with R4b: every lane edit speaks the track's global axis directly, so
+// only the fade's canonical rewrite below still writes through a window.
 
 /// [track] with the WINDOW's opacity keys rebuilt to the canonical fade
 /// shape — keys outside [startFrame, startFrame+duration) stay untouched
