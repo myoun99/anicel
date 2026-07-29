@@ -345,6 +345,114 @@ void main() {
       );
     });
 
+    testWidgets('storyboard: a ruler drag across the cut boundary stays '
+        'quiet per move and activates the crossed cut on release', (
+      tester,
+    ) async {
+      final manager = EditorSessionManager(
+        initialProject: Project(
+          id: const ProjectId('cross-project'),
+          name: 'Cross Project',
+          createdAt: DateTime.utc(2026, 7, 30),
+          tracks: [
+            Track(
+              id: const TrackId('cross-track'),
+              name: 'Video',
+              cuts: [
+                Cut(
+                  id: const CutId('cut-a'),
+                  name: 'A',
+                  duration: 24,
+                  canvasSize: const CanvasSize(width: 640, height: 360),
+                  layers: [
+                    Layer(
+                      id: const LayerId('a-cel'),
+                      name: 'A1',
+                      frames: const [],
+                    ),
+                  ],
+                ),
+                Cut(
+                  id: const CutId('cut-b'),
+                  name: 'B',
+                  duration: 24,
+                  leadingGapFrames: 6,
+                  canvasSize: const CanvasSize(width: 640, height: 360),
+                  layers: [
+                    Layer(
+                      id: const LayerId('b-cel'),
+                      name: 'B1',
+                      frames: const [],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+      addTearDown(manager.dispose);
+      var notifies = 0;
+      manager.addListener(() => notifies += 1);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: ListenableBuilder(
+              listenable: Listenable.merge([
+                manager,
+                manager.editingFrameCursor,
+              ]),
+              builder: (context, _) => StoryboardTabHost(
+                session: manager,
+                pixelsPerFrame: 8,
+                onPixelsPerFrameChanged: (_) {},
+                showSeconds: false,
+                onShowSecondsChanged: (_) {},
+                thumbnailFor: null,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      notifies = 0;
+
+      final ruler = find.byKey(const ValueKey<String>('storyboard-ruler'));
+      final start = tester.getTopLeft(ruler) + const Offset(8 * 2 + 4, 10);
+      final gesture = await tester.startGesture(start);
+      await gesture.moveBy(const Offset(8 * 24, 0)); // into the gap [24,30)
+      await tester.pump();
+      await gesture.moveBy(const Offset(8 * 9, 0)); // over cut-b [30,54)
+      await tester.pump();
+
+      expect(
+        notifies,
+        0,
+        reason: 'crossing moves must not rebuild the panels',
+      );
+      expect(
+        manager.activeCutId,
+        const CutId('cut-a'),
+        reason: 'the active cut stays pinned for the whole drag',
+      );
+      expect(
+        manager.gapParkedGlobalFrame,
+        isNotNull,
+        reason: 'the playhead follows through the parking notifier',
+      );
+
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(
+        manager.activeCutId,
+        const CutId('cut-b'),
+        reason: 'the release lands the one full seek on the crossed cut',
+      );
+      expect(manager.gapParkedGlobalFrame, isNull);
+    });
+
     testWidgets('storyboard: a ruler drag scrubs the active cut on the '
         'cursor path and commits once on release', (tester) async {
       final manager = session();
@@ -398,6 +506,116 @@ void main() {
       expect(manager.frameSeekCommitted.value, commitsBefore + 1);
       expect(notifies, 0, reason: 'seeks are never session notifies');
       expect(manager.frameScrubActive.value, isFalse);
+    });
+  });
+
+  group('global scrub across cut boundaries', () {
+    // cut-a [0,24), gap [24,30), cut-b [30,54).
+    EditorSessionManager twoCutSession() {
+      return EditorSessionManager(
+        initialProject: Project(
+          id: const ProjectId('cross-project'),
+          name: 'Cross Project',
+          createdAt: DateTime.utc(2026, 7, 30),
+          tracks: [
+            Track(
+              id: const TrackId('cross-track'),
+              name: 'Video',
+              cuts: [
+                Cut(
+                  id: const CutId('cut-a'),
+                  name: 'A',
+                  duration: 24,
+                  canvasSize: const CanvasSize(width: 640, height: 360),
+                  layers: [
+                    Layer(
+                      id: const LayerId('a-cel'),
+                      name: 'A1',
+                      frames: const [],
+                    ),
+                  ],
+                ),
+                Cut(
+                  id: const CutId('cut-b'),
+                  name: 'B',
+                  duration: 24,
+                  leadingGapFrames: 6,
+                  canvasSize: const CanvasSize(width: 640, height: 360),
+                  layers: [
+                    Layer(
+                      id: const LayerId('b-cel'),
+                      name: 'B1',
+                      frames: const [],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ],
+        ),
+      );
+    }
+
+    test('moves crossing into another cut NEVER commit — no notify, no '
+        'committed seek, the active cut pinned; the release lands the one '
+        'full seek on the crossed cut', () {
+      final manager = twoCutSession();
+      addTearDown(manager.dispose);
+      var notifies = 0;
+      manager.addListener(() => notifies += 1);
+      final commitsBefore = manager.frameSeekCommitted.value;
+
+      manager.scrubGlobalFrame(5); // in-cut: the cursor path
+      manager.scrubGlobalFrame(26); // the gap
+      manager.scrubGlobalFrame(35); // cut-b's territory
+      expect(notifies, 0, reason: 'boundary crossings ride the parking');
+      expect(manager.frameSeekCommitted.value, commitsBefore);
+      expect(manager.activeCutId, const CutId('cut-a'));
+      expect(manager.gapParkedGlobalFrame, 35);
+      expect(manager.frameScrubActive.value, isTrue);
+
+      manager.commitFrameScrub();
+      expect(manager.activeCutId, const CutId('cut-b'));
+      expect(manager.currentFrameIndex, 5, reason: '35 - cut-b start 30');
+      expect(manager.gapParkedGlobalFrame, isNull);
+      expect(notifies, 1, reason: 'ONE full seek on release');
+      expect(
+        manager.frameSeekCommitted.value,
+        commitsBefore + 1,
+        reason: 'exactly one committed seek — no fromGap frame-0 detour',
+      );
+      expect(manager.frameScrubActive.value, isFalse);
+    });
+
+    test('a drag that STARTS by crossing engages the scrub preview on its '
+        'first MOVE — the pointer-down alone never flashes it (a tap over '
+        'another cut must not swap presentations)', () {
+      final manager = twoCutSession();
+      addTearDown(manager.dispose);
+
+      manager.scrubGlobalFrame(40); // pointer-down over cut-b: quiet
+      expect(manager.frameScrubActive.value, isFalse);
+      expect(manager.gapParkedGlobalFrame, 40, reason: 'playhead follows');
+      manager.scrubGlobalFrame(41); // an actual drag move engages
+      expect(manager.frameScrubActive.value, isTrue);
+      expect(manager.activeCutId, const CutId('cut-a'));
+      manager.commitFrameScrub();
+      expect(manager.activeCutId, const CutId('cut-b'));
+    });
+
+    test('a same-frame tap on an already-parked position never flashes '
+        'the preview', () {
+      final manager = twoCutSession();
+      addTearDown(manager.dispose);
+      manager.scrubGlobalFrame(26);
+      manager.commitFrameScrub(); // parked in the gap, no active cut
+      expect(manager.activeCutId, isNull);
+      expect(manager.frameScrubActive.value, isFalse);
+
+      manager.scrubGlobalFrame(26); // the same parked frame again
+      expect(manager.frameScrubActive.value, isFalse);
+      manager.commitFrameScrub();
+      expect(manager.gapParkedGlobalFrame, 26);
     });
   });
 }

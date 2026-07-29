@@ -91,8 +91,8 @@ void main() {
   });
 
   test('an editing scrub inside the cut rides the cursor path (no session '
-      'notify); crossing into the gap deselects IMMEDIATELY (UI-R10 #13)',
-      () {
+      'notify); crossing into the gap parks QUIETLY too — the deselect '
+      'defers to the release (the entry rebuild was the boundary lag)', () {
     final (s, first, _, aEnd) = gappedSession();
     s.selectCut(first);
     var notifies = 0;
@@ -103,46 +103,54 @@ void main() {
     expect(notifies, 0, reason: 'in-cut moves stay on the cursor path');
 
     scrubStoryboardGlobalFrame(s, aEnd + 1);
-    expect(s.activeCutId, isNull, reason: 'mid-drag no-cut (UI-R10 #13)');
+    expect(s.activeCutId, first, reason: 'mid-drag keeps the cut quiet');
     expect(s.gapParkedGlobalFrame, aEnd + 1);
-    expect(notifies, 1, reason: 'ONE notify on the gap entry');
+    expect(notifies, 0, reason: 'gap entry no longer rebuilds mid-drag');
+
+    commitStoryboardScrub(s);
+    expect(s.activeCutId, isNull, reason: 'the release lands the deselect');
+    expect(notifies, 1, reason: 'ONE notify for the whole drag');
   });
 
-  test('gap scrubs PARK per move: the first gap entry deselects (one '
-      'notify), further gap moves stay silent, the release keeps the '
-      'parking, and scrubbing back onto the cut re-selects', () {
+  test('gap scrubs PARK per move with NO notifies; the release commits the '
+      'no-cut state once and keeps the parking, and a drag back onto the '
+      'cut re-selects on ITS release', () {
     final (s, first, _, aEnd) = gappedSession();
     s.selectCut(first);
     var notifies = 0;
     s.addListener(() => notifies += 1);
 
     scrubStoryboardGlobalFrame(s, aEnd + 1);
-    expect(s.activeCutId, isNull);
     expect(s.gapParkedGlobalFrame, aEnd + 1);
     expect(storyboardPlayheadFrame(s), aEnd + 1);
-    expect(s.editingPlayheadInGap, isTrue);
-    expect(notifies, 1, reason: 'the gap entry deselect');
-
     scrubStoryboardGlobalFrame(s, aEnd + 3);
     expect(s.gapParkedGlobalFrame, aEnd + 3);
-    expect(notifies, 1, reason: 'further gap moves ride the parking only');
+    expect(notifies, 0, reason: 'moves ride the parking notifier only');
 
     commitStoryboardScrub(s);
+    expect(s.activeCutId, isNull, reason: 'the release lands the deselect');
     expect(
       s.gapParkedGlobalFrame,
       aEnd + 3,
       reason: 'the release keeps the parking (the commit used to wipe it)',
     );
     expect(storyboardPlayheadFrame(s), aEnd + 3);
+    expect(s.editingPlayheadInGap, isTrue);
+    expect(notifies, 1, reason: 'the release deselect is the one notify');
 
+    // A NO-CUT drag back over the cut's frames parks too (the drag never
+    // selects mid-move); its release lands the full seek onto the cut.
     scrubStoryboardGlobalFrame(s, 2);
-    expect(s.gapParkedGlobalFrame, isNull, reason: 'back on the cut');
-    expect(s.activeCutId, first, reason: 'the cut re-selects');
+    expect(s.gapParkedGlobalFrame, 2, reason: 'over-cut moves park as well');
+    expect(s.activeCutId, isNull, reason: 're-selection waits for release');
     commitStoryboardScrub(s);
+    expect(s.activeCutId, first, reason: 'the release re-selects the cut');
+    expect(s.gapParkedGlobalFrame, isNull);
+    expect(s.currentFrameIndex, 2);
   });
 
-  test('the LEADING gap scrub deselects on entry and parks per move '
-      '(UI-R10 #13 over the UI-R7 #9 cursor path)', () {
+  test('the LEADING gap scrub parks per move QUIETLY; the release commits '
+      'the deselect once (UI-R7 #9 cursor path, boundary-quiet drag)', () {
     final s = EditorSessionManager(initialProject: createDefaultProject());
     final cutId = s.repository.requireProject().tracks.first.cuts.first.id;
     s.repository.updateCutLeadingGap(cutId: cutId, leadingGapFrames: 3);
@@ -150,20 +158,22 @@ void main() {
     s.addListener(() => notifies += 1);
 
     scrubStoryboardGlobalFrame(s, 1);
-    expect(s.activeCutId, isNull);
+    expect(s.activeCutId, cutId, reason: 'mid-drag keeps the cut quiet');
     expect(s.gapParkedGlobalFrame, 1);
     expect(storyboardPlayheadFrame(s), 1);
     scrubStoryboardGlobalFrame(s, 2);
     expect(s.gapParkedGlobalFrame, 2);
-    expect(notifies, 1, reason: 'one deselect notify, then parking only');
+    expect(notifies, 0, reason: 'moves never rebuild the panels');
 
     commitStoryboardScrub(s);
+    expect(s.activeCutId, isNull, reason: 'the release lands the deselect');
     expect(
       storyboardPlayheadFrame(s),
       2,
       reason: 'the release stays parked in the leading gap',
     );
     expect(s.editingPlayheadInGap, isTrue);
+    expect(notifies, 1, reason: 'one notify for the whole drag');
   });
 
   test('the mid-track over-end playhead clamps to the CUT end, never the '

@@ -104,6 +104,14 @@ class _CanvasScrubPreviewState extends State<CanvasScrubPreview> {
       oldWidget.gapParking?.removeListener(_onCursorMoved);
       widget.gapParking?.addListener(_onCursorMoved);
     }
+    if (oldWidget.cut?.id != widget.cut?.id) {
+      // A held frame belongs to ITS cut: a cut swap under a live preview
+      // (a second pointer activating another cut mid-scrub) must not draw
+      // the old cut's pixels stretched onto the new cut's canvas size.
+      _heldFrame?.dispose();
+      _heldFrame = null;
+      _heldSource = null;
+    }
   }
 
   @override

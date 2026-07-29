@@ -10323,7 +10323,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// session playhead, the storyboard and the timeline consume THIS ONE
   /// axis — change it and every panel changes together.
   TrackFrameAxis trackFrameAxis() {
-    final layout = buildStoryboardTimelineLayout(repository.requireProject());
+    final layout = _projectLayout();
     final trackId = selectedTrackId;
     final scoped = [
       for (final entry in layout)
@@ -10331,6 +10331,23 @@ class EditorSessionManager extends ChangeNotifier {
     ];
     return TrackFrameAxis(scoped.isEmpty ? layout : scoped);
   }
+
+  /// The whole-project layout, memoized on PROJECT IDENTITY: scrubs ask
+  /// per MOVE and all-cuts playback per TICK, and the project only changes
+  /// identity on an edit — rebuilding the whole cross-track layout each
+  /// call was a fixed per-move tax (the same memo the storyboard host
+  /// keeps).
+  List<StoryboardTimelineLayoutEntry> _projectLayout() {
+    final project = repository.requireProject();
+    if (!identical(project, _projectLayoutProject)) {
+      _projectLayoutProject = project;
+      _projectLayoutMemo = buildStoryboardTimelineLayout(project);
+    }
+    return _projectLayoutMemo!;
+  }
+
+  Project? _projectLayoutProject;
+  List<StoryboardTimelineLayoutEntry>? _projectLayoutMemo;
 
   /// Set while the editing playhead is PARKED IN A GAP (R16-⑥, user
   /// semantics: a gap has NO cut — the canvas shows a paperless void).
@@ -10348,7 +10365,12 @@ class EditorSessionManager extends ChangeNotifier {
   /// playhead subscribes (per-move gap scrubs, UI-R7 #9).
   ValueListenable<int?> get gapParkingListenable => _gapGlobalFrameNotifier;
 
-  /// Whether the editing playhead sits in a gap (no cut there).
+  /// Whether the editing playhead sits in a gap (no cut there). During a
+  /// LIVE global scrub the parking transiently addresses ANY
+  /// out-of-active-cut position — another cut's frames included (the
+  /// quiet-crossing drag) — so consumers outside the scrub-gated display
+  /// path must not read a true here as "certainly between cuts" until the
+  /// release resolves it into a selection or a real gap parking.
   bool get editingPlayheadInGap =>
       _gapGlobalFrame != null || trackFrameAxis().isGap(editingGlobalFrame);
 
@@ -10382,9 +10404,10 @@ class EditorSessionManager extends ChangeNotifier {
   /// no whole-layout fallback — a track that gaps here simply contributes
   /// nothing. The parked canvas stacks these (one camera-projected
   /// composite per covered track).
+  ///
   List<PlaybackPosition> trackStackPositionsAt(int globalFrame) =>
       resolveTrackStackPositions(
-        layout: buildStoryboardTimelineLayout(repository.requireProject()),
+        layout: _projectLayout(),
         globalFrameIndex: globalFrame,
       );
 
@@ -10495,12 +10518,18 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   /// Global scrub: rides the cursor path inside the active cut's
-  /// territory, falls back to the full seek when the drag crosses into
-  /// another cut's. GAP moves ride the cursor path too and park PER MOVE
-  /// (UI-R7 #9): the playhead follows the exact gap frame, the canvas
-  /// shows the no-cut void DURING the drag, and no committed seek fires
-  /// per move (the old full-seek-per-move made gap scrubs crawl and the
-  /// release commit wiped the leading-gap parking entirely).
+  /// territory; EVERY out-of-territory move — a gap OR another cut's
+  /// frames — parks the exact global PER MOVE (UI-R7 #9) and commits
+  /// NOTHING. The parking notifier drives the storyboard playhead and the
+  /// track-stack preview live, while the active cut and its controllers
+  /// stay untouched for the whole drag: the old per-move escalation to
+  /// [selectGlobalFrame] on a boundary cross ran selectCut + a committed
+  /// seek per move, rebuilding every visible panel — the cut-boundary
+  /// crossing lag — and the gap branch's immediate deselect was the same
+  /// hitch on gap entry. [_followPlaybackCut] keeps playback's crossings
+  /// quiet for exactly this reason; the release ([commitFrameScrub])
+  /// lands the ONE full seek, where cut activation and gap deselection
+  /// now both live (UI-R10 #13's live empty-out moved there on purpose).
   void scrubGlobalFrame(int globalFrame) {
     if (editingInteractionBusy) {
       return;
@@ -10510,24 +10539,33 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     final owner = axis.ownerOf(globalFrame);
-    if (axis.isGap(globalFrame)) {
-      // Gap moves park PER MOVE (UI-R7 #9) and the FIRST gap entry
-      // deselects the cut IMMEDIATELY (UI-R10 #13): the timesheet and
-      // timeline empty out live during the drag, not on release
-      // (commitFrameScrub stays the idempotent backstop).
-      _gapGlobalFrame = globalFrame;
-      if (_deselectActiveCutForGap()) {
-        frameSeekCommitted.value += 1;
-        notifyListeners();
+    if (axis.isGap(globalFrame) ||
+        owner == null ||
+        owner.cutId != activeCutId) {
+      // The preview engages on the SECOND out-of-territory event — an
+      // actual drag move — never on the pointer-down alone: a plain TAP
+      // over another cut's frames must not flash the track-stack
+      // presentation for its press-release interval (the same no-flash
+      // rule scrubFrameIndex keeps for in-cut taps; the playhead itself
+      // follows immediately through the parking either way). No warm:
+      // the track stack self-fills, there is no active-cut cache to fill.
+      final parked = _gapGlobalFrame;
+      if (parked != null &&
+          parked != globalFrame &&
+          !frameScrubActive.value) {
+        frameScrubActive.value = true;
       }
+      _gapGlobalFrame = globalFrame;
       return;
     }
-    if (owner == null || owner.cutId != activeCutId) {
-      selectGlobalFrame(globalFrame);
-      return;
+    if (_gapGlobalFrame != null) {
+      // Scrubbing back onto the cut un-parks — and kicks the warm the
+      // out-of-territory engage skipped (one warm per territory entry,
+      // not per move: the preview reads the composite cache, so a cold
+      // stretch would otherwise show stale paper for the whole re-entry).
+      _gapGlobalFrame = null;
+      _warmActiveCut();
     }
-    // Scrubbing back onto the cut un-parks.
-    _gapGlobalFrame = null;
     scrubFrameIndex(math.max(0, globalFrame - owner.startFrame));
   }
 
@@ -10892,17 +10930,30 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// The scrub gesture's release: ends the preview and commits the
   /// scrubbed playhead as ONE ordinary seek (warm + committed-seek signal).
-  /// A gap-parked release COMMITS the no-cut state (UI-R9 #3): the active
-  /// cut deselects and the parking carries the exact position.
+  /// A drag that ended OUT of the active cut's territory carries its exact
+  /// global in the parking — the deferred full seek lands here: over a cut
+  /// it activates it (selectCut + local frame), in a gap it deselects and
+  /// keeps the parking (UI-R9 #3). This is the ONLY place a global drag
+  /// commits — the moves themselves never do.
   void commitFrameScrub() {
     audioScrubber.onScrubEnd();
     if (frameScrubActive.value) {
       frameScrubActive.value = false;
     }
-    if (_gapGlobalFrame != null) {
-      _deselectActiveCutForGap();
-      frameSeekCommitted.value += 1;
-      notifyListeners();
+    final parked = _gapGlobalFrame;
+    if (parked != null) {
+      // R15-⑤: a live editing interaction refuses the landing seek — the
+      // parking stays put (the parked display state) instead of being
+      // half-cleared.
+      if (editingInteractionBusy) {
+        return;
+      }
+      // The parking is cleared BEFORE the landing seek: selectCut must
+      // not read a live drag's parking as a committed gap departure —
+      // its fromGap branch would land frame 0 first and double the
+      // committed-seek signal. A gap landing re-parks by itself.
+      _gapGlobalFrame = null;
+      selectGlobalFrame(parked);
       return;
     }
     selectFrameIndex(_timelineController.currentFrameIndex);
