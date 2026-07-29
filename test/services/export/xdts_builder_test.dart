@@ -169,6 +169,133 @@ void main() {
     ]);
   });
 
+  test('TRACK SE lanes reach the DIALOG column through the cut window — '
+      'spill-in rebased to 0, crossings kept whole, starts past the end '
+      'clipped (the print sheet\'s own projection)', () {
+    Layer trackLane(
+      String id, {
+      required Map<int, TimelineExposure> timeline,
+      List<Frame> frames = const [],
+      bool onTimesheet = true,
+    }) => Layer(
+      id: LayerId(id),
+      name: id.toUpperCase(),
+      kind: LayerKind.se,
+      frames: frames,
+      timeline: timeline,
+      onTimesheet: onTimesheet,
+    );
+
+    final content = buildXdtsContent(
+      cut: Cut(
+        id: const CutId('windowed'),
+        name: 'Cut 7',
+        duration: 12,
+        canvasSize: const CanvasSize(width: 100, height: 100),
+        layers: [
+          Layer(
+            id: const LayerId('cel'),
+            name: 'A',
+            frames: const [],
+            timeline: const {},
+          ),
+        ],
+      ),
+      cutLabel: '7',
+      // The cut starts at global 20 on its track's axis.
+      cutStartFrame: 20,
+      trackSeLayers: [
+        trackLane(
+          's1',
+          frames: [
+            Frame(
+              id: const FrameId('spill'),
+              duration: 1,
+              name: 'ただいま',
+              strokes: const [],
+            ),
+            Frame(
+              id: const FrameId('inside'),
+              duration: 1,
+              name: 'おかえり',
+              strokes: const [],
+            ),
+          ],
+          timeline: {
+            // Starts at global 18, BEFORE the cut: spills in, rebased to
+            // local 0 with the remaining 6 frames.
+            18: const TimelineExposure.drawing(FrameId('spill'), length: 8),
+            // Entirely inside: global 26 = local 6.
+            26: const TimelineExposure.drawing(FrameId('inside'), length: 4),
+          },
+        ),
+        trackLane(
+          's2',
+          frames: [
+            Frame(
+              id: const FrameId('crossing'),
+              duration: 1,
+              name: 'いくぞ',
+              strokes: const [],
+            ),
+            Frame(id: const FrameId('past'), duration: 1, strokes: const []),
+          ],
+          timeline: {
+            // Starts inside (local 10) and runs past the cut end: kept,
+            // true length — the hold simply carries off the sheet.
+            30: const TimelineExposure.drawing(FrameId('crossing'), length: 8),
+            // Starts past the cut end (local 18 ≥ 12): clipped off.
+            38: const TimelineExposure.drawing(FrameId('past'), length: 2),
+          },
+        ),
+        trackLane('hidden', timeline: const {}, onTimesheet: false),
+      ],
+    );
+
+    final json =
+        jsonDecode(content.split('\n').skip(1).join('\n'))
+            as Map<String, dynamic>;
+    final timeTable =
+        (json['timeTables'] as List<dynamic>).single as Map<String, dynamic>;
+    final headers = (timeTable['timeTableHeaders'] as List<dynamic>)
+        .cast<Map<String, dynamic>>();
+    expect(headers[1], {
+      'fieldId': 3,
+      'names': ['S1', 'S2'],
+    });
+
+    final fields = (timeTable['fields'] as List<dynamic>)
+        .cast<Map<String, dynamic>>();
+    final dialogTracks =
+        (fields.firstWhere(
+                  (field) => field['fieldId'] == 3,
+                )['tracks']
+                as List<dynamic>)
+            .cast<Map<String, dynamic>>();
+    List<(int, String)> frameValues(Map<String, dynamic> track) => [
+      for (final entry in (track['frames'] as List<dynamic>)
+          .cast<Map<String, dynamic>>())
+        (
+          entry['frame'] as int,
+          (((entry['data'] as List<dynamic>).single
+                          as Map<String, dynamic>)['values']
+                      as List<dynamic>)
+                  .single
+              as String,
+        ),
+    ];
+
+    expect(frameValues(dialogTracks[0]), [
+      (0, 'ただいま'),
+      (6, 'おかえり'),
+      (10, 'SYMBOL_NULL_CELL'),
+    ]);
+    expect(frameValues(dialogTracks[1]), [
+      (0, 'SYMBOL_NULL_CELL'),
+      (10, 'いくぞ'),
+    ]);
+  });
+
   test('an empty cut still writes a valid sheet with a null-cell entry', () {
     final content = buildXdtsContent(
       cut: Cut(

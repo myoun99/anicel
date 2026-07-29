@@ -1612,6 +1612,10 @@ class ExportDialogState extends State<ExportDialog> {
         cut: cut,
         cutLabel: cut.name,
         instructionDefById: defById,
+        // The print sheet's own SE sources (track lanes + this cut's true
+        // origin on the track axis) — the two sheets must read one story.
+        trackSeLayers: _session.activeTrack.seLayers,
+        cutStartFrame: _trackStartOf(cut),
       );
       final file = File(
         _joinLocation('CUT${sanitizeExportFileComponent(cut.name)}.xdts'),

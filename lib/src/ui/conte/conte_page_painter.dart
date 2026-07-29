@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
+import 'conte_fonts.dart';
 
 /// The conte sheet's ONE renderer.
 ///
@@ -338,20 +339,16 @@ class ContePagePainter extends CustomPainter {
 
   // ---- text ------------------------------------------------------------
 
-  TextStyle _style(double size, {bool bold = false}) => TextStyle(
-    color: _ink,
-    fontSize: size,
-    height: 1.25,
-    fontWeight: bold ? FontWeight.w700 : FontWeight.w400,
-  );
+  TextStyle _style(double size, {bool bold = false}) =>
+      conteTextStyle(size, bold: bold, color: _ink);
 
   /// Lays text into [slot], shrinking a step at a time before it clips.
   ///
-  /// [TextPainter] is the panel's layout truth. The PDF writer wraps by
-  /// its EMBEDDED fonts' own metrics instead (conte_pdf_writer.dart) —
-  /// the panel renders in each OS's default family, so its break
-  /// positions are not portable; both surfaces share the geometry and
-  /// the text content, and each wraps self-consistently.
+  /// [TextPainter] is the panel's layout truth — set in the EMBEDDED
+  /// faces now ([conteTextStyle]), the same files the PDF embeds. The
+  /// writer prints [conteWrappedLines]'s lines verbatim, so the panel's
+  /// break positions ARE the page's (the old "each side wraps
+  /// self-consistently" deviation is retired).
   void _text(
     Canvas canvas,
     String text,
@@ -396,4 +393,43 @@ TextPainter conteTextPainter(String text, TextStyle style, double maxWidth) {
     textDirection: TextDirection.ltr,
   )..layout(maxWidth: maxWidth);
   return painter;
+}
+
+/// The conte's LINE BREAKS — one source for the panel and the PDF.
+///
+/// The panel lays the paragraph out with its own [TextPainter]; this
+/// reads that layout back line by line, and the PDF prints exactly these
+/// lines with NO second wrap. Sharing the faces ([conteTextStyle]) makes
+/// the measurement identical, sharing the lines makes disagreement
+/// structurally impossible — the ICU niceties (no line opening with 。」,
+/// space-eating breaks) ride along into the PDF for free.
+///
+/// Trailing whitespace at a break is trimmed (the break ate it — the old
+/// greedy wrap's rule), and a hard `\n` never rides at a line's end.
+List<String> conteWrappedLines(String text, TextStyle style, double maxWidth) {
+  if (text.isEmpty) {
+    return const [];
+  }
+  final painter = conteTextPainter(text, style, maxWidth);
+  final lines = <String>[];
+  var index = 0;
+  while (index < text.length) {
+    final range = painter.getLineBoundary(TextPosition(offset: index));
+    var end = range.isValid && range.end > index ? range.end : index + 1;
+    if (end > text.length) {
+      end = text.length;
+    }
+    var line = text.substring(index, end);
+    if (line.endsWith('\n')) {
+      line = line.substring(0, line.length - 1);
+    }
+    lines.add(line.trimRight());
+    // A boundary that stops ON the newline would re-answer the same line
+    // forever; step over it so the next line begins past the break.
+    if (end < text.length && text.codeUnitAt(end) == 0x0A) {
+      end += 1;
+    }
+    index = end;
+  }
+  return lines;
 }

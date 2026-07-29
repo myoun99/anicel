@@ -102,3 +102,16 @@ class TrackSeWindow {
     );
   }
 }
+
+/// [layer] with every exposure STARTING at or past [endFrameExclusive]
+/// dropped — the cut-scoped exports' clip on an open-ended display window
+/// (a printed page is no runway). Blocks that start inside and RUN PAST
+/// the end keep their true length: the sheet's `~` and the XDTS hold both
+/// want the crossing shown, not cut off.
+Layer clipLayerStartsBefore(Layer layer, int endFrameExclusive) =>
+    layer.copyWith(
+      timeline: {
+        for (final entry in layer.timeline.entries)
+          if (entry.key < endFrameExclusive) entry.key: entry.value,
+      },
+    );

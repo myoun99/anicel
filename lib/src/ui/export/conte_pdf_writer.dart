@@ -6,6 +6,8 @@ import 'package:pdf/pdf.dart';
 
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
+import '../conte/conte_fonts.dart';
+import '../conte/conte_page_painter.dart' show conteWrappedLines;
 
 /// The conte sheet as ONE vector PDF.
 ///
@@ -14,11 +16,11 @@ import '../../models/conte/conte_sheet_source.dart';
 /// wants natively"). Rules and boxes are PDF vectors, text is embedded-
 /// font glyph runs, and only the cell pictures are raster embeds.
 ///
-/// Text WRAPS by the embedded fonts' own metrics rather than replaying
-/// the panel's platform-font breaks: the panel renders in each OS's
-/// default family, so its break positions are not portable — a page that
-/// wraps self-consistently beats one that clips mid-glyph chasing a
-/// break the PDF font cannot reproduce.
+/// Text WRAPS once, in [conteWrappedLines]: the panel lays the paragraph
+/// out in the very faces this file embeds (the screen adopted them —
+/// user 2026-07-29), and the PDF prints those lines verbatim. The old
+/// "each side wraps self-consistently" deviation is retired; a break on
+/// screen IS a break on the page.
 ///
 /// Fonts: M PLUS 1p (Latin + kana + kanji, regular/bold) with IBM Plex
 /// Sans KR as the Hangul fallback — per-run font selection by glyph
@@ -31,12 +33,13 @@ class ContePdfFonts {
   final ByteData bold;
   final ByteData korean;
 
-  static const String regularAsset = 'assets/fonts/MPLUS1p-Regular.ttf';
-  static const String boldAsset = 'assets/fonts/MPLUS1p-Bold.ttf';
-  static const String koreanAsset = 'assets/fonts/IBMPlexSansKR-Regular.ttf';
+  static const String regularAsset = conteJpRegularAsset;
+  static const String boldAsset = conteJpBoldAsset;
+  static const String koreanAsset = conteKrRegularAsset;
 
-  /// Loads the bundled OFL fonts (rootBundle — the app UI keeps the
-  /// platform fonts; only the PDF embeds these).
+  /// Loads the bundled OFL fonts for EMBEDDING (rootBundle); the same
+  /// files are registered into the engine by [ensureConteFontsLoaded],
+  /// which is what lets the wrap be computed panel-side.
   static Future<ContePdfFonts> load() async {
     return ContePdfFonts._(
       await rootBundle.load(regularAsset),
@@ -87,6 +90,10 @@ Future<Uint8List> writeContePdf({
   required ContePdfFonts fonts,
   Map<(String, int), ContePdfPicture> pictures = const {},
 }) async {
+  // The wrap is measured by the ENGINE's registration of these faces
+  // (conteWrappedLines) — make sure a headless export path cannot measure
+  // in a fallback face while embedding the real one.
+  await ensureConteFontsLoaded();
   final document = PdfDocument();
   final writer = _ContePdfPageWriter(
     document: document,
@@ -399,55 +406,9 @@ class _ContePdfPageWriter {
     return width;
   }
 
-  /// Greedy wrap by the PDF fonts' own metrics: break at spaces where
-  /// they exist, anywhere otherwise (CJK), explicit newlines respected.
-  List<String> _wrap(String text, double size, double maxWidth, bool isBold) {
-    final lines = <String>[];
-    for (final paragraph in text.split('\n')) {
-      if (paragraph.isEmpty) {
-        lines.add('');
-        continue;
-      }
-      var line = StringBuffer();
-      var lineWidth = 0.0;
-      var lastSpaceInLine = -1;
-      for (final rune in paragraph.runes) {
-        final char = String.fromCharCode(rune);
-        final charWidth = _runsWidth(_runsFor(char, isBold: isBold), size);
-        if (lineWidth + charWidth > maxWidth && line.isNotEmpty) {
-          final built = line.toString();
-          if (rune != 0x20 && lastSpaceInLine > 0) {
-            // Break at the last space; the tail starts the next line.
-            lines.add(built.substring(0, lastSpaceInLine));
-            final tail = built.substring(lastSpaceInLine + 1);
-            line = StringBuffer(tail);
-            lineWidth = _runsWidth(_runsFor(tail, isBold: isBold), size);
-            lastSpaceInLine = -1;
-          } else {
-            lines.add(built);
-            line = StringBuffer();
-            lineWidth = 0;
-            lastSpaceInLine = -1;
-          }
-          if (rune == 0x20) {
-            continue; // a break eats the space it broke at
-          }
-        }
-        if (rune == 0x20) {
-          lastSpaceInLine = line.length;
-        }
-        line.writeCharCode(rune);
-        lineWidth += charWidth;
-      }
-      if (line.isNotEmpty) {
-        lines.add(line.toString());
-      }
-    }
-    return lines;
-  }
-
-  /// Lays text into [slot] — the painter's `_text` in PDF space: wrapped
-  /// lines, clipped to the slot, aligned the same way.
+  /// Lays text into [slot] — the painter's `_text` in PDF space: the
+  /// SHARED lines ([conteWrappedLines], the panel's own layout read back),
+  /// clipped to the slot, aligned the same way.
   void _text(
     String text,
     ui.Rect slot,
@@ -459,7 +420,11 @@ class _ContePdfPageWriter {
     if (text.isEmpty || slot.width <= 0 || slot.height <= 0) {
       return;
     }
-    final lines = _wrap(text, size, slot.width, isBold);
+    final lines = conteWrappedLines(
+      text,
+      conteTextStyle(size, bold: isBold),
+      slot.width,
+    );
     final lineHeight = size * _lineHeight;
     final totalHeight = lines.length * lineHeight;
     final top = alignBottom ? slot.bottom - totalHeight : slot.top;
