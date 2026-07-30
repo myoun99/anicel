@@ -175,6 +175,112 @@ void main() {
     },
   );
 
+  group('an adjustment scope (R6b)', () {
+    /// The scope's pass, run exactly as a composite route runs it.
+    Future<ui.Image> renderScope({
+      required double mix,
+      int scopeColor = 0xFF808080,
+      List<ResolvedLayerEffect>? effects,
+    }) {
+      final pass = resolveAdjustmentScopePass(
+        bounds: bounds,
+        effects: effects ?? [brightness(40)],
+        mix: mix,
+      );
+      return rasterize((canvas) {
+        void drawScope() {
+          canvas.drawRect(bounds, Paint()..color = Color(scopeColor));
+        }
+
+        if (pass.crossfades) {
+          canvas.saveLayer(pass.bufferBounds, pass.crossfadeLayerPaint!);
+          canvas.saveLayer(pass.bufferBounds, pass.unfilteredPaint!);
+          drawScope();
+          canvas.restore();
+        }
+        canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
+        drawScope();
+        canvas.restore();
+        if (pass.crossfades) {
+          canvas.restore();
+        }
+      });
+    }
+
+    test('at full strength the scope is filtered once', () async {
+      final image = await renderScope(mix: 1);
+      addTearDown(image.dispose);
+      // +40 of the slider = +40 % of full scale = +102.
+      expect((await pixelAt(image, 20, 20))[0], closeTo(0x80 + 102, 2));
+      expect((await pixelAt(image, 20, 20))[3], 255);
+    });
+
+    test('a MIX below 1 crossfades — it must never thin the stack', () async {
+      final image = await renderScope(mix: 0.5);
+      addTearDown(image.dispose);
+      final pixel = await pixelAt(image, 20, 20);
+      expect(
+        pixel[3],
+        255,
+        reason:
+            'HALF a grade, not a half-transparent picture — the whole reason '
+            'the scope is drawn twice',
+      );
+      // Halfway between the plain 0x80 and the fully graded 0x80+102.
+      expect(pixel[0], closeTo(0x80 + 51, 3));
+    });
+
+    test('a TRANSLUCENT scope keeps its own alpha at every mix', () async {
+      // The trap: drawing the scope unfiltered and then the filtered copy
+      // over it with src-over gives lerp(U, F, m) only where the scope is
+      // OPAQUE. On a 50 % picture it compounded alpha — 128 came out 160,
+      // and the colour with it.
+      for (final mix in [0.0, 0.25, 0.5, 0.75, 1.0]) {
+        final image = await renderScope(mix: mix, scopeColor: 0x80808080);
+        addTearDown(image.dispose);
+        final pixel = await pixelAt(image, 20, 20);
+        expect(
+          pixel[3],
+          closeTo(128, 2),
+          reason: 'mix $mix must not change how transparent the scope is',
+        );
+      }
+    });
+
+    test('a BLURRED scope crossfades, and still keeps its alpha', () async {
+      // A spatial chain cannot fold the mix into a matrix, so this is the
+      // two-pass path — the one that has to add up inside one buffer.
+      final pass = resolveAdjustmentScopePass(
+        bounds: bounds,
+        effects: [blur(4)],
+        mix: 0.5,
+      );
+      expect(pass.crossfades, isTrue);
+      expect(
+        resolveAdjustmentScopePass(
+          bounds: bounds,
+          effects: [brightness(40)],
+          mix: 0.5,
+        ).crossfades,
+        isFalse,
+        reason: 'a colour-only chain folds the mix into its matrix instead',
+      );
+
+      final image = await renderScope(
+        mix: 0.5,
+        scopeColor: 0x80808080,
+        effects: [blur(4)],
+      );
+      addTearDown(image.dispose);
+      // Dead centre, far from the blur's edges: half sharp + half blurred
+      // of the same flat colour is that colour, at its own alpha. The bytes
+      // are PREMULTIPLIED, so a 50 %-alpha mid grey reads 64, not 128.
+      final pixel = await pixelAt(image, 20, 20);
+      expect(pixel[3], closeTo(128, 3));
+      expect(pixel[0], closeTo(64, 3));
+    });
+  });
+
   test(
     'rasterScale keeps a blur the same SIZE relative to the picture',
     () async {

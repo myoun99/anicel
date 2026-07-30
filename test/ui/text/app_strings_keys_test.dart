@@ -466,6 +466,7 @@ void main() {
     'tlKindStoryboard': (s) => s.tlKindStoryboard,
     'tlKindImage': (s) => s.tlKindImage,
     'tlKindText': (s) => s.tlKindText,
+    'tlKindAdjustment': (s) => s.tlKindAdjustment,
     'textCelNewTitle': (s) => s.textCelNewTitle,
     'textCelEditTitle': (s) => s.textCelEditTitle,
     'textCelTextLabel': (s) => s.textCelTextLabel,
@@ -566,6 +567,6 @@ void main() {
   test('the reader table covers every getter the class declares', () {
     // Guards the guard: a string added without a line here would other-
     // wise be silently unchecked.
-    expect(readers, hasLength(511));
+    expect(readers, hasLength(512));
   });
 }

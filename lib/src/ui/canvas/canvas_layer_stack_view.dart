@@ -83,6 +83,23 @@ final class CanvasLayerGroupNode extends CanvasLayerStackNode {
   final List<ResolvedLayerEffect> effects;
 }
 
+/// An ADJUSTMENT row's SCOPE (R6b): [children] compose into one buffer and
+/// the row's [effects] filter it there — so a stroke drawn on a layer below
+/// an adjustment reads through the grade while you draw it.
+final class CanvasLayerAdjustmentNode extends CanvasLayerStackNode {
+  const CanvasLayerAdjustmentNode({
+    required this.children,
+    required this.effects,
+    required this.mix,
+  });
+
+  final List<CanvasLayerStackNode> children;
+  final List<ResolvedLayerEffect> effects;
+
+  /// The effect MIX (the row's opacity), 0…1.
+  final double mix;
+}
+
 /// One non-active layer to composite around the interactive canvas.
 class CanvasLayerImageRequest {
   const CanvasLayerImageRequest({
@@ -160,6 +177,8 @@ class CanvasLayerStackView extends StatefulWidget {
           case CanvasLayerImageNode(:final request):
             yield request;
           case CanvasLayerGroupNode(:final children):
+            yield* walk(children);
+          case CanvasLayerAdjustmentNode(:final children):
             yield* walk(children);
           case CanvasActiveLayerNode():
             break;
@@ -382,6 +401,18 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
               effects: effects,
             ),
           );
+        case CanvasLayerAdjustmentNode(
+          :final children,
+          :final effects,
+          :final mix,
+        ):
+          final mapped = _resolvedTree(children);
+          if (mapped.isEmpty) {
+            continue;
+          }
+          out.add(
+            _PaintAdjustment(children: mapped, effects: effects, mix: mix),
+          );
       }
     }
     return out;
@@ -458,6 +489,18 @@ final class _PaintGroup extends _PaintNode {
   final List<ResolvedLayerEffect> effects;
 }
 
+final class _PaintAdjustment extends _PaintNode {
+  const _PaintAdjustment({
+    required this.children,
+    required this.effects,
+    required this.mix,
+  });
+
+  final List<_PaintNode> children;
+  final List<ResolvedLayerEffect> effects;
+  final double mix;
+}
+
 class _LayerStackPainter extends CustomPainter {
   _LayerStackPainter({
     required this.nodes,
@@ -521,12 +564,12 @@ class _LayerStackPainter extends CustomPainter {
         final nodePose = switch (node) {
           _PaintImage(:final pose) => pose,
           _PaintActiveSurface(:final pose) => pose,
-          _PaintGroup() => null,
+          _PaintGroup() || _PaintAdjustment() => null,
         };
         final nodeAnchor = switch (node) {
           _PaintImage(:final anchorPoint) => anchorPoint,
           _PaintActiveSurface(:final anchorPoint) => anchorPoint,
-          _PaintGroup() => null,
+          _PaintGroup() || _PaintAdjustment() => null,
         };
         if (nodePose != null) {
           canvas.save();
@@ -562,6 +605,27 @@ class _LayerStackPainter extends CustomPainter {
             );
             paintNodes(children);
             canvas.restore();
+          case _PaintAdjustment(:final children, :final effects, :final mix):
+            // R6b: the scope into one buffer, the row's chain onto it —
+            // which is what lets a stroke drawn UNDER an adjustment read
+            // through the grade while you draw it.
+            final pass = resolveAdjustmentScopePass(
+              bounds: groupBounds,
+              effects: effects,
+              mix: mix,
+            );
+            if (pass.crossfades) {
+              canvas.saveLayer(pass.bufferBounds, pass.crossfadeLayerPaint!);
+              canvas.saveLayer(pass.bufferBounds, pass.unfilteredPaint!);
+              paintNodes(children);
+              canvas.restore();
+            }
+            canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
+            paintNodes(children);
+            canvas.restore();
+            if (pass.crossfades) {
+              canvas.restore();
+            }
           case _PaintActiveSurface(:final effects):
             // The live surface, drawn by the SAME painter the standalone
             // interactive view uses — the canvas is already
@@ -693,6 +757,17 @@ class _LayerStackPainter extends CustomPainter {
           y as _PaintGroup;
           if (x.opacity != y.opacity ||
               x.blendMode != y.blendMode ||
+              !listEquals(x.effects, y.effects) ||
+              !_treesMatch(x.children, y.children)) {
+            return false;
+          }
+        case (_PaintAdjustment(), _PaintAdjustment()):
+          x as _PaintAdjustment;
+          y as _PaintAdjustment;
+          // A new variant that falls to the default arm below would make
+          // shouldRepaint answer true on EVERY frame the node is present —
+          // a silent perf regression with no compile error. R6b's arm.
+          if (x.mix != y.mix ||
               !listEquals(x.effects, y.effects) ||
               !_treesMatch(x.children, y.children)) {
             return false;

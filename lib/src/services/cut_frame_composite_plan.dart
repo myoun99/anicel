@@ -198,6 +198,42 @@ final class CutFrameCompositeEntryGroup extends CutFrameCompositeEntryNode {
   final List<ResolvedLayerEffect> effects;
 }
 
+/// An ADJUSTMENT layer's SCOPE (R6b): everything composited below the row,
+/// composed into one buffer so the row's [effects] can filter it as the
+/// single picture it is.
+///
+/// The scope is decided by the folder rules Photoshop and CSP already
+/// taught the stack (§6-z3): the walk collects every sibling below the
+/// adjustment, keeps going OUT through pass-through folders (통과 — the
+/// adjustment leaks past them, filtering what lies below the folder too)
+/// and stops at the first BUFFERING one, whose buffer is a picture of its
+/// own that nothing inside it can reach past.
+///
+/// [mix] is the row's opacity, and it means MIX, not fade: 0.5 is a
+/// half-strength grade, never a half-transparent stack. See
+/// [resolveAdjustmentScopePass] for how a route paints that.
+final class CutFrameCompositeEntryAdjustment
+    extends CutFrameCompositeEntryNode {
+  const CutFrameCompositeEntryAdjustment({
+    required this.adjustment,
+    required this.children,
+    required this.effects,
+    required this.mix,
+  });
+
+  final Layer adjustment;
+
+  /// Everything in scope, bottom → top; may hold nested groups.
+  final List<CutFrameCompositeEntryNode> children;
+
+  /// The row's chain sampled at this frame — never empty (an adjustment
+  /// that resolves to nothing leaves no node at all).
+  final List<ResolvedLayerEffect> effects;
+
+  /// The effect MIX, 0…1 (the row's static opacity).
+  final double mix;
+}
+
 /// Whether [folder] must compose into its own buffer at [frameIndex].
 ///
 /// Three things, and only three, fail to distribute over compositing:
@@ -546,10 +582,101 @@ List<CutFrameCompositeEntry> resolveCutFrameCompositeEntries({
   return entries;
 }
 
+/// Lowers an ADJUSTMENT row into the tree being built (R6b): the node that
+/// wraps everything in its scope, and the bucket that node belongs to.
+/// Null when the row filters nothing — hidden, bypassed, no effects, mix 0,
+/// or simply nothing below it yet.
+///
+/// ★ The one-pass trick. A pass-through folder's members are re-parented
+/// only when the walk REACHES the folder row, which sits ABOVE them — so at
+/// the moment an adjustment inside that folder is visited, its siblings are
+/// still in the folder's own bucket while the rows below the folder sit in
+/// the parent's. Both are "below" in the flattened stack the user sees, and
+/// [folderNeedsCompositeBuffer] is a pure function of the folder (it needs
+/// no children), so the walk can decide RIGHT HERE how far the scope
+/// reaches and take those buckets. Buckets are emptied as they are taken,
+/// so the rows that arrive after the adjustment land on top of the wrap,
+/// unfiltered — exactly the picture the stack shows.
+({CutFrameCompositeEntryNode node, LayerId? targetFolderId})?
+_adjustmentScopeNode({
+  required Layer adjustment,
+  required Cut cut,
+  required int frameIndex,
+  required Map<LayerId?, List<CutFrameCompositeEntryNode>> childrenOf,
+  required Set<LayerId> fxBypassedLayerIds,
+}) {
+  if (!adjustment.isVisible) {
+    return null;
+  }
+  // A hidden ancestor hides this row with everything else in its subtree.
+  if (!resolveFolderChainAt(
+    cut: cut,
+    layer: adjustment,
+    frameIndex: frameIndex,
+    fxBypassedLayerIds: fxBypassedLayerIds,
+  ).visible) {
+    return null;
+  }
+  final mix = adjustment.opacity.clamp(0.0, 1.0).toDouble();
+  if (mix <= 0) {
+    return null;
+  }
+  final effects = fxBypassedLayerIds.contains(adjustment.id)
+      ? const <ResolvedLayerEffect>[]
+      : resolveLayerEffectsAt(
+          effects: adjustment.effects,
+          frameIndex: frameIndex,
+        );
+  if (effects.isEmpty) {
+    return null;
+  }
+
+  // The buckets in scope, INNERMOST first: this row's own, then outward
+  // through every pass-through ancestor, stopping at (and including) the
+  // first that buffers — its buffer is a picture of its own and nothing
+  // inside it reaches past. Reaching the top level with none buffering
+  // adds the top-level bucket.
+  final scopeKeys = <LayerId?>[];
+  var stoppedAtBuffer = false;
+  for (final folder in cut.layers.ancestryOf(adjustment.folderId)) {
+    scopeKeys.add(folder.id);
+    if (folderNeedsCompositeBuffer(
+      folder: folder,
+      frameIndex: frameIndex,
+      fxBypassedLayerIds: fxBypassedLayerIds,
+    )) {
+      stoppedAtBuffer = true;
+      break;
+    }
+  }
+  if (!stoppedAtBuffer) {
+    scopeKeys.add(null);
+  }
+
+  // Outermost bucket first: a folder's members are one contiguous run, so
+  // everything already gathered in an OUTER bucket sits below that run.
+  final children = <CutFrameCompositeEntryNode>[
+    for (final key in scopeKeys.reversed) ...?childrenOf.remove(key),
+  ];
+  if (children.isEmpty) {
+    return null; // Nothing below to filter.
+  }
+  return (
+    node: CutFrameCompositeEntryAdjustment(
+      adjustment: adjustment,
+      children: List.unmodifiable(children),
+      effects: effects,
+      mix: mix,
+    ),
+    targetFolderId: scopeKeys.last,
+  );
+}
+
 /// The cut's picture at [frameIndex] as a TREE, bottom → top: every
 /// visible entry, with each BUFFERING folder's members wrapped in a
 /// [CutFrameCompositeEntryGroup] so the folder's opacity and blend apply
-/// ONCE to their composed buffer (R27 #29).
+/// ONCE to their composed buffer (R27 #29), and each ADJUSTMENT row's
+/// scope wrapped in a [CutFrameCompositeEntryAdjustment] (R6b).
 ///
 /// The stack list IS the structure: a folder's members occupy a
 /// contiguous run with the folder row directly above it, so this single
@@ -578,6 +705,19 @@ List<CutFrameCompositeEntryNode> resolveCutFrameCompositeTree({
       (childrenOf[folderId] ??= <CutFrameCompositeEntryNode>[]).add(node);
 
   for (final layer in cut.layers) {
+    if (layerKindFiltersBelow(layer.kind)) {
+      final wrapped = _adjustmentScopeNode(
+        adjustment: layer,
+        cut: cut,
+        frameIndex: frameIndex,
+        childrenOf: childrenOf,
+        fxBypassedLayerIds: fxBypassedLayerIds,
+      );
+      if (wrapped != null) {
+        addTo(wrapped.targetFolderId, wrapped.node);
+      }
+      continue;
+    }
     if (layerKindGroupsLayers(layer.kind)) {
       final children = childrenOf.remove(layer.id);
       if (children == null || children.isEmpty) {
@@ -709,6 +849,22 @@ final class CutFrameCompositeSurfaceGroup extends CutFrameCompositeSurfaceNode {
   final List<ResolvedLayerEffect> effects;
 }
 
+/// An ADJUSTMENT row's scope with surfaces resolved (R6b).
+final class CutFrameCompositeSurfaceAdjustment
+    extends CutFrameCompositeSurfaceNode {
+  const CutFrameCompositeSurfaceAdjustment({
+    required this.children,
+    required this.effects,
+    required this.mix,
+  });
+
+  final List<CutFrameCompositeSurfaceNode> children;
+  final List<ResolvedLayerEffect> effects;
+
+  /// The effect MIX (the row's opacity), 0…1.
+  final double mix;
+}
+
 /// [resolveCutFrameCompositeTree] with each leaf's surface resolved;
 /// entries whose frame has no artwork drop out, and a group left empty by
 /// that drops with them (an empty buffer is a wasted saveLayer).
@@ -757,6 +913,22 @@ List<CutFrameCompositeSurfaceNode> planCutFrameCompositeTree({
               opacity: opacity,
               blendMode: blendMode,
               effects: effects,
+            ),
+          );
+        case CutFrameCompositeEntryAdjustment(
+          :final children,
+          :final effects,
+          :final mix,
+        ):
+          final mapped = mapNodes(children);
+          if (mapped.isEmpty) {
+            continue; // Every row in scope turned out to have no artwork.
+          }
+          out.add(
+            CutFrameCompositeSurfaceAdjustment(
+              children: List.unmodifiable(mapped),
+              effects: effects,
+              mix: mix,
             ),
           );
       }

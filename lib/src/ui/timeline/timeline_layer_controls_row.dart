@@ -694,5 +694,6 @@ String _semanticLabelForLayerKind(LayerKind kind) {
     LayerKind.instruction => 'Instruction layer',
     LayerKind.camera => 'Camera layer',
     LayerKind.folder => 'Folder',
+    LayerKind.adjustment => 'Adjustment layer',
   };
 }

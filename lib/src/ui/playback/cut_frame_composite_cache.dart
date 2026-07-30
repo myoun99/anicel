@@ -253,6 +253,36 @@ class CutFrameCompositeCache {
             );
             await paintNodes(children);
             canvas.restore();
+          case CompositeAdjustmentSignature(
+            :final children,
+            :final effects,
+            :final mix,
+          ):
+            // R6b: the scope into one buffer, the row's chain onto it. The
+            // radii scale with this quality tier's raster like every other
+            // blur here.
+            final pass = resolveAdjustmentScopePass(
+              bounds: rasterBounds,
+              effects: effects,
+              mix: mix,
+              rasterScale: scale,
+            );
+            if (pass.crossfades) {
+              canvas.saveLayer(pass.bufferBounds, pass.crossfadeLayerPaint!);
+              canvas.saveLayer(pass.bufferBounds, pass.unfilteredPaint!);
+              await paintNodes(children);
+              canvas.restore();
+              if (aborted) {
+                canvas.restore(); // Close the crossfade buffer we opened.
+                return;
+              }
+            }
+            canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
+            await paintNodes(children);
+            canvas.restore();
+            if (pass.crossfades) {
+              canvas.restore();
+            }
           case CompositeLeafSignature(:final layer):
             final layerImage = await layerImages.prepare(
               key: frameKeyOf(cut, layer.layerId, layer.frameId),

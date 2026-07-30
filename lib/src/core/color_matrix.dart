@@ -59,6 +59,23 @@ List<double> composeColorMatrices(List<double> outer, List<double> inner) {
   return result;
 }
 
+/// [matrix] applied at STRENGTH [amount] (0 = identity, 1 = the matrix
+/// itself): the elementwise blend with the identity.
+///
+/// This is exact, not an approximation — the map is affine, so
+/// `((1−a)·I + a·M)·c` IS `(1−a)·c + a·(M·c)`. That is what lets an
+/// adjustment layer's MIX fold into its own matrix and composite in ONE
+/// pass: a crossfade drawn as two src-over passes would compound alpha and
+/// make a translucent picture more opaque.
+List<double> lerpColorMatrixFromIdentity(List<double> matrix, double amount) {
+  final strength = amount.clamp(0.0, 1.0);
+  return <double>[
+    for (var index = 0; index < 20; index += 1)
+      identityColorMatrix[index] +
+          (matrix[index] - identityColorMatrix[index]) * strength,
+  ];
+}
+
 /// Whether [matrix] is the identity (within [epsilon]) — the composite
 /// routes drop such an effect instead of paying for a filter that does
 /// nothing.

@@ -104,6 +104,36 @@ String nextTextLayerName(List<Layer> layers) {
   }
 }
 
+/// Names a new ADJUSTMENT row: FX1, FX2, … skipping names the cut already
+/// uses (R6b). The row's job is its effect chain, so the name is a label,
+/// not a cel address.
+String nextAdjustmentLayerName(List<Layer> layers) {
+  final usedNames = layers.map((layer) => layer.name).toSet();
+  var index = 1;
+  while (true) {
+    final name = 'FX$index';
+    if (!usedNames.contains(name)) {
+      return name;
+    }
+    index += 1;
+  }
+}
+
+/// A fresh ADJUSTMENT row (R6b): no cels, no timeline, no transform — an
+/// empty effect chain the user then fills. It filters everything below it
+/// in its scope, and until an effect is added that is nothing at all.
+Layer createAdjustmentLayer({required LayerId id, required String name}) {
+  return Layer(
+    id: id,
+    name: name,
+    frames: const [],
+    timeline: const {},
+    kind: LayerKind.adjustment,
+    // Nothing of its own prints on the sheet.
+    onTimesheet: false,
+  );
+}
+
 /// Names an additional SE row: S1, S2, S3, … skipping names the cut
 /// already uses (S1 selected + Add Layer → S3 when S1·S2 exist).
 String nextSeLayerName(List<Layer> layers) {

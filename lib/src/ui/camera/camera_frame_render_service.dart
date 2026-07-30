@@ -181,6 +181,8 @@ class CameraFrameRenderService {
                 ))!;
           case CutFrameCompositeSurfaceGroup(:final children):
             await composeImages(children);
+          case CutFrameCompositeSurfaceAdjustment(:final children):
+            await composeImages(children);
         }
       }
     }
@@ -254,6 +256,31 @@ class CameraFrameRenderService {
             );
             paintNodes(children);
             canvas.restore();
+          case CutFrameCompositeSurfaceAdjustment(
+            :final children,
+            :final effects,
+            :final mix,
+          ):
+            // R6b: the scope composes into one buffer and the row's chain
+            // filters it there. Below full strength the scope is drawn
+            // twice — the mix is a crossfade, not a fade-out.
+            final pass = resolveAdjustmentScopePass(
+              bounds: groupBounds,
+              effects: effects,
+              mix: mix,
+            );
+            if (pass.crossfades) {
+              canvas.saveLayer(pass.bufferBounds, pass.crossfadeLayerPaint!);
+              canvas.saveLayer(pass.bufferBounds, pass.unfilteredPaint!);
+              paintNodes(children);
+              canvas.restore();
+            }
+            canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
+            paintNodes(children);
+            canvas.restore();
+            if (pass.crossfades) {
+              canvas.restore();
+            }
           case CutFrameCompositeSurfaceLeaf(:final layer):
             // Layer transforms apply at composite time (never baked);
             // identity layers skip the save/restore.

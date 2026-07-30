@@ -425,6 +425,8 @@ IconData layerKindIcon(LayerKind kind) {
     LayerKind.instruction => Icons.theaters_outlined,
     LayerKind.camera => Icons.videocam_outlined,
     LayerKind.folder => Icons.folder_outlined,
+    // The sliders glyph: an adjustment row IS its parameters.
+    LayerKind.adjustment => Icons.tune,
   };
 }
 
@@ -439,6 +441,7 @@ String layerKindDisplayName(LayerKind kind) {
     LayerKind.instruction => 'Instruction',
     LayerKind.camera => 'Camera',
     LayerKind.folder => 'Folder',
+    LayerKind.adjustment => 'Adjustment',
   };
 }
 

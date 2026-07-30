@@ -1718,6 +1718,22 @@ class EditorSessionManager extends ChangeNotifier {
             blendMode: blendMode,
             effects: effects,
           );
+        case CutFrameCompositeEntryAdjustment(
+          :final children,
+          :final effects,
+          :final mix,
+        ):
+          final mapped = <CanvasLayerStackNode>[
+            for (final child in children) ?mapNode(child),
+          ];
+          if (mapped.isEmpty) {
+            return null;
+          }
+          return CanvasLayerAdjustmentNode(
+            children: List.unmodifiable(mapped),
+            effects: effects,
+            mix: mix,
+          );
         case CutFrameCompositeEntryLeaf(:final entry):
           // A brush-banned active layer (SE/instruction, R6-④; a media
           // REFERENCE layer, §6-z23) has no interactive surface — it
@@ -1839,6 +1855,7 @@ class EditorSessionManager extends ChangeNotifier {
         case CanvasActiveLayerNode():
           return true;
         case CanvasLayerGroupNode(:final children):
+        case CanvasLayerAdjustmentNode(:final children):
           if (_treeHoldsActiveLayer(children)) {
             return true;
           }
@@ -2620,11 +2637,14 @@ class EditorSessionManager extends ChangeNotifier {
       // handles "no editable cel" (that is the R26 #35 refusal notice).
       // A folder row deletes by DISSOLVING (the coordinator routes it) —
       // its members are rows of their own and survive.
+      // An ADJUSTMENT row has no floor either: deleting it just stops the
+      // stack below being filtered.
       LayerKind.animation ||
       LayerKind.storyboard ||
       LayerKind.image ||
       LayerKind.text ||
-      LayerKind.folder => true,
+      LayerKind.folder ||
+      LayerKind.adjustment => true,
     };
   }
 
@@ -3079,30 +3099,17 @@ class EditorSessionManager extends ChangeNotifier {
                 kind: LayerKind.text,
               )
             : createDefaultAnimationLayer(layerId: layerId, cut: cut);
-        // An attach group is INDIVISIBLE (R26 #36): a new regular layer
-        // lands past the whole group, never between a base and its attach
-        // rows — whether the active row is the base itself or one of its
-        // attach rows (W5). BOTH sides count: a below-only group used to
-        // slip through the above-only check and the new row split it.
-        final active = activeLayer;
-        final baseId = active == null
-            ? null
-            : isAttachedLayer(active)
-            ? active.attachedToLayerId
-            : active.id;
-        if (baseId != null) {
-          final cut = requireActiveCut;
-          final groupEnd = attachedGroupEndIndex(baseId, cut.layers);
-          final groupStart = attachedGroupStartIndex(baseId, cut.layers);
-          if (groupEnd - groupStart > 1) {
-            _layerController.addLayer(
-              layer: newLayerFor(cut),
-              insertionIndex: groupEnd,
-            );
-            break;
-          }
-        }
-        _layerController.addLayer(layer: newLayerFor(requireActiveCut));
+        _addRowAboveActive(newLayerFor);
+      case LayerKind.adjustment:
+        // R6b: a real row you ADD (unlike a folder), joining the stack
+        // above the active layer like every other kind — which is exactly
+        // what puts the rows it filters below it.
+        _addRowAboveActive(
+          (cut) => createAdjustmentLayer(
+            id: layerId,
+            name: nextAdjustmentLayerName(cut.layers),
+          ),
+        );
       case LayerKind.camera:
       // Folders are MADE, not added: 폴더 생성 wraps existing rows
       // ([groupActiveLayerIntoFolder]). Add Layer with a folder row active
@@ -3111,6 +3118,41 @@ class EditorSessionManager extends ChangeNotifier {
         _layerController.addLayerWithDefaults(layerId: layerId);
     }
     notifyListeners();
+  }
+
+  /// Inserts a NEW ROW the way one joins the stack above the active layer.
+  ///
+  /// Two structural rules, and they used to live inside the drawing-kind
+  /// arm where every later kind had to remember them:
+  /// - an attach group is INDIVISIBLE (R26 #36): the row lands past the
+  ///   whole group, never between a base and its attach rows — whether the
+  ///   active row is the base or one of its attaches. BOTH sides count: a
+  ///   below-only group used to slip through an above-only check.
+  /// - the row INHERITS the active row's folder. A row inserted into a
+  ///   folder's contiguous member run without belonging to it breaks the
+  ///   folder invariant and composites in the wrong scope; for R6b's
+  ///   adjustment that meant filtering nothing at all, silently.
+  void _addRowAboveActive(Layer Function(Cut cut) build) {
+    final cut = requireActiveCut;
+    final active = activeLayer;
+    final built = build(cut);
+    final layer = active?.folderId == null
+        ? built
+        : built.copyWith(folderId: active!.folderId);
+    final baseId = active == null
+        ? null
+        : isAttachedLayer(active)
+        ? active.attachedToLayerId
+        : active.id;
+    if (baseId != null) {
+      final groupEnd = attachedGroupEndIndex(baseId, cut.layers);
+      final groupStart = attachedGroupStartIndex(baseId, cut.layers);
+      if (groupEnd - groupStart > 1) {
+        _layerController.addLayer(layer: layer, insertionIndex: groupEnd);
+        return;
+      }
+    }
+    _layerController.addLayer(layer: layer);
   }
 
   /// Whether the active layer can carry (or already rides within) an
@@ -6248,6 +6290,7 @@ class EditorSessionManager extends ChangeNotifier {
       LayerKind.instruction => 'Instruction Layer',
       LayerKind.camera => 'Camera Layer',
       LayerKind.folder => 'Folder',
+      LayerKind.adjustment => 'Adjustment Layer',
       null => 'No Layer',
     };
   }

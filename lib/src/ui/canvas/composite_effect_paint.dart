@@ -72,6 +72,35 @@ class CompositeEffectPaint {
   }
 }
 
+/// The single folded matrix for a COLOUR-ONLY chain; null as soon as the
+/// chain contains anything spatial (a blur), because a matrix cannot say
+/// what a blur does.
+///
+/// Exposed so the adjustment scope can fold its MIX into the same matrix
+/// ([lerpColorMatrixFromIdentity]) instead of crossfading two draws.
+List<double>? resolveColorOnlyMatrix(List<ResolvedLayerEffect> effects) {
+  List<double>? matrix;
+  for (final effect in effects) {
+    final next = switch (effect.kind) {
+      EffectKind.brightnessContrast => brightnessContrastMatrix(
+        brightness: effect.parameter('brightness'),
+        contrast: effect.parameter('contrast'),
+      ),
+      EffectKind.hueSaturation => hueSaturationMatrix(
+        hueDegrees: effect.parameter('hue'),
+        saturation: effect.parameter('saturation'),
+        lightness: effect.parameter('lightness'),
+      ),
+      EffectKind.blur => null,
+    };
+    if (next == null) {
+      return null;
+    }
+    matrix = matrix == null ? next : composeColorMatrices(next, matrix);
+  }
+  return matrix;
+}
+
 /// Translates [effects] (already sampled at a frame) into paint state.
 ///
 /// [rasterScale] is the ratio between the space this paint draws in and
@@ -163,4 +192,113 @@ ui.Rect effectBufferBounds(ui.Rect bounds, CompositeEffectPaint plan) {
     return bounds;
   }
   return bounds.inflate(plan.outsetPixels);
+}
+
+/// How a route paints an ADJUSTMENT scope (R6b) — the semantics in ONE
+/// place, so the four composite routes only have to run the steps.
+///
+/// The row's opacity is a MIX, not a fade: half strength means half a
+/// grade, never a half-transparent stack. Getting that right is the whole
+/// content of this class, and the naive spelling is wrong twice over:
+///
+/// - `saveLayer(alpha)` around the filtered scope thins the picture toward
+///   transparent — the shocking answer;
+/// - drawing the scope unfiltered and then the filtered copy over it with
+///   src-over gives `m·F + (1 − m·aF)·U`, which is `lerp(U, F, m)` only
+///   where the scope is fully OPAQUE. On a translucent picture it COMPOUNDS
+///   alpha (a 50 % layer under a 50 % mix came out at 62.5 %).
+///
+/// So a colour-only chain folds the mix into its own matrix
+/// ([lerpColorMatrixFromIdentity]) and paints in ONE pass — exact, and no
+/// second draw of the scope at all. Only a chain with a BLUR needs the two
+/// passes, and those are done inside one crossfade buffer with the second
+/// pass ADDED (`BlendMode.plus`) onto a `1 − mix` first pass, which is a
+/// true lerp with alpha left alone.
+class AdjustmentScopePass {
+  const AdjustmentScopePass({
+    required this.bufferBounds,
+    required this.filteredPaint,
+    this.crossfadeLayerPaint,
+    this.unfilteredPaint,
+  });
+
+  /// The `saveLayer` bounds for every pass.
+  final ui.Rect bufferBounds;
+
+  /// The filtered pass's `saveLayer` paint. Non-null always.
+  final ui.Paint filteredPaint;
+
+  /// Non-null ONLY when the scope must crossfade (a blur below full mix):
+  /// the outer buffer the two passes add up inside.
+  final ui.Paint? crossfadeLayerPaint;
+
+  /// The unfiltered pass's `saveLayer` paint; non-null exactly when
+  /// [crossfadeLayerPaint] is.
+  final ui.Paint? unfilteredPaint;
+
+  /// Whether the route has to draw the scope a second time.
+  bool get crossfades => crossfadeLayerPaint != null;
+}
+
+/// Resolves the pass for an adjustment scope of [effects] at [mix] over
+/// [bounds]. [rasterScale] follows the same rule as
+/// [resolveCompositeEffectPaint].
+///
+/// A route runs it as:
+/// ```dart
+/// if (pass.crossfades) {
+///   canvas.saveLayer(pass.bufferBounds, pass.crossfadeLayerPaint!);
+///   canvas.saveLayer(pass.bufferBounds, pass.unfilteredPaint!);
+///   drawScope();
+///   canvas.restore();
+/// }
+/// canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
+/// drawScope();
+/// canvas.restore();
+/// if (pass.crossfades) canvas.restore();
+/// ```
+AdjustmentScopePass resolveAdjustmentScopePass({
+  required ui.Rect bounds,
+  required List<ResolvedLayerEffect> effects,
+  required double mix,
+  double rasterScale = 1,
+}) {
+  final strength = mix.clamp(0.0, 1.0);
+  if (strength < 1) {
+    final colorMatrix = resolveColorOnlyMatrix(effects);
+    if (colorMatrix != null) {
+      // The exact answer in one pass: the mix IS part of the matrix.
+      return AdjustmentScopePass(
+        bufferBounds: bounds,
+        filteredPaint: ui.Paint()
+          ..colorFilter = ui.ColorFilter.matrix(
+            lerpColorMatrixFromIdentity(colorMatrix, strength),
+          ),
+      );
+    }
+  }
+  final plan = resolveCompositeEffectPaint(effects, rasterScale: rasterScale);
+  final bufferBounds = effectBufferBounds(bounds, plan);
+  if (strength >= 1) {
+    final paint = ui.Paint();
+    plan.applyTo(paint);
+    return AdjustmentScopePass(
+      bufferBounds: bufferBounds,
+      filteredPaint: paint,
+    );
+  }
+  // A spatial chain below full strength: two passes ADDED inside one
+  // buffer. `plus` on premultiplied colour gives (1−m)·U + m·F exactly,
+  // and the two alphas sum back to the scope's own.
+  final filtered = ui.Paint()
+    ..color = ui.Color.fromRGBO(0, 0, 0, strength)
+    ..blendMode = ui.BlendMode.plus;
+  plan.applyTo(filtered);
+  return AdjustmentScopePass(
+    bufferBounds: bufferBounds,
+    filteredPaint: filtered,
+    crossfadeLayerPaint: ui.Paint(),
+    unfilteredPaint: ui.Paint()
+      ..color = ui.Color.fromRGBO(0, 0, 0, 1 - strength),
+  );
 }
