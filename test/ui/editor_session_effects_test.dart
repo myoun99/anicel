@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/layer_effect.dart';
+import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/transform_track.dart';
@@ -285,6 +286,65 @@ void main() {
       expect(
         () => session.updateLayerTransformTrack(row.id, TransformTrack.empty()),
         throwsStateError,
+      );
+    });
+
+    test('it joins the stack without splitting an attach group', () {
+      // A new row lands PAST the whole attach group (R26 #36) — otherwise
+      // attachedGroupEndIndex shrinks and link-duplicate/독립시키기/폴더
+      // 생성 all operate on a truncated slice, losing the attach row.
+      final base = session.activeLayer!;
+      session.addAttachedLayer(AttachedPlacement.above);
+      session.selectLayer(base.id);
+      session.addLayerOfKind(LayerKind.adjustment);
+
+      final layers = session.requireActiveCut.layers;
+      final baseIndex = layers.indexWhere((layer) => layer.id == base.id);
+      final attachIndex = layers.indexWhere(
+        (layer) => layer.attachedToLayerId == base.id,
+      );
+      final fxIndex = layers.indexWhere(
+        (layer) => layer.kind == LayerKind.adjustment,
+      );
+      expect(attachIndex, baseIndex + 1, reason: 'the group stayed together');
+      expect(fxIndex, greaterThan(attachIndex));
+    });
+
+    test('it INHERITS the active row\'s folder, so it filters something', () {
+      // A row inserted into a folder's contiguous run without belonging to
+      // it breaks the folder invariant AND (for this kind) composites in a
+      // scope with nothing in it — a silent no-op of the whole feature.
+      session.createDrawingAtCurrentFrame();
+      final member = session.activeLayer!;
+      session.groupActiveLayerIntoFolder();
+      session.selectLayer(member.id);
+      session.addLayerOfKind(LayerKind.adjustment);
+
+      final row = session.activeLayer!;
+      expect(row.kind, LayerKind.adjustment);
+      expect(row.folderId, isNotNull);
+      expect(row.folderId, member.folderId ?? row.folderId);
+      expect(
+        folderStructureProblem(session.requireActiveCut.layers),
+        isNull,
+        reason: 'the folder still sits directly above its member run',
+      );
+
+      session.addEffectToActiveLayer(EffectKind.brightnessContrast);
+      final withValue = session.activeLayer!;
+      session.updateLayerEffects(
+        withValue.id,
+        effectsWithLaneValueEdited(
+          withValue.effects,
+          laneId: effectLaneId(withValue.effects.single.id, 'brightness'),
+          frameIndex: 0,
+          input: '30',
+        )!,
+      );
+      expect(
+        scopeIn(session.editingCanvasStack.nodes),
+        isNotNull,
+        reason: 'inside the folder it must still find the member below it',
       );
     });
 

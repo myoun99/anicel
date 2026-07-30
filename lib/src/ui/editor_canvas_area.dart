@@ -34,6 +34,7 @@ import 'text/app_strings.dart';
 import 'text/se_name_tag_paint.dart';
 import 'timeline/layer_label_controls.dart';
 import '../models/layer.dart' show layerAcceptsBrushInput;
+import '../models/layer_kind.dart' show layerKindHasLayerTransform;
 import 'widgets/cursor_notice.dart';
 import 'timeline/transform_lane_editing.dart';
 
@@ -427,6 +428,12 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         !isScrubbing &&
         !isCameraLayerActive &&
         activeLayer != null &&
+        // The gizmo COMMITS a transform track, so the row must actually
+        // author one. Every non-camera kind used to, and the camera was
+        // covered above — until R6b's adjustment row, which twirls open
+        // for its effect lanes while owning no transform at all, and whose
+        // commit path throws by design.
+        layerKindHasLayerTransform(activeLayer.kind) &&
         layerKindShowsFxToggle(activeLayer.kind) &&
         session.isLayerFxEnabled(activeLayer.id) &&
         (widget.expandedLaneLayerIds?.value.contains(activeLayer.id) ?? false);

@@ -614,12 +614,18 @@ class _LayerStackPainter extends CustomPainter {
               effects: effects,
               mix: mix,
             );
-            if (pass.drawsUnfilteredFirst) {
+            if (pass.crossfades) {
+              canvas.saveLayer(pass.bufferBounds, pass.crossfadeLayerPaint!);
+              canvas.saveLayer(pass.bufferBounds, pass.unfilteredPaint!);
               paintNodes(children);
+              canvas.restore();
             }
             canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
             paintNodes(children);
             canvas.restore();
+            if (pass.crossfades) {
+              canvas.restore();
+            }
           case _PaintActiveSurface(:final effects):
             // The live surface, drawn by the SAME painter the standalone
             // interactive view uses — the canvas is already

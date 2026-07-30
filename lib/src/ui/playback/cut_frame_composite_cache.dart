@@ -267,15 +267,22 @@ class CutFrameCompositeCache {
               mix: mix,
               rasterScale: scale,
             );
-            if (pass.drawsUnfilteredFirst) {
+            if (pass.crossfades) {
+              canvas.saveLayer(pass.bufferBounds, pass.crossfadeLayerPaint!);
+              canvas.saveLayer(pass.bufferBounds, pass.unfilteredPaint!);
               await paintNodes(children);
+              canvas.restore();
               if (aborted) {
+                canvas.restore(); // Close the crossfade buffer we opened.
                 return;
               }
             }
             canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
             await paintNodes(children);
             canvas.restore();
+            if (pass.crossfades) {
+              canvas.restore();
+            }
           case CompositeLeafSignature(:final layer):
             final layerImage = await layerImages.prepare(
               key: frameKeyOf(cut, layer.layerId, layer.frameId),
