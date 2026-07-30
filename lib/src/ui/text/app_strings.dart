@@ -16,6 +16,11 @@ abstract final class AppText {
   /// The PROGRAM-language table, read at call time.
   static AppStrings get strings =>
       AppStrings.of(settings.value.programLanguage);
+
+  /// The PROGRAM language itself — for the vocabularies that localize
+  /// through their own `labelFor` (blend modes, effect kinds) instead of
+  /// through a string key.
+  static AppLanguage get language => settings.value.programLanguage;
 }
 
 /// PROGRAM-language strings (UI-R10 #7): what the app chrome reads in.
@@ -463,6 +468,9 @@ class AppStrings {
   String get tlCopyLayer => _s('tlCopyLayer');
   String get tlDeleteLayer => _s('tlDeleteLayer');
   String get tlImportAudio => _s('tlImportAudio');
+  String get tlEffects => _s('tlEffects');
+  String get tlAddEffectTemplate => _s('tlAddEffectTemplate');
+  String get tlRemoveEffectTemplate => _s('tlRemoveEffectTemplate');
   String get tlCopyFrame => _s('tlCopyFrame');
   String get tlPasteLinkedFrame => _s('tlPasteLinkedFrame');
   String get tlDeleteCell => _s('tlDeleteCell');
@@ -1352,6 +1360,9 @@ class AppStrings {
     'tlCopyLayer': 'Copy layer',
     'tlDeleteLayer': 'Delete layer',
     'tlImportAudio': 'Import audio…',
+    'tlEffects': 'Effects',
+    'tlAddEffectTemplate': 'Add {name}',
+    'tlRemoveEffectTemplate': 'Remove {name}',
     'tlCopyFrame': 'Copy frame',
     'tlPasteLinkedFrame': 'Paste linked frame',
     'tlDeleteCell': 'Delete cell',
@@ -2031,6 +2042,9 @@ class AppStrings {
     'tlCopyLayer': 'レイヤーをコピー',
     'tlDeleteLayer': 'レイヤーを削除',
     'tlImportAudio': '音声を読み込み…',
+    'tlEffects': 'エフェクト',
+    'tlAddEffectTemplate': '{name}を追加',
+    'tlRemoveEffectTemplate': '{name}を削除',
     'tlCopyFrame': 'フレームをコピー',
     'tlPasteLinkedFrame': 'リンクフレームを貼り付け',
     'tlDeleteCell': 'セルを削除',
@@ -2706,6 +2720,9 @@ class AppStrings {
     'tlCopyLayer': '레이어 복사',
     'tlDeleteLayer': '레이어 삭제',
     'tlImportAudio': '오디오 불러오기…',
+    'tlEffects': '이펙트',
+    'tlAddEffectTemplate': '{name} 추가',
+    'tlRemoveEffectTemplate': '{name} 제거',
     'tlCopyFrame': '프레임 복사',
     'tlPasteLinkedFrame': '링크 프레임 붙여넣기',
     'tlDeleteCell': '셀 삭제',
@@ -3416,6 +3433,9 @@ class AppStrings {
     'tlCopyLayer': 'Copier le calque',
     'tlDeleteLayer': 'Supprimer le calque',
     'tlImportAudio': "Importer de l'audio…",
+    'tlEffects': 'Effets',
+    'tlAddEffectTemplate': 'Ajouter {name}',
+    'tlRemoveEffectTemplate': 'Supprimer {name}',
     'tlCopyFrame': "Copier l'image",
     'tlPasteLinkedFrame': "Coller l'image liée",
     'tlDeleteCell': 'Supprimer la case',
@@ -4067,6 +4087,9 @@ class AppStrings {
     'tlCopyLayer': '复制图层',
     'tlDeleteLayer': '删除图层',
     'tlImportAudio': '导入音频…',
+    'tlEffects': '效果',
+    'tlAddEffectTemplate': '添加{name}',
+    'tlRemoveEffectTemplate': '删除{name}',
     'tlCopyFrame': '复制帧',
     'tlPasteLinkedFrame': '粘贴链接帧',
     'tlDeleteCell': '删除单元格',

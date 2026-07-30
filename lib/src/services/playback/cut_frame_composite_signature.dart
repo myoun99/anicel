@@ -4,6 +4,7 @@ import '../../models/canvas_size.dart';
 import '../../models/cut.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer_blend_mode.dart';
+import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/playback_quality.dart';
 import '../../models/transform_track.dart';
@@ -25,6 +26,7 @@ class CompositeLayerSignature {
     this.blendMode = LayerBlendMode.normal,
     this.pose,
     this.anchorPoint,
+    this.effects = const [],
   });
 
   final LayerId layerId;
@@ -52,6 +54,11 @@ class CompositeLayerSignature {
   /// visit, so a folder FX edit changes the identity through it.
   final CanvasPoint? anchorPoint;
 
+  /// The row's effect chain SAMPLED at the frame (R6) — an effect edit, or
+  /// a parameter that varies across a held exposure, must change the
+  /// composite's identity, and the compose loop filters with exactly this.
+  final List<ResolvedLayerEffect> effects;
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -62,7 +69,8 @@ class CompositeLayerSignature {
           other.sourceRevision == sourceRevision &&
           other.blendMode == blendMode &&
           other.pose == pose &&
-          other.anchorPoint == anchorPoint;
+          other.anchorPoint == anchorPoint &&
+          listEquals(other.effects, effects);
 
   @override
   int get hashCode => Object.hash(
@@ -73,6 +81,7 @@ class CompositeLayerSignature {
     blendMode,
     pose,
     anchorPoint,
+    Object.hashAll(effects),
   );
 
   @override
@@ -117,11 +126,17 @@ final class CompositeGroupSignature extends CompositeNodeSignature {
     required List<CompositeNodeSignature> children,
     required this.opacity,
     required this.blendMode,
-  }) : children = List.unmodifiable(children);
+    List<ResolvedLayerEffect> effects = const [],
+  }) : children = List.unmodifiable(children),
+       effects = List.unmodifiable(effects);
 
   final List<CompositeNodeSignature> children;
   final double opacity;
   final LayerBlendMode blendMode;
+
+  /// The group's effect chain sampled at the frame (R6) — a folder-effect
+  /// edit invalidates the composite exactly as its blend/opacity does.
+  final List<ResolvedLayerEffect> effects;
 
   @override
   bool operator ==(Object other) =>
@@ -129,16 +144,21 @@ final class CompositeGroupSignature extends CompositeNodeSignature {
       other is CompositeGroupSignature &&
           other.opacity == opacity &&
           other.blendMode == blendMode &&
+          listEquals(other.effects, effects) &&
           listEquals(other.children, children);
 
   @override
-  int get hashCode =>
-      Object.hash(opacity, blendMode, Object.hashAll(children));
+  int get hashCode => Object.hash(
+    opacity,
+    blendMode,
+    Object.hashAll(effects),
+    Object.hashAll(children),
+  );
 
   @override
   String toString() =>
       'CompositeGroupSignature(opacity: $opacity, blendMode: $blendMode, '
-      'children: $children)';
+      'effects: $effects, children: $children)';
 }
 
 /// Identity of a composited cut frame's pixels.
@@ -230,17 +250,20 @@ CutFrameCompositeSignature computeCutFrameCompositeSignature({
             blendMode: entry.blendMode,
             pose: entry.pose,
             anchorPoint: entry.anchorPoint,
+            effects: entry.effects,
           ),
         ),
         CutFrameCompositeEntryGroup(
           :final children,
           :final opacity,
           :final blendMode,
+          :final effects,
         ) =>
           CompositeGroupSignature(
             children: mapNodes(children),
             opacity: opacity,
             blendMode: blendMode,
+            effects: effects,
           ),
       },
   ];

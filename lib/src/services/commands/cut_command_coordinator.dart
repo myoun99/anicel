@@ -11,6 +11,7 @@ import '../../models/cut.dart';
 import '../../models/cut_camera.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
+import '../../models/layer_effect.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -60,6 +61,7 @@ import 'update_layer_instructions_command.dart';
 import 'update_layer_kind_command.dart';
 import 'update_layer_mark_command.dart';
 import 'update_layer_name_command.dart';
+import 'update_layer_effects_command.dart';
 import 'update_layer_fill_reference_command.dart';
 import 'update_layer_timesheet_command.dart';
 import 'update_layer_transform_command.dart';
@@ -1127,6 +1129,34 @@ class CutCommandCoordinator {
         cutId: cutId,
         layerId: layerId,
         transformTrack: transformTrack,
+        description: description,
+      ),
+    );
+  }
+
+  /// Replaces a layer's EFFECT CHAIN (R6); one undo step, no-op when
+  /// unchanged. FX lanes are per-use ("레인만 각자"), so this never mirrors
+  /// across a 겸용 link group — exactly like the transform track above.
+  void updateLayerEffects({
+    required CutId cutId,
+    required LayerId layerId,
+    required List<LayerEffect> effects,
+    String description = 'Edit layer effects',
+  }) {
+    final layer = _requireLayer(cutId: cutId, layerId: layerId);
+    if (!layerKindHasLayerEffects(layer.kind)) {
+      throw StateError('The camera row carries no effect chain of its own.');
+    }
+    if (listEquals(layer.effects, effects)) {
+      return;
+    }
+
+    historyManager.execute(
+      UpdateLayerEffectsCommand(
+        repository: repository,
+        cutId: cutId,
+        layerId: layerId,
+        effects: effects,
         description: description,
       ),
     );

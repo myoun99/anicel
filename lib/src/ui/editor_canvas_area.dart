@@ -149,12 +149,16 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
             :final children,
             :final opacity,
             :final blendMode,
+            :final effects,
           ):
             out.add(
+              // Rebuilt field by field: the folder's effects (R6) have to
+              // be carried or turning onion skin on would drop them.
               CanvasLayerGroupNode(
                 children: walk(children),
                 opacity: opacity,
                 blendMode: blendMode,
+                effects: effects,
               ),
             );
           case CanvasLayerImageNode():

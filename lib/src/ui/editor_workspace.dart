@@ -360,18 +360,20 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _expandedLaneLayerIds.value = next;
   }
 
-  /// Layers whose Transform GROUP is twirled open inside the twirl-down
-  /// (AE group collapse — default collapsed; view state, survives tab
-  /// switches, session-only).
-  final ValueNotifier<Set<LayerId>> _expandedTransformGroupLayerIds =
-      ValueNotifier(const <LayerId>{});
+  /// LANE GROUPS twirled open inside a layer's twirl-down (AE group
+  /// collapse — default collapsed; view state, survives tab switches,
+  /// session-only). Keyed by [laneGroupKey], because a row now carries more
+  /// than one group: Transform, plus one header per R6 effect.
+  final ValueNotifier<Set<String>> _expandedLaneGroupKeys = ValueNotifier(
+    const <String>{},
+  );
 
-  void _toggleTransformGroup(LayerId layerId) {
-    final next = Set<LayerId>.of(_expandedTransformGroupLayerIds.value);
-    if (!next.remove(layerId)) {
-      next.add(layerId);
+  void _toggleLaneGroup(String groupKey) {
+    final next = Set<String>.of(_expandedLaneGroupKeys.value);
+    if (!next.remove(groupKey)) {
+      next.add(groupKey);
     }
-    _expandedTransformGroupLayerIds.value = next;
+    _expandedLaneGroupKeys.value = next;
   }
 
   /// SE/camera timeline sections hidden from the grids (view state —
@@ -690,7 +692,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _storyboardTrackLaneHeight.dispose();
     _showSecondsDisplay.dispose();
     _expandedLaneLayerIds.dispose();
-    _expandedTransformGroupLayerIds.dispose();
+    _expandedLaneGroupKeys.dispose();
     _hiddenTimelineSections.dispose();
     _collapsedAttachBaseIds.dispose();
     _timelineRowFilter.dispose();
@@ -1167,7 +1169,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               // step skips this whole tab rebuild.
               _showSecondsDisplay,
               _expandedLaneLayerIds,
-              _expandedTransformGroupLayerIds,
+              _expandedLaneGroupKeys,
               _hiddenTimelineSections,
               _collapsedAttachBaseIds,
               _timelineRowFilter,
@@ -1189,9 +1191,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               },
               expandedLaneLayerIds: _expandedLaneLayerIds.value,
               onToggleLayerLanes: _toggleLayerLanes,
-              expandedTransformGroupLayerIds:
-                  _expandedTransformGroupLayerIds.value,
-              onToggleTransformGroup: _toggleTransformGroup,
+              expandedLaneGroupKeys: _expandedLaneGroupKeys.value,
+              onToggleLaneGroupKey: _toggleLaneGroup,
               hiddenSections: _hiddenTimelineSections.value,
               onToggleSection: _toggleTimelineSection,
               rowFilter: _timelineRowFilter.value,

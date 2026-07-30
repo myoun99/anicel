@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 
 import '../models/camera_instruction.dart';
 import '../models/layer.dart';
+import '../models/layer_effect.dart';
 import '../models/layer_folder.dart';
 import '../models/layer_id.dart';
 import '../models/key_range_move.dart' show transformKeyFrameUnion;
@@ -30,6 +31,8 @@ import '../services/camera_pose_resolver.dart';
 import 'text/app_strings.dart';
 import '../models/timeline_coverage.dart' show TimelineBlockEdge;
 import 'timeline/camera_key_edit.dart';
+import 'timeline/effect_lane_editing.dart';
+import 'timeline/effect_lane_policy.dart';
 import 'timeline/property_lane_model.dart';
 import 'timeline/timeline_cel_content_source.dart';
 import 'timeline/timeline_cut_end_handle.dart';
@@ -66,8 +69,8 @@ class TimelineTabHost extends StatefulWidget {
     required this.onShowSecondsChanged,
     this.expandedLaneLayerIds = const {},
     this.onToggleLayerLanes,
-    this.expandedTransformGroupLayerIds = const {},
-    this.onToggleTransformGroup,
+    this.expandedLaneGroupKeys = const {},
+    this.onToggleLaneGroupKey,
     this.hiddenSections = const {},
     this.onToggleSection,
     this.rowFilter = TimelineRowFilter.none,
@@ -99,11 +102,12 @@ class TimelineTabHost extends StatefulWidget {
   final Set<LayerId> expandedLaneLayerIds;
   final ValueChanged<LayerId>? onToggleLayerLanes;
 
-  /// Layers whose Transform GROUP is twirled open (AE group collapse —
-  /// default collapsed; host-owned so the per-layer state survives tab
-  /// switches).
-  final Set<LayerId> expandedTransformGroupLayerIds;
-  final ValueChanged<LayerId>? onToggleTransformGroup;
+  /// LANE GROUPS twirled open (AE group collapse — default collapsed;
+  /// host-owned so the state survives tab switches). Keyed by
+  /// [laneGroupKey]: a row carries the Transform group AND one header per
+  /// R6 effect, so the key has to name the group, not just the row.
+  final Set<String> expandedLaneGroupKeys;
+  final ValueChanged<String>? onToggleLaneGroupKey;
 
   /// SE/camera section visibility (host-owned, survives tab switches):
   /// hidden sections render no rows; the toolbar buttons toggle them.
@@ -291,6 +295,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         return [
           ...seAudioLanesFor(layer),
           ..._collapsibleTransformGroup(layer, _layerTransformLanes(layer)),
+          ..._layerEffectLanes(layer),
         ];
       case LayerKind.animation:
       case LayerKind.image:
@@ -300,7 +305,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       // A folder's FX lanes ARE layer lanes (R27 #26 asked for the layer
       // lane grammar verbatim; now it is literally the same code path).
       case LayerKind.folder:
-        return _collapsibleTransformGroup(layer, _layerTransformLanes(layer));
+        return [
+          ..._collapsibleTransformGroup(layer, _layerTransformLanes(layer)),
+          // R6: effects read below Transform, the AE panel's order.
+          ..._layerEffectLanes(layer),
+        ];
     }
   }
 
@@ -327,7 +336,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     Layer layer,
     List<PropertyLaneRow> group,
   ) {
-    final expanded = widget.expandedTransformGroupLayerIds.contains(layer.id);
+    final expanded = widget.expandedLaneGroupKeys.contains(
+      laneGroupKey(layer.id, transformGroupHeaderLane.laneId),
+    );
     return [
       // The header carries the member lanes' KEY UNION (UI-R20 #13, the
       // camera row's summary pattern) — one glance shows where the
@@ -338,6 +349,28 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       ),
       if (expanded) ...group.where((lane) => !lane.isGroupHeader),
     ];
+  }
+
+  /// The row's EFFECT lanes (R6), below its Transform group: one collapsible
+  /// header per effect with its parameter lanes inside. Empty for every row
+  /// that carries no effects, which is the default everywhere.
+  List<PropertyLaneRow> _layerEffectLanes(Layer layer) {
+    if (layer.effects.isEmpty) {
+      return const [];
+    }
+    return effectPropertyLanes(
+      layer.effects,
+      isExpanded: (effectId) => widget.expandedLaneGroupKeys.contains(
+        laneGroupKey(layer.id, effectGroupLaneId(effectId)),
+      ),
+      valueAt: (effectId, parameterId, frameIndex) =>
+          _session.layerEffectParameterAtFrame(
+            layer,
+            effectId,
+            parameterId,
+            frameIndex,
+          ),
+    );
   }
 
   /// The track a layer's transform lanes edit: the camera rides the cut's
@@ -378,8 +411,36 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   // now — the carrier IS the folder, so every lane edit below takes the
   // one path.
 
+  /// Commits an edited EFFECT CHAIN as one undo step (R6).
+  ///
+  /// Track-owned SE rows stand down for the same reason their transform
+  /// lanes do: the display clone strips FX, so a clone-based commit would
+  /// plant the chain where nothing can edit it.
+  void _commitEffectLaneEdit(
+    Layer layer,
+    List<LayerEffect>? next,
+    String description,
+  ) {
+    if (next == null || _session.isTrackSeLayerId(layer.id)) {
+      return;
+    }
+    _session.updateLayerEffects(layer.id, next, description: description);
+  }
+
   PropertyLaneEditCallbacks get _laneEdit => PropertyLaneEditCallbacks(
     onToggleKeyAt: (layer, lane, frameIndex) {
+      if (laneIsEffectLane(lane)) {
+        _commitEffectLaneEdit(
+          layer,
+          effectsWithLaneKeyToggled(
+            layer.effects,
+            laneId: lane.laneId,
+            frameIndex: frameIndex,
+          ),
+          '${lane.label} keyframe at frame ${frameIndex + 1}',
+        );
+        return;
+      }
       final isCamera = layer.kind == LayerKind.camera;
       _commitLaneEdit(
         layer,
@@ -404,6 +465,19 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     },
     onMoveKey: (layer, lane, fromFrame, toFrame) {
       final description = 'Move ${lane.label} keyframe to frame ${toFrame + 1}';
+      if (laneIsEffectLane(lane)) {
+        _commitEffectLaneEdit(
+          layer,
+          effectsWithLaneKeyMoved(
+            layer.effects,
+            laneId: lane.laneId,
+            fromFrame: fromFrame,
+            toFrame: toFrame,
+          ),
+          description,
+        );
+        return;
+      }
       _commitLaneEdit(
         layer,
         transformTrackWithLaneKeyMoved(
@@ -417,6 +491,18 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     },
     onRemoveKey: (layer, lane, frameIndex) {
       final description = 'Delete ${lane.label} keyframe';
+      if (laneIsEffectLane(lane)) {
+        _commitEffectLaneEdit(
+          layer,
+          effectsWithLaneKeyRemoved(
+            layer.effects,
+            laneId: lane.laneId,
+            frameIndex: frameIndex,
+          ),
+          description,
+        );
+        return;
+      }
       _commitLaneEdit(
         layer,
         transformTrackWithLaneKeyRemoved(
@@ -429,6 +515,18 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     },
     onToggleHold: (layer, lane, frameIndex) {
       final description = 'Toggle hold on ${lane.label} keyframe';
+      if (laneIsEffectLane(lane)) {
+        _commitEffectLaneEdit(
+          layer,
+          effectsWithLaneHoldToggled(
+            layer.effects,
+            laneId: lane.laneId,
+            frameIndex: frameIndex,
+          ),
+          description,
+        );
+        return;
+      }
       _commitLaneEdit(
         layer,
         transformTrackWithLaneHoldToggled(
@@ -452,6 +550,19 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         return;
       }
       final description = 'Set ${lane.label} at frame ${frameIndex + 1}';
+      if (laneIsEffectLane(lane)) {
+        _commitEffectLaneEdit(
+          layer,
+          effectsWithLaneValueEdited(
+            layer.effects,
+            laneId: lane.laneId,
+            frameIndex: frameIndex,
+            input: input,
+          ),
+          description,
+        );
+        return;
+      }
       _commitLaneEdit(
         layer,
         transformTrackWithLaneValueEdited(
@@ -1290,10 +1401,13 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                 ),
           lanesForLayer: _lanesForLayer,
           laneEdit: _laneEdit,
-          // The Transform group header's twirl (AE collapse).
-          onToggleLaneGroup: widget.onToggleTransformGroup == null
+          // A group header's twirl (AE collapse) — Transform or one of the
+          // row's effects, told apart by the lane the tap carries.
+          onToggleLaneGroup: widget.onToggleLaneGroupKey == null
               ? null
-              : (layer, lane) => widget.onToggleTransformGroup!(layer.id),
+              : (layer, lane) => widget.onToggleLaneGroupKey!(
+                  laneGroupKey(layer.id, lane.laneId),
+                ),
           timelineActionToolbar: timelineToolbar,
         );
         // The GAP empty state (UI-R9 #3): no cut selected — no rows, no

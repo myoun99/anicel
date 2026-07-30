@@ -199,6 +199,16 @@ bool layerKindHasLayerTransform(LayerKind kind) {
   };
 }
 
+/// Whether [kind] authors its own composite-time EFFECT chain
+/// ([Layer.effects], R6). The same answer as [layerKindHasLayerTransform],
+/// for the same reason — the camera is the frame, not a thing inside it, so
+/// it has no picture of its own to filter (a camera-wide grade would belong
+/// to the track's FX, not to this row). Named separately because it is a
+/// different question; defined in terms of the other so the two can never
+/// drift.
+bool layerKindHasLayerEffects(LayerKind kind) =>
+    layerKindHasLayerTransform(kind);
+
 /// Whether a row of [kind] can be copied to the layer clipboard,
 /// duplicated or pasted. The camera is a fixture (exactly one per cut) and
 /// SE rows are track-owned — duplicating either would recreate a shape the

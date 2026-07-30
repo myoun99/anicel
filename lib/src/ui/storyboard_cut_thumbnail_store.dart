@@ -175,6 +175,12 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
         // re-render (was signature-blind — R4-⑩).
         ..write(':')
         ..write(layer.transformTrack.hashCode)
+        // Same rule for the blend and the R6 effect chain: both change the
+        // composited pixels and nothing else in this signature would move.
+        ..write(':')
+        ..write(layer.blendMode.name)
+        ..write(':')
+        ..write(Object.hashAll(layer.effects))
         // Which frame is EXPOSED at the thumbnail index is timeline data;
         // exposure-only edits used to leave a stale thumb (documented gap,
         // now closed). Deterministic fold over the entries — Map itself

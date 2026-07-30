@@ -13,6 +13,7 @@ import '../models/export_overrides.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
+import '../models/layer_effect.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
 import '../models/layer_mark.dart';
@@ -621,6 +622,17 @@ class ProjectRepository {
     updateLayer(
       layerId: layerId,
       update: (layer) => layer.copyWith(transformTrack: transformTrack),
+    );
+  }
+
+  void updateLayerEffects({
+    required CutId cutId,
+    required LayerId layerId,
+    required List<LayerEffect> effects,
+  }) {
+    updateLayer(
+      layerId: layerId,
+      update: (layer) => layer.copyWith(effects: effects),
     );
   }
 

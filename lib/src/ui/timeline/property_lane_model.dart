@@ -62,6 +62,13 @@ class PropertyLaneRow {
   final bool groupExpanded;
 }
 
+/// The view-state key of ONE collapsible lane group. A layer twirl-down can
+/// hold several group headers now (Transform, plus one per effect), so the
+/// expansion set is keyed by (row, group) instead of by row alone — a Blur
+/// opened on layer A must not open Transform on layer B.
+String laneGroupKey(LayerId layerId, String laneId) =>
+    '${layerId.value}|$laneId';
+
 /// One display row of the timeline grids: a layer row or one of its
 /// expanded property lanes. Both orientations build their rows from this
 /// shared policy (Axis rule: never fork per orientation).

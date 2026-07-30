@@ -71,6 +71,13 @@ Layer duplicateLayerAsIndependentCopy({
   Map<LayerId, LayerId> layerIdMap = const {},
 }) {
   final attachedTo = source.attachedToLayerId;
+  final folderId = source.folderId;
+  // Field-by-field reconstruction is this helper's trap, the same one
+  // [_duplicateFrame] documents: every field NOT listed here is silently
+  // reset to its default. The R6 audit found nine already lost that way —
+  // blendMode, folderId (so a duplicated cut FLATTENED every folder),
+  // seNameTag, isFillReference, runBehaviors, collapsed, audioGain,
+  // audioPan and attachedMode. Anything added to [Layer] belongs here.
   return Layer(
     id: newLayerId,
     name: newName,
@@ -84,15 +91,25 @@ Layer duplicateLayerAsIndependentCopy({
       ),
     ),
     isVisible: source.isVisible,
+    collapsed: source.collapsed,
     muted: source.muted,
+    audioGain: source.audioGain,
+    audioPan: source.audioPan,
     opacity: source.opacity,
+    blendMode: source.blendMode,
     kind: kind ?? source.kind,
     onTimesheet: source.onTimesheet,
     mark: source.mark,
+    isFillReference: source.isFillReference,
     // The duplicated layer shows the same library asset (§6-z23).
     mediaReference: source.mediaReference,
+    seNameTag: source.seNameTag,
     transformTrack: source.transformTrack,
+    // The effect chain is layer state like the transform track (R6): a
+    // duplicated cut keeps its 촬영 work.
+    effects: source.effects,
     instructions: source.instructions,
+    runBehaviors: source.runBehaviors,
     audioClips: [
       for (final clip in source.audioClips)
         clip.copyWith(frameId: frameIdMap[clip.frameId] ?? clip.frameId),
@@ -105,6 +122,11 @@ Layer duplicateLayerAsIndependentCopy({
         ? null
         : (layerIdMap[attachedTo] ?? attachedTo),
     attachedPlacement: source.attachedPlacement,
+    attachedMode: source.attachedMode,
+    // Folder membership remaps exactly like the attach pointer: the copied
+    // folder row when the whole cut duplicates, the ORIGINAL folder when a
+    // lone layer is copied inside the same cut.
+    folderId: folderId == null ? null : (layerIdMap[folderId] ?? folderId),
     baseFrameLinks: {
       for (final entry in source.baseFrameLinks.entries)
         (frameIdMap[entry.key] ?? entry.key):
