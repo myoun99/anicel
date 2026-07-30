@@ -1065,6 +1065,11 @@ class EditorSessionManager extends ChangeNotifier {
 
   @override
   void dispose() {
+    // First: a bake sweep suspended across an engine await must find the
+    // flag set when it resumes — it stops touching the stores and never
+    // notifies a disposed ChangeNotifier.
+    _disposed = true;
+    _textCelSweepDirty = false;
     brushFrameStore.celContentRevision.removeListener(_bumpCelTintRevision);
     brushInputActive.removeListener(_bumpCelTintRevision);
     celTintRevision.dispose();
@@ -2962,7 +2967,14 @@ class EditorSessionManager extends ChangeNotifier {
         name: nextAttachedLayerName(base, cut.layers, placement),
         frames: const [],
         timeline: const {},
-        kind: base.kind,
+        // An attach row exists to be DRAWN on (own cels riding the base's
+        // FX) — a base kind that refuses the brush (text) must not pass
+        // the refusal down. Mirrors the referenced-image behavior, where
+        // the refusal lives in a non-inherited field and the attach row
+        // is born drawable.
+        kind: layerKindAcceptsBrushInput(base.kind)
+            ? base.kind
+            : LayerKind.animation,
         onTimesheet: false,
         attachedToLayerId: base.id,
         attachedPlacement: placement,
@@ -4341,12 +4353,17 @@ class EditorSessionManager extends ChangeNotifier {
   // funnels through the history manager, so ONE listener re-renders
   // whatever projection went stale. Self-healing, no per-command hooks.
 
-  /// Canonical cel key → the content hash its stored raster was rendered
-  /// from. Entries whose cel stops being a text frame are pruned, never
-  /// clear-baked — a rasterized text layer KEEPS its pixels.
-  final Map<BrushFrameKey, int> _textCelBakedHash = {};
+  /// Canonical cel key → the exact inputs its stored raster was rendered
+  /// from. The CONTENT itself, not a hash — equality gates skipping a
+  /// re-bake, and a ~29-bit hash collision would freeze a stale
+  /// projection silently. Entries whose cel stops being a text frame are
+  /// pruned, never clear-baked — a rasterized text layer KEEPS its
+  /// pixels.
+  final Map<BrushFrameKey, (TextCelContent?, CanvasSize)>
+  _textCelBakedContent = {};
   bool _textCelSweepDirty = false;
   Future<void>? _textCelSweep;
+  bool _disposed = false;
 
   /// Test hook: awaits the in-flight bake sweep (projection settles).
   @visibleForTesting
@@ -4357,9 +4374,19 @@ class EditorSessionManager extends ChangeNotifier {
     _textCelSweep ??= Future.microtask(_runTextCelBakeSweeps);
   }
 
+  /// Saves snapshot the store synchronously, so an in-flight bake must
+  /// land first — otherwise the archive pairs NEW parameters with the OLD
+  /// raster, and the first-sight trust after reload cements the stale
+  /// picture forever.
+  Future<void> _flushTextCelBakes() async {
+    while (_textCelSweep != null) {
+      await _textCelSweep;
+    }
+  }
+
   Future<void> _runTextCelBakeSweeps() async {
     try {
-      while (_textCelSweepDirty) {
+      while (_textCelSweepDirty && !_disposed) {
         _textCelSweepDirty = false;
         await _sweepTextCelBakesOnce();
       }
@@ -4371,7 +4398,7 @@ class EditorSessionManager extends ChangeNotifier {
   Future<void> _sweepTextCelBakesOnce() async {
     final project = _repository.currentProject;
     if (project == null) {
-      _textCelBakedHash.clear();
+      _textCelBakedContent.clear();
       return;
     }
     final registry = project.linkRegistry;
@@ -4384,17 +4411,18 @@ class EditorSessionManager extends ChangeNotifier {
             continue;
           }
           for (final frame in layer.frames) {
+            if (_disposed) {
+              return; // Mid-sweep dispose: stop touching the stores.
+            }
             final raw = brushFrameKeyForCut(cut, layer.id, frame.id);
             final key = registry.canonicalCelKey(raw);
             if (!seen.add(key)) {
               continue; // Linked banks share one physical projection.
             }
             final content = frame.textContent;
-            final hash = content == null
-                ? 0
-                : Object.hash(content, cut.canvasSize);
-            final known = _textCelBakedHash[key];
-            if (known == hash) {
+            final baked = (content, cut.canvasSize);
+            final known = _textCelBakedContent[key];
+            if (known == baked) {
               continue;
             }
             if (known == null &&
@@ -4403,45 +4431,62 @@ class EditorSessionManager extends ChangeNotifier {
                 brushFrameStore.celHasRenderableContent(raw)) {
               // First sight of a cel that already carries pixels (a loaded
               // project): trust the stored projection instead of paying a
-              // full re-render on open. A pasted/duplicated cel arrives
-              // with an EMPTY store bank and falls through to the bake.
-              _textCelBakedHash[key] = hash;
+              // full re-render on open (saves flush in-flight bakes, so an
+              // archive can never pair new params with an old raster). A
+              // pasted/duplicated cel arrives with an EMPTY store bank and
+              // falls through to the bake.
+              _textCelBakedContent[key] = baked;
               continue;
             }
             if (content == null || content.text.isEmpty) {
               // The parameters went (undo of a set, cleared text): the
               // projection goes with them — the cel reads blank again.
-              bakeCelSurface(
-                brushFrameStore,
-                raw,
-                BitmapSurface(canvasSize: cut.canvasSize),
-              );
+              // ONLY for cels this sweep itself baked: a drawn cel that
+              // arrives on a text row through a cross-row move has no
+              // entry here, and blank-baking it would destroy artwork
+              // undo cannot restore.
+              if (known != null) {
+                bakeCelSurface(
+                  brushFrameStore,
+                  raw,
+                  BitmapSurface(canvasSize: cut.canvasSize),
+                );
+                changed = true;
+              }
             } else {
-              final image = await renderTextCelImage(
+              final rendered = await renderTextCelImage(
                 content: content,
                 canvas: cut.canvasSize,
               );
               try {
-                // The image is already canvas-sized — stretch is identity;
-                // the tile slice + donation ride the import bake path.
+                if (_disposed) {
+                  return;
+                }
                 final surface = await rasterizeImageToSurface(
-                  image: image,
+                  image: rendered.image,
                   canvas: cut.canvasSize,
-                  fit: MediaFitMode.stretch,
+                  fit: MediaFitMode.none,
+                  // The render already clipped to the pasteboard wall —
+                  // its own placement keeps off-canvas overflow alive,
+                  // like any oversized drop.
+                  placement: rendered.placement,
                 );
+                if (_disposed) {
+                  return;
+                }
                 bakeCelSurface(brushFrameStore, raw, surface);
+                changed = true;
               } finally {
-                image.dispose();
+                rendered.image.dispose();
               }
             }
-            _textCelBakedHash[key] = hash;
-            changed = true;
+            _textCelBakedContent[key] = baked;
           }
         }
       }
     }
-    _textCelBakedHash.removeWhere((key, _) => !seen.contains(key));
-    if (changed) {
+    _textCelBakedContent.removeWhere((key, _) => !seen.contains(key));
+    if (changed && !_disposed) {
       notifyListeners();
     }
   }
@@ -11611,6 +11656,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// the project path — the autosave service's snapshot writer. Creates
   /// the parent folder (a custom sidecar directory may not exist yet).
   Future<void> writeAutosaveSnapshot(String path) async {
+    await _flushTextCelBakes();
     await File(path).parent.create(recursive: true);
     await _anicelFileService.save(
       project: _repository.requireProject(),
@@ -11625,6 +11671,9 @@ class EditorSessionManager extends ChangeNotifier {
   /// recorded for Drive portability). A successful save retires the
   /// autosave sidecar.
   Future<void> saveProjectToFile(String filePath) async {
+    // A text bake in flight must land before the store snapshots — the
+    // archive's parameters and raster must never disagree.
+    await _flushTextCelBakes();
     final previousSidecar = autosaveSidecarPath;
     // Before serializing: the first save adopts the session's shelf
     // takes into Media/ so the .anicel carries the adopted paths.

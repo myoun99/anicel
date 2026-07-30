@@ -82,9 +82,55 @@ void main() {
     expect(result.style.align, TextCelAlign.left);
     expect(
       result.position,
-      const Offset(960, 540),
-      reason: 'the default position seeds the fields',
+      isNull,
+      reason:
+          'untouched position stays the true (null) default — the '
+          'canvas center is a hint, never a committed value',
     );
+  });
+
+  testWidgets('clearing a position field falls back to the SAVED anchor — '
+      'a typo never silently re-centers the text', (tester) async {
+    const initial = TextCelContent(text: 'C-7', position: Offset(200, 300));
+    final result = await run(
+      tester,
+      initial: initial,
+      interact: () async {
+        await tester.ensureVisible(
+          find.byKey(const ValueKey<String>('text-cel-position-x')),
+        );
+        await tester.pump();
+        await tester.enterText(
+          find.byKey(const ValueKey<String>('text-cel-position-x')),
+          '',
+        );
+        await tester.tap(
+          find.byKey(const ValueKey<String>('instance-edit-ok-button')),
+        );
+        await tester.pumpAndSettle();
+      },
+    );
+    expect(result!.position, const Offset(200, 300));
+  });
+
+  testWidgets('a NEW cel saved without touching position pops a NULL anchor '
+      '(the true block-centered default), not the hint numbers', (
+    tester,
+  ) async {
+    final result = await run(
+      tester,
+      interact: () async {
+        await tester.enterText(
+          find.byKey(const ValueKey<String>('text-cel-text-field')),
+          'BG',
+        );
+        await tester.tap(
+          find.byKey(const ValueKey<String>('instance-edit-ok-button')),
+        );
+        await tester.pumpAndSettle();
+      },
+    );
+    expect(result!.position, isNull);
   });
 
   testWidgets('an existing cel loads its parameters; cancel pops nothing', (

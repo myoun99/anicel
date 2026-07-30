@@ -86,13 +86,18 @@ ui.Rect placementRectFor({
 /// everywhere). The raster covers the canvas rect UNION the placement
 /// rect clipped to the pasteboard — fit=none overflow lives on the
 /// pasteboard exactly like an oversized selection drop.
+///
+/// [placement] overrides the [fit] math when the caller already knows
+/// exactly where the image goes (the text bake renders its own bounds);
+/// the wall clip and tile slice below treat it like any other placement.
 Future<BitmapSurface> rasterizeImageToSurface({
   required ui.Image image,
   required CanvasSize canvas,
   required MediaFitMode fit,
+  ui.Rect? placement,
   int tileSize = 256,
 }) async {
-  final placement = placementRectFor(
+  placement ??= placementRectFor(
     sourceWidth: image.width,
     sourceHeight: image.height,
     canvas: canvas,
@@ -132,12 +137,23 @@ Future<BitmapSurface> rasterizeImageToSurface({
     -(tileX0 * tileSize).toDouble(),
     -(tileY0 * tileSize).toDouble(),
   );
+  // A 1:1 integer-aligned placement must copy bytes, not resample:
+  // bicubic (high) blurs even at identity — a hard black line came back
+  // 28/255 gray through the cubic kernel — and the text bake's whole
+  // contract is that the store pixels ARE the engine render.
+  final identityPlacement =
+      placement.width == image.width.toDouble() &&
+      placement.height == image.height.toDouble() &&
+      placement.left == placement.left.truncateToDouble() &&
+      placement.top == placement.top.truncateToDouble();
   paintCanvas.drawImageRect(
     image,
     ui.Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
     placement,
     ui.Paint()
-      ..filterQuality = ui.FilterQuality.high
+      ..filterQuality = identityPlacement
+          ? ui.FilterQuality.none
+          : ui.FilterQuality.high
       ..isAntiAlias = true,
   );
   final picture = recorder.endRecording();

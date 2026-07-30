@@ -524,6 +524,14 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     if (layer == null || layer.id != layerId) {
       return;
     }
+    // Pin the EDITING selection to the tapped cell: during playback the
+    // tap's select routes to the playback clock and leaves the editing
+    // playhead parked elsewhere — every editor below reads/writes
+    // selectedFrame, and a stale playhead made the dialog edit the wrong
+    // cell (worst on text rows, where Save overwrites the cel).
+    if (frameIndex >= 0 && _session.currentFrameIndex != frameIndex) {
+      _session.selectFrameIndex(frameIndex);
+    }
     switch (layer.kind) {
       case LayerKind.se:
         await _editSeLabel();

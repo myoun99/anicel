@@ -41,15 +41,17 @@ class _TextCelDialogState extends State<TextCelDialog> {
   );
   late TextCelStyle _style =
       widget.initialContent?.style ?? const TextCelStyle();
+  // Only a SAVED anchor seeds the field values — the canvas-center
+  // default is a HINT, not a value: committing it as numbers would pin
+  // the first line's top at mid-canvas, a different placement than the
+  // true null default (block-centered), and re-saving a null-position cel
+  // would silently convert it.
   late final TextEditingController _x = TextEditingController(
-    text: _initialPosition?.dx.round().toString() ?? '',
+    text: widget.initialContent?.position?.dx.round().toString() ?? '',
   );
   late final TextEditingController _y = TextEditingController(
-    text: _initialPosition?.dy.round().toString() ?? '',
+    text: widget.initialContent?.position?.dy.round().toString() ?? '',
   );
-
-  Offset? get _initialPosition =>
-      widget.initialContent?.position ?? widget.defaultPosition;
 
   /// The ink swatch roster: paper ink, white, the danger red (the アフレコ
   /// vocabulary) and the accent.
@@ -77,8 +79,11 @@ class _TextCelDialogState extends State<TextCelDialog> {
   }
 
   void _submit() {
-    final x = double.tryParse(_x.text.trim());
-    final y = double.tryParse(_y.text.trim());
+    // A cleared or mistyped field falls back PER AXIS to the saved
+    // anchor — never silently re-centering text the user only retyped.
+    final saved = widget.initialContent?.position;
+    final x = double.tryParse(_x.text.trim()) ?? saved?.dx;
+    final y = double.tryParse(_y.text.trim()) ?? saved?.dy;
     Navigator.of(context).pop(
       TextCelContent(
         text: _text.text,
@@ -152,8 +157,16 @@ class _TextCelDialogState extends State<TextCelDialog> {
                     key: ValueKey<String>('text-cel-size-${size.round()}'),
                     label: '${size.round()}',
                     selected: _style.fontSize == size,
+                    // The outline width is DERIVED from the size — resizing
+                    // with the outline on re-derives it, so toggle order
+                    // can't bake two different widths for one look.
                     onTap: () => setState(
-                      () => _style = _style.copyWith(fontSize: size),
+                      () => _style = _style.copyWith(
+                        fontSize: size,
+                        outlineWidth: _style.outlineColor == null
+                            ? null
+                            : (size / 12).clamp(2.0, 8.0),
+                      ),
                     ),
                   ),
               ],
@@ -240,9 +253,10 @@ class _TextCelDialogState extends State<TextCelDialog> {
                   child: TextField(
                     key: const ValueKey<String>('text-cel-position-x'),
                     controller: _x,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       isDense: true,
                       prefixText: 'X ',
+                      hintText: widget.defaultPosition?.dx.round().toString(),
                     ),
                     keyboardType: TextInputType.number,
                   ),
@@ -252,9 +266,10 @@ class _TextCelDialogState extends State<TextCelDialog> {
                   child: TextField(
                     key: const ValueKey<String>('text-cel-position-y'),
                     controller: _y,
-                    decoration: const InputDecoration(
+                    decoration: InputDecoration(
                       isDense: true,
                       prefixText: 'Y ',
+                      hintText: widget.defaultPosition?.dy.round().toString(),
                     ),
                     keyboardType: TextInputType.number,
                   ),

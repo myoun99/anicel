@@ -15,6 +15,7 @@ import '../models/timeline_exposure.dart';
 import '../models/timeline_repeat.dart';
 import '../services/command.dart';
 import '../services/commands/update_cut_durations_command.dart';
+import '../services/commands/update_layer_kind_command.dart';
 import '../services/commands/update_layer_timeline_command.dart';
 import '../services/history_manager.dart';
 import '../services/project_repository.dart';
@@ -881,18 +882,46 @@ class TimelineController {
   /// row BECOMES an animation layer — every cel's parameters go, the baked
   /// pixels stay, and the brush unlocks. One undo restores the kind and
   /// every frame's parameters together.
+  ///
+  /// Two commands compose the step because they mirror DIFFERENTLY: the
+  /// frames edit mirrors the shared cel bank, and the KIND must travel
+  /// [UpdateLayerKindCommand] so every 겸용 member converts together — a
+  /// kind smuggled through the frames funnel left linked siblings as
+  /// content-less text rows, and the bake sweep blank-baked the shared
+  /// bank both cuts display.
   void rasterizeTextLayer({required LayerId layerId}) {
+    final cutId = _cutId;
+    if (cutId == null) {
+      return;
+    }
     final before = _requireLayer(layerId);
     if (before.kind != LayerKind.text) {
       return;
     }
-    final after = before.copyWith(
-      kind: LayerKind.animation,
-      frames: before.frames
-          .map((frame) => frame.copyWith(textContent: null))
-          .toList(growable: false),
+    final strippedFrames = before.frames
+        .map((frame) => frame.copyWith(textContent: null))
+        .toList(growable: false);
+    final command = CompositeCommand(
+      description: 'Rasterize text layer',
+      commands: [
+        _layerEditCommand(
+          before: before,
+          after: before.copyWith(frames: strippedFrames),
+        ),
+        UpdateLayerKindCommand(
+          repository: _repository,
+          cutId: cutId,
+          layerId: layerId,
+          kind: LayerKind.animation,
+        ),
+      ],
     );
-    _applyLayerEdit(before: before, after: after);
+    final historyManager = _historyManager;
+    if (historyManager == null) {
+      command.execute();
+    } else {
+      historyManager.execute(command);
+    }
   }
 
   void linkFrameForLayer({
