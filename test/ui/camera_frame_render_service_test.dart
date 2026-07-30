@@ -8,6 +8,8 @@ import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/camera_pose.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/services/cut_frame_composite_plan.dart';
 import 'package:anicel/src/ui/camera/camera_frame_render_service.dart';
@@ -159,6 +161,113 @@ void main() {
       // = (4,2)-(5,3), so output pixel (4,2) is red.
       expect(await pixelAt(image, 4, 2), const Color(0xFFFF0000));
       expect(await pixelAt(image, 5, 4), const Color(0xFFFFFFFF));
+      image.dispose();
+    });
+  });
+
+  testWidgets('R6: a layer effect filters its own picture on this route', (
+    tester,
+  ) async {
+    await tester.runAsync(() async {
+      // Mid-grey pixel, brightened +20 (= +51 of full scale). This is the
+      // camera/export/thumbnail route, so it proves the chain travels the
+      // whole way — plan field to painted pixel.
+      final pixels = Uint8List(8 * 8 * 4);
+      const offset = (2 * 8 + 2) * 4;
+      pixels[offset] = 0x80;
+      pixels[offset + 1] = 0x80;
+      pixels[offset + 2] = 0x80;
+      pixels[offset + 3] = 255;
+      final image = await service.renderThroughCamera(
+        layers: [
+          CutFrameCompositeLayer(
+            surface: BitmapSurface(
+              canvasSize: canvasSize,
+              tileSize: 8,
+              tiles: {
+                TileCoord(x: 0, y: 0): BitmapTile(
+                  coord: TileCoord(x: 0, y: 0),
+                  size: 8,
+                  pixels: pixels,
+                ),
+              },
+            ),
+            opacity: 1,
+            effects: resolveLayerEffectsAt(
+              effects: [
+                LayerEffect(
+                  id: const EffectId('fx'),
+                  kind: EffectKind.brightnessContrast,
+                  parameters: {'brightness': EffectParameter(value: 20)},
+                ),
+              ],
+              frameIndex: 0,
+            ),
+          ),
+        ],
+        pose: CameraPose(center: CanvasPoint(x: 4, y: 4)),
+        cameraFrameSize: canvasSize,
+      );
+
+      final filtered = await pixelAt(image, 2, 2);
+      expect(
+        (filtered.r * 255).round(),
+        inInclusiveRange(0x80 + 49, 0x80 + 53),
+      );
+      expect(filtered.a, 1.0);
+      image.dispose();
+    });
+  });
+
+  testWidgets('R6: a GROUP effect lands once on the buffer, and a panned '
+      'camera does not clip the group', (tester) async {
+    await tester.runAsync(() async {
+      // The old group bounds were the camera frame at the canvas ORIGIN, so
+      // a camera panned away from it clipped members the view plainly
+      // showed. Camera centered at (6,6) with a member at (6,6): visible.
+      final image = await service.renderThroughCamera(
+        nodes: [
+          CutFrameCompositeSurfaceGroup(
+            children: [
+              CutFrameCompositeSurfaceLeaf(
+                CutFrameCompositeLayer(
+                  surface: surfaceWithRedPixelAt(6, 6),
+                  opacity: 1,
+                ),
+              ),
+            ],
+            opacity: 1,
+            blendMode: LayerBlendMode.normal,
+            effects: resolveLayerEffectsAt(
+              effects: [
+                LayerEffect(
+                  id: const EffectId('fx'),
+                  kind: EffectKind.hueSaturation,
+                  // Fully desaturated: the red member must come out grey.
+                  parameters: {'saturation': EffectParameter(value: -100)},
+                ),
+              ],
+              frameIndex: 0,
+            ),
+          ),
+        ],
+        pose: CameraPose(center: CanvasPoint(x: 6, y: 6)),
+        cameraFrameSize: canvasSize,
+      );
+
+      // The member sits at the output center under this pose.
+      final greyed = await pixelAt(image, 4, 4);
+      expect(
+        greyed.a,
+        1.0,
+        reason: 'the group must not be clipped away by its buffer bounds',
+      );
+      expect(
+        (greyed.r * 255).round(),
+        (greyed.g * 255).round(),
+        reason: 'desaturated: every channel equal',
+      );
+      expect((greyed.r * 255).round(), lessThan(200));
       image.dispose();
     });
   });
