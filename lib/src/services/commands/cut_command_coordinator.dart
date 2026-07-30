@@ -716,11 +716,14 @@ class CutCommandCoordinator {
                   .length <=
               1,
         // R28 #14: no drawing floor — the action section may empty out.
+        // An adjustment row deletes freely too: nothing depends on it, and
+        // deleting it simply un-filters the stack below.
         LayerKind.animation ||
         LayerKind.storyboard ||
         LayerKind.image ||
         LayerKind.text ||
-        LayerKind.folder => false,
+        LayerKind.folder ||
+        LayerKind.adjustment => false,
       };
       if (refused) {
         return;

@@ -161,6 +161,41 @@ final class CompositeGroupSignature extends CompositeNodeSignature {
       'effects: $effects, children: $children)';
 }
 
+/// An ADJUSTMENT scope's identity (R6b): what the row filters, plus the
+/// filter itself. A scope change — the row moving, its effects edited, its
+/// mix dragged — must change the composite's identity exactly as a
+/// folder's does, and the cache is content-addressed, so an unrepresented
+/// input would MERGE two different pictures onto one image.
+final class CompositeAdjustmentSignature extends CompositeNodeSignature {
+  CompositeAdjustmentSignature({
+    required List<CompositeNodeSignature> children,
+    required List<ResolvedLayerEffect> effects,
+    required this.mix,
+  }) : children = List.unmodifiable(children),
+       effects = List.unmodifiable(effects);
+
+  final List<CompositeNodeSignature> children;
+  final List<ResolvedLayerEffect> effects;
+  final double mix;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CompositeAdjustmentSignature &&
+          other.mix == mix &&
+          listEquals(other.effects, effects) &&
+          listEquals(other.children, children);
+
+  @override
+  int get hashCode =>
+      Object.hash(mix, Object.hashAll(effects), Object.hashAll(children));
+
+  @override
+  String toString() =>
+      'CompositeAdjustmentSignature(mix: $mix, effects: $effects, '
+      'children: $children)';
+}
+
 /// Identity of a composited cut frame's pixels.
 ///
 /// A cached composite is valid iff its stored signature equals the freshly
@@ -195,6 +230,8 @@ class CutFrameCompositeSignature {
           case CompositeLeafSignature(:final layer):
             yield layer;
           case CompositeGroupSignature(:final children):
+            yield* walk(children);
+          case CompositeAdjustmentSignature(:final children):
             yield* walk(children);
         }
       }
@@ -264,6 +301,16 @@ CutFrameCompositeSignature computeCutFrameCompositeSignature({
             opacity: opacity,
             blendMode: blendMode,
             effects: effects,
+          ),
+        CutFrameCompositeEntryAdjustment(
+          :final children,
+          :final effects,
+          :final mix,
+        ) =>
+          CompositeAdjustmentSignature(
+            children: mapNodes(children),
+            effects: effects,
+            mix: mix,
           ),
       },
   ];

@@ -304,6 +304,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           ..._collapsibleTransformGroup(layer, _layerTransformLanes(layer)),
           ..._layerEffectLanes(layer),
         ];
+      case LayerKind.adjustment:
+        // R6b: an adjustment row has no picture to move, so its twirl-down
+        // is the Effects groups alone — its whole content.
+        return _layerEffectLanes(layer);
       case LayerKind.animation:
       case LayerKind.image:
       case LayerKind.text:
@@ -660,8 +664,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       case LayerKind.text:
         await _editTextCel();
       case LayerKind.folder:
-        // A folder's band is the members' aggregate: nothing of its own
-        // to edit at a cell.
+      case LayerKind.adjustment:
+        // A folder's band is the members' aggregate and an adjustment's is
+        // empty: neither has a cell of its own to edit. Their work lives
+        // in the twirl-down.
         break;
       case LayerKind.animation || LayerKind.storyboard || LayerKind.image:
         await _renameSelectedFrame();
@@ -701,7 +707,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       case LayerKind.instruction:
         _session.createDefaultInstructionEventAtCurrentFrame();
       case LayerKind.folder:
-        // Nothing to create on a folder row — it holds rows, not cels.
+      case LayerKind.adjustment:
+        // Nothing to create on either row — a folder holds rows and an
+        // adjustment holds effects; neither holds cels.
         break;
       // A text cel is born BLANK like a drawing cel (UI-R25 #2: creation
       // never opens a dialog) — double-tap types into it afterwards.

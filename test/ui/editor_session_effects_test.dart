@@ -4,6 +4,7 @@ import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/canvas/canvas_layer_stack_view.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/effect_lane_editing.dart';
@@ -29,6 +30,7 @@ void main() {
             return request.effects;
           }
         case CanvasLayerGroupNode(:final children):
+        case CanvasLayerAdjustmentNode(:final children):
           final inner = stackEffectsOf(children);
           if (inner.isNotEmpty) {
             return inner;
@@ -200,6 +202,109 @@ void main() {
           .effects,
       isEmpty,
     );
+  });
+
+  group('the adjustment layer (R6b)', () {
+    /// The adjustment scope node in the editing stack, or null.
+    CanvasLayerAdjustmentNode? scopeIn(List<CanvasLayerStackNode> nodes) {
+      for (final node in nodes) {
+        if (node is CanvasLayerAdjustmentNode) {
+          return node;
+        }
+        if (node is CanvasLayerGroupNode) {
+          final inner = scopeIn(node.children);
+          if (inner != null) {
+            return inner;
+          }
+        }
+      }
+      return null;
+    }
+
+    test('Add Layer creates one, named FX1, above the active row', () {
+      final base = session.activeLayer!;
+      session.addLayerOfKind(LayerKind.adjustment);
+      final created = session.activeLayer!;
+      expect(created.kind, LayerKind.adjustment);
+      expect(created.name, 'FX1');
+      expect(created.effects, isEmpty);
+      expect(created.frames, isEmpty);
+      final layers = session.requireActiveCut.layers;
+      expect(
+        layers.indexWhere((layer) => layer.id == created.id),
+        greaterThan(layers.indexWhere((layer) => layer.id == base.id)),
+        reason: 'above the active row — which is what puts it in front',
+      );
+      session.undo();
+      expect(
+        session.requireActiveCut.layers.any(
+          (layer) => layer.kind == LayerKind.adjustment,
+        ),
+        isFalse,
+      );
+    });
+
+    test('an EMPTY adjustment filters nothing; adding an effect does', () {
+      // A default cut's rows start on a BLANK exposure, so give the row
+      // below the adjustment an actual cel — a scope with nothing in it is
+      // correctly no scope at all.
+      session.createDrawingAtCurrentFrame();
+      session.addLayerOfKind(LayerKind.adjustment);
+      expect(scopeIn(session.editingCanvasStack.nodes), isNull);
+
+      session.addEffectToActiveLayer(EffectKind.brightnessContrast);
+      final row = session.activeLayer!;
+      session.updateLayerEffects(
+        row.id,
+        effectsWithLaneValueEdited(
+          row.effects,
+          laneId: effectLaneId(row.effects.single.id, 'brightness'),
+          frameIndex: 0,
+          input: '30',
+        )!,
+      );
+
+      final scope = scopeIn(session.editingCanvasStack.nodes);
+      expect(scope, isNotNull);
+      expect(scope!.effects.single.parameter('brightness'), 30);
+      expect(scope.mix, 1);
+      expect(
+        scope.children,
+        isNotEmpty,
+        reason: 'the rows below it are what it filters',
+      );
+    });
+
+    test('it takes effects but no transform lanes', () {
+      session.addLayerOfKind(LayerKind.adjustment);
+      final row = session.activeLayer!;
+      expect(session.canAddEffectToActiveLayer, isTrue);
+      expect(layerKindHasLayerTransform(row.kind), isFalse);
+      // …and the coordinator refuses a transform outright — writing one is
+      // a programming error, not a silently ignored edit.
+      expect(
+        () => session.updateLayerTransformTrack(row.id, TransformTrack.empty()),
+        throwsStateError,
+      );
+    });
+
+    test('the row survives a save/load round trip as an adjustment', () {
+      session.addLayerOfKind(LayerKind.adjustment);
+      session.addEffectToActiveLayer(EffectKind.blur);
+      final row = session.activeLayer!;
+
+      final reloaded = EditorSessionManager(
+        initialProject: Project.fromJson(
+          session.repository.requireProject().toJson(),
+        ),
+      );
+      addTearDown(reloaded.dispose);
+      final restored = reloaded.requireActiveCut.layers.firstWhere(
+        (layer) => layer.id == row.id,
+      );
+      expect(restored.kind, LayerKind.adjustment);
+      expect(restored.effects.single.kind, EffectKind.blur);
+    });
   });
 
   test('a lane RANGE move shifts effect keys as one rigid group', () {

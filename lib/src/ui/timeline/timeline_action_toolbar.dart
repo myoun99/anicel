@@ -230,6 +230,15 @@ class TimelineActionToolbar extends StatelessWidget {
         label: AppText.strings.tlKindInstruction,
         onSelected: () => session.addLayerOfKind(LayerKind.instruction),
       ),
+      // R6b: the row that filters everything below it. It lands above the
+      // active layer like every other kind, which is what puts the rows it
+      // grades underneath it.
+      PanelFlyoutItem(
+        keyValue: 'add-layer-kind-adjustment',
+        label: AppText.strings.tlKindAdjustment,
+        icon: Icons.tune,
+        onSelected: () => session.addLayerOfKind(LayerKind.adjustment),
+      ),
       // Attach layers (W5, UI-R20 #8 / UI-R21 #3): the same entrance the
       // Layer menu has — own cels riding the base's FX. FREE authors its
       // own timeline; SYNCED mirrors the base's exposures (ghost rows).

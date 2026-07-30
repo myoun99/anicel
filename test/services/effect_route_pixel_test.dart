@@ -175,6 +175,52 @@ void main() {
     },
   );
 
+  group('an adjustment scope (R6b)', () {
+    /// The scope's pass, run exactly as a composite route runs it.
+    Future<ui.Image> renderScope({required double mix}) {
+      final pass = resolveAdjustmentScopePass(
+        bounds: bounds,
+        effects: [brightness(40)],
+        mix: mix,
+      );
+      return rasterize((canvas) {
+        void drawScope() {
+          canvas.drawRect(bounds, Paint()..color = const Color(0xFF808080));
+        }
+
+        if (pass.drawsUnfilteredFirst) {
+          drawScope();
+        }
+        canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
+        drawScope();
+        canvas.restore();
+      });
+    }
+
+    test('at full strength the scope is filtered once', () async {
+      final image = await renderScope(mix: 1);
+      addTearDown(image.dispose);
+      // +40 of the slider = +40 % of full scale = +102.
+      expect((await pixelAt(image, 20, 20))[0], closeTo(0x80 + 102, 2));
+      expect((await pixelAt(image, 20, 20))[3], 255);
+    });
+
+    test('a MIX below 1 crossfades — it must never thin the stack', () async {
+      final image = await renderScope(mix: 0.5);
+      addTearDown(image.dispose);
+      final pixel = await pixelAt(image, 20, 20);
+      expect(
+        pixel[3],
+        255,
+        reason:
+            'HALF a grade, not a half-transparent picture — the whole reason '
+            'the scope is drawn twice',
+      );
+      // Halfway between the plain 0x80 and the fully graded 0x80+102.
+      expect(pixel[0], closeTo(0x80 + 51, 3));
+    });
+  });
+
   test(
     'rasterScale keeps a blur the same SIZE relative to the picture',
     () async {

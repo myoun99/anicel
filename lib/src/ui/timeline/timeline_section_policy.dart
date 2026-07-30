@@ -14,12 +14,15 @@ enum TimelineSection { drawing, se, camera }
 TimelineSection timelineSectionForLayerKind(LayerKind kind) {
   return switch (kind) {
     // Folders group drawing rows, so their header sits in the drawing
-    // section with them.
+    // section with them. An ADJUSTMENT belongs there for the same reason
+    // and a stronger one: its scope IS its position in the drawing stack
+    // (§6-z, "액션란이 맞다"), so it has to sit among the rows it filters.
     LayerKind.animation ||
     LayerKind.storyboard ||
     LayerKind.image ||
     LayerKind.text ||
-    LayerKind.folder => TimelineSection.drawing,
+    LayerKind.folder ||
+    LayerKind.adjustment => TimelineSection.drawing,
     LayerKind.se => TimelineSection.se,
     LayerKind.instruction || LayerKind.camera => TimelineSection.camera,
   };

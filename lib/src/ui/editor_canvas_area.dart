@@ -161,6 +161,22 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 effects: effects,
               ),
             );
+          case CanvasLayerAdjustmentNode(
+            :final children,
+            :final effects,
+            :final mix,
+          ):
+            // Rebuilt field by field like the group above: the ghosts have
+            // to be able to land INSIDE an adjustment's scope, or the row
+            // you are drawing on would show the grade while its onion
+            // ghosts did not.
+            out.add(
+              CanvasLayerAdjustmentNode(
+                children: walk(children),
+                effects: effects,
+                mix: mix,
+              ),
+            );
           case CanvasLayerImageNode():
             out.add(node);
         }

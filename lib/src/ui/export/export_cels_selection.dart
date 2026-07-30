@@ -63,6 +63,7 @@ ExportCelsSelection resolveExportCelsSelection({
       case LayerKind.camera:
       case LayerKind.se:
       case LayerKind.folder:
+      case LayerKind.adjustment:
         return false; // Gated above; the switch stays exhaustive on purpose.
       case LayerKind.instruction:
         if (!spec.includeInstructionLayers) {

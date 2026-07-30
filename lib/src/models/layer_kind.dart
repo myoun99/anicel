@@ -45,7 +45,23 @@ enum LayerKind {
   /// The cut's camera track: selecting it puts the canvas into camera
   /// manipulation mode and its timeline row shows camera keyframes. Exactly
   /// one per cut, auto-created, holds no drawing frames.
-  camera('camera');
+  camera('camera'),
+
+  /// An ADJUSTMENT layer (R6b, §6-z): a row with no picture of its own
+  /// whose EFFECT CHAIN applies to everything composited BELOW it — the
+  /// 4th cel-less kind after [folder], [instruction] and [camera].
+  ///
+  /// Its SCOPE follows the folder rules Photoshop and CSP already taught
+  /// the stack (§6-z3): an adjustment inside a PASS-THROUGH folder leaks
+  /// out and keeps filtering below the folder, while a BUFFERING folder
+  /// (a real blend, opacity < 1, or effects of its own) stops it — put the
+  /// adjustment in a buffered folder and it filters that group alone.
+  ///
+  /// It carries effects but NO transform: there is nothing of its own to
+  /// move, and moving what it filters is not a thing a transform could
+  /// mean. Its OPACITY is the effect MIX (Photoshop's rule), not a fade —
+  /// 50 % means half-strength grade, never a half-transparent stack.
+  adjustment('adjustment');
 
   const LayerKind(this.jsonValue);
 
@@ -86,7 +102,10 @@ bool layerKindHoldsDrawings(LayerKind kind) {
     LayerKind.image ||
     LayerKind.text ||
     LayerKind.se => true,
-    LayerKind.instruction || LayerKind.camera || LayerKind.folder => false,
+    LayerKind.instruction ||
+    LayerKind.camera ||
+    LayerKind.folder ||
+    LayerKind.adjustment => false,
   };
 }
 
@@ -105,7 +124,8 @@ bool layerKindIsDrawingCel(LayerKind kind) {
     LayerKind.se ||
     LayerKind.instruction ||
     LayerKind.camera ||
-    LayerKind.folder => false,
+    LayerKind.folder ||
+    LayerKind.adjustment => false,
   };
 }
 
@@ -128,7 +148,8 @@ bool layerKindAcceptsBrushInput(LayerKind kind) {
     LayerKind.se ||
     LayerKind.instruction ||
     LayerKind.camera ||
-    LayerKind.folder => false,
+    LayerKind.folder ||
+    LayerKind.adjustment => false,
   };
 }
 
@@ -153,18 +174,31 @@ bool layerKindComposites(LayerKind kind) {
     LayerKind.text ||
     LayerKind.se ||
     LayerKind.instruction ||
-    LayerKind.folder => true,
+    LayerKind.folder ||
+    LayerKind.adjustment => true,
     LayerKind.camera => false,
   };
 }
+
+/// Whether [kind] FILTERS what is composited below it instead of adding a
+/// picture — the adjustment layer's whole contract (R6b).
+///
+/// The composite treats such a row like a folder in one respect and unlike
+/// it in another: neither contributes a surface, but a folder collects the
+/// rows that POINT AT IT while an adjustment collects everything below it
+/// in its scope. Both answers live here so no walk has to name the kind.
+bool layerKindFiltersBelow(LayerKind kind) => kind == LayerKind.adjustment;
 
 /// Whether [kind] contributes PIXELS of its own to the composite (a cel
 /// surface). SE and instruction rows composite (they carry FX and can host
 /// the canvas dialogue) but resolve no artwork today; they still answer
 /// true because their frames, if any, paint like a cel. Folder rows
-/// composite their MEMBERS' buffer, never a surface of their own.
+/// composite their MEMBERS' buffer, and ADJUSTMENT rows the stack below
+/// them — never a surface of their own.
 bool layerKindPaintsArtwork(LayerKind kind) =>
-    layerKindComposites(kind) && !layerKindGroupsLayers(kind);
+    layerKindComposites(kind) &&
+    !layerKindGroupsLayers(kind) &&
+    !layerKindFiltersBelow(kind);
 
 /// Whether [kind]'s [Layer.opacity] is the row's own picture opacity — the
 /// thing the master-opacity bar and "set all layers" write. The camera
@@ -178,7 +212,11 @@ bool layerKindHasPictureOpacity(LayerKind kind) {
     LayerKind.text ||
     LayerKind.se ||
     LayerKind.instruction ||
-    LayerKind.folder => true,
+    LayerKind.folder ||
+    // The adjustment's slider IS its own opacity — it just means MIX
+    // rather than fade (Photoshop's rule), so the bulk-opacity commands
+    // may write it like any other row's.
+    LayerKind.adjustment => true,
     LayerKind.camera => false,
   };
 }
@@ -195,19 +233,34 @@ bool layerKindHasLayerTransform(LayerKind kind) {
     LayerKind.se ||
     LayerKind.instruction ||
     LayerKind.folder => true,
-    LayerKind.camera => false,
+    // An ADJUSTMENT row has no picture of its own to move, and moving what
+    // it filters is not something a transform could mean — its twirl-down
+    // shows the Effects groups alone.
+    LayerKind.camera || LayerKind.adjustment => false,
   };
 }
 
 /// Whether [kind] authors its own composite-time EFFECT chain
-/// ([Layer.effects], R6). The same answer as [layerKindHasLayerTransform],
-/// for the same reason — the camera is the frame, not a thing inside it, so
-/// it has no picture of its own to filter (a camera-wide grade would belong
-/// to the track's FX, not to this row). Named separately because it is a
-/// different question; defined in terms of the other so the two can never
-/// drift.
-bool layerKindHasLayerEffects(LayerKind kind) =>
-    layerKindHasLayerTransform(kind);
+/// ([Layer.effects], R6). Everything but the camera — which is the frame,
+/// not a thing inside it, so it has no picture of its own to filter (a
+/// camera-wide grade would belong to the track's FX, not to this row).
+///
+/// This is where the ADJUSTMENT row parts company with
+/// [layerKindHasLayerTransform]: it is the one kind that carries effects
+/// and no transform, which is the whole point of it.
+bool layerKindHasLayerEffects(LayerKind kind) {
+  return switch (kind) {
+    LayerKind.animation ||
+    LayerKind.storyboard ||
+    LayerKind.image ||
+    LayerKind.text ||
+    LayerKind.se ||
+    LayerKind.instruction ||
+    LayerKind.folder ||
+    LayerKind.adjustment => true,
+    LayerKind.camera => false,
+  };
+}
 
 /// Whether a row of [kind] can be copied to the layer clipboard,
 /// duplicated or pasted. The camera is a fixture (exactly one per cut) and
@@ -221,16 +274,24 @@ bool layerKindIsClipboardCopyable(LayerKind kind) {
     LayerKind.image ||
     LayerKind.text ||
     LayerKind.instruction => true,
-    LayerKind.se || LayerKind.camera || LayerKind.folder => false,
+    // The adjustment stands down with the folder: the single-layer payload
+    // carries no composite-time state at all (see LayerCopyPayload), so a
+    // pasted adjustment would arrive as an empty row that filters nothing.
+    LayerKind.se ||
+    LayerKind.camera ||
+    LayerKind.folder ||
+    LayerKind.adjustment => false,
   };
 }
 
 /// Whether [kind] is a FIXED kind — one the user can neither convert a
-/// layer into nor convert away from (the camera fixture and folders, whose
-/// kind is their structure; instruction rows carry their own guard
-/// alongside).
+/// layer into nor convert away from (the camera fixture, folders and
+/// adjustments, whose kind IS their structure; instruction rows carry
+/// their own guard alongside).
 bool layerKindIsFixed(LayerKind kind) =>
-    kind == LayerKind.camera || layerKindGroupsLayers(kind);
+    kind == LayerKind.camera ||
+    layerKindGroupsLayers(kind) ||
+    layerKindFiltersBelow(kind);
 
 /// Whether [kind] can be exported as a cel image (the cel-export scope).
 /// The camera has no artwork, SE rows are timing data and folders hold
@@ -242,7 +303,10 @@ bool layerKindExportsCels(LayerKind kind) {
     LayerKind.image ||
     LayerKind.text ||
     LayerKind.instruction => true,
-    LayerKind.se || LayerKind.camera || LayerKind.folder => false,
+    LayerKind.se ||
+    LayerKind.camera ||
+    LayerKind.folder ||
+    LayerKind.adjustment => false,
   };
 }
 
@@ -258,11 +322,13 @@ bool layerKindTakesTimesheetColumn(LayerKind kind) {
     LayerKind.se ||
     LayerKind.instruction => true,
     // Text rows annotate the picture (cut numbers on paper), not the
-    // sheet — printed cel columns stay the field's vocabulary.
+    // sheet — printed cel columns stay the field's vocabulary. An
+    // adjustment is 촬영 direction with no cel to print at all.
     LayerKind.text ||
     LayerKind.image ||
     LayerKind.camera ||
-    LayerKind.folder => false,
+    LayerKind.folder ||
+    LayerKind.adjustment => false,
   };
 }
 

@@ -1718,6 +1718,22 @@ class EditorSessionManager extends ChangeNotifier {
             blendMode: blendMode,
             effects: effects,
           );
+        case CutFrameCompositeEntryAdjustment(
+          :final children,
+          :final effects,
+          :final mix,
+        ):
+          final mapped = <CanvasLayerStackNode>[
+            for (final child in children) ?mapNode(child),
+          ];
+          if (mapped.isEmpty) {
+            return null;
+          }
+          return CanvasLayerAdjustmentNode(
+            children: List.unmodifiable(mapped),
+            effects: effects,
+            mix: mix,
+          );
         case CutFrameCompositeEntryLeaf(:final entry):
           // A brush-banned active layer (SE/instruction, R6-④; a media
           // REFERENCE layer, §6-z23) has no interactive surface — it
@@ -1839,6 +1855,7 @@ class EditorSessionManager extends ChangeNotifier {
         case CanvasActiveLayerNode():
           return true;
         case CanvasLayerGroupNode(:final children):
+        case CanvasLayerAdjustmentNode(:final children):
           if (_treeHoldsActiveLayer(children)) {
             return true;
           }
@@ -2620,11 +2637,14 @@ class EditorSessionManager extends ChangeNotifier {
       // handles "no editable cel" (that is the R26 #35 refusal notice).
       // A folder row deletes by DISSOLVING (the coordinator routes it) —
       // its members are rows of their own and survive.
+      // An ADJUSTMENT row has no floor either: deleting it just stops the
+      // stack below being filtered.
       LayerKind.animation ||
       LayerKind.storyboard ||
       LayerKind.image ||
       LayerKind.text ||
-      LayerKind.folder => true,
+      LayerKind.folder ||
+      LayerKind.adjustment => true,
     };
   }
 
@@ -3103,6 +3123,16 @@ class EditorSessionManager extends ChangeNotifier {
           }
         }
         _layerController.addLayer(layer: newLayerFor(requireActiveCut));
+      case LayerKind.adjustment:
+        // R6b: a real row you ADD (unlike a folder), inserted above the
+        // active layer like every other kind — which is exactly what puts
+        // the rows it filters below it.
+        _layerController.addLayer(
+          layer: createAdjustmentLayer(
+            id: layerId,
+            name: nextAdjustmentLayerName(requireActiveCut.layers),
+          ),
+        );
       case LayerKind.camera:
       // Folders are MADE, not added: 폴더 생성 wraps existing rows
       // ([groupActiveLayerIntoFolder]). Add Layer with a folder row active
@@ -6248,6 +6278,7 @@ class EditorSessionManager extends ChangeNotifier {
       LayerKind.instruction => 'Instruction Layer',
       LayerKind.camera => 'Camera Layer',
       LayerKind.folder => 'Folder',
+      LayerKind.adjustment => 'Adjustment Layer',
       null => 'No Layer',
     };
   }

@@ -181,6 +181,8 @@ class CameraFrameRenderService {
                 ))!;
           case CutFrameCompositeSurfaceGroup(:final children):
             await composeImages(children);
+          case CutFrameCompositeSurfaceAdjustment(:final children):
+            await composeImages(children);
         }
       }
     }
@@ -252,6 +254,25 @@ class CameraFrameRenderService {
               effectBufferBounds(groupBounds, groupEffects),
               groupPaint,
             );
+            paintNodes(children);
+            canvas.restore();
+          case CutFrameCompositeSurfaceAdjustment(
+            :final children,
+            :final effects,
+            :final mix,
+          ):
+            // R6b: the scope composes into one buffer and the row's chain
+            // filters it there. Below full strength the scope is drawn
+            // twice — the mix is a crossfade, not a fade-out.
+            final pass = resolveAdjustmentScopePass(
+              bounds: groupBounds,
+              effects: effects,
+              mix: mix,
+            );
+            if (pass.drawsUnfilteredFirst) {
+              paintNodes(children);
+            }
+            canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
             paintNodes(children);
             canvas.restore();
           case CutFrameCompositeSurfaceLeaf(:final layer):

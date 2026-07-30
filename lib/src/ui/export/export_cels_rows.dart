@@ -46,6 +46,7 @@ class ExportLayerRow extends StatelessWidget {
     LayerKind.instruction => Icons.swipe_right_alt_outlined,
     LayerKind.camera => Icons.videocam_outlined,
     LayerKind.folder => Icons.folder_outlined,
+    LayerKind.adjustment => Icons.tune,
   };
 
   /// The trailing attach tag (기준 rows show none).

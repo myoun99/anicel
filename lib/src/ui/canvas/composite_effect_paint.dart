@@ -164,3 +164,55 @@ ui.Rect effectBufferBounds(ui.Rect bounds, CompositeEffectPaint plan) {
   }
   return bounds.inflate(plan.outsetPixels);
 }
+
+/// How a route paints an ADJUSTMENT scope (R6b) — the semantics in ONE
+/// place, so the four composite routes only have to run the steps.
+///
+/// The row's opacity is a MIX, not a fade. `saveLayer(alpha)` around the
+/// filtered scope would thin the whole stack toward transparent, which is
+/// a shocking thing for an opacity slider to do to a grade; Photoshop
+/// crossfades between the unfiltered and the filtered picture instead. So
+/// below full strength the scope is drawn TWICE: once as it is, then the
+/// filtered copy over it at [AdjustmentScopePass.filteredPaint]'s alpha.
+/// At full strength — the overwhelmingly common case — it is drawn once.
+class AdjustmentScopePass {
+  const AdjustmentScopePass({
+    required this.drawsUnfilteredFirst,
+    required this.bufferBounds,
+    required this.filteredPaint,
+  });
+
+  /// Whether the route must draw the scope once unfiltered before opening
+  /// the buffer (the crossfade's bottom half).
+  final bool drawsUnfilteredFirst;
+
+  /// The `saveLayer` bounds for the filtered pass.
+  final ui.Rect bufferBounds;
+
+  /// The `saveLayer` paint: the chain's filter, plus the mix as alpha when
+  /// the scope crossfades.
+  final ui.Paint filteredPaint;
+}
+
+/// Resolves the pass for an adjustment scope of [effects] at [mix] over
+/// [bounds]. [rasterScale] follows the same rule as
+/// [resolveCompositeEffectPaint].
+AdjustmentScopePass resolveAdjustmentScopePass({
+  required ui.Rect bounds,
+  required List<ResolvedLayerEffect> effects,
+  required double mix,
+  double rasterScale = 1,
+}) {
+  final plan = resolveCompositeEffectPaint(effects, rasterScale: rasterScale);
+  final crossfades = mix < 1;
+  final paint = ui.Paint();
+  if (crossfades) {
+    paint.color = ui.Color.fromRGBO(0, 0, 0, mix.clamp(0.0, 1.0));
+  }
+  plan.applyTo(paint);
+  return AdjustmentScopePass(
+    drawsUnfilteredFirst: crossfades,
+    bufferBounds: effectBufferBounds(bounds, plan),
+    filteredPaint: paint,
+  );
+}
