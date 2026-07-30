@@ -131,6 +131,11 @@ Frame _duplicateFrame({
     duration: frame.duration,
     strokes: frame.strokes.map(_duplicateStroke).toList(),
     name: frame.name,
+    // Field-by-field reconstruction is this helper's trap: it silently
+    // dropped seName until the text round walked past — every new Frame
+    // field must be carried here by hand.
+    seName: frame.seName,
+    textContent: frame.textContent,
   );
 }
 

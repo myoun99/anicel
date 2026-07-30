@@ -90,6 +90,20 @@ String nextInstructionLayerName(List<Layer> layers) {
   }
 }
 
+/// Names a new TEXT row: T1, T2, … skipping names the cut already uses
+/// (the SE scheme's grammar in the drawing section).
+String nextTextLayerName(List<Layer> layers) {
+  final usedNames = layers.map((layer) => layer.name).toSet();
+  var index = 1;
+  while (true) {
+    final name = 'T$index';
+    if (!usedNames.contains(name)) {
+      return name;
+    }
+    index += 1;
+  }
+}
+
 /// Names an additional SE row: S1, S2, S3, … skipping names the cut
 /// already uses (S1 selected + Add Layer → S3 when S1·S2 exist).
 String nextSeLayerName(List<Layer> layers) {

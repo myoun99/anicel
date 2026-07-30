@@ -2,6 +2,7 @@ import '../core/collection_equality.dart';
 import 'frame_id.dart';
 import '../core/copy_with_sentinel.dart';
 import 'stroke.dart';
+import 'text_cel_style.dart';
 
 /// One DRAWING in a layer's cel bank.
 ///
@@ -16,6 +17,7 @@ class Frame {
     required List<Stroke> strokes,
     this.name,
     this.seName,
+    this.textContent,
   }) : strokes = List.unmodifiable(strokes);
 
   final FrameId id;
@@ -28,12 +30,19 @@ class Frame {
   /// so legacy SE labels keep reading as dialogue).
   final String? seName;
 
+  /// Text rows only (R5, §6-s): the cel's PICTURE as parameters — the
+  /// baked raster in the brush store is a projection re-baked on edit.
+  /// Being a Frame field it shares across linked cuts and rides paste/
+  /// duplicate exactly like the drawing it stands for.
+  final TextCelContent? textContent;
+
   Frame copyWith({
     FrameId? id,
     int? duration,
     List<Stroke>? strokes,
     Object? name = copyWithSentinel,
     Object? seName = copyWithSentinel,
+    Object? textContent = copyWithSentinel,
   }) {
     return Frame(
       id: id ?? this.id,
@@ -43,6 +52,9 @@ class Frame {
       seName: identical(seName, copyWithSentinel)
           ? this.seName
           : seName as String?,
+      textContent: identical(textContent, copyWithSentinel)
+          ? this.textContent
+          : textContent as TextCelContent?,
     );
   }
 
@@ -52,6 +64,7 @@ class Frame {
     'strokes': strokes.map((stroke) => stroke.toJson()).toList(),
     if (name != null) 'name': name,
     if (seName != null) 'seName': seName,
+    if (textContent != null) 'textContent': textContent!.toJson(),
   };
 
   factory Frame.fromJson(Map<String, dynamic> json) {
@@ -63,6 +76,9 @@ class Frame {
           .toList(),
       name: json['name'] as String?,
       seName: json['seName'] as String?,
+      textContent: json['textContent'] is Map<String, dynamic>
+          ? TextCelContent.fromJson(json['textContent'] as Map<String, dynamic>)
+          : null,
     );
   }
 
@@ -74,14 +90,21 @@ class Frame {
           other.duration == duration &&
           other.name == name &&
           other.seName == seName &&
+          other.textContent == textContent &&
           listEquals(other.strokes, strokes);
 
   @override
-  int get hashCode =>
-      Object.hash(id, duration, name, seName, Object.hashAll(strokes));
+  int get hashCode => Object.hash(
+    id,
+    duration,
+    name,
+    seName,
+    textContent,
+    Object.hashAll(strokes),
+  );
 
   @override
   String toString() =>
       'Frame(id: $id, duration: $duration, name: $name, '
-      'seName: $seName, strokes: $strokes)';
+      'seName: $seName, textContent: $textContent, strokes: $strokes)';
 }

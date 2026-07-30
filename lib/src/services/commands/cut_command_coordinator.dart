@@ -715,6 +715,7 @@ class CutCommandCoordinator {
         LayerKind.animation ||
         LayerKind.storyboard ||
         LayerKind.image ||
+        LayerKind.text ||
         LayerKind.folder => false,
       };
       if (refused) {

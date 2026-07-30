@@ -72,6 +72,7 @@ ExportCelsSelection resolveExportCelsSelection({
       case LayerKind.animation:
       case LayerKind.storyboard:
       case LayerKind.image:
+      case LayerKind.text:
         if (!layer.isVisible) {
           return false;
         }
