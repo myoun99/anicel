@@ -445,14 +445,21 @@ class ExportFrameRenderer {
           surface: surface,
           opacity: task.members[i].opacity,
           // R26 #30: the delivery cel is the stack as composited — the
-          // members' blends apply. R6: and so do their effects, for the
-          // same reason. (The single-cel [renderCel] is the opposite by
-          // contract: "exactly as drawn, no compositing".)
+          // members' blends apply. R6: their EFFECTS ride the same fx
+          // gates every other route uses — the dialog's master toggle and
+          // the row's own fx switch. The cel export sets the master toggle
+          // FALSE ("cels stay raw artwork"), so a blur can never be baked
+          // into line art the compositing department has to work with;
+          // blend and static opacity are display properties and stay.
           blendMode: task.members[i].blendMode,
-          effects: resolveLayerEffectsAt(
-            effects: task.members[i].effects,
-            frameIndex: firstExposure,
-          ),
+          effects:
+              applyLayerFx &&
+                  !session.fxBypassedLayerIds.contains(task.members[i].id)
+              ? resolveLayerEffectsAt(
+                  effects: task.members[i].effects,
+                  frameIndex: firstExposure,
+                )
+              : const [],
         ),
       );
     }

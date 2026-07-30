@@ -14,6 +14,7 @@ import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/se_name_tag.dart';
+import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/models/exposure_memo.dart';
 import 'package:anicel/src/models/stroke.dart';
 import 'package:anicel/src/models/stroke_id.dart';
@@ -183,7 +184,10 @@ void main() {
                 ),
               ],
               timeline: {
-                0: TimelineExposure.drawing(const FrameId('frame-a'), length: 1),
+                0: TimelineExposure.drawing(
+                  const FrameId('frame-a'),
+                  length: 1,
+                ),
               },
               folderId: const LayerId('folder'),
               blendMode: LayerBlendMode.multiply,
@@ -192,6 +196,13 @@ void main() {
               audioGain: 0.4,
               audioPan: -0.6,
               seNameTag: const SeNameTag(),
+              runBehaviors: const [
+                TimelineRunBehavior(
+                  anchorFrameId: FrameId('frame-a'),
+                  side: TimelineRunEdgeSide.end,
+                  mode: TimelineRunEdgeMode.hold,
+                ),
+              ],
               effects: [
                 LayerEffect(
                   id: const EffectId('fx-1'),
@@ -212,9 +223,7 @@ void main() {
             const LayerId('folder'): const LayerId('folder-copy'),
             const LayerId('layer-a'): const LayerId('layer-copy-a'),
           },
-          frameIdMap: {
-            const FrameId('frame-a'): const FrameId('frame-copy-a'),
-          },
+          frameIdMap: {const FrameId('frame-a'): const FrameId('frame-copy-a')},
         );
 
         final copy = duplicate.layers[0];
@@ -230,6 +239,13 @@ void main() {
         expect(copy.audioPan, -0.6);
         expect(copy.seNameTag, isNotNull);
         expect(copy.effects.single.parameterOf('blurX').value, 7);
+        // Run behaviours are addressed by FRAME ID: carrying them verbatim
+        // would name a block that does not exist in the copy, and the next
+        // rederive would drop the behaviour — the same loss, later.
+        expect(
+          copy.runBehaviors.single.anchorFrameId,
+          const FrameId('frame-copy-a'),
+        );
         // The structure the folder rules validate must survive too.
         expect(folderStructureProblem(duplicate.layers), isNull);
       },

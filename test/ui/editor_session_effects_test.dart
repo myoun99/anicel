@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
@@ -146,6 +147,44 @@ void main() {
     final restored = session.activeLayer!.effects.single;
     expect(restored.parameterOf('hue').track.keyAt(3), isNotNull);
     expect(restored.parameterOf('hue').value, 40);
+  });
+
+  test('an ATTACH row with no cel yet still previews the BASE\'s effects', () {
+    // The fallback node (active row, nothing exposed) has to resolve its
+    // chain the way the composite entry does — from the FX CARRIER. Reading
+    // the row's own would leave the live surface unfiltered until the first
+    // cel exists, then snap to filtered.
+    session.addEffectToActiveLayer(EffectKind.blur);
+    final base = session.activeLayer!;
+    session.updateLayerEffects(
+      base.id,
+      effectsWithLaneValueEdited(
+        base.effects,
+        laneId: effectLaneId(base.effects.single.id, 'blurX'),
+        frameIndex: 0,
+        input: '9',
+      )!,
+    );
+    session.addAttachedLayer(AttachedPlacement.above);
+    final attached = session.activeLayer!;
+    expect(attached.attachedToLayerId, base.id);
+    expect(attached.effects, isEmpty, reason: 'the chain lives on the base');
+
+    // Specifically the ACTIVE node — the live surface the next stroke
+    // lands in — not just "some node in the stack carries effects".
+    List<ResolvedLayerEffect> activeNodeEffects() {
+      for (final node in session.editingCanvasStack.nodes) {
+        if (node is CanvasActiveLayerNode) {
+          return node.effects;
+        }
+      }
+      fail('the attach row with no cel must still get an active node');
+    }
+
+    expect(activeNodeEffects().single.parameter('blurX'), 9);
+    // …and the BASE's fx switch is what bypasses it.
+    session.toggleLayerFx(base.id);
+    expect(activeNodeEffects(), isEmpty);
   });
 
   test('the CAMERA row takes no effect chain', () {

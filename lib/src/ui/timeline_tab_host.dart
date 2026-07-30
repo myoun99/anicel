@@ -261,7 +261,14 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         break;
       }
       final laneId = lanes[index].laneId;
-      if (transformLaneDisplayOrder.contains(laneId)) {
+      // Rows the span can END on: a transform member lane, or (R6) an
+      // effect PARAMETER lane. Anything else — a group header, the SE
+      // audio lane — is crossed silently, so a drag reaching past it still
+      // spans the member lanes it covered. Without the effect case the
+      // span could never hold two parameters of one effect, and
+      // [effectLaneSpan]'s range branch would be unreachable.
+      if (transformLaneDisplayOrder.contains(laneId) ||
+          parseEffectLaneId(laneId)?.parameterId != null) {
         head = laneId;
       }
     }

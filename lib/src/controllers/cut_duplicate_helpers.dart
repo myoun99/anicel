@@ -8,6 +8,7 @@ import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
 import '../models/stroke.dart';
 import '../models/timeline_exposure.dart';
+import '../models/timeline_repeat.dart';
 
 Cut duplicateCutAsIndependentCopy({
   required Cut source,
@@ -109,7 +110,24 @@ Layer duplicateLayerAsIndependentCopy({
     // duplicated cut keeps its 촬영 work.
     effects: source.effects,
     instructions: source.instructions,
-    runBehaviors: source.runBehaviors,
+    // Run behaviours are addressed by FRAME ID (the anchor block, and the
+    // pattern block for a ranged repeat), so carrying them verbatim into a
+    // copy whose frames were all re-minted names blocks that do not exist
+    // there — `rederiveRunBehaviors` then drops the behaviour on the first
+    // edit, which is the same loss with extra steps.
+    runBehaviors: [
+      for (final behavior in source.runBehaviors)
+        TimelineRunBehavior(
+          anchorFrameId:
+              frameIdMap[behavior.anchorFrameId] ?? behavior.anchorFrameId,
+          side: behavior.side,
+          mode: behavior.mode,
+          patternAnchorFrameId: behavior.patternAnchorFrameId == null
+              ? null
+              : (frameIdMap[behavior.patternAnchorFrameId!] ??
+                    behavior.patternAnchorFrameId),
+        ),
+    ],
     audioClips: [
       for (final clip in source.audioClips)
         clip.copyWith(frameId: frameIdMap[clip.frameId] ?? clip.frameId),

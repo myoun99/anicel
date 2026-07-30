@@ -176,7 +176,7 @@ import 'timeline/transform_lane_editing.dart'
         transformTrackWithLaneKeyToggled,
         transformTrackWithLaneSpanKeysShifted;
 import 'timeline/transform_lane_policy.dart'
-    show transformLaneDisplayOrder, transformLaneSpan;
+    show transformGroupHeaderLane, transformLaneDisplayOrder, transformLaneSpan;
 
 /// A planned SE row-change pair in COMMIT (global track) form: the source
 /// row after its blocks leave, the target row after they arrive.
@@ -1773,15 +1773,23 @@ class EditorSessionManager extends ChangeNotifier {
       activeLayerOpacity = !activeStackLayer.isVisible
           ? 0.0
           : _stackLayerOpacity(activeStackLayer, stackCut.layers, frameIndex);
+      // R6: the surface you are about to draw on shows the effects the
+      // composite will apply to it, so the first stroke lands in the
+      // picture you can see. The chain comes from the FX CARRIER exactly
+      // as [resolveCutFrameCompositeEntries] resolves it for a real entry —
+      // an attach row wears its BASE's effects, and it is the base's fx
+      // switch that bypasses them. Reading the row's own would leave this
+      // one node unfiltered until its first cel exists, then snap.
+      final activeFxBase = isAttachedLayer(activeStackLayer)
+          ? attachedBaseOf(activeStackLayer, stackCut.layers)
+          : null;
+      final activeFxCarrier = activeFxBase ?? activeStackLayer;
       nodes.add(
         CanvasActiveLayerNode(
           opacity: activeLayerOpacity,
-          // R6: the surface you are about to draw on shows its own
-          // effects even before a cel exists — the first stroke has to
-          // land in the picture you can see.
-          effects: isLayerFxEnabled(activeStackLayer.id)
+          effects: isLayerFxEnabled(activeFxCarrier.id)
               ? resolveLayerEffectsAt(
-                  effects: activeStackLayer.effects,
+                  effects: activeFxCarrier.effects,
                   frameIndex: frameIndex,
                 )
               : const [],
@@ -2212,11 +2220,10 @@ class EditorSessionManager extends ChangeNotifier {
       ),
       kind: kind,
     );
-    updateLayerEffects(
-      layer.id,
-      [...layer.effects, effect],
-      description: 'Add ${kind.label}',
-    );
+    updateLayerEffects(layer.id, [
+      ...layer.effects,
+      effect,
+    ], description: 'Add ${kind.label}');
   }
 
   /// Removes one effect from the active row (its keys go with it; one undo
@@ -8893,6 +8900,9 @@ class EditorSessionManager extends ChangeNotifier {
       }
       _laneMoveBefore = (layer: null, track: track, selection: selection);
       _laneMoveShifted = null;
+      // Both in-flight slots clear together: a stale effect chain here
+      // would send the commit down the layer branch with layer == null.
+      _laneMoveShiftedEffects = null;
 
       return true;
     }
@@ -9233,6 +9243,17 @@ class EditorSessionManager extends ChangeNotifier {
     required int endIndexExclusive,
   }) {
     if (headLaneId == null) {
+      return;
+    }
+    // The tail always anchors on the FIRST transform lane, so only a
+    // transform row can be its head. A drag ending on some other lane kind
+    // — an SE audio lane, or (R6) an effect parameter lane — has no
+    // representable span from that anchor: [transformLaneSpan] falls back
+    // to the anchor alone, and publishing that would put the selection on
+    // Anchor Point, where the next Add would write keys the user never
+    // asked for. Nothing published, cell selection kept.
+    if (headLaneId != transformGroupHeaderLane.laneId &&
+        !transformLaneDisplayOrder.contains(headLaneId)) {
       return;
     }
     final span = transformLaneSpan(transformLaneDisplayOrder.first, headLaneId);

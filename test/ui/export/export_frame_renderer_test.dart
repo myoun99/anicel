@@ -11,6 +11,7 @@ import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/tile_coord.dart';
@@ -18,6 +19,7 @@ import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/brush_frame_edit_session_store.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/export/export_cel_group_plan.dart';
 import 'package:anicel/src/ui/export/export_frame_renderer.dart';
 import 'package:anicel/src/ui/export/export_plan.dart';
 
@@ -196,6 +198,85 @@ void main() {
       expect(await strokeRedChannel(applyLayerFx: true), 255);
       // FX bypassed: the raw layer at its static opacity — black stroke.
       expect(await strokeRedChannel(applyLayerFx: false), lessThan(128));
+    });
+    await tester.pumpAndSettle();
+  });
+
+  testWidgets('R6: a delivery CEL is raw artwork — the effect chain obeys '
+      'the same fx gates the composite does', (tester) async {
+    await tester.runAsync(() async {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+      var cut = session.requireActiveCut;
+      final layer = cut.layers.firstWhere(
+        (candidate) => candidate.kind == LayerKind.animation,
+      );
+      final frame = Frame(
+        id: const FrameId('cel-frame'),
+        duration: 1,
+        strokes: const [],
+      );
+      // One mid-grey pixel at (4,4), seeded through the display cache the
+      // renderer reads (the same route the case above uses).
+      const tile = 256;
+      final pixels = Uint8List(tile * tile * 4);
+      final offset = (4 * cut.canvasSize.width + 4) * 4;
+      final tileOffset = (4 * tile + 4) * 4;
+      pixels[tileOffset] = 0x80;
+      pixels[tileOffset + 1] = 0x80;
+      pixels[tileOffset + 2] = 0x80;
+      pixels[tileOffset + 3] = 255;
+      session.brushFrameStore.storeRebuiltDisplayCache(
+        key: session.brushFrameKeyForCut(cut, layer.id, frame.id),
+        previewSurface: BitmapSurface(canvasSize: cut.canvasSize).putTile(
+          BitmapTile(coord: TileCoord(x: 0, y: 0), size: tile, pixels: pixels),
+        ),
+      );
+      session.updateLayerEffects(layer.id, [
+        LayerEffect(
+          id: const EffectId('fx'),
+          kind: EffectKind.brightnessContrast,
+          parameters: {'brightness': EffectParameter(value: 60)},
+        ),
+      ]);
+      cut = session.requireActiveCut;
+      final member = cut.layers.firstWhere(
+        (candidate) => candidate.id == layer.id,
+      );
+
+      Future<int> celGrey({required bool applyLayerFx}) async {
+        final image =
+            await ExportFrameRenderer(
+              session: session,
+              applyLayerFx: applyLayerFx,
+            ).renderCelGroup(
+              ExportCelGroupTask(
+                cut: cut,
+                baseLayer: member,
+                members: [member],
+                memberFrames: [frame],
+                baseFrame: frame,
+                celName: 'A1',
+                fileName: 'A1.png',
+              ),
+              ExportSizeMode.canvas,
+            );
+        final bytes = await image!.toByteData(
+          format: ui.ImageByteFormat.rawRgba,
+        );
+        image.dispose();
+        return bytes!.getUint8(offset);
+      }
+
+      // The cel export runs with the master toggle OFF ("cels stay raw
+      // artwork"). A blur baked into line art would be unrecoverable, so
+      // this is the gate that has to hold.
+      expect(await celGrey(applyLayerFx: false), closeTo(0x80, 2));
+      // With FX on, the same call filters — so the gate is what decides,
+      // not an accident of the code path.
+      expect(await celGrey(applyLayerFx: true), greaterThan(0x80 + 100));
     });
     await tester.pumpAndSettle();
   });
