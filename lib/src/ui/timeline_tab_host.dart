@@ -10,6 +10,7 @@ import '../models/layer_folder.dart';
 import '../models/layer_id.dart';
 import '../models/key_range_move.dart' show transformKeyFrameUnion;
 import '../models/layer_kind.dart';
+import '../models/text_cel_style.dart';
 import 'camera/camera_view_toggle_button.dart';
 import 'dialogs/camera_key_dialog.dart';
 import 'dialogs/delete_layer_dialog.dart';
@@ -20,6 +21,7 @@ import 'dialogs/layer_audio_dialog.dart';
 import 'dialogs/rename_frame_dialog.dart';
 import 'dialogs/rename_layer_dialog.dart';
 import 'dialogs/se_instance_dialog.dart';
+import 'dialogs/text_cel_dialog.dart';
 import 'editor_session_manager.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'playback/playback_transport_controls.dart';
@@ -292,6 +294,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         ];
       case LayerKind.animation:
       case LayerKind.image:
+      case LayerKind.text:
       case LayerKind.storyboard:
       case LayerKind.instruction:
       // A folder's FX lanes ARE layer lanes (R27 #26 asked for the layer
@@ -521,6 +524,14 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     if (layer == null || layer.id != layerId) {
       return;
     }
+    // Pin the EDITING selection to the tapped cell: during playback the
+    // tap's select routes to the playback clock and leaves the editing
+    // playhead parked elsewhere — every editor below reads/writes
+    // selectedFrame, and a stale playhead made the dialog edit the wrong
+    // cell (worst on text rows, where Save overwrites the cel).
+    if (frameIndex >= 0 && _session.currentFrameIndex != frameIndex) {
+      _session.selectFrameIndex(frameIndex);
+    }
     switch (layer.kind) {
       case LayerKind.se:
         await _editSeLabel();
@@ -528,6 +539,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         await _editInstructionEvent(layerId, frameIndex);
       case LayerKind.camera:
         await _editCameraKeys(frameIndex);
+      case LayerKind.text:
+        await _editTextCel();
       case LayerKind.folder:
         // A folder's band is the members' aggregate: nothing of its own
         // to edit at a cell.
@@ -572,7 +585,12 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       case LayerKind.folder:
         // Nothing to create on a folder row — it holds rows, not cels.
         break;
-      case LayerKind.animation || LayerKind.storyboard || LayerKind.image:
+      // A text cel is born BLANK like a drawing cel (UI-R25 #2: creation
+      // never opens a dialog) — double-tap types into it afterwards.
+      case LayerKind.animation ||
+          LayerKind.storyboard ||
+          LayerKind.image ||
+          LayerKind.text:
         _session.createDrawingAtCurrentFrame();
     }
   }
@@ -659,6 +677,38 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     final seName = result.seName.isEmpty ? null : result.seName;
     // SE edits never hit the link-conflict flow (duplicates allowed).
     _session.updateSelectedSeEntry(dialogue: result.dialogue, seName: seName);
+  }
+
+  /// Text cells (R5): covered cells open the parameter editor; EMPTY
+  /// cells create a blank cel directly (UI-R25 #2) — the next double-tap
+  /// types into it.
+  Future<void> _editTextCel() async {
+    if (_session.selectedFrame == null) {
+      if (_session.canCreateDrawingAtCurrentFrame) {
+        _session.createDrawingAtCurrentFrame();
+      }
+      return;
+    }
+
+    final cut = _session.activeCutOrNull;
+    final content = _session.selectedTextCelContent;
+    final result = await showDialog<TextCelContent>(
+      context: context,
+      builder: (context) => TextCelDialog(
+        creating: content == null,
+        initialContent: content,
+        defaultPosition: cut == null
+            ? null
+            : Offset(
+                cut.canvasSize.width / 2,
+                cut.canvasSize.height / 2,
+              ),
+      ),
+    );
+    if (!mounted || result == null) {
+      return;
+    }
+    _session.setTextCelContentForSelectedFrame(result);
   }
 
   /// Instruction cells: covered cells edit/delete the covering event in

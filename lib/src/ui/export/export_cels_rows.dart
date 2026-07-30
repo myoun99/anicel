@@ -41,6 +41,7 @@ class ExportLayerRow extends StatelessWidget {
     LayerKind.animation => Icons.edit_outlined,
     LayerKind.storyboard => Icons.sticky_note_2_outlined,
     LayerKind.image => Icons.image_outlined,
+    LayerKind.text => Icons.text_fields_outlined,
     LayerKind.se => Icons.volume_up_outlined,
     LayerKind.instruction => Icons.swipe_right_alt_outlined,
     LayerKind.camera => Icons.videocam_outlined,

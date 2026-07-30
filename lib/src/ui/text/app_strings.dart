@@ -418,7 +418,25 @@ class AppStrings {
   String get tlKindAnimation => _s('tlKindAnimation');
   String get tlKindStoryboard => _s('tlKindStoryboard');
   String get tlKindImage => _s('tlKindImage');
+  String get tlKindText => _s('tlKindText');
   String get tlKindSe => _s('tlKindSe');
+
+  // --- The text cel editor (R5) ---
+  String get textCelNewTitle => _s('textCelNewTitle');
+  String get textCelEditTitle => _s('textCelEditTitle');
+  String get textCelTextLabel => _s('textCelTextLabel');
+  String get textCelFontLabel => _s('textCelFontLabel');
+  String get textCelFontSystem => _s('textCelFontSystem');
+  String get textCelSizeLabel => _s('textCelSizeLabel');
+  String get textCelAlignLabel => _s('textCelAlignLabel');
+  String get textCelAlignLeft => _s('textCelAlignLeft');
+  String get textCelAlignCenter => _s('textCelAlignCenter');
+  String get textCelAlignRight => _s('textCelAlignRight');
+  String get textCelColorLabel => _s('textCelColorLabel');
+  String get textCelBoldLabel => _s('textCelBoldLabel');
+  String get textCelOutlineLabel => _s('textCelOutlineLabel');
+  String get textCelBackgroundLabel => _s('textCelBackgroundLabel');
+  String get textCelPositionLabel => _s('textCelPositionLabel');
   String get tlKindInstruction => _s('tlKindInstruction');
   String get tlAttachFreeAbove => _s('tlAttachFreeAbove');
   String get tlAttachFreeBelow => _s('tlAttachFreeBelow');
@@ -1281,8 +1299,24 @@ class AppStrings {
     'tlKindAnimation': 'Animation',
     'tlKindStoryboard': 'Storyboard',
     'tlKindImage': 'Image',
+    'tlKindText': 'Text',
     'tlKindSe': 'SE',
     'tlKindInstruction': 'Instruction',
+    'textCelNewTitle': 'New Text',
+    'textCelEditTitle': 'Edit Text',
+    'textCelTextLabel': 'Text',
+    'textCelFontLabel': 'Font',
+    'textCelFontSystem': 'System',
+    'textCelSizeLabel': 'Size',
+    'textCelAlignLabel': 'Align',
+    'textCelAlignLeft': 'Left',
+    'textCelAlignCenter': 'Center',
+    'textCelAlignRight': 'Right',
+    'textCelColorLabel': 'Ink',
+    'textCelBoldLabel': 'Bold',
+    'textCelOutlineLabel': 'Outline (white)',
+    'textCelBackgroundLabel': 'Box (red)',
+    'textCelPositionLabel': 'Position',
     'tlAttachFreeAbove': 'Attach free layer above',
     'tlAttachFreeBelow': 'Attach free layer below',
     'tlAttachSyncedAbove': 'Attach synced layer above',
@@ -1935,7 +1969,23 @@ class AppStrings {
     'tlKindAnimation': '動画',
     'tlKindStoryboard': '絵コンテ',
     'tlKindImage': '画像',
+    'tlKindText': 'テキスト',
     'tlKindSe': 'SE',
+    'textCelNewTitle': '新規テキスト',
+    'textCelEditTitle': 'テキストを編集',
+    'textCelTextLabel': 'テキスト',
+    'textCelFontLabel': 'フォント',
+    'textCelFontSystem': 'システム',
+    'textCelSizeLabel': 'サイズ',
+    'textCelAlignLabel': '揃え',
+    'textCelAlignLeft': '左',
+    'textCelAlignCenter': '中央',
+    'textCelAlignRight': '右',
+    'textCelColorLabel': 'インク',
+    'textCelBoldLabel': '太字',
+    'textCelOutlineLabel': 'フチ（白）',
+    'textCelBackgroundLabel': 'ボックス（赤）',
+    'textCelPositionLabel': '位置',
     'tlKindInstruction': '指示',
     'tlAttachFreeAbove': '上にフリーの付属レイヤー',
     'tlAttachFreeBelow': '下にフリーの付属レイヤー',
@@ -2585,7 +2635,23 @@ class AppStrings {
     'tlKindAnimation': '동화',
     'tlKindStoryboard': '콘티',
     'tlKindImage': '이미지',
+    'tlKindText': '텍스트',
     'tlKindSe': 'SE',
+    'textCelNewTitle': '새 텍스트',
+    'textCelEditTitle': '텍스트 편집',
+    'textCelTextLabel': '텍스트',
+    'textCelFontLabel': '폰트',
+    'textCelFontSystem': '시스템',
+    'textCelSizeLabel': '크기',
+    'textCelAlignLabel': '정렬',
+    'textCelAlignLeft': '왼쪽',
+    'textCelAlignCenter': '가운데',
+    'textCelAlignRight': '오른쪽',
+    'textCelColorLabel': '잉크',
+    'textCelBoldLabel': '굵게',
+    'textCelOutlineLabel': '외곽선(흰색)',
+    'textCelBackgroundLabel': '박스(빨강)',
+    'textCelPositionLabel': '위치',
     'tlKindInstruction': '지시',
     'tlAttachFreeAbove': '위에 프리 부속 레이어',
     'tlAttachFreeBelow': '아래에 프리 부속 레이어',
@@ -3269,8 +3335,24 @@ class AppStrings {
     'tlKindAnimation': 'Animation',
     'tlKindStoryboard': 'Storyboard',
     'tlKindImage': 'Image',
+    'tlKindText': 'Texte',
     'tlKindSe': 'SE',
     'tlKindInstruction': 'Indication',
+    'textCelNewTitle': 'Nouveau texte',
+    'textCelEditTitle': 'Modifier le texte',
+    'textCelTextLabel': 'Texte',
+    'textCelFontLabel': 'Police',
+    'textCelFontSystem': 'Système',
+    'textCelSizeLabel': 'Taille',
+    'textCelAlignLabel': 'Alignement',
+    'textCelAlignLeft': 'Gauche',
+    'textCelAlignCenter': 'Centre',
+    'textCelAlignRight': 'Droite',
+    'textCelColorLabel': 'Encre',
+    'textCelBoldLabel': 'Gras',
+    'textCelOutlineLabel': 'Contour (blanc)',
+    'textCelBackgroundLabel': 'Boîte (rouge)',
+    'textCelPositionLabel': 'Position',
     'tlAttachFreeAbove': 'Calque attaché libre au-dessus',
     'tlAttachFreeBelow': 'Calque attaché libre en dessous',
     'tlAttachSyncedAbove': 'Calque attaché synchronisé au-dessus',
@@ -3897,7 +3979,23 @@ class AppStrings {
     'tlKindAnimation': '动画',
     'tlKindStoryboard': '分镜',
     'tlKindImage': '图像',
+    'tlKindText': '文本',
     'tlKindSe': 'SE',
+    'textCelNewTitle': '新建文本',
+    'textCelEditTitle': '编辑文本',
+    'textCelTextLabel': '文本',
+    'textCelFontLabel': '字体',
+    'textCelFontSystem': '系统',
+    'textCelSizeLabel': '大小',
+    'textCelAlignLabel': '对齐',
+    'textCelAlignLeft': '左',
+    'textCelAlignCenter': '居中',
+    'textCelAlignRight': '右',
+    'textCelColorLabel': '墨色',
+    'textCelBoldLabel': '加粗',
+    'textCelOutlineLabel': '描边（白）',
+    'textCelBackgroundLabel': '底框（红）',
+    'textCelPositionLabel': '位置',
     'tlKindInstruction': '指示',
     'tlAttachFreeAbove': '在上方添加自由附属图层',
     'tlAttachFreeBelow': '在下方添加自由附属图层',

@@ -22,6 +22,15 @@ enum LayerKind {
   /// contiguous member run.
   folder('folder'),
 
+  /// A TEXT layer (R5, §6-s): the drawing layer's sibling — frames and
+  /// exposure work exactly like animation, but a cel's PICTURE is text
+  /// parameters ([Frame.textContent]) instead of pen strokes: the brush
+  /// is refused, editing re-types the parameters, and the raster the
+  /// stack composites is a projection baked into the ordinary cel store
+  /// on every edit (the import-cel grammar). Rasterize converts the row
+  /// into a plain animation layer — the pixels stay, the parameters go.
+  text('text'),
+
   /// Sound-effect track: rows for the timesheet's SE column. Drawable like
   /// an animation layer (exposure blocks mark SE timing; frame names carry
   /// the labels); sorts into its own timeline section between the drawing
@@ -75,17 +84,24 @@ bool layerKindHoldsDrawings(LayerKind kind) {
     LayerKind.animation ||
     LayerKind.storyboard ||
     LayerKind.image ||
+    LayerKind.text ||
     LayerKind.se => true,
     LayerKind.instruction || LayerKind.camera || LayerKind.folder => false,
   };
 }
 
-/// The ACTION-section DRAWING kinds: the rows whose cels hold pen artwork.
-/// Everything that means "a real drawing row" — brush targets, attach
-/// bases, cel export — asks this rather than listing the three kinds again.
+/// The ACTION-section DRAWING kinds: the rows whose cels hold artwork.
+/// Everything that means "a real drawing row" — attach bases, cel export —
+/// asks this rather than listing the kinds again. The TEXT row belongs:
+/// its cels are pictures (typed, not penned), it carries attaches and
+/// exports cels; only the brush itself asks the narrower
+/// [layerKindAcceptsBrushInput].
 bool layerKindIsDrawingCel(LayerKind kind) {
   return switch (kind) {
-    LayerKind.animation || LayerKind.storyboard || LayerKind.image => true,
+    LayerKind.animation ||
+    LayerKind.storyboard ||
+    LayerKind.image ||
+    LayerKind.text => true,
     LayerKind.se ||
     LayerKind.instruction ||
     LayerKind.camera ||
@@ -98,12 +114,23 @@ bool layerKindIsDrawingCel(LayerKind kind) {
 /// above its contiguous member run.
 bool layerKindGroupsLayers(LayerKind kind) => kind == LayerKind.folder;
 
-/// Whether the brush may land on [kind]'s cels (R6-④): only the
-/// drawing-section kinds. SE cels exist for timing/dialogue data (the
-/// upcoming on-canvas dialogue display is driven by their transform, not
-/// strokes) and instruction/camera rows carry notation — the pen must
-/// never draw on any of them.
-bool layerKindAcceptsBrushInput(LayerKind kind) => layerKindIsDrawingCel(kind);
+/// Whether the brush may land on [kind]'s cels (R6-④). Narrower than
+/// [layerKindIsDrawingCel] since the TEXT kind: a text cel's picture is
+/// typed parameters, so the pen is refused there the way it is on a
+/// referenced image — the kind-level version of the same "derived
+/// content" rule. SE cels exist for timing/dialogue data and
+/// instruction/camera rows carry notation — the pen must never draw on
+/// any of them.
+bool layerKindAcceptsBrushInput(LayerKind kind) {
+  return switch (kind) {
+    LayerKind.animation || LayerKind.storyboard || LayerKind.image => true,
+    LayerKind.text ||
+    LayerKind.se ||
+    LayerKind.instruction ||
+    LayerKind.camera ||
+    LayerKind.folder => false,
+  };
+}
 
 // ---------------------------------------------------------------------------
 // Semantic row predicates.
@@ -123,6 +150,7 @@ bool layerKindComposites(LayerKind kind) {
     LayerKind.animation ||
     LayerKind.storyboard ||
     LayerKind.image ||
+    LayerKind.text ||
     LayerKind.se ||
     LayerKind.instruction ||
     LayerKind.folder => true,
@@ -147,6 +175,7 @@ bool layerKindHasPictureOpacity(LayerKind kind) {
     LayerKind.animation ||
     LayerKind.storyboard ||
     LayerKind.image ||
+    LayerKind.text ||
     LayerKind.se ||
     LayerKind.instruction ||
     LayerKind.folder => true,
@@ -162,6 +191,7 @@ bool layerKindHasLayerTransform(LayerKind kind) {
     LayerKind.animation ||
     LayerKind.storyboard ||
     LayerKind.image ||
+    LayerKind.text ||
     LayerKind.se ||
     LayerKind.instruction ||
     LayerKind.folder => true,
@@ -179,6 +209,7 @@ bool layerKindIsClipboardCopyable(LayerKind kind) {
     LayerKind.animation ||
     LayerKind.storyboard ||
     LayerKind.image ||
+    LayerKind.text ||
     LayerKind.instruction => true,
     LayerKind.se || LayerKind.camera || LayerKind.folder => false,
   };
@@ -199,6 +230,7 @@ bool layerKindExportsCels(LayerKind kind) {
     LayerKind.animation ||
     LayerKind.storyboard ||
     LayerKind.image ||
+    LayerKind.text ||
     LayerKind.instruction => true,
     LayerKind.se || LayerKind.camera || LayerKind.folder => false,
   };
@@ -215,7 +247,12 @@ bool layerKindTakesTimesheetColumn(LayerKind kind) {
     LayerKind.storyboard ||
     LayerKind.se ||
     LayerKind.instruction => true,
-    LayerKind.image || LayerKind.camera || LayerKind.folder => false,
+    // Text rows annotate the picture (cut numbers on paper), not the
+    // sheet — printed cel columns stay the field's vocabulary.
+    LayerKind.text ||
+    LayerKind.image ||
+    LayerKind.camera ||
+    LayerKind.folder => false,
   };
 }
 

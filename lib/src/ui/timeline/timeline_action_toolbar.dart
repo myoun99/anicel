@@ -215,6 +215,11 @@ class TimelineActionToolbar extends StatelessWidget {
         onSelected: () => session.addLayerOfKind(LayerKind.image),
       ),
       PanelFlyoutItem(
+        keyValue: 'add-layer-kind-text',
+        label: AppText.strings.tlKindText,
+        onSelected: () => session.addLayerOfKind(LayerKind.text),
+      ),
+      PanelFlyoutItem(
         keyValue: 'add-layer-kind-se',
         label: AppText.strings.tlKindSe,
         onSelected: () => session.addLayerOfKind(LayerKind.se),

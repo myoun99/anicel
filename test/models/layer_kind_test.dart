@@ -14,6 +14,7 @@ void main() {
       expect(LayerKind.fromJson('animation'), LayerKind.animation);
       expect(LayerKind.fromJson('storyboard'), LayerKind.storyboard);
       expect(LayerKind.fromJson('image'), LayerKind.image);
+      expect(LayerKind.fromJson('text'), LayerKind.text);
       expect(LayerKind.fromJson('se'), LayerKind.se);
       expect(LayerKind.fromJson('camera'), LayerKind.camera);
     });
@@ -43,6 +44,39 @@ void main() {
       // the predicate answers for every kind, not just the two it names.
       for (final kind in [LayerKind.camera, LayerKind.folder]) {
         expect(layerKindAcceptsRepeatRegions(kind), isFalse, reason: '$kind');
+      }
+    });
+
+    test('the TEXT row (R5, §6-s): the drawing sibling that refuses the '
+        'brush — frames/exposure like animation, attach base, cel export, '
+        'no timesheet column, typed picture instead of penned', () {
+      expect(LayerKind.text.toJson(), 'text');
+      expect(layerKindHoldsDrawings(LayerKind.text), isTrue);
+      expect(layerKindIsDrawingCel(LayerKind.text), isTrue);
+      expect(
+        layerKindAcceptsBrushInput(LayerKind.text),
+        isFalse,
+        reason: 'the alias split: a text cel is typed, never penned',
+      );
+      expect(layerKindComposites(LayerKind.text), isTrue);
+      expect(layerKindPaintsArtwork(LayerKind.text), isTrue);
+      expect(layerKindExportsCels(LayerKind.text), isTrue);
+      expect(layerKindIsClipboardCopyable(LayerKind.text), isTrue);
+      expect(layerKindTakesTimesheetColumn(LayerKind.text), isFalse);
+      expect(layerKindCoversWithoutGaps(LayerKind.text), isFalse);
+      expect(layerKindHoldsSingleCel(LayerKind.text), isFalse);
+      expect(layerKindIsFixed(LayerKind.text), isFalse);
+      // Every OTHER drawing-cel kind still takes the brush — the split
+      // must not widen.
+      for (final kind in LayerKind.values) {
+        if (kind == LayerKind.text) {
+          continue;
+        }
+        expect(
+          layerKindAcceptsBrushInput(kind),
+          layerKindIsDrawingCel(kind),
+          reason: '$kind',
+        );
       }
     });
 

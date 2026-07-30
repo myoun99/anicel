@@ -234,12 +234,15 @@ class CreateLinkedCutCommandInputPlan {
 /// Whether a row of [kind] copies into a 겸용컷: the drawing layers whose
 /// pictures are shared — IMAGE rows included (the shared BG is the
 /// classic 겸용 case; the linked copy shares the cel id and the covering
-/// normalization re-covers it) — plus the folder rows that hold them
-/// ("폴더 존재/멤버십은 공유 구조"). SE/instruction/camera rows are
-/// per-use fixtures.
+/// normalization re-covers it) and TEXT rows too (§6-z5: "레이어는 모두
+/// 겸용컷에서 공유된다" — the escape hatch for per-cut cut numbers is the
+/// ordinary 독립시키기) — plus the folder rows that hold them ("폴더
+/// 존재/멤버십은 공유 구조"). SE/instruction/camera rows are per-use
+/// fixtures.
 bool _linksIntoLinkedCut(LayerKind kind) =>
     kind == LayerKind.animation ||
     kind == LayerKind.image ||
+    kind == LayerKind.text ||
     layerKindGroupsLayers(kind);
 
 /// Plans a 겸용컷 생성 (L2): a new cut id, one linked-copy id per linked

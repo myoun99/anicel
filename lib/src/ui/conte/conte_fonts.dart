@@ -31,13 +31,23 @@ TextStyle conteTextStyle(double size, {bool bold = false, Color? color}) =>
       fontFamilyFallback: const [conteKrFontFamily],
     );
 
+bool _conteFontsLoaded = false;
 Future<void>? _conteFontsLoad;
 
 /// Idempotent engine registration of the embedded faces. The workspace
 /// kicks it at startup so the conte opens ready; anything that lays conte
 /// text out awaits it too (cheap once loaded), so a cold path cannot
 /// measure in a fallback face and quietly wrap differently.
+///
+/// Once loaded this returns a FRESH completed future, never the memoized
+/// one: a future minted inside one test's fake-async zone hangs any await
+/// from a LATER test (its completion microtask queues in the dead zone —
+/// the FakeFfmpegProcess lesson). The engine registration itself is
+/// process-wide, so the flag is the only memo the steady state needs.
 Future<void> ensureConteFontsLoaded() {
+  if (_conteFontsLoaded) {
+    return Future<void>.value();
+  }
   return _conteFontsLoad ??= () async {
     final jp = FontLoader(conteJpFontFamily)
       ..addFont(rootBundle.load(conteJpRegularAsset))
@@ -45,5 +55,6 @@ Future<void> ensureConteFontsLoaded() {
     final kr = FontLoader(conteKrFontFamily)
       ..addFont(rootBundle.load(conteKrRegularAsset));
     await Future.wait([jp.load(), kr.load()]);
+    _conteFontsLoaded = true;
   }();
 }

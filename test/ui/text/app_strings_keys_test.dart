@@ -465,6 +465,22 @@ void main() {
     'tlKindAnimation': (s) => s.tlKindAnimation,
     'tlKindStoryboard': (s) => s.tlKindStoryboard,
     'tlKindImage': (s) => s.tlKindImage,
+    'tlKindText': (s) => s.tlKindText,
+    'textCelNewTitle': (s) => s.textCelNewTitle,
+    'textCelEditTitle': (s) => s.textCelEditTitle,
+    'textCelTextLabel': (s) => s.textCelTextLabel,
+    'textCelFontLabel': (s) => s.textCelFontLabel,
+    'textCelFontSystem': (s) => s.textCelFontSystem,
+    'textCelSizeLabel': (s) => s.textCelSizeLabel,
+    'textCelAlignLabel': (s) => s.textCelAlignLabel,
+    'textCelAlignLeft': (s) => s.textCelAlignLeft,
+    'textCelAlignCenter': (s) => s.textCelAlignCenter,
+    'textCelAlignRight': (s) => s.textCelAlignRight,
+    'textCelColorLabel': (s) => s.textCelColorLabel,
+    'textCelBoldLabel': (s) => s.textCelBoldLabel,
+    'textCelOutlineLabel': (s) => s.textCelOutlineLabel,
+    'textCelBackgroundLabel': (s) => s.textCelBackgroundLabel,
+    'textCelPositionLabel': (s) => s.textCelPositionLabel,
     'tlKindSe': (s) => s.tlKindSe,
     'tlKindInstruction': (s) => s.tlKindInstruction,
     'tlAttachFreeAbove': (s) => s.tlAttachFreeAbove,
@@ -540,6 +556,6 @@ void main() {
   test('the reader table covers every getter the class declares', () {
     // Guards the guard: a string added without a line here would other-
     // wise be silently unchecked.
-    expect(readers, hasLength(485));
+    expect(readers, hasLength(501));
   });
 }
