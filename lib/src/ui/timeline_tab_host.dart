@@ -1423,6 +1423,19 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               : (layer, lane) => widget.onToggleLaneGroupKey!(
                   laneGroupKey(layer.id, lane.laneId),
                 ),
+          // R6: the per-effect eyeball on an effect's header row. One undo
+          // step through the ordinary effect-chain commit.
+          onToggleLaneGroupEnabled: (layer, lane) {
+            final effectId = parseEffectLaneId(lane.laneId)?.effectId;
+            if (effectId == null) {
+              return;
+            }
+            _commitEffectLaneEdit(
+              layer,
+              effectsWithEnabledToggled(layer.effects, effectId),
+              'Toggle ${lane.label}',
+            );
+          },
           timelineActionToolbar: timelineToolbar,
         );
         // The GAP empty state (UI-R9 #3): no cut selected — no rows, no

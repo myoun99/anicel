@@ -117,6 +117,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.lanesForLayer,
     this.laneEdit,
     this.onToggleLaneGroup,
+    this.onToggleLaneGroupEnabled,
     this.hiddenSections = const {},
     this.onToggleSection,
     this.legend,
@@ -317,6 +318,10 @@ class LayerTimelineGrid extends StatefulWidget {
 
   /// Group headers: tapping twirls the group's member lanes (AE collapse).
   final void Function(Layer layer, PropertyLaneRow lane)? onToggleLaneGroup;
+
+  /// The group header's own ON/OFF switch (R6), forwarded to the lane rows.
+  final void Function(Layer layer, PropertyLaneRow lane)?
+  onToggleLaneGroupEnabled;
 
   /// Sections folded to one stub row (SE/camera; drawing never folds) and
   /// the gutter-label toggle.
@@ -1060,6 +1065,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
           onSelectFrame: widget.onSelectFrame,
           laneEdit: widget.laneEdit,
           onToggleLaneGroup: widget.onToggleLaneGroup,
+          onToggleLaneGroupEnabled: widget.onToggleLaneGroupEnabled,
           leadingInset: layerSectionLabelSlotWidth,
         ),
       );

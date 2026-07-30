@@ -76,6 +76,30 @@ List<double> lerpColorMatrixFromIdentity(List<double> matrix, double amount) {
   ];
 }
 
+/// [matrix] applied to ONE colour, the way Skia applies it: STRAIGHT
+/// (unpremultiplied) channels in 0…255, the translation column added, the
+/// result clamped.
+///
+/// The paint routes never need this — Skia does it per pixel — but the
+/// EYEDROPPER does: it answers "what colour is here" by walking bytes in
+/// Dart, so it has to run the same arithmetic on the one pixel it read.
+({double r, double g, double b, double a}) applyColorMatrixToStraightColor(
+  List<double> matrix,
+  double r,
+  double g,
+  double b,
+  double a,
+) {
+  double row(int index) =>
+      (matrix[index * 5] * r +
+              matrix[index * 5 + 1] * g +
+              matrix[index * 5 + 2] * b +
+              matrix[index * 5 + 3] * a +
+              matrix[index * 5 + 4])
+          .clamp(0.0, 255.0);
+  return (r: row(0), g: row(1), b: row(2), a: row(3));
+}
+
 /// Whether [matrix] is the identity (within [epsilon]) — the composite
 /// routes drop such an effect instead of paying for a filter that does
 /// nothing.

@@ -7,6 +7,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project.dart';
+import '../../models/timeline_repeat.dart';
 import '../clipboard/layer_copy_payload.dart';
 import 'convert_to_linked_cut_plan.dart';
 import 'folder_mirror.dart';
@@ -205,6 +206,30 @@ PasteLayerCommandInputPlan planPasteLayerCommandInput({
     // The reference is kind-agnostic (§6-z23's second axis): the pasted
     // copy shows the same library asset.
     mediaReference: payload.mediaReference,
+    // A copy looks like the row it came from (user, 07-30 "합성포함해서
+    // 싹다"): the composite-time state travels with the artwork.
+    blendMode: payload.blendMode,
+    transformTrack: payload.transformTrack,
+    effects: payload.effects,
+    mark: payload.mark,
+    onTimesheet: payload.onTimesheet,
+    isFillReference: payload.isFillReference,
+    // Run behaviours are addressed by FRAME ID, so their anchors remap onto
+    // the copied frames — carrying them verbatim would name blocks this
+    // copy does not have, and the next rederive would drop them.
+    runBehaviors: [
+      for (final behavior in payload.runBehaviors)
+        TimelineRunBehavior(
+          anchorFrameId:
+              frameIdMap[behavior.anchorFrameId] ?? behavior.anchorFrameId,
+          side: behavior.side,
+          mode: behavior.mode,
+          patternAnchorFrameId: behavior.patternAnchorFrameId == null
+              ? null
+              : (frameIdMap[behavior.patternAnchorFrameId!] ??
+                    behavior.patternAnchorFrameId),
+        ),
+    ],
   );
 
   return PasteLayerCommandInputPlan(
@@ -239,11 +264,7 @@ class CreateLinkedCutCommandInputPlan {
 /// ordinary 독립시키기) — plus the folder rows that hold them ("폴더
 /// 존재/멤버십은 공유 구조"). SE/instruction/camera rows are per-use
 /// fixtures.
-bool _linksIntoLinkedCut(LayerKind kind) =>
-    kind == LayerKind.animation ||
-    kind == LayerKind.image ||
-    kind == LayerKind.text ||
-    layerKindGroupsLayers(kind);
+bool _linksIntoLinkedCut(LayerKind kind) => layerKindLinksIntoLinkedCut(kind);
 
 /// Plans a 겸용컷 생성 (L2): a new cut id, one linked-copy id per linked
 /// row of [sourceCut] (drawing layers and their folders), and registry

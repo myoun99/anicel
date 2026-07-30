@@ -98,11 +98,20 @@ void main() {
       expect(ids, hasLength(rows.length), reason: 'no address collision');
     });
 
-    test('a disabled effect says so in its header label', () {
+    test('a disabled effect says so through the header\'s own fx switch', () {
+      // The label stays the effect's NAME; the switch (AE's per-effect
+      // eyeball) is what reads on/off.
       final rows = effectPropertyLanes([
         blur().copyWith(enabled: false),
       ], isExpanded: (_) => false);
-      expect(rows.single.label, contains('off'));
+      expect(rows.single.label, EffectKind.blur.label);
+      expect(rows.single.groupEnabled, isFalse);
+      expect(
+        effectPropertyLanes([
+          blur(),
+        ], isExpanded: (_) => false).single.groupEnabled,
+        isTrue,
+      );
     });
 
     test('the value column formats per unit and parses back', () {

@@ -22,6 +22,7 @@ class PropertyLaneRow {
     this.showsKeyNavigator = true,
     this.isGroupHeader = false,
     this.groupExpanded = false,
+    this.groupEnabled,
   });
 
   /// Stable id within the owning layer (e.g. 'position', an FX param id).
@@ -60,6 +61,11 @@ class PropertyLaneRow {
   /// (AE-style header collapse — drives the header's chevron; default
   /// collapsed).
   final bool groupExpanded;
+
+  /// Group headers only: the group's own ON/OFF switch, drawn as the shared
+  /// `fx` glyph — AE's per-effect eyeball (R6). Null = this group has no
+  /// switch (the Transform group; the row's one fx switch covers it).
+  final bool? groupEnabled;
 }
 
 /// The view-state key of ONE collapsible lane group. A layer twirl-down can

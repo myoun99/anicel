@@ -262,6 +262,59 @@ bool layerKindHasLayerEffects(LayerKind kind) {
   };
 }
 
+/// Whether a row of [kind] copies into a NEW 겸용컷 (겸용컷 생성) — the
+/// ACTION-section rows whose content is shared between the cuts that reuse
+/// the same drawing ("액션란은 다 공유", user 2026-07-30).
+///
+/// Animation, image and text rows share their pictures (§6-z5); the folder
+/// rows that hold them share so the structure matches; and an ADJUSTMENT
+/// row shares too (R6b) — see [layerKindMirrorsEffects] for what that has
+/// to mean for a row whose only content is FX.
+///
+/// The STORYBOARD row is the deliberate exception: a cut holds at most one,
+/// and a conte panel belongs to its own cut. SE/instruction/camera rows are
+/// per-use fixtures.
+bool layerKindLinksIntoLinkedCut(LayerKind kind) {
+  return switch (kind) {
+    LayerKind.animation ||
+    LayerKind.image ||
+    LayerKind.text ||
+    LayerKind.folder ||
+    LayerKind.adjustment => true,
+    LayerKind.storyboard ||
+    LayerKind.se ||
+    LayerKind.instruction ||
+    LayerKind.camera => false,
+  };
+}
+
+/// Whether a row of [kind] joins a 겸용 변경 (converting two EXISTING cuts
+/// to share) — a NARROWER question than [layerKindLinksIntoLinkedCut].
+///
+/// ★ The difference is whether POSITION survives. 겸용컷 생성 copies a
+/// stack wholesale, so every row lands exactly where it was. A CONVERT
+/// unions two different stacks: a row the other side lacks is APPENDED at
+/// the end and stripped of its folder. For a drawing row that is a z-order
+/// choice. For an ADJUSTMENT row the position IS the meaning — appended at
+/// the top it grades the entire stack instead of the two rows it was
+/// scoped to, so one "shared" row would render two different pictures and
+/// the effect mirror would keep feeding both. It stays per-cut here; make
+/// the linked cut with 겸용컷 생성 to share a grade, or add an adjustment
+/// to the joined cut yourself.
+bool layerKindJoinsLinkedCutConvert(LayerKind kind) =>
+    layerKindLinksIntoLinkedCut(kind) && !layerKindFiltersBelow(kind);
+
+/// Whether [kind]'s EFFECT CHAIN mirrors across a 겸용 link group.
+///
+/// For every drawing row the answer is NO: the chain is per-use 연출, the
+/// same rule the transform lanes follow ("레인만 각자"). The ADJUSTMENT row
+/// inverts it, because its chain is not decoration ON a picture — it IS the
+/// row's entire content. A shared adjustment whose chain stayed local would
+/// arrive in the other cuts as an empty shell that filters nothing, so for
+/// this kind the chain is what "그림은 공유" means. Diverging per cut is
+/// still available the ordinary way: 독립시키기.
+bool layerKindMirrorsEffects(LayerKind kind) => layerKindFiltersBelow(kind);
+
 /// Whether a row of [kind] can be copied to the layer clipboard,
 /// duplicated or pasted. The camera is a fixture (exactly one per cut) and
 /// SE rows are track-owned — duplicating either would recreate a shape the
@@ -274,9 +327,11 @@ bool layerKindIsClipboardCopyable(LayerKind kind) {
     LayerKind.image ||
     LayerKind.text ||
     LayerKind.instruction => true,
-    // The adjustment stands down with the folder: the single-layer payload
-    // carries no composite-time state at all (see LayerCopyPayload), so a
-    // pasted adjustment would arrive as an empty row that filters nothing.
+    // The adjustment stands down with the folder for a STRUCTURAL reason,
+    // not a payload one (the payload carries composite state now): what an
+    // adjustment does is decided by WHERE it sits, and a paste lands it
+    // wherever the paste lands. Its grade would be a different picture
+    // there, so the row is made in place instead of pasted.
     LayerKind.se ||
     LayerKind.camera ||
     LayerKind.folder ||

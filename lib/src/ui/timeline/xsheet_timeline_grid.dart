@@ -117,6 +117,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.lanesForLayer,
     this.laneEdit,
     this.onToggleLaneGroup,
+    this.onToggleLaneGroupEnabled,
     this.hiddenSections = const {},
     this.rowFilter = TimelineRowFilter.none,
     this.collapsedAttachBaseIds = const {},
@@ -275,6 +276,10 @@ class XSheetTimelineGrid extends StatefulWidget {
 
   /// Group headers: tapping twirls the group's member lanes (AE collapse).
   final void Function(Layer layer, PropertyLaneRow lane)? onToggleLaneGroup;
+
+  /// The group header's own ON/OFF switch (R6), forwarded to the lane rows.
+  final void Function(Layer layer, PropertyLaneRow lane)?
+  onToggleLaneGroupEnabled;
 
   /// Sections hidden from the grid entirely (toolbar visibility toggles;
   /// the section axis runs horizontally here, so hiding drops columns).
@@ -1240,6 +1245,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                             onToggleLaneGroup:
                                                                 widget
                                                                     .onToggleLaneGroup,
+                                                            onToggleLaneGroupEnabled:
+                                                                widget
+                                                                    .onToggleLaneGroupEnabled,
                                                           ),
                                                     )
                                                   : _LayerHeader(

@@ -27,7 +27,7 @@ import '../../models/track_id.dart';
 import '../../models/transform_track.dart';
 import '../brush_frame_store.dart';
 import '../clipboard/layer_copy_payload.dart';
-import '../command.dart' show CompositeCommand;
+import '../command.dart' show Command, CompositeCommand;
 import '../history_manager.dart';
 import '../project_lookup.dart';
 import '../project_repository.dart';
@@ -38,6 +38,7 @@ import 'create_cut_command.dart';
 import 'create_folder_command.dart';
 import 'create_linked_cut_command.dart';
 import 'dissolve_folder_command.dart';
+import 'link_mirror.dart' show linkMirrorTargets;
 import 'delete_cut_command.dart';
 import 'delete_layer_command.dart';
 import 'duplicate_cut_command.dart';
@@ -1138,8 +1139,13 @@ class CutCommandCoordinator {
   }
 
   /// Replaces a layer's EFFECT CHAIN (R6); one undo step, no-op when
-  /// unchanged. FX lanes are per-use ("레인만 각자"), so this never mirrors
-  /// across a 겸용 link group — exactly like the transform track above.
+  /// unchanged.
+  ///
+  /// FX lanes are per-use ("레인만 각자"), so a DRAWING row's chain stays
+  /// local — the same rule its transform track follows. An ADJUSTMENT row
+  /// is the exception ([layerKindMirrorsEffects]): its chain is its whole
+  /// content, so it MIRRORS across the 겸용 link group as one composite
+  /// step — one undo puts every member back.
   void updateLayerEffects({
     required CutId cutId,
     required LayerId layerId,
@@ -1150,18 +1156,34 @@ class CutCommandCoordinator {
     if (!layerKindHasLayerEffects(layer.kind)) {
       throw StateError('The camera row carries no effect chain of its own.');
     }
-    if (listEquals(layer.effects, effects)) {
+    final targets = layerKindMirrorsEffects(layer.kind)
+        ? linkMirrorTargets(
+            repository.requireProject(),
+            cutId: cutId,
+            layerId: layerId,
+          )
+        : [(cutId: cutId, layerId: layerId)];
+    final commands = <Command>[
+      for (final target in targets)
+        if (!listEquals(
+          _requireLayer(cutId: target.cutId, layerId: target.layerId).effects,
+          effects,
+        ))
+          UpdateLayerEffectsCommand(
+            repository: repository,
+            cutId: target.cutId,
+            layerId: target.layerId,
+            effects: effects,
+            description: description,
+          ),
+    ];
+    if (commands.isEmpty) {
       return;
     }
-
     historyManager.execute(
-      UpdateLayerEffectsCommand(
-        repository: repository,
-        cutId: cutId,
-        layerId: layerId,
-        effects: effects,
-        description: description,
-      ),
+      commands.length == 1
+          ? commands.single
+          : CompositeCommand(description: description, commands: commands),
     );
   }
 
