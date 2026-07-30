@@ -72,7 +72,6 @@ void main() {
         frameIndex: session.currentFrameIndex,
         surfaceResolver: session.brushSurfaceForLayerFrame,
         point: CanvasPoint(x: x, y: y),
-        fxBypassedLayerIds: session.fxBypassedLayerIds,
         paperColor: session.projectBackground.argb,
       );
 

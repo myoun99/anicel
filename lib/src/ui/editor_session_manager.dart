@@ -14,6 +14,7 @@ import '../services/commands/import_media_command.dart';
 import '../services/import/media_import_planner.dart';
 import '../services/import/raster_cel_import.dart';
 import '../services/pdf/pdf_render_service.dart';
+import '../services/project_lookup.dart' show cutIdOfLayer;
 import '../models/app_language.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/app_accent_settings_store.dart';
@@ -118,6 +119,7 @@ import '../models/multi_row_range_move.dart';
 import '../services/command.dart';
 import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/rekey_brush_frames_command.dart';
+import '../services/commands/update_layer_transform_enabled_command.dart';
 import '../services/commands/relink_media_asset_command.dart';
 import '../services/commands/update_cut_camera_command.dart';
 import '../services/commands/update_layer_fill_reference_command.dart';
@@ -479,7 +481,6 @@ class EditorSessionManager extends ChangeNotifier {
         layerImages: layerFrameImageCache,
         frameStore: brushFrameStore,
         frameKeyOf: brushFrameKeyForCut,
-        fxBypassedLayerIdsOf: () => _fxBypassedLayerIds,
       );
 
   late final PlaybackCacheBudgetEnforcer _playbackCacheBudgetEnforcer =
@@ -1648,10 +1649,11 @@ class EditorSessionManager extends ChangeNotifier {
     );
   }
 
-  /// Whether [cut]'s camera layer sits in the fx-bypass set.
+  /// Whether [cut]'s camera row has its camera work bypassed — the camera
+  /// row's own transform switch (R8: persisted like every other row's).
   bool _cameraFxBypassedFor(Cut cut) {
     final camera = cut.layers.cameraLayer;
-    return camera != null && _fxBypassedLayerIds.contains(camera.id);
+    return camera != null && !camera.transformEnabled;
   }
 
   /// The editing canvas's composite TREE at the playhead — the same tree
@@ -1772,7 +1774,6 @@ class EditorSessionManager extends ChangeNotifier {
       for (final node in resolveCutFrameCompositeTree(
         cut: stackCut,
         frameIndex: frameIndex,
-        fxBypassedLayerIds: fxBypassedLayerIds,
       ))
         ?mapNode(node),
     ];
@@ -1803,12 +1804,12 @@ class EditorSessionManager extends ChangeNotifier {
       nodes.add(
         CanvasActiveLayerNode(
           opacity: activeLayerOpacity,
-          effects: isLayerFxEnabled(activeFxCarrier.id)
-              ? resolveLayerEffectsAt(
-                  effects: activeFxCarrier.effects,
-                  frameIndex: frameIndex,
-                )
-              : const [],
+          // No master gate here: each effect's own switch gates it inside
+          // the resolve, so this route cannot forget one (R8).
+          effects: resolveLayerEffectsAt(
+            effects: activeFxCarrier.effects,
+            frameIndex: frameIndex,
+          ),
         ),
       );
     }
@@ -1818,11 +1819,10 @@ class EditorSessionManager extends ChangeNotifier {
     // tracks are stripped, so the plain resolve path suffices). They live
     // outside the cut's stack, so they land at the top level.
     for (final layer in withOpacityPreview(trackSeDisplayLayers)) {
-      final fxEnabled = isLayerFxEnabled(layer.id);
       if (!layer.isVisible || layer.opacity <= 0) {
         continue;
       }
-      final opacity = fxEnabled
+      final opacity = layer.transformEnabled
           ? resolveLayerEffectiveOpacityAt(layer: layer, frameIndex: frameIndex)
           : layer.opacity.clamp(0.0, 1.0).toDouble();
       if (opacity <= 0) {
@@ -1873,7 +1873,9 @@ class EditorSessionManager extends ChangeNotifier {
   double _stackLayerOpacity(Layer layer, List<Layer> layers, int frameIndex) {
     final base = isAttachedLayer(layer) ? attachedBaseOf(layer, layers) : null;
     final fxCarrier = base ?? layer;
-    if (!isLayerFxEnabled(fxCarrier.id)) {
+    // The animated Opacity is a TRANSFORM property, so its own group's
+    // switch decides it — not the row master (R8).
+    if (!fxCarrier.transformEnabled) {
       return layer.opacity.clamp(0.0, 1.0).toDouble();
     }
     return (layer.opacity *
@@ -1902,7 +1904,7 @@ class EditorSessionManager extends ChangeNotifier {
       final fxCarrier = isAttachedLayer(layer)
           ? (attachedBaseOf(layer, cut.layers) ?? layer)
           : layer;
-      if (!isLayerFxEnabled(fxCarrier.id)) {
+      if (!fxCarrier.transformEnabled) {
         return null;
       }
       final pose = resolveLayerPoseAt(
@@ -2305,23 +2307,156 @@ class EditorSessionManager extends ChangeNotifier {
     return resolveOpacityTrackAt(layer.transformTrack.opacity, frameIndex);
   }
 
-  // --- Layer FX bypass (session view state, not persisted) -----------------
+  // --- Layer FX switches (PERSISTED layer state, R8) -----------------------
 
-  /// Layers whose FX (transform + animated opacity) are bypassed on every
-  /// composite route — the layer-label fx switch. The set joins the
-  /// composite signatures, so toggling self-invalidates the caches.
-  final Set<LayerId> _fxBypassedLayerIds = {};
-
-  Set<LayerId> get fxBypassedLayerIds => _fxBypassedLayerIds;
-
-  bool isLayerFxEnabled(LayerId layerId) =>
-      !_fxBypassedLayerIds.contains(layerId);
-
-  void toggleLayerFx(LayerId layerId) {
-    if (!_fxBypassedLayerIds.remove(layerId)) {
-      _fxBypassedLayerIds.add(layerId);
+  /// The row's FX state: its TRANSFORM switch ([Layer.transformEnabled])
+  /// plus every effect's own switch, read as one answer for the layer-label
+  /// button — AE's fx column, and a MASTER over the per-group switches
+  /// (user, 2026-07-30: "통합토글버튼").
+  ///
+  /// [LayerFxState.mixed] is what makes it a master rather than a second
+  /// independent bypass: some groups on, some off, and tapping resolves the
+  /// whole row one way.
+  LayerFxState layerFxState(LayerId layerId) {
+    final layer = _fxSwitchLayerById(layerId);
+    if (layer == null) {
+      return LayerFxState.on;
     }
+    final switches = <bool>[
+      if (layerKindHasTransformFxSwitch(layer.kind)) layer.transformEnabled,
+      for (final effect in layer.effects) effect.enabled,
+    ];
+    if (switches.isEmpty) {
+      return LayerFxState.on; // An adjustment row with no effects yet.
+    }
+    if (switches.every((enabled) => enabled)) {
+      return LayerFxState.on;
+    }
+    if (switches.every((enabled) => !enabled)) {
+      return LayerFxState.off;
+    }
+    return LayerFxState.mixed;
+  }
+
+  /// Whether ANY of the row's FX apply — the row-level facet question the
+  /// timeline filter asks ("show me the rows that are doing something").
+  bool isLayerFxEnabled(LayerId layerId) =>
+      layerFxState(layerId) != LayerFxState.off;
+
+  /// Whether the row's TRANSFORM applies. Every reader of a transform
+  /// PROPERTY (pose, animated opacity, the position gizmo) asks this and
+  /// not [isLayerFxEnabled]: since R8 split the switches per group, a row
+  /// can have its transform bypassed while a colour effect still runs —
+  /// the master's [LayerFxState.mixed] answer cannot decide the pose.
+  bool isLayerTransformFxEnabled(LayerId layerId) =>
+      _fxSwitchLayerById(layerId)?.transformEnabled ?? true;
+
+  /// The MASTER toggle: off unless the row is already fully off, in which
+  /// case it turns everything back on. ONE undo step for the whole row.
+  void toggleLayerFx(LayerId layerId) {
+    final layer = _fxSwitchLayerById(layerId);
+    if (layer == null) {
+      return;
+    }
+    final turnOn = layerFxState(layerId) == LayerFxState.off;
+    _setLayerFxSwitches([layer], enabled: turnOn);
+  }
+
+  /// The TRANSFORM group header's own switch (R8).
+  void toggleLayerTransformFx(LayerId layerId) {
+    final layer = _fxSwitchLayerById(layerId);
+    if (layer == null) {
+      return;
+    }
+    updateLayerTransformEnabled(
+      layerId,
+      enabled: !layer.transformEnabled,
+      description: layer.transformEnabled
+          ? 'Bypass transform'
+          : 'Apply transform',
+    );
+  }
+
+  /// The row a switch edit addresses: a cut layer, or a track-owned SE row
+  /// (whose display clone is not the thing to write).
+  Layer? _fxSwitchLayerById(LayerId layerId) =>
+      _layerById(layerId) ?? trackSeGlobalLayerById(layerId);
+
+  /// Writes every FX switch of [targets] to [enabled] as ONE undo step.
+  void _setLayerFxSwitches(List<Layer> targets, {required bool enabled}) {
+    final commands = <Command>[];
+    for (final layer in targets) {
+      // The camera row is IN: it carries no effects, but its own switch —
+      // the one that bypasses the cut camera's work — is this flag.
+      if (layerKindHasTransformFxSwitch(layer.kind) &&
+          layer.transformEnabled != enabled) {
+        commands.add(
+          UpdateLayerTransformEnabledCommand(
+            repository: _repository,
+            layerId: layer.id,
+            transformEnabled: enabled,
+          ),
+        );
+      }
+      if (layer.effects.isEmpty) {
+        continue;
+      }
+      // Through the COORDINATOR, not a hand-built command: it owns the
+      // 겸용컷 effect mirror, and a master that built its own would write
+      // one cut of a link group and leave its twin permanently `mixed`.
+      final cutId = cutIdOfLayer(_repository.requireProject(), layer.id);
+      if (cutId == null) {
+        continue; // A row no cut holds (a track-SE clone) has no chain here.
+      }
+      commands.addAll(
+        _cutCommandCoordinator.layerEffectsCommands(
+          cutId: cutId,
+          layerId: layer.id,
+          effects: [
+            for (final effect in layer.effects)
+              effect.copyWith(enabled: enabled),
+          ],
+          description: enabled ? 'Apply layer FX' : 'Bypass layer FX',
+        ),
+      );
+    }
+    if (commands.isEmpty) {
+      return;
+    }
+    _historyManager.execute(
+      commands.length == 1
+          ? commands.single
+          : CompositeCommand(
+              description: enabled ? 'Apply layer FX' : 'Bypass layer FX',
+              commands: commands,
+            ),
+    );
+    // A bare notify, like every sibling row write (opacity, blend, the
+    // transform track, the effect chain): a switch flip is not a structural
+    // cut edit, and refreshing as one threw away the frame-range selection
+    // the user keeps while A/B-ing the switch.
     notifyListeners();
+  }
+
+  /// Writes one row's TRANSFORM switch; one undo step, no-op when unchanged.
+  void updateLayerTransformEnabled(
+    LayerId layerId, {
+    required bool enabled,
+    String description = 'Toggle transform FX',
+  }) {
+    final layer = _fxSwitchLayerById(layerId);
+    if (layer == null || layer.transformEnabled == enabled) {
+      return;
+    }
+    _historyManager.execute(
+      UpdateLayerTransformEnabledCommand(
+        repository: _repository,
+        layerId: layerId,
+        transformEnabled: enabled,
+        description: description,
+      ),
+    );
+    notifyListeners(); // Not a structural cut edit — see [_setLayerFxSwitches].
   }
 
   // --- Visibility solo mode (session view state, not persisted) ------------
@@ -3736,15 +3871,11 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Bypasses or restores EVERY layer's fx (session view state, like the
-  /// per-row switch).
+  /// Bypasses or restores EVERY layer's fx — the legend's bulk flyout,
+  /// through the same persisted switches the per-row master writes, as ONE
+  /// undo step (R8).
   void setAllLayersFxBypassed(bool bypassed) {
-    if (bypassed) {
-      _fxBypassedLayerIds.addAll(layers.map((layer) => layer.id));
-    } else {
-      _fxBypassedLayerIds.clear();
-    }
-    notifyListeners();
+    _setLayerFxSwitches(layers, enabled: !bypassed);
   }
 
   /// Shows/hides every layer belonging to [section] (the section bracket's

@@ -6,6 +6,7 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
@@ -130,6 +131,85 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.byKey(_gizmoKey), findsNothing);
+    });
+
+    testWidgets('the TRANSFORM group\'s own bypass hides it — the row MASTER '
+        'cannot answer this, since a row with one effect off is `mixed` '
+        '(R8)', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1280, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(
+          home: HomePage(
+            initialProject: Project(
+              id: const ProjectId('gizmo-fx-project'),
+              name: 'Gizmo FX Project',
+              createdAt: DateTime.utc(2026, 7, 30),
+              tracks: [
+                Track(
+                  id: const TrackId('gizmo-track'),
+                  name: 'Video Track',
+                  cuts: [
+                    Cut(
+                      id: const CutId('gizmo-cut'),
+                      name: 'Gizmo Cut',
+                      duration: 12,
+                      canvasSize: const CanvasSize(width: 1280, height: 720),
+                      layers: [
+                        Layer(
+                          id: const LayerId('gizmo-draw'),
+                          name: 'Drawing',
+                          frames: const [],
+                          // An effect that stays ON: with the transform
+                          // bypassed the row reads `mixed`, which is the
+                          // ONE state that tells the two gates apart.
+                          effects: [
+                            LayerEffect(
+                              id: const EffectId('gizmo-fx'),
+                              kind: EffectKind.brightnessContrast,
+                              parameters: {
+                                'brightness': EffectParameter(value: 20),
+                              },
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // Twirl the row's lanes open, then the Transform GROUP.
+      await tester.tap(
+        find.byKey(const ValueKey<String>('timeline-lane-toggle-gizmo-draw')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(_gizmoKey), findsOneWidget);
+
+      final headerSwitch = find.byKey(
+        const ValueKey<String>(
+          'timeline-lane-group-fx-gizmo-draw-transform-group',
+        ),
+      );
+      await tester.ensureVisible(headerSwitch);
+      await tester.pumpAndSettle();
+
+      await tester.tap(headerSwitch);
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(_gizmoKey),
+        findsNothing,
+        reason: 'the pose it would drag is bypassed',
+      );
+
+      await tester.tap(headerSwitch);
+      await tester.pumpAndSettle();
+      expect(find.byKey(_gizmoKey), findsOneWidget);
     });
   });
 }

@@ -9,6 +9,7 @@ import '../../models/layer.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../text/app_strings.dart';
 import '../../models/layer_id.dart';
+import '../../models/layer_kind.dart' show LayerFxState;
 import '../../models/layer_mark.dart';
 import 'layer_timeline_display_adapter.dart';
 import 'layer_timeline_grid.dart';
@@ -66,7 +67,7 @@ class TimelinePanel extends StatefulWidget {
     required this.onToggleLayerTimesheet,
     this.onToggleLayerFillReference,
     required this.onLayerMarkSelected,
-    this.layerFxEnabledOf,
+    this.layerFxStateOf,
     this.layerIsLinkedOf,
     this.onRenameFolder,
     this.onToggleLayerCollapsed,
@@ -224,9 +225,10 @@ class TimelinePanel extends StatefulWidget {
   final ValueChanged<LayerId>? onToggleLayerFillReference;
   final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
 
-  /// The AE-style layer fx switch (session view state), both orientations;
+  /// The AE-style layer fx MASTER (R8: persisted, tri-state), both
+  /// orientations;
   /// null hides it.
-  final bool Function(LayerId layerId)? layerFxEnabledOf;
+  final LayerFxState Function(LayerId layerId)? layerFxStateOf;
 
   /// Link badge state (L4); null shows no badges.
   final bool Function(LayerId layerId)? layerIsLinkedOf;
@@ -451,7 +453,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onLayerOpacityChangeEnd: widget.onLayerOpacityChangeEnd,
                     onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
                     onLayerMarkSelected: widget.onLayerMarkSelected,
-                    layerFxEnabledOf: widget.layerFxEnabledOf,
+                    layerFxStateOf: widget.layerFxStateOf,
                     layerIsLinkedOf: widget.layerIsLinkedOf,
                     onRenameFolder: widget.onRenameFolder,
                     onToggleLayerCollapsed: widget.onToggleLayerCollapsed,
@@ -528,7 +530,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     opacityDragPreview: widget.opacityDragPreview,
                     onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
                     onLayerMarkSelected: widget.onLayerMarkSelected,
-                    layerFxEnabledOf: widget.layerFxEnabledOf,
+                    layerFxStateOf: widget.layerFxStateOf,
                     onToggleLayerFx: widget.onToggleLayerFx,
                     commaDrag: widget.commaDrag,
                     rangeHooks: widget.rangeHooks,

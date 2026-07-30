@@ -3,6 +3,7 @@ import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -59,14 +60,8 @@ void main() {
     isVisible: isVisible,
   );
 
-  List<CutFrameCompositeEntryNode> treeOf(
-    List<Layer> layers, {
-    Set<LayerId> fxBypassedLayerIds = const {},
-  }) => resolveCutFrameCompositeTree(
-    cut: cut(layers),
-    frameIndex: 0,
-    fxBypassedLayerIds: fxBypassedLayerIds,
-  );
+  List<CutFrameCompositeEntryNode> treeOf(List<Layer> layers) =>
+      resolveCutFrameCompositeTree(cut: cut(layers), frameIndex: 0);
 
   group('a folder buffers only when it must', () {
     test('PASS THROUGH + opaque: no group node, members sit at top level', () {
@@ -222,9 +217,15 @@ void main() {
         reason: 'the animated opacity lane pulls it below 1',
       );
       expect(
-        treeOf(layers, fxBypassedLayerIds: {const LayerId('f')}).single,
+        treeOf([
+          for (final layer in layers)
+            layer.kind == LayerKind.folder
+                ? layer.copyWith(transformEnabled: false)
+                : layer,
+        ]).single,
         isA<CutFrameCompositeEntryLeaf>(),
-        reason: 'bypassed FX means opacity 1 again — no buffer needed',
+        reason: 'the folder\'s transform switch off means opacity 1 again — '
+            'no buffer needed',
       );
     });
   });

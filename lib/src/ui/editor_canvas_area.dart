@@ -435,7 +435,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         // commit path throws by design.
         layerKindHasLayerTransform(activeLayer.kind) &&
         layerKindShowsFxToggle(activeLayer.kind) &&
-        session.isLayerFxEnabled(activeLayer.id) &&
+        // R8: the TRANSFORM group's switch, not the row master — a row
+        // with a colour effect off still has a pose to drag.
+        session.isLayerTransformFxEnabled(activeLayer.id) &&
         (widget.expandedLaneLayerIds?.value.contains(activeLayer.id) ?? false);
     // Camera mode retargets the Fit button at the camera frame's bounds —
     // fitting the cut canvas there framed the wrong rectangle.
@@ -507,7 +509,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 frameIndex: session.currentFrameIndex,
                 surfaceResolver: session.brushSurfaceForLayerFrame,
                 point: point,
-                fxBypassedLayerIds: session.fxBypassedLayerIds,
                 paperColor: session.projectBackground.argb,
                 source:
                     widget.eyedropperSource?.value ??
@@ -584,7 +585,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 surfaceResolver: session.brushSurfaceForLayerFrame,
                 point: point,
                 color: color,
-                fxBypassedLayerIds: session.fxBypassedLayerIds,
                 options: widget.fillOptions?.value ?? const FloodFillOptions(),
                 paperColor: session.projectBackground.argb,
                 // Extended fills refuse OPEN regions (the flood reached

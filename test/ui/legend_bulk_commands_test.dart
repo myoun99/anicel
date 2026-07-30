@@ -255,7 +255,7 @@ void main() {
     expect(s.activeLayerId, below.id);
   });
 
-  test('fx bulk bypass/restore rides the session view state', () {
+  test('fx bulk bypass/restore writes every row switch', () {
     final s = session();
     expect(s.layers.every((layer) => s.isLayerFxEnabled(layer.id)), isTrue);
 

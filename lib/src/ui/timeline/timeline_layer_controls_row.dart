@@ -112,7 +112,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.onToggleGroupFold,
     this.onDissolveFolder,
     this.onRenameFolder,
-    this.fxEnabled = true,
+    this.fxState = LayerFxState.on,
     this.onToggleLayerFx,
     this.onionSkinEnabled = false,
     this.onToggleLayerOnionSkin,
@@ -184,9 +184,10 @@ class TimelineLayerControlsRow extends StatelessWidget {
   final ValueChanged<LayerId>? onDissolveFolder;
   final ValueChanged<LayerId>? onRenameFolder;
 
-  /// The AE-style fx switch (session view state): bypasses the layer's
-  /// transform/FX on every composite route while off. Null hides it.
-  final bool fxEnabled;
+  /// The AE-style fx switch as a MASTER over the row's per-group switches
+  /// (R8: model state, so it survives a reload and reaches every composite
+  /// route through the cut itself).
+  final LayerFxState fxState;
   final ValueChanged<LayerId>? onToggleLayerFx;
 
   /// Per-layer onion skin (UI-R17 #5, TVPaint style): whether THIS
@@ -479,7 +480,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
                   layer.attachedToLayerId == null)
                 FxToggleButton(
                   keyValue: 'timeline-layer-fx-${layer.id}',
-                  fxEnabled: fxEnabled,
+                  state: fxState,
                   onToggle: () => onToggleLayerFx!(layer.id),
                 )
               else

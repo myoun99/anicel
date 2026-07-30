@@ -214,25 +214,28 @@ void main() {
         ),
         canvasPaperColor,
       );
-      // With the layer's fx bypassed the pose drops out, so the pixel sits
-      // at its untransformed home again.
+      // With the row's TRANSFORM switch off (R8: the layer's own persisted
+      // field) the pose drops out, so the pixel sits at its untransformed
+      // home again.
+      final unposed = cut([
+        for (final candidate in posed.layers)
+          candidate.copyWith(transformEnabled: false),
+      ]);
       expect(
         sampleCompositeColor(
-          cut: posed,
+          cut: unposed,
           frameIndex: 0,
           surfaceResolver: (_, _) => surface,
           point: CanvasPoint(x: 3, y: 3),
-          fxBypassedLayerIds: {const LayerId('a')},
         ),
         0xFF00FF00,
       );
       expect(
         sampleCompositeColor(
-          cut: posed,
+          cut: unposed,
           frameIndex: 0,
           surfaceResolver: (_, _) => surface,
           point: CanvasPoint(x: 2, y: 2),
-          fxBypassedLayerIds: {const LayerId('a')},
         ),
         canvasPaperColor,
       );

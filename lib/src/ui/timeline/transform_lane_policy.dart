@@ -30,6 +30,7 @@ const PropertyLaneRow transformGroupHeaderLane = PropertyLaneRow(
 PropertyLaneRow transformGroupHeader({
   required bool expanded,
   Set<int> keyedFrames = const {},
+  bool? enabled,
 }) {
   return PropertyLaneRow(
     laneId: transformGroupHeaderLane.laneId,
@@ -38,6 +39,11 @@ PropertyLaneRow transformGroupHeader({
     showsKeyNavigator: false,
     isGroupHeader: true,
     groupExpanded: expanded,
+    // R8: the group's own bypass, the same switch every effect header
+    // carries ([Layer.transformEnabled]). Null on rows that have no
+    // transform of their own to bypass (the camera moves through the cut's
+    // camera track; its row-level switch covers that).
+    groupEnabled: enabled,
   );
 }
 

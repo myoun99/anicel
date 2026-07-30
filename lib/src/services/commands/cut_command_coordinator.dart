@@ -1152,6 +1152,35 @@ class CutCommandCoordinator {
     required List<LayerEffect> effects,
     String description = 'Edit layer effects',
   }) {
+    final commands = layerEffectsCommands(
+      cutId: cutId,
+      layerId: layerId,
+      effects: effects,
+      description: description,
+    );
+    if (commands.isEmpty) {
+      return;
+    }
+    historyManager.execute(
+      commands.length == 1
+          ? commands.single
+          : CompositeCommand(description: description, commands: commands),
+    );
+  }
+
+  /// The commands one effect-chain write needs — INCLUDING the 겸용컷 link
+  /// mirror ("액션란은 다 공유", user 2026-07-30), which is exactly what a
+  /// caller that builds its own `UpdateLayerEffectsCommand` would drop.
+  ///
+  /// Exposed because the R8 fx master writes a row's transform switch and
+  /// its effect switches as ONE undo step, so it needs the commands rather
+  /// than an executed edit — and it must not lose the mirror to get them.
+  List<Command> layerEffectsCommands({
+    required CutId cutId,
+    required LayerId layerId,
+    required List<LayerEffect> effects,
+    String description = 'Edit layer effects',
+  }) {
     final layer = _requireLayer(cutId: cutId, layerId: layerId);
     if (!layerKindHasLayerEffects(layer.kind)) {
       throw StateError('The camera row carries no effect chain of its own.');
@@ -1163,7 +1192,7 @@ class CutCommandCoordinator {
             layerId: layerId,
           )
         : [(cutId: cutId, layerId: layerId)];
-    final commands = <Command>[
+    return <Command>[
       for (final target in targets)
         if (!listEquals(
           _requireLayer(cutId: target.cutId, layerId: target.layerId).effects,
@@ -1177,14 +1206,6 @@ class CutCommandCoordinator {
             description: description,
           ),
     ];
-    if (commands.isEmpty) {
-      return;
-    }
-    historyManager.execute(
-      commands.length == 1
-          ? commands.single
-          : CompositeCommand(description: description, commands: commands),
-    );
   }
 
   /// Replaces the project's instruction vocabulary; one undo step, no-op

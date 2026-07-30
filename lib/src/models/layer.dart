@@ -49,6 +49,7 @@ class Layer {
     this.mediaReference,
     this.seNameTag,
     TransformTrack? transformTrack,
+    this.transformEnabled = true,
     List<LayerEffect> effects = const [],
     this.attachedToLayerId,
     this.attachedPlacement = AttachedPlacement.above,
@@ -147,6 +148,23 @@ class Layer {
   /// untouched default for every layer).
   final TransformTrack transformTrack;
 
+  /// The TRANSFORM group's own switch (R8) — AE's per-group bypass, and the
+  /// twin of [LayerEffect.enabled] one level up. False bypasses this row's
+  /// transform FX (the pose and the animated Opacity sample) on every
+  /// composite route; its STATIC opacity and blend are display properties
+  /// and stay.
+  ///
+  /// PERSISTED, deliberately: it used to be session-only view state, which
+  /// meant a bypass vanished on reload while a per-effect bypass survived —
+  /// one row of switches behaving two different ways. The layer-label fx
+  /// button is a MASTER over this field and the effect chain's switches
+  /// (user, 2026-07-30: "통합토글버튼").
+  ///
+  /// On the CAMERA row this is the camera-work bypass: the render routes
+  /// (playback/export/thumbnails) ignore the cut's camera track while it is
+  /// false, and the authoring overlays keep showing the real pose.
+  final bool transformEnabled;
+
   /// The layer's EFFECT CHAIN (R6), applied at COMPOSITE time like the
   /// transform — never baked into the artwork. Applied in list order over
   /// the row's own picture, after its transform and before its
@@ -208,6 +226,7 @@ class Layer {
     LayerMark? mark,
     bool? isFillReference,
     TransformTrack? transformTrack,
+    bool? transformEnabled,
     List<LayerEffect>? effects,
     LayerId? attachedToLayerId,
     AttachedPlacement? attachedPlacement,
@@ -238,6 +257,7 @@ class Layer {
       mark: mark ?? this.mark,
       isFillReference: isFillReference ?? this.isFillReference,
       transformTrack: transformTrack ?? this.transformTrack,
+      transformEnabled: transformEnabled ?? this.transformEnabled,
       effects: effects ?? this.effects,
       // Detaching is not expressible here (attach rows are created and
       // deleted whole); copyWith only carries the linkage along.
@@ -293,6 +313,8 @@ class Layer {
     if (runBehaviors.isNotEmpty)
       'runBehaviors': [for (final behavior in runBehaviors) behavior.toJson()],
     if (transformTrack.isNotEmpty) 'transform': transformTrack.toJson(),
+    // Default true omitted — pre-R8 files read back with their FX applied.
+    if (!transformEnabled) 'transformEnabled': false,
     if (effects.isNotEmpty)
       'effects': [for (final effect in effects) effect.toJson()],
     if (attachedToLayerId != null) ...{
@@ -391,6 +413,7 @@ class Layer {
       transformTrack: json['transform'] == null
           ? null
           : TransformTrack.fromJson(json['transform'] as Map<String, dynamic>),
+      transformEnabled: json['transformEnabled'] as bool? ?? true,
       effects: json['effects'] == null
           ? const []
           : [
@@ -443,6 +466,7 @@ class Layer {
           other.mediaReference == mediaReference &&
           other.seNameTag == seNameTag &&
           other.transformTrack == transformTrack &&
+          other.transformEnabled == transformEnabled &&
           listEquals(other.effects, effects) &&
           other.attachedToLayerId == attachedToLayerId &&
           other.attachedPlacement == attachedPlacement &&
@@ -475,7 +499,7 @@ class Layer {
     // Folded with isFillReference: Object.hash caps at 20 positional args.
     Object.hash(isFillReference, mediaReference, seNameTag),
     // Folded with transformTrack: Object.hash caps at 20 positional args.
-    Object.hash(transformTrack, Object.hashAll(effects)),
+    Object.hash(transformTrack, transformEnabled, Object.hashAll(effects)),
     attachedToLayerId,
     Object.hash(attachedPlacement, attachedMode),
     Object.hashAllUnordered(

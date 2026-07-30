@@ -360,7 +360,7 @@ class StoryboardPanel extends StatefulWidget {
     this.onLayerOpacityChanged,
     this.onLayerOpacityChangeEnd,
     this.onLayerMarkSelected,
-    this.layerFxEnabledOf,
+    this.layerFxStateOf,
     this.onToggleLayerFx,
     this.cutFxEnabledOf,
     this.onToggleCutFx,
@@ -605,7 +605,7 @@ class StoryboardPanel extends StatefulWidget {
 
   final void Function(LayerId layerId, LayerMark mark)? onLayerMarkSelected;
 
-  final bool Function(LayerId layerId)? layerFxEnabledOf;
+  final LayerFxState Function(LayerId layerId)? layerFxStateOf;
   final ValueChanged<LayerId>? onToggleLayerFx;
 
   /// The timeline's rail legend over this panel's rail (UI-R5): same
@@ -1102,7 +1102,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       onLayerOpacityChanged: widget.onLayerOpacityChanged,
       onLayerOpacityChangeEnd: widget.onLayerOpacityChangeEnd,
       onLayerMarkSelected: widget.onLayerMarkSelected,
-      layerFxEnabledOf: widget.layerFxEnabledOf,
+      layerFxStateOf: widget.layerFxStateOf,
       onToggleLayerFx: widget.onToggleLayerFx,
       opacityDragPreview: widget.opacityDragPreview,
     );
@@ -2522,7 +2522,7 @@ class _StoryboardSeLabel extends StatelessWidget {
     this.onLayerOpacityChanged,
     this.onLayerOpacityChangeEnd,
     this.onLayerMarkSelected,
-    this.layerFxEnabledOf,
+    this.layerFxStateOf,
     this.onToggleLayerFx,
     this.opacityDragPreview,
   });
@@ -2554,7 +2554,7 @@ class _StoryboardSeLabel extends StatelessWidget {
 
   final void Function(LayerId layerId, LayerMark mark)? onLayerMarkSelected;
 
-  final bool Function(LayerId layerId)? layerFxEnabledOf;
+  final LayerFxState Function(LayerId layerId)? layerFxStateOf;
   final ValueChanged<LayerId>? onToggleLayerFx;
 
   /// The session's live opacity-drag preview (UI-R6 #2): while the master
@@ -2689,7 +2689,7 @@ class _StoryboardSeLabel extends StatelessWidget {
                   layerKindShowsFxToggle(layer.kind))
                 FxToggleButton(
                   keyValue: 'storyboard-layer-fx-${layer.id}',
-                  fxEnabled: layerFxEnabledOf?.call(layer.id) ?? true,
+                  state: layerFxStateOf?.call(layer.id) ?? LayerFxState.on,
                   onToggle: () => onToggleLayerFx!(layer.id),
                 )
               else
@@ -3864,9 +3864,13 @@ class _StoryboardTrackLabel extends StatelessWidget {
                       '${subjectCut?.id.value ?? 'none-${track.id.value}'}',
                   subject: 'cut',
                   size: 26,
-                  fxEnabled: subjectCut == null
-                      ? true
-                      : (cutFxEnabledOf?.call(subjectCut!.id) ?? true),
+                  // The cut switch has no per-group switches under it, so it
+                  // is only ever on or off — never mixed.
+                  state:
+                      subjectCut == null ||
+                          (cutFxEnabledOf?.call(subjectCut!.id) ?? true)
+                      ? LayerFxState.on
+                      : LayerFxState.off,
                   onToggle: () {
                     final subject = subjectCut;
                     if (subject != null) {

@@ -42,6 +42,7 @@ class LayerCopyPayload {
     this.mediaReference,
     this.blendMode = LayerBlendMode.normal,
     TransformTrack? transformTrack,
+    this.transformEnabled = true,
     List<LayerEffect> effects = const [],
     List<TimelineRunBehavior> runBehaviors = const [],
     this.mark = LayerMark.none,
@@ -88,7 +89,13 @@ class LayerCopyPayload {
   /// answer, so the numbers travel and the paste is honest about it.
   final TransformTrack transformTrack;
 
-  /// The row's effect chain (R6).
+  /// The TRANSFORM group's bypass switch (R8). It rides with the track it
+  /// bypasses: a copy of a bypassed row that pasted as APPLIED would put
+  /// the artwork at the posed offset while its source sits at identity.
+  final bool transformEnabled;
+
+  /// The row's effect chain (R6) — including each effect's own switch, so
+  /// the paste is bypassed exactly as far as the source was.
   final List<LayerEffect> effects;
 
   /// Run-edge properties. These are addressed by FRAME ID, so the paste
@@ -116,6 +123,7 @@ LayerCopyPayload copyLayerToPayload(Layer source) {
     mediaReference: source.mediaReference,
     blendMode: source.blendMode,
     transformTrack: source.transformTrack,
+    transformEnabled: source.transformEnabled,
     effects: source.effects,
     runBehaviors: source.runBehaviors,
     mark: source.mark,

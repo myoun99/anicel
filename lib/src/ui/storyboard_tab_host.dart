@@ -673,7 +673,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                 onLayerOpacityChanged: _session.previewLayerOpacity,
                 onLayerOpacityChangeEnd: _session.commitLayerOpacity,
                 onLayerMarkSelected: _session.setLayerMark,
-                layerFxEnabledOf: _session.isLayerFxEnabled,
+                layerFxStateOf: _session.layerFxState,
                 onToggleLayerFx: _session.toggleLayerFx,
                 // The timeline's rail legend on this panel too (UI-R5): the
                 // same session-backed bulk flyouts + master opacity bar; the

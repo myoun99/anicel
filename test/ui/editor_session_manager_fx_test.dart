@@ -8,7 +8,7 @@ import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 void main() {
-  group('layer fx bypass (session view state)', () {
+  group('layer fx switches (persisted, R8)', () {
     late EditorSessionManager session;
 
     setUp(() {
@@ -22,12 +22,16 @@ void main() {
       session.addListener(() => notified += 1);
 
       expect(session.isLayerFxEnabled(layerId), isTrue);
+      expect(session.layerFxState(layerId), LayerFxState.on);
       session.toggleLayerFx(layerId);
       expect(session.isLayerFxEnabled(layerId), isFalse);
-      expect(session.fxBypassedLayerIds, {layerId});
+      // R8: PERSISTED on the row, not a session set — and undoable.
+      expect(session.layerFxState(layerId), LayerFxState.off);
+      expect(session.activeLayer!.transformEnabled, isFalse);
       session.toggleLayerFx(layerId);
       expect(session.isLayerFxEnabled(layerId), isTrue);
-      expect(notified, 2);
+      expect(session.activeLayer!.transformEnabled, isTrue);
+      expect(notified, greaterThanOrEqualTo(2));
     });
 
     test('layerCanvasPoseSample: the active layer shows its pose '
