@@ -94,6 +94,7 @@ class TimelinePanel extends StatefulWidget {
     this.lanesForLayer,
     this.laneEdit,
     this.onToggleLaneGroup,
+    this.onToggleLaneGroupEnabled,
     this.hiddenSections = const {},
     this.onToggleSection,
     this.legend,
@@ -308,6 +309,10 @@ class TimelinePanel extends StatefulWidget {
   /// both orientations.
   final void Function(Layer layer, PropertyLaneRow lane)? onToggleLaneGroup;
 
+  /// The group header's own ON/OFF switch (R6), forwarded to the lane rows.
+  final void Function(Layer layer, PropertyLaneRow lane)?
+  onToggleLaneGroupEnabled;
+
   /// SE/camera sections folded to stub rows (columns in the X-sheet), and
   /// the gutter/header toggle. Shared by both orientations.
   final Set<TimelineSection> hiddenSections;
@@ -466,6 +471,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     lanesForLayer: widget.lanesForLayer,
                     laneEdit: widget.laneEdit,
                     onToggleLaneGroup: widget.onToggleLaneGroup,
+                    onToggleLaneGroupEnabled: widget.onToggleLaneGroupEnabled,
                     hiddenSections: widget.hiddenSections,
                     onToggleSection: widget.onToggleSection,
                     legend: widget.legend,
@@ -535,6 +541,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     lanesForLayer: widget.lanesForLayer,
                     laneEdit: widget.laneEdit,
                     onToggleLaneGroup: widget.onToggleLaneGroup,
+                    onToggleLaneGroupEnabled: widget.onToggleLaneGroupEnabled,
                     hiddenSections: widget.hiddenSections,
                     rowFilter: widget.rowFilter,
                     collapsedAttachBaseIds: widget.collapsedAttachBaseIds,

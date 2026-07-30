@@ -7,7 +7,7 @@ import '../input/eager_pan_gesture_recognizer.dart';
 import '../../models/layer.dart';
 import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
 import '../theme/app_theme.dart' show AppColors, instantMenuAnimation;
-import 'layer_label_controls.dart' show LayerSectionBandCell;
+import 'layer_label_controls.dart' show LayerSectionBandCell, fxGlyph;
 import 'property_lane_model.dart';
 import 'transform_lane_policy.dart' show laneSelectionCoversBandRow;
 import 'timeline_cell_style.dart' show timelineDrawingStartColor;
@@ -39,6 +39,7 @@ class TimelineLaneControlsRow extends StatefulWidget {
     this.onSelectFrame,
     this.laneEdit,
     this.onToggleLaneGroup,
+    this.onToggleLaneGroupEnabled,
     this.axis = Axis.horizontal,
     this.keyPrefix = 'timeline',
     this.width,
@@ -61,6 +62,11 @@ class TimelineLaneControlsRow extends StatefulWidget {
   /// Group headers: tapping the header twirls its member lanes open/closed
   /// (AE group collapse); null leaves the header inert.
   final void Function(Layer layer, PropertyLaneRow lane)? onToggleLaneGroup;
+
+  /// The group header's own ON/OFF switch (R6: AE's per-effect eyeball).
+  /// Only reached for headers whose [PropertyLaneRow.groupEnabled] is set.
+  final void Function(Layer layer, PropertyLaneRow lane)?
+  onToggleLaneGroupEnabled;
 
   /// The owning grid's frame-axis direction (drives only the cell's
   /// composition; every control behaves identically).
@@ -381,6 +387,35 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
                     ),
                   ),
                 ),
+                // R6: the group's own switch, for the headers that have one
+                // (each effect). The shared `fx` glyph, so restyling fx
+                // still happens in exactly one place.
+                if (lane.groupEnabled != null) ...[
+                  const SizedBox(width: 4),
+                  IconButton(
+                    key: ValueKey<String>(
+                      '$_keyPrefix-lane-group-fx-${layer.id}-${lane.laneId}',
+                    ),
+                    padding: EdgeInsets.zero,
+                    visualDensity: VisualDensity.compact,
+                    constraints: const BoxConstraints(
+                      minWidth: 22,
+                      minHeight: 22,
+                    ),
+                    iconSize: 16,
+                    tooltip: lane.groupEnabled!
+                        ? 'Bypass ${lane.label}'
+                        : 'Apply ${lane.label}',
+                    onPressed: widget.onToggleLaneGroupEnabled == null
+                        ? null
+                        : () => widget.onToggleLaneGroupEnabled!(layer, lane),
+                    icon: fxGlyph(
+                      context: context,
+                      active: lane.groupEnabled!,
+                      fontSize: 11,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),

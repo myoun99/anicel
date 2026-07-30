@@ -78,13 +78,12 @@ ConvertToLinkedCutPlan planConvertToLinkedCut({
   required Cut originCut,
   required Cut targetCut,
 }) {
-  // Animation, image AND text rows link (the shared BG is the classic
-  // 겸용 case; §6-z5 confirms text shares too); layer pairing stays by
-  // NAME for all three.
+  // ONE rule for who links, shared with the 겸용컷 생성 planner
+  // ([layerKindLinksIntoLinkedCut]) — it used to be spelled out twice and
+  // the two copies had already drifted (this one had no folder clause).
+  // Layer pairing stays by NAME.
   bool linksIntoLinkedCut(Layer layer) =>
-      layer.kind == LayerKind.animation ||
-      layer.kind == LayerKind.image ||
-      layer.kind == LayerKind.text;
+      layerKindLinksIntoLinkedCut(layer.kind);
   final originDrawing = [
     for (final layer in originCut.layers)
       if (linksIntoLinkedCut(layer)) layer,

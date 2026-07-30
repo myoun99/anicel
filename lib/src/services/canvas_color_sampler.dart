@@ -1,12 +1,17 @@
+import '../core/color_matrix.dart';
 import '../core/floor_math.dart';
 import '../models/bitmap_surface.dart';
 import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
 import '../models/cut.dart';
+import '../models/layer.dart';
+import '../models/layer_effect.dart';
 import '../models/layer_id.dart';
+import '../models/layer_kind.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/project_background.dart';
 import '../models/tile_coord.dart';
+import '../ui/canvas/composite_effect_paint.dart' show resolveColorOnlyMatrix;
 import '../ui/canvas/layer_pose_paint.dart' show layerPoseMatrix;
 import 'cut_frame_composite_plan.dart';
 
@@ -41,6 +46,50 @@ int? surfacePixelRgba(BitmapSurface surface, int x, int y) {
       (pixels[index + 1] << 16) |
       (pixels[index + 2] << 8) |
       pixels[index + 3];
+}
+
+/// An ADJUSTMENT row's colour matrix as the eyedropper should apply it, or
+/// null when the row filters nothing here (hidden, bypassed, mix 0, empty
+/// chain) or when its chain is spatial and this walk cannot answer it.
+///
+/// The MIX folds into the matrix exactly as it does on the paint routes
+/// ([resolveAdjustmentScopePass]), so the number the eyedropper reports and
+/// the pixel on screen come from the same arithmetic.
+///
+/// ⚠️ The row's SCOPE is approximated by "everything accumulated so far",
+/// which is this sampler's existing flat-path fidelity: it already ignores
+/// group buffers and blend modes. An adjustment inside a buffering folder
+/// therefore reads as if it applied to the whole stack below.
+List<double>? _adjustmentColorMatrix({
+  required Layer adjustment,
+  required Cut cut,
+  required int frameIndex,
+  required Set<LayerId> fxBypassedLayerIds,
+}) {
+  if (!adjustment.isVisible || fxBypassedLayerIds.contains(adjustment.id)) {
+    return null;
+  }
+  final mix = adjustment.opacity.clamp(0.0, 1.0).toDouble();
+  if (mix <= 0) {
+    return null;
+  }
+  if (!resolveFolderChainAt(
+    cut: cut,
+    layer: adjustment,
+    frameIndex: frameIndex,
+    fxBypassedLayerIds: fxBypassedLayerIds,
+  ).visible) {
+    return null;
+  }
+  final effects = resolveLayerEffectsAt(
+    effects: adjustment.effects,
+    frameIndex: frameIndex,
+  );
+  final matrix = resolveColorOnlyMatrix(effects);
+  if (matrix == null) {
+    return null;
+  }
+  return lerpColorMatrixFromIdentity(matrix, mix);
 }
 
 /// Where the eyedropper reads its color from (R28 #6, the PS/CSP setting).
@@ -115,11 +164,51 @@ int sampleCompositeColor({
   var g = ((paperColor >> 8) & 0xFF).toDouble();
   var b = (paperColor & 0xFF).toDouble();
 
-  for (final entry in resolveCutFrameCompositeEntries(
-    cut: cut,
-    frameIndex: frameIndex,
-    fxBypassedLayerIds: fxBypassedLayerIds,
-  )) {
+  final entryByLayerId = {
+    for (final entry in resolveCutFrameCompositeEntries(
+      cut: cut,
+      frameIndex: frameIndex,
+      fxBypassedLayerIds: fxBypassedLayerIds,
+    ))
+      entry.layer.id: entry,
+  };
+
+  // Walked in STACK order so the R6 effects land where they do on screen:
+  // a row's own chain filters its pixel before it blends, and an
+  // ADJUSTMENT row (which resolves no entry of its own) filters everything
+  // accumulated below it.
+  //
+  // COLOUR only. A blur is a spatial filter — it answers "what colour is
+  // at this point" by reading its neighbours, which a one-pixel byte walk
+  // cannot do — so a blurred picture samples as its unblurred self. Same
+  // class of honest gap as this sampler's blend modes and group buffers,
+  // and named here so it is not mistaken for a bug.
+  for (final layer in cut.layers) {
+    if (layerKindFiltersBelow(layer.kind)) {
+      // "Pick from the current layer" is the what-ink-is-this mode: it
+      // reads the row as DRAWN and no adjustment applies to it.
+      if (source == CanvasColorSampleSource.layer) {
+        continue;
+      }
+      final matrix = _adjustmentColorMatrix(
+        adjustment: layer,
+        cut: cut,
+        frameIndex: frameIndex,
+        fxBypassedLayerIds: fxBypassedLayerIds,
+      );
+      if (matrix == null) {
+        continue;
+      }
+      final filtered = applyColorMatrixToStraightColor(matrix, r, g, b, 255);
+      r = filtered.r;
+      g = filtered.g;
+      b = filtered.b;
+      continue;
+    }
+    final entry = entryByLayerId[layer.id];
+    if (entry == null) {
+      continue;
+    }
     if (source == CanvasColorSampleSource.layer &&
         entry.layer.id != activeLayerId) {
       continue;
@@ -144,9 +233,30 @@ int sampleCompositeColor({
     if (alpha <= 0) {
       continue;
     }
-    r = ((rgba >> 24) & 0xFF) * alpha + r * (1 - alpha);
-    g = ((rgba >> 16) & 0xFF) * alpha + g * (1 - alpha);
-    b = ((rgba >> 8) & 0xFF) * alpha + b * (1 - alpha);
+    var sourceR = ((rgba >> 24) & 0xFF).toDouble();
+    var sourceG = ((rgba >> 16) & 0xFF).toDouble();
+    var sourceB = ((rgba >> 8) & 0xFF).toDouble();
+    // The row's own chain filters its pixel BEFORE its opacity meets the
+    // stack — the same order the paint routes use. `display` only: the
+    // layer mode reads the ink as drawn.
+    if (source == CanvasColorSampleSource.display) {
+      final matrix = resolveColorOnlyMatrix(entry.effects);
+      if (matrix != null) {
+        final filtered = applyColorMatrixToStraightColor(
+          matrix,
+          sourceR,
+          sourceG,
+          sourceB,
+          (rgba & 0xFF).toDouble(),
+        );
+        sourceR = filtered.r;
+        sourceG = filtered.g;
+        sourceB = filtered.b;
+      }
+    }
+    r = sourceR * alpha + r * (1 - alpha);
+    g = sourceG * alpha + g * (1 - alpha);
+    b = sourceB * alpha + b * (1 - alpha);
   }
   return 0xFF000000 |
       (r.round().clamp(0, 255) << 16) |

@@ -262,6 +262,43 @@ bool layerKindHasLayerEffects(LayerKind kind) {
   };
 }
 
+/// Whether a row of [kind] copies into a 겸용컷 — the ACTION-section rows
+/// whose content is shared between the cuts that reuse the same drawing
+/// ("액션란은 다 공유", user 2026-07-30).
+///
+/// Animation, image and text rows share their pictures (§6-z5); the folder
+/// rows that hold them share so the structure matches; and an ADJUSTMENT
+/// row shares too (R6b) — see [layerKindMirrorsEffects] for what that has
+/// to mean for a row whose only content is FX.
+///
+/// The STORYBOARD row is the deliberate exception: a cut holds at most one,
+/// and a conte panel belongs to its own cut. SE/instruction/camera rows are
+/// per-use fixtures.
+bool layerKindLinksIntoLinkedCut(LayerKind kind) {
+  return switch (kind) {
+    LayerKind.animation ||
+    LayerKind.image ||
+    LayerKind.text ||
+    LayerKind.folder ||
+    LayerKind.adjustment => true,
+    LayerKind.storyboard ||
+    LayerKind.se ||
+    LayerKind.instruction ||
+    LayerKind.camera => false,
+  };
+}
+
+/// Whether [kind]'s EFFECT CHAIN mirrors across a 겸용 link group.
+///
+/// For every drawing row the answer is NO: the chain is per-use 연출, the
+/// same rule the transform lanes follow ("레인만 각자"). The ADJUSTMENT row
+/// inverts it, because its chain is not decoration ON a picture — it IS the
+/// row's entire content. A shared adjustment whose chain stayed local would
+/// arrive in the other cuts as an empty shell that filters nothing, so for
+/// this kind the chain is what "그림은 공유" means. Diverging per cut is
+/// still available the ordinary way: 독립시키기.
+bool layerKindMirrorsEffects(LayerKind kind) => layerKindFiltersBelow(kind);
+
 /// Whether a row of [kind] can be copied to the layer clipboard,
 /// duplicated or pasted. The camera is a fixture (exactly one per cut) and
 /// SE rows are track-owned — duplicating either would recreate a shape the

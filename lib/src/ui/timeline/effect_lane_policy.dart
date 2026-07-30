@@ -77,12 +77,12 @@ List<PropertyLaneRow> effectPropertyLanes(
     rows.add(
       PropertyLaneRow(
         laneId: effectGroupLaneId(effect.id),
-        // A BYPASSED effect says so in its own row: the label is the only
-        // place a disabled effect can show, and a silent one would read as
-        // a broken parameter.
-        label: effect.enabled
-            ? effect.kind.label
-            : '${effect.kind.label} (off)',
+        label: effect.kind.label,
+        // AE's per-effect eyeball: the header carries this effect's own
+        // on/off switch as the shared `fx` glyph. A bypassed effect keeps
+        // its keys and says so HERE, rather than looking like a broken
+        // parameter.
+        groupEnabled: effect.enabled,
         // The header carries its members' key union (UI-R20 #13), so one
         // glance finds the effect's keys while it stays collapsed.
         keyedFrames: {
