@@ -225,7 +225,8 @@ class TimelinePanel extends StatefulWidget {
   final ValueChanged<LayerId>? onToggleLayerFillReference;
   final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
 
-  /// The AE-style layer fx switch (session view state), both orientations;
+  /// The AE-style layer fx MASTER (R8: persisted, tri-state), both
+  /// orientations;
   /// null hides it.
   final LayerFxState Function(LayerId layerId)? layerFxStateOf;
 

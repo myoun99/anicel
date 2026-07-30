@@ -253,7 +253,7 @@ class LayerTimelineGrid extends StatefulWidget {
   final void Function(LayerId layerId, double opacity)? onLayerOpacityChangeEnd;
   final ValueChanged<LayerId> onToggleLayerTimesheet;
 
-  /// The AE-style layer fx switch (session view state); null hides it.
+  /// The AE-style layer fx MASTER (R8: persisted, tri-state); null hides it.
   final LayerFxState Function(LayerId layerId)? layerFxStateOf;
 
   /// Link badge state (L4): whether a layer's pictures are shared with a

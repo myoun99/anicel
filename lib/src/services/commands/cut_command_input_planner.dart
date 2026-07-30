@@ -210,6 +210,7 @@ PasteLayerCommandInputPlan planPasteLayerCommandInput({
     // 싹다"): the composite-time state travels with the artwork.
     blendMode: payload.blendMode,
     transformTrack: payload.transformTrack,
+    transformEnabled: payload.transformEnabled,
     effects: payload.effects,
     mark: payload.mark,
     onTimesheet: payload.onTimesheet,

@@ -14,6 +14,7 @@ import '../services/commands/import_media_command.dart';
 import '../services/import/media_import_planner.dart';
 import '../services/import/raster_cel_import.dart';
 import '../services/pdf/pdf_render_service.dart';
+import '../services/project_lookup.dart' show cutIdOfLayer;
 import '../models/app_language.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/app_accent_settings_store.dart';
@@ -118,7 +119,6 @@ import '../models/multi_row_range_move.dart';
 import '../services/command.dart';
 import '../services/commands/cut_command_coordinator.dart';
 import '../services/commands/rekey_brush_frames_command.dart';
-import '../services/commands/update_layer_effects_command.dart';
 import '../services/commands/update_layer_transform_enabled_command.dart';
 import '../services/commands/relink_media_asset_command.dart';
 import '../services/commands/update_cut_camera_command.dart';
@@ -2398,24 +2398,27 @@ class EditorSessionManager extends ChangeNotifier {
           ),
         );
       }
-      final nextEffects = [
-        for (final effect in layer.effects) effect.copyWith(enabled: enabled),
-      ];
-      if (!listEquals(nextEffects, layer.effects)) {
-        commands.add(
-          UpdateLayerEffectsCommand(
-            repository: _repository,
-            cutId: _editingSession.activeCutId ?? _repository.requireProject()
-                .tracks
-                .first
-                .cuts
-                .first
-                .id,
-            layerId: layer.id,
-            effects: nextEffects,
-          ),
-        );
+      if (layer.effects.isEmpty) {
+        continue;
       }
+      // Through the COORDINATOR, not a hand-built command: it owns the
+      // 겸용컷 effect mirror, and a master that built its own would write
+      // one cut of a link group and leave its twin permanently `mixed`.
+      final cutId = cutIdOfLayer(_repository.requireProject(), layer.id);
+      if (cutId == null) {
+        continue; // A row no cut holds (a track-SE clone) has no chain here.
+      }
+      commands.addAll(
+        _cutCommandCoordinator.layerEffectsCommands(
+          cutId: cutId,
+          layerId: layer.id,
+          effects: [
+            for (final effect in layer.effects)
+              effect.copyWith(enabled: enabled),
+          ],
+          description: enabled ? 'Apply layer FX' : 'Bypass layer FX',
+        ),
+      );
     }
     if (commands.isEmpty) {
       return;
@@ -2428,7 +2431,10 @@ class EditorSessionManager extends ChangeNotifier {
               commands: commands,
             ),
     );
-    _refreshAfterCutCommand();
+    // A bare notify, like every sibling row write (opacity, blend, the
+    // transform track, the effect chain): a switch flip is not a structural
+    // cut edit, and refreshing as one threw away the frame-range selection
+    // the user keeps while A/B-ing the switch.
     notifyListeners();
   }
 
@@ -2450,8 +2456,7 @@ class EditorSessionManager extends ChangeNotifier {
         description: description,
       ),
     );
-    _refreshAfterCutCommand();
-    notifyListeners();
+    notifyListeners(); // Not a structural cut edit — see [_setLayerFxSwitches].
   }
 
   // --- Visibility solo mode (session view state, not persisted) ------------

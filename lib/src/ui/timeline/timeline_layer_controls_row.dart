@@ -184,8 +184,9 @@ class TimelineLayerControlsRow extends StatelessWidget {
   final ValueChanged<LayerId>? onDissolveFolder;
   final ValueChanged<LayerId>? onRenameFolder;
 
-  /// The AE-style fx switch (session view state): bypasses the layer's
-  /// transform/FX on every composite route while off. Null hides it.
+  /// The AE-style fx switch as a MASTER over the row's per-group switches
+  /// (R8: model state, so it survives a reload and reaches every composite
+  /// route through the cut itself).
   final LayerFxState fxState;
   final ValueChanged<LayerId>? onToggleLayerFx;
 

@@ -1,12 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/models/layer_section_defaults.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/transform_track.dart';
@@ -127,6 +127,31 @@ void main() {
       expect(reloaded.effects.every((effect) => !effect.enabled), isTrue);
     });
 
+    test('copy/paste and duplicate carry the switches', () {
+      // The switch rides with the track it bypasses: a bypassed row that
+      // pasted as APPLIED would put the artwork at the posed offset while
+      // its source sat at identity.
+      final session = makeSession();
+      final row = armRow(session);
+      session.toggleLayerFx(row.id);
+      expect(session.layerFxState(row.id), LayerFxState.off);
+
+      session.copyActiveLayer();
+      session.pasteLayerFromClipboard();
+      final pastedId = session.activeLayer!.id;
+      expect(pastedId, isNot(row.id));
+      expect(
+        session.layerFxState(pastedId),
+        LayerFxState.off,
+        reason: 'the paste is bypassed exactly as far as its source was',
+      );
+      expect(transformEnabledOf(session, pastedId), isFalse);
+
+      session.selectLayer(row.id);
+      session.duplicateActiveLayer();
+      expect(session.layerFxState(session.activeLayer!.id), LayerFxState.off);
+    });
+
     test('an OLD file with no switch keys reads as fully applied', () {
       final json = Layer(
         id: const LayerId('legacy'),
@@ -210,14 +235,6 @@ void main() {
 
     test('an ADJUSTMENT row reads its effects ALONE — never phantom-mixed', () {
       expect(layerKindHasTransformFxSwitch(LayerKind.adjustment), isFalse);
-      expect(
-        createAdjustmentLayer(
-          id: const LayerId('adj'),
-          name: 'ADJ',
-        ).transformEnabled,
-        isTrue,
-        reason: 'the flag is still at its default; it just means nothing here',
-      );
 
       final session = makeSession();
       session.createDrawingAtCurrentFrame();
@@ -239,6 +256,86 @@ void main() {
         reason:
             'its ONE effect is off, so the row is off — a meaningless '
             'transformEnabled: true must not read as mixed',
+      );
+    });
+
+    test('an ADJUSTMENT row in a 겸용컷 link group SHARES the switches', () {
+      // "액션란은 다 공유" (user, 2026-07-30): an adjustment row's chain IS
+      // its content, so the master must mirror it like every other effect
+      // edit does — a master that built its own command wrote one cut of
+      // the group and left its twin permanently `mixed`.
+      final session = makeSession();
+      session.createDrawingAtCurrentFrame();
+      session.addLayerOfKind(LayerKind.adjustment);
+      final adjId = session.activeLayer!.id;
+      session.addEffectToActiveLayer(EffectKind.brightnessContrast);
+      session.addEffectToActiveLayer(EffectKind.blur);
+
+      final sourceCutId = session.requireActiveCut.id;
+      session.createLinkedCutFromActiveCut();
+      final linkedCutId = session.requireActiveCut.id;
+      expect(linkedCutId, isNot(sourceCutId));
+
+      List<LayerEffect> effectsIn(CutId cutId) => [
+        for (final track in session.repository.requireProject().tracks)
+          for (final cut in track.cuts)
+            if (cut.id == cutId)
+              ...cut.layers
+                  .where((layer) => layer.kind == LayerKind.adjustment)
+                  .expand((layer) => layer.effects),
+      ];
+
+      expect(effectsIn(linkedCutId), hasLength(2));
+
+      // Tap the master in the LINKED cut.
+      session.selectLayer(
+        session.layers.firstWhere((l) => l.kind == LayerKind.adjustment).id,
+      );
+      session.toggleLayerFx(session.activeLayer!.id);
+
+      for (final cutId in [sourceCutId, linkedCutId]) {
+        expect(
+          effectsIn(cutId).every((effect) => !effect.enabled),
+          isTrue,
+          reason: 'the shared chain must not fork between linked cuts',
+        );
+      }
+
+      session.undo();
+      for (final cutId in [sourceCutId, linkedCutId]) {
+        expect(
+          effectsIn(cutId).every((effect) => effect.enabled),
+          isTrue,
+          reason: 'one undo restores both sides of the mirror',
+        );
+      }
+      expect(adjId, isNotNull);
+    });
+
+    test('flipping a switch keeps the frame-range selection alive', () {
+      // The fx button exists to A/B a change; refreshing the cut as if this
+      // were a structural edit threw away the range the user was working on.
+      final session = makeSession();
+      final row = armRow(session);
+      session.updateFrameRangeSelectionDrag(
+        layerId: row.id,
+        anchorIndex: 0,
+        headIndex: 2,
+      );
+      expect(session.frameRangeSelection.value, isNotNull);
+
+      session.toggleLayerFx(row.id);
+      expect(
+        session.frameRangeSelection.value,
+        isNotNull,
+        reason: 'the master must not clear the selection',
+      );
+
+      session.toggleLayerTransformFx(row.id);
+      expect(
+        session.frameRangeSelection.value,
+        isNotNull,
+        reason: 'nor the Transform header switch',
       );
     });
 

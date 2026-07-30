@@ -1219,8 +1219,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           onToggleLayerTimesheet: _session.toggleLayerTimesheet,
           onToggleLayerFillReference: _session.toggleLayerFillReference,
           onLayerMarkSelected: _session.setLayerMark,
-          // The AE-style fx switch: bypasses the layer's transform/FX on
-          // every composite route (session view state).
+          // The AE-style fx MASTER over the row's per-group switches (R8:
+          // model state, read straight off the layer).
           layerFxStateOf: _session.layerFxState,
           layerIsLinkedOf: _session.isLayerLinked,
           // Folder rows are layer rows: their eye, opacity, blend, fx

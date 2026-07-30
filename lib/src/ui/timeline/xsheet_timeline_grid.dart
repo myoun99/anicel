@@ -232,7 +232,7 @@ class XSheetTimelineGrid extends StatefulWidget {
   final ValueChanged<LayerId> onToggleLayerTimesheet;
   final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
 
-  /// The AE-style layer fx switch (session view state); null hides it.
+  /// The AE-style layer fx MASTER (R8: persisted, tri-state); null hides it.
   final LayerFxState Function(LayerId layerId)? layerFxStateOf;
   final ValueChanged<LayerId>? onToggleLayerFx;
 
@@ -1963,7 +1963,7 @@ class _LayerHeader extends StatelessWidget {
   final bool lanesExpanded;
   final ValueChanged<LayerId>? onToggleLanes;
 
-  /// The AE-style fx switch (session view state). Null hides it.
+  /// The AE-style fx MASTER (R8: persisted, tri-state). Null hides it.
   final LayerFxState fxState;
   final ValueChanged<LayerId>? onToggleLayerFx;
 
@@ -2148,8 +2148,12 @@ class _LayerHeader extends StatelessWidget {
                   ),
                   Row(
                     children: [
+                      // Attach rows hide the switch in BOTH orientations:
+                      // they wear their base's fx, so a flip here would
+                      // burn an undo step writing a flag nothing reads.
                       if (onToggleLayerFx != null &&
-                          layerKindShowsFxToggle(layer.kind))
+                          layerKindShowsFxToggle(layer.kind) &&
+                          layer.attachedToLayerId == null)
                         FxToggleButton(
                           keyValue: 'xsheet-layer-fx-${layer.id}',
                           state: fxState,
