@@ -23,8 +23,23 @@ void main() {
   });
 
   tearDown(() async {
-    if (await tempDirectory.exists()) {
-      await tempDirectory.delete(recursive: true);
+    // Windows keeps a handle on a just-closed sqlite file for a moment,
+    // and a test killed mid-fixture leaves one open outright — a teardown
+    // that throws there REPLACES the real failure with a confusing
+    // "directory is not empty". Retry briefly, the brush-tip library's
+    // pattern.
+    for (var attempt = 0; ; attempt += 1) {
+      try {
+        if (await tempDirectory.exists()) {
+          await tempDirectory.delete(recursive: true);
+        }
+        return;
+      } on FileSystemException {
+        if (attempt >= 20) {
+          rethrow;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 10));
+      }
     }
   });
 
@@ -530,42 +545,52 @@ void main() {
     expect(result.presets.first.settings.lockedBlendMode, isNull);
   });
 
-  test('the composite mode index runs the whole 合成モード menu', () async {
-    // `CompositeMode` is the index of Clip Studio's brush blend menu, which
-    // is what puts 乗算 at 2 — the value real files carry.
-    const expected = <int, BrushBlendMode>{
-      1: BrushBlendMode.darken,
-      2: BrushBlendMode.multiply,
-      3: BrushBlendMode.colorBurn,
-      7: BrushBlendMode.lighten,
-      8: BrushBlendMode.screen,
-      9: BrushBlendMode.colorDodge,
-      12: BrushBlendMode.add,
-      14: BrushBlendMode.overlay,
-      15: BrushBlendMode.softLight,
-      16: BrushBlendMode.hardLight,
-      17: BrushBlendMode.difference,
-      18: BrushBlendMode.erase,
-      19: BrushBlendMode.behind,
-      27: BrushBlendMode.exclusion,
-    };
-    for (final entry in expected.entries) {
-      final path = await buildFixture(
-        tipPng: await blackPng(4, 4),
-        compositeMode: entry.key,
-      );
-      final result = await decodeSutBrushFile(
-        filePath: path,
-        sourceName: 'fixture',
-      );
-      expect(
-        result.presets.first.settings.lockedBlendMode,
-        entry.value,
-        reason: 'menu index ${entry.key}',
-      );
-      expect(result.warnings, isEmpty, reason: 'menu index ${entry.key}');
-    }
-  });
+  test(
+    'the composite mode index runs the whole 合成モード menu',
+    () async {
+      // `CompositeMode` is the index of Clip Studio's brush blend menu, which
+      // is what puts 乗算 at 2 — the value real files carry.
+      const expected = <int, BrushBlendMode>{
+        1: BrushBlendMode.darken,
+        2: BrushBlendMode.multiply,
+        3: BrushBlendMode.colorBurn,
+        7: BrushBlendMode.lighten,
+        8: BrushBlendMode.screen,
+        9: BrushBlendMode.colorDodge,
+        12: BrushBlendMode.add,
+        14: BrushBlendMode.overlay,
+        15: BrushBlendMode.softLight,
+        16: BrushBlendMode.hardLight,
+        17: BrushBlendMode.difference,
+        18: BrushBlendMode.erase,
+        19: BrushBlendMode.behind,
+        27: BrushBlendMode.exclusion,
+      };
+      for (final entry in expected.entries) {
+        final path = await buildFixture(
+          tipPng: await blackPng(4, 4),
+          compositeMode: entry.key,
+        );
+        final result = await decodeSutBrushFile(
+          filePath: path,
+          sourceName: 'fixture',
+        );
+        expect(
+          result.presets.first.settings.lockedBlendMode,
+          entry.value,
+          reason: 'menu index ${entry.key}',
+        );
+        expect(result.warnings, isEmpty, reason: 'menu index ${entry.key}');
+      }
+    },
+    // FOURTEEN fixtures where every sibling test builds one: each is a
+    // real sqlite database plus PNG encode/decode, so this case does
+    // 14× the file work at the same 30s default. A loaded Windows CI
+    // runner crossed that line and timed out mid-loop (which then left
+    // an open handle for the teardown above to trip on). The code is
+    // not slow — the case is big, so it gets a budget that says so.
+    timeout: const Timeout(Duration(minutes: 3)),
+  );
 
   test('a mode with no kernel yet warns by NAME, not by number', () async {
     // 除算 is a real menu entry this engine cannot composite. Saying so by
@@ -647,10 +672,7 @@ void main() {
     );
 
     expect(result.presets.first.settings.size, 50.0);
-    expect(
-      result.warnings.any((w) => w.contains('unrecognised unit')),
-      isTrue,
-    );
+    expect(result.warnings.any((w) => w.contains('unrecognised unit')), isTrue);
   });
 
   test('missing material degrades to a round tip with a warning', () async {
