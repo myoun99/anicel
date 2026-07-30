@@ -16,6 +16,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../models/media_asset.dart';
+import '../../models/se_name_tag.dart';
 import '../../models/project.dart';
 import '../../models/project_background.dart';
 import '../../models/timesheet_info.dart';
@@ -54,6 +55,7 @@ import 'update_cut_note_command.dart';
 import 'update_track_transform_command.dart';
 import 'update_cut_thumbnail_frame_command.dart';
 import 'update_layer_audio_clips_command.dart';
+import 'update_se_name_tag_command.dart';
 import 'update_layer_instructions_command.dart';
 import 'update_layer_kind_command.dart';
 import 'update_layer_mark_command.dart';
@@ -1069,6 +1071,32 @@ class CutCommandCoordinator {
         cutId: cutId,
         layerId: layerId,
         audioClips: audioClips,
+        description: description,
+      ),
+    );
+  }
+
+  /// Sets an SE row's on-canvas name tag (R5b); one undo step, no-op when
+  /// unchanged. Null resets the row to the stacked default.
+  void setSeNameTag({
+    required LayerId layerId,
+    required SeNameTag? seNameTag,
+    String description = 'Edit SE name tag',
+  }) {
+    // Anywhere lookup, like the audio clips above — SE rows are TRACK
+    // fixtures and the cut-scoped read throws for them.
+    final layer = requireLayerAnywhere(repository.requireProject(), layerId);
+    if (layer.kind != LayerKind.se) {
+      throw StateError('Name tags belong on SE layers only.');
+    }
+    if (layer.seNameTag == seNameTag) {
+      return;
+    }
+    historyManager.execute(
+      UpdateSeNameTagCommand(
+        repository: repository,
+        layerId: layerId,
+        seNameTag: seNameTag,
         description: description,
       ),
     );

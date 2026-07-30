@@ -68,6 +68,7 @@ import '../models/project_frame_rate.dart';
 import '../models/row_block_shift.dart';
 import '../models/property_track.dart';
 import '../models/range_snap.dart';
+import '../models/se_name_tag.dart';
 import '../models/storyboard_coverage.dart';
 import '../models/text_cel_style.dart';
 import '../models/timeline_coverage.dart';
@@ -87,6 +88,7 @@ import '../services/commands/convert_to_linked_cut_plan.dart';
 import '../models/brush_frame_cache_invalidation.dart';
 import '../models/playback_quality.dart';
 import '../services/cut_frame_composite_plan.dart';
+import '../services/se_name_tag_plan.dart';
 import '../services/playback/editor_cache_invalidation_hub.dart';
 import '../services/playback/playback_frame_mapping.dart';
 import 'canvas/canvas_layer_stack_view.dart';
@@ -917,6 +919,69 @@ class EditorSessionManager extends ChangeNotifier {
 
   bool isTrackSeLayerId(LayerId layerId) =>
       activeTrack.seLayers.any((layer) => layer.id == layerId);
+
+  /// Whether the active row can carry an on-canvas name tag (R5b): the
+  /// SE rows, and only while a cut gives the canvas its geometry.
+  bool get canEditActiveSeNameTag =>
+      activeLayer?.kind == LayerKind.se && activeCutOrNull != null;
+
+  /// The active SE row's tag as the editor should SEE it: the configured
+  /// one, or the stacked default this row would draw with — so the dialog
+  /// opens on what is on screen, never on an empty form.
+  SeNameTag? get activeSeNameTagOrDefault {
+    final layer = activeLayer;
+    final cut = activeCutOrNull;
+    if (layer == null || cut == null || layer.kind != LayerKind.se) {
+      return null;
+    }
+    final configured = layer.seNameTag;
+    if (configured != null) {
+      return configured;
+    }
+    final rows = activeTrack.seLayers;
+    final rowIndex = rows.indexWhere((row) => row.id == layer.id);
+    return SeNameTag(
+      position: defaultSeNameTagPosition(
+        canvas: cut.canvasSize,
+        rowIndex: rowIndex < 0 ? 0 : rowIndex,
+      ),
+    );
+  }
+
+  /// Sets (or with null resets) the active SE row's name tag — one undo,
+  /// reaching the TRACK-owned row through the anywhere seam.
+  void setActiveSeNameTag(SeNameTag? tag) {
+    final layer = activeLayer;
+    if (layer == null || layer.kind != LayerKind.se) {
+      return;
+    }
+    _cutCommandCoordinator.setSeNameTag(layerId: layer.id, seNameTag: tag);
+    notifyListeners();
+  }
+
+  /// The ON-CANVAS name tags for a cut's local frame (R5b, §6-z15) — the
+  /// one resolution every drawing surface asks (editing canvas, playback,
+  /// the parked stack, export), so none of them can disagree. Works for
+  /// ANY cut, not just the active one: it walks the owning track's global
+  /// SE rows and converts through that cut's start.
+  List<ResolvedSeNameTag> seNameTagsForCutFrame(Cut cut, int localFrameIndex) {
+    for (final track in _repository.requireProject().tracks) {
+      var start = 0;
+      for (final candidate in track.cuts) {
+        start += candidate.leadingGapFrames;
+        if (candidate.id == cut.id) {
+          return resolveSeNameTagsAt(
+            trackSeLayers: track.seLayers,
+            cutStartFrame: start,
+            localFrameIndex: localFrameIndex,
+            canvas: cut.canvasSize,
+          );
+        }
+        start += candidate.duration;
+      }
+    }
+    return const [];
+  }
 
   /// The GLOBAL track layer for [layerId] (never a display clone).
   Layer? trackSeGlobalLayerById(LayerId layerId) {

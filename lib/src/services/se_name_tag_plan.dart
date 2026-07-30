@@ -1,0 +1,89 @@
+import 'dart:ui' show Offset;
+
+import '../models/canvas_size.dart';
+import '../models/layer.dart';
+import '../models/se_name_tag.dart';
+import '../models/text_cel_style.dart';
+import '../models/timeline_coverage.dart';
+
+/// PURE resolution of the on-canvas SE name tags for one (cut, frame) —
+/// what the editing canvas, playback and export each draw over the
+/// composited picture (R5b, §6-z15). Testable without a pixel.
+///
+/// Track SE rows live on the track's GLOBAL frame axis, so the caller
+/// hands in the track's rows plus the cut's global start; the conversion
+/// happens here and nowhere else (the [TrackSeWindow] rule).
+class ResolvedSeNameTag {
+  const ResolvedSeNameTag({required this.layerId, required this.content});
+
+  /// The SE row the tag belongs to (its eye is the display switch).
+  final String layerId;
+
+  /// The tag as a text block — the same [TextCelContent] the text layer
+  /// speaks, so ONE painter draws both (ⓣ).
+  final TextCelContent content;
+}
+
+/// The tags visible at [localFrameIndex] of a cut starting at
+/// [cutStartFrame], in the rows' own order (first row drawn first).
+///
+/// A row contributes nothing when its eye is off, when no SE block covers
+/// the frame, or when the covering block carries no writing at all — an
+/// empty red box would say less than nothing.
+List<ResolvedSeNameTag> resolveSeNameTagsAt({
+  required List<Layer> trackSeLayers,
+  required int cutStartFrame,
+  required int localFrameIndex,
+  required CanvasSize canvas,
+}) {
+  if (localFrameIndex < 0) {
+    return const [];
+  }
+  final globalFrame = cutStartFrame + localFrameIndex;
+  final tags = <ResolvedSeNameTag>[];
+  for (var rowIndex = 0; rowIndex < trackSeLayers.length; rowIndex += 1) {
+    final layer = trackSeLayers[rowIndex];
+    if (!layer.isVisible) {
+      continue;
+    }
+    final covering = coveringDrawingBlockAt(layer.timeline, globalFrame);
+    if (covering == null) {
+      continue;
+    }
+    final frame = layer.frames
+        .where((frame) => frame.id == covering.frameId)
+        .firstOrNull;
+    if (frame == null) {
+      continue;
+    }
+    final text = seNameTagText(seName: frame.seName, dialogue: frame.name);
+    if (text.isEmpty) {
+      continue;
+    }
+    final tag = layer.seNameTag;
+    tags.add(
+      ResolvedSeNameTag(
+        layerId: layer.id.value,
+        content: TextCelContent(
+          text: text,
+          style: tag?.style ?? SeNameTag.defaultStyle,
+          position:
+              tag?.position ??
+              defaultSeNameTagPosition(canvas: canvas, rowIndex: rowIndex),
+        ),
+      ),
+    );
+  }
+  return tags;
+}
+
+/// A cheap identity for "what would be drawn" — display code compares it
+/// to decide whether a repaint is needed without holding the tags.
+Object seNameTagSignature(List<ResolvedSeNameTag> tags) => Object.hashAll([
+  for (final tag in tags) Object.hash(tag.layerId, tag.content),
+]);
+
+/// Convenience for callers that only have the resolved list: the drawing
+/// anchor of [tag] (the style's alignment is applied by the painter).
+Offset seNameTagAnchor(ResolvedSeNameTag tag) =>
+    tag.content.position ?? Offset.zero;

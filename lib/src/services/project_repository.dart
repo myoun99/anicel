@@ -1,6 +1,7 @@
 import '../models/attached_layer_resolve.dart'
     show cutWithReconciledAttachedMirrors;
 import '../models/audio_clip.dart';
+import '../models/se_name_tag.dart';
 import '../models/camera_instruction.dart';
 import '../models/canvas_size.dart';
 import '../models/covering_image_normalize.dart';
@@ -631,6 +632,18 @@ class ProjectRepository {
     updateLayer(
       layerId: layerId,
       update: (layer) => layer.copyWith(audioClips: audioClips),
+    );
+  }
+
+  /// The SE row's on-canvas name tag (R5b). Null resets it to the stacked
+  /// default, so the sentinel copyWith is what carries the write.
+  void updateLayerSeNameTag({
+    required LayerId layerId,
+    required SeNameTag? seNameTag,
+  }) {
+    updateLayer(
+      layerId: layerId,
+      update: (layer) => layer.copyWith(seNameTag: seNameTag),
     );
   }
 

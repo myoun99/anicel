@@ -9,9 +9,11 @@ import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/project_background.dart';
 import '../../models/transform_track.dart';
+import '../../services/se_name_tag_plan.dart';
 import '../canvas/layer_pose_paint.dart';
 import '../canvas/paper_background.dart';
 import '../canvas/viewport_canvas_transform.dart';
+import '../text/se_name_tag_paint.dart';
 
 /// Paints one cached composite frame inside the canvas panel viewport.
 ///
@@ -45,6 +47,7 @@ class PlaybackFramePainter extends CustomPainter {
     this.pasteboardColor,
     this.paintPaper = true,
     this.paintLetterbox = true,
+    this.seNameTags = const [],
   }) : assert(
          cameraPose == null || cameraFrameSize != null,
          'Camera mode needs the camera frame size.',
@@ -114,6 +117,14 @@ class PlaybackFramePainter extends CustomPainter {
   /// transparent). The multitrack stack paints one frame per track: only
   /// the bottom one letterboxes, the ones above composite over it.
   final bool paintLetterbox;
+
+  /// The SE rows' on-canvas NAME TAGS at this frame (R5b, §6-z15), drawn
+  /// in canvas space directly over the composite — never baked into it
+  /// (the camera's rule): the text comes from the SE frames themselves,
+  /// so a rename shows instantly without invalidating one cached
+  /// composite. They ride the camera projection and the cut pose exactly
+  /// like the artwork they annotate.
+  final List<ResolvedSeNameTag> seNameTags;
 
   void _paintPaper(Canvas canvas, Rect rect) {
     if (!paintPaper) {
@@ -237,6 +248,7 @@ class PlaybackFramePainter extends CustomPainter {
           ..color = Color.fromRGBO(0, 0, 0, imageOpacity.clamp(0.0, 1.0)),
       );
     }
+    paintSeNameTags(canvas, tags: seNameTags, canvasSize: canvasSize);
     if (pose != null) {
       canvas.restore();
     }
@@ -265,5 +277,7 @@ class PlaybackFramePainter extends CustomPainter {
       oldDelegate.paperBackground != paperBackground ||
       oldDelegate.pasteboardColor != pasteboardColor ||
       oldDelegate.paintPaper != paintPaper ||
-      oldDelegate.paintLetterbox != paintLetterbox;
+      oldDelegate.paintLetterbox != paintLetterbox ||
+      seNameTagSignature(oldDelegate.seNameTags) !=
+          seNameTagSignature(seNameTags);
 }

@@ -12,6 +12,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_coverage.dart';
 import '../../services/cut_frame_composite_plan.dart';
+import '../text/se_name_tag_paint.dart';
 import '../../services/playback/playback_frame_mapping.dart'
     show resolveTrackStackPositions;
 import '../camera/camera_frame_render_service.dart';
@@ -89,10 +90,15 @@ class ExportFrameRenderer {
   /// which is exactly the raw canvas at 1:1 pixels on the white paper.
   /// [outputSize] scales the same view down (storyboard thumbnails); null
   /// exports at full size.
+  /// [withNameTags] draws the SE rows' on-canvas name tags over the
+  /// picture (R5b) — ON for presentation renders (the アフレコ video),
+  /// OFF for compositing sources: PNG sequences already stay unposed and
+  /// unfaded for the same reason, and a thumbnail has no room for them.
   Future<ui.Image> renderComposite(
     ExportFrameTask task,
     ExportSizeMode mode, {
     CanvasSize? outputSize,
+    bool withNameTags = false,
   }) {
     final cut = task.cut;
     // The single-cut streams' retention: one cut's cels at a time.
@@ -122,6 +128,18 @@ class ExportFrameRenderer {
           ? session.cameraFrameSize
           : cut.canvasSize,
       outputSize: outputSize,
+      overlayPass: !withNameTags
+          ? null
+          : (canvas) {
+              final tags = session.seNameTagsForCutFrame(cut, task.frameIndex);
+              if (tags.isNotEmpty) {
+                paintSeNameTags(
+                  canvas,
+                  tags: tags,
+                  canvasSize: cut.canvasSize,
+                );
+              }
+            },
     );
   }
 
@@ -189,7 +207,9 @@ class ExportFrameRenderer {
         picture.dispose();
       }
     }
-    final image = await renderComposite(task, mode);
+    // The presentation render: the アフレコ name tags belong in the video
+    // (their row's eye is the switch).
+    final image = await renderComposite(task, mode, withNameTags: true);
     // The V effects are TRACK data on the global axis now (R4).
     final transformTrack = session.transformTrackForCut(task.cut.id);
     final trackFrame = session.trackGlobalFrameOf(task.cut.id, task.frameIndex);
@@ -337,6 +357,13 @@ class ExportFrameRenderer {
         PlaybackFramePainter(
           image: image,
           canvasSize: cut.canvasSize,
+          // The multitrack video path projects here, so the tags ride
+          // this painter instead of the identity-camera composite above —
+          // one draw, in the same canvas space as every other surface.
+          seNameTags: session.seNameTagsForCutFrame(
+            cut,
+            position.localFrameIndex,
+          ),
           cameraPose: session.cameraPoseForCut(cut, position.localFrameIndex),
           cameraFrameSize: size,
           cutPose: poseActive

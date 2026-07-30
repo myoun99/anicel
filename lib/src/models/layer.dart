@@ -13,6 +13,7 @@ import 'layer_id.dart';
 import 'layer_kind.dart';
 import 'layer_mark.dart';
 import 'media_reference.dart';
+import 'se_name_tag.dart';
 import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
 import 'timeline_repeat.dart';
@@ -45,6 +46,7 @@ class Layer {
     this.mark = LayerMark.none,
     this.isFillReference = false,
     this.mediaReference,
+    this.seNameTag,
     TransformTrack? transformTrack,
     this.attachedToLayerId,
     this.attachedPlacement = AttachedPlacement.above,
@@ -130,6 +132,12 @@ class Layer {
   /// kind never changes.
   final MediaReference? mediaReference;
 
+  /// SE rows only (R5b, §6-z15): where this speaker's ON-CANVAS name tag
+  /// sits and how it looks. Null keeps the row on the stacked default
+  /// ([defaultSeNameTagPosition]) — the tag still SHOWS, because the row's
+  /// eye is the display switch; this field only overrides its placement.
+  final SeNameTag? seNameTag;
+
   /// The layer's keyframed transform (the AE Transform group), applied at
   /// COMPOSITE time — playback, export, thumbnails and the editing canvas's
   /// layer stack — never baked into the artwork. Empty = identity (the
@@ -193,6 +201,7 @@ class Layer {
     List<TimelineRunBehavior>? runBehaviors,
     Object? folderId = copyWithSentinel,
     Object? mediaReference = copyWithSentinel,
+    Object? seNameTag = copyWithSentinel,
   }) {
     final nextFrames = frames ?? this.frames;
     return Layer(
@@ -231,6 +240,11 @@ class Layer {
       mediaReference: identical(mediaReference, copyWithSentinel)
           ? this.mediaReference
           : mediaReference as MediaReference?,
+      // Sentinel: clearing the tag back to the stacked default must be
+      // expressible.
+      seNameTag: identical(seNameTag, copyWithSentinel)
+          ? this.seNameTag
+          : seNameTag as SeNameTag?,
     );
   }
 
@@ -258,6 +272,7 @@ class Layer {
     'mark': mark.toJson(),
     if (isFillReference) 'fillReference': true,
     if (mediaReference != null) 'mediaReference': mediaReference!.toJson(),
+    if (seNameTag != null) 'seNameTag': seNameTag!.toJson(),
     if (folderId != null) 'folderId': folderId!.toJson(),
     if (runBehaviors.isNotEmpty)
       'runBehaviors': [for (final behavior in runBehaviors) behavior.toJson()],
@@ -344,6 +359,9 @@ class Layer {
           : MediaReference.fromJson(
               json['mediaReference'] as Map<String, dynamic>,
             ),
+      seNameTag: json['seNameTag'] == null
+          ? null
+          : SeNameTag.fromJson(json['seNameTag'] as Map<String, dynamic>),
       // Legacy 'repeatRegions' JSON is ignored (no production data): its
       // stale ghost entries strip on the first rederive.
       runBehaviors: json['runBehaviors'] == null
@@ -399,6 +417,7 @@ class Layer {
           other.mark == mark &&
           other.isFillReference == isFillReference &&
           other.mediaReference == mediaReference &&
+          other.seNameTag == seNameTag &&
           other.transformTrack == transformTrack &&
           other.attachedToLayerId == attachedToLayerId &&
           other.attachedPlacement == attachedPlacement &&
@@ -429,7 +448,7 @@ class Layer {
     onTimesheet,
     mark,
     // Folded with isFillReference: Object.hash caps at 20 positional args.
-    Object.hash(isFillReference, mediaReference),
+    Object.hash(isFillReference, mediaReference, seNameTag),
     transformTrack,
     attachedToLayerId,
     Object.hash(attachedPlacement, attachedMode),

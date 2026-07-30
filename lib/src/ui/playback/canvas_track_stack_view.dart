@@ -14,6 +14,7 @@ import '../../models/project.dart'
 import '../../models/project_background.dart';
 import '../../models/transform_track.dart';
 import '../../services/playback/playback_frame_mapping.dart';
+import '../../services/se_name_tag_plan.dart';
 import '../canvas/paper_background.dart'
     show AlphaCheckerboardPainter;
 import '../storyboard_cut_fade_policy.dart';
@@ -50,6 +51,7 @@ class CanvasTrackStackView extends StatefulWidget {
     required this.qualityOf,
     required this.cameraFrameSize,
     required this.cameraPoseOf,
+    this.seNameTagsOf,
     this.cutFxEnabledOf,
     this.cutPictureVisibleOf,
     this.onFrameCached,
@@ -75,6 +77,12 @@ class CanvasTrackStackView extends StatefulWidget {
   final PlaybackQuality Function() qualityOf;
   final CanvasSize cameraFrameSize;
   final CameraPose Function(Cut cut, int frameIndex) cameraPoseOf;
+
+  /// The SE rows' on-canvas name tags (R5b): resolved PER CUT, so each
+  /// covered track shows its own speakers rather than the selected
+  /// track's.
+  final List<ResolvedSeNameTag> Function(Cut cut, int frameIndex)?
+  seNameTagsOf;
 
   /// The storyboard V-row display gates (R9), exactly as playback applies
   /// them: fx off bypasses the cut-level pose AND fade, the eye off hides
@@ -292,6 +300,9 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
             canvasSize: cut.canvasSize,
             viewport: widget.viewport,
             cameraPose: widget.cameraPoseOf(cut, localFrame),
+            seNameTags: cutPictureVisible
+                ? widget.seNameTagsOf?.call(cut, localFrame) ?? const []
+                : const [],
             cameraFrameSize: widget.cameraFrameSize,
             cutPose: poseActive
                 ? trackPoseAt(transformTrack, globalFrame, widget.cameraFrameSize)

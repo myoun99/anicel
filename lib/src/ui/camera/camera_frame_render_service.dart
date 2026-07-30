@@ -143,12 +143,18 @@ class CameraFrameRenderService {
   /// [layers] is the flat list; [nodes] is the composite TREE (group
   /// buffers included). Callers hand one or the other — a flat list is
   /// simply a tree of leaves.
+  /// [overlayPass] draws in CANVAS space right after the picture, still
+  /// inside the camera projection — the display-time annotations (the SE
+  /// name tags) that must scale with the artwork but never enter a
+  /// composite cache. Cel renders leave it null: a cel is the artwork
+  /// alone.
   Future<ui.Image> renderThroughCamera({
     List<CutFrameCompositeLayer> layers = const [],
     List<CutFrameCompositeSurfaceNode>? nodes,
     required CameraPose pose,
     required CanvasSize cameraFrameSize,
     CanvasSize? outputSize,
+    void Function(ui.Canvas canvas)? overlayPass,
   }) async {
     final tree =
         nodes ??
@@ -253,6 +259,7 @@ class CameraFrameRenderService {
     }
 
     paintNodes(tree);
+    overlayPass?.call(canvas);
 
     final picture = recorder.endRecording();
     try {
