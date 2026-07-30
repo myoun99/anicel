@@ -65,9 +65,8 @@ List<double>? _adjustmentColorMatrix({
   required Layer adjustment,
   required Cut cut,
   required int frameIndex,
-  required Set<LayerId> fxBypassedLayerIds,
 }) {
-  if (!adjustment.isVisible || fxBypassedLayerIds.contains(adjustment.id)) {
+  if (!adjustment.isVisible) {
     return null;
   }
   final mix = adjustment.opacity.clamp(0.0, 1.0).toDouble();
@@ -78,7 +77,6 @@ List<double>? _adjustmentColorMatrix({
     cut: cut,
     layer: adjustment,
     frameIndex: frameIndex,
-    fxBypassedLayerIds: fxBypassedLayerIds,
   ).visible) {
     return null;
   }
@@ -156,7 +154,6 @@ int sampleCompositeColor({
   required int frameIndex,
   required LayerFrameSurfaceResolver surfaceResolver,
   required CanvasPoint point,
-  Set<LayerId> fxBypassedLayerIds = const {},
   int paperColor = canvasPaperColor,
   CanvasColorSampleSource source = CanvasColorSampleSource.display,
   LayerId? activeLayerId,
@@ -179,7 +176,6 @@ int sampleCompositeColor({
     for (final entry in resolveCutFrameCompositeEntries(
       cut: cut,
       frameIndex: frameIndex,
-      fxBypassedLayerIds: fxBypassedLayerIds,
     ))
       entry.layer.id: entry,
   };
@@ -210,7 +206,6 @@ int sampleCompositeColor({
         adjustment: layer,
         cut: cut,
         frameIndex: frameIndex,
-        fxBypassedLayerIds: fxBypassedLayerIds,
       );
       if (matrix == null) {
         continue;

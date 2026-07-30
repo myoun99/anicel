@@ -238,9 +238,6 @@ bool layerKindShowsOpacityControl(LayerKind kind) => true;
 /// state for entrance parity.
 bool layerKindShowsFxToggle(LayerKind kind) => true;
 
-/// The AE-style layer fx switch: bypasses the layer's FX (transform +
-/// animated opacity) on EVERY composite route while off — session view
-/// state, not persisted.
 /// The `fx` GLYPH — italic, bold, accent when the FX apply and dim when
 /// bypassed. Defined ONCE (R28 follow-up).
 ///
@@ -253,16 +250,25 @@ Widget fxGlyph({
   required BuildContext context,
   required bool active,
   double fontSize = 13,
+  bool mixed = false,
 }) {
+  final onSurface = Theme.of(context).colorScheme.onSurface;
   return Text(
     'fx',
     style: TextStyle(
       fontSize: fontSize,
       fontStyle: FontStyle.italic,
       fontWeight: FontWeight.w700,
-      color: active
+      // MIXED (R8): the row's master says "some of my groups are off" — the
+      // accent held back to half, so it reads as neither fully on nor off.
+      color: mixed
+          ? AppColors.accent.withValues(alpha: 0.5)
+          : active
           ? AppColors.accent
-          : Theme.of(context).colorScheme.onSurface.withValues(alpha: 0.35),
+          : onSurface.withValues(alpha: 0.35),
+      // …plus a mark the colour-blind eye can still read.
+      decoration: mixed ? TextDecoration.underline : TextDecoration.none,
+      decorationColor: AppColors.accent.withValues(alpha: 0.5),
     ),
   );
 }
@@ -378,7 +384,7 @@ class FxToggleButton extends StatelessWidget {
   const FxToggleButton({
     super.key,
     required this.keyValue,
-    required this.fxEnabled,
+    required this.state,
     required this.onToggle,
     this.subject = 'layer',
     this.size = layerFxSlotWidth,
@@ -388,7 +394,12 @@ class FxToggleButton extends StatelessWidget {
   /// ('timeline-layer-fx-a', 'storyboard-cut-fx-3').
   final String keyValue;
 
-  final bool fxEnabled;
+  /// R8: the row's FX as ONE value, so "on/off" and "mixed" cannot drift
+  /// apart on their way here. A layer row is a MASTER over its per-group
+  /// switches and can be [LayerFxState.mixed]; the cut-level switch has no
+  /// groups under it and only ever passes on/off.
+  final LayerFxState state;
+
   final VoidCallback onToggle;
 
   /// Names the row kind in the tooltip ('layer', 'folder', 'cut').
@@ -398,15 +409,24 @@ class FxToggleButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final mixed = state == LayerFxState.mixed;
     return SizedBox(
       width: size,
       height: 26,
       child: IconButton(
         key: ValueKey<String>(keyValue),
-        tooltip: fxEnabled ? 'Bypass $subject FX' : 'Apply $subject FX',
+        tooltip: switch (state) {
+          LayerFxState.mixed => 'Bypass all $subject FX (some are off)',
+          LayerFxState.on => 'Bypass $subject FX',
+          LayerFxState.off => 'Apply $subject FX',
+        },
         padding: EdgeInsets.zero,
         constraints: BoxConstraints.tightFor(width: size, height: 26),
-        icon: fxGlyph(context: context, active: fxEnabled),
+        icon: fxGlyph(
+          context: context,
+          active: state != LayerFxState.off,
+          mixed: mixed,
+        ),
         onPressed: onToggle,
       ),
     );

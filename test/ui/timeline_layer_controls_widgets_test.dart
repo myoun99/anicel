@@ -104,8 +104,13 @@ void main() {
 
       await tester.pumpWidget(_row(layer: layer));
       final restBorder = borderOf();
-      expect(restBorder.top, BorderSide.none, reason: 'the neighbor above '
-          '(or the legend header) owns the seam');
+      expect(
+        restBorder.top,
+        BorderSide.none,
+        reason:
+            'the neighbor above '
+            '(or the legend header) owns the seam',
+      );
       expect(restBorder.bottom.width, 1);
       expect(restBorder.left.width, 1);
       expect(restBorder.right.width, 1);
@@ -364,6 +369,92 @@ void main() {
       );
     });
   });
+
+  /// R8: the label's fx switch is a MASTER over the row's per-group
+  /// switches, so it has a third look — and the tooltip has to say which
+  /// way a tap will resolve the row.
+  group('the fx master switch (R8)', () {
+    Finder fxButton(Layer layer) =>
+        find.byKey(ValueKey<String>('timeline-layer-fx-${layer.id}'));
+
+    TextStyle glyphStyle(WidgetTester tester, Layer layer) => tester
+        .widget<Text>(
+          find.descendant(of: fxButton(layer), matching: find.text('fx')),
+        )
+        .style!;
+
+    testWidgets('MIXED reads as neither on nor off — half accent plus an '
+        'underline the colour-blind eye can see', (tester) async {
+      final layer = _layer();
+
+      await tester.pumpWidget(
+        _row(layer: layer, fxState: LayerFxState.on, onToggleLayerFx: (_) {}),
+      );
+      final on = glyphStyle(tester, layer);
+      expect(on.decoration, TextDecoration.none);
+
+      await tester.pumpWidget(
+        _row(layer: layer, fxState: LayerFxState.off, onToggleLayerFx: (_) {}),
+      );
+      final off = glyphStyle(tester, layer);
+      expect(off.decoration, TextDecoration.none);
+
+      await tester.pumpWidget(
+        _row(
+          layer: layer,
+          fxState: LayerFxState.mixed,
+          onToggleLayerFx: (_) {},
+        ),
+      );
+      final mixed = glyphStyle(tester, layer);
+      expect(mixed.decoration, TextDecoration.underline);
+      expect(mixed.color, isNot(on.color));
+      expect(mixed.color, isNot(off.color));
+      expect(
+        mixed.color!.a,
+        closeTo(on.color!.a * 0.5, 0.01),
+        reason: 'the ON accent held back to half',
+      );
+    });
+
+    testWidgets('the tooltip names what a tap will do to the whole row', (
+      tester,
+    ) async {
+      final layer = _layer();
+
+      for (final (state, expected) in [
+        (LayerFxState.on, 'Bypass layer FX'),
+        (LayerFxState.off, 'Apply layer FX'),
+        (LayerFxState.mixed, 'Bypass all layer FX (some are off)'),
+      ]) {
+        await tester.pumpWidget(
+          _row(layer: layer, fxState: state, onToggleLayerFx: (_) {}),
+        );
+        expect(
+          tester.widget<IconButton>(fxButton(layer)).tooltip,
+          expected,
+          reason: 'state $state',
+        );
+      }
+    });
+
+    testWidgets('tapping reports the layer once', (tester) async {
+      final layer = _layer();
+      final taps = <LayerId>[];
+
+      await tester.pumpWidget(
+        _row(
+          layer: layer,
+          fxState: LayerFxState.mixed,
+          onToggleLayerFx: taps.add,
+        ),
+      );
+      await tester.tap(fxButton(layer));
+      await tester.pump();
+
+      expect(taps, [layer.id]);
+    });
+  });
 }
 
 Widget _header() {
@@ -382,6 +473,8 @@ Widget _row({
   void Function(LayerId layerId, double opacity)? onLayerOpacityChanged,
   ValueChanged<LayerId>? onToggleLayerTimesheet,
   void Function(LayerId layerId, LayerMark mark)? onLayerMarkSelected,
+  LayerFxState fxState = LayerFxState.on,
+  ValueChanged<LayerId>? onToggleLayerFx,
   ValueListenable<({Set<LayerId> layerIds, double opacity})?>?
   opacityDragPreview,
 }) {
@@ -396,6 +489,8 @@ Widget _row({
         onLayerOpacityChanged: onLayerOpacityChanged ?? (_, _) {},
         onToggleLayerTimesheet: onToggleLayerTimesheet ?? (_) {},
         onLayerMarkSelected: onLayerMarkSelected ?? (_, _) {},
+        fxState: fxState,
+        onToggleLayerFx: onToggleLayerFx,
         opacityDragPreview: opacityDragPreview,
       ),
     ),

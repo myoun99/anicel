@@ -94,7 +94,7 @@ class LayerTimelineGrid extends StatefulWidget {
     required this.onLayerOpacityChanged,
     this.onLayerOpacityChangeEnd,
     required this.onToggleLayerTimesheet,
-    this.layerFxEnabledOf,
+    this.layerFxStateOf,
     this.layerIsLinkedOf,
     this.onToggleLayerCollapsed,
     this.onRenameFolder,
@@ -254,7 +254,7 @@ class LayerTimelineGrid extends StatefulWidget {
   final ValueChanged<LayerId> onToggleLayerTimesheet;
 
   /// The AE-style layer fx switch (session view state); null hides it.
-  final bool Function(LayerId layerId)? layerFxEnabledOf;
+  final LayerFxState Function(LayerId layerId)? layerFxStateOf;
 
   /// Link badge state (L4): whether a layer's pictures are shared with a
   /// link group. Null shows no badges.
@@ -377,7 +377,7 @@ typedef _RailRowMemoInputs = ({
   int depth,
   bool hasAttachGroup,
   bool attachGroupExpanded,
-  bool fxEnabled,
+  LayerFxState fxState,
   bool onionSkinEnabled,
   bool isLinked,
   double layerRowHeight,
@@ -933,7 +933,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       attachGroupExpanded: !widget.collapsedAttachBaseIds.contains(
         row.layer.id,
       ),
-      fxEnabled: widget.layerFxEnabledOf?.call(row.layer.id) ?? true,
+      fxState: widget.layerFxStateOf?.call(row.layer.id) ?? LayerFxState.on,
       onionSkinEnabled:
           widget.layerOnionSkinEnabledOf?.call(row.layer.id) ?? false,
       isLinked: widget.layerIsLinkedOf?.call(row.layer.id) ?? false,
@@ -964,7 +964,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
         a.depth == b.depth &&
         a.hasAttachGroup == b.hasAttachGroup &&
         a.attachGroupExpanded == b.attachGroupExpanded &&
-        a.fxEnabled == b.fxEnabled &&
+        a.fxState == b.fxState &&
         a.onionSkinEnabled == b.onionSkinEnabled &&
         a.isLinked == b.isLinked &&
         a.layerRowHeight == b.layerRowHeight &&
@@ -1079,7 +1079,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       onLayerOpacityChanged: widget.onLayerOpacityChanged,
       onLayerOpacityChangeEnd: widget.onLayerOpacityChangeEnd,
       onToggleLayerTimesheet: widget.onToggleLayerTimesheet,
-      fxEnabled: widget.layerFxEnabledOf?.call(row.layer.id) ?? true,
+      fxState: widget.layerFxStateOf?.call(row.layer.id) ?? LayerFxState.on,
       onToggleLayerFx: widget.onToggleLayerFx,
       onionSkinEnabled:
           widget.layerOnionSkinEnabledOf?.call(row.layer.id) ?? false,
@@ -1167,7 +1167,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       rowFilter: widget.rowFilter,
       collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
       activeLayerId: widget.activeLayerId,
-      fxEnabledOf: widget.layerFxEnabledOf,
+      fxEnabledOf: (layerId) =>
+          (widget.layerFxStateOf?.call(layerId) ?? LayerFxState.on) !=
+          LayerFxState.off,
     );
     final rangeHooks = widget.rangeHooks;
     _rangeMoveResolver

@@ -67,15 +67,17 @@ void main() {
     name: id.toUpperCase(),
   ).copyWith(effects: effects, opacity: opacity);
 
-  CutFrameCompositeEntry entryOf(
-    Cut source, {
-    int frameIndex = 0,
-    Set<LayerId> bypassed = const {},
-  }) => resolveCutFrameCompositeEntries(
-    cut: source,
-    frameIndex: frameIndex,
-    fxBypassedLayerIds: bypassed,
-  ).single;
+  CutFrameCompositeEntry entryOf(Cut source, {int frameIndex = 0}) =>
+      resolveCutFrameCompositeEntries(
+        cut: source,
+        frameIndex: frameIndex,
+      ).single;
+
+  /// [effects] with every switch off — what the layer-label MASTER writes
+  /// (R8), and the only thing that bypasses a chain now.
+  List<LayerEffect> allDisabled(List<LayerEffect> effects) => [
+    for (final effect in effects) effect.copyWith(enabled: false),
+  ];
 
   group('a layer\'s own effects', () {
     test('ride the entry, sampled at the frame', () {
@@ -92,11 +94,11 @@ void main() {
       expect(entryOf(cut([drawingLayer()])).effects, isEmpty);
     });
 
-    test('the fx SWITCH bypasses them, exactly like pose and opacity', () {
+    test('each effect\'s OWN switch bypasses it (the master writes them)', () {
       final source = cut([
-        drawingLayer(effects: [blur(6)]),
+        drawingLayer(effects: allDisabled([blur(6)])),
       ]);
-      expect(entryOf(source, bypassed: {const LayerId('a')}).effects, isEmpty);
+      expect(entryOf(source).effects, isEmpty);
     });
 
     test('an animated parameter differs across a HELD exposure', () {
@@ -183,20 +185,15 @@ void main() {
       );
     });
 
-    test('a bypassed folder contributes no effects and needs no buffer', () {
-      final folder = folderRow('f', effects: [blur(4)]);
+    test('a folder whose effects are OFF contributes none and needs no buffer', () {
+      final folder = folderRow('f', effects: allDisabled([blur(4)]));
       expect(
-        folderNeedsCompositeBuffer(
-          folder: folder,
-          frameIndex: 0,
-          fxBypassedLayerIds: {const LayerId('f')},
-        ),
+        folderNeedsCompositeBuffer(folder: folder, frameIndex: 0),
         isFalse,
       );
       final tree = resolveCutFrameCompositeTree(
         cut: cut([drawingLayer(id: 'a', folder: 'f'), folder]),
         frameIndex: 0,
-        fxBypassedLayerIds: {const LayerId('f')},
       );
       expect(
         tree.single,

@@ -171,14 +171,17 @@ void main() {
           0: TransformPose(center: CanvasPoint(x: 3, y: 2), zoom: 2),
         },
       );
+      // R8: the switch is the folder row's own persisted field.
       final bypassed = planCutFrameComposite(
         cut: cut([
           memberLayer(),
-          folderRow('f', transformTrack: folderTrack),
+          folderRow(
+            'f',
+            transformTrack: folderTrack,
+          ).copyWith(transformEnabled: false),
         ]),
         frameIndex: 0,
         surfaceResolver: resolver,
-        fxBypassedLayerIds: {const LayerId('f')},
       );
       expect(
         bypassed.single.pose,
@@ -461,10 +464,11 @@ void main() {
         );
 
     final bypassed = planCutFrameComposite(
-      cut: cut([animated(track: track, opacity: 0.8)]),
+      cut: cut([
+        animated(track: track, opacity: 0.8).copyWith(transformEnabled: false),
+      ]),
       frameIndex: 0,
       surfaceResolver: resolver,
-      fxBypassedLayerIds: {const LayerId('animated')},
     ).single;
 
     expect(bypassed.pose, isNull);
@@ -582,10 +586,12 @@ void main() {
         keyframes: {0: TransformPose(center: CanvasPoint(x: 0, y: 0))},
       ).copyWith(opacity: PropertyTrack<double>().withKey(0, 0.5));
       final plan = planCutFrameComposite(
-        cut: cut([baseLayer(track: track), attachRow('above', 3)]),
+        cut: cut([
+          baseLayer(track: track).copyWith(transformEnabled: false),
+          attachRow('above', 3),
+        ]),
         frameIndex: 0,
         surfaceResolver: resolver,
-        fxBypassedLayerIds: {const LayerId('base')},
       );
 
       expect(plan.map(markerOf), [1, 3]);

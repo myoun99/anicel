@@ -10,7 +10,6 @@ import '../models/brush_stamp_image.dart';
 import '../models/brush_tip_shape.dart';
 import '../models/canvas_point.dart';
 import '../models/cut.dart';
-import '../models/layer_id.dart';
 import '../models/tile_coord.dart';
 import '../native/qa_native_engine.dart';
 import '../ui/dev_profile.dart';
@@ -127,7 +126,6 @@ class LazyCanvasRasterRgb {
     required Cut cut,
     required int frameIndex,
     required LayerFrameSurfaceResolver surfaceResolver,
-    Set<LayerId> fxBypassedLayerIds = const {},
     int paperColor = canvasPaperColor,
     bool extendBeyondCanvas = false,
   }) {
@@ -151,7 +149,6 @@ class LazyCanvasRasterRgb {
       cut: cut,
       frameIndex: frameIndex,
       surfaceResolver: surfaceResolver,
-      fxBypassedLayerIds: fxBypassedLayerIds,
       paperColor: paperColor,
       handles: handles,
       originX: -marginX,
@@ -165,7 +162,6 @@ class LazyCanvasRasterRgb {
     required Cut cut,
     required int frameIndex,
     required LayerFrameSurfaceResolver surfaceResolver,
-    required Set<LayerId> fxBypassedLayerIds,
     required int paperColor,
     required QaFloodNativeHandles? handles,
     required this.originX,
@@ -191,7 +187,6 @@ class LazyCanvasRasterRgb {
       for (final entry in resolveCutFrameCompositeEntries(
         cut: cut,
         frameIndex: frameIndex,
-        fxBypassedLayerIds: fxBypassedLayerIds,
       ))
         if (entry.pose == null) entry,
     ];
@@ -1058,7 +1053,6 @@ BrushDab? buildFillDab({
   required LayerFrameSurfaceResolver surfaceResolver,
   required CanvasPoint point,
   required int color,
-  Set<LayerId> fxBypassedLayerIds = const {},
   FloodFillOptions options = const FloodFillOptions(),
   int paperColor = canvasPaperColor,
   void Function()? onOpenRegion,
@@ -1069,7 +1063,6 @@ BrushDab? buildFillDab({
       cut: cut,
       frameIndex: frameIndex,
       surfaceResolver: surfaceResolver,
-      fxBypassedLayerIds: fxBypassedLayerIds,
       paperColor: paperColor,
       extendBeyondCanvas: options.extendBeyondCanvas,
     ),

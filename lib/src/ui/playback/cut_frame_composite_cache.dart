@@ -62,7 +62,6 @@ class CutFrameCompositeCache {
     required this.layerImages,
     required this.frameStore,
     required this.frameKeyOf,
-    this.fxBypassedLayerIdsOf,
   });
 
   final LayerFrameImageCache layerImages;
@@ -71,8 +70,6 @@ class CutFrameCompositeCache {
 
   /// The session's live fx-bypass view state (the layer-label fx switch);
   /// it joins every signature, so flipping a switch self-invalidates the
-  /// affected composites. Null = nothing bypassed.
-  final Set<LayerId> Function()? fxBypassedLayerIdsOf;
 
   final Map<(CutId, int, PlaybackQuality), CutFrameCompositeSignature> _index =
       {};
@@ -94,7 +91,6 @@ class CutFrameCompositeCache {
               .frameOrNull(frameKeyOf(cut, layerId, frameId))
               ?.sourceRevision ??
           0,
-      fxBypassedLayerIds: fxBypassedLayerIdsOf?.call() ?? const {},
     );
   }
 

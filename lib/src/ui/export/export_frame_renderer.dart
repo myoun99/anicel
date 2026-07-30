@@ -71,6 +71,39 @@ class ExportFrameRenderer {
     });
   }
 
+  /// Cuts whose FX-stripped view has already been built (memoized: the
+  /// stream renders the same cut for many frames).
+  final Map<CutId, Cut> _fxStrippedByCut = {};
+
+  /// The cut as this RENDER should see it. With [applyLayerFx] on — the
+  /// default, and what the video/PNG paths use — that is the cut itself, so
+  /// the render is WYSIWYG with playback down to the rows' own fx switches.
+  ///
+  /// With it OFF (the cel exports: "cels stay raw artwork") every row's
+  /// transform switch and every effect's switch read false, which is the
+  /// master toggle expressed as DATA. Cheaper to reason about than an
+  /// override threaded through the plan, and impossible for another route
+  /// to forget: the plan renders exactly the cut it is given.
+  Cut _cutForRender(Cut cut) {
+    if (applyLayerFx) {
+      return cut;
+    }
+    return _fxStrippedByCut.putIfAbsent(
+      cut.id,
+      () => cut.copyWith(
+        layers: [
+          for (final layer in cut.layers)
+            layer.copyWith(
+              transformEnabled: false,
+              effects: [
+                for (final effect in layer.effects) effect.copyWith(enabled: false),
+              ],
+            ),
+        ],
+      ),
+    );
+  }
+
   void _retainSurfacesFor(Iterable<CutId> cutIds) {
     final keep = cutIds.toSet();
     _surfacesByCut.removeWhere((cutId, _) => !keep.contains(cutId));
@@ -113,16 +146,15 @@ class ExportFrameRenderer {
             ),
           );
     return renderService.renderThroughCamera(
-      // The fx-bypass switches apply here too (AE semantics: the layer fx
-      // switch affects the render) — WYSIWYG with playback. The dialog's
-      // 'Apply layer FX' master toggle bypasses every layer at once.
+      // The rows' own fx switches apply here too (AE semantics: the layer
+      // fx switch affects the render) — WYSIWYG with playback. They live on
+      // the layers now (R8), so the dialog's 'Apply layer FX' master toggle
+      // is expressed by rendering an FX-STRIPPED VIEW of the cut rather
+      // than by threading an override through the plan.
       nodes: planCutFrameCompositeTree(
-        cut: cut,
+        cut: _cutForRender(cut),
         frameIndex: task.frameIndex,
         surfaceResolver: (layer, frame) => _surfaceFor(cut, layer, frame),
-        fxBypassedLayerIds: applyLayerFx
-            ? session.fxBypassedLayerIds
-            : {for (final layer in cut.layers) layer.id},
       ),
       pose: pose,
       cameraFrameSize: mode == ExportSizeMode.camera
@@ -327,12 +359,9 @@ class ExportFrameRenderer {
         final cut = position.cut;
         final image = await _stackRenderService.renderThroughCamera(
           nodes: planCutFrameCompositeTree(
-            cut: cut,
+            cut: _cutForRender(cut),
             frameIndex: position.localFrameIndex,
             surfaceResolver: (layer, frame) => _surfaceFor(cut, layer, frame),
-            fxBypassedLayerIds: applyLayerFx
-                ? session.fxBypassedLayerIds
-                : {for (final layer in cut.layers) layer.id},
           ),
           // The IDENTITY camera: a canvas-space composite, exactly what
           // the playback cache holds — the painter below projects it
@@ -452,10 +481,9 @@ class ExportFrameRenderer {
           // into line art the compositing department has to work with;
           // blend and static opacity are display properties and stay.
           blendMode: task.members[i].blendMode,
-          effects:
-              applyLayerFx &&
-                  !session.fxBypassedLayerIds.contains(task.members[i].id)
+          effects: applyLayerFx
               ? resolveLayerEffectsAt(
+                  // Each effect's own switch (R8) gates it from here.
                   effects: task.members[i].effects,
                   frameIndex: firstExposure,
                 )

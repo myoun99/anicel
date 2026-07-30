@@ -240,6 +240,38 @@ bool layerKindHasLayerTransform(LayerKind kind) {
   };
 }
 
+/// A row's FX switches read as ONE answer, for the layer-label master
+/// button (R8): every group on, every group off, or a mix of the two.
+///
+/// [mixed] is what makes that button a master rather than a second
+/// independent bypass — it says "some of this row's FX are off" and a tap
+/// resolves the whole row one way.
+enum LayerFxState { on, off, mixed }
+
+/// Whether [kind]'s [Layer.transformEnabled] switch means anything (R8).
+///
+/// Everything but the ADJUSTMENT row, which has no transform at all — so
+/// its master switch reads its effects alone, and counting a meaningless
+/// `transformEnabled: true` would make an all-effects-off adjustment
+/// report [LayerFxState.mixed].
+///
+/// The CAMERA row is in: its transform lives on [Cut.camera] rather than
+/// on the row, but the switch that bypasses that work is still the row's
+/// own — so the flag is where it is stored.
+bool layerKindHasTransformFxSwitch(LayerKind kind) {
+  return switch (kind) {
+    LayerKind.animation ||
+    LayerKind.storyboard ||
+    LayerKind.image ||
+    LayerKind.text ||
+    LayerKind.se ||
+    LayerKind.instruction ||
+    LayerKind.folder ||
+    LayerKind.camera => true,
+    LayerKind.adjustment => false,
+  };
+}
+
 /// Whether [kind] authors its own composite-time EFFECT chain
 /// ([Layer.effects], R6). Everything but the camera — which is the frame,
 /// not a thing inside it, so it has no picture of its own to filter (a

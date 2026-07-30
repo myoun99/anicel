@@ -268,7 +268,6 @@ CutFrameCompositeSignature computeCutFrameCompositeSignature({
   required int frameIndex,
   required PlaybackQuality quality,
   required BrushFrameRevisionResolver revisionOf,
-  Set<LayerId> fxBypassedLayerIds = const {},
 }) {
   List<CompositeNodeSignature> mapNodes(
     List<CutFrameCompositeEntryNode> nodes,
@@ -322,7 +321,6 @@ CutFrameCompositeSignature computeCutFrameCompositeSignature({
       resolveCutFrameCompositeTree(
         cut: cut,
         frameIndex: frameIndex,
-        fxBypassedLayerIds: fxBypassedLayerIds,
       ),
     ),
   );

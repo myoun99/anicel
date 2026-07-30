@@ -253,7 +253,6 @@ final class CutFrameCompositeEntryAdjustment
 bool folderNeedsCompositeBuffer({
   required Layer folder,
   required int frameIndex,
-  Set<LayerId> fxBypassedLayerIds = const {},
 }) {
   if (folder.blendMode.isolatesGroup) {
     return true;
@@ -261,41 +260,39 @@ bool folderNeedsCompositeBuffer({
   if (resolveFolderEffectsAt(
     folder: folder,
     frameIndex: frameIndex,
-    fxBypassedLayerIds: fxBypassedLayerIds,
   ).isNotEmpty) {
     return true;
   }
   return resolveFolderOpacityAt(
         folder: folder,
         frameIndex: frameIndex,
-        fxBypassedLayerIds: fxBypassedLayerIds,
       ) <
       1.0;
 }
 
-/// A folder's own effect chain at [frameIndex], empty while the row's fx
-/// switch is off (effects are FX like the pose and the opacity lane).
+/// A folder's own effect chain at [frameIndex].
+///
+/// R8: every effect carries its OWN switch ([LayerEffect.enabled]), so
+/// there is nothing row-wide left to ask here. The layer-label master turns
+/// those switches off, which is what makes "bypass this row" and "bypass
+/// this one effect" the same mechanism instead of two that behave
+/// differently.
 List<ResolvedLayerEffect> resolveFolderEffectsAt({
   required Layer folder,
   required int frameIndex,
-  Set<LayerId> fxBypassedLayerIds = const {},
 }) {
-  if (fxBypassedLayerIds.contains(folder.id)) {
-    return const [];
-  }
   return resolveLayerEffectsAt(effects: folder.effects, frameIndex: frameIndex);
 }
 
 /// A folder's own effective opacity at [frameIndex]: static × the animated
-/// Opacity sample (1 while the row's fx switch is off).
+/// Opacity sample (1 while the row's TRANSFORM switch is off — an animated
+/// opacity is transform FX; the STATIC one is a display property and stays).
 double resolveFolderOpacityAt({
   required Layer folder,
   required int frameIndex,
-  Set<LayerId> fxBypassedLayerIds = const {},
 }) {
-  final fxEnabled = !fxBypassedLayerIds.contains(folder.id);
   return (folder.opacity *
-          (fxEnabled
+          (folder.transformEnabled
               ? resolveOpacityTrackAt(folder.transformTrack.opacity, frameIndex)
               : 1.0))
       .clamp(0.0, 1.0)
@@ -308,8 +305,8 @@ double resolveFolderOpacityAt({
 /// outermost-first. Folder FX lanes are per-use ("레인만 각자") — this
 /// resolves THIS cut's folder rows.
 ///
-/// Folder rows sit in [fxBypassedLayerIds] like any other row: the folder
-/// fx switch IS the layer fx switch now.
+/// A folder row carries [Layer.transformEnabled] like any other row: the
+/// folder fx switch IS the layer fx switch.
 ({
   bool visible,
   double opacityFactor,
@@ -320,7 +317,6 @@ resolveFolderChainAt({
   required Cut cut,
   required Layer layer,
   required int frameIndex,
-  Set<LayerId> fxBypassedLayerIds = const {},
   /// When false, a BUFFERING folder's opacity and blend are left out —
   /// they belong to its [CutFrameCompositeEntryGroup] instead. Poses fold
   /// either way (see [folderNeedsCompositeBuffer] for why).
@@ -361,7 +357,6 @@ resolveFolderChainAt({
         folderNeedsCompositeBuffer(
           folder: folder,
           frameIndex: frameIndex,
-          fxBypassedLayerIds: fxBypassedLayerIds,
         );
     if (!buffered &&
         folder.blendMode.isolatesGroup &&
@@ -372,7 +367,7 @@ resolveFolderChainAt({
     // opacity — the layer fx switch's exact contract. Its static opacity
     // and blend are display properties, not FX, so they stay (matching a
     // bypassed layer, whose static opacity also survives).
-    final fxEnabled = !fxBypassedLayerIds.contains(folder.id);
+    final fxEnabled = folder.transformEnabled;
     if (!buffered) {
       opacityFactor *=
           (folder.opacity *
@@ -452,9 +447,10 @@ LayerPoseSample? composeFolderAndLayerPose({
 /// The layer list keeps attach layers adjacent to their base, so plain
 /// list order already yields [below…, base, above…].
 ///
-/// Layers in [fxBypassedLayerIds] compose with their FX ignored — identity
-/// pose and no animated opacity (the layer-label fx switch, session view
-/// state).
+/// A row whose [Layer.transformEnabled] is false composes with its
+/// TRANSFORM ignored — identity pose, no animated opacity. Its effects are
+/// gated one level down, by each [LayerEffect.enabled]; the layer-label fx
+/// button is the MASTER that writes both (R8).
 ///
 /// Enclosing FOLDERS fold into the entry: a folder's opacity multiplies
 /// into the member's, its blend substitutes for a member that sets none,
@@ -464,7 +460,6 @@ LayerPoseSample? composeFolderAndLayerPose({
 List<CutFrameCompositeEntry> resolveCutFrameCompositeEntries({
   required Cut cut,
   required int frameIndex,
-  Set<LayerId> fxBypassedLayerIds = const {},
   bool foldBufferedFolders = true,
 }) {
   final entries = <CutFrameCompositeEntry>[];
@@ -494,14 +489,13 @@ List<CutFrameCompositeEntry> resolveCutFrameCompositeEntries({
       cut: cut,
       layer: layer,
       frameIndex: frameIndex,
-      fxBypassedLayerIds: fxBypassedLayerIds,
       foldBufferedFolders: foldBufferedFolders,
     );
     if (!folderChain.visible) {
       continue;
     }
     final fxCarrier = base ?? layer;
-    final fxEnabled = !fxBypassedLayerIds.contains(fxCarrier.id);
+    final fxEnabled = fxCarrier.transformEnabled;
     final opacity =
         ((fxEnabled
                     ? layer.opacity *
@@ -541,12 +535,14 @@ List<CutFrameCompositeEntry> resolveCutFrameCompositeEntries({
     // R6: effects ride the FX carrier exactly like the pose and the
     // animated opacity — an attach row wears its base's chain, and the
     // carrier's fx switch bypasses it.
-    final effects = fxEnabled
-        ? resolveLayerEffectsAt(
-            effects: fxCarrier.effects,
-            frameIndex: frameIndex,
-          )
-        : const <ResolvedLayerEffect>[];
+    // R8: NOT gated on fxEnabled — that switch is the TRANSFORM group's.
+    // Each effect carries its own ([LayerEffect.enabled]) and the master
+    // writes them all, so gating here too would make the row switch reach
+    // effects it had not turned off.
+    final effects = resolveLayerEffectsAt(
+      effects: fxCarrier.effects,
+      frameIndex: frameIndex,
+    );
     final combined = composeFolderAndLayerPose(
       folderPoses: folderChain.poses,
       layerSample: layerPose == null
@@ -603,7 +599,6 @@ _adjustmentScopeNode({
   required Cut cut,
   required int frameIndex,
   required Map<LayerId?, List<CutFrameCompositeEntryNode>> childrenOf,
-  required Set<LayerId> fxBypassedLayerIds,
 }) {
   if (!adjustment.isVisible) {
     return null;
@@ -613,7 +608,6 @@ _adjustmentScopeNode({
     cut: cut,
     layer: adjustment,
     frameIndex: frameIndex,
-    fxBypassedLayerIds: fxBypassedLayerIds,
   ).visible) {
     return null;
   }
@@ -621,12 +615,11 @@ _adjustmentScopeNode({
   if (mix <= 0) {
     return null;
   }
-  final effects = fxBypassedLayerIds.contains(adjustment.id)
-      ? const <ResolvedLayerEffect>[]
-      : resolveLayerEffectsAt(
-          effects: adjustment.effects,
-          frameIndex: frameIndex,
-        );
+  // R8: per-effect switches gate this, like every other row's chain.
+  final effects = resolveLayerEffectsAt(
+    effects: adjustment.effects,
+    frameIndex: frameIndex,
+  );
   if (effects.isEmpty) {
     return null;
   }
@@ -643,7 +636,6 @@ _adjustmentScopeNode({
     if (folderNeedsCompositeBuffer(
       folder: folder,
       frameIndex: frameIndex,
-      fxBypassedLayerIds: fxBypassedLayerIds,
     )) {
       stoppedAtBuffer = true;
       break;
@@ -687,13 +679,11 @@ _adjustmentScopeNode({
 List<CutFrameCompositeEntryNode> resolveCutFrameCompositeTree({
   required Cut cut,
   required int frameIndex,
-  Set<LayerId> fxBypassedLayerIds = const {},
 }) {
   final entryByLayerId = {
     for (final entry in resolveCutFrameCompositeEntries(
       cut: cut,
       frameIndex: frameIndex,
-      fxBypassedLayerIds: fxBypassedLayerIds,
       foldBufferedFolders: false,
     ))
       entry.layer.id: entry,
@@ -711,7 +701,6 @@ List<CutFrameCompositeEntryNode> resolveCutFrameCompositeTree({
         cut: cut,
         frameIndex: frameIndex,
         childrenOf: childrenOf,
-        fxBypassedLayerIds: fxBypassedLayerIds,
       );
       if (wrapped != null) {
         addTo(wrapped.targetFolderId, wrapped.node);
@@ -729,7 +718,6 @@ List<CutFrameCompositeEntryNode> resolveCutFrameCompositeTree({
       final opacity = resolveFolderOpacityAt(
         folder: layer,
         frameIndex: frameIndex,
-        fxBypassedLayerIds: fxBypassedLayerIds,
       );
       if (opacity <= 0) {
         continue;
@@ -737,7 +725,6 @@ List<CutFrameCompositeEntryNode> resolveCutFrameCompositeTree({
       if (!folderNeedsCompositeBuffer(
         folder: layer,
         frameIndex: frameIndex,
-        fxBypassedLayerIds: fxBypassedLayerIds,
       )) {
         // 통과, fully opaque: the folder is pure structure. Its members
         // belong to the parent exactly as if it were not there — no
@@ -761,7 +748,6 @@ List<CutFrameCompositeEntryNode> resolveCutFrameCompositeTree({
           effects: resolveFolderEffectsAt(
             folder: layer,
             frameIndex: frameIndex,
-            fxBypassedLayerIds: fxBypassedLayerIds,
           ),
         ),
       );
@@ -795,13 +781,11 @@ List<CutFrameCompositeLayer> planCutFrameComposite({
   required Cut cut,
   required int frameIndex,
   required LayerFrameSurfaceResolver surfaceResolver,
-  Set<LayerId> fxBypassedLayerIds = const {},
 }) {
   final plan = <CutFrameCompositeLayer>[];
   for (final entry in resolveCutFrameCompositeEntries(
     cut: cut,
     frameIndex: frameIndex,
-    fxBypassedLayerIds: fxBypassedLayerIds,
   )) {
     final surface = surfaceResolver(entry.layer, entry.frame);
     if (surface == null) {
@@ -872,7 +856,6 @@ List<CutFrameCompositeSurfaceNode> planCutFrameCompositeTree({
   required Cut cut,
   required int frameIndex,
   required LayerFrameSurfaceResolver surfaceResolver,
-  Set<LayerId> fxBypassedLayerIds = const {},
 }) {
   List<CutFrameCompositeSurfaceNode> mapNodes(
     List<CutFrameCompositeEntryNode> nodes,
@@ -941,7 +924,6 @@ List<CutFrameCompositeSurfaceNode> planCutFrameCompositeTree({
       resolveCutFrameCompositeTree(
         cut: cut,
         frameIndex: frameIndex,
-        fxBypassedLayerIds: fxBypassedLayerIds,
       ),
     ),
   );

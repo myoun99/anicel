@@ -102,7 +102,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.opacityDragPreview,
     required this.onToggleLayerTimesheet,
     required this.onLayerMarkSelected,
-    this.layerFxEnabledOf,
+    this.layerFxStateOf,
     this.onToggleLayerFx,
     this.onToggleLayerFillReference,
     this.onToggleLayerMuted,
@@ -233,7 +233,7 @@ class XSheetTimelineGrid extends StatefulWidget {
   final void Function(LayerId layerId, LayerMark mark) onLayerMarkSelected;
 
   /// The AE-style layer fx switch (session view state); null hides it.
-  final bool Function(LayerId layerId)? layerFxEnabledOf;
+  final LayerFxState Function(LayerId layerId)? layerFxStateOf;
   final ValueChanged<LayerId>? onToggleLayerFx;
 
   /// Drawing rows' fill-reference toggle (R20-C2); null hides it.
@@ -865,7 +865,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
               rowFilter: widget.rowFilter,
               collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
               activeLayerId: widget.activeLayerId,
-              fxEnabledOf: widget.layerFxEnabledOf,
+              fxEnabledOf: (layerId) =>
+                  (widget.layerFxStateOf?.call(layerId) ?? LayerFxState.on) !=
+                  LayerFxState.off,
             );
             final rangeHooks = widget.rangeHooks;
             _rangeMoveResolver
@@ -1273,15 +1275,15 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                           .opacityDragPreview,
                                                       onToggleLayerTimesheet: widget
                                                           .onToggleLayerTimesheet,
-                                                      fxEnabled:
+                                                      fxState:
                                                           widget
-                                                              .layerFxEnabledOf
+                                                              .layerFxStateOf
                                                               ?.call(
                                                                 entries[index]
                                                                     .layer
                                                                     .id,
                                                               ) ??
-                                                          true,
+                                                          LayerFxState.on,
                                                       onToggleLayerFx: widget
                                                           .onToggleLayerFx,
                                                       onLayerMarkSelected: widget
@@ -1912,7 +1914,7 @@ class _LayerHeader extends StatelessWidget {
     this.hasLanes = false,
     this.lanesExpanded = false,
     this.onToggleLanes,
-    this.fxEnabled = true,
+    this.fxState = LayerFxState.on,
     this.onToggleLayerFx,
     this.isLayerSoloed = false,
     this.onToggleLayerSolo,
@@ -1962,7 +1964,7 @@ class _LayerHeader extends StatelessWidget {
   final ValueChanged<LayerId>? onToggleLanes;
 
   /// The AE-style fx switch (session view state). Null hides it.
-  final bool fxEnabled;
+  final LayerFxState fxState;
   final ValueChanged<LayerId>? onToggleLayerFx;
 
   Future<void> _showMixMenu(BuildContext context, Offset globalPosition) async {
@@ -2150,7 +2152,7 @@ class _LayerHeader extends StatelessWidget {
                           layerKindShowsFxToggle(layer.kind))
                         FxToggleButton(
                           keyValue: 'xsheet-layer-fx-${layer.id}',
-                          fxEnabled: fxEnabled,
+                          state: fxState,
                           onToggle: () => onToggleLayerFx!(layer.id),
                         ),
                       LayerVisibilityToggleButton(

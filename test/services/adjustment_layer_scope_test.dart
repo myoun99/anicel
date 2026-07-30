@@ -71,14 +71,8 @@ void main() {
     canvasSize: canvasSize,
   );
 
-  List<CutFrameCompositeEntryNode> treeOf(
-    Cut source, {
-    Set<LayerId> bypassed = const {},
-  }) => resolveCutFrameCompositeTree(
-    cut: source,
-    frameIndex: 0,
-    fxBypassedLayerIds: bypassed,
-  );
+  List<CutFrameCompositeEntryNode> treeOf(Cut source) =>
+      resolveCutFrameCompositeTree(cut: source, frameIndex: 0);
 
   /// The layer ids under a node, depth-first bottom → top.
   List<String> idsUnder(CutFrameCompositeEntryNode node) {
@@ -268,10 +262,20 @@ void main() {
       );
     });
 
-    test('the fx switch bypasses it like any other row', () {
+    test('a DISABLED effect bypasses it — the row switch writes that', () {
+      // R8: the bypass lives on the effects themselves; the layer-label
+      // master flips them, so "bypass this row" and "bypass this one
+      // effect" are the same mechanism.
+      final off = adjustment('fx');
       final tree = treeOf(
-        cut([drawing('a'), adjustment('fx')]),
-        bypassed: {const LayerId('fx')},
+        cut([
+          drawing('a'),
+          off.copyWith(
+            effects: [
+              for (final effect in off.effects) effect.copyWith(enabled: false),
+            ],
+          ),
+        ]),
       );
       expect(tree.single, isA<CutFrameCompositeEntryLeaf>());
     });

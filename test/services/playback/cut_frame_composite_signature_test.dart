@@ -54,14 +54,12 @@ void main() {
     int frameIndex = 0,
     PlaybackQuality quality = PlaybackQuality.half,
     int Function(LayerId, FrameId)? revisionOf,
-    Set<LayerId> fxBypassedLayerIds = const {},
   }) {
     return computeCutFrameCompositeSignature(
       cut: forCut ?? cut(),
       frameIndex: frameIndex,
       quality: quality,
       revisionOf: revisionOf ?? (_, _) => 7,
-      fxBypassedLayerIds: fxBypassedLayerIds,
     );
   }
 
@@ -239,22 +237,19 @@ void main() {
     expect(signature(forCut: gone).layers, isEmpty);
   });
 
-  test('the fx-bypass view state joins the signature, so flipping the '
-      'switch self-invalidates (pose/anchor drop, opacity back to static)', () {
-    final moved = cut(
-      layers: [
-        drawingLayer(opacity: 0.8).copyWith(
-          transformTrack: TransformTrack(
-            keyframes: {0: TransformPose(center: CanvasPoint(x: 0, y: 0))},
-          ).copyWith(opacity: PropertyTrack<double>().withKey(0, 0.5)),
-        ),
-      ],
+  test('the transform switch joins the signature, so flipping it '
+      'self-invalidates (pose/anchor drop, opacity back to static)', () {
+    final animated = drawingLayer(opacity: 0.8).copyWith(
+      transformTrack: TransformTrack(
+        keyframes: {0: TransformPose(center: CanvasPoint(x: 0, y: 0))},
+      ).copyWith(opacity: PropertyTrack<double>().withKey(0, 0.5)),
     );
+    final moved = cut(layers: [animated]);
 
     final applied = signature(forCut: moved);
+    // R8: the switch is the layer's own persisted field now.
     final bypassed = signature(
-      forCut: moved,
-      fxBypassedLayerIds: {const LayerId('layer-1')},
+      forCut: cut(layers: [animated.copyWith(transformEnabled: false)]),
     );
 
     expect(applied, isNot(bypassed));

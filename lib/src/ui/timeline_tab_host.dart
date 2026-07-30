@@ -357,6 +357,12 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       transformGroupHeader(
         expanded: expanded,
         keyedFrames: transformKeyFrameUnion(_laneTrackOf(layer)),
+        // R8: the group's own switch — on every row that owns a transform.
+        // The camera's lives on the cut's track, so its header shows none
+        // and the row-level master covers it.
+        enabled: layerKindHasLayerTransform(layer.kind)
+            ? layer.transformEnabled
+            : null,
       ),
       if (expanded) ...group.where((lane) => !lane.isGroupHeader),
     ];
@@ -1215,7 +1221,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           onLayerMarkSelected: _session.setLayerMark,
           // The AE-style fx switch: bypasses the layer's transform/FX on
           // every composite route (session view state).
-          layerFxEnabledOf: _session.isLayerFxEnabled,
+          layerFxStateOf: _session.layerFxState,
           layerIsLinkedOf: _session.isLayerLinked,
           // Folder rows are layer rows: their eye, opacity, blend, fx
           // switch, FX lanes and selection all ride the layer hooks
@@ -1426,6 +1432,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           // R6: the per-effect eyeball on an effect's header row. One undo
           // step through the ordinary effect-chain commit.
           onToggleLaneGroupEnabled: (layer, lane) {
+            // R8: the Transform group's switch is the layer's own field.
+            if (lane.laneId == transformGroupHeaderLane.laneId) {
+              _session.toggleLayerTransformFx(layer.id);
+              return;
+            }
             final effectId = parseEffectLaneId(lane.laneId)?.effectId;
             if (effectId == null) {
               return;
