@@ -19,10 +19,20 @@ class SeNameTagDialogResult {
 /// tag's TEXT is not here — it is the SE block's own name and dialogue,
 /// edited on the cell like always; this window places and styles it.
 class SeNameTagDialog extends StatefulWidget {
-  const SeNameTagDialog({super.key, required this.initialTag, this.rowName});
+  const SeNameTagDialog({
+    super.key,
+    this.storedTag,
+    required this.defaultPosition,
+    this.rowName,
+  });
 
-  /// The row's current tag, or the stacked default it draws with today.
-  final SeNameTag initialTag;
+  /// The row's OWN tag, or null while it rides the stacked default.
+  final SeNameTag? storedTag;
+
+  /// The default the row draws with today — seeds the fields for display
+  /// and stays the "unset" value: leaving it untouched keeps the position
+  /// null, so the tag follows each cut's own geometry.
+  final Offset defaultPosition;
 
   /// The SE row's name (S1/S2…) for the title.
   final String? rowName;
@@ -32,12 +42,14 @@ class SeNameTagDialog extends StatefulWidget {
 }
 
 class _SeNameTagDialogState extends State<SeNameTagDialog> {
-  late TextCelStyle _style = widget.initialTag.style;
+  late TextCelStyle _style = widget.storedTag?.style ?? SeNameTag.defaultStyle;
+  late final Offset _seed =
+      widget.storedTag?.position ?? widget.defaultPosition;
   late final TextEditingController _x = TextEditingController(
-    text: widget.initialTag.position.dx.round().toString(),
+    text: _seed.dx.round().toString(),
   );
   late final TextEditingController _y = TextEditingController(
-    text: widget.initialTag.position.dy.round().toString(),
+    text: _seed.dy.round().toString(),
   );
 
   /// The tag's ink roster: white (on the red box), paper ink, and the
@@ -62,12 +74,18 @@ class _SeNameTagDialogState extends State<SeNameTagDialog> {
 
   void _submit() {
     final position = Offset(
-      double.tryParse(_x.text.trim()) ?? widget.initialTag.position.dx,
-      double.tryParse(_y.text.trim()) ?? widget.initialTag.position.dy,
+      double.tryParse(_x.text.trim()) ?? _seed.dx,
+      double.tryParse(_y.text.trim()) ?? _seed.dy,
     );
-    Navigator.of(
-      context,
-    ).pop(SeNameTagDialogResult(SeNameTag(position: position, style: _style)));
+    // Untouched fields on a row that never had a position keep it NULL —
+    // a style-only edit must not freeze this cut's default into absolute
+    // pixels the next cut's geometry would strand.
+    final keepDefault = widget.storedTag?.position == null && position == _seed;
+    Navigator.of(context).pop(
+      SeNameTagDialogResult(
+        SeNameTag(position: keepDefault ? null : position, style: _style),
+      ),
+    );
   }
 
   @override
@@ -216,9 +234,13 @@ class _SeNameTagDialogState extends State<SeNameTagDialog> {
           ),
         ),
       ),
-      // Delete = reset to the stacked default (the field's null contract).
-      onDelete: () =>
-          Navigator.of(context).pop(const SeNameTagDialogResult(null)),
+      // Reset drops the row back to the stacked default — offered ONLY
+      // when the row carries a tag of its own, so the action can never
+      // look destructive and then do nothing.
+      onDelete: widget.storedTag == null
+          ? null
+          : () => Navigator.of(context).pop(const SeNameTagDialogResult(null)),
+      deleteLabel: strings.seNameTagReset,
       onSubmit: _submit,
     );
   }

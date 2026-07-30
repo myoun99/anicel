@@ -17,7 +17,11 @@ void paintSeNameTags(
   required CanvasSize canvasSize,
 }) {
   for (final tag in tags) {
-    final layout = layoutTextCel(content: tag.content, canvas: canvasSize);
+    final layout = layoutTextCel(
+      content: tag.content,
+      canvas: canvasSize,
+      maxWidth: tag.widthBudget,
+    );
     try {
       layout.paint(canvas);
     } finally {

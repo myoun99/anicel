@@ -60,8 +60,7 @@ class CanvasPlaybackView extends StatefulWidget {
 
   /// The SE rows' on-canvas name tags at this cut frame (R5b) — resolved
   /// by the session, drawn over the composite in canvas space.
-  final List<ResolvedSeNameTag> Function(Cut cut, int frameIndex)?
-  seNameTagsOf;
+  final List<ResolvedSeNameTag> Function(Cut cut, int frameIndex)? seNameTagsOf;
 
   /// The storyboard V-row display gates (session view state, R9). FX off
   /// bypasses the cut-level Transform group — pose AND fade — in this
@@ -248,7 +247,11 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
                   widget.cameraViewEnabled && cut != null && position != null
                   ? widget.cameraPoseOf(cut, position.localFrameIndex)
                   : null,
-              seNameTags: inGap || cut == null || position == null
+              // The cut-picture eye hides the tags too — the stack view's
+              // answer, and the defensible one: with the picture withheld
+              // the annotation names nothing.
+              seNameTags:
+                  inGap || cut == null || position == null || !cutPictureVisible
                   ? const []
                   : widget.seNameTagsOf?.call(cut, position.localFrameIndex) ??
                         const [],

@@ -102,7 +102,10 @@ class EditorMenuBar extends StatelessWidget {
       // SAVE-1: pickers start in the app's project home (앱 문서 폴더).
       initialDirectory: await ensuredAppDocumentsDirectory(),
       acceptedTypeGroups: const [
-        XTypeGroup(label: 'Anicel project', extensions: [anicelProjectExtension]),
+        XTypeGroup(
+          label: 'Anicel project',
+          extensions: [anicelProjectExtension],
+        ),
       ],
     );
     return file?.path;
@@ -546,14 +549,17 @@ class EditorMenuBar extends StatelessWidget {
   /// resets it back to that default.
   Future<void> _editSeNameTag(BuildContext context) async {
     final layer = session.activeLayer;
-    final current = session.activeSeNameTagOrDefault;
-    if (layer == null || current == null) {
+    final defaultPosition = session.activeSeNameTagDefaultPosition;
+    if (layer == null || defaultPosition == null) {
       return;
     }
     final result = await showDialog<SeNameTagDialogResult>(
       context: context,
-      builder: (context) =>
-          SeNameTagDialog(initialTag: current, rowName: layer.name),
+      builder: (context) => SeNameTagDialog(
+        storedTag: layer.seNameTag,
+        defaultPosition: defaultPosition,
+        rowName: layer.name,
+      ),
     );
     if (!context.mounted || result == null) {
       return;

@@ -187,8 +187,7 @@ class PlaybackFramePainter extends CustomPainter {
     if (fading) {
       canvas.saveLayer(
         frameRect ?? canvasRect,
-        Paint()
-          ..color = Color.fromRGBO(0, 0, 0, fadeOpacity.clamp(0.0, 1.0)),
+        Paint()..color = Color.fromRGBO(0, 0, 0, fadeOpacity.clamp(0.0, 1.0)),
       );
     }
     if (pose != null && pasteboardColor != null) {
@@ -248,7 +247,25 @@ class PlaybackFramePainter extends CustomPainter {
           ..color = Color.fromRGBO(0, 0, 0, imageOpacity.clamp(0.0, 1.0)),
       );
     }
-    paintSeNameTags(canvas, tags: seNameTags, canvasSize: canvasSize);
+    if (seNameTags.isNotEmpty) {
+      // The tags belong to the cut's own contribution, so a stacked UPPER
+      // track thins them with its picture: that track fades through
+      // [imageOpacity] (only the bottom track's [fadeOpacity] saveLayer
+      // above carries the tags for free), and an annotation left fully
+      // opaque over a fading picture reads as a bug.
+      final thinning = imageOpacity < 1;
+      if (thinning) {
+        canvas.saveLayer(
+          frameRect ?? canvasRect,
+          Paint()
+            ..color = Color.fromRGBO(0, 0, 0, imageOpacity.clamp(0.0, 1.0)),
+        );
+      }
+      paintSeNameTags(canvas, tags: seNameTags, canvasSize: canvasSize);
+      if (thinning) {
+        canvas.restore();
+      }
+    }
     if (pose != null) {
       canvas.restore();
     }

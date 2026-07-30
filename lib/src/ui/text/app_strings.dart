@@ -445,6 +445,7 @@ class AppStrings {
   String get seNameTagBoxLabel => _s('seNameTagBoxLabel');
   String get seNameTagSampleName => _s('seNameTagSampleName');
   String get seNameTagSampleLine => _s('seNameTagSampleLine');
+  String get seNameTagReset => _s('seNameTagReset');
   String get tlKindInstruction => _s('tlKindInstruction');
   String get tlAttachFreeAbove => _s('tlAttachFreeAbove');
   String get tlAttachFreeBelow => _s('tlAttachFreeBelow');
@@ -1334,6 +1335,7 @@ class AppStrings {
     'seNameTagBoxLabel': 'Box',
     'seNameTagSampleName': 'Name',
     'seNameTagSampleLine': 'dialogue',
+    'seNameTagReset': 'Reset',
     'tlAttachFreeAbove': 'Attach free layer above',
     'tlAttachFreeBelow': 'Attach free layer below',
     'tlAttachSyncedAbove': 'Attach synced layer above',
@@ -2011,6 +2013,7 @@ class AppStrings {
     'seNameTagBoxLabel': 'ボックス',
     'seNameTagSampleName': '名前',
     'seNameTagSampleLine': 'セリフ',
+    'seNameTagReset': '既定に戻す',
     'tlKindInstruction': '指示',
     'tlAttachFreeAbove': '上にフリーの付属レイヤー',
     'tlAttachFreeBelow': '下にフリーの付属レイヤー',
@@ -2685,6 +2688,7 @@ class AppStrings {
     'seNameTagBoxLabel': '박스',
     'seNameTagSampleName': '이름',
     'seNameTagSampleLine': '대사',
+    'seNameTagReset': '기본값으로',
     'tlKindInstruction': '지시',
     'tlAttachFreeAbove': '위에 프리 부속 레이어',
     'tlAttachFreeBelow': '아래에 프리 부속 레이어',
@@ -3395,6 +3399,7 @@ class AppStrings {
     'seNameTagBoxLabel': 'Boîte',
     'seNameTagSampleName': 'Nom',
     'seNameTagSampleLine': 'dialogue',
+    'seNameTagReset': 'Réinitialiser',
     'tlAttachFreeAbove': 'Calque attaché libre au-dessus',
     'tlAttachFreeBelow': 'Calque attaché libre en dessous',
     'tlAttachSyncedAbove': 'Calque attaché synchronisé au-dessus',
@@ -4044,6 +4049,7 @@ class AppStrings {
     'seNameTagBoxLabel': '底框',
     'seNameTagSampleName': '名称',
     'seNameTagSampleLine': '台词',
+    'seNameTagReset': '恢复默认',
     'tlKindInstruction': '指示',
     'tlAttachFreeAbove': '在上方添加自由附属图层',
     'tlAttachFreeBelow': '在下方添加自由附属图层',

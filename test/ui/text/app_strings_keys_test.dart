@@ -487,6 +487,7 @@ void main() {
     'seNameTagBoxLabel': (s) => s.seNameTagBoxLabel,
     'seNameTagSampleName': (s) => s.seNameTagSampleName,
     'seNameTagSampleLine': (s) => s.seNameTagSampleLine,
+    'seNameTagReset': (s) => s.seNameTagReset,
     'tlKindSe': (s) => s.tlKindSe,
     'tlKindInstruction': (s) => s.tlKindInstruction,
     'tlAttachFreeAbove': (s) => s.tlAttachFreeAbove,
@@ -562,6 +563,6 @@ void main() {
   test('the reader table covers every getter the class declares', () {
     // Guards the guard: a string added without a line here would other-
     // wise be silently unchecked.
-    expect(readers, hasLength(507));
+    expect(readers, hasLength(508));
   });
 }

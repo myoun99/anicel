@@ -83,41 +83,63 @@ class TextCelLayout {
 
 /// Lays [content] out against [canvas]'s geometry. Cheap enough to call
 /// per frame from a painter; dispose the result when done.
+///
+/// [maxWidth] SHRINKS the type until the block fits (the SE name tag's
+/// budget — a long line must stay inside the picture instead of running
+/// off it). Null keeps the text-layer bake's unbounded behaviour, where
+/// the author's size is the contract. Shrinking rather than wrapping is
+/// deliberate: the tag's anchor puts its single line above a margin, so
+/// wrapped lines would flow down off the edge and collide with the row
+/// below.
 TextCelLayout layoutTextCel({
   required TextCelContent content,
   required CanvasSize canvas,
+  double? maxWidth,
 }) {
   final style = content.style;
 
-  TextPainter build(Color color, {Paint? foreground}) => TextPainter(
-    text: TextSpan(
-      text: content.text,
-      style: TextStyle(
-        color: foreground == null ? color : null,
-        foreground: foreground,
-        fontSize: style.fontSize,
-        fontWeight: style.bold ? FontWeight.w700 : FontWeight.w400,
-        letterSpacing: style.letterSpacing == 0 ? null : style.letterSpacing,
-        fontFamily: style.fontFamily,
-        // CJK safety on every family choice (platform default included):
-        // the bundled faces catch what the primary face misses.
-        fontFamilyFallback: const [conteJpFontFamily, conteKrFontFamily],
-        height: 1.25,
-      ),
-    ),
-    textAlign: switch (style.align) {
-      TextCelAlign.left => TextAlign.left,
-      TextCelAlign.center => TextAlign.center,
-      TextCelAlign.right => TextAlign.right,
-    },
-    textDirection: TextDirection.ltr,
-  )..layout();
+  TextPainter build(Color color, {Paint? foreground, double? fontSize}) =>
+      TextPainter(
+        text: TextSpan(
+          text: content.text,
+          style: TextStyle(
+            color: foreground == null ? color : null,
+            foreground: foreground,
+            fontSize: fontSize ?? style.fontSize,
+            fontWeight: style.bold ? FontWeight.w700 : FontWeight.w400,
+            letterSpacing: style.letterSpacing == 0
+                ? null
+                : style.letterSpacing,
+            fontFamily: style.fontFamily,
+            // CJK safety on every family choice (platform default
+            // included): the bundled faces catch what the primary face
+            // misses.
+            fontFamilyFallback: const [conteJpFontFamily, conteKrFontFamily],
+            height: 1.25,
+          ),
+        ),
+        textAlign: switch (style.align) {
+          TextCelAlign.left => TextAlign.left,
+          TextCelAlign.center => TextAlign.center,
+          TextCelAlign.right => TextAlign.right,
+        },
+        textDirection: TextDirection.ltr,
+      )..layout();
 
-  final fill = build(style.colorValue);
+  var fill = build(style.colorValue);
+  var drawnSize = style.fontSize;
+  if (maxWidth != null && maxWidth > 0 && fill.width > maxWidth) {
+    // ONE re-measure at the scale that fits — the tag stays a single
+    // line, so the stacked rows keep their pitch.
+    drawnSize = style.fontSize * (maxWidth / fill.width);
+    fill.dispose();
+    fill = build(style.colorValue, fontSize: drawnSize);
+  }
   final outlineColor = style.outlineColorValue;
   final stroke = outlineColor != null && style.outlineWidth > 0
       ? build(
           outlineColor,
+          fontSize: drawnSize,
           foreground: ui.Paint()
             ..style = ui.PaintingStyle.stroke
             ..strokeWidth = style.outlineWidth
@@ -135,7 +157,8 @@ TextCelLayout layoutTextCel({
     TextCelAlign.right => anchor.dx - fill.width,
   }, anchor.dy);
 
-  final pad = style.backgroundColor == null ? 0.0 : style.fontSize * 0.25;
+  // The pad follows the DRAWN size, so a shrunk tag keeps its proportions.
+  final pad = style.backgroundColor == null ? 0.0 : drawnSize * 0.25;
   final outlineInflate = stroke == null ? 0.0 : style.outlineWidth / 2;
   final ink = ui.Rect.fromLTWH(
     topLeft.dx,
