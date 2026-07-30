@@ -262,9 +262,9 @@ bool layerKindHasLayerEffects(LayerKind kind) {
   };
 }
 
-/// Whether a row of [kind] copies into a 겸용컷 — the ACTION-section rows
-/// whose content is shared between the cuts that reuse the same drawing
-/// ("액션란은 다 공유", user 2026-07-30).
+/// Whether a row of [kind] copies into a NEW 겸용컷 (겸용컷 생성) — the
+/// ACTION-section rows whose content is shared between the cuts that reuse
+/// the same drawing ("액션란은 다 공유", user 2026-07-30).
 ///
 /// Animation, image and text rows share their pictures (§6-z5); the folder
 /// rows that hold them share so the structure matches; and an ADJUSTMENT
@@ -287,6 +287,22 @@ bool layerKindLinksIntoLinkedCut(LayerKind kind) {
     LayerKind.camera => false,
   };
 }
+
+/// Whether a row of [kind] joins a 겸용 변경 (converting two EXISTING cuts
+/// to share) — a NARROWER question than [layerKindLinksIntoLinkedCut].
+///
+/// ★ The difference is whether POSITION survives. 겸용컷 생성 copies a
+/// stack wholesale, so every row lands exactly where it was. A CONVERT
+/// unions two different stacks: a row the other side lacks is APPENDED at
+/// the end and stripped of its folder. For a drawing row that is a z-order
+/// choice. For an ADJUSTMENT row the position IS the meaning — appended at
+/// the top it grades the entire stack instead of the two rows it was
+/// scoped to, so one "shared" row would render two different pictures and
+/// the effect mirror would keep feeding both. It stays per-cut here; make
+/// the linked cut with 겸용컷 생성 to share a grade, or add an adjustment
+/// to the joined cut yourself.
+bool layerKindJoinsLinkedCutConvert(LayerKind kind) =>
+    layerKindLinksIntoLinkedCut(kind) && !layerKindFiltersBelow(kind);
 
 /// Whether [kind]'s EFFECT CHAIN mirrors across a 겸용 link group.
 ///
@@ -311,9 +327,11 @@ bool layerKindIsClipboardCopyable(LayerKind kind) {
     LayerKind.image ||
     LayerKind.text ||
     LayerKind.instruction => true,
-    // The adjustment stands down with the folder: the single-layer payload
-    // carries no composite-time state at all (see LayerCopyPayload), so a
-    // pasted adjustment would arrive as an empty row that filters nothing.
+    // The adjustment stands down with the folder for a STRUCTURAL reason,
+    // not a payload one (the payload carries composite state now): what an
+    // adjustment does is decided by WHERE it sits, and a paste lands it
+    // wherever the paste lands. Its grade would be a different picture
+    // there, so the row is made in place instead of pasted.
     LayerKind.se ||
     LayerKind.camera ||
     LayerKind.folder ||

@@ -80,6 +80,12 @@ class LayerCopyPayload {
   final LayerBlendMode blendMode;
 
   /// The row's keyframed transform — the AE Transform lanes.
+  ///
+  /// Position and anchor keys are ABSOLUTE canvas coordinates, so pasting
+  /// into a cut with a different canvas size puts the artwork at the same
+  /// numbers rather than the same place. That is what carrying a transform
+  /// means; re-centring it would be a different (and equally surprising)
+  /// answer, so the numbers travel and the paste is honest about it.
   final TransformTrack transformTrack;
 
   /// The row's effect chain (R6).

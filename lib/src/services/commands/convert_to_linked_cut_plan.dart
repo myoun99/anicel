@@ -78,12 +78,14 @@ ConvertToLinkedCutPlan planConvertToLinkedCut({
   required Cut originCut,
   required Cut targetCut,
 }) {
-  // ONE rule for who links, shared with the 겸용컷 생성 planner
-  // ([layerKindLinksIntoLinkedCut]) — it used to be spelled out twice and
-  // the two copies had already drifted (this one had no folder clause).
-  // Layer pairing stays by NAME.
+  // The CONVERT rule ([layerKindJoinsLinkedCutConvert]), a shade narrower
+  // than 겸용컷 생성's: a row this union APPENDS lands at the top with its
+  // folder stripped, which an ADJUSTMENT row cannot survive (its position
+  // is what it grades). The two rules used to be hand-written here and in
+  // the create planner, and the copies had already drifted — this one had
+  // no folder clause. Layer pairing stays by NAME.
   bool linksIntoLinkedCut(Layer layer) =>
-      layerKindLinksIntoLinkedCut(layer.kind);
+      layerKindJoinsLinkedCutConvert(layer.kind);
   final originDrawing = [
     for (final layer in originCut.layers)
       if (linksIntoLinkedCut(layer)) layer,

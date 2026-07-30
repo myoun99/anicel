@@ -141,6 +141,27 @@ void main() {
       expect(layerKindLinksIntoLinkedCut(LayerKind.camera), isFalse);
     });
 
+    test('but 겸용 변경 does NOT relocate it — position is its meaning', () {
+      // 겸용컷 생성 copies a stack wholesale, so every row keeps its place.
+      // A CONVERT unions two different stacks and APPENDS what the other
+      // side lacks, stripped of its folder — which for an adjustment means
+      // grading the whole stack instead of the rows it was scoped to, in
+      // one of the two "shared" cuts.
+      expect(layerKindJoinsLinkedCutConvert(LayerKind.adjustment), isFalse);
+      expect(layerKindLinksIntoLinkedCut(LayerKind.adjustment), isTrue);
+      // Every other linking kind joins both paths.
+      for (final kind in LayerKind.values) {
+        if (kind == LayerKind.adjustment) {
+          continue;
+        }
+        expect(
+          layerKindJoinsLinkedCutConvert(kind),
+          layerKindLinksIntoLinkedCut(kind),
+          reason: kind.name,
+        );
+      }
+    });
+
     test(
       'only the adjustment MIRRORS its chain — every other row stays local',
       () {
@@ -292,6 +313,7 @@ void main() {
     int sample(
       List<Layer> layers, {
       CanvasColorSampleSource source = CanvasColorSampleSource.display,
+      int ink = 0xFF808080,
     }) => sampleCompositeColor(
       cut: Cut(
         id: const CutId('cut'),
@@ -301,7 +323,7 @@ void main() {
         canvasSize: canvasSize,
       ),
       frameIndex: 0,
-      surfaceResolver: (layer, frame) => flat(0xFF808080),
+      surfaceResolver: (layer, frame) => flat(ink),
       point: CanvasPoint(x: 4, y: 4),
       activeLayerId: const LayerId('a'),
       source: source,
@@ -339,6 +361,56 @@ void main() {
         (sample([drawing(), adjustment.copyWith(isVisible: false)]) >> 16) &
             0xFF,
         0x80,
+      );
+    });
+
+    test('the grade lands on the STACK, never on the paper under it', () {
+      // Every paint route computes filter(stack) over paper — the
+      // adjustment's saveLayer wraps the scope and the background is drawn
+      // outside it. Starting the accumulator AT the paper computed
+      // filter(stack over paper) instead, which agrees only where the stack
+      // is fully opaque.
+      final darken = createAdjustmentLayer(
+        id: const LayerId('fx'),
+        name: 'FX1',
+      ).copyWith(effects: [brightness(-40)]);
+
+      // Nothing drawn at all: the pick is the paper, ungraded — which is
+      // also exactly when the composite tree emits no adjustment node.
+      final paper = sample([darken]);
+      expect(
+        (paper >> 16) & 0xFF,
+        (canvasPaperColor >> 16) & 0xFF,
+        reason: 'an adjustment over nothing grades nothing',
+      );
+
+      // Half-covered ink: the graded ink composites over the UNgraded
+      // paper, so the answer sits between them — never below the ink's own
+      // graded value.
+      final half = sample([drawing(), darken], ink: 0x80808080);
+      final gradedInk = 0x80 - 102 < 0 ? 0 : 0x80 - 102;
+      final paperR = (canvasPaperColor >> 16) & 0xFF;
+      final expected = (gradedInk * 0.5 + paperR * 0.5).round();
+      expect((half >> 16) & 0xFF, closeTo(expected, 2));
+    });
+
+    test('a chain of [colour, blur] still reports its COLOUR part', () {
+      final chained = drawing(
+        effects: [
+          brightness(20),
+          LayerEffect(
+            id: const EffectId('b'),
+            kind: EffectKind.blur,
+            parameters: {'blurX': EffectParameter(value: 4)},
+          ),
+        ],
+      );
+      expect(
+        (sample([chained]) >> 16) & 0xFF,
+        closeTo(0x80 + 51, 1),
+        reason:
+            'the blur is out of reach; dropping the brightness too is '
+            'strictly worse',
       );
     });
 

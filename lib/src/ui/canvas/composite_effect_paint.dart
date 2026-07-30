@@ -76,9 +76,33 @@ class CompositeEffectPaint {
 /// chain contains anything spatial (a blur), because a matrix cannot say
 /// what a blur does.
 ///
-/// Exposed so the adjustment scope can fold its MIX into the same matrix
-/// ([lerpColorMatrixFromIdentity]) instead of crossfading two draws.
+/// STRICT on purpose: a caller that gets a matrix may paint it INSTEAD of
+/// the chain, so answering "here is the colour part" for a chain with a
+/// blur in it would silently drop the blur. The adjustment scope relies on
+/// that to fold its MIX into the matrix ([lerpColorMatrixFromIdentity])
+/// and paint one pass. Readers that only want the colour part and know
+/// they cannot do spatial work at all — the eyedropper — ask
+/// [resolveColorMatrixIgnoringSpatial] instead.
 List<double>? resolveColorOnlyMatrix(List<ResolvedLayerEffect> effects) {
+  for (final effect in effects) {
+    if (effect.kind.spreadsPixels) {
+      return null;
+    }
+  }
+  return resolveColorMatrixIgnoringSpatial(effects);
+}
+
+/// The folded matrix of the chain's COLOUR effects, with the spatial ones
+/// (a blur) skipped; null when there are no colour effects at all.
+///
+/// Only for readers that cannot do spatial work under any circumstances —
+/// the eyedropper answers "what colour is at this point" from one pixel, so
+/// a blur is out of reach either way and dropping the colour grade with it
+/// would be strictly worse. Never use this to PAINT: see
+/// [resolveColorOnlyMatrix].
+List<double>? resolveColorMatrixIgnoringSpatial(
+  List<ResolvedLayerEffect> effects,
+) {
   List<double>? matrix;
   for (final effect in effects) {
     final next = switch (effect.kind) {
@@ -94,7 +118,7 @@ List<double>? resolveColorOnlyMatrix(List<ResolvedLayerEffect> effects) {
       EffectKind.blur => null,
     };
     if (next == null) {
-      return null;
+      continue;
     }
     matrix = matrix == null ? next : composeColorMatrices(next, matrix);
   }

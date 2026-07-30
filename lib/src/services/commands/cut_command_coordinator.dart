@@ -38,6 +38,7 @@ import 'create_cut_command.dart';
 import 'create_folder_command.dart';
 import 'create_linked_cut_command.dart';
 import 'dissolve_folder_command.dart';
+import 'link_mirror.dart' show linkMirrorTargets;
 import 'delete_cut_command.dart';
 import 'delete_layer_command.dart';
 import 'duplicate_cut_command.dart';
@@ -1156,7 +1157,11 @@ class CutCommandCoordinator {
       throw StateError('The camera row carries no effect chain of its own.');
     }
     final targets = layerKindMirrorsEffects(layer.kind)
-        ? _effectMirrorTargets(cutId: cutId, layerId: layerId)
+        ? linkMirrorTargets(
+            repository.requireProject(),
+            cutId: cutId,
+            layerId: layerId,
+          )
         : [(cutId: cutId, layerId: layerId)];
     final commands = <Command>[
       for (final target in targets)
@@ -1180,25 +1185,6 @@ class CutCommandCoordinator {
           ? commands.single
           : CompositeCommand(description: description, commands: commands),
     );
-  }
-
-  /// The link-group members an ADJUSTMENT row's chain edit reaches, the
-  /// edited row included. Just the row itself when it is unlinked.
-  List<({CutId cutId, LayerId layerId})> _effectMirrorTargets({
-    required CutId cutId,
-    required LayerId layerId,
-  }) {
-    final group = repository.requireProject().linkRegistry.groupOf(
-      cutId: cutId,
-      layerId: layerId,
-    );
-    if (group == null) {
-      return [(cutId: cutId, layerId: layerId)];
-    }
-    return [
-      for (final member in group.members)
-        (cutId: member.cutId, layerId: member.layerId),
-    ];
   }
 
   /// Replaces the project's instruction vocabulary; one undo step, no-op

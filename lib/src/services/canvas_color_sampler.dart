@@ -11,7 +11,8 @@ import '../models/layer_kind.dart';
 import '../models/pasteboard_bounds.dart';
 import '../models/project_background.dart';
 import '../models/tile_coord.dart';
-import '../ui/canvas/composite_effect_paint.dart' show resolveColorOnlyMatrix;
+import '../ui/canvas/composite_effect_paint.dart'
+    show resolveColorMatrixIgnoringSpatial;
 import '../ui/canvas/layer_pose_paint.dart' show layerPoseMatrix;
 import 'cut_frame_composite_plan.dart';
 
@@ -49,8 +50,8 @@ int? surfacePixelRgba(BitmapSurface surface, int x, int y) {
 }
 
 /// An ADJUSTMENT row's colour matrix as the eyedropper should apply it, or
-/// null when the row filters nothing here (hidden, bypassed, mix 0, empty
-/// chain) or when its chain is spatial and this walk cannot answer it.
+/// null when the row filters nothing this walk can answer (hidden,
+/// bypassed, mix 0, or a chain with no colour in it).
 ///
 /// The MIX folds into the matrix exactly as it does on the paint routes
 /// ([resolveAdjustmentScopePass]), so the number the eyedropper reports and
@@ -85,7 +86,7 @@ List<double>? _adjustmentColorMatrix({
     effects: adjustment.effects,
     frameIndex: frameIndex,
   );
-  final matrix = resolveColorOnlyMatrix(effects);
+  final matrix = resolveColorMatrixIgnoringSpatial(effects);
   if (matrix == null) {
     return null;
   }
@@ -160,9 +161,19 @@ int sampleCompositeColor({
   CanvasColorSampleSource source = CanvasColorSampleSource.display,
   LayerId? activeLayerId,
 }) {
-  var r = ((paperColor >> 16) & 0xFF).toDouble();
-  var g = ((paperColor >> 8) & 0xFF).toDouble();
-  var b = (paperColor & 0xFF).toDouble();
+  // The LAYER STACK accumulates on its own, PREMULTIPLIED, with its own
+  // coverage — the paper joins once at the end.
+  //
+  // ★ It used to start at the paper, which made an adjustment row compute
+  // `filter(stack over paper)` while every paint route computes
+  // `filter(stack) over paper` (the adjustment's saveLayer wraps the scope;
+  // the background is drawn outside it). The two agree only where the stack
+  // is fully opaque, so a grade over a half-covered cel — or over nothing
+  // at all — read a colour no route would ever paint.
+  var r = 0.0;
+  var g = 0.0;
+  var b = 0.0;
+  var coverage = 0.0;
 
   final entryByLayerId = {
     for (final entry in resolveCutFrameCompositeEntries(
@@ -190,6 +201,11 @@ int sampleCompositeColor({
       if (source == CanvasColorSampleSource.layer) {
         continue;
       }
+      // Nothing accumulated = nothing to grade, which is exactly when the
+      // composite tree emits no adjustment node either.
+      if (coverage <= 0) {
+        continue;
+      }
       final matrix = _adjustmentColorMatrix(
         adjustment: layer,
         cut: cut,
@@ -199,10 +215,19 @@ int sampleCompositeColor({
       if (matrix == null) {
         continue;
       }
-      final filtered = applyColorMatrixToStraightColor(matrix, r, g, b, 255);
-      r = filtered.r;
-      g = filtered.g;
-      b = filtered.b;
+      // The matrix works on STRAIGHT colour, so un-premultiply, filter,
+      // re-premultiply. Coverage is untouched: a colour matrix leaves alpha
+      // alone by construction.
+      final filtered = applyColorMatrixToStraightColor(
+        matrix,
+        r / coverage,
+        g / coverage,
+        b / coverage,
+        coverage * 255,
+      );
+      r = filtered.r * coverage;
+      g = filtered.g * coverage;
+      b = filtered.b * coverage;
       continue;
     }
     final entry = entryByLayerId[layer.id];
@@ -240,7 +265,10 @@ int sampleCompositeColor({
     // stack — the same order the paint routes use. `display` only: the
     // layer mode reads the ink as drawn.
     if (source == CanvasColorSampleSource.display) {
-      final matrix = resolveColorOnlyMatrix(entry.effects);
+      // The LENIENT resolver: a chain of [brightness, blur] still reports
+      // the brightness. The strict one exists so a PAINT route can never
+      // mistake a colour matrix for the whole chain.
+      final matrix = resolveColorMatrixIgnoringSpatial(entry.effects);
       if (matrix != null) {
         final filtered = applyColorMatrixToStraightColor(
           matrix,
@@ -254,12 +282,22 @@ int sampleCompositeColor({
         sourceB = filtered.b;
       }
     }
+    // Premultiplied src-over, coverage tracked alongside.
     r = sourceR * alpha + r * (1 - alpha);
     g = sourceG * alpha + g * (1 - alpha);
     b = sourceB * alpha + b * (1 - alpha);
+    coverage = alpha + coverage * (1 - alpha);
   }
+  // The paper joins LAST, under the graded stack — the order the routes
+  // paint in.
+  final paperR = ((paperColor >> 16) & 0xFF).toDouble();
+  final paperG = ((paperColor >> 8) & 0xFF).toDouble();
+  final paperB = (paperColor & 0xFF).toDouble();
+  final outR = r + paperR * (1 - coverage);
+  final outG = g + paperG * (1 - coverage);
+  final outB = b + paperB * (1 - coverage);
   return 0xFF000000 |
-      (r.round().clamp(0, 255) << 16) |
-      (g.round().clamp(0, 255) << 8) |
-      b.round().clamp(0, 255);
+      (outR.round().clamp(0, 255) << 16) |
+      (outG.round().clamp(0, 255) << 8) |
+      outB.round().clamp(0, 255);
 }
