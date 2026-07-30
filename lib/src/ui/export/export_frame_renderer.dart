@@ -9,6 +9,7 @@ import '../../models/cut_id.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
 import '../../models/layer.dart';
+import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_coverage.dart';
 import '../../services/cut_frame_composite_plan.dart';
@@ -420,6 +421,15 @@ class ExportFrameRenderer {
     CanvasSize? outputSize,
   }) async {
     _retainSurfacesFor([task.cut.id]);
+    // A cel has no time of its own, so the group's FX sample at the base
+    // cel's FIRST exposure — the same honest frame the camera pose uses.
+    var firstExposure = 0;
+    for (final block in drawingBlocks(task.baseLayer.timeline)) {
+      if (block.frameId == task.baseFrame.id) {
+        firstExposure = block.startIndex;
+        break;
+      }
+    }
     final layers = <CutFrameCompositeLayer>[];
     for (var i = 0; i < task.members.length; i += 1) {
       final frame = task.memberFrames[i];
@@ -435,8 +445,21 @@ class ExportFrameRenderer {
           surface: surface,
           opacity: task.members[i].opacity,
           // R26 #30: the delivery cel is the stack as composited — the
-          // members' blends apply.
+          // members' blends apply. R6: their EFFECTS ride the same fx
+          // gates every other route uses — the dialog's master toggle and
+          // the row's own fx switch. The cel export sets the master toggle
+          // FALSE ("cels stay raw artwork"), so a blur can never be baked
+          // into line art the compositing department has to work with;
+          // blend and static opacity are display properties and stay.
           blendMode: task.members[i].blendMode,
+          effects:
+              applyLayerFx &&
+                  !session.fxBypassedLayerIds.contains(task.members[i].id)
+              ? resolveLayerEffectsAt(
+                  effects: task.members[i].effects,
+                  frameIndex: firstExposure,
+                )
+              : const [],
         ),
       );
     }
@@ -445,13 +468,6 @@ class ExportFrameRenderer {
     }
     CameraPose pose;
     if (mode == ExportSizeMode.camera) {
-      var firstExposure = 0;
-      for (final block in drawingBlocks(task.baseLayer.timeline)) {
-        if (block.frameId == task.baseFrame.id) {
-          firstExposure = block.startIndex;
-          break;
-        }
-      }
       pose = session.cameraPoseForCut(task.cut, firstExposure);
     } else {
       pose = CameraPose(

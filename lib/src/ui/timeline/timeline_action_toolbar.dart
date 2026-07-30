@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
+import '../../models/layer_effect.dart';
 import '../../models/layer_kind.dart';
 import '../../models/project_frame_rate.dart';
 import '../cut_command_group.dart';
@@ -310,6 +311,34 @@ class TimelineActionToolbar extends StatelessWidget {
         enabled: session.canImportAudioToActiveLayer && onImportAudio != null,
         onSelected: onImportAudio,
       ),
+      const PanelFlyoutDivider(),
+      // R6: the effect chain's entrance. Adding one changes nothing until a
+      // value moves — the work happens in the row's FX lanes, which is why
+      // the command lives next to the other layer verbs instead of growing
+      // another control on an already crowded row.
+      PanelFlyoutHeader(AppText.strings.tlEffects),
+      for (final kind in EffectKind.values)
+        PanelFlyoutItem(
+          keyValue: 'add-effect-${kind.jsonValue}',
+          label: AppText.strings.tlAddEffectTemplate.replaceAll(
+            '{name}',
+            kind.labelFor(AppText.language),
+          ),
+          icon: Icons.auto_fix_high_outlined,
+          enabled: session.canAddEffectToActiveLayer,
+          onSelected: () => session.addEffectToActiveLayer(kind),
+        ),
+      for (final effect in active?.effects ?? const <LayerEffect>[])
+        PanelFlyoutItem(
+          keyValue: 'remove-effect-${effect.id.value}',
+          label: AppText.strings.tlRemoveEffectTemplate.replaceAll(
+            '{name}',
+            effect.kind.labelFor(AppText.language),
+          ),
+          icon: Icons.remove_circle_outline,
+          danger: true,
+          onSelected: () => session.removeEffectFromActiveLayer(effect.id),
+        ),
       const PanelFlyoutDivider(),
       // R27 #21: the FOLDER and LINK commands reach the timeline. They
       // only lived in the top menu bar, which is a long way from the rail

@@ -8,6 +8,7 @@ import '../../models/layer_id.dart';
 import '../../models/playback_quality.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/playback/cut_frame_composite_signature.dart';
+import '../canvas/composite_effect_paint.dart';
 import '../canvas/deferred_image_disposal.dart';
 import '../canvas/layer_pose_paint.dart';
 import 'layer_frame_image_cache.dart';
@@ -229,17 +230,26 @@ class CutFrameCompositeCache {
             :final children,
             :final opacity,
             :final blendMode,
+            :final effects,
           ):
             // R27 #29: the members compose into ONE buffer and the
             // folder's opacity/blend land on it once — overlapping
             // members inside a multiply folder stop darkening where they
             // cross. Only a folder that NEEDS this ever becomes a group
             // node, so a plain 통과 folder costs no saveLayer at all.
+            final groupEffects = resolveCompositeEffectPaint(
+              effects,
+              rasterScale: scale,
+            );
+            final groupPaint = ui.Paint()
+              ..color = ui.Color.fromRGBO(0, 0, 0, opacity)
+              ..blendMode = blendMode.paintBlendMode;
+            groupEffects.applyTo(groupPaint);
             canvas.saveLayer(
-              rasterBounds,
-              ui.Paint()
-                ..color = ui.Color.fromRGBO(0, 0, 0, opacity)
-                ..blendMode = blendMode.paintBlendMode,
+              // R6: a group blur must be allowed to bleed in from just
+              // outside the raster, so the buffer grows by its spread.
+              effectBufferBounds(rasterBounds, groupEffects),
+              groupPaint,
             );
             await paintNodes(children);
             canvas.restore();
@@ -282,6 +292,15 @@ class CutFrameCompositeCache {
               // R26 #30: the layer blend applies at composite time,
               // exactly like every other route.
               ..blendMode = layer.blendMode.paintBlendMode;
+            // R6: the row's effects filter its own picture before the
+            // opacity/blend meet the stack. The images here are ALREADY at
+            // this quality tier's raster, so a canvas-pixel blur radius
+            // has to be scaled with them — otherwise a half-size preview
+            // would show a double-strength blur.
+            resolveCompositeEffectPaint(
+              layer.effects,
+              rasterScale: scale,
+            ).applyTo(layerPaint);
             final worldRect = layerImage.worldRect;
             if (worldRect.left == 0 &&
                 worldRect.top == 0 &&

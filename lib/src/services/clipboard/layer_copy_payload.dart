@@ -8,6 +8,13 @@ import '../../models/layer_kind.dart';
 import '../../models/media_reference.dart';
 import '../../models/timeline_exposure.dart';
 
+/// What "copy layer" carries. A POSITIVE list, so anything not named here
+/// is deliberately left behind — and today that is every piece of
+/// COMPOSITE-TIME state: the blend mode, the transform track and (R6) the
+/// effect chain. A pasted layer arrives as the artwork and its timing, with
+/// its FX un-set. That has been the behaviour since the transform lanes
+/// landed; effects follow the same rule rather than inventing a second one.
+/// Changing it is one decision about all three, not three decisions.
 class LayerCopyPayload {
   LayerCopyPayload({
     required this.name,

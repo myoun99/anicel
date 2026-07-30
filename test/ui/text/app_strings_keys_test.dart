@@ -506,6 +506,9 @@ void main() {
     'tlCopyLayer': (s) => s.tlCopyLayer,
     'tlDeleteLayer': (s) => s.tlDeleteLayer,
     'tlImportAudio': (s) => s.tlImportAudio,
+    'tlEffects': (s) => s.tlEffects,
+    'tlAddEffectTemplate': (s) => s.tlAddEffectTemplate,
+    'tlRemoveEffectTemplate': (s) => s.tlRemoveEffectTemplate,
     'tlCopyFrame': (s) => s.tlCopyFrame,
     'tlPasteLinkedFrame': (s) => s.tlPasteLinkedFrame,
     'tlDeleteCell': (s) => s.tlDeleteCell,
@@ -563,6 +566,6 @@ void main() {
   test('the reader table covers every getter the class declares', () {
     // Guards the guard: a string added without a line here would other-
     // wise be silently unchecked.
-    expect(readers, hasLength(508));
+    expect(readers, hasLength(511));
   });
 }

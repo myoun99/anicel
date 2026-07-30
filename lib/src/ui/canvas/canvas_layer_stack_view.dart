@@ -2,9 +2,11 @@ import 'dart:ui' as ui;
 
 import 'package:flutter/widgets.dart';
 
+import '../../core/collection_equality.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/canvas_point.dart';
 import '../../models/layer_blend_mode.dart';
+import '../../models/layer_effect.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/pasteboard_bounds.dart';
@@ -14,6 +16,7 @@ import '../../models/transform_track.dart';
 import '../dev_profile.dart';
 import '../playback/layer_frame_image_cache.dart';
 import 'bitmap_surface_painter.dart';
+import 'composite_effect_paint.dart';
 import 'layer_pose_paint.dart';
 import 'paper_background.dart';
 import 'viewport_canvas_transform.dart';
@@ -42,14 +45,24 @@ final class CanvasLayerImageNode extends CanvasLayerStackNode {
 /// The painter delegates to the surface painter here, in place, so the
 /// stroke lands inside whatever group buffer encloses it.
 final class CanvasActiveLayerNode extends CanvasLayerStackNode {
-  const CanvasActiveLayerNode({required this.opacity, this.pose,
-      this.anchorPoint});
+  const CanvasActiveLayerNode({
+    required this.opacity,
+    this.pose,
+    this.anchorPoint,
+    this.effects = const [],
+  });
 
   /// The active row's effective opacity (the interactive view used to
   /// apply this itself, through the panel's content-opacity wrap).
   final double opacity;
   final TransformPose? pose;
   final CanvasPoint? anchorPoint;
+
+  /// The active row's effect chain (R6) — the layer you are DRAWING on
+  /// shows its own effects, so a stroke lands in the picture you can see.
+  /// A blur wraps the live surface in its own buffer for exactly as long as
+  /// the effect is there.
+  final List<ResolvedLayerEffect> effects;
 }
 
 /// A FOLDER's group buffer: [children] compose into one buffer, then the
@@ -59,11 +72,15 @@ final class CanvasLayerGroupNode extends CanvasLayerStackNode {
     required this.children,
     required this.opacity,
     required this.blendMode,
+    this.effects = const [],
   });
 
   final List<CanvasLayerStackNode> children;
   final double opacity;
   final LayerBlendMode blendMode;
+
+  /// The folder's effect chain (R6), applied once to the group buffer.
+  final List<ResolvedLayerEffect> effects;
 }
 
 /// One non-active layer to composite around the interactive canvas.
@@ -75,6 +92,7 @@ class CanvasLayerImageRequest {
     this.pose,
     this.anchorPoint,
     this.tint,
+    this.effects = const [],
   });
 
   final BrushFrameKey frameKey;
@@ -97,6 +115,11 @@ class CanvasLayerImageRequest {
   /// ARGB tint MULTIPLIED over the artwork's colors (onion-skin Colors
   /// mode); null paints the artwork as-is.
   final int? tint;
+
+  /// The row's effect chain (R6). Onion GHOSTS deliberately carry none:
+  /// they are editing scaffolding, and the Colors-mode tint already owns
+  /// this paint's colorFilter slot.
+  final List<ResolvedLayerEffect> effects;
 }
 
 /// Paints the editing canvas's whole composite tree from the layer-frame
@@ -323,17 +346,29 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
               pose: request.pose,
               anchorPoint: request.anchorPoint,
               tint: request.tint,
+              effects: request.effects,
             ),
           );
-        case CanvasActiveLayerNode(:final pose, :final anchorPoint):
+        case CanvasActiveLayerNode(
+          :final pose,
+          :final anchorPoint,
+          :final effects,
+        ):
           if (widget.activeSurfacePainter == null) {
             continue;
           }
-          out.add(_PaintActiveSurface(pose: pose, anchorPoint: anchorPoint));
+          out.add(
+            _PaintActiveSurface(
+              pose: pose,
+              anchorPoint: anchorPoint,
+              effects: effects,
+            ),
+          );
         case CanvasLayerGroupNode(
           :final children,
           :final opacity,
           :final blendMode,
+          :final effects,
         ):
           final mapped = _resolvedTree(children);
           if (mapped.isEmpty) {
@@ -344,6 +379,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
               children: mapped,
               opacity: opacity,
               blendMode: blendMode,
+              effects: effects,
             ),
           );
       }
@@ -383,6 +419,7 @@ final class _PaintImage extends _PaintNode {
     required this.pose,
     required this.anchorPoint,
     required this.tint,
+    required this.effects,
   });
 
   final ui.Image image;
@@ -392,13 +429,19 @@ final class _PaintImage extends _PaintNode {
   final TransformPose? pose;
   final CanvasPoint? anchorPoint;
   final int? tint;
+  final List<ResolvedLayerEffect> effects;
 }
 
 final class _PaintActiveSurface extends _PaintNode {
-  const _PaintActiveSurface({required this.pose, required this.anchorPoint});
+  const _PaintActiveSurface({
+    required this.pose,
+    required this.anchorPoint,
+    required this.effects,
+  });
 
   final TransformPose? pose;
   final CanvasPoint? anchorPoint;
+  final List<ResolvedLayerEffect> effects;
 }
 
 final class _PaintGroup extends _PaintNode {
@@ -406,11 +449,13 @@ final class _PaintGroup extends _PaintNode {
     required this.children,
     required this.opacity,
     required this.blendMode,
+    required this.effects,
   });
 
   final List<_PaintNode> children;
   final double opacity;
   final LayerBlendMode blendMode;
+  final List<ResolvedLayerEffect> effects;
 }
 
 class _LayerStackPainter extends CustomPainter {
@@ -493,33 +538,64 @@ class _LayerStackPainter extends CustomPainter {
           );
         }
         switch (node) {
-          case _PaintGroup(:final children, :final opacity, :final blendMode):
+          case _PaintGroup(
+            :final children,
+            :final opacity,
+            :final blendMode,
+            :final effects,
+          ):
             // R27 #29: one buffer for the group, one blend on it — and
             // because the ACTIVE layer is a node in here, a stroke drawn
             // inside a blended folder finally reads the way it will play
-            // back.
+            // back. R6: the folder's effect chain lands on the same buffer.
+            final groupEffects = resolveCompositeEffectPaint(effects);
+            final groupPaint = Paint()
+              ..color = Color.fromRGBO(0, 0, 0, opacity.clamp(0.0, 1.0))
+              ..blendMode = blendMode.paintBlendMode;
+            groupEffects.applyTo(groupPaint);
             canvas.saveLayer(
-              groupBounds,
-              Paint()
-                ..color = Color.fromRGBO(0, 0, 0, opacity.clamp(0.0, 1.0))
-                ..blendMode = blendMode.paintBlendMode,
+              // The size hint grows by the blur's spread, so artwork just
+              // OUTSIDE the visible rect still bleeds in — without this the
+              // blur at the screen edge would change as you scroll.
+              effectBufferBounds(groupBounds, groupEffects),
+              groupPaint,
             );
             paintNodes(children);
             canvas.restore();
-          case _PaintActiveSurface():
+          case _PaintActiveSurface(:final effects):
             // The live surface, drawn by the SAME painter the standalone
             // interactive view uses — the canvas is already
             // viewport-transformed, so only the content body runs.
+            //
+            // R6: the row's own effects need a buffer here, because the
+            // surface painter draws MANY tiles and a filter must see the
+            // assembled picture (a per-tile blur would show seams).
+            final activeEffects = resolveCompositeEffectPaint(effects);
+            if (activeEffects.isNotEmpty) {
+              final activePaint = Paint();
+              activeEffects.applyTo(activePaint);
+              canvas.saveLayer(
+                effectBufferBounds(
+                  activeSurfacePainter!.pasteboardRect,
+                  activeEffects,
+                ),
+                activePaint,
+              );
+            }
             canvas.save();
             canvas.clipRect(activeSurfacePainter!.pasteboardRect);
             activeSurfacePainter!.paintContentInto(canvas);
             canvas.restore();
+            if (activeEffects.isNotEmpty) {
+              canvas.restore();
+            }
           case _PaintImage(
             :final image,
             :final worldRect,
             :final opacity,
             :final blendMode,
             :final tint,
+            :final effects,
           ):
             final paint = Paint()
               ..filterQuality = FilterQuality.low
@@ -538,6 +614,10 @@ class _LayerStackPainter extends CustomPainter {
                 BlendMode.srcIn,
               );
             }
+            // R6: the row's effects filter its own picture. Ghosts resolve
+            // to no effects at all, which is what keeps them from fighting
+            // the tint above for this paint's colorFilter slot.
+            resolveCompositeEffectPaint(effects).applyTo(paint);
             // Dest = the image's WORLD rect: the canvas rect for plain
             // cels (legacy path, unchanged bytes), grown for pasteboard
             // content so off-canvas artwork of non-active layers shows at
@@ -593,13 +673,19 @@ class _LayerStackPainter extends CustomPainter {
               x.blendMode != y.blendMode ||
               x.pose != y.pose ||
               x.anchorPoint != y.anchorPoint ||
-              x.tint != y.tint) {
+              x.tint != y.tint ||
+              // R6: an effect edit changes the pixels and nothing else —
+              // leaving it out here would repaint nothing (the whole tree
+              // still "matches") and the canvas would go stale.
+              !listEquals(x.effects, y.effects)) {
             return false;
           }
         case (_PaintActiveSurface(), _PaintActiveSurface()):
           x as _PaintActiveSurface;
           y as _PaintActiveSurface;
-          if (x.pose != y.pose || x.anchorPoint != y.anchorPoint) {
+          if (x.pose != y.pose ||
+              x.anchorPoint != y.anchorPoint ||
+              !listEquals(x.effects, y.effects)) {
             return false;
           }
         case (_PaintGroup(), _PaintGroup()):
@@ -607,6 +693,7 @@ class _LayerStackPainter extends CustomPainter {
           y as _PaintGroup;
           if (x.opacity != y.opacity ||
               x.blendMode != y.blendMode ||
+              !listEquals(x.effects, y.effects) ||
               !_treesMatch(x.children, y.children)) {
             return false;
           }

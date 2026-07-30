@@ -6,6 +6,7 @@ import '../models/cut.dart';
 import '../models/frame.dart';
 import '../models/layer.dart';
 import '../models/layer_blend_mode.dart';
+import '../models/layer_effect.dart';
 import '../models/layer_folder.dart';
 import '../models/layer_id.dart';
 import '../models/layer_kind.dart';
@@ -21,6 +22,7 @@ class CutFrameCompositeLayer {
     this.blendMode = LayerBlendMode.normal,
     this.pose,
     this.anchorPoint,
+    this.effects = const [],
   });
 
   final BitmapSurface surface;
@@ -44,6 +46,12 @@ class CutFrameCompositeLayer {
   /// The pose's anchor point; null = canvas center (see
   /// applyLayerPoseTransform).
   final CanvasPoint? anchorPoint;
+
+  /// The layer's EFFECT CHAIN sampled at this frame (R6), applied over the
+  /// row's own picture before its opacity/blend meet the stack. Empty for
+  /// every layer that carries no effects — the common case, which costs no
+  /// filter at all.
+  final List<ResolvedLayerEffect> effects;
 }
 
 /// A layer's identity pose: content centered, unscaled, unrotated — the
@@ -115,6 +123,7 @@ class CutFrameCompositeEntry {
     this.blendMode = LayerBlendMode.normal,
     this.pose,
     this.anchorPoint,
+    this.effects = const [],
   });
 
   final Layer layer;
@@ -128,6 +137,11 @@ class CutFrameCompositeEntry {
   /// FX composed outside it (L3); null = identity.
   final TransformPose? pose;
   final CanvasPoint? anchorPoint;
+
+  /// The row's effect chain sampled at this frame (R6) — from the FX
+  /// CARRIER, so an attach row wears its base's effects exactly as it wears
+  /// its base's pose, and the carrier's fx switch bypasses both.
+  final List<ResolvedLayerEffect> effects;
 }
 
 /// One node of a cut frame's composite TREE, bottom → top: an entry that
@@ -163,6 +177,7 @@ final class CutFrameCompositeEntryGroup extends CutFrameCompositeEntryNode {
     required this.children,
     required this.opacity,
     required this.blendMode,
+    this.effects = const [],
   });
 
   final Layer folder;
@@ -175,16 +190,25 @@ final class CutFrameCompositeEntryGroup extends CutFrameCompositeEntryNode {
 
   /// The FOLDER's blend against everything below the group.
   final LayerBlendMode blendMode;
+
+  /// The FOLDER's effect chain sampled at this frame (R6), applied ONCE to
+  /// the composed buffer — which is the whole reason effects force a folder
+  /// to buffer ([folderNeedsCompositeBuffer]): a blur over the group is not
+  /// the same picture as a blur over each member.
+  final List<ResolvedLayerEffect> effects;
 }
 
 /// Whether [folder] must compose into its own buffer at [frameIndex].
 ///
-/// Two things, and only two, fail to distribute over compositing:
+/// Three things, and only three, fail to distribute over compositing:
 /// - a BLEND other than pass-through (there is nothing to blend until the
-///   group exists), and
+///   group exists),
 /// - an OPACITY below 1 — `0.5·(A over B)` is not `(0.5·A) over (0.5·B)`
 ///   where A and B overlap, which is exactly the double-darkening the
-///   per-member fold produced.
+///   per-member fold produced, and
+/// - any EFFECT (R6): a filter reads the pixels it is given, so
+///   `blur(A over B)` is not `blur(A) over blur(B)` and `bright(A over B)`
+///   is not `bright(A) over bright(B)` wherever they overlap.
 ///
 /// A POSE is deliberately NOT in the list: an affine transform DOES
 /// distribute (`T(A over B) == T(A) over T(B)`), so folder FX keeps riding
@@ -198,12 +222,32 @@ bool folderNeedsCompositeBuffer({
   if (folder.blendMode.isolatesGroup) {
     return true;
   }
+  if (resolveFolderEffectsAt(
+    folder: folder,
+    frameIndex: frameIndex,
+    fxBypassedLayerIds: fxBypassedLayerIds,
+  ).isNotEmpty) {
+    return true;
+  }
   return resolveFolderOpacityAt(
         folder: folder,
         frameIndex: frameIndex,
         fxBypassedLayerIds: fxBypassedLayerIds,
       ) <
       1.0;
+}
+
+/// A folder's own effect chain at [frameIndex], empty while the row's fx
+/// switch is off (effects are FX like the pose and the opacity lane).
+List<ResolvedLayerEffect> resolveFolderEffectsAt({
+  required Layer folder,
+  required int frameIndex,
+  Set<LayerId> fxBypassedLayerIds = const {},
+}) {
+  if (fxBypassedLayerIds.contains(folder.id)) {
+    return const [];
+  }
+  return resolveLayerEffectsAt(effects: folder.effects, frameIndex: frameIndex);
 }
 
 /// A folder's own effective opacity at [frameIndex]: static × the animated
@@ -458,6 +502,15 @@ List<CutFrameCompositeEntry> resolveCutFrameCompositeEntries({
             frameIndex: frameIndex,
           )
         : null;
+    // R6: effects ride the FX carrier exactly like the pose and the
+    // animated opacity — an attach row wears its base's chain, and the
+    // carrier's fx switch bypasses it.
+    final effects = fxEnabled
+        ? resolveLayerEffectsAt(
+            effects: fxCarrier.effects,
+            frameIndex: frameIndex,
+          )
+        : const <ResolvedLayerEffect>[];
     final combined = composeFolderAndLayerPose(
       folderPoses: folderChain.poses,
       layerSample: layerPose == null
@@ -486,6 +539,7 @@ List<CutFrameCompositeEntry> resolveCutFrameCompositeEntries({
             : layer.blendMode,
         pose: combined?.pose,
         anchorPoint: combined?.anchorPoint,
+        effects: effects,
       ),
     );
   }
@@ -564,6 +618,11 @@ List<CutFrameCompositeEntryNode> resolveCutFrameCompositeTree({
           blendMode: layer.blendMode.isolatesGroup
               ? layer.blendMode
               : LayerBlendMode.normal,
+          effects: resolveFolderEffectsAt(
+            folder: layer,
+            frameIndex: frameIndex,
+            fxBypassedLayerIds: fxBypassedLayerIds,
+          ),
         ),
       );
       continue;
@@ -585,6 +644,13 @@ List<CutFrameCompositeEntryNode> resolveCutFrameCompositeTree({
 /// FLAT: folder opacity/blend fold into the members. The paint routes use
 /// [planCutFrameCompositeTree] instead; this stays for the consumers that
 /// cannot nest (a pixel sample, a fill raster).
+///
+/// ⚠️ Flat-path limitation, the same class as the folder-blend
+/// approximation above: a FOLDER's effects are dropped here (they have no
+/// buffer to land on), and a LAYER's effects arrive as data the byte-level
+/// consumers do not run — the eyedropper and the flood fill read the
+/// artwork as DRAWN, not as filtered. Both are Dart byte walks with no
+/// Skia in reach; the filtered picture lives on the paint routes.
 List<CutFrameCompositeLayer> planCutFrameComposite({
   required Cut cut,
   required int frameIndex,
@@ -608,6 +674,7 @@ List<CutFrameCompositeLayer> planCutFrameComposite({
         blendMode: entry.blendMode,
         pose: entry.pose,
         anchorPoint: entry.anchorPoint,
+        effects: entry.effects,
       ),
     );
   }
@@ -631,11 +698,15 @@ final class CutFrameCompositeSurfaceGroup extends CutFrameCompositeSurfaceNode {
     required this.children,
     required this.opacity,
     required this.blendMode,
+    this.effects = const [],
   });
 
   final List<CutFrameCompositeSurfaceNode> children;
   final double opacity;
   final LayerBlendMode blendMode;
+
+  /// The group's effect chain (R6), applied once to the composed buffer.
+  final List<ResolvedLayerEffect> effects;
 }
 
 /// [resolveCutFrameCompositeTree] with each leaf's surface resolved;
@@ -666,6 +737,7 @@ List<CutFrameCompositeSurfaceNode> planCutFrameCompositeTree({
                 blendMode: entry.blendMode,
                 pose: entry.pose,
                 anchorPoint: entry.anchorPoint,
+                effects: entry.effects,
               ),
             ),
           );
@@ -673,6 +745,7 @@ List<CutFrameCompositeSurfaceNode> planCutFrameCompositeTree({
           :final children,
           :final opacity,
           :final blendMode,
+          :final effects,
         ):
           final mapped = mapNodes(children);
           if (mapped.isEmpty) {
@@ -683,6 +756,7 @@ List<CutFrameCompositeSurfaceNode> planCutFrameCompositeTree({
               children: List.unmodifiable(mapped),
               opacity: opacity,
               blendMode: blendMode,
+              effects: effects,
             ),
           );
       }

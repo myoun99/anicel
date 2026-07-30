@@ -5,6 +5,7 @@ import '../../models/layer_id.dart';
 import '../../models/property_track.dart';
 import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
 import '../../models/transform_track.dart';
+import 'effect_lane_policy.dart';
 import 'property_lane_model.dart';
 
 /// The AE-style 'Transform' GROUP HEADER row leading the transform lanes —
@@ -161,6 +162,13 @@ bool laneSelectionCoversBandRow(
 ) {
   if (selection == null) {
     return false;
+  }
+  // R6: an EFFECT's header row answers the same question against its own
+  // members (the effect lane ids carry which effect they belong to).
+  if (parseEffectLaneId(laneId) != null) {
+    return selection.layerId == layerId &&
+        (selection.coversLane(layerId, laneId) ||
+            effectGroupHeaderCovered(laneId, selection.spanLaneIds));
   }
   if (laneId == transformGroupHeaderLane.laneId) {
     return selection.layerId == layerId &&

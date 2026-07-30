@@ -9,6 +9,7 @@ import 'camera_instruction.dart';
 import 'frame.dart';
 import 'frame_id.dart';
 import 'layer_blend_mode.dart';
+import 'layer_effect.dart';
 import 'layer_id.dart';
 import 'layer_kind.dart';
 import 'layer_mark.dart';
@@ -48,6 +49,7 @@ class Layer {
     this.mediaReference,
     this.seNameTag,
     TransformTrack? transformTrack,
+    List<LayerEffect> effects = const [],
     this.attachedToLayerId,
     this.attachedPlacement = AttachedPlacement.above,
     this.attachedMode = AttachedMode.synced,
@@ -59,6 +61,7 @@ class Layer {
        instructions = immutableInstructionMap(instructions ?? const {}),
        audioClips = List.unmodifiable(audioClips),
        transformTrack = transformTrack ?? TransformTrack.empty(),
+       effects = List.unmodifiable(effects),
        baseFrameLinks = Map.unmodifiable(baseFrameLinks),
        runBehaviors = List.unmodifiable(runBehaviors);
 
@@ -144,6 +147,17 @@ class Layer {
   /// untouched default for every layer).
   final TransformTrack transformTrack;
 
+  /// The layer's EFFECT CHAIN (R6), applied at COMPOSITE time like the
+  /// transform — never baked into the artwork. Applied in list order over
+  /// the row's own picture, after its transform and before its
+  /// opacity/blend meet the stack.
+  ///
+  /// A FOLDER row's effects land on its group buffer instead (so an effect
+  /// on a folder is one filter over the composed members, not one filter
+  /// each). Empty = no effect work at all, which is every layer until
+  /// somebody adds one.
+  final List<LayerEffect> effects;
+
   /// Non-null makes this an ATTACH LAYER riding the named base layer (W5):
   /// it shares the base's exposure timing and FX (transform + opacity
   /// lanes) while keeping its own cels, eye, static opacity and mark. Its
@@ -194,6 +208,7 @@ class Layer {
     LayerMark? mark,
     bool? isFillReference,
     TransformTrack? transformTrack,
+    List<LayerEffect>? effects,
     LayerId? attachedToLayerId,
     AttachedPlacement? attachedPlacement,
     AttachedMode? attachedMode,
@@ -223,6 +238,7 @@ class Layer {
       mark: mark ?? this.mark,
       isFillReference: isFillReference ?? this.isFillReference,
       transformTrack: transformTrack ?? this.transformTrack,
+      effects: effects ?? this.effects,
       // Detaching is not expressible here (attach rows are created and
       // deleted whole); copyWith only carries the linkage along.
       attachedToLayerId: attachedToLayerId ?? this.attachedToLayerId,
@@ -277,6 +293,8 @@ class Layer {
     if (runBehaviors.isNotEmpty)
       'runBehaviors': [for (final behavior in runBehaviors) behavior.toJson()],
     if (transformTrack.isNotEmpty) 'transform': transformTrack.toJson(),
+    if (effects.isNotEmpty)
+      'effects': [for (final effect in effects) effect.toJson()],
     if (attachedToLayerId != null) ...{
       'attachedTo': attachedToLayerId!.toJson(),
       'attachedPlacement': attachedPlacement.toJson(),
@@ -373,6 +391,12 @@ class Layer {
       transformTrack: json['transform'] == null
           ? null
           : TransformTrack.fromJson(json['transform'] as Map<String, dynamic>),
+      effects: json['effects'] == null
+          ? const []
+          : [
+              for (final effect in json['effects'] as List<dynamic>)
+                LayerEffect.fromJson(effect as Map<String, dynamic>),
+            ],
       attachedToLayerId: json['attachedTo'] == null
           ? null
           : LayerId.fromJson(json['attachedTo'] as Map<String, dynamic>),
@@ -419,6 +443,7 @@ class Layer {
           other.mediaReference == mediaReference &&
           other.seNameTag == seNameTag &&
           other.transformTrack == transformTrack &&
+          listEquals(other.effects, effects) &&
           other.attachedToLayerId == attachedToLayerId &&
           other.attachedPlacement == attachedPlacement &&
           other.attachedMode == attachedMode &&
@@ -449,7 +474,8 @@ class Layer {
     mark,
     // Folded with isFillReference: Object.hash caps at 20 positional args.
     Object.hash(isFillReference, mediaReference, seNameTag),
-    transformTrack,
+    // Folded with transformTrack: Object.hash caps at 20 positional args.
+    Object.hash(transformTrack, Object.hashAll(effects)),
     attachedToLayerId,
     Object.hash(attachedPlacement, attachedMode),
     Object.hashAllUnordered(

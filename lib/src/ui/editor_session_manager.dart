@@ -54,6 +54,7 @@ import '../models/frame.dart';
 import '../models/frame_id.dart';
 import '../models/layer.dart';
 import '../models/layer_blend_mode.dart';
+import '../models/layer_effect.dart';
 import '../models/layer_id.dart';
 import '../models/key_range_move.dart';
 import '../models/layer_kind.dart';
@@ -162,13 +163,20 @@ import 'timeline/layer_timeline_display_adapter.dart'
 import 'timeline/timeline_cell_exposure_state.dart';
 import 'timeline/timeline_drag_preview.dart';
 import 'timeline/timeline_section_policy.dart';
+import 'timeline/effect_lane_editing.dart'
+    show
+        effectLaneKeyFrames,
+        effectsWithLaneKeyToggled,
+        effectsWithLaneSpanKeysShifted;
+import 'timeline/effect_lane_policy.dart'
+    show effectLaneSpan, parseEffectLaneId;
 import 'timeline/transform_lane_editing.dart'
     show
         transformLaneKeyFrames,
         transformTrackWithLaneKeyToggled,
         transformTrackWithLaneSpanKeysShifted;
 import 'timeline/transform_lane_policy.dart'
-    show transformLaneDisplayOrder, transformLaneSpan;
+    show transformGroupHeaderLane, transformLaneDisplayOrder, transformLaneSpan;
 
 /// A planned SE row-change pair in COMMIT (global track) form: the source
 /// row after its blocks leave, the target row after they arrive.
@@ -1696,6 +1704,7 @@ class EditorSessionManager extends ChangeNotifier {
           :final children,
           :final opacity,
           :final blendMode,
+          :final effects,
         ):
           final mapped = <CanvasLayerStackNode>[
             for (final child in children) ?mapNode(child),
@@ -1707,6 +1716,7 @@ class EditorSessionManager extends ChangeNotifier {
             children: List.unmodifiable(mapped),
             opacity: opacity,
             blendMode: blendMode,
+            effects: effects,
           );
         case CutFrameCompositeEntryLeaf(:final entry):
           // A brush-banned active layer (SE/instruction, R6-④; a media
@@ -1722,6 +1732,7 @@ class EditorSessionManager extends ChangeNotifier {
               opacity: entry.opacity,
               pose: entry.pose,
               anchorPoint: entry.anchorPoint,
+              effects: entry.effects,
             );
           }
           return CanvasLayerImageNode(
@@ -1735,6 +1746,7 @@ class EditorSessionManager extends ChangeNotifier {
               blendMode: entry.blendMode,
               pose: entry.pose,
               anchorPoint: entry.anchorPoint,
+              effects: entry.effects,
             ),
           );
       }
@@ -1761,7 +1773,28 @@ class EditorSessionManager extends ChangeNotifier {
       activeLayerOpacity = !activeStackLayer.isVisible
           ? 0.0
           : _stackLayerOpacity(activeStackLayer, stackCut.layers, frameIndex);
-      nodes.add(CanvasActiveLayerNode(opacity: activeLayerOpacity));
+      // R6: the surface you are about to draw on shows the effects the
+      // composite will apply to it, so the first stroke lands in the
+      // picture you can see. The chain comes from the FX CARRIER exactly
+      // as [resolveCutFrameCompositeEntries] resolves it for a real entry —
+      // an attach row wears its BASE's effects, and it is the base's fx
+      // switch that bypasses them. Reading the row's own would leave this
+      // one node unfiltered until its first cel exists, then snap.
+      final activeFxBase = isAttachedLayer(activeStackLayer)
+          ? attachedBaseOf(activeStackLayer, stackCut.layers)
+          : null;
+      final activeFxCarrier = activeFxBase ?? activeStackLayer;
+      nodes.add(
+        CanvasActiveLayerNode(
+          opacity: activeLayerOpacity,
+          effects: isLayerFxEnabled(activeFxCarrier.id)
+              ? resolveLayerEffectsAt(
+                  effects: activeFxCarrier.effects,
+                  frameIndex: frameIndex,
+                )
+              : const [],
+        ),
+      );
     }
 
     // Track-owned SE rows join as their cut-local display clones — they
@@ -2135,6 +2168,98 @@ class EditorSessionManager extends ChangeNotifier {
       description: description,
     );
     notifyListeners();
+  }
+
+  /// Replaces [layerId]'s EFFECT CHAIN (R6 — the color/blur lanes); one
+  /// undo step, no-op when unchanged.
+  void updateLayerEffects(
+    LayerId layerId,
+    List<LayerEffect> effects, {
+    String description = 'Edit layer effects',
+  }) {
+    final cutId = _editingSession.activeCutId;
+    if (cutId == null) {
+      return;
+    }
+    _cutCommandCoordinator.updateLayerEffects(
+      cutId: cutId,
+      layerId: layerId,
+      effects: effects,
+      description: description,
+    );
+    notifyListeners();
+  }
+
+  /// Whether the ACTIVE row can take an effect: a row that carries its own
+  /// FX, and not a track-owned SE row (its display clone strips FX, so a
+  /// chain committed through it would land nowhere the lanes could edit).
+  bool get canAddEffectToActiveLayer {
+    final layer = activeLayer;
+    return layer != null &&
+        layerKindHasLayerEffects(layer.kind) &&
+        !isTrackSeLayerId(layer.id) &&
+        // Attach rows wear their BASE's FX (W5) and have no lanes of their
+        // own — the effect belongs on the base.
+        layer.attachedToLayerId == null;
+  }
+
+  /// Appends a fresh effect of [kind] (every parameter at its default, so
+  /// adding one changes nothing until a value moves) to the active row.
+  void addEffectToActiveLayer(EffectKind kind) {
+    final layer = activeLayer;
+    if (layer == null || !canAddEffectToActiveLayer) {
+      return;
+    }
+    _effectSequence += 1;
+    final effect = LayerEffect.defaults(
+      // Timestamped like the frame ids: the lane address embeds this, so
+      // two effects added in the same session must never collide.
+      id: EffectId(
+        'fx-${layer.id.value}-'
+        '${DateTime.now().microsecondsSinceEpoch}-$_effectSequence',
+      ),
+      kind: kind,
+    );
+    updateLayerEffects(layer.id, [
+      ...layer.effects,
+      effect,
+    ], description: 'Add ${kind.label}');
+  }
+
+  /// Removes one effect from the active row (its keys go with it; one undo
+  /// brings both back).
+  void removeEffectFromActiveLayer(EffectId effectId) {
+    final layer = activeLayer;
+    if (layer == null) {
+      return;
+    }
+    final next = [
+      for (final effect in layer.effects)
+        if (effect.id != effectId) effect,
+    ];
+    if (next.length == layer.effects.length) {
+      return;
+    }
+    updateLayerEffects(layer.id, next, description: 'Remove effect');
+  }
+
+  int _effectSequence = 0;
+
+  /// An effect parameter's resolved value at [frameIndex] — the lane value
+  /// column and the key-freeze source, read through the SAME resolver the
+  /// composite uses so the number in the lane is the number on the canvas.
+  double layerEffectParameterAtFrame(
+    Layer layer,
+    EffectId effectId,
+    String parameterId,
+    int frameIndex,
+  ) {
+    for (final effect in layer.effects) {
+      if (effect.id == effectId) {
+        return effect.parameterOf(parameterId).resolveAt(frameIndex);
+      }
+    }
+    return 0;
   }
 
   /// The layer's resolved transform pose at [frameIndex] (identity while
@@ -6534,6 +6659,37 @@ class EditorSessionManager extends ChangeNotifier {
     if (layer == null || isAttachedLayer(layer)) {
       return;
     }
+    // R6: an EFFECT-lane selection freezes keys on the effect chain
+    // instead — same rule, same single undo.
+    if (lane.spanLaneIds.any((laneId) => parseEffectLaneId(laneId) != null)) {
+      var effects = layer.effects;
+      var effectsChanged = false;
+      for (final laneId in lane.spanLaneIds) {
+        for (
+          var frame = lane.startIndex;
+          frame < lane.endIndexExclusive;
+          frame += 1
+        ) {
+          if (frame < 0 ||
+              effectLaneKeyFrames(effects, laneId).contains(frame)) {
+            continue;
+          }
+          final next = effectsWithLaneKeyToggled(
+            effects,
+            laneId: laneId,
+            frameIndex: frame,
+          );
+          if (next != null) {
+            effects = next;
+            effectsChanged = true;
+          }
+        }
+      }
+      if (effectsChanged) {
+        updateLayerEffects(layer.id, effects, description: 'Create keys');
+      }
+      return;
+    }
     var track = layer.transformTrack;
     var changed = false;
     // R26 #3: a multi-lane span freezes keys on EVERY spanned lane —
@@ -8684,7 +8840,15 @@ class EditorSessionManager extends ChangeNotifier {
     if (endExclusive <= start) {
       return;
     }
-    final span = transformLaneSpan(laneId, headLaneId ?? laneId);
+    // R6: effect lanes span within their own effect; every other lane id
+    // resolves against the transform order.
+    final span =
+        effectLaneSpan(
+          _layerById(layerId)?.effects ?? const [],
+          laneId,
+          headLaneId ?? laneId,
+        ) ??
+        transformLaneSpan(laneId, headLaneId ?? laneId);
     laneRangeSelection.value = TimelineLaneSelection(
       layerId: layerId,
       laneId: laneId,
@@ -8707,6 +8871,10 @@ class EditorSessionManager extends ChangeNotifier {
   ({Layer? layer, Track? track, TimelineLaneSelection selection})?
   _laneMoveBefore;
   TransformTrack? _laneMoveShifted;
+
+  /// The in-flight EFFECT-lane move's last valid chain (R6) — the effect
+  /// counterpart of [_laneMoveShifted]; exactly one of the two is ever set.
+  List<LayerEffect>? _laneMoveShiftedEffects;
 
   /// Starts moving the current lane selection; false when there is none
   /// or it covers no keys on ANY spanned lane (nothing to move).
@@ -8732,6 +8900,9 @@ class EditorSessionManager extends ChangeNotifier {
       }
       _laneMoveBefore = (layer: null, track: track, selection: selection);
       _laneMoveShifted = null;
+      // Both in-flight slots clear together: a stale effect chain here
+      // would send the commit down the layer branch with layer == null.
+      _laneMoveShiftedEffects = null;
 
       return true;
     }
@@ -8739,17 +8910,25 @@ class EditorSessionManager extends ChangeNotifier {
     if (layer == null || isAttachedLayer(layer)) {
       return false;
     }
+    // R6: an EFFECT lane selection moves the effect chain's keys instead of
+    // the transform track's — same rigid all-or-nothing group, same drag.
+    final isEffectSelection = selection.spanLaneIds.any(
+      (laneId) => parseEffectLaneId(laneId) != null,
+    );
     final keyed = selection.spanLaneIds.any(
-      (laneId) => transformLaneKeyFrames(
-        layer.transformTrack,
-        laneId,
-      ).any(selection.contains),
+      (laneId) => isEffectSelection
+          ? effectLaneKeyFrames(layer.effects, laneId).any(selection.contains)
+          : transformLaneKeyFrames(
+              layer.transformTrack,
+              laneId,
+            ).any(selection.contains),
     );
     if (!keyed) {
       return false;
     }
     _laneMoveBefore = (layer: layer, track: null, selection: selection);
     _laneMoveShifted = null;
+    _laneMoveShiftedEffects = null;
 
     return true;
   }
@@ -8765,9 +8944,44 @@ class EditorSessionManager extends ChangeNotifier {
     }
     if (frameDelta == 0) {
       _laneMoveShifted = null;
+      _laneMoveShiftedEffects = null;
 
       dragPreview.value = null;
       laneRangeSelection.value = before.selection;
+      return;
+    }
+    final effectLayer = before.layer;
+    if (effectLayer != null &&
+        before.selection.spanLaneIds.any(
+          (laneId) => parseEffectLaneId(laneId) != null,
+        )) {
+      final shiftedEffects = effectsWithLaneSpanKeysShifted(
+        effectLayer.effects,
+        laneIds: before.selection.spanLaneIds,
+        rangeStartIndex: before.selection.startIndex,
+        rangeEndIndexExclusive: before.selection.endIndexExclusive,
+        frameDelta: frameDelta,
+      );
+      if (shiftedEffects == null) {
+        // Blocked landing: the last valid preview and outline HOLD.
+        return;
+      }
+      _laneMoveShiftedEffects = shiftedEffects;
+      dragPreview.value = BlockMoveDragPreview(
+        previewLayers: {
+          effectLayer.id: effectLayer.copyWith(effects: shiftedEffects),
+        },
+      );
+      final effectStart = before.selection.startIndex + frameDelta;
+      if (effectStart >= 0) {
+        laneRangeSelection.value = TimelineLaneSelection(
+          layerId: before.selection.layerId,
+          laneId: before.selection.laneId,
+          startIndex: effectStart,
+          endIndexExclusive: before.selection.endIndexExclusive + frameDelta,
+          laneIds: before.selection.laneIds,
+        );
+      }
       return;
     }
     final sourceTrack =
@@ -8811,11 +9025,22 @@ class EditorSessionManager extends ChangeNotifier {
   void endLaneRangeMoveDrag() {
     final before = _laneMoveBefore;
     final shifted = _laneMoveShifted;
+    final shiftedEffects = _laneMoveShiftedEffects;
     final landed = laneRangeSelection.value;
     _laneMoveBefore = null;
     _laneMoveShifted = null;
+    _laneMoveShiftedEffects = null;
 
     dragPreview.value = null;
+    if (before != null && shiftedEffects != null) {
+      updateLayerEffects(
+        before.layer!.id,
+        shiftedEffects,
+        description: 'Move lane keys',
+      );
+      laneRangeSelection.value = landed;
+      return;
+    }
     if (before == null || shifted == null) {
       if (before != null) {
         laneRangeSelection.value = before.selection;
@@ -8844,6 +9069,7 @@ class EditorSessionManager extends ChangeNotifier {
     final before = _laneMoveBefore;
     _laneMoveBefore = null;
     _laneMoveShifted = null;
+    _laneMoveShiftedEffects = null;
 
     dragPreview.value = null;
     if (before != null) {
@@ -9017,6 +9243,17 @@ class EditorSessionManager extends ChangeNotifier {
     required int endIndexExclusive,
   }) {
     if (headLaneId == null) {
+      return;
+    }
+    // The tail always anchors on the FIRST transform lane, so only a
+    // transform row can be its head. A drag ending on some other lane kind
+    // — an SE audio lane, or (R6) an effect parameter lane — has no
+    // representable span from that anchor: [transformLaneSpan] falls back
+    // to the anchor alone, and publishing that would put the selection on
+    // Anchor Point, where the next Add would write keys the user never
+    // asked for. Nothing published, cell selection kept.
+    if (headLaneId != transformGroupHeaderLane.laneId &&
+        !transformLaneDisplayOrder.contains(headLaneId)) {
       return;
     }
     final span = transformLaneSpan(transformLaneDisplayOrder.first, headLaneId);

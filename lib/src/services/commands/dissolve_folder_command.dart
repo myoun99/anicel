@@ -12,6 +12,12 @@ import '../project_repository.dart';
 /// where they are in the stack. Mirrors over 겸용 cuts through the folder
 /// row's own link group — the same registry every other layer uses — and
 /// one undo restores the rows, their memberships and the group.
+///
+/// The folder's own COMPOSITING state goes with it — its blend, its
+/// opacity and (R6) its effect chain all belonged to a buffer that no
+/// longer exists, and there is nowhere correct to put them: distributing a
+/// group filter over the released members would change the picture wherever
+/// they overlap. Undo restores the row whole, so nothing is lost for good.
 class DissolveFolderCommand implements Command {
   DissolveFolderCommand({
     required this.repository,

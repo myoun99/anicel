@@ -98,7 +98,11 @@ class TrackSeWindow {
     }
     return globalLayer.copyWith(
       timeline: local,
+      // The display clone carries NO FX: this row's lanes live on the
+      // track-owned original, and the lane-edit path refuses the clone —
+      // FX left on it would composite with diamonds nothing could edit.
       transformTrack: TransformTrack.empty(),
+      effects: const [],
     );
   }
 }

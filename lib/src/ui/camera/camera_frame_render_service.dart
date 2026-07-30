@@ -12,6 +12,7 @@ import '../../models/camera_pose.dart';
 import '../../models/canvas_size.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
+import '../canvas/composite_effect_paint.dart';
 import '../canvas/layer_pose_paint.dart';
 import '../canvas/tiled_surface_compose.dart';
 
@@ -206,11 +207,28 @@ class CameraFrameRenderService {
     canvas.rotate(-pose.rotationDegrees * math.pi / 180);
     canvas.translate(-pose.center.x, -pose.center.y);
 
-    final groupBounds = Rect.fromLTWH(
-      0,
-      0,
-      cameraFrameSize.width.toDouble(),
-      cameraFrameSize.height.toDouble(),
+    // The group buffer's size hint, in CANVAS space — the space the canvas
+    // is now in. It used to be the camera frame anchored at the canvas
+    // ORIGIN, which is only the right rect when the camera happens to sit
+    // there: a panned or zoomed-out camera clipped group members that the
+    // view plainly showed (invisible while a group only carried opacity and
+    // a blend, fatal once it carries a blur). What actually matters is the
+    // canvas region this render can SEE — the output rect pulled back
+    // through the camera projection, which is exactly the editing stack's
+    // "visible rect" rule (R5b's lesson: ask whether it is in shot).
+    final visibleHalfWidth =
+        resolvedOutput.width / 2 / (previewScale * pose.zoom);
+    final visibleHalfHeight =
+        resolvedOutput.height / 2 / (previewScale * pose.zoom);
+    // Rotation turns the rect; the circumscribing half-extent (the
+    // rectangle's own half-diagonal) covers every angle without a matrix.
+    final visibleRadius = math.sqrt(
+      visibleHalfWidth * visibleHalfWidth +
+          visibleHalfHeight * visibleHalfHeight,
+    );
+    final groupBounds = Rect.fromCircle(
+      center: Offset(pose.center.x, pose.center.y),
+      radius: visibleRadius,
     );
     void paintNodes(List<CutFrameCompositeSurfaceNode> list) {
       for (final node in list) {
@@ -219,13 +237,20 @@ class CameraFrameRenderService {
             :final children,
             :final opacity,
             :final blendMode,
+            :final effects,
           ):
             // R27 #29: one buffer for the group, one blend on it.
+            // R6: and one filter chain on it — the group's effects, in
+            // CANVAS units (the camera projection is a canvas transform, so
+            // Skia maps a blur's sigma through the CTM for us).
+            final groupEffects = resolveCompositeEffectPaint(effects);
+            final groupPaint = Paint()
+              ..color = Color.fromRGBO(0, 0, 0, opacity)
+              ..blendMode = blendMode.paintBlendMode;
+            groupEffects.applyTo(groupPaint);
             canvas.saveLayer(
-              groupBounds,
-              Paint()
-                ..color = Color.fromRGBO(0, 0, 0, opacity)
-                ..blendMode = blendMode.paintBlendMode,
+              effectBufferBounds(groupBounds, groupEffects),
+              groupPaint,
             );
             paintNodes(children);
             canvas.restore();
@@ -242,15 +267,14 @@ class CameraFrameRenderService {
                 anchorPoint: layer.anchorPoint,
               );
             }
-            canvas.drawImage(
-              layerImages[layer]!,
-              Offset.zero,
-              Paint()
-                ..filterQuality = filterQuality
-                ..color = Color.fromRGBO(0, 0, 0, layer.opacity)
-                // R26 #30: the layer blend applies at composite time.
-                ..blendMode = layer.blendMode.paintBlendMode,
-            );
+            final layerPaint = Paint()
+              ..filterQuality = filterQuality
+              ..color = Color.fromRGBO(0, 0, 0, layer.opacity)
+              // R26 #30: the layer blend applies at composite time.
+              ..blendMode = layer.blendMode.paintBlendMode;
+            // R6: the row's effects filter its own picture first.
+            resolveCompositeEffectPaint(layer.effects).applyTo(layerPaint);
+            canvas.drawImage(layerImages[layer]!, Offset.zero, layerPaint);
             if (layerPose != null) {
               canvas.restore();
             }

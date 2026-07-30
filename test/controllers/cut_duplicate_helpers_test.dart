@@ -8,8 +8,13 @@ import 'package:anicel/src/models/cut_metadata.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_blend_mode.dart';
+import 'package:anicel/src/models/layer_effect.dart';
+import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/se_name_tag.dart';
+import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/models/exposure_memo.dart';
 import 'package:anicel/src/models/stroke.dart';
 import 'package:anicel/src/models/stroke_id.dart';
@@ -152,6 +157,99 @@ void main() {
       expect(duplicate.layers[0].kind, LayerKind.animation);
       expect(duplicate.layers[1].kind, LayerKind.storyboard);
     });
+
+    test(
+      'carries EVERY layer field — the positive-list trap this helper is',
+      () {
+        // Nine fields were being silently reset (found in the R6 audit):
+        // duplicating a cut FLATTENED every folder and dropped every blend
+        // mode, the SE name tag, the fill-reference flag, run behaviours,
+        // the twirl, the audio fader/pan and the attach mode.
+        final source = Cut(
+          id: const CutId('cut-source'),
+          name: 'Source',
+          duration: 12,
+          canvasSize: const CanvasSize(width: 8, height: 8),
+          layers: [
+            // The folder ROW sits directly above its member run (later in
+            // the list = higher in the stack).
+            Layer(
+              id: const LayerId('layer-a'),
+              name: 'Line',
+              frames: [
+                Frame(
+                  id: const FrameId('frame-a'),
+                  duration: 1,
+                  strokes: const [],
+                ),
+              ],
+              timeline: {
+                0: TimelineExposure.drawing(
+                  const FrameId('frame-a'),
+                  length: 1,
+                ),
+              },
+              folderId: const LayerId('folder'),
+              blendMode: LayerBlendMode.multiply,
+              isFillReference: true,
+              collapsed: true,
+              audioGain: 0.4,
+              audioPan: -0.6,
+              seNameTag: const SeNameTag(),
+              runBehaviors: const [
+                TimelineRunBehavior(
+                  anchorFrameId: FrameId('frame-a'),
+                  side: TimelineRunEdgeSide.end,
+                  mode: TimelineRunEdgeMode.hold,
+                ),
+              ],
+              effects: [
+                LayerEffect(
+                  id: const EffectId('fx-1'),
+                  kind: EffectKind.blur,
+                  parameters: {'blurX': EffectParameter(value: 7)},
+                ),
+              ],
+            ),
+            createFolderLayer(id: const LayerId('folder'), name: 'F'),
+          ],
+        );
+
+        final duplicate = duplicateCutAsIndependentCopy(
+          source: source,
+          newCutId: const CutId('cut-copy'),
+          newName: 'Copy',
+          layerIdMap: {
+            const LayerId('folder'): const LayerId('folder-copy'),
+            const LayerId('layer-a'): const LayerId('layer-copy-a'),
+          },
+          frameIdMap: {const FrameId('frame-a'): const FrameId('frame-copy-a')},
+        );
+
+        final copy = duplicate.layers[0];
+        expect(
+          copy.folderId,
+          const LayerId('folder-copy'),
+          reason: 'membership REMAPS onto the copied folder row',
+        );
+        expect(copy.blendMode, LayerBlendMode.multiply);
+        expect(copy.isFillReference, isTrue);
+        expect(copy.collapsed, isTrue);
+        expect(copy.audioGain, 0.4);
+        expect(copy.audioPan, -0.6);
+        expect(copy.seNameTag, isNotNull);
+        expect(copy.effects.single.parameterOf('blurX').value, 7);
+        // Run behaviours are addressed by FRAME ID: carrying them verbatim
+        // would name a block that does not exist in the copy, and the next
+        // rederive would drop the behaviour — the same loss, later.
+        expect(
+          copy.runBehaviors.single.anchorFrameId,
+          const FrameId('frame-copy-a'),
+        );
+        // The structure the folder rules validate must survive too.
+        expect(folderStructureProblem(duplicate.layers), isNull);
+      },
+    );
 
     test('preserves source frame storyboard metadata', () {
       final source = _sourceCut();
