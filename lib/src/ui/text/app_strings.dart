@@ -437,6 +437,15 @@ class AppStrings {
   String get textCelOutlineLabel => _s('textCelOutlineLabel');
   String get textCelBackgroundLabel => _s('textCelBackgroundLabel');
   String get textCelPositionLabel => _s('textCelPositionLabel');
+
+  // --- The SE name tag editor (R5b) ---
+  String get seNameTagTitle => _s('seNameTagTitle');
+  String get seNameTagHint => _s('seNameTagHint');
+  String get seNameTagPositionLabel => _s('seNameTagPositionLabel');
+  String get seNameTagBoxLabel => _s('seNameTagBoxLabel');
+  String get seNameTagSampleName => _s('seNameTagSampleName');
+  String get seNameTagSampleLine => _s('seNameTagSampleLine');
+  String get seNameTagReset => _s('seNameTagReset');
   String get tlKindInstruction => _s('tlKindInstruction');
   String get tlAttachFreeAbove => _s('tlAttachFreeAbove');
   String get tlAttachFreeBelow => _s('tlAttachFreeBelow');
@@ -1317,6 +1326,16 @@ class AppStrings {
     'textCelOutlineLabel': 'Outline (white)',
     'textCelBackgroundLabel': 'Box (red)',
     'textCelPositionLabel': 'Position',
+    'seNameTagTitle': 'SE Name Tag',
+    'seNameTagHint':
+        'Where this row\'s speaker label sits on the picture. The text is '
+        'the block\'s own name and dialogue; the row\'s eye shows or hides '
+        'the tag.',
+    'seNameTagPositionLabel': 'Position',
+    'seNameTagBoxLabel': 'Box',
+    'seNameTagSampleName': 'Name',
+    'seNameTagSampleLine': 'dialogue',
+    'seNameTagReset': 'Reset',
     'tlAttachFreeAbove': 'Attach free layer above',
     'tlAttachFreeBelow': 'Attach free layer below',
     'tlAttachSyncedAbove': 'Attach synced layer above',
@@ -1986,6 +2005,15 @@ class AppStrings {
     'textCelOutlineLabel': 'フチ（白）',
     'textCelBackgroundLabel': 'ボックス（赤）',
     'textCelPositionLabel': '位置',
+    'seNameTagTitle': 'SE ネームタグ',
+    'seNameTagHint':
+        'この行の話者ラベルを画面のどこに出すか。文字はブロックの名前とセリフ、'
+        '表示・非表示は行の目で切り替えます。',
+    'seNameTagPositionLabel': '位置',
+    'seNameTagBoxLabel': 'ボックス',
+    'seNameTagSampleName': '名前',
+    'seNameTagSampleLine': 'セリフ',
+    'seNameTagReset': '既定に戻す',
     'tlKindInstruction': '指示',
     'tlAttachFreeAbove': '上にフリーの付属レイヤー',
     'tlAttachFreeBelow': '下にフリーの付属レイヤー',
@@ -2652,6 +2680,15 @@ class AppStrings {
     'textCelOutlineLabel': '외곽선(흰색)',
     'textCelBackgroundLabel': '박스(빨강)',
     'textCelPositionLabel': '위치',
+    'seNameTagTitle': 'SE 이름표',
+    'seNameTagHint':
+        '이 행의 화자 이름표가 화면 어디에 놓일지. 글자는 블록의 이름과 대사이고, '
+        '표시 여부는 행의 눈으로 켜고 끕니다.',
+    'seNameTagPositionLabel': '위치',
+    'seNameTagBoxLabel': '박스',
+    'seNameTagSampleName': '이름',
+    'seNameTagSampleLine': '대사',
+    'seNameTagReset': '기본값으로',
     'tlKindInstruction': '지시',
     'tlAttachFreeAbove': '위에 프리 부속 레이어',
     'tlAttachFreeBelow': '아래에 프리 부속 레이어',
@@ -3353,6 +3390,16 @@ class AppStrings {
     'textCelOutlineLabel': 'Contour (blanc)',
     'textCelBackgroundLabel': 'Boîte (rouge)',
     'textCelPositionLabel': 'Position',
+    'seNameTagTitle': 'Étiquette SE',
+    'seNameTagHint':
+        'Où se place l\'étiquette du locuteur sur l\'image. Le texte vient '
+        'du bloc (nom et dialogue) ; l\'œil de la ligne l\'affiche ou la '
+        'masque.',
+    'seNameTagPositionLabel': 'Position',
+    'seNameTagBoxLabel': 'Boîte',
+    'seNameTagSampleName': 'Nom',
+    'seNameTagSampleLine': 'dialogue',
+    'seNameTagReset': 'Réinitialiser',
     'tlAttachFreeAbove': 'Calque attaché libre au-dessus',
     'tlAttachFreeBelow': 'Calque attaché libre en dessous',
     'tlAttachSyncedAbove': 'Calque attaché synchronisé au-dessus',
@@ -3996,6 +4043,13 @@ class AppStrings {
     'textCelOutlineLabel': '描边（白）',
     'textCelBackgroundLabel': '底框（红）',
     'textCelPositionLabel': '位置',
+    'seNameTagTitle': 'SE 名字条',
+    'seNameTagHint': '这一行说话者标签在画面上的位置。文字取自区块的名称与台词，显示与否由行的眼睛控制。',
+    'seNameTagPositionLabel': '位置',
+    'seNameTagBoxLabel': '底框',
+    'seNameTagSampleName': '名称',
+    'seNameTagSampleLine': '台词',
+    'seNameTagReset': '恢复默认',
     'tlKindInstruction': '指示',
     'tlAttachFreeAbove': '在上方添加自由附属图层',
     'tlAttachFreeBelow': '在下方添加自由附属图层',

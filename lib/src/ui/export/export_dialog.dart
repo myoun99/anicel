@@ -142,7 +142,7 @@ class ExportDialogState extends State<ExportDialog> {
   // Sheet documents are chunky to derive; the modal dialog memoizes per
   // cut IDENTITY (the film cannot change under an open dialog).
   final Map<CutId, (Cut, TimesheetDocument, TimesheetDocumentLayout)>
-      _sheetDocs = {};
+  _sheetDocs = {};
   // The conte sheet reads the WHOLE project — memoized on its identity
   // (the film cannot change under an open dialog).
   (Object, ConteSheetSource, List<ContePageLayout>)? _conteSheetCache;
@@ -255,9 +255,7 @@ class ExportDialogState extends State<ExportDialog> {
       () => ExportFrameRenderer(
         session: _session,
         applyLayerFx: applyLayerFx,
-        background: bgKey == -1
-            ? const ui.Color(0x00000000)
-            : ui.Color(bgKey),
+        background: bgKey == -1 ? const ui.Color(0x00000000) : ui.Color(bgKey),
       ),
     );
   }
@@ -300,8 +298,10 @@ class ExportDialogState extends State<ExportDialog> {
 
   void _toggleExpanded(String id, {bool fallback = false}) {
     setState(() {
-      _expanded['${_tab.jsonValue}:$id'] =
-          !_expandedFor(id, fallback: fallback);
+      _expanded['${_tab.jsonValue}:$id'] = !_expandedFor(
+        id,
+        fallback: fallback,
+      );
     });
   }
 
@@ -309,10 +309,8 @@ class ExportDialogState extends State<ExportDialog> {
 
   Cut get _activeCut => _anchorCut!;
 
-  bool _cutInScope(Cut cut) => _session.repository
-      .requireProject()
-      .exportOverrides
-      .cutIncluded(cut.id);
+  bool _cutInScope(Cut cut) =>
+      _session.repository.requireProject().exportOverrides.cutIncluded(cut.id);
 
   /// The 0-based in/out marks on the SEQUENCE AXIS (cut-local frames
   /// under the cut scope, whole-track positions under the project scope);
@@ -733,7 +731,8 @@ class ExportDialogState extends State<ExportDialog> {
         switch (entry) {
           case ExportCelGroupTask():
             _preview.request(
-              key: 'celgroup:${entry.fileName}:${spec.sizeMode.jsonValue}:'
+              key:
+                  'celgroup:${entry.fileName}:${spec.sizeMode.jsonValue}:'
                   '$bgKey',
               caption: _celEntryCaption(entry),
               render: () => renderer.renderCelGroup(entry, spec.sizeMode),
@@ -743,7 +742,8 @@ class ExportDialogState extends State<ExportDialog> {
                 ? _session.cameraFrameSize
                 : entry.cut.canvasSize;
             _preview.request(
-              key: 'celinst:${entry.fileName}:${size.width}x${size.height}:'
+              key:
+                  'celinst:${entry.fileName}:${size.width}x${size.height}:'
                   '$bgKey',
               caption: _celEntryCaption(entry),
               render: () => renderInstructionCelImage(
@@ -841,6 +841,11 @@ class ExportDialogState extends State<ExportDialog> {
       format: format,
     );
     final bgKey = format.wantsAlpha ? -1 : format.backgroundArgb;
+    // The video run burns the SE name tags in (renderCompositeForVideo);
+    // stills stay clean because they are compositing sources. The preview
+    // has to answer the same question, or it shows a frame the export
+    // will not produce.
+    final withNameTags = format.kind == ExportMediaKind.video;
     final source = sizeMode == ExportSizeMode.camera
         ? _session.cameraFrameSize
         : task.cut.canvasSize;
@@ -854,14 +859,20 @@ class ExportDialogState extends State<ExportDialog> {
         ? null
         : CanvasSize(width: fitted.width, height: fitted.height);
     _preview.request(
-      key: 'frame:${task.cut.id.value}:${task.frameIndex}:'
-          '${sizeMode.jsonValue}:$applyLayerFx:$bgKey:'
+      key:
+          'frame:${task.cut.id.value}:${task.frameIndex}:'
+          '${sizeMode.jsonValue}:$applyLayerFx:$bgKey:$withNameTags:'
           '${outputSize?.width ?? source.width}x'
           '${outputSize?.height ?? source.height}',
       caption: caption,
       render: () => task.isGap
           ? Future<ui.Image?>.value()
-          : renderer.renderComposite(task, sizeMode, outputSize: outputSize),
+          : renderer.renderComposite(
+              task,
+              sizeMode,
+              outputSize: outputSize,
+              withNameTags: withNameTags,
+            ),
     );
   }
 
@@ -943,9 +954,7 @@ class ExportDialogState extends State<ExportDialog> {
             '${size.width}×${size.height}.';
       case ExportTab.cels:
         final plan = _celGroupPlan();
-        final labels = {
-          for (final task in plan.cels) task.baseLayer.id,
-        }.length;
+        final labels = {for (final task in plan.cels) task.baseLayer.id}.length;
         final background = _specs.cels.format.wantsAlpha
             ? 'transparent'
             : 'opaque';
@@ -1123,8 +1132,7 @@ class ExportDialogState extends State<ExportDialog> {
     }
     switch (_tab) {
       case ExportTab.sequence:
-        final plan =
-            _sequencePlanForRun(video: _specs.sequence.format.isVideo);
+        final plan = _sequencePlanForRun(video: _specs.sequence.format.isVideo);
         return plan != null && plan.isNotEmpty;
       case ExportTab.image:
         return true;
@@ -1415,10 +1423,7 @@ class ExportDialogState extends State<ExportDialog> {
         count: pages.length,
         renderImage: (index) async {
           final page = pages[index];
-          final pictures = await _renderContePictures(
-            [page],
-            width: cellWidth,
-          );
+          final pictures = await _renderContePictures([page], width: cellWidth);
           final ink = await _renderConteInk([page]);
           try {
             return await renderContePageImage(
@@ -1536,8 +1541,7 @@ class ExportDialogState extends State<ExportDialog> {
     final videoPath = _joinLocation(
       _singleFileName(_sequenceFileController, format.container.fileExtension),
     );
-    final audioMixPath =
-        spec.includeAudio ? await _renderAudioMix(plan) : null;
+    final audioMixPath = spec.includeAudio ? await _renderAudioMix(plan) : null;
     try {
       final summary = await widget.videoExportService.exportVideo(
         count: plan.length,
@@ -1643,8 +1647,7 @@ class ExportDialogState extends State<ExportDialog> {
       renderImage: (index) {
         final entry = entries[index];
         return switch (entry) {
-          ExportCelGroupTask() =>
-            renderer.renderCelGroup(entry, spec.sizeMode),
+          ExportCelGroupTask() => renderer.renderCelGroup(entry, spec.sizeMode),
           ExportInstructionTask() => renderInstructionCelImage(
             task: entry,
             size: spec.sizeMode == ExportSizeMode.camera
@@ -1765,9 +1768,7 @@ class ExportDialogState extends State<ExportDialog> {
       return;
     }
     final preset = ExportPreset(
-      id: ExportPresetId(
-        'preset-${DateTime.now().microsecondsSinceEpoch}',
-      ),
+      id: ExportPresetId('preset-${DateTime.now().microsecondsSinceEpoch}'),
       name: name,
       spec: _specs.specFor(_tab),
     );
@@ -2509,8 +2510,10 @@ class ExportDialogState extends State<ExportDialog> {
     _session.repository.updateExportOverrides(
       (overrides) => overrides.withCelsDelta(
         cutId,
-        (overrides.deltaFor(cutId) ?? ExportCelsCutDelta())
-            .withLayerOverride(layer.id, value),
+        (overrides.deltaFor(cutId) ?? ExportCelsCutDelta()).withLayerOverride(
+          layer.id,
+          value,
+        ),
       ),
     );
     setState(() {});
@@ -2558,8 +2561,7 @@ class ExportDialogState extends State<ExportDialog> {
       range: ExportRange.allCuts,
     );
     return [
-      for (var i = 0; i < cuts.length; i += 1)
-        (id: cuts[i].id, number: i + 1),
+      for (var i = 0; i < cuts.length; i += 1) (id: cuts[i].id, number: i + 1),
     ];
   }
 
@@ -2668,17 +2670,12 @@ class ExportDialogState extends State<ExportDialog> {
           value: spec.includeInstructionLayers,
           onChanged: _isExporting
               ? null
-              : (value) => _updateSpec(
-                  spec.copyWith(includeInstructionLayers: value),
-                ),
+              : (value) =>
+                    _updateSpec(spec.copyWith(includeInstructionLayers: value)),
         ),
         Tooltip(
           message: '용지 레이어 타입이 도입되면 여기서 합류합니다.',
-          child: ExportToggleRow(
-            label: '용지',
-            value: false,
-            onChanged: null,
-          ),
+          child: ExportToggleRow(label: '용지', value: false, onChanged: null),
         ),
         const ExportMarkSlotsRow(),
         Divider(height: 8, color: theme.dividerColor),
@@ -2708,9 +2705,7 @@ class ExportDialogState extends State<ExportDialog> {
               layer: layer,
               dimmed: true,
               includeDot: false,
-              dotKey: ValueKey<String>(
-                'export-cels-adddot-${layer.id.value}',
-              ),
+              dotKey: ValueKey<String>('export-cels-adddot-${layer.id.value}'),
               onDotTap: _isExporting
                   ? null
                   : () => _writeLayerOverride(layer, true),
@@ -2746,10 +2741,8 @@ class ExportDialogState extends State<ExportDialog> {
             // The base leaves through the label's ×, not its own dot.
             onDotTap: member.id == label.id || _isExporting
                 ? null
-                : () => _writeLayerOverride(
-                    member,
-                    !selection.includes(member),
-                  ),
+                : () =>
+                      _writeLayerOverride(member, !selection.includes(member)),
           ),
         Divider(height: 8, color: Theme.of(context).dividerColor),
         ExportToggleRow(
@@ -2767,8 +2760,7 @@ class ExportDialogState extends State<ExportDialog> {
           value: spec.includeFreeAttach,
           onChanged: _isExporting
               ? null
-              : (value) =>
-                    _updateSpec(spec.copyWith(includeFreeAttach: value)),
+              : (value) => _updateSpec(spec.copyWith(includeFreeAttach: value)),
         ),
         ExportToggleRow(
           widgetKey: const ValueKey<String>('export-cels-folder-toggle'),
@@ -2792,8 +2784,7 @@ class ExportDialogState extends State<ExportDialog> {
         if (!_isAttachedRow(layer)) layer.id,
     };
     final hasLabelDelta =
-        delta != null &&
-        delta.layerOverrides.keys.any(labelLevelIds.contains);
+        delta != null && delta.layerOverrides.keys.any(labelLevelIds.contains);
     final hasMemberDelta =
         delta != null &&
         delta.layerOverrides.keys.any((id) => !labelLevelIds.contains(id));
@@ -2851,8 +2842,7 @@ class ExportDialogState extends State<ExportDialog> {
           value: spec.onTimesheetOnly,
           onChanged: _isExporting
               ? null
-              : (value) =>
-                    _updateSpec(spec.copyWith(onTimesheetOnly: value)),
+              : (value) => _updateSpec(spec.copyWith(onTimesheetOnly: value)),
         ),
       ),
       ExportAccordion(
@@ -2897,9 +2887,7 @@ class ExportDialogState extends State<ExportDialog> {
           onChanged: (scope) => _updateSpec(spec.copyWith(scope: scope)),
           // The v10 grid (Timesheet와 공용 부품): checks save with the
           // project.
-          child: spec.scope == ExportScopeKind.project
-              ? _scopeCutGrid()
-              : null,
+          child: spec.scope == ExportScopeKind.project ? _scopeCutGrid() : null,
         ),
       ),
     ];
@@ -2924,8 +2912,7 @@ class ExportDialogState extends State<ExportDialog> {
                 ExportChip(
                   key: const ValueKey<String>('export-tsformat-sheet'),
                   label: AppText.strings.exSheetPng,
-                  selected:
-                      spec.format == ExportTimesheetFormat.sheetImage,
+                  selected: spec.format == ExportTimesheetFormat.sheetImage,
                   onTap: _isExporting
                       ? null
                       : () => _updateSpec(
@@ -2960,9 +2947,8 @@ class ExportDialogState extends State<ExportDialog> {
                         selected: spec.sheetScale == scale,
                         onTap: _isExporting
                             ? null
-                            : () => _updateSpec(
-                                spec.copyWith(sheetScale: scale),
-                              ),
+                            : () =>
+                                  _updateSpec(spec.copyWith(sheetScale: scale)),
                       ),
                   ],
                 ),
@@ -2992,9 +2978,7 @@ class ExportDialogState extends State<ExportDialog> {
           enabled: !_isExporting,
           onChanged: (scope) => _updateSpec(spec.copyWith(scope: scope)),
           // The same grid part the Cels scope uses (v10: 공용 부품).
-          child: spec.scope == ExportScopeKind.project
-              ? _scopeCutGrid()
-              : null,
+          child: spec.scope == ExportScopeKind.project ? _scopeCutGrid() : null,
         ),
       ),
     ];
@@ -3052,9 +3036,8 @@ class ExportDialogState extends State<ExportDialog> {
                         selected: spec.sheetScale == scale,
                         onTap: _isExporting
                             ? null
-                            : () => _updateSpec(
-                                spec.copyWith(sheetScale: scale),
-                              ),
+                            : () =>
+                                  _updateSpec(spec.copyWith(sheetScale: scale)),
                       ),
                   ],
                 ),
@@ -3120,5 +3103,4 @@ class ExportDialogState extends State<ExportDialog> {
       ],
     );
   }
-
 }

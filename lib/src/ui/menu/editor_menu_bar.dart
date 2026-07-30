@@ -26,6 +26,7 @@ import '../debug/measurement_mode.dart';
 import '../dialogs/project_background_dialog.dart';
 import '../dialogs/rename_cut_dialog.dart';
 import '../dialogs/rename_layer_dialog.dart';
+import '../dialogs/se_name_tag_dialog.dart';
 import '../editor_session_manager.dart';
 import '../export/ae_keyframe_data.dart';
 import '../../services/persistence/app_export_settings_store.dart';
@@ -101,7 +102,10 @@ class EditorMenuBar extends StatelessWidget {
       // SAVE-1: pickers start in the app's project home (앱 문서 폴더).
       initialDirectory: await ensuredAppDocumentsDirectory(),
       acceptedTypeGroups: const [
-        XTypeGroup(label: 'Anicel project', extensions: [anicelProjectExtension]),
+        XTypeGroup(
+          label: 'Anicel project',
+          extensions: [anicelProjectExtension],
+        ),
       ],
     );
     return file?.path;
@@ -540,6 +544,29 @@ class EditorMenuBar extends StatelessWidget {
     session.renameActiveLayer(nextName);
   }
 
+  /// The SE row's on-canvas name tag (R5b): opens on what the row draws
+  /// TODAY (its configured tag, or the stacked default), and Delete
+  /// resets it back to that default.
+  Future<void> _editSeNameTag(BuildContext context) async {
+    final layer = session.activeLayer;
+    final defaultPosition = session.activeSeNameTagDefaultPosition;
+    if (layer == null || defaultPosition == null) {
+      return;
+    }
+    final result = await showDialog<SeNameTagDialogResult>(
+      context: context,
+      builder: (context) => SeNameTagDialog(
+        storedTag: layer.seNameTag,
+        defaultPosition: defaultPosition,
+        rowName: layer.name,
+      ),
+    );
+    if (!context.mounted || result == null) {
+      return;
+    }
+    session.setActiveSeNameTag(result.tag);
+  }
+
   Future<void> _deleteActiveLayer(BuildContext context) async {
     final activeLayer = session.activeLayer;
     if (activeLayer == null || !session.canDeleteActiveLayer) {
@@ -646,6 +673,15 @@ class EditorMenuBar extends StatelessWidget {
       label: 'Rasterize layer',
       onPressed: session.canRasterizeActiveLayer
           ? session.rasterizeActiveLayer
+          : null,
+    ),
+    // The SE row's on-canvas name tag (R5b): placement and look — the
+    // TEXT stays the block's own name/dialogue.
+    _item(
+      id: 'layer-se-name-tag',
+      label: 'SE name tag…',
+      onPressed: session.canEditActiveSeNameTag
+          ? () => unawaited(_editSeNameTag(context))
           : null,
     ),
     const Divider(height: 8),

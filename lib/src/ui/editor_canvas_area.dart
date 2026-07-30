@@ -10,6 +10,7 @@ import '../models/project_background.dart';
 import '../services/canvas_color_sampler.dart';
 import '../services/canvas_flood_fill.dart';
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
+import '../services/se_name_tag_plan.dart';
 import 'brush/brush_tool_state.dart';
 import 'dev_profile.dart';
 import 'input/app_input_settings.dart' show AppInput;
@@ -30,6 +31,7 @@ import 'playback/canvas_track_stack_view.dart';
 import 'playback/recording_streamer_overlay.dart';
 import 'playback/canvas_scrub_preview.dart';
 import 'text/app_strings.dart';
+import 'text/se_name_tag_paint.dart';
 import 'timeline/layer_label_controls.dart';
 import '../models/layer.dart' show layerAcceptsBrushInput;
 import 'widgets/cursor_notice.dart';
@@ -274,6 +276,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       qualityOf: () => session.playbackQuality,
       cameraFrameSize: session.cameraFrameSize,
       cameraPoseOf: session.cameraPoseForCut,
+      seNameTagsOf: session.seNameTagsForCutFrame,
       cutFxEnabledOf: session.isCutFxEnabled,
       cutPictureVisibleOf: session.isCutPictureVisible,
       onFrameCached: session.enforcePlaybackCacheBudget,
@@ -383,6 +386,18 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final cutFadeOpacity = session.activeCutEditingFadeOpacity();
     final showFadeWash =
         !isPlaybackActive && !isScrubbing && cutFadeOpacity < 1;
+    // The SE rows' on-canvas name tags (R5b, §6-z15) — the editing
+    // canvas's copy of what playback and export draw. Playback/scrub
+    // render their own (through the frame painter), so this stands down
+    // there exactly like the other editing chrome.
+    final activeCutForTags = session.activeCutOrNull;
+    final seNameTags =
+        isPlaybackActive || isScrubbing || activeCutForTags == null
+        ? const <ResolvedSeNameTag>[]
+        : session.seNameTagsForCutFrame(
+            activeCutForTags,
+            session.currentFrameIndex,
+          );
     // The Position drag gizmo: only while the active layer's Transform
     // lanes are twirled open (deliberate transform-editing mode) and its
     // fx apply.
@@ -420,8 +435,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               // the layer being drawn on. Playback/scrub swap the whole
               // viewport content, so merged mode stands down there (no
               // underlay builder, no active painter).
-              activeStrokeOverlayModel:
-                  isPlaybackActive || isScrubbing ? null : _activeStrokeOverlay,
+              activeStrokeOverlayModel: isPlaybackActive || isScrubbing
+                  ? null
+                  : _activeStrokeOverlay,
               // Camera mode still needs artwork on screen: fall
               // back to the first drawn layer at the playhead.
               selection: selection,
@@ -478,8 +494,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               paperColor: session.projectBackground.argb,
               onPaperColorChanged: (argb) =>
                   session.setProjectBackground(ProjectBackground.color(argb)),
-              pasteboardColor:
-                  session.repository.requireProject().pasteboardArgb,
+              pasteboardColor: session.repository
+                  .requireProject()
+                  .pasteboardArgb,
               onPasteboardColorChanged: session.setPasteboardColor,
               backdropArgb: session.repository.requireProject().backdropArgb,
               onEyedropperPick: (color) => widget.onBrushToolStateChanged?.call(
@@ -545,16 +562,15 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 paperColor: session.projectBackground.argb,
                 // Extended fills refuse OPEN regions (the flood reached
                 // the pasteboard apron wall) — say why nothing filled.
-                onOpenRegion: () => ScaffoldMessenger.maybeOf(
-                  context,
-                )?.showSnackBar(
-                  const SnackBar(
-                    content: Text(
-                      'Region is not closed — nothing filled '
-                      '(Fill Beyond Canvas needs an enclosed area).',
+                onOpenRegion: () =>
+                    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Region is not closed — nothing filled '
+                          '(Fill Beyond Canvas needs an enclosed area).',
+                        ),
+                      ),
                     ),
-                  ),
-                ),
               ),
               // Layers below/above the active one composite around the
               // interactive view from the layer image cache — this is what makes
@@ -575,9 +591,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                         // no ghosts either.
                         nodes: _stackNodesWithGhosts(
                           layerStack.nodes,
-                          inGap
-                              ? const []
-                              : session.onionSkinCanvasRequests(),
+                          inGap ? const [] : session.onionSkinCanvasRequests(),
                         ),
                         activeSurfacePainter: activeSurfacePainter,
                         imageCache: session.layerFrameImageCache,
@@ -628,10 +642,31 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               viewportOverlayBuilder:
                   (cameraOverlayVisible ||
                           showPositionGizmo ||
-                          showFadeWash) &&
+                          showFadeWash ||
+                          seNameTags.isNotEmpty) &&
                       !isPlaybackActive
                   ? (context, viewport) => Stack(
                       children: [
+                        if (seNameTags.isNotEmpty)
+                          Positioned.fill(
+                            // Rides the cut pose like the gizmo: the tag
+                            // annotates the posed picture, exactly as the
+                            // frame painter draws it inside the pose.
+                            child: IgnorePointer(
+                              child: _wrapInCutPose(
+                                CustomPaint(
+                                  painter: _SeNameTagOverlayPainter(
+                                    viewport: viewport,
+                                    canvasSize: canvasSize,
+                                    tags: seNameTags,
+                                  ),
+                                ),
+                                sample: cutPoseSample,
+                                canvasSize: canvasSize,
+                                viewport: viewport,
+                              ),
+                            ),
+                          ),
                         if (showFadeWash)
                           Positioned.fill(
                             // The cut fade on the EDITING canvas (R9-C →
@@ -736,6 +771,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                           cameraViewEnabled: widget.cameraViewEnabled.value,
                           cameraFrameSize: session.cameraFrameSize,
                           cameraPoseOf: session.cameraPoseForCut,
+                          seNameTagsOf: session.seNameTagsForCutFrame,
                           cutFxEnabledOf: session.isCutFxEnabled,
                           cutPictureVisibleOf: session.isCutPictureVisible,
                           viewport: viewport,
@@ -787,6 +823,12 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                           session.activeCutCanvasPoseSample(frameIndex: frame),
                       cutFadeOpacityAt: (frame) => session
                           .activeCutEditingFadeOpacity(frameIndex: frame),
+                      seNameTagsAt: (frame) {
+                        final cut = session.activeCutOrNull;
+                        return cut == null
+                            ? const []
+                            : session.seNameTagsForCutFrame(cut, frame);
+                      },
                       viewport: viewport,
                       paperBackground: session.projectBackground,
                     )
@@ -844,6 +886,36 @@ class _CutFadeWashPainter extends CustomPainter {
       oldDelegate.viewport != viewport ||
       oldDelegate.canvasSize != canvasSize ||
       oldDelegate.color != color;
+}
+
+/// The editing canvas's SE name tags (R5b): the same canvas-space draw
+/// the frame painter makes during playback, so what you edit against is
+/// what plays and what exports.
+class _SeNameTagOverlayPainter extends CustomPainter {
+  const _SeNameTagOverlayPainter({
+    required this.viewport,
+    required this.canvasSize,
+    required this.tags,
+  });
+
+  final CanvasViewport viewport;
+  final CanvasSize canvasSize;
+  final List<ResolvedSeNameTag> tags;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.save();
+    canvas.clipRect(Offset.zero & size);
+    applyViewportTransform(canvas, viewport);
+    paintSeNameTags(canvas, tags: tags, canvasSize: canvasSize);
+    canvas.restore();
+  }
+
+  @override
+  bool shouldRepaint(covariant _SeNameTagOverlayPainter oldDelegate) =>
+      oldDelegate.viewport != viewport ||
+      oldDelegate.canvasSize != canvasSize ||
+      seNameTagSignature(oldDelegate.tags) != seNameTagSignature(tags);
 }
 
 /// R13-3: committed seeks retarget the editing stack ONLY when the

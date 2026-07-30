@@ -7,6 +7,7 @@ import '../../models/canvas_viewport.dart';
 import '../../models/cut.dart';
 import '../../models/playback_quality.dart';
 import '../../models/project_background.dart';
+import '../../services/se_name_tag_plan.dart';
 import '../canvas/layer_pose_paint.dart' show LayerPoseSample;
 import 'cut_frame_composite_cache.dart';
 import 'playback_frame_painter.dart';
@@ -31,6 +32,7 @@ class CanvasScrubPreview extends StatefulWidget {
     required this.qualityOf,
     this.cutPoseSampleAt,
     this.cutFadeOpacityAt,
+    this.seNameTagsAt,
     this.viewport,
     this.paperBackground = ProjectBackground.defaultBackground,
     this.gapParking,
@@ -65,6 +67,10 @@ class CanvasScrubPreview extends StatefulWidget {
   /// transparency — the painter thins the cut's unit, revealing the
   /// panel's stage behind it). Null = no fade.
   final double Function(int frameIndex)? cutFadeOpacityAt;
+
+  /// The SE rows' on-canvas name tags per cursor frame (R5b) — the scrub
+  /// shows the editing view moving through time, tags included.
+  final List<ResolvedSeNameTag> Function(int frameIndex)? seNameTagsAt;
 
   /// The panel's live pan/zoom; identity when null.
   final CanvasViewport? viewport;
@@ -169,6 +175,7 @@ class _CanvasScrubPreviewState extends State<CanvasScrubPreview> {
           cutAnchorPoint: poseSample?.anchorPoint,
           paperBackground: widget.paperBackground,
           fadeOpacity: widget.cutFadeOpacityAt?.call(frameIndex) ?? 1,
+          seNameTags: widget.seNameTagsAt?.call(frameIndex) ?? const [],
         ),
       ),
     );

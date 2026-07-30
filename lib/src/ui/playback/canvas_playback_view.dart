@@ -13,6 +13,7 @@ import '../../models/playback_quality.dart';
 import '../../models/project.dart' show defaultProjectPasteboardArgb;
 import '../../models/project_background.dart';
 import '../../models/transform_track.dart';
+import '../../services/se_name_tag_plan.dart';
 import '../storyboard_cut_fade_policy.dart';
 import 'canvas_playback_controller.dart';
 import 'cut_frame_composite_cache.dart';
@@ -38,6 +39,7 @@ class CanvasPlaybackView extends StatefulWidget {
     required this.cameraViewEnabled,
     required this.cameraFrameSize,
     required this.cameraPoseOf,
+    this.seNameTagsOf,
     this.cutFxEnabledOf,
     this.cutPictureVisibleOf,
     this.viewport,
@@ -55,6 +57,10 @@ class CanvasPlaybackView extends StatefulWidget {
   final bool cameraViewEnabled;
   final CanvasSize cameraFrameSize;
   final CameraPose Function(Cut cut, int frameIndex) cameraPoseOf;
+
+  /// The SE rows' on-canvas name tags at this cut frame (R5b) — resolved
+  /// by the session, drawn over the composite in canvas space.
+  final List<ResolvedSeNameTag> Function(Cut cut, int frameIndex)? seNameTagsOf;
 
   /// The storyboard V-row display gates (session view state, R9). FX off
   /// bypasses the cut-level Transform group — pose AND fade — in this
@@ -241,6 +247,14 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
                   widget.cameraViewEnabled && cut != null && position != null
                   ? widget.cameraPoseOf(cut, position.localFrameIndex)
                   : null,
+              // The cut-picture eye hides the tags too — the stack view's
+              // answer, and the defensible one: with the picture withheld
+              // the annotation names nothing.
+              seNameTags:
+                  inGap || cut == null || position == null || !cutPictureVisible
+                  ? const []
+                  : widget.seNameTagsOf?.call(cut, position.localFrameIndex) ??
+                        const [],
               cameraFrameSize: widget.cameraViewEnabled
                   ? widget.cameraFrameSize
                   : null,

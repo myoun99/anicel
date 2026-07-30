@@ -481,6 +481,13 @@ void main() {
     'textCelOutlineLabel': (s) => s.textCelOutlineLabel,
     'textCelBackgroundLabel': (s) => s.textCelBackgroundLabel,
     'textCelPositionLabel': (s) => s.textCelPositionLabel,
+    'seNameTagTitle': (s) => s.seNameTagTitle,
+    'seNameTagHint': (s) => s.seNameTagHint,
+    'seNameTagPositionLabel': (s) => s.seNameTagPositionLabel,
+    'seNameTagBoxLabel': (s) => s.seNameTagBoxLabel,
+    'seNameTagSampleName': (s) => s.seNameTagSampleName,
+    'seNameTagSampleLine': (s) => s.seNameTagSampleLine,
+    'seNameTagReset': (s) => s.seNameTagReset,
     'tlKindSe': (s) => s.tlKindSe,
     'tlKindInstruction': (s) => s.tlKindInstruction,
     'tlAttachFreeAbove': (s) => s.tlAttachFreeAbove,
@@ -556,6 +563,6 @@ void main() {
   test('the reader table covers every getter the class declares', () {
     // Guards the guard: a string added without a line here would other-
     // wise be silently unchecked.
-    expect(readers, hasLength(501));
+    expect(readers, hasLength(508));
   });
 }

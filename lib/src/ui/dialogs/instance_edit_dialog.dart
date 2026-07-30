@@ -23,6 +23,7 @@ class InstanceEditDialogShell extends StatelessWidget {
     required this.onSubmit,
     this.onDelete,
     this.submitLabel,
+    this.deleteLabel,
   });
 
   final String title;
@@ -43,6 +44,11 @@ class InstanceEditDialogShell extends StatelessWidget {
 
   /// Null takes the tabled Save verb in the program language.
   final String? submitLabel;
+
+  /// Null takes the tabled Delete verb. Kinds whose secondary action is
+  /// not a deletion (the SE tag's "Reset") name it instead, so a
+  /// danger-styled button never lies about what it does.
+  final String? deleteLabel;
 
   @override
   Widget build(BuildContext context) {
@@ -82,7 +88,7 @@ class InstanceEditDialogShell extends StatelessWidget {
       actions: [
         if (onDelete != null)
           AppWindowAction(
-            label: strings.commonDelete,
+            label: deleteLabel ?? strings.commonDelete,
             actionKey: const ValueKey<String>('instance-edit-delete-button'),
             emphasis: AppWindowActionEmphasis.danger,
             onPressed: onDelete,

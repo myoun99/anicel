@@ -2,6 +2,7 @@ import 'dart:async' show Timer, unawaited;
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui show ImageByteFormat;
+import 'dart:ui' show Offset;
 
 import 'package:flutter/foundation.dart';
 
@@ -68,6 +69,7 @@ import '../models/project_frame_rate.dart';
 import '../models/row_block_shift.dart';
 import '../models/property_track.dart';
 import '../models/range_snap.dart';
+import '../models/se_name_tag.dart';
 import '../models/storyboard_coverage.dart';
 import '../models/text_cel_style.dart';
 import '../models/timeline_coverage.dart';
@@ -87,6 +89,7 @@ import '../services/commands/convert_to_linked_cut_plan.dart';
 import '../models/brush_frame_cache_invalidation.dart';
 import '../models/playback_quality.dart';
 import '../services/cut_frame_composite_plan.dart';
+import '../services/se_name_tag_plan.dart';
 import '../services/playback/editor_cache_invalidation_hub.dart';
 import '../services/playback/playback_frame_mapping.dart';
 import 'canvas/canvas_layer_stack_view.dart';
@@ -501,9 +504,8 @@ class EditorSessionManager extends ChangeNotifier {
   /// on-demand build (its composites would otherwise grow the cache with
   /// nothing trimming until the next warm run). LRU: what is on screen was
   /// just touched, so it survives its own trim; held clones cover the rest.
-  void enforcePlaybackCacheBudget() => _playbackCacheBudgetEnforcer.enforce(
-    protect: _playbackProtectedRanges(),
-  );
+  void enforcePlaybackCacheBudget() =>
+      _playbackCacheBudgetEnforcer.enforce(protect: _playbackProtectedRanges());
 
   /// What budget eviction must never touch: the full PLAYING playlist while
   /// playback is active (a looping pass must keep every cut warm so the
@@ -897,17 +899,27 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// The active cut's global start frame on its track (cumulative cut
   /// durations — the storyboard layout's number for this cut).
-  int get activeCutGlobalStartFrame {
-    final activeCutId = _editingSession.activeCutId;
+  int get activeCutGlobalStartFrame =>
+      _cutGlobalStartFrameIn(activeTrack, _editingSession.activeCutId) ?? 0;
+
+  /// [cutId]'s global start on [track]'s axis, or null when the track does
+  /// not hold it. ONE cumulative walk — the same one
+  /// [buildStoryboardTimelineLayout] makes (gap, then duration), kept in a
+  /// single place so the SE tags and the SE window can never disagree with
+  /// the storyboard about where a cut begins.
+  int? _cutGlobalStartFrameIn(Track track, CutId? cutId) {
+    if (cutId == null) {
+      return null;
+    }
     var start = 0;
-    for (final cut in activeTrack.cuts) {
+    for (final cut in track.cuts) {
       start += cut.leadingGapFrames;
-      if (cut.id == activeCutId) {
+      if (cut.id == cutId) {
         return start;
       }
       start += cut.duration;
     }
-    return 0;
+    return null;
   }
 
   TrackSeWindow get trackSeWindow => TrackSeWindow(
@@ -917,6 +929,86 @@ class EditorSessionManager extends ChangeNotifier {
 
   bool isTrackSeLayerId(LayerId layerId) =>
       activeTrack.seLayers.any((layer) => layer.id == layerId);
+
+  /// Whether the active row can carry an on-canvas name tag (R5b): the
+  /// SE rows, and only while a cut gives the canvas its geometry.
+  bool get canEditActiveSeNameTag =>
+      activeLayer?.kind == LayerKind.se && activeCutOrNull != null;
+
+  /// The stacked default position the active SE row draws with today —
+  /// what the editor SEEDS its fields from, without writing it: pinning a
+  /// per-cut default into absolute pixels would strand the tag on a
+  /// differently sized cut.
+  Offset? get activeSeNameTagDefaultPosition {
+    final layer = activeLayer;
+    final cut = activeCutOrNull;
+    if (layer == null || cut == null || layer.kind != LayerKind.se) {
+      return null;
+    }
+    var rowOffset = 0;
+    for (final track in _repository.requireProject().tracks) {
+      final rowIndex = track.seLayers.indexWhere((row) => row.id == layer.id);
+      if (rowIndex >= 0) {
+        return defaultSeNameTagPosition(
+          canvas: cut.canvasSize,
+          cameraFrame: cameraFrameSize,
+          rowIndex: rowIndex,
+          rowOffset: rowOffset,
+        );
+      }
+      rowOffset += track.seLayers.length;
+    }
+    return null;
+  }
+
+  /// Sets (or with null resets) the active SE row's name tag — one undo,
+  /// reaching the TRACK-owned row through the anywhere seam.
+  void setActiveSeNameTag(SeNameTag? tag) {
+    final layer = activeLayer;
+    if (layer == null || layer.kind != LayerKind.se) {
+      return;
+    }
+    _cutCommandCoordinator.setSeNameTag(layerId: layer.id, seNameTag: tag);
+    notifyListeners();
+  }
+
+  /// The ON-CANVAS name tags for a cut's local frame (R5b, §6-z15) — the
+  /// one resolution every drawing surface asks (editing canvas, playback,
+  /// the parked stack, export), so none of them can disagree. Works for
+  /// ANY cut, not just the active one: it walks the owning track's global
+  /// SE rows and converts through that cut's start.
+  List<ResolvedSeNameTag> seNameTagsForCutFrame(Cut cut, int localFrameIndex) {
+    // The over-end runway is a CLIPPED VIEW of the cut (UI-R9 #4): a
+    // playhead past the last frame must never address the NEIGHBOUR
+    // cut's SE window and put the next speaker over this picture. The
+    // scrub preview already clamps this way, so drag and release agree.
+    final maxLocal = cut.duration > 0 ? cut.duration - 1 : 0;
+    final localFrame = localFrameIndex > maxLocal ? maxLocal : localFrameIndex;
+    final project = _repository.requireProject();
+    // Rows on the tracks BELOW this one: unconfigured defaults stack the
+    // whole project's SE rows, so two covered tracks in the multitrack
+    // stack never land on the same spot.
+    var rowOffset = 0;
+    for (final track in project.tracks) {
+      // Cheap gate: most tracks hold no SE writing at all, and this runs
+      // per painted frame per covered track.
+      if (track.seLayers.isNotEmpty) {
+        final start = _cutGlobalStartFrameIn(track, cut.id);
+        if (start != null) {
+          return resolveSeNameTagsAt(
+            trackSeLayers: track.seLayers,
+            cutStartFrame: start,
+            localFrameIndex: localFrame,
+            canvas: cut.canvasSize,
+            cameraFrame: cameraFrameSize,
+            rowOffset: rowOffset,
+          );
+        }
+      }
+      rowOffset += track.seLayers.length;
+    }
+    return const [];
+  }
 
   /// The GLOBAL track layer for [layerId] (never a display clone).
   Layer? trackSeGlobalLayerById(LayerId layerId) {
@@ -4359,8 +4451,8 @@ class EditorSessionManager extends ChangeNotifier {
   /// projection silently. Entries whose cel stops being a text frame are
   /// pruned, never clear-baked — a rasterized text layer KEEPS its
   /// pixels.
-  final Map<BrushFrameKey, (TextCelContent?, CanvasSize)>
-  _textCelBakedContent = {};
+  final Map<BrushFrameKey, (TextCelContent?, CanvasSize)> _textCelBakedContent =
+      {};
   bool _textCelSweepDirty = false;
   Future<void>? _textCelSweep;
   bool _disposed = false;
@@ -6061,9 +6153,7 @@ class EditorSessionManager extends ChangeNotifier {
     }
 
     final toStoryboard = targetLayer.kind != LayerKind.storyboard;
-    final nextKind = toStoryboard
-        ? LayerKind.storyboard
-        : LayerKind.animation;
+    final nextKind = toStoryboard ? LayerKind.storyboard : LayerKind.animation;
 
     // A storyboard row TILES its cut, so a row that becomes one is filled
     // to cover before it changes kind — otherwise its holes would show as
@@ -8734,7 +8824,11 @@ class EditorSessionManager extends ChangeNotifier {
     }
     final layer = before.layer;
     if (layer != null) {
-      updateLayerTransformTrack(layer.id, shifted, description: 'Move lane keys');
+      updateLayerTransformTrack(
+        layer.id,
+        shifted,
+        description: 'Move lane keys',
+      );
     } else {
       updateTrackTransformTrack(
         before.track!.id,
@@ -9175,9 +9269,7 @@ class EditorSessionManager extends ChangeNotifier {
         : TrackFrameRangeSelection(
             trackId: selectedTrackId,
             anchorRow: LayerRowAddress(span.layerId),
-            rows: [
-              for (final id in span.spanLayerIds) LayerRowAddress(id),
-            ],
+            rows: [for (final id in span.spanLayerIds) LayerRowAddress(id)],
             startFrame: span.startIndex,
             endFrameExclusive: span.endIndexExclusive,
           );
@@ -11510,9 +11602,7 @@ class EditorSessionManager extends ChangeNotifier {
       // follows immediately through the parking either way). No warm:
       // the track stack self-fills, there is no active-cut cache to fill.
       final parked = _gapGlobalFrame;
-      if (parked != null &&
-          parked != globalFrame &&
-          !frameScrubActive.value) {
+      if (parked != null && parked != globalFrame && !frameScrubActive.value) {
         frameScrubActive.value = true;
       }
       _gapGlobalFrame = globalFrame;
