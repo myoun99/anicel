@@ -309,7 +309,7 @@ void main() {
                   endIndexExclusive: (anchor > head ? anchor : head) + 1,
                 );
               },
-              onTapClear: () => laneSelection.value = null,
+              onTapAt: (_, _, _) => laneSelection.value = null,
               onMoveBegin: () => false,
               onMoveUpdate: (_) {},
               onMoveEnd: () {},
@@ -1177,7 +1177,7 @@ void main() {
                 selection: selection,
                 onSelectUpdate: (_, _, anchor, _, _) =>
                     selectUpdates.add(anchor),
-                onTapClear: () {},
+                onTapAt: (_, _, _) {},
                 onMoveBegin: () => true,
                 onMoveUpdate: moveUpdates.add,
                 onMoveEnd: () {},
@@ -1312,6 +1312,71 @@ void main() {
 
       expect(log.keyMoves, [(2, 3)]);
       expect(log.moveUpdates, isEmpty);
+    });
+  });
+
+  group('R10: wherever frame cells exist, the playhead can stand', () {
+    testWidgets('tapping a PROPERTY band seeks to that frame — the row that '
+        'had visible cells and refused the head', (tester) async {
+      final cursor = ValueNotifier<int>(0);
+      addTearDown(cursor.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: LayerTimelineGrid(
+              layers: [blockLayer('layer-a')],
+              activeLayerId: const LayerId('layer-a'),
+              frameCursor: cursor,
+              playbackFrameCount: 24,
+              exposureStateForLayer: stateFor,
+              onSelectLayer: (_) {},
+              onSelectFrame: (frame) => cursor.value = frame,
+              onAddLayer: () {},
+              onToggleLayerVisibility: (_) {},
+              onLayerOpacityChanged: (_, _) {},
+              onToggleLayerTimesheet: (_) {},
+              onLayerMarkSelected: (_, _) {},
+              expandedLaneLayerIds: {const LayerId('layer-a')},
+              lanesForLayer: (_) => [
+                const PropertyLaneRow(
+                  laneId: 'position',
+                  label: 'Position',
+                  keyedFrames: {2},
+                ),
+              ],
+              laneRange: TimelineLaneRangeCallbacks(
+                selection: ValueNotifier<TimelineLaneSelection?>(null),
+                onSelectUpdate: (_, _, _, _, _) {},
+                // The production host seeks here; this harness stands in
+                // for it with the same one line.
+                onTapAt: (_, _, frame) => cursor.value = frame,
+                onMoveBegin: () => false,
+                onMoveUpdate: (_) {},
+                onMoveEnd: () {},
+                onMoveCancel: () {},
+              ),
+              metrics: const TimelineGridMetrics(
+                frameCellWidth: 48,
+                layerRowHeight: 52,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      final band = find.byKey(
+        const ValueKey<String>('timeline-lane-range-gesture-layer-a-position'),
+      );
+      expect(band, findsOneWidget);
+
+      // Frame 5, clear of the key diamond at 2.
+      await tester.tapAt(
+        tester.getTopLeft(band) + const Offset(5 * 48 + 24, 26),
+      );
+      await tester.pumpAndSettle();
+
+      expect(cursor.value, 5);
     });
   });
 

@@ -649,7 +649,13 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                               headRowDelta,
                             ),
                           ),
-                  onTapClear: _session.clearLaneRangeSelection,
+                  // R10: a lane band is a place you can STAND. The
+                  // storyboard's strips run on the GLOBAL axis, so the
+                  // frame the tap reports is a global one.
+                  onTapAt: (layerId, laneId, globalFrame) {
+                    _session.clearLaneRangeSelection();
+                    _session.selectGlobalFrame(globalFrame);
+                  },
                   onMoveBegin: _session.beginLaneRangeMoveDrag,
                   onMoveUpdate: (frameDelta) =>
                       _session.updateLaneRangeMoveDrag(frameDelta: frameDelta),

@@ -12623,35 +12623,19 @@ class EditorSessionManager extends ChangeNotifier {
       }
     }
     if (target == null) {
-      _walkGlobalFrame(globalFrame + (forward ? 1 : -1));
+      // No cut that way: the "no blocks here" half of the rule — one
+      // global frame, which [selectGlobalFrame] lands inside a cut or
+      // parks in a gap.
+      final next = globalFrame + (forward ? 1 : -1);
+      if (next >= 0) {
+        selectGlobalFrame(next);
+      }
       return;
     }
     if (target.cutId != activeCutId) {
       selectCut(target.cutId);
     }
     selectFrameIndex(0);
-  }
-
-  /// One global frame, wherever it lands — inside a cut it is that cut's
-  /// local frame, in a gap it parks.
-  void _walkGlobalFrame(int globalFrame) {
-    if (globalFrame < 0) {
-      return;
-    }
-    for (final entry in buildStoryboardTimelineLayout(
-      _repository.requireProject(),
-    )) {
-      if (entry.trackId == selectedTrackId &&
-          globalFrame >= entry.startFrame &&
-          globalFrame < entry.endFrame) {
-        if (entry.cutId != activeCutId) {
-          selectCut(entry.cutId);
-        }
-        selectFrameIndex(globalFrame - entry.startFrame);
-        return;
-      }
-    }
-    parkGlobalFrame(globalFrame);
   }
 
   // --- Editing frame scrub (ruler drags ride the cursor path) --------------

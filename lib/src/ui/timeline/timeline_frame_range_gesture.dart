@@ -163,6 +163,13 @@ class TimelineRangeGestureCallbacks {
 
   /// A plain tap on the cells (no drag): clears the selection — the row's
   /// own pointer-down keeps doing the playhead/cut select.
+  ///
+  /// R10 note: this one deliberately does NOT seek, though its lane
+  /// sibling does. A cells row's press policy is already tuned — it stands
+  /// down inside a live selection so a move can start (UI-R22 #2) and it
+  /// stands down for touch while touch owns the scroll (UI-R23 feedback
+  /// #2, "the first scroll touch kept moving the playhead"). Seeking on
+  /// the release would walk straight back through both.
   final void Function(TimelineRowAddress row) onTapClear;
 
   /// Move mode (handle-level): pure grid geometry — frame steps along the
@@ -401,7 +408,7 @@ class TimelineLaneRangeCallbacks {
   const TimelineLaneRangeCallbacks({
     required this.selection,
     required this.onSelectUpdate,
-    required this.onTapClear,
+    required this.onTapAt,
     required this.onMoveBegin,
     required this.onMoveUpdate,
     required this.onMoveEnd,
@@ -424,8 +431,15 @@ class TimelineLaneRangeCallbacks {
   )
   onSelectUpdate;
 
-  /// A plain tap on the band: clears the lane selection.
-  final VoidCallback onTapClear;
+  /// A plain tap on the band: STAND on [frameIndex] of this (layer, lane)
+  /// — seek there, take the lane as the current row, and drop the lane
+  /// selection.
+  ///
+  /// R10: a lane band paints its cells rather than mounting cell widgets,
+  /// and the seek lived on the cell widget, so property rows were the one
+  /// place with visible frame cells that the playhead could not be put on.
+  /// One rule instead: wherever frame cells exist, you can stand.
+  final void Function(LayerId layerId, String laneId, int frameIndex) onTapAt;
 
   final bool Function() onMoveBegin;
   final void Function(int frameDelta) onMoveUpdate;
@@ -596,7 +610,11 @@ class _TimelineLaneRangeGestureLayerState
       ),
       child: GestureDetector(
         behavior: HitTestBehavior.translucent,
-        onTapUp: (_) => widget.callbacks.onTapClear(),
+        onTapUp: (details) => widget.callbacks.onTapAt(
+          widget.layer.id,
+          widget.laneId,
+          _frameAt(details.localPosition),
+        ),
         child: RawGestureDetector(
           behavior: HitTestBehavior.translucent,
           gestures: <Type, GestureRecognizerFactory>{
