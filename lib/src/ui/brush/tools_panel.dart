@@ -15,6 +15,7 @@ class ToolsPanel extends StatelessWidget {
     required this.tool,
     required this.onToolChanged,
     this.selectionVariant = CanvasTool.selectRect,
+    this.colorButton,
   });
 
   final CanvasTool tool;
@@ -25,9 +26,24 @@ class ToolsPanel extends StatelessWidget {
   /// settings; the host remembers the last-used one).
   final CanvasTool selectionVariant;
 
-  /// The edge dock width this panel is designed for (fits the compact
-  /// tools tab with its close/lock glyphs plus the tool buttons).
-  static const double dockWidth = 72;
+  /// R9 #14: the SELECTED-COLOUR swatch, under the tools — where the user
+  /// put it. Tapping it opens the 「컬러 버튼창」 (wheel + palette tabs),
+  /// which is what retired the Color dock tab. Null keeps the rail
+  /// tools-only (passive hosts and the panel's own tests).
+  final Widget? colorButton;
+
+  /// The edge dock width this panel is designed for.
+  ///
+  /// R9 #17: 72 → 48, a third of the rail's width back to the canvas. The
+  /// tool BUTTONS are what the old number was padding out; the compact
+  /// tab strip scrolls, so its close/lock glyphs cost the rail nothing.
+  /// 48 is chosen to HOLD the 42px colour swatch rather than the swatch
+  /// shrunk to fit — it is a stylus target (the user's rule).
+  static const double dockWidth = 48;
+
+  /// The rail's button box: a stylus-sized square that fits [dockWidth]
+  /// with the panel's own padding.
+  static const double buttonExtent = 42;
 
   @override
   Widget build(BuildContext context) {
@@ -37,7 +53,7 @@ class ToolsPanel extends StatelessWidget {
     // settings below it, so its column can be shorter than the buttons —
     // it scrolls instead of overflowing.
     return SingleChildScrollView(
-      padding: const EdgeInsets.only(left: 6, top: 6),
+      padding: const EdgeInsets.only(left: 3, top: 6, bottom: 6),
       child: Column(
         key: const ValueKey<String>('tools-panel'),
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -97,6 +113,20 @@ class ToolsPanel extends StatelessWidget {
             selected: tool == CanvasTool.move,
             onPressed: () => onToolChanged(CanvasTool.move),
           ),
+          // R9 #14: the colour lives with the tools — the last control in
+          // the column, separated by the same rule the dock uses.
+          if (colorButton != null) ...[
+            const SizedBox(height: 8),
+            Divider(
+              height: 1,
+              thickness: 1,
+              indent: 2,
+              endIndent: 2,
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
+            const SizedBox(height: 8),
+            colorButton!,
+          ],
         ],
       ),
     );
@@ -128,6 +158,14 @@ class _ToolButton extends StatelessWidget {
       icon: Icon(icon),
       iconSize: 20,
       isSelected: selected,
+      padding: EdgeInsets.zero,
+      // R9 #17: a tight box, so the slim rail holds the button instead of
+      // the button dictating a 72px rail. Still 42 across — the stylus
+      // target the rail was narrowed AROUND, not below.
+      constraints: const BoxConstraints.tightFor(
+        width: ToolsPanel.buttonExtent,
+        height: ToolsPanel.buttonExtent,
+      ),
       style: IconButton.styleFrom(
         foregroundColor: selected
             ? colorScheme.primary
@@ -136,6 +174,11 @@ class _ToolButton extends StatelessWidget {
             ? colorScheme.surfaceContainerHigh
             : Colors.transparent,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+        // The 42px box IS the tap target (R9 #17) — M3's automatic 48px
+        // inflation is what made the rail need 72.
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        minimumSize: const Size.square(ToolsPanel.buttonExtent),
+        fixedSize: const Size.square(ToolsPanel.buttonExtent),
       ),
     );
   }
