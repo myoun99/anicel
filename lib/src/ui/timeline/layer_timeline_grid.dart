@@ -4,10 +4,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart' show AppLanguage;
-import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
 import '../../models/camera_instruction.dart';
 import '../../models/layer_blend_mode.dart';
-import '../text/app_strings.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/attached_layer_resolve.dart'

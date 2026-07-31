@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import '../models/camera_instruction.dart';
 import '../models/layer.dart';
 import '../models/layer_effect.dart';
-import '../models/layer_folder.dart';
 import '../models/layer_id.dart';
 import '../models/timeline_row_address.dart';
 import '../models/layer_kind.dart';

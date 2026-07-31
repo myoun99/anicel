@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../models/attached_placement.dart';
 import '../../models/layer_kind.dart';
 import 'layer_label_controls.dart';
 

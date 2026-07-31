@@ -20,8 +20,6 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
-import 'package:anicel/src/ui/timeline/se_audio_lane.dart'
-    show TimelineAudioLaneCallbacks;
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';

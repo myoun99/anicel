@@ -3,9 +3,6 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../../models/app_language.dart' show AppLanguage;
-import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
-import '../text/app_strings.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';

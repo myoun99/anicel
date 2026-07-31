@@ -3,13 +3,11 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
 import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
-import '../text/app_strings.dart';
 import 'property_lane_model.dart';
 import 'se_audio_lane.dart';
 import 'timeline_frame_range_gesture.dart';

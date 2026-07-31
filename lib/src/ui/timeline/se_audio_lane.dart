@@ -3,8 +3,6 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
-import '../../models/app_language.dart' show AppLanguage;
-import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -12,14 +10,11 @@ import '../../models/project_frame_rate.dart';
 import '../../models/se_audio_spans.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../audio/waveform_painter.dart';
-import '../text/app_strings.dart';
 import '../theme/app_theme.dart';
-import '../widgets/field_slider.dart';
 import 'property_lane_model.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_grid_metrics.dart';
-import '../widgets/app_window.dart';
 
 /// The SE audio lane: SE layers with sounds get ONE twirl-down lane — a
 /// waveform editing strip where dragging a span's MIDDLE along the frame

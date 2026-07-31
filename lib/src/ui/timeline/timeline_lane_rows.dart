@@ -6,7 +6,7 @@ import '../input/eager_pan_gesture_recognizer.dart';
 
 import '../../models/layer.dart';
 import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
-import '../theme/app_theme.dart' show AppColors, instantMenuAnimation;
+import '../theme/app_theme.dart' show AppColors;
 import 'layer_label_controls.dart' show LayerSectionBandCell, fxGlyph;
 import 'property_lane_model.dart';
 import 'transform_lane_policy.dart' show laneSelectionCoversBandRow;

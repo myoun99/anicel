@@ -14,7 +14,6 @@ import '../theme/app_theme.dart';
 import 'dialogue_fit_text.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_frame_span_layout.dart';
-import '../text/app_strings.dart';
 
 /// SE rows reuse the drawing rows' white paper frame blocks (the cells
 /// themselves paint the paper); this overlay adds the sheet's SE writing on
