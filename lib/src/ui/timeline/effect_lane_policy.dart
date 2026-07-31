@@ -132,15 +132,25 @@ List<String> effectLaneDisplayOrder(LayerEffect effect) => [
     effectLaneId(effect.id, spec.id),
 ];
 
+/// The rows as SELECTION sees them: the group header is the first of them
+/// (R9 #20, the transform group's rule). It used to sit outside the order
+/// and be handled by a branch, so a drag from the header to the SECOND
+/// parameter selected every parameter — selection did something other than
+/// what the drag drew.
+List<String> effectLaneSelectionOrder(LayerEffect effect) => [
+  effectGroupLaneId(effect.id),
+  ...effectLaneDisplayOrder(effect),
+];
+
 /// The display-ordered lane span from [anchorLaneId] to [headLaneId] within
 /// ONE effect (R26 #3's Excel span rule, effect-scoped); null when neither
 /// endpoint is an effect lane, so the caller falls through to
 /// [transformLaneSpan].
 ///
-/// An effect's GROUP HEADER as either endpoint selects the WHOLE effect
-/// ("모두에 적용되는 그 행"). Endpoints in DIFFERENT effects collapse to the
-/// anchor alone: a rigid multi-lane move across two effects has no meaning
-/// the model can honour all-or-nothing.
+/// The group HEADER is a row in the span like any other (R9 #20).
+/// Endpoints in DIFFERENT effects collapse to the anchor alone: a rigid
+/// multi-lane move across two effects has no meaning the model can honour
+/// all-or-nothing.
 List<String>? effectLaneSpan(
   List<LayerEffect> effects,
   String anchorLaneId,
@@ -162,18 +172,10 @@ List<String>? effectLaneSpan(
   if (owner == null) {
     return [anchorLaneId];
   }
-  final order = effectLaneDisplayOrder(owner);
-  // A header endpoint, a foreign endpoint, or an unknown parameter: the
-  // whole effect when the header asked for it, the anchor alone otherwise.
-  if (anchor == null || anchor.parameterId == null) {
-    return order;
-  }
   if (head == null || head.effectId != effectId) {
     return [anchorLaneId];
   }
-  if (head.parameterId == null) {
-    return order;
-  }
+  final order = effectLaneSelectionOrder(owner);
   final anchorIndex = order.indexOf(anchorLaneId);
   final headIndex = order.indexOf(headLaneId);
   if (anchorIndex < 0 || headIndex < 0) {
@@ -194,17 +196,10 @@ List<String>? effectLaneSpan(
 /// three-lane effect therefore also washes the header, which costs nothing
 /// — it is an indicator, not a permission.
 bool effectGroupHeaderCovered(String headerLaneId, List<String> spanLaneIds) {
-  final header = parseEffectLaneId(headerLaneId);
-  if (header == null || header.parameterId != null || spanLaneIds.length <= 1) {
-    return false;
-  }
-  for (final laneId in spanLaneIds) {
-    final address = parseEffectLaneId(laneId);
-    if (address == null || address.effectId != header.effectId) {
-      return false;
-    }
-  }
-  return true;
+  // R9 #20: the header is covered when it is IN the span, like every other
+  // row — not when its members happen to all be. The span carries it now,
+  // so this is a plain membership question.
+  return spanLaneIds.contains(headerLaneId);
 }
 
 /// AE-style value formatting for an effect parameter.

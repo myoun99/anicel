@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../text/full_width_numerals.dart';
 
 import '../theme/app_theme.dart';
 
@@ -336,6 +337,10 @@ class _FieldSliderState extends State<FieldSlider> {
           decimal: true,
           signed: true,
         ),
+        // R9 #15: a Japanese IME sitting in 全角 types numerals this
+        // field's parser cannot read; converting as they arrive is what
+        // keeps every downstream tryParse innocent.
+        inputFormatters: halfWidthNumerals,
         style: valueStyle,
         decoration: const InputDecoration(
           // Bare: the editor sits ON the slider track, so it opts out of

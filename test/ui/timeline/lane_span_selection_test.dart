@@ -27,14 +27,33 @@ void main() {
       expect(transformLaneSpan('scale', 'scale'), ['scale']);
     });
 
-    test('the group header as either endpoint selects the whole group', () {
-      expect(
-        transformLaneSpan(transformGroupHeaderLane.laneId, 'scale'),
-        transformLaneDisplayOrder,
-      );
+    test('R9 #20: the group header is a ROW in the span — dragging from it '
+        'covers exactly what the drag drew', () {
+      // Header → the SECOND lane used to select all five; it now selects
+      // what was dragged over.
+      expect(transformLaneSpan(transformGroupHeaderLane.laneId, 'position'), [
+        transformGroupHeaderLane.laneId,
+        'anchor-point',
+        'position',
+      ]);
       expect(
         transformLaneSpan('position', transformGroupHeaderLane.laneId),
-        transformLaneDisplayOrder,
+        [transformGroupHeaderLane.laneId, 'anchor-point', 'position'],
+        reason: 'direction does not matter — it is a range',
+      );
+      // Header → the LAST lane still covers the whole group, by the
+      // ordinary rule rather than a branch.
+      expect(
+        transformLaneSpan(transformGroupHeaderLane.laneId, 'opacity'),
+        transformLaneSelectionOrder,
+      );
+      expect(
+        transformLaneSpan(
+          transformGroupHeaderLane.laneId,
+          transformGroupHeaderLane.laneId,
+        ),
+        [transformGroupHeaderLane.laneId],
+        reason: 'a header alone is one row, like any other',
       );
     });
 
@@ -97,15 +116,33 @@ void main() {
       laneIds: ['position', 'scale'],
     );
 
-    test('the header row counts as covered ONLY by a whole-group span '
-        '(so a header drag inside it MOVES — 한번에 잡아 이동)', () {
+    test('R9 #20: the header row counts as covered when it is IN the span, '
+        'like every other row (a header drag inside it still MOVES — '
+        '한번에 잡아 이동)', () {
+      final withHeader = TimelineLaneSelection(
+        layerId: const LayerId('layer-a'),
+        laneId: transformGroupHeaderLane.laneId,
+        startIndex: wholeGroup.startIndex,
+        endIndexExclusive: wholeGroup.endIndexExclusive,
+        laneIds: transformLaneSelectionOrder,
+      );
+      expect(
+        laneSelectionCoversBandRow(
+          withHeader,
+          const LayerId('layer-a'),
+          'transform-group',
+        ),
+        isTrue,
+      );
       expect(
         laneSelectionCoversBandRow(
           wholeGroup,
           const LayerId('layer-a'),
           'transform-group',
         ),
-        isTrue,
+        isFalse,
+        reason: 'every MEMBER selected is not the header selected — the '
+            'special case #20 retired',
       );
       expect(
         laneSelectionCoversBandRow(
@@ -117,7 +154,7 @@ void main() {
       );
       expect(
         laneSelectionCoversBandRow(
-          wholeGroup,
+          withHeader,
           const LayerId('layer-b'),
           'transform-group',
         ),

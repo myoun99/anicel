@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import '../text/full_width_numerals.dart';
 
 import '../../models/canvas_resize_anchor.dart';
 import '../../models/canvas_size.dart';
@@ -123,7 +123,7 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
                     controller: _widthController,
                     autofocus: true,
                     keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    inputFormatters: halfWidthDigitsOnly,
                     onChanged: (_) => setState(() {}),
                   ),
                 ),
@@ -140,7 +140,7 @@ class _CanvasSizeDialogState extends State<CanvasSizeDialog> {
                     key: const ValueKey<String>('canvas-size-height-field'),
                     controller: _heightController,
                     keyboardType: TextInputType.number,
-                    inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+                    inputFormatters: halfWidthDigitsOnly,
                     onChanged: (_) => setState(() {}),
                   ),
                 ),

@@ -97,10 +97,20 @@ List<LayerEffect>? effectsWithLaneHoldToggled(
 
 /// Applies a value typed into a lane's value editor.
 ///
-/// While the parameter is UNANIMATED this writes its static value — an
-/// effect you never keyed stays unkeyed, which is what makes "add a blur and
-/// set it to 8" a one-step edit. Once it carries keys, AE's rule takes over:
-/// changing the value keys it at the playhead.
+/// Editing a lane's value KEYS it at the playhead — always (R9 #18).
+///
+/// It used to write the static value while the parameter was unanimated,
+/// which imitated AE's stopwatch: no stopwatch, no key. This app has no
+/// stopwatch, and its ONE key affordance is the diamond — so the imitation
+/// only meant that effects behaved unlike transforms, which key
+/// unconditionally. One rule now: a value the user typed is a key.
+///
+/// The pixels do not move on the first edit: a track with a single key
+/// resolves to that key at every frame, exactly as the static slot did.
+///
+/// [EffectParameter.value] STAYS — it carries the kind's spec default, and
+/// it is the slot an AE-style stopwatch would switch off into if this app
+/// ever grows one (the user's note when #18 was decided).
 List<LayerEffect>? effectsWithLaneValueEdited(
   List<LayerEffect> effects, {
   required String laneId,
@@ -114,9 +124,6 @@ List<LayerEffect>? effectsWithLaneValueEdited(
     final value = parseEffectLaneValue(spec, input);
     if (value == null) {
       return null;
-    }
-    if (parameter.track.isEmpty) {
-      return parameter.copyWith(value: value);
     }
     return parameter.copyWith(
       track: parameter.track.withKey(

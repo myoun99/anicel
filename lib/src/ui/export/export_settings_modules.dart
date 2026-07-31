@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import '../text/full_width_numerals.dart';
 
 import '../../models/canvas_size.dart';
 import '../../models/export_cel_naming.dart';
@@ -817,7 +817,7 @@ class _DigitsFieldState extends State<_DigitsField> {
         controller: _controller,
         enabled: widget.enabled,
         keyboardType: TextInputType.number,
-        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        inputFormatters: halfWidthDigitsOnly,
         onChanged: (value) {
           final parsed = int.tryParse(value.trim());
           if (parsed != null) {
