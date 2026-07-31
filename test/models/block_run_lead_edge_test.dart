@@ -125,6 +125,19 @@ void main() {
     );
   });
 
+  test('a block ALREADY under the floor refuses to shrink instead of '
+      'throwing — the clamp bounds cannot cross', () {
+    final layout = planBlockRunLeadEdge(
+      slots: slots([(0, 4), (0, 2)]),
+      targetIndex: 1,
+      frameDelta: 3,
+      minLength: 5,
+    );
+
+    expect(layout.lengths, [4, 2], reason: 'nothing shrinks below the floor');
+    expect(startsOf(layout), [0, 4]);
+  });
+
   test('a zero delta changes nothing', () {
     final input = slots([(1, 4), (0, 4), (3, 4)]);
     final layout = planBlockRunLeadEdge(

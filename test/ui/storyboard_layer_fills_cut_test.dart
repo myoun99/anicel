@@ -152,6 +152,43 @@ void main() {
       );
     });
 
+    test('R10 R4: a lead drag that GROWS the cut leaves the row still '
+        'covering it — the tiling invariant survives the new verb', () {
+      final session = sessionFor();
+      session.addLayerOfKind(LayerKind.storyboard);
+      session.selectFrameIndex(5);
+      session.createDrawingAtCurrentFrame();
+      final cutId = session.activeCutId!;
+
+      // Open room in front so the lead edge has somewhere to grow into.
+      session.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.start);
+      session.updateCutEdgeDrag(3);
+      session.endCutEdgeDrag();
+      final shrunk = session.requireActiveCut.duration;
+
+      // …then pull it back out. The cut grows from the front.
+      session.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.start);
+      session.updateCutEdgeDrag(-3);
+      session.endCutEdgeDrag();
+      final cut = session.requireActiveCut;
+      expect(cut.duration, shrunk + 3);
+      expect(cut.leadingGapFrames, 0);
+
+      // The invariant this whole file is about: the row's cells still
+      // reach the cut's end, so the timeline row shows no uncovered
+      // frames where the strip shows a full panel.
+      final cells = storyboardCoverageCells(
+        timeline: storyboardLayerForCut(cut)!.timeline,
+        cutDuration: cut.duration,
+      );
+      expect(cells, isNotEmpty);
+      expect(
+        cells.last.endIndexExclusive,
+        cut.duration,
+        reason: 'a storyboard row TILES its cut, on either side of the drag',
+      );
+    });
+
     test('a cut with no storyboard row still trims down to one frame', () {
       final session = sessionFor();
       final cutId = session.activeCutId!;

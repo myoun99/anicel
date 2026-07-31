@@ -19,6 +19,8 @@
 /// film absorb the difference.
 library;
 
+import 'dart:math' as math;
+
 import 'block_run_move.dart';
 
 /// Where every slot sits after a lead-edge drag.
@@ -65,8 +67,16 @@ BlockRunLeadEdgeLayout planBlockRunLeadEdge({
   final target = slots[targetIndex];
   // Shrinking stops at the floor; growing stops at the head of the axis,
   // which is every gap from frame 0 up to this block.
-  final maxShrink = target.length - minLength;
-  final maxGrow = starts[targetIndex] - _occupiedBefore(slots, targetIndex);
+  //
+  // Both are floored at zero before they meet: a block ALREADY under the
+  // floor (a cut shorter than the row it must tile, which a load or a
+  // stale minimum can hand us) would otherwise make the shrink limit
+  // negative and `clamp` throw on a lower bound above its upper.
+  final maxShrink = math.max(0, target.length - minLength);
+  final maxGrow = math.max(
+    0,
+    starts[targetIndex] - _occupiedBefore(slots, targetIndex),
+  );
   final delta = frameDelta.clamp(-maxGrow, maxShrink);
 
   final newStarts = List<int>.of(starts);
