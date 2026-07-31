@@ -71,7 +71,6 @@ void main() {
     'layerAudioPanHelp': (s) => s.layerAudioPanHelp,
     'audioMute': (s) => s.audioMute,
     'audioSolo': (s) => s.audioSolo,
-    'audioUnsolo': (s) => s.audioUnsolo,
     'fpsAudioTitleTemplate': (s) => s.fpsAudioTitleTemplate,
     'fpsAudioBody': (s) => s.fpsAudioBody,
     'fpsAudioKeep': (s) => s.fpsAudioKeep,
@@ -554,6 +553,6 @@ void main() {
   test('the reader table covers every getter the class declares', () {
     // Guards the guard: a string added without a line here would other-
     // wise be silently unchecked.
-    expect(readers, hasLength(499));
+    expect(readers, hasLength(498));
   });
 }

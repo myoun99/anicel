@@ -341,7 +341,6 @@ class LayerMuteToggleButton extends StatelessWidget {
     required this.keyValue,
     required this.muted,
     required this.onOpenMixer,
-    this.tooltip,
     this.soloed = false,
     this.width = layerMuteSlotWidth,
     this.height = 26,
@@ -356,8 +355,6 @@ class LayerMuteToggleButton extends StatelessWidget {
   /// to the speaker rather than to whatever row mounted it.
   final ValueChanged<BuildContext> onOpenMixer;
 
-  final String? tooltip;
-
   /// Soloed rows tint accent (selection style: color only, no checkmarks).
   final bool soloed;
 
@@ -368,7 +365,11 @@ class LayerMuteToggleButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return IconButton(
       key: ValueKey<String>(keyValue),
-      tooltip: tooltip,
+      // One meaning on all three rails, so the label is the control's, not
+      // the host's. It also carries the button's semantics name — the
+      // hardcoded English 'Mute layer'/'Unmute layer' went out with the
+      // toggle, and a door needs to say where it goes.
+      tooltip: AppText.strings.layerAudioTitle,
       padding: EdgeInsets.zero,
       constraints: BoxConstraints.tightFor(width: width, height: height),
       icon: Icon(

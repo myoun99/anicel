@@ -9,7 +9,7 @@ import '../../models/layer_blend_mode.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/attached_layer_resolve.dart'
-    show attachArrowPlacement, attachRowWearsBaseComposite;
+    show attachRowWearsBaseComposite;
 import '../../models/attached_placement.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
@@ -87,6 +87,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.audioLane,
     this.isLayerSoloed,
     this.onOpenLayerMixer,
+    this.attachArrowPlacementOf,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
@@ -224,6 +225,14 @@ class LayerTimelineGrid extends StatefulWidget {
   final bool Function(LayerId layerId)? isLayerSoloed;
   final void Function(BuildContext anchorContext, LayerId layerId)?
   onOpenLayerMixer;
+
+  /// Which way a row's attach ARROW points in its sheet slot (R10 R3), or
+  /// null off an attach group. A RESOLVER, not a list: the answer depends
+  /// on stack order against the base, and this grid holds the horizontal
+  /// DISPLAY order (`sectionedLayerOrder(...).reversed`) — computing it
+  /// here would invert every organizer folder's arrow on this surface
+  /// alone.
+  final AttachedPlacement? Function(LayerId layerId)? attachArrowPlacementOf;
 
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
@@ -918,7 +927,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       soloed: widget.isLayerSoloed?.call(row.layer.id) ?? false,
       // The arrow reads the STACK (a folder's direction is its position
       // against its base), so the Layer comparison cannot see it change.
-      attachArrow: attachArrowPlacement(row.layer, widget.layers),
+      attachArrow: widget.attachArrowPlacementOf?.call(row.layer.id),
       layerRowHeight: _metrics.layerRowHeight,
       layerControlsWidth: _metrics.layerControlsWidth,
       sectionLabelGutterWidth: _metrics.sectionLabelGutterWidth,
@@ -1086,7 +1095,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       onToggleLayerFillReference: widget.onToggleLayerFillReference,
       onOpenLayerMixer: widget.onOpenLayerMixer,
       isLayerSoloed: widget.isLayerSoloed?.call(row.layer.id) ?? false,
-      attachArrowPlacement: attachArrowPlacement(row.layer, widget.layers),
+      attachArrowPlacement: widget.attachArrowPlacementOf?.call(row.layer.id),
       hasLanes: _lanesFor(row.layer).isNotEmpty,
       lanesExpanded: widget.expandedLaneLayerIds.contains(row.layer.id),
       onToggleLanes: widget.onToggleLayerLanes,

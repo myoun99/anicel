@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 import '../../models/app_language.dart' show AppLanguage;
 import '../../models/camera_instruction.dart';
 import '../../models/layer_blend_mode.dart';
+import '../../models/attached_layer_resolve.dart' show attachArrowPlacement;
+import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../../models/layer_id.dart';
@@ -326,6 +328,19 @@ class _TimelinePanelState extends State<TimelinePanel> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final horizontalLayers = horizontalLayerDisplayOrder(widget.layers);
+    // The attach arrow is resolved HERE and handed down as a resolver: an
+    // organizer folder's direction is its stack position against its base,
+    // and `widget.layers` is the only list in this subtree that is still
+    // the MODEL order. Both grids below get a display order — the
+    // horizontal one reversed — so computing it there points the arrow the
+    // wrong way on that surface alone (R10 R3).
+    final attachArrows = <LayerId, AttachedPlacement>{};
+    for (final layer in widget.layers) {
+      final placement = attachArrowPlacement(layer, widget.layers);
+      if (placement != null) {
+        attachArrows[layer.id] = placement;
+      }
+    }
     final nextOrientation = widget.orientation == TimelineOrientation.horizontal
         ? TimelineOrientation.vertical
         : TimelineOrientation.horizontal;
@@ -411,6 +426,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     audioLane: widget.audioLane,
                     onAddLayer: widget.onAddLayer,
                     onOpenLayerMixer: widget.onOpenLayerMixer,
+                    attachArrowPlacementOf: (layerId) => attachArrows[layerId],
                     isLayerSoloed: widget.isLayerSoloed,
                     onToggleLayerFillReference:
                         widget.onToggleLayerFillReference,
@@ -480,6 +496,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     audioLane: widget.audioLane,
                     onAddLayer: widget.onAddLayer,
                     onOpenLayerMixer: widget.onOpenLayerMixer,
+                    attachArrowPlacementOf: (layerId) => attachArrows[layerId],
                     isLayerSoloed: widget.isLayerSoloed,
                     onToggleLayerFillReference:
                         widget.onToggleLayerFillReference,

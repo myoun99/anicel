@@ -29,9 +29,10 @@ import 'layer_label_controls.dart';
 /// leading cluster and never desynchronises one slot from the rest.
 const double layerRailSectionGap = 8;
 
-/// The TYPE BUTTON's slot (UI-R24 #7) — the kind icon, or an attach row's
-/// placement arrow. A fixed column of its own, so attach rows align with
-/// every other row instead of indenting.
+/// The TYPE BUTTON's slot (UI-R24 #7) — the row's KIND icon, on every row
+/// kind including attach rows (R10 R3 moved their placement arrow to the
+/// sheet slot). A fixed column of its own, so attach rows align with every
+/// other row instead of indenting.
 const double layerTypeSlotWidth = 22;
 
 /// Where a rail row's NAME begins, measured from the row's left edge at
@@ -107,8 +108,9 @@ List<Widget> layerRailTrailingCells({
   ];
 }
 
-/// The row's TYPE BUTTON (UI-R24 #7): the kind icon — or, for an attach
-/// row, its placement arrow — in the rail's fixed type slot.
+/// The row's TYPE BUTTON (UI-R24 #7): the kind icon, in the rail's fixed
+/// type slot. Always the kind — an attach row's placement arrow rides the
+/// sheet slot ([LayerAttachArrowCell], R10 R3).
 ///
 /// R9: ONE widget, so every surface that states a row's identity states it
 /// the same way. The x-sheet's column headers had no type slot at all (no

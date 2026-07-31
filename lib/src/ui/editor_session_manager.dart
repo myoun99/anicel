@@ -7162,6 +7162,39 @@ class EditorSessionManager extends ChangeNotifier {
     updateLayerTransformTrack(layer.id, track, description: description);
   }
 
+  /// The lanes a verb may act on for [layer]. The CAMERA row draws only
+  /// position/scale/rotation ([timelineLanesForLayer] builds its lanes
+  /// without anchor and opacity), so a GROUP-header span — which expands
+  /// to every transform lane — must not key two lanes that row has no way
+  /// to show, move or delete.
+  List<String> _laneVerbTargetsFor(Layer layer, List<String> targets) {
+    if (layer.kind != LayerKind.camera) {
+      return targets;
+    }
+    return targets
+        .where((laneId) => laneId != 'anchor-point' && laneId != 'opacity')
+        .toList();
+  }
+
+  /// The value a lane verb freezes at [frameIndex]. The camera's pose does
+  /// not live on the camera pseudo-layer — its own transform track is
+  /// permanently empty — so reading [layerPoseAtFrame] there froze the
+  /// canvas-centre identity pose and snapped the camera mid-move.
+  CameraPose _laneResolvedPose(Layer layer, int frameIndex) {
+    if (layer.kind != LayerKind.camera) {
+      return layerPoseAtFrame(layer, frameIndex);
+    }
+    final cut = activeCutOrNull;
+    if (cut == null) {
+      return layerPoseAtFrame(layer, frameIndex);
+    }
+    return resolveCameraPoseAt(
+      camera: cut.camera,
+      canvasSize: cut.canvasSize,
+      frameIndex: frameIndex,
+    );
+  }
+
   /// Removes every key the range covers on every spanned lane — the
   /// mirror of [_createLaneKeysForSelection], one undo. Returns whether
   /// anything was there to remove.
@@ -7197,7 +7230,7 @@ class EditorSessionManager extends ChangeNotifier {
     }
     var track = _laneTransformTrackOf(layer);
     var changed = false;
-    for (final laneId in targets) {
+    for (final laneId in _laneVerbTargetsFor(layer, targets)) {
       for (final frame in transformLaneKeyFrames(track, laneId).toList()) {
         if (!lane.contains(frame)) {
           continue;
@@ -7226,7 +7259,10 @@ class EditorSessionManager extends ChangeNotifier {
     if (lane == null || layer == null || isAttachedLayer(layer)) {
       return false;
     }
-    final targets = _laneVerbTargets(lane.spanLaneIds, effects: layer.effects);
+    final targets = _laneVerbTargetsFor(
+      layer,
+      _laneVerbTargets(lane.spanLaneIds, effects: layer.effects),
+    );
     return targets.any(
       (laneId) => parseEffectLaneId(laneId) != null
           ? effectLaneKeyFrames(layer.effects, laneId).any(lane.contains)
@@ -7279,10 +7315,11 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     var track = _laneTransformTrackOf(layer);
+    final isCamera = layer.kind == LayerKind.camera;
     var changed = false;
     // R26 #3: a multi-lane span freezes keys on EVERY spanned lane —
     // still one undo.
-    for (final laneId in targets) {
+    for (final laneId in _laneVerbTargetsFor(layer, targets)) {
       for (
         var frame = lane.startIndex;
         frame < lane.endIndexExclusive;
@@ -7296,9 +7333,11 @@ class EditorSessionManager extends ChangeNotifier {
           track,
           laneId: laneId,
           frameIndex: frame,
-          resolvedPose: layerPoseAtFrame(layer, frame),
-          resolvedAnchorPoint: layerAnchorPointAtFrame(layer, frame),
-          resolvedOpacity: layerOpacityAtFrame(layer, frame),
+          resolvedPose: _laneResolvedPose(layer, frame),
+          resolvedAnchorPoint: isCamera
+              ? null
+              : layerAnchorPointAtFrame(layer, frame),
+          resolvedOpacity: isCamera ? 1 : layerOpacityAtFrame(layer, frame),
         );
         if (next != null) {
           track = next;

@@ -6,12 +6,15 @@ import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_folder.dart' show createFolderLayer;
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
+import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
+import 'package:anicel/src/ui/timeline/timeline_panel.dart';
 
 /// UI-R20 P6 (#8–#11): the attach-layer rail — placement arrows instead
 /// of kind icons, the group fold twirl, and the + flyout entrance.
@@ -58,6 +61,12 @@ void main() {
             onLayerMarkSelected: (_, _) {},
             collapsedAttachBaseIds: collapsedAttachBaseIds,
             onToggleAttachGroup: onToggleAttachGroup,
+            // The grid takes a RESOLVER, never the list: it is handed a
+            // DISPLAY order and the arrow's answer is stack order.
+            attachArrowPlacementOf: (layerId) => attachArrowPlacement(
+              layers.firstWhere((layer) => layer.id == layerId),
+              layers,
+            ),
           ),
         ),
       ),
@@ -112,6 +121,78 @@ void main() {
       find.byKey(const ValueKey<String>('timeline-layer-timesheet-up1')),
       findsNothing,
     );
+  });
+
+  testWidgets('an ORGANIZER folder points the SAME way in both orientations '
+      '— its direction is stack order, and the horizontal rail is handed a '
+      'REVERSED list (R10 R3)', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1200, 700));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    // Model order, bottom → top: the base, its attach member, then the
+    // 공정 organizer folder holding that member directly above it. The
+    // group therefore stacks ABOVE the base ⇒ up-arrow on every surface.
+    final folder = createFolderLayer(id: const LayerId('f'), name: 'BOOK');
+    final member = layer('m', attachedTo: const LayerId('base')).copyWith(
+      folderId: const LayerId('f'),
+    );
+    final model = [layer('base'), member, folder];
+    expect(
+      attachArrowPlacement(folder, model),
+      AttachedPlacement.above,
+      reason: 'the fixture really is an above-stacked organizer',
+    );
+
+    double flipSignOf(String id) => tester
+        .widget<Transform>(
+          find
+              .ancestor(
+                of: find.byKey(ValueKey<String>('$id-layer-attach-arrow-f')),
+                matching: find.byType(Transform),
+              )
+              .first,
+        )
+        .transform
+        .storage[5];
+
+    for (final orientation in TimelineOrientation.values) {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: TimelinePanel(
+              layers: model,
+              activeLayerId: const LayerId('base'),
+              frameCursor: ValueNotifier<int>(0),
+              playbackFrameCount: 12,
+              exposureStateForLayer: (_, _) =>
+                  TimelineCellExposureState.uncovered,
+              onSelectLayer: (_) {},
+              onSelectFrame: (_) {},
+              onAddLayer: () {},
+              onToggleLayerVisibility: (_) {},
+              onLayerOpacityChanged: (_, _) {},
+              onToggleLayerTimesheet: (_) {},
+              onLayerMarkSelected: (_, _) {},
+              orientation: orientation,
+              onOrientationChanged: (_) {},
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      final prefix = orientation == TimelineOrientation.horizontal
+          ? 'timeline'
+          : 'xsheet';
+      expect(
+        flipSignOf(prefix),
+        lessThan(0),
+        reason:
+            'the $prefix rail must draw the UP arrow — the horizontal one '
+            'renders sectionedLayerOrder(...).reversed, so resolving the '
+            'arrow from the list it holds inverts it on that surface alone',
+      );
+    }
   });
 
   testWidgets('the fold twirl shows ONLY on bases that carry attach rows; '

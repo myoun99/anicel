@@ -159,7 +159,6 @@ class AppStrings {
   String get layerAudioPanHelp => _s('layerAudioPanHelp');
   String get audioMute => _s('audioMute');
   String get audioSolo => _s('audioSolo');
-  String get audioUnsolo => _s('audioUnsolo');
 
   // --- The fps-change audio notice (EXPORT-AUDIO ④) ---
   /// '{from}'/'{to}' are replaced with the rate labels.
@@ -835,7 +834,6 @@ class AppStrings {
         'Pan applies on the device mixer path (equal-power law).',
     'audioMute': 'Mute',
     'audioSolo': 'Solo',
-    'audioUnsolo': 'Unsolo',
     'fpsAudioTitleTemplate': '{from} → {to}: what happens to sound?',
     'fpsAudioBody':
         'These two rates differ by 0.1% in real speed, and audio exists in real seconds — it cannot stay both frame-exact and time-exact.\n\n• Keep audio timing: sounds keep their real seconds; their frame positions drift by 0.1% (about one frame every 42 seconds).\n\n• Pull audio 0.1%: sounds are resampled by the exact pulldown ratio (an inaudible pitch change — the standard telecine conform) so every sound keeps its exact frame span.',
@@ -1430,7 +1428,6 @@ class AppStrings {
     'layerAudioPanHelp': 'パンはデバイスミキサー経路で適用されます（等パワー則）。',
     'audioMute': 'ミュート',
     'audioSolo': 'ソロ',
-    'audioUnsolo': 'ソロ解除',
     'fpsAudioTitleTemplate': '{from} → {to}：音はどうしますか？',
     'fpsAudioBody':
         'この2つのレートは実速度が0.1%異なり、音は実時間で存在します — コマ厳密と時間厳密を両立することはできません。\n\n• 音のタイミングを維持：音は実時間を保ち、コマ位置が0.1%ずれます（約42秒ごとに1コマ）。\n\n• 音を0.1%プル：正確なプルダウン比でリサンプルします（聴き取れないピッチ変化 — テレシネの標準コンフォーム）。全ての音がコマ範囲を維持します。',
@@ -2099,7 +2096,6 @@ class AppStrings {
     'layerAudioPanHelp': '팬은 장치 믹서 경로에서 적용됩니다(등파워 법칙).',
     'audioMute': '음소거',
     'audioSolo': '솔로',
-    'audioUnsolo': '솔로 해제',
     'fpsAudioTitleTemplate': '{from} → {to}: 소리는 어떻게 할까요?',
     'fpsAudioBody':
         '두 레이트는 실제 속도가 0.1% 다르고, 소리는 실시간으로 존재합니다 — 프레임 정확과 시간 정확을 동시에 지킬 수 없습니다.\n\n• 오디오 타이밍 유지: 소리는 실시간을 지키고, 프레임 위치가 0.1% 어긋납니다(약 42초마다 1프레임).\n\n• 오디오 0.1% 당김: 정확한 풀다운 비율로 리샘플합니다(들리지 않는 피치 변화 — 텔레시네 표준 컨폼). 모든 소리가 프레임 범위를 유지합니다.',
@@ -2769,7 +2765,6 @@ class AppStrings {
         'Le panoramique s\'applique sur la voie du mixeur natif (loi à puissance constante).',
     'audioMute': 'Muet',
     'audioSolo': 'Solo',
-    'audioUnsolo': 'Retirer le solo',
     'fpsAudioTitleTemplate': '{from} → {to} : que faire du son ?',
     'fpsAudioBody':
         'Ces deux cadences diffèrent de 0,1 % en vitesse réelle, et le son existe en secondes réelles — il ne peut pas rester à la fois exact à l\'image et exact au temps.\n\n• Garder le timing audio : les sons gardent leurs secondes réelles ; leurs positions d\'image dérivent de 0,1 % (environ une image toutes les 42 secondes).\n\n• Tirer l\'audio de 0,1 % : les sons sont rééchantillonnés au rapport de pulldown exact (variation de hauteur inaudible — la conformation télécinéma standard) et chaque son garde sa plage d\'images exacte.',
@@ -3463,7 +3458,6 @@ class AppStrings {
     'layerAudioPanHelp': '声像在原生混音器路径上生效（等功率法则）。',
     'audioMute': '静音',
     'audioSolo': '独奏',
-    'audioUnsolo': '取消独奏',
     'fpsAudioTitleTemplate': '{from} → {to}：声音怎么办？',
     'fpsAudioBody':
         '这两个帧率的实际速度相差 0.1%，而声音存在于真实时间中 — 无法同时保持帧精确与时间精确。\n\n• 保持音频时间：声音保持真实秒数；帧位置漂移 0.1%（约每 42 秒一帧）。\n\n• 拉伸音频 0.1%：按精确的 pulldown 比例重采样（听不出的音高变化 — 电视电影的标准做法），每个声音保持其精确的帧范围。',

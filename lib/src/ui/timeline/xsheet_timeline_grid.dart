@@ -7,7 +7,7 @@ import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/attached_layer_resolve.dart'
-    show attachArrowPlacement, attachRowWearsBaseComposite;
+    show attachRowWearsBaseComposite;
 import '../../models/attached_placement.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
@@ -93,6 +93,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.audioLane,
     this.isLayerSoloed,
     this.onOpenLayerMixer,
+    this.attachArrowPlacementOf,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
@@ -103,7 +104,6 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.layerFxStateOf,
     this.onToggleLayerFx,
     this.onToggleLayerFillReference,
-    this.onToggleLayerMuted,
     this.commaDrag,
     this.rangeHooks,
     this.laneRange,
@@ -201,6 +201,12 @@ class XSheetTimelineGrid extends StatefulWidget {
   final void Function(BuildContext anchorContext, LayerId layerId)?
   onOpenLayerMixer;
 
+  /// Which way a column's attach ARROW points in its sheet slot (R10 R3),
+  /// or null off an attach group. A RESOLVER for the same reason the rail
+  /// takes one: the answer is stack order against the base, and a grid is
+  /// handed a DISPLAY order.
+  final AttachedPlacement? Function(LayerId layerId)? attachArrowPlacementOf;
+
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
@@ -221,9 +227,6 @@ class XSheetTimelineGrid extends StatefulWidget {
 
   /// Drawing rows' fill-reference toggle (R20-C2); null hides it.
   final ValueChanged<LayerId>? onToggleLayerFillReference;
-
-  /// SE columns' speaker button (mute); null hides it.
-  final ValueChanged<LayerId>? onToggleLayerMuted;
 
   /// Comma-drag hooks for the block edge grips (shared policy with the
   /// horizontal timeline); null hides the grips.
@@ -1272,11 +1275,13 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                       onOpenLayerMixer: widget
                                                           .onOpenLayerMixer,
                                                       attachArrowPlacement:
-                                                          attachArrowPlacement(
-                                                            entries[index]
-                                                                .layer,
-                                                            widget.layers,
-                                                          ),
+                                                          widget
+                                                              .attachArrowPlacementOf
+                                                              ?.call(
+                                                                entries[index]
+                                                                    .layer
+                                                                    .id,
+                                                              ),
                                                       isLayerSoloed:
                                                           widget.isLayerSoloed
                                                               ?.call(

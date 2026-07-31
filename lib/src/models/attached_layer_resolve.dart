@@ -361,9 +361,13 @@ bool attachRowWearsBaseComposite(Layer layer, List<Layer> layers) {
 ///   folder never carries `attachedPlacement` — reading it would silently
 ///   answer `above` for every folder, because that is the field's default.
 ///
-/// [layers] is the model stack, bottom → top. Do not pass a display order:
-/// the horizontal rail renders it reversed, and the arrow would invert on
-/// one surface.
+/// [layers] MUST be the model stack, bottom → top. A display order flips
+/// the folder answer silently: the horizontal rail renders
+/// `sectionedLayerOrder(...).reversed`, and passing that inverts every
+/// organizer folder's arrow on that surface alone. Call this once where
+/// the model order is in hand and pass a RESOLVER down — the rails take
+/// `attachArrowPlacementOf`, never the list, so the trap cannot be
+/// re-sprung by a caller that happens to hold the wrong list.
 AttachedPlacement? attachArrowPlacement(Layer layer, List<Layer> layers) {
   final folderPlacement = _organizerFolderPlacement(layer, layers);
   if (folderPlacement != null) {

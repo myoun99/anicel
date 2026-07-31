@@ -20,7 +20,7 @@ import '../widgets/field_slider.dart';
 /// speaker gets the same four controls instead of the timeline rails
 /// getting a menu and the storyboard rail getting nothing.
 const double seLayerMixerWidth = 236;
-const double seLayerMixerHeight = 168;
+const double seLayerMixerHeight = 224;
 
 Future<void> showSeLayerMixer(
   BuildContext anchorContext, {
@@ -54,9 +54,16 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
   double? _gainDrag;
   double? _panDrag;
 
-  Layer? get _layer => widget.session.layers
-      .where((layer) => layer.id == widget.layerId)
-      .firstOrNull;
+  /// The subject row. `session.layers` is EMPTY in a gap (no active cut),
+  /// and the storyboard rail deliberately keeps its SE controls mounted
+  /// there — a track-owned SE row is not a cut's layer. Falling back to
+  /// the track resolver is what keeps the mixer from opening blank on the
+  /// one surface that can be standing in a gap.
+  Layer? get _layer =>
+      widget.session.layers
+          .where((layer) => layer.id == widget.layerId)
+          .firstOrNull ??
+      widget.session.trackSeGlobalLayerById(widget.layerId);
 
   @override
   Widget build(BuildContext context) {
@@ -135,6 +142,10 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
               max: 2,
               value: gain,
               label: strings.audioGainLabel,
+              // The bar reads percent, so the numeric field must TYPE
+              // percent: without this a typed 80 means 80× and clamps to
+              // the 2.0 ceiling — 200% from a keystroke that asked for 80.
+              displayFactor: 100,
               valueText: _gainText(gain),
               valueTextBuilder: _gainText,
               onChanged: (value) => setState(() => _gainDrag = value),
@@ -157,6 +168,9 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
               // side it is panned to, so hard left reads as "fully left"
               // rather than as an empty fader.
               fillOrigin: 0,
+              // Same unit contract as the fader: the label says L50/R50,
+              // so the field takes ±100.
+              displayFactor: 100,
               valueText: _panText(pan),
               valueTextBuilder: _panText,
               onChanged: (value) => setState(() => _panDrag = value),
@@ -167,6 +181,17 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
                   pan: value,
                 );
               },
+            ),
+            const SizedBox(height: 6),
+            // The one honest caveat this window owes the user: pan reaches
+            // the sound only on the device-mixer path. The platform-player
+            // fallback sets volume and drops pan entirely.
+            Text(
+              strings.layerAudioPanHelp,
+              style: TextStyle(
+                fontSize: 10,
+                color: AppColors.hairline,
+              ),
             ),
           ],
         ),
