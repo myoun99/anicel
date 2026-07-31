@@ -52,6 +52,8 @@ import 'conte/conte_tab_host.dart';
 import 'storyboard_cut_thumbnail_store.dart';
 import 'storyboard_panel.dart' show StoryboardPanel;
 import 'storyboard_playhead_mapping.dart';
+import '../models/timeline_row_address.dart';
+import 'timeline/timeline_lane_provider.dart';
 import 'timeline/timeline_layer_nav.dart';
 import 'timeline/timeline_row_filter.dart';
 import 'timeline/timeline_section_policy.dart';
@@ -529,17 +531,38 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// screen disagree.
   void _stepDisplayedLayer(int direction) {
     final session = widget.session;
-    final target = adjacentDisplayedLayerId(
+    final target = adjacentDisplayedRow(
       layers: session.layers,
       activeLayerId: session.activeLayerId,
+      currentRow: session.currentRow,
       direction: direction,
       hiddenSections: _hiddenTimelineSections.value,
       rowFilter: _timelineRowFilter.value,
       collapsedAttachBaseIds: _collapsedAttachBaseIds.value,
+      // R10 #19: property rows are stops now, so the walk needs the same
+      // lane list the grids draw.
+      expandedLayerIds: _expandedLaneLayerIds.value,
+      lanesForLayer: (layer) => timelineLanesForLayer(
+        layer: layer,
+        session: session,
+        expandedGroupKeys: _expandedLaneGroupKeys.value,
+      ),
       fxEnabledOf: session.isLayerFxEnabled,
     );
-    if (target != null) {
-      session.selectLayer(target);
+    switch (target) {
+      case null:
+        return;
+      case LayerRowAddress(:final layerId):
+        session.selectLayer(layerId);
+      case LaneRowAddress(:final layerId):
+        // Landing on a property makes its OWNER the active layer — "현재
+        // 위치한 레이어를 액티브레이어로" — so moving onto layer B's
+        // Position row moves the drawing target to B, and drawing keeps
+        // working while the property is the verb's subject.
+        session.selectLayer(layerId);
+        session.selectRow(target);
+      case TrackRowAddress():
+        return;
     }
   }
 
