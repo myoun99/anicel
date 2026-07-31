@@ -814,6 +814,34 @@ class EditorSessionManager extends ChangeNotifier {
   /// picked, which reads as the selected track's V row.
   TimelineRowAddress? _storyboardRow;
 
+  /// The row a frame-axis VERB acts on (R10 #13) — the rail's rows and the
+  /// cut's layer rows alike, whichever the user last engaged.
+  ///
+  /// NOT the same thing as [selectedRow], and deliberately so. The user's
+  /// correction when #13 was settled: a V row and a layer row are not
+  /// siblings competing for one slot, they are a HIERARCHY — a V row is a
+  /// cut, a layer row is a layer INSIDE a cut. So [selectedRow] keeps
+  /// saying which row of the FILM is lit (and picking a layer still leaves
+  /// it alone, the 2026-07-27 rule), while this says whose blocks the flip
+  /// counts. Folding the two into one slot is what made picking a layer
+  /// drop the rail's S-row highlight, which is not what either question
+  /// was asking.
+  TimelineRowAddress? _verbRow;
+
+  /// Defaults to the active layer's row, not the track's: with nothing
+  /// picked yet the row you are on is the one you draw on. Only a cut with
+  /// no layers at all falls through to the track row.
+  TimelineRowAddress get currentRow {
+    final stored = _verbRow;
+    if (stored != null) {
+      return stored;
+    }
+    final layerId = activeLayerId;
+    return layerId == null
+        ? TrackRowAddress(selectedTrackId)
+        : LayerRowAddress(layerId);
+  }
+
   /// THE selected row of the STORYBOARD's rail — exactly ONE, whichever row
   /// was picked, the way the timeline has exactly one selected layer row.
   ///
@@ -889,6 +917,9 @@ class EditorSessionManager extends ChangeNotifier {
   bool _storeStoryboardRow(TimelineRowAddress row) {
     final before = selectedRow;
     _storyboardRow = row;
+    // Picking a rail row is also engaging it, so the verb follows (R10
+    // #13). The reverse does not hold — see [_verbRow].
+    _verbRow = row;
     return selectedRow != before;
   }
 
@@ -3538,6 +3569,11 @@ class EditorSessionManager extends ChangeNotifier {
       _syncVisibilitySolo();
       changed = true;
     }
+    // R10 #13: picking a layer moves the VERB's row, so the flip counts
+    // this layer's blocks from here. It does NOT touch the rail's row —
+    // that stays where the user put it (2026-07-27), and it is a different
+    // question: which row of the FILM is lit.
+    _verbRow = LayerRowAddress(layerId);
     if (changed) {
       notifyListeners();
     }
@@ -12495,56 +12531,127 @@ class EditorSessionManager extends ChangeNotifier {
     selectFrameIndex(current + 1);
   }
 
-  /// Jumps to the previous drawing block's START on the active layer
-  /// (Ctrl+`,`): from mid-block that is the current block's start — the
-  /// clip-navigation convention.
-  void selectPreviousDrawing() {
-    final layer = activeLayer;
-    if (layer == null) {
-      return;
-    }
-    final block = previousDrawingBlockBefore(
-      layer.timeline,
-      _timelineController.currentFrameIndex,
-    );
-    if (block != null) {
-      selectFrameIndex(block.startIndex);
-    } else {
-      // PEN-8 #2: no earlier drawing — walk EMPTY space one frame at a
-      // time instead of dead-ending (the plain-arrow/파라파라 unit:
-      // blocks where blocks exist, frames where they don't).
-      selectPreviousFrame();
+  /// Steps one BLOCK back along [currentRow] (Ctrl+`,`).
+  ///
+  /// R10 #13, the user's rule with no exceptions: **whatever the row is,
+  /// count THAT row's blocks; a block where there are blocks, a frame
+  /// where there are none.** A layer row counts its exposure blocks, an SE
+  /// row its sound blocks — the same code, because an SE row is a layer
+  /// with a timeline and needs no branch of its own — and a V row counts
+  /// CUTS, which is the only place a flip crosses a cut boundary.
+  ///
+  /// That last part is the rule's dividend: "coming out of a cut on a
+  /// layer row, which row of the next cut do you land on?" is a question
+  /// that never gets asked, because layer rows live inside one cut.
+  void selectPreviousDrawing() => _flipRow(forward: false);
+
+  /// Steps one BLOCK forward along [currentRow] (Ctrl+`.`). See
+  /// [selectPreviousDrawing] for the rule.
+  void selectNextDrawing() => _flipRow(forward: true);
+
+  void _flipRow({required bool forward}) {
+    switch (currentRow) {
+      case TrackRowAddress(:final trackId):
+        _flipCuts(trackId, forward: forward);
+      case LayerRowAddress(:final layerId):
+        final layer = _layerById(layerId) ?? activeLayer;
+        if (layer == null) {
+          return;
+        }
+        _flipBlocks(layer, forward: forward);
     }
   }
 
-  /// Jumps to the next drawing block's start on the active layer
-  /// (Ctrl+`.`).
-  void selectNextDrawing() {
-    final layer = activeLayer;
-    if (layer == null) {
+  /// The layer-row half — unchanged behaviour, moved under the rule.
+  void _flipBlocks(Layer layer, {required bool forward}) {
+    final current = _timelineController.currentFrameIndex;
+    if (!forward) {
+      final block = previousDrawingBlockBefore(layer.timeline, current);
+      if (block != null) {
+        selectFrameIndex(block.startIndex);
+      } else {
+        // PEN-8 #2: no earlier drawing — walk EMPTY space one frame at a
+        // time instead of dead-ending (the plain-arrow/파라파라 unit:
+        // blocks where blocks exist, frames where they don't).
+        selectPreviousFrame();
+      }
       return;
     }
-    final block = nextDrawingBlockAfter(
-      layer.timeline,
-      _timelineController.currentFrameIndex,
-    );
+    final block = nextDrawingBlockAfter(layer.timeline, current);
     if (block != null) {
       selectFrameIndex(block.startIndex);
+      return;
+    }
+    // PEN-12 #2: no NEXT drawing but the cursor sits ON a block — escape
+    // past its end in one press (never crawl through a long tail block one
+    // frame at a time); pure empty space keeps the PEN-8 one-frame walk.
+    final covering = coveringDrawingBlockAt(layer.timeline, current);
+    if (covering != null) {
+      selectFrameIndex(covering.endIndexExclusive);
     } else {
-      // PEN-12 #2: no NEXT drawing but the cursor sits ON a block —
-      // escape past its end in one press (never crawl through a long
-      // tail block one frame at a time); pure empty space keeps the
-      // PEN-8 one-frame walk.
-      final covering = coveringDrawingBlockAt(
-        layer.timeline,
-        _timelineController.currentFrameIndex,
-      );
-      if (covering != null) {
-        selectFrameIndex(covering.endIndexExclusive);
-      } else {
-        selectNextFrame();
+      selectNextFrame();
+    }
+  }
+
+  /// The V-row half: the track's CUTS are its blocks, on the global axis.
+  ///
+  /// Backwards from mid-cut lands on THIS cut's start — the same
+  /// clip-navigation convention [_flipBlocks] uses for a block. With no cut
+  /// that way (a gap at either end of the film) the row walks one global
+  /// frame, which is the "no blocks here" half of the rule.
+  void _flipCuts(TrackId trackId, {required bool forward}) {
+    final entries = [
+      for (final entry in buildStoryboardTimelineLayout(
+        _repository.requireProject(),
+      ))
+        if (entry.trackId == trackId) entry,
+    ];
+    final globalFrame = editingGlobalFrame;
+    StoryboardTimelineLayoutEntry? target;
+    if (forward) {
+      for (final entry in entries) {
+        if (entry.startFrame > globalFrame) {
+          target = entry;
+          break;
+        }
+      }
+    } else {
+      for (final entry in entries) {
+        if (entry.startFrame < globalFrame) {
+          target = entry;
+        }
       }
     }
+    if (target == null) {
+      _walkGlobalFrame(globalFrame + (forward ? 1 : -1));
+      return;
+    }
+    if (target.cutId != activeCutId) {
+      selectCut(target.cutId);
+    }
+    selectFrameIndex(0);
+  }
+
+  /// One global frame, wherever it lands — inside a cut it is that cut's
+  /// local frame, in a gap it parks.
+  void _walkGlobalFrame(int globalFrame) {
+    if (globalFrame < 0) {
+      return;
+    }
+    for (final entry in buildStoryboardTimelineLayout(
+      _repository.requireProject(),
+    )) {
+      if (entry.trackId == selectedTrackId &&
+          globalFrame >= entry.startFrame &&
+          globalFrame < entry.endFrame) {
+        if (entry.cutId != activeCutId) {
+          selectCut(entry.cutId);
+        }
+        selectFrameIndex(globalFrame - entry.startFrame);
+        return;
+      }
+    }
+    parkGlobalFrame(globalFrame);
   }
 
   // --- Editing frame scrub (ruler drags ride the cursor path) --------------
