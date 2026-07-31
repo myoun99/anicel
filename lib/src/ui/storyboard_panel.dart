@@ -464,7 +464,7 @@ class StoryboardPanel extends StatefulWidget {
   final ValueChanged<TrackId>? onSelectTrack;
 
   /// Edge-grip hooks for the strip's panel edges: the first panel's front
-  /// edge re-times the cut's lead, and every trailing edge is its panel's
+  /// edge is the CUT's lead edge, and every trailing edge is its panel's
   /// comma with the cut's length riding the row end (edge unification).
   /// Null hides the grips.
   final StoryboardStripEdgeCallbacks? stripEdges;
@@ -4578,7 +4578,7 @@ class _StoryboardTrackRow extends StatelessWidget {
             // over both; the middles keep the rest.
             //
             // One shape of grip, and where it sits decides what it does: the
-            // first panel's leading edge re-times the cut's lead, and every
+            // first panel's leading edge is the CUT's lead edge, and every
             // trailing edge is its panel's comma with the cut's length
             // riding the row end (edge unification — the division verb is
             // gone). The cut block itself has no edges any more.

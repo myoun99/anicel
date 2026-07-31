@@ -145,10 +145,15 @@ void main() {
         duration - session.requireActiveCut.duration,
         reason: 'the head takes exactly what the cut gave up',
       );
+      // Every division stays where the user put it — the gesture is about
+      // the CUT, not about the panels. What follows the cut is the LAST
+      // panel's length, because the cut ends where the row ends.
+      final row = storyboardLayerForCut(session.requireActiveCut)!;
+      expect(row.timeline.keys, layerBefore.timeline.keys);
+      final lastKey = row.timeline.keys.last;
       expect(
-        storyboardLayerForCut(session.requireActiveCut)!.timeline,
-        layerBefore.timeline,
-        reason: 'the panels are not re-keyed: the gesture is about the CUT',
+        lastKey + row.timeline[lastKey]!.length!,
+        session.requireActiveCut.duration,
       );
     });
 
@@ -186,6 +191,47 @@ void main() {
         cells.last.endIndexExclusive,
         cut.duration,
         reason: 'a storyboard row TILES its cut, on either side of the drag',
+      );
+    });
+
+    test('R10 R4: after a LEAD drag the stored row still ends where the cut '
+        'ends, so the NEXT end drag does not snap the cut back', () {
+      final session = sessionFor();
+      session.addLayerOfKind(LayerKind.storyboard);
+      session.selectFrameIndex(5);
+      session.createDrawingAtCurrentFrame();
+      final cutId = session.activeCutId!;
+
+      session.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.start);
+      session.updateCutEdgeDrag(2);
+      session.endCutEdgeDrag();
+      final trimmed = session.requireActiveCut.duration;
+
+      // "The cut ENDS WHERE THE ROW ENDS" — the invariant the end/comma
+      // verb derives the duration FROM. A lead drag that moved only the
+      // duration would leave the row ending 2 frames late, and the very
+      // next end drag would snap the cut back to it.
+      final row = storyboardLayerForCut(session.requireActiveCut)!;
+      final lastKey = row.timeline.keys.last;
+      expect(
+        lastKey + row.timeline[lastKey]!.length!,
+        trimmed,
+        reason: 'the row\'s last panel follows the cut\'s new end',
+      );
+      expect(
+        row.timeline.keys,
+        [0, 5],
+        reason: 'and every division stays where the user put it',
+      );
+
+      // Undo takes the row and the duration back together, in ONE step.
+      session.undo();
+      final restored = storyboardLayerForCut(session.requireActiveCut)!;
+      final restoredLast = restored.timeline.keys.last;
+      expect(session.requireActiveCut.duration, trimmed + 2);
+      expect(
+        restoredLast + restored.timeline[restoredLast]!.length!,
+        trimmed + 2,
       );
     });
 

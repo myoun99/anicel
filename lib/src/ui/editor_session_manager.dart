@@ -8071,18 +8071,18 @@ class EditorSessionManager extends ChangeNotifier {
   /// attempt).
   _CutEdgeDragVerb? _cutEdgeDragVerb;
 
-  /// Starts a cut edge drag on [cutId]'s [edge], choosing the verb by what
-  /// the edge sits on (feedback #5/#9: when the cut has a storyboard row,
-  /// its edges are the ROW's edges):
+  /// Starts a cut edge drag on [cutId]'s [edge].
   ///
-  /// - a storyboard row's leading edge re-times the cut's LEAD — the first
-  ///   cell's comma changes, the later cells and the following cuts come
-  ///   along, and the cut start stays put (NOT a start trim);
-  /// - its trailing edge is the LAST cell's comma, and the cut's length
-  ///   follows it (the always-synced pair);
-  /// - a cut with no row keeps the plain trims: the END edge trims the
-  ///   duration (growth eats the following gap first); the START edge
-  ///   TRIMS from the front (R12-B, timeline start-comma parity).
+  /// - the LEAD edge is one verb for every cut (R10 R4): the cut loses
+  ///   frames off its front, its END holds so the cuts behind never move,
+  ///   the cut GLUED in front translates wholesale, and the difference
+  ///   comes to rest at the head of the film ([planCutLeadEdge]). A conte
+  ///   row no longer changes the verb — it only floors how far the drag
+  ///   may go, through [minimumCutDurationFor];
+  /// - the TRAILING edge still asks what it sits on (feedback #9): on a
+  ///   cut with a storyboard row it is the LAST cell's comma and the cut's
+  ///   length follows it (the always-synced pair); otherwise it trims the
+  ///   duration, growth eating the following gap first.
   ///
   /// The continuations ([updateCutEdgeDrag], [endCutEdgeDrag],
   /// [cancelCutEdgeDrag]) follow whichever verb began — they carry a delta
@@ -8219,11 +8219,12 @@ class EditorSessionManager extends ChangeNotifier {
   /// leading gap first (that cut holds still until the gap is spent, then
   /// ripples). Shrinking follows the timeline's block language (R10-⑦):
   /// only an ATTACHED next cut rides the boundary — a detached one holds
-  /// its global position (its gap grows by the shrink). START edge: a
-  /// TRIM (R12-B, timeline start-comma parity) — the END stays put and
-  /// the LENGTH changes; leftward growth consumes its own gap then pushes
-  /// the predecessors (cascade, frame-0 clamp), rightward shrink opens
-  /// its gap (length clamps at 1).
+  /// its global position (its gap grows by the shrink). START edge: the
+  /// LEAD verb ([planCutLeadEdge], R10 R4) — the END stays put and the
+  /// LENGTH changes, so nothing behind moves; a GLUED predecessor rides
+  /// the boundary in either direction and a separated one lets its gap
+  /// absorb the move; growth is walled by frame 0 and shrink by
+  /// [minimumCutDurationFor].
   void _updateCutTrimDrag(int cumulativeDelta) {
     final beforeDurations = _cutTrimBeforeDurations;
     final beforeGaps = _cutTrimBeforeGaps;
@@ -8326,16 +8327,79 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
 
-    _cutCommandCoordinator.commitCutDurationDrag(
-      beforeDurations: {
-        for (final id in afterDurations.keys) id: beforeDurations[id]!,
-      },
+    final scopedBeforeDurations = {
+      for (final id in afterDurations.keys) id: beforeDurations[id]!,
+    };
+    final scopedBeforeGaps = {
+      for (final id in afterGaps.keys) id: beforeGaps[id]!,
+    };
+
+    // "The cut ENDS WHERE THE ROW ENDS" (see [_cutSyncResizeFor]). A LEAD
+    // drag changes the duration without going near the row, so a conte
+    // cut's stored row would be left ending somewhere the cut no longer
+    // does — and the next end/comma drag, which derives the duration FROM
+    // the row end, would snap the cut back to the stale one and shove the
+    // cuts behind it. The row's LAST panel follows the new end, keeping
+    // every division key where the user put it.
+    final rowEdits = _storyboardRowEditsForResizedCuts(
+      beforeDurations: scopedBeforeDurations,
       afterDurations: afterDurations,
-      beforeGaps: {for (final id in afterGaps.keys) id: beforeGaps[id]!},
+    );
+    if (rowEdits.isNotEmpty) {
+      _timelineController.commitLayerTimelineDragsWithCutDurations(
+        edits: rowEdits,
+        beforeDurations: scopedBeforeDurations,
+        afterDurations: afterDurations,
+        beforeGaps: scopedBeforeGaps,
+        afterGaps: afterGaps,
+        description: 'Trim cut duration',
+      );
+      _refreshAfterCutCommand();
+      _warmActiveCut();
+      notifyListeners();
+      return;
+    }
+
+    _cutCommandCoordinator.commitCutDurationDrag(
+      beforeDurations: scopedBeforeDurations,
+      afterDurations: afterDurations,
+      beforeGaps: scopedBeforeGaps,
       afterGaps: afterGaps,
     );
     _refreshAfterCutCommand();
     notifyListeners();
+  }
+
+  /// The storyboard-row rewrites a duration change owes, one per resized
+  /// cut that HAS a row: the row re-tiled to the cut's new length, so its
+  /// last panel ends exactly where the cut now does.
+  ///
+  /// Empty when no resized cut has a row — the overwhelmingly common case,
+  /// and the one that keeps the plain cut-duration command as the commit.
+  List<({Layer before, Layer after})> _storyboardRowEditsForResizedCuts({
+    required Map<CutId, int> beforeDurations,
+    required Map<CutId, int> afterDurations,
+  }) {
+    final edits = <({Layer before, Layer after})>[];
+    for (final entry in afterDurations.entries) {
+      if (beforeDurations[entry.key] == entry.value) {
+        continue;
+      }
+      final cut = cutById(entry.key);
+      final row = cut == null ? null : storyboardLayerForCut(cut);
+      if (row == null) {
+        continue;
+      }
+      final filled = storyboardTimelineFilledToCover(
+        timeline: row.timeline,
+        cutDuration: entry.value,
+      );
+      if (filled == null || mapEquals(filled, row.timeline)) {
+        continue;
+      }
+      edits.add((before: row, after: row.copyWith(timeline: filled)));
+    }
+    return edits;
   }
 
   // Fade durability (W4) retired by R4: the fade keys live on the TRACK's
