@@ -1347,16 +1347,20 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                             constraints.hasBoundedWidth
                                             ? constraints.maxWidth
                                             : 0.0;
-                                        final effectiveHorizontalScrollOffset =
-                                            _effectiveHorizontalScrollOffset(
-                                              requestedOffset:
-                                                  _frameAxisOffset.value,
-                                              viewportWidth: viewportWidth,
-                                            );
+                                        // R9 #3: the clamp answers ONE
+                                        // question — does the controller
+                                        // need correcting after a viewport
+                                        // resize. What the ruler renders
+                                        // and hit-tests at is the scroll
+                                        // position itself.
                                         _lastEffectiveHorizontalScrollOffset =
-                                            effectiveHorizontalScrollOffset;
+                                            _frameAxisOffset.value;
                                         _synchronizeHorizontalScrollController(
-                                          effectiveHorizontalScrollOffset,
+                                          _effectiveHorizontalScrollOffset(
+                                            requestedOffset:
+                                                _frameAxisOffset.value,
+                                            viewportWidth: viewportWidth,
+                                          ),
                                         );
                                         final totalFrameContentWidth =
                                             _renderedFrameCount *
@@ -1491,19 +1495,24 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                     valueListenable:
                                                         _frameAxisOffset,
                                                     child: rulerContent,
+                                                    // R9 #3: the RAW scroll
+                                                    // position, overscroll
+                                                    // included. Clamping here
+                                                    // pinned the ruler at the
+                                                    // end while the body kept
+                                                    // sliding — this file's
+                                                    // own contract, broken by
+                                                    // the clamp meant for a
+                                                    // different job (deciding
+                                                    // whether the CONTROLLER
+                                                    // needs correcting after
+                                                    // a viewport resize).
                                                     builder: (context, offset, child) {
-                                                      final effective =
-                                                          _effectiveHorizontalScrollOffset(
-                                                            requestedOffset:
-                                                                offset,
-                                                            viewportWidth:
-                                                                viewportWidth,
-                                                          );
                                                       _lastEffectiveHorizontalScrollOffset =
-                                                          effective;
+                                                          offset;
                                                       return Transform.translate(
                                                         offset: Offset(
-                                                          -effective,
+                                                          -offset,
                                                           0,
                                                         ),
                                                         child: child,
@@ -1684,18 +1693,16 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                           .hasBoundedWidth
                                                       ? constraints.maxWidth
                                                       : 0.0;
-                                                  final effectiveHorizontalScrollOffset =
-                                                      _effectiveHorizontalScrollOffset(
-                                                        requestedOffset:
-                                                            _frameAxisOffset
-                                                                .value,
-                                                        viewportWidth:
-                                                            viewportWidth,
-                                                      );
                                                   _lastEffectiveHorizontalScrollOffset =
-                                                      effectiveHorizontalScrollOffset;
+                                                      _frameAxisOffset.value;
                                                   _synchronizeHorizontalScrollController(
-                                                    effectiveHorizontalScrollOffset,
+                                                    _effectiveHorizontalScrollOffset(
+                                                      requestedOffset:
+                                                          _frameAxisOffset
+                                                              .value,
+                                                      viewportWidth:
+                                                          viewportWidth,
+                                                    ),
                                                   );
 
                                                   // PRO-TIMELINE scrolling

@@ -135,9 +135,8 @@ void main() {
     expect(textsOf(tester), ['2', '3'], reason: 'never the glued total 5');
   });
 
-  testWidgets('R27 #3: the label centres on the block LAST cell', (
-    tester,
-  ) async {
+  testWidgets('R9 #5: the label hugs the block\'s END corner, not the last '
+      'cell\'s centre — the cel name owns the cell', (tester) async {
     await tester.pumpWidget(
       harness(
         layer: drawingLayer({
@@ -145,12 +144,40 @@ void main() {
         }),
       ),
     );
-    // Block spans frames 0..4 → last cell is [144, 192), centre 168.
+    // Block spans frames 0..4 → it ENDS at x = 192 (48px cells).
     final label = labelsOf(tester).single;
     expect(label.text, '4');
-    expect(label.anchor.dx, closeTo(168, 1.5));
+    expect(
+      label.anchor.dx,
+      closeTo(192, 1.5),
+      reason: 'the badge corners on the block end; centring it on the last '
+          'cell (168) put it over the cel name whenever a block was one '
+          'frame long — the commonest block there is',
+    );
     // Bottom-anchored inside the row (52 tall; the glyph insets 1px above).
     expect(label.anchor.dy, 52);
+  });
+
+  testWidgets('R9 #5: a ONE-frame block\'s badge clears the cell centre '
+      'where its name is drawn', (tester) async {
+    await tester.pumpWidget(
+      harness(
+        layer: drawingLayer({
+          0: const TimelineExposure.drawing(FrameId('f1'), length: 1),
+        }),
+      ),
+    );
+
+    final label = labelsOf(tester).single;
+    expect(label.text, '1');
+    // The single cell is [0, 48): the name centres on 24, the badge
+    // corners on 48 and draws leftward from there.
+    expect(label.anchor.dx, closeTo(48, 1.5));
+    expect(
+      label.anchor.dx,
+      greaterThan(24),
+      reason: 'the two numbers no longer share a centre',
+    );
   });
 
   testWidgets('separate blocks label separately; SE rows stay clean', (

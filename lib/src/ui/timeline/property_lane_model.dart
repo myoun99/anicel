@@ -229,6 +229,17 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
   /// membership is resolved against it so nesting reads the same in every
   /// orientation. Defaults to [layers].
   List<Layer>? stack,
+
+  /// R9 #23/#24 — ONE rule for where a twirled-down lane sits: **further
+  /// from the layer means applied later**.
+  ///
+  /// On the horizontal axis "further" is DOWN, so the lanes follow their
+  /// layer in pipeline order (effects, then Transform last) and this stays
+  /// false. On the x-sheet the rows are COLUMNS and the user's direction is
+  /// LEFTWARD, so the same list is emitted BEFORE the layer and reversed —
+  /// the last-applied lane ends up furthest left. Deciding the two
+  /// separately is how they came to disagree in the first place.
+  bool lanesPrecedeLayer = false,
 }) {
   final rows = <TimelineDisplayRow>[];
   // R26 #36: the attach group is unsplittable — a base's transform lanes
@@ -330,5 +341,56 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
     }
   }
   flushPendingLanes();
-  return List.unmodifiable(rows);
+  if (!lanesPrecedeLayer) {
+    return List.unmodifiable(rows);
+  }
+  return List.unmodifiable(_laneRunsMovedAhead(rows, modelStack));
+}
+
+/// Flips each lane RUN to the far side of its owner's attach group and
+/// reverses it — the x-sheet's leftward reading of "further means later"
+/// (R9 #23).
+///
+/// It moves the run past the WHOLE group, mirroring R26 #36: the group is
+/// unsplittable, so where the horizontal axis pushes the lanes past its
+/// end, the x-sheet pushes them past its start.
+List<TimelineDisplayRow> _laneRunsMovedAhead(
+  List<TimelineDisplayRow> rows,
+  List<Layer> modelStack,
+) {
+  final out = <TimelineDisplayRow>[];
+  var index = 0;
+  while (index < rows.length) {
+    if (!rows[index].isLane) {
+      out.add(rows[index]);
+      index += 1;
+      continue;
+    }
+    final ownerId = rows[index].layer.id;
+    final run = <TimelineDisplayRow>[];
+    while (index < rows.length &&
+        rows[index].isLane &&
+        rows[index].layer.id == ownerId) {
+      run.add(rows[index]);
+      index += 1;
+    }
+    var insertAt = out.length;
+    while (insertAt > 0) {
+      final candidate = out[insertAt - 1];
+      if (candidate.isLane) {
+        break;
+      }
+      final layer = candidate.layer;
+      final belongs =
+          layer.id == ownerId ||
+          layer.attachedToLayerId == ownerId ||
+          attachOrganizerBaseOf(layer, modelStack) == ownerId;
+      if (!belongs) {
+        break;
+      }
+      insertAt -= 1;
+    }
+    out.insertAll(insertAt, run.reversed);
+  }
+  return out;
 }

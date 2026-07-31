@@ -23,8 +23,14 @@ class TimelineRunLabel {
   /// The printed number ('48' or '2+0' — never an `f` suffix).
   final String text;
 
-  /// The point the glyph centres on: the block's LAST cell, bottom-centre
-  /// (R27 #3), in row-local coordinates.
+  /// The corner the glyph hugs: where the block ENDS on the frame axis,
+  /// at the far side of the cross axis (R27 #3, corrected by R9 #5), in
+  /// row-local coordinates.
+  ///
+  /// It used to CENTRE on the block's last cell, which put it on top of
+  /// the cel name whenever a block was one frame long — the commonest
+  /// block there is. The name owns the cell's centre; the length is a
+  /// badge in the corner.
   final Offset anchor;
 }
 
@@ -102,8 +108,6 @@ class TimelineRowRunLabelsPainter extends CustomPainter {
       }
       final start = _edge(startIndex);
       final end = _edge(endIndexExclusive);
-      // The centre of the block's LAST cell, row-local.
-      final lastCellCentre = end - frameCellExtent / 2;
       labels.add(
         TimelineRunLabel(
           startIndex: startIndex,
@@ -113,9 +117,10 @@ class TimelineRowRunLabelsPainter extends CustomPainter {
             showSeconds: showSeconds,
             countingBase: countingBase,
           ),
+          // The block's far corner, both axes (R9 #5).
           anchor: axis == Axis.horizontal
-              ? Offset(lastCellCentre, crossAxisExtent)
-              : Offset(crossAxisExtent / 2, lastCellCentre),
+              ? Offset(end, crossAxisExtent)
+              : Offset(crossAxisExtent, end),
         ),
       );
       assert(!start.isNaN);
@@ -137,15 +142,18 @@ class TimelineRowRunLabelsPainter extends CustomPainter {
           : Rect.fromLTRB(0, blockStart, crossAxisExtent, blockEnd);
       canvas.save();
       canvas.clipRect(blockRect);
-      // Bottom-aligned, 1px inset — the widget overlay's `bottom: 1`.
+      // R9 #5: the badge hugs the block's END corner, 1px inset on both
+      // sides, instead of centring on the last cell. The cel name owns the
+      // cell's centre and a one-frame block made the two share it — the
+      // user read one number written over another.
       final offset = axis == Axis.horizontal
           ? Offset(
-              label.anchor.dx - glyph.width / 2,
+              label.anchor.dx - glyph.width - 1,
               crossAxisExtent - glyph.height - 1,
             )
           : Offset(
-              (crossAxisExtent - glyph.width) / 2,
-              label.anchor.dy - glyph.height / 2,
+              crossAxisExtent - glyph.width - 1,
+              label.anchor.dy - glyph.height - 1,
             );
       // Outlined (#15, one rule on every surface): the bright stroke
       // carries the number over pictures; on the near-white paper here it

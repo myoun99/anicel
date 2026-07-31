@@ -850,12 +850,13 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
               viewportExtent: bodyViewportHeight,
               frameCellExtent: _metrics.frameCellWidth,
             );
-            final effectiveFrameScrollOffset = _effectiveFrameScrollOffset(
-              requestedOffset: _frameAxisOffset.value,
-              viewportExtent: bodyViewportHeight,
+            _lastEffectiveFrameScrollOffset = _frameAxisOffset.value;
+            _synchronizeFrameScrollController(
+              _effectiveFrameScrollOffset(
+                requestedOffset: _frameAxisOffset.value,
+                viewportExtent: bodyViewportHeight,
+              ),
             );
-            _lastEffectiveFrameScrollOffset = effectiveFrameScrollOffset;
-            _synchronizeFrameScrollController(effectiveFrameScrollOffset);
 
             // Hidden sections contribute no columns; the section band above
             // the headers carries each section's bracket (shared row/run
@@ -871,6 +872,10 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
               fxEnabledOf: (layerId) =>
                   (widget.layerFxStateOf?.call(layerId) ?? LayerFxState.on) !=
                   LayerFxState.off,
+              // R9 #23: the sheet's lanes open LEFTWARD — one axis rule
+              // with the horizontal grid's downward one, so "further from
+              // the layer means applied later" reads the same in both.
+              lanesPrecedeLayer: true,
             );
             final rangeHooks = widget.rangeHooks;
             _rangeMoveResolver
@@ -1124,17 +1129,15 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                             );
                                           },
                                         ),
+                                        // R9 #3 (transposed): the RAW scroll
+                                        // position, overscroll included —
+                                        // the clamp is for correcting the
+                                        // CONTROLLER, not for paint.
                                         builder: (context, offset, child) {
-                                          final effective =
-                                              _effectiveFrameScrollOffset(
-                                                requestedOffset: offset,
-                                                viewportExtent:
-                                                    bodyViewportHeight,
-                                              );
                                           _lastEffectiveFrameScrollOffset =
-                                              effective;
+                                              offset;
                                           return Transform.translate(
-                                            offset: Offset(0, -effective),
+                                            offset: Offset(0, -offset),
                                             child: child,
                                           );
                                         },
@@ -1729,14 +1732,27 @@ class XSheetFrameRailPainter extends CustomPainter {
   );
 
   /// The resolved per-row model — the probe surface (the shared ruler's
-  /// model class; the rail labels EVERY row, no cadence).
+  /// model class).
+  ///
+  /// R9 #4: the cadence is the SHARED one now
+  /// ([TimelineGridMetrics.frameLabelEveryFrames], the paper-timesheet
+  /// ladder anchored at frame 1). This painter is a transposed
+  /// re-implementation of the horizontal ruler and had never called it —
+  /// so zooming out crowded every row's number into the next, while the
+  /// horizontal ruler thinned out correctly. A ruler is a SCALE, not cell
+  /// content: the "never disappears" rule is about what a cell holds.
   TimelineRulerHeaderModel modelAt(int frameIndex) {
     final selected = frameIndex == currentFrameIndex;
     final outside = frameIndex >= playbackFrameCount;
     final safeFps = framesPerSecond > 0 ? framesPerSecond : 24;
+    final labeled = frameIndex % metrics.frameLabelEveryFrames == 0;
     return TimelineRulerHeaderModel(
       frameIndex: frameIndex,
-      label: showSeconds ? '${frameIndex % safeFps + 1}' : '${frameIndex + 1}',
+      label: !labeled
+          ? ''
+          : showSeconds
+          ? '${frameIndex % safeFps + 1}'
+          : '${frameIndex + 1}',
       secondsLabel: frameIndex % safeFps == 0
           ? '${frameIndex ~/ safeFps + 1}'
           : '',
@@ -1796,22 +1812,32 @@ class XSheetFrameRailPainter extends CustomPainter {
         seconds.paint(canvas, Offset(3, rect.center.dy - seconds.height / 2));
       }
 
-      final number = _label(
-        model.label,
-        TextStyle(
-          fontSize: 14,
-          color: model.outsidePlaybackRange
-              ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
-              : colorScheme.onSurface,
-        ),
-      );
-      number.paint(
-        canvas,
-        Offset(
-          rect.center.dx - number.width / 2,
-          rect.center.dy - number.height / 2,
-        ),
-      );
+      if (model.label.isNotEmpty) {
+        // R9 #4: the number SHRINKS to fit its row before it thins out —
+        // the horizontal ruler's rule, through the same helper. The 14 was
+        // hard-coded, so a zoomed-out row printed a 14pt glyph into a 6px
+        // slot.
+        final number = _label(
+          model.label,
+          TextStyle(
+            fontSize: timelineFittedGlyphFontSize(
+              14,
+              metrics.frameCellWidth,
+              crossExtent: metrics.layerControlsWidth,
+            ),
+            color: model.outsidePlaybackRange
+                ? colorScheme.onSurfaceVariant.withValues(alpha: 0.55)
+                : colorScheme.onSurface,
+          ),
+        );
+        number.paint(
+          canvas,
+          Offset(
+            rect.center.dx - number.width / 2,
+            rect.center.dy - number.height / 2,
+          ),
+        );
+      }
 
       // The cached-range strip moved to [TimelineRulerCursorOverlay] (in
       // its vertical form, hugging the right edge): cached-ness is derived

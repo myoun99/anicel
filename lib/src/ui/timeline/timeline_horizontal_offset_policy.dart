@@ -1,11 +1,19 @@
-/// Resolves pure horizontal offset clamp math for timeline rendering.
+/// Resolves the horizontal offset a timeline's scroll CONTROLLER should be
+/// corrected to after a viewport resize.
 ///
-/// This policy preserves ruler, body, selected exposure outline, and hit-test
-/// alignment after viewport resize by producing the effective horizontal offset
-/// that layout and hit testing should share.
+/// R9 #3 narrowed this file's job. It used to say it produced "the
+/// effective offset that layout and hit testing should share", and the
+/// grid duly rendered its ruler at the clamped value — which pinned the
+/// ruler at the end of the content while the body slid on through an
+/// overscroll, breaking the very alignment the sentence promised.
 ///
-/// It has no `ScrollController` side effects. Widget-side correction scheduling
-/// must remain in `LayerTimelineGrid`.
+/// The scroll POSITION is what the ruler renders and hit-tests at,
+/// overscroll and all: it is by definition the offset the body has. This
+/// clamp answers only "is the controller out of range, and where should it
+/// jump back to" — a question about the controller, not about paint.
+///
+/// It has no `ScrollController` side effects. Widget-side correction
+/// scheduling must remain in `LayerTimelineGrid`.
 
 library;
 
