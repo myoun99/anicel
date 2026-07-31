@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/gestures.dart' show kSecondaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/audio_clip.dart';
@@ -99,6 +100,10 @@ Future<void> _pumpPanel(
   ValueChanged<CutId>? onToggleCutFx,
   bool Function(CutId cutId)? cutPictureVisibleOf,
   ValueChanged<CutId>? onToggleCutPictureVisibility,
+  LayerFxState Function(Track track)? trackFxStateOf,
+  ValueChanged<Track>? onToggleTrackFx,
+  double Function(Track track)? trackOpacityOf,
+  void Function(Track track, double opacity)? onTrackOpacityChangeEnd,
 }) async {
   final expandedAudio = <String>{};
   final expandedTransform = <String>{};
@@ -146,6 +151,13 @@ Future<void> _pumpPanel(
             onToggleCutFx: onToggleCutFx,
             cutPictureVisibleOf: cutPictureVisibleOf,
             onToggleCutPictureVisibility: onToggleCutPictureVisibility,
+            trackFxStateOf: trackFxStateOf,
+            onToggleTrackFx: onToggleTrackFx,
+            trackOpacityOf: trackOpacityOf,
+            onTrackOpacityChanged: onTrackOpacityChangeEnd == null
+                ? null
+                : (_, _) {},
+            onTrackOpacityChangeEnd: onTrackOpacityChangeEnd,
           ),
         ),
       ),
@@ -774,40 +786,76 @@ void main() {
     });
   });
 
-  group('V-row display toggles (R9)', () {
-    testWidgets('the fx switch and the eye act on the ACTIVE cut and '
-        'reflect the session state', (tester) async {
-      final fxToggles = <CutId>[];
+  group('V-row display toggles (R9 #21: the fx column is the TRACK\'s)', () {
+    testWidgets('the fx switch acts on the TRACK and the eye on the ACTIVE '
+        'cut — a row\'s columns describe the row\'s own subject, and this '
+        'row is the track\'s', (tester) async {
+      final fxToggles = <Track>[];
       final eyeToggles = <CutId>[];
-      var fxEnabled = true;
       await _pumpPanel(
         tester,
         project: _project(),
-        cutFxEnabledOf: (_) => fxEnabled,
-        onToggleCutFx: (cutId) {
-          fxToggles.add(cutId);
-          fxEnabled = !fxEnabled;
-        },
+        cutFxEnabledOf: (_) => true,
+        onToggleCutFx: (_) {},
         cutPictureVisibleOf: (_) => true,
         onToggleCutPictureVisibility: eyeToggles.add,
+        trackFxStateOf: (_) => LayerFxState.on,
+        onToggleTrackFx: fxToggles.add,
       );
 
       final fxFinder = find.byKey(
-        const ValueKey<String>('storyboard-cut-fx-lane-cut'),
+        const ValueKey<String>('storyboard-track-fx-lane-track'),
       );
       final eyeFinder = find.byKey(
         const ValueKey<String>('storyboard-cut-visibility-lane-cut'),
       );
       expect(fxFinder, findsOneWidget);
       expect(eyeFinder, findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('storyboard-cut-fx-lane-cut')),
+        findsNothing,
+        reason: 'the cut axis moved to the switch\'s context menu',
+      );
 
       await tester.tap(fxFinder);
       await tester.pumpAndSettle();
-      expect(fxToggles, [const CutId('lane-cut')]);
+      expect(fxToggles.single.id.value, 'lane-track');
 
       await tester.tap(eyeFinder);
       await tester.pumpAndSettle();
       expect(eyeToggles, [const CutId('lane-cut')]);
+    });
+
+    testWidgets('the CUT\'s switch lives on the same button\'s context menu '
+        '— the rail has no room for another column', (tester) async {
+      final cutFxToggles = <CutId>[];
+      await _pumpPanel(
+        tester,
+        project: _project(),
+        cutFxEnabledOf: (_) => true,
+        onToggleCutFx: cutFxToggles.add,
+        trackFxStateOf: (_) => LayerFxState.on,
+        onToggleTrackFx: (_) {},
+      );
+
+      // RIGHT-CLICK, not long press: a GestureDetector's long press never
+      // resolves inside these rails' SingleChildScrollView — the scroll
+      // drag takes the arena. Verified with a minimal probe: the same
+      // widget fires outside a scroll view and not inside one. The SE
+      // rows' mix menu has the same two entrances and the same gap.
+      await tester.tap(
+        find.byKey(const ValueKey<String>('storyboard-track-fx-lane-track')),
+        buttons: kSecondaryButton,
+      );
+      await tester.pumpAndSettle();
+
+      final entry = find.byKey(
+        const ValueKey<String>('storyboard-cut-fx-lane-cut'),
+      );
+      expect(entry, findsOneWidget);
+      await tester.tap(entry);
+      await tester.pumpAndSettle();
+      expect(cutFxToggles, [const CutId('lane-cut')]);
     });
 
     testWidgets('the toggles hide without wiring (display-only rail)', (
@@ -815,7 +863,7 @@ void main() {
     ) async {
       await _pumpPanel(tester, project: _project());
       expect(
-        find.byKey(const ValueKey<String>('storyboard-cut-fx-lane-cut')),
+        find.byKey(const ValueKey<String>('storyboard-track-fx-lane-track')),
         findsNothing,
       );
       expect(
@@ -826,9 +874,10 @@ void main() {
       );
     });
 
-    testWidgets('the GAP keeps the fx/eye buttons NORMAL — never grayed, '
-        'never gone; a press is simply a no-op because no cut exists at '
-        'the index (UI-R13 #2)', (tester) async {
+    testWidgets('the GAP keeps the eye NORMAL — never grayed, never gone; a '
+        'press is simply a no-op because no cut exists at the index '
+        '(UI-R13 #2). The fx switch is unaffected: its subject is the '
+        'track, which is always there', (tester) async {
       await _pumpPanel(
         tester,
         project: _project(),
@@ -838,26 +887,48 @@ void main() {
         cutPictureVisibleOf: (_) => true,
         onToggleCutPictureVisibility: (_) =>
             fail('no subject cut — presses must no-op'),
+        trackFxStateOf: (_) => LayerFxState.on,
+        onToggleTrackFx: (_) {},
       );
 
-      final fx = find.byKey(
-        const ValueKey<String>('storyboard-cut-fx-none-lane-track'),
-      );
       final eye = find.byKey(
         const ValueKey<String>('storyboard-cut-visibility-none-lane-track'),
       );
-      expect(fx, findsOneWidget);
       expect(eye, findsOneWidget);
       expect(
-        tester.widget<IconButton>(fx).onPressed,
+        tester.widget<IconButton>(eye).onPressed,
         isNotNull,
         reason: 'the button stays fully NORMAL (no disabled look)',
       );
-      expect(tester.widget<IconButton>(eye).onPressed, isNotNull);
       // Pressing is a no-op (the fail() wiring proves nothing fires).
-      await tester.tap(fx);
       await tester.tap(eye);
       await tester.pumpAndSettle();
+    });
+
+    testWidgets('the V row\'s opacity bar commits ONCE on release', (
+      tester,
+    ) async {
+      final commits = <double>[];
+      await _pumpPanel(
+        tester,
+        project: _project(),
+        trackOpacityOf: (_) => 1.0,
+        onTrackOpacityChangeEnd: (_, opacity) => commits.add(opacity),
+      );
+
+      final bar = find.byKey(
+        const ValueKey<String>('storyboard-track-opacity-lane-track'),
+      );
+      expect(bar, findsOneWidget);
+
+      final rect = tester.getRect(bar);
+      await tester.dragFrom(
+        rect.centerRight - const Offset(2, 0),
+        Offset(-rect.width / 2, 0),
+      );
+      await tester.pumpAndSettle();
+      expect(commits, hasLength(1));
+      expect(commits.single, lessThan(1.0));
     });
   });
 

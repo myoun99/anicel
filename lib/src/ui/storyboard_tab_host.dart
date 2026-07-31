@@ -713,6 +713,16 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                 cutPictureVisibleOf: _session.isCutPictureVisible,
                 onToggleCutPictureVisibility:
                     _session.toggleCutPictureVisibility,
+                // R9 #21: the TRACK's own fx master and static opacity —
+                // persisted model state, unlike the cut toggles above.
+                trackFxStateOf: (track) => _session.trackFxState(track.id),
+                onToggleTrackFx: (track) => _session.toggleTrackFx(track.id),
+                trackOpacityOf: (track) =>
+                    _session.trackStaticOpacity(track.id),
+                onTrackOpacityChanged: (track, opacity) =>
+                    _session.previewTrackOpacity(track.id, opacity),
+                onTrackOpacityChangeEnd: (track, opacity) =>
+                    _session.commitTrackOpacity(track.id, opacity),
                 // S-row range selection: the SAME track-axis selection the
                 // cut row paints, one row up. The timeline mounts its range
                 // gesture on every layer row (UI-R20 #2) and these rows had

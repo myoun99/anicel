@@ -1991,16 +1991,24 @@ class EditorSessionManager extends ChangeNotifier {
   /// fx switch off.
   double activeCutEditingFadeOpacity({int? frameIndex}) {
     final cut = activeCutOrNull;
-    if (cut == null || !isCutFxEnabled(cut.id)) {
+    if (cut == null) {
       return 1;
     }
-    return trackFadeOpacityAt(
-      transformTrackForCut(cut.id),
-      trackGlobalFrameOf(
-        cut.id,
-        frameIndex ?? _timelineController.currentFrameIndex,
-      ),
-    );
+    // R9 #21: the track's STATIC opacity is not an fx — a layer's static
+    // opacity is not gated by its fx switch either — so it survives the
+    // bypass and only the animated fade stands down.
+    final static = trackStaticOpacityForCut(cut.id);
+    if (!isCutFxEnabled(cut.id)) {
+      return static;
+    }
+    return static *
+        trackFadeOpacityAt(
+          transformTrackForCut(cut.id),
+          trackGlobalFrameOf(
+            cut.id,
+            frameIndex ?? _timelineController.currentFrameIndex,
+          ),
+        );
   }
 
   /// Whether the playback composite for [frameIndex] is warmed at the
@@ -2552,12 +2560,105 @@ class EditorSessionManager extends ChangeNotifier {
   /// pose/fade; the MP4 bake, PNG export and thumbnails are untouched.
   final Set<CutId> _fxBypassedCutIds = {};
 
-  bool isCutFxEnabled(CutId cutId) => !_fxBypassedCutIds.contains(cutId);
+  /// Whether the cut's fx apply. R9 #21: the owning TRACK's persisted
+  /// master is folded in HERE rather than at each reader — the playback
+  /// canvas, the multitrack stack and the editing preview all ask this one
+  /// question, so the track switch reaches all three by arriving at the
+  /// choke point instead of being threaded to them.
+  bool isCutFxEnabled(CutId cutId) {
+    if (_fxBypassedCutIds.contains(cutId)) {
+      return false;
+    }
+    return trackOwningCut(cutId)?.fxEnabled ?? true;
+  }
 
   void toggleCutFx(CutId cutId) {
     if (!_fxBypassedCutIds.remove(cutId)) {
       _fxBypassedCutIds.add(cutId);
     }
+    notifyListeners();
+  }
+
+  // --- V track display: the static opacity and the fx master (R9 #21) ----
+
+  /// The V row's fx switch as a MASTER over its cuts' switches (R8's
+  /// grammar): OFF while the track's own flag is down, MIXED while the
+  /// track applies but some of its cuts are bypassed, ON otherwise.
+  LayerFxState trackFxState(TrackId trackId) {
+    final track = _trackById(trackId);
+    if (track == null) {
+      return LayerFxState.on;
+    }
+    if (!track.fxEnabled) {
+      return LayerFxState.off;
+    }
+    for (final cut in track.cuts) {
+      if (_fxBypassedCutIds.contains(cut.id)) {
+        return LayerFxState.mixed;
+      }
+    }
+    return LayerFxState.on;
+  }
+
+  /// The master toggle: off unless the track is already fully off, in
+  /// which case everything under it comes back on — the layer master's
+  /// rule ([toggleLayerFx]) applied to the track.
+  void toggleTrackFx(TrackId trackId) {
+    final track = _trackById(trackId);
+    if (track == null) {
+      return;
+    }
+    final turnOn = trackFxState(trackId) == LayerFxState.off;
+    if (turnOn) {
+      for (final cut in track.cuts) {
+        _fxBypassedCutIds.remove(cut.id);
+      }
+    }
+    _cutCommandCoordinator.updateTrackDisplay(
+      trackId: trackId,
+      fxEnabled: turnOn,
+      description: turnOn ? 'Apply track FX' : 'Bypass track FX',
+    );
+    _refreshAfterCutCommand();
+    notifyListeners();
+  }
+
+  /// The live V-row opacity drag (session-owned, per the drag-verb rule):
+  /// per-move preview, ONE write on release.
+  final ValueNotifier<({TrackId trackId, double opacity})?>
+  trackOpacityDragPreview = ValueNotifier(null);
+
+  /// The track's static opacity as everything should READ it — the live
+  /// drag value while one is in flight, the stored value otherwise. The
+  /// composite surfaces call the [forCut] form.
+  double trackStaticOpacity(TrackId trackId) {
+    final dragging = trackOpacityDragPreview.value;
+    if (dragging != null && dragging.trackId == trackId) {
+      return dragging.opacity;
+    }
+    return _trackById(trackId)?.opacity ?? 1.0;
+  }
+
+  double trackStaticOpacityForCut(CutId cutId) {
+    final owner = trackOwningCut(cutId);
+    return owner == null ? 1.0 : trackStaticOpacity(owner.id);
+  }
+
+  void previewTrackOpacity(TrackId trackId, double opacity) {
+    trackOpacityDragPreview.value = (
+      trackId: trackId,
+      opacity: opacity.clamp(0.0, 1.0).toDouble(),
+    );
+  }
+
+  void commitTrackOpacity(TrackId trackId, double opacity) {
+    trackOpacityDragPreview.value = null;
+    _cutCommandCoordinator.updateTrackDisplay(
+      trackId: trackId,
+      opacity: opacity.clamp(0.0, 1.0).toDouble(),
+      description: 'Track opacity',
+    );
+    _refreshAfterCutCommand();
     notifyListeners();
   }
 

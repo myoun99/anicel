@@ -54,6 +54,7 @@ import 'rasterize_layer_reference_command.dart';
 import 'update_camera_instruction_set_command.dart';
 import 'update_cut_camera_command.dart';
 import 'update_cut_note_command.dart';
+import 'update_track_display_command.dart';
 import 'update_track_transform_command.dart';
 import 'update_cut_thumbnail_frame_command.dart';
 import 'update_layer_audio_clips_command.dart';
@@ -406,6 +407,36 @@ class CutCommandCoordinator {
         repository: repository,
         trackId: trackId,
         transformTrack: transformTrack,
+        description: description,
+      ),
+    );
+  }
+
+  /// The V track's static opacity and fx master (R9 #21) in one undo step;
+  /// no-op when nothing changes.
+  void updateTrackDisplay({
+    required TrackId trackId,
+    double? opacity,
+    bool? fxEnabled,
+    String description = 'Edit track display',
+  }) {
+    for (final track in repository.requireProject().tracks) {
+      if (track.id == trackId) {
+        final sameOpacity = opacity == null || track.opacity == opacity;
+        final sameFx = fxEnabled == null || track.fxEnabled == fxEnabled;
+        if (sameOpacity && sameFx) {
+          return;
+        }
+        break;
+      }
+    }
+
+    historyManager.execute(
+      UpdateTrackDisplayCommand(
+        repository: repository,
+        trackId: trackId,
+        opacity: opacity,
+        fxEnabled: fxEnabled,
         description: description,
       ),
     );

@@ -41,6 +41,7 @@ class CanvasPlaybackView extends StatefulWidget {
     required this.cameraPoseOf,
     this.seNameTagsOf,
     this.cutFxEnabledOf,
+    this.trackStaticOpacityOf,
     this.cutPictureVisibleOf,
     this.viewport,
     this.background = ProjectBackground.defaultBackground,
@@ -68,6 +69,10 @@ class CanvasPlaybackView extends StatefulWidget {
   /// = always on. Display aids only: the MP4 bake and thumbnails never
   /// consult these.
   final bool Function(CutId cutId)? cutFxEnabledOf;
+
+  /// The owning V track's STATIC opacity (R9 #21) — the live drag value
+  /// while the V row's slider is in flight. Null keeps every track opaque.
+  final double Function(CutId cutId)? trackStaticOpacityOf;
   final bool Function(CutId cutId)? cutPictureVisibleOf;
 
   /// The panel's live pan/zoom (canvas mode); identity when null.
@@ -268,10 +273,15 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
               pasteboardColor: widget.cameraViewEnabled && !inGap
                   ? Color(widget.pasteboardArgb)
                   : null,
-              fadeOpacity:
-                  !inGap && cut != null && position != null && cutFxEnabled
-                  ? trackFadeOpacityAt(transformTrack, trackFrame)
-                  : 1,
+              // R9 #21: the track's STATIC opacity carries the animated
+              // fade (a layer's static opacity carries its own) and stays
+              // on through an fx bypass, because it is not an fx.
+              fadeOpacity: inGap || cut == null || position == null
+                  ? 1
+                  : (widget.trackStaticOpacityOf?.call(cut.id) ?? 1.0) *
+                        (cutFxEnabled
+                            ? trackFadeOpacityAt(transformTrack, trackFrame)
+                            : 1.0),
             ),
           ),
           _prerenderProgressBar(context),

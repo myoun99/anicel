@@ -394,6 +394,38 @@ class ProjectRepository {
     });
   }
 
+  /// The V track's DISPLAY properties (R9 #21): its static opacity and its
+  /// fx master. Both persist — R8's rule that an fx switch is model state,
+  /// applied to the one row that still kept its switch in the session.
+  void updateTrackDisplay({
+    required TrackId trackId,
+    double? opacity,
+    bool? fxEnabled,
+  }) {
+    updateProject((project) {
+      var found = false;
+      final next = project.copyWith(
+        tracks: [
+          for (final track in project.tracks)
+            if (track.id == trackId)
+              (() {
+                found = true;
+                return track.copyWith(
+                  opacity: opacity,
+                  fxEnabled: fxEnabled,
+                );
+              })()
+            else
+              track,
+        ],
+      );
+      if (!found) {
+        throw StateError('Track not found: $trackId');
+      }
+      return next;
+    });
+  }
+
   void updateCutMetadata({
     required CutId cutId,
     required CutMetadata metadata,

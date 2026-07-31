@@ -17,6 +17,8 @@ class Track {
     List<Layer> seLayers = const [],
     TransformTrack? transformTrack,
     this.type = TrackType.video,
+    this.opacity = 1.0,
+    this.fxEnabled = true,
   }) : cuts = List.unmodifiable(cuts),
        seLayers = List.unmodifiable(seLayers),
        transformTrack = transformTrack ?? TransformTrack.empty();
@@ -43,6 +45,24 @@ class Track {
 
   final TrackType type;
 
+  /// The V track's STATIC opacity (R9 #21) — the resting value the
+  /// animated fade lane multiplies, exactly as a layer's static opacity
+  /// carries its animated one ([resolveOpacityTrackAt]'s contract). The
+  /// track had only the animated lane, so "make this whole track 50%"
+  /// meant authoring keys.
+  ///
+  /// Unlike the fade, this is NOT an fx: a layer's static opacity is not
+  /// gated by its fx switch either, so [fxEnabled] off still composites
+  /// at this value.
+  final double opacity;
+
+  /// The track's fx MASTER (R9 #21), persisted like every fx switch since
+  /// R8. False bypasses the track's whole cut-level Transform group — the
+  /// pose AND the fade — on every cut it owns, which is what the V row's
+  /// switch means when the user reaches for it: the per-cut switches under
+  /// it stay as they were.
+  final bool fxEnabled;
+
   Track copyWith({
     TrackId? id,
     String? name,
@@ -50,6 +70,8 @@ class Track {
     List<Layer>? seLayers,
     TransformTrack? transformTrack,
     TrackType? type,
+    double? opacity,
+    bool? fxEnabled,
   }) {
     return Track(
       id: id ?? this.id,
@@ -58,6 +80,8 @@ class Track {
       seLayers: seLayers ?? this.seLayers,
       transformTrack: transformTrack ?? this.transformTrack,
       type: type ?? this.type,
+      opacity: opacity ?? this.opacity,
+      fxEnabled: fxEnabled ?? this.fxEnabled,
     );
   }
 
@@ -68,6 +92,10 @@ class Track {
     'seLayers': seLayers.map((layer) => layer.toJson()).toList(),
     if (transformTrack.isNotEmpty) 'transform': transformTrack.toJson(),
     'type': type.name,
+    // R8's rule: a default is silence. Files written before R9 carry
+    // neither key and open at 1.0 / on, which is what they always were.
+    if (opacity != 1.0) 'opacity': opacity,
+    if (!fxEnabled) 'fxEnabled': false,
   };
 
   factory Track.fromJson(Map<String, dynamic> json) {
@@ -81,6 +109,8 @@ class Track {
     final transformTrack = transformJson is Map<String, dynamic>
         ? TransformTrack.fromJson(transformJson)
         : liftCutTransformsToTrack(cutsJson);
+    final opacity = (json['opacity'] as num?)?.toDouble() ?? 1.0;
+    final fxEnabled = json['fxEnabled'] as bool? ?? true;
     final seLayersJson = json['seLayers'] as List<dynamic>?;
     if (seLayersJson != null) {
       return Track(
@@ -95,6 +125,8 @@ class Track {
         ),
         transformTrack: transformTrack,
         type: TrackType.values.byName(json['type'] as String),
+        opacity: opacity,
+        fxEnabled: fxEnabled,
       );
     }
 
@@ -109,6 +141,8 @@ class Track {
       seLayers: lifted.seLayers,
       transformTrack: transformTrack,
       type: TrackType.values.byName(json['type'] as String),
+      opacity: opacity,
+      fxEnabled: fxEnabled,
     );
   }
 
@@ -121,7 +155,9 @@ class Track {
           listEquals(other.cuts, cuts) &&
           listEquals(other.seLayers, seLayers) &&
           other.transformTrack == transformTrack &&
-          other.type == type;
+          other.type == type &&
+          other.opacity == opacity &&
+          other.fxEnabled == fxEnabled;
 
   @override
   int get hashCode => Object.hash(
@@ -131,6 +167,8 @@ class Track {
     Object.hashAll(seLayers),
     transformTrack,
     type,
+    opacity,
+    fxEnabled,
   );
 
   @override
