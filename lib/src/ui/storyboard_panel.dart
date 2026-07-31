@@ -4613,14 +4613,13 @@ class _StoryboardTrackRow extends StatelessWidget {
                           ordinal: index,
                           startIndex: grips[index].startFrame,
                           endIndexExclusive: grips[index].endFrameExclusive,
-                          // R9 #8: EVERY panel carries a front edge now.
-                          // The user asked for it back and the "two grips
-                          // would overlap" worry turned out to be
-                          // groundless — each hit strip lies INSIDE its own
-                          // block (start = [blockStart, +hit], end =
-                          // [blockEnd - hit, blockEnd]), so at a boundary
-                          // they are adjacent, never stacked.
-                          startGrip: true,
+                          // R10 R4: the LEAD edge is the CUT's, so only a
+                          // cut's first panel hangs one. P5 #8 gave every
+                          // panel a front grip and had the interior ones
+                          // impersonate the previous panel's back grip —
+                          // two grips on one boundary, doing one thing.
+                          // A boundary has one handle again.
+                          startGrip: grips[index].isFirst,
                           endGrip: true,
                         ),
                     ],
@@ -4640,24 +4639,13 @@ class _StoryboardTrackRow extends StatelessWidget {
                       if (ordinal < 0 || ordinal >= grips.length) {
                         return false;
                       }
-                      // R9 #8: a front edge INSIDE a cut delegates to the
-                      // previous panel's back edge — the user's own
-                      // description ("눈속임"): pulling this block's left
-                      // edge right and pushing the block before it right
-                      // are the same boundary moving, so there is one verb
-                      // and the near grip just borrows it. At a CUT
-                      // boundary (the first panel) the front edge stays
-                      // the cut's own, which reaches the connected cut.
-                      var index = ordinal;
-                      var gripEdge = edge;
-                      if (edge == TimelineBlockEdge.start &&
-                          !grips[ordinal].isFirst &&
-                          ordinal > 0) {
-                        index = ordinal - 1;
-                        gripEdge = TimelineBlockEdge.end;
-                      }
-                      final grip = grips[index];
-                      if (gripEdge == TimelineBlockEdge.start) {
+                      // R10 R4: no impersonation. A grip reports the edge
+                      // it IS, and the rule that decides what moves lives
+                      // one layer down, in the session — which is where
+                      // the "a front edge inside a cut is really the
+                      // previous back edge" trick belonged all along.
+                      final grip = grips[ordinal];
+                      if (edge == TimelineBlockEdge.start) {
                         return stripEdges!.onCutEdgeBegin(
                           grip.cutId,
                           TimelineBlockEdge.start,

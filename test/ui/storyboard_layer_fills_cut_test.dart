@@ -118,29 +118,38 @@ void main() {
       );
     });
 
-    test('a START drag re-times the LEAD, not the front (feedback #5): the '
-        'first cell shrinks to a frame, the rest comes along, and the cut '
-        'start stays put', () {
+    test('R10 R4: a LEAD drag is the same gesture whether or not the cut '
+        'has a conte row — the row only says how FAR it may go', () {
       final session = sessionFor();
       session.addLayerOfKind(LayerKind.storyboard);
       session.selectFrameIndex(5);
       session.createDrawingAtCurrentFrame();
       final cutId = session.activeCutId!;
       final duration = session.requireActiveCut.duration;
+      final layerBefore = storyboardLayerForCut(session.requireActiveCut)!;
 
       session.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.start);
       session.updateCutEdgeDrag(100);
       session.endCutEdgeDrag();
 
-      // The first cell clamps at one frame (it was 5, so the lead lost 4);
-      // the later division keeps its own comma and comes left by the same
-      // 4, and the cut's DURATION — never its start — absorbs the change.
-      expect(session.requireActiveCut.duration, duration - 4);
-      expect(session.requireActiveCut.leadingGapFrames, 0);
-      final layer = storyboardLayerForCut(session.requireActiveCut)!;
-      expect(layer.timeline.keys, [0, 1]);
-      expect(layer.timeline[0]!.length, 1);
-      expect(layer.timeline[1]!.length, duration - 5);
+      // The floor is the ROW's extent — the cut cannot be trimmed past its
+      // own last panel (delete cells to shrink further). This is the whole
+      // remaining role of the conte row in this gesture; before R10 R4 its
+      // presence sent the drag to an entirely different verb.
+      expect(
+        session.requireActiveCut.duration,
+        minimumCutDurationFor(session.requireActiveCut),
+      );
+      expect(
+        session.requireActiveCut.leadingGapFrames,
+        duration - session.requireActiveCut.duration,
+        reason: 'the head takes exactly what the cut gave up',
+      );
+      expect(
+        storyboardLayerForCut(session.requireActiveCut)!.timeline,
+        layerBefore.timeline,
+        reason: 'the panels are not re-keyed: the gesture is about the CUT',
+      );
     });
 
     test('a cut with no storyboard row still trims down to one frame', () {
