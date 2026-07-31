@@ -23,14 +23,21 @@ class TimelineRunLabel {
   /// The printed number ('48' or '2+0' — never an `f` suffix).
   final String text;
 
-  /// The corner the glyph hugs: where the block ENDS on the frame axis,
-  /// at the far side of the cross axis (R27 #3, corrected by R9 #5), in
-  /// row-local coordinates.
+  /// Where the glyph sits, in row-local coordinates — ONE rule for both
+  /// orientations (R27 #3, restored by R10):
   ///
-  /// It used to CENTRE on the block's last cell, which put it on top of
-  /// the cel name whenever a block was one frame long — the commonest
-  /// block there is. The name owns the cell's centre; the length is a
-  /// badge in the corner.
+  /// * the FRAME axis: the centre of the block's LAST cell;
+  /// * the CROSS axis: the far end, 1px in — the timeline's bottom, the
+  ///   X-sheet's right. A literal pixel, not a fraction of the extent.
+  ///
+  /// R9 #5 moved the frame axis to the block's END corner as well, to
+  /// keep a one-frame block's badge off its cel name. The user read the
+  /// result as the number falling off the block, and the cross-axis
+  /// inset already separates the two: the name centres in the cell, the
+  /// badge hangs under it.
+  ///
+  /// This is also what the storyboard's panel writing has always done,
+  /// so the three surfaces are back to one rule.
   final Offset anchor;
 }
 
@@ -108,6 +115,8 @@ class TimelineRowRunLabelsPainter extends CustomPainter {
       }
       final start = _edge(startIndex);
       final end = _edge(endIndexExclusive);
+      // The centre of the block's LAST cell, row-local.
+      final lastCellCentre = end - frameCellExtent / 2;
       labels.add(
         TimelineRunLabel(
           startIndex: startIndex,
@@ -117,10 +126,11 @@ class TimelineRowRunLabelsPainter extends CustomPainter {
             showSeconds: showSeconds,
             countingBase: countingBase,
           ),
-          // The block's far corner, both axes (R9 #5).
+          // Frame axis: the last cell's centre. Cross axis: the far end
+          // (R10).
           anchor: axis == Axis.horizontal
-              ? Offset(end, crossAxisExtent)
-              : Offset(crossAxisExtent, end),
+              ? Offset(lastCellCentre, crossAxisExtent)
+              : Offset(crossAxisExtent, lastCellCentre),
         ),
       );
       assert(!start.isNaN);
@@ -142,18 +152,18 @@ class TimelineRowRunLabelsPainter extends CustomPainter {
           : Rect.fromLTRB(0, blockStart, crossAxisExtent, blockEnd);
       canvas.save();
       canvas.clipRect(blockRect);
-      // R9 #5: the badge hugs the block's END corner, 1px inset on both
-      // sides, instead of centring on the last cell. The cel name owns the
-      // cell's centre and a one-frame block made the two share it — the
-      // user read one number written over another.
+      // R10: CENTRED on the block's last cell along the frame axis, and
+      // pushed to the far end of the cross axis with a 1px inset — the
+      // timeline's bottom, the X-sheet's right. The cross axis is what
+      // keeps the badge clear of the cel name, which centres in the cell.
       final offset = axis == Axis.horizontal
           ? Offset(
-              label.anchor.dx - glyph.width - 1,
+              label.anchor.dx - glyph.width / 2,
               crossAxisExtent - glyph.height - 1,
             )
           : Offset(
               crossAxisExtent - glyph.width - 1,
-              label.anchor.dy - glyph.height - 1,
+              label.anchor.dy - glyph.height / 2,
             );
       // Outlined (#15, one rule on every surface): the bright stroke
       // carries the number over pictures; on the near-white paper here it

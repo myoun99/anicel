@@ -887,6 +887,11 @@ class _LaneKeyMarkerState extends State<_LaneKeyMarker> {
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
+      // Drag from the DOWN position (R10) — the rule the block edge grips
+      // took in the same round. This marker accumulates deltas and rounds
+      // them, so discarding the ~18px the recognizer spends on the arena
+      // parks the key that far behind the finger for the whole drag.
+      dragStartBehavior: DragStartBehavior.down,
       // The key drags along the frame axis of the owning grid.
       onHorizontalDragStart: editable && horizontal
           ? (_) => _startDrag()

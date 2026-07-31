@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 
-import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:flutter/gestures.dart'
+    show DragStartBehavior, PointerDeviceKind;
 import 'package:flutter/material.dart';
 
 import '../input/app_input_settings.dart' show AppInput;
@@ -15,9 +16,13 @@ import 'timeline_frame_span_layout.dart';
 /// ink (R28 #3) — geometry is constant, so this is the whole visual state.
 enum BlockEdgeGripInk { rest, hovered, dragging }
 
-/// 3.5 → 4.5 (R9 #11): the outline eats into the bar from both sides, so
-/// the CORE keeps the weight it had.
-const double _gripBarThickness = 4.5;
+/// Back to 3.5 (R10). R9 #11 widened it to 4.5 on the theory that the new
+/// outline eats into the bar from both sides, but the outline is STROKED
+/// on the bar's own edge — it adds weight rather than taking it, and 4.5
+/// read as a fat rung across the block. The outline width is unchanged:
+/// [timelineOutlineWidthFor] floors at 1.0, and both 3.5 and 4.5 land
+/// there, so nothing else that shares the setting moves.
+const double _gripBarThickness = 3.5;
 const double _gripBarInset = 2.5;
 
 /// R28 #3: the bar's cross-axis length as a fraction of the row — a
@@ -453,6 +458,13 @@ class _BlockEdgeGripState extends State<BlockEdgeGrip> {
         child: GestureDetector(
           behavior: HitTestBehavior.opaque,
           supportedDevices: widget.supportedDevices,
+          // Drag from the DOWN position (R10): the slop the recognizer
+          // spends winning the arena is real travel of the hand, and
+          // Flutter's default throws it away — so the edge settled ~18px
+          // BEHIND the pointer and stayed there for the whole gesture.
+          // The timeline's other edit drags already read `down`, the
+          // cut-end handle among them — and that one is an edge too.
+          dragStartBehavior: DragStartBehavior.down,
           onHorizontalDragStart: horizontal ? (_) => _startDrag() : null,
           onHorizontalDragUpdate: horizontal
               ? (details) => _updateDrag(details.delta.dx)

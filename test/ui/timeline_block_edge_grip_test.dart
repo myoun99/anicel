@@ -24,14 +24,17 @@ import 'timeline/timeline_row_chrome_probe.dart';
 /// geometry the row hit-tests with.
 void main() {
   group('comma drag pixel policy', () {
-    test('R9 #10: an EDGE steps at the cell BOUNDARY, not its midpoint — '
+    test('R10: the frame axis follows the boundary NEAREST the pointer, '
         'symmetric in both directions', () {
-      // The edge already sits on a boundary, so it moves once the pointer
-      // has carried it a WHOLE cell. Rounding stepped at 24px, which the
-      // user read as the edge leaping out from under the hand.
+      // R9 #10 truncated here, reading "the edge leapt out from under the
+      // hand" as a rounding fault. The fault was the two grip mounts still
+      // discarding their slop (DragStartBehavior.start), which parked the
+      // edge ~18px behind the pointer for the whole gesture; truncation on
+      // top of that offset put the step 42px out one way and 6px the
+      // other. With the slop kept, rounding IS "nearest the cursor".
       expect(commaDragFrameDelta(accumulatedDelta: 20, frameCellExtent: 48), 0);
-      expect(commaDragFrameDelta(accumulatedDelta: 25, frameCellExtent: 48), 0);
-      expect(commaDragFrameDelta(accumulatedDelta: 47, frameCellExtent: 48), 0);
+      expect(commaDragFrameDelta(accumulatedDelta: 25, frameCellExtent: 48), 1);
+      expect(commaDragFrameDelta(accumulatedDelta: 47, frameCellExtent: 48), 1);
       expect(commaDragFrameDelta(accumulatedDelta: 48, frameCellExtent: 48), 1);
       expect(
         commaDragFrameDelta(accumulatedDelta: 100, frameCellExtent: 48),
@@ -39,7 +42,7 @@ void main() {
       );
       expect(
         commaDragFrameDelta(accumulatedDelta: -25, frameCellExtent: 48),
-        0,
+        -1,
       );
       expect(
         commaDragFrameDelta(accumulatedDelta: -48, frameCellExtent: 48),
@@ -47,15 +50,15 @@ void main() {
       );
     });
 
-    test('a MOVE keeps the nearest cell (user rule: edges only)', () {
-      // A move travels with the grab POINT, which starts inside a cell
-      // rather than on a boundary.
+    test('R10: ONE rule — an edge, a move and the run [+] all read the same '
+        'function', () {
+      // R9 #10 forked a second policy (timelineMoveFrameDelta) so the two
+      // could not drift back together by accident. They came back together
+      // by DECISION, so the fork is gone rather than sitting there as two
+      // identical bodies waiting for someone to edit one of them.
+      expect(commaDragFrameDelta(accumulatedDelta: 25, frameCellExtent: 48), 1);
       expect(
-        timelineMoveFrameDelta(accumulatedDelta: 25, frameCellExtent: 48),
-        1,
-      );
-      expect(
-        timelineMoveFrameDelta(accumulatedDelta: -25, frameCellExtent: 48),
+        commaDragFrameDelta(accumulatedDelta: -25, frameCellExtent: 48),
         -1,
       );
     });
@@ -231,7 +234,11 @@ void main() {
           prefix: 'xsheet',
         ),
       );
-      // X-sheet frame rows are 36px tall.
+      // X-sheet frame rows are 36px tall. R10: the 19px that wins the
+      // arena is TRAVEL, not overhead — it is past the row's midpoint, so
+      // the edge has already stepped by the time the drag is recognised.
+      // Under DragStartBehavior.start those pixels were thrown away and
+      // the edge spent the rest of the gesture 19px behind the finger.
       await gesture.moveBy(const Offset(0, 19));
       await tester.pump();
       await gesture.moveBy(const Offset(0, 36));
@@ -242,7 +249,43 @@ void main() {
       expect(log.begins, [
         (const LayerId('layer-a'), 0, TimelineBlockEdge.end),
       ]);
+      expect(log.updates, [1, 2]);
+      expect(log.ends, 1);
+    });
+  });
+
+  group('R10: the slop is travel, not overhead', () {
+    testWidgets('a drag that only just wins the arena has already moved the '
+        'edge — the pixels spent on the slop are not discarded', (
+      tester,
+    ) async {
+      final log = _DragLog();
+      await tester.pumpWidget(
+        _rowHarness(layer: _twoBlockLayer(), commaDrag: log.callbacks),
+      );
+
+      // 48px cells: one move of 30px is over the touch slop (18) AND over
+      // the half cell, so the edge owes a step immediately. Under
+      // DragStartBehavior.start the recognizer kept only 30 - 18 = 12px
+      // and reported nothing — the edge sat still while the finger was
+      // already most of a cell away, which is what the user described as
+      // the edge staying out of register for the whole gesture.
+      final gesture = await tester.startGesture(
+        _gripRect(tester, 'end', 0).center,
+      );
+      await gesture.moveBy(const Offset(30, 0));
+      await tester.pump();
+
       expect(log.updates, [1]);
+
+      // And it comes home: back to the down position is back to zero, with
+      // no residue left over from the arena.
+      await gesture.moveBy(const Offset(-30, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pump();
+
+      expect(log.updates, [1, 0]);
       expect(log.ends, 1);
     });
   });

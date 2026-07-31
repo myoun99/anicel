@@ -1011,9 +1011,10 @@ void main() {
       );
       await expand(tester);
 
-      // Default zoom = 24px per frame (slim round): the drag's 18px touch
-      // slop is consumed first, so 18 + 2×24 = +2 frames.
-      await tester.drag(_laneKey('position', 8), const Offset(66, 0));
+      // Default zoom = 24px per frame (slim round). R10: the pixels the
+      // drag spends winning the arena are travel, not overhead, so the
+      // TOTAL is what snaps — 48 = 2×24 = +2 frames.
+      await tester.drag(_laneKey('position', 8), const Offset(48, 0));
       await tester.pumpAndSettle();
 
       expect(_laneKey('position', 8), findsNothing);
@@ -1311,9 +1312,9 @@ void main() {
       );
       await expand(tester);
 
-      // X-sheet zoom default = 36px per frame row: +96px down = +2 frames
-      // (the drag recognizer's slop eats ~20px of the gesture).
-      await tester.drag(laneKey('position', 4), const Offset(0, 96));
+      // X-sheet zoom default = 36px per frame row. R10: the slop is part
+      // of the travel, so the TOTAL snaps — 72 = 2×36 = +2 frames.
+      await tester.drag(laneKey('position', 4), const Offset(0, 72));
       await tester.pumpAndSettle();
 
       expect(laneKey('position', 4), findsNothing);
