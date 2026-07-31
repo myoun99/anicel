@@ -13,6 +13,7 @@ import '../panels/editor_panel_frame.dart';
 import '../panels/panel_scrollbar.dart';
 import '../theme/app_theme.dart' show instantMenuAnimation;
 import '../widgets/app_window.dart';
+import '../widgets/instant_tap_region.dart';
 import 'brush_preset_reorder.dart';
 import 'brush_stroke_preview.dart';
 import 'brush_tip_preview.dart';
@@ -926,6 +927,10 @@ class _BrushGroupTab extends StatelessWidget {
 
   /// Opens the group's name/icon editor — a double tap, which cannot
   /// collide with the single tap that switches group.
+  ///
+  /// R10: and no longer DELAYS it either. Registering it used to put the
+  /// group switch behind the double-tap window, so picking a group took
+  /// ~300ms to show — see [InstantTapRegion].
   final VoidCallback? onEdit;
   final VoidCallback? onRename;
   final VoidCallback? onDelete;
@@ -939,7 +944,10 @@ class _BrushGroupTab extends StatelessWidget {
       borderRadius: BorderRadius.circular(4),
       child: InkWell(
         key: ValueKey<String>(keyValue),
-        onTap: onTap,
+        // The switch rides the raw pointer (R10) — see the wrapper below.
+        // The InkWell keeps a no-op tap so its ripple and its semantics
+        // stay, the same shape the timeline cells use.
+        onTap: () {},
         onDoubleTap: onEdit,
         borderRadius: BorderRadius.circular(4),
         child: Container(
@@ -986,7 +994,12 @@ class _BrushGroupTab extends StatelessWidget {
         ),
       ),
     );
-    final face = showTooltip ? Tooltip(message: label, child: body) : body;
+    // R10: the group switch acts on the raw pointer, so it no longer waits
+    // out `onEdit`'s double-tap window. Touch still commits on the release
+    // — the rail scrolls, and a press that becomes a scroll must not
+    // switch groups under the finger.
+    final instant = InstantTapRegion(onTap: (_) => onTap(), child: body);
+    final face = showTooltip ? Tooltip(message: label, child: instant) : instant;
     return SizedBox(
       height: extent,
       child: hasMenu

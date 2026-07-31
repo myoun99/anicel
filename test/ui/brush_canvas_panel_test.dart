@@ -409,20 +409,21 @@ void main() {
         )
         .viewport;
 
-    Future<void> doubleTapZoomLabel(WidgetTester tester) async {
-      final label = find.byKey(
-        const ValueKey<String>('canvas-viewport-zoom-label'),
+    /// R10: ONE tap opens the entry. It was a double tap, which held every
+    /// tap on the readout for the double-tap window — ~300ms of nothing,
+    /// which the user asked to be gone everywhere. Nothing was lost: the
+    /// label had no single-tap action to collide with.
+    Future<void> tapZoomLabel(WidgetTester tester) async {
+      await tester.tap(
+        find.byKey(const ValueKey<String>('canvas-viewport-zoom-label')),
       );
-      await tester.tap(label);
-      await tester.pump(const Duration(milliseconds: 60));
-      await tester.tap(label);
       await tester.pumpAndSettle();
     }
 
-    testWidgets('double-tap, type, and submit set the zoom', (tester) async {
+    testWidgets('tap, type, and submit set the zoom', (tester) async {
       await pumpZoomPanel(tester);
 
-      await doubleTapZoomLabel(tester);
+      await tapZoomLabel(tester);
       final input = find.byKey(
         const ValueKey<String>('canvas-viewport-zoom-input'),
       );
@@ -440,7 +441,7 @@ void main() {
     testWidgets('Escape cancels the entry without committing', (tester) async {
       await pumpZoomPanel(tester);
 
-      await doubleTapZoomLabel(tester);
+      await tapZoomLabel(tester);
       await tester.enterText(
         find.byKey(const ValueKey<String>('canvas-viewport-zoom-input')),
         '300',
@@ -461,7 +462,7 @@ void main() {
     ) async {
       await pumpZoomPanel(tester);
 
-      await doubleTapZoomLabel(tester);
+      await tapZoomLabel(tester);
       await tester.enterText(
         find.byKey(const ValueKey<String>('canvas-viewport-zoom-input')),
         '5000',

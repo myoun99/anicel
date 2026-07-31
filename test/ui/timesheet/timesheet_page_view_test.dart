@@ -244,7 +244,7 @@ void main() {
     });
 
     testWidgets('the page readout is the shared drag readout: dragging it '
-        'turns pages, double-tap types one', (tester) async {
+        'turns pages, a TAP types one', (tester) async {
       await pumpHost(tester);
 
       // 8px per page (see the host) — 40px right is well past one page but
@@ -253,8 +253,10 @@ void main() {
       await tester.pumpAndSettle();
       expect(page, 1);
 
-      await tester.tap(find.byKey(_pageLabelKey));
-      await tester.pump(const Duration(milliseconds: 50));
+      // R10: one tap opens the entry. It used to take a double tap, which
+      // put every tap on the readout behind the double-tap window. Tap and
+      // drag still do not fight — the drag above proves it: past the slop
+      // the drag takes the arena and the tap is refused.
       await tester.tap(find.byKey(_pageLabelKey));
       await tester.pumpAndSettle();
       await tester.enterText(find.byKey(_pageInputKey), '1');

@@ -6,9 +6,16 @@ import '../text/full_width_numerals.dart';
 /// for the canvas angle/zoom texts and any future value label):
 /// - horizontal DRAG adjusts the value ([unitsPerPixel] per pixel,
 ///   reported as whole-unit deltas through [onDragDelta]);
-/// - DOUBLE-TAP swaps to an inline numeric field (Enter/tap-out commits
-///   through [onEditSubmit], Escape cancels) — the FieldSlider editor
-///   vocabulary.
+/// - a single TAP swaps to an inline numeric field (Enter/tap-out commits
+///   through [onEditSubmit], Escape cancels).
+///
+/// R10: the field used to open on a DOUBLE tap, which held every tap on
+/// this label for the double-tap window — ~300ms of nothing happening,
+/// which is what the user asked to be rid of everywhere. It cost nothing
+/// to give up: there was no single-tap action to collide with, and the
+/// app's rule is now one line — a tap edits a number, a double tap opens
+/// a thing. Tap and drag do not fight: past the slop the drag takes the
+/// arena and the tap is refused; release without moving and it is a tap.
 class DragValueLabel extends StatefulWidget {
   const DragValueLabel({
     super.key,
@@ -135,7 +142,7 @@ class _DragValueLabelState extends State<DragValueLabel> {
       child: GestureDetector(
         key: ValueKey<String>(widget.keyValue),
         behavior: HitTestBehavior.opaque,
-        onDoubleTap: _beginEdit,
+        onTap: _beginEdit,
         onHorizontalDragStart: (_) => _pendingUnits = 0,
         onHorizontalDragUpdate: (details) => _dragBy(details.delta.dx),
         child: SizedBox(
