@@ -9,6 +9,7 @@ import '../models/layer.dart';
 import '../models/layer_effect.dart';
 import '../models/layer_folder.dart';
 import '../models/layer_id.dart';
+import '../models/timeline_row_address.dart';
 import '../models/key_range_move.dart' show transformKeyFrameUnion;
 import '../models/attached_layer_resolve.dart' show attachRowWearsBaseComposite;
 import '../models/layer_kind.dart';
@@ -243,6 +244,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   void _standOnLane(LayerId layerId, String laneId, int frameIndex) {
     _session.clearLaneRangeSelection();
     _session.selectLayer(layerId);
+    // R10 #19: and the LANE becomes the verb's subject, so Add keys this
+    // property instead of adding a cel. selectLayer above already moved
+    // the verb row to the layer, so this must come after it.
+    _session.selectRow(LaneRowAddress(layerId, laneId));
     _session.selectFrameIndex(frameIndex);
   }
 

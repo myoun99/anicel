@@ -488,6 +488,12 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       // canvas then shows the parked composite. Taking a
                       // cut active is the cut row's own verb.
                       parkStoryboardGlobalFrame(_session, globalFrame);
+                    case LaneRowAddress():
+                      // A property strip owns no cuts either, so it lands
+                      // the same way an S row does — where you are, not
+                      // which cut you edit.
+                      _session.selectRow(row);
+                      parkStoryboardGlobalFrame(_session, globalFrame);
                     case TrackRowAddress(:final trackId):
                       _session.selectTrackRow(trackId);
                       seekStoryboardGlobalFrame(_session, globalFrame);

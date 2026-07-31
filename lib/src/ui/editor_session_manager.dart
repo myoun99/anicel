@@ -170,6 +170,7 @@ import 'timeline/timeline_section_policy.dart';
 import 'timeline/effect_lane_editing.dart'
     show
         effectLaneKeyFrames,
+        effectsWithLaneKeyRemoved,
         effectsWithLaneKeyToggled,
         effectsWithLaneSpanKeysShifted;
 import 'timeline/effect_lane_policy.dart'
@@ -177,6 +178,7 @@ import 'timeline/effect_lane_policy.dart'
 import 'timeline/transform_lane_editing.dart'
     show
         transformLaneKeyFrames,
+        transformTrackWithLaneKeyRemoved,
         transformTrackWithLaneKeyToggled,
         transformTrackWithLaneSpanKeysShifted;
 import 'timeline/transform_lane_policy.dart'
@@ -889,6 +891,13 @@ class EditorSessionManager extends ChangeNotifier {
           trackMoved = true;
         }
         if (_storeStoryboardRow(row) || trackMoved) {
+          notifyListeners();
+        }
+      case LaneRowAddress():
+        // R10 #19: a property row is a row you can be ON. The rail's own
+        // highlight resolves it to the containing V row, like any other
+        // in-cut row; what moves is the verb's subject.
+        if (_storeStoryboardRow(row)) {
           notifyListeners();
         }
       case TrackRowAddress(:final trackId):
@@ -6870,7 +6879,12 @@ class EditorSessionManager extends ChangeNotifier {
   /// - Lane selection: the lane freezes a key on every unkeyed frame of
   ///   the range (one undo) — the navigator toggle's range form.
   bool createInstancesForSelection() {
-    final lane = laneRangeSelection.value;
+    // R10 #19: a live lane SPAN, or the property row you are STANDING on
+    // as a one-frame span at the playhead — one verb either way, which is
+    // what makes a group HEADER key its whole member set and an effect
+    // lane key its chain without a second code path (the user's
+    // "카메라레이어랑 같은 동작이지? 로직 통일화해서").
+    final lane = _laneVerbRange;
     if (lane != null) {
       _createLaneKeysForSelection(lane);
       return true;
@@ -7122,6 +7136,106 @@ class EditorSessionManager extends ChangeNotifier {
       add(laneId);
     }
     return targets;
+  }
+
+  /// The LANE range a verb should act on, or null when the subject is not
+  /// a property row (R10 #19).
+  ///
+  /// A live lane SPAN wins; otherwise the row you are standing on, as a
+  /// one-frame span at the playhead. Expressing the standing case as a
+  /// span is what makes Add and Delete need no second code path — the
+  /// group header's whole-member expansion and the effect-lane branch
+  /// come along either way.
+  TimelineLaneSelection? get _laneVerbRange {
+    final span = laneRangeSelection.value;
+    if (span != null) {
+      return span;
+    }
+    if (currentRow case LaneRowAddress(:final layerId, :final laneId)) {
+      final frame = _timelineController.currentFrameIndex;
+      return TimelineLaneSelection(
+        layerId: layerId,
+        laneId: laneId,
+        startIndex: frame,
+        endIndexExclusive: frame + 1,
+      );
+    }
+    return null;
+  }
+
+  /// Removes every key the range covers on every spanned lane — the
+  /// mirror of [_createLaneKeysForSelection], one undo. Returns whether
+  /// anything was there to remove.
+  bool _removeLaneKeysForSelection(TimelineLaneSelection lane) {
+    final layer = _layerById(lane.layerId);
+    if (layer == null || isAttachedLayer(layer)) {
+      return false;
+    }
+    final targets = _laneVerbTargets(lane.spanLaneIds, effects: layer.effects);
+    if (targets.any((laneId) => parseEffectLaneId(laneId) != null)) {
+      var effects = layer.effects;
+      var changed = false;
+      for (final laneId in targets) {
+        for (final frame in effectLaneKeyFrames(effects, laneId).toList()) {
+          if (!lane.contains(frame)) {
+            continue;
+          }
+          final next = effectsWithLaneKeyRemoved(
+            effects,
+            laneId: laneId,
+            frameIndex: frame,
+          );
+          if (next != null) {
+            effects = next;
+            changed = true;
+          }
+        }
+      }
+      if (changed) {
+        updateLayerEffects(layer.id, effects, description: 'Delete keys');
+      }
+      return changed;
+    }
+    var track = layer.transformTrack;
+    var changed = false;
+    for (final laneId in targets) {
+      for (final frame in transformLaneKeyFrames(track, laneId).toList()) {
+        if (!lane.contains(frame)) {
+          continue;
+        }
+        final next = transformTrackWithLaneKeyRemoved(
+          track,
+          laneId: laneId,
+          frameIndex: frame,
+        );
+        if (next != null) {
+          track = next;
+          changed = true;
+        }
+      }
+    }
+    if (changed) {
+      updateLayerTransformTrack(layer.id, track, description: 'Delete keys');
+    }
+    return changed;
+  }
+
+  /// Whether [_laneVerbRange] holds a key to delete.
+  bool get _laneVerbRangeHasKeys {
+    final lane = _laneVerbRange;
+    final layer = lane == null ? null : _layerById(lane.layerId);
+    if (lane == null || layer == null || isAttachedLayer(layer)) {
+      return false;
+    }
+    final targets = _laneVerbTargets(lane.spanLaneIds, effects: layer.effects);
+    return targets.any(
+      (laneId) => parseEffectLaneId(laneId) != null
+          ? effectLaneKeyFrames(layer.effects, laneId).any(lane.contains)
+          : transformLaneKeyFrames(
+              layer.transformTrack,
+              laneId,
+            ).any(lane.contains),
+    );
   }
 
   /// value on every unkeyed frame of the range — one undo.
@@ -8593,6 +8707,10 @@ class EditorSessionManager extends ChangeNotifier {
         // every unselected track's sounds snapless.
         final layer = _trackSeAnywhere(layerId)?.layer;
         return layer == null ? null : (index) => exposureBlockAt(layer, index);
+      case LaneRowAddress():
+        // Lane keys are POINTS, not blocks — the lane domain's own rule
+        // ("raw cells, no block snap"), so there is nothing to snap to.
+        return null;
     }
   }
 
@@ -11694,6 +11812,13 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   bool get canDeleteCellAtCurrentFrame {
+    // R10 #19: the same rule Add follows — when the subject is a PROPERTY
+    // row, Delete removes its keys, not a cel. It also closes a gap the
+    // other way round: a live LANE span used to fall through to the cell
+    // path and delete the active layer's cel instead of the keys under it.
+    if (_laneVerbRangeHasKeys) {
+      return true;
+    }
     // A live selection is deletable wherever the playhead stands (UI-R17
     // #2).
     if (_selectionBlockStartsByLayer() != null) {
@@ -11831,6 +11956,12 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   void deleteCellAtCurrentFrame() {
+    // R10 #19: a property row is its own subject — see
+    // [canDeleteCellAtCurrentFrame].
+    final lane = _laneVerbRange;
+    if (lane != null && _removeLaneKeysForSelection(lane)) {
+      return;
+    }
     // A live selection routes the delete to EVERY selected block on
     // EVERY spanned layer (UI-R17 #2/#8, one composite undo); the
     // leftover selection covers empty cells so it clears with the delete.
@@ -12648,6 +12779,18 @@ class EditorSessionManager extends ChangeNotifier {
           return;
         }
         _flipBlocks(layer, forward: forward);
+      case LaneRowAddress():
+        // A lane's "blocks" would be its KEYS, but jumping key to key is
+        // deferred by the user's own instruction — for now a property row
+        // walks ONE FRAME, which is the same rule's other half ("a frame
+        // where there are no blocks") rather than an exception written for
+        // it. Attaching the key jump later changes this arm and nothing
+        // else.
+        if (forward) {
+          selectNextFrame();
+        } else {
+          selectPreviousFrame();
+        }
     }
   }
 
