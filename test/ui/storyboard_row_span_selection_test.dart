@@ -5,6 +5,7 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_section_defaults.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
@@ -71,7 +72,7 @@ void main() {
     session.updateStoryboardCutSelectionByFrame(
       anchorGlobalFrame: 2,
       headGlobalFrame: 6,
-      headRowDelta: -1,
+      headRow: LayerRowAddress(seId),
     );
 
     final selection = session.trackFrameRangeSelection.value!;
@@ -97,7 +98,7 @@ void main() {
       layerId: seId,
       anchorGlobalFrame: 3,
       headGlobalFrame: 5,
-      headRowDelta: 1,
+      headRow: TrackRowAddress(trackId),
     );
 
     final selection = session.trackFrameRangeSelection.value!;
@@ -108,15 +109,14 @@ void main() {
     ]);
   });
 
-  test('a row delta past the rail\'s TOP stops at its first row instead of '
-      'reaching off it', () {
+  test('reaching the rail\'s TOP row takes every row between', () {
     final session = sessionWithSound();
     final track = session.activeTrack;
 
     session.updateStoryboardCutSelectionByFrame(
       anchorGlobalFrame: 2,
       headGlobalFrame: 6,
-      headRowDelta: -99,
+      headRow: LayerRowAddress(track.seLayers.last.id),
     );
 
     final selection = session.trackFrameRangeSelection.value!;
@@ -129,18 +129,32 @@ void main() {
     expect(selection.spanRows.last, TrackRowAddress(track.id));
   });
 
-  test('a row delta below the V row stays on it — the cut row is the '
-      'rail\'s bottom, with nothing under it to reach', () {
+  test('a head this rail does not hold leaves the anchor alone — what is '
+      'not on the list is unreachable', () {
+    // R9 #25 moved the CLAMP to the panel, which resolves the pointer
+    // against the heights it paints and can only ever name a row that is
+    // on screen. The session's own guard is the narrower one that remains:
+    // an address it cannot find on this rail simply does not move the head
+    // (the row-move precedent, and what a null head means too).
     final session = sessionWithSound();
 
     session.updateStoryboardCutSelectionByFrame(
       anchorGlobalFrame: 2,
       headGlobalFrame: 6,
-      headRowDelta: 99,
+      headRow: const LayerRowAddress(LayerId('not-on-this-rail')),
     );
+    expect(session.trackFrameRangeSelection.value!.spanRows, [
+      TrackRowAddress(session.selectedTrackId),
+    ]);
 
-    final selection = session.trackFrameRangeSelection.value!;
-    expect(selection.spanRows, [TrackRowAddress(session.selectedTrackId)]);
+    session.updateStoryboardCutSelectionByFrame(
+      anchorGlobalFrame: 2,
+      headGlobalFrame: 6,
+      headRow: null,
+    );
+    expect(session.trackFrameRangeSelection.value!.spanRows, [
+      TrackRowAddress(session.selectedTrackId),
+    ]);
   });
 
   test('a single-row selection leaves `rows` empty, so the common case needs '
@@ -211,7 +225,7 @@ void main() {
       layerId: otherSe.id,
       anchorGlobalFrame: 2,
       headGlobalFrame: 5,
-      headRowDelta: 1,
+      headRow: TrackRowAddress(otherTrackId),
     );
 
     selection = session.trackFrameRangeSelection.value!;

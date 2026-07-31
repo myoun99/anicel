@@ -8240,7 +8240,7 @@ class EditorSessionManager extends ChangeNotifier {
     required int anchorGlobalFrame,
     required int headGlobalFrame,
     TrackId? trackId,
-    int headRowDelta = 0,
+    TimelineRowAddress? headRow,
   }) {
     final row = trackId ?? selectedTrackId;
     _updateTrackRangeSelection(
@@ -8248,7 +8248,7 @@ class EditorSessionManager extends ChangeNotifier {
       anchorRow: TrackRowAddress(row),
       anchorGlobalFrame: anchorGlobalFrame,
       headGlobalFrame: headGlobalFrame,
-      headRowDelta: headRowDelta,
+      headRow: headRow,
     );
   }
 
@@ -8331,7 +8331,7 @@ class EditorSessionManager extends ChangeNotifier {
     required TimelineRowAddress anchorRow,
     required int anchorGlobalFrame,
     required int headGlobalFrame,
-    required int headRowDelta,
+    required TimelineRowAddress? headRow,
   }) {
     final railRows = _storyboardRailRows(trackId);
     final anchorIndex = railRows.indexOf(anchorRow);
@@ -8339,14 +8339,17 @@ class EditorSessionManager extends ChangeNotifier {
     if (anchorIndex < 0 || railRows.length < 2) {
       spanned = [anchorRow];
     } else {
-      // The clamp IS the guard: a delta past either end simply stops at the
-      // rail's last row.
-      final headIndex = (anchorIndex + headRowDelta).clamp(
-        0,
-        railRows.length - 1,
-      );
-      final first = math.min(anchorIndex, headIndex);
-      final last = math.max(anchorIndex, headIndex);
+      // R9 #25: the head arrives as an ADDRESS, resolved by the panel
+      // against the heights it paints. It used to arrive as a row DELTA
+      // computed from one row's height, which under-counted every row that
+      // was a different size — the whole of the "V행에서 위로 끌면 S1에서
+      // 막힘" report. A row this rail does not hold (or none at all) simply
+      // leaves the anchor alone: what is not on the list is unreachable,
+      // which is the same guard the clamp used to be.
+      final headIndex = headRow == null ? anchorIndex : railRows.indexOf(headRow);
+      final resolvedHead = headIndex < 0 ? anchorIndex : headIndex;
+      final first = math.min(anchorIndex, resolvedHead);
+      final last = math.max(anchorIndex, resolvedHead);
       spanned = railRows.sublist(first, last + 1);
     }
 
@@ -8403,7 +8406,7 @@ class EditorSessionManager extends ChangeNotifier {
     required LayerId layerId,
     required int anchorGlobalFrame,
     required int headGlobalFrame,
-    int headRowDelta = 0,
+    TimelineRowAddress? headRow,
   }) {
     // The anchor row names its own track: gating on the ACTIVE track's SE
     // list (and stating the selection on [selectedTrackId]) killed every
@@ -8420,7 +8423,7 @@ class EditorSessionManager extends ChangeNotifier {
       anchorRow: LayerRowAddress(layerId),
       anchorGlobalFrame: anchorGlobalFrame,
       headGlobalFrame: headGlobalFrame,
-      headRowDelta: headRowDelta,
+      headRow: headRow,
     );
   }
 

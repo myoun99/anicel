@@ -90,6 +90,7 @@ import 'timeline/timeline_frame_ruler.dart';
 import 'timeline/timeline_edge_auto_pan.dart';
 import 'timeline/timeline_frame_window.dart';
 import 'timeline/timeline_grid_metrics.dart';
+import 'timeline/timeline_row_cross_offset.dart';
 import 'timeline/timeline_horizontal_scrollbar_rail.dart';
 import 'timeline/timeline_layer_controls_header.dart';
 import 'timeline/timeline_vertical_scrollbar_rail.dart';
@@ -198,15 +199,15 @@ class StoryboardCutSelectCallbacks {
   /// gesture of its own; frames are the axis the shared range gesture
   /// already speaks, and the session snaps them to whole cuts with the
   /// same rule the timeline snaps cells with.
-  /// [headRowDelta] is the Excel-style cross-row reach (feedback #14): how
-  /// many rows DOWN the rail the pointer has travelled from the one the
-  /// drag started on. The session walks its own row order with it, so this
-  /// stays a plain integer rather than a row the panel had to name.
+  /// [headRow] is the Excel-style cross-row reach (feedback #14): the
+  /// rail row the pointer is over now, which the PANEL resolves from the
+  /// heights it paints (R9 #25 — it used to be a row count computed from
+  /// one row height, which mis-counted every row of a different size).
   final void Function({
     required TrackId trackId,
     required int anchorGlobalFrame,
     required int headGlobalFrame,
-    int headRowDelta,
+    TimelineRowAddress? headRow,
   })
   onDrag;
   final VoidCallback onClear;
@@ -228,13 +229,13 @@ class StoryboardSeSelectCallbacks {
   /// here is what takes it off the cut row.
   final ValueListenable<TrackFrameRangeSelection?> selectedRange;
 
-  /// A select-drag step on the track's GLOBAL frame axis. [headRowDelta]
+  /// A select-drag step on the track's GLOBAL frame axis. [headRow]
   /// reaches across the rail's rows exactly as the cut row's does.
   final void Function({
     required LayerId layerId,
     required int anchorGlobalFrame,
     required int headGlobalFrame,
-    int headRowDelta,
+    TimelineRowAddress? headRow,
   })
   onDrag;
   final VoidCallback onClear;
@@ -1404,6 +1405,49 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// row kind must land in both, or the band drifts off its rows.
   /// [vLaneId] tags the V track's OWN lane rows (R4b) so the LANE
   /// selection band can find them; row-address rows carry null there.
+  /// R9 #25 — the rail row a select-drag's pointer is over.
+  ///
+  /// [crossOffset] is the pointer's cross-axis distance from the ANCHOR
+  /// row's top (negative above it), handed up raw by the shared gesture.
+  /// It resolves against [_trackGroupRowGeometry] — the very table the
+  /// band painter uses — so the row the selection reaches and the row the
+  /// user sees highlighted can no longer be two different answers.
+  ///
+  /// This rail is the one surface with rows of several heights (SE 30, the
+  /// V row 28–160, audio 36, transform 26), which is why the old scalar
+  /// "offset ÷ my own height" worked everywhere else and failed here.
+  TimelineRowAddress? _railRowAtCrossOffset({
+    required Track track,
+    required TimelineRowAddress anchorRow,
+    required double crossOffset,
+  }) {
+    final geometry = _trackGroupRowGeometry(track);
+    final anchorIndex = geometry.indexWhere((slot) => slot.$1 == anchorRow);
+    if (anchorIndex < 0) {
+      return null;
+    }
+    final index = rowIndexForCrossOffset(
+      crossOffset: crossOffset,
+      anchorIndex: anchorIndex,
+      heights: [for (final slot in geometry) slot.$3],
+    );
+    // Audio and lane strips take up space but cannot BE a selection head:
+    // walk back toward the anchor until a real row turns up, so a drag
+    // that lands on one reaches as far as it legibly can instead of
+    // collapsing to nothing.
+    final step = index >= anchorIndex ? -1 : 1;
+    for (var i = index; i >= 0 && i < geometry.length; i += step) {
+      final address = geometry[i].$1;
+      if (address != null) {
+        return address;
+      }
+      if (i == anchorIndex) {
+        break;
+      }
+    }
+    return anchorRow;
+  }
+
   List<(TimelineRowAddress?, String? vLaneId, double)> _trackGroupRowGeometry(
     Track track,
   ) {
@@ -1485,6 +1529,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           hoveredCutId: _hoveredCutId,
           windowBucket: _horizontalWindowBucket,
           viewportWidth: _stripViewportWidth,
+          railRowAt: (anchorRow, crossOffset) => _railRowAtCrossOffset(
+            track: track,
+            anchorRow: anchorRow,
+            crossOffset: crossOffset,
+          ),
           showSeconds: widget.showSeconds,
           projectFrameRate: widget.projectFrameRate,
         ),
@@ -1530,6 +1579,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           TimelineDisplayRow.layer(layer, layerIndex: slot),
     ];
     Widget seRow(int slot, Layer? layer) => _StoryboardSeRow(
+      railRowAt: (anchorRow, crossOffset) => _railRowAtCrossOffset(
+        track: track,
+        anchorRow: anchorRow,
+        crossOffset: crossOffset,
+      ),
       seRowsInDisplayOrder: seRowsInDisplayOrder,
       trackIndex: index,
       slot: slot,
@@ -2829,8 +2883,14 @@ class _StoryboardSeRow extends StatelessWidget {
     this.seCommaDrag,
     this.seSelect,
     this.frameGeometry,
+    this.railRowAt,
     this.seRowsInDisplayOrder = const [],
   });
+  /// R9 #25: the rail row a cross-axis pointer offset lands on, resolved
+  /// by the PANEL against the heights it paints. Null keeps the anchor.
+  final TimelineRowAddress? Function(TimelineRowAddress anchorRow, double crossOffset)?
+  railRowAt;
+
 
   final int trackIndex;
   final int slot;
@@ -3081,12 +3141,15 @@ class _StoryboardSeRow extends StatelessWidget {
             crossAxisExtent: _seRowHeight,
             callbacks: TimelineRangeGestureCallbacks(
               isInSelection: (_, frame) => _isSelectedAt(frame),
-              onSelectUpdate: (_, anchorIndex, headIndex, headRowDelta) =>
+              onSelectUpdate: (_, anchorIndex, headIndex, headCrossOffset) =>
                   seSelect.onDrag(
                     layerId: layer.id,
                     anchorGlobalFrame: anchorIndex,
                     headGlobalFrame: headIndex,
-                    headRowDelta: headRowDelta,
+                    headRow: railRowAt?.call(
+                      LayerRowAddress(layer.id),
+                      headCrossOffset,
+                    ),
                   ),
               onTapClear: (_) => seSelect.onClear(),
               // A drag that STARTS inside the selection slides the sounds,
@@ -4031,7 +4094,13 @@ class _StoryboardTrackRow extends StatelessWidget {
     required this.viewportWidth,
     required this.showSeconds,
     required this.projectFrameRate,
+    this.railRowAt,
   });
+  /// R9 #25: the rail row a cross-axis pointer offset lands on, resolved
+  /// by the PANEL against the heights it paints. Null keeps the anchor.
+  final TimelineRowAddress? Function(TimelineRowAddress anchorRow, double crossOffset)?
+  railRowAt;
+
 
   final Track track;
   final List<StoryboardTimelineLayoutEntry> layoutEntries;
@@ -4246,12 +4315,15 @@ class _StoryboardTrackRow extends StatelessWidget {
       // every press is a move press — what the block body did before the
       // row had a range gesture. [onMoveBegin] still refuses gaps.
       isInSelection: (_, frame) => cutSelect == null || _isSelectedAt(frame),
-      onSelectUpdate: (_, anchorIndex, headIndex, headRowDelta) =>
+      onSelectUpdate: (_, anchorIndex, headIndex, headCrossOffset) =>
           cutSelect?.onDrag(
             trackId: track.id,
             anchorGlobalFrame: anchorIndex,
             headGlobalFrame: headIndex,
-            headRowDelta: headRowDelta,
+            headRow: railRowAt?.call(
+              TrackRowAddress(track.id),
+              headCrossOffset,
+            ),
           ),
       onTapClear: (_) => cutSelect?.onClear(),
       onMoveBegin: (_, frame) {
