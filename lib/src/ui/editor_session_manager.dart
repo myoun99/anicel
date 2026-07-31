@@ -2894,6 +2894,9 @@ class EditorSessionManager extends ChangeNotifier {
     if (cut == null) {
       return;
     }
+    if (!canAddLayerOfKind(payload.kind)) {
+      return; // R9 #7: this cut already holds its one row of that kind.
+    }
     final activeLayer = this.activeLayer;
     final targetLayers = cut.layers;
     final activeLayerIndex = activeLayer == null
@@ -2919,6 +2922,8 @@ class EditorSessionManager extends ChangeNotifier {
     // double-link the same base cels).
     if (activeLayer == null ||
         !layerKindIsClipboardCopyable(activeLayer.kind) ||
+        // R9 #7: the copy lands in the same cut — always the second one.
+        layerKindIsSingletonPerCut(activeLayer.kind) ||
         isAttachedLayer(activeLayer)) {
       return;
     }
@@ -2953,6 +2958,9 @@ class EditorSessionManager extends ChangeNotifier {
     // duplicate is reached through its base (the group goes whole).
     return activeLayer != null &&
         layerKindIsClipboardCopyable(activeLayer.kind) &&
+        // R9 #7: a duplicate lands in the SAME cut, so a singleton kind's
+        // copy would always be the second one.
+        !layerKindIsSingletonPerCut(activeLayer.kind) &&
         !isAttachedLayer(activeLayer);
   }
 
@@ -3165,12 +3173,28 @@ class EditorSessionManager extends ChangeNotifier {
   /// one per cut) — with it (or nothing) active, a default cel is added.
   void addLayer() => addLayerOfKind(activeLayer?.kind ?? LayerKind.animation);
 
+  /// Whether the ACTIVE cut can take another row of [kind] (R9 #7): false
+  /// once a singleton kind already has its one row. The Add Layer menu
+  /// reads this to disable the entry rather than swallowing the tap, so a
+  /// dead menu item never looks like a bug.
+  bool canAddLayerOfKind(LayerKind kind) {
+    final cut = activeCutOrNull;
+    if (cut == null) {
+      return false;
+    }
+    return !layerKindIsSingletonPerCut(kind) ||
+        !cut.layers.any((layer) => layer.kind == kind);
+  }
+
   /// Kind-explicit Add Layer (the split button's ▾ list): the same naming
   /// and insertion rules as [addLayer] with the requested kind.
   void addLayerOfKind(LayerKind kind) {
     if (activeCutOrNull == null) {
       return; // Gap state: no cut to add into (SE rows need one too —
       //         selection lives in the cut-scoped row list).
+    }
+    if (!canAddLayerOfKind(kind)) {
+      return; // The cut already holds its one row of a singleton kind.
     }
     _layerSequence += 1;
     final layerId = defaultLayerIdForSequence(_layerSequence);

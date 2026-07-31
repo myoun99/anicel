@@ -347,6 +347,30 @@ bool layerKindJoinsLinkedCutConvert(LayerKind kind) =>
 /// still available the ordinary way: 독립시키기.
 bool layerKindMirrorsEffects(LayerKind kind) => layerKindFiltersBelow(kind);
 
+/// Whether a cut may hold at most ONE row of [kind] (R9 #7).
+///
+/// The STORYBOARD row is the cut's picture of itself — the conte panel, the
+/// V-row strip and the cut thumbnail all resolve "the cut's storyboard" as
+/// a single answer, so a second one would make that question ambiguous
+/// everywhere it is asked. The CAMERA row was already a singleton by
+/// construction ([LayerList.cameraLayer] says "exactly one per cut"); it
+/// joins the predicate so the rule has one name instead of two habits.
+///
+/// This gates every route that can MAKE a row — Add Layer, duplicate,
+/// paste and link-duplicate — not just the menu.
+bool layerKindIsSingletonPerCut(LayerKind kind) {
+  return switch (kind) {
+    LayerKind.storyboard || LayerKind.camera => true,
+    LayerKind.animation ||
+    LayerKind.image ||
+    LayerKind.text ||
+    LayerKind.se ||
+    LayerKind.instruction ||
+    LayerKind.folder ||
+    LayerKind.adjustment => false,
+  };
+}
+
 /// Whether a row of [kind] can be copied to the layer clipboard,
 /// duplicated or pasted. The camera is a fixture (exactly one per cut) and
 /// SE rows are track-owned — duplicating either would recreate a shape the

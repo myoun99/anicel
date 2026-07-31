@@ -111,16 +111,20 @@ class TimelineGridTileStore {
       scheduleMicrotask(_drain);
     }
     // Stale-while-revalidate (UI-R20 #6, widened for R26 #27): WHATEVER
-    // went stale — a look flip or a content edit (new layer instance,
-    // new resolver closures) — keep showing the stale tile while the
-    // fresh raster lands, as long as the GEOMETRY still matches (a
-    // mis-sized tile would stretch). Dropping to the classic pass
-    // instead swaps text rendering technologies for a frame (baked A8
-    // glyphs ↔ TextPainter), which reads as every glyph momentarily
-    // thinning/thickening — and since the resolver closures are method
-    // tear-offs recreated on every host rebuild, ANY edit staled EVERY
-    // visible tile at once. The drain rasters the NEWEST look within a
-    // frame or two, so content lags one beat at most.
+    // went stale — a look flip or a content edit (a new layer instance) —
+    // keep showing the stale tile while the fresh raster lands, as long as
+    // the GEOMETRY still matches (a mis-sized tile would stretch).
+    // Dropping to the classic pass instead swaps text rendering
+    // technologies for a frame (baked A8 glyphs ↔ TextPainter), which
+    // reads as every glyph momentarily thinning/thickening.
+    //
+    // R9 #16: this used to fire on EVERY host rebuild, because the
+    // resolver closures are method tear-offs and [_TileEntry.matches]
+    // compared them with `identical` — which is false for two tear-offs of
+    // the same method. That is fixed at the comparison, so the stale path
+    // now runs only when something genuinely changed, and it stays as the
+    // graceful landing for those cases. The drain rasters the NEWEST look
+    // within a frame or two, so content lags one beat at most.
     if (entry != null &&
         entry.frameCellExtent == painter.frameCellExtent &&
         entry.crossAxisExtent == painter.crossAxisExtent &&
@@ -541,9 +545,19 @@ class _TileEntry {
         frameCellExtent == painter.frameCellExtent &&
         crossAxisExtent == painter.crossAxisExtent &&
         identical(colorScheme, painter.colorScheme) &&
-        identical(exposureStateForLayer, painter.exposureStateForLayer) &&
-        identical(frameNameForLayer, painter.frameNameForLayer) &&
-        identical(celHasContentForLayer, painter.celHasContentForLayer) &&
+        // R9 #16: `==`, NOT `identical`. A host hands these in as instance
+        // method tear-offs (`_session.exposureStateForLayer`), and Dart
+        // makes a FRESH closure object for each tear-off — measured:
+        // `identical(s.f, s.f)` is false while `s.f == s.f` is true, and
+        // tear-offs of different receivers are correctly unequal. So
+        // `identical` here answered "no" on every rebuild, every tile went
+        // stale, and up to 32 of them re-rastered one await at a time with
+        // a repaint each: the ~100ms lag between the [+] tap and the cel
+        // appearing. `==` asks the question we actually mean — is this the
+        // same function? — without weakening the contract.
+        exposureStateForLayer == painter.exposureStateForLayer &&
+        frameNameForLayer == painter.frameNameForLayer &&
+        celHasContentForLayer == painter.celHasContentForLayer &&
         celContentRevision == painter.celContentRevision &&
         baseTextStyle == painter.baseTextStyle &&
         this.spanEndIndexExclusive == spanEndIndexExclusive &&

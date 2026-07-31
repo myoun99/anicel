@@ -355,6 +355,32 @@ class BrushToolState {
   factory BrushToolState.fromBrushSettings(BrushSettings settings) =>
       BrushToolState.fromShape(settings.shape);
 
+  /// This state after a PRESET's [settings] are applied, on [tool].
+  ///
+  /// A preset carries a whole brush, but four things are the user's HAND
+  /// and never come from it — they are how this person holds the pen right
+  /// now, not what the brush is:
+  ///
+  /// * the stabilizer (P7),
+  /// * the SIZE and the brush BLEND (R26 #10 — "브러시 다른거 선택한다고
+  ///   사이즈/블렌딩모드가 바뀌지 않음"),
+  /// * the COLOUR (R9 #2). A preset stores a colour so it can be saved and
+  ///   imported faithfully, and most of the roster's presets carry the
+  ///   default black — so before this rule, every brush swap silently
+  ///   repainted the palette black.
+  BrushToolState withPresetSettings(
+    BrushSettings settings, {
+    required CanvasTool tool,
+  }) {
+    return BrushToolState.fromBrushSettings(settings).copyWith(
+      tool: tool,
+      stabilizerStrength: stabilizerStrength,
+      size: size,
+      brushBlendMode: brushBlendMode,
+      color: color,
+    );
+  }
+
   /// Snapshot of this tool state as the model-layer [BrushSettings] — the
   /// payload brush presets store.
   BrushSettings toBrushSettings() => BrushSettings.fromShape(shape);
