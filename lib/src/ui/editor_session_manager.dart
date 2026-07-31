@@ -7138,6 +7138,30 @@ class EditorSessionManager extends ChangeNotifier {
     return null;
   }
 
+  /// The transform track a LANE row edits: the CAMERA row's lanes live on
+  /// the cut's camera, every other row's on the layer itself.
+  ///
+  /// R10 R3: the lane-verb family read `layer.transformTrack` flat, so Add
+  /// and Delete silently missed the camera row — which only showed once
+  /// the Frame ▾ menu became the delete key's home and had to answer for
+  /// the lane the marker's context menu used to.
+  TransformTrack _laneTransformTrackOf(Layer layer) =>
+      layer.kind == LayerKind.camera
+      ? (activeCutOrNull?.camera.track ?? layer.transformTrack)
+      : layer.transformTrack;
+
+  void _commitLaneTransformTrack(
+    Layer layer,
+    TransformTrack track, {
+    required String description,
+  }) {
+    if (layer.kind == LayerKind.camera) {
+      updateActiveCutCameraTrack(track, description: description);
+      return;
+    }
+    updateLayerTransformTrack(layer.id, track, description: description);
+  }
+
   /// Removes every key the range covers on every spanned lane — the
   /// mirror of [_createLaneKeysForSelection], one undo. Returns whether
   /// anything was there to remove.
@@ -7171,7 +7195,7 @@ class EditorSessionManager extends ChangeNotifier {
       }
       return changed;
     }
-    var track = layer.transformTrack;
+    var track = _laneTransformTrackOf(layer);
     var changed = false;
     for (final laneId in targets) {
       for (final frame in transformLaneKeyFrames(track, laneId).toList()) {
@@ -7190,7 +7214,7 @@ class EditorSessionManager extends ChangeNotifier {
       }
     }
     if (changed) {
-      updateLayerTransformTrack(layer.id, track, description: 'Delete keys');
+      _commitLaneTransformTrack(layer, track, description: 'Delete keys');
     }
     return changed;
   }
@@ -7207,7 +7231,7 @@ class EditorSessionManager extends ChangeNotifier {
       (laneId) => parseEffectLaneId(laneId) != null
           ? effectLaneKeyFrames(layer.effects, laneId).any(lane.contains)
           : transformLaneKeyFrames(
-              layer.transformTrack,
+              _laneTransformTrackOf(layer),
               laneId,
             ).any(lane.contains),
     );
@@ -7254,7 +7278,7 @@ class EditorSessionManager extends ChangeNotifier {
       }
       return;
     }
-    var track = layer.transformTrack;
+    var track = _laneTransformTrackOf(layer);
     var changed = false;
     // R26 #3: a multi-lane span freezes keys on EVERY spanned lane —
     // still one undo.
@@ -7283,7 +7307,7 @@ class EditorSessionManager extends ChangeNotifier {
       }
     }
     if (changed) {
-      updateLayerTransformTrack(layer.id, track, description: 'Create keys');
+      _commitLaneTransformTrack(layer, track, description: 'Create keys');
     }
   }
 

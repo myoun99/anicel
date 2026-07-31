@@ -152,25 +152,14 @@ class AppStrings {
   /// '{count}' is replaced with the dropped-frame count.
   String get recordDroppedFramesTemplate => _s('recordDroppedFramesTemplate');
 
-  // --- Mix controls (AUDIO-PRO R1) ---
+  // --- Mix controls (AUDIO-PRO R1; the SE mixer, R10 R3) ---
   String get layerAudioTitle => _s('layerAudioTitle');
   String get audioGainLabel => _s('audioGainLabel');
   String get audioPanLabel => _s('audioPanLabel');
   String get layerAudioPanHelp => _s('layerAudioPanHelp');
+  String get audioMute => _s('audioMute');
   String get audioSolo => _s('audioSolo');
   String get audioUnsolo => _s('audioUnsolo');
-  String get audioLayerAudioMenu => _s('audioLayerAudioMenu');
-  String get audioClipGainMenu => _s('audioClipGainMenu');
-  String get audioEnvelopeMenu => _s('audioEnvelopeMenu');
-  String get audioFadesEqualPowerMenu => _s('audioFadesEqualPowerMenu');
-  String get audioFadesLinearMenu => _s('audioFadesLinearMenu');
-  String get audioClipGainTitle => _s('audioClipGainTitle');
-  String get audioEnvelopeTitle => _s('audioEnvelopeTitle');
-  String get audioEnvelopeHelp => _s('audioEnvelopeHelp');
-  String get audioEnvelopeFrameLabel => _s('audioEnvelopeFrameLabel');
-  String get audioEnvelopeGainPercentLabel =>
-      _s('audioEnvelopeGainPercentLabel');
-  String get audioEnvelopeAddKey => _s('audioEnvelopeAddKey');
 
   // --- The fps-change audio notice (EXPORT-AUDIO ④) ---
   /// '{from}'/'{to}' are replaced with the rate labels.
@@ -753,9 +742,6 @@ class AppStrings {
   String get tlColTimesheet => _s('tlColTimesheet');
   String get tlOpenOnionPanel => _s('tlOpenOnionPanel');
   String get tlAddLayerHere => _s('tlAddLayerHere');
-  String get tlDissolveFolder => _s('tlDissolveFolder');
-  String get tlRenameFolder => _s('tlRenameFolder');
-  String get tlRemoveAudio => _s('tlRemoveAudio');
   String get tlLayerMark => _s('tlLayerMark');
   String get tlRepeat => _s('tlRepeat');
   String get tlRepeatSelection => _s('tlRepeatSelection');
@@ -847,20 +833,9 @@ class AppStrings {
     'audioPanLabel': 'Pan',
     'layerAudioPanHelp':
         'Pan applies on the device mixer path (equal-power law).',
+    'audioMute': 'Mute',
     'audioSolo': 'Solo',
     'audioUnsolo': 'Unsolo',
-    'audioLayerAudioMenu': 'Layer audio…',
-    'audioClipGainMenu': 'Gain…',
-    'audioEnvelopeMenu': 'Volume envelope…',
-    'audioFadesEqualPowerMenu': 'Fades: equal-power (switch to linear)',
-    'audioFadesLinearMenu': 'Fades: linear (switch to equal-power)',
-    'audioClipGainTitle': 'Clip Gain',
-    'audioEnvelopeTitle': 'Volume Envelope',
-    'audioEnvelopeHelp':
-        'Keyed gains at clip frames (linear between keys, held past the ends). Empty = flat.',
-    'audioEnvelopeFrameLabel': 'frame',
-    'audioEnvelopeGainPercentLabel': 'gain %',
-    'audioEnvelopeAddKey': 'Add key',
     'fpsAudioTitleTemplate': '{from} → {to}: what happens to sound?',
     'fpsAudioBody':
         'These two rates differ by 0.1% in real speed, and audio exists in real seconds — it cannot stay both frame-exact and time-exact.\n\n• Keep audio timing: sounds keep their real seconds; their frame positions drift by 0.1% (about one frame every 42 seconds).\n\n• Pull audio 0.1%: sounds are resampled by the exact pulldown ratio (an inaudible pitch change — the standard telecine conform) so every sound keeps its exact frame span.',
@@ -1305,9 +1280,6 @@ class AppStrings {
     'tlColTimesheet': 'Timesheet column',
     'tlOpenOnionPanel': 'Open onion skin panel',
     'tlAddLayerHere': 'Add layer here',
-    'tlDissolveFolder': 'Dissolve folder',
-    'tlRenameFolder': 'Rename folder…',
-    'tlRemoveAudio': 'Remove audio',
     'tlLayerMark': 'Layer mark',
     'tlRepeat': 'Repeat',
     'tlRepeatSelection': 'Repeat selection',
@@ -1456,19 +1428,9 @@ class AppStrings {
     'audioGainLabel': 'ゲイン',
     'audioPanLabel': 'パン',
     'layerAudioPanHelp': 'パンはデバイスミキサー経路で適用されます（等パワー則）。',
+    'audioMute': 'ミュート',
     'audioSolo': 'ソロ',
     'audioUnsolo': 'ソロ解除',
-    'audioLayerAudioMenu': 'レイヤーオーディオ…',
-    'audioClipGainMenu': 'ゲイン…',
-    'audioEnvelopeMenu': 'ボリュームエンベロープ…',
-    'audioFadesEqualPowerMenu': 'フェード：等パワー（リニアに切替）',
-    'audioFadesLinearMenu': 'フェード：リニア（等パワーに切替）',
-    'audioClipGainTitle': 'クリップゲイン',
-    'audioEnvelopeTitle': 'ボリュームエンベロープ',
-    'audioEnvelopeHelp': 'クリップ内コマ位置ごとのゲインキー（キー間は直線、両端は保持）。空＝フラット。',
-    'audioEnvelopeFrameLabel': 'コマ',
-    'audioEnvelopeGainPercentLabel': 'ゲイン %',
-    'audioEnvelopeAddKey': 'キーを追加',
     'fpsAudioTitleTemplate': '{from} → {to}：音はどうしますか？',
     'fpsAudioBody':
         'この2つのレートは実速度が0.1%異なり、音は実時間で存在します — コマ厳密と時間厳密を両立することはできません。\n\n• 音のタイミングを維持：音は実時間を保ち、コマ位置が0.1%ずれます（約42秒ごとに1コマ）。\n\n• 音を0.1%プル：正確なプルダウン比でリサンプルします（聴き取れないピッチ変化 — テレシネの標準コンフォーム）。全ての音がコマ範囲を維持します。',
@@ -1989,9 +1951,6 @@ class AppStrings {
     'tlColTimesheet': 'タイムシート列',
     'tlOpenOnionPanel': 'オニオンスキンパネルを開く',
     'tlAddLayerHere': 'ここにレイヤーを追加',
-    'tlDissolveFolder': 'フォルダを解除',
-    'tlRenameFolder': 'フォルダ名を変更…',
-    'tlRemoveAudio': '音声を外す',
     'tlLayerMark': 'レイヤーマーク',
     'tlRepeat': 'リピート',
     'tlRepeatSelection': '選択範囲をリピート',
@@ -2138,19 +2097,9 @@ class AppStrings {
     'audioGainLabel': '게인',
     'audioPanLabel': '팬',
     'layerAudioPanHelp': '팬은 장치 믹서 경로에서 적용됩니다(등파워 법칙).',
+    'audioMute': '음소거',
     'audioSolo': '솔로',
     'audioUnsolo': '솔로 해제',
-    'audioLayerAudioMenu': '레이어 오디오…',
-    'audioClipGainMenu': '게인…',
-    'audioEnvelopeMenu': '볼륨 엔벨로프…',
-    'audioFadesEqualPowerMenu': '페이드: 등파워(리니어로 전환)',
-    'audioFadesLinearMenu': '페이드: 리니어(등파워로 전환)',
-    'audioClipGainTitle': '클립 게인',
-    'audioEnvelopeTitle': '볼륨 엔벨로프',
-    'audioEnvelopeHelp': '클립 내 프레임 위치별 게인 키(키 사이는 직선, 양 끝은 유지). 비어 있으면 플랫.',
-    'audioEnvelopeFrameLabel': '프레임',
-    'audioEnvelopeGainPercentLabel': '게인 %',
-    'audioEnvelopeAddKey': '키 추가',
     'fpsAudioTitleTemplate': '{from} → {to}: 소리는 어떻게 할까요?',
     'fpsAudioBody':
         '두 레이트는 실제 속도가 0.1% 다르고, 소리는 실시간으로 존재합니다 — 프레임 정확과 시간 정확을 동시에 지킬 수 없습니다.\n\n• 오디오 타이밍 유지: 소리는 실시간을 지키고, 프레임 위치가 0.1% 어긋납니다(약 42초마다 1프레임).\n\n• 오디오 0.1% 당김: 정확한 풀다운 비율로 리샘플합니다(들리지 않는 피치 변화 — 텔레시네 표준 컨폼). 모든 소리가 프레임 범위를 유지합니다.',
@@ -2668,9 +2617,6 @@ class AppStrings {
     'tlColTimesheet': '타임시트 열',
     'tlOpenOnionPanel': '어니언 스킨 패널 열기',
     'tlAddLayerHere': '여기에 레이어 추가',
-    'tlDissolveFolder': '폴더 해제',
-    'tlRenameFolder': '폴더 이름 변경…',
-    'tlRemoveAudio': '오디오 제거',
     'tlLayerMark': '레이어 마크',
     'tlRepeat': '반복',
     'tlRepeatSelection': '선택 영역 반복',
@@ -2821,21 +2767,9 @@ class AppStrings {
     'audioPanLabel': 'Panoramique',
     'layerAudioPanHelp':
         'Le panoramique s\'applique sur la voie du mixeur natif (loi à puissance constante).',
+    'audioMute': 'Muet',
     'audioSolo': 'Solo',
     'audioUnsolo': 'Retirer le solo',
-    'audioLayerAudioMenu': 'Audio du calque…',
-    'audioClipGainMenu': 'Gain…',
-    'audioEnvelopeMenu': 'Enveloppe de volume…',
-    'audioFadesEqualPowerMenu':
-        'Fondus : puissance constante (passer en linéaire)',
-    'audioFadesLinearMenu': 'Fondus : linéaire (passer en puissance constante)',
-    'audioClipGainTitle': 'Gain du clip',
-    'audioEnvelopeTitle': 'Enveloppe de volume',
-    'audioEnvelopeHelp':
-        'Clés de gain aux images du clip (linéaire entre les clés, maintenu aux extrémités). Vide = plat.',
-    'audioEnvelopeFrameLabel': 'image',
-    'audioEnvelopeGainPercentLabel': 'gain %',
-    'audioEnvelopeAddKey': 'Ajouter une clé',
     'fpsAudioTitleTemplate': '{from} → {to} : que faire du son ?',
     'fpsAudioBody':
         'Ces deux cadences diffèrent de 0,1 % en vitesse réelle, et le son existe en secondes réelles — il ne peut pas rester à la fois exact à l\'image et exact au temps.\n\n• Garder le timing audio : les sons gardent leurs secondes réelles ; leurs positions d\'image dérivent de 0,1 % (environ une image toutes les 42 secondes).\n\n• Tirer l\'audio de 0,1 % : les sons sont rééchantillonnés au rapport de pulldown exact (variation de hauteur inaudible — la conformation télécinéma standard) et chaque son garde sa plage d\'images exacte.',
@@ -3381,9 +3315,6 @@ class AppStrings {
     'tlColTimesheet': 'Colonne feuille de temps',
     'tlOpenOnionPanel': "Ouvrir le panneau pelure d'oignon",
     'tlAddLayerHere': 'Ajouter un calque ici',
-    'tlDissolveFolder': 'Dissoudre le dossier',
-    'tlRenameFolder': 'Renommer le dossier…',
-    'tlRemoveAudio': "Retirer l'audio",
     'tlLayerMark': 'Repère de calque',
     'tlRepeat': 'Répéter',
     'tlRepeatSelection': 'Répéter la sélection',
@@ -3530,19 +3461,9 @@ class AppStrings {
     'audioGainLabel': '增益',
     'audioPanLabel': '声像',
     'layerAudioPanHelp': '声像在原生混音器路径上生效（等功率法则）。',
+    'audioMute': '静音',
     'audioSolo': '独奏',
     'audioUnsolo': '取消独奏',
-    'audioLayerAudioMenu': '图层音频…',
-    'audioClipGainMenu': '增益…',
-    'audioEnvelopeMenu': '音量包络…',
-    'audioFadesEqualPowerMenu': '淡变：等功率（切换为线性）',
-    'audioFadesLinearMenu': '淡变：线性（切换为等功率）',
-    'audioClipGainTitle': '片段增益',
-    'audioEnvelopeTitle': '音量包络',
-    'audioEnvelopeHelp': '按片段内帧位置设置增益关键点（关键点之间线性，两端保持）。留空＝平直。',
-    'audioEnvelopeFrameLabel': '帧',
-    'audioEnvelopeGainPercentLabel': '增益 %',
-    'audioEnvelopeAddKey': '添加关键点',
     'fpsAudioTitleTemplate': '{from} → {to}：声音怎么办？',
     'fpsAudioBody':
         '这两个帧率的实际速度相差 0.1%，而声音存在于真实时间中 — 无法同时保持帧精确与时间精确。\n\n• 保持音频时间：声音保持真实秒数；帧位置漂移 0.1%（约每 42 秒一帧）。\n\n• 拉伸音频 0.1%：按精确的 pulldown 比例重采样（听不出的音高变化 — 电视电影的标准做法），每个声音保持其精确的帧范围。',
@@ -4039,9 +3960,6 @@ class AppStrings {
     'tlColTimesheet': '摄影表列',
     'tlOpenOnionPanel': '打开洋葱皮面板',
     'tlAddLayerHere': '在此添加图层',
-    'tlDissolveFolder': '解散文件夹',
-    'tlRenameFolder': '重命名文件夹…',
-    'tlRemoveAudio': '移除音频',
     'tlLayerMark': '图层标记',
     'tlRepeat': '重复',
     'tlRepeatSelection': '重复所选',

@@ -4,7 +4,11 @@ import '../../services/color_palette_file_service.dart';
 
 /// The palette rows under the color wheel (P4): recent colors (newest
 /// first, read-only) and the pinned palette (tap = pick; the + chip pins
-/// the CURRENT color; long-press removes a pinned swatch).
+/// the CURRENT color).
+///
+/// R10 R3: unpinning left with the long press. It comes back in R10 R5,
+/// when the colour window gets its Palette tab — the round that owns this
+/// strip's shape.
 class ColorPaletteStrip extends StatelessWidget {
   const ColorPaletteStrip({
     super.key,
@@ -19,15 +23,10 @@ class ColorPaletteStrip extends StatelessWidget {
   final ValueChanged<int> onColorSelected;
   final ValueChanged<ColorPaletteState> onPaletteChanged;
 
-  Widget _swatch({
-    required Key key,
-    required int color,
-    VoidCallback? onLongPress,
-  }) {
+  Widget _swatch({required Key key, required int color}) {
     return InkWell(
       key: key,
       onTap: () => onColorSelected(color),
-      onLongPress: onLongPress,
       child: Container(
         width: 20,
         height: 20,
@@ -69,18 +68,9 @@ class ColorPaletteStrip extends StatelessWidget {
           runSpacing: 4,
           children: [
             for (var i = 0; i < palette.pinned.length; i += 1)
-              // Long-press unpins (touch-friendly; desktop can too).
               _swatch(
                 key: ValueKey<String>('palette-swatch-$i'),
                 color: palette.pinned[i],
-                onLongPress: () => onPaletteChanged(
-                  palette.copyWith(
-                    pinned: [
-                      for (var j = 0; j < palette.pinned.length; j += 1)
-                        if (j != i) palette.pinned[j],
-                    ],
-                  ),
-                ),
               ),
             InkWell(
               key: const ValueKey<String>('palette-add-button'),

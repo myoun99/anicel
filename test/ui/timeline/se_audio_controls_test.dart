@@ -156,17 +156,24 @@ void main() {
     expect(seLayer().audioClips.single.offsetFrames, 0);
   });
 
-  testWidgets('the SE mute speaker silences the layer in both orientations '
-      '(view state, not undoable)', (tester) async {
+  testWidgets('the SE speaker opens the MIXER in both orientations, and '
+      'mute lives inside it (view state, not undoable)', (tester) async {
     late ProjectRepository repository;
     await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
 
-    final timelineMute = find.byKey(
-      const ValueKey<String>('timeline-layer-mute-sea-voice'),
+    await _ensureVisibleAndTap(
+      tester,
+      find.byKey(const ValueKey<String>('timeline-layer-mute-sea-voice')),
     );
-    await _ensureVisibleAndTap(tester, timelineMute);
+    expect(
+      find.byKey(const ValueKey<String>('se-layer-mixer')),
+      findsOneWidget,
+      reason: 'the speaker is a door now — R10 R3',
+    );
+
+    await tester.tap(find.byKey(const ValueKey<String>('se-mixer-mute')));
+    await tester.pumpAndSettle();
     expect(_seLayer(repository).muted, isTrue);
-    expect(find.byTooltip('Unmute layer'), findsOneWidget);
 
     // The cel row carries no speaker — SE rows only.
     expect(
@@ -174,7 +181,13 @@ void main() {
       findsNothing,
     );
 
-    // The X-sheet header carries the same control.
+    // Dismiss: a pointer down anywhere outside closes it (the shared
+    // anchored-window rule).
+    await tester.tapAt(Offset.zero);
+    await tester.pumpAndSettle();
+    expect(find.byKey(const ValueKey<String>('se-layer-mixer')), findsNothing);
+
+    // The X-sheet header carries the same door.
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-orientation-toggle-button')),
     );
@@ -183,7 +196,49 @@ void main() {
       tester,
       find.byKey(const ValueKey<String>('xsheet-layer-mute-sea-voice')),
     );
+    await tester.tap(find.byKey(const ValueKey<String>('se-mixer-mute')));
+    await tester.pumpAndSettle();
     expect(_seLayer(repository).muted, isFalse);
+  });
+
+  testWidgets('the mixer carries solo and the fader beside mute — the four '
+      'controls the speaker\'s context menu used to scatter. Solo tints the '
+      'RAIL speaker, which the rail memo could not see before', (
+    tester,
+  ) async {
+    late ProjectRepository repository;
+    await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
+
+    final speaker = find.byKey(
+      const ValueKey<String>('timeline-layer-mute-sea-voice'),
+    );
+    Icon speakerIcon() => tester.widget<Icon>(
+      find.descendant(of: speaker, matching: find.byType(Icon)),
+    );
+    expect(speakerIcon().color, isNull, reason: 'not soloed yet');
+
+    await _ensureVisibleAndTap(tester, speaker);
+    await tester.tap(find.byKey(const ValueKey<String>('se-mixer-solo')));
+    await tester.pumpAndSettle();
+    expect(
+      speakerIcon().color,
+      isNotNull,
+      reason: 'solo is SESSION state — the rail row memo must compare it or '
+          'the tint never arrives',
+    );
+
+    // The fader writes on RELEASE (commit-on-release, like the opacity
+    // bars) — a drag left of centre pulls the gain down from unity.
+    final gain = find.byKey(const ValueKey<String>('se-mixer-gain'));
+    await tester.drag(gain, const Offset(-40, 0));
+    await tester.pumpAndSettle();
+    expect(_seLayer(repository).audioGain, lessThan(1.0));
+
+    // Pan is a BALANCE: it starts centred and moves either way.
+    final pan = find.byKey(const ValueKey<String>('se-mixer-pan'));
+    await tester.drag(pan, const Offset(-30, 0));
+    await tester.pumpAndSettle();
+    expect(_seLayer(repository).audioPan, lessThan(0.0));
   });
 
   testWidgets('the audio lane value field types an offset trim and scrubs '

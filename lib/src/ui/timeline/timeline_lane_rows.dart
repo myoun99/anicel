@@ -658,6 +658,15 @@ class TimelineLaneFrameRow extends StatelessWidget {
               // display-only: a union diamond has no single lane to
               // edit, so its markers never take drags.
               laneEdit: lane.isGroupHeader ? null : laneEdit,
+              // A tap on the diamond says what a tap on the band says:
+              // stand HERE (R10 R3). The marker's hit box is nearly the
+              // whole cell, so without this the one frame you cannot put
+              // the playhead on by pressing is the one with a key —
+              // exactly the frame Frame ▾ Delete needs as its subject
+              // now that the marker's own menu is gone.
+              onTapAt: laneRange == null
+                  ? null
+                  : () => laneRange!.onTapAt(layer.id, lane.laneId, frame),
             ),
           ),
     ];
@@ -753,6 +762,7 @@ class _LaneKeyMarker extends StatefulWidget {
     required this.frameCellExtent,
     required this.axis,
     required this.laneEdit,
+    this.onTapAt,
     this.selected = false,
   });
 
@@ -764,6 +774,11 @@ class _LaneKeyMarker extends StatefulWidget {
   final double frameCellExtent;
   final Axis axis;
   final PropertyLaneEditCallbacks? laneEdit;
+
+  /// A press that does not become a drag stands on this lane at this
+  /// frame — the band's own [TimelineLaneRangeCallbacks.onTapAt], reached
+  /// through the diamond that covers it.
+  final VoidCallback? onTapAt;
 
   /// Inside the live frame-range selection (UI-R22 #5): the marker rings
   /// in ACCENT 2 so selected keys — union diamonds included — read at a
@@ -817,44 +832,6 @@ class _LaneKeyMarkerState extends State<_LaneKeyMarker> {
     });
   }
 
-  Future<void> _showKeyMenu(Offset globalPosition) async {
-    final laneEdit = widget.laneEdit;
-    if (laneEdit == null) {
-      return;
-    }
-    final overlay =
-        Overlay.of(context).context.findRenderObject()! as RenderBox;
-    final action = await showMenu<String>(
-      context: context,
-      position: RelativeRect.fromRect(
-        globalPosition & const Size(1, 1),
-        Offset.zero & overlay.size,
-      ),
-      popUpAnimationStyle: instantMenuAnimation,
-      items: [
-        PopupMenuItem(
-          key: const ValueKey<String>('lane-key-menu-hold'),
-          value: 'hold',
-          child: Text(widget.hold ? 'Linear Keyframe' : 'Toggle Hold Keyframe'),
-        ),
-        const PopupMenuItem(
-          key: ValueKey<String>('lane-key-menu-delete'),
-          value: 'delete',
-          child: Text('Delete Keyframe'),
-        ),
-      ],
-    );
-    if (!mounted) {
-      return;
-    }
-    switch (action) {
-      case 'hold':
-        laneEdit.onToggleHold(widget.layer, widget.lane, widget.frame);
-      case 'delete':
-        laneEdit.onRemoveKey(widget.layer, widget.lane, widget.frame);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -896,14 +873,29 @@ class _LaneKeyMarkerState extends State<_LaneKeyMarker> {
         ? shape
         : Transform.rotate(angle: 0.785398, child: shape);
 
+    final content = Transform.translate(
+      // Snap the ghost per frame while dragging (AE feel).
+      offset: horizontal
+          ? Offset(_dragging ? _frameDelta * widget.frameCellExtent : 0, 0)
+          : Offset(0, _dragging ? _frameDelta * widget.frameCellExtent : 0),
+      child: Center(child: marker),
+    );
+
+    // Standing down (R10) means standing down WHOLLY (R10 R3). The marker
+    // used to stay in the hit result as `translucent` so its context menu
+    // could still open on a selected key; with the menu demolished there
+    // is nothing left for it to answer. The child had to be ignored on top
+    // of that, because `RenderDecoratedBox.hitTestSelf` answers TRUE
+    // anywhere inside its decoration — the drawn diamond is a hit target
+    // in its own right, so the Stack stopped at it and the band beneath
+    // never saw the pointer.
+    if (yieldsToRangeMove) {
+      return IgnorePointer(child: content);
+    }
+
     return GestureDetector(
-      // Translucent while standing down (R10): the marker stays in the hit
-      // result for its own menu, but returns false so the Stack keeps
-      // walking to the gesture layer beneath it. Opaque would stop there
-      // and the range move would never get a pointer.
-      behavior: yieldsToRangeMove
-          ? HitTestBehavior.translucent
-          : HitTestBehavior.opaque,
+      behavior: HitTestBehavior.opaque,
+      onTap: widget.onTapAt,
       // Drag from the DOWN position (R10) — the rule the block edge grips
       // took in the same round. This marker accumulates deltas and rounds
       // them, so discarding the ~18px the recognizer spends on the arena
@@ -920,26 +912,7 @@ class _LaneKeyMarkerState extends State<_LaneKeyMarker> {
       onVerticalDragUpdate: editable && !horizontal ? _updateDrag : null,
       onVerticalDragEnd: editable && !horizontal ? (_) => _endDrag() : null,
       onVerticalDragCancel: editable && !horizontal ? _cancelDrag : null,
-      onSecondaryTapUp: (details) => _showKeyMenu(details.globalPosition),
-      onLongPressStart: (details) => _showKeyMenu(details.globalPosition),
-      // The DIAMOND has to stop hit-testing too, not just this detector.
-      // `RenderDecoratedBox.hitTestSelf` answers TRUE anywhere inside its
-      // decoration, so the drawn shape is a hit target in its own right:
-      // a translucent detector still reported a hit through it, the Stack
-      // stopped there, and the band below never saw the pointer. Ignoring
-      // the child makes the whole marker transparent to the hit test while
-      // `translucent` keeps this detector in the result, so the key menu
-      // still opens on a selected diamond.
-      child: IgnorePointer(
-        ignoring: yieldsToRangeMove,
-        child: Transform.translate(
-          // Snap the ghost per frame while dragging (AE feel).
-          offset: horizontal
-              ? Offset(_dragging ? _frameDelta * widget.frameCellExtent : 0, 0)
-              : Offset(0, _dragging ? _frameDelta * widget.frameCellExtent : 0),
-          child: Center(child: marker),
-        ),
-      ),
+      child: content,
     );
   }
 }

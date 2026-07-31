@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/gestures.dart' show kSecondaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/audio_clip.dart';
@@ -46,9 +47,9 @@ Layer _seLayer() => Layer(
 );
 
 void main() {
-  testWidgets('timeline SE row paints the clip waveform and the context '
-      'menu removes it', (tester) async {
-    final removed = <(LayerId, int)>[];
+  testWidgets('timeline SE row paints the clip waveform, and the strip is a '
+      'pure painter — R10 R3 took its context menu, so every press falls '
+      'through to the cells underneath', (tester) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
@@ -72,10 +73,6 @@ void main() {
             // Classic zoom: this file's pixel oracles assume 48 px/frame.
             pixelsPerFrame: 48,
             audioPeaksFor: (path) => path == 'voice.wav' ? _peaks : null,
-            audioLane: TimelineAudioLaneCallbacks(
-              onRemoveClip: (layerId, clipIndex) =>
-                  removed.add((layerId, clipIndex)),
-            ),
           ),
         ),
       ),
@@ -89,15 +86,20 @@ void main() {
     // The block is the window: [0, 12) of the 24-frame file at 48 px/frame.
     expect(tester.getSize(strip).width, moreOrLessEquals(12 * 48));
 
-    // The strip is wider than the viewport — long-press a visible spot
-    // near its left edge instead of the (offscreen) center.
+    // The strip is wider than the viewport — press a visible spot near its
+    // left edge instead of the (offscreen) center.
     await tester.longPressAt(tester.getTopLeft(strip) + const Offset(30, 10));
     await tester.pumpAndSettle();
-    await tester.tap(
+    expect(
       find.byKey(const ValueKey<String>('audio-clip-menu-remove')),
+      findsNothing,
+    );
+    await tester.tapAt(
+      tester.getTopLeft(strip) + const Offset(30, 10),
+      buttons: kSecondaryButton,
     );
     await tester.pumpAndSettle();
-    expect(removed, [(const LayerId('wave-se'), 0)]);
+    expect(find.byType(PopupMenuItem<String>), findsNothing);
   });
 
   testWidgets('the storyboard SE row paints the TRACK layer\'s waveform '

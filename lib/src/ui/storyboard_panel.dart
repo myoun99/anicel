@@ -358,7 +358,8 @@ class StoryboardPanel extends StatefulWidget {
     this.poseDisplaySize,
     this.onSetCutFade,
     this.onToggleLayerVisibility,
-    this.onToggleLayerMuted,
+    this.onOpenLayerMixer,
+    this.isLayerSoloed,
     this.onLayerOpacityChanged,
     this.onLayerOpacityChangeEnd,
     this.onLayerMarkSelected,
@@ -602,7 +603,16 @@ class StoryboardPanel extends StatefulWidget {
   // the active cut supplies the concrete layer). All LayerId-generic —
   // wired to the same session methods the timeline host uses.
   final ValueChanged<LayerId>? onToggleLayerVisibility;
-  final ValueChanged<LayerId>? onToggleLayerMuted;
+
+  /// The SE row's speaker, which opens the row's mixer anchored under
+  /// itself (R10 R3) — the same door the two timeline rails mount, so the
+  /// storyboard rail stops being the one that can only mute.
+  final void Function(BuildContext anchorContext, LayerId layerId)?
+  onOpenLayerMixer;
+
+  /// Whether that row is soloed (the speaker's accent tint).
+  final bool Function(LayerId layerId)? isLayerSoloed;
+
   final void Function(LayerId layerId, double opacity)? onLayerOpacityChanged;
 
   /// Commit-on-release hook (R4 #4); null keeps per-move writes.
@@ -1110,7 +1120,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           : () => widget.onToggleSeRowLane!(track, slot),
       activeLayer: _activeSlotLayerOf(track, widget.activeCutId, slot),
       onToggleLayerVisibility: widget.onToggleLayerVisibility,
-      onToggleLayerMuted: widget.onToggleLayerMuted,
+      onOpenLayerMixer: widget.onOpenLayerMixer,
+      isLayerSoloed: widget.isLayerSoloed,
       onLayerOpacityChanged: widget.onLayerOpacityChanged,
       onLayerOpacityChangeEnd: widget.onLayerOpacityChangeEnd,
       onLayerMarkSelected: widget.onLayerMarkSelected,
@@ -2593,7 +2604,8 @@ class _StoryboardSeLabel extends StatelessWidget {
     this.active = false,
     this.onSelectLayer,
     this.onToggleLayerVisibility,
-    this.onToggleLayerMuted,
+    this.onOpenLayerMixer,
+    this.isLayerSoloed,
     this.onLayerOpacityChanged,
     this.onLayerOpacityChangeEnd,
     this.onLayerMarkSelected,
@@ -2621,7 +2633,16 @@ class _StoryboardSeLabel extends StatelessWidget {
   /// row label. Null keeps the row display-only.
   final ValueChanged<LayerId>? onSelectLayer;
   final ValueChanged<LayerId>? onToggleLayerVisibility;
-  final ValueChanged<LayerId>? onToggleLayerMuted;
+
+  /// The SE row's speaker, which opens the row's mixer anchored under
+  /// itself (R10 R3) — the same door the two timeline rails mount, so the
+  /// storyboard rail stops being the one that can only mute.
+  final void Function(BuildContext anchorContext, LayerId layerId)?
+  onOpenLayerMixer;
+
+  /// Whether that row is soloed (the speaker's accent tint).
+  final bool Function(LayerId layerId)? isLayerSoloed;
+
   final void Function(LayerId layerId, double opacity)? onLayerOpacityChanged;
 
   /// Commit-on-release hook (R4 #4); null keeps per-move writes.
@@ -2774,13 +2795,15 @@ class _StoryboardSeLabel extends StatelessWidget {
                         onToggle: () => onToggleLayerVisibility!(layer.id),
                       )
                     : null,
-                mute: layer != null && onToggleLayerMuted != null
+                mute: layer != null && onOpenLayerMixer != null
                     ? SizedBox(
                         height: 26,
                         child: LayerMuteToggleButton(
                           keyValue: 'storyboard-layer-mute-${layer.id}',
                           muted: layer.muted,
-                          onToggle: () => onToggleLayerMuted!(layer.id),
+                          soloed: isLayerSoloed?.call(layer.id) ?? false,
+                          onOpenMixer: (anchorContext) =>
+                              onOpenLayerMixer!(anchorContext, layer.id),
                         ),
                       )
                     : null,

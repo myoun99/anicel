@@ -50,6 +50,7 @@ class FieldSlider extends StatefulWidget {
     this.scale = FieldSliderScale.linear,
     this.divisions,
     this.displayFactor = 1.0,
+    this.fillOrigin,
     this.height = 24,
   }) : assert(max > min, 'max must exceed min'),
        assert(
@@ -101,6 +102,12 @@ class FieldSlider extends StatefulWidget {
   /// Multiplier from model units to the units the user types: opacity 0..1
   /// displayed as percent passes 100 so a typed `80` commits 0.8.
   final double displayFactor;
+
+  /// The value the filled bar grows FROM; null means [min], which is what a
+  /// quantity wants (a fader reads "how much"). A BALANCE — pan, a signed
+  /// offset — passes its neutral value instead, so the fill leaves centre
+  /// in the direction of the setting and hard-left stops reading as empty.
+  final double? fillOrigin;
 
   final double height;
 
@@ -419,6 +426,9 @@ class _FieldSliderState extends State<FieldSlider> {
                   ? null
                   : _FieldSliderTrackPainter(
                       t: t,
+                      originT: widget.fillOrigin == null
+                          ? 0.0
+                          : _tFor(widget.fillOrigin!).clamp(0.0, 1.0),
                       accent: dragging
                           ? AppColors.accent
                           : (widget.restingAccent ?? AppColors.accent),
@@ -470,17 +480,29 @@ class _FieldSliderState extends State<FieldSlider> {
 }
 
 class _FieldSliderTrackPainter extends CustomPainter {
-  const _FieldSliderTrackPainter({required this.t, required this.accent});
+  const _FieldSliderTrackPainter({
+    required this.t,
+    required this.accent,
+    this.originT = 0.0,
+  });
 
   final double t;
+
+  /// Where the fill starts, in track space — 0 for a quantity, 0.5 for a
+  /// balance (see [FieldSlider.fillOrigin]).
+  final double originT;
+
   final Color accent;
 
   @override
   void paint(Canvas canvas, Size size) {
     final fillEnd = size.width * t;
-    if (fillEnd > 0) {
+    final fillStart = size.width * originT;
+    final left = math.min(fillStart, fillEnd);
+    final right = math.max(fillStart, fillEnd);
+    if (right > left) {
       canvas.drawRect(
-        Rect.fromLTWH(0, 0, fillEnd, size.height),
+        Rect.fromLTWH(left, 0, right - left, size.height),
         Paint()..color = accent.withValues(alpha: 0.26),
       );
     }
@@ -495,5 +517,7 @@ class _FieldSliderTrackPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(_FieldSliderTrackPainter oldDelegate) =>
-      oldDelegate.t != t || oldDelegate.accent != accent;
+      oldDelegate.t != t ||
+      oldDelegate.originT != originT ||
+      oldDelegate.accent != accent;
 }

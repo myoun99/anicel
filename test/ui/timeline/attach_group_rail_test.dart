@@ -75,9 +75,9 @@ void main() {
     layer('plain'),
   ];
 
-  testWidgets('attach rows carry the placement arrow as their ONLY mark — '
+  testWidgets('attach rows carry the placement arrow in the SHEET slot — '
       'up-attach bends up-right (flipped), down-attach down-right — and '
-      'no kind icon (UI-R20 #10)', (tester) async {
+      'the type cell keeps the KIND (R10 R3)', (tester) async {
     await tester.pumpWidget(grid(layers: baseWithGroup));
 
     // The NEAREST Transform ancestor is the Transform.flip wrapper
@@ -94,15 +94,23 @@ void main() {
     expect(flipOf('up1').transform.storage[5], lessThan(0));
     expect(flipOf('down1').transform.storage[5], greaterThan(0));
 
+    // The arrow moved OUT of the type cell (R10 R3): an attach row was
+    // the one row that could not say what kind of row it was, and the
+    // sheet slot beside it was reserved-and-empty on exactly those rows.
     expect(
       find.byKey(const ValueKey<String>('timeline-layer-kind-icon-up1')),
-      findsNothing,
-      reason: 'the arrow IS the type mark on attach rows',
+      findsOneWidget,
+      reason: 'the type cell is ALWAYS the kind now',
     );
     expect(
       find.byKey(const ValueKey<String>('timeline-layer-kind-icon-base')),
       findsOneWidget,
       reason: 'regular rows keep their kind icon',
+    );
+    // …and the sheet toggle stays off attach rows: one slot, one mark.
+    expect(
+      find.byKey(const ValueKey<String>('timeline-layer-timesheet-up1')),
+      findsNothing,
     );
   });
 

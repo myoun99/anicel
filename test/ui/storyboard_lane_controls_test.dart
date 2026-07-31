@@ -88,7 +88,7 @@ Future<void> _pumpPanel(
   CutId? activeCutId = const CutId('lane-cut'),
   void Function(CutId cutId, int fadeInFrames, int fadeOutFrames)? onSetCutFade,
   ValueChanged<LayerId>? onToggleLayerVisibility,
-  ValueChanged<LayerId>? onToggleLayerMuted,
+  void Function(BuildContext anchorContext, LayerId layerId)? onOpenLayerMixer,
   void Function(LayerId layerId, double opacity)? onLayerOpacityChanged,
   StoryboardRowFramePress? onRowFramePress,
   TimelineCommaDragCallbacks? seCommaDrag,
@@ -141,7 +141,7 @@ Future<void> _pumpPanel(
             poseDisplaySize: const CanvasSize(width: 640, height: 360),
             onSetCutFade: onSetCutFade,
             onToggleLayerVisibility: onToggleLayerVisibility,
-            onToggleLayerMuted: onToggleLayerMuted,
+            onOpenLayerMixer: onOpenLayerMixer,
             onLayerOpacityChanged: onLayerOpacityChanged,
             seCommaDrag: seCommaDrag,
             onSetAudioClipOffset: onSetAudioClipOffset,
@@ -395,8 +395,8 @@ void main() {
         onToggleKeyAt: (_, lane, frame) =>
             toggles.add((track.id.value, lane.laneId, frame)),
         onMoveKey: (_, _, _, _) {},
-        onRemoveKey: (_, _, _) {},
-        onToggleHold: (_, _, _) {},
+
+
       ),
     );
     await _expandVTransform(tester);
@@ -445,8 +445,8 @@ void main() {
         onToggleKeyAt: (layer, lane, frame) =>
             toggles.add((layer.id.value, lane.laneId, frame)),
         onMoveKey: (_, _, _, _) {},
-        onRemoveKey: (_, _, _) {},
-        onToggleHold: (_, _, _) {},
+
+
       ),
     );
 
@@ -638,16 +638,17 @@ void main() {
   });
 
   group('timeline-parity S rows (R4-⑨ 완벽통일)', () {
-    testWidgets('the rail carries the ACTIVE cut layer\'s eye/mute/opacity '
-        'controls with the shared session hooks', (tester) async {
+    testWidgets('the rail carries the ACTIVE cut layer\'s eye/speaker/opacity '
+        'controls with the shared session hooks — and R10 R3 gave THIS rail '
+        'the mixer door the timeline rails had', (tester) async {
       final visibilityToggles = <LayerId>[];
-      final muteToggles = <LayerId>[];
+      final mixerOpens = <LayerId>[];
       final opacityChanges = <(LayerId, double)>[];
       await _pumpPanel(
         tester,
         project: _project(),
         onToggleLayerVisibility: visibilityToggles.add,
-        onToggleLayerMuted: muteToggles.add,
+        onOpenLayerMixer: (_, layerId) => mixerOpens.add(layerId),
         onLayerOpacityChanged: (layerId, opacity) =>
             opacityChanges.add((layerId, opacity)),
       );
@@ -667,7 +668,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(visibilityToggles, [const LayerId('lane-se')]);
-      expect(muteToggles, [const LayerId('lane-se')]);
+      expect(mixerOpens, [const LayerId('lane-se')]);
       expect(opacityChanges, isNotEmpty);
       expect(opacityChanges.last.$1, const LayerId('lane-se'));
       expect(opacityChanges.last.$2, lessThan(1));

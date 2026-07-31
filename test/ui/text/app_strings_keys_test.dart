@@ -69,19 +69,9 @@ void main() {
     'audioGainLabel': (s) => s.audioGainLabel,
     'audioPanLabel': (s) => s.audioPanLabel,
     'layerAudioPanHelp': (s) => s.layerAudioPanHelp,
+    'audioMute': (s) => s.audioMute,
     'audioSolo': (s) => s.audioSolo,
     'audioUnsolo': (s) => s.audioUnsolo,
-    'audioLayerAudioMenu': (s) => s.audioLayerAudioMenu,
-    'audioClipGainMenu': (s) => s.audioClipGainMenu,
-    'audioEnvelopeMenu': (s) => s.audioEnvelopeMenu,
-    'audioFadesEqualPowerMenu': (s) => s.audioFadesEqualPowerMenu,
-    'audioFadesLinearMenu': (s) => s.audioFadesLinearMenu,
-    'audioClipGainTitle': (s) => s.audioClipGainTitle,
-    'audioEnvelopeTitle': (s) => s.audioEnvelopeTitle,
-    'audioEnvelopeHelp': (s) => s.audioEnvelopeHelp,
-    'audioEnvelopeFrameLabel': (s) => s.audioEnvelopeFrameLabel,
-    'audioEnvelopeGainPercentLabel': (s) => s.audioEnvelopeGainPercentLabel,
-    'audioEnvelopeAddKey': (s) => s.audioEnvelopeAddKey,
     'fpsAudioTitleTemplate': (s) => s.fpsAudioTitleTemplate,
     'fpsAudioBody': (s) => s.fpsAudioBody,
     'fpsAudioKeep': (s) => s.fpsAudioKeep,
@@ -453,9 +443,6 @@ void main() {
     'tlColTimesheet': (s) => s.tlColTimesheet,
     'tlOpenOnionPanel': (s) => s.tlOpenOnionPanel,
     'tlAddLayerHere': (s) => s.tlAddLayerHere,
-    'tlDissolveFolder': (s) => s.tlDissolveFolder,
-    'tlRenameFolder': (s) => s.tlRenameFolder,
-    'tlRemoveAudio': (s) => s.tlRemoveAudio,
     'tlLayerMark': (s) => s.tlLayerMark,
     'tlRepeat': (s) => s.tlRepeat,
     'tlRepeatSelection': (s) => s.tlRepeatSelection,
@@ -567,6 +554,6 @@ void main() {
   test('the reader table covers every getter the class declares', () {
     // Guards the guard: a string added without a line here would other-
     // wise be silently unchecked.
-    expect(readers, hasLength(512));
+    expect(readers, hasLength(499));
   });
 }

@@ -138,7 +138,6 @@ List<Widget> timelineRowSeContinuationMarks({
 /// shows the waveform from its own start, clipped to the block AND to the
 /// file's length from the extracted peaks; clips whose peaks are still
 /// extracting (or failed) draw nothing until the store notifies.
-/// Right-click/long-press opens the removal menu.
 List<Widget> timelineRowAudioOverlays({
   required Layer layer,
   required int frameStartIndex,
@@ -146,7 +145,6 @@ List<Widget> timelineRowAudioOverlays({
   required Axis axis,
   required ProjectFrameRate frameRate,
   required AudioPeaks? Function(String filePath) audioPeaksFor,
-  void Function(int clipIndex)? onRemoveClip,
   required Color color,
   String keyPrefix = 'timeline',
 }) {
@@ -195,9 +193,6 @@ List<Widget> timelineRowAudioOverlays({
             gain: span.clip.gain,
             fadeInFrames: span.clip.fadeInFrames,
             fadeOutFrames: span.clip.fadeOutFrames,
-            onRemove: onRemoveClip == null
-                ? null
-                : () => onRemoveClip(span.clipIndex),
           ),
         ),
       ),
@@ -343,7 +338,6 @@ class _AudioClipStrip extends StatelessWidget {
     this.gain = 1.0,
     this.fadeInFrames = 0,
     this.fadeOutFrames = 0,
-    this.onRemove,
   });
 
   final AudioPeaks peaks;
@@ -358,29 +352,6 @@ class _AudioClipStrip extends StatelessWidget {
   final double gain;
   final int fadeInFrames;
   final int fadeOutFrames;
-  final VoidCallback? onRemove;
-
-  Future<void> _showRemoveMenu(BuildContext context, Offset position) async {
-    final overlay = Overlay.of(context).context.findRenderObject();
-    final selected = await showMenu<String>(
-      context: context,
-      position: RelativeRect.fromRect(
-        position & const Size(1, 1),
-        Offset.zero & (overlay as RenderBox).size,
-      ),
-      popUpAnimationStyle: instantMenuAnimation,
-      items: [
-        PopupMenuItem<String>(
-          key: const ValueKey<String>('audio-clip-menu-remove'),
-          value: 'remove',
-          child: Text(AppText.strings.tlRemoveAudio),
-        ),
-      ],
-    );
-    if (selected == 'remove') {
-      onRemove?.call();
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -406,19 +377,11 @@ class _AudioClipStrip extends StatelessWidget {
         },
       ),
     );
-    if (onRemove == null) {
-      return IgnorePointer(child: waveform);
-    }
-    // Only secondary-tap/long-press register — plain taps and double taps
-    // keep falling through to the cells underneath.
-    return GestureDetector(
-      behavior: HitTestBehavior.translucent,
-      onSecondaryTapUp: (details) =>
-          _showRemoveMenu(context, details.globalPosition),
-      onLongPressStart: (details) =>
-          _showRemoveMenu(context, details.globalPosition),
-      child: waveform,
-    );
+    // R10 R3: the strip is a pure painter again. Removing a sound lived on
+    // its context menu and is waiting on the audio button; taps and double
+    // taps always fell through to the cells underneath, and now everything
+    // does.
+    return IgnorePointer(child: waveform);
   }
 }
 
