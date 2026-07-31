@@ -147,20 +147,22 @@ void main() {
     await tester.pumpWidget(harness(hooks: inertHooks()));
     await tester.pumpAndSettle();
 
-    // The core keeps its weight because the bar grew to carry the outline
-    // (3.5 → 4.5), and the width comes from the shared rule.
+    // R10 put the core back to 3.5. R9 #11 widened it to 4.5 believing the
+    // outline ate into the bar, but the stroke rides the bar's OUTER edge
+    // (`barRect.inflate(w / 2)` stroked at `w`), so it only ever adds.
     final bar = blockEdgeGripBarRect(
       edge: TimelineBlockEdge.end,
       hitExtent: 12,
       crossAxisExtent: 60,
       axis: Axis.horizontal,
     );
-    expect(bar.width, 4.5);
+    expect(bar.width, 3.5);
     expect(
       timelineOutlineWidthFor(bar.shortestSide),
       timelineOutlineWidthFor(4.5),
       reason: 'the grips call the glyphs\' own width rule, so a second '
-          'outline setting cannot come into being',
+          'outline setting cannot come into being — and both weights land '
+          'on its 1.0 floor, so nothing sharing the setting moved',
     );
     expect(
       blockEdgeGripOutlineColor(surface: Brightness.light),

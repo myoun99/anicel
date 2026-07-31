@@ -314,13 +314,13 @@ void main() {
     );
     expect(endGrip, findsOneWidget);
 
-    // Lengthen by 2 frames (24px slim cells; the >18px slop is consumed
-    // before frames count, so total = slop + 2 FULL cells — R9 #10 made
-    // the edge step at the boundary rather than the cell's midpoint).
+    // Lengthen by 2 frames (24px slim cells). R10: the pixels the drag
+    // spends winning the arena are TRAVEL, not overhead, so the TOTAL is
+    // what counts — 19 + 29 = 48 = two cells exactly.
     final gesture = await tester.startGesture(tester.getCenter(endGrip));
     await gesture.moveBy(const Offset(19, 0));
     await tester.pump();
-    await gesture.moveBy(const Offset(48, 0));
+    await gesture.moveBy(const Offset(29, 0));
     await tester.pumpAndSettle();
     await gesture.up();
     await tester.pumpAndSettle();

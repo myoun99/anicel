@@ -24,14 +24,17 @@ import 'timeline/timeline_row_chrome_probe.dart';
 /// geometry the row hit-tests with.
 void main() {
   group('comma drag pixel policy', () {
-    test('R9 #10: an EDGE steps at the cell BOUNDARY, not its midpoint — '
+    test('R10: the frame axis follows the boundary NEAREST the pointer, '
         'symmetric in both directions', () {
-      // The edge already sits on a boundary, so it moves once the pointer
-      // has carried it a WHOLE cell. Rounding stepped at 24px, which the
-      // user read as the edge leaping out from under the hand.
+      // R9 #10 truncated here, reading "the edge leapt out from under the
+      // hand" as a rounding fault. The fault was the two grip mounts still
+      // discarding their slop (DragStartBehavior.start), which parked the
+      // edge ~18px behind the pointer for the whole gesture; truncation on
+      // top of that offset put the step 42px out one way and 6px the
+      // other. With the slop kept, rounding IS "nearest the cursor".
       expect(commaDragFrameDelta(accumulatedDelta: 20, frameCellExtent: 48), 0);
-      expect(commaDragFrameDelta(accumulatedDelta: 25, frameCellExtent: 48), 0);
-      expect(commaDragFrameDelta(accumulatedDelta: 47, frameCellExtent: 48), 0);
+      expect(commaDragFrameDelta(accumulatedDelta: 25, frameCellExtent: 48), 1);
+      expect(commaDragFrameDelta(accumulatedDelta: 47, frameCellExtent: 48), 1);
       expect(commaDragFrameDelta(accumulatedDelta: 48, frameCellExtent: 48), 1);
       expect(
         commaDragFrameDelta(accumulatedDelta: 100, frameCellExtent: 48),
@@ -39,7 +42,7 @@ void main() {
       );
       expect(
         commaDragFrameDelta(accumulatedDelta: -25, frameCellExtent: 48),
-        0,
+        -1,
       );
       expect(
         commaDragFrameDelta(accumulatedDelta: -48, frameCellExtent: 48),
@@ -47,15 +50,15 @@ void main() {
       );
     });
 
-    test('a MOVE keeps the nearest cell (user rule: edges only)', () {
-      // A move travels with the grab POINT, which starts inside a cell
-      // rather than on a boundary.
+    test('R10: ONE rule — an edge, a move and the run [+] all read the same '
+        'function', () {
+      // R9 #10 forked a second policy (timelineMoveFrameDelta) so the two
+      // could not drift back together by accident. They came back together
+      // by DECISION, so the fork is gone rather than sitting there as two
+      // identical bodies waiting for someone to edit one of them.
+      expect(commaDragFrameDelta(accumulatedDelta: 25, frameCellExtent: 48), 1);
       expect(
-        timelineMoveFrameDelta(accumulatedDelta: 25, frameCellExtent: 48),
-        1,
-      );
-      expect(
-        timelineMoveFrameDelta(accumulatedDelta: -25, frameCellExtent: 48),
+        commaDragFrameDelta(accumulatedDelta: -25, frameCellExtent: 48),
         -1,
       );
     });
@@ -231,7 +234,15 @@ void main() {
           prefix: 'xsheet',
         ),
       );
-      // X-sheet frame rows are 36px tall.
+      // ★ THE pin for R10's DragStartBehavior.down, because this mount is
+      // arena-CONTESTED: the x-sheet grid puts scrollables around the grip,
+      // so the recognizer really does wait out the 18px touch slop here
+      // (measured: pointer-down alone begins nothing; the 19px arrives
+      // whole at acceptance). X-sheet frame rows are 36px tall, so those
+      // 19px are already past the row's midpoint and the edge owes a step
+      // the moment the drag is recognised. Under `start` they were thrown
+      // away and this reads [1] — the edge spending the rest of the
+      // gesture 19px behind the finger.
       await gesture.moveBy(const Offset(0, 19));
       await tester.pump();
       await gesture.moveBy(const Offset(0, 36));
@@ -242,7 +253,46 @@ void main() {
       expect(log.begins, [
         (const LayerId('layer-a'), 0, TimelineBlockEdge.end),
       ]);
+      expect(log.updates, [1, 2]);
+      expect(log.ends, 1);
+    });
+  });
+
+  group('R10: the running total decides', () {
+    testWidgets('the edge follows the NEAREST boundary to where the pointer '
+        'has got to, and comes home to zero', (tester) async {
+      final log = _DragLog();
+      await tester.pumpWidget(
+        _rowHarness(layer: _twoBlockLayer(), commaDrag: log.callbacks),
+      );
+
+      // ⚠️ This harness cannot pin DragStartBehavior — mount and slop are
+      // two different things. `_rowHarness` puts nothing beside the grip,
+      // so its recognizer is the ONLY member of the arena and wins by
+      // default at the pointer DOWN, with nothing pending; both drag-start
+      // behaviours then produce byte-identical events. The pin for `down`
+      // is the arena-CONTESTED x-sheet case above, plus the two full-app
+      // fixtures (widget_test's ripple drag, instruction_row's end grip).
+      //
+      // What IS pinned here is the arithmetic: 30px of a 48px cell is past
+      // the midpoint, so the edge steps — R9 #10's truncation would report
+      // nothing until a whole cell had passed.
+      final gesture = await tester.startGesture(
+        _gripRect(tester, 'end', 0).center,
+      );
+      await gesture.moveBy(const Offset(30, 0));
+      await tester.pump();
+
       expect(log.updates, [1]);
+
+      // And it comes home: back at the down position the delta is zero
+      // again, so the block is the length it started at.
+      await gesture.moveBy(const Offset(-30, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pump();
+
+      expect(log.updates, [1, 0]);
       expect(log.ends, 1);
     });
   });

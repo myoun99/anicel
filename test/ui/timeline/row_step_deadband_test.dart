@@ -30,14 +30,15 @@ void main() {
     expect(rows(-56), -2);
   });
 
-  test('a MOVE\'s FRAME axis keeps its half-cell rounding — the row axis is '
-      'the one with a deadband (R27 #12), and R9 #10 changed EDGES only', () {
+  test('the FRAME axis keeps its half-cell rounding — the ROW axis is the '
+      'one with a deadband (R27 #12). R9 #10 split them for a while; R10 '
+      'put the frame axis back to one rule for every verb', () {
     expect(
-      timelineMoveFrameDelta(accumulatedDelta: 14, frameCellExtent: rowExtent),
+      commaDragFrameDelta(accumulatedDelta: 14, frameCellExtent: rowExtent),
       1,
     );
     expect(
-      timelineMoveFrameDelta(accumulatedDelta: -14, frameCellExtent: rowExtent),
+      commaDragFrameDelta(accumulatedDelta: -14, frameCellExtent: rowExtent),
       -1,
     );
   });

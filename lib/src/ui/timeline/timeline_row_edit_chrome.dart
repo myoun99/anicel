@@ -657,6 +657,15 @@ class _TimelineRowEditChromeLayerState
   @override
   void initState() {
     super.initState();
+    // Drag from the DOWN position (R10) — the same rule the [+] pan below
+    // has always had. The slop a recognizer spends winning the arena is
+    // real travel of the hand; discarding it left the edge ~18px behind
+    // the pointer for the WHOLE gesture, which is what the user meant by
+    // "어긋난 채로 유지". The grip mounts and the lane key marker were the
+    // delta-accumulating frame-axis drags still on Flutter's default; the
+    // ruler and rail scrubs read the pointer's absolute position and never
+    // cared.
+    _gripDrag.dragStartBehavior = DragStartBehavior.down;
     _gripDrag.onStart = (_) => _startGripDrag();
     _gripDrag.onUpdate = (details) =>
         _updateGripDrag(_horizontal ? details.delta.dx : details.delta.dy);

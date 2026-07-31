@@ -430,8 +430,9 @@ Future<bool> _isActionButtonEnabled(
 }
 
 /// Exposure ± buttons are RETIRED (the block edge grips replaced them):
-/// lengthen a block by dragging its end grip [frames] slim 24px cells (the
-/// drag's 18px slop is consumed before frames count).
+/// lengthen a block by dragging its end grip [frames] slim 24px cells. The
+/// slop counts toward those cells (R10), so the moves below are sized from
+/// the total.
 Future<void> _dragBlockEndGrip(
   WidgetTester tester,
   String layerId,
@@ -440,7 +441,14 @@ Future<void> _dragBlockEndGrip(
 ) async {
   // Scroll via the RAIL row — cell/grip-level ensureVisible would
   // over-scroll the custom frame viewport (the comma-grip test's note).
-  // Half-cell overshoot keeps the rounding away from the exact boundary.
+  //
+  // The TOTAL travel is what decides the step (R10: the pixels spent
+  // winning the arena are travel, not overhead), so the two moves are
+  // sized together: 19 to clear the 18px slop, then the remainder of
+  // `frames` 24px cells plus a small overshoot that keeps the rounding
+  // away from the exact boundary. Sizing the second move alone is what
+  // this helper used to do, and it silently grew every fixture by one
+  // extra frame the moment the slop stopped being discarded.
   await tester.ensureVisible(
     find.byKey(ValueKey<String>('timeline-layer-row-$layerId')),
   );
@@ -454,7 +462,7 @@ Future<void> _dragBlockEndGrip(
   );
   await gesture.moveBy(const Offset(19, 0));
   await tester.pump();
-  await gesture.moveBy(Offset(frames * 24.0 + 11, 0));
+  await gesture.moveBy(Offset(frames * 24.0 + 11 - 19, 0));
   await tester.pumpAndSettle();
   await gesture.up();
   await tester.pumpAndSettle();
@@ -1915,8 +1923,8 @@ Line 8''';
       expect(gripIds, contains('block-edge-grip-start-default-layer-1-1'));
 
       // Lengthen A by 3: it consumes the X gap and pushes B from 3 to 4
-      // with B's comma preserved (24px slim cells; 18px slop first, then
-      // three WHOLE cells — R9 #10 steps an edge at the boundary).
+      // with B's comma preserved (24px slim cells). R10: the slop is
+      // TRAVEL, so the total is what counts — 19 + 53 = 72 = three cells.
       final gesture = await tester.startGesture(
         timelineRowChromeCenter(
           tester,
@@ -1926,7 +1934,7 @@ Line 8''';
       );
       await gesture.moveBy(const Offset(19, 0));
       await tester.pump();
-      await gesture.moveBy(const Offset(72, 0));
+      await gesture.moveBy(const Offset(53, 0));
       await tester.pumpAndSettle();
       await gesture.up();
       await tester.pumpAndSettle();

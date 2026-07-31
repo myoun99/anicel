@@ -135,8 +135,8 @@ void main() {
     expect(textsOf(tester), ['2', '3'], reason: 'never the glued total 5');
   });
 
-  testWidgets('R9 #5: the label hugs the block\'s END corner, not the last '
-      'cell\'s centre — the cel name owns the cell', (tester) async {
+  testWidgets('R10: the badge centres on the block\'s LAST cell along the '
+      'frame axis, and hangs at the far end of the cross axis', (tester) async {
     await tester.pumpWidget(
       harness(
         layer: drawingLayer({
@@ -144,22 +144,24 @@ void main() {
         }),
       ),
     );
-    // Block spans frames 0..4 → it ENDS at x = 192 (48px cells).
+    // Block spans frames 0..4 → its last cell is [144, 192), centre 168.
     final label = labelsOf(tester).single;
     expect(label.text, '4');
     expect(
       label.anchor.dx,
-      closeTo(192, 1.5),
-      reason: 'the badge corners on the block end; centring it on the last '
-          'cell (168) put it over the cel name whenever a block was one '
-          'frame long — the commonest block there is',
+      closeTo(168, 1.5),
+      reason: 'R9 #5 hugged the block END (192) on this axis too and the '
+          'user read the number as falling off the block; the cross axis '
+          'is what separates it from the cel name',
     );
     // Bottom-anchored inside the row (52 tall; the glyph insets 1px above).
     expect(label.anchor.dy, 52);
   });
 
-  testWidgets('R9 #5: a ONE-frame block\'s badge clears the cell centre '
-      'where its name is drawn', (tester) async {
+  testWidgets('R10: a ONE-frame block keeps its cell centre — the badge is '
+      'separated from the cel name ACROSS the row, not along it', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       harness(
         layer: drawingLayer({
@@ -170,14 +172,36 @@ void main() {
 
     final label = labelsOf(tester).single;
     expect(label.text, '1');
-    // The single cell is [0, 48): the name centres on 24, the badge
-    // corners on 48 and draws leftward from there.
-    expect(label.anchor.dx, closeTo(48, 1.5));
-    expect(
-      label.anchor.dx,
-      greaterThan(24),
-      reason: 'the two numbers no longer share a centre',
+    // The single cell is [0, 48): name and badge share the centre 24, and
+    // the badge hangs 1px off the row's bottom edge instead.
+    expect(label.anchor.dx, closeTo(24, 1.5));
+    expect(label.anchor.dy, 52);
+  });
+
+  test('R10: the X-sheet reads the same rule transposed — last-cell centre '
+      'down the column, 1px off its RIGHT edge', () {
+    // The transposed painter is not pumped by any row harness, and R9 #5
+    // reached it through the shared `axis` fork, so it needs its own word.
+    final painter = TimelineRowRunLabelsPainter(
+      layer: drawingLayer({
+        0: const TimelineExposure.drawing(FrameId('f1'), length: 4),
+      }),
+      geometry: testFrameGeometry(
+        frameCellExtent: cellWidth,
+        frameEndIndexExclusive: 12,
+      ),
+      crossAxisExtent: 52,
+      showSeconds: false,
+      countingBase: 24,
+      axis: Axis.vertical,
     );
+
+    final label = painter.runLabels().single;
+    expect(label.text, '4');
+    // Frame axis is now Y: the last cell is [144, 192), centre 168.
+    expect(label.anchor.dy, closeTo(168, 1.5));
+    // Cross axis is X, and its far end is the column's RIGHT.
+    expect(label.anchor.dx, 52);
   });
 
   testWidgets('separate blocks label separately; SE rows stay clean', (
