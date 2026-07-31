@@ -1,5 +1,6 @@
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/timeline_row_address.dart';
 import 'layer_timeline_display_adapter.dart';
 import 'property_lane_model.dart';
 import 'timeline_row_filter.dart';
@@ -21,26 +22,38 @@ import 'timeline_section_policy.dart';
 /// (its whole section is folded), the step enters the visible rows from
 /// the matching end: ↓ lands on the top displayed row, ↑ on the bottom.
 /// Null = no move.
-LayerId? adjacentDisplayedLayerId({
+/// R10 #19: the walk stops on PROPERTY rows too, so ↑/↓ can land on one —
+/// the user's "화살표는 프로퍼티가 인식범위에 들어가서 프로퍼티 이동되도
+/// 괜찮은데". They were not merely skipped before: the rows were built with
+/// no lane provider at all, so lane rows never existed and the two
+/// `!row.isLane` guards below were dead code.
+///
+/// Returns the row's ADDRESS, because a lane row is not a layer — but it
+/// always names its owner, so the caller can keep the drawing target on
+/// the layer the property belongs to. Pass [lanesForLayer] and
+/// [expandedLayerIds] to include lanes; omit them and the walk is exactly
+/// the layer-row walk it always was.
+TimelineRowAddress? adjacentDisplayedRow({
   required List<Layer> layers,
   required LayerId? activeLayerId,
   required int direction,
+  TimelineRowAddress? currentRow,
   Set<TimelineSection> hiddenSections = const {},
   TimelineRowFilter rowFilter = TimelineRowFilter.none,
   Set<LayerId> collapsedAttachBaseIds = const {},
+  Set<LayerId> expandedLayerIds = const {},
+  List<PropertyLaneRow> Function(Layer layer)? lanesForLayer,
   bool Function(LayerId layerId)? fxEnabledOf,
 }) {
-  // Layer rows only — property lanes aren't selectable layers, so the nav
-  // skips them no matter what's twirled open. R27 #27: a collapsed
-  // folder's members are not on screen, so the walk must not stop on them
-  // ("접혀져있으면 표시된거만 선택하는 룰") — the row builder already
-  // drops them. FOLDER rows themselves are ordinary stops now: they are
-  // layers, so the old "step OVER the header, it only carries a
+  // R27 #27: a collapsed folder's members are not on screen, so the walk
+  // must not stop on them ("접혀져있으면 표시된거만 선택하는 룰") — the row
+  // builder already drops them. FOLDER rows themselves are ordinary stops:
+  // they are layers, so the old "step OVER the header, it only carries a
   // representative member" special case is gone.
   final rows = buildTimelineDisplayRows(
     layers: horizontalLayerDisplayOrder(layers),
-    expandedLayerIds: const {},
-    lanesForLayer: (_) => const [],
+    expandedLayerIds: expandedLayerIds,
+    lanesForLayer: lanesForLayer ?? (_) => const [],
     hiddenSections: hiddenSections,
     rowFilter: rowFilter,
     collapsedAttachBaseIds: collapsedAttachBaseIds,
@@ -51,35 +64,42 @@ LayerId? adjacentDisplayedLayerId({
   if (rows.isEmpty || direction == 0) {
     return null;
   }
+
+  TimelineRowAddress addressOf(TimelineDisplayRow row) => row.isLane
+      ? LaneRowAddress(row.layer.id, row.lane!.laneId)
+      : LayerRowAddress(row.layer.id);
+
+  // Where we are: the row the caller says it is on, falling back to the
+  // active layer's own row for callers that have no row notion yet.
   var activeIndex = -1;
   for (var index = 0; index < rows.length; index += 1) {
-    if (!rows[index].isLane && rows[index].layer.id == activeLayerId) {
+    final address = addressOf(rows[index]);
+    if (currentRow != null ? address == currentRow : address == LayerRowAddress(activeLayerId ?? const LayerId(''))) {
       activeIndex = index;
       break;
     }
   }
-  final layerRowIndexes = [
-    for (var index = 0; index < rows.length; index += 1)
-      if (!rows[index].isLane) index,
-  ];
-  if (layerRowIndexes.isEmpty) {
-    return null;
+  if (activeIndex == -1) {
+    for (var index = 0; index < rows.length; index += 1) {
+      if (!rows[index].isLane && rows[index].layer.id == activeLayerId) {
+        activeIndex = index;
+        break;
+      }
+    }
   }
-  final activeSlot = layerRowIndexes.indexOf(activeIndex);
+
   final int targetIndex;
-  if (activeSlot == -1) {
-    targetIndex = direction > 0
-        ? layerRowIndexes.first
-        : layerRowIndexes.last;
+  if (activeIndex == -1) {
+    targetIndex = direction > 0 ? 0 : rows.length - 1;
   } else {
-    final slot = (activeSlot + direction).clamp(0, layerRowIndexes.length - 1);
-    if (slot == activeSlot) {
+    final next = (activeIndex + direction).clamp(0, rows.length - 1);
+    if (next == activeIndex) {
       return null;
     }
-    targetIndex = layerRowIndexes[slot];
+    targetIndex = next;
   }
-  final target = rows[targetIndex].layer.id;
-  return target == activeLayerId ? null : target;
+  final target = addressOf(rows[targetIndex]);
+  return target == currentRow ? null : target;
 }
 
 /// The imperative layer-nav channel (UI-R20 #14): the app-level ↑/↓

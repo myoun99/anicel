@@ -1057,18 +1057,31 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     if (row.isLane) {
       // Lane labels show the value AT the cursor: subscribe here so a
       // tick rebuilds only these small cells.
+      //
+      // R10: and through the drag gate, so the blue value column follows a
+      // key move per step. The band moved live while the number beside it
+      // still read the committed track — the label is where you WATCH the
+      // value, so it is the half that most needed to be live.
       return ValueListenableBuilder<int>(
         valueListenable: widget.frameCursor,
-        builder: (context, cursorFrame, _) => TimelineLaneControlsRow(
+        builder: (context, cursorFrame, _) => TimelineDragPreviewRowGate(
+          dragPreview: widget.dragPreview,
           layer: row.layer,
-          lane: row.lane!,
-          metrics: _metrics,
-          currentFrameIndex: cursorFrame,
-          onSelectFrame: widget.onSelectFrame,
-          laneEdit: widget.laneEdit,
-          onToggleLaneGroup: widget.onToggleLaneGroup,
-          onToggleLaneGroupEnabled: widget.onToggleLaneGroupEnabled,
-          leadingInset: layerSectionLabelSlotWidth,
+          rowBuilder: (context, layer) => TimelineLaneControlsRow(
+            layer: layer,
+            lane: previewedLaneRow(
+              row: row,
+              previewLayer: layer,
+              lanesForLayer: _lanesFor,
+            ),
+            metrics: _metrics,
+            currentFrameIndex: cursorFrame,
+            onSelectFrame: widget.onSelectFrame,
+            laneEdit: widget.laneEdit,
+            onToggleLaneGroup: widget.onToggleLaneGroup,
+            onToggleLaneGroupEnabled: widget.onToggleLaneGroupEnabled,
+            leadingInset: layerSectionLabelSlotWidth,
+          ),
         ),
       );
     }
@@ -1794,6 +1807,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                             rangeGesture,
                                                         laneRange:
                                                             widget.laneRange,
+                                                        lanesForLayer:
+                                                            _lanesFor,
                                                         runEdit: widget.runEdit,
                                                         laneEdit:
                                                             widget.laneEdit,

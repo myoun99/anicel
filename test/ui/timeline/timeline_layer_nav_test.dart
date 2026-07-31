@@ -1,8 +1,10 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_nav.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_filter.dart';
 import 'package:anicel/src/ui/timeline/timeline_section_policy.dart';
@@ -42,13 +44,19 @@ void main() {
     Set<TimelineSection> hidden = const {},
     TimelineRowFilter filter = TimelineRowFilter.none,
     List<Layer>? layers,
-  }) => adjacentDisplayedLayerId(
-    layers: layers ?? stack,
-    activeLayerId: active == null ? null : LayerId(active),
-    direction: direction,
-    hiddenSections: hidden,
-    rowFilter: filter,
-  );
+  }) {
+    // R10 renamed the walk and gave it row ADDRESSES, because it stops on
+    // property rows now. With no lane provider it is the layer-row walk it
+    // always was, which is what this file pins.
+    final row = adjacentDisplayedRow(
+      layers: layers ?? stack,
+      activeLayerId: active == null ? null : LayerId(active),
+      direction: direction,
+      hiddenSections: hidden,
+      rowFilter: filter,
+    );
+    return row is LayerRowAddress ? row.layerId : null;
+  }
 
   test('steps one VISUAL row (camera on top, drawing at the bottom) and '
       'clamps at both ends', () {
@@ -120,13 +128,13 @@ void main() {
     expect(step('base', -1, layers: attachStack), const LayerId('up1'));
     // Folded: the attach row skips — base ↑ lands on other.
     expect(
-      adjacentDisplayedLayerId(
+      adjacentDisplayedRow(
         layers: attachStack,
         activeLayerId: const LayerId('base'),
         direction: -1,
         collapsedAttachBaseIds: {const LayerId('base')},
       ),
-      const LayerId('other'),
+      const LayerRowAddress(LayerId('other')),
     );
   });
 
@@ -143,6 +151,67 @@ void main() {
       isNull,
       reason: 'single row: nowhere to go',
     );
+  });
+
+  group('R10 #19: the walk stops on PROPERTY rows', () {
+    // Two layers, both twirled open, each contributing one lane row.
+    final twoLayers = [_layer('lower'), _layer('upper')];
+    List<PropertyLaneRow> oneLane(Layer layer) => const [
+      PropertyLaneRow(laneId: 'position', label: 'Position', keyedFrames: {}),
+    ];
+
+    TimelineRowAddress? walk(TimelineRowAddress from, int direction) =>
+        adjacentDisplayedRow(
+          layers: twoLayers,
+          activeLayerId: const LayerId('lower'),
+          currentRow: from,
+          direction: direction,
+          expandedLayerIds: {const LayerId('lower'), const LayerId('upper')},
+          lanesForLayer: oneLane,
+        );
+
+    test('a property row is a STOP, not something the walk skips — before '
+        'R10 lane rows were never even built into the row list', () {
+      // Display order top-to-bottom: upper, upper/position, lower,
+      // lower/position.
+      expect(
+        walk(const LayerRowAddress(LayerId('lower')), 1),
+        const LaneRowAddress(LayerId('lower'), 'position'),
+        reason: '↓ from a layer row lands on its own property',
+      );
+      expect(
+        walk(const LaneRowAddress(LayerId('lower'), 'position'), -1),
+        const LayerRowAddress(LayerId('lower')),
+      );
+    });
+
+    test('walking up out of a layer\'s properties reaches the layer ABOVE '
+        'through its own property row — the address always names an owner, '
+        'so the drawing target can follow it', () {
+      expect(
+        walk(const LayerRowAddress(LayerId('lower')), -1),
+        const LaneRowAddress(LayerId('upper'), 'position'),
+      );
+      final landing = walk(const LayerRowAddress(LayerId('lower')), -1);
+      expect(
+        (landing! as LaneRowAddress).layerId,
+        const LayerId('upper'),
+        reason: '"현재 위치한 레이어를 액티브레이어로" — the owner is right '
+            'there in the address',
+      );
+    });
+
+    test('with no lane provider the walk is the layer-row walk it always '
+        'was, so every caller that has no lane state is unaffected', () {
+      expect(
+        adjacentDisplayedRow(
+          layers: twoLayers,
+          activeLayerId: const LayerId('lower'),
+          direction: -1,
+        ),
+        const LayerRowAddress(LayerId('upper')),
+      );
+    });
   });
 
   test('the command channel forwards to the bound handler and no-ops '

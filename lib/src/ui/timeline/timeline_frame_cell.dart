@@ -1,5 +1,5 @@
-import 'package:flutter/gestures.dart' show PointerDeviceKind, kPrimaryButton;
 import 'package:flutter/material.dart';
+import '../widgets/instant_tap_region.dart';
 
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
@@ -207,53 +207,24 @@ class TimelineFrameCell extends StatelessWidget {
       ),
     );
 
-    // PEN-12 #6: scroll owns finger DRAGS, but a clean finger TAP still
-    // selects — tracked raw (distance-based) since the press path
-    // bypasses the arena. Build-local capture: a tap outlives no build.
-    int? touchTapPointer;
-    Offset? touchTapDownAt;
-    return Listener(
-      // Selection must not wait out the double-tap window: with
-      // onDoubleTap registered, InkWell's onTap only fires once the
-      // gesture arena resolves (~300ms after a quick tap). The raw
-      // pointer down bypasses the arena, keeping single-tap selection
-      // instant on every layer kind.
-      onPointerDown: (event) {
-        // Touch-scroll ON: a finger press is pure scroll — it never seeks
-        // (UI-R23 feedback #2); pen/mouse keep the instant select.
-        if (AppInput.timelineCellPressSeeks(event.kind) &&
-            (event.buttons == 0 || (event.buttons & kPrimaryButton) != 0) &&
-            !(suppressPointerDownSelect?.call(frameIndex) ?? false)) {
+    // Selection must not wait out the double-tap window: with onDoubleTap
+    // registered, InkWell's onTap only fires once the gesture arena
+    // resolves (~300ms after a quick tap). [InstantTapRegion] takes the
+    // press off the arena — pen/mouse on the DOWN, a finger on the release
+    // if it did not travel (PEN-12 #6: scroll owns finger drags, but a
+    // clean finger tap still selects) — under the timeline's own device
+    // gate (UI-R23 feedback #2).
+    //
+    // R10 lifted that policy out of here: it is the app's answer for every
+    // control that carries a double tap, and it was written twice inside
+    // the timeline alone before it had a name.
+    return InstantTapRegion(
+      pressSeeksFor: AppInput.timelineCellPressSeeks,
+      onTap: (_) {
+        // A press INSIDE the frame-range selection initiates a MOVE — it
+        // must not re-seek the playhead first (UI-R10 #12).
+        if (!(suppressPointerDownSelect?.call(frameIndex) ?? false)) {
           select();
-        } else if (event.kind == PointerDeviceKind.touch &&
-            !AppInput.timelineCellPressSeeks(event.kind) &&
-            (event.buttons == 0 || (event.buttons & kPrimaryButton) != 0)) {
-          touchTapPointer = event.pointer;
-          touchTapDownAt = event.position;
-        }
-      },
-      onPointerMove: (event) {
-        final downAt = touchTapDownAt;
-        if (event.pointer == touchTapPointer &&
-            downAt != null &&
-            (event.position - downAt).distance > 12) {
-          touchTapPointer = null;
-          touchTapDownAt = null;
-        }
-      },
-      onPointerUp: (event) {
-        if (event.pointer == touchTapPointer) {
-          touchTapPointer = null;
-          touchTapDownAt = null;
-          if (!(suppressPointerDownSelect?.call(frameIndex) ?? false)) {
-            select();
-          }
-        }
-      },
-      onPointerCancel: (event) {
-        if (event.pointer == touchTapPointer) {
-          touchTapPointer = null;
-          touchTapDownAt = null;
         }
       },
       child: cell,

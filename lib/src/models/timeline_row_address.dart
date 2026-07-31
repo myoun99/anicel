@@ -46,6 +46,45 @@ final class LayerRowAddress extends TimelineRowAddress {
   String toString() => 'LayerRowAddress($layerId)';
 }
 
+/// A LAYER's PROPERTY LANE row — a transform/effect lane, or one of their
+/// group headers (R10 #19).
+///
+/// The third tier of the AE reading the user asked for: a cut, a layer
+/// inside it, a property inside that. It is an address rather than a
+/// separate selection because "which row is the verb's subject" is ONE
+/// question with three answers, not three parallel states — the mistake
+/// #13 made and had to undo.
+///
+/// A lane row is INSIDE a layer, so a verb that has no lane meaning falls
+/// back to [layerId] rather than refusing: standing on a property must
+/// never cost you the layer you draw on, which is exactly the hazard the
+/// user named when asking for selectable fx properties.
+final class LaneRowAddress extends TimelineRowAddress {
+  const LaneRowAddress(this.layerId, this.laneId);
+
+  final LayerId layerId;
+
+  /// The lane's id within its layer ('position', an effect parameter id, or
+  /// a group header's).
+  final String laneId;
+
+  @override
+  String get keySuffix => '${layerId.value}-lane-$laneId';
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LaneRowAddress &&
+          other.layerId == layerId &&
+          other.laneId == laneId;
+
+  @override
+  int get hashCode => Object.hash(LaneRowAddress, layerId, laneId);
+
+  @override
+  String toString() => 'LaneRowAddress($layerId/$laneId)';
+}
+
 /// A TRACK's cut row (the storyboard's V row) — the blocks are cuts on the
 /// track-global frame axis.
 final class TrackRowAddress extends TimelineRowAddress {

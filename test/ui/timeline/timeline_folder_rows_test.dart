@@ -128,33 +128,27 @@ void main() {
   });
 
   test('the aggregate band is the subtree exposure UNION, holds merged', () {
-    final rows = buildTimelineDisplayRows(
-      layers: [
-        folderRow('f'),
-        layer(
-          'a',
-          folder: 'f',
-          timeline: {
-            0: TimelineExposure.drawing(const FrameId('x'), length: 3),
-          },
-        ),
-        layer(
-          'b',
-          folder: 'f',
-          timeline: {
-            2: TimelineExposure.drawing(const FrameId('y'), length: 2),
-            8: TimelineExposure.drawing(const FrameId('z'), length: 1),
-          },
-        ),
-      ],
-      expandedLayerIds: const {},
-      lanesForLayer: (_) => const [],
-    );
-    expect(rows.first.isFolder, isTrue);
-    expect(rows.first.aggregateRuns, [
+    // R10: the union no longer rides the display ROW — a folder row is a
+    // cells row and the union is its band clone's own timeline. The rule
+    // itself is unchanged, so it is pinned where it now lives.
+    final runs = folderAggregateRuns([
+      layer(
+        'a',
+        folder: 'f',
+        timeline: {0: TimelineExposure.drawing(const FrameId('x'), length: 3)},
+      ),
+      layer(
+        'b',
+        folder: 'f',
+        timeline: {
+          2: TimelineExposure.drawing(const FrameId('y'), length: 2),
+          8: TimelineExposure.drawing(const FrameId('z'), length: 1),
+        },
+      ),
+    ]);
+    expect(runs, [
       (start: 0, endExclusive: 4),
       (start: 8, endExclusive: 9),
     ]);
-    expect(rows.first.members.map((l) => l.id.value), ['a', 'b']);
   });
 }

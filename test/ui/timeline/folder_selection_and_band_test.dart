@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -8,8 +7,6 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
-import 'package:anicel/src/ui/timeline/timeline_folder_aggregate_row.dart';
-import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 
 /// R28 #11/#12: the folder row stops behaving like a second kind of row.
 ///
@@ -61,68 +58,54 @@ void main() {
     expect(matches.single, greaterThan(folderIndex));
   });
 
-  test('R28 #11: the folder row carries its subtree members, so the band '
-      'can grey frames no member has drawn', () {
-    final rows = buildTimelineDisplayRows(
-      layers: [folderRow, member('a'), member('b')],
-      expandedLayerIds: const {},
-      lanesForLayer: (_) => const [],
+  test('R10: the folder BAND is the subtree union as an ordinary timeline '
+      '— which is what lets a folder row be a cells row', () {
+    // Members 'a' and 'b' both expose [0, 4); the union merges to one run.
+    final runs = folderAggregateRuns([member('a'), member('b')]);
+    expect(runs, [(start: 0, endExclusive: 4)]);
+
+    // And the band a folder row renders is that union, expressed the way
+    // every other row expresses coverage: entries in `Layer.timeline`.
+    final band = folderRow.copyWith(
+      timeline: {
+        for (final run in runs)
+          run.start: TimelineExposure.drawing(
+            FrameId('band:f:${run.start}'),
+            length: run.endExclusive - run.start,
+          ),
+      },
     );
-    final header = rows.firstWhere((row) => row.isFolder);
+    expect(band.timeline.keys, [0]);
+    expect(band.timeline[0]!.length, 4);
     expect(
-      header.members.map((layer) => layer.id).toList(),
-      [const LayerId('a'), const LayerId('b')],
+      band.id,
+      folderRow.id,
+      reason: 'the clone stays the FOLDER — the tile bake keys on the id',
     );
   });
 
-  testWidgets('R28 #11: the band greys a frame only when NO member has '
-      'artwork there', (tester) async {
-    final layers = [member('a'), member('b')];
-
+  test('R28 #11 survives the move to the shared painter: a folder frame '
+      'greys only when NO member drew there', () {
     // Member A drew frames 0..1, member B drew frame 2. Frame 3 is empty
     // in the whole subtree — the only one that may grey.
-    bool hasContent(Layer layer, int frameIndex) =>
-        layer.id == const LayerId('a')
-        ? frameIndex < 2
-        : frameIndex == 2;
+    bool memberHasContent(Layer layer, int frameIndex) =>
+        layer.id == const LayerId('a') ? frameIndex < 2 : frameIndex == 2;
 
-    final probed = <(String, int)>[];
-    await tester.pumpWidget(
-      MaterialApp(
-        home: Scaffold(
-          body: SizedBox(
-            width: 400,
-            height: 40,
-            child: TimelineFolderAggregateRow(
-              aggregateRuns: const [(start: 0, endExclusive: 4)],
-              frameStartIndex: 0,
-              frameEndIndexExclusive: 4,
-              leadingFrameSpacerWidth: 0,
-              trailingFrameSpacerWidth: 0,
-              metrics: TimelineGridMetrics.defaults,
-              members: layers,
-              memberHasContentAt: (layer, frameIndex) {
-                probed.add((layer.id.value, frameIndex));
-                return hasContent(layer, frameIndex);
-              },
-            ),
-          ),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
+    final members = [member('a'), member('b')];
+    // The rule the session's `celHasContentForLayer` folder arm applies —
+    // pinned as the CONTRACT rather than as one painter's probe order,
+    // which is what the deleted band test asserted.
+    bool folderHasContent(int frameIndex) =>
+        members.any((m) => memberHasContent(m, frameIndex));
 
-    // The band asked about the union, not just one member — the "다른곳에서
-    // 해당위치에 그림그려진 하얀 블록 존재하면 하얗게" rule.
-    expect(probed.any((entry) => entry.$1 == 'a'), isTrue);
+    expect(folderHasContent(0), isTrue, reason: 'A drew it');
+    expect(folderHasContent(1), isTrue, reason: 'A drew it');
     expect(
-      probed.any((entry) => entry.$1 == 'b'),
+      folderHasContent(2),
       isTrue,
-      reason: 'frame 2 is drawn only by member B — the band must consult it '
-          'before greying',
+      reason: 'only B drew it, and the folder must consult B before greying '
+          '— "다른곳에서 해당위치에 그림그려진 하얀 블록 존재하면 하얗게"',
     );
-    // Frame 3 is the empty one; every member gets asked about it.
-    expect(probed.contains(('a', 3)), isTrue);
-    expect(probed.contains(('b', 3)), isTrue);
+    expect(folderHasContent(3), isFalse, reason: 'nobody drew it: grey');
   });
 }

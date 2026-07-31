@@ -1,8 +1,11 @@
 ﻿import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/timeline_coverage.dart';
+import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
@@ -208,8 +211,13 @@ void main() {
       // The band used to be pure display — 'taps fall through to nothing' —
       // which made it the one row in the timeline a range drag could not
       // cross. It keeps its comma-less, edge-less band; it gains selection.
+      //
+      // R10 retired the private band: a folder row is a CELLS row now, so
+      // it mounts the shared row's gesture slot rather than a folder one.
+      // The contract below — the selection addresses the folder ROW — is
+      // what matters, and it reads the same on both.
       final gesture = _stableKeyFinder(
-        'timeline-range-gesture-slot-folder-${folder.id}',
+        'timeline-range-gesture-slot-${folder.id}',
       );
       expect(gesture, findsOneWidget);
 
@@ -231,6 +239,55 @@ void main() {
         reason: 'the selection addresses the FOLDER row itself — not a '
             'member, and not everything under it',
       );
+    });
+
+    testWidgets('R10: a folder row has real CELLS, so the playhead can '
+        'stand on it — and it stays uneditable', (tester) async {
+      final folder = createFolderLayer(
+        id: const LayerId('f1'),
+        name: 'Folder',
+      );
+      // The band clone: the folder's own row, carrying the subtree union
+      // as an ordinary timeline. That is what the host hands the grid.
+      final band = folder.copyWith(
+        timeline: {
+          0: TimelineExposure.drawing(const FrameId('band:f1:0'), length: 3),
+        },
+      );
+      LayerId? selectedLayerId;
+      int? selectedFrameIndex;
+
+      await tester.pumpWidget(
+        _body(
+          layers: [band],
+          frameStartIndex: 0,
+          frameEndIndexExclusive: 4,
+          exposureStateForLayer: (layer, frameIndex) =>
+              coveringDrawingBlockAt(layer.timeline, frameIndex) != null
+              ? TimelineCellExposureState.held
+              : TimelineCellExposureState.uncovered,
+          onSelectLayer: (id) => selectedLayerId = id,
+          onSelectFrame: (index) => selectedFrameIndex = index,
+        ),
+      );
+
+      // Cells EXIST — the whole point. The band frames read as covered.
+      expect(
+        timelineCellModel(tester, 'f1', 1).exposureState,
+        TimelineCellExposureState.held,
+      );
+      expect(
+        timelineCellModel(tester, 'f1', 1).glyph,
+        '',
+        reason: 'held prints nothing, so the band stays NAMELESS (L5) with '
+            'no new gate on the shared marker table',
+      );
+
+      // And you can stand there, through the shared press policy rather
+      // than a folder-shaped exception.
+      await tapTimelineCell(tester, 'f1', 2);
+      expect(selectedLayerId, folder.id);
+      expect(selectedFrameIndex, 2);
     });
   });
 }

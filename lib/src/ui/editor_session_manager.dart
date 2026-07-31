@@ -75,6 +75,7 @@ import '../models/se_name_tag.dart';
 import '../models/storyboard_coverage.dart';
 import '../models/text_cel_style.dart';
 import '../models/timeline_coverage.dart';
+import '../models/timeline_exposure.dart';
 import '../models/timeline_frame_range.dart';
 import '../models/timeline_repeat.dart';
 import '../models/timeline_row_address.dart';
@@ -169,6 +170,7 @@ import 'timeline/timeline_section_policy.dart';
 import 'timeline/effect_lane_editing.dart'
     show
         effectLaneKeyFrames,
+        effectsWithLaneKeyRemoved,
         effectsWithLaneKeyToggled,
         effectsWithLaneSpanKeysShifted;
 import 'timeline/effect_lane_policy.dart'
@@ -176,6 +178,7 @@ import 'timeline/effect_lane_policy.dart'
 import 'timeline/transform_lane_editing.dart'
     show
         transformLaneKeyFrames,
+        transformTrackWithLaneKeyRemoved,
         transformTrackWithLaneKeyToggled,
         transformTrackWithLaneSpanKeysShifted;
 import 'timeline/transform_lane_policy.dart'
@@ -814,6 +817,34 @@ class EditorSessionManager extends ChangeNotifier {
   /// picked, which reads as the selected track's V row.
   TimelineRowAddress? _storyboardRow;
 
+  /// The row a frame-axis VERB acts on (R10 #13) — the rail's rows and the
+  /// cut's layer rows alike, whichever the user last engaged.
+  ///
+  /// NOT the same thing as [selectedRow], and deliberately so. The user's
+  /// correction when #13 was settled: a V row and a layer row are not
+  /// siblings competing for one slot, they are a HIERARCHY — a V row is a
+  /// cut, a layer row is a layer INSIDE a cut. So [selectedRow] keeps
+  /// saying which row of the FILM is lit (and picking a layer still leaves
+  /// it alone, the 2026-07-27 rule), while this says whose blocks the flip
+  /// counts. Folding the two into one slot is what made picking a layer
+  /// drop the rail's S-row highlight, which is not what either question
+  /// was asking.
+  TimelineRowAddress? _verbRow;
+
+  /// Defaults to the active layer's row, not the track's: with nothing
+  /// picked yet the row you are on is the one you draw on. Only a cut with
+  /// no layers at all falls through to the track row.
+  TimelineRowAddress get currentRow {
+    final stored = _verbRow;
+    if (stored != null) {
+      return stored;
+    }
+    final layerId = activeLayerId;
+    return layerId == null
+        ? TrackRowAddress(selectedTrackId)
+        : LayerRowAddress(layerId);
+  }
+
   /// THE selected row of the STORYBOARD's rail — exactly ONE, whichever row
   /// was picked, the way the timeline has exactly one selected layer row.
   ///
@@ -862,6 +893,13 @@ class EditorSessionManager extends ChangeNotifier {
         if (_storeStoryboardRow(row) || trackMoved) {
           notifyListeners();
         }
+      case LaneRowAddress():
+        // R10 #19: a property row is a row you can be ON. The rail's own
+        // highlight resolves it to the containing V row, like any other
+        // in-cut row; what moves is the verb's subject.
+        if (_storeStoryboardRow(row)) {
+          notifyListeners();
+        }
       case TrackRowAddress(:final trackId):
         selectTrackCutAtPlayhead(trackId);
     }
@@ -889,6 +927,9 @@ class EditorSessionManager extends ChangeNotifier {
   bool _storeStoryboardRow(TimelineRowAddress row) {
     final before = selectedRow;
     _storyboardRow = row;
+    // Picking a rail row is also engaging it, so the verb follows (R10
+    // #13). The reverse does not hold — see [_verbRow].
+    _verbRow = row;
     return selectedRow != before;
   }
 
@@ -1054,6 +1095,91 @@ class EditorSessionManager extends ChangeNotifier {
       display,
     );
     return display;
+  }
+
+  /// The folder BAND cache (R10): a folder row's display clone, whose
+  /// `timeline` IS its subtree's exposure union.
+  ///
+  /// A folder Layer is empty — no frames, no timeline — so handing it to
+  /// the shared cells painter paints a blank row, which is exactly what
+  /// the X-sheet has been doing all along. Giving the clone the union as
+  /// an ordinary timeline is what lets a folder row BE a cells row: the
+  /// coverage question answers in O(log runs) off the standard raw value,
+  /// with no per-cell walk and no new painter input.
+  ///
+  /// Identity is the whole point, and the same reason [_seDisplayCloneCache]
+  /// exists: repaint, the tile bake key and the row memo all compare the
+  /// Layer INSTANCE, and a folder's own instance does not move when a
+  /// member is edited. Same union ⇒ the same clone back, so nothing
+  /// re-records; a changed union ⇒ a new instance, so everything does.
+  final Map<LayerId, ({List<({int start, int endExclusive})> runs, Layer band})>
+  _folderBandCache = {};
+
+  /// The stack the cache was filled from — a different stack identity means
+  /// the members may have moved even where the runs did not.
+  List<Layer>? _folderBandSource;
+  final Map<LayerId, List<Layer>> _folderBandMembers = {};
+
+  void _fillFolderBandCache() {
+    final stack = layers;
+    if (identical(_folderBandSource, stack)) {
+      return;
+    }
+    _folderBandSource = stack;
+    _folderBandMembers.clear();
+    final index = LayerFolderIndex(stack);
+    for (final layer in stack) {
+      if (!layerKindGroupsLayers(layer.kind)) {
+        continue;
+      }
+      final members = index.subtreeMembersOf(layer.id);
+      _folderBandMembers[layer.id] = members;
+      final runs = folderAggregateRuns(members);
+      final cached = _folderBandCache[layer.id];
+      if (cached != null && listEquals(cached.runs, runs)) {
+        continue;
+      }
+      _folderBandCache[layer.id] = (
+        runs: runs,
+        band: layer.copyWith(
+          timeline: {
+            for (final run in runs)
+              run.start: TimelineExposure.drawing(
+                // The union's entries are AUTHORED, not ghosts, and they
+                // resolve to no Frame on purpose: nothing composites a
+                // folder band, it only paints.
+                FrameId('band:${layer.id.value}:${run.start}'),
+                length: run.endExclusive - run.start,
+              ),
+          },
+        ),
+      );
+    }
+    _folderBandCache.removeWhere(
+      (id, _) => !_folderBandMembers.containsKey(id),
+    );
+  }
+
+  /// [folder]'s row as the grids should render it — the union band. Never
+  /// leaves the display path: commands re-read the real layer by id.
+  Layer folderBandLayerFor(Layer folder) {
+    if (!layerKindGroupsLayers(folder.kind)) {
+      return folder;
+    }
+    _fillFolderBandCache();
+    return _folderBandCache[folder.id]?.band ?? folder;
+  }
+
+  /// The folder's subtree members — the empty-cel tint's union (R28 #11).
+  List<Layer> folderBandMembersOf(LayerId folderId) {
+    _fillFolderBandCache();
+    return _folderBandMembers[folderId] ?? const [];
+  }
+
+  /// The folder's merged exposure runs — the range selection's snap lane.
+  List<({int start, int endExclusive})> folderBandRunsOf(LayerId folderId) {
+    _fillFolderBandCache();
+    return _folderBandCache[folderId]?.runs ?? const [];
   }
 
   /// The track's SE rows as cut-local display clones for the active cut.
@@ -3538,6 +3664,11 @@ class EditorSessionManager extends ChangeNotifier {
       _syncVisibilitySolo();
       changed = true;
     }
+    // R10 #13: picking a layer moves the VERB's row, so the flip counts
+    // this layer's blocks from here. It does NOT touch the rail's row —
+    // that stays where the user put it (2026-07-27), and it is a different
+    // question: which row of the FILM is lit.
+    _verbRow = LayerRowAddress(layerId);
     if (changed) {
       notifyListeners();
     }
@@ -6748,7 +6879,12 @@ class EditorSessionManager extends ChangeNotifier {
   /// - Lane selection: the lane freezes a key on every unkeyed frame of
   ///   the range (one undo) — the navigator toggle's range form.
   bool createInstancesForSelection() {
-    final lane = laneRangeSelection.value;
+    // R10 #19: a live lane SPAN, or the property row you are STANDING on
+    // as a one-frame span at the playhead — one verb either way, which is
+    // what makes a group HEADER key its whole member set and an effect
+    // lane key its chain without a second code path (the user's
+    // "카메라레이어랑 같은 동작이지? 로직 통일화해서").
+    final lane = _laneVerbRange;
     if (lane != null) {
       _createLaneKeysForSelection(lane);
       return true;
@@ -7000,6 +7136,106 @@ class EditorSessionManager extends ChangeNotifier {
       add(laneId);
     }
     return targets;
+  }
+
+  /// The LANE range a verb should act on, or null when the subject is not
+  /// a property row (R10 #19).
+  ///
+  /// A live lane SPAN wins; otherwise the row you are standing on, as a
+  /// one-frame span at the playhead. Expressing the standing case as a
+  /// span is what makes Add and Delete need no second code path — the
+  /// group header's whole-member expansion and the effect-lane branch
+  /// come along either way.
+  TimelineLaneSelection? get _laneVerbRange {
+    final span = laneRangeSelection.value;
+    if (span != null) {
+      return span;
+    }
+    if (currentRow case LaneRowAddress(:final layerId, :final laneId)) {
+      final frame = _timelineController.currentFrameIndex;
+      return TimelineLaneSelection(
+        layerId: layerId,
+        laneId: laneId,
+        startIndex: frame,
+        endIndexExclusive: frame + 1,
+      );
+    }
+    return null;
+  }
+
+  /// Removes every key the range covers on every spanned lane — the
+  /// mirror of [_createLaneKeysForSelection], one undo. Returns whether
+  /// anything was there to remove.
+  bool _removeLaneKeysForSelection(TimelineLaneSelection lane) {
+    final layer = _layerById(lane.layerId);
+    if (layer == null || isAttachedLayer(layer)) {
+      return false;
+    }
+    final targets = _laneVerbTargets(lane.spanLaneIds, effects: layer.effects);
+    if (targets.any((laneId) => parseEffectLaneId(laneId) != null)) {
+      var effects = layer.effects;
+      var changed = false;
+      for (final laneId in targets) {
+        for (final frame in effectLaneKeyFrames(effects, laneId).toList()) {
+          if (!lane.contains(frame)) {
+            continue;
+          }
+          final next = effectsWithLaneKeyRemoved(
+            effects,
+            laneId: laneId,
+            frameIndex: frame,
+          );
+          if (next != null) {
+            effects = next;
+            changed = true;
+          }
+        }
+      }
+      if (changed) {
+        updateLayerEffects(layer.id, effects, description: 'Delete keys');
+      }
+      return changed;
+    }
+    var track = layer.transformTrack;
+    var changed = false;
+    for (final laneId in targets) {
+      for (final frame in transformLaneKeyFrames(track, laneId).toList()) {
+        if (!lane.contains(frame)) {
+          continue;
+        }
+        final next = transformTrackWithLaneKeyRemoved(
+          track,
+          laneId: laneId,
+          frameIndex: frame,
+        );
+        if (next != null) {
+          track = next;
+          changed = true;
+        }
+      }
+    }
+    if (changed) {
+      updateLayerTransformTrack(layer.id, track, description: 'Delete keys');
+    }
+    return changed;
+  }
+
+  /// Whether [_laneVerbRange] holds a key to delete.
+  bool get _laneVerbRangeHasKeys {
+    final lane = _laneVerbRange;
+    final layer = lane == null ? null : _layerById(lane.layerId);
+    if (lane == null || layer == null || isAttachedLayer(layer)) {
+      return false;
+    }
+    final targets = _laneVerbTargets(lane.spanLaneIds, effects: layer.effects);
+    return targets.any(
+      (laneId) => parseEffectLaneId(laneId) != null
+          ? effectLaneKeyFrames(layer.effects, laneId).any(lane.contains)
+          : transformLaneKeyFrames(
+              layer.transformTrack,
+              laneId,
+            ).any(lane.contains),
+    );
   }
 
   /// value on every unkeyed frame of the range — one undo.
@@ -8471,6 +8707,10 @@ class EditorSessionManager extends ChangeNotifier {
         // every unselected track's sounds snapless.
         final layer = _trackSeAnywhere(layerId)?.layer;
         return layer == null ? null : (index) => exposureBlockAt(layer, index);
+      case LaneRowAddress():
+        // Lane keys are POINTS, not blocks — the lane domain's own rule
+        // ("raw cells, no block snap"), so there is nothing to snap to.
+        return null;
     }
   }
 
@@ -9509,7 +9749,10 @@ class EditorSessionManager extends ChangeNotifier {
     if (!layerKindGroupsLayers(layer.kind)) {
       return const [];
     }
-    return folderAggregateRuns(layers.subtreeMembersOf(layer.id));
+    // R10: the band cache's runs, so the snap and the painted band are one
+    // answer. This used to walk the subtree fresh on every call — inside
+    // the select-drag loop.
+    return folderBandRunsOf(layer.id);
   }
 
   void updateFrameRangeSelectionDrag({
@@ -11569,6 +11812,13 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   bool get canDeleteCellAtCurrentFrame {
+    // R10 #19: the same rule Add follows — when the subject is a PROPERTY
+    // row, Delete removes its keys, not a cel. It also closes a gap the
+    // other way round: a live LANE span used to fall through to the cell
+    // path and delete the active layer's cel instead of the keys under it.
+    if (_laneVerbRangeHasKeys) {
+      return true;
+    }
     // A live selection is deletable wherever the playhead stands (UI-R17
     // #2).
     if (_selectionBlockStartsByLayer() != null) {
@@ -11706,6 +11956,12 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   void deleteCellAtCurrentFrame() {
+    // R10 #19: a property row is its own subject — see
+    // [canDeleteCellAtCurrentFrame].
+    final lane = _laneVerbRange;
+    if (lane != null && _removeLaneKeysForSelection(lane)) {
+      return;
+    }
     // A live selection routes the delete to EVERY selected block on
     // EVERY spanned layer (UI-R17 #2/#8, one composite undo); the
     // leftover selection covers empty cells so it clears with the delete.
@@ -12495,56 +12751,123 @@ class EditorSessionManager extends ChangeNotifier {
     selectFrameIndex(current + 1);
   }
 
-  /// Jumps to the previous drawing block's START on the active layer
-  /// (Ctrl+`,`): from mid-block that is the current block's start — the
-  /// clip-navigation convention.
-  void selectPreviousDrawing() {
-    final layer = activeLayer;
-    if (layer == null) {
-      return;
-    }
-    final block = previousDrawingBlockBefore(
-      layer.timeline,
-      _timelineController.currentFrameIndex,
-    );
-    if (block != null) {
-      selectFrameIndex(block.startIndex);
-    } else {
-      // PEN-8 #2: no earlier drawing — walk EMPTY space one frame at a
-      // time instead of dead-ending (the plain-arrow/파라파라 unit:
-      // blocks where blocks exist, frames where they don't).
-      selectPreviousFrame();
+  /// Steps one BLOCK back along [currentRow] (Ctrl+`,`).
+  ///
+  /// R10 #13, the user's rule with no exceptions: **whatever the row is,
+  /// count THAT row's blocks; a block where there are blocks, a frame
+  /// where there are none.** A layer row counts its exposure blocks, an SE
+  /// row its sound blocks — the same code, because an SE row is a layer
+  /// with a timeline and needs no branch of its own — and a V row counts
+  /// CUTS, which is the only place a flip crosses a cut boundary.
+  ///
+  /// That last part is the rule's dividend: "coming out of a cut on a
+  /// layer row, which row of the next cut do you land on?" is a question
+  /// that never gets asked, because layer rows live inside one cut.
+  void selectPreviousDrawing() => _flipRow(forward: false);
+
+  /// Steps one BLOCK forward along [currentRow] (Ctrl+`.`). See
+  /// [selectPreviousDrawing] for the rule.
+  void selectNextDrawing() => _flipRow(forward: true);
+
+  void _flipRow({required bool forward}) {
+    switch (currentRow) {
+      case TrackRowAddress(:final trackId):
+        _flipCuts(trackId, forward: forward);
+      case LayerRowAddress(:final layerId):
+        final layer = _layerById(layerId) ?? activeLayer;
+        if (layer == null) {
+          return;
+        }
+        _flipBlocks(layer, forward: forward);
+      case LaneRowAddress():
+        // A lane's "blocks" would be its KEYS, but jumping key to key is
+        // deferred by the user's own instruction — for now a property row
+        // walks ONE FRAME, which is the same rule's other half ("a frame
+        // where there are no blocks") rather than an exception written for
+        // it. Attaching the key jump later changes this arm and nothing
+        // else.
+        if (forward) {
+          selectNextFrame();
+        } else {
+          selectPreviousFrame();
+        }
     }
   }
 
-  /// Jumps to the next drawing block's start on the active layer
-  /// (Ctrl+`.`).
-  void selectNextDrawing() {
-    final layer = activeLayer;
-    if (layer == null) {
+  /// The layer-row half — unchanged behaviour, moved under the rule.
+  void _flipBlocks(Layer layer, {required bool forward}) {
+    final current = _timelineController.currentFrameIndex;
+    if (!forward) {
+      final block = previousDrawingBlockBefore(layer.timeline, current);
+      if (block != null) {
+        selectFrameIndex(block.startIndex);
+      } else {
+        // PEN-8 #2: no earlier drawing — walk EMPTY space one frame at a
+        // time instead of dead-ending (the plain-arrow/파라파라 unit:
+        // blocks where blocks exist, frames where they don't).
+        selectPreviousFrame();
+      }
       return;
     }
-    final block = nextDrawingBlockAfter(
-      layer.timeline,
-      _timelineController.currentFrameIndex,
-    );
+    final block = nextDrawingBlockAfter(layer.timeline, current);
     if (block != null) {
       selectFrameIndex(block.startIndex);
+      return;
+    }
+    // PEN-12 #2: no NEXT drawing but the cursor sits ON a block — escape
+    // past its end in one press (never crawl through a long tail block one
+    // frame at a time); pure empty space keeps the PEN-8 one-frame walk.
+    final covering = coveringDrawingBlockAt(layer.timeline, current);
+    if (covering != null) {
+      selectFrameIndex(covering.endIndexExclusive);
     } else {
-      // PEN-12 #2: no NEXT drawing but the cursor sits ON a block —
-      // escape past its end in one press (never crawl through a long
-      // tail block one frame at a time); pure empty space keeps the
-      // PEN-8 one-frame walk.
-      final covering = coveringDrawingBlockAt(
-        layer.timeline,
-        _timelineController.currentFrameIndex,
-      );
-      if (covering != null) {
-        selectFrameIndex(covering.endIndexExclusive);
-      } else {
-        selectNextFrame();
+      selectNextFrame();
+    }
+  }
+
+  /// The V-row half: the track's CUTS are its blocks, on the global axis.
+  ///
+  /// Backwards from mid-cut lands on THIS cut's start — the same
+  /// clip-navigation convention [_flipBlocks] uses for a block. With no cut
+  /// that way (a gap at either end of the film) the row walks one global
+  /// frame, which is the "no blocks here" half of the rule.
+  void _flipCuts(TrackId trackId, {required bool forward}) {
+    final entries = [
+      for (final entry in buildStoryboardTimelineLayout(
+        _repository.requireProject(),
+      ))
+        if (entry.trackId == trackId) entry,
+    ];
+    final globalFrame = editingGlobalFrame;
+    StoryboardTimelineLayoutEntry? target;
+    if (forward) {
+      for (final entry in entries) {
+        if (entry.startFrame > globalFrame) {
+          target = entry;
+          break;
+        }
+      }
+    } else {
+      for (final entry in entries) {
+        if (entry.startFrame < globalFrame) {
+          target = entry;
+        }
       }
     }
+    if (target == null) {
+      // No cut that way: the "no blocks here" half of the rule — one
+      // global frame, which [selectGlobalFrame] lands inside a cut or
+      // parks in a gap.
+      final next = globalFrame + (forward ? 1 : -1);
+      if (next >= 0) {
+        selectGlobalFrame(next);
+      }
+      return;
+    }
+    if (target.cutId != activeCutId) {
+      selectCut(target.cutId);
+    }
+    selectFrameIndex(0);
   }
 
   // --- Editing frame scrub (ruler drags ride the cursor path) --------------
@@ -12675,6 +12998,17 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   TimelineCellExposureState exposureStateForLayer(Layer layer, int frameIndex) {
+    if (layerKindGroupsLayers(layer.kind)) {
+      // R10: a folder row is a CELLS row whose coverage is the subtree
+      // union, carried by its band clone's own timeline. HELD, never
+      // drawingStart — a held cell prints no glyph, so the band stays
+      // nameless (L5) without touching the shared marker table, and the
+      // block chrome still wraps the whole merged run because the segment
+      // rule bounds on coverage rather than on starts.
+      return coveringDrawingBlockAt(layer.timeline, frameIndex) != null
+          ? TimelineCellExposureState.held
+          : TimelineCellExposureState.uncovered;
+    }
     if (layer.kind == LayerKind.camera) {
       // The camera row's cells mirror the cut's camera keyframes — or
       // the in-flight key-range move's preview keys (P3b-2), so the row
@@ -12718,6 +13052,16 @@ class EditorSessionManager extends ChangeNotifier {
   /// reads this. Non-drawing sections (SE / camera / instruction) and
   /// uncovered cells always answer true (no tint).
   bool celHasContentForLayer(Layer layer, int frameIndex) {
+    if (layerKindGroupsLayers(layer.kind)) {
+      // R28 #11 carried onto the shared painter: a folder frame is grey
+      // only when NO member drew there ("다른곳에서 해당위치에 그림그려진
+      // 하얀 블록 존재하면 하얗게"). Without this arm the folder falls into
+      // the drawing-section branch, resolves no frame of its own and
+      // answers `true` — the union grey would vanish silently.
+      return folderBandMembersOf(
+        layer.id,
+      ).any((member) => celHasContentForLayer(member, frameIndex));
+    }
     if (timelineSectionForLayerKind(layer.kind) != TimelineSection.drawing) {
       return true;
     }

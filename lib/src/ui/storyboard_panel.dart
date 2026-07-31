@@ -3170,6 +3170,9 @@ class _StoryboardSeRow extends StatelessWidget {
                       headCrossOffset,
                     ),
                   ),
+              // Standing is already this row's press verb (feedback #7: an
+              // SE press parks where you pressed), so the tap only drops
+              // the selection — R10's rule is satisfied upstream.
               onTapClear: (_) => seSelect.onClear(),
               // A drag that STARTS inside the selection slides the sounds,
               // and may cross onto a sibling S row — the timeline's own
@@ -4368,6 +4371,8 @@ class _StoryboardTrackRow extends StatelessWidget {
           headIndex: localOf(headIndex),
         );
       },
+      // The panel press already seeks into its cut, so the tap only drops
+      // the selection (R10: standing is handled by the press here).
       onTapClear: (_) => stripSelect.onClear(),
       // Sliding the panels: the same move the timeline's rows do, on the
       // cut's own axis. The pressed frame says which cut — and therefore
@@ -4424,6 +4429,8 @@ class _StoryboardTrackRow extends StatelessWidget {
               headCrossOffset,
             ),
           ),
+      // A cut press already takes the cut and seeks into it, so the tap
+      // only drops the selection (R10: standing is the press's job here).
       onTapClear: (_) => cutSelect?.onClear(),
       onMoveBegin: (_, frame) {
         final entry = _cutAtFrame(frame);

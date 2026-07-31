@@ -83,17 +83,13 @@ class TimelineDisplayRow {
     this.layer, {
     required this.layerIndex,
     this.depth = 0,
-    this.aggregateRuns = const [],
-    this.members = const [],
   }) : lane = null;
 
   const TimelineDisplayRow.lane(
     this.layer,
     PropertyLaneRow this.lane, {
     required this.layerIndex,
-  }) : depth = 0,
-       aggregateRuns = const [],
-       members = const [];
+  }) : depth = 0;
 
   /// The owning layer. A FOLDER row is just a layer row whose layer is a
   /// folder — there is no representative-member hack any more, which is
@@ -107,15 +103,11 @@ class TimelineDisplayRow {
 
   final PropertyLaneRow? lane;
 
-  /// Folder rows only: the SUBTREE members' exposure union as merged
-  /// display runs (the TVP-latest aggregate block — nameless, no comma
-  /// edits, no moves; holds included through exposure lengths).
-  final List<({int start, int endExclusive})> aggregateRuns;
-
-  /// Folder rows only: the SUBTREE members themselves. R28 #11 — the
-  /// aggregate band tints a frame grey when NO member has artwork there,
-  /// so it needs the members, not just their exposure union.
-  final List<Layer> members;
+  // R10: a folder row carried its union runs and its members here, for a
+  // private band painter that no longer exists. The union is the band
+  // CLONE's own timeline now (the session's folder-band cache), so the row
+  // needs nothing a cells row does not — and this walk stopped computing a
+  // union per pass on all three of its call sites.
 
   /// Folder nesting depth (0 = top level) — drives the rail indent for
   /// both folder rows and member rows.
@@ -211,6 +203,37 @@ List<({int start, int endExclusive})> folderAggregateRuns(
   return runs;
 }
 
+/// The lane a row shows RIGHT NOW: re-derived from [previewLayer] when a
+/// drag has one staged, the committed [row]'s lane otherwise.
+///
+/// R10. The rows are built once per host pass, so `row.lane` carries the
+/// keys, the hold flags and the value text of the COMMITTED layer. The
+/// drag-preview gate already hands every row builder the previewed layer,
+/// but a lane row was still reading its stale lane off the row — so a lane
+/// key move drew its band and printed its value where the keys used to be
+/// until the pointer came up. Re-deriving through the SAME [lanesForLayer]
+/// the rows were built with is what keeps the preview and the commit from
+/// drifting; the storyboard's V-track strips have always done this
+/// (`_laneOfTrack` against the previewed transform).
+PropertyLaneRow previewedLaneRow({
+  required TimelineDisplayRow row,
+  required Layer previewLayer,
+  required List<PropertyLaneRow> Function(Layer layer) lanesForLayer,
+}) {
+  final committed = row.lane!;
+  if (identical(previewLayer, row.layer)) {
+    return committed;
+  }
+  for (final lane in lanesForLayer(previewLayer)) {
+    if (lane.laneId == committed.laneId) {
+      return lane;
+    }
+  }
+  // A preview that drops the lane entirely (nothing does today) leaves the
+  // committed row standing rather than blanking mid-drag.
+  return committed;
+}
+
 /// [collapsedAttachBaseIds] folds ATTACH GROUPS (UI-R20 #9): attach rows
 /// whose base is listed contribute no rows — same VIEW-state contract as
 /// the hidden sections, and the active layer is exempt here too (folding
@@ -304,19 +327,11 @@ List<TimelineDisplayRow> buildTimelineDisplayRows({
     if (folders.subtreeCollapsed(layer.folderId)) {
       continue;
     }
-    final isFolder = layerKindGroupsLayers(layer.kind);
-    final subtreeMembers = isFolder
-        ? folders.subtreeMembersOf(layer.id)
-        : const <Layer>[];
     rows.add(
       TimelineDisplayRow.layer(
         layer,
         layerIndex: index,
         depth: folders.depthOf(layer.folderId),
-        aggregateRuns: isFolder
-            ? folderAggregateRuns(subtreeMembers)
-            : const [],
-        members: subtreeMembers,
       ),
     );
     if (!expandedLayerIds.contains(layer.id)) {

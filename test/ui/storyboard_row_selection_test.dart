@@ -121,6 +121,33 @@ void main() {
       expect(session.selectedRow, const LayerRowAddress(seLayerId));
     });
 
+    test('R10 #13: the VERB\'s row does move, though — the rail says which '
+        'row of the FILM is lit, `currentRow` says whose blocks a flip '
+        'counts, and folding them into one slot breaks the rule above', () {
+      final session = sessionFor(projectWithTwoCuts());
+
+      session.selectRow(const LayerRowAddress(seLayerId));
+      expect(session.currentRow, const LayerRowAddress(seLayerId));
+      expect(
+        session.selectedRow,
+        const LayerRowAddress(seLayerId),
+        reason: 'picking a rail row moves BOTH — engaging it is picking it',
+      );
+
+      session.selectLayer(defaultLayerIdForSequence(1));
+
+      expect(
+        session.currentRow,
+        LayerRowAddress(defaultLayerIdForSequence(1)),
+        reason: 'the flip follows the layer you moved to',
+      );
+      expect(
+        session.selectedRow,
+        const LayerRowAddress(seLayerId),
+        reason: 'and the rail does not, which is the 2026-07-27 rule',
+      );
+    });
+
     test('picking a V row announces, so the rail repaints even when the '
         'active cut does not move', () {
       final session = sessionFor(projectWithTwoCuts());

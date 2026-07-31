@@ -9,8 +9,7 @@ import '../models/layer.dart';
 import '../models/layer_effect.dart';
 import '../models/layer_folder.dart';
 import '../models/layer_id.dart';
-import '../models/key_range_move.dart' show transformKeyFrameUnion;
-import '../models/attached_layer_resolve.dart' show attachRowWearsBaseComposite;
+import '../models/timeline_row_address.dart';
 import '../models/layer_kind.dart';
 import '../models/text_cel_style.dart';
 import 'camera/camera_view_toggle_button.dart';
@@ -35,6 +34,7 @@ import 'timeline/camera_key_edit.dart';
 import 'timeline/effect_lane_editing.dart';
 import 'timeline/effect_lane_policy.dart';
 import 'timeline/property_lane_model.dart';
+import 'timeline/timeline_lane_provider.dart';
 import 'timeline/timeline_cel_content_source.dart';
 import 'timeline/timeline_cut_end_handle.dart';
 import 'timeline/timeline_frame_rows_scroll_body.dart' show TimelineRowMemoAux;
@@ -232,6 +232,24 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
 
   /// R26 #3: maps a lane select-drag's cross-row delta onto the layer's
   /// DISPLAYED lane list (the same one the grids render) and returns the
+  /// A plain tap on a property band: STAND there (R10).
+  ///
+  /// The user's rule when this was settled: wherever frame cells exist the
+  /// playhead can be put, with no exceptions — and a lane band was the one
+  /// place with visible cells that refused it, because the seek lived on
+  /// the cell WIDGET and a band paints its cells. Standing on a lane also
+  /// takes its owner as the active layer, which is what keeps drawing
+  /// available while a property is the verb's subject.
+  void _standOnLane(LayerId layerId, String laneId, int frameIndex) {
+    _session.clearLaneRangeSelection();
+    _session.selectLayer(layerId);
+    // R10 #19: and the LANE becomes the verb's subject, so Add keys this
+    // property instead of adding a cel. selectLayer above already moved
+    // the verb row to the layer, so this must come after it.
+    _session.selectRow(LaneRowAddress(layerId, laneId));
+    _session.selectFrameIndex(frameIndex);
+  }
+
   /// lane row under the pointer — member lanes only; headers and
   /// non-transform lanes (SE audio) cross silently, and rows past the
   /// group clamp to the farthest member reached. Null keeps the anchor.
@@ -276,129 +294,14 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     return head;
   }
 
-  List<PropertyLaneRow> _lanesForLayer(Layer layer) {
-    // Attach rows ride their BASE's transform/opacity lanes (W5 fx
-    // sharing) — no lanes of their own in v1. R9: the 공정 ORGANIZER
-    // folder joins them. It follows its base like its members do, so a
-    // transform or effect chain here would be a second answer competing
-    // with the base's; leaving the lanes up while the label has no fx
-    // switch would also let a chain be added that nothing could bypass.
-    if (attachRowWearsBaseComposite(layer, _session.layers)) {
-      return const [];
-    }
-    switch (layer.kind) {
-      case LayerKind.camera:
-        // A camera row on screen implies an active cut.
-        final cut = _session.requireActiveCut;
-        return _collapsibleTransformGroup(
-          layer,
-          transformPropertyLanes(
-            cut.camera.track,
-            poseAt: (frameIndex) => resolveCameraPoseAt(
-              camera: cut.camera,
-              canvasSize: cut.canvasSize,
-              frameIndex: frameIndex,
-            ),
-          ),
-        );
-      case LayerKind.se:
-        // Audio controls lead the SE twirl-down (the row's main tool); the
-        // Transform group sits below, collapsed by default.
-        return [
-          ...seAudioLanesFor(layer),
-          ..._layerEffectLanes(layer),
-          ..._collapsibleTransformGroup(layer, _layerTransformLanes(layer)),
-        ];
-      case LayerKind.adjustment:
-        // R6b: an adjustment row has no picture to move, so its twirl-down
-        // is the Effects groups alone — its whole content.
-        return _layerEffectLanes(layer);
-      case LayerKind.animation:
-      case LayerKind.image:
-      case LayerKind.text:
-      case LayerKind.storyboard:
-      case LayerKind.instruction:
-      // A folder's FX lanes ARE layer lanes (R27 #26 asked for the layer
-      // lane grammar verbatim; now it is literally the same code path).
-      case LayerKind.folder:
-        // R9 #24: the list IS the pipeline — further from the row means
-        // applied later. Effects first, then Transform at the bottom,
-        // which is both AE's twirl-down (Masks → Effects → Transform) and
-        // what this app already DOES: the pose wraps the draw while the
-        // effect filters sit inside it, so the transform is genuinely
-        // last. Only the reading order was upside down.
-        return [
-          ..._layerEffectLanes(layer),
-          ..._collapsibleTransformGroup(layer, _layerTransformLanes(layer)),
-        ];
-    }
-  }
-
-  /// The full AE Transform group — Anchor Point / Position / Scale /
-  /// Rotation / Opacity — identical on EVERY layer-track kind (R6-④:
-  /// SE/instruction match the drawing layers exactly; unified feel is the
-  /// point, per user).
-  List<PropertyLaneRow> _layerTransformLanes(Layer layer) {
-    return transformPropertyLanes(
-      layer.transformTrack,
-      includeAnchorAndOpacity: true,
-      poseAt: (frameIndex) => _session.layerPoseAtFrame(layer, frameIndex),
-      anchorAt: (frameIndex) =>
-          _session.layerAnchorPointAtFrame(layer, frameIndex),
-      opacityAt: (frameIndex) =>
-          _session.layerOpacityAtFrame(layer, frameIndex),
-    );
-  }
-
-  /// AE group collapse: the Transform group header always shows; its
-  /// member lanes only while the layer's group is twirled open (default
-  /// collapsed, host-owned per layer so it survives tab switches).
-  List<PropertyLaneRow> _collapsibleTransformGroup(
-    Layer layer,
-    List<PropertyLaneRow> group,
-  ) {
-    final expanded = widget.expandedLaneGroupKeys.contains(
-      laneGroupKey(layer.id, transformGroupHeaderLane.laneId),
-    );
-    return [
-      // The header carries the member lanes' KEY UNION (UI-R20 #13, the
-      // camera row's summary pattern) — one glance shows where the
-      // layer's transform keys sit even while the group is collapsed.
-      transformGroupHeader(
-        expanded: expanded,
-        keyedFrames: transformKeyFrameUnion(_laneTrackOf(layer)),
-        // R8: the group's own switch — on every row that owns a transform.
-        // The camera's lives on the cut's track, so its header shows none
-        // and the row-level master covers it.
-        enabled: layerKindHasLayerTransform(layer.kind)
-            ? layer.transformEnabled
-            : null,
-      ),
-      if (expanded) ...group.where((lane) => !lane.isGroupHeader),
-    ];
-  }
-
-  /// The row's EFFECT lanes (R6), below its Transform group: one collapsible
-  /// header per effect with its parameter lanes inside. Empty for every row
-  /// that carries no effects, which is the default everywhere.
-  List<PropertyLaneRow> _layerEffectLanes(Layer layer) {
-    if (layer.effects.isEmpty) {
-      return const [];
-    }
-    return effectPropertyLanes(
-      layer.effects,
-      isExpanded: (effectId) => widget.expandedLaneGroupKeys.contains(
-        laneGroupKey(layer.id, effectGroupLaneId(effectId)),
-      ),
-      valueAt: (effectId, parameterId, frameIndex) =>
-          _session.layerEffectParameterAtFrame(
-            layer,
-            effectId,
-            parameterId,
-            frameIndex,
-          ),
-    );
-  }
+  /// R10 moved the lane list out to [timelineLanesForLayer] — the ↑/↓ row
+  /// nav needs the same answer, and a second copy would have drifted from
+  /// what the grids draw.
+  List<PropertyLaneRow> _lanesForLayer(Layer layer) => timelineLanesForLayer(
+    layer: layer,
+    session: _session,
+    expandedGroupKeys: widget.expandedLaneGroupKeys,
+  );
 
   /// The track a layer's transform lanes edit: the camera rides the cut's
   /// camera track, every other kind its own layer track.
@@ -1030,16 +933,25 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   /// notifier the canvas and the camera panel share. The DIM is deliberately
   /// not folded in here (R27 #9): it reaches the slider through
   /// [_cameraDimOverrideFor], so a dim drag never invalidates this list.
+  /// The layer stack as the GRIDS should render it — display clones for
+  /// the rows whose cells are not their own.
+  ///
+  /// R10 puts the folder band here, which is the one seam both grids read:
+  /// the X-sheet has always sent folder columns to the shared cells row
+  /// and drawn them blank, so the clone lights that column with no X-sheet
+  /// edit at all. Same rule the camera and SE clones live under — it never
+  /// leaves the display path, because commands re-read the real layer by
+  /// id.
   List<Layer> _displayLayers() {
     final view = widget.cameraViewEnabled;
-    if (view == null) {
-      return _session.layers;
-    }
     return [
       for (final layer in _session.layers)
-        layer.kind == LayerKind.camera
-            ? _cameraDisplayLayer(layer, view.value)
-            : layer,
+        if (layerKindGroupsLayers(layer.kind))
+          _session.folderBandLayerFor(layer)
+        else if (view != null && layer.kind == LayerKind.camera)
+          _cameraDisplayLayer(layer, view.value)
+        else
+          layer,
     ];
   }
 
@@ -1305,7 +1217,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                         headRowDelta,
                       ),
                     ),
-            onTapClear: _session.clearLaneRangeSelection,
+            onTapAt: _standOnLane,
             onMoveBegin: _session.beginLaneRangeMoveDrag,
             onMoveUpdate: (frameDelta) =>
                 _session.updateLaneRangeMoveDrag(frameDelta: frameDelta),
