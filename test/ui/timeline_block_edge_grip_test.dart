@@ -24,15 +24,38 @@ import 'timeline/timeline_row_chrome_probe.dart';
 /// geometry the row hit-tests with.
 void main() {
   group('comma drag pixel policy', () {
-    test('rounds at cell midpoints, both directions', () {
+    test('R9 #10: an EDGE steps at the cell BOUNDARY, not its midpoint — '
+        'symmetric in both directions', () {
+      // The edge already sits on a boundary, so it moves once the pointer
+      // has carried it a WHOLE cell. Rounding stepped at 24px, which the
+      // user read as the edge leaping out from under the hand.
       expect(commaDragFrameDelta(accumulatedDelta: 20, frameCellExtent: 48), 0);
-      expect(commaDragFrameDelta(accumulatedDelta: 25, frameCellExtent: 48), 1);
+      expect(commaDragFrameDelta(accumulatedDelta: 25, frameCellExtent: 48), 0);
+      expect(commaDragFrameDelta(accumulatedDelta: 47, frameCellExtent: 48), 0);
+      expect(commaDragFrameDelta(accumulatedDelta: 48, frameCellExtent: 48), 1);
       expect(
         commaDragFrameDelta(accumulatedDelta: 100, frameCellExtent: 48),
         2,
       );
       expect(
         commaDragFrameDelta(accumulatedDelta: -25, frameCellExtent: 48),
+        0,
+      );
+      expect(
+        commaDragFrameDelta(accumulatedDelta: -48, frameCellExtent: 48),
+        -1,
+      );
+    });
+
+    test('a MOVE keeps the nearest cell (user rule: edges only)', () {
+      // A move travels with the grab POINT, which starts inside a cell
+      // rather than on a boundary.
+      expect(
+        timelineMoveFrameDelta(accumulatedDelta: 25, frameCellExtent: 48),
+        1,
+      );
+      expect(
+        timelineMoveFrameDelta(accumulatedDelta: -25, frameCellExtent: 48),
         -1,
       );
     });
@@ -57,6 +80,29 @@ void main() {
       // left edge, end strip ends at its right edge (x = 96).
       expect(_gripRect(tester, 'start', 0).left, 0);
       expect(_gripRect(tester, 'end', 0).right, 96);
+    });
+
+    testWidgets('R9 #12: a dense row\'s grip reads engaged from the pointer '
+        'DOWN and lets go on the pointer UP', (tester) async {
+      await tester.pumpWidget(_rowHarness(layer: _twoBlockLayer()));
+
+      String? engagedGrip() =>
+          timelineRowChromePainter(tester, 'layer-a')?.draggingGripId;
+
+      expect(engagedGrip(), isNull);
+
+      // Press and HOLD, no movement: the drag recognizer has not won —
+      // which is exactly the state the user reported as "nothing looks
+      // grabbed".
+      final gesture = await tester.startGesture(
+        _gripRect(tester, 'end', 0).center,
+      );
+      await tester.pump();
+      expect(engagedGrip(), _gripId('end', 0));
+
+      await gesture.up();
+      await tester.pumpAndSettle();
+      expect(engagedGrip(), isNull, reason: 'the release path #12 lacked');
     });
 
     testWidgets('camera layers show no grips', (tester) async {

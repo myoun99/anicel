@@ -315,11 +315,12 @@ void main() {
     expect(endGrip, findsOneWidget);
 
     // Lengthen by 2 frames (24px slim cells; the >18px slop is consumed
-    // before frames count, so total = slop + 2 cells).
+    // before frames count, so total = slop + 2 FULL cells — R9 #10 made
+    // the edge step at the boundary rather than the cell's midpoint).
     final gesture = await tester.startGesture(tester.getCenter(endGrip));
     await gesture.moveBy(const Offset(19, 0));
     await tester.pump();
-    await gesture.moveBy(const Offset(47, 0));
+    await gesture.moveBy(const Offset(48, 0));
     await tester.pumpAndSettle();
     await gesture.up();
     await tester.pumpAndSettle();

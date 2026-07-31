@@ -583,7 +583,7 @@ class StoryboardCutBlocksPainter extends CustomPainter {
       style,
       maxWidth: maxWidth,
       outlineColor: timelineLaneInkColor,
-      outlineWidth: timelineGlyphOutlineWidthFor(style.fontSize ?? 11),
+      outlineWidth: timelineOutlineWidthFor(style.fontSize ?? 11),
     );
   }
 
@@ -611,7 +611,7 @@ class StoryboardCutBlocksPainter extends CustomPainter {
       style,
       maxWidth: maxWidth,
       outlineColor: timelineLaneInkColor,
-      outlineWidth: timelineGlyphOutlineWidthFor(style.fontSize ?? 11),
+      outlineWidth: timelineOutlineWidthFor(style.fontSize ?? 11),
     );
   }
 
@@ -719,7 +719,7 @@ class StoryboardCutBlocksPainter extends CustomPainter {
         name,
         nameStyle,
         outlineColor: timelineLaneInkColor,
-        outlineWidth: timelineGlyphOutlineWidthFor(nameStyle.fontSize ?? 12),
+        outlineWidth: timelineOutlineWidthFor(nameStyle.fontSize ?? 12),
       );
     }
     final comma = block.cellCommaLabels[index];
@@ -747,7 +747,7 @@ class StoryboardCutBlocksPainter extends CustomPainter {
         comma,
         commaStyle,
         outlineColor: timelineLaneInkColor,
-        outlineWidth: timelineGlyphOutlineWidthFor(commaStyle.fontSize ?? 9),
+        outlineWidth: timelineOutlineWidthFor(commaStyle.fontSize ?? 9),
       );
     }
   }

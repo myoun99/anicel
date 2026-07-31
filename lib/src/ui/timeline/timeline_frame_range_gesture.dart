@@ -281,7 +281,7 @@ class _TimelineFrameRangeGestureLayerState
         final horizontal = widget.axis == Axis.horizontal;
         _mainDelta += horizontal ? details.delta.dx : details.delta.dy;
         _crossDelta += horizontal ? details.delta.dy : details.delta.dx;
-        final frames = commaDragFrameDelta(
+        final frames = timelineMoveFrameDelta(
           accumulatedDelta: _mainDelta,
           frameCellExtent: widget.geometry.value.frameCellExtent,
         );
@@ -547,7 +547,7 @@ class _TimelineLaneRangeGestureLayerState
         _mainDelta += widget.axis == Axis.horizontal
             ? details.delta.dx
             : details.delta.dy;
-        final frames = commaDragFrameDelta(
+        final frames = timelineMoveFrameDelta(
           accumulatedDelta: _mainDelta,
           frameCellExtent: widget.frameCellExtent,
         );

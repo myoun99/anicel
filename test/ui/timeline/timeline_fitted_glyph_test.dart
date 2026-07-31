@@ -72,9 +72,9 @@ void main() {
 
     test('the outline width scales with the type and never swallows the '
         'floor-sized marks', () {
-      expect(timelineGlyphOutlineWidthFor(9), 2.0);
-      expect(timelineGlyphOutlineWidthFor(12), 2.0);
-      expect(timelineGlyphOutlineWidthFor(4), 1.0, reason: 'the 1px floor');
+      expect(timelineOutlineWidthFor(9), 2.0);
+      expect(timelineOutlineWidthFor(12), 2.0);
+      expect(timelineOutlineWidthFor(4), 1.0, reason: 'the 1px floor');
     });
   });
 }

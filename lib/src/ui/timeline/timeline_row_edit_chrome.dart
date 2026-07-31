@@ -627,7 +627,17 @@ class _TimelineRowEditChromeLayerState
 
   /// The target the last pointer-down landed on — read by the recognizers
   /// when they win the arena.
+  ///
+  /// R9 #12: it also drives the PRESSED ink. The accent used to wait for
+  /// the drag recognizer to win, which is after the slop — so pressing a
+  /// grip and holding still looked like nothing had been grabbed. A press
+  /// is an answer the affordance owes immediately, and this Listener is
+  /// upstream of the arena, so it can give one.
   TimelineRowChromeTarget? _pressed;
+
+  /// The pressed target's id while the pointer is still down (null once it
+  /// lifts) — the release path #12 found missing.
+  String? _pressedId;
 
   late final DragGestureRecognizer _gripDrag = widget.axis == Axis.horizontal
       ? HorizontalDragGestureRecognizer(debugOwner: this)
@@ -930,6 +940,9 @@ class _TimelineRowEditChromeLayerState
   void _handlePointerDown(PointerDownEvent event) {
     final target = _targetAt(event.localPosition);
     _pressed = target;
+    if (target is TimelineRowGripTarget && _pressedId != target.id) {
+      setState(() => _pressedId = target.id);
+    }
     switch (target) {
       case null:
         return;
@@ -946,6 +959,16 @@ class _TimelineRowEditChromeLayerState
         _tagPan.addPointer(event);
         _openModeFlyout(target);
     }
+  }
+
+  /// The pointer lifted (or the system took it): the press ink lets go.
+  /// A drag that started keeps its own accent through [_gripDragging] until
+  /// the drag itself ends.
+  void _releasePress() {
+    if (_pressedId == null) {
+      return;
+    }
+    setState(() => _pressedId = null);
   }
 
   void _handleHover(Offset position) {
@@ -1000,7 +1023,9 @@ class _TimelineRowEditChromeLayerState
         colorScheme: Theme.of(context).colorScheme,
         hoveredId: _hoveredId,
         operatingId: _addDragging ? _addTarget?.id : _menuOpenId,
-        draggingGripId: _gripDragging ? _gripTarget?.id : null,
+        // R9 #12: pressed reads as engaged from the pointer DOWN, not from
+        // the moment the drag recognizer wins.
+        draggingGripId: _gripDragging ? _gripTarget?.id : _pressedId,
         gripSurface: widget.gripSurface,
       ),
       child: _ChromeHitGate(
@@ -1024,6 +1049,8 @@ class _TimelineRowEditChromeLayerState
             // #12 — a near-miss must not seek the playhead below).
             behavior: HitTestBehavior.opaque,
             onPointerDown: _handlePointerDown,
+            onPointerUp: (_) => _releasePress(),
+            onPointerCancel: (_) => _releasePress(),
             child: const SizedBox.expand(),
           ),
         ),
