@@ -40,6 +40,19 @@ void main() {
     return s.cutById(cutId)!.leadingGapFrames;
   }
 
+  /// Opens a [frames]-frame gap in front of [cutId] by SLIDING it later —
+  /// the move drag, which is the gesture that re-times a cut into its own
+  /// free space.
+  ///
+  /// R10 R4 took this job away from the lead-edge drag: that gesture now
+  /// keeps the cuts glued and empties the film's head instead, so it can
+  /// no longer be used to plant a gap between two neighbours.
+  void openGapBefore(EditorSessionManager s, CutId cutId, int frames) {
+    expect(s.beginCutMoveDrag(cutId), isTrue);
+    s.updateCutMoveDrag(frames);
+    s.endCutMoveDrag();
+  }
+
   /// [cutId]'s committed global start frame on the track layout.
   int layoutStart(EditorSessionManager s, CutId cutId) {
     return buildStoryboardTimelineLayout(
@@ -103,8 +116,9 @@ void main() {
     expect(s.cutById(first)!.duration, before + 6);
   });
 
-  test('start-edge drag TRIMS from the front (R12-B): the end stays put, '
-      'rightward shrinks the length and opens the gap', () {
+  test('R10 R4: the LEAD edge follows the frame axis — the end stays put, '
+      'the GLUED cut in front slides wholesale, and the film\'s head '
+      'empties', () {
     final (s, first, second) = twoCutSession();
     final firstDuration = s.cutById(first)!.duration;
     final secondDuration = s.cutById(second)!.duration;
@@ -115,12 +129,27 @@ void main() {
       isTrue,
     );
 
-    // Rightward: the start moves later — the gap opens, the LENGTH
-    // shrinks, and the end (with everything after it) never moves.
+    // Rightward: this cut loses frames off its front. The cut glued in
+    // front of it does NOT have a gap torn open between them — it
+    // translates, keeping its own length, and the difference comes to rest
+    // at the head of the film.
     s.updateCutEdgeDrag(5);
-    expect(previewedGap(s, second), 5);
     expect(previewedDuration(s, second), secondDuration - 5);
-    expect(previewedDuration(s, first), firstDuration);
+    expect(
+      previewedGap(s, second),
+      0,
+      reason: 'the two cuts stay glued to each other',
+    );
+    expect(
+      previewedGap(s, first),
+      5,
+      reason: 'the head of the film is what empties',
+    );
+    expect(
+      previewedDuration(s, first),
+      firstDuration,
+      reason: 'the predecessor MOVES, it does not resize',
+    );
 
     // Rightward movement clamps at length 1.
     s.updateCutEdgeDrag(secondDuration + 40);
@@ -133,15 +162,15 @@ void main() {
 
     s.updateCutEdgeDrag(4);
     s.endCutEdgeDrag();
-    expect(s.cutById(second)!.leadingGapFrames, 4);
+    expect(s.cutById(second)!.leadingGapFrames, 0);
+    expect(s.cutById(first)!.leadingGapFrames, 4);
     expect(s.cutById(second)!.duration, secondDuration - 4);
-    expect(layoutStart(s, second), firstDuration + 4);
-    // The cut's END is pinned.
+    // The cut's END is pinned, so nothing behind it moved.
     expect(layoutStart(s, second) + s.cutById(second)!.duration, secondEnd);
 
-    // ONE undo step restores the gap AND the length.
+    // ONE undo step restores the head AND the length.
     s.undo();
-    expect(s.cutById(second)!.leadingGapFrames, 0);
+    expect(s.cutById(first)!.leadingGapFrames, 0);
     expect(s.cutById(second)!.duration, secondDuration);
     s.redo();
     expect(s.cutById(second)!.duration, secondDuration - 4);
@@ -207,9 +236,7 @@ void main() {
     final firstDuration = s.cutById(first)!.duration;
 
     // Open a 4-frame gap before the second cut.
-    s.beginCutEdgeDrag(cutId: second, edge: TimelineBlockEdge.start);
-    s.updateCutEdgeDrag(4);
-    s.endCutEdgeDrag();
+    openGapBefore(s, second, 4);
     expect(layoutStart(s, second), firstDuration + 4);
 
     // Grow the first cut by 3: the gap absorbs it, the second cut's start
@@ -235,9 +262,7 @@ void main() {
     final (s, first, second) = twoCutSession();
     final firstDuration = s.cutById(first)!.duration;
 
-    s.beginCutEdgeDrag(cutId: second, edge: TimelineBlockEdge.start);
-    s.updateCutEdgeDrag(4);
-    s.endCutEdgeDrag();
+    openGapBefore(s, second, 4);
     final secondStart = layoutStart(s, second);
 
     s.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
@@ -335,9 +360,9 @@ void main() {
     expect(s.transformTrackForCut(first).opacity, custom.opacity);
   });
 
-  test('a start-edge drag shifts the cut\'s WINDOW, not the keys — the '
+  test('a lead-edge drag shifts the cut\'s WINDOW, not the keys — the '
       'fade stays at its global frames and reads shifted from the cut', () {
-    final (s, _, second) = twoCutSession();
+    final (s, first, second) = twoCutSession();
     s.setCutFade(second, fadeInFrames: 2, fadeOutFrames: 3);
     final keyed = s.transformTrackForCut(second);
     final startBefore = layoutStart(s, second);
@@ -347,7 +372,9 @@ void main() {
     s.updateCutEdgeDrag(5);
     s.endCutEdgeDrag();
 
-    expect(s.cutById(second)!.leadingGapFrames, 5);
+    // R10 R4: the emptiness lands at the head, not between the neighbours.
+    expect(s.cutById(first)!.leadingGapFrames, 5);
+    expect(s.cutById(second)!.leadingGapFrames, 0);
     expect(
       s.transformTrackForCut(second),
       keyed,
@@ -418,9 +445,7 @@ void main() {
       // Open a 3-frame gap before the second cut, then move the FIRST cut
       // right by 5: only 3 frames of free space exist, so it lands there
       // and the second cut does not move at all.
-      s.beginCutEdgeDrag(cutId: second, edge: TimelineBlockEdge.start);
-      s.updateCutEdgeDrag(3);
-      s.endCutEdgeDrag();
+      openGapBefore(s, second, 3);
 
       expect(s.beginCutMoveDrag(first), isTrue);
       s.updateCutMoveDrag(5);
@@ -445,9 +470,7 @@ void main() {
       s.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.start);
       s.updateCutEdgeDrag(4);
       s.endCutEdgeDrag();
-      s.beginCutEdgeDrag(cutId: second, edge: TimelineBlockEdge.start);
-      s.updateCutEdgeDrag(2);
-      s.endCutEdgeDrag();
+      openGapBefore(s, second, 2);
       final secondStart = layoutStart(s, second);
       final firstStart = layoutStart(s, first);
 
@@ -477,9 +500,7 @@ void main() {
     test('moving a MIDDLE cut left keeps its follower in place (the gap '
         'behind it grows)', () {
       final (s, first, second) = twoCutSession();
-      s.beginCutEdgeDrag(cutId: second, edge: TimelineBlockEdge.start);
-      s.updateCutEdgeDrag(4);
-      s.endCutEdgeDrag();
+      openGapBefore(s, second, 4);
       final firstDuration = s.cutById(first)!.duration;
 
       // Move the SECOND (last) cut left by 3 into its own gap.
@@ -492,9 +513,7 @@ void main() {
     test('cancel leaves no trace', () {
       final (s, first, second) = twoCutSession();
       // Room to actually move into.
-      s.beginCutEdgeDrag(cutId: second, edge: TimelineBlockEdge.start);
-      s.updateCutEdgeDrag(10);
-      s.endCutEdgeDrag();
+      openGapBefore(s, second, 10);
       final undoDepthProbe = s.canUndo;
 
       s.beginCutMoveDrag(first);
@@ -610,9 +629,7 @@ void main() {
       final (s, first, second, third) = threeCutSession();
 
       // Open a 6-frame gap before the THIRD cut.
-      s.beginCutEdgeDrag(cutId: third, edge: TimelineBlockEdge.start);
-      s.updateCutEdgeDrag(6);
-      s.endCutEdgeDrag();
+      openGapBefore(s, third, 6);
       final thirdStart = layoutStart(s, third);
 
       selectCutRun(s, first, second);

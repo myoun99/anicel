@@ -118,29 +118,121 @@ void main() {
       );
     });
 
-    test('a START drag re-times the LEAD, not the front (feedback #5): the '
-        'first cell shrinks to a frame, the rest comes along, and the cut '
-        'start stays put', () {
+    test('R10 R4: a LEAD drag is the same gesture whether or not the cut '
+        'has a conte row — the row only says how FAR it may go', () {
       final session = sessionFor();
       session.addLayerOfKind(LayerKind.storyboard);
       session.selectFrameIndex(5);
       session.createDrawingAtCurrentFrame();
       final cutId = session.activeCutId!;
       final duration = session.requireActiveCut.duration;
+      final layerBefore = storyboardLayerForCut(session.requireActiveCut)!;
 
       session.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.start);
       session.updateCutEdgeDrag(100);
       session.endCutEdgeDrag();
 
-      // The first cell clamps at one frame (it was 5, so the lead lost 4);
-      // the later division keeps its own comma and comes left by the same
-      // 4, and the cut's DURATION — never its start — absorbs the change.
-      expect(session.requireActiveCut.duration, duration - 4);
-      expect(session.requireActiveCut.leadingGapFrames, 0);
-      final layer = storyboardLayerForCut(session.requireActiveCut)!;
-      expect(layer.timeline.keys, [0, 1]);
-      expect(layer.timeline[0]!.length, 1);
-      expect(layer.timeline[1]!.length, duration - 5);
+      // The floor is the ROW's extent — the cut cannot be trimmed past its
+      // own last panel (delete cells to shrink further). This is the whole
+      // remaining role of the conte row in this gesture; before R10 R4 its
+      // presence sent the drag to an entirely different verb.
+      expect(
+        session.requireActiveCut.duration,
+        minimumCutDurationFor(session.requireActiveCut),
+      );
+      expect(
+        session.requireActiveCut.leadingGapFrames,
+        duration - session.requireActiveCut.duration,
+        reason: 'the head takes exactly what the cut gave up',
+      );
+      // Every division stays where the user put it — the gesture is about
+      // the CUT, not about the panels. What follows the cut is the LAST
+      // panel's length, because the cut ends where the row ends.
+      final row = storyboardLayerForCut(session.requireActiveCut)!;
+      expect(row.timeline.keys, layerBefore.timeline.keys);
+      final lastKey = row.timeline.keys.last;
+      expect(
+        lastKey + row.timeline[lastKey]!.length!,
+        session.requireActiveCut.duration,
+      );
+    });
+
+    test('R10 R4: a lead drag that GROWS the cut leaves the row still '
+        'covering it — the tiling invariant survives the new verb', () {
+      final session = sessionFor();
+      session.addLayerOfKind(LayerKind.storyboard);
+      session.selectFrameIndex(5);
+      session.createDrawingAtCurrentFrame();
+      final cutId = session.activeCutId!;
+
+      // Open room in front so the lead edge has somewhere to grow into.
+      session.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.start);
+      session.updateCutEdgeDrag(3);
+      session.endCutEdgeDrag();
+      final shrunk = session.requireActiveCut.duration;
+
+      // …then pull it back out. The cut grows from the front.
+      session.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.start);
+      session.updateCutEdgeDrag(-3);
+      session.endCutEdgeDrag();
+      final cut = session.requireActiveCut;
+      expect(cut.duration, shrunk + 3);
+      expect(cut.leadingGapFrames, 0);
+
+      // The invariant this whole file is about: the row's cells still
+      // reach the cut's end, so the timeline row shows no uncovered
+      // frames where the strip shows a full panel.
+      final cells = storyboardCoverageCells(
+        timeline: storyboardLayerForCut(cut)!.timeline,
+        cutDuration: cut.duration,
+      );
+      expect(cells, isNotEmpty);
+      expect(
+        cells.last.endIndexExclusive,
+        cut.duration,
+        reason: 'a storyboard row TILES its cut, on either side of the drag',
+      );
+    });
+
+    test('R10 R4: after a LEAD drag the stored row still ends where the cut '
+        'ends, so the NEXT end drag does not snap the cut back', () {
+      final session = sessionFor();
+      session.addLayerOfKind(LayerKind.storyboard);
+      session.selectFrameIndex(5);
+      session.createDrawingAtCurrentFrame();
+      final cutId = session.activeCutId!;
+
+      session.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.start);
+      session.updateCutEdgeDrag(2);
+      session.endCutEdgeDrag();
+      final trimmed = session.requireActiveCut.duration;
+
+      // "The cut ENDS WHERE THE ROW ENDS" — the invariant the end/comma
+      // verb derives the duration FROM. A lead drag that moved only the
+      // duration would leave the row ending 2 frames late, and the very
+      // next end drag would snap the cut back to it.
+      final row = storyboardLayerForCut(session.requireActiveCut)!;
+      final lastKey = row.timeline.keys.last;
+      expect(
+        lastKey + row.timeline[lastKey]!.length!,
+        trimmed,
+        reason: 'the row\'s last panel follows the cut\'s new end',
+      );
+      expect(
+        row.timeline.keys,
+        [0, 5],
+        reason: 'and every division stays where the user put it',
+      );
+
+      // Undo takes the row and the duration back together, in ONE step.
+      session.undo();
+      final restored = storyboardLayerForCut(session.requireActiveCut)!;
+      final restoredLast = restored.timeline.keys.last;
+      expect(session.requireActiveCut.duration, trimmed + 2);
+      expect(
+        restoredLast + restored.timeline[restoredLast]!.length!,
+        trimmed + 2,
+      );
     });
 
     test('a cut with no storyboard row still trims down to one frame', () {
