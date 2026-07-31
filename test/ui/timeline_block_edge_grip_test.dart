@@ -234,11 +234,15 @@ void main() {
           prefix: 'xsheet',
         ),
       );
-      // X-sheet frame rows are 36px tall. R10: the 19px that wins the
-      // arena is TRAVEL, not overhead — it is past the row's midpoint, so
-      // the edge has already stepped by the time the drag is recognised.
-      // Under DragStartBehavior.start those pixels were thrown away and
-      // the edge spent the rest of the gesture 19px behind the finger.
+      // ★ THE pin for R10's DragStartBehavior.down, because this mount is
+      // arena-CONTESTED: the x-sheet grid puts scrollables around the grip,
+      // so the recognizer really does wait out the 18px touch slop here
+      // (measured: pointer-down alone begins nothing; the 19px arrives
+      // whole at acceptance). X-sheet frame rows are 36px tall, so those
+      // 19px are already past the row's midpoint and the edge owes a step
+      // the moment the drag is recognised. Under `start` they were thrown
+      // away and this reads [1] — the edge spending the rest of the
+      // gesture 19px behind the finger.
       await gesture.moveBy(const Offset(0, 19));
       await tester.pump();
       await gesture.moveBy(const Offset(0, 36));
@@ -254,22 +258,25 @@ void main() {
     });
   });
 
-  group('R10: the slop is travel, not overhead', () {
-    testWidgets('a drag that only just wins the arena has already moved the '
-        'edge — the pixels spent on the slop are not discarded', (
-      tester,
-    ) async {
+  group('R10: the running total decides', () {
+    testWidgets('the edge follows the NEAREST boundary to where the pointer '
+        'has got to, and comes home to zero', (tester) async {
       final log = _DragLog();
       await tester.pumpWidget(
         _rowHarness(layer: _twoBlockLayer(), commaDrag: log.callbacks),
       );
 
-      // 48px cells: one move of 30px is over the touch slop (18) AND over
-      // the half cell, so the edge owes a step immediately. Under
-      // DragStartBehavior.start the recognizer kept only 30 - 18 = 12px
-      // and reported nothing — the edge sat still while the finger was
-      // already most of a cell away, which is what the user described as
-      // the edge staying out of register for the whole gesture.
+      // ⚠️ This harness cannot pin DragStartBehavior — mount and slop are
+      // two different things. `_rowHarness` puts nothing beside the grip,
+      // so its recognizer is the ONLY member of the arena and wins by
+      // default at the pointer DOWN, with nothing pending; both drag-start
+      // behaviours then produce byte-identical events. The pin for `down`
+      // is the arena-CONTESTED x-sheet case above, plus the two full-app
+      // fixtures (widget_test's ripple drag, instruction_row's end grip).
+      //
+      // What IS pinned here is the arithmetic: 30px of a 48px cell is past
+      // the midpoint, so the edge steps — R9 #10's truncation would report
+      // nothing until a whole cell had passed.
       final gesture = await tester.startGesture(
         _gripRect(tester, 'end', 0).center,
       );
@@ -278,8 +285,8 @@ void main() {
 
       expect(log.updates, [1]);
 
-      // And it comes home: back to the down position is back to zero, with
-      // no residue left over from the arena.
+      // And it comes home: back at the down position the delta is zero
+      // again, so the block is the length it started at.
       await gesture.moveBy(const Offset(-30, 0));
       await tester.pump();
       await gesture.up();
