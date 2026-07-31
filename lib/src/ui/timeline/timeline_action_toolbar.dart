@@ -208,6 +208,9 @@ class TimelineActionToolbar extends StatelessWidget {
       PanelFlyoutItem(
         keyValue: 'add-layer-kind-storyboard',
         label: AppText.strings.tlKindStoryboard,
+        // R9 #7: one storyboard row per cut — the entry greys out once the
+        // cut has it, instead of accepting the tap and doing nothing.
+        enabled: session.canAddLayerOfKind(LayerKind.storyboard),
         onSelected: () => session.addLayerOfKind(LayerKind.storyboard),
       ),
       PanelFlyoutItem(

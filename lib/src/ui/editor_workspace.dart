@@ -742,24 +742,18 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   }
 
   void _applyPreset(BrushPreset preset) {
-    // The stabilizer is a hand-feel setting, not preset payload (P7): it
-    // carries over unchanged when a preset applies. Applying a preset
-    // KEEPS the active painting tool (R11-④: the eraser owns its own
-    // preset choice); from a non-painting tool it arms the brush.
+    // Applying a preset KEEPS the active painting tool (R11-④: the eraser
+    // owns its own preset choice); from a non-painting tool it arms the
+    // brush. Which settings survive the swap is the state's own rule —
+    // see [BrushToolState.withPresetSettings].
     final current = _brushTool.value;
     final targetTool = canvasToolPaints(current.tool)
         ? current.tool
         : CanvasTool.brush;
-    _brushTool.value = BrushToolState.fromBrushSettings(preset.settings)
-        .copyWith(
-          tool: targetTool,
-          stabilizerStrength: current.stabilizerStrength,
-          // R26 #10: SIZE and the brush BLEND are hand settings — a
-          // preset never flips them ("브러시 다른거 선택한다고
-          // 사이즈/블렌딩모드가 바뀌지 않음").
-          size: current.size,
-          brushBlendMode: current.brushBlendMode,
-        );
+    _brushTool.value = current.withPresetSettings(
+      preset.settings,
+      tool: targetTool,
+    );
     _activePresetByTool[targetTool] = preset.id;
     _presetLibrary.markActive(preset.id);
   }
