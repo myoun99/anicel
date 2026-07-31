@@ -370,7 +370,7 @@ void main() {
                 required TrackId trackId,
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
-                int headRowDelta = 0,
+                TimelineRowAddress? headRow,
               }) {
                 dragSteps.add((trackId, anchorGlobalFrame, headGlobalFrame));
               },
@@ -398,6 +398,81 @@ void main() {
       expect(dragSteps.last, (const TrackId('track-a'), 12, 32));
     });
 
+    testWidgets('R9 #25 — dragging UP from the V row reaches the S row above '
+        'it, whatever the V row is measuring', (tester) async {
+      // THE regression test for the reported asymmetry. The old reach was a
+      // row COUNT computed as "pixels ÷ the height of the row I started on",
+      // so starting on the V row (28–160px) and travelling one 30px S row
+      // read as less than one row and the head never moved. Down-drags
+      // survived only because the end clamp caught them, which is why the
+      // one gesture test that existed — dragging DOWN — stayed green.
+      // THREE S rows, and travel past TWO of them. With one row the end
+      // clamp rescues both directions, which is exactly why the bug hid:
+      // 30px of travel divided by the V row's 64 still floors to one row.
+      // 60px does not — it floors to one row while the screen shows two.
+      final selection = ValueNotifier<TrackFrameRangeSelection?>(null);
+      addTearDown(selection.dispose);
+      final heads = <TimelineRowAddress?>[];
+      const trackId = TrackId('track-a');
+      // The rail stacks the HIGHEST slot on top, so the row two above the
+      // V row is the middle one: slot 2.
+      final expectedHead = seLayerIdForTrack(trackId, 2);
+      final bottomSeId = seLayerIdForTrack(trackId, 1);
+
+      await _pumpStoryboardPanel(
+        tester,
+        _project([
+          Track(
+            id: trackId,
+            name: 'Track A',
+            cuts: [_cut('cut-a', name: 'Cut A')],
+            seLayers: [
+              for (var slot = 1; slot <= 3; slot += 1)
+                createTrackSeLayer(trackId: trackId, slot: slot),
+            ],
+          ),
+        ]),
+        activeCutId: const CutId('cut-a'),
+        onCutSelected: (_) {},
+        cutSelect: StoryboardCutSelectCallbacks(
+          selectedRange: selection,
+          onDrag:
+              ({
+                required TrackId trackId,
+                required int anchorGlobalFrame,
+                required int headGlobalFrame,
+                TimelineRowAddress? headRow,
+              }) {
+                heads.add(headRow);
+              },
+          onClear: () => selection.value = null,
+        ),
+      );
+
+      final seRow = tester.getRect(
+        find.byKey(ValueKey<String>('storyboard-se-press-$bottomSeId')),
+      );
+      final blockA = cutBlockScreenRect(tester, 'cut-a');
+      final gesture = await tester.startGesture(
+        blockA.topLeft + const Offset(8 * 4.0, 10),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      // End exactly TWO S rows above the V row's own top.
+      await gesture.moveBy(Offset(8 * 2.0, -(10 + seRow.height * 2)));
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(heads, isNotEmpty);
+      expect(
+        heads.last,
+        LayerRowAddress(expectedHead),
+        reason: 'the pointer is two S rows up, so the head is two S rows up — '
+            'the answer must not depend on how tall the V row happens to be',
+      );
+    });
+
     testWidgets('a drag starting in a GAP still paints a run — the gesture '
         'covers the row, not the blocks', (tester) async {
       final selection = ValueNotifier<TrackFrameRangeSelection?>(null);
@@ -419,7 +494,7 @@ void main() {
                 required TrackId trackId,
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
-                int headRowDelta = 0,
+                TimelineRowAddress? headRow,
               }) {
                 dragSteps.add((anchorGlobalFrame, headGlobalFrame));
               },
@@ -484,7 +559,7 @@ void main() {
                 required TrackId trackId,
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
-                int headRowDelta = 0,
+                TimelineRowAddress? headRow,
               }) => selectDrags += 1,
           onClear: () => selection.value = null,
         ),
@@ -558,7 +633,7 @@ void main() {
                 required TrackId trackId,
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
-                int headRowDelta = 0,
+                TimelineRowAddress? headRow,
               }) {},
           onClear: () {
             clears += 1;
@@ -605,7 +680,7 @@ void main() {
                 required TrackId trackId,
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
-                int headRowDelta = 0,
+                TimelineRowAddress? headRow,
               }) {},
           onClear: () => selection.value = null,
         ),
@@ -1295,7 +1370,7 @@ void main() {
         'inversion lived exactly here', (tester) async {
       final selection = ValueNotifier<TrackFrameRangeSelection?>(null);
       addTearDown(selection.dispose);
-      final deltas = <int>[];
+      final heads = <TimelineRowAddress?>[];
 
       await _pumpStoryboardPanel(
         tester,
@@ -1311,9 +1386,9 @@ void main() {
                 required LayerId layerId,
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
-                int headRowDelta = 0,
+                TimelineRowAddress? headRow,
               }) {
-                deltas.add(headRowDelta);
+                heads.add(headRow);
               },
           onClear: () => selection.value = null,
         ),
@@ -1338,11 +1413,13 @@ void main() {
       await gesture.up();
       await tester.pumpAndSettle();
 
-      expect(deltas, isNotEmpty);
+      expect(heads, isNotEmpty);
       expect(
-        deltas.last,
-        1,
-        reason: 'downward on screen must read as +1 — toward the V row',
+        heads.last,
+        const TrackRowAddress(TrackId('track-a')),
+        reason: 'downward on screen must reach the V row below — and now it '
+            'arrives as the ROW ITSELF, resolved from the painted heights, '
+            'not a count derived from the anchor row\x27s own height (R9 #25)',
       );
     });
 
@@ -1367,7 +1444,7 @@ void main() {
                 required TrackId trackId,
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
-                int headRowDelta = 0,
+                TimelineRowAddress? headRow,
               }) {
                 dragSteps.add((anchorGlobalFrame, headGlobalFrame));
               },
@@ -1427,7 +1504,7 @@ void main() {
                 required TrackId trackId,
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
-                int headRowDelta = 0,
+                TimelineRowAddress? headRow,
               }) {
                 cutDrags.add((anchorGlobalFrame, headGlobalFrame));
               },
@@ -1503,7 +1580,7 @@ void main() {
                 required TrackId trackId,
                 required int anchorGlobalFrame,
                 required int headGlobalFrame,
-                int headRowDelta = 0,
+                TimelineRowAddress? headRow,
               }) {},
           onClear: () => selection.value = null,
         ),

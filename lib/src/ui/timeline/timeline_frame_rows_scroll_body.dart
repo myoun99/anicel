@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
 import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
+import '../../models/timeline_row_address.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
@@ -380,6 +381,51 @@ class _TimelineFrameRowsScrollBodyState
   ValueNotifier<TimelineFrameGeometry> _geometryFor(LayerKind kind) =>
       _windowedGeometry;
 
+  /// The folder header's frame band, plus the range gesture (R9 #1).
+  ///
+  /// The band itself stays pure display — the runs it draws are the
+  /// members' union, so it has no comma grips, no run edges and no block
+  /// of its own to move. What it gains is SELECTION: "프레임셀이면 싹 다
+  /// 작동해야함" (user, 2026-07-31), and a row that shows frames but
+  /// refuses to be dragged across is the exception that made the timeline
+  /// feel inconsistent.
+  ///
+  /// The selection lands on the FOLDER ROW, not its members — the user was
+  /// explicit that a folder must not behave like the transform header's
+  /// select-everything ("자꾸 트랜스폼헤더마냥 전체선택시키려들지마").
+  Widget _buildFolderRow(TimelineDisplayRow row) {
+    final band = TimelineFolderAggregateRow(
+      aggregateRuns: row.aggregateRuns,
+      frameStartIndex: widget.frameStartIndex,
+      frameEndIndexExclusive: widget.frameEndIndexExclusive,
+      leadingFrameSpacerWidth: widget.leadingFrameSpacerWidth,
+      trailingFrameSpacerWidth: widget.trailingFrameSpacerWidth,
+      metrics: widget.metrics,
+      // R28 #11: the empty-cel grey reaches the folder band.
+      members: row.members,
+      memberHasContentAt: widget.celContent?.hasContent,
+    );
+    final rangeGesture = widget.rangeGesture;
+    if (rangeGesture == null) {
+      return band;
+    }
+    // The gesture layer positions itself, so it is a DIRECT Stack child.
+    return Stack(
+      children: [
+        band,
+        TimelineFrameRangeGestureLayer(
+          key: ValueKey<String>(
+            'timeline-range-gesture-slot-folder-${row.layer.id}',
+          ),
+          row: LayerRowAddress(row.layer.id),
+          geometry: _geometryFor(row.layer.kind),
+          crossAxisExtent: widget.metrics.layerRowHeight,
+          callbacks: rangeGesture,
+        ),
+      ],
+    );
+  }
+
   Widget _buildCellsRow(Layer layer, {required Layer baseLayer}) {
     return TimelineFrameCellsRow(
       layer: layer,
@@ -489,17 +535,7 @@ class _TimelineFrameRowsScrollBodyState
         dragPreview: widget.dragPreview,
         layer: row.layer,
         rowBuilder: (context, layer) => row.isFolder
-            ? TimelineFolderAggregateRow(
-                aggregateRuns: row.aggregateRuns,
-                frameStartIndex: widget.frameStartIndex,
-                frameEndIndexExclusive: widget.frameEndIndexExclusive,
-                leadingFrameSpacerWidth: widget.leadingFrameSpacerWidth,
-                trailingFrameSpacerWidth: widget.trailingFrameSpacerWidth,
-                metrics: widget.metrics,
-                // R28 #11: the empty-cel grey reaches the folder band.
-                members: row.members,
-                memberHasContentAt: widget.celContent?.hasContent,
-              )
+            ? _buildFolderRow(row)
             : row.isLane
             ? _buildLaneRow(row, layer)
             : _buildCellsRow(layer, baseLayer: row.layer),

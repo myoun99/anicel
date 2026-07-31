@@ -1,4 +1,5 @@
-﻿import 'package:flutter/material.dart';
+﻿import 'package:flutter/gestures.dart' show PointerDeviceKind;
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
@@ -6,6 +7,9 @@ import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_cells_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_rows_scroll_body.dart';
+import 'package:anicel/src/ui/timeline/timeline_frame_range_gesture.dart';
+import 'package:anicel/src/models/layer_folder.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 
 import 'timeline/timeline_cell_probe.dart';
@@ -174,6 +178,61 @@ void main() {
       expect(timelineCellModel(tester, 'layer-a', 2).glyph, '●');
     });
   });
+
+  group('R9 #1 — the folder band selects', () {
+    testWidgets('a folder row mounts the range gesture, so a drag across '
+        'its band is a selection like every other row', (tester) async {
+      final folder = createFolderLayer(
+        id: const LayerId('f1'),
+        name: 'Folder',
+      );
+      final member = _layer('a').copyWith(folderId: folder.id);
+      final selects = <(TimelineRowAddress, int, int)>[];
+
+      await tester.pumpWidget(
+        _body(
+          layers: [folder, member],
+          rangeGesture: TimelineRangeGestureCallbacks(
+            isInSelection: (_, _) => false,
+            onSelectUpdate: (row, anchor, head, _) =>
+                selects.add((row, anchor, head)),
+            onTapClear: (_) {},
+            onMoveBegin: (_, _) => false,
+            onMoveUpdate: (_, _) {},
+            onMoveEnd: () {},
+            onMoveCancel: () {},
+          ),
+        ),
+      );
+
+      // The band used to be pure display — 'taps fall through to nothing' —
+      // which made it the one row in the timeline a range drag could not
+      // cross. It keeps its comma-less, edge-less band; it gains selection.
+      final gesture = _stableKeyFinder(
+        'timeline-range-gesture-slot-folder-${folder.id}',
+      );
+      expect(gesture, findsOneWidget);
+
+      final box = tester.getRect(gesture);
+      final pointer = await tester.startGesture(
+        box.centerLeft + const Offset(4, 0),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      await pointer.moveBy(const Offset(60, 0));
+      await tester.pump();
+      await pointer.up();
+      await tester.pumpAndSettle();
+
+      expect(selects, isNotEmpty);
+      expect(
+        selects.last.$1,
+        LayerRowAddress(folder.id),
+        reason: 'the selection addresses the FOLDER row itself — not a '
+            'member, and not everything under it',
+      );
+    });
+  });
 }
 
 Finder get _bodyFinder =>
@@ -208,6 +267,7 @@ Widget _body({
   String? Function(Layer layer, int frameIndex)? frameNameForLayer,
   ValueChanged<LayerId>? onSelectLayer,
   ValueChanged<int>? onSelectFrame,
+  TimelineRangeGestureCallbacks? rangeGesture,
 }) {
   return MaterialApp(
     home: Scaffold(
@@ -232,6 +292,7 @@ Widget _body({
           frameNameForLayer: frameNameForLayer,
           onSelectLayer: onSelectLayer ?? (_) {},
           onSelectFrame: onSelectFrame ?? (_) {},
+          rangeGesture: rangeGesture,
         ),
       ),
     ),

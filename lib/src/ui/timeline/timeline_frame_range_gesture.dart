@@ -145,14 +145,19 @@ class TimelineRangeGestureCallbacks {
   final bool Function(TimelineRowAddress row, int frameIndex) isInSelection;
 
   /// A select-drag step: anchor = where the drag started, head = the
-  /// pointer's frame now (the session snaps to whole blocks). The row
-  /// delta (Excel-style cross-row select, UI-R17 #8) rides along — the
-  /// mount maps it onto the head row.
+  /// pointer's frame now (the session snaps to whole blocks).
+  ///
+  /// [headCrossOffset] is the pointer's CROSS-AXIS position in pixels,
+  /// measured from this row's top (negative above it) — the raw material
+  /// for the Excel-style cross-row select (UI-R17 #8). It is deliberately
+  /// NOT a row count: this layer does not know how tall the other rows
+  /// are, and R9 #25 is the bug that guess produced. The mount resolves it
+  /// with the heights it paints — see `timeline_row_cross_offset.dart`.
   final void Function(
     TimelineRowAddress row,
     int anchorIndex,
     int headIndex,
-    int headRowDelta,
+    double headCrossOffset,
   )
   onSelectUpdate;
 
@@ -249,17 +254,16 @@ class _TimelineFrameRangeGestureLayerState
     widget.callbacks.onSelectUpdate(widget.row, frame, frame, 0);
   }
 
-  /// The display-row delta of the pointer relative to THIS row (Excel
-  /// cross-row select): the cross-axis local position may run past the
-  /// row's own bounds during the pan.
-  int _rowDeltaAt(Offset localPosition) {
-    final cross = widget.axis == Axis.horizontal
+  /// The pointer's cross-axis offset from THIS row's top (Excel cross-row
+  /// select): it may run past the row's own bounds during the pan, which
+  /// is the whole point — a negative value is above this row.
+  ///
+  /// Raw pixels, not a row count: dividing by this row's height would
+  /// assume every other row matches it (R9 #25).
+  double _crossOffsetAt(Offset localPosition) {
+    return widget.axis == Axis.horizontal
         ? localPosition.dy
         : localPosition.dx;
-    if (widget.crossAxisExtent <= 0) {
-      return 0;
-    }
-    return (cross / widget.crossAxisExtent).floor();
   }
 
   void _updateDrag(DragUpdateDetails details) {
@@ -271,7 +275,7 @@ class _TimelineFrameRangeGestureLayerState
           widget.row,
           _anchorIndex,
           _frameAt(details.localPosition),
-          _rowDeltaAt(details.localPosition),
+          _crossOffsetAt(details.localPosition),
         );
       case _RangeDragMode.move:
         final horizontal = widget.axis == Axis.horizontal;

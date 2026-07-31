@@ -159,6 +159,7 @@ import 'audio/audio_conform_store.dart';
 import 'brush/brush_canvas_panel.dart';
 import 'brush/brush_editor_selection.dart';
 import 'timeline/instruction_span_editing.dart';
+import 'timeline/property_lane_model.dart' show folderAggregateRuns;
 import 'timeline/layer_label_controls.dart' show layerKindShowsBlendControl;
 import 'timeline/layer_timeline_display_adapter.dart'
     show horizontalLayerDisplayOrder;
@@ -6688,6 +6689,15 @@ class EditorSessionManager extends ChangeNotifier {
       if (!layerKindHoldsDrawings(layer.kind) || isSyncedAttachedLayer(layer)) {
         continue; // Synced mirrors follow their base; nothing to author.
       }
+      // R9 #9: a COVERING row is one cel edge to edge — there is no "add a
+      // frame" in its world, so a selection that happens to span it must
+      // pass over it rather than author into it. Until now nothing happened
+      // by luck (the covering normalization leaves no empty gap to fill),
+      // and #1 is about to put folders — and so their image members — into
+      // range selections on purpose. Say it instead of relying on it.
+      if (layerKindCoversWithoutGaps(layer.kind)) {
+        continue;
+      }
       final layerFills =
           <({int startIndex, int length, FrameId frameId, String? name})>[];
       for (final gap in _emptyGapsInRange(layer, selection)) {
@@ -8240,7 +8250,7 @@ class EditorSessionManager extends ChangeNotifier {
     required int anchorGlobalFrame,
     required int headGlobalFrame,
     TrackId? trackId,
-    int headRowDelta = 0,
+    TimelineRowAddress? headRow,
   }) {
     final row = trackId ?? selectedTrackId;
     _updateTrackRangeSelection(
@@ -8248,7 +8258,7 @@ class EditorSessionManager extends ChangeNotifier {
       anchorRow: TrackRowAddress(row),
       anchorGlobalFrame: anchorGlobalFrame,
       headGlobalFrame: headGlobalFrame,
-      headRowDelta: headRowDelta,
+      headRow: headRow,
     );
   }
 
@@ -8331,7 +8341,7 @@ class EditorSessionManager extends ChangeNotifier {
     required TimelineRowAddress anchorRow,
     required int anchorGlobalFrame,
     required int headGlobalFrame,
-    required int headRowDelta,
+    required TimelineRowAddress? headRow,
   }) {
     final railRows = _storyboardRailRows(trackId);
     final anchorIndex = railRows.indexOf(anchorRow);
@@ -8339,14 +8349,17 @@ class EditorSessionManager extends ChangeNotifier {
     if (anchorIndex < 0 || railRows.length < 2) {
       spanned = [anchorRow];
     } else {
-      // The clamp IS the guard: a delta past either end simply stops at the
-      // rail's last row.
-      final headIndex = (anchorIndex + headRowDelta).clamp(
-        0,
-        railRows.length - 1,
-      );
-      final first = math.min(anchorIndex, headIndex);
-      final last = math.max(anchorIndex, headIndex);
+      // R9 #25: the head arrives as an ADDRESS, resolved by the panel
+      // against the heights it paints. It used to arrive as a row DELTA
+      // computed from one row's height, which under-counted every row that
+      // was a different size — the whole of the "V행에서 위로 끌면 S1에서
+      // 막힘" report. A row this rail does not hold (or none at all) simply
+      // leaves the anchor alone: what is not on the list is unreachable,
+      // which is the same guard the clamp used to be.
+      final headIndex = headRow == null ? anchorIndex : railRows.indexOf(headRow);
+      final resolvedHead = headIndex < 0 ? anchorIndex : headIndex;
+      final first = math.min(anchorIndex, resolvedHead);
+      final last = math.max(anchorIndex, resolvedHead);
       spanned = railRows.sublist(first, last + 1);
     }
 
@@ -8403,7 +8416,7 @@ class EditorSessionManager extends ChangeNotifier {
     required LayerId layerId,
     required int anchorGlobalFrame,
     required int headGlobalFrame,
-    int headRowDelta = 0,
+    TimelineRowAddress? headRow,
   }) {
     // The anchor row names its own track: gating on the ACTIVE track's SE
     // list (and stating the selection on [selectedTrackId]) killed every
@@ -8420,7 +8433,7 @@ class EditorSessionManager extends ChangeNotifier {
       anchorRow: LayerRowAddress(layerId),
       anchorGlobalFrame: anchorGlobalFrame,
       headGlobalFrame: headGlobalFrame,
-      headRowDelta: headRowDelta,
+      headRow: headRow,
     );
   }
 
@@ -9338,6 +9351,16 @@ class EditorSessionManager extends ChangeNotifier {
   /// Cells and lanes are still two selection objects (their edits differ:
   /// blocks vs keys), but ONE drag now produces both, and the frame range
   /// is shared so the highlight reads as one rectangle.
+  /// The snap lane a FOLDER row selects against (R9 #1): the very runs its
+  /// band draws, which are its subtree members' exposures merged. Empty for
+  /// every row that owns its own blocks.
+  List<({int start, int endExclusive})> _aggregateRunsForRow(Layer layer) {
+    if (!layerKindGroupsLayers(layer.kind)) {
+      return const [];
+    }
+    return folderAggregateRuns(layers.subtreeMembersOf(layer.id));
+  }
+
   void updateFrameRangeSelectionDrag({
     required LayerId layerId,
     required int anchorIndex,
@@ -9369,6 +9392,7 @@ class EditorSessionManager extends ChangeNotifier {
       layer: layer,
       anchorIndex: anchorIndex,
       headIndex: headIndex,
+      aggregateRuns: _aggregateRunsForRow(layer),
     );
     if (base == null) {
       frameRangeSelection.value = null;
@@ -9401,6 +9425,7 @@ class EditorSessionManager extends ChangeNotifier {
           layer: spanned,
           anchorIndex: start,
           headIndex: end - 1,
+          aggregateRuns: _aggregateRunsForRow(spanned),
         );
         if (snapped == null) {
           continue;

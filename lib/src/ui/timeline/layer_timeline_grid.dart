@@ -13,6 +13,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../models/timeline_row_address.dart';
+import 'timeline_row_cross_offset.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import 'timeline_row_span_resolver.dart' show resolveSelectionSpanHead;
 import 'timeline_edge_auto_pan.dart';
@@ -1189,10 +1190,18 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
             },
             // Cross-row select (UI-R17 #8): the gesture's row delta maps
             // onto the display rows exactly like the move drags do.
-            onSelectUpdate: (row, anchorIndex, headIndex, headRowDelta) {
+            onSelectUpdate: (row, anchorIndex, headIndex, headCrossOffset) {
               if (row is! LayerRowAddress) {
                 return;
               }
+              // R9 #25: the gesture hands up raw pixels; this surface's
+              // rows are one height (layer rows and lane rows alike), so
+              // the resolve is the uniform one — the same arithmetic as
+              // before, now stated where the heights are known.
+              final headRowDelta = uniformRowDeltaForCrossOffset(
+                crossOffset: headCrossOffset,
+                rowExtent: _metrics.layerRowHeight,
+              );
               final layerId = row.layerId;
               // R27 #14: the head row may be a LANE row of the dragged
               // layer — the span then runs cell → lane → lane and stops

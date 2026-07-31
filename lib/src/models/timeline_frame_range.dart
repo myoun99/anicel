@@ -171,17 +171,43 @@ RangeBlock? instructionBlockAt(Layer layer, int index) {
   return RangeBlock(startIndex: start, endIndexExclusive: endExclusive);
 }
 
+/// The block covering [index] in a merged run list — a FOLDER row's lane
+/// (R9 #1). A folder holds no timeline of its own: what its band draws is
+/// the union of its subtree members' exposures, so that union is also what
+/// a range drag on it must snap to. Anything else would snap the selection
+/// to blocks the row does not show.
+RangeBlock? aggregateRunBlockAt(
+  List<({int start, int endExclusive})> runs,
+  int index,
+) {
+  for (final run in runs) {
+    if (index >= run.start && index < run.endExclusive) {
+      return RangeBlock(
+        startIndex: run.start,
+        endIndexExclusive: run.endExclusive,
+      );
+    }
+  }
+  return null;
+}
+
 /// Snaps a raw dragged span to WHOLE blocks on [layer] — THE shared rule
-/// ([snapSpanToBlocks]), handed this row's two lanes.
+/// ([snapSpanToBlocks]), handed this row's lanes.
+///
+/// [aggregateRuns] is the folder case: a row whose blocks are derived from
+/// its members rather than owned. Empty for every ordinary row.
 TimelineFrameRangeSelection? snapFrameRangeToBlocks({
   required Layer layer,
   required int anchorIndex,
   required int headIndex,
+  List<({int start, int endExclusive})> aggregateRuns = const [],
 }) {
   final span = snapSpanToBlocks(
     lanes: [
       (index) => exposureBlockAt(layer, index),
       (index) => instructionBlockAt(layer, index),
+      if (aggregateRuns.isNotEmpty)
+        (index) => aggregateRunBlockAt(aggregateRuns, index),
     ],
     anchorIndex: anchorIndex,
     headIndex: headIndex,

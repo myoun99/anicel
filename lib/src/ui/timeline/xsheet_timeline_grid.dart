@@ -25,6 +25,7 @@ import 'timeline_drag_preview.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/timeline_row_address.dart';
+import 'timeline_row_cross_offset.dart';
 import 'timeline_edge_auto_pan.dart';
 import 'timeline_row_span_resolver.dart' show resolveBlockMoveTargetLayer;
 import 'timeline_frame_range_gesture.dart';
@@ -887,10 +888,16 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                     },
                     // Cross-row select (UI-R17 #8), transposed like the moves.
                     onSelectUpdate:
-                        (row, anchorIndex, headIndex, headRowDelta) {
+                        (row, anchorIndex, headIndex, headCrossOffset) {
                           if (row is! LayerRowAddress) {
                             return;
                           }
+                          // R9 #25: raw pixels in, resolved here — this
+                          // axis's columns are one width.
+                          final headRowDelta = uniformRowDeltaForCrossOffset(
+                            crossOffset: headCrossOffset,
+                            rowExtent: _metrics.layerRowHeight,
+                          );
                           rangeHooks.onSelectUpdate(
                             row.layerId,
                             anchorIndex,
