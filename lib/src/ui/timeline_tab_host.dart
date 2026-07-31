@@ -306,8 +306,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         // Transform group sits below, collapsed by default.
         return [
           ...seAudioLanesFor(layer),
-          ..._collapsibleTransformGroup(layer, _layerTransformLanes(layer)),
           ..._layerEffectLanes(layer),
+          ..._collapsibleTransformGroup(layer, _layerTransformLanes(layer)),
         ];
       case LayerKind.adjustment:
         // R6b: an adjustment row has no picture to move, so its twirl-down
@@ -321,10 +321,15 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       // A folder's FX lanes ARE layer lanes (R27 #26 asked for the layer
       // lane grammar verbatim; now it is literally the same code path).
       case LayerKind.folder:
+        // R9 #24: the list IS the pipeline — further from the row means
+        // applied later. Effects first, then Transform at the bottom,
+        // which is both AE's twirl-down (Masks → Effects → Transform) and
+        // what this app already DOES: the pose wraps the draw while the
+        // effect filters sit inside it, so the transform is genuinely
+        // last. Only the reading order was upside down.
         return [
-          ..._collapsibleTransformGroup(layer, _layerTransformLanes(layer)),
-          // R6: effects read below Transform, the AE panel's order.
           ..._layerEffectLanes(layer),
+          ..._collapsibleTransformGroup(layer, _layerTransformLanes(layer)),
         ];
     }
   }

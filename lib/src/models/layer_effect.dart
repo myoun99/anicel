@@ -242,10 +242,16 @@ class EffectParameter {
 
 /// One effect on a layer: a kind, an enable switch and its parameters.
 ///
-/// Effects apply BOTTOM-UP over the layer's own picture in list order (AE's
-/// Effects panel read top to bottom), after the transform and before the
-/// layer's opacity/blend meet the stack — the same place the layer's pose
-/// already lands.
+/// Effects apply over the layer's own picture in list order (AE's Effects
+/// panel read top to bottom), BEFORE the transform and before the layer's
+/// opacity/blend meet the stack.
+///
+/// R9 #24 corrected this: it used to say "after the transform", which is
+/// backwards and contradicts the code it describes — the pose wraps the
+/// draw (`canvas.save()` + `applyLayerPoseTransform`) while the effect
+/// filters ride the paint INSIDE it, so the transform is last, exactly as
+/// in AE. Anyone who implemented from the old sentence got the pipeline
+/// reversed.
 class LayerEffect {
   /// [parameters] is NORMALIZED to the kind's spec: every parameter the kind
   /// declares is materialized (missing ones at their default) and anything
