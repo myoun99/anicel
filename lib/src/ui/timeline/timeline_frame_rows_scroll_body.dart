@@ -6,7 +6,6 @@ import 'package:flutter/material.dart';
 import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
 import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
-import '../../models/timeline_row_address.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
@@ -19,7 +18,6 @@ import 'timeline_cell_exposure_state.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_cel_content_source.dart';
-import 'timeline_folder_aggregate_row.dart';
 import 'timeline_frame_cells_row.dart';
 import 'timeline_frame_geometry.dart';
 import 'timeline_frame_window.dart' show timelineFrameWindowSpanFor;
@@ -334,11 +332,10 @@ class _TimelineFrameRowsScrollBodyState
     super.dispose();
   }
 
-  /// Folder rows key off their own id like every other row — the header's
-  /// representative member (which DID collide with that member's own row)
-  /// is gone; the prefix just keeps the band's key readable.
-  String _rowKeySuffix(TimelineDisplayRow row) =>
-      row.isFolder ? 'folder-${row.layer.id}' : row.lane?.laneId ?? 'cells';
+  /// Every row keys off its own id; a lane row adds which lane it is.
+  /// R10 dropped the folder prefix with the folder's private band — a
+  /// folder row is a cells row now, so it keys like one.
+  String _rowKeySuffix(TimelineDisplayRow row) => row.lane?.laneId ?? 'cells';
 
   bool _rowIsMemoizable(TimelineDisplayRow row) {
     // Every non-lane row memoizes now (UI-R20 #4): the churny inputs the
@@ -347,9 +344,12 @@ class _TimelineFrameRowsScrollBodyState
     // SE spill-in rides a per-layer flag, and the SE/camera display
     // clones themselves are identity-cached upstream. The audio WAVEFORM
     // stays safe because it lives on the (unmemoized) lane rows.
-    // Folder rows stay unmemoized too: their aggregate runs churn
-    // identity per build and the painter is a handful of rects.
-    return !row.isLane && !row.isFolder;
+    //
+    // R10 brought FOLDER rows in: their band used to churn a fresh runs
+    // list per build, which is exactly why they were excluded — now the
+    // band is an identity-cached display clone, so the memo key answers
+    // for them like any other row.
+    return !row.isLane;
   }
 
   bool _inputsMatch(_RowMemoInputs a, _RowMemoInputs b) {
@@ -388,50 +388,6 @@ class _TimelineFrameRowsScrollBodyState
   ValueNotifier<TimelineFrameGeometry> _geometryFor(LayerKind kind) =>
       _windowedGeometry;
 
-  /// The folder header's frame band, plus the range gesture (R9 #1).
-  ///
-  /// The band itself stays pure display — the runs it draws are the
-  /// members' union, so it has no comma grips, no run edges and no block
-  /// of its own to move. What it gains is SELECTION: "프레임셀이면 싹 다
-  /// 작동해야함" (user, 2026-07-31), and a row that shows frames but
-  /// refuses to be dragged across is the exception that made the timeline
-  /// feel inconsistent.
-  ///
-  /// The selection lands on the FOLDER ROW, not its members — the user was
-  /// explicit that a folder must not behave like the transform header's
-  /// select-everything ("자꾸 트랜스폼헤더마냥 전체선택시키려들지마").
-  Widget _buildFolderRow(TimelineDisplayRow row) {
-    final band = TimelineFolderAggregateRow(
-      aggregateRuns: row.aggregateRuns,
-      frameStartIndex: widget.frameStartIndex,
-      frameEndIndexExclusive: widget.frameEndIndexExclusive,
-      leadingFrameSpacerWidth: widget.leadingFrameSpacerWidth,
-      trailingFrameSpacerWidth: widget.trailingFrameSpacerWidth,
-      metrics: widget.metrics,
-      // R28 #11: the empty-cel grey reaches the folder band.
-      members: row.members,
-      memberHasContentAt: widget.celContent?.hasContent,
-    );
-    final rangeGesture = widget.rangeGesture;
-    if (rangeGesture == null) {
-      return band;
-    }
-    // The gesture layer positions itself, so it is a DIRECT Stack child.
-    return Stack(
-      children: [
-        band,
-        TimelineFrameRangeGestureLayer(
-          key: ValueKey<String>(
-            'timeline-range-gesture-slot-folder-${row.layer.id}',
-          ),
-          row: LayerRowAddress(row.layer.id),
-          geometry: _geometryFor(row.layer.kind),
-          crossAxisExtent: widget.metrics.layerRowHeight,
-          callbacks: rangeGesture,
-        ),
-      ],
-    );
-  }
 
   Widget _buildCellsRow(Layer layer, {required Layer baseLayer}) {
     return TimelineFrameCellsRow(
@@ -555,9 +511,13 @@ class _TimelineFrameRowsScrollBodyState
       child: TimelineDragPreviewRowGate(
         dragPreview: widget.dragPreview,
         layer: row.layer,
-        rowBuilder: (context, layer) => row.isFolder
-            ? _buildFolderRow(row)
-            : row.isLane
+        // R10: a FOLDER row is a cells row. Its band arrives as the display
+        // clone's own timeline, so it takes the shared painter, the shared
+        // press policy — the playhead can be put on it at last — and the
+        // tile bake, while staying non-editable for free: every edit
+        // affordance below gates on `layerKindHoldsDrawings`, which a
+        // folder fails.
+        rowBuilder: (context, layer) => row.isLane
             ? _buildLaneRow(row, layer)
             : _buildCellsRow(layer, baseLayer: row.layer),
       ),

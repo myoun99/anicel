@@ -1044,16 +1044,25 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   /// notifier the canvas and the camera panel share. The DIM is deliberately
   /// not folded in here (R27 #9): it reaches the slider through
   /// [_cameraDimOverrideFor], so a dim drag never invalidates this list.
+  /// The layer stack as the GRIDS should render it — display clones for
+  /// the rows whose cells are not their own.
+  ///
+  /// R10 puts the folder band here, which is the one seam both grids read:
+  /// the X-sheet has always sent folder columns to the shared cells row
+  /// and drawn them blank, so the clone lights that column with no X-sheet
+  /// edit at all. Same rule the camera and SE clones live under — it never
+  /// leaves the display path, because commands re-read the real layer by
+  /// id.
   List<Layer> _displayLayers() {
     final view = widget.cameraViewEnabled;
-    if (view == null) {
-      return _session.layers;
-    }
     return [
       for (final layer in _session.layers)
-        layer.kind == LayerKind.camera
-            ? _cameraDisplayLayer(layer, view.value)
-            : layer,
+        if (layerKindGroupsLayers(layer.kind))
+          _session.folderBandLayerFor(layer)
+        else if (view != null && layer.kind == LayerKind.camera)
+          _cameraDisplayLayer(layer, view.value)
+        else
+          layer,
     ];
   }
 

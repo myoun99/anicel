@@ -75,6 +75,7 @@ import '../models/se_name_tag.dart';
 import '../models/storyboard_coverage.dart';
 import '../models/text_cel_style.dart';
 import '../models/timeline_coverage.dart';
+import '../models/timeline_exposure.dart';
 import '../models/timeline_frame_range.dart';
 import '../models/timeline_repeat.dart';
 import '../models/timeline_row_address.dart';
@@ -1085,6 +1086,91 @@ class EditorSessionManager extends ChangeNotifier {
       display,
     );
     return display;
+  }
+
+  /// The folder BAND cache (R10): a folder row's display clone, whose
+  /// `timeline` IS its subtree's exposure union.
+  ///
+  /// A folder Layer is empty — no frames, no timeline — so handing it to
+  /// the shared cells painter paints a blank row, which is exactly what
+  /// the X-sheet has been doing all along. Giving the clone the union as
+  /// an ordinary timeline is what lets a folder row BE a cells row: the
+  /// coverage question answers in O(log runs) off the standard raw value,
+  /// with no per-cell walk and no new painter input.
+  ///
+  /// Identity is the whole point, and the same reason [_seDisplayCloneCache]
+  /// exists: repaint, the tile bake key and the row memo all compare the
+  /// Layer INSTANCE, and a folder's own instance does not move when a
+  /// member is edited. Same union ⇒ the same clone back, so nothing
+  /// re-records; a changed union ⇒ a new instance, so everything does.
+  final Map<LayerId, ({List<({int start, int endExclusive})> runs, Layer band})>
+  _folderBandCache = {};
+
+  /// The stack the cache was filled from — a different stack identity means
+  /// the members may have moved even where the runs did not.
+  List<Layer>? _folderBandSource;
+  final Map<LayerId, List<Layer>> _folderBandMembers = {};
+
+  void _fillFolderBandCache() {
+    final stack = layers;
+    if (identical(_folderBandSource, stack)) {
+      return;
+    }
+    _folderBandSource = stack;
+    _folderBandMembers.clear();
+    final index = LayerFolderIndex(stack);
+    for (final layer in stack) {
+      if (!layerKindGroupsLayers(layer.kind)) {
+        continue;
+      }
+      final members = index.subtreeMembersOf(layer.id);
+      _folderBandMembers[layer.id] = members;
+      final runs = folderAggregateRuns(members);
+      final cached = _folderBandCache[layer.id];
+      if (cached != null && listEquals(cached.runs, runs)) {
+        continue;
+      }
+      _folderBandCache[layer.id] = (
+        runs: runs,
+        band: layer.copyWith(
+          timeline: {
+            for (final run in runs)
+              run.start: TimelineExposure.drawing(
+                // The union's entries are AUTHORED, not ghosts, and they
+                // resolve to no Frame on purpose: nothing composites a
+                // folder band, it only paints.
+                FrameId('band:${layer.id.value}:${run.start}'),
+                length: run.endExclusive - run.start,
+              ),
+          },
+        ),
+      );
+    }
+    _folderBandCache.removeWhere(
+      (id, _) => !_folderBandMembers.containsKey(id),
+    );
+  }
+
+  /// [folder]'s row as the grids should render it — the union band. Never
+  /// leaves the display path: commands re-read the real layer by id.
+  Layer folderBandLayerFor(Layer folder) {
+    if (!layerKindGroupsLayers(folder.kind)) {
+      return folder;
+    }
+    _fillFolderBandCache();
+    return _folderBandCache[folder.id]?.band ?? folder;
+  }
+
+  /// The folder's subtree members — the empty-cel tint's union (R28 #11).
+  List<Layer> folderBandMembersOf(LayerId folderId) {
+    _fillFolderBandCache();
+    return _folderBandMembers[folderId] ?? const [];
+  }
+
+  /// The folder's merged exposure runs — the range selection's snap lane.
+  List<({int start, int endExclusive})> folderBandRunsOf(LayerId folderId) {
+    _fillFolderBandCache();
+    return _folderBandCache[folderId]?.runs ?? const [];
   }
 
   /// The track's SE rows as cut-local display clones for the active cut.
@@ -9545,7 +9631,10 @@ class EditorSessionManager extends ChangeNotifier {
     if (!layerKindGroupsLayers(layer.kind)) {
       return const [];
     }
-    return folderAggregateRuns(layers.subtreeMembersOf(layer.id));
+    // R10: the band cache's runs, so the snap and the painted band are one
+    // answer. This used to walk the subtree fresh on every call — inside
+    // the select-drag loop.
+    return folderBandRunsOf(layer.id);
   }
 
   void updateFrameRangeSelectionDrag({
@@ -12766,6 +12855,17 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   TimelineCellExposureState exposureStateForLayer(Layer layer, int frameIndex) {
+    if (layerKindGroupsLayers(layer.kind)) {
+      // R10: a folder row is a CELLS row whose coverage is the subtree
+      // union, carried by its band clone's own timeline. HELD, never
+      // drawingStart — a held cell prints no glyph, so the band stays
+      // nameless (L5) without touching the shared marker table, and the
+      // block chrome still wraps the whole merged run because the segment
+      // rule bounds on coverage rather than on starts.
+      return coveringDrawingBlockAt(layer.timeline, frameIndex) != null
+          ? TimelineCellExposureState.held
+          : TimelineCellExposureState.uncovered;
+    }
     if (layer.kind == LayerKind.camera) {
       // The camera row's cells mirror the cut's camera keyframes — or
       // the in-flight key-range move's preview keys (P3b-2), so the row
@@ -12809,6 +12909,16 @@ class EditorSessionManager extends ChangeNotifier {
   /// reads this. Non-drawing sections (SE / camera / instruction) and
   /// uncovered cells always answer true (no tint).
   bool celHasContentForLayer(Layer layer, int frameIndex) {
+    if (layerKindGroupsLayers(layer.kind)) {
+      // R28 #11 carried onto the shared painter: a folder frame is grey
+      // only when NO member drew there ("다른곳에서 해당위치에 그림그려진
+      // 하얀 블록 존재하면 하얗게"). Without this arm the folder falls into
+      // the drawing-section branch, resolves no frame of its own and
+      // answers `true` — the union grey would vanish silently.
+      return folderBandMembersOf(
+        layer.id,
+      ).any((member) => celHasContentForLayer(member, frameIndex));
+    }
     if (timelineSectionForLayerKind(layer.kind) != TimelineSection.drawing) {
       return true;
     }
