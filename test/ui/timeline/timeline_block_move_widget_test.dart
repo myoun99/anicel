@@ -1,6 +1,8 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/camera_pose.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
@@ -9,6 +11,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
+import 'package:anicel/src/models/transform_track.dart';
 
 import 'timeline_cell_probe.dart';
 import 'package:anicel/src/ui/input/app_input_settings.dart';
@@ -19,6 +22,8 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/timeline/timeline_frame_range_gesture.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
+import 'package:anicel/src/ui/timeline/transform_lane_policy.dart'
+    show transformPropertyLanes;
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
 /// UI-R8: the row-wide range gesture layer — a cell drag SELECTS a frame
@@ -1116,5 +1121,294 @@ void main() {
     await drag.up();
     await tester.pumpAndSettle();
     expect(selectedFrames, hasLength(1), reason: 'a drag never selects');
+  });
+
+  group('R10: a key inside the selection belongs to the SELECTION', () {
+    /// The grid, with one lane carrying keys at 2 and 5 and whatever lane
+    /// selection [selection] holds.
+    Future<
+      ({
+        List<int> moveUpdates,
+        List<int> selectUpdates,
+        List<(int, int)> keyMoves,
+        ValueNotifier<TimelineLaneSelection?> selection,
+      })
+    >
+    pumpLane(WidgetTester tester, TimelineLaneSelection? initial) async {
+      final cursor = ValueNotifier<int>(0);
+      final selection = ValueNotifier<TimelineLaneSelection?>(initial);
+      addTearDown(cursor.dispose);
+      addTearDown(selection.dispose);
+      final moveUpdates = <int>[];
+      final selectUpdates = <int>[];
+      final keyMoves = <(int, int)>[];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: LayerTimelineGrid(
+              layers: [blockLayer('layer-a')],
+              activeLayerId: const LayerId('layer-a'),
+              frameCursor: cursor,
+              playbackFrameCount: 24,
+              exposureStateForLayer: stateFor,
+              onSelectLayer: (_) {},
+              onSelectFrame: (_) {},
+              onAddLayer: () {},
+              onToggleLayerVisibility: (_) {},
+              onLayerOpacityChanged: (_, _) {},
+              onToggleLayerTimesheet: (_) {},
+              onLayerMarkSelected: (_, _) {},
+              expandedLaneLayerIds: {const LayerId('layer-a')},
+              lanesForLayer: (_) => [
+                const PropertyLaneRow(
+                  laneId: 'position',
+                  label: 'Position',
+                  keyedFrames: {2, 5},
+                ),
+              ],
+              laneEdit: PropertyLaneEditCallbacks(
+                onToggleKeyAt: (_, _, _) {},
+                onMoveKey: (_, _, from, to) => keyMoves.add((from, to)),
+                onRemoveKey: (_, _, _) {},
+                onToggleHold: (_, _, _) {},
+              ),
+              laneRange: TimelineLaneRangeCallbacks(
+                selection: selection,
+                onSelectUpdate: (_, _, anchor, _, _) =>
+                    selectUpdates.add(anchor),
+                onTapClear: () {},
+                onMoveBegin: () => true,
+                onMoveUpdate: moveUpdates.add,
+                onMoveEnd: () {},
+                onMoveCancel: () {},
+              ),
+              metrics: const TimelineGridMetrics(
+                frameCellWidth: 48,
+                layerRowHeight: 52,
+              ),
+            ),
+          ),
+        ),
+      );
+      return (
+        moveUpdates: moveUpdates,
+        selectUpdates: selectUpdates,
+        keyMoves: keyMoves,
+        selection: selection,
+      );
+    }
+
+    Finder keyMarker(int frame) => find.byKey(
+      ValueKey<String>('timeline-lane-key-layer-a-position-$frame'),
+    );
+
+    testWidgets('pressing a diamond that is IN the span moves the whole '
+        'span — the marker stands down', (tester) async {
+      final log = await pumpLane(
+        tester,
+        const TimelineLaneSelection(
+          layerId: LayerId('layer-a'),
+          laneId: 'position',
+          startIndex: 0,
+          endIndexExclusive: 8,
+        ),
+      );
+
+      // The ring proves the marker agrees it is inside the span — the same
+      // predicate the stand-down reads.
+      final ringed = tester.widget<Container>(
+        find
+            .descendant(of: keyMarker(2), matching: find.byType(Container))
+            .first,
+      );
+      expect(
+        ((ringed.decoration! as BoxDecoration).border! as Border).top.color,
+        AppColors.accent,
+      );
+
+      final laneGesture = find.byKey(
+        const ValueKey<String>('timeline-lane-range-gesture-layer-a-position'),
+      );
+      expect(laneGesture, findsOneWidget);
+      expect(
+        tester.getRect(laneGesture).contains(tester.getCenter(keyMarker(2))),
+        isTrue,
+        reason: 'the band covers the diamond',
+      );
+
+      // Grab the diamond at 2, which the span covers, and drag two cells.
+      final gesture = await tester.startGesture(
+        tester.getCenter(keyMarker(2)),
+        kind: PointerDeviceKind.mouse,
+      );
+      await gesture.moveBy(const Offset(96, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pump();
+
+      expect(
+        log.moveUpdates,
+        contains(2),
+        reason: 'the union moves as one — the diamond is part of it',
+      );
+      expect(
+        log.keyMoves,
+        isEmpty,
+        reason: 'the single-key drag must not have taken the pointer; that '
+            'is the bug — every diamond of a union moved alone',
+      );
+      expect(
+        log.selectUpdates,
+        isEmpty,
+        reason: 'and it is a MOVE, not a fresh selection anchored on the key',
+      );
+    });
+
+    testWidgets('a diamond OUTSIDE the span still drags its own key', (
+      tester,
+    ) async {
+      final log = await pumpLane(
+        tester,
+        // The span covers 2 but not 5.
+        const TimelineLaneSelection(
+          layerId: LayerId('layer-a'),
+          laneId: 'position',
+          startIndex: 0,
+          endIndexExclusive: 4,
+        ),
+      );
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(keyMarker(5)),
+        kind: PointerDeviceKind.mouse,
+      );
+      await gesture.moveBy(const Offset(96, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pump();
+
+      expect(log.keyMoves, [(5, 7)]);
+      expect(
+        log.moveUpdates,
+        isEmpty,
+        reason: 'an unselected key is its own subject',
+      );
+    });
+
+    testWidgets('with NO selection at all every diamond drags itself', (
+      tester,
+    ) async {
+      final log = await pumpLane(tester, null);
+
+      final gesture = await tester.startGesture(
+        tester.getCenter(keyMarker(2)),
+        kind: PointerDeviceKind.mouse,
+      );
+      await gesture.moveBy(const Offset(48, 0));
+      await tester.pump();
+      await gesture.up();
+      await tester.pump();
+
+      expect(log.keyMoves, [(2, 3)]);
+      expect(log.moveUpdates, isEmpty);
+    });
+  });
+
+  group('R10: a lane row follows the drag preview', () {
+    /// A layer whose transform track keys Position at [keyFrames].
+    Layer keyedLayer(Set<int> keyFrames) => Layer(
+      id: const LayerId('layer-a'),
+      name: 'A',
+      frames: const [],
+      transformTrack: TransformTrack(
+        keyframes: {
+          for (final frame in keyFrames)
+            frame: CameraPose(center: CanvasPoint(x: 0, y: 0), zoom: 1),
+        },
+      ),
+    );
+
+    testWidgets('the band re-derives from the PREVIEWED layer, and so does '
+        'the value column beside it', (tester) async {
+      final cursor = ValueNotifier<int>(2);
+      final dragPreview = ValueNotifier<TimelineDragPreview?>(null);
+      addTearDown(cursor.dispose);
+      addTearDown(dragPreview.dispose);
+
+      final committed = keyedLayer({2});
+      // What a lane-move drag stages: the same layer with the key shifted.
+      final previewed = committed.copyWith(
+        transformTrack: keyedLayer({5}).transformTrack,
+      );
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: LayerTimelineGrid(
+              layers: [committed],
+              activeLayerId: const LayerId('layer-a'),
+              frameCursor: cursor,
+              playbackFrameCount: 24,
+              dragPreview: dragPreview,
+              exposureStateForLayer: stateFor,
+              onSelectLayer: (_) {},
+              onSelectFrame: (_) {},
+              onAddLayer: () {},
+              onToggleLayerVisibility: (_) {},
+              onLayerOpacityChanged: (_, _) {},
+              onToggleLayerTimesheet: (_) {},
+              onLayerMarkSelected: (_, _) {},
+              expandedLaneLayerIds: {const LayerId('layer-a')},
+              // THE production shape: the lane is derived from the layer,
+              // so whichever layer the gate hands over decides the keys.
+              lanesForLayer: (layer) =>
+                  transformPropertyLanes(layer.transformTrack)
+                      .where((lane) => lane.laneId == 'position')
+                      .toList(),
+              metrics: const TimelineGridMetrics(
+                frameCellWidth: 48,
+                layerRowHeight: 52,
+              ),
+            ),
+          ),
+        ),
+      );
+
+      Finder marker(int frame) => find.byKey(
+        ValueKey<String>('timeline-lane-key-layer-a-position-$frame'),
+      );
+
+      expect(marker(2), findsOneWidget);
+      expect(marker(5), findsNothing);
+
+      // One drag step: the session publishes the shifted layer.
+      dragPreview.value = BlockMoveDragPreview(
+        previewLayers: {const LayerId('layer-a'): previewed},
+      );
+      await tester.pump();
+
+      expect(
+        marker(5),
+        findsOneWidget,
+        reason: 'the band read `row.lane` — built once from the COMMITTED '
+            'layer — so the keys sat still until the pointer came up',
+      );
+      expect(marker(2), findsNothing);
+
+      // And the rail's label row, which is where the number is read.
+      expect(
+        find.byKey(
+          const ValueKey<String>('timeline-lane-key-toggle-layer-a-position'),
+        ),
+        findsOneWidget,
+      );
+
+      // Dropping the preview puts the committed lane straight back.
+      dragPreview.value = null;
+      await tester.pump();
+      expect(marker(2), findsOneWidget);
+      expect(marker(5), findsNothing);
+    });
   });
 }

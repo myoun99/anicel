@@ -72,6 +72,7 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.commaDrag,
     this.rangeGesture,
     this.laneRange,
+    this.lanesForLayer,
     this.runEdit,
     this.laneEdit,
     this.dragPreview,
@@ -168,6 +169,12 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
   /// The LANE selection domain's gesture bundle (UI-R23 #3 part 2); null
   /// keeps the lane bands display-only.
   final TimelineLaneRangeCallbacks? laneRange;
+
+  /// The host's lane provider — THE one the display rows were built with.
+  /// A lane row re-derives through it when the drag gate hands it a
+  /// previewed layer (R10), so the band's keys follow the drag per step
+  /// instead of sitting where they were when the row was built.
+  final List<PropertyLaneRow> Function(Layer layer)? lanesForLayer;
 
   /// The run-edge [+]/[↻] handle hooks (UI-R8); null hides the handles.
   final TimelineRunEditCallbacks? runEdit;
@@ -455,6 +462,20 @@ class _TimelineFrameRowsScrollBodyState
     );
   }
 
+  /// The lane to render: the drag preview's version while one is staged
+  /// for this row's layer (R10), the committed one otherwise.
+  PropertyLaneRow _laneOf(TimelineDisplayRow row, Layer layer) {
+    final lanesForLayer = widget.lanesForLayer;
+    if (lanesForLayer == null) {
+      return row.lane!;
+    }
+    return previewedLaneRow(
+      row: row,
+      previewLayer: layer,
+      lanesForLayer: lanesForLayer,
+    );
+  }
+
   Widget _buildLaneRow(TimelineDisplayRow row, Layer layer) {
     return laneIsSeAudio(row.lane!)
         ? SeAudioLaneFrameRow(
@@ -506,7 +527,7 @@ class _TimelineFrameRowsScrollBodyState
           )
         : TimelineLaneFrameRow(
             layer: layer,
-            lane: row.lane!,
+            lane: _laneOf(row, layer),
             frameStartIndex: widget.frameStartIndex,
             frameEndIndexExclusive: widget.frameEndIndexExclusive,
             leadingFrameSpacerWidth: widget.leadingFrameSpacerWidth,

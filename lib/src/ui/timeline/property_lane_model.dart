@@ -211,6 +211,37 @@ List<({int start, int endExclusive})> folderAggregateRuns(
   return runs;
 }
 
+/// The lane a row shows RIGHT NOW: re-derived from [previewLayer] when a
+/// drag has one staged, the committed [row]'s lane otherwise.
+///
+/// R10. The rows are built once per host pass, so `row.lane` carries the
+/// keys, the hold flags and the value text of the COMMITTED layer. The
+/// drag-preview gate already hands every row builder the previewed layer,
+/// but a lane row was still reading its stale lane off the row — so a lane
+/// key move drew its band and printed its value where the keys used to be
+/// until the pointer came up. Re-deriving through the SAME [lanesForLayer]
+/// the rows were built with is what keeps the preview and the commit from
+/// drifting; the storyboard's V-track strips have always done this
+/// (`_laneOfTrack` against the previewed transform).
+PropertyLaneRow previewedLaneRow({
+  required TimelineDisplayRow row,
+  required Layer previewLayer,
+  required List<PropertyLaneRow> Function(Layer layer) lanesForLayer,
+}) {
+  final committed = row.lane!;
+  if (identical(previewLayer, row.layer)) {
+    return committed;
+  }
+  for (final lane in lanesForLayer(previewLayer)) {
+    if (lane.laneId == committed.laneId) {
+      return lane;
+    }
+  }
+  // A preview that drops the lane entirely (nothing does today) leaves the
+  // committed row standing rather than blanking mid-drag.
+  return committed;
+}
+
 /// [collapsedAttachBaseIds] folds ATTACH GROUPS (UI-R20 #9): attach rows
 /// whose base is listed contribute no rows — same VIEW-state contract as
 /// the hidden sections, and the active layer is exempt here too (folding

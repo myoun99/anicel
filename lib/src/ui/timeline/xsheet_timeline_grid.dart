@@ -683,6 +683,41 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   /// One column wrapped in its repaint boundary + drag-preview gate: an
   /// edge-drag step re-runs the builder with the preview layer substituted
   /// for the drag target's column only.
+  /// One lane's HEADER cell — the transposed rail row.
+  ///
+  /// Lane headers show the value AT the cursor, so they subscribe to the
+  /// cursor here and a tick rebuilds only these cells. R10 adds the drag
+  /// gate for the same reason the horizontal rail has it: the blue value
+  /// column must follow a key move per step, not sit on the committed
+  /// track until the pointer lifts.
+  Widget _laneHeader(TimelineDisplayRow entry) {
+    return ValueListenableBuilder<int>(
+      valueListenable: widget.frameCursor,
+      builder: (context, cursorFrame, _) => TimelineDragPreviewRowGate(
+        dragPreview: widget.dragPreview,
+        layer: entry.layer,
+        rowBuilder: (context, layer) => TimelineLaneControlsRow(
+          axis: Axis.vertical,
+          keyPrefix: 'xsheet',
+          layer: layer,
+          lane: previewedLaneRow(
+            row: entry,
+            previewLayer: layer,
+            lanesForLayer: _lanesFor,
+          ),
+          metrics: _metrics,
+          width: _metrics.layerRowHeight,
+          height: XSheetTimelineGrid._headerHeight,
+          currentFrameIndex: cursorFrame,
+          onSelectFrame: widget.onSelectFrame,
+          laneEdit: widget.laneEdit,
+          onToggleLaneGroup: widget.onToggleLaneGroup,
+          onToggleLaneGroupEnabled: widget.onToggleLaneGroupEnabled,
+        ),
+      ),
+    );
+  }
+
   Widget _gatedColumn(
     TimelineDisplayRow entry,
     TimelineVisibleRange frameRange,
@@ -770,7 +805,13 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
               axis: Axis.vertical,
               keyPrefix: 'xsheet',
               layer: layer,
-              lane: entry.lane!,
+              // R10: the previewed lane while a key drag is in flight —
+              // the same re-derivation the horizontal body does.
+              lane: previewedLaneRow(
+                row: entry,
+                previewLayer: layer,
+                lanesForLayer: _lanesFor,
+              ),
               frameStartIndex: frameRange.startIndex,
               frameEndIndexExclusive: frameRange.endIndexExclusive,
               leadingFrameSpacerWidth: plan.leadingFrameSpacerWidth,
@@ -1225,45 +1266,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                               index += 1
                                             )
                                               entries[index].isLane
-                                                  // Lane headers show the value AT
-                                                  // the cursor: subscribe here so
-                                                  // ticks rebuild only these cells.
-                                                  ? ValueListenableBuilder<int>(
-                                                      valueListenable:
-                                                          widget.frameCursor,
-                                                      builder:
-                                                          (
-                                                            context,
-                                                            cursorFrame,
-                                                            _,
-                                                          ) => TimelineLaneControlsRow(
-                                                            axis: Axis.vertical,
-                                                            keyPrefix: 'xsheet',
-                                                            layer:
-                                                                entries[index]
-                                                                    .layer,
-                                                            lane: entries[index]
-                                                                .lane!,
-                                                            metrics: _metrics,
-                                                            width: _metrics
-                                                                .layerRowHeight,
-                                                            height:
-                                                                XSheetTimelineGrid
-                                                                    ._headerHeight,
-                                                            currentFrameIndex:
-                                                                cursorFrame,
-                                                            onSelectFrame: widget
-                                                                .onSelectFrame,
-                                                            laneEdit:
-                                                                widget.laneEdit,
-                                                            onToggleLaneGroup:
-                                                                widget
-                                                                    .onToggleLaneGroup,
-                                                            onToggleLaneGroupEnabled:
-                                                                widget
-                                                                    .onToggleLaneGroupEnabled,
-                                                          ),
-                                                    )
+                                                  ? _laneHeader(entries[index])
                                                   : _LayerHeader(
                                                       wearsBaseComposite:
                                                           attachRowWearsBaseComposite(

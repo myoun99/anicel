@@ -859,7 +859,18 @@ class _LaneKeyMarkerState extends State<_LaneKeyMarker> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final horizontal = widget.axis == Axis.horizontal;
-    final editable = widget.laneEdit != null;
+    // R10: a diamond INSIDE the live selection stands down. The band's
+    // gesture layer sits under the markers and decides move-vs-select from
+    // `laneSelectionCoversBandRow(...) && selection.contains(frame)`, which
+    // is the very predicate that put the accent ring on this marker — so
+    // where the ring says "this key is part of the span", the span is what
+    // a drag must grab. An opaque marker with its own drag took the pointer
+    // first and the row's range move never saw it: pressing any diamond of
+    // a union and dragging moved that ONE key. Not a #20 regression; the
+    // marker has had priority far longer than the band selection has
+    // existed.
+    final yieldsToRangeMove = widget.selected;
+    final editable = widget.laneEdit != null && !yieldsToRangeMove;
     // EVERY key diamond fills WHITE like the frame blocks (UI-R24 #9 —
     // union headers, member lanes, camera lanes alike); selection speaks
     // through the accent silhouette alone.
@@ -886,7 +897,13 @@ class _LaneKeyMarkerState extends State<_LaneKeyMarker> {
         : Transform.rotate(angle: 0.785398, child: shape);
 
     return GestureDetector(
-      behavior: HitTestBehavior.opaque,
+      // Translucent while standing down (R10): the marker stays in the hit
+      // result for its own menu, but returns false so the Stack keeps
+      // walking to the gesture layer beneath it. Opaque would stop there
+      // and the range move would never get a pointer.
+      behavior: yieldsToRangeMove
+          ? HitTestBehavior.translucent
+          : HitTestBehavior.opaque,
       // Drag from the DOWN position (R10) — the rule the block edge grips
       // took in the same round. This marker accumulates deltas and rounds
       // them, so discarding the ~18px the recognizer spends on the arena
@@ -905,12 +922,23 @@ class _LaneKeyMarkerState extends State<_LaneKeyMarker> {
       onVerticalDragCancel: editable && !horizontal ? _cancelDrag : null,
       onSecondaryTapUp: (details) => _showKeyMenu(details.globalPosition),
       onLongPressStart: (details) => _showKeyMenu(details.globalPosition),
-      child: Transform.translate(
-        // Snap the ghost per frame while dragging (AE feel).
-        offset: horizontal
-            ? Offset(_dragging ? _frameDelta * widget.frameCellExtent : 0, 0)
-            : Offset(0, _dragging ? _frameDelta * widget.frameCellExtent : 0),
-        child: Center(child: marker),
+      // The DIAMOND has to stop hit-testing too, not just this detector.
+      // `RenderDecoratedBox.hitTestSelf` answers TRUE anywhere inside its
+      // decoration, so the drawn shape is a hit target in its own right:
+      // a translucent detector still reported a hit through it, the Stack
+      // stopped there, and the band below never saw the pointer. Ignoring
+      // the child makes the whole marker transparent to the hit test while
+      // `translucent` keeps this detector in the result, so the key menu
+      // still opens on a selected diamond.
+      child: IgnorePointer(
+        ignoring: yieldsToRangeMove,
+        child: Transform.translate(
+          // Snap the ghost per frame while dragging (AE feel).
+          offset: horizontal
+              ? Offset(_dragging ? _frameDelta * widget.frameCellExtent : 0, 0)
+              : Offset(0, _dragging ? _frameDelta * widget.frameCellExtent : 0),
+          child: Center(child: marker),
+        ),
       ),
     );
   }
