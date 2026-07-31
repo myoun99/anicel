@@ -10,6 +10,7 @@ import '../models/layer_effect.dart';
 import '../models/layer_folder.dart';
 import '../models/layer_id.dart';
 import '../models/key_range_move.dart' show transformKeyFrameUnion;
+import '../models/attached_layer_resolve.dart' show attachRowWearsBaseComposite;
 import '../models/layer_kind.dart';
 import '../models/text_cel_style.dart';
 import 'camera/camera_view_toggle_button.dart';
@@ -277,8 +278,12 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
 
   List<PropertyLaneRow> _lanesForLayer(Layer layer) {
     // Attach rows ride their BASE's transform/opacity lanes (W5 fx
-    // sharing) — no lanes of their own in v1.
-    if (layer.attachedToLayerId != null) {
+    // sharing) — no lanes of their own in v1. R9: the 공정 ORGANIZER
+    // folder joins them. It follows its base like its members do, so a
+    // transform or effect chain here would be a second answer competing
+    // with the base's; leaving the lanes up while the label has no fx
+    // switch would also let a chain be added that nothing could bypass.
+    if (attachRowWearsBaseComposite(layer, _session.layers)) {
       return const [];
     }
     switch (layer.kind) {

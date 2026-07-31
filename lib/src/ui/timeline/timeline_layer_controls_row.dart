@@ -112,6 +112,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.onToggleGroupFold,
     this.onDissolveFolder,
     this.onRenameFolder,
+    this.wearsBaseComposite = false,
     this.fxState = LayerFxState.on,
     this.onToggleLayerFx,
     this.onionSkinEnabled = false,
@@ -187,6 +188,12 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// The AE-style fx switch as a MASTER over the row's per-group switches
   /// (R8: model state, so it survives a reload and reaches every composite
   /// route through the cut itself).
+  /// R9: this row wears its BASE's composite (an attach row, or the 공정
+  /// organizer folder holding attach rows), so it authors no fx of its own
+  /// — see [attachRowWearsBaseComposite]. A LAYER-level fact: the kind
+  /// cannot answer it, because a folder is a folder either way.
+  final bool wearsBaseComposite;
+
   final LayerFxState fxState;
   final ValueChanged<LayerId>? onToggleLayerFx;
 
@@ -473,11 +480,11 @@ class TimelineLayerControlsRow extends StatelessWidget {
                 )
               else
                 const SizedBox(width: layerFillReferenceSlotWidth),
-              // Attach rows hide the fx switch — the BASE's switch governs
-              // the shared transform/opacity lanes (W5 fx sharing).
+              // Attach rows and their 공정 organizer folder hide the fx
+              // switch — the BASE's switch governs what they show.
               if (onToggleLayerFx != null &&
                   layerKindShowsFxToggle(layer.kind) &&
-                  layer.attachedToLayerId == null)
+                  !wearsBaseComposite)
                 FxToggleButton(
                   keyValue: 'timeline-layer-fx-${layer.id}',
                   state: fxState,

@@ -230,10 +230,17 @@ Cut cutWithReconciledAttachedMirrors(Cut cut) {
 /// An attach-organizer folder is the 공정 folder inside an attach group
 /// ([연출]/[작감]…): a folder row whose direct members are all attach rows
 /// of ONE base. The attach relation stays direct to the base — the folder
-/// only organizes and display-controls (eye/opacity/blend/FX) — so the
-/// group's resolution never chains. Organizer folders are deliberately
-/// FLAT (no folder inside one; the brush groups' precedent): the commands
-/// refuse to create nesting there.
+/// only organizes and display-controls — so the group's resolution never
+/// chains. Organizer folders are deliberately FLAT (no folder inside one;
+/// the brush groups' precedent): the commands refuse to create nesting
+/// there.
+///
+/// R9: what "display-controls" covers narrowed to the EYE, the static
+/// opacity, the BLEND and the fold. It used to include FX, which was wrong
+/// for the same reason an attach ROW has no fx of its own: this folder
+/// follows its base ("주인 레이어를 따라가야 하니까", user 2026-07-31), so a
+/// transform or effect chain here would be a second, competing answer to
+/// what the group looks like. See [attachRowWearsBaseComposite].
 LayerId? attachOrganizerBaseOf(Layer folder, List<Layer> layers) {
   if (!layerKindGroupsLayers(folder.kind)) {
     return null;
@@ -319,4 +326,22 @@ String nextAttachedLayerName(
   }
   final sign = placement == AttachedPlacement.above ? '+' : '-';
   return '${base.name}$sign${existing + 1}';
+}
+
+/// Whether [layer] wears its BASE's composite instead of authoring its own
+/// (R9): true for an attach ROW and for the 공정 organizer FOLDER that
+/// holds attach rows.
+///
+/// This is a LAYER-level question, not a kind-level one — a folder is a
+/// folder either way, and only its membership says whether it is inside an
+/// attach group. That is why it lives here rather than beside the
+/// `layerKind*` predicates: the kind cannot answer it.
+///
+/// What it gates: the fx switch, the Transform group and the Effects
+/// groups. What it does NOT gate: the eye, the static opacity, the blend
+/// and the fold, which stay the organizer's whole reason to exist (user,
+/// 2026-07-31: "그냥 블렌드 두는게 나을수도있단생각 들기시작했어").
+bool attachRowWearsBaseComposite(Layer layer, List<Layer> layers) {
+  return layer.attachedToLayerId != null ||
+      attachOrganizerBaseOf(layer, layers) != null;
 }
