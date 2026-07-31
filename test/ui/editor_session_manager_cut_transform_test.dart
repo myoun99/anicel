@@ -132,10 +132,12 @@ void main() {
     );
 
     // The V-row fx switch gates the sample off — the editing canvas drops
-    // its wrap exactly like the playback display drops the pose.
-    s.toggleCutFx(cutId);
+    // its wrap exactly like the playback display drops the pose. R10 R3:
+    // the track switch IS that axis now, and it reaches the editing canvas
+    // through the same choke point ([isCutFxEnabled]).
+    s.toggleTrackFx(trackId);
     expect(s.activeCutCanvasPoseSample(), isNull);
-    s.toggleCutFx(cutId);
+    s.toggleTrackFx(trackId);
     expect(s.activeCutCanvasPoseSample(), isNotNull);
   });
 
@@ -192,7 +194,7 @@ void main() {
     expect(s.activeCutEditingFadeOpacity(frameIndex: 2), closeTo(0.5, 1e-9));
     expect(s.activeCutEditingFadeOpacity(frameIndex: 4), 1.0);
 
-    s.toggleCutFx(cutId);
+    s.toggleTrackFx(s.trackOwningCut(cutId)!.id);
     expect(
       s.activeCutEditingFadeOpacity(frameIndex: 0),
       1,

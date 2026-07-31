@@ -2677,69 +2677,44 @@ class EditorSessionManager extends ChangeNotifier {
     }
   }
 
-  // --- Cut display toggles (session view state, not persisted) -------------
+  // --- Cut display gates ---------------------------------------------------
 
-  /// Cuts whose cut-level FX (the V track's Transform group — the pose AND
-  /// the fade, "opacity joins the transform system") are bypassed at
-  /// DISPLAY time — the storyboard V-row fx switch (R9). Display-time only,
-  /// like the cut pose itself: playback (canvas + camera view) skips
-  /// pose/fade; the MP4 bake, PNG export and thumbnails are untouched.
-  final Set<CutId> _fxBypassedCutIds = {};
-
-  /// Whether the cut's fx apply. R9 #21: the owning TRACK's persisted
-  /// master is folded in HERE rather than at each reader — the playback
-  /// canvas, the multitrack stack and the editing preview all ask this one
-  /// question, so the track switch reaches all three by arriving at the
-  /// choke point instead of being threaded to them.
-  bool isCutFxEnabled(CutId cutId) {
-    if (_fxBypassedCutIds.contains(cutId)) {
-      return false;
-    }
-    return trackOwningCut(cutId)?.fxEnabled ?? true;
-  }
-
-  void toggleCutFx(CutId cutId) {
-    if (!_fxBypassedCutIds.remove(cutId)) {
-      _fxBypassedCutIds.add(cutId);
-    }
-    notifyListeners();
-  }
+  /// Whether the cut's fx (the V track's Transform group — the pose AND
+  /// the fade, "opacity joins the transform system") apply at DISPLAY
+  /// time. R9 #21: the owning TRACK's persisted master is folded in HERE
+  /// rather than at each reader — the playback canvas, the multitrack
+  /// stack and the editing preview all ask this one question, so the
+  /// track switch reaches all three by arriving at the choke point
+  /// instead of being threaded to them.
+  ///
+  /// R10 R3: the per-CUT bypass that used to sit in front of this line is
+  /// gone. It was reachable only through a context menu, it never left the
+  /// session, and while editing shows one cut at a time it said exactly
+  /// what the track switch already says.
+  bool isCutFxEnabled(CutId cutId) =>
+      trackOwningCut(cutId)?.fxEnabled ?? true;
 
   // --- V track display: the static opacity and the fx master (R9 #21) ----
 
-  /// The V row's fx switch as a MASTER over its cuts' switches (R8's
-  /// grammar): OFF while the track's own flag is down, MIXED while the
-  /// track applies but some of its cuts are bypassed, ON otherwise.
+  /// The V row's fx switch: OFF while the track's flag is down, ON
+  /// otherwise. It stays a [LayerFxState] because the button it drives is
+  /// the shared one — a track simply has no MIXED to report now that its
+  /// cuts carry no switch of their own.
   LayerFxState trackFxState(TrackId trackId) {
     final track = _trackById(trackId);
     if (track == null) {
       return LayerFxState.on;
     }
-    if (!track.fxEnabled) {
-      return LayerFxState.off;
-    }
-    for (final cut in track.cuts) {
-      if (_fxBypassedCutIds.contains(cut.id)) {
-        return LayerFxState.mixed;
-      }
-    }
-    return LayerFxState.on;
+    return track.fxEnabled ? LayerFxState.on : LayerFxState.off;
   }
 
-  /// The master toggle: off unless the track is already fully off, in
-  /// which case everything under it comes back on — the layer master's
-  /// rule ([toggleLayerFx]) applied to the track.
+  /// The V row's fx toggle, one undoable write.
   void toggleTrackFx(TrackId trackId) {
     final track = _trackById(trackId);
     if (track == null) {
       return;
     }
-    final turnOn = trackFxState(trackId) == LayerFxState.off;
-    if (turnOn) {
-      for (final cut in track.cuts) {
-        _fxBypassedCutIds.remove(cut.id);
-      }
-    }
+    final turnOn = !track.fxEnabled;
     _cutCommandCoordinator.updateTrackDisplay(
       trackId: trackId,
       fxEnabled: turnOn,

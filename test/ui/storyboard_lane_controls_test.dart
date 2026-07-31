@@ -96,8 +96,6 @@ Future<void> _pumpPanel(
   onSetAudioClipOffset,
   PropertyLaneEditCallbacks? Function(Track track)? trackLaneEditFor,
   PropertyLaneEditCallbacks? layerLaneEdit,
-  bool Function(CutId cutId)? cutFxEnabledOf,
-  ValueChanged<CutId>? onToggleCutFx,
   bool Function(CutId cutId)? cutPictureVisibleOf,
   ValueChanged<CutId>? onToggleCutPictureVisibility,
   LayerFxState Function(Track track)? trackFxStateOf,
@@ -147,8 +145,6 @@ Future<void> _pumpPanel(
             onLayerOpacityChanged: onLayerOpacityChanged,
             seCommaDrag: seCommaDrag,
             onSetAudioClipOffset: onSetAudioClipOffset,
-            cutFxEnabledOf: cutFxEnabledOf,
-            onToggleCutFx: onToggleCutFx,
             cutPictureVisibleOf: cutPictureVisibleOf,
             onToggleCutPictureVisibility: onToggleCutPictureVisibility,
             trackFxStateOf: trackFxStateOf,
@@ -795,8 +791,6 @@ void main() {
       await _pumpPanel(
         tester,
         project: _project(),
-        cutFxEnabledOf: (_) => true,
-        onToggleCutFx: (_) {},
         cutPictureVisibleOf: (_) => true,
         onToggleCutPictureVisibility: eyeToggles.add,
         trackFxStateOf: (_) => LayerFxState.on,
@@ -814,7 +808,8 @@ void main() {
       expect(
         find.byKey(const ValueKey<String>('storyboard-cut-fx-lane-cut')),
         findsNothing,
-        reason: 'the cut axis moved to the switch\'s context menu',
+        reason: 'R10 R3 retired the per-cut axis — the track switch is the '
+            'film\'s only fx switch',
       );
 
       await tester.tap(fxFinder);
@@ -826,36 +821,22 @@ void main() {
       expect(eyeToggles, [const CutId('lane-cut')]);
     });
 
-    testWidgets('the CUT\'s switch lives on the same button\'s context menu '
-        '— the rail has no room for another column', (tester) async {
-      final cutFxToggles = <CutId>[];
+    testWidgets('a RIGHT-CLICK on the fx switch opens nothing — R10 R3 took '
+        'the context menu off the rails for good', (tester) async {
       await _pumpPanel(
         tester,
         project: _project(),
-        cutFxEnabledOf: (_) => true,
-        onToggleCutFx: cutFxToggles.add,
         trackFxStateOf: (_) => LayerFxState.on,
         onToggleTrackFx: (_) {},
       );
 
-      // RIGHT-CLICK, not long press: a GestureDetector's long press never
-      // resolves inside these rails' SingleChildScrollView — the scroll
-      // drag takes the arena. Verified with a minimal probe: the same
-      // widget fires outside a scroll view and not inside one. The SE
-      // rows' mix menu has the same two entrances and the same gap.
       await tester.tap(
         find.byKey(const ValueKey<String>('storyboard-track-fx-lane-track')),
         buttons: kSecondaryButton,
       );
       await tester.pumpAndSettle();
 
-      final entry = find.byKey(
-        const ValueKey<String>('storyboard-cut-fx-lane-cut'),
-      );
-      expect(entry, findsOneWidget);
-      await tester.tap(entry);
-      await tester.pumpAndSettle();
-      expect(cutFxToggles, [const CutId('lane-cut')]);
+      expect(find.byType(PopupMenuItem<String>), findsNothing);
     });
 
     testWidgets('the toggles hide without wiring (display-only rail)', (
@@ -882,8 +863,6 @@ void main() {
         tester,
         project: _project(),
         activeCutId: null, // gap: no cut selected anywhere
-        cutFxEnabledOf: (_) => true,
-        onToggleCutFx: (_) => fail('no subject cut — presses must no-op'),
         cutPictureVisibleOf: (_) => true,
         onToggleCutPictureVisibility: (_) =>
             fail('no subject cut — presses must no-op'),

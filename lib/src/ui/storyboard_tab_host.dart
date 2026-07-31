@@ -718,10 +718,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                 // value instead of an average.
                 opacityDragPreview: _session.opacityDragPreview,
                 legendOpacityValue: _session.lastMasterOpacity,
-                // V-row display toggles (R9): cut FX bypass + picture
-                // eye — session view state the playback display reads.
-                cutFxEnabledOf: _session.isCutFxEnabled,
-                onToggleCutFx: _session.toggleCutFx,
+                // The V row's picture eye (R9): session view state the
+                // playback display reads.
                 cutPictureVisibleOf: _session.isCutPictureVisible,
                 onToggleCutPictureVisibility:
                     _session.toggleCutPictureVisibility,
