@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import '../text/full_width_numerals.dart';
 
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
@@ -119,9 +119,7 @@ class _AppPromptDialogState extends State<AppPromptDialog> {
               : widget.numeric
               ? TextInputType.number
               : null,
-          inputFormatters: widget.numeric
-              ? [FilteringTextInputFormatter.digitsOnly]
-              : null,
+          inputFormatters: widget.numeric ? halfWidthDigitsOnly : null,
           decoration: InputDecoration(errorText: _errorText),
           onChanged: (_) {
             if (_errorText != null) {

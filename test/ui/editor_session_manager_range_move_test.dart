@@ -1048,19 +1048,18 @@ void main() {
     expect(layer().transformTrack.position.keys.keys.toSet(), {2});
     expect(layer().transformTrack.scale.keys.keys.toSet(), {3});
 
-    // The group HEADER as anchor selects the whole member group — and a
-    // move from that selection grabs EVERY member lane's keys at once
-    // (follow-up: 한번에 잡아 이동).
+    // R9 #20: a drag along the HEADER row alone selects the header row
+    // alone — selection covers what the drag drew. The MOVE still grabs
+    // every member lane's keys, because the header band is what shows
+    // them (follow-up: 한번에 잡아 이동). Keeping those two apart is the
+    // whole of #20.
     s.updateLaneRangeSelectionDrag(
       layerId: a.id,
       laneId: 'transform-group',
       anchorIndex: 0,
       headIndex: 4,
     );
-    expect(
-      s.laneRangeSelection.value!.spanLaneIds,
-      containsAll(['position', 'scale', 'rotation', 'opacity']),
-    );
+    expect(s.laneRangeSelection.value!.spanLaneIds, ['transform-group']);
     expect(s.beginLaneRangeMoveDrag(), isTrue);
     s.updateLaneRangeMoveDrag(frameDelta: 3);
     s.endLaneRangeMoveDrag();

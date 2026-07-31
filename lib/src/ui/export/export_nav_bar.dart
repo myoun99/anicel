@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
+import '../text/full_width_numerals.dart';
 
 /// One position axis for the nav bar's scrub: how many stops, where the
 /// boundary ticks sit, and what a stop is called. The tab defines the
@@ -79,7 +79,7 @@ class ExportNavBar extends StatelessWidget {
         controller: controller,
         enabled: enabled,
         keyboardType: TextInputType.number,
-        inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+        inputFormatters: halfWidthDigitsOnly,
         textAlign: TextAlign.center,
         style: Theme.of(context).textTheme.bodySmall,
         decoration: const InputDecoration(

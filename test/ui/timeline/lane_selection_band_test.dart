@@ -186,10 +186,16 @@ void main() {
                   laneRangeSelection: ValueNotifier<TimelineLaneSelection?>(
                     const TimelineLaneSelection(
                       layerId: LayerId('a'),
-                      laneId: 'anchor-point',
+                      // R9 #20: the header is IN the span now — which is
+                      // what a real drag produces here, since a collapsed
+                      // group shows no member row to start one from.
+                      laneId: 'transform-group',
                       startIndex: 1,
                       endIndexExclusive: 4,
-                      laneIds: transformLaneDisplayOrder,
+                      laneIds: [
+                        'transform-group',
+                        ...transformLaneDisplayOrder,
+                      ],
                     ),
                   ),
                 ),

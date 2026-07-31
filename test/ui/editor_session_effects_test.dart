@@ -86,7 +86,12 @@ void main() {
     )!;
     session.updateLayerEffects(layer.id, edited, description: 'Set Blur Width');
 
-    expect(session.activeLayer!.effects.single.parameterOf('blurX').value, 9);
+    // R9 #18: the edit lands as a KEY, and one key resolves to itself at
+    // every frame — so the pixels are what the static slot used to give.
+    expect(
+      session.activeLayer!.effects.single.parameterOf('blurX').resolveAt(0),
+      9,
+    );
     expect(
       stackEffectsOf(
         session.editingCanvasStack.nodes,
@@ -96,7 +101,10 @@ void main() {
     );
 
     session.undo();
-    expect(session.activeLayer!.effects.single.parameterOf('blurX').value, 0);
+    expect(
+      session.activeLayer!.effects.single.parameterOf('blurX').resolveAt(0),
+      0,
+    );
     expect(stackEffectsOf(session.editingCanvasStack.nodes), isEmpty);
   });
 
@@ -149,7 +157,8 @@ void main() {
     session.undo();
     final restored = session.activeLayer!.effects.single;
     expect(restored.parameterOf('hue').track.keyAt(3), isNotNull);
-    expect(restored.parameterOf('hue').value, 40);
+    // R9 #18: the value edit is a key at frame 0, not the static slot.
+    expect(restored.parameterOf('hue').track.keyAt(0)!.value, 40);
   });
 
   test('an ATTACH row with no cel yet still previews the BASE\'s effects', () {

@@ -230,8 +230,10 @@ void main() {
 
         expect(membersNow(), hasLength(group.members.length));
         for (final member in membersNow()) {
+          // R9 #18: the edit is a key now; one key resolves to itself at
+          // every frame, so the grade reads the same as before.
           expect(
-            member.effects.single.parameterOf('brightness').value,
+            member.effects.single.parameterOf('brightness').resolveAt(0),
             35,
             reason: 'the grade is the same in every 겸용컷',
           );
@@ -239,7 +241,7 @@ void main() {
         session.undo();
         for (final member in membersNow()) {
           expect(
-            member.effects.single.parameterOf('brightness').value,
+            member.effects.single.parameterOf('brightness').resolveAt(0),
             0,
             reason: 'one undo puts every member back',
           );

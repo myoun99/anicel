@@ -134,24 +134,33 @@ const List<String> transformLaneDisplayOrder = [
   'opacity',
 ];
 
+/// The rows as SELECTION sees them: the header is the first of them.
+///
+/// R9 #20: the header used to be outside this list and handled by a
+/// branch, so dragging from it to the SECOND lane selected all five —
+/// selection did something other than what the drag drew. A row is a row
+/// (the rule the user set on #1: a derived display must not change what
+/// selecting does), and a header dragged to the last lane still covers the
+/// whole group — by the ordinary range rule now, not a special case.
+List<String> get transformLaneSelectionOrder => [
+  transformGroupHeaderLane.laneId,
+  ...transformLaneDisplayOrder,
+];
+
 /// The display-ordered lane span from [anchorLaneId] to [headLaneId]
 /// (R26 #3 — the cell selection's Excel span rule applied to lane rows,
-/// within one layer's lane group). The group HEADER as either endpoint
-/// selects the WHOLE group ("모두에 적용되는 그 행"). Ids outside the
-/// canonical order fall back to the anchor lane alone.
+/// within one layer's lane group). Ids outside the canonical order fall
+/// back to the anchor lane alone.
 List<String> transformLaneSpan(String anchorLaneId, String headLaneId) {
-  if (anchorLaneId == transformGroupHeaderLane.laneId ||
-      headLaneId == transformGroupHeaderLane.laneId) {
-    return List.of(transformLaneDisplayOrder);
-  }
-  final anchor = transformLaneDisplayOrder.indexOf(anchorLaneId);
-  final head = transformLaneDisplayOrder.indexOf(headLaneId);
+  final order = transformLaneSelectionOrder;
+  final anchor = order.indexOf(anchorLaneId);
+  final head = order.indexOf(headLaneId);
   if (anchor < 0 || head < 0) {
     return [anchorLaneId];
   }
   final low = anchor < head ? anchor : head;
   final high = anchor < head ? head : anchor;
-  return transformLaneDisplayOrder.sublist(low, high + 1);
+  return order.sublist(low, high + 1);
 }
 
 /// Whether the lane selection covers [laneId]'s BAND ROW on [layerId]
@@ -177,8 +186,9 @@ bool laneSelectionCoversBandRow(
             effectGroupHeaderCovered(laneId, selection.spanLaneIds));
   }
   if (laneId == transformGroupHeaderLane.laneId) {
-    return selection.layerId == layerId &&
-        transformLaneDisplayOrder.every(selection.spanLaneIds.contains);
+    // R9 #20: the header is covered when it is IN the span, like every
+    // other row — not when its members happen to all be.
+    return selection.coversLane(layerId, laneId);
   }
   return selection.coversLane(layerId, laneId);
 }

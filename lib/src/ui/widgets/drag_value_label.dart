@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import '../text/full_width_numerals.dart';
 
 /// A numeric READOUT you can operate (UI-R18 #21, the shared vocabulary
 /// for the canvas angle/zoom texts and any future value label):
@@ -112,6 +113,8 @@ class _DragValueLabelState extends State<DragValueLabel> {
               decimal: true,
               signed: true,
             ),
+            // R9 #15: 全角 numerals become half-width as they are typed.
+            inputFormatters: halfWidthNumerals,
             style: widget.textStyle ?? const TextStyle(fontSize: 12),
             decoration: const InputDecoration(
               // Bare: the editor replaces the label in place, so it opts

@@ -144,11 +144,25 @@ void main() {
   });
 
   group('the lane span (R26 #3)', () {
-    test('a HEADER endpoint selects the whole effect', () {
+    test('R9 #20: the header is a ROW in the span — header to the LAST '
+        'parameter still covers the whole effect, by the range rule', () {
       final effects = [hue()];
+      final header = effectGroupLaneId(const EffectId('e2'));
+      final order = effectLaneDisplayOrder(effects.single);
+
       expect(
-        effectLaneSpan(effects, effectGroupLaneId(const EffectId('e2')), 'x'),
-        effectLaneDisplayOrder(effects.single),
+        effectLaneSpan(effects, header, order.last),
+        effectLaneSelectionOrder(effects.single),
+      );
+      expect(
+        effectLaneSpan(effects, header, order.first),
+        [header, order.first],
+        reason: 'a drag over two rows selects two rows',
+      );
+      expect(
+        effectLaneSpan(effects, header, 'x'),
+        [header],
+        reason: 'an unknown head leaves the anchor alone',
       );
     });
 
@@ -181,16 +195,21 @@ void main() {
       expect(effectLaneSpan([blur()], 'position', 'scale'), isNull);
     });
 
-    test('the header washes when its own members are the selection', () {
+    test('R9 #20: the header washes when IT is in the span, like every '
+        'other row', () {
       const layerId = LayerId('l');
       final header = effectGroupLaneId(const EffectId('e2'));
       final members = effectLaneDisplayOrder(hue());
-      expect(effectGroupHeaderCovered(header, members), isTrue);
+      final withHeader = effectLaneSelectionOrder(hue());
+
+      expect(effectGroupHeaderCovered(header, withHeader), isTrue);
       expect(
-        effectGroupHeaderCovered(header, [members.first]),
+        effectGroupHeaderCovered(header, members),
         isFalse,
-        reason: 'one lane is not the group',
+        reason: 'every MEMBER selected is not the header selected — the '
+            'special case #20 retired',
       );
+      expect(effectGroupHeaderCovered(header, [members.first]), isFalse);
       expect(
         effectGroupHeaderCovered(header, transformLaneDisplayOrder),
         isFalse,
@@ -200,10 +219,10 @@ void main() {
         laneSelectionCoversBandRow(
           TimelineLaneSelection(
             layerId: layerId,
-            laneId: members.first,
+            laneId: header,
             startIndex: 0,
             endIndexExclusive: 2,
-            laneIds: members,
+            laneIds: withHeader,
           ),
           layerId,
           header,
@@ -233,19 +252,26 @@ void main() {
       },
     );
 
-    test('a value edit sets the STATIC value while unanimated', () {
+    test('R9 #18: a value edit KEYS even on an unanimated parameter — one '
+        'rule with the transform lanes, which key unconditionally', () {
       final edited = effectsWithLaneValueEdited(
         [blur()],
         laneId: effectLaneId(const EffectId('e1'), 'blurX'),
         frameIndex: 7,
         input: '9',
       )!;
-      expect(edited.single.parameterOf('blurX').value, 9);
-      expect(
-        edited.single.parameterOf('blurX').isAnimated,
-        isFalse,
-        reason: '"add a blur and set it to 9" must not plant a keyframe',
-      );
+      final parameter = edited.single.parameterOf('blurX');
+
+      expect(parameter.track.keyAt(7)!.value, 9);
+      expect(parameter.isAnimated, isTrue);
+      // The pixels do not move on that first edit: one key resolves to
+      // itself at every frame, exactly as the static slot did.
+      expect(parameter.resolveAt(0), 9);
+      expect(parameter.resolveAt(7), 9);
+      expect(parameter.resolveAt(999), 9);
+      // The static slot SURVIVES (the user's note: an AE stopwatch would
+      // switch off into it) — the edit simply no longer writes it.
+      expect(parameter.value, blur().parameterOf('blurX').value);
     });
 
     test('a value edit KEYS at the playhead once animated (AE rule)', () {

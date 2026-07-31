@@ -172,7 +172,7 @@ import 'timeline/effect_lane_editing.dart'
         effectsWithLaneKeyToggled,
         effectsWithLaneSpanKeysShifted;
 import 'timeline/effect_lane_policy.dart'
-    show effectLaneSpan, parseEffectLaneId;
+    show effectLaneDisplayOrder, effectLaneSpan, parseEffectLaneId;
 import 'timeline/transform_lane_editing.dart'
     show
         transformLaneKeyFrames,
@@ -6962,18 +6962,62 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   /// The lane-selection create (UI-R25 #3): a key frozen at the resolved
+  /// The lanes a VERB acts on for a span (R9 #20): a GROUP HEADER stands
+  /// for its members.
+  ///
+  /// #20 took the header's special case out of SELECTION — a header is a
+  /// row and a drag selects the rows it drew over. This is the separate,
+  /// and separately true, statement that a row's verbs act on what the row
+  /// SHOWS: the header band paints its members' key union, so a move that
+  /// grabs it moves those keys ("한번에 잡아 이동"). Keeping the two apart
+  /// is the whole of #20 — one used to be doing the other's job.
+  List<String> _laneVerbTargets(
+    List<String> spanLaneIds, {
+    List<LayerEffect> effects = const [],
+  }) {
+    final targets = <String>[];
+    void add(String laneId) {
+      if (!targets.contains(laneId)) {
+        targets.add(laneId);
+      }
+    }
+
+    for (final laneId in spanLaneIds) {
+      if (laneId == transformGroupHeaderLane.laneId) {
+        transformLaneDisplayOrder.forEach(add);
+        continue;
+      }
+      final address = parseEffectLaneId(laneId);
+      if (address != null && address.parameterId == null) {
+        for (final effect in effects) {
+          if (effect.id == address.effectId) {
+            effectLaneDisplayOrder(effect).forEach(add);
+            break;
+          }
+        }
+        continue;
+      }
+      add(laneId);
+    }
+    return targets;
+  }
+
   /// value on every unkeyed frame of the range — one undo.
   void _createLaneKeysForSelection(TimelineLaneSelection lane) {
     final layer = _layerById(lane.layerId);
     if (layer == null || isAttachedLayer(layer)) {
       return;
     }
+    final targets = _laneVerbTargets(
+      lane.spanLaneIds,
+      effects: layer.effects,
+    );
     // R6: an EFFECT-lane selection freezes keys on the effect chain
     // instead — same rule, same single undo.
-    if (lane.spanLaneIds.any((laneId) => parseEffectLaneId(laneId) != null)) {
+    if (targets.any((laneId) => parseEffectLaneId(laneId) != null)) {
       var effects = layer.effects;
       var effectsChanged = false;
-      for (final laneId in lane.spanLaneIds) {
+      for (final laneId in targets) {
         for (
           var frame = lane.startIndex;
           frame < lane.endIndexExclusive;
@@ -7003,7 +7047,7 @@ class EditorSessionManager extends ChangeNotifier {
     var changed = false;
     // R26 #3: a multi-lane span freezes keys on EVERY spanned lane —
     // still one undo.
-    for (final laneId in lane.spanLaneIds) {
+    for (final laneId in targets) {
       for (
         var frame = lane.startIndex;
         frame < lane.endIndexExclusive;
@@ -9201,7 +9245,7 @@ class EditorSessionManager extends ChangeNotifier {
       if (track == null) {
         return false;
       }
-      final keyed = selection.spanLaneIds.any(
+      final keyed = _laneVerbTargets(selection.spanLaneIds).any(
         (laneId) => transformLaneKeyFrames(
           track.transformTrack,
           laneId,
@@ -9224,10 +9268,14 @@ class EditorSessionManager extends ChangeNotifier {
     }
     // R6: an EFFECT lane selection moves the effect chain's keys instead of
     // the transform track's — same rigid all-or-nothing group, same drag.
-    final isEffectSelection = selection.spanLaneIds.any(
+    final moveTargets = _laneVerbTargets(
+      selection.spanLaneIds,
+      effects: layer.effects,
+    );
+    final isEffectSelection = moveTargets.any(
       (laneId) => parseEffectLaneId(laneId) != null,
     );
-    final keyed = selection.spanLaneIds.any(
+    final keyed = moveTargets.any(
       (laneId) => isEffectSelection
           ? effectLaneKeyFrames(layer.effects, laneId).any(selection.contains)
           : transformLaneKeyFrames(
@@ -9263,13 +9311,15 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     final effectLayer = before.layer;
+    final targets = _laneVerbTargets(
+      before.selection.spanLaneIds,
+      effects: effectLayer?.effects ?? const [],
+    );
     if (effectLayer != null &&
-        before.selection.spanLaneIds.any(
-          (laneId) => parseEffectLaneId(laneId) != null,
-        )) {
+        targets.any((laneId) => parseEffectLaneId(laneId) != null)) {
       final shiftedEffects = effectsWithLaneSpanKeysShifted(
         effectLayer.effects,
-        laneIds: before.selection.spanLaneIds,
+        laneIds: targets,
         rangeStartIndex: before.selection.startIndex,
         rangeEndIndexExclusive: before.selection.endIndexExclusive,
         frameDelta: frameDelta,
@@ -9300,7 +9350,7 @@ class EditorSessionManager extends ChangeNotifier {
         before.layer?.transformTrack ?? before.track!.transformTrack;
     final shifted = transformTrackWithLaneSpanKeysShifted(
       sourceTrack,
-      laneIds: before.selection.spanLaneIds,
+      laneIds: targets,
       rangeStartIndex: before.selection.startIndex,
       rangeEndIndexExclusive: before.selection.endIndexExclusive,
       frameDelta: frameDelta,
