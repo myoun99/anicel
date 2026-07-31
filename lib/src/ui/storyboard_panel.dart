@@ -358,14 +358,13 @@ class StoryboardPanel extends StatefulWidget {
     this.poseDisplaySize,
     this.onSetCutFade,
     this.onToggleLayerVisibility,
-    this.onToggleLayerMuted,
+    this.onOpenLayerMixer,
+    this.isLayerSoloed,
     this.onLayerOpacityChanged,
     this.onLayerOpacityChangeEnd,
     this.onLayerMarkSelected,
     this.layerFxStateOf,
     this.onToggleLayerFx,
-    this.cutFxEnabledOf,
-    this.onToggleCutFx,
     this.cutPictureVisibleOf,
     this.onToggleCutPictureVisibility,
     this.trackFxStateOf,
@@ -604,7 +603,16 @@ class StoryboardPanel extends StatefulWidget {
   // the active cut supplies the concrete layer). All LayerId-generic —
   // wired to the same session methods the timeline host uses.
   final ValueChanged<LayerId>? onToggleLayerVisibility;
-  final ValueChanged<LayerId>? onToggleLayerMuted;
+
+  /// The SE row's speaker, which opens the row's mixer anchored under
+  /// itself (R10 R3) — the same door the two timeline rails mount, so the
+  /// storyboard rail stops being the one that can only mute.
+  final void Function(BuildContext anchorContext, LayerId layerId)?
+  onOpenLayerMixer;
+
+  /// Whether that row is soloed (the speaker's accent tint).
+  final bool Function(LayerId layerId)? isLayerSoloed;
+
   final void Function(LayerId layerId, double opacity)? onLayerOpacityChanged;
 
   /// Commit-on-release hook (R4 #4); null keeps per-move writes.
@@ -633,12 +641,10 @@ class StoryboardPanel extends StatefulWidget {
   /// through the bar (UI-R6 #2) — not an average of the rows.
   final double legendOpacityValue;
 
-  /// V-row display toggles (R9, session view state, ACTIVE-cut scoped like
-  /// the S-row layer controls): the fx switch bypasses the cut-level
-  /// Transform group (pose + fade) in the playback display, the eye hides
-  /// the cut's picture there. Null hides the buttons.
-  final bool Function(CutId cutId)? cutFxEnabledOf;
-  final ValueChanged<CutId>? onToggleCutFx;
+  /// The V row's eye (R9, session view state, scoped to the track's cut at
+  /// the playhead): it hides that cut's picture in the playback display.
+  /// Null hides the button. The fx switch beside it is the TRACK's — see
+  /// [trackFxStateOf].
   final bool Function(CutId cutId)? cutPictureVisibleOf;
   final ValueChanged<CutId>? onToggleCutPictureVisibility;
 
@@ -1114,7 +1120,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           : () => widget.onToggleSeRowLane!(track, slot),
       activeLayer: _activeSlotLayerOf(track, widget.activeCutId, slot),
       onToggleLayerVisibility: widget.onToggleLayerVisibility,
-      onToggleLayerMuted: widget.onToggleLayerMuted,
+      onOpenLayerMixer: widget.onOpenLayerMixer,
+      isLayerSoloed: widget.isLayerSoloed,
       onLayerOpacityChanged: widget.onLayerOpacityChanged,
       onLayerOpacityChangeEnd: widget.onLayerOpacityChangeEnd,
       onLayerMarkSelected: widget.onLayerMarkSelected,
@@ -1190,8 +1197,6 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         // parked look. A gap simply means no cut exists there: the
         // buttons stay normal and a press is a no-op.
         subjectCut: _cutAtPlayheadOn(index) ?? activeCut,
-        cutFxEnabledOf: widget.cutFxEnabledOf,
-        onToggleCutFx: widget.onToggleCutFx,
         cutPictureVisibleOf: widget.cutPictureVisibleOf,
         onToggleCutPictureVisibility: widget.onToggleCutPictureVisibility,
         // R9 #21: the track's own display columns.
@@ -2599,7 +2604,8 @@ class _StoryboardSeLabel extends StatelessWidget {
     this.active = false,
     this.onSelectLayer,
     this.onToggleLayerVisibility,
-    this.onToggleLayerMuted,
+    this.onOpenLayerMixer,
+    this.isLayerSoloed,
     this.onLayerOpacityChanged,
     this.onLayerOpacityChangeEnd,
     this.onLayerMarkSelected,
@@ -2627,7 +2633,16 @@ class _StoryboardSeLabel extends StatelessWidget {
   /// row label. Null keeps the row display-only.
   final ValueChanged<LayerId>? onSelectLayer;
   final ValueChanged<LayerId>? onToggleLayerVisibility;
-  final ValueChanged<LayerId>? onToggleLayerMuted;
+
+  /// The SE row's speaker, which opens the row's mixer anchored under
+  /// itself (R10 R3) — the same door the two timeline rails mount, so the
+  /// storyboard rail stops being the one that can only mute.
+  final void Function(BuildContext anchorContext, LayerId layerId)?
+  onOpenLayerMixer;
+
+  /// Whether that row is soloed (the speaker's accent tint).
+  final bool Function(LayerId layerId)? isLayerSoloed;
+
   final void Function(LayerId layerId, double opacity)? onLayerOpacityChanged;
 
   /// Commit-on-release hook (R4 #4); null keeps per-move writes.
@@ -2780,13 +2795,15 @@ class _StoryboardSeLabel extends StatelessWidget {
                         onToggle: () => onToggleLayerVisibility!(layer.id),
                       )
                     : null,
-                mute: layer != null && onToggleLayerMuted != null
+                mute: layer != null && onOpenLayerMixer != null
                     ? SizedBox(
                         height: 26,
                         child: LayerMuteToggleButton(
                           keyValue: 'storyboard-layer-mute-${layer.id}',
                           muted: layer.muted,
-                          onToggle: () => onToggleLayerMuted!(layer.id),
+                          soloed: isLayerSoloed?.call(layer.id) ?? false,
+                          onOpenMixer: (anchorContext) =>
+                              onOpenLayerMixer!(anchorContext, layer.id),
                         ),
                       )
                     : null,
@@ -3791,8 +3808,6 @@ class _StoryboardTrackLabel extends StatelessWidget {
     this.onSelectTrack,
     this.activeCut,
     this.subjectCut,
-    this.cutFxEnabledOf,
-    this.onToggleCutFx,
     this.cutPictureVisibleOf,
     this.onToggleCutPictureVisibility,
     this.trackFxState = LayerFxState.on,
@@ -3838,8 +3853,6 @@ class _StoryboardTrackLabel extends StatelessWidget {
   /// look, no stand-down; null (a gap on this track) just makes a press
   /// a no-op, because no cut exists at the index.
   final Cut? subjectCut;
-  final bool Function(CutId cutId)? cutFxEnabledOf;
-  final ValueChanged<CutId>? onToggleCutFx;
   final bool Function(CutId cutId)? cutPictureVisibleOf;
   final ValueChanged<CutId>? onToggleCutPictureVisibility;
 
@@ -3971,30 +3984,19 @@ class _StoryboardTrackLabel extends StatelessWidget {
               ...layerRailTrailingCells(
                 // R9 #21: the switch in this row's fx column is the
                 // TRACK's — a row's columns describe the row's own
-                // subject, and this row is the track's. It reads as a
-                // MASTER over the per-cut switches (R8's grammar): mixed
-                // while the track applies but a cut under it is bypassed.
+                // subject, and this row is the track's.
                 //
-                // The CUT axis keeps its control on the same button's
-                // context menu, the way the SE row's speaker carries the
-                // mix menu — the rail has no room for another column.
+                // R10 R3: it is now the ONLY fx axis on the film. The
+                // per-cut bypass that used to hang off this button's
+                // context menu is gone — a switch nobody could reach on
+                // touch, over a state that never left the session.
                 fx: onToggleTrackFx == null
                     ? null
-                    : GestureDetector(
-                        onSecondaryTapUp: onToggleCutFx == null
-                            ? null
-                            : (details) =>
-                                  _showCutFxMenu(context, details.globalPosition),
-                        onLongPressStart: onToggleCutFx == null
-                            ? null
-                            : (details) =>
-                                  _showCutFxMenu(context, details.globalPosition),
-                        child: FxToggleButton(
-                          keyValue: 'storyboard-track-fx-${track.id.value}',
-                          subject: 'track',
-                          state: trackFxState,
-                          onToggle: onToggleTrackFx!,
-                        ),
+                    : FxToggleButton(
+                        keyValue: 'storyboard-track-fx-${track.id.value}',
+                        subject: 'track',
+                        state: trackFxState,
+                        onToggle: onToggleTrackFx!,
                       ),
                 visibility: onToggleCutPictureVisibility == null
                     ? null
@@ -4045,37 +4047,6 @@ class _StoryboardTrackLabel extends StatelessWidget {
         ),
       ),
     );
-  }
-
-  /// The CUT axis, kept off the rail's one fx column: bypassing THIS
-  /// track's cut at the playhead, under the track master that governs it.
-  Future<void> _showCutFxMenu(
-    BuildContext context,
-    Offset globalPosition,
-  ) async {
-    final subject = subjectCut;
-    if (subject == null) {
-      return;
-    }
-    final overlay = Overlay.of(context).context.findRenderObject();
-    final enabled = cutFxEnabledOf?.call(subject.id) ?? true;
-    final selected = await showMenu<String>(
-      context: context,
-      position: RelativeRect.fromRect(
-        globalPosition & const Size(1, 1),
-        Offset.zero & (overlay as RenderBox).size,
-      ),
-      items: [
-        PopupMenuItem<String>(
-          key: ValueKey<String>('storyboard-cut-fx-${subject.id.value}'),
-          value: 'cut-fx',
-          child: Text(enabled ? 'Bypass this cut\'s FX' : 'Apply this cut\'s FX'),
-        ),
-      ],
-    );
-    if (selected == 'cut-fx') {
-      onToggleCutFx?.call(subject.id);
-    }
   }
 }
 

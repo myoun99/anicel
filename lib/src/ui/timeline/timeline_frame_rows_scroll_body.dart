@@ -3,13 +3,11 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
 import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
-import '../text/app_strings.dart';
 import 'property_lane_model.dart';
 import 'se_audio_lane.dart';
 import 'timeline_frame_range_gesture.dart';
@@ -63,9 +61,6 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
     this.seClipMarkerTooltip,
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.audioLane,
-    this.onSetAudioClipFadeCurve,
-    this.onSetAudioClipEnvelope,
-    this.resolveStrings,
     this.showSeconds = false,
     this.commaDrag,
     this.rangeGesture,
@@ -137,22 +132,6 @@ class TimelineFrameRowsScrollBody extends StatefulWidget {
 
   /// What the audio lane may ask the session to do; null = display-only.
   final TimelineAudioLaneCallbacks? audioLane;
-
-  /// Commits the audio-lane fade-curve toggle (AUDIO-PRO R1).
-  final void Function(LayerId layerId, int clipIndex, AudioFadeCurve curve)?
-  onSetAudioClipFadeCurve;
-
-  /// Commits the audio-lane volume-envelope dialog (AUDIO-PRO R1).
-  final void Function(
-    LayerId layerId,
-    int clipIndex,
-    List<AudioVolumeKey> keys,
-  )?
-  onSetAudioClipEnvelope;
-
-  /// The PROGRAM-language table for the lane menu/dialogs; null keeps
-  /// English (the incremental-coverage rule).
-  final AppStrings Function()? resolveStrings;
 
   /// The shared frames/seconds display toggle (block duration labels,
   /// R26 #7).
@@ -461,25 +440,6 @@ class _TimelineFrameRowsScrollBodyState
                         fadeIn,
                         fadeOut,
                       ),
-            onSetClipGain: widget.audioLane?.onSetClipGain == null
-                ? null
-                : (clipIndex, gain) => widget.audioLane!.onSetClipGain!(
-                    layer.id,
-                    clipIndex,
-                    gain,
-                  ),
-            onSetClipFadeCurve: widget.onSetAudioClipFadeCurve == null
-                ? null
-                : (clipIndex, curve) => widget.onSetAudioClipFadeCurve!(
-                    layer.id,
-                    clipIndex,
-                    curve,
-                  ),
-            onSetClipEnvelope: widget.onSetAudioClipEnvelope == null
-                ? null
-                : (clipIndex, keys) =>
-                      widget.onSetAudioClipEnvelope!(layer.id, clipIndex, keys),
-            resolveStrings: widget.resolveStrings,
           )
         : TimelineLaneFrameRow(
             layer: layer,

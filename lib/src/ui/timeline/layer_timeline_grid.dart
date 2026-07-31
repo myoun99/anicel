@@ -4,13 +4,13 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart' show AppLanguage;
-import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
 import '../../models/camera_instruction.dart';
 import '../../models/layer_blend_mode.dart';
-import '../text/app_strings.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../../models/attached_layer_resolve.dart' show attachRowWearsBaseComposite;
+import '../../models/attached_layer_resolve.dart'
+    show attachRowWearsBaseComposite;
+import '../../models/attached_placement.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../models/timeline_row_address.dart';
@@ -85,12 +85,9 @@ class LayerTimelineGrid extends StatefulWidget {
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.showSeconds = false,
     this.audioLane,
-    this.onSetAudioClipFadeCurve,
-    this.onSetAudioClipEnvelope,
-    this.resolveStrings,
     this.isLayerSoloed,
-    this.onToggleLayerSolo,
-    this.onEditLayerAudio,
+    this.onOpenLayerMixer,
+    this.attachArrowPlacementOf,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
@@ -99,15 +96,12 @@ class LayerTimelineGrid extends StatefulWidget {
     this.layerFxStateOf,
     this.layerIsLinkedOf,
     this.onToggleLayerCollapsed,
-    this.onRenameFolder,
-    this.onDissolveFolder,
     this.layerOnionSkinEnabledOf,
     this.onToggleLayerOnionSkin,
     this.displayedOnionSkinOn = false,
     this.onToggleLayerFx,
     required this.onLayerMarkSelected,
     this.onToggleLayerFillReference,
-    this.onToggleLayerMuted,
     this.commaDrag,
     this.rangeHooks,
     this.laneRange,
@@ -225,27 +219,20 @@ class LayerTimelineGrid extends StatefulWidget {
   /// What the audio lane may ask the session to do; null = display-only.
   final TimelineAudioLaneCallbacks? audioLane;
 
-  /// Commits the audio-lane fade-curve toggle (AUDIO-PRO R1).
-  final void Function(LayerId layerId, int clipIndex, AudioFadeCurve curve)?
-  onSetAudioClipFadeCurve;
-
-  /// Commits the audio-lane volume-envelope dialog (AUDIO-PRO R1).
-  final void Function(
-    LayerId layerId,
-    int clipIndex,
-    List<AudioVolumeKey> keys,
-  )?
-  onSetAudioClipEnvelope;
-
-  /// The PROGRAM-language table for the audio menus and dialogs; null
-  /// keeps English (the incremental-coverage rule).
-  final AppStrings Function()? resolveStrings;
-
-  /// The SE mix menu (AUDIO-PRO R1): solo state/toggle + the fader/pan
-  /// dialog entrance, on the speaker button's context menu.
+  /// The SE row's mixer (R10 R3): its solo tint, and the speaker press
+  /// that opens the window carrying mute/solo/fader/pan. Null hides the
+  /// speaker.
   final bool Function(LayerId layerId)? isLayerSoloed;
-  final ValueChanged<LayerId>? onToggleLayerSolo;
-  final ValueChanged<LayerId>? onEditLayerAudio;
+  final void Function(BuildContext anchorContext, LayerId layerId)?
+  onOpenLayerMixer;
+
+  /// Which way a row's attach ARROW points in its sheet slot (R10 R3), or
+  /// null off an attach group. A RESOLVER, not a list: the answer depends
+  /// on stack order against the base, and this grid holds the horizontal
+  /// DISPLAY order (`sectionedLayerOrder(...).reversed`) — computing it
+  /// here would invert every organizer folder's arrow on this surface
+  /// alone.
+  final AttachedPlacement? Function(LayerId layerId)? attachArrowPlacementOf;
 
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
@@ -262,12 +249,6 @@ class LayerTimelineGrid extends StatefulWidget {
   /// link group. Null shows no badges.
   final bool Function(LayerId layerId)? layerIsLinkedOf;
 
-  /// Folder rows are LAYER rows: their eye, opacity, blend, fx switch and
-  /// FX lanes all arrive through the layer hooks above. Only the two
-  /// structural verbs need their own entrances.
-  final ValueChanged<LayerId>? onRenameFolder;
-  final ValueChanged<LayerId>? onDissolveFolder;
-
   /// The row twirl that folds a FOLDER's members (the attach fold has its
   /// own hook because it is session state, not layer state).
   final ValueChanged<LayerId>? onToggleLayerCollapsed;
@@ -282,9 +263,6 @@ class LayerTimelineGrid extends StatefulWidget {
 
   /// Drawing rows' fill-reference toggle (R20-C2); null hides it.
   final ValueChanged<LayerId>? onToggleLayerFillReference;
-
-  /// SE rows' speaker button (mute); null hides it.
-  final ValueChanged<LayerId>? onToggleLayerMuted;
 
   /// Comma-drag hooks for the block edge grips (shared policy with the
   /// X-sheet); null hides the grips.
@@ -382,6 +360,8 @@ typedef _RailRowMemoInputs = ({
   LayerFxState fxState,
   bool onionSkinEnabled,
   bool isLinked,
+  bool soloed,
+  AttachedPlacement? attachArrow,
   double layerRowHeight,
   double layerControlsWidth,
   double sectionLabelGutterWidth,
@@ -939,6 +919,15 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       onionSkinEnabled:
           widget.layerOnionSkinEnabledOf?.call(row.layer.id) ?? false,
       isLinked: widget.layerIsLinkedOf?.call(row.layer.id) ?? false,
+      // Solo is SESSION state, not a Layer field, so the layer comparison
+      // cannot see it: the speaker's accent tint went stale the moment
+      // solo moved anywhere but this row. It has always been shown here —
+      // R10 R3 only made it settable from every rail, which is what turned
+      // a latent staleness into one a user would hit.
+      soloed: widget.isLayerSoloed?.call(row.layer.id) ?? false,
+      // The arrow reads the STACK (a folder's direction is its position
+      // against its base), so the Layer comparison cannot see it change.
+      attachArrow: widget.attachArrowPlacementOf?.call(row.layer.id),
       layerRowHeight: _metrics.layerRowHeight,
       layerControlsWidth: _metrics.layerControlsWidth,
       sectionLabelGutterWidth: _metrics.sectionLabelGutterWidth,
@@ -969,6 +958,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
         a.fxState == b.fxState &&
         a.onionSkinEnabled == b.onionSkinEnabled &&
         a.isLinked == b.isLinked &&
+        a.soloed == b.soloed &&
+        a.attachArrow == b.attachArrow &&
         a.layerRowHeight == b.layerRowHeight &&
         a.layerControlsWidth == b.layerControlsWidth &&
         a.sectionLabelGutterWidth == b.sectionLabelGutterWidth &&
@@ -1102,11 +1093,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       onToggleLayerOnionSkin: widget.onToggleLayerOnionSkin,
       onLayerMarkSelected: widget.onLayerMarkSelected,
       onToggleLayerFillReference: widget.onToggleLayerFillReference,
-      onToggleLayerMuted: widget.onToggleLayerMuted,
+      onOpenLayerMixer: widget.onOpenLayerMixer,
       isLayerSoloed: widget.isLayerSoloed?.call(row.layer.id) ?? false,
-      onToggleLayerSolo: widget.onToggleLayerSolo,
-      onEditLayerAudio: widget.onEditLayerAudio,
-      resolveStrings: widget.resolveStrings,
+      attachArrowPlacement: widget.attachArrowPlacementOf?.call(row.layer.id),
       hasLanes: _lanesFor(row.layer).isNotEmpty,
       lanesExpanded: widget.expandedLaneLayerIds.contains(row.layer.id),
       onToggleLanes: widget.onToggleLayerLanes,
@@ -1120,8 +1109,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       onToggleGroupFold: row.isFolder
           ? widget.onToggleLayerCollapsed
           : widget.onToggleAttachGroup,
-      onRenameFolder: widget.onRenameFolder,
-      onDissolveFolder: widget.onDissolveFolder,
       opacityDragPreview: widget.opacityDragPreview,
       isLinked: widget.layerIsLinkedOf?.call(row.layer.id) ?? false,
       onLayerBlendModeSelected: widget.onLayerBlendModeSelected,
@@ -1791,14 +1778,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                             .projectFrameRate,
                                                         audioLane:
                                                             widget.audioLane,
-                                                        onSetAudioClipFadeCurve:
-                                                            widget
-                                                                .onSetAudioClipFadeCurve,
-                                                        onSetAudioClipEnvelope:
-                                                            widget
-                                                                .onSetAudioClipEnvelope,
-                                                        resolveStrings: widget
-                                                            .resolveStrings,
                                                         showSeconds:
                                                             widget.showSeconds,
                                                         commaDrag:

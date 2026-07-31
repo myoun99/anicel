@@ -90,8 +90,8 @@ void main() {
       );
     });
 
-    test('MIXED while the track applies but a cut under it is bypassed, and '
-        'the master turns everything back on', () {
+    test('the switch is BINARY — R10 R3 retired the per-cut axis, so a '
+        'track has no MIXED left to report', () {
       final session = EditorSessionManager(
         initialProject: createDefaultProject(),
       );
@@ -106,15 +106,12 @@ void main() {
           .first
           .id;
 
-      session.toggleCutFx(cutId);
-      expect(session.trackFxState(trackId), LayerFxState.mixed);
+      expect(session.trackFxState(trackId), LayerFxState.on);
 
-      // From mixed the master goes OFF (the layer master's rule: off
-      // unless already fully off).
       session.toggleTrackFx(trackId);
       expect(session.trackFxState(trackId), LayerFxState.off);
+      expect(session.isCutFxEnabled(cutId), isFalse);
 
-      // And back on clears the per-cut bypass under it.
       session.toggleTrackFx(trackId);
       expect(session.trackFxState(trackId), LayerFxState.on);
       expect(session.isCutFxEnabled(cutId), isTrue);

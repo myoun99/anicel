@@ -224,9 +224,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
           axis: axis,
           frameRate: projectFrameRate,
           audioPeaksFor: audioPeaksFor!,
-          onRemoveClip: audioLane?.onRemoveClip == null
-              ? null
-              : (clipIndex) => audioLane!.onRemoveClip!(layer.id, clipIndex),
           color: timelineDrawingInkColor.withValues(alpha: 0.22),
           keyPrefix: keyPrefix,
         ),

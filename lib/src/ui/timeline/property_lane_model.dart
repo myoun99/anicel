@@ -125,8 +125,6 @@ class PropertyLaneEditCallbacks {
   const PropertyLaneEditCallbacks({
     required this.onToggleKeyAt,
     required this.onMoveKey,
-    required this.onRemoveKey,
-    required this.onToggleHold,
     this.onSetValue,
   });
 
@@ -144,12 +142,11 @@ class PropertyLaneEditCallbacks {
   )
   onMoveKey;
 
-  final void Function(Layer layer, PropertyLaneRow lane, int frameIndex)
-  onRemoveKey;
-
-  /// AE's Toggle Hold Keyframe.
-  final void Function(Layer layer, PropertyLaneRow lane, int frameIndex)
-  onToggleHold;
+  // R10 R3: `onRemoveKey` and `onToggleHold` left with the key marker's
+  // context menu. Delete now lives on the Frame ▾ menu, which reaches a
+  // lane row through `currentRow` (R10 #19); the hold toggle keeps its
+  // checkbox in the camera key dialog and is waiting on Edit Instance for
+  // the general case.
 
   /// A value typed into the lane's value editor: sets/updates a key at the
   /// frame (AE: changing an animated value keys it at the playhead). The

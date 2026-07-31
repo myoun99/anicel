@@ -229,8 +229,15 @@ void main() {
     );
     expect(
       find.byKey(ValueKey<String>('xsheet-layer-kind-icon-$attachId')),
+      findsOneWidget,
+      reason: 'R10 R3: the arrow rides the SHEET slot, so the type cell says '
+          'the kind on every column',
+    );
+    expect(
+      find.byKey(ValueKey<String>('xsheet-layer-timesheet-$attachId')),
       findsNothing,
-      reason: 'the arrow IS the type mark — the base carries the kind',
+      reason: 'the x-sheet gate had no attach check — an attach column could '
+          'be put ON the sheet in a state the rail can never undo',
     );
   });
 

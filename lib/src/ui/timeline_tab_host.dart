@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import '../models/camera_instruction.dart';
 import '../models/layer.dart';
 import '../models/layer_effect.dart';
-import '../models/layer_folder.dart';
 import '../models/layer_id.dart';
 import '../models/timeline_row_address.dart';
 import '../models/layer_kind.dart';
@@ -18,7 +17,7 @@ import 'dialogs/delete_layer_dialog.dart';
 import 'dialogs/frame_name_conflict_dialog.dart';
 import 'dialogs/instruction_event_dialog.dart';
 import 'dialogs/instruction_set_editor_dialog.dart';
-import 'dialogs/layer_audio_dialog.dart';
+import 'timeline/se_layer_mixer.dart';
 import 'dialogs/rename_frame_dialog.dart';
 import 'dialogs/rename_layer_dialog.dart';
 import 'dialogs/se_instance_dialog.dart';
@@ -419,54 +418,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         description,
       );
     },
-    onRemoveKey: (layer, lane, frameIndex) {
-      final description = 'Delete ${lane.label} keyframe';
-      if (laneIsEffectLane(lane)) {
-        _commitEffectLaneEdit(
-          layer,
-          effectsWithLaneKeyRemoved(
-            layer.effects,
-            laneId: lane.laneId,
-            frameIndex: frameIndex,
-          ),
-          description,
-        );
-        return;
-      }
-      _commitLaneEdit(
-        layer,
-        transformTrackWithLaneKeyRemoved(
-          _laneTrackOf(layer),
-          laneId: lane.laneId,
-          frameIndex: frameIndex,
-        ),
-        description,
-      );
-    },
-    onToggleHold: (layer, lane, frameIndex) {
-      final description = 'Toggle hold on ${lane.label} keyframe';
-      if (laneIsEffectLane(lane)) {
-        _commitEffectLaneEdit(
-          layer,
-          effectsWithLaneHoldToggled(
-            layer.effects,
-            laneId: lane.laneId,
-            frameIndex: frameIndex,
-          ),
-          description,
-        );
-        return;
-      }
-      _commitLaneEdit(
-        layer,
-        transformTrackWithLaneHoldToggled(
-          _laneTrackOf(layer),
-          laneId: lane.laneId,
-          frameIndex: frameIndex,
-        ),
-        description,
-      );
-    },
     onSetValue: (layer, lane, frameIndex, input) {
       // The SE audio lane's value field edits the playhead span's offset
       // trim instead of a transform property (one undo via the session).
@@ -538,22 +489,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     }
 
     _session.renameActiveLayer(nextName);
-  }
-
-  Future<void> _renameFolder(LayerId folderId) async {
-    final folder = _session.activeCutOrNull?.layers.folderById(folderId);
-    if (folder == null) {
-      return;
-    }
-    final nextName = await showDialog<String>(
-      context: context,
-      builder: (context) => RenameLayerDialog(initialName: folder.name),
-    );
-    if (!mounted || nextName == null) {
-      return;
-    }
-    // A folder renames like any other row.
-    _session.renameLayer(folderId, nextName);
   }
 
   /// THE unified instance-edit entrance (double-tap on any cell, and the
@@ -1104,7 +1039,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           // move and made the slide feel heavy (R5-⑧); the session drag
           // API stays for callers that need the cross-panel mirror.
           audioLane: TimelineAudioLaneCallbacks(
-            onRemoveClip: _session.removeAudioClipAt,
             // Media-browser drops: link the dragged sound to the block.
             onDropMediaAsset: (layerId, blockStartFrame, path) =>
                 _session.linkMediaAssetToSeBlock(
@@ -1120,18 +1054,12 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                   fadeInFrames: fadeIn,
                   fadeOutFrames: fadeOut,
                 ),
-            onSetClipGain: _session.setAudioClipGain,
           ),
-          onSetAudioClipFadeCurve: _session.setAudioClipFadeCurve,
-          onSetAudioClipEnvelope: _session.setAudioClipEnvelope,
-          resolveStrings: () => _session.uiStrings,
           onAddLayer: _session.addLayer,
-          onToggleLayerMuted: _session.toggleLayerMuted,
           isLayerSoloed: (layerId) =>
               _session.soloedSeLayerIds.value.contains(layerId),
-          onToggleLayerSolo: _session.toggleLayerSolo,
-          onEditLayerAudio: (layerId) => unawaited(
-            showLayerAudioDialog(context, session: _session, layerId: layerId),
+          onOpenLayerMixer: (anchorContext, layerId) => unawaited(
+            showSeLayerMixer(anchorContext, session: _session, layerId: layerId),
           ),
           // Kind-dispatched (unified layer controls): the camera row drives
           // the camera-view notifiers, every other row the layer flags.
@@ -1147,10 +1075,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           layerIsLinkedOf: _session.isLayerLinked,
           // Folder rows are layer rows: their eye, opacity, blend, fx
           // switch, FX lanes and selection all ride the layer hooks
-          // already threaded above. Only the structural verbs land here.
+          // already threaded above. Only the members' twirl lands here.
           onToggleLayerCollapsed: _session.toggleLayerCollapsed,
-          onRenameFolder: (folderId) => unawaited(_renameFolder(folderId)),
-          onDissolveFolder: _session.dissolveFolder,
           onToggleLayerFx: _session.toggleLayerFx,
           // Per-layer onion skin (UI-R17 #5, TVPaint style).
           layerOnionSkinEnabledOf: _session.isLayerOnionSkinEnabled,

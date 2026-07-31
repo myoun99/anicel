@@ -1170,8 +1170,8 @@ void main() {
               laneEdit: PropertyLaneEditCallbacks(
                 onToggleKeyAt: (_, _, _) {},
                 onMoveKey: (_, _, from, to) => keyMoves.add((from, to)),
-                onRemoveKey: (_, _, _) {},
-                onToggleHold: (_, _, _) {},
+
+
               ),
               laneRange: TimelineLaneRangeCallbacks(
                 selection: selection,

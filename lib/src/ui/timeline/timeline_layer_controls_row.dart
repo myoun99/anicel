@@ -2,12 +2,12 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart' show AppLanguage;
+import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_mark.dart';
-import '../text/app_strings.dart';
 import '../widgets/field_slider.dart';
 import 'layer_label_controls.dart';
 import 'layer_rail_columns.dart';
@@ -32,8 +32,8 @@ import 'timeline_grid_metrics.dart';
 /// Deliberately absent (the row renders none of them): `frames`, `timeline`,
 /// `instructions`, `audioClips`, `baseFrameLinks`, `runBehaviors`,
 /// `transformTrack` (the LANE rows read it, and those are unmemoized),
-/// `audioGain`/`audioPan` (the mix menu reads them at open time),
-/// `attachedMode` and `folderId`.
+/// `audioGain`/`audioPan` (the mixer reads them from the session while it
+/// is open), `attachedMode` and `folderId`.
 bool timelineLayerControlsRowShowsSameState(Layer a, Layer b) {
   return identical(a, b) ||
       (a.id == b.id &&
@@ -52,40 +52,6 @@ bool timelineLayerControlsRowShowsSameState(Layer a, Layer b) {
 }
 
 class TimelineLayerControlsRow extends StatelessWidget {
-  Future<void> _showMixMenu(BuildContext context, Offset globalPosition) async {
-    final overlay = Overlay.of(context).context.findRenderObject();
-    final strings = resolveStrings?.call() ?? AppStrings.of(AppLanguage.en);
-    final selected = await showMenu<String>(
-      context: context,
-      position: RelativeRect.fromRect(
-        globalPosition & const Size(1, 1),
-        Offset.zero & (overlay as RenderBox).size,
-      ),
-      items: [
-        if (onToggleLayerSolo != null)
-          PopupMenuItem<String>(
-            key: ValueKey<String>('timeline-layer-solo-${layer.id}'),
-            value: 'solo',
-            child: Text(isLayerSoloed ? strings.audioUnsolo : strings.audioSolo),
-          ),
-        if (onEditLayerAudio != null)
-          PopupMenuItem<String>(
-            key: ValueKey<String>('timeline-layer-audio-${layer.id}'),
-            value: 'audio',
-            child: Text(strings.audioLayerAudioMenu),
-          ),
-      ],
-    );
-    switch (selected) {
-      case 'solo':
-        onToggleLayerSolo?.call(layer.id);
-      case 'audio':
-        onEditLayerAudio?.call(layer.id);
-      case _:
-        break;
-    }
-  }
-
   const TimelineLayerControlsRow({
     super.key,
     required this.layer,
@@ -98,11 +64,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
     required this.onToggleLayerTimesheet,
     required this.onLayerMarkSelected,
     this.onToggleLayerFillReference,
-    this.onToggleLayerMuted,
+    this.onOpenLayerMixer,
     this.isLayerSoloed = false,
-    this.onToggleLayerSolo,
-    this.onEditLayerAudio,
-    this.resolveStrings,
     this.hasLanes = false,
     this.lanesExpanded = false,
     this.onToggleLanes,
@@ -110,8 +73,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.hasGroupFold = false,
     this.groupFoldExpanded = true,
     this.onToggleGroupFold,
-    this.onDissolveFolder,
-    this.onRenameFolder,
+    this.attachArrowPlacement,
     this.wearsBaseComposite = false,
     this.fxState = LayerFxState.on,
     this.onToggleLayerFx,
@@ -143,24 +105,15 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// null hides it.
   final ValueChanged<LayerId>? onToggleLayerFillReference;
 
-  /// SE rows' speaker button (the audio counterpart of visibility); null
-  /// hides it.
-  final ValueChanged<LayerId>? onToggleLayerMuted;
+  /// SE rows' speaker button, which opens the row's mixer (mute, solo,
+  /// fader, pan) anchored under itself; null hides the speaker. It takes
+  /// the BUTTON's context so the popup lands on the speaker.
+  final void Function(BuildContext anchorContext, LayerId layerId)?
+  onOpenLayerMixer;
 
   /// Whether this SE row is soloed (AUDIO-PRO R1) — the speaker tints
   /// accent while soloing narrows monitoring to the soloed rows.
   final bool isLayerSoloed;
-
-  /// Toggles the SE row's solo — on the speaker's context menu (the rail
-  /// has no room for another column; the menu also carries the layer's
-  /// fader/pan entry).
-  final ValueChanged<LayerId>? onToggleLayerSolo;
-
-  /// Opens the layer's audio dialog (fader + pan).
-  final ValueChanged<LayerId>? onEditLayerAudio;
-
-  /// The PROGRAM-language table for the mix menu; null keeps English.
-  final AppStrings Function()? resolveStrings;
 
   /// AE-style property-lane twirl-down: layers with lanes get a chevron
   /// leading the row; rows without lanes keep an empty slot so labels stay
@@ -181,9 +134,11 @@ class TimelineLayerControlsRow extends StatelessWidget {
   final bool groupFoldExpanded;
   final ValueChanged<LayerId>? onToggleGroupFold;
 
-  /// Folder rows' context menu; null hides the entry.
-  final ValueChanged<LayerId>? onDissolveFolder;
-  final ValueChanged<LayerId>? onRenameFolder;
+  /// Which way this row's attach ARROW points in the sheet column, null on
+  /// rows that are not part of an attach group (R10 R3). Precomputed by
+  /// the host through [attachArrowPlacement] — a folder's direction is
+  /// STACK ORDER against its base, and a row widget holds no stack.
+  final AttachedPlacement? attachArrowPlacement;
 
   /// The AE-style fx switch as a MASTER over the row's per-group switches
   /// (R8: model state, so it survives a reload and reaches every composite
@@ -299,10 +254,17 @@ class TimelineLayerControlsRow extends StatelessWidget {
                     : null,
                 // Timesheet + mark chips lead the label. Attach rows (W5)
                 // hide the sheet toggle — they are display accessories of
-                // their base, never sheet columns.
-                timesheet:
-                    layerKindEligibleForTimesheetToggle(layer.kind) &&
-                        layer.attachedToLayerId == null
+                // their base, never sheet columns — and R10 R3 put their
+                // ARROW in the slot the toggle vacates, so the column
+                // reads "sheet, or what this row is attached to".
+                timesheet: attachArrowPlacement != null
+                    ? LayerAttachArrowCell(
+                        keyPrefix: 'timeline',
+                        idValue: '${layer.id}',
+                        placement: attachArrowPlacement!,
+                      )
+                    : layerKindEligibleForTimesheetToggle(layer.kind) &&
+                          layer.attachedToLayerId == null
                     ? LayerTimesheetToggleButton(
                         keyPrefix: 'timeline',
                         layerId: layer.id,
@@ -316,20 +278,17 @@ class TimelineLayerControlsRow extends StatelessWidget {
                   mark: layer.mark,
                   onMarkSelected: onLayerMarkSelected,
                 ),
-                // The TYPE BUTTON (UI-R24 #7): the kind icon — or the
-                // attach placement arrow — in its OWN fixed slot, a
-                // control separate from the name (function TBD again —
-                // R26 #30-1 moved the blend flyout to the toolbar's
-                // PS-style dropdown, user rule 07-22; tap selects for
-                // now). One slot for every row kind, so attach rows align
-                // with the rest (UI-R24 #8 — the old arrow indent is gone).
+                // The TYPE BUTTON (UI-R24 #7): the kind icon in its OWN
+                // fixed slot, a control separate from the name (function
+                // TBD again — R26 #30-1 moved the blend flyout to the
+                // toolbar's PS-style dropdown, user rule 07-22; tap
+                // selects for now). One slot for every row kind, ALWAYS
+                // the kind (R10 R3): the arrow that used to take this
+                // slot on attach rows now rides the sheet column.
                 typeButton: LayerTypeButton(
                   keyPrefix: 'timeline',
                   idValue: '${layer.id}',
                   kind: layer.kind,
-                  attachedPlacement: layer.attachedToLayerId == null
-                      ? null
-                      : layer.attachedPlacement,
                   folderCollapsed: layer.collapsed,
                   onTap: () => onSelectLayer(layer.id),
                 ),
@@ -482,36 +441,15 @@ class TimelineLayerControlsRow extends StatelessWidget {
                 // silence, waveforms keep displaying). Tight SizedBox: the
                 // M3 IconButton otherwise inflates its layout box to the
                 // 48px minimum tap target, overflowing the rail row.
-                mute: layer.kind == LayerKind.se && onToggleLayerMuted != null
+                mute: layer.kind == LayerKind.se && onOpenLayerMixer != null
                     ? SizedBox(
                         height: 26,
-                        // Right-click/long-press: the mix menu (solo +
-                        // fader/pan dialog) — the rail has no room for
-                        // more columns, so the speaker doubles as the SE
-                        // row's mixer entrance.
-                        child: GestureDetector(
-                          onSecondaryTapUp:
-                              onToggleLayerSolo == null &&
-                                  onEditLayerAudio == null
-                              ? null
-                              : (details) => _showMixMenu(
-                                  context,
-                                  details.globalPosition,
-                                ),
-                          onLongPressStart:
-                              onToggleLayerSolo == null &&
-                                  onEditLayerAudio == null
-                              ? null
-                              : (details) => _showMixMenu(
-                                  context,
-                                  details.globalPosition,
-                                ),
-                          child: LayerMuteToggleButton(
-                            keyValue: 'timeline-layer-mute-${layer.id}',
-                            muted: layer.muted,
-                            soloed: isLayerSoloed,
-                            onToggle: () => onToggleLayerMuted!(layer.id),
-                          ),
+                        child: LayerMuteToggleButton(
+                          keyValue: 'timeline-layer-mute-${layer.id}',
+                          muted: layer.muted,
+                          soloed: isLayerSoloed,
+                          onOpenMixer: (anchorContext) =>
+                              onOpenLayerMixer!(anchorContext, layer.id),
                         ),
                       )
                     : null,
@@ -551,58 +489,12 @@ class TimelineLayerControlsRow extends StatelessWidget {
       ),
     );
 
-    // Section boundaries draw ONE shared hairline like every row boundary
-    // (R3 feedback #6) — the old extra 2px overlay double-lined them; the
-    // gutter bracket carries the section identity.
-    if (!layerKindGroupsLayers(layer.kind) ||
-        (onRenameFolder == null && onDissolveFolder == null)) {
-      return row;
-    }
-    return GestureDetector(
-      onSecondaryTapUp: (details) =>
-          _showFolderMenu(context, details.globalPosition),
-      onLongPressStart: (details) =>
-          _showFolderMenu(context, details.globalPosition),
-      child: row,
-    );
-  }
-
-  /// The folder row's structural verbs. Everything else a folder does is
-  /// on the row's own columns, because a folder is a layer.
-  Future<void> _showFolderMenu(
-    BuildContext context,
-    Offset globalPosition,
-  ) async {
-    final overlay = Overlay.of(context).context.findRenderObject();
-    final selected = await showMenu<String>(
-      context: context,
-      position: RelativeRect.fromRect(
-        globalPosition & const Size(1, 1),
-        Offset.zero & (overlay as RenderBox).size,
-      ),
-      items: [
-        if (onRenameFolder != null)
-          PopupMenuItem<String>(
-            key: ValueKey<String>('timeline-folder-rename-${layer.id}'),
-            value: 'rename',
-            child: Text(AppText.strings.tlRenameFolder),
-          ),
-        if (onDissolveFolder != null)
-          PopupMenuItem<String>(
-            key: ValueKey<String>('timeline-folder-dissolve-${layer.id}'),
-            value: 'dissolve',
-            child: Text(AppText.strings.tlDissolveFolder),
-          ),
-      ],
-    );
-    switch (selected) {
-      case 'rename':
-        onRenameFolder?.call(layer.id);
-      case 'dissolve':
-        onDissolveFolder?.call(layer.id);
-      case _:
-        break;
-    }
+    // R10 R3: a folder row used to carry rename + dissolve on a context
+    // menu. Rename is the Layer ▾ menu's first entry and a folder is a
+    // layer, so it was always a second door to the same dialog; dissolve
+    // is waiting on the layer-label drag system, and Delete on a folder
+    // row already dissolves it.
+    return row;
   }
 
   /// The row's opacity slider, live-following the session's drag preview

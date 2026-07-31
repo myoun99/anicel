@@ -3,13 +3,12 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../../models/app_language.dart' show AppLanguage;
-import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
-import '../text/app_strings.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
-import '../../models/attached_layer_resolve.dart' show attachRowWearsBaseComposite;
+import '../../models/attached_layer_resolve.dart'
+    show attachRowWearsBaseComposite;
+import '../../models/attached_placement.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
@@ -92,12 +91,9 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.showSeconds = false,
     this.audioLane,
-    this.onSetAudioClipFadeCurve,
-    this.onSetAudioClipEnvelope,
-    this.resolveStrings,
     this.isLayerSoloed,
-    this.onToggleLayerSolo,
-    this.onEditLayerAudio,
+    this.onOpenLayerMixer,
+    this.attachArrowPlacementOf,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
@@ -108,7 +104,6 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.layerFxStateOf,
     this.onToggleLayerFx,
     this.onToggleLayerFillReference,
-    this.onToggleLayerMuted,
     this.commaDrag,
     this.rangeHooks,
     this.laneRange,
@@ -199,27 +194,18 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// What the audio lane may ask the session to do; null = display-only.
   final TimelineAudioLaneCallbacks? audioLane;
 
-  /// Commits the audio-lane fade-curve toggle (AUDIO-PRO R1).
-  final void Function(LayerId layerId, int clipIndex, AudioFadeCurve curve)?
-  onSetAudioClipFadeCurve;
-
-  /// Commits the audio-lane volume-envelope dialog (AUDIO-PRO R1).
-  final void Function(
-    LayerId layerId,
-    int clipIndex,
-    List<AudioVolumeKey> keys,
-  )?
-  onSetAudioClipEnvelope;
-
-  /// The PROGRAM-language table for the audio menus and dialogs; null
-  /// keeps English (the incremental-coverage rule).
-  final AppStrings Function()? resolveStrings;
-
-  /// The SE mix menu (AUDIO-PRO R1): solo state/toggle + the fader/pan
-  /// dialog entrance, on the speaker button's context menu.
+  /// The SE column's mixer (R10 R3): its solo tint, and the speaker press
+  /// that opens the window carrying mute/solo/fader/pan. Null hides the
+  /// speaker.
   final bool Function(LayerId layerId)? isLayerSoloed;
-  final ValueChanged<LayerId>? onToggleLayerSolo;
-  final ValueChanged<LayerId>? onEditLayerAudio;
+  final void Function(BuildContext anchorContext, LayerId layerId)?
+  onOpenLayerMixer;
+
+  /// Which way a column's attach ARROW points in its sheet slot (R10 R3),
+  /// or null off an attach group. A RESOLVER for the same reason the rail
+  /// takes one: the answer is stack order against the base, and a grid is
+  /// handed a DISPLAY order.
+  final AttachedPlacement? Function(LayerId layerId)? attachArrowPlacementOf;
 
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
@@ -241,9 +227,6 @@ class XSheetTimelineGrid extends StatefulWidget {
 
   /// Drawing rows' fill-reference toggle (R20-C2); null hides it.
   final ValueChanged<LayerId>? onToggleLayerFillReference;
-
-  /// SE columns' speaker button (mute); null hides it.
-  final ValueChanged<LayerId>? onToggleLayerMuted;
 
   /// Comma-drag hooks for the block edge grips (shared policy with the
   /// horizontal timeline); null hides the grips.
@@ -778,28 +761,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                           fadeIn,
                           fadeOut,
                         ),
-              onSetClipGain: widget.audioLane?.onSetClipGain == null
-                  ? null
-                  : (clipIndex, gain) => widget.audioLane!.onSetClipGain!(
-                      entry.layer.id,
-                      clipIndex,
-                      gain,
-                    ),
-              onSetClipFadeCurve: widget.onSetAudioClipFadeCurve == null
-                  ? null
-                  : (clipIndex, curve) => widget.onSetAudioClipFadeCurve!(
-                      entry.layer.id,
-                      clipIndex,
-                      curve,
-                    ),
-              onSetClipEnvelope: widget.onSetAudioClipEnvelope == null
-                  ? null
-                  : (clipIndex, keys) => widget.onSetAudioClipEnvelope!(
-                      entry.layer.id,
-                      clipIndex,
-                      keys,
-                    ),
-              resolveStrings: widget.resolveStrings,
             )
           : TimelineLaneFrameRow(
               axis: Axis.vertical,
@@ -1311,8 +1272,16 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                       onToggleLayerFillReference:
                                                           widget
                                                               .onToggleLayerFillReference,
-                                                      onToggleLayerMuted: widget
-                                                          .onToggleLayerMuted,
+                                                      onOpenLayerMixer: widget
+                                                          .onOpenLayerMixer,
+                                                      attachArrowPlacement:
+                                                          widget
+                                                              .attachArrowPlacementOf
+                                                              ?.call(
+                                                                entries[index]
+                                                                    .layer
+                                                                    .id,
+                                                              ),
                                                       isLayerSoloed:
                                                           widget.isLayerSoloed
                                                               ?.call(
@@ -1321,12 +1290,6 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                                     .id,
                                                               ) ??
                                                           false,
-                                                      onToggleLayerSolo: widget
-                                                          .onToggleLayerSolo,
-                                                      onEditLayerAudio: widget
-                                                          .onEditLayerAudio,
-                                                      resolveStrings:
-                                                          widget.resolveStrings,
                                                       hasLanes: _lanesFor(
                                                         entries[index].layer,
                                                       ).isNotEmpty,
@@ -1953,7 +1916,8 @@ class _LayerHeader extends StatelessWidget {
     required this.onLayerMarkSelected,
     required this.metrics,
     this.onToggleLayerFillReference,
-    this.onToggleLayerMuted,
+    this.onOpenLayerMixer,
+    this.attachArrowPlacement,
     this.hasLanes = false,
     this.lanesExpanded = false,
     this.onToggleLanes,
@@ -1961,9 +1925,6 @@ class _LayerHeader extends StatelessWidget {
     this.fxState = LayerFxState.on,
     this.onToggleLayerFx,
     this.isLayerSoloed = false,
-    this.onToggleLayerSolo,
-    this.onEditLayerAudio,
-    this.resolveStrings,
   });
 
   final TimelineGridMetrics metrics;
@@ -1987,17 +1948,17 @@ class _LayerHeader extends StatelessWidget {
   /// Drawing columns' fill-reference toggle (R20-C2); null hides it.
   final ValueChanged<LayerId>? onToggleLayerFillReference;
 
-  /// SE columns' speaker button (mute); null hides it.
-  final ValueChanged<LayerId>? onToggleLayerMuted;
+  /// SE columns' speaker button — the mixer's door, exactly as on the
+  /// horizontal rail. Null hides the speaker.
+  final void Function(BuildContext anchorContext, LayerId layerId)?
+  onOpenLayerMixer;
 
-  /// The SE mix menu (AUDIO-PRO R1) — same speaker context menu as the
-  /// horizontal rail.
   final bool isLayerSoloed;
-  final ValueChanged<LayerId>? onToggleLayerSolo;
-  final ValueChanged<LayerId>? onEditLayerAudio;
 
-  /// The PROGRAM-language table for the mix menu; null keeps English.
-  final AppStrings Function()? resolveStrings;
+  /// Which way this column's attach ARROW points in the sheet slot, null
+  /// off an attach group (R10 R3). Precomputed like [wearsBaseComposite]:
+  /// a folder's direction is stack order against its base.
+  final AttachedPlacement? attachArrowPlacement;
 
   /// AE-style property-lane twirl-down: layers with lanes lead their name
   /// row with a chevron (lane COLUMNS open beside the layer's). Headers
@@ -2014,42 +1975,6 @@ class _LayerHeader extends StatelessWidget {
 
   final LayerFxState fxState;
   final ValueChanged<LayerId>? onToggleLayerFx;
-
-  Future<void> _showMixMenu(BuildContext context, Offset globalPosition) async {
-    final overlay = Overlay.of(context).context.findRenderObject();
-    final strings = resolveStrings?.call() ?? AppStrings.of(AppLanguage.en);
-    final selected = await showMenu<String>(
-      context: context,
-      position: RelativeRect.fromRect(
-        globalPosition & const Size(1, 1),
-        Offset.zero & (overlay as RenderBox).size,
-      ),
-      items: [
-        if (onToggleLayerSolo != null)
-          PopupMenuItem<String>(
-            key: ValueKey<String>('xsheet-layer-solo-${layer.id}'),
-            value: 'solo',
-            child: Text(
-              isLayerSoloed ? strings.audioUnsolo : strings.audioSolo,
-            ),
-          ),
-        if (onEditLayerAudio != null)
-          PopupMenuItem<String>(
-            key: ValueKey<String>('xsheet-layer-audio-${layer.id}'),
-            value: 'audio',
-            child: Text(strings.audioLayerAudioMenu),
-          ),
-      ],
-    );
-    switch (selected) {
-      case 'solo':
-        onToggleLayerSolo?.call(layer.id);
-      case 'audio':
-        onEditLayerAudio?.call(layer.id);
-      case _:
-        break;
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -2153,7 +2078,23 @@ class _LayerHeader extends StatelessWidget {
                         ),
                       // Timesheet + mark chips lead the name; ineligible layers
                       // keep empty slots so names align across columns.
-                      if (layerKindEligibleForTimesheetToggle(layer.kind))
+                      //
+                      // R10 R3: the attach ARROW takes this slot on attach
+                      // columns, and the gate finally matches the rail's —
+                      // the x-sheet had no `attachedToLayerId` check, so an
+                      // attach column showed a live sheet toggle the rail
+                      // hides, and flipping it put an attach row ON the
+                      // sheet in a state the rail could never undo.
+                      if (attachArrowPlacement != null)
+                        LayerAttachArrowCell(
+                          keyPrefix: 'xsheet',
+                          idValue: '${layer.id}',
+                          placement: attachArrowPlacement!,
+                        )
+                      else if (layerKindEligibleForTimesheetToggle(
+                            layer.kind,
+                          ) &&
+                          layer.attachedToLayerId == null)
                         LayerTimesheetToggleButton(
                           keyPrefix: 'xsheet',
                           layerId: layer.id,
@@ -2198,9 +2139,6 @@ class _LayerHeader extends StatelessWidget {
                         keyPrefix: 'xsheet',
                         idValue: '${layer.id}',
                         kind: layer.kind,
-                        attachedPlacement: layer.attachedToLayerId == null
-                            ? null
-                            : layer.attachedPlacement,
                         folderCollapsed: layer.collapsed,
                         onTap: () => onSelectLayer(layer.id),
                       ),
@@ -2239,35 +2177,18 @@ class _LayerHeader extends StatelessWidget {
                       // SizedBox: the M3 IconButton otherwise inflates to the
                       // 48px tap target, overflowing the header column.
                       if (layer.kind == LayerKind.se &&
-                          onToggleLayerMuted != null)
+                          onOpenLayerMixer != null)
                         SizedBox(
                           width: 24,
                           height: 28,
-                          child: GestureDetector(
-                            onSecondaryTapUp:
-                                onToggleLayerSolo == null &&
-                                    onEditLayerAudio == null
-                                ? null
-                                : (details) => _showMixMenu(
-                                    context,
-                                    details.globalPosition,
-                                  ),
-                            onLongPressStart:
-                                onToggleLayerSolo == null &&
-                                    onEditLayerAudio == null
-                                ? null
-                                : (details) => _showMixMenu(
-                                    context,
-                                    details.globalPosition,
-                                  ),
-                            child: LayerMuteToggleButton(
-                              keyValue: 'xsheet-layer-mute-${layer.id}',
-                              muted: layer.muted,
-                              soloed: isLayerSoloed,
-                              width: 24,
-                              height: 28,
-                              onToggle: () => onToggleLayerMuted!(layer.id),
-                            ),
+                          child: LayerMuteToggleButton(
+                            keyValue: 'xsheet-layer-mute-${layer.id}',
+                            muted: layer.muted,
+                            soloed: isLayerSoloed,
+                            width: 24,
+                            height: 28,
+                            onOpenMixer: (anchorContext) =>
+                                onOpenLayerMixer!(anchorContext, layer.id),
                           ),
                         ),
                       // The camera column's slider drives the camera-view DIM

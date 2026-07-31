@@ -269,4 +269,61 @@ void main() {
     ];
     expect(attachOrganizerBaseOf(mixed, withMixed), isNull);
   });
+
+  group('attachArrowPlacement (R10 R3: the arrow in the sheet slot)', () {
+    test('a bare attach row answers its own placement', () {
+      final layers = [base, attached];
+      expect(
+        attachArrowPlacement(attached, layers),
+        AttachedPlacement.above,
+      );
+      expect(attachArrowPlacement(base, layers), isNull);
+    });
+
+    test('a 공정 organizer FOLDER reads STACK ORDER, never its own '
+        '`attachedPlacement` — a folder never carries one, so reading the '
+        'field would answer `above` for every folder', () {
+      final folder = createFolderLayer(id: const LayerId('f'), name: 'BOOK');
+      final member = attached.copyWith(folderId: const LayerId('f'));
+      // The folder invariant: the folder row sits directly above its
+      // members. ABOVE the base ⇒ up-arrow.
+      final aboveBase = [base, member, folder];
+      expect(attachArrowPlacement(folder, aboveBase), AttachedPlacement.above);
+
+      // BELOW the base ⇒ down-arrow, even though the member inside still
+      // carries `above` — the group attaches as a group.
+      final belowBase = [member, folder, base];
+      expect(attachArrowPlacement(folder, belowBase), AttachedPlacement.below);
+      expect(
+        attachArrowPlacement(member, belowBase),
+        AttachedPlacement.below,
+        reason: 'a member inside an organizer reads the FOLDER, not itself',
+      );
+    });
+
+    test('a dangling base answers null rather than reading as `below` — '
+        'indexWhere gives -1 and a naive compare would invert', () {
+      final folder = createFolderLayer(id: const LayerId('f'), name: 'BOOK');
+      final member = attached.copyWith(folderId: const LayerId('f'));
+      final orphaned = [member, folder];
+      expect(attachArrowPlacement(folder, orphaned), isNull);
+      expect(
+        attachArrowPlacement(member, orphaned),
+        AttachedPlacement.above,
+        reason: 'the member still knows its own side',
+      );
+    });
+
+    test('a plain folder gets no arrow at all', () {
+      final folder = createFolderLayer(id: const LayerId('f'), name: 'F');
+      final loose = Layer(
+        id: const LayerId('loose'),
+        name: 'L',
+        frames: const [],
+        timeline: const {},
+        folderId: const LayerId('f'),
+      );
+      expect(attachArrowPlacement(folder, [loose, folder]), isNull);
+    });
+  });
 }

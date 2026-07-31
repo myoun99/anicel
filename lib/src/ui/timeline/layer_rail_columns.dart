@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../models/attached_placement.dart';
 import '../../models/layer_kind.dart';
 import 'layer_label_controls.dart';
 
@@ -30,9 +29,10 @@ import 'layer_label_controls.dart';
 /// leading cluster and never desynchronises one slot from the rest.
 const double layerRailSectionGap = 8;
 
-/// The TYPE BUTTON's slot (UI-R24 #7) — the kind icon, or an attach row's
-/// placement arrow. A fixed column of its own, so attach rows align with
-/// every other row instead of indenting.
+/// The TYPE BUTTON's slot (UI-R24 #7) — the row's KIND icon, on every row
+/// kind including attach rows (R10 R3 moved their placement arrow to the
+/// sheet slot). A fixed column of its own, so attach rows align with every
+/// other row instead of indenting.
 const double layerTypeSlotWidth = 22;
 
 /// Where a rail row's NAME begins, measured from the row's left edge at
@@ -108,8 +108,9 @@ List<Widget> layerRailTrailingCells({
   ];
 }
 
-/// The row's TYPE BUTTON (UI-R24 #7): the kind icon — or, for an attach
-/// row, its placement arrow — in the rail's fixed type slot.
+/// The row's TYPE BUTTON (UI-R24 #7): the kind icon, in the rail's fixed
+/// type slot. Always the kind — an attach row's placement arrow rides the
+/// sheet slot ([LayerAttachArrowCell], R10 R3).
 ///
 /// R9: ONE widget, so every surface that states a row's identity states it
 /// the same way. The x-sheet's column headers had no type slot at all (no
@@ -122,7 +123,6 @@ class LayerTypeButton extends StatelessWidget {
     required this.keyPrefix,
     required this.idValue,
     this.kind,
-    this.attachedPlacement,
     this.folderCollapsed = false,
     this.icon,
     this.semanticLabel,
@@ -141,16 +141,11 @@ class LayerTypeButton extends StatelessWidget {
   /// a TRACK); those pass [icon] instead.
   final LayerKind? kind;
 
-  /// Non-null marks an ATTACH row: the placement arrow replaces the kind
-  /// icon, bending up-right when the row attaches above, down-right below.
-  /// The base carries the kind.
-  final AttachedPlacement? attachedPlacement;
-
   /// A folder's glyph reads its own fold.
   final bool folderCollapsed;
 
   /// Overrides the glyph for rows that are not layers (the V row's film
-  /// strip). Ignored when [attachedPlacement] is set.
+  /// strip).
   final IconData? icon;
 
   final String? semanticLabel;
@@ -164,24 +159,14 @@ class LayerTypeButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final placement = attachedPlacement;
     final Widget glyph;
     final String label;
-    if (placement != null) {
-      label =
-          semanticLabel ??
-          (placement == AttachedPlacement.above
-              ? 'Attach layer (above)'
-              : 'Attach layer (below)');
-      glyph = Transform.flip(
-        flipY: placement == AttachedPlacement.above,
-        child: Icon(
-          Icons.subdirectory_arrow_right,
-          key: ValueKey<String>('$keyPrefix-layer-attach-arrow-$idValue'),
-          size: 16,
-        ),
-      );
-    } else if (kind != null && layerKindGroupsLayers(kind!)) {
+    // R10 R3: the type cell is ALWAYS the kind. The attach arrow used to
+    // take this slot on attach rows, which cost them the one column that
+    // says what kind of row they are — and the sheet slot beside it was
+    // reserved and empty on exactly those rows. The arrow lives there now
+    // ([LayerAttachArrowCell]).
+    if (kind != null && layerKindGroupsLayers(kind!)) {
       label = semanticLabel ?? layerTypeSemanticLabel(kind!);
       glyph = Icon(
         folderCollapsed ? Icons.folder : Icons.folder_open,

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../models/canvas_point.dart';
@@ -16,6 +18,7 @@ import 'storyboard_cut_fade_policy.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnailResolver;
 import 'storyboard_panel.dart';
 import 'timeline/property_lane_model.dart' show PropertyLaneEditCallbacks;
+import 'timeline/se_layer_mixer.dart';
 import 'timeline/timeline_layer_controls_header.dart' show LayerLegendCallbacks;
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
     show TimelineCommaDragCallbacks;
@@ -221,22 +224,6 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
         ),
         'Move ${lane.label} keyframe to frame ${toFrame + 1}',
       ),
-      onRemoveKey: (_, lane, frameIndex) => commit(
-        transformTrackWithLaneKeyRemoved(
-          transform,
-          laneId: lane.laneId,
-          frameIndex: frameIndex,
-        ),
-        'Delete ${lane.label} keyframe',
-      ),
-      onToggleHold: (_, lane, frameIndex) => commit(
-        transformTrackWithLaneHoldToggled(
-          transform,
-          laneId: lane.laneId,
-          frameIndex: frameIndex,
-        ),
-        'Toggle hold on ${lane.label} keyframe',
-      ),
       onSetValue: (_, lane, frameIndex, input) => commit(
         transformTrackWithLaneValueEdited(
           transform,
@@ -310,24 +297,6 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
         toFrame: toFrame,
       ),
       'Move ${lane.label} keyframe to frame ${toFrame + 1}',
-    ),
-    onRemoveKey: (layer, lane, frameIndex) => _commitLayerLaneEdit(
-      layer.id,
-      transformTrackWithLaneKeyRemoved(
-        layer.transformTrack,
-        laneId: lane.laneId,
-        frameIndex: frameIndex,
-      ),
-      'Delete ${lane.label} keyframe',
-    ),
-    onToggleHold: (layer, lane, frameIndex) => _commitLayerLaneEdit(
-      layer.id,
-      transformTrackWithLaneHoldToggled(
-        layer.transformTrack,
-        laneId: lane.laneId,
-        frameIndex: frameIndex,
-      ),
-      'Toggle hold on ${lane.label} keyframe',
     ),
     onSetValue: (layer, lane, frameIndex, input) => _commitLayerLaneEdit(
       layer.id,
@@ -681,7 +650,15 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                 // Timeline-parity layer controls on the ACTIVE cut's SE
                 // rows — the SAME session hooks the timeline host wires.
                 onToggleLayerVisibility: _session.toggleLayerVisibility,
-                onToggleLayerMuted: _session.toggleLayerMuted,
+                onOpenLayerMixer: (anchorContext, layerId) => unawaited(
+                  showSeLayerMixer(
+                    anchorContext,
+                    session: _session,
+                    layerId: layerId,
+                  ),
+                ),
+                isLayerSoloed: (layerId) =>
+                    _session.soloedSeLayerIds.value.contains(layerId),
                 onLayerOpacityChanged: _session.previewLayerOpacity,
                 onLayerOpacityChangeEnd: _session.commitLayerOpacity,
                 onLayerMarkSelected: _session.setLayerMark,
@@ -718,10 +695,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                 // value instead of an average.
                 opacityDragPreview: _session.opacityDragPreview,
                 legendOpacityValue: _session.lastMasterOpacity,
-                // V-row display toggles (R9): cut FX bypass + picture
-                // eye — session view state the playback display reads.
-                cutFxEnabledOf: _session.isCutFxEnabled,
-                onToggleCutFx: _session.toggleCutFx,
+                // The V row's picture eye (R9): session view state the
+                // playback display reads.
                 cutPictureVisibleOf: _session.isCutPictureVisible,
                 onToggleCutPictureVisibility:
                     _session.toggleCutPictureVisibility,

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart' show AppLanguage;
+import '../../models/attached_placement.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -329,14 +330,17 @@ class LayerVisibilityToggleButton extends StatelessWidget {
 /// storyboard, 16px in the two timeline rails, and the storyboard's copy
 /// had silently lost the SOLO accent the other two carry.
 ///
-/// The button itself is unwrapped: the rails put their own secondary-tap
-/// mix menu around it, which is host wiring, not the control.
+/// R10 R3: the speaker is a DOOR, not a toggle. Pressing it opens the SE
+/// mixer (mute, solo, fader, pan) anchored under the button; the two
+/// timeline rails used to hang a context menu off it for the other three
+/// and the storyboard rail had no way to reach them at all. It still
+/// SHOWS mute and solo, because a door has to say what is behind it.
 class LayerMuteToggleButton extends StatelessWidget {
   const LayerMuteToggleButton({
     super.key,
     required this.keyValue,
     required this.muted,
-    required this.onToggle,
+    required this.onOpenMixer,
     this.soloed = false,
     this.width = layerMuteSlotWidth,
     this.height = 26,
@@ -346,7 +350,10 @@ class LayerMuteToggleButton extends StatelessWidget {
   final String keyValue;
 
   final bool muted;
-  final VoidCallback onToggle;
+
+  /// Opens the mixer. It takes THIS button's context so the popup anchors
+  /// to the speaker rather than to whatever row mounted it.
+  final ValueChanged<BuildContext> onOpenMixer;
 
   /// Soloed rows tint accent (selection style: color only, no checkmarks).
   final bool soloed;
@@ -358,7 +365,11 @@ class LayerMuteToggleButton extends StatelessWidget {
   Widget build(BuildContext context) {
     return IconButton(
       key: ValueKey<String>(keyValue),
-      tooltip: muted ? 'Unmute layer' : 'Mute layer',
+      // One meaning on all three rails, so the label is the control's, not
+      // the host's. It also carries the button's semantics name — the
+      // hardcoded English 'Mute layer'/'Unmute layer' went out with the
+      // toggle, and a door needs to say where it goes.
+      tooltip: AppText.strings.layerAudioTitle,
       padding: EdgeInsets.zero,
       constraints: BoxConstraints.tightFor(width: width, height: height),
       icon: Icon(
@@ -366,7 +377,7 @@ class LayerMuteToggleButton extends StatelessWidget {
         size: 16,
         color: soloed ? Theme.of(context).colorScheme.primary : null,
       ),
-      onPressed: onToggle,
+      onPressed: () => onOpenMixer(context),
     );
   }
 }
@@ -523,6 +534,58 @@ class LayerTimesheetToggleButton extends StatelessWidget {
               : colorScheme.onSurface.withValues(alpha: 0.35),
         ),
         onPressed: () => onToggle(layerId),
+      ),
+    );
+  }
+}
+
+/// The attach ARROW, in the TIMESHEET slot (R10 R3).
+///
+/// It used to sit in the type cell, where it displaced the kind icon — so
+/// an attach row was the one row that could not say what kind of row it
+/// was. The sheet slot next door was reserved and EMPTY on exactly those
+/// rows (an attach row is a display accessory of its base, never a sheet
+/// column; a folder prints nothing), so the arrow moved into a hole that
+/// was already the right shape.
+///
+/// [Icons.subdirectory_arrow_right] points DOWN-right natively; the
+/// above-placement arrow is that glyph mirrored vertically.
+class LayerAttachArrowCell extends StatelessWidget {
+  const LayerAttachArrowCell({
+    super.key,
+    required this.keyPrefix,
+    required this.idValue,
+    required this.placement,
+  });
+
+  final String keyPrefix;
+  final String idValue;
+  final AttachedPlacement placement;
+
+  @override
+  Widget build(BuildContext context) {
+    final above = placement == AttachedPlacement.above;
+    return SizedBox(
+      width: layerTimesheetSlotWidth,
+      height: layerTimesheetSlotWidth,
+      child: Center(
+        child: Semantics(
+          label: above ? 'Attach layer (above)' : 'Attach layer (below)',
+          container: true,
+          child: ExcludeSemantics(
+            child: Transform.flip(
+              flipY: above,
+              child: Icon(
+                Icons.subdirectory_arrow_right,
+                key: ValueKey<String>(
+                  '$keyPrefix-layer-attach-arrow-$idValue',
+                ),
+                size: 16,
+                color: Theme.of(context).colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+        ),
       ),
     );
   }

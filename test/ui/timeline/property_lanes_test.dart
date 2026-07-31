@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show kSecondaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/audio_clip.dart';
@@ -25,6 +26,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
 import 'package:anicel/src/ui/timeline/transform_lane_editing.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
 
+import '../flyout_test_helpers.dart';
 import 'timeline_cell_probe.dart';
 
 const _cameraLayerId = LayerId('lane-cam-layer');
@@ -1023,24 +1025,74 @@ void main() {
       expect(_laneKey('scale', 8), findsOneWidget);
     });
 
-    testWidgets('the long-press menu deletes a key', (tester) async {
+    testWidgets('a LAYER lane hands its key to Frame ▾ Delete — press the '
+        'diamond to stand there, then Delete. R10 R3 retired the marker\'s '
+        'own menu and the toolbar is the home', (tester) async {
+      await _pump(tester, _project());
+      // Open the DRAWING layer's Transform lanes: unlike the camera's
+      // atomic keyframes, they carry the lane selection domain, which is
+      // what lets a press make the lane the verb's subject.
+      await tester.tap(
+        find.byKey(
+          const ValueKey<String>('timeline-lane-toggle-lane-draw-layer'),
+        ),
+      );
+      await tester.pumpAndSettle();
+      await _expandTransformGroup(tester, 'lane-draw-layer');
+
+      Finder drawKey(String laneId, int frame) => find.byKey(
+        ValueKey<String>('timeline-lane-key-lane-draw-layer-$laneId-$frame'),
+      );
+
+      // Key rotation at the playhead through its navigator diamond.
+      await tester.tap(
+        find.byKey(
+          const ValueKey<String>(
+            'timeline-lane-key-toggle-lane-draw-layer-rotation',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(drawKey('rotation', 0), findsOneWidget);
+
+      // A press does all three at once (R10 #19's _standOnLane): seek,
+      // take the layer, and make the LANE the verb's subject. It lands on
+      // the DIAMOND, which is the point — its hit box covers the cell, so
+      // a keyed frame would otherwise be the one frame no press can reach.
+      await tester.tap(drawKey('rotation', 0));
+      await tester.pumpAndSettle();
+
+      await openOwningFlyout(tester, 'delete-cell-button');
+      await tester.tap(
+        find.byKey(const ValueKey<String>('delete-cell-button')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(drawKey('rotation', 0), findsNothing);
+    });
+
+    testWidgets('the marker\'s long-press and right-click open nothing', (
+      tester,
+    ) async {
       await _pump(
         tester,
         _project(camera: CutCamera(keyframes: {0: _pose(0), 8: _pose(80)})),
       );
       await expand(tester);
-
       await tester.ensureVisible(_laneKey('rotation', 8));
       await tester.pumpAndSettle();
+
       await tester.longPress(_laneKey('rotation', 8));
       await tester.pumpAndSettle();
-      await tester.tap(
+      expect(
         find.byKey(const ValueKey<String>('lane-key-menu-delete')),
+        findsNothing,
       );
-      await tester.pumpAndSettle();
 
-      expect(_laneKey('rotation', 8), findsNothing);
-      expect(_laneKey('position', 8), findsOneWidget);
+      await tester.tap(_laneKey('rotation', 8), buttons: kSecondaryButton);
+      await tester.pumpAndSettle();
+      expect(find.byType(PopupMenuItem<String>), findsNothing);
+      expect(_laneKey('rotation', 8), findsOneWidget);
     });
 
     testWidgets('the value column shows AE units and typing keys the '
@@ -1323,7 +1375,9 @@ void main() {
       expect(laneKey('scale', 4), findsOneWidget);
     });
 
-    testWidgets('the long-press menu deletes a key', (tester) async {
+    testWidgets('the marker\'s long-press and right-click open nothing (the '
+        'x-sheet twin) — the camera lane keeps its navigator diamond as '
+        'the per-key home', (tester) async {
       await pumpXSheet(
         tester,
         _project(camera: CutCamera(keyframes: {0: _pose(0), 4: _pose(80)})),
@@ -1332,13 +1386,15 @@ void main() {
 
       await tester.longPress(laneKey('rotation', 4));
       await tester.pumpAndSettle();
-      await tester.tap(
+      expect(
         find.byKey(const ValueKey<String>('lane-key-menu-delete')),
+        findsNothing,
       );
-      await tester.pumpAndSettle();
 
-      expect(laneKey('rotation', 4), findsNothing);
-      expect(laneKey('position', 4), findsOneWidget);
+      await tester.tap(laneKey('rotation', 4), buttons: kSecondaryButton);
+      await tester.pumpAndSettle();
+      expect(find.byType(PopupMenuItem<String>), findsNothing);
+      expect(laneKey('rotation', 4), findsOneWidget);
     });
 
     testWidgets('the header value cell shows AE units, types and scrubs', (

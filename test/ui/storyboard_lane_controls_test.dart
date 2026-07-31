@@ -88,7 +88,7 @@ Future<void> _pumpPanel(
   CutId? activeCutId = const CutId('lane-cut'),
   void Function(CutId cutId, int fadeInFrames, int fadeOutFrames)? onSetCutFade,
   ValueChanged<LayerId>? onToggleLayerVisibility,
-  ValueChanged<LayerId>? onToggleLayerMuted,
+  void Function(BuildContext anchorContext, LayerId layerId)? onOpenLayerMixer,
   void Function(LayerId layerId, double opacity)? onLayerOpacityChanged,
   StoryboardRowFramePress? onRowFramePress,
   TimelineCommaDragCallbacks? seCommaDrag,
@@ -96,8 +96,6 @@ Future<void> _pumpPanel(
   onSetAudioClipOffset,
   PropertyLaneEditCallbacks? Function(Track track)? trackLaneEditFor,
   PropertyLaneEditCallbacks? layerLaneEdit,
-  bool Function(CutId cutId)? cutFxEnabledOf,
-  ValueChanged<CutId>? onToggleCutFx,
   bool Function(CutId cutId)? cutPictureVisibleOf,
   ValueChanged<CutId>? onToggleCutPictureVisibility,
   LayerFxState Function(Track track)? trackFxStateOf,
@@ -143,12 +141,10 @@ Future<void> _pumpPanel(
             poseDisplaySize: const CanvasSize(width: 640, height: 360),
             onSetCutFade: onSetCutFade,
             onToggleLayerVisibility: onToggleLayerVisibility,
-            onToggleLayerMuted: onToggleLayerMuted,
+            onOpenLayerMixer: onOpenLayerMixer,
             onLayerOpacityChanged: onLayerOpacityChanged,
             seCommaDrag: seCommaDrag,
             onSetAudioClipOffset: onSetAudioClipOffset,
-            cutFxEnabledOf: cutFxEnabledOf,
-            onToggleCutFx: onToggleCutFx,
             cutPictureVisibleOf: cutPictureVisibleOf,
             onToggleCutPictureVisibility: onToggleCutPictureVisibility,
             trackFxStateOf: trackFxStateOf,
@@ -399,8 +395,8 @@ void main() {
         onToggleKeyAt: (_, lane, frame) =>
             toggles.add((track.id.value, lane.laneId, frame)),
         onMoveKey: (_, _, _, _) {},
-        onRemoveKey: (_, _, _) {},
-        onToggleHold: (_, _, _) {},
+
+
       ),
     );
     await _expandVTransform(tester);
@@ -449,8 +445,8 @@ void main() {
         onToggleKeyAt: (layer, lane, frame) =>
             toggles.add((layer.id.value, lane.laneId, frame)),
         onMoveKey: (_, _, _, _) {},
-        onRemoveKey: (_, _, _) {},
-        onToggleHold: (_, _, _) {},
+
+
       ),
     );
 
@@ -642,16 +638,17 @@ void main() {
   });
 
   group('timeline-parity S rows (R4-⑨ 완벽통일)', () {
-    testWidgets('the rail carries the ACTIVE cut layer\'s eye/mute/opacity '
-        'controls with the shared session hooks', (tester) async {
+    testWidgets('the rail carries the ACTIVE cut layer\'s eye/speaker/opacity '
+        'controls with the shared session hooks — and R10 R3 gave THIS rail '
+        'the mixer door the timeline rails had', (tester) async {
       final visibilityToggles = <LayerId>[];
-      final muteToggles = <LayerId>[];
+      final mixerOpens = <LayerId>[];
       final opacityChanges = <(LayerId, double)>[];
       await _pumpPanel(
         tester,
         project: _project(),
         onToggleLayerVisibility: visibilityToggles.add,
-        onToggleLayerMuted: muteToggles.add,
+        onOpenLayerMixer: (_, layerId) => mixerOpens.add(layerId),
         onLayerOpacityChanged: (layerId, opacity) =>
             opacityChanges.add((layerId, opacity)),
       );
@@ -671,7 +668,7 @@ void main() {
       await tester.pumpAndSettle();
 
       expect(visibilityToggles, [const LayerId('lane-se')]);
-      expect(muteToggles, [const LayerId('lane-se')]);
+      expect(mixerOpens, [const LayerId('lane-se')]);
       expect(opacityChanges, isNotEmpty);
       expect(opacityChanges.last.$1, const LayerId('lane-se'));
       expect(opacityChanges.last.$2, lessThan(1));
@@ -795,8 +792,6 @@ void main() {
       await _pumpPanel(
         tester,
         project: _project(),
-        cutFxEnabledOf: (_) => true,
-        onToggleCutFx: (_) {},
         cutPictureVisibleOf: (_) => true,
         onToggleCutPictureVisibility: eyeToggles.add,
         trackFxStateOf: (_) => LayerFxState.on,
@@ -814,7 +809,8 @@ void main() {
       expect(
         find.byKey(const ValueKey<String>('storyboard-cut-fx-lane-cut')),
         findsNothing,
-        reason: 'the cut axis moved to the switch\'s context menu',
+        reason: 'R10 R3 retired the per-cut axis — the track switch is the '
+            'film\'s only fx switch',
       );
 
       await tester.tap(fxFinder);
@@ -826,36 +822,22 @@ void main() {
       expect(eyeToggles, [const CutId('lane-cut')]);
     });
 
-    testWidgets('the CUT\'s switch lives on the same button\'s context menu '
-        '— the rail has no room for another column', (tester) async {
-      final cutFxToggles = <CutId>[];
+    testWidgets('a RIGHT-CLICK on the fx switch opens nothing — R10 R3 took '
+        'the context menu off the rails for good', (tester) async {
       await _pumpPanel(
         tester,
         project: _project(),
-        cutFxEnabledOf: (_) => true,
-        onToggleCutFx: cutFxToggles.add,
         trackFxStateOf: (_) => LayerFxState.on,
         onToggleTrackFx: (_) {},
       );
 
-      // RIGHT-CLICK, not long press: a GestureDetector's long press never
-      // resolves inside these rails' SingleChildScrollView — the scroll
-      // drag takes the arena. Verified with a minimal probe: the same
-      // widget fires outside a scroll view and not inside one. The SE
-      // rows' mix menu has the same two entrances and the same gap.
       await tester.tap(
         find.byKey(const ValueKey<String>('storyboard-track-fx-lane-track')),
         buttons: kSecondaryButton,
       );
       await tester.pumpAndSettle();
 
-      final entry = find.byKey(
-        const ValueKey<String>('storyboard-cut-fx-lane-cut'),
-      );
-      expect(entry, findsOneWidget);
-      await tester.tap(entry);
-      await tester.pumpAndSettle();
-      expect(cutFxToggles, [const CutId('lane-cut')]);
+      expect(find.byType(PopupMenuItem<String>), findsNothing);
     });
 
     testWidgets('the toggles hide without wiring (display-only rail)', (
@@ -882,8 +864,6 @@ void main() {
         tester,
         project: _project(),
         activeCutId: null, // gap: no cut selected anywhere
-        cutFxEnabledOf: (_) => true,
-        onToggleCutFx: (_) => fail('no subject cut — presses must no-op'),
         cutPictureVisibleOf: (_) => true,
         onToggleCutPictureVisibility: (_) =>
             fail('no subject cut — presses must no-op'),

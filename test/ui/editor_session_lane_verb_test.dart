@@ -1,5 +1,8 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/camera_pose.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_editing.dart'
@@ -112,5 +115,103 @@ void main() {
           'on the layer KIND, as it always did',
     );
     expect(keysOf(session, 'position'), isEmpty);
+  });
+
+  group('the CAMERA row (R10 R3: one dispatch, both verbs)', () {
+    EditorSessionManager cameraSessionOnLane(String laneId) {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      final camera = session.requireActiveCut.layers.firstWhere(
+        (layer) => layer.kind == LayerKind.camera,
+      );
+      session.selectLayer(camera.id);
+      session.selectRow(LaneRowAddress(camera.id, laneId));
+      return session;
+    }
+
+    Set<int> cameraKeysOf(EditorSessionManager session, String laneId) =>
+        transformLaneKeyFrames(session.requireActiveCut.camera.track, laneId);
+
+    test('the verbs reach the CUT CAMERA, not the camera row\'s own (always '
+        'empty) transform track', () {
+      final session = cameraSessionOnLane('position');
+      addTearDown(session.dispose);
+      session.selectFrameIndex(3);
+
+      expect(session.createInstancesForSelection(), isTrue);
+      expect(cameraKeysOf(session, 'position'), {3});
+      expect(
+        transformLaneKeyFrames(
+          session.requireActiveCut.layers
+              .firstWhere((layer) => layer.kind == LayerKind.camera)
+              .transformTrack,
+          'position',
+        ),
+        isEmpty,
+        reason: 'the camera pseudo-layer never carries the keys',
+      );
+
+      expect(session.canDeleteCellAtCurrentFrame, isTrue);
+      session.deleteCellAtCurrentFrame();
+      expect(cameraKeysOf(session, 'position'), isEmpty);
+    });
+
+    test('Add freezes the camera\'s RESOLVED pose, not the canvas-centre '
+        'identity — a key mid-move must not snap the camera', () {
+      final session = cameraSessionOnLane('position');
+      addTearDown(session.dispose);
+      final canvas = session.requireActiveCut.canvasSize;
+
+      // Two keys far apart; frame 4 sits exactly between them.
+      session.selectFrameIndex(0);
+      session.setCameraKeyframeAtCurrentFrame(
+        CameraPose(center: CanvasPoint(x: 100, y: 100), zoom: 2),
+      );
+      session.selectFrameIndex(8);
+      session.setCameraKeyframeAtCurrentFrame(
+        CameraPose(center: CanvasPoint(x: 900, y: 900), zoom: 2),
+      );
+
+      session.selectRow(
+        LaneRowAddress(
+          session.requireActiveCut.layers
+              .firstWhere((layer) => layer.kind == LayerKind.camera)
+              .id,
+          'position',
+        ),
+      );
+      session.selectFrameIndex(4);
+      expect(session.createInstancesForSelection(), isTrue);
+
+      final keyed = session.requireActiveCut.camera.track.position.keyAt(4);
+      expect(keyed, isNotNull);
+      expect(
+        keyed!.value.x,
+        closeTo(500, 1e-6),
+        reason: 'the midpoint of 100→900, not canvas centre '
+            '(${canvas.width / 2})',
+      );
+      expect(keyed.value.y, closeTo(500, 1e-6));
+    });
+
+    test('a GROUP-header Add keys only the lanes the camera row SHOWS — '
+        'anchor and opacity have no row there', () {
+      final session = cameraSessionOnLane(transformGroupHeaderLane.laneId);
+      addTearDown(session.dispose);
+      session.selectFrameIndex(2);
+
+      expect(session.createInstancesForSelection(), isTrue);
+
+      expect(cameraKeysOf(session, 'position'), {2});
+      expect(cameraKeysOf(session, 'scale'), {2});
+      expect(cameraKeysOf(session, 'rotation'), {2});
+      expect(
+        cameraKeysOf(session, 'anchor-point'),
+        isEmpty,
+        reason: 'unreachable from any camera row — it must not be written',
+      );
+      expect(cameraKeysOf(session, 'opacity'), isEmpty);
+    });
   });
 }

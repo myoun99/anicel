@@ -13,6 +13,7 @@ import 'cut.dart';
 import 'frame.dart';
 import 'frame_id.dart';
 import 'layer.dart';
+import 'layer_folder.dart';
 import 'layer_id.dart';
 import 'layer_kind.dart';
 import 'timeline_coverage.dart';
@@ -344,4 +345,63 @@ String nextAttachedLayerName(
 bool attachRowWearsBaseComposite(Layer layer, List<Layer> layers) {
   return layer.attachedToLayerId != null ||
       attachOrganizerBaseOf(layer, layers) != null;
+}
+
+/// The direction the row's ATTACH ARROW points, or null when the row is
+/// not part of an attach group (R10 R3, the arrow's move into the sheet
+/// slot).
+///
+/// Two rules, one answer:
+/// - An attach ROW inside a 공정 organizer folder reads the FOLDER's
+///   direction, not its own [Layer.attachedPlacement]. The group attaches
+///   as a group, so one arrow per group is what the eye is meant to read;
+///   a member disagreeing with its folder would be noise.
+/// - The FOLDER's own direction comes from STACK ORDER against its base:
+///   above the base is [AttachedPlacement.above], below is `below`. A
+///   folder never carries `attachedPlacement` — reading it would silently
+///   answer `above` for every folder, because that is the field's default.
+///
+/// [layers] MUST be the model stack, bottom → top. A display order flips
+/// the folder answer silently: the horizontal rail renders
+/// `sectionedLayerOrder(...).reversed`, and passing that inverts every
+/// organizer folder's arrow on that surface alone. Call this once where
+/// the model order is in hand and pass a RESOLVER down — the rails take
+/// `attachArrowPlacementOf`, never the list, so the trap cannot be
+/// re-sprung by a caller that happens to hold the wrong list.
+AttachedPlacement? attachArrowPlacement(Layer layer, List<Layer> layers) {
+  final folderPlacement = _organizerFolderPlacement(layer, layers);
+  if (folderPlacement != null) {
+    return folderPlacement;
+  }
+  final base = layer.attachedToLayerId;
+  if (base == null) {
+    return null;
+  }
+  final folder = layers.folderById(layer.folderId);
+  if (folder != null) {
+    final ownerPlacement = _organizerFolderPlacement(folder, layers);
+    if (ownerPlacement != null) {
+      return ownerPlacement;
+    }
+  }
+  return layer.attachedPlacement;
+}
+
+/// The stack-order direction of an organizer FOLDER against its base, or
+/// null when [layer] is not one.
+AttachedPlacement? _organizerFolderPlacement(Layer layer, List<Layer> layers) {
+  final baseId = attachOrganizerBaseOf(layer, layers);
+  if (baseId == null) {
+    return null;
+  }
+  final folderIndex = layers.indexWhere((other) => other.id == layer.id);
+  final baseIndex = layers.indexWhere((other) => other.id == baseId);
+  // A dangling base (deleted out from under the group is a supported
+  // state) answers -1, which must not read as "below".
+  if (folderIndex < 0 || baseIndex < 0) {
+    return null;
+  }
+  return folderIndex > baseIndex
+      ? AttachedPlacement.above
+      : AttachedPlacement.below;
 }

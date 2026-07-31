@@ -33,7 +33,6 @@ void main() {
     ValueChanged<LayerId>? onToggleFx,
     ValueChanged<LayerId>? onToggleFold,
     ValueChanged<LayerId>? onToggleLanes,
-    ValueChanged<LayerId>? onDissolve,
   }) => MaterialApp(
     home: Scaffold(
       body: TimelineLayerControlsRow(
@@ -53,7 +52,7 @@ void main() {
         onToggleGroupFold: onToggleFold ?? (_) {},
         onToggleLayerFx: onToggleFx ?? (_) {},
         onLayerBlendModeSelected: onBlend,
-        onDissolveFolder: onDissolve,
+
       ),
     ),
   );

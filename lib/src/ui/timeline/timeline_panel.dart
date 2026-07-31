@@ -2,12 +2,12 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart' show AppLanguage;
-import '../../models/audio_clip.dart' show AudioFadeCurve, AudioVolumeKey;
 import '../../models/camera_instruction.dart';
 import '../../models/layer_blend_mode.dart';
+import '../../models/attached_layer_resolve.dart' show attachArrowPlacement;
+import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
-import '../text/app_strings.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart' show LayerFxState;
 import '../../models/layer_mark.dart';
@@ -54,12 +54,8 @@ class TimelinePanel extends StatefulWidget {
     this.audioPeaksFor,
     this.seClipMarkerTooltip,
     this.audioLane,
-    this.onSetAudioClipFadeCurve,
-    this.onSetAudioClipEnvelope,
-    this.resolveStrings,
     this.isLayerSoloed,
-    this.onToggleLayerSolo,
-    this.onEditLayerAudio,
+    this.onOpenLayerMixer,
     required this.onAddLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
@@ -69,14 +65,11 @@ class TimelinePanel extends StatefulWidget {
     required this.onLayerMarkSelected,
     this.layerFxStateOf,
     this.layerIsLinkedOf,
-    this.onRenameFolder,
     this.onToggleLayerCollapsed,
-    this.onDissolveFolder,
     this.layerOnionSkinEnabledOf,
     this.onToggleLayerOnionSkin,
     this.displayedOnionSkinOn = false,
     this.onToggleLayerFx,
-    this.onToggleLayerMuted,
     this.commaDrag,
     this.rangeHooks,
     this.laneRange,
@@ -191,27 +184,12 @@ class TimelinePanel extends StatefulWidget {
   /// null = display-only.
   final TimelineAudioLaneCallbacks? audioLane;
 
-  /// Commits the audio-lane fade-curve toggle (AUDIO-PRO R1).
-  final void Function(LayerId layerId, int clipIndex, AudioFadeCurve curve)?
-  onSetAudioClipFadeCurve;
-
-  /// Commits the audio-lane volume-envelope dialog (AUDIO-PRO R1).
-  final void Function(
-    LayerId layerId,
-    int clipIndex,
-    List<AudioVolumeKey> keys,
-  )?
-  onSetAudioClipEnvelope;
-
-  /// The PROGRAM-language table for the audio menus and dialogs; null
-  /// keeps English (the incremental-coverage rule).
-  final AppStrings Function()? resolveStrings;
-
-  /// The SE mix menu (AUDIO-PRO R1): solo state/toggle + the fader/pan
-  /// dialog entrance, on the speaker button's context menu.
+  /// The SE row's mixer (R10 R3), both orientations: its solo tint, and
+  /// the speaker press that opens the window carrying mute/solo/fader/pan.
+  /// Null hides the speaker.
   final bool Function(LayerId layerId)? isLayerSoloed;
-  final ValueChanged<LayerId>? onToggleLayerSolo;
-  final ValueChanged<LayerId>? onEditLayerAudio;
+  final void Function(BuildContext anchorContext, LayerId layerId)?
+  onOpenLayerMixer;
 
   final VoidCallback onAddLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
@@ -234,12 +212,10 @@ class TimelinePanel extends StatefulWidget {
   final bool Function(LayerId layerId)? layerIsLinkedOf;
 
   /// A folder is a LAYER: its eye, opacity, blend, fx switch, FX lanes and
-  /// selection all arrive through the layer hooks above. Only the two
-  /// structural verbs and the members' twirl need entrances of their own —
-  /// horizontal grid only for now (the xsheet rail keeps its compact
-  /// control set, like the link badges).
-  final ValueChanged<LayerId>? onRenameFolder;
-  final ValueChanged<LayerId>? onDissolveFolder;
+  /// selection all arrive through the layer hooks above. R10 R3 took its
+  /// last two of its own — rename went to the Layer ▾ menu it always
+  /// shared, dissolve is waiting on the layer-label drag system — so only
+  /// the members' twirl is left.
   final ValueChanged<LayerId>? onToggleLayerCollapsed;
 
   /// Per-layer onion skin (UI-R17 #5) — threaded to the horizontal grid's
@@ -248,9 +224,6 @@ class TimelinePanel extends StatefulWidget {
   final ValueChanged<LayerId>? onToggleLayerOnionSkin;
   final bool displayedOnionSkinOn;
   final ValueChanged<LayerId>? onToggleLayerFx;
-
-  /// SE rows' speaker button (mute), both orientations; null hides it.
-  final ValueChanged<LayerId>? onToggleLayerMuted;
 
   /// Comma-drag hooks for the block edge grips, shared by both
   /// orientations; null hides the grips.
@@ -355,6 +328,19 @@ class _TimelinePanelState extends State<TimelinePanel> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final horizontalLayers = horizontalLayerDisplayOrder(widget.layers);
+    // The attach arrow is resolved HERE and handed down as a resolver: an
+    // organizer folder's direction is its stack position against its base,
+    // and `widget.layers` is the only list in this subtree that is still
+    // the MODEL order. Both grids below get a display order — the
+    // horizontal one reversed — so computing it there points the arrow the
+    // wrong way on that surface alone (R10 R3).
+    final attachArrows = <LayerId, AttachedPlacement>{};
+    for (final layer in widget.layers) {
+      final placement = attachArrowPlacement(layer, widget.layers);
+      if (placement != null) {
+        attachArrows[layer.id] = placement;
+      }
+    }
     final nextOrientation = widget.orientation == TimelineOrientation.horizontal
         ? TimelineOrientation.vertical
         : TimelineOrientation.horizontal;
@@ -438,14 +424,10 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     projectFrameRate: widget.projectFrameRate,
                     showSeconds: widget.showSeconds,
                     audioLane: widget.audioLane,
-                    onSetAudioClipFadeCurve: widget.onSetAudioClipFadeCurve,
-                    onSetAudioClipEnvelope: widget.onSetAudioClipEnvelope,
-                    resolveStrings: widget.resolveStrings,
                     onAddLayer: widget.onAddLayer,
-                    onToggleLayerMuted: widget.onToggleLayerMuted,
+                    onOpenLayerMixer: widget.onOpenLayerMixer,
+                    attachArrowPlacementOf: (layerId) => attachArrows[layerId],
                     isLayerSoloed: widget.isLayerSoloed,
-                    onToggleLayerSolo: widget.onToggleLayerSolo,
-                    onEditLayerAudio: widget.onEditLayerAudio,
                     onToggleLayerFillReference:
                         widget.onToggleLayerFillReference,
                     onToggleLayerVisibility: widget.onToggleLayerVisibility,
@@ -455,9 +437,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onLayerMarkSelected: widget.onLayerMarkSelected,
                     layerFxStateOf: widget.layerFxStateOf,
                     layerIsLinkedOf: widget.layerIsLinkedOf,
-                    onRenameFolder: widget.onRenameFolder,
                     onToggleLayerCollapsed: widget.onToggleLayerCollapsed,
-                    onDissolveFolder: widget.onDissolveFolder,
                     onToggleLayerFx: widget.onToggleLayerFx,
                     layerOnionSkinEnabledOf: widget.layerOnionSkinEnabledOf,
                     onToggleLayerOnionSkin: widget.onToggleLayerOnionSkin,
@@ -514,14 +494,10 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     projectFrameRate: widget.projectFrameRate,
                     showSeconds: widget.showSeconds,
                     audioLane: widget.audioLane,
-                    onSetAudioClipFadeCurve: widget.onSetAudioClipFadeCurve,
-                    onSetAudioClipEnvelope: widget.onSetAudioClipEnvelope,
-                    resolveStrings: widget.resolveStrings,
                     onAddLayer: widget.onAddLayer,
-                    onToggleLayerMuted: widget.onToggleLayerMuted,
+                    onOpenLayerMixer: widget.onOpenLayerMixer,
+                    attachArrowPlacementOf: (layerId) => attachArrows[layerId],
                     isLayerSoloed: widget.isLayerSoloed,
-                    onToggleLayerSolo: widget.onToggleLayerSolo,
-                    onEditLayerAudio: widget.onEditLayerAudio,
                     onToggleLayerFillReference:
                         widget.onToggleLayerFillReference,
                     onToggleLayerVisibility: widget.onToggleLayerVisibility,
