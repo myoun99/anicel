@@ -53,6 +53,7 @@ class CanvasTrackStackView extends StatefulWidget {
     required this.cameraPoseOf,
     this.seNameTagsOf,
     this.cutFxEnabledOf,
+    this.trackStaticOpacityOf,
     this.cutPictureVisibleOf,
     this.onFrameCached,
     this.viewport,
@@ -88,6 +89,10 @@ class CanvasTrackStackView extends StatefulWidget {
   /// them: fx off bypasses the cut-level pose AND fade, the eye off hides
   /// the cut's picture. Null = always on.
   final bool Function(CutId cutId)? cutFxEnabledOf;
+
+  /// The owning V track's STATIC opacity (R9 #21) — the live drag value
+  /// while the V row's slider is in flight. Null keeps every track opaque.
+  final double Function(CutId cutId)? trackStaticOpacityOf;
   final bool Function(CutId cutId)? cutPictureVisibleOf;
 
   /// Called after each on-demand composite lands in the cache (the
@@ -286,9 +291,12 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
           widget.transformTrackOf?.call(cut.id) ?? TransformTrack.empty();
       final globalFrame = position.globalFrameIndex;
       final poseActive = cutFxEnabled && trackPoseIsActive(transformTrack);
-      final fade = cutFxEnabled
-          ? trackFadeOpacityAt(transformTrack, globalFrame)
-          : 1.0;
+      // R9 #21: the track's STATIC opacity carries the animated fade, the
+      // way a layer's static opacity carries its own — and stays on
+      // through an fx bypass, because it is not an fx.
+      final fade =
+          (widget.trackStaticOpacityOf?.call(cut.id) ?? 1.0) *
+          (cutFxEnabled ? trackFadeOpacityAt(transformTrack, globalFrame) : 1.0);
       layers.add(
         CustomPaint(
           painter: PlaybackFramePainter(

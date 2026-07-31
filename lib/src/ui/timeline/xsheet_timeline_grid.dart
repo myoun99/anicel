@@ -15,6 +15,7 @@ import '../../models/layer_mark.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../widgets/field_slider.dart';
 import 'layer_label_controls.dart';
+import 'layer_rail_columns.dart';
 import 'timeline_cel_content_source.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'package:flutter/semantics.dart' show SemanticsProperties;
@@ -2154,13 +2155,33 @@ class _LayerHeader extends StatelessWidget {
                           ),
                         ),
                       ),
-                      // Balance the leading chips so the name stays centered.
+                      // R9 (S3): the TYPE BUTTON reaches the x-sheet — the
+                      // kind icon, or an attach column's placement arrow.
+                      // The sheet had neither, so a column's kind and its
+                      // attach relationship were invisible on the surface
+                      // the user reads most.
+                      //
+                      // It rides the BALANCE that already keeps the name
+                      // centered rather than adding to the leading chips:
+                      // the column's 40px of name is the scarce thing here,
+                      // and the balance was empty space doing arithmetic.
+                      LayerTypeButton(
+                        keyPrefix: 'xsheet',
+                        idValue: '${layer.id}',
+                        kind: layer.kind,
+                        attachedPlacement: layer.attachedToLayerId == null
+                            ? null
+                            : layer.attachedPlacement,
+                        folderCollapsed: layer.collapsed,
+                        onTap: () => onSelectLayer(layer.id),
+                      ),
                       SizedBox(
                         width:
                             layerTimesheetSlotWidth +
                             layerMarkSlotWidth +
                             4 +
-                            (showLaneToggle ? 16 : 0),
+                            (showLaneToggle ? 16 : 0) -
+                            layerTypeSlotWidth,
                       ),
                     ],
                   ),

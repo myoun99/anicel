@@ -246,7 +246,11 @@ class ExportFrameRenderer {
     // The V effects are TRACK data on the global axis now (R4).
     final transformTrack = session.transformTrackForCut(task.cut.id);
     final trackFrame = session.trackGlobalFrameOf(task.cut.id, task.frameIndex);
-    final fade = trackFadeOpacityAt(transformTrack, trackFrame);
+    // R9 #21: the track's STATIC opacity is a compositing property, not a
+    // display aid — it goes in the output, exactly like a layer's.
+    final fade =
+        session.trackStaticOpacityForCut(task.cut.id) *
+        trackFadeOpacityAt(transformTrack, trackFrame);
     final poseActive = trackPoseIsActive(transformTrack);
     if (fade >= 1 && !poseActive) {
       return image;
@@ -379,10 +383,9 @@ class ExportFrameRenderer {
         // Track effects at the frame's GLOBAL position (R4) — the stack's
         // own axis.
         final transformTrack = session.transformTrackForCut(cut.id);
-        final fade = trackFadeOpacityAt(
-          transformTrack,
-          position.globalFrameIndex,
-        );
+        final fade =
+            session.trackStaticOpacityForCut(cut.id) *
+            trackFadeOpacityAt(transformTrack, position.globalFrameIndex);
         final poseActive = trackPoseIsActive(transformTrack);
         PlaybackFramePainter(
           image: image,

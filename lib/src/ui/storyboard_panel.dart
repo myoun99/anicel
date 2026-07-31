@@ -31,6 +31,7 @@ import 'storyboard_layer_policy.dart';
 import 'storyboard_timeline_layout.dart';
 import 'theme/app_theme.dart';
 import 'timeline/layer_label_controls.dart';
+import 'timeline/layer_rail_columns.dart';
 import 'widgets/field_slider.dart';
 import 'timeline/property_lane_model.dart'
     show PropertyLaneEditCallbacks, PropertyLaneRow, TimelineDisplayRow;
@@ -367,6 +368,11 @@ class StoryboardPanel extends StatefulWidget {
     this.onToggleCutFx,
     this.cutPictureVisibleOf,
     this.onToggleCutPictureVisibility,
+    this.trackFxStateOf,
+    this.onToggleTrackFx,
+    this.trackOpacityOf,
+    this.onTrackOpacityChanged,
+    this.onTrackOpacityChangeEnd,
     this.seCommaDrag,
     this.seSelect,
     this.onSetAudioClipOffset,
@@ -635,6 +641,15 @@ class StoryboardPanel extends StatefulWidget {
   final ValueChanged<CutId>? onToggleCutFx;
   final bool Function(CutId cutId)? cutPictureVisibleOf;
   final ValueChanged<CutId>? onToggleCutPictureVisibility;
+
+  /// R9 #21: the V row's TRACK columns — the fx master over the track's
+  /// per-cut switches, and the track's static opacity (live-following the
+  /// session's drag). Null keeps the columns reserved and empty.
+  final LayerFxState Function(Track track)? trackFxStateOf;
+  final ValueChanged<Track>? onToggleTrackFx;
+  final double Function(Track track)? trackOpacityOf;
+  final void Function(Track track, double opacity)? onTrackOpacityChanged;
+  final void Function(Track track, double opacity)? onTrackOpacityChangeEnd;
 
   /// Range selection on the S rows — the cut row's hooks one row up, in
   /// the same track-axis selection. Null keeps the S rows unselectable.
@@ -1179,6 +1194,18 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         onToggleCutFx: widget.onToggleCutFx,
         cutPictureVisibleOf: widget.cutPictureVisibleOf,
         onToggleCutPictureVisibility: widget.onToggleCutPictureVisibility,
+        // R9 #21: the track's own display columns.
+        trackFxState: widget.trackFxStateOf?.call(track) ?? LayerFxState.on,
+        onToggleTrackFx: widget.onToggleTrackFx == null
+            ? null
+            : () => widget.onToggleTrackFx!(track),
+        trackOpacity: widget.trackOpacityOf?.call(track) ?? 1.0,
+        onTrackOpacityChanged: widget.onTrackOpacityChanged == null
+            ? null
+            : (opacity) => widget.onTrackOpacityChanged!(track, opacity),
+        onTrackOpacityChangeEnd: widget.onTrackOpacityChangeEnd == null
+            ? null
+            : (opacity) => widget.onTrackOpacityChangeEnd!(track, opacity),
       ),
       if (widget.expandedTransformTracks.contains(track.id.value))
         ..._transformLaneLabels(
@@ -2666,115 +2693,107 @@ class _StoryboardSeLabel extends StatelessWidget {
           // over these exact columns.
           child: Row(
             children: [
-              // Reserved section slot — the SE zone overlays the group
-              // (UI-R7 #2).
-              const LayerSectionBandCell(),
-              const SizedBox(width: 8),
-              // The timeline rows' lane chevron, storyboard-prefixed.
-              if (onToggleLane != null)
-                InkWell(
-                  key: ValueKey<String>(
-                    'storyboard-se-lane-toggle-${track.id.value}-${slot + 1}',
-                  ),
-                  onTap: onToggleLane,
-                  child: SizedBox(
-                    width: layerLaneToggleSlotWidth,
-                    height: _seRowHeight,
-                    child: Icon(
-                      laneExpanded ? Icons.arrow_drop_down : Icons.arrow_right,
-                      size: 16,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                )
-              else
-                const SizedBox(width: layerLaneToggleSlotWidth),
-              // NO sheet toggle here (UI-R9 #5): the timesheet flag is a
-              // CUT-scoped setting ("drop this layer from THIS cut's
-              // sheet") and the storyboard rail is track-global — the
-              // slot stays reserved (empty) so the grid keeps lining up
-              // and a future control can move in.
-              const SizedBox(width: layerTimesheetSlotWidth),
-              const SizedBox(width: layerControlChipGap),
-              if (layer != null && onLayerMarkSelected != null)
-                LayerMarkChip(
-                  keyPrefix: 'storyboard',
-                  layerId: layer.id,
-                  mark: layer.mark,
-                  onMarkSelected: onLayerMarkSelected!,
-                )
-              else
-                const SizedBox(width: layerMarkSlotWidth),
-              const SizedBox(width: layerControlChipGap),
-              Expanded(
-                child: Row(
-                  children: [
-                    Icon(
-                      Icons.music_note_outlined,
-                      size: 14,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                    const SizedBox(width: 6),
-                    Flexible(
-                      child: Text(
-                        // The TRACK layer's stored name — the same label
-                        // the timeline row shows (W3 ordering unification).
-                        trackLayer?.name ?? 'S${slot + 1}',
-                        overflow: TextOverflow.ellipsis,
-                        // Selection reads by COLOR only (user rule).
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: active
-                              ? colorScheme.onSurface
-                              : colorScheme.onSurfaceVariant,
+              // The rail's shared column skeleton (R9 #22) — this row used
+              // to hand-list its slots and put the kind icon INSIDE the
+              // name area, so its name started 6px early.
+              ...layerRailLeadingCells(
+                // The timeline rows' lane chevron, storyboard-prefixed.
+                laneToggle: onToggleLane == null
+                    ? null
+                    : InkWell(
+                        key: ValueKey<String>(
+                          'storyboard-se-lane-toggle-'
+                          '${track.id.value}-${slot + 1}',
+                        ),
+                        onTap: onToggleLane,
+                        child: SizedBox(
+                          height: _seRowHeight,
+                          child: Icon(
+                            laneExpanded
+                                ? Icons.arrow_drop_down
+                                : Icons.arrow_right,
+                            size: 16,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
                         ),
                       ),
-                    ),
-                  ],
+                // NO sheet toggle here (UI-R9 #5): the timesheet flag is a
+                // CUT-scoped setting ("drop this layer from THIS cut's
+                // sheet") and the storyboard rail is track-global — the
+                // slot stays reserved (empty) so the grid keeps lining up
+                // and a future control can move in.
+                mark: layer != null && onLayerMarkSelected != null
+                    ? LayerMarkChip(
+                        keyPrefix: 'storyboard',
+                        layerId: layer.id,
+                        mark: layer.mark,
+                        onMarkSelected: onLayerMarkSelected!,
+                      )
+                    : null,
+                typeButton: LayerTypeButton(
+                  keyPrefix: 'storyboard',
+                  idValue: '${track.id.value}-s${slot + 1}',
+                  kind: LayerKind.se,
+                  height: _seRowHeight,
+                  onTap: trackLayer == null || onSelect == null
+                      ? null
+                      : () => onSelect(trackLayer.id),
                 ),
               ),
-              // NO waveform-hide eye (UI-R7 #8): the timeline rows carry
-              // none either — the twirled-down Audio lane is the "big
-              // waveform" view. The fill-reference slot stays reserved so
-              // the trailing columns align.
-              const SizedBox(width: layerFillReferenceSlotWidth),
-              if (layer != null &&
-                  onToggleLayerFx != null &&
-                  layerKindShowsFxToggle(layer.kind))
-                FxToggleButton(
-                  keyValue: 'storyboard-layer-fx-${layer.id}',
-                  state: layerFxStateOf?.call(layer.id) ?? LayerFxState.on,
-                  onToggle: () => onToggleLayerFx!(layer.id),
-                )
-              else
-                const SizedBox(width: layerFxSlotWidth),
-              if (layer != null && onToggleLayerVisibility != null)
-                LayerVisibilityToggleButton(
-                  keyValue: 'storyboard-layer-visibility-${layer.id}',
-                  isVisible: layer.isVisible,
-                  onToggle: () => onToggleLayerVisibility!(layer.id),
-                )
-              else
-                const SizedBox(width: layerVisibilitySlotWidth),
-              if (layer != null && onToggleLayerMuted != null)
-                SizedBox(
-                  width: layerMuteSlotWidth,
-                  height: 26,
-                  child: LayerMuteToggleButton(
-                    keyValue: 'storyboard-layer-mute-${layer.id}',
-                    muted: layer.muted,
-                    onToggle: () => onToggleLayerMuted!(layer.id),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    // The TRACK layer's stored name — the same label the
+                    // timeline row shows (W3 ordering unification).
+                    trackLayer?.name ?? 'S${slot + 1}',
+                    overflow: TextOverflow.ellipsis,
+                    // Selection reads by COLOR only (user rule).
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: active
+                          ? colorScheme.onSurface
+                          : colorScheme.onSurfaceVariant,
+                    ),
                   ),
-                )
-              else
-                const SizedBox(width: layerMuteSlotWidth),
-              if (layer != null && onLayerOpacityChanged != null)
-                SizedBox(
-                  width: layerOpacitySlotWidth,
-                  child: _opacityField(layer),
-                )
-              else
-                const SizedBox(width: layerOpacitySlotWidth),
+                ),
+              ),
+              ...layerRailTrailingCells(
+                // NO waveform-hide eye (UI-R7 #8): the timeline rows carry
+                // none either — the twirled-down Audio lane is the "big
+                // waveform" view. The fill-reference slot stays reserved so
+                // the trailing columns align.
+                fx:
+                    layer != null &&
+                        onToggleLayerFx != null &&
+                        layerKindShowsFxToggle(layer.kind)
+                    ? FxToggleButton(
+                        keyValue: 'storyboard-layer-fx-${layer.id}',
+                        state: layerFxStateOf?.call(layer.id) ?? LayerFxState.on,
+                        onToggle: () => onToggleLayerFx!(layer.id),
+                      )
+                    : null,
+                visibility: layer != null && onToggleLayerVisibility != null
+                    ? LayerVisibilityToggleButton(
+                        keyValue: 'storyboard-layer-visibility-${layer.id}',
+                        isVisible: layer.isVisible,
+                        onToggle: () => onToggleLayerVisibility!(layer.id),
+                      )
+                    : null,
+                mute: layer != null && onToggleLayerMuted != null
+                    ? SizedBox(
+                        height: 26,
+                        child: LayerMuteToggleButton(
+                          keyValue: 'storyboard-layer-mute-${layer.id}',
+                          muted: layer.muted,
+                          onToggle: () => onToggleLayerMuted!(layer.id),
+                        ),
+                      )
+                    : null,
+                opacity: layer != null && onLayerOpacityChanged != null
+                    ? _opacityField(layer)
+                    : null,
+              ),
             ],
           ),
         ),
@@ -3773,6 +3792,11 @@ class _StoryboardTrackLabel extends StatelessWidget {
     this.onToggleCutFx,
     this.cutPictureVisibleOf,
     this.onToggleCutPictureVisibility,
+    this.trackFxState = LayerFxState.on,
+    this.onToggleTrackFx,
+    this.trackOpacity = 1.0,
+    this.onTrackOpacityChanged,
+    this.onTrackOpacityChangeEnd,
   });
 
   final Track track;
@@ -3816,6 +3840,16 @@ class _StoryboardTrackLabel extends StatelessWidget {
   final bool Function(CutId cutId)? cutPictureVisibleOf;
   final ValueChanged<CutId>? onToggleCutPictureVisibility;
 
+  /// R9 #21: the V row's own columns, describing the TRACK rather than
+  /// whichever cut happens to sit under the playhead — the fx switch as a
+  /// MASTER over the track's per-cut switches, and the static opacity that
+  /// the animated fade lane multiplies. Null keeps the row display-only.
+  final LayerFxState trackFxState;
+  final VoidCallback? onToggleTrackFx;
+  final double trackOpacity;
+  final ValueChanged<double>? onTrackOpacityChanged;
+  final ValueChanged<double>? onTrackOpacityChangeEnd;
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -3853,32 +3887,44 @@ class _StoryboardTrackLabel extends StatelessWidget {
           explicitChildNodes: true,
           child: Row(
             children: [
-              // Reserved section slot — the V zone overlays the group
-              // (UI-R7 #2).
-              const LayerSectionBandCell(),
-              const SizedBox(width: 8),
-              // The timeline rows' lane chevron: twirls down the track's
-              // cut-level Transform group (the V-track lanes + fade strip).
-              if (onToggleLane != null)
-                InkWell(
-                  key: ValueKey<String>(
-                    'storyboard-track-lane-toggle-${track.id.value}',
-                  ),
-                  onTap: onToggleLane,
-                  child: SizedBox(
-                    width: 16,
-                    height: 24,
-                    child: Icon(
-                      laneExpanded ? Icons.arrow_drop_down : Icons.arrow_right,
-                      size: 16,
-                      color: colorScheme.onSurfaceVariant,
-                    ),
-                  ),
-                )
-              else
-                const SizedBox(width: 16),
-              const Icon(Icons.movie_outlined, size: 18),
-              const SizedBox(width: 6),
+              // R9 #22 — THE 44px. This row hand-listed its leading slots
+              // and skipped the sheet and mark columns entirely, drawing an
+              // 18px icon where the canonical type button is 22; its name
+              // and every column measured from it sat 44px left of every
+              // other rail row's. It now builds from the shared skeleton
+              // like everyone else.
+              ...layerRailLeadingCells(
+                // The timeline rows' lane chevron: twirls down the track's
+                // cut-level Transform group (the V-track lanes + fade
+                // strip).
+                laneToggle: onToggleLane == null
+                    ? null
+                    : InkWell(
+                        key: ValueKey<String>(
+                          'storyboard-track-lane-toggle-${track.id.value}',
+                        ),
+                        onTap: onToggleLane,
+                        child: SizedBox(
+                          height: 24,
+                          child: Icon(
+                            laneExpanded
+                                ? Icons.arrow_drop_down
+                                : Icons.arrow_right,
+                            size: 16,
+                            color: colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                      ),
+                // A track is not a layer, so the type slot takes the film
+                // strip by override rather than a kind.
+                typeButton: LayerTypeButton(
+                  keyPrefix: 'storyboard',
+                  idValue: 'v-${track.id.value}',
+                  icon: Icons.movie_outlined,
+                  semanticLabel: 'Video track',
+                  onTap: onSelectTrack,
+                ),
+              ),
               Expanded(
                 child: Column(
                   mainAxisAlignment: MainAxisAlignment.center,
@@ -3919,61 +3965,114 @@ class _StoryboardTrackLabel extends StatelessWidget {
               // the current global index — no stand-down, no parked graying.
               // Where no cut exists (a gap on this track) a press is a no-op;
               // the button is track furniture, only its subject is absent.
-              const SizedBox(width: layerFillReferenceSlotWidth),
-              if (onToggleCutFx != null)
-                FxToggleButton(
-                  keyValue:
-                      'storyboard-cut-fx-'
-                      '${subjectCut?.id.value ?? 'none-${track.id.value}'}',
-                  subject: 'cut',
-                  size: 26,
-                  // The cut switch has no per-group switches under it, so it
-                  // is only ever on or off — never mixed.
-                  state:
-                      subjectCut == null ||
-                          (cutFxEnabledOf?.call(subjectCut!.id) ?? true)
-                      ? LayerFxState.on
-                      : LayerFxState.off,
-                  onToggle: () {
-                    final subject = subjectCut;
-                    if (subject != null) {
-                      onToggleCutFx!(subject.id);
-                    }
-                  },
-                )
-              else
-                const SizedBox(width: layerFxSlotWidth),
-              if (onToggleCutPictureVisibility != null)
-                SizedBox(
-                  width: layerVisibilitySlotWidth,
-                  height: 26,
-                  // The SAME eye the layer and folder rows mount — this was
-                  // a sixth inline copy (R28 follow-up).
-                  child: LayerVisibilityToggleButton(
-                    keyValue:
-                        'storyboard-cut-visibility-'
-                        '${subjectCut?.id.value ?? 'none-${track.id.value}'}',
-                    subject: 'cut picture',
-                    isVisible:
-                        subjectCut == null ||
-                        (cutPictureVisibleOf?.call(subjectCut!.id) ?? true),
-                    onToggle: () {
-                      final subject = subjectCut;
-                      if (subject != null) {
-                        onToggleCutPictureVisibility!(subject.id);
-                      }
-                    },
-                  ),
-                )
-              else
-                const SizedBox(width: layerVisibilitySlotWidth),
-              const SizedBox(width: layerMuteSlotWidth),
-              const SizedBox(width: layerOpacitySlotWidth),
+              ...layerRailTrailingCells(
+                // R9 #21: the switch in this row's fx column is the
+                // TRACK's — a row's columns describe the row's own
+                // subject, and this row is the track's. It reads as a
+                // MASTER over the per-cut switches (R8's grammar): mixed
+                // while the track applies but a cut under it is bypassed.
+                //
+                // The CUT axis keeps its control on the same button's
+                // context menu, the way the SE row's speaker carries the
+                // mix menu — the rail has no room for another column.
+                fx: onToggleTrackFx == null
+                    ? null
+                    : GestureDetector(
+                        onSecondaryTapUp: onToggleCutFx == null
+                            ? null
+                            : (details) =>
+                                  _showCutFxMenu(context, details.globalPosition),
+                        onLongPressStart: onToggleCutFx == null
+                            ? null
+                            : (details) =>
+                                  _showCutFxMenu(context, details.globalPosition),
+                        child: FxToggleButton(
+                          keyValue: 'storyboard-track-fx-${track.id.value}',
+                          subject: 'track',
+                          state: trackFxState,
+                          onToggle: onToggleTrackFx!,
+                        ),
+                      ),
+                visibility: onToggleCutPictureVisibility == null
+                    ? null
+                    : SizedBox(
+                        height: 26,
+                        // The SAME eye the layer and folder rows mount —
+                        // this was a sixth inline copy (R28 follow-up).
+                        child: LayerVisibilityToggleButton(
+                          keyValue:
+                              'storyboard-cut-visibility-'
+                              '${subjectCut?.id.value ?? 'none-${track.id.value}'}',
+                          subject: 'cut picture',
+                          isVisible:
+                              subjectCut == null ||
+                              (cutPictureVisibleOf?.call(subjectCut!.id) ??
+                                  true),
+                          onToggle: () {
+                            final subject = subjectCut;
+                            if (subject != null) {
+                              onToggleCutPictureVisibility!(subject.id);
+                            }
+                          },
+                        ),
+                      ),
+                // R9 #21: the track's STATIC opacity — this slot was empty
+                // while every other rail row had a bar. The animated fade
+                // lane multiplies it, exactly as a layer's animated
+                // opacity multiplies its static one.
+                opacity: onTrackOpacityChanged == null
+                    ? null
+                    : FieldSlider(
+                        key: ValueKey<String>(
+                          'storyboard-track-opacity-${track.id.value}',
+                        ),
+                        min: 0,
+                        max: 1,
+                        value: trackOpacity.clamp(0.0, 1.0).toDouble(),
+                        valueText: '${(trackOpacity * 100).round()}%',
+                        valueTextBuilder: (next) => '${(next * 100).round()}%',
+                        displayFactor: 100,
+                        height: 18,
+                        onChanged: onTrackOpacityChanged,
+                        onChangeEnd: onTrackOpacityChangeEnd,
+                      ),
+              ),
             ],
           ),
         ),
       ),
     );
+  }
+
+  /// The CUT axis, kept off the rail's one fx column: bypassing THIS
+  /// track's cut at the playhead, under the track master that governs it.
+  Future<void> _showCutFxMenu(
+    BuildContext context,
+    Offset globalPosition,
+  ) async {
+    final subject = subjectCut;
+    if (subject == null) {
+      return;
+    }
+    final overlay = Overlay.of(context).context.findRenderObject();
+    final enabled = cutFxEnabledOf?.call(subject.id) ?? true;
+    final selected = await showMenu<String>(
+      context: context,
+      position: RelativeRect.fromRect(
+        globalPosition & const Size(1, 1),
+        Offset.zero & (overlay as RenderBox).size,
+      ),
+      items: [
+        PopupMenuItem<String>(
+          key: ValueKey<String>('storyboard-cut-fx-${subject.id.value}'),
+          value: 'cut-fx',
+          child: Text(enabled ? 'Bypass this cut\'s FX' : 'Apply this cut\'s FX'),
+        ),
+      ],
+    );
+    if (selected == 'cut-fx') {
+      onToggleCutFx?.call(subject.id);
+    }
   }
 }
 

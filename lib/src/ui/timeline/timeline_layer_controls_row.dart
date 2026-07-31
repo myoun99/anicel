@@ -2,7 +2,6 @@ import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart' show AppLanguage;
-import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
 import '../../models/layer_kind.dart';
@@ -11,6 +10,7 @@ import '../../models/layer_mark.dart';
 import '../text/app_strings.dart';
 import '../widgets/field_slider.dart';
 import 'layer_label_controls.dart';
+import 'layer_rail_columns.dart';
 import 'timeline_grid_metrics.dart';
 
 /// Whether two [Layer] snapshots would make [TimelineLayerControlsRow] look
@@ -271,122 +271,69 @@ class TimelineLayerControlsRow extends StatelessWidget {
           explicitChildNodes: true,
           child: Row(
             children: [
-              // The reserved section slot (UI-R7 #2): the section ZONE —
-              // tint, upright label, flyout tap — overlays the whole run
-              // from the grid (SectionBandZone), old-gutter style.
-              const LayerSectionBandCell(),
-              SizedBox(width: 8.0 + depth * 12.0),
-              if (hasLanes && onToggleLanes != null)
-                InkWell(
-                  key: ValueKey<String>('timeline-lane-toggle-${layer.id}'),
-                  onTap: () => onToggleLanes!(layer.id),
-                  // R26 #28: icon buttons hover ROUND, like every other
-                  // icon control — the square ink silhouette is retired.
-                  customBorder: const CircleBorder(),
-                  child: SizedBox(
-                    width: layerLaneToggleSlotWidth,
-                    height: 24,
-                    child: Icon(
-                      lanesExpanded ? Icons.arrow_drop_down : Icons.arrow_right,
-                      size: 16,
-                    ),
-                  ),
-                )
-              else
-                const SizedBox(width: layerLaneToggleSlotWidth),
-              // Timesheet + mark chips lead the label; ineligible rows keep
-              // empty slots so kind icons and names stay column-aligned.
-              // Attach rows (W5) hide the sheet toggle — they are display
-              // accessories of their base, never sheet columns.
-              if (layerKindEligibleForTimesheetToggle(layer.kind) &&
-                  layer.attachedToLayerId == null)
-                LayerTimesheetToggleButton(
+              // The rail's shared column skeleton (R9 #22): slot order and
+              // widths come from ONE place, so the storyboard's rows and
+              // the legend header cannot drift from these again.
+              ...layerRailLeadingCells(
+                indent: depth * 12.0,
+                laneToggle: hasLanes && onToggleLanes != null
+                    ? InkWell(
+                        key: ValueKey<String>(
+                          'timeline-lane-toggle-${layer.id}',
+                        ),
+                        onTap: () => onToggleLanes!(layer.id),
+                        // R26 #28: icon buttons hover ROUND, like every
+                        // other icon control — the square ink silhouette
+                        // is retired.
+                        customBorder: const CircleBorder(),
+                        child: SizedBox(
+                          height: 24,
+                          child: Icon(
+                            lanesExpanded
+                                ? Icons.arrow_drop_down
+                                : Icons.arrow_right,
+                            size: 16,
+                          ),
+                        ),
+                      )
+                    : null,
+                // Timesheet + mark chips lead the label. Attach rows (W5)
+                // hide the sheet toggle — they are display accessories of
+                // their base, never sheet columns.
+                timesheet:
+                    layerKindEligibleForTimesheetToggle(layer.kind) &&
+                        layer.attachedToLayerId == null
+                    ? LayerTimesheetToggleButton(
+                        keyPrefix: 'timeline',
+                        layerId: layer.id,
+                        onTimesheet: layer.onTimesheet,
+                        onToggle: onToggleLayerTimesheet,
+                      )
+                    : null,
+                mark: LayerMarkChip(
                   keyPrefix: 'timeline',
                   layerId: layer.id,
-                  onTimesheet: layer.onTimesheet,
-                  onToggle: onToggleLayerTimesheet,
-                )
-              else
-                const SizedBox(width: layerTimesheetSlotWidth),
-              const SizedBox(width: layerControlChipGap),
-              LayerMarkChip(
-                keyPrefix: 'timeline',
-                layerId: layer.id,
-                mark: layer.mark,
-                onMarkSelected: onLayerMarkSelected,
-              ),
-              const SizedBox(width: layerControlChipGap),
-              // The TYPE BUTTON (UI-R24 #7): the kind icon — or the attach
-              // placement arrow — in its OWN fixed slot, a control
-              // separate from the name (function TBD again — R26 #30-1
-              // moved the blend flyout to the toolbar's PS-style
-              // dropdown, user rule 07-22; tap selects for now). One slot
-              // for every row kind, so attach rows align with the rest
-              // (UI-R24 #8 — the old arrow indent is gone).
-              InkWell(
-                key: ValueKey<String>('timeline-layer-type-button-${layer.id}'),
-                onTap: () => onSelectLayer(layer.id),
-                customBorder: const CircleBorder(), // R26 #28
-                child: SizedBox(
-                  width: 22,
-                  height: 24,
-                  child: Center(
-                    child: layer.attachedToLayerId != null
-                        // Attach rows (UI-R20 #10): the placement arrow IS
-                        // the type mark — bending up-right when the row
-                        // attaches above, down-right below. No kind icon
-                        // (the base carries the kind).
-                        ? Semantics(
-                            label:
-                                layer.attachedPlacement ==
-                                    AttachedPlacement.above
-                                ? 'Attach layer (above)'
-                                : 'Attach layer (below)',
-                            container: true,
-                            child: ExcludeSemantics(
-                              child: Transform.flip(
-                                flipY:
-                                    layer.attachedPlacement ==
-                                    AttachedPlacement.above,
-                                child: Icon(
-                                  Icons.subdirectory_arrow_right,
-                                  key: ValueKey<String>(
-                                    'timeline-layer-attach-arrow-${layer.id}',
-                                  ),
-                                  size: 16,
-                                ),
-                              ),
-                            ),
-                          )
-                        : Semantics(
-                            label: _semanticLabelForLayerKind(layer.kind),
-                            container: true,
-                            child: ExcludeSemantics(
-                              child: layerKindGroupsLayers(layer.kind)
-                                  // A folder's glyph reads its own fold.
-                                  ? Icon(
-                                      layer.collapsed
-                                          ? Icons.folder
-                                          : Icons.folder_open,
-                                      key: ValueKey<String>(
-                                        'timeline-folder-icon-${layer.id}',
-                                      ),
-                                      size: 16,
-                                      color: colorScheme.onSurfaceVariant,
-                                    )
-                                  : Icon(
-                                      layerKindIcon(layer.kind),
-                                      key: ValueKey<String>(
-                                        'timeline-layer-kind-icon-${layer.id}',
-                                      ),
-                                      size: 18,
-                                    ),
-                            ),
-                          ),
-                  ),
+                  mark: layer.mark,
+                  onMarkSelected: onLayerMarkSelected,
+                ),
+                // The TYPE BUTTON (UI-R24 #7): the kind icon — or the
+                // attach placement arrow — in its OWN fixed slot, a
+                // control separate from the name (function TBD again —
+                // R26 #30-1 moved the blend flyout to the toolbar's
+                // PS-style dropdown, user rule 07-22; tap selects for
+                // now). One slot for every row kind, so attach rows align
+                // with the rest (UI-R24 #8 — the old arrow indent is gone).
+                typeButton: LayerTypeButton(
+                  keyPrefix: 'timeline',
+                  idValue: '${layer.id}',
+                  kind: layer.kind,
+                  attachedPlacement: layer.attachedToLayerId == null
+                      ? null
+                      : layer.attachedPlacement,
+                  folderCollapsed: layer.collapsed,
+                  onTap: () => onSelectLayer(layer.id),
                 ),
               ),
-              const SizedBox(width: 4),
               Expanded(
                 child: InkWell(
                   key: ValueKey<String>('timeline-layer-name-${layer.id}'),
@@ -448,132 +395,142 @@ class TimelineLayerControlsRow extends StatelessWidget {
                   ),
                 ),
               ),
-              // Fill-reference toggle (R20-C2): drawing rows only — every
-              // OTHER kind reserves the slot so the legend header's column
-              // icons line up over one Excel-style grid (R-toolbar round).
-              if (onToggleLayerFillReference != null &&
-                  layer.kind == LayerKind.animation)
-                SizedBox(
-                  width: layerFillReferenceSlotWidth,
-                  height: 26,
-                  child: IconButton(
-                    key: ValueKey<String>(
-                      'timeline-layer-fill-reference-${layer.id}',
-                    ),
-                    tooltip: layer.isFillReference
-                        ? 'Fill reference layer (on)'
-                        : 'Fill reference layer',
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints.tightFor(
-                      width: layerFillReferenceSlotWidth,
-                      height: 26,
-                    ),
-                    icon: Icon(
-                      Icons.format_color_fill,
-                      size: 16,
-                      color: layer.isFillReference
-                          ? colorScheme.primary
-                          : colorScheme.outline.withValues(alpha: 0.45),
-                    ),
-                    onPressed: () => onToggleLayerFillReference!(layer.id),
-                  ),
-                )
-              else
-                const SizedBox(width: layerFillReferenceSlotWidth),
-              // Attach rows and their 공정 organizer folder hide the fx
-              // switch — the BASE's switch governs what they show.
-              if (onToggleLayerFx != null &&
-                  layerKindShowsFxToggle(layer.kind) &&
-                  !wearsBaseComposite)
-                FxToggleButton(
-                  keyValue: 'timeline-layer-fx-${layer.id}',
-                  state: fxState,
-                  onToggle: () => onToggleLayerFx!(layer.id),
-                )
-              else
-                const SizedBox(width: layerFxSlotWidth),
-              // Per-layer onion toggle (UI-R17 #5) beside the eye — only
-              // brush-holding rows get the button; rows keep the slot so
-              // the control columns stay aligned; hosts without the
-              // callback (no header cell either) skip the column whole.
-              if (onToggleLayerOnionSkin != null &&
-                  layerKindAcceptsBrushInput(layer.kind))
-                SizedBox(
-                  width: layerOnionSlotWidth,
-                  height: 26,
-                  child: IconButton(
-                    key: ValueKey<String>('timeline-layer-onion-${layer.id}'),
-                    tooltip: onionSkinEnabled
-                        ? 'Onion skin (on)'
-                        : 'Onion skin',
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints.tightFor(
-                      width: layerOnionSlotWidth,
-                      height: 26,
-                    ),
-                    icon: Icon(
-                      Icons.filter_none,
-                      size: 15,
-                      color: onionSkinEnabled
-                          ? colorScheme.primary
-                          : colorScheme.outline.withValues(alpha: 0.45),
-                    ),
-                    onPressed: () => onToggleLayerOnionSkin!(layer.id),
-                  ),
-                )
-              else if (onToggleLayerOnionSkin != null)
-                const SizedBox(width: layerOnionSlotWidth),
-              LayerVisibilityToggleButton(
-                keyValue: 'timeline-layer-visibility-${layer.id}',
-                isVisible: layer.isVisible,
-                onToggle: () => onToggleLayerVisibility(layer.id),
-              ),
-              // SE rows carry the mute speaker beside the eye (sounds
-              // silence, waveforms keep displaying). Tight SizedBox: the M3
-              // IconButton otherwise inflates its layout box to the 48px
-              // minimum tap target, overflowing the rail row.
-              if (layer.kind == LayerKind.se && onToggleLayerMuted != null)
-                SizedBox(
-                  width: layerMuteSlotWidth,
-                  height: 26,
-                  // Right-click/long-press: the mix menu (solo + fader/pan
-                  // dialog) — the rail has no room for more columns, so
-                  // the speaker doubles as the SE row's mixer entrance.
-                  child: GestureDetector(
-                    onSecondaryTapUp:
-                        onToggleLayerSolo == null && onEditLayerAudio == null
-                        ? null
-                        : (details) =>
-                              _showMixMenu(context, details.globalPosition),
-                    onLongPressStart:
-                        onToggleLayerSolo == null && onEditLayerAudio == null
-                        ? null
-                        : (details) =>
-                              _showMixMenu(context, details.globalPosition),
-                    child: LayerMuteToggleButton(
-                      keyValue: 'timeline-layer-mute-${layer.id}',
-                      muted: layer.muted,
-                      soloed: isLayerSoloed,
-                      onToggle: () => onToggleLayerMuted!(layer.id),
-                    ),
-                  ),
-                )
-              else
-                const SizedBox(width: layerMuteSlotWidth),
-              // The camera row's slider drives the camera-view DIM opacity
-              // (unified layer controls); every row shrinks alike so the
-              // control columns stay aligned.
-              if (layerKindShowsOpacityControl(layer.kind))
-                SizedBox(width: layerOpacitySlotWidth, child: _opacityField())
-              else
-                const SizedBox(width: layerOpacitySlotWidth),
-              // R27 #6: the blend mode, RIGHTMOST — the user's placement.
-              // Within a host that HAS the column, non-compositing kinds
-              // keep the slot so rows and the legend header stay aligned;
-              // hosts without it (the storyboard's track rail) skip the
-              // column outright, exactly like the onion cell.
-              if (onLayerBlendModeSelected != null)
-                layerKindShowsBlendControl(layer.kind)
+              ...layerRailTrailingCells(
+                // Fill-reference toggle (R20-C2): drawing rows only —
+                // every OTHER kind reserves the slot so the legend
+                // header's column icons line up over one Excel-style grid
+                // (R-toolbar round).
+                fillReference:
+                    onToggleLayerFillReference != null &&
+                        layer.kind == LayerKind.animation
+                    ? SizedBox(
+                        height: 26,
+                        child: IconButton(
+                          key: ValueKey<String>(
+                            'timeline-layer-fill-reference-${layer.id}',
+                          ),
+                          tooltip: layer.isFillReference
+                              ? 'Fill reference layer (on)'
+                              : 'Fill reference layer',
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints.tightFor(
+                            width: layerFillReferenceSlotWidth,
+                            height: 26,
+                          ),
+                          icon: Icon(
+                            Icons.format_color_fill,
+                            size: 16,
+                            color: layer.isFillReference
+                                ? colorScheme.primary
+                                : colorScheme.outline.withValues(alpha: 0.45),
+                          ),
+                          onPressed: () => onToggleLayerFillReference!(layer.id),
+                        ),
+                      )
+                    : null,
+                // Attach rows and their 공정 organizer folder hide the fx
+                // switch — the BASE's switch governs what they show.
+                fx:
+                    onToggleLayerFx != null &&
+                        layerKindShowsFxToggle(layer.kind) &&
+                        !wearsBaseComposite
+                    ? FxToggleButton(
+                        keyValue: 'timeline-layer-fx-${layer.id}',
+                        state: fxState,
+                        onToggle: () => onToggleLayerFx!(layer.id),
+                      )
+                    : null,
+                // Per-layer onion toggle (UI-R17 #5) beside the eye — only
+                // brush-holding rows get the button; rows keep the slot so
+                // the control columns stay aligned; hosts without the
+                // callback (no header cell either) skip the column whole.
+                hasOnionColumn: onToggleLayerOnionSkin != null,
+                onion:
+                    onToggleLayerOnionSkin != null &&
+                        layerKindAcceptsBrushInput(layer.kind)
+                    ? SizedBox(
+                        height: 26,
+                        child: IconButton(
+                          key: ValueKey<String>(
+                            'timeline-layer-onion-${layer.id}',
+                          ),
+                          tooltip: onionSkinEnabled
+                              ? 'Onion skin (on)'
+                              : 'Onion skin',
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints.tightFor(
+                            width: layerOnionSlotWidth,
+                            height: 26,
+                          ),
+                          icon: Icon(
+                            Icons.filter_none,
+                            size: 15,
+                            color: onionSkinEnabled
+                                ? colorScheme.primary
+                                : colorScheme.outline.withValues(alpha: 0.45),
+                          ),
+                          onPressed: () => onToggleLayerOnionSkin!(layer.id),
+                        ),
+                      )
+                    : null,
+                visibility: LayerVisibilityToggleButton(
+                  keyValue: 'timeline-layer-visibility-${layer.id}',
+                  isVisible: layer.isVisible,
+                  onToggle: () => onToggleLayerVisibility(layer.id),
+                ),
+                // SE rows carry the mute speaker beside the eye (sounds
+                // silence, waveforms keep displaying). Tight SizedBox: the
+                // M3 IconButton otherwise inflates its layout box to the
+                // 48px minimum tap target, overflowing the rail row.
+                mute: layer.kind == LayerKind.se && onToggleLayerMuted != null
+                    ? SizedBox(
+                        height: 26,
+                        // Right-click/long-press: the mix menu (solo +
+                        // fader/pan dialog) — the rail has no room for
+                        // more columns, so the speaker doubles as the SE
+                        // row's mixer entrance.
+                        child: GestureDetector(
+                          onSecondaryTapUp:
+                              onToggleLayerSolo == null &&
+                                  onEditLayerAudio == null
+                              ? null
+                              : (details) => _showMixMenu(
+                                  context,
+                                  details.globalPosition,
+                                ),
+                          onLongPressStart:
+                              onToggleLayerSolo == null &&
+                                  onEditLayerAudio == null
+                              ? null
+                              : (details) => _showMixMenu(
+                                  context,
+                                  details.globalPosition,
+                                ),
+                          child: LayerMuteToggleButton(
+                            keyValue: 'timeline-layer-mute-${layer.id}',
+                            muted: layer.muted,
+                            soloed: isLayerSoloed,
+                            onToggle: () => onToggleLayerMuted!(layer.id),
+                          ),
+                        ),
+                      )
+                    : null,
+                // The camera row's slider drives the camera-view DIM
+                // opacity (unified layer controls); every row shrinks
+                // alike so the control columns stay aligned.
+                opacity: layerKindShowsOpacityControl(layer.kind)
+                    ? _opacityField()
+                    : null,
+                // R27 #6: the blend mode, RIGHTMOST — the user's
+                // placement. Within a host that HAS the column,
+                // non-compositing kinds keep the slot so rows and the
+                // legend header stay aligned; hosts without it (the
+                // storyboard's track rail) skip the column outright,
+                // exactly like the onion cell.
+                hasBlendColumn: onLayerBlendModeSelected != null,
+                blend:
+                    onLayerBlendModeSelected != null &&
+                        layerKindShowsBlendControl(layer.kind)
                     ? LayerBlendModeChip(
                         keyValue: 'timeline-layer-blend-${layer.id}',
                         optionKeyPrefix: 'timeline-layer-blend-option-',
@@ -586,7 +543,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
                         onBlendModeSelected: (mode) =>
                             onLayerBlendModeSelected!(layer.id, mode),
                       )
-                    : const SizedBox(width: layerBlendSlotWidth),
+                    : null,
+              ),
             ],
           ),
         ),
@@ -690,18 +648,4 @@ class TimelineLayerControlsRow extends StatelessWidget {
       ),
     );
   }
-}
-
-String _semanticLabelForLayerKind(LayerKind kind) {
-  return switch (kind) {
-    LayerKind.animation => 'Animation layer',
-    LayerKind.storyboard => 'Storyboard layer',
-    LayerKind.image => 'Image layer',
-    LayerKind.text => 'Text layer',
-    LayerKind.se => 'SE layer',
-    LayerKind.instruction => 'Instruction layer',
-    LayerKind.camera => 'Camera layer',
-    LayerKind.folder => 'Folder',
-    LayerKind.adjustment => 'Adjustment layer',
-  };
 }
