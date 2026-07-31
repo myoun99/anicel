@@ -164,7 +164,7 @@ class TimelineRowRunLabelsPainter extends CustomPainter {
         label.text,
         style,
         outlineColor: timelineLaneInkColor,
-        outlineWidth: timelineGlyphOutlineWidthFor(style.fontSize ?? 9),
+        outlineWidth: timelineOutlineWidthFor(style.fontSize ?? 9),
       );
       canvas.restore();
     }

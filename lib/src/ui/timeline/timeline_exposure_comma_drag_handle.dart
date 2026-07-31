@@ -15,7 +15,9 @@ import 'timeline_frame_span_layout.dart';
 /// ink (R28 #3) — geometry is constant, so this is the whole visual state.
 enum BlockEdgeGripInk { rest, hovered, dragging }
 
-const double _gripBarThickness = 3.5;
+/// 3.5 → 4.5 (R9 #11): the outline eats into the bar from both sides, so
+/// the CORE keeps the weight it had.
+const double _gripBarThickness = 4.5;
 const double _gripBarInset = 2.5;
 
 /// R28 #3: the bar's cross-axis length as a fraction of the row — a
@@ -126,16 +128,42 @@ Color blockEdgeGripBarColor(
   );
 }
 
+/// The bar's OUTLINE ink (R9 #11): the other side of the pair
+/// [blockEdgeGripBarColor] picks from, so the outline always contrasts
+/// with the core whichever surface the bar sits on.
+Color blockEdgeGripOutlineColor({Brightness surface = Brightness.light}) =>
+    surface == Brightness.dark ? timelineDrawingInkColor : timelineLaneInkColor;
+
 /// Draws one grip bar at [barRect]. THE drawing source, shared by the widget
 /// grip and the dense rows' row-wide chrome painter.
+///
+/// R9 #11: the bar carries an OUTLINE, because a grip resting quietly on a
+/// busy block was invisible until you found it with the pointer — and the
+/// user needs to see the handles before deciding to reach for one. It is
+/// the SAME outline the frame names and comma counts wear (`#15`), through
+/// the same [timelineOutlineWidthFor]: one outline setting for every mark
+/// the timeline has to keep readable, per the user's rule when #11 was
+/// decided.
 void paintBlockEdgeGripBar(
   Canvas canvas,
   Rect barRect,
   BlockEdgeGripInk ink, {
   Brightness surface = Brightness.light,
 }) {
+  const radius = Radius.circular(2);
+  final outlineWidth = timelineOutlineWidthFor(barRect.shortestSide);
   canvas.drawRRect(
-    RRect.fromRectAndRadius(barRect, const Radius.circular(2)),
+    RRect.fromRectAndRadius(
+      barRect.inflate(outlineWidth / 2),
+      const Radius.circular(2 + 1),
+    ),
+    Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = outlineWidth
+      ..color = blockEdgeGripOutlineColor(surface: surface),
+  );
+  canvas.drawRRect(
+    RRect.fromRectAndRadius(barRect, radius),
     Paint()..color = blockEdgeGripBarColor(ink, surface: surface),
   );
 }
@@ -319,6 +347,14 @@ class _BlockEdgeGripState extends State<BlockEdgeGrip> {
   /// R27 #11: pointer resting on the grip — lights the bar.
   bool _hovered = false;
 
+  /// R9 #12: pointer DOWN on the grip — reads as engaged straight away.
+  /// The accent used to wait for the drag recognizer to win the arena,
+  /// which is after the slop, so pressing and holding still looked like
+  /// nothing had been grabbed. The Listener below is upstream of the
+  /// arena, so it can answer at once — and it owns the release the old
+  /// code never had.
+  bool _pressed = false;
+
   void _startDrag() {
     final accepted = widget.hooks.onBegin();
     if (!accepted) {
@@ -391,7 +427,7 @@ class _BlockEdgeGripState extends State<BlockEdgeGrip> {
       painter: BlockEdgeGripBarPainter(
         edge: widget.edge,
         axis: widget.axis,
-        ink: _dragging
+        ink: _dragging || _pressed
             ? BlockEdgeGripInk.dragging
             : _hovered
             ? BlockEdgeGripInk.hovered
@@ -406,23 +442,41 @@ class _BlockEdgeGripState extends State<BlockEdgeGrip> {
           : SystemMouseCursors.resizeRow,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        supportedDevices: widget.supportedDevices,
-        onHorizontalDragStart: horizontal ? (_) => _startDrag() : null,
-        onHorizontalDragUpdate: horizontal
-            ? (details) => _updateDrag(details.delta.dx)
-            : null,
-        onHorizontalDragEnd: horizontal ? (_) => _endDrag() : null,
-        onHorizontalDragCancel: horizontal ? _cancelDrag : null,
-        onVerticalDragStart: horizontal ? null : (_) => _startDrag(),
-        onVerticalDragUpdate: horizontal
-            ? null
-            : (details) => _updateDrag(details.delta.dy),
-        onVerticalDragEnd: horizontal ? null : (_) => _endDrag(),
-        onVerticalDragCancel: horizontal ? null : _cancelDrag,
-        child: bar,
+      child: Listener(
+        onPointerDown: (_) {
+          if (!_pressed) {
+            setState(() => _pressed = true);
+          }
+        },
+        onPointerUp: (_) => _releasePress(),
+        onPointerCancel: (_) => _releasePress(),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          supportedDevices: widget.supportedDevices,
+          onHorizontalDragStart: horizontal ? (_) => _startDrag() : null,
+          onHorizontalDragUpdate: horizontal
+              ? (details) => _updateDrag(details.delta.dx)
+              : null,
+          onHorizontalDragEnd: horizontal ? (_) => _endDrag() : null,
+          onHorizontalDragCancel: horizontal ? _cancelDrag : null,
+          onVerticalDragStart: horizontal ? null : (_) => _startDrag(),
+          onVerticalDragUpdate: horizontal
+              ? null
+              : (details) => _updateDrag(details.delta.dy),
+          onVerticalDragEnd: horizontal ? null : (_) => _endDrag(),
+          onVerticalDragCancel: horizontal ? null : _cancelDrag,
+          child: bar,
+        ),
       ),
     );
+  }
+
+  /// The pointer lifted (or the system took it). A drag that started keeps
+  /// its own accent through [_dragging] until the drag itself ends.
+  void _releasePress() {
+    if (!_pressed) {
+      return;
+    }
+    setState(() => _pressed = false);
   }
 }

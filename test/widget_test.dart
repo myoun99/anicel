@@ -1915,7 +1915,8 @@ Line 8''';
       expect(gripIds, contains('block-edge-grip-start-default-layer-1-1'));
 
       // Lengthen A by 3: it consumes the X gap and pushes B from 3 to 4
-      // with B's comma preserved (24px slim cells; 18px slop first).
+      // with B's comma preserved (24px slim cells; 18px slop first, then
+      // three WHOLE cells — R9 #10 steps an edge at the boundary).
       final gesture = await tester.startGesture(
         timelineRowChromeCenter(
           tester,
@@ -1925,7 +1926,7 @@ Line 8''';
       );
       await gesture.moveBy(const Offset(19, 0));
       await tester.pump();
-      await gesture.moveBy(const Offset(71, 0));
+      await gesture.moveBy(const Offset(72, 0));
       await tester.pumpAndSettle();
       await gesture.up();
       await tester.pumpAndSettle();

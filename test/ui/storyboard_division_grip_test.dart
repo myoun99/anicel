@@ -129,26 +129,54 @@ Future<void> _dragGrip(WidgetTester tester, String id, int frames) async {
 }
 
 void main() {
-  testWidgets('the row hangs its grips on the PANELS, one per boundary', (
-    tester,
-  ) async {
+  testWidgets('R9 #8: EVERY panel hangs both grips — the front edge is '
+      'back', (tester) async {
     await _openStoryboard(tester);
 
     // Panels in track order: cut 1's two, then one each for cuts 2 and 3.
-    // Only the first panel of a cut carries a START grip — inside a cut the
-    // panels touch, so ordinal 1 has no start facing ordinal 0's end.
+    // The "two grips would overlap" worry was groundless: each hit strip
+    // lies INSIDE its own block, so at a boundary they sit adjacent.
     expect(
       timelineRowChromeIds(tester, _trackId.value, prefix: 'storyboard'),
       <String>[
         'block-edge-grip-start-grip-track-0',
         'block-edge-grip-end-grip-track-0',
+        'block-edge-grip-start-grip-track-1',
         'block-edge-grip-end-grip-track-1',
         'block-edge-grip-start-grip-track-2',
         'block-edge-grip-end-grip-track-2',
         'block-edge-grip-start-grip-track-3',
         'block-edge-grip-end-grip-track-3',
+        'block-edge-grip-start-grip-track-4',
         'block-edge-grip-end-grip-track-4',
       ],
+    );
+  });
+
+  testWidgets('R9 #8: a front edge INSIDE a cut is the previous panel\'s '
+      'back edge — one boundary, one verb (the user\'s 눈속임)', (tester) async {
+    await _openStoryboard(tester);
+
+    // Panel 1 is the second panel of cut 1, so its front edge must not
+    // reach for the CUT's start; it borrows panel 0's end.
+    final innerFront = timelineRowChromeGlobalRect(
+      tester,
+      _trackId.value,
+      'block-edge-grip-start-grip-track-1',
+      prefix: 'storyboard',
+    );
+    final previousBack = timelineRowChromeGlobalRect(
+      tester,
+      _trackId.value,
+      'block-edge-grip-end-grip-track-0',
+      prefix: 'storyboard',
+    );
+
+    expect(
+      innerFront.left,
+      greaterThanOrEqualTo(previousBack.right),
+      reason: 'adjacent across the boundary, never stacked — the hit strips '
+          'live inside their own blocks',
     );
   });
 

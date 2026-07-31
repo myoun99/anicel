@@ -17,9 +17,27 @@ import 'package:flutter/widgets.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_coverage.dart';
 
-/// Whole-frame delta for an accumulated main-axis drag distance; steps
-/// trigger when the dragged edge crosses a cell midpoint.
+/// Whole-frame delta for an EDGE drag (R9 #10): the edge already sits ON a
+/// cell boundary, so it steps once the pointer has carried it a WHOLE
+/// cell.
+///
+/// It used to round, which stepped as the pointer passed the cell's
+/// MIDDLE — the user read that as the edge leaping out from under the
+/// hand. Truncation is toward zero, so both directions feel the same.
 int commaDragFrameDelta({
+  required double accumulatedDelta,
+  required double frameCellExtent,
+}) {
+  assert(frameCellExtent > 0, 'Frame cell extent must be positive.');
+  return (accumulatedDelta / frameCellExtent).truncate();
+}
+
+/// Whole-frame delta for a MOVE drag — still the NEAREST cell.
+///
+/// The user's rule when #10 was decided: edges only. A move travels with
+/// the grab POINT, which starts somewhere inside a cell rather than on a
+/// boundary, so following the nearest boundary is what tracks the hand.
+int timelineMoveFrameDelta({
   required double accumulatedDelta,
   required double frameCellExtent,
 }) {

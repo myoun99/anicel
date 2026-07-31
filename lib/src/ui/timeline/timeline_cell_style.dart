@@ -94,11 +94,16 @@ double timelineFittedGlyphFontSize(
   return main < cross ? main : cross;
 }
 
-/// The outline stroke width for an outlined glyph at [fontSize] (#15):
-/// proportional so the floor-sized marks are not swallowed by their own
-/// outline.
-double timelineGlyphOutlineWidthFor(double fontSize) =>
-    (fontSize / 4.5).clamp(1.0, 2.0);
+/// THE outline width rule (#15, extended by R9 #11): proportional to the
+/// mark's own weight, so the floor-sized marks are not swallowed by their
+/// own outline.
+///
+/// [markWeight] is the glyph's font size, or a bar's thickness. The grips
+/// took this same function rather than growing an outline setting of their
+/// own — the user's rule when #11 was decided: "통일화로서야", a second
+/// outline setting is new debt the day it is written.
+double timelineOutlineWidthFor(double markWeight) =>
+    (markWeight / 4.5).clamp(1.0, 2.0);
 
 /// The plain grid's border ink — FLAT faint (UI-R18 #8: the zoom fade is
 /// gone; density is handled by [timelineGridLineEveryFrames]).
