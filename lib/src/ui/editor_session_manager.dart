@@ -159,6 +159,7 @@ import 'audio/audio_conform_store.dart';
 import 'brush/brush_canvas_panel.dart';
 import 'brush/brush_editor_selection.dart';
 import 'timeline/instruction_span_editing.dart';
+import 'timeline/property_lane_model.dart' show folderAggregateRuns;
 import 'timeline/layer_label_controls.dart' show layerKindShowsBlendControl;
 import 'timeline/layer_timeline_display_adapter.dart'
     show horizontalLayerDisplayOrder;
@@ -6688,6 +6689,15 @@ class EditorSessionManager extends ChangeNotifier {
       if (!layerKindHoldsDrawings(layer.kind) || isSyncedAttachedLayer(layer)) {
         continue; // Synced mirrors follow their base; nothing to author.
       }
+      // R9 #9: a COVERING row is one cel edge to edge — there is no "add a
+      // frame" in its world, so a selection that happens to span it must
+      // pass over it rather than author into it. Until now nothing happened
+      // by luck (the covering normalization leaves no empty gap to fill),
+      // and #1 is about to put folders — and so their image members — into
+      // range selections on purpose. Say it instead of relying on it.
+      if (layerKindCoversWithoutGaps(layer.kind)) {
+        continue;
+      }
       final layerFills =
           <({int startIndex, int length, FrameId frameId, String? name})>[];
       for (final gap in _emptyGapsInRange(layer, selection)) {
@@ -9341,6 +9351,16 @@ class EditorSessionManager extends ChangeNotifier {
   /// Cells and lanes are still two selection objects (their edits differ:
   /// blocks vs keys), but ONE drag now produces both, and the frame range
   /// is shared so the highlight reads as one rectangle.
+  /// The snap lane a FOLDER row selects against (R9 #1): the very runs its
+  /// band draws, which are its subtree members' exposures merged. Empty for
+  /// every row that owns its own blocks.
+  List<({int start, int endExclusive})> _aggregateRunsForRow(Layer layer) {
+    if (!layerKindGroupsLayers(layer.kind)) {
+      return const [];
+    }
+    return folderAggregateRuns(layers.subtreeMembersOf(layer.id));
+  }
+
   void updateFrameRangeSelectionDrag({
     required LayerId layerId,
     required int anchorIndex,
@@ -9372,6 +9392,7 @@ class EditorSessionManager extends ChangeNotifier {
       layer: layer,
       anchorIndex: anchorIndex,
       headIndex: headIndex,
+      aggregateRuns: _aggregateRunsForRow(layer),
     );
     if (base == null) {
       frameRangeSelection.value = null;
@@ -9404,6 +9425,7 @@ class EditorSessionManager extends ChangeNotifier {
           layer: spanned,
           anchorIndex: start,
           headIndex: end - 1,
+          aggregateRuns: _aggregateRunsForRow(spanned),
         );
         if (snapped == null) {
           continue;
