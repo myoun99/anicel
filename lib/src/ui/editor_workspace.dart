@@ -27,7 +27,7 @@ import 'brush/canvas_view_commands.dart';
 import 'brush/paint_tool_state_notifier.dart';
 import 'brush/tool_library_panel.dart';
 import 'brush/tool_settings_panel.dart';
-import 'color/color_wheel_panel.dart';
+import 'color/color_button_window.dart';
 import 'brush/tools_panel.dart';
 import 'editor_canvas_area.dart';
 import 'editor_session_manager.dart';
@@ -57,7 +57,6 @@ import 'timeline/timeline_row_filter.dart';
 import 'timeline/timeline_section_policy.dart';
 import '../models/onion_skin_settings.dart';
 import '../services/color_palette_file_service.dart';
-import 'color/color_palette_strip.dart';
 import 'panels/onion_skin_panel.dart';
 import 'storyboard_tab_host.dart';
 import '../models/canvas_viewport.dart';
@@ -201,7 +200,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       DockSection(
         tabs: [
           EditorWorkspace.brushesTabId,
-          EditorWorkspace.colorWheelTabId,
+          // The Color TAB retired (R9 #14): the wheel and the palette are
+          // the two tabs of the 「컬러 버튼창」 now, opened from the tool
+          // rail's selected-colour swatch — the control the user actually
+          // reaches for, in the place they reach for it.
           // The camera PANEL retired (R11-⑤): the canvas overlay handles
           // pose editing, the timeline camera row its eye/opacity, and the
           // AE clipboard copy moved to the Cut menu.
@@ -838,6 +840,37 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                   selectionVariant: _lastSelectionVariant,
                   onToolChanged: (tool) =>
                       _brushTool.value = _brushTool.value.copyWith(tool: tool),
+                  // R9 #14: the selected colour rides the tool rail and
+                  // opens the 「컬러 버튼창」. Its own listeners, so a
+                  // colour change repaints the swatch without rebuilding
+                  // the tool column above it.
+                  colorButton:
+                      SlicedValueListenableBuilder<BrushToolState, int>(
+                        valueListenable: _brushTool,
+                        slice: (state) => state.color,
+                        builder: (context, colorState) =>
+                            ValueListenableBuilder<int>(
+                              valueListenable: _colorWheelBackground,
+                              builder: (context, background, _) =>
+                                  ValueListenableBuilder<ColorPaletteState>(
+                                    valueListenable: _colorPalette,
+                                    builder: (context, palette, _) =>
+                                        SelectedColorButton(
+                                          color: colorState.color,
+                                          backgroundColor: background,
+                                          palette: palette,
+                                          onColorChanged: (color) =>
+                                              _brushTool.value = _brushTool
+                                                  .value
+                                                  .copyWith(color: color),
+                                          onBackgroundColorChanged: (color) =>
+                                              _colorWheelBackground.value =
+                                                  color,
+                                          onPaletteChanged: _setColorPalette,
+                                        ),
+                                  ),
+                            ),
+                      ),
                 ),
               ),
         );
@@ -1011,71 +1044,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                 ),
           ),
         );
-      case EditorWorkspace.colorWheelTabId:
-        return EditorPanelTab(
-          id: tabId,
-          label: 'Color',
-          icon: Icons.palette_outlined,
-          locked: locked,
-          // Sliced (R18 UI-1): the color tab consumes ONLY the color — a
-          // tool switch must not rebuild the wheel and palette strip.
-          // Callbacks read _brushTool.value at invoke time: the builder's
-          // toolState may be stale in off-slice fields (e.g. the active
-          // tool), and writing a captured copy back would revert them.
-          builder: (context) =>
-              SlicedValueListenableBuilder<BrushToolState, int>(
-                valueListenable: _brushTool,
-                slice: (state) => state.color,
-                builder: (context, toolState) => ValueListenableBuilder<int>(
-                  valueListenable: _colorWheelBackground,
-                  builder: (context, background, _) => LayoutBuilder(
-                    // The palette strip yields to the wheel on squat panels
-                    // (R10-①): its cap shrinks to zero before the Column can
-                    // overflow — the wheel keeps ~120px whenever possible.
-                    builder: (context, constraints) {
-                      final paletteCap = math.min(
-                        140.0,
-                        math.max(0.0, constraints.maxHeight - 120),
-                      );
-                      return Column(
-                        children: [
-                          Expanded(
-                            child: ColorWheelPanel(
-                              color: toolState.color,
-                              backgroundColor: background,
-                              onColorChanged: (color) => _brushTool.value =
-                                  _brushTool.value.copyWith(color: color),
-                              onBackgroundColorChanged: (color) =>
-                                  _colorWheelBackground.value = color,
-                            ),
-                          ),
-                          // The palette rows (P4) sit under the wheel; squat
-                          // panels scroll them instead of overflowing.
-                          ConstrainedBox(
-                            constraints: BoxConstraints(maxHeight: paletteCap),
-                            child: SingleChildScrollView(
-                              padding: const EdgeInsets.fromLTRB(12, 0, 12, 8),
-                              child: ValueListenableBuilder<ColorPaletteState>(
-                                valueListenable: _colorPalette,
-                                builder: (context, palette, _) =>
-                                    ColorPaletteStrip(
-                                      palette: palette,
-                                      currentColor: toolState.color,
-                                      onColorSelected: (color) =>
-                                          _brushTool.value = _brushTool.value
-                                              .copyWith(color: color),
-                                      onPaletteChanged: _setColorPalette,
-                                    ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      );
-                    },
-                  ),
-                ),
-              ),
-        );
+      // R9 #14: there is no Color TAB. The wheel and the palette are the
+      // two tabs of the 「컬러 버튼창」, opened from the tool rail's
+      // selected-colour swatch. A saved layout still naming this id drops
+      // it on restore — the store validates against the current defaults.
       case EditorWorkspace.onionSkinTabId:
         return EditorPanelTab(
           id: tabId,

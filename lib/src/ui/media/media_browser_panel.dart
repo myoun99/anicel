@@ -1,5 +1,6 @@
 import 'dart:io';
 
+
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
@@ -110,22 +111,44 @@ class MediaBrowserPanel extends StatelessWidget {
   /// horizontally at this width instead of overflowing (R10-①).
   static const double _minBodyWidth = 132;
 
+  /// The toolbar row plus its rule — below this the body has no room for
+  /// its own fixed parts and would overflow, the same rule
+  /// [_minBodyWidth] states for the other axis (R9 #17 hit it: the tool
+  /// rail's narrowing reflowed the docks and squeezed this panel).
+  static const double _minBodyHeight = 37;
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        if (constraints.maxWidth >= _minBodyWidth ||
-            !constraints.hasBoundedWidth) {
+        final tooNarrow =
+            constraints.hasBoundedWidth && constraints.maxWidth < _minBodyWidth;
+        final tooShort =
+            constraints.hasBoundedHeight &&
+            constraints.maxHeight < _minBodyHeight;
+        if (!tooNarrow && !tooShort) {
           return _body(context);
         }
-        return SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: SizedBox(
-            width: _minBodyWidth,
-            height: constraints.hasBoundedHeight ? constraints.maxHeight : null,
-            child: _body(context),
-          ),
+        Widget content = SizedBox(
+          width: tooNarrow ? _minBodyWidth : null,
+          height: tooShort
+              ? _minBodyHeight
+              : (constraints.hasBoundedHeight ? constraints.maxHeight : null),
+          child: _body(context),
         );
+        // Each axis takes its own viewport, innermost first: the vertical
+        // one is what gives the SizedBox room to be its minimum instead of
+        // being squeezed back to the constraint it is escaping.
+        if (tooShort) {
+          content = SingleChildScrollView(child: content);
+        }
+        if (tooNarrow) {
+          content = SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: content,
+          );
+        }
+        return content;
       },
     );
   }
