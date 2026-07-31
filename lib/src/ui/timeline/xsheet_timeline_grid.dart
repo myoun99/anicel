@@ -9,6 +9,7 @@ import '../text/app_strings.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/attached_layer_resolve.dart' show attachRowWearsBaseComposite;
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
@@ -1260,6 +1261,11 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                           ),
                                                     )
                                                   : _LayerHeader(
+                                                      wearsBaseComposite:
+                                                          attachRowWearsBaseComposite(
+                                                            entries[index].layer,
+                                                            widget.layers,
+                                                          ),
                                                       layer:
                                                           entries[index].layer,
                                                       active:
@@ -1921,6 +1927,7 @@ class _LayerHeader extends StatelessWidget {
     this.hasLanes = false,
     this.lanesExpanded = false,
     this.onToggleLanes,
+    this.wearsBaseComposite = false,
     this.fxState = LayerFxState.on,
     this.onToggleLayerFx,
     this.isLayerSoloed = false,
@@ -1971,6 +1978,10 @@ class _LayerHeader extends StatelessWidget {
   final ValueChanged<LayerId>? onToggleLanes;
 
   /// The AE-style fx MASTER (R8: persisted, tri-state). Null hides it.
+  /// R9: wears its BASE's composite (attach row, or the 공정 organizer
+  /// folder) — see [attachRowWearsBaseComposite].
+  final bool wearsBaseComposite;
+
   final LayerFxState fxState;
   final ValueChanged<LayerId>? onToggleLayerFx;
 
@@ -2155,12 +2166,13 @@ class _LayerHeader extends StatelessWidget {
                   ),
                   Row(
                     children: [
-                      // Attach rows hide the switch in BOTH orientations:
-                      // they wear their base's fx, so a flip here would
-                      // burn an undo step writing a flag nothing reads.
+                      // Attach rows and their 공정 organizer folder hide the
+                      // switch in BOTH orientations: they wear their base's
+                      // fx, so a flip here would burn an undo step writing
+                      // a flag nothing reads.
                       if (onToggleLayerFx != null &&
                           layerKindShowsFxToggle(layer.kind) &&
-                          layer.attachedToLayerId == null)
+                          !wearsBaseComposite)
                         FxToggleButton(
                           keyValue: 'xsheet-layer-fx-${layer.id}',
                           state: fxState,

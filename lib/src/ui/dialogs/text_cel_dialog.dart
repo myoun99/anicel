@@ -101,7 +101,7 @@ class _TextCelDialogState extends State<TextCelDialog> {
       title: widget.creating
           ? strings.textCelNewTitle
           : strings.textCelEditTitle,
-      titleIcon: Icons.text_fields_outlined,
+      titleIcon: Icons.title_outlined,
       body: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,

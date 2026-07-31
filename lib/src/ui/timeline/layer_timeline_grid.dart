@@ -10,6 +10,7 @@ import '../../models/layer_blend_mode.dart';
 import '../text/app_strings.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
+import '../../models/attached_layer_resolve.dart' show attachRowWearsBaseComposite;
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../models/timeline_row_address.dart';
@@ -1073,6 +1074,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     }
     return TimelineLayerControlsRow(
       layer: row.layer,
+      wearsBaseComposite: attachRowWearsBaseComposite(row.layer, widget.layers),
       active: _layerRowIsActive(row.layer),
       metrics: _metrics,
       onSelectLayer: widget.onSelectLayer,

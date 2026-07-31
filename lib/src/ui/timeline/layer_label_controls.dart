@@ -440,7 +440,7 @@ IconData layerKindIcon(LayerKind kind) {
     LayerKind.animation => Icons.brush_outlined,
     LayerKind.storyboard => Icons.auto_stories_outlined,
     LayerKind.image => Icons.image_outlined,
-    LayerKind.text => Icons.text_fields_outlined,
+    LayerKind.text => Icons.title_outlined,
     LayerKind.se => Icons.music_note_outlined,
     LayerKind.instruction => Icons.theaters_outlined,
     LayerKind.camera => Icons.videocam_outlined,
