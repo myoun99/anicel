@@ -554,30 +554,40 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     // the callback (storyboard rail) skip the COLUMN so
                     // their row columns stay aligned.
                     hasOnionColumn: hasOnion,
-                    onion: legend?.onToggleOnionSkinForDisplayed == null
+                    // The HEADING follows the COLUMN, and only the flyout
+                    // follows the callbacks. It used to be the other way
+                    // round, which is why the x-sheet — whose rows carry
+                    // onion but which passes no legend bulk commands —
+                    // reserved the slot and left it blank: the one column
+                    // on that surface with no heading over it.
+                    onion: !hasOnion
                         ? null
                         : cell(
                             keyValue: 'legend-onion',
                             tooltip: AppText.strings.tlColOnionSkin,
-                            entriesBuilder: () => [
-                              PanelFlyoutItem(
-                                keyValue: 'legend-onion-toggle-displayed',
-                                label: displayedOnionSkinOn
-                                    ? 'Clear onion on displayed layers'
-                                    : 'Apply onion to displayed layers',
-                                icon: Icons.filter_none,
-                                checked: displayedOnionSkinOn,
-                                onSelected:
-                                    legend!.onToggleOnionSkinForDisplayed!,
-                              ),
-                              if (legend.onRevealOnionSkinPanel != null)
-                                PanelFlyoutItem(
-                                  keyValue: 'legend-onion-open-panel',
-                                  label: AppText.strings.tlOpenOnionPanel,
-                                  icon: Icons.open_in_new,
-                                  onSelected: legend.onRevealOnionSkinPanel!,
-                                ),
-                            ],
+                            entriesBuilder:
+                                legend?.onToggleOnionSkinForDisplayed == null
+                                ? null
+                                : () => [
+                                    PanelFlyoutItem(
+                                      keyValue: 'legend-onion-toggle-displayed',
+                                      label: displayedOnionSkinOn
+                                          ? 'Clear onion on displayed layers'
+                                          : 'Apply onion to displayed layers',
+                                      icon: Icons.filter_none,
+                                      checked: displayedOnionSkinOn,
+                                      onSelected: legend!
+                                          .onToggleOnionSkinForDisplayed!,
+                                    ),
+                                    if (legend.onRevealOnionSkinPanel != null)
+                                      PanelFlyoutItem(
+                                        keyValue: 'legend-onion-open-panel',
+                                        label: AppText.strings.tlOpenOnionPanel,
+                                        icon: Icons.open_in_new,
+                                        onSelected:
+                                            legend.onRevealOnionSkinPanel!,
+                                      ),
+                                  ],
                             child: legendIcon(
                               Icons.filter_none,
                               engaged: displayedOnionSkinOn,
@@ -696,33 +706,38 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     // the COLUMN so their row columns stay aligned (the
                     // onion precedent).
                     hasBlendColumn: hasBlend,
-                    blend:
-                        legend?.onSetBlendModeForDisplayed == null ||
-                            displayedLayerIds == null
+                    // Heading follows the COLUMN, flyout follows the bulk
+                    // callback — see the onion cell above.
+                    blend: !hasBlend
                         ? null
                         : cell(
                             keyValue: 'legend-blend',
                             tooltip: AppText.strings.tlColBlendMode,
-                            entriesBuilder: () => [
-                              PanelFlyoutHeader(
-                                AppText.strings.tlAllDisplayedLayers,
-                              ),
-                              // The bulk set writes DRAWING rows;
-                              // pass-through is a group-only answer, so it
-                              // never appears here.
-                              for (final mode in LayerBlendMode.optionsFor(
-                                isGroup: false,
-                              ))
-                                PanelFlyoutItem(
-                                  keyValue: 'legend-blend-${mode.name}',
-                                  label: mode.labelFor(blendLanguage),
-                                  onSelected: () =>
-                                      legend!.onSetBlendModeForDisplayed!(
-                                        displayedLayerIds!(),
-                                        mode,
+                            entriesBuilder:
+                                legend?.onSetBlendModeForDisplayed == null ||
+                                    displayedLayerIds == null
+                                ? null
+                                : () => [
+                                    PanelFlyoutHeader(
+                                      AppText.strings.tlAllDisplayedLayers,
+                                    ),
+                                    // The bulk set writes DRAWING rows;
+                                    // pass-through is a group-only answer,
+                                    // so it never appears here.
+                                    for (final mode
+                                        in LayerBlendMode.optionsFor(
+                                          isGroup: false,
+                                        ))
+                                      PanelFlyoutItem(
+                                        keyValue: 'legend-blend-${mode.name}',
+                                        label: mode.labelFor(blendLanguage),
+                                        onSelected: () =>
+                                            legend!.onSetBlendModeForDisplayed!(
+                                              displayedLayerIds!(),
+                                              mode,
+                                            ),
                                       ),
-                                ),
-                            ],
+                                  ],
                             child: Text(
                               'BLND',
                               style: TextStyle(

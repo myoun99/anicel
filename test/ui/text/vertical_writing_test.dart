@@ -67,13 +67,34 @@ void main() {
     test('every bracket family rotates', () {
       // The user's real cut folders carry process names like [연출].
       for (final char in [
-        '（', '）', '(', ')',
-        '［', '］', '[', ']',
-        '「', '」', '『', '』',
-        '【', '】', '〔', '〕',
-        '｛', '｝', '{', '}',
-        '〈', '〉', '《', '》',
-        '＜', '＞', '<', '>',
+        '（',
+        '）',
+        '(',
+        ')',
+        '［',
+        '］',
+        '[',
+        ']',
+        '「',
+        '」',
+        '『',
+        '』',
+        '【',
+        '】',
+        '〔',
+        '〕',
+        '｛',
+        '｝',
+        '{',
+        '}',
+        '〈',
+        '〉',
+        '《',
+        '》',
+        '＜',
+        '＞',
+        '<',
+        '>',
       ]) {
         expect(
           verticalGlyphForm(char),
@@ -126,14 +147,16 @@ void main() {
     });
 
     test('a run longer than the rule stays upright, never cut in half', () {
+      expect(verticalTextCells('A123').map((c) => c.text).toList(), [
+        'A',
+        '1',
+        '2',
+        '3',
+      ]);
       expect(
-        verticalTextCells('A123').map((c) => c.text).toList(),
-        ['A', '1', '2', '3'],
-      );
-      expect(
-        verticalTextCells('A123').every(
-          (c) => c.form == VerticalGlyphForm.upright,
-        ),
+        verticalTextCells(
+          'A123',
+        ).every((c) => c.form == VerticalGlyphForm.upright),
         isTrue,
       );
     });
@@ -154,6 +177,78 @@ void main() {
 
     test('empty text yields no cells', () {
       expect(verticalTextCells(''), isEmpty);
+    });
+  });
+
+  group('Latin turns sideways instead of stacking', () {
+    test('a WORD is one turned cell, spanning several slots', () {
+      final cells = verticalTextCells('Multiply');
+      expect(cells, hasLength(1));
+      expect(cells.single.form, VerticalGlyphForm.sideways);
+      expect(cells.single.text, 'Multiply');
+      // Stacked it cost EIGHT slots and fell to 5.8pt in a 28px column;
+      // turned it costs about half, at full size.
+      expect(cells.single.spanCells, lessThan(8));
+      expect(verticalTextSpanCount(cells), cells.single.spanCells);
+    });
+
+    test('an internal space stays inside the phrase', () {
+      // `Pass Through` reads as one turned line, not two words with a
+      // stacked blank between them.
+      final cells = verticalTextCells('Pass Through');
+      expect(cells, hasLength(1));
+      expect(cells.single.text, 'Pass Through');
+      expect(cells.single.form, VerticalGlyphForm.sideways);
+    });
+
+    test('a trailing space is NOT swallowed into the run', () {
+      final cells = verticalTextCells('Color ');
+      expect(cells.first.text, 'Color');
+      expect(cells.last.text, ' ');
+    });
+
+    test('a LONE letter still stands upright — A-1 reads A│1', () {
+      final cells = verticalTextCells('A-1');
+      expect(cells.map((c) => c.form).toList(), const [
+        VerticalGlyphForm.upright,
+        VerticalGlyphForm.rotated,
+        VerticalGlyphForm.upright,
+      ]);
+    });
+
+    test('Japanese is untouched — it was always the legible case', () {
+      final cells = verticalTextCells('焼き込みカラー');
+      expect(cells.every((c) => c.form != VerticalGlyphForm.sideways), isTrue);
+      expect(cells.last.form, VerticalGlyphForm.rotated);
+    });
+  });
+
+  group('a column that does not fit ELLIPSISES, it does not shrink', () {
+    test('everything fits: the cells come back untouched', () {
+      final cells = verticalTextCells('あいう');
+      expect(verticalTextCellsWithin(cells, capacityCells: 3), cells);
+      expect(verticalTextCellsWithin(cells, capacityCells: 9), cells);
+    });
+
+    test('the tail is replaced by a rotated ellipsis', () {
+      final cells = verticalTextCells('あいうえお');
+      final kept = verticalTextCellsWithin(cells, capacityCells: 3);
+      expect(kept.map((c) => c.text).toList(), ['あ', 'い', '…']);
+      // Rotated, an ellipsis reads as the vertical ⋮ it should be.
+      expect(kept.last.form, VerticalGlyphForm.rotated);
+    });
+
+    test('a sideways run is dropped WHOLE — never cut mid-word', () {
+      final cells = verticalTextCells('あMultiply');
+      final kept = verticalTextCellsWithin(cells, capacityCells: 3);
+      expect(kept.map((c) => c.text).toList(), ['あ', '…']);
+    });
+
+    test('no room at all yields nothing', () {
+      expect(
+        verticalTextCellsWithin(verticalTextCells('あい'), capacityCells: 0),
+        isEmpty,
+      );
     });
   });
 
@@ -185,10 +280,13 @@ void main() {
       expect(fit.totalExtent, closeTo(3 * rowHeight, 1e-9));
     });
 
-    test('the floor holds — packing never shrinks a glyph out of existence', () {
-      expect(fitFor(12, 1).fontSize, 4);
-      expect(fitFor(40, 1).fontSize, 4);
-    });
+    test(
+      'the floor holds — packing never shrinks a glyph out of existence',
+      () {
+        expect(fitFor(12, 1).fontSize, 4);
+        expect(fitFor(40, 1).fontSize, 4);
+      },
+    );
 
     test('no cells, no extent', () {
       expect(fitFor(0, 5).totalExtent, 0);

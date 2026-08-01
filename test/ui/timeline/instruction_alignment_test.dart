@@ -4,6 +4,7 @@ import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
@@ -28,6 +29,12 @@ void main() {
         valueB: 'ㄴ',
       ),
     },
+  );
+
+  final neighbourLayer = Layer(
+    id: const LayerId('neighbour'),
+    name: 'A',
+    frames: const [],
   );
 
   TimelineCellExposureState stateFor(Layer layer, int frameIndex) =>
@@ -112,23 +119,82 @@ void main() {
       ),
     );
 
+    // On the sheet the writing reads DOWN its column, so the strings are
+    // carried by the shared vertical writer rather than by `Text`.
+    Finder written(String text) => find.byWidgetPredicate(
+      (w) => w is VerticalWritingText && w.text == text,
+    );
+
     expectCentered(
       tester,
-      find.text('ㄱ'),
+      written('ㄱ'),
       timelineCellCenter(tester, 'cam-1', 2, prefix: 'xsheet'),
     );
     expectCentered(
       tester,
-      find.text('ㄴ'),
+      written('ㄴ'),
       timelineCellCenter(tester, 'cam-1', 6, prefix: 'xsheet'),
     );
-    // R6-①c: the name reads HORIZONTALLY on the X-sheet too (glyph stack
-    // retired) — one Text, dead center on the span like the timeline.
     expectCentered(
       tester,
-      find.text('PAN'),
+      written('PAN'),
       timelineCellCenter(tester, 'cam-1', 4, prefix: 'xsheet'),
     );
+  });
+
+  testWidgets('X-sheet: a long instruction name stays inside its own '
+      'column', (tester) async {
+    // The 42px bleed: `FOLLOW PAN` drew 112px wide in a 28px column,
+    // straight over the neighbouring layer's cells, because three clip
+    // opt-outs stacked up over horizontal writing. Written down its own
+    // column it cannot reach the neighbour at all.
+    final longNamed = Layer(
+      id: const LayerId('cam-1'),
+      name: 'CAM 1',
+      kind: LayerKind.instruction,
+      frames: const [],
+      timeline: const {},
+      instructions: {
+        2: const InstructionEvent(instructionId: 'follow-pan', length: 5),
+      },
+    );
+    final cursor = ValueNotifier<int>(0);
+    addTearDown(cursor.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: XSheetTimelineGrid(
+            layers: [longNamed, neighbourLayer],
+            activeLayerId: null,
+            frameCursor: cursor,
+            frameCount: 24,
+            exposureStateForLayer: stateFor,
+            instructionDefById: CameraInstructionSet.standard.defById,
+            onSelectLayer: (_) {},
+            onSelectFrame: (_) {},
+            onAddLayer: () {},
+            onToggleLayerVisibility: (_) {},
+            onLayerOpacityChanged: (_, _) {},
+            onToggleLayerTimesheet: (_) {},
+            onLayerMarkSelected: (_, _) {},
+          ),
+        ),
+      ),
+    );
+
+    final name = find.byWidgetPredicate((w) => w is VerticalWritingText);
+    expect(name, findsWidgets);
+    final columnWidth = XSheetTimelineGrid.defaultMetrics.layerRowHeight;
+    for (final rect
+        in tester
+            .widgetList(name)
+            .map((w) => tester.getRect(find.byWidget(w)))) {
+      expect(
+        rect.width,
+        lessThanOrEqualTo(columnWidth + 0.01),
+        reason: 'instruction writing must stay inside its own column',
+      );
+    }
   });
 }
 

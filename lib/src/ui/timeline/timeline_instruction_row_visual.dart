@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/layer.dart';
 import '../../models/timeline_coverage.dart' show TimelineBlockEdge;
+import '../text/vertical_writing_text.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_comma_drag_handle.dart';
@@ -149,15 +150,19 @@ class _InstructionSpan extends StatelessWidget {
   }) {
     final overflowing = OverflowBox(
       alignment: alignment,
-      // BOTH bounds must open up: OverflowBox only replaces what is set,
-      // and the slot's TIGHT mins otherwise force the writing to fill the
-      // slot — glyphs then paint from the start edge and the labels LOOK
-      // top/left-aligned instead of centered (R5-⑤ root cause, all three
-      // misalignment reports).
+      // The MINS must open up: the slot's tight ones otherwise force the
+      // writing to fill it — glyphs then paint from the start edge and the
+      // labels LOOK top/left-aligned instead of centered (R5-⑤ root cause,
+      // all three misalignment reports).
+      //
+      // The MAXES open along the frame axis only. Writing that runs past
+      // its own span is the paper convention; writing that runs into the
+      // next ROW or COLUMN is the 42px bleed. A null max keeps the
+      // parent's, which is exactly the row/column bound.
       minWidth: 0,
       minHeight: 0,
-      maxWidth: double.infinity,
-      maxHeight: double.infinity,
+      maxWidth: axis == Axis.horizontal ? double.infinity : null,
+      maxHeight: axis == Axis.horizontal ? null : double.infinity,
       child: child,
     );
     final cells = event.length < 1 ? 1 : event.length;
@@ -180,8 +185,18 @@ class _InstructionSpan extends StatelessWidget {
   /// Instruction writing reads HORIZONTALLY in both orientations (R6-①c:
   /// the X-sheet glyph stack retired — frame names already read
   /// horizontally there, and the printed sheet writes these across too).
+  /// Instruction writing follows the surface: across the row on the
+  /// timeline, DOWN the column on the sheet.
+  ///
+  /// The sheet used to get horizontal text too, and that is what made
+  /// `FOLLOW PAN` 112px wide in a 28px column — three clip opt-outs above
+  /// then let it paint straight over the neighbouring layer's cells. A
+  /// name written down its own column cannot reach the neighbour at all,
+  /// which is the fix at the root rather than a clip on top.
   Widget _writing(String text, TextStyle style) {
-    return Text(text, maxLines: 1, softWrap: false, style: style);
+    return axis == Axis.horizontal
+        ? Text(text, maxLines: 1, softWrap: false, style: style)
+        : VerticalWritingText(text: text, style: style);
   }
 
   @override
@@ -249,11 +264,12 @@ class _InstructionSpan extends StatelessWidget {
               child: OverflowBox(
                 // Open mins too (see _cellSlot) — otherwise the name fills
                 // the span and its glyphs paint from the FIRST frame
-                // instead of sitting on the span's center.
+                // instead of sitting on the span's center. The cross axis
+                // stays bounded: that is the neighbour's edge.
                 minWidth: 0,
                 minHeight: 0,
-                maxWidth: double.infinity,
-                maxHeight: double.infinity,
+                maxWidth: axis == Axis.horizontal ? double.infinity : null,
+                maxHeight: axis == Axis.horizontal ? null : double.infinity,
                 child: ExcludeSemantics(child: _writing(name, nameStyle)),
               ),
             ),

@@ -20,6 +20,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show timelineDrawingStartColor;
@@ -1424,13 +1425,16 @@ void main() {
       );
       await expand(tester);
 
+      // The readout reads DOWN its column since the rail-window round (it
+      // used to be horizontal text shrunk to fit), so it is the shared
+      // vertical writer that carries the string.
       final valueText = find.descendant(
         of: find.byKey(
           const ValueKey<String>('xsheet-lane-value-lane-cam-layer-scale'),
         ),
-        matching: find.byType(Text),
+        matching: find.byType(VerticalWritingText),
       );
-      expect(tester.widget<Text>(valueText).data, '150%');
+      expect(tester.widget<VerticalWritingText>(valueText).text, '150%');
 
       // Typing keys the value at the playhead (Enter commits).
       await tester.tap(
@@ -1449,7 +1453,7 @@ void main() {
       );
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
-      expect(tester.widget<Text>(valueText).data, '200%');
+      expect(tester.widget<VerticalWritingText>(valueText).text, '200%');
 
       // Scrubbing: +40px horizontally = +20% at the 0.5%/px rate — the
       // drag-axis mapping is the LANE's, identical in both orientations.
@@ -1460,7 +1464,7 @@ void main() {
         const Offset(40, 0),
       );
       await tester.pumpAndSettle();
-      expect(tester.widget<Text>(valueText).data, '220%');
+      expect(tester.widget<VerticalWritingText>(valueText).text, '220%');
       expect(laneKey('scale', 0), findsOneWidget);
     });
 

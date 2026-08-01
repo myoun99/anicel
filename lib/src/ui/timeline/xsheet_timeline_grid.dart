@@ -2197,26 +2197,23 @@ class _XSheetSectionBandCell extends StatelessWidget {
           color: colorScheme.surfaceContainerLow,
           border: Border.all(color: colorScheme.outline, width: 1),
         ),
-        // The band runs ALONG the layer axis, so its label stays horizontal
-        // — but a run is now 28px per column instead of 164, and 'ACTION'
-        // needs ~40. R10 R6 converted every other label on this surface to
-        // vertical writing and left this one with the note "it is
-        // horizontal already", which was true only while the columns were
-        // wide. Scaling down beats ellipsis: 'AC…' names no section.
+        // The band runs ALONG the layer axis, so its label stays
+        // horizontal. It used to SHRINK into a narrow run; the rail-window
+        // round retired that everywhere on screen, so a one-column run
+        // ellipsises like any other label that outgrows its slot.
         child: Center(
-          child: ClipRect(
-            child: FittedBox(
-              fit: BoxFit.scaleDown,
-              child: Text(
-                timelineSectionLabel(run.section),
-                maxLines: 1,
-                softWrap: false,
-                style: TextStyle(
-                  fontSize: 9,
-                  letterSpacing: 1.2,
-                  fontWeight: FontWeight.bold,
-                  color: colorScheme.onSurfaceVariant,
-                ),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
+            child: Text(
+              timelineSectionLabel(run.section),
+              maxLines: 1,
+              softWrap: false,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 9,
+                letterSpacing: 1.2,
+                fontWeight: FontWeight.bold,
+                color: colorScheme.onSurfaceVariant,
               ),
             ),
           ),
