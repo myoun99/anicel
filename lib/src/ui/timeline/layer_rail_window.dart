@@ -157,7 +157,14 @@ class LayerRailExtent extends ValueNotifier<double?> {
   }
 
   /// Back to the rail's natural size (double-click on the splitter).
-  void reset() => value = null;
+  ///
+  /// The push goes home with it. At the natural size there is nothing left
+  /// to push into, so a surviving offset is invisible until the next
+  /// narrowing drag — at which point the rail would jump to its tail.
+  void reset() {
+    value = null;
+    offset.value = 0;
+  }
 
   /// How far the window may be pushed along the rail.
   static double maximumOffset({
@@ -336,13 +343,20 @@ class _RenderRailWindowBox extends RenderShiftedBox {
   set railOffset(double value) {
     if (_railOffset != value) {
       _railOffset = value;
-      // A push moves the child's paint offset only: no relayout, which is
-      // the whole reason the rail can be pushed at pointer speed.
-      markNeedsLayout();
+      // A push moves the child's PAINT offset only — no relayout, which is
+      // the whole reason the rail can be pushed at pointer speed. That is
+      // why the shift is not in the child's parentData: parentData is set
+      // during layout, so writing it there would have made every pixel of
+      // a push a relayout of the rail and everything in it.
+      markNeedsPaint();
     }
   }
 
   bool get _horizontal => _axis == Axis.horizontal;
+
+  /// Where the child paints relative to the window's origin.
+  Offset get _shift =>
+      _horizontal ? Offset(-_railOffset, 0) : Offset(0, -_railOffset);
 
   BoxConstraints _childConstraints(BoxConstraints constraints) => _horizontal
       ? BoxConstraints(
@@ -406,13 +420,14 @@ class _RenderRailWindowBox extends RenderShiftedBox {
     }
     child.layout(_childConstraints(constraints), parentUsesSize: true);
     size = _windowSize(constraints, child.size);
-    (child.parentData! as BoxParentData).offset = _horizontal
-        ? Offset(-_railOffset, 0)
-        : Offset(0, -_railOffset);
+    // Zero: the push is a PAINT offset (see [railOffset]), applied in
+    // paint/hitTest/applyPaintTransform below rather than here.
+    (child.parentData! as BoxParentData).offset = Offset.zero;
   }
 
   @override
   void paint(PaintingContext context, Offset offset) {
+    final child = this.child;
     if (child == null) {
       return;
     }
@@ -420,8 +435,29 @@ class _RenderRailWindowBox extends RenderShiftedBox {
       needsCompositing,
       offset,
       Offset.zero & size,
-      super.paint,
+      (context, offset) => context.paintChild(child, offset + _shift),
     );
+  }
+
+  @override
+  bool hitTestChildren(BoxHitTestResult result, {required Offset position}) {
+    final child = this.child;
+    if (child == null) {
+      return false;
+    }
+    // The window's own `hitTest` already rejects anything outside `size`,
+    // so a control pushed out of view cannot be tapped.
+    return result.addWithPaintOffset(
+      offset: _shift,
+      position: position,
+      hitTest: (result, transformed) =>
+          child.hitTest(result, position: transformed),
+    );
+  }
+
+  @override
+  void applyPaintTransform(RenderBox child, Matrix4 transform) {
+    transform.translateByDouble(_shift.dx, _shift.dy, 0, 1);
   }
 
   @override

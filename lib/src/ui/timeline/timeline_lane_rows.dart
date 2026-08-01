@@ -32,12 +32,18 @@ const double _laneLabelFloor = 2 * timelineFrameCellWidth;
 /// their leading gaps.
 const double _laneNavigatorExtent = 3 * 20 + 4;
 
-/// 20 → 28 (rail-window round): the value used to SHRINK into whatever was
-/// left, so any budget "worked". It reads DOWN the column now, and two
-/// cells is what a percentage costs — `100%` is one 縦中横 cell plus the
-/// sign. Longer readouts ellipsise, like every other label that outgrows
-/// its slot.
-const double _laneValueExtent = 28;
+/// 20 → 28 → 76 (rail-window round): the value used to SHRINK into
+/// whatever was left, so any budget "worked" and nobody had to ask what
+/// the readout actually costs. It reads DOWN the column now, so the slot
+/// has to be sized in CELLS.
+///
+/// Six of them, at the 11pt/1.15 the value is drawn with. Two would have
+/// held a percentage and nothing else: `0.0, 0.0` is eight cells, so a
+/// Position lane would have read `0…` — worse than the shrunken text it
+/// replaced. Six shows `0.0, …`, which at least names the first component,
+/// and the column has the height to spare (its heading floor is 48 and a
+/// stood-up header block is ~320).
+const double _laneValueExtent = 76;
 
 /// The label cell of one property lane: an AE-style property name, the
 /// keyframe navigator (◀ previous key · ◆ toggle key at the playhead · ▶

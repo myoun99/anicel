@@ -64,7 +64,10 @@ double paintVerticalText(
   if (overflow == VerticalTextOverflow.ellipsis && naturalCellExtent > 0) {
     cells = verticalTextCellsWithin(
       cells,
-      capacityCells: (mainExtent / naturalCellExtent).floor(),
+      capacityCells: verticalTextCapacityCells(
+        mainExtent: mainExtent,
+        naturalCellExtent: naturalCellExtent,
+      ),
     );
     if (cells.isEmpty) {
       return 0;
