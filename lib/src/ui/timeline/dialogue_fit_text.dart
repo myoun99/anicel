@@ -1,11 +1,19 @@
 import 'package:flutter/material.dart';
 
 import '../text/dialogue_fit_layout.dart';
+import '../text/vertical_writing_text.dart';
 
-/// SE dialogue distributed evenly over the available extent — every glyph
-/// painted upright (never rotated) at the [dialogueGlyphCenters] positions
-/// along [axis], centered on the cross axis. Mirrors the paper sheet's SE
-/// column, where dialogue stretches to fill its covered frames.
+/// SE dialogue distributed evenly over the available extent — one glyph per
+/// [dialogueGlyphCenters] position along [axis], centered on the cross
+/// axis. Mirrors the paper sheet's SE column, where dialogue stretches to
+/// fill its covered frames.
+///
+/// Down a COLUMN the glyphs take their vertical-writing forms, through the
+/// shared table. They used not to: the class doc said "every glyph painted
+/// upright (never rotated)", so a long-vowel bar in `ドアー` stayed lying
+/// across the column while the same character rotated everywhere else on
+/// the sheet. The spacing rule is the dialogue's own; the FORM rule is the
+/// app's one table.
 class DialogueFitText extends StatelessWidget {
   const DialogueFitText({
     super.key,
@@ -72,16 +80,24 @@ class _DialogueFitPainter extends CustomPainter {
         ),
         textDirection: TextDirection.ltr,
       )..layout();
-      final offset = axis == Axis.horizontal
-          ? Offset(
-              centers[i] - painter.width / 2,
-              (size.height - painter.height) / 2,
-            )
-          : Offset(
-              (size.width - painter.width) / 2,
-              centers[i] - painter.height / 2,
-            );
-      painter.paint(canvas, offset);
+      if (axis == Axis.horizontal) {
+        painter.paint(
+          canvas,
+          Offset(
+            centers[i] - painter.width / 2,
+            (size.height - painter.height) / 2,
+          ),
+        );
+        continue;
+      }
+      paintVerticalTextCell(
+        canvas,
+        verticalGlyphCell(glyphs[i]),
+        painter: painter,
+        center: Offset(size.width / 2, centers[i]),
+        fontSize: fontSize,
+        maxCrossExtent: size.width,
+      );
     }
   }
 

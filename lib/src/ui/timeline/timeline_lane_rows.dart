@@ -31,7 +31,13 @@ const double _laneLabelFloor = 2 * timelineFrameCellWidth;
 /// The stood-up navigator (three 20px buttons) and value readout, plus
 /// their leading gaps.
 const double _laneNavigatorExtent = 3 * 20 + 4;
-const double _laneValueExtent = 20;
+
+/// 20 → 28 (rail-window round): the value used to SHRINK into whatever was
+/// left, so any budget "worked". It reads DOWN the column now, and two
+/// cells is what a percentage costs — `100%` is one 縦中横 cell plus the
+/// sign. Longer readouts ellipsise, like every other label that outgrows
+/// its slot.
+const double _laneValueExtent = 28;
 
 /// The label cell of one property lane: an AE-style property name, the
 /// keyframe navigator (◀ previous key · ◆ toggle key at the playhead · ▶
@@ -340,19 +346,24 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           onTap: laneEdit?.onSetValue == null
               ? null
               : () => _startValueEdit(valueLabel),
-          // AE's blue value, scaled to whatever the column gives it rather
-          // than ellipsised away. R10 R6 narrowed the x-sheet's lane column
-          // 164 → 28, where `0.0, 0.0` ellipsises to `0…` — the scrub and
-          // the tap still worked, so nothing threw and nothing noticed.
-          child: FittedBox(
-            fit: BoxFit.scaleDown,
-            child: Text(
-              _scrubPreview ?? valueLabel,
-              maxLines: 1,
-              softWrap: false,
-              style: TextStyle(fontSize: 11, color: colorScheme.primary),
-            ),
-          ),
+          // AE's blue value. It used to SHRINK to whatever the column gave
+          // it; the rail-window round retired shrink-to-fit everywhere on
+          // screen, so on the sheet the value reads DOWN its column like
+          // every other label there — with three-digit 縦中横 so `100%`
+          // costs two cells rather than four.
+          child: widget.axis == Axis.horizontal
+              ? Text(
+                  _scrubPreview ?? valueLabel,
+                  maxLines: 1,
+                  softWrap: false,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11, color: colorScheme.primary),
+                )
+              : VerticalWritingText(
+                  text: _scrubPreview ?? valueLabel,
+                  tateChuYokoDigits: 3,
+                  style: TextStyle(fontSize: 11, color: colorScheme.primary),
+                ),
         ),
       ),
     );
@@ -520,26 +531,36 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           // Value first (it is a readout, and the same number is on the
           // timeline rail), then the navigator (whose diamond is also on
           // the frame axis).
+          // The gaps count too: without them the label's floor was 4px
+          // short of what the gate promised at every rung, and nothing
+          // noticed while the label could still pack.
+          const gap = 4.0;
           final showsValue =
               valueLabel != null &&
-              extent >= _laneLabelFloor + _laneValueExtent;
+              extent >= _laneLabelFloor + gap + _laneValueExtent;
           final showsNavigator =
               lane.showsKeyNavigator &&
               extent >=
                   _laneLabelFloor +
+                      gap +
                       _laneNavigatorExtent +
-                      (showsValue ? _laneValueExtent : 0);
+                      (showsValue ? gap + _laneValueExtent : 0);
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Expanded(child: label),
               if (showsNavigator) ...[
-                const SizedBox(height: 4),
+                const SizedBox(height: gap),
                 _navigator(colorScheme),
               ],
               if (showsValue) ...[
-                const SizedBox(height: 4),
-                _valueCell(colorScheme, valueLabel),
+                const SizedBox(height: gap),
+                // A fixed slot, so a long readout ellipsises inside it
+                // instead of pushing the heading out of its own column.
+                SizedBox(
+                  height: _laneValueExtent,
+                  child: _valueCell(colorScheme, valueLabel),
+                ),
               ],
             ],
           );

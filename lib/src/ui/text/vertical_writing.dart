@@ -48,6 +48,20 @@ enum VerticalGlyphForm {
 
   /// A digit run set horizontally inside one cell.
   tateChuYoko,
+
+  /// A WORD of Latin letters turned 90° and read along the column as one
+  /// line — CSS calls it `text-orientation: sideways`, and it is what every
+  /// vertical-setting application does with Latin.
+  ///
+  /// Stacking Latin letter by letter is what the app did before, and it is
+  /// unreadable at the sheet's width: `Multiply` cost 8 cells and fell to
+  /// 5.8pt in a 28px column, `Color Dodge` to 3.9pt, `Pass Through` to
+  /// 3.4pt. Turned sideways the same word costs about half that and stays
+  /// at full size. Japanese is unaffected — `焼き込みカラー` was always
+  /// legible, which is exactly why the failure hid: the blend-mode names
+  /// are translated ONLY into Japanese, so every other language (this
+  /// user's included) got the unreadable case as its default.
+  sideways,
 }
 
 /// Characters that ROTATE 90°.
@@ -144,6 +158,7 @@ class VerticalTextCell {
     required this.text,
     required this.form,
     this.shiftEm = 0,
+    this.spanCells = 1,
   });
 
   final String text;
@@ -153,6 +168,16 @@ class VerticalTextCell {
   /// [verticalGlyphShiftEm].
   final double shiftEm;
 
+  /// How many cell slots this one occupies along the column. One for every
+  /// form but [VerticalGlyphForm.sideways], where a turned word is as long
+  /// as the word is wide.
+  ///
+  /// An ESTIMATE, deliberately: this library is pure and cannot measure a
+  /// font. The renderer scales the run into whatever this reserved, so an
+  /// estimate that is off by a little costs a little size and never a
+  /// misplaced cell.
+  final int spanCells;
+
   @override
   String toString() => 'VerticalTextCell($text, ${form.name})';
 
@@ -161,10 +186,73 @@ class VerticalTextCell {
       other is VerticalTextCell &&
       other.text == text &&
       other.form == form &&
-      other.shiftEm == shiftEm;
+      other.shiftEm == shiftEm &&
+      other.spanCells == spanCells;
 
   @override
-  int get hashCode => Object.hash(text, form, shiftEm);
+  int get hashCode => Object.hash(text, form, shiftEm, spanCells);
+}
+
+/// Latin letters — the alphabet that reads sideways rather than stacked.
+bool _isLatinLetter(String char) {
+  if (char.length != 1) {
+    return false;
+  }
+  final code = char.codeUnitAt(0);
+  return (code >= 0x41 && code <= 0x5A) || (code >= 0x61 && code <= 0x7A);
+}
+
+/// How many cells a sideways run reserves.
+///
+/// 0.55em a character is the middle of the Latin advance range (lowercase
+/// runs near 0.5, uppercase near 0.6). Rounding UP means the run is only
+/// ever scaled down into its slot, never cropped.
+int verticalSidewaysRunCells(String run) =>
+    math.max(1, (run.length * 0.55).ceil());
+
+/// The cell slots [cells] occupy in total — the number the fit math counts,
+/// which is not `cells.length` once a sideways run is in there.
+int verticalTextSpanCount(List<VerticalTextCell> cells) {
+  var total = 0;
+  for (final cell in cells) {
+    total += cell.spanCells;
+  }
+  return total;
+}
+
+/// The leading cells that fit in [capacityCells], with an ELLIPSIS cell in
+/// place of the last one whenever something had to be dropped.
+///
+/// This is the rail-window round's rule for text: a label that does not fit
+/// its own slot ellipsises. It does NOT shrink — shrinking to fit is what
+/// the surrounding round deleted everywhere else, and a column of 3.4pt
+/// letters was the same mistake one layer down.
+List<VerticalTextCell> verticalTextCellsWithin(
+  List<VerticalTextCell> cells, {
+  required int capacityCells,
+}) {
+  if (capacityCells <= 0) {
+    return const [];
+  }
+  if (verticalTextSpanCount(cells) <= capacityCells) {
+    return cells;
+  }
+  const ellipsis = VerticalTextCell(
+    text: '…',
+    // Rotated, an ellipsis reads as the vertical `⋮` it should be.
+    form: VerticalGlyphForm.rotated,
+  );
+  final kept = <VerticalTextCell>[];
+  var used = 0;
+  for (final cell in cells) {
+    // Every kept cell has to leave room for the ellipsis after it.
+    if (used + cell.spanCells > capacityCells - 1) {
+      break;
+    }
+    kept.add(cell);
+    used += cell.spanCells;
+  }
+  return [...kept, ellipsis];
 }
 
 /// Splits [text] into the cells of one vertical column, top to bottom.
@@ -185,6 +273,38 @@ List<VerticalTextCell> verticalTextCells(
   var index = 0;
   while (index < glyphs.length) {
     final glyph = glyphs[index];
+    // A WORD of Latin letters turns sideways as one line. Internal single
+    // spaces stay inside the run, so `Pass Through` is one turned phrase
+    // rather than two words with a stacked blank between them.
+    if (_isLatinLetter(glyph)) {
+      var end = index;
+      var lastLetter = index;
+      while (end < glyphs.length &&
+          (_isLatinLetter(glyphs[end]) ||
+              (glyphs[end] == ' ' &&
+                  end + 1 < glyphs.length &&
+                  _isLatinLetter(glyphs[end + 1])))) {
+        if (_isLatinLetter(glyphs[end])) {
+          lastLetter = end;
+        }
+        end += 1;
+      }
+      end = lastLetter + 1;
+      final run = glyphs.sublist(index, end).join();
+      // A LONE letter keeps standing upright — `A-1` reads `A│1`, which is
+      // what a paper sheet writes.
+      if (run.length >= 2) {
+        cells.add(
+          VerticalTextCell(
+            text: run,
+            form: VerticalGlyphForm.sideways,
+            spanCells: verticalSidewaysRunCells(run),
+          ),
+        );
+        index = end;
+        continue;
+      }
+    }
     if (tateChuYokoDigits >= 2 && _isDigit(glyph)) {
       var end = index;
       while (end < glyphs.length && _isDigit(glyphs[end])) {

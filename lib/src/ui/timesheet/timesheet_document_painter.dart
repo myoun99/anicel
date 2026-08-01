@@ -1489,11 +1489,15 @@ class TimesheetDocumentPainter extends CustomPainter {
     }
   }
 
-  /// An upright glyph stack centered on [center] (the instruction writing
   /// SE dialogue distributed evenly over the covered rows — the sheet's
   /// "fit" rule, sharing [dialogueGlyphCenters] with the timeline overlay
   /// so screen and print place glyphs identically. Never truncates: the
   /// dialogue owns its whole block, exactly like the paper column.
+  ///
+  /// The FORMS come from the app's one vertical-writing table, like every
+  /// other column on this sheet. They used not to — this placer stacked
+  /// every glyph upright, so a `ー` inside dialogue lay across the column
+  /// while the notation word two columns over rotated it.
   void _fitVerticalText(
     Canvas canvas,
     String text, {
@@ -1515,12 +1519,12 @@ class TimesheetDocumentPainter extends CustomPainter {
         ),
         textDirection: TextDirection.ltr,
       )..layout();
-      painter.paint(
+      paintVerticalTextCell(
         canvas,
-        Offset(
-          topCenter.dx - painter.width / 2,
-          topCenter.dy + centers[index] - painter.height / 2,
-        ),
+        verticalGlyphCell(glyphs[index]),
+        painter: painter,
+        center: Offset(topCenter.dx, topCenter.dy + centers[index]),
+        fontSize: fontSize,
       );
     }
   }

@@ -61,6 +61,36 @@ Widget _grid({double height = 900, LayerRailExtent? railExtent}) {
   );
 }
 
+/// The sheet as the panel really builds it: onion and blend columns on,
+/// and no legend bulk callbacks (it has no flyouts of its own).
+Widget _gridWithOptionalColumns() {
+  final cursor = ValueNotifier<int>(0);
+  return MaterialApp(
+    home: Scaffold(
+      body: SizedBox(
+        width: 900,
+        height: 900,
+        child: XSheetTimelineGrid(
+          layers: [_layer('layer-1', 'Layer 1')],
+          activeLayerId: const LayerId('layer-1'),
+          frameCursor: cursor,
+          frameCount: 8,
+          exposureStateForLayer: (_, _) => TimelineCellExposureState.uncovered,
+          onSelectLayer: (_) {},
+          onSelectFrame: (_) {},
+          onAddLayer: () {},
+          onToggleLayerVisibility: (_) {},
+          onLayerOpacityChanged: (_, _) {},
+          onToggleLayerTimesheet: (_) {},
+          onLayerMarkSelected: (_, _) {},
+          onToggleLayerOnionSkin: (_) {},
+          onLayerBlendModeSelected: (_, _) {},
+        ),
+      ),
+    ),
+  );
+}
+
 double sheetLeft(WidgetTester tester) =>
     tester.getRect(find.byType(XSheetTimelineGrid)).left;
 
@@ -370,6 +400,24 @@ void main() {
         'legend-eye',
         'legend-mute',
       ]) {
+        expect(
+          find.byKey(ValueKey<String>(key)),
+          findsOneWidget,
+          reason: '$key must label its stood-up column',
+        );
+      }
+    });
+
+    testWidgets('ONION and BLND get their headings too — the heading '
+        'follows the COLUMN, not the bulk command', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(900, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(_gridWithOptionalColumns());
+
+      // The sheet carries onion and blend columns but passes no legend
+      // bulk callbacks, and the two cells were gated on those callbacks —
+      // so exactly those two columns had a reserved slot and no heading.
+      for (final key in ['legend-onion', 'legend-blend']) {
         expect(
           find.byKey(ValueKey<String>(key)),
           findsOneWidget,

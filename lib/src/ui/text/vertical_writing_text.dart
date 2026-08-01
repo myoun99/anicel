@@ -29,6 +29,19 @@ import 'vertical_writing.dart';
 /// reach the fit math or the glyphs grow while their cells do not). A
 /// canvas host with fixed paper geometry — the timesheet — has no scaler
 /// and wants none.
+/// What a column does when it is longer than the space it was given.
+enum VerticalTextOverflow {
+  /// Cells pack tighter and the glyphs shrink with them. The PRINT
+  /// timesheet's rule and only its: squeezing a notation word into its span
+  /// is a paper convention (`リ/ピ/ー/ト`), not a UI fallback.
+  pack,
+
+  /// Cells keep their size and the tail is replaced by an ellipsis. Every
+  /// screen surface, since the rail-window round: nothing shrinks to fit
+  /// anywhere anymore.
+  ellipsis,
+}
+
 double paintVerticalText(
   Canvas canvas,
   String text, {
@@ -42,13 +55,23 @@ double paintVerticalText(
   double? maxCellWidth,
   double mainAlignment = 0,
   int tateChuYokoDigits = verticalTateChuYokoDigits,
+  VerticalTextOverflow overflow = VerticalTextOverflow.pack,
 }) {
-  final cells = verticalTextCells(text, tateChuYokoDigits: tateChuYokoDigits);
+  var cells = verticalTextCells(text, tateChuYokoDigits: tateChuYokoDigits);
   if (cells.isEmpty) {
     return 0;
   }
+  if (overflow == VerticalTextOverflow.ellipsis && naturalCellExtent > 0) {
+    cells = verticalTextCellsWithin(
+      cells,
+      capacityCells: (mainExtent / naturalCellExtent).floor(),
+    );
+    if (cells.isEmpty) {
+      return 0;
+    }
+  }
   final fit = verticalTextFit(
-    cellCount: cells.length,
+    cellCount: verticalTextSpanCount(cells),
     mainExtent: mainExtent,
     naturalCellExtent: naturalCellExtent,
     maxFontSize: style.fontSize ?? 12,
@@ -70,63 +93,121 @@ double paintVerticalText(
   final start = top + (mainExtent - fit.totalExtent) * mainAlignment;
   final widthLimit = maxCellWidth ?? double.infinity;
 
+  var slot = 0;
   for (var index = 0; index < cells.length; index += 1) {
     final cell = cells[index];
-    final cellCenterY = start + index * fit.cellExtent + fit.cellExtent / 2;
+    // A sideways run owns several slots, so its centre is the centre of the
+    // whole span, not of one cell.
+    final cellSpan = cell.spanCells * fit.cellExtent;
+    final cellCenterY = start + slot * fit.cellExtent + cellSpan / 2;
+    slot += cell.spanCells;
     final painter = TextPainter(
       text: TextSpan(text: cell.text, style: glyphStyle),
       textDirection: TextDirection.ltr,
       maxLines: 1,
     )..layout();
 
-    // Every form scales UNIFORMLY when it is wider than the column allows —
-    // never anamorphically. A 縦中横 pair squeezed on one axis alone reads
-    // as a font bug, and the SE columns really do get this narrow: a
-    // four-column SE group is 10px per column, so the limit is reachable,
-    // not theoretical.
-    double fitScale(double extentAcrossColumn) {
-      return extentAcrossColumn > widthLimit && extentAcrossColumn > 0
-          ? widthLimit / extentAcrossColumn
-          : 1.0;
-    }
-
-    canvas.save();
-    switch (cell.form) {
-      case VerticalGlyphForm.rotated:
-        // Turned 90° clockwise about the cell's centre: the long-vowel bar
-        // and the brackets become strokes along the column. Lying down, it
-        // is the glyph's HEIGHT that has to clear the column.
-        canvas.translate(centerX, cellCenterY);
-        canvas.rotate(math.pi / 2);
-        final scale = fitScale(painter.height);
-        if (scale != 1.0) {
-          canvas.scale(scale, scale);
-        }
-      case VerticalGlyphForm.tateChuYoko:
-        // 縦中横: the digits stay horizontal and condense into the width one
-        // upright glyph would have taken.
-        canvas.translate(centerX, cellCenterY);
-        final target = math.min(fontSize, widthLimit);
-        final scale = painter.width > target && painter.width > 0
-            ? target / painter.width
-            : 1.0;
-        if (scale != 1.0) {
-          canvas.scale(scale, scale);
-        }
-      case VerticalGlyphForm.shifted:
-      case VerticalGlyphForm.upright:
-        final shift = cell.shiftEm * fontSize;
-        canvas.translate(centerX + shift, cellCenterY - shift);
-        final scale = fitScale(painter.width);
-        if (scale != 1.0) {
-          canvas.scale(scale, scale);
-        }
-    }
-    painter.paint(canvas, Offset(-painter.width / 2, -painter.height / 2));
-    canvas.restore();
+    paintVerticalTextCell(
+      canvas,
+      cell,
+      painter: painter,
+      center: Offset(centerX, cellCenterY),
+      fontSize: fontSize,
+      maxCrossExtent: widthLimit,
+      spanExtent: cellSpan,
+    );
   }
   return fit.totalExtent;
 }
+
+/// Paints ONE already-laid-out cell centred on [center], applying the form
+/// table's rotation, lean and condensation.
+///
+/// Split out of [paintVerticalText] for hosts that place their own cells:
+/// the SE dialogue spreads its glyphs evenly over the frames a block covers
+/// (`dialogueGlyphCenters`) rather than stacking them at a fixed leading,
+/// so it cannot go through the column renderer — but it must still ROTATE
+/// what the table rotates. Both the screen overlay and the printed sheet
+/// were placing dialogue glyphs upright, which left `ー` a horizontal bar
+/// in the one place a vertical column makes it most obvious.
+void paintVerticalTextCell(
+  Canvas canvas,
+  VerticalTextCell cell, {
+  required TextPainter painter,
+  required Offset center,
+  required double fontSize,
+  double maxCrossExtent = double.infinity,
+  double spanExtent = 0,
+}) {
+  // Every form scales UNIFORMLY when it is wider than the column allows —
+  // never anamorphically. A 縦中横 pair squeezed on one axis alone reads
+  // as a font bug, and the SE columns really do get this narrow: a
+  // four-column SE group is 10px per column, so the limit is reachable,
+  // not theoretical.
+  double fitScale(double extentAcrossColumn) {
+    return extentAcrossColumn > maxCrossExtent && extentAcrossColumn > 0
+        ? maxCrossExtent / extentAcrossColumn
+        : 1.0;
+  }
+
+  canvas.save();
+  switch (cell.form) {
+    case VerticalGlyphForm.rotated:
+      // Turned 90° clockwise about the cell's centre: the long-vowel bar
+      // and the brackets become strokes along the column. Lying down, it
+      // is the glyph's HEIGHT that has to clear the column.
+      canvas.translate(center.dx, center.dy);
+      canvas.rotate(math.pi / 2);
+      final scale = fitScale(painter.height);
+      if (scale != 1.0) {
+        canvas.scale(scale, scale);
+      }
+    case VerticalGlyphForm.sideways:
+      // The word lies down and reads along the column. It is scaled into
+      // the slots it reserved (the reservation is an estimate, so this is
+      // usually a small trim) and into the column's own width, which the
+      // turned glyphs' HEIGHT has to clear.
+      canvas.translate(center.dx, center.dy);
+      canvas.rotate(math.pi / 2);
+      final alongScale =
+          spanExtent > 0 && painter.width > spanExtent && painter.width > 0
+          ? spanExtent / painter.width
+          : 1.0;
+      final scale = math.min(alongScale, fitScale(painter.height));
+      if (scale != 1.0) {
+        canvas.scale(scale, scale);
+      }
+    case VerticalGlyphForm.tateChuYoko:
+      // 縦中横: the digits stay horizontal and condense into the width one
+      // upright glyph would have taken.
+      canvas.translate(center.dx, center.dy);
+      final target = math.min(fontSize, maxCrossExtent);
+      final scale = painter.width > target && painter.width > 0
+          ? target / painter.width
+          : 1.0;
+      if (scale != 1.0) {
+        canvas.scale(scale, scale);
+      }
+    case VerticalGlyphForm.shifted:
+    case VerticalGlyphForm.upright:
+      final shift = cell.shiftEm * fontSize;
+      canvas.translate(center.dx + shift, center.dy - shift);
+      final scale = fitScale(painter.width);
+      if (scale != 1.0) {
+        canvas.scale(scale, scale);
+      }
+  }
+  painter.paint(canvas, Offset(-painter.width / 2, -painter.height / 2));
+  canvas.restore();
+}
+
+/// The single-glyph cell [glyph] becomes in a vertical column — the form
+/// table applied without any run grouping, for the dialogue placers.
+VerticalTextCell verticalGlyphCell(String glyph) => VerticalTextCell(
+  text: glyph,
+  form: verticalGlyphForm(glyph),
+  shiftEm: verticalGlyphShiftEm(glyph),
+);
 
 /// Vertical writing in the widget tree: one glyph cell per line, top to
 /// bottom, rotating and leaning and pairing digits exactly as the timesheet
@@ -143,6 +224,7 @@ class VerticalWritingText extends StatelessWidget {
     this.lineHeight = 1.15,
     this.minFontSize = 1,
     this.tateChuYokoDigits = verticalTateChuYokoDigits,
+    this.overflow = VerticalTextOverflow.ellipsis,
   });
 
   final String text;
@@ -152,12 +234,16 @@ class VerticalWritingText extends StatelessWidget {
   /// between glyphs when the column is not cramped.
   final double lineHeight;
 
-  /// Long headings shrink to their host rather than overflow (a one-row
-  /// section bracket is shorter than its label), so the floor is a hair
-  /// rather than a legible size.
+  /// Only consulted with [VerticalTextOverflow.pack]; the default ELLIPSIS
+  /// mode keeps the size it was given.
   final double minFontSize;
 
   final int tateChuYokoDigits;
+
+  /// What a column too long for its host does. Ellipsis by default (the
+  /// rail-window round's rule everywhere on screen); the print timesheet
+  /// packs, and it goes through [paintVerticalText] directly.
+  final VerticalTextOverflow overflow;
 
   @override
   Widget build(BuildContext context) {
@@ -170,10 +256,10 @@ class VerticalWritingText extends StatelessWidget {
       context,
     ).scale(merged.fontSize ?? 12);
     final resolved = merged.copyWith(fontSize: fontSize);
-    final cellCount = verticalTextCells(
-      text,
-      tateChuYokoDigits: tateChuYokoDigits,
-    ).length;
+    // SLOTS, not cells: a sideways word owns several of them.
+    final cellCount = verticalTextSpanCount(
+      verticalTextCells(text, tateChuYokoDigits: tateChuYokoDigits),
+    );
 
     return Semantics(
       label: text,
@@ -199,6 +285,7 @@ class VerticalWritingText extends StatelessWidget {
             lineHeight: lineHeight,
             minFontSize: minFontSize,
             tateChuYokoDigits: tateChuYokoDigits,
+            overflow: overflow,
           ),
         ),
       ),
@@ -228,6 +315,7 @@ class _VerticalWritingPainter extends CustomPainter {
     required this.lineHeight,
     required this.minFontSize,
     required this.tateChuYokoDigits,
+    required this.overflow,
   });
 
   final String text;
@@ -237,6 +325,7 @@ class _VerticalWritingPainter extends CustomPainter {
   final double lineHeight;
   final double minFontSize;
   final int tateChuYokoDigits;
+  final VerticalTextOverflow overflow;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -257,6 +346,7 @@ class _VerticalWritingPainter extends CustomPainter {
       mainAlignment: 0.5,
       minFontSize: minFontSize,
       tateChuYokoDigits: tateChuYokoDigits,
+      overflow: overflow,
     );
   }
 
@@ -266,6 +356,7 @@ class _VerticalWritingPainter extends CustomPainter {
         style != oldDelegate.style ||
         lineHeight != oldDelegate.lineHeight ||
         minFontSize != oldDelegate.minFontSize ||
-        tateChuYokoDigits != oldDelegate.tateChuYokoDigits;
+        tateChuYokoDigits != oldDelegate.tateChuYokoDigits ||
+        overflow != oldDelegate.overflow;
   }
 }
