@@ -216,6 +216,68 @@ void main() {
       ]);
     });
 
+    test('the LATIN SCRIPT, not just ASCII — an accent stays in its word', () {
+      // ASCII-only split `Café` into `Caf` sideways plus an upright `é`:
+      // one word set in two orientations at once.
+      for (final word in ['Café', 'Größe', 'Łódź']) {
+        final cells = verticalTextCells(word);
+        expect(cells, hasLength(1), reason: word);
+        expect(cells.single.text, word);
+        expect(cells.single.form, VerticalGlyphForm.sideways);
+      }
+      // Kana and Hangul are NOT Latin — they keep standing upright, which
+      // is the whole point of vertical setting.
+      expect(
+        verticalTextCells(
+          'カナ',
+        ).every((c) => c.form != VerticalGlyphForm.sideways),
+        isTrue,
+      );
+      expect(
+        verticalTextCells(
+          '한글',
+        ).every((c) => c.form != VerticalGlyphForm.sideways),
+        isTrue,
+      );
+    });
+
+    test('a space carries on into a WORD, not into cel notation', () {
+      // `FOLLOW PAN A2` is the phrase and then the cel — the run used to
+      // swallow the `A`, leaving a stray upright `2`.
+      final cells = verticalTextCells('FOLLOW PAN A2');
+      expect(cells.first.text, 'FOLLOW PAN');
+      expect(cells.map((c) => c.text).toList(), ['FOLLOW PAN', ' ', 'A', '2']);
+      // Two real words still join.
+      expect(verticalTextCells('Pass Through').single.text, 'Pass Through');
+    });
+
+    test('every character survives segmentation, whatever the input', () {
+      // An index that fails to advance is an infinite loop, not a wrong
+      // pixel — so the scanner is swept rather than spot-checked.
+      for (final text in [
+        'A',
+        'A B',
+        'AB CD EF',
+        'Color ',
+        ' Color',
+        'A  B',
+        '   ',
+        'PAN A2 focus',
+        '焼き込みカラー',
+        'A-1',
+        'Layer 1 - copy',
+        'がぎ゙ー[연출]',
+        'A12B34',
+      ]) {
+        final cells = verticalTextCells(text);
+        expect(
+          cells.map((c) => c.text).join(),
+          text,
+          reason: 'segmentation lost or duplicated characters in "$text"',
+        );
+      }
+    });
+
     test('Japanese is untouched — it was always the legible case', () {
       final cells = verticalTextCells('焼き込みカラー');
       expect(cells.every((c) => c.form != VerticalGlyphForm.sideways), isTrue);
@@ -238,10 +300,93 @@ void main() {
       expect(kept.last.form, VerticalGlyphForm.rotated);
     });
 
-    test('a sideways run is dropped WHOLE — never cut mid-word', () {
-      final cells = verticalTextCells('あMultiply');
-      final kept = verticalTextCellsWithin(cells, capacityCells: 3);
-      expect(kept.map((c) => c.text).toList(), ['あ', '…']);
+    test('an overflowing sideways run ellipsises INSIDE itself', () {
+      // The regression this pins: a whole phrase is ONE cell, so "does not
+      // fit" used to throw every letter away and render a bare `…`. In the
+      // default (English) UI that hit the x-sheet's layer names, eight of
+      // the fourteen blend modes, and a one-row section band — and
+      // Japanese never showed it, because there every glyph is its own
+      // 1-span cell.
+      final kept = verticalTextCellsWithin(
+        verticalTextCells('Multiply'),
+        capacityCells: 4,
+      );
+      expect(kept, hasLength(1));
+      expect(kept.single.form, VerticalGlyphForm.sideways);
+      expect(kept.single.text, endsWith('…'));
+      expect(kept.single.text, startsWith('M'));
+      expect(kept.single.spanCells, lessThanOrEqualTo(4));
+    });
+
+    test('a run that follows other cells is cut against what is LEFT', () {
+      final kept = verticalTextCellsWithin(
+        verticalTextCells('あMultiply'),
+        capacityCells: 5,
+      );
+      expect(kept.first.text, 'あ');
+      expect(kept.last.form, VerticalGlyphForm.sideways);
+      expect(kept.last.text, endsWith('…'));
+      expect(
+        verticalTextSpanCount(kept),
+        lessThanOrEqualTo(5),
+        reason: 'the cut run must fit what the earlier cells left',
+      );
+    });
+
+    test('a section band and the blend modes read SOMETHING, not just …', () {
+      // The three surfaces the review measured, at their real capacities.
+      String shown(String text, int capacity) => verticalTextCellsWithin(
+        verticalTextCells(text),
+        capacityCells: capacity,
+      ).map((c) => c.text).join();
+
+      // SectionBandZone over a one-row run: 28px at 9pt.
+      expect(shown('ACTION', 2), startsWith('A'));
+      // LayerBlendModeChip(axis: vertical): the 58px slot at 9.5pt.
+      for (final mode in ['Multiply', 'Color Dodge', 'Pass Through']) {
+        expect(shown(mode, 4), startsWith(mode[0]), reason: mode);
+      }
+      // The x-sheet's 100px name slot at 11pt.
+      expect(shown('Background rough', 7), startsWith('Back'));
+    });
+
+    test('a column that fits EXACTLY is never ellipsised', () {
+      // A host sizing to the column's own preferred extent hands back
+      // exactly n * naturalCellExtent — and in IEEE-754 that quotient
+      // lands on n - 1ulp often enough to matter. A bare floor cut the
+      // last cell off a column that fits perfectly.
+      for (final fontSize in [9.0, 9.5, 11.0, 12.0]) {
+        for (final lineHeight in [1.05, 1.15]) {
+          final cellExtent = fontSize * lineHeight;
+          for (var cells = 1; cells <= 24; cells += 1) {
+            expect(
+              verticalTextCapacityCells(
+                mainExtent: cells * cellExtent,
+                naturalCellExtent: cellExtent,
+              ),
+              cells,
+              reason: '$cells cells at $fontSize/$lineHeight',
+            );
+          }
+        }
+      }
+      // And it still refuses to over-count a span that is genuinely short.
+      expect(
+        verticalTextCapacityCells(mainExtent: 51.0, naturalCellExtent: 10.35),
+        4,
+      );
+      expect(
+        verticalTextCapacityCells(mainExtent: 0, naturalCellExtent: 10.35),
+        0,
+      );
+    });
+
+    test('no room for even one letter still yields the bare ellipsis', () {
+      final kept = verticalTextCellsWithin(
+        verticalTextCells('Multiply'),
+        capacityCells: 1,
+      );
+      expect(kept.map((c) => c.text).toList(), ['…']);
     });
 
     test('no room at all yields nothing', () {

@@ -43,12 +43,19 @@ void main() {
       expect(extent.windowExtent(20), layerRailMinimumWindowExtent);
     });
 
-    test('reset goes back to natural', () {
+    test('reset goes back to natural, and the push goes home with it', () {
       final extent = LayerRailExtent()..resizeBy(-200, naturalExtent: 434);
       expect(extent.value, isNotNull);
+      extent.pushTo(999, naturalExtent: 434);
+      expect(extent.offset.value, greaterThan(0));
+
       extent.reset();
       expect(extent.value, isNull);
       expect(extent.windowExtent(434), 434);
+      // At the natural size there is nothing to push into, so a surviving
+      // offset is invisible until the NEXT narrowing drag — at which point
+      // the rail would jump to its tail.
+      expect(extent.offset.value, 0);
     });
 
     test('a resize notifies (that is what the debounced save listens to)', () {
@@ -155,6 +162,62 @@ void main() {
       rail.pushTo(9999, naturalExtent: 400);
       await tester.pump();
       expect(tester.getTopLeft(content).dx, windowLeft - 250);
+    });
+
+    testWidgets('a control pushed out of the window cannot be tapped', (
+      tester,
+    ) async {
+      // The push is a PAINT offset now, not a parentData one, so the
+      // clip's hit-test contract is the render object's own business —
+      // worth pinning rather than assuming.
+      final rail = LayerRailExtent()..resizeBy(-250, naturalExtent: 400);
+      addTearDown(rail.dispose);
+      var taps = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.topLeft,
+              child: LayerRailWindow(
+                axis: Axis.horizontal,
+                rail: rail,
+                naturalExtent: 400,
+                child: SizedBox(
+                  width: 400,
+                  height: 60,
+                  child: Align(
+                    alignment: Alignment.centerRight,
+                    child: GestureDetector(
+                      key: const ValueKey<String>('tail-button'),
+                      // Opaque: a bare SizedBox hit-tests as nothing, and
+                      // the default deferToChild would make this pass for
+                      // the wrong reason.
+                      behavior: HitTestBehavior.opaque,
+                      onTap: () => taps += 1,
+                      child: const SizedBox(width: 100, height: 60),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+
+      // The button sits in the rail's tail, outside the 150px window.
+      final button = find.byKey(const ValueKey<String>('tail-button'));
+      expect(tester.getTopLeft(button).dx, greaterThan(150));
+      await tester.tapAt(const Offset(75, 30));
+      await tester.pump();
+      expect(taps, 0, reason: 'the cut tail must not take taps');
+
+      // Pushed into view, the same button answers.
+      rail.pushTo(250, naturalExtent: 400);
+      await tester.pump();
+      expect(tester.getTopLeft(button).dx, lessThan(150));
+      await tester.tapAt(const Offset(100, 30));
+      await tester.pump();
+      expect(taps, 1);
     });
 
     testWidgets('the vertical rail is the same window turned 90°', (

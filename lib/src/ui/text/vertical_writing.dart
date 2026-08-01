@@ -194,21 +194,35 @@ class VerticalTextCell {
 }
 
 /// Latin letters — the alphabet that reads sideways rather than stacked.
+///
+/// The LATIN SCRIPT, not just ASCII: `Café` and `Größe` are one word, and an
+/// ASCII-only test set them in two orientations at once (`Caf` sideways,
+/// `é` upright). Kana and Hangul are deliberately NOT here — they stand
+/// upright, which is the whole point of vertical setting.
 bool _isLatinLetter(String char) {
   if (char.length != 1) {
     return false;
   }
   final code = char.codeUnitAt(0);
-  return (code >= 0x41 && code <= 0x5A) || (code >= 0x61 && code <= 0x7A);
+  if ((code >= 0x41 && code <= 0x5A) || (code >= 0x61 && code <= 0x7A)) {
+    return true;
+  }
+  // Latin-1 Supplement letters (× and ÷ sit inside the block and are not).
+  if (code >= 0xC0 && code <= 0xFF) {
+    return code != 0xD7 && code != 0xF7;
+  }
+  // Latin Extended-A and -B.
+  return code >= 0x100 && code <= 0x24F;
 }
 
-/// How many cells a sideways run reserves.
-///
-/// 0.55em a character is the middle of the Latin advance range (lowercase
-/// runs near 0.5, uppercase near 0.6). Rounding UP means the run is only
-/// ever scaled down into its slot, never cropped.
+/// The em a Latin character averages — the middle of the advance range
+/// (lowercase runs near 0.5, uppercase near 0.6).
+const double _sidewaysEmPerChar = 0.55;
+
+/// How many cells a sideways run reserves. Rounding UP means the run is
+/// only ever scaled down into its slot, never cropped.
 int verticalSidewaysRunCells(String run) =>
-    math.max(1, (run.length * 0.55).ceil());
+    math.max(1, (run.length * _sidewaysEmPerChar).ceil());
 
 /// The cell slots [cells] occupy in total — the number the fit math counts,
 /// which is not `cells.length` once a sideways run is in there.
@@ -218,6 +232,25 @@ int verticalTextSpanCount(List<VerticalTextCell> cells) {
     total += cell.spanCells;
   }
   return total;
+}
+
+/// How many cells a span of [mainExtent] holds.
+///
+/// The tolerance is not decoration. A host that sizes itself to the
+/// column's own preferred extent hands back exactly `n * naturalCellExtent`
+/// — and in IEEE-754 that quotient lands on `n - 1ulp` for plenty of
+/// (fontSize, lineHeight, n) triples, so a bare `floor` would ellipsise a
+/// column that fits perfectly. At 9pt/1.15 it happens at n = 5, 7, 10, 13,
+/// 14 and 20.
+int verticalTextCapacityCells({
+  required double mainExtent,
+  required double naturalCellExtent,
+}) {
+  if (naturalCellExtent <= 0 || mainExtent <= 0) {
+    return 0;
+  }
+  const epsilon = 1e-9;
+  return (mainExtent / naturalCellExtent + epsilon).floor();
 }
 
 /// The leading cells that fit in [capacityCells], with an ELLIPSIS cell in
@@ -246,13 +279,54 @@ List<VerticalTextCell> verticalTextCellsWithin(
   var used = 0;
   for (final cell in cells) {
     // Every kept cell has to leave room for the ellipsis after it.
-    if (used + cell.spanCells > capacityCells - 1) {
-      break;
+    if (used + cell.spanCells <= capacityCells - 1) {
+      kept.add(cell);
+      used += cell.spanCells;
+      continue;
     }
-    kept.add(cell);
-    used += cell.spanCells;
+    // A SIDEWAYS run is a whole phrase in one cell, so "does not fit" used
+    // to throw the entire phrase away: an overflowing Latin label rendered
+    // as a bare `…` with not one letter in it. Japanese never showed it —
+    // every glyph there is its own 1-span cell and truncates a character
+    // at a time — and the blend-mode names are translated ONLY into
+    // Japanese, so the broken case was every other language's default.
+    //
+    // The run ellipsises INSIDE itself instead, which is what horizontal
+    // text does and what the round's own rule asks for: a label that
+    // outgrows its slot ends in `…`.
+    if (cell.form == VerticalGlyphForm.sideways) {
+      final clipped = _sidewaysRunWithin(cell, capacityCells - used);
+      if (clipped != null) {
+        kept.add(clipped);
+        return kept;
+      }
+    }
+    break;
   }
   return [...kept, ellipsis];
+}
+
+/// [cell]'s phrase cut down to what [capacityCells] holds, ending in `…`;
+/// null when there is no room for even that.
+VerticalTextCell? _sidewaysRunWithin(VerticalTextCell cell, int capacityCells) {
+  if (capacityCells <= 0) {
+    return null;
+  }
+  // Invert `verticalSidewaysRunCells`: ceil(n * 0.55) <= capacity.
+  final charBudget = (capacityCells / _sidewaysEmPerChar).floor();
+  if (charBudget < 2) {
+    return null;
+  }
+  final kept = cell.text.characters.take(charBudget - 1).toString().trimRight();
+  if (kept.isEmpty) {
+    return null;
+  }
+  final text = '$kept…';
+  return VerticalTextCell(
+    text: text,
+    form: VerticalGlyphForm.sideways,
+    spanCells: math.min(capacityCells, verticalSidewaysRunCells(text)),
+  );
 }
 
 /// Splits [text] into the cells of one vertical column, top to bottom.
@@ -279,15 +353,25 @@ List<VerticalTextCell> verticalTextCells(
     if (_isLatinLetter(glyph)) {
       var end = index;
       var lastLetter = index;
-      while (end < glyphs.length &&
-          (_isLatinLetter(glyphs[end]) ||
-              (glyphs[end] == ' ' &&
-                  end + 1 < glyphs.length &&
-                  _isLatinLetter(glyphs[end + 1])))) {
+      while (end < glyphs.length) {
         if (_isLatinLetter(glyphs[end])) {
           lastLetter = end;
+          end += 1;
+          continue;
         }
-        end += 1;
+        // A space carries on only into another WORD. Requiring two letters
+        // after it keeps cel notation out: `FOLLOW PAN A2` is the phrase
+        // `FOLLOW PAN` and then the cel `A2`, not `FOLLOW PAN A` with a
+        // stray `2` — the single letter of a cel name belongs to its
+        // number, and it stands upright the way a paper sheet writes it.
+        if (glyphs[end] == ' ' &&
+            end + 2 < glyphs.length &&
+            _isLatinLetter(glyphs[end + 1]) &&
+            _isLatinLetter(glyphs[end + 2])) {
+          end += 1;
+          continue;
+        }
+        break;
       }
       end = lastLetter + 1;
       final run = glyphs.sublist(index, end).join();
