@@ -2,6 +2,8 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/text/vertical_writing.dart';
+import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
@@ -211,4 +213,83 @@ void main() {
       expect(value.value, moreOrLessEquals(0.2, epsilon: 0.001));
     },
   );
+
+  group('stood up (the x-sheet rail)', () {
+    Widget verticalHarness(ValueNotifier<double> value) => MaterialApp(
+      theme: buildAppTheme(),
+      home: Scaffold(
+        body: Center(
+          child: SizedBox(
+            height: trackWidth,
+            child: ValueListenableBuilder<double>(
+              valueListenable: value,
+              builder: (context, v, _) => FieldSlider(
+                key: sliderKey,
+                axis: Axis.vertical,
+                value: v,
+                min: 0,
+                max: 1,
+                height: 18,
+                valueText: '${(v * 100).round()}%',
+                onChanged: (next) => value.value = next,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    testWidgets('a tap sets the value from the BOTTOM — a fader fills up', (
+      tester,
+    ) async {
+      final value = ValueNotifier<double>(0.2);
+      addTearDown(value.dispose);
+      await tester.pumpWidget(verticalHarness(value));
+
+      final rect = tester.getRect(find.byKey(sliderKey));
+      // A quarter up from the bottom.
+      await tester.tapAt(Offset(rect.center.dx, rect.bottom - rect.height / 4));
+      await tester.pump();
+      expect(value.value, moreOrLessEquals(0.25, epsilon: 0.02));
+    });
+
+    testWidgets('an UP drag raises the value', (tester) async {
+      final value = ValueNotifier<double>(0.5);
+      addTearDown(value.dispose);
+      await tester.pumpWidget(verticalHarness(value));
+
+      final rect = tester.getRect(find.byKey(sliderKey));
+      await tester.tapAt(rect.center);
+      await tester.pump();
+      expect(value.value, moreOrLessEquals(0.5, epsilon: 0.02));
+
+      // A RotatedBox could not do this: the horizontal recognizer judges by
+      // the pointer's global delta direction, so a turned slider would
+      // never receive an on-screen vertical drag at all.
+      await tester.drag(find.byKey(sliderKey), const Offset(0, -50));
+      await tester.pump();
+      expect(value.value, greaterThan(0.6));
+    });
+
+    testWidgets('the readout stands up, and 100% costs two cells', (
+      tester,
+    ) async {
+      final value = ValueNotifier<double>(1);
+      addTearDown(value.dispose);
+      await tester.pumpWidget(verticalHarness(value));
+
+      final written = tester.widget<VerticalWritingText>(
+        find.byType(VerticalWritingText),
+      );
+      expect(written.text, '100%');
+      // Three-digit 縦中横: `100` in one cell, `%` in the next.
+      expect(
+        verticalTextCells(
+          written.text,
+          tateChuYokoDigits: written.tateChuYokoDigits,
+        ),
+        hasLength(2),
+      );
+    });
+  });
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
 
 /// One entry of a [showPanelFlyout] list.
@@ -188,7 +189,13 @@ class PanelFlyoutButton extends StatelessWidget {
     this.fontWeight,
     this.padding = const EdgeInsets.fromLTRB(8, 4, 5, 4),
     this.expand = false,
+    this.axis = Axis.horizontal,
   });
+
+  /// Which way the button READS. Vertical writes its label down the
+  /// button through the shared vertical-writing table — the x-sheet's
+  /// 28px columns have no other way to carry a word.
+  final Axis axis;
 
   final String label;
   final List<PanelFlyoutEntry> Function() entriesBuilder;
@@ -213,18 +220,22 @@ class PanelFlyoutButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final text = Text(
-      label,
-      maxLines: 1,
-      softWrap: false,
-      overflow: TextOverflow.ellipsis,
-      textAlign: expand ? TextAlign.center : TextAlign.start,
-      style: TextStyle(
-        fontSize: fontSize,
-        color: labelColor ?? AppColors.text,
-        fontWeight: fontWeight,
-      ),
+    final vertical = axis == Axis.vertical;
+    final labelStyle = TextStyle(
+      fontSize: fontSize,
+      color: labelColor ?? AppColors.text,
+      fontWeight: fontWeight,
     );
+    final Widget text = vertical
+        ? VerticalWritingText(text: label, style: labelStyle)
+        : Text(
+            label,
+            maxLines: 1,
+            softWrap: false,
+            overflow: TextOverflow.ellipsis,
+            textAlign: expand ? TextAlign.center : TextAlign.start,
+            style: labelStyle,
+          );
     final chip = Material(
       color: Colors.transparent,
       child: InkWell(
@@ -237,13 +248,17 @@ class PanelFlyoutButton extends StatelessWidget {
           ),
           child: Padding(
             padding: padding,
-            child: Row(
+            child: Flex(
+              direction: axis,
               mainAxisSize: expand ? MainAxisSize.max : MainAxisSize.min,
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
                 if (expand) Flexible(child: text) else text,
                 if (showCaret) ...[
-                  const SizedBox(width: 2),
+                  SizedBox(
+                    width: vertical ? null : 2,
+                    height: vertical ? 2 : null,
+                  ),
                   const Icon(
                     Icons.arrow_drop_down,
                     size: 16,

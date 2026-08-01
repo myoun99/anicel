@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
+import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
 
 /// How a [FieldSlider] maps track position to value.
@@ -58,6 +59,7 @@ class FieldSlider extends StatefulWidget {
     this.divisions,
     this.fillOrigin,
     this.height = 24,
+    this.axis = Axis.horizontal,
   }) : assert(max > min, 'max must exceed min'),
        assert(
          scale != FieldSliderScale.exponential || min > 0,
@@ -105,14 +107,24 @@ class FieldSlider extends StatefulWidget {
   /// Snaps values to `divisions` equal steps (linear scale only).
   final int? divisions;
 
-
   /// The value the filled bar grows FROM; null means [min], which is what a
   /// quantity wants (a fader reads "how much"). A BALANCE — pan, a signed
   /// offset — passes its neutral value instead, so the fill leaves centre
   /// in the direction of the setting and hard-left stops reading as empty.
   final double? fillOrigin;
 
+  /// The bar's extent ACROSS its axis — thickness, not length. The length
+  /// always comes from the host.
   final double height;
+
+  /// Which way the track runs. Vertical fills upward from the bottom and
+  /// is dragged up/down — the x-sheet's stood-up rail, where a 28px column
+  /// has no room for a horizontal fader.
+  ///
+  /// A parameter and not a `RotatedBox`: the horizontal recognizer judges
+  /// by the pointer's GLOBAL delta direction in the arena, so a turned
+  /// slider never receives an on-screen vertical drag at all.
+  final Axis axis;
 
   @override
   State<FieldSlider> createState() => _FieldSliderState();
@@ -121,7 +133,32 @@ class FieldSlider extends StatefulWidget {
 class _FieldSliderState extends State<FieldSlider> {
   static const Color _valueInk = Color(0xFFE8ECEE);
 
-  double _trackWidth = 0;
+  /// The track's length along [FieldSlider.axis].
+  double _trackExtent = 0;
+
+  bool get _vertical => widget.axis == Axis.vertical;
+
+  /// Where a pointer sits along the track, 0..1.
+  ///
+  /// The vertical bar fills UPWARD — a fader's direction, and the same one
+  /// the horizontal bar reads left-to-right — so the axis position is
+  /// measured from the bottom.
+  double _trackT(Offset localPosition) {
+    if (_trackExtent <= 0) {
+      return 0;
+    }
+    final along = _vertical
+        ? _trackExtent - localPosition.dy
+        : localPosition.dx;
+    return (along / _trackExtent).clamp(0.0, 1.0);
+  }
+
+  double _deltaT(Offset delta) {
+    if (_trackExtent <= 0) {
+      return 0;
+    }
+    return (_vertical ? -delta.dy : delta.dx) / _trackExtent;
+  }
 
   // Gesture-local position in t-space (0..1). Owned by the active drag so
   // Shift's relative fine mode has something to accumulate against; display
@@ -173,31 +210,28 @@ class _FieldSliderState extends State<FieldSlider> {
       return;
     }
     _preDownValue = widget.value;
-    if (_trackWidth <= 0) {
+    if (_trackExtent <= 0) {
       return;
     }
     // setState: the bar ECHOES the gesture locally (R4 #4/#5) — commit-on-
     // release consumers don't rebuild the parent per move, so the display
     // must follow from gesture state, not widget.value.
     setState(() {
-      _gestureT = (details.localPosition.dx / _trackWidth).clamp(0.0, 1.0);
+      _gestureT = _trackT(details.localPosition);
     });
     _emit(_valueFor(_gestureT!));
   }
 
   void _handleUpdate(DragUpdateDetails details) {
-    if (!_enabled || _trackWidth <= 0) {
+    if (!_enabled || _trackExtent <= 0) {
       return;
     }
     final current = _gestureT ?? _tFor(widget.value);
     setState(() {
       if (_shiftHeld) {
-        _gestureT = (current + details.delta.dx / _trackWidth / 10).clamp(
-          0.0,
-          1.0,
-        );
+        _gestureT = (current + _deltaT(details.delta) / 10).clamp(0.0, 1.0);
       } else {
-        _gestureT = (details.localPosition.dx / _trackWidth).clamp(0.0, 1.0);
+        _gestureT = _trackT(details.localPosition);
       }
     });
     _emit(_valueFor(_gestureT!));
@@ -246,7 +280,6 @@ class _FieldSliderState extends State<FieldSlider> {
     widget.onChangeEnd?.call(value);
   }
 
-
   double get _radius => widget.height < 20 ? 3 : 4;
 
   @override
@@ -268,33 +301,51 @@ class _FieldSliderState extends State<FieldSlider> {
 
     final Widget inner;
     if (widget.label == null) {
+      // Stood up, the readout reads DOWN the bar through the shared
+      // vertical-writing table, with three-digit 縦中横 so `100%` costs
+      // two cells rather than four.
       inner = Center(
-        child: Text(
-          valueText,
-          maxLines: 1,
-          overflow: TextOverflow.clip,
-          style: valueStyle,
-        ),
+        child: _vertical
+            ? VerticalWritingText(
+                text: valueText,
+                tateChuYokoDigits: 3,
+                style: valueStyle,
+              )
+            : Text(
+                valueText,
+                maxLines: 1,
+                overflow: TextOverflow.clip,
+                style: valueStyle,
+              ),
       );
     } else {
-      inner = Row(
+      inner = Flex(
+        direction: widget.axis,
         children: [
           Expanded(
-            child: Text(
-              widget.label!,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: labelStyle,
-            ),
+            child: _vertical
+                ? VerticalWritingText(text: widget.label!, style: labelStyle)
+                : Text(
+                    widget.label!,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: labelStyle,
+                  ),
           ),
-          Text(valueText, maxLines: 1, style: valueStyle),
+          _vertical
+              ? VerticalWritingText(
+                  text: valueText,
+                  tateChuYokoDigits: 3,
+                  style: valueStyle,
+                )
+              : Text(valueText, maxLines: 1, style: valueStyle),
         ],
       );
     }
 
     Widget bar = LayoutBuilder(
       builder: (context, constraints) {
-        _trackWidth = constraints.maxWidth;
+        _trackExtent = _vertical ? constraints.maxHeight : constraints.maxWidth;
         return DecoratedBox(
           decoration: BoxDecoration(
             color: AppColors.surface,
@@ -305,6 +356,7 @@ class _FieldSliderState extends State<FieldSlider> {
             borderRadius: BorderRadius.circular(_radius),
             child: CustomPaint(
               painter: _FieldSliderTrackPainter(
+                axis: widget.axis,
                 t: t,
                 originT: widget.fillOrigin == null
                     ? 0.0
@@ -314,9 +366,12 @@ class _FieldSliderState extends State<FieldSlider> {
                     : (widget.restingAccent ?? AppColors.accent),
               ),
               child: SizedBox(
-                height: widget.height,
+                width: _vertical ? widget.height : null,
+                height: _vertical ? null : widget.height,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  padding: _vertical
+                      ? const EdgeInsets.symmetric(vertical: 8)
+                      : const EdgeInsets.symmetric(horizontal: 8),
                   child: inner,
                 ),
               ),
@@ -330,14 +385,20 @@ class _FieldSliderState extends State<FieldSlider> {
       return Opacity(opacity: 0.4, child: bar);
     }
     bar = MouseRegion(
-      cursor: SystemMouseCursors.resizeLeftRight,
+      cursor: _vertical
+          ? SystemMouseCursors.resizeUpDown
+          : SystemMouseCursors.resizeLeftRight,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
         dragStartBehavior: DragStartBehavior.down,
-        onHorizontalDragDown: _handleDown,
-        onHorizontalDragUpdate: _handleUpdate,
-        onHorizontalDragEnd: _handleEnd,
-        onHorizontalDragCancel: _handleCancel,
+        onHorizontalDragDown: _vertical ? null : _handleDown,
+        onHorizontalDragUpdate: _vertical ? null : _handleUpdate,
+        onHorizontalDragEnd: _vertical ? null : _handleEnd,
+        onHorizontalDragCancel: _vertical ? null : _handleCancel,
+        onVerticalDragDown: _vertical ? _handleDown : null,
+        onVerticalDragUpdate: _vertical ? _handleUpdate : null,
+        onVerticalDragEnd: _vertical ? _handleEnd : null,
+        onVerticalDragCancel: _vertical ? _handleCancel : null,
         child: bar,
       ),
     );
@@ -361,8 +422,12 @@ class _FieldSliderTrackPainter extends CustomPainter {
   const _FieldSliderTrackPainter({
     required this.t,
     required this.accent,
+    this.axis = Axis.horizontal,
     this.originT = 0.0,
   });
+
+  /// Vertical fills UPWARD from the bottom — a fader's direction.
+  final Axis axis;
 
   final double t;
 
@@ -374,21 +439,32 @@ class _FieldSliderTrackPainter extends CustomPainter {
 
   @override
   void paint(Canvas canvas, Size size) {
-    final fillEnd = size.width * t;
-    final fillStart = size.width * originT;
-    final left = math.min(fillStart, fillEnd);
-    final right = math.max(fillStart, fillEnd);
-    if (right > left) {
+    final trackExtent = axis == Axis.horizontal ? size.width : size.height;
+    // Along the axis, measured from the fill's ORIGIN edge — the left for
+    // a horizontal bar, the BOTTOM for a vertical one.
+    double along(double fraction) => axis == Axis.horizontal
+        ? trackExtent * fraction
+        : trackExtent * (1 - fraction);
+    final fillEnd = along(t);
+    final fillStart = along(originT);
+    final near = math.min(fillStart, fillEnd);
+    final far = math.max(fillStart, fillEnd);
+    final fill = Paint()..color = accent.withValues(alpha: 0.26);
+    if (far > near) {
       canvas.drawRect(
-        Rect.fromLTWH(left, 0, right - left, size.height),
-        Paint()..color = accent.withValues(alpha: 0.26),
+        axis == Axis.horizontal
+            ? Rect.fromLTWH(near, 0, far - near, size.height)
+            : Rect.fromLTWH(0, near, size.width, far - near),
+        fill,
       );
     }
     // 2px accent edge marks the position (the thumb's replacement); pinned
     // inside the track at both extremes so it never clips away.
-    final edgeLeft = (fillEnd - 1).clamp(0.0, size.width - 2);
+    final edge = (fillEnd - 1).clamp(0.0, trackExtent - 2);
     canvas.drawRect(
-      Rect.fromLTWH(edgeLeft, 0, 2, size.height),
+      axis == Axis.horizontal
+          ? Rect.fromLTWH(edge, 0, 2, size.height)
+          : Rect.fromLTWH(0, edge, size.width, 2),
       Paint()..color = accent,
     );
   }
@@ -397,5 +473,6 @@ class _FieldSliderTrackPainter extends CustomPainter {
   bool shouldRepaint(_FieldSliderTrackPainter oldDelegate) =>
       oldDelegate.t != t ||
       oldDelegate.originT != originT ||
+      oldDelegate.axis != axis ||
       oldDelegate.accent != accent;
 }
