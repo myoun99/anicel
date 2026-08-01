@@ -1,9 +1,12 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../widgets/dock_edge_splitter.dart';
 import 'editor_panel_layout.dart';
 import 'editor_panel_tabs.dart';
 import 'panel_flash.dart';
+
+export '../widgets/dock_edge_splitter.dart' show DockEdgeSplitter;
 
 /// Renders one dock of an [EditorPanelLayoutModel]: its sections stacked
 /// vertically (panel below panel) with draggable splitters between them,
@@ -66,8 +69,11 @@ class EditorDockHost extends StatelessWidget {
           children: [
             for (var i = 0; i < sections.length; i += 1) ...[
               if (i > 0)
-                _SectionSplitter(
+                // The section divider and the dock's edge grip were the
+                // same widget twice; the shared splitter is the survivor.
+                DockEdgeSplitter(
                   key: ValueKey<String>('dock-splitter-$dockId-$i'),
+                  axis: Axis.horizontal,
                   onDragDelta: (delta) => layout.resizeSections(
                     dockId,
                     i - 1,
@@ -105,82 +111,6 @@ class EditorDockHost extends StatelessWidget {
           ],
         );
       },
-    );
-  }
-}
-
-/// A draggable divider between two dock sections.
-class _SectionSplitter extends StatelessWidget {
-  const _SectionSplitter({super.key, required this.onDragDelta});
-
-  final ValueChanged<double> onDragDelta;
-
-  static const double thickness = 5;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return MouseRegion(
-      cursor: SystemMouseCursors.resizeUpDown,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onVerticalDragUpdate: (details) => onDragDelta(details.delta.dy),
-        child: Container(
-          height: thickness,
-          color: colorScheme.surfaceContainerLow,
-          alignment: Alignment.center,
-          child: Container(height: 1, color: colorScheme.outlineVariant),
-        ),
-      ),
-    );
-  }
-}
-
-/// A draggable divider between a dock and its neighbour, resizing the
-/// dock's extent. [onDragDelta] receives the raw pointer delta along the
-/// splitter's axis; the owner applies the sign for which side grows.
-class DockEdgeSplitter extends StatelessWidget {
-  const DockEdgeSplitter({
-    super.key,
-    required this.axis,
-    required this.onDragDelta,
-  });
-
-  /// [Axis.vertical] separates side docks (drag left-right);
-  /// [Axis.horizontal] separates the bottom dock (drag up-down).
-  final Axis axis;
-  final ValueChanged<double> onDragDelta;
-
-  static const double thickness = 5;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final vertical = axis == Axis.vertical;
-    return MouseRegion(
-      cursor: vertical
-          ? SystemMouseCursors.resizeLeftRight
-          : SystemMouseCursors.resizeUpDown,
-      child: GestureDetector(
-        behavior: HitTestBehavior.opaque,
-        onHorizontalDragUpdate: vertical
-            ? (details) => onDragDelta(details.delta.dx)
-            : null,
-        onVerticalDragUpdate: vertical
-            ? null
-            : (details) => onDragDelta(details.delta.dy),
-        child: Container(
-          width: vertical ? thickness : null,
-          height: vertical ? null : thickness,
-          color: colorScheme.surfaceContainerLow,
-          alignment: Alignment.center,
-          child: Container(
-            width: vertical ? 1 : null,
-            height: vertical ? null : 1,
-            color: colorScheme.outlineVariant,
-          ),
-        ),
-      ),
     );
   }
 }

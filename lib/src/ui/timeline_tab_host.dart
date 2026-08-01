@@ -30,6 +30,7 @@ import '../services/camera_pose_resolver.dart';
 import 'text/app_strings.dart';
 import '../models/timeline_coverage.dart' show TimelineBlockEdge;
 import 'timeline/camera_key_edit.dart';
+import 'timeline/layer_rail_window.dart' show LayerRailExtent;
 import 'timeline/effect_lane_editing.dart';
 import 'timeline/effect_lane_policy.dart';
 import 'timeline/property_lane_model.dart';
@@ -67,6 +68,8 @@ class TimelineTabHost extends StatefulWidget {
     required this.onPixelsPerFrameChanged,
     required this.showSeconds,
     required this.onShowSecondsChanged,
+    this.timelineRailExtent,
+    this.xsheetRailExtent,
     this.expandedLaneLayerIds = const {},
     this.onToggleLayerLanes,
     this.expandedLaneGroupKeys = const {},
@@ -96,6 +99,11 @@ class TimelineTabHost extends StatefulWidget {
   final ValueChanged<double> onPixelsPerFrameChanged;
   final bool showSeconds;
   final ValueChanged<bool> onShowSecondsChanged;
+
+  /// The two grids' rail window sizes (workspace-owned so they survive a
+  /// tab switch AND a restart).
+  final LayerRailExtent? timelineRailExtent;
+  final LayerRailExtent? xsheetRailExtent;
 
   /// AE-style property-lane twirl-down state (host-owned so it survives
   /// tab switches).
@@ -1192,6 +1200,8 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
           showSeconds: widget.showSeconds,
           onShowSecondsChanged: widget.onShowSecondsChanged,
+          timelineRailExtent: widget.timelineRailExtent,
+          xsheetRailExtent: widget.xsheetRailExtent,
           projectFrameRate: _session.projectFrameRate,
           expandedLaneLayerIds: widget.expandedLaneLayerIds,
           onToggleLayerLanes: widget.onToggleLayerLanes,

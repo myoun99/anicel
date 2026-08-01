@@ -13,7 +13,9 @@ void main() {
       // 24×28 — the R-toolbar slim round (CSP/TVPaint density).
       expect(metrics.frameCellWidth, 24);
       expect(metrics.layerRowHeight, 28);
-      expect(metrics.verticalScrollbarWidth, 14);
+      // 14 → 16 (rail-window round): the lane stopped being a leftover
+      // gap between the rail and the cells and became a real column.
+      expect(metrics.verticalScrollbarWidth, 16);
     });
 
     test('copyWith rescales only the frame cell extent', () {
@@ -27,6 +29,21 @@ void main() {
       expect(
         zoomed.layerControlsWidth,
         TimelineGridMetrics.defaults.layerControlsWidth,
+      );
+    });
+
+    test('copyWith can restate the NATURAL rail extent', () {
+      // For hosts whose rail costs a different width (the storyboard's
+      // has no blend column). Never for the splitter: the window size is
+      // a listenable precisely so it stays out of this memo key.
+      final narrower = TimelineGridMetrics.defaults.copyWith(
+        layerControlsWidth: 372,
+      );
+
+      expect(narrower.layerControlsWidth, 372);
+      expect(
+        narrower.frameCellWidth,
+        TimelineGridMetrics.defaults.frameCellWidth,
       );
     });
 

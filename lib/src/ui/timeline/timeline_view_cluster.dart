@@ -8,20 +8,23 @@ import 'timeline_panel.dart' show TimelinePanel;
 import '../../models/project_frame_rate.dart';
 
 /// The right-side view cluster shared VERBATIM by the timeline and
-/// storyboard tabs: frame counter + seconds toggle + zoom slider, plus
-/// host-specific trailing controls (the timeline's orientation toggle).
+/// storyboard tabs: frame counter + zoom slider, plus host-specific
+/// trailing controls (the timeline's orientation toggle).
+///
+/// The seconds TOGGLE left this bar in the rail-window round — it lives
+/// in each grid's top-left corner now, over the layer-axis scrollbar,
+/// beside the axis whose labels it rewrites. [showSeconds] stays because
+/// the counter beside it still reads in that notation.
 ///
 /// One widget instead of two hand-copied Rows — the key strings
-/// ('timeline-current-frame-counter', 'timeline-time-display-toggle-button',
-/// 'timeline-zoom-slider') stay unique on screen because only one tab is
-/// ever mounted.
+/// ('timeline-current-frame-counter', 'timeline-zoom-slider') stay unique
+/// on screen because only one tab is ever mounted.
 class TimelineViewCluster extends StatelessWidget {
   const TimelineViewCluster({
     super.key,
     required this.frameCursor,
     required this.projectFrameRate,
     required this.showSeconds,
-    required this.onShowSecondsChanged,
     required this.pixelsPerFrame,
     required this.onPixelsPerFrameChanged,
     this.globalFrame,
@@ -42,7 +45,6 @@ class TimelineViewCluster extends StatelessWidget {
 
   final ProjectFrameRate projectFrameRate;
   final bool showSeconds;
-  final ValueChanged<bool>? onShowSecondsChanged;
   final double pixelsPerFrame;
   final ValueChanged<double>? onPixelsPerFrameChanged;
 
@@ -113,15 +115,6 @@ class TimelineViewCluster extends StatelessWidget {
           },
         ),
         const SizedBox(width: 4),
-        AppIconButton(
-          keyValue: 'timeline-time-display-toggle-button',
-          tooltip: showSeconds ? 'Show Frames' : 'Show Seconds',
-          onPressed: onShowSecondsChanged == null
-              ? null
-              : () => onShowSecondsChanged!(!showSeconds),
-          isSelected: showSeconds,
-          icon: Icon(showSeconds ? Icons.timer : Icons.timer_outlined),
-        ),
         // UI-R11 #11: the flanking glyphs are real STEP buttons now, not
         // decorations — click-to-zoom without the slider's drag precision.
         _zoomStepButton(zoomIn: false),

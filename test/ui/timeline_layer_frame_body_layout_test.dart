@@ -10,12 +10,12 @@ void main() {
       expect(find.byKey(_layerControlsRailKey), findsOneWidget);
     });
 
-    testWidgets('provided vertical scrollbar slot child renders', (
+    testWidgets('provided layer-axis scrollbar slot child renders', (
       tester,
     ) async {
       await tester.pumpWidget(_layoutHarness());
 
-      expect(find.byKey(_verticalScrollbarSlotKey), findsOneWidget);
+      expect(find.byKey(_layerAxisScrollbarSlotKey), findsOneWidget);
     });
 
     testWidgets('provided frame grid area child renders', (tester) async {
@@ -29,11 +29,15 @@ void main() {
 
       final row = tester.widget<Row>(find.byType(Row));
 
-      expect(row.children.length, 3);
-      expect(row.children[0].key, _layerControlsRailKey);
-      expect(row.children[1].key, _verticalScrollbarSlotKey);
+      // The rail-window order: the layer-axis bar took the grid's left
+      // EDGE, and the gap it used to hold between the rail and the cells
+      // is the splitter's now.
+      expect(row.children.length, 4);
+      expect(row.children[0].key, _layerAxisScrollbarSlotKey);
+      expect(row.children[1].key, _layerControlsRailKey);
+      expect(row.children[2].key, _railSplitterSlotKey);
 
-      final frameGridArea = row.children[2];
+      final frameGridArea = row.children[3];
       expect(frameGridArea, isA<Expanded>());
       expect((frameGridArea as Expanded).child.key, _frameGridAreaKey);
     });
@@ -52,7 +56,8 @@ void main() {
       await tester.pumpWidget(_layoutHarness());
 
       expect(find.byKey(_layerControlsRailKey), findsOneWidget);
-      expect(find.byKey(_verticalScrollbarSlotKey), findsOneWidget);
+      expect(find.byKey(_layerAxisScrollbarSlotKey), findsOneWidget);
+      expect(find.byKey(_railSplitterSlotKey), findsOneWidget);
       expect(find.byKey(_frameGridAreaKey), findsOneWidget);
 
       for (final key in _productionStableKeys) {
@@ -63,15 +68,16 @@ void main() {
 }
 
 const _layerControlsRailKey = ValueKey<String>('test-layer-controls-rail');
-const _verticalScrollbarSlotKey = ValueKey<String>(
-  'test-vertical-scrollbar-slot',
+const _layerAxisScrollbarSlotKey = ValueKey<String>(
+  'test-layer-axis-scrollbar-slot',
 );
+const _railSplitterSlotKey = ValueKey<String>('test-rail-splitter-slot');
 const _frameGridAreaKey = ValueKey<String>('test-frame-grid-area');
 
 const _productionStableKeys = <String>[
   'timeline-layer-controls-rail',
   'timeline-frame-grid-area',
-  'timeline-vertical-scrollbar-slot',
+  'timeline-rail-splitter',
 ];
 
 Widget _layoutHarness() {
@@ -81,16 +87,17 @@ Widget _layoutHarness() {
         width: 600,
         height: 120,
         child: TimelineLayerFrameBodyLayout(
+          layerAxisScrollbarSlot: SizedBox(
+            key: _layerAxisScrollbarSlotKey,
+            width: 16,
+            height: 120,
+          ),
           layerControlsRail: SizedBox(
             key: _layerControlsRailKey,
             width: 120,
             height: 120,
           ),
-          verticalScrollbarSlot: SizedBox(
-            key: _verticalScrollbarSlotKey,
-            width: 14,
-            height: 120,
-          ),
+          railSplitterSlot: SizedBox(key: _railSplitterSlotKey, width: 5),
           frameGridArea: Expanded(
             child: SizedBox(key: _frameGridAreaKey, height: 120),
           ),

@@ -197,20 +197,42 @@ void main() {
         '(UI-R10 #15/#21)', (tester) async {
       await _pumpStoryboardPanel(tester, _projectWithStoryboardLayer());
 
-      // TOP: blank slot over the scrollbar lane, beside the ruler.
+      // TOP: the corner over the scrollbar lane carries the seconds
+      // toggle now (it used to be a blank slot, and the toggle used to be
+      // a command-bar button).
       expect(
-        find.byKey(const ValueKey<String>('timeline-vertical-scrollbar-slot')),
+        find.byKey(
+          const ValueKey<String>('storyboard-time-display-toggle-button'),
+        ),
         findsOneWidget,
       );
-      // MIDDLE: the timeline's pinned rail between labels and strips.
+      // MIDDLE: the timeline's pinned rail — on the panel's LEFT EDGE
+      // now, because the gap it used to fill between the labels and the
+      // strips is the rail splitter's.
       final verticalRail = find.byKey(
         const ValueKey<String>('storyboard-vertical-scrollbar'),
       );
       expect(verticalRail, findsOneWidget);
+      final panelLeft = tester
+          .getTopLeft(find.byKey(const ValueKey<String>('storyboard-panel')))
+          .dx;
       expect(
         tester.getTopLeft(verticalRail).dx,
-        372,
-        reason: 'the rail sits right after the 372px label rail',
+        panelLeft,
+        reason: 'the layer-axis bar is the grid edge now',
+      );
+      final splitter = find.byKey(
+        const ValueKey<String>('storyboard-rail-splitter'),
+      );
+      expect(splitter, findsOneWidget);
+      expect(
+        tester.getTopLeft(splitter).dx,
+        panelLeft + 16 + 372,
+        reason: 'the splitter follows the 16px lane and the 372px rail',
+      );
+      expect(
+        find.byKey(const ValueKey<String>('storyboard-rail-scrollbar')),
+        findsOneWidget,
       );
       // BOTTOM: the pinned horizontal scrollbar row (it must NOT live
       // inside the vertical scroll content anymore).
