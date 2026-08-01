@@ -105,7 +105,8 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     this.axis = Axis.horizontal,
     this.railExtent,
     this.contentExtent,
-    this.shed = const {},
+    this.hasOnionColumn,
+    this.hasBlendColumn,
     this.legend,
     this.hiddenSections = const {},
     this.onToggleSection,
@@ -139,10 +140,12 @@ class TimelineLayerControlsHeader extends StatelessWidget {
   /// takes the natural extent.
   final double? railExtent;
 
-  /// The slots the ROWS are not carrying. The legend must shed exactly what
-  /// they shed, or its icons stop sitting over the columns they name — the
-  /// x-sheet's stood-up header sheds down a ladder in a short panel.
-  final Set<LayerRailSlot> shed;
+  /// Forces the optional columns on or off instead of inferring them from
+  /// [legend]'s bulk callbacks. The x-sheet's corner needs this: its rows
+  /// carry onion and blend but it has no legend flyouts to infer from, and
+  /// a legend that disagreed with its rows would stop naming their columns.
+  final bool? hasOnionColumn;
+  final bool? hasBlendColumn;
 
   /// What the slot list needs along [axis] even when [railExtent] is less.
   /// A panel shorter than the ladder's last rung has nothing left to shed,
@@ -270,9 +273,12 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     // legend has to SIZE itself from the same answer it lays out from — a
     // Column has no `Expanded` slack to hide a disagreement in, unlike the
     // horizontal rail where the LAYER heading absorbs it.
-    final bool hasOnion = legend?.onToggleOnionSkinForDisplayed != null;
+    final bool hasOnion =
+        hasOnionColumn ?? legend?.onToggleOnionSkinForDisplayed != null;
     final bool hasBlend =
-        legend?.onSetBlendModeForDisplayed != null && displayedLayerIds != null;
+        hasBlendColumn ??
+        (legend?.onSetBlendModeForDisplayed != null &&
+            displayedLayerIds != null);
 
     // The legend spans the rail: the rail's extent along its own axis, one
     // row across it. Stood up, the two swap — and the rail's extent is the
@@ -283,8 +289,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
         (isVertical
             ? timelineLayerControlsWidth -
                   (hasOnion ? 0 : layerOnionSlotWidth) -
-                  (hasBlend ? 0 : layerBlendSlotWidth) -
-                  layerRailShedExtent(shed)
+                  (hasBlend ? 0 : layerBlendSlotWidth)
             : metrics.layerControlsWidth);
     final double crossExtent = isVertical
         ? metrics.layerControlsWidth
@@ -322,7 +327,6 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     // cell rides the reserved band slot (UI-R5/R6 #5).
                     ...layerRailLeadingCells(
                       axis: axis,
-                      shed: shed,
                       // Over the rows' inline section band (UI-R5/R6 #5):
                       // the sections flyout.
                       sectionBand: cell(
@@ -494,7 +498,6 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     ),
                     ...layerRailTrailingCells(
                       axis: axis,
-                      shed: shed,
                       fillReference: cell(
                         keyValue: 'legend-fill-ref',
                         tooltip: AppText.strings.tlColFillReference,

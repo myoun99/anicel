@@ -92,104 +92,39 @@ void main() {
     test('a tall panel gets the whole rail, and NOT ONE PIXEL MORE', () {
       final tall = XSheetTimelineGrid.headerLayoutFor(10000);
       // The sheet comes first: making the panel taller has to add FRAME
-      // ROWS, never more header. The first cut of this got it backwards —
-      // the block grew with the panel and the sheet sat pinned at its
-      // minimum across a 160px range of panel heights.
+      // ROWS, never more header. An earlier cut got it backwards — the
+      // block grew with the panel and the sheet sat pinned at its minimum
+      // across a 160px range of panel heights.
       expect(
         XSheetTimelineGrid.headerLayoutFor(100000).blockHeight,
         tall.blockHeight,
       );
-      // Opacity is the one column the sheet NEVER carries.
-      expect(tall.shed, {LayerRailSlot.opacity});
-    });
-
-    test('controls come back last-shed-first, and NOT ONE of them before '
-        'the name is paid in full', () {
-      double comesBackAt(LayerRailSlot slot) {
-        for (var extent = 60.0; extent <= 1400; extent += 1) {
-          if (!XSheetTimelineGrid.headerLayoutFor(extent).shed.contains(slot)) {
-            return extent;
-          }
-        }
-        return double.infinity;
-      }
-
-      // Read the ladder back from behaviour rather than pinning pixels: the
-      // contract is the ORDER, and the reverse of the shed order is what a
-      // growing panel must restore.
-      const restoreOrder = [
-        LayerRailSlot.timesheet,
-        LayerRailSlot.fx,
-        LayerRailSlot.mute,
-        LayerRailSlot.mark,
-        LayerRailSlot.fillReference,
-      ];
-      var previous = 0.0;
-      for (final slot in restoreOrder) {
-        final extent = comesBackAt(slot);
-        expect(
-          extent,
-          lessThan(double.infinity),
-          reason: '$slot never comes back',
-        );
-        expect(
-          extent,
-          greaterThan(previous),
-          reason: '$slot came back out of ladder order',
-        );
-        previous = extent;
-      }
-
-      // Opacity has no rung at all — the sheet never carries it.
-      expect(comesBackAt(LayerRailSlot.opacity), double.infinity);
-
-      // ★ Nor does the LANE TWIRL, and for the opposite reason: it is the
-      // only way out of a state it puts the sheet into. Lane expansion
-      // survives a resize, so shedding the twirl would leave the lane
-      // columns on screen with nothing to close them.
-      expect(
-        comesBackAt(LayerRailSlot.laneToggle),
-        60,
-        reason: 'the lane twirl must never be shed',
-      );
-
-      // The ladder bottoms out: the KIND icon, the NAME and the EYE have
-      // no rung, so however short the panel gets they are still there. A
-      // column heading that cannot say which layer it heads is not a
-      // heading, and this is the surface the user reads most.
-      Set<LayerRailSlot> shedAt(double extent) =>
-          XSheetTimelineGrid.headerLayoutFor(extent).shed;
-      expect(shedAt(0), shedAt(60), reason: 'the ladder has a last rung');
-      expect(shedAt(0), isNot(contains(LayerRailSlot.laneToggle)));
+      // ★ And the whole rail means the WHOLE rail: the natural block is the
+      // timeline's own rail width — every optional column included — plus
+      // the two hairlines a column header draws and a rail row does not.
+      // The user overturned the shedding design outright: "타임라인에
+      // 있는거 싹다 넣어. 뭐 빼지말고."
+      expect(tall.blockHeight, timelineLayerControlsWidth + 2);
     });
 
     testWidgets('a splitter drag never takes back what it just gave', (
       tester,
     ) async {
-      // The first cut asserted only `blockHeight` and `shed.length` under
-      // this very title, and the name — the thing rule 2 says outranks the
-      // controls — shrank 71px → 48px at six panel heights inside the
+      // An earlier cut asserted only `blockHeight` under this very title,
+      // and the NAME shrank 71px → 48px at six panel heights inside the
       // dock's own drag range, every one of them while the panel got
       // BIGGER. Measure the RENDERED name, one pixel at a time.
       await tester.binding.setSurfaceSize(const Size(900, 1000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
       var previousBlock = 0.0;
-      var previousShed = 99;
       var previousName = 0.0;
-      // Every rung boundary lives in here; the pure-math test below sweeps
-      // the whole range more cheaply.
-      for (var extent = 240.0; extent <= 440; extent += 1) {
+      for (var extent = 240.0; extent <= 460; extent += 1) {
         final layout = XSheetTimelineGrid.headerLayoutFor(extent);
         expect(
           layout.blockHeight,
           greaterThanOrEqualTo(previousBlock),
           reason: 'the header shrank as the panel grew ($extent)',
-        );
-        expect(
-          layout.shed.length,
-          lessThanOrEqualTo(previousShed),
-          reason: 'a column vanished as the panel grew ($extent)',
         );
 
         await tester.pumpWidget(_grid(height: extent));
@@ -205,7 +140,6 @@ void main() {
         );
 
         previousBlock = layout.blockHeight;
-        previousShed = layout.shed.length;
         previousName = name;
       }
     });
@@ -214,21 +148,18 @@ void main() {
       'the block only ever grows with the panel, across the whole range',
       () {
         var previousBlock = 0.0;
-        var previousShed = 99;
         for (var extent = 60.0; extent <= 1000; extent += 0.5) {
           final layout = XSheetTimelineGrid.headerLayoutFor(extent);
           expect(layout.blockHeight, greaterThanOrEqualTo(previousBlock));
-          expect(layout.shed.length, lessThanOrEqualTo(previousShed));
           previousBlock = layout.blockHeight;
-          previousShed = layout.shed.length;
         }
       },
     );
 
-    test('the sheet always keeps four frame rows once the ladder can pay '
-        'for them', () {
+    test('the sheet keeps four frame rows wherever the header can be paid '
+        'for at all', () {
       const minSheet = 4 * timelineFrameCellWidth;
-      for (var extent = 400.0; extent <= 1000; extent += 1) {
+      for (var extent = 500.0; extent <= 1000; extent += 1) {
         final block = XSheetTimelineGrid.headerLayoutFor(extent).blockHeight;
         expect(
           extent - block - timelineBottomScrollbarRailHeight,
@@ -330,11 +261,6 @@ void main() {
 
       // The sheet was the one grid whose columns had no headings at all.
       expect(find.text('Frame'), findsNothing);
-      // …and no OPACITY heading, because the sheet has no opacity column.
-      expect(
-        find.byKey(const ValueKey<String>('legend-opacity')),
-        findsNothing,
-      );
       for (final key in [
         'legend-sections',
         'legend-sheet',
@@ -536,22 +462,19 @@ void main() {
       );
     });
 
-    test('a shed column costs nothing', () {
+    test('the optional columns are the only ones a host may decline', () {
+      // Onion and blend are the two the SKELETON makes optional, and the
+      // sheet now carries both. Nothing else can be dropped: every rail
+      // surface draws every other slot, which is what makes the legend's
+      // icons line up over them.
       expect(
-        layerRailTrailingWidth(shed: const {LayerRailSlot.opacity}),
-        layerRailTrailingWidth() - layerOpacitySlotWidth,
+        layerRailTrailingWidth(hasOnionColumn: true, hasBlendColumn: true) -
+            layerRailTrailingWidth(),
+        layerOnionSlotWidth + layerBlendSlotWidth,
       );
-      expect(
-        layerRailTrailingWidth(shed: const {LayerRailSlot.fillReference}),
-        layerRailTrailingWidth() - layerFillReferenceSlotWidth,
-      );
-      // The EYE has no rung, so there is no way to ask for it to go.
-      expect(
-        layerRailTrailingWidth(shed: LayerRailSlot.values.toSet()),
-        layerVisibilitySlotWidth,
-      );
-      // Nor does a panel below the last rung reach zero height: the layout
-      // floors the header so a `Container(height:)` never goes negative.
+
+      // A panel too short for the header never reaches a negative height:
+      // the layout floors it so a `Container(height:)` cannot assert.
       for (final extent in [0.0, 10.0, 36.0, 51.9, 52.0]) {
         expect(
           XSheetTimelineGrid.headerLayoutFor(extent).headerHeight,

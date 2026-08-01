@@ -497,6 +497,13 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     audioLane: widget.audioLane,
                     onAddLayer: widget.onAddLayer,
                     onOpenLayerMixer: widget.onOpenLayerMixer,
+                    // R10 R6: the sheet carries every column the rail does —
+                    // these two were the last it was missing, and the panel
+                    // had been holding them for the horizontal grid alone.
+                    onToggleLayerOnionSkin: widget.onToggleLayerOnionSkin,
+                    layerOnionSkinEnabledOf: widget.layerOnionSkinEnabledOf,
+                    onLayerBlendModeSelected: widget.onLayerBlendModeSelected,
+                    blendLanguage: widget.blendLanguage,
                     attachArrowPlacementOf: (layerId) => attachArrows[layerId],
                     isLayerSoloed: widget.isLayerSoloed,
                     onToggleLayerFillReference:

@@ -585,22 +585,28 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     );
   }
 
-  /// Below the host's stated content extent the cell CLIPS instead of
+  /// Below the host's stated content extent the cell SCALES instead of
   /// striping — the x-sheet's layer header takes the same degradation, and
-  /// a lane column that overflowed while its neighbour clipped would be the
+  /// a lane column that overflowed while its neighbour shrank would be the
   /// only yellow stripe on the panel.
   Widget _clipToContent(Widget child) {
     final extent = widget.minContentExtent;
     final height = widget.height;
-    if (extent == null || height == null || height >= extent) {
+    if (extent == null || height == null || height >= extent || extent <= 0) {
       return child;
     }
+    // The OverflowBox hands the child its full extent; `Transform` paints
+    // differently but passes the same constraints down.
     return ClipRect(
       child: OverflowBox(
         alignment: Alignment.topCenter,
         minHeight: extent,
         maxHeight: extent,
-        child: child,
+        child: Transform.scale(
+          scale: height / extent,
+          alignment: Alignment.topCenter,
+          child: child,
+        ),
       ),
     );
   }

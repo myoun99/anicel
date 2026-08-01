@@ -78,13 +78,18 @@ Future<void> _pump(WidgetTester tester, Project project) async {
   // The AE 'Transform' group header (+ anchor/opacity lanes on drawing
   // layers) deepens the twirl-down; a wide surface and a taller bottom
   // dock (splitter drag, like a user would) keep every lane row on screen.
-  await tester.binding.setSurfaceSize(const Size(1280, 900));
+  //
+  // R10 R6: the drag went from -300 to -520. The old figure was calibrated
+  // against a 112px x-sheet header; the sheet's header is the whole rail
+  // stood up now, so a dock that used to leave several frame rows left
+  // barely one — and a marker at the clip edge cannot be dragged.
+  await tester.binding.setSurfaceSize(const Size(1280, 1200));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(MaterialApp(home: HomePage(initialProject: project)));
   await tester.pumpAndSettle();
   await tester.drag(
     find.byKey(const ValueKey<String>('dock-resize-bottom')),
-    const Offset(0, -300),
+    const Offset(0, -520),
   );
   await tester.pumpAndSettle();
 }
@@ -1369,16 +1374,23 @@ void main() {
       // frame rows is +2 frames. Read from the metrics rather than typed:
       // R6 made the sheet's frame row the timeline's frame cell (36 → 24),
       // and a literal here just meant a different answer, silently.
+      //
+      // Drag the key at frame 0, not the one at 4: R6's header is the whole
+      // rail stood up, so even a maxed bottom dock leaves the sheet about
+      // four rows and frame 4's marker sits on the clip edge, where a drag
+      // cannot start. (The sheet is meant for a tall SIDE dock; the bottom
+      // dock's own 640 ceiling is what bounds this.)
       await tester.drag(
-        laneKey('position', 4),
+        laneKey('position', 0),
         Offset(0, XSheetTimelineGrid.defaultMetrics.frameCellWidth * 2),
       );
       await tester.pumpAndSettle();
 
-      expect(laneKey('position', 4), findsNothing);
-      expect(laneKey('position', 6), findsOneWidget);
-      // Other lanes keep their key at 4.
-      expect(laneKey('scale', 4), findsOneWidget);
+      expect(laneKey('position', 0), findsNothing);
+      expect(laneKey('position', 2), findsOneWidget);
+      // The lane's OTHER key is untouched, and so is every other lane.
+      expect(laneKey('position', 4), findsOneWidget);
+      expect(laneKey('scale', 0), findsOneWidget);
     });
 
     testWidgets('the marker\'s long-press and right-click open nothing (the '

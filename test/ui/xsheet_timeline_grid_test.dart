@@ -60,19 +60,28 @@ void main() {
     expect(toggledLayerId, const LayerId('layer-2'));
   });
 
-  testWidgets('the sheet carries NO opacity slider — a 28px column cannot '
-      'show one (R10 R6)', (tester) async {
-    await tester.pumpWidget(_grid());
+  testWidgets('opacity control calls callback', (tester) async {
+    // R10 R6: the sheet carries EVERY column the timeline rail does, this
+    // one included — the user's call after seeing an earlier cut drop it
+    // ("타임라인에 있는거 싹다 넣어. 뭐 빼지말고").
+    LayerId? changedLayerId;
+    double? changedOpacity;
 
-    // The column narrowed 164 → 28 when the header stood up, which leaves
-    // the readout 11px: the number the slot exists to show can never be
-    // read. The value lives on the timeline rail and in the layer panel,
-    // and the legend beside this had already stood its master bar down for
-    // the same reason.
-    expect(
-      find.byKey(const ValueKey<String>('xsheet-layer-opacity-layer-1')),
-      findsNothing,
+    await tester.pumpWidget(
+      _grid(
+        onLayerOpacityChanged: (layerId, opacity) {
+          changedLayerId = layerId;
+          changedOpacity = opacity;
+        },
+      ),
     );
+    await tester.drag(
+      find.byKey(const ValueKey<String>('xsheet-layer-opacity-layer-1')),
+      const Offset(-30, 0),
+    );
+
+    expect(changedLayerId, const LayerId('layer-1'));
+    expect(changedOpacity, isNotNull);
   });
 
   testWidgets('timesheet toggle calls callback from the header', (
