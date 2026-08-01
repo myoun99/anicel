@@ -8,6 +8,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart';
 import 'package:anicel/src/ui/timeline/layer_rail_columns.dart';
+import 'package:anicel/src/ui/timeline/layer_rail_window.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_lane_rows.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
@@ -33,7 +34,7 @@ Layer _layer(String id, String name, {LayerKind kind = LayerKind.animation}) {
   );
 }
 
-Widget _grid({double height = 900}) {
+Widget _grid({double height = 900, LayerRailExtent? railExtent}) {
   final cursor = ValueNotifier<int>(0);
   return MaterialApp(
     home: Scaffold(
@@ -41,6 +42,7 @@ Widget _grid({double height = 900}) {
         width: 900,
         height: height,
         child: XSheetTimelineGrid(
+          railExtent: railExtent,
           layers: [_layer('layer-1', 'Layer 1'), _layer('layer-2', 'Layer 2')],
           activeLayerId: const LayerId('layer-1'),
           frameCursor: cursor,
@@ -58,6 +60,9 @@ Widget _grid({double height = 900}) {
     ),
   );
 }
+
+double sheetLeft(WidgetTester tester) =>
+    tester.getRect(find.byType(XSheetTimelineGrid)).left;
 
 void main() {
   group('the transposition, as arithmetic', () {
@@ -89,82 +94,167 @@ void main() {
   });
 
   group('the header block is the rail, stood up', () {
-    test('a tall panel gets the whole rail, and NOT ONE PIXEL MORE', () {
-      final tall = XSheetTimelineGrid.headerLayoutFor(10000);
-      // The sheet comes first: making the panel taller has to add FRAME
-      // ROWS, never more header. An earlier cut got it backwards — the
-      // block grew with the panel and the sheet sat pinned at its minimum
-      // across a 160px range of panel heights.
-      expect(
-        XSheetTimelineGrid.headerLayoutFor(100000).blockHeight,
-        tall.blockHeight,
-      );
-      // ★ And the whole rail means the WHOLE rail: the natural block is the
-      // timeline's own rail width — every optional column included — plus
-      // the two hairlines a column header draws and a rail row does not.
+    test('the natural block is the WHOLE rail, plus its two hairlines', () {
       // The user overturned the shedding design outright: "타임라인에
       // 있는거 싹다 넣어. 뭐 빼지말고."
-      expect(tall.blockHeight, timelineLayerControlsWidth + 2);
+      expect(
+        XSheetTimelineGrid.naturalHeaderBlockExtent(
+          hasOnionColumn: true,
+          hasBlendColumn: true,
+        ),
+        timelineLayerControlsWidth + 2,
+      );
+      // A host that declines the two optional columns costs exactly them
+      // less — the legend beside the headers sizes from the same call, so
+      // the two cannot part.
+      expect(
+        XSheetTimelineGrid.naturalHeaderBlockExtent(
+          hasOnionColumn: false,
+          hasBlendColumn: false,
+        ),
+        timelineLayerControlsWidth +
+            2 -
+            layerOnionSlotWidth -
+            layerBlendSlotWidth,
+      );
     });
 
-    testWidgets('a splitter drag never takes back what it just gave', (
-      tester,
-    ) async {
-      // An earlier cut asserted only `blockHeight` under this very title,
-      // and the NAME shrank 71px → 48px at six panel heights inside the
-      // dock's own drag range, every one of them while the panel got
-      // BIGGER. Measure the RENDERED name, one pixel at a time.
+    testWidgets('untouched, the block is its natural extent whatever the '
+        'panel has to spare', (tester) async {
       await tester.binding.setSurfaceSize(const Size(900, 1000));
       addTearDown(() => tester.binding.setSurfaceSize(null));
 
-      var previousBlock = 0.0;
-      var previousName = 0.0;
-      for (var extent = 240.0; extent <= 460; extent += 1) {
-        final layout = XSheetTimelineGrid.headerLayoutFor(extent);
+      // This harness declines the two optional columns, so the sheet's own
+      // natural block is that much shorter — and the legend must size from
+      // the same answer.
+      final natural = XSheetTimelineGrid.naturalHeaderBlockExtent(
+        hasOnionColumn: false,
+        hasBlendColumn: false,
+      );
+      for (final height in [700.0, 1000.0]) {
+        await tester.pumpWidget(_grid(height: height));
+        final legend = tester.getRect(find.byType(TimelineLayerControlsHeader));
         expect(
-          layout.blockHeight,
-          greaterThanOrEqualTo(previousBlock),
-          reason: 'the header shrank as the panel grew ($extent)',
+          legend.height,
+          closeTo(natural, 0.01),
+          reason: 'a $height panel did not show the whole block',
         );
-
-        await tester.pumpWidget(_grid(height: extent));
-        final name = tester
-            .getSize(
-              find.byKey(const ValueKey<String>('xsheet-layer-name-layer-1')),
-            )
-            .height;
         expect(
-          name,
-          greaterThanOrEqualTo(previousName),
-          reason: 'the column name shrank as the panel grew ($extent)',
+          tester.getRect(find.byType(LayerRailWindow).first).height,
+          closeTo(natural, 0.01),
+          reason: 'a $height panel cut a block it could afford whole',
         );
-
-        previousBlock = layout.blockHeight;
-        previousName = name;
       }
     });
 
-    test(
-      'the block only ever grows with the panel, across the whole range',
-      () {
-        var previousBlock = 0.0;
-        for (var extent = 60.0; extent <= 1000; extent += 0.5) {
-          final layout = XSheetTimelineGrid.headerLayoutFor(extent);
-          expect(layout.blockHeight, greaterThanOrEqualTo(previousBlock));
-          previousBlock = layout.blockHeight;
-        }
-      },
-    );
+    testWidgets('the splitter cuts the block, and the header inside it does '
+        'not move', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(900, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      final rail = LayerRailExtent();
+      addTearDown(rail.dispose);
+      await tester.pumpWidget(_grid(railExtent: rail));
 
-    test('the sheet keeps four frame rows wherever the header can be paid '
-        'for at all', () {
-      const minSheet = 4 * timelineFrameCellWidth;
-      for (var extent = 500.0; extent <= 1000; extent += 1) {
-        final block = XSheetTimelineGrid.headerLayoutFor(extent).blockHeight;
+      final headerKey = const ValueKey<String>('xsheet-layer-header-layer-1');
+      final naturalHeader = tester.getSize(find.byKey(headerKey)).height;
+
+      rail.resizeBy(
+        -100,
+        naturalExtent: XSheetTimelineGrid.naturalHeaderBlockExtent(
+          hasOnionColumn: false,
+          hasBlendColumn: false,
+        ),
+      );
+      await tester.pump();
+
+      // NOTHING inside rearranged — that is the whole model. R10 R6 packed
+      // the name here and R6a scaled the column; both would move this
+      // number.
+      expect(tester.getSize(find.byKey(headerKey)).height, naturalHeader);
+      // What changed is the WINDOW, and the legend beside it was cut at
+      // exactly the same line (R6a's bug: the legend clipped while the
+      // headers scaled, and below 494px they visibly parted).
+      final windows = tester.widgetList<LayerRailWindow>(
+        find.byType(LayerRailWindow),
+      );
+      expect(windows, hasLength(2));
+      final bottoms = {
+        for (final window in windows)
+          tester.getRect(find.byWidget(window)).bottom.round(),
+      };
+      expect(bottoms, hasLength(1), reason: 'one cut, one line');
+    });
+
+    testWidgets('the sheet carries three bars and a corner', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(900, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(_grid());
+
+      // The LAYER axis runs across the sheet, so its bar is the strip
+      // along the TOP — and the seconds toggle sits in the corner beside
+      // it, off the command bar.
+      final layerAxisBar = tester.getRect(
+        find.byKey(const ValueKey<String>('xsheet-horizontal-scrollbar')),
+      );
+      final sheetTop = tester.getRect(find.byType(XSheetTimelineGrid)).top;
+      expect(layerAxisBar.top, closeTo(sheetTop, 0.01));
+      expect(
+        find.byKey(const ValueKey<String>('xsheet-time-display-toggle-button')),
+        findsOneWidget,
+      );
+
+      // The 16px column carries TWO bars, split by the splitter: the
+      // rail's above, the frame axis's below.
+      final railBar = tester.getRect(
+        find.byKey(const ValueKey<String>('xsheet-rail-scrollbar')),
+      );
+      final splitter = tester.getRect(
+        find.byKey(const ValueKey<String>('xsheet-rail-splitter')),
+      );
+      final frameBar = tester.getRect(
+        find.byKey(const ValueKey<String>('xsheet-vertical-scrollbar')),
+      );
+      expect(railBar.bottom, closeTo(splitter.top, 0.01));
+      expect(frameBar.top, closeTo(splitter.bottom, 0.01));
+      expect(
+        railBar.width,
+        XSheetTimelineGrid.defaultMetrics.verticalScrollbarWidth,
+      );
+      expect(railBar.left, closeTo(frameBar.left, 0.01));
+      // The splitter starts after the frame-number rail: that column is
+      // the FRAME axis's and the splitter has nothing to say about it.
+      expect(
+        splitter.left,
+        closeTo(
+          sheetLeft(tester) +
+              XSheetTimelineGrid.defaultMetrics.layerControlsWidth,
+          0.01,
+        ),
+      );
+    });
+
+    testWidgets('the frame area always keeps its two-row reserve', (
+      tester,
+    ) async {
+      await tester.binding.setSurfaceSize(const Size(900, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      // Even untouched — the natural block is 436 and most of this range
+      // cannot pay for it, so the WINDOW is what gives.
+      for (var height = 200.0; height <= 900; height += 20) {
+        await tester.pumpWidget(_grid(height: height));
+        final legend = tester.getRect(find.byType(TimelineLayerControlsHeader));
+        final window = tester
+            .getRect(find.byType(LayerRailWindow).first)
+            .height;
         expect(
-          extent - block - timelineBottomScrollbarRailHeight,
-          greaterThanOrEqualTo(minSheet),
-          reason: 'a $extent panel left less than four rows of sheet',
+          window,
+          lessThanOrEqualTo(legend.height + 0.01),
+          reason: 'a $height panel let the window outgrow the block',
+        );
+        expect(
+          height - window,
+          greaterThanOrEqualTo(layerRailFrameReserveExtent),
+          reason: 'a $height panel left the sheet less than two rows',
         );
       }
     });
@@ -182,11 +272,16 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(_grid());
 
-      final expected = XSheetTimelineGrid.headerLayoutFor(900);
+      final expected =
+          XSheetTimelineGrid.naturalHeaderBlockExtent(
+            hasOnionColumn: false,
+            hasBlendColumn: false,
+          ) -
+          layerSectionLabelSlotWidth;
       final header = tester.getRect(
         find.byKey(const ValueKey<String>('xsheet-layer-header-layer-1')),
       );
-      expect(header.height, closeTo(expected.headerHeight, 0.01));
+      expect(header.height, closeTo(expected, 0.01));
       expect(header.width, XSheetTimelineGrid.defaultMetrics.layerRowHeight);
     });
 
@@ -197,9 +292,12 @@ void main() {
       addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(_grid());
 
-      final expected = XSheetTimelineGrid.headerLayoutFor(900);
+      final expected = XSheetTimelineGrid.naturalHeaderBlockExtent(
+        hasOnionColumn: false,
+        hasBlendColumn: false,
+      );
       final legend = tester.getRect(find.byType(TimelineLayerControlsHeader));
-      expect(legend.height, closeTo(expected.blockHeight, 0.01));
+      expect(legend.height, closeTo(expected, 0.01));
       // It is the CORNER: as wide as the frame-number rail it sits over.
       expect(
         legend.width,
@@ -473,13 +571,18 @@ void main() {
         layerOnionSlotWidth + layerBlendSlotWidth,
       );
 
-      // A panel too short for the header never reaches a negative height:
-      // the layout floors it so a `Container(height:)` cannot assert.
+      // A panel too short for even the rail's floor never produces a
+      // negative window: the panel wins, because an overflow stripe helps
+      // nobody.
+      final rail = LayerRailExtent();
+      addTearDown(rail.dispose);
       for (final extent in [0.0, 10.0, 36.0, 51.9, 52.0]) {
+        final window = rail.windowExtent(436, availableExtent: extent);
+        expect(window, greaterThanOrEqualTo(0));
         expect(
-          XSheetTimelineGrid.headerLayoutFor(extent).headerHeight,
-          greaterThanOrEqualTo(0),
-          reason: 'a $extent panel produced a negative header height',
+          window,
+          lessThanOrEqualTo(extent),
+          reason: 'a $extent panel produced a window it cannot hold',
         );
       }
     });

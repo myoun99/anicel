@@ -1292,8 +1292,23 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
             return ValueListenableBuilder<double?>(
               valueListenable: _railExtent,
               builder: (context, _, child) {
+                // What the panel can spare for the rail: everything but its
+                // own chrome and the frame area's two-cell reserve. This is
+                // also what closes the grid's old <448px overflow — the
+                // rail used to be a fixed 434 whatever the panel had.
+                // Computed ONCE and handed to every part of the rail so
+                // they cannot disagree.
+                final availableRailExtent = constraints.hasBoundedWidth
+                    ? (constraints.maxWidth -
+                              _metrics.verticalScrollbarWidth -
+                              LayerRailSplitter.thickness -
+                              layerRailFrameReserveExtent)
+                          .clamp(0.0, double.infinity)
+                          .toDouble()
+                    : null;
                 final railWindowExtent = _railExtent.windowExtent(
                   _naturalRailWidth,
+                  availableExtent: availableRailExtent,
                 );
                 // Viewport paper fill (UI-R12 #16): however wide the cell
                 // area is, cells run to its edge — recorded here so every
@@ -1408,6 +1423,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                             axis: Axis.horizontal,
                                             rail: _railExtent,
                                             naturalExtent: _naturalRailWidth,
+                                            availableExtent:
+                                                availableRailExtent,
                                             // Memo-gated (UI-R7 #1): zoom steps
                                             // reuse the identical header instance.
                                             child: _legendHeaderMemoized(rows),
@@ -1660,6 +1677,8 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                     rail: _railExtent,
                                                     naturalExtent:
                                                         _naturalRailWidth,
+                                                    availableExtent:
+                                                        availableRailExtent,
                                                     child: KeyedSubtree(
                                                       key: const ValueKey<String>(
                                                         'timeline-layer-controls-rail',
@@ -2085,6 +2104,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                 axis: Axis.horizontal,
                                 rail: _railExtent,
                                 naturalExtent: _naturalRailWidth,
+                                availableExtent: availableRailExtent,
                                 laneExtent: bottomScrollbarRailHeight,
                                 keyPrefix: 'timeline',
                               ),
@@ -2139,6 +2159,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                           axis: Axis.horizontal,
                           extent: _railExtent,
                           naturalExtent: _naturalRailWidth,
+                          availableExtent: availableRailExtent,
                         ),
                       ),
                     ],

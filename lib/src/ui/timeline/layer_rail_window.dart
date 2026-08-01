@@ -24,6 +24,7 @@ import 'package:flutter/rendering.dart';
 import '../widgets/app_scrollbar.dart';
 import '../widgets/dock_edge_splitter.dart';
 import 'layer_rail_columns.dart';
+import 'timeline_grid_metrics.dart';
 
 /// The narrowest window the user can drag to: the leading cluster (the
 /// section band and every control slot before the name) plus enough of the
@@ -35,6 +36,15 @@ const double layerRailMinimumWindowExtent = layerRailLeadingWidth + 14;
 /// How thick a rail's own scrollbar lane is. 16px so the thumb's 32px
 /// minimum has room to be grabbed — see [AppScrollbarGeometry].
 const double layerRailScrollbarLaneExtent = 16;
+
+/// What the FRAME area keeps whatever the rail wants: two cells at the
+/// default zoom, the user's number — enough that its own scrollbar thumb
+/// (32px minimum) still has somewhere to travel.
+///
+/// Stated in DEFAULT cell units, not live zoomed ones: measuring the
+/// reserve in zoomed cells would move the rail's ceiling every time the
+/// user touched the zoom slider.
+const double layerRailFrameReserveExtent = 2 * timelineFrameCellWidth;
 
 /// The rails that size themselves, one entry per PANEL.
 ///
@@ -72,37 +82,73 @@ class LayerRailExtent extends ValueNotifier<double?> {
   /// a restart opens the rail at its head.
   final ValueNotifier<double> offset = ValueNotifier<double>(0);
 
-  /// The window this rail actually gets, given what the rail naturally
-  /// spends. Natural is the ceiling: dragging past it would open a gap.
-  double windowExtent(double naturalExtent) {
-    final ceiling = math.max(naturalExtent, layerRailMinimumWindowExtent);
-    final requested = value;
-    if (requested == null) {
-      return ceiling;
+  /// The window this rail actually gets.
+  ///
+  /// Two ceilings. NATURAL, because a window wider than the rail would open
+  /// a gap. And [availableExtent] — what the panel has left after its own
+  /// chrome and the frame area's reserve — because a rail is not allowed to
+  /// overflow the panel it lives in. That second one is a LAYOUT clamp, not
+  /// a stored value: shrink the panel and the rail gives ground, grow it
+  /// again and the size the user chose comes back.
+  double windowExtent(double naturalExtent, {double? availableExtent}) {
+    final natural = math.max(naturalExtent, layerRailMinimumWindowExtent);
+    var floor = layerRailMinimumWindowExtent;
+    var ceiling = natural;
+    if (availableExtent != null &&
+        availableExtent.isFinite &&
+        availableExtent >= 0) {
+      ceiling = math.min(ceiling, availableExtent);
+      // In a panel too small even for the floor, the panel wins: an
+      // overflow stripe helps nobody.
+      floor = math.min(floor, ceiling);
     }
-    return requested.clamp(layerRailMinimumWindowExtent, ceiling).toDouble();
+    return (value ?? natural).clamp(floor, ceiling).toDouble();
   }
 
   /// Applies one splitter drag frame; positive [delta] grows the rail.
-  void resizeBy(double delta, {required double naturalExtent}) {
-    final ceiling = math.max(naturalExtent, layerRailMinimumWindowExtent);
-    final next = (windowExtent(naturalExtent) + delta)
-        .clamp(layerRailMinimumWindowExtent, ceiling)
-        .toDouble();
+  void resizeBy(
+    double delta, {
+    required double naturalExtent,
+    double? availableExtent,
+  }) {
+    final current = windowExtent(
+      naturalExtent,
+      availableExtent: availableExtent,
+    );
+    var ceiling = math.max(naturalExtent, layerRailMinimumWindowExtent);
+    var floor = layerRailMinimumWindowExtent;
+    if (availableExtent != null &&
+        availableExtent.isFinite &&
+        availableExtent >= 0) {
+      ceiling = math.min(ceiling, availableExtent);
+      floor = math.min(floor, ceiling);
+    }
+    final next = (current + delta).clamp(floor, ceiling).toDouble();
     if (next != value) {
       value = next;
       // A wider window has less room to be pushed into: without this the
       // tail would stay scrolled off and snap back the next time the
       // window narrowed.
-      pushTo(offset.value, naturalExtent: naturalExtent);
+      pushTo(
+        offset.value,
+        naturalExtent: naturalExtent,
+        availableExtent: availableExtent,
+      );
     }
   }
 
   /// Pushes the window to [next], clamped to what the rail can give.
-  void pushTo(double next, {required double naturalExtent}) {
+  void pushTo(
+    double next, {
+    required double naturalExtent,
+    double? availableExtent,
+  }) {
     final clamped = clampOffset(
       next,
-      windowExtent: windowExtent(naturalExtent),
+      windowExtent: windowExtent(
+        naturalExtent,
+        availableExtent: availableExtent,
+      ),
       naturalExtent: naturalExtent,
     );
     if (clamped != offset.value) {
@@ -152,6 +198,7 @@ class LayerRailWindow extends StatelessWidget {
     required this.axis,
     required this.rail,
     required this.naturalExtent,
+    this.availableExtent,
     required this.child,
   });
 
@@ -164,11 +211,21 @@ class LayerRailWindow extends StatelessWidget {
   final LayerRailExtent rail;
 
   final double naturalExtent;
+
+  /// What the panel can spare (see [LayerRailExtent.windowExtent]). Every
+  /// part of one rail must be given the SAME value — the host computes it
+  /// once per build and hands it to the window, the scrollbar and the
+  /// splitter alike.
+  final double? availableExtent;
+
   final Widget child;
 
   @override
   Widget build(BuildContext context) {
-    final windowExtent = rail.windowExtent(naturalExtent);
+    final windowExtent = rail.windowExtent(
+      naturalExtent,
+      availableExtent: availableExtent,
+    );
     final content = math.max(naturalExtent, windowExtent);
     // Per-pixel pushes move the paint offset only — the rail's own subtree
     // is handed through as the builder's stable child and never rebuilds.
@@ -382,12 +439,14 @@ class LayerRailSplitter extends StatelessWidget {
     required this.axis,
     required this.extent,
     required this.naturalExtent,
+    this.availableExtent,
   });
 
   /// The RAIL's axis — the splitter itself stands across it.
   final Axis axis;
   final LayerRailExtent extent;
   final double naturalExtent;
+  final double? availableExtent;
 
   static const double thickness = DockEdgeSplitter.thickness;
 
@@ -396,8 +455,11 @@ class LayerRailSplitter extends StatelessWidget {
     return DockEdgeSplitter(
       axis: axis == Axis.horizontal ? Axis.vertical : Axis.horizontal,
       tooltip: 'Drag to resize the layer rail (double-click to reset)',
-      onDragDelta: (delta) =>
-          extent.resizeBy(delta, naturalExtent: naturalExtent),
+      onDragDelta: (delta) => extent.resizeBy(
+        delta,
+        naturalExtent: naturalExtent,
+        availableExtent: availableExtent,
+      ),
       onDoubleTap: extent.reset,
     );
   }
@@ -467,6 +529,7 @@ class LayerRailScrollbar extends StatelessWidget {
     required this.axis,
     required this.rail,
     required this.naturalExtent,
+    this.availableExtent,
     this.laneExtent = layerRailScrollbarLaneExtent,
     this.keyPrefix = 'layer-rail',
   });
@@ -474,6 +537,7 @@ class LayerRailScrollbar extends StatelessWidget {
   final Axis axis;
   final LayerRailExtent rail;
   final double naturalExtent;
+  final double? availableExtent;
   final double laneExtent;
 
   /// Addresses the surface: 'timeline' | 'xsheet' | 'storyboard'.
@@ -485,7 +549,10 @@ class LayerRailScrollbar extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final horizontal = axis == Axis.horizontal;
-    final windowExtent = rail.windowExtent(naturalExtent);
+    final windowExtent = rail.windowExtent(
+      naturalExtent,
+      availableExtent: availableExtent,
+    );
     final content = math.max(naturalExtent, windowExtent);
     return Container(
       key: ValueKey<String>('$keyPrefix-rail-scrollbar'),
@@ -508,8 +575,11 @@ class LayerRailScrollbar extends StatelessWidget {
           minThumbExtent: _minimumThumbExtent,
           laneKey: ValueKey<String>('$keyPrefix-rail-scrollbar-track'),
           thumbKey: ValueKey<String>('$keyPrefix-rail-scrollbar-thumb'),
-          onOffsetChanged: (next) =>
-              rail.pushTo(next, naturalExtent: naturalExtent),
+          onOffsetChanged: (next) => rail.pushTo(
+            next,
+            naturalExtent: naturalExtent,
+            availableExtent: availableExtent,
+          ),
         ),
       ),
     );

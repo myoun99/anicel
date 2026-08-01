@@ -506,6 +506,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     audioPeaksFor: widget.audioPeaksFor,
                     projectFrameRate: widget.projectFrameRate,
                     showSeconds: widget.showSeconds,
+                    onShowSecondsChanged: widget.onShowSecondsChanged,
+                    railExtent: widget.xsheetRailExtent,
                     audioLane: widget.audioLane,
                     onAddLayer: widget.onAddLayer,
                     onOpenLayerMixer: widget.onOpenLayerMixer,

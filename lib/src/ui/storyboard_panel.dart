@@ -1831,10 +1831,24 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           // Viewport paper fill (UI-R12 #16): the strips run to the
           // viewport's right edge — recorded FIRST so the SE strip rows and
           // the body agree on the rendered extent within one build.
+          // What the panel can spare for the rail: everything but its own
+          // chrome and the strips' two-cell reserve. Recorded so
+          // `_buildBody` and every part of the rail read the ONE value.
+          _availableRailWidth = constraints.hasBoundedWidth
+              ? (constraints.maxWidth -
+                        StoryboardPanel._scrollbarLaneWidth -
+                        LayerRailSplitter.thickness -
+                        layerRailFrameReserveExtent)
+                    .clamp(0.0, double.infinity)
+                    .toDouble()
+              : null;
           _stripViewportWidth = constraints.hasBoundedWidth
               ? (constraints.maxWidth -
                         StoryboardPanel._scrollbarLaneWidth -
-                        _railExtent.windowExtent(_naturalRailWidth) -
+                        _railExtent.windowExtent(
+                          _naturalRailWidth,
+                          availableExtent: _availableRailWidth,
+                        ) -
                         LayerRailSplitter.thickness)
                     .clamp(0.0, double.infinity)
                     .toDouble()
@@ -1913,6 +1927,10 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// which already derived from it.
   double _stripViewportWidth = 0;
 
+  /// The rail's layout ceiling for this pass (see
+  /// [LayerRailExtent.windowExtent]); null in an unbounded host.
+  double? _availableRailWidth;
+
   /// Render extent (UI-R12 #16 contract, unified with the timeline
   /// grids): the cells scrolled/panned into existence PLUS the viewport
   /// fill — the old always-120 resting runway is gone, so past-content
@@ -1966,7 +1984,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     // structure (UI-R10 #21): [legend | lane | ruler] on top,
     // [labels | scrollbar | strips] in the middle,
     // [blank | blank | horizontal scrollbar] pinned on the bottom.
-    final railWindowExtent = _railExtent.windowExtent(_naturalRailWidth);
+    final availableRailWidth = _availableRailWidth;
+    final railWindowExtent = _railExtent.windowExtent(
+      _naturalRailWidth,
+      availableExtent: availableRailWidth,
+    );
     return ColoredBox(
       key: const ValueKey<String>('storyboard-panel'),
       color: colorScheme.surface,
@@ -2001,6 +2023,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                     axis: Axis.horizontal,
                     rail: _railExtent,
                     naturalExtent: _naturalRailWidth,
+                    availableExtent: availableRailWidth,
                     child: SizedBox(
                       width: StoryboardPanel._trackLabelWidth,
                       child: TimelineLayerControlsHeader(
@@ -2112,6 +2135,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                   axis: Axis.horizontal,
                                   rail: _railExtent,
                                   naturalExtent: _naturalRailWidth,
+                                  availableExtent: availableRailWidth,
                                   child: SizedBox(
                                     key: const ValueKey<String>(
                                       'storyboard-track-label-rail',
@@ -2374,6 +2398,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                     axis: Axis.horizontal,
                     rail: _railExtent,
                     naturalExtent: _naturalRailWidth,
+                    availableExtent: availableRailWidth,
                     laneExtent: StoryboardPanel._bottomScrollbarRailHeight,
                     keyPrefix: 'storyboard',
                   ),
@@ -2415,6 +2440,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
               axis: Axis.horizontal,
               extent: _railExtent,
               naturalExtent: _naturalRailWidth,
+              availableExtent: availableRailWidth,
             ),
           ),
         ],
