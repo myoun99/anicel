@@ -25,9 +25,12 @@ void main() {
     testWidgets('scrollbar rails and slots appear together', (tester) async {
       await tester.pumpWidget(_grid(currentFrameIndex: 3));
 
+      // Three bars per panel (rail-window round): the layer axis, the
+      // rail's own, and the frame axis.
       _expectKeyOnce('timeline-horizontal-scrollbar');
       _expectKeyOnce('timeline-bottom-scrollbar-rail');
-      _expectKeyOnce('timeline-vertical-scrollbar-slot');
+      _expectKeyOnce('timeline-rail-scrollbar');
+      _expectKeyOnce('timeline-rail-splitter');
       _expectKeyOnce('timeline-vertical-scrollbar');
     });
 
@@ -99,7 +102,8 @@ const _structuralKeys = <String>[
   'timeline-cut-end-boundary',
   'timeline-horizontal-scrollbar',
   'timeline-bottom-scrollbar-rail',
-  'timeline-vertical-scrollbar-slot',
+  'timeline-rail-scrollbar',
+  'timeline-rail-splitter',
   'timeline-vertical-scrollbar',
   'timeline-playhead',
   'timeline-playhead-column',

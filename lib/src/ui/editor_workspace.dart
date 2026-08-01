@@ -53,6 +53,7 @@ import 'storyboard_cut_thumbnail_store.dart';
 import 'storyboard_panel.dart' show StoryboardPanel;
 import 'storyboard_playhead_mapping.dart';
 import '../models/timeline_row_address.dart';
+import 'timeline/layer_rail_window.dart';
 import 'timeline/timeline_lane_provider.dart';
 import 'timeline/timeline_layer_nav.dart';
 import 'timeline/timeline_row_filter.dart';
@@ -350,6 +351,15 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// Shared frames↔seconds display toggle (conte-sheet 초+コマ notation).
   final ValueNotifier<bool> _showSecondsDisplay = ValueNotifier(false);
 
+  /// Each frame panel's layer-rail WINDOW size, set by its splitter.
+  ///
+  /// Kept here rather than in the panels because the user asked for these
+  /// to survive a restart: they ride the workspace layout file beside the
+  /// dock widths, through the same debounced save.
+  final Map<String, LayerRailExtent> _railExtents = {
+    for (final railId in LayerRailId.values) railId: LayerRailExtent(),
+  };
+
   /// Layers whose AE-style property-lane twirl-down is open (view state —
   /// survives tab switches, session-only).
   final ValueNotifier<Set<LayerId>> _expandedLaneLayerIds = ValueNotifier(
@@ -515,6 +525,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             : WorkspaceLayoutStore());
     unawaited(_restoreLayout());
     _layout.addListener(_scheduleLayoutSave);
+    for (final extent in _railExtents.values) {
+      extent.addListener(_scheduleLayoutSave);
+    }
     widget.panelsMenu?.attach(
       entriesProvider: _panelMenuEntries,
       toggler: _togglePanelVisibility,
@@ -572,6 +585,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     setState(() {
       _lockedTabIds = {EditorWorkspace.canvasTabId};
     });
+    for (final extent in _railExtents.values) {
+      extent.reset();
+    }
     _mutatingLayout(() {
       _layout.restore(docks: _defaultDocks());
     });
@@ -664,6 +680,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       _lockedTabIds = restored.lockedTabIds;
       _layout.restore(docks: restored.docks, dockExtents: restored.dockExtents);
     });
+    for (final entry in _railExtents.entries) {
+      entry.value.value = restored.railExtents[entry.key];
+    }
   }
 
   /// Debounced fire-and-forget save: layout changes come in bursts (drags,
@@ -687,6 +706,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                 for (final entry in _panelMenuEntries())
                   if (!entry.visible) entry.tabId,
               ],
+              // A rail the user never dragged stays ABSENT rather than
+              // saving its current natural size — otherwise a later
+              // column change would be pinned to yesterday's geometry.
+              'railExtents': {
+                for (final entry in _railExtents.entries)
+                  if (entry.value.value != null) entry.key: entry.value.value,
+              },
             })
             .catchError((Object _) {}),
       );
@@ -737,6 +763,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     widget.panelsMenu?.detach();
     _layoutSaveTimer?.cancel();
     _layout.removeListener(_scheduleLayoutSave);
+    for (final extent in _railExtents.values) {
+      extent
+        ..removeListener(_scheduleLayoutSave)
+        ..dispose();
+    }
     _layout.dispose();
     super.dispose();
   }
@@ -1178,6 +1209,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               onShowSecondsChanged: (show) {
                 _showSecondsDisplay.value = show;
               },
+              timelineRailExtent: _railExtents[LayerRailId.timeline],
+              xsheetRailExtent: _railExtents[LayerRailId.xsheet],
               expandedLaneLayerIds: _expandedLaneLayerIds.value,
               onToggleLayerLanes: _toggleLayerLanes,
               expandedLaneGroupKeys: _expandedLaneGroupKeys.value,
@@ -1235,6 +1268,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               onShowSecondsChanged: (show) {
                 _showSecondsDisplay.value = show;
               },
+              railExtent: _railExtents[LayerRailId.storyboard],
               trackLaneHeight: _storyboardTrackLaneHeight.value,
               onTrackLaneHeightChanged: (value) {
                 _storyboardTrackLaneHeight.value = value;

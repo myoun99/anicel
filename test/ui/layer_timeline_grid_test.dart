@@ -7,6 +7,7 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/ui/timeline/layer_rail_window.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_horizontal_scrollbar_rail.dart';
 
@@ -167,17 +168,20 @@ void main() {
     final bottomScrollbarRail = find.byKey(
       const ValueKey<String>('timeline-bottom-scrollbar-rail'),
     );
-    final bottomScrollbarLeftSpacer = find.byKey(
-      const ValueKey<String>('timeline-bottom-scrollbar-left-spacer'),
+    // The rail's own bar took the left spacer's place on the bottom line
+    // (rail-window round): the rail is scrollable now, so the strip under
+    // it is a scrollbar rather than a blank.
+    final railScrollbar = find.byKey(
+      const ValueKey<String>('timeline-rail-scrollbar'),
+    );
+    final railSplitter = find.byKey(
+      const ValueKey<String>('timeline-rail-splitter'),
     );
     final horizontalScrollbarTrack = find.byKey(
       const ValueKey<String>('timeline-horizontal-scrollbar-track'),
     );
     final horizontalScrollbarThumb = find.byKey(
       const ValueKey<String>('timeline-horizontal-scrollbar-thumb'),
-    );
-    final verticalScrollbarSlot = find.byKey(
-      const ValueKey<String>('timeline-vertical-scrollbar-slot'),
     );
     final verticalScrollbar = find.byKey(
       const ValueKey<String>('timeline-vertical-scrollbar'),
@@ -206,10 +210,10 @@ void main() {
     expect(frameHeaderRow, findsOneWidget);
     expect(frameGridArea, findsOneWidget);
     expect(bottomScrollbarRail, findsOneWidget);
-    expect(bottomScrollbarLeftSpacer, findsOneWidget);
+    expect(railScrollbar, findsOneWidget);
+    expect(railSplitter, findsOneWidget);
     expect(horizontalScrollbarTrack, findsOneWidget);
     expect(horizontalScrollbarThumb, findsOneWidget);
-    expect(verticalScrollbarSlot, findsOneWidget);
     expect(verticalScrollbar, findsOneWidget);
     expect(verticalScrollbarTrack, findsOneWidget);
     expect(verticalScrollbarThumb, findsOneWidget);
@@ -270,17 +274,11 @@ void main() {
       findsOneWidget,
     );
     expect(
-      find.descendant(
-        of: bottomScrollbarLeftSpacer,
-        matching: horizontalScrollbarTrack,
-      ),
+      find.descendant(of: railScrollbar, matching: horizontalScrollbarTrack),
       findsNothing,
     );
     expect(
-      find.descendant(
-        of: bottomScrollbarLeftSpacer,
-        matching: horizontalScrollbarThumb,
-      ),
+      find.descendant(of: railScrollbar, matching: horizontalScrollbarThumb),
       findsNothing,
     );
     expect(
@@ -301,42 +299,41 @@ void main() {
       greaterThan(tester.getTopLeft(frameGridArea).dy),
     );
 
+    // The rail-window arrangement, left to right:
+    //   [16 layer-axis bar][rail window][5 splitter][frame cells]
+    // — with the bar on the grid's EDGE, where it stopped occupying the
+    // one gap a splitter could live in.
+    final gridLeft = tester.getRect(scrollbarArea).left;
     final railRect = tester.getRect(rail);
     final frameGridAreaRect = tester.getRect(frameGridArea);
-    final leftSpacerRect = tester.getRect(bottomScrollbarLeftSpacer);
+    final railScrollbarRect = tester.getRect(railScrollbar);
+    final splitterRect = tester.getRect(railSplitter);
     final bottomRailRect = tester.getRect(bottomScrollbarRail);
     final horizontalScrollbarRect = tester.getRect(horizontalScrollbar);
-    final verticalSlotRect = tester.getRect(verticalScrollbarSlot);
     final verticalScrollbarRect = tester.getRect(verticalScrollbar);
     final verticalBottomSpacerRect = tester.getRect(
       verticalScrollbarBottomSpacer,
     );
 
-    expect(leftSpacerRect.left, moreOrLessEquals(railRect.left));
-    expect(leftSpacerRect.right, lessThanOrEqualTo(bottomRailRect.left));
-    expect(leftSpacerRect.width, moreOrLessEquals(railRect.width));
-    expect(leftSpacerRect.width, moreOrLessEquals(434));
-    expect(verticalSlotRect.left, moreOrLessEquals(railRect.right));
-    expect(verticalSlotRect.right, moreOrLessEquals(frameGridAreaRect.left));
-    expect(verticalSlotRect.width, moreOrLessEquals(14));
-    expect(verticalScrollbarRect.left, moreOrLessEquals(verticalSlotRect.left));
-    expect(
-      verticalScrollbarRect.width,
-      moreOrLessEquals(verticalSlotRect.width),
-    );
-    expect(
-      verticalBottomSpacerRect.left,
-      moreOrLessEquals(leftSpacerRect.right),
-    );
-    expect(
-      verticalBottomSpacerRect.width,
-      moreOrLessEquals(verticalSlotRect.width),
-    );
+    expect(verticalScrollbarRect.left, moreOrLessEquals(gridLeft));
+    expect(verticalScrollbarRect.width, moreOrLessEquals(16));
+    expect(verticalBottomSpacerRect.left, moreOrLessEquals(gridLeft));
+    expect(verticalBottomSpacerRect.width, moreOrLessEquals(16));
+    // Untouched, the rail window is the rail's NATURAL width — nothing is
+    // cut until the user drags the splitter.
+    expect(railRect.left, moreOrLessEquals(gridLeft + 16));
+    expect(railRect.width, moreOrLessEquals(434));
+    expect(splitterRect.left, moreOrLessEquals(railRect.right));
+    expect(splitterRect.width, moreOrLessEquals(5));
+    expect(frameGridAreaRect.left, moreOrLessEquals(splitterRect.right));
+    // The rail's own bar sits under the rail and stops at the splitter.
+    expect(railScrollbarRect.left, moreOrLessEquals(railRect.left));
+    expect(railScrollbarRect.width, moreOrLessEquals(railRect.width));
     expect(bottomRailRect.left, moreOrLessEquals(frameGridAreaRect.left));
     expect(bottomRailRect.width, moreOrLessEquals(frameGridAreaRect.width));
     expect(
       horizontalScrollbarRect.left,
-      greaterThanOrEqualTo(leftSpacerRect.right),
+      greaterThanOrEqualTo(railScrollbarRect.right),
     );
     expect(horizontalScrollbarRect.left, moreOrLessEquals(bottomRailRect.left));
     expect(
@@ -356,6 +353,63 @@ void main() {
     expect(
       find.byKey(const ValueKey<String>('timeline-layer-opacity-layer-1')),
       findsOneWidget,
+    );
+  });
+
+  testWidgets('the splitter cuts the legend and the rows at the same edge', (
+    tester,
+  ) async {
+    // The user's rule: "the legend and the rows are one body". A narrowed
+    // window must therefore end at ONE x — R6a shipped the failure this
+    // pins against, clipping the legend while scaling the header down.
+    final rail = LayerRailExtent();
+    addTearDown(rail.dispose);
+    await tester.pumpWidget(_grid(railExtent: rail));
+
+    final railBody = find.byKey(
+      const ValueKey<String>('timeline-layer-controls-rail'),
+    );
+    final legend = find.byKey(const ValueKey<String>('legend-layer'));
+    final frameGridArea = find.byKey(
+      const ValueKey<String>('timeline-frame-grid-area'),
+    );
+    final gridLeft = tester
+        .getRect(find.byKey(const ValueKey<String>('timeline-scrollbar-area')))
+        .left;
+    final wideFrameArea = tester.getRect(frameGridArea).width;
+
+    rail.resizeBy(-234, naturalExtent: 434);
+    await tester.pump();
+
+    // The window is 200 wide; the rail INSIDE it never moved or shrank.
+    expect(tester.getSize(railBody).width, moreOrLessEquals(434));
+    final windowRight = gridLeft + 16 + 200;
+    expect(
+      tester.getRect(find.byType(LayerRailWindow).first).right,
+      moreOrLessEquals(windowRight),
+    );
+    // Both windows — the legend's and the rows' — end at that same x.
+    for (final window in tester.widgetList<LayerRailWindow>(
+      find.byType(LayerRailWindow),
+    )) {
+      expect(
+        tester.getRect(find.byWidget(window)).right,
+        moreOrLessEquals(windowRight),
+        reason: 'every rail window is cut at the same edge',
+      );
+    }
+    // The legend is still laid out whole (cut, not repacked).
+    expect(tester.getRect(legend).left, greaterThanOrEqualTo(gridLeft));
+    // And the frame cells took the width the rail gave up.
+    expect(
+      tester.getRect(frameGridArea).width,
+      moreOrLessEquals(wideFrameArea + 234),
+    );
+    expect(
+      tester
+          .getRect(find.byKey(const ValueKey<String>('timeline-rail-splitter')))
+          .left,
+      moreOrLessEquals(windowRight),
     );
   });
 
@@ -2476,6 +2530,7 @@ Widget _grid({
   int playbackFrameCount = 12,
   double width = 900,
   TimelineGridMetrics metrics = _testMetrics,
+  LayerRailExtent? railExtent,
   List<Layer>? layers,
   TimelineCellExposureState Function(Layer layer, int frameIndex)?
   exposureStateForLayer,
@@ -2499,6 +2554,7 @@ Widget _grid({
           // offsets, virtualization windows) assume 48×52 cells; the slim
           // default is pinned in timeline_grid_metrics_test.
           metrics: metrics,
+          railExtent: railExtent,
           playbackFrameCount: playbackFrameCount,
           exposureStateForLayer:
               exposureStateForLayer ??

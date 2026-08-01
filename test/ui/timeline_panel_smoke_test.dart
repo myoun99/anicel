@@ -126,7 +126,8 @@ const _structuralKeys = <String>[
   'timeline-frame-rows-scroll-body',
   'timeline-horizontal-scrollbar',
   'timeline-bottom-scrollbar-rail',
-  'timeline-vertical-scrollbar-slot',
+  'timeline-rail-scrollbar',
+  'timeline-rail-splitter',
 ];
 
 Finder _key(String key) => find.byKey(ValueKey<String>(key));

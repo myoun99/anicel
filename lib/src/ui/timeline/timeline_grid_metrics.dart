@@ -49,9 +49,14 @@ const double timelineFrameRulerExtent = timelineLayerRowHeight;
 /// labels live INSIDE their first row now.
 const double timelineSectionLabelGutterWidth = 0;
 
-/// Width reserved for the visible vertical scrollbar between the rail and
-/// the frame grid.
-const double timelineVerticalScrollbarWidth = 14;
+/// Width of the grid's vertical scrollbar COLUMN.
+///
+/// 14 → 16 (rail-window round): the lane has to be comfortable to grab
+/// because it stopped being a leftover gap between the rail and the cells.
+/// The timeline moved it to the far left so the splitter could have that
+/// gap; the x-sheet's column now carries two bars, the rail's above the
+/// splitter and the frame's below it.
+const double timelineVerticalScrollbarWidth = 16;
 
 /// The horizontal scrollbar rail closing the bottom of a grid. Both grids
 /// declared it privately (R10 R6 found the third copy while deriving the
@@ -79,11 +84,19 @@ class TimelineGridMetrics {
   /// Default metrics matching the current [LayerTimelineGrid] behavior.
   static const TimelineGridMetrics defaults = TimelineGridMetrics();
 
-  /// Same geometry with a different frame-axis cell extent (zoom).
-  TimelineGridMetrics copyWith({double? frameCellWidth}) {
+  /// Same geometry with a different frame-axis cell extent (zoom), or a
+  /// different NATURAL rail extent.
+  ///
+  /// The rail extent is here for hosts that state their own (the
+  /// storyboard's shorter rail), NOT for the splitter: the window size is a
+  /// listenable precisely so it stays out of this memo key.
+  TimelineGridMetrics copyWith({
+    double? frameCellWidth,
+    double? layerControlsWidth,
+  }) {
     return TimelineGridMetrics(
       minimumVisibleFrameCells: minimumVisibleFrameCells,
-      layerControlsWidth: layerControlsWidth,
+      layerControlsWidth: layerControlsWidth ?? this.layerControlsWidth,
       frameCellWidth: frameCellWidth ?? this.frameCellWidth,
       layerRowHeight: layerRowHeight,
       verticalScrollbarWidth: verticalScrollbarWidth,

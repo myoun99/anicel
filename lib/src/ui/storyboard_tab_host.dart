@@ -17,6 +17,7 @@ import 'playback/playback_transport_controls.dart';
 import 'storyboard_cut_fade_policy.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnailResolver;
 import 'storyboard_panel.dart';
+import 'timeline/layer_rail_window.dart' show LayerRailExtent;
 import 'timeline/property_lane_model.dart' show PropertyLaneEditCallbacks;
 import 'timeline/se_layer_mixer.dart';
 import 'timeline/timeline_layer_controls_header.dart' show LayerLegendCallbacks;
@@ -45,6 +46,7 @@ class StoryboardTabHost extends StatefulWidget {
     required this.onPixelsPerFrameChanged,
     required this.showSeconds,
     required this.onShowSecondsChanged,
+    this.railExtent,
     this.trackLaneHeight = StoryboardPanel.defaultTrackLaneHeight,
     this.onTrackLaneHeightChanged,
     required this.thumbnailFor,
@@ -56,6 +58,10 @@ class StoryboardTabHost extends StatefulWidget {
   final ValueChanged<double> onPixelsPerFrameChanged;
   final bool showSeconds;
   final ValueChanged<bool> onShowSecondsChanged;
+
+  /// This panel's rail window size (workspace-owned so it survives a tab
+  /// switch AND a restart).
+  final LayerRailExtent? railExtent;
 
   /// The V rows' shared height, owned above the tabs so it survives a tab
   /// switch like the zoom does. A null setter keeps the rows fixed and
@@ -391,7 +397,6 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
             globalFrame: _playheadGlobalFrame,
             projectFrameRate: _session.projectFrameRate,
             showSeconds: widget.showSeconds,
-            onShowSecondsChanged: widget.onShowSecondsChanged,
             pixelsPerFrame: widget.pixelsPerFrame,
             onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
           ),
@@ -489,6 +494,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                 pixelsPerFrame: widget.pixelsPerFrame,
                 trackLaneHeight: widget.trackLaneHeight,
                 showSeconds: widget.showSeconds,
+                onShowSecondsChanged: widget.onShowSecondsChanged,
+                railExtent: widget.railExtent,
                 projectFrameRate: _session.projectFrameRate,
                 // The strip's edges preview live and commit ONE undo on
                 // release, like the timeline's comma drags. Which verb a

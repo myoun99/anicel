@@ -56,8 +56,28 @@ class WorkspaceLayoutStore {
 typedef RestoredWorkspaceLayout = ({
   Map<String, List<DockSection>> docks,
   Map<String, double> dockExtents,
+  Map<String, double> railExtents,
   Set<String> lockedTabIds,
 });
+
+/// Rail window sizes ([LayerRailId] → logical pixels), sanitized: a rail
+/// the user never dragged is simply absent and follows its natural size.
+///
+/// This rides the workspace layout file rather than a store of its own
+/// because it is the same kind of fact as a dock width — a splitter
+/// position the user set once and expects to find again.
+Map<String, double> restoreRailExtents(Map<String, Object?> payload) {
+  final railsJson = payload['railExtents'];
+  return <String, double>{
+    if (railsJson is Map)
+      for (final entry in railsJson.entries)
+        if (entry.key is String &&
+            entry.value is num &&
+            (entry.value as num).isFinite &&
+            (entry.value as num) > 0)
+          entry.key as String: (entry.value as num).toDouble(),
+  };
+}
 
 /// Rebuilds a dock layout from a saved payload, validated against the
 /// CURRENT panel set given by [defaults]: unknown tab ids are dropped,
@@ -181,5 +201,10 @@ RestoredWorkspaceLayout? restoreWorkspaceLayout({
         if (tab is String && knownTabs.contains(tab)) tab,
   };
 
-  return (docks: docks, dockExtents: dockExtents, lockedTabIds: lockedTabIds);
+  return (
+    docks: docks,
+    dockExtents: dockExtents,
+    railExtents: restoreRailExtents(payload),
+    lockedTabIds: lockedTabIds,
+  );
 }

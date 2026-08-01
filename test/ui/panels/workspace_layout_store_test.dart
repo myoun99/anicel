@@ -187,4 +187,37 @@ void main() {
       );
     });
   });
+
+  group('rail extents', () {
+    test('a rail the user never dragged is simply absent', () {
+      // Absent, not "saved at today's natural width": otherwise a later
+      // column change would be pinned to yesterday's geometry.
+      expect(restoreRailExtents({'version': 1}), isEmpty);
+      expect(restoreRailExtents({'railExtents': <String, Object?>{}}), isEmpty);
+    });
+
+    test('saved rail windows come back per panel', () {
+      expect(
+        restoreRailExtents({
+          'railExtents': {'timeline': 300, 'xsheet': 180.5},
+        }),
+        {'timeline': 300.0, 'xsheet': 180.5},
+      );
+    });
+
+    test('junk is dropped rather than crashing the editor', () {
+      expect(
+        restoreRailExtents({
+          'railExtents': {
+            'timeline': 'wide',
+            'xsheet': -4,
+            'storyboard': 0,
+            'ok': 240,
+          },
+        }),
+        {'ok': 240.0},
+      );
+      expect(restoreRailExtents({'railExtents': 'nonsense'}), isEmpty);
+    });
+  });
 }

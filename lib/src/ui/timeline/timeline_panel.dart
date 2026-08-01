@@ -12,6 +12,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart' show LayerFxState;
 import '../../models/layer_mark.dart';
 import 'layer_timeline_display_adapter.dart';
+import 'layer_rail_window.dart' show LayerRailExtent;
 import 'layer_timeline_grid.dart';
 import 'property_lane_model.dart';
 import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
@@ -82,6 +83,8 @@ class TimelinePanel extends StatefulWidget {
     this.onPixelsPerFrameChanged,
     this.showSeconds = false,
     this.onShowSecondsChanged,
+    this.timelineRailExtent,
+    this.xsheetRailExtent,
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.expandedLaneLayerIds = const {},
     this.onToggleLayerLanes,
@@ -271,6 +274,14 @@ class TimelinePanel extends StatefulWidget {
   /// storyboard cut totals (conte-sheet `s+ff` notation).
   final bool showSeconds;
   final ValueChanged<bool>? onShowSecondsChanged;
+
+  /// The two grids' rail windows. SEPARATE by the user's decision: the
+  /// sheet's stood-up header block and the timeline's rail are sized
+  /// independently, and R6's "the sheet derives its header from the
+  /// timeline's rail width" is retired with them.
+  final LayerRailExtent? timelineRailExtent;
+  final LayerRailExtent? xsheetRailExtent;
+
   final ProjectFrameRate projectFrameRate;
 
   /// AE-style property lanes (twirl-down rows under a layer): expansion
@@ -381,7 +392,6 @@ class _TimelinePanelState extends State<TimelinePanel> {
                   frameCursor: widget.frameCursor,
                   projectFrameRate: widget.projectFrameRate,
                   showSeconds: widget.showSeconds,
-                  onShowSecondsChanged: widget.onShowSecondsChanged,
                   pixelsPerFrame: widget.pixelsPerFrame,
                   onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
                   trailing: [
@@ -424,6 +434,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     seClipMarkerTooltip: widget.seClipMarkerTooltip,
                     projectFrameRate: widget.projectFrameRate,
                     showSeconds: widget.showSeconds,
+                    onShowSecondsChanged: widget.onShowSecondsChanged,
+                    railExtent: widget.timelineRailExtent,
                     audioLane: widget.audioLane,
                     onAddLayer: widget.onAddLayer,
                     onOpenLayerMixer: widget.onOpenLayerMixer,
