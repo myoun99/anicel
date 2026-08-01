@@ -441,7 +441,7 @@ class XSheetTimelineGrid extends StatefulWidget {
   ///    panel heights.) The reserve holds until the ladder runs out of
   ///    rungs: under a panel of about 254 the last rung's floor is more
   ///    than the budget, and the header takes what is left of the reserve
-  ///    rather than shrink past a kind icon, a name and an eye.
+  ///    rather than shrink past a kind icon, a name, a twirl and an eye.
   /// 2. **The name outranks the controls.** ★ Which means the name is paid
   ///    IN FULL before a shed control may come back. The first cut said this
   ///    and did the opposite: it took the richest column set the budget
@@ -2361,7 +2361,7 @@ class _LayerHeader extends StatelessWidget {
           // horizontal rail gets from its row height.
           //
           // The clip is for panels shorter than the ladder's last rung —
-          // shorter than a kind icon, a name and an eye stacked. There is
+          // shorter than a kind icon, a name, a twirl and an eye stacked. There is
           // nothing left to shed there, so the header runs off the bottom;
           // clipping it degrades quietly instead of striping the panel.
           child: ClipRect(

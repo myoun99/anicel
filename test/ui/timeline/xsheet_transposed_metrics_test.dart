@@ -284,7 +284,8 @@ void main() {
       // Every 10px from a panel far below the dock minimum up to a tall
       // one. The first cut passed a single probe at 260 — which happened to
       // sit 4px inside the one band that still worked.
-      // From below the point where even a kind icon, a name and an eye fit
+      // From below the point where even a kind icon, a name, a twirl and
+      // an eye fit
       // — the round's own sweep started at 80 and stopped 28px short of a
       // negative-height assert nobody had floored.
       for (var height = 20.0; height <= 900; height += 10) {
