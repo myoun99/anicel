@@ -140,7 +140,6 @@ class TimelineViewCluster extends StatelessWidget {
                 '${(pixelsPerFrame / TimelinePanel.defaultPixelsPerFrame * 100).round()}%',
             valueTextBuilder: (value) =>
                 '${(value / TimelinePanel.defaultPixelsPerFrame * 100).round()}%',
-            displayFactor: 100 / TimelinePanel.defaultPixelsPerFrame,
             height: 18,
             // Quantized to WHOLE pixels per frame (R4 #5): the raw drag
             // emitted sub-pixel widths, rebuilding the entire grid many

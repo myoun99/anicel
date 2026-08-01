@@ -571,7 +571,6 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                               valueText: 'OPAC',
                               valueTextBuilder: (value) =>
                                   '${(value * 100).round()}%',
-                              displayFactor: 100,
                               height: 18,
                               restingAccent: colorScheme.onSurfaceVariant
                                   .withValues(alpha: 0.45),

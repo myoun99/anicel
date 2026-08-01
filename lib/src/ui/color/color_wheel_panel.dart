@@ -19,20 +19,18 @@ class ColorWheelPanel extends StatefulWidget {
   const ColorWheelPanel({
     super.key,
     required this.color,
-    required this.backgroundColor,
     required this.onColorChanged,
-    required this.onBackgroundColorChanged,
   });
 
   /// The active brush color (ARGB int, the brush tool state's format).
   final int color;
 
-  /// The spare background slot (ARGB int); lives with the owner so it
-  /// survives tab switches.
-  final int backgroundColor;
-
   final ValueChanged<int> onColorChanged;
-  final ValueChanged<int> onBackgroundColorChanged;
+
+  // R10 R5: the BACKGROUND slot left with the swatch pair. This panel
+  // only ever knew about it to draw the pair and to swap — both of which
+  // are the tool rail's now — so keeping the parameters would have been
+  // an argument every caller passes and nothing reads.
 
   @override
   State<ColorWheelPanel> createState() => _ColorWheelPanelState();
@@ -60,21 +58,22 @@ class _ColorWheelPanelState extends State<ColorWheelPanel> {
     widget.onColorChanged(argb);
   }
 
-  /// Exchanges the foreground and background slots. The incoming
-  /// foreground is a genuinely different color, so its hue is re-derived
-  /// (no hue hold across a swap).
-  void _swapColors() {
-    final foreground = widget.color;
-    final background = widget.backgroundColor;
-    setState(() => _hsv = HSVColor.fromColor(Color(background)));
-    _lastEmitted = background;
-    widget.onColorChanged(background);
-    widget.onBackgroundColorChanged(foreground);
-  }
-
-  String get _hexLabel {
-    final rgb = _hsv.toColor().toARGB32() & 0xFFFFFF;
-    return '#${rgb.toRadixString(16).padLeft(6, '0').toUpperCase()}';
+  @override
+  Widget build(BuildContext context) {
+    // R10 R5: the wheel, and only the wheel. The swatch pair, the swap
+    // button and the hex readout that used to share this panel all left —
+    // the pair and the swap to the TOOL RAIL (where a hand rests), the hex
+    // to the window's status bar (where every tab can read it). What is
+    // left needs no adaptive strip: a square, centred, as big as it fits.
+    return Padding(
+      padding: const EdgeInsets.all(12),
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final square = math.min(constraints.maxWidth, constraints.maxHeight);
+          return Center(child: _wheel(math.max(0, square).toDouble()));
+        },
+      ),
+    );
   }
 
   Widget _wheel(double square) {
@@ -85,186 +84,6 @@ class _ColorWheelPanelState extends State<ColorWheelPanel> {
         key: const ValueKey<String>('color-wheel'),
         hsv: _hsv,
         onChanged: _setHsv,
-      ),
-    );
-  }
-
-  Widget _slotPair() {
-    return _ColorSlotPair(
-      foreground: _hsv.toColor(),
-      background: Color(widget.backgroundColor),
-      onBackgroundTap: _swapColors,
-    );
-  }
-
-  Widget _swapButton() {
-    return IconButton(
-      key: const ValueKey<String>('color-wheel-swap-button'),
-      tooltip: 'Swap Colors',
-      iconSize: 16,
-      visualDensity: VisualDensity.compact,
-      icon: const Icon(Icons.swap_horiz),
-      onPressed: _swapColors,
-    );
-  }
-
-  Widget _hexText(BuildContext context) {
-    return Text(
-      _hexLabel,
-      key: const ValueKey<String>('color-wheel-hex-label'),
-      style: Theme.of(context).textTheme.labelMedium,
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    // Adaptive layout maximizing the wheel's square: the controls sit
-    // BELOW the wheel while the panel is portrait-ish, and BESIDE it when
-    // the panel is wide and short (the bottom strip wasted the height).
-    // Tiny panels drop the controls entirely instead of overflowing.
-    const gap = 10.0;
-    const controlsHeight = 42.0;
-    const controlsWidth = 78.0;
-    return Padding(
-      padding: const EdgeInsets.all(12),
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final width = constraints.maxWidth;
-          final height = constraints.maxHeight;
-          final belowSquare = math.min(width, height - controlsHeight - gap);
-          final besideSquare = math.min(height, width - controlsWidth - gap);
-
-          if (belowSquare >= besideSquare) {
-            if (belowSquare <= 40) {
-              // No room for controls — the wheel alone, never an overflow.
-              return Center(
-                child: _wheel(math.max(0, math.min(width, height)).toDouble()),
-              );
-            }
-            return Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                Expanded(child: Center(child: _wheel(belowSquare))),
-                const SizedBox(height: gap),
-                // FittedBox: very narrow panels scale the strip down
-                // instead of overflowing horizontally. The floor must be
-                // at least the strip's intrinsic width (swatch pair +
-                // swap button + hex) or the Row overflows INSIDE the
-                // FittedBox (R10-①: 150 was ~20px short).
-                FittedBox(
-                  fit: BoxFit.scaleDown,
-                  alignment: Alignment.centerLeft,
-                  child: SizedBox(
-                    width: math.max(width, 180),
-                    child: Row(
-                      children: [
-                        _slotPair(),
-                        _swapButton(),
-                        const Spacer(),
-                        _hexText(context),
-                      ],
-                    ),
-                  ),
-                ),
-              ],
-            );
-          }
-
-          if (besideSquare <= 40) {
-            return Center(
-              child: _wheel(math.max(0, math.min(width, height)).toDouble()),
-            );
-          }
-          return Row(
-            children: [
-              Expanded(child: Center(child: _wheel(besideSquare))),
-              const SizedBox(width: gap),
-              // FittedBox: short panels scale the swatch/hex column down
-              // instead of overflowing vertically (R5-⑨ — the strip was
-              // taller than a squat panel).
-              SizedBox(
-                width: controlsWidth,
-                child: Center(
-                  child: FittedBox(
-                    fit: BoxFit.scaleDown,
-                    child: SizedBox(
-                      width: controlsWidth,
-                      child: Column(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _slotPair(),
-                          _swapButton(),
-                          const SizedBox(height: 4),
-                          _hexText(context),
-                        ],
-                      ),
-                    ),
-                  ),
-                ),
-              ),
-            ],
-          );
-        },
-      ),
-    );
-  }
-}
-
-/// The Photoshop-style overlapped foreground/background swatch pair.
-class _ColorSlotPair extends StatelessWidget {
-  const _ColorSlotPair({
-    required this.foreground,
-    required this.background,
-    required this.onBackgroundTap,
-  });
-
-  final Color foreground;
-  final Color background;
-  final VoidCallback onBackgroundTap;
-
-  static const double _slot = 26;
-  static const double _overlap = 10;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    const extent = _slot * 2 - _overlap;
-
-    Widget swatch(String key, Color color) {
-      return Container(
-        key: ValueKey<String>(key),
-        width: _slot,
-        height: _slot,
-        decoration: BoxDecoration(
-          color: color,
-          border: Border.all(color: colorScheme.outlineVariant),
-          borderRadius: BorderRadius.circular(4),
-        ),
-      );
-    }
-
-    return SizedBox(
-      width: extent,
-      height: extent,
-      child: Stack(
-        children: [
-          Positioned(
-            right: 0,
-            bottom: 0,
-            child: Tooltip(
-              message: 'Background Color (Tap to Swap)',
-              child: GestureDetector(
-                onTap: onBackgroundTap,
-                child: swatch('color-wheel-background-swatch', background),
-              ),
-            ),
-          ),
-          Positioned(
-            left: 0,
-            top: 0,
-            child: swatch('color-wheel-foreground-swatch', foreground),
-          ),
-        ],
       ),
     );
   }

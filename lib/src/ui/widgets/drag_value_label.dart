@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart';
-import '../text/full_width_numerals.dart';
+import 'inline_numeric_field.dart';
 
 /// A numeric READOUT you can operate (UI-R18 #21, the shared vocabulary
 /// for the canvas angle/zoom texts and any future value label):
@@ -56,30 +55,16 @@ class DragValueLabel extends StatefulWidget {
 }
 
 class _DragValueLabelState extends State<DragValueLabel> {
-  final TextEditingController _editController = TextEditingController();
   bool _editing = false;
   double _pendingUnits = 0;
 
-  @override
-  void dispose() {
-    _editController.dispose();
-    super.dispose();
-  }
+  /// The readout with its units stripped — '−15°' seeds the field as
+  /// '-15', because what you are replacing is the NUMBER.
+  String get _seed => widget.text.replaceAll(RegExp(r'[^0-9.\-]'), '');
 
-  void _beginEdit() {
-    _editController.text = widget.text.replaceAll(RegExp(r'[^0-9.\-]'), '');
-    _editController.selection = TextSelection(
-      baseOffset: 0,
-      extentOffset: _editController.text.length,
-    );
-    setState(() => _editing = true);
-  }
+  void _beginEdit() => setState(() => _editing = true);
 
-  void _commitEdit() {
-    if (!_editing) {
-      return;
-    }
-    final text = _editController.text.trim();
+  void _commitEdit(String text) {
     setState(() => _editing = false);
     if (text.isNotEmpty) {
       widget.onEditSubmit(text);
@@ -100,40 +85,14 @@ class _DragValueLabelState extends State<DragValueLabel> {
     if (_editing) {
       return SizedBox(
         width: widget.width,
-        child: Focus(
-          onKeyEvent: (node, event) {
-            if (event is KeyDownEvent &&
-                event.logicalKey == LogicalKeyboardKey.escape) {
-              setState(() => _editing = false);
-              return KeyEventResult.handled;
-            }
-            return KeyEventResult.ignored;
-          },
-          child: TextField(
-            key: ValueKey<String>(
-              widget.inputKeyValue ?? '${widget.keyValue}-input',
-            ),
-            controller: _editController,
-            autofocus: true,
-            textAlign: TextAlign.center,
-            keyboardType: const TextInputType.numberWithOptions(
-              decimal: true,
-              signed: true,
-            ),
-            // R9 #15: 全角 numerals become half-width as they are typed.
-            inputFormatters: halfWidthNumerals,
-            style: widget.textStyle ?? const TextStyle(fontSize: 12),
-            decoration: const InputDecoration(
-              // Bare: the editor replaces the label in place, so it opts
-              // out of the app-wide filled box.
-              filled: false,
-              isDense: true,
-              isCollapsed: true,
-              border: InputBorder.none,
-            ),
-            onSubmitted: (_) => _commitEdit(),
-            onTapOutside: (_) => _commitEdit(),
+        child: InlineNumericField(
+          fieldKey: ValueKey<String>(
+            widget.inputKeyValue ?? '${widget.keyValue}-input',
           ),
+          initialText: _seed,
+          textStyle: widget.textStyle ?? const TextStyle(fontSize: 12),
+          onSubmit: _commitEdit,
+          onCancel: () => setState(() => _editing = false),
         ),
       );
     }

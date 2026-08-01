@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/services/color_palette_file_service.dart';
+import 'package:anicel/src/ui/color/color_button_window.dart';
+import 'package:anicel/src/ui/color/color_slot_pair.dart';
 import 'package:anicel/src/ui/color/color_wheel_panel.dart';
 
 void main() {
@@ -95,10 +98,7 @@ void main() {
                 height: 300,
                 child: ColorWheelPanel(
                   color: color,
-                  backgroundColor: backgroundColor,
                   onColorChanged: changes.add,
-                  onBackgroundColorChanged: (color) =>
-                      backgroundChanges?.add(color),
                 ),
               ),
             ),
@@ -108,39 +108,41 @@ void main() {
       return tester.getRect(find.byKey(const ValueKey<String>('color-wheel')));
     }
 
-    testWidgets('a wide-short panel moves the controls BESIDE the wheel so '
-        'the wheel takes the full height (R4 space use)', (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: Center(
-              child: SizedBox(
-                width: 420,
-                height: 180,
-                child: ColorWheelPanel(
-                  color: 0xFFFF0000,
-                  backgroundColor: 0xFFFFFFFF,
-                  onColorChanged: (_) {},
-                  onBackgroundColorChanged: (_) {},
+    testWidgets('R10 R5: the panel is the WHEEL — a square that takes the '
+        'shorter side, whatever the aspect', (tester) async {
+      for (final size in const [Size(420, 180), Size(180, 420)]) {
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: Center(
+                child: SizedBox(
+                  width: size.width,
+                  height: size.height,
+                  child: ColorWheelPanel(
+                    color: 0xFFFF0000,
+                    onColorChanged: (_) {},
+                  ),
                 ),
               ),
             ),
           ),
-        ),
-      );
-      expect(tester.takeException(), isNull);
+        );
+        expect(tester.takeException(), isNull);
 
-      final wheelRect = tester.getRect(
-        find.byKey(const ValueKey<String>('color-wheel')),
-      );
-      // The wheel square fills the panel height (minus the 12px padding)
-      // instead of shrinking behind a full-width bottom strip.
-      expect(wheelRect.height, closeTo(180 - 24, 1));
-      // The controls sit to the wheel's right.
-      final hex = tester.getTopLeft(
-        find.byKey(const ValueKey<String>('color-wheel-hex-label')),
-      );
-      expect(hex.dx, greaterThan(wheelRect.right));
+        // The swatch pair and the swap left for the tool RAIL, the hex for
+        // the window's status bar — so there is no strip to lay out around
+        // and no aspect that shrinks the wheel behind one.
+        final wheelRect = tester.getRect(
+          find.byKey(const ValueKey<String>('color-wheel')),
+        );
+        final shorter = size.shortestSide - 24; // the 12px padding
+        expect(wheelRect.height, closeTo(shorter, 1), reason: 'at $size');
+        expect(wheelRect.width, closeTo(shorter, 1), reason: 'at $size');
+        expect(
+          find.byKey(const ValueKey<String>('color-wheel-hex-label')),
+          findsNothing,
+        );
+      }
     });
 
     testWidgets('tiny and narrow panels never overflow', (tester) async {
@@ -154,9 +156,7 @@ void main() {
                   height: size.height,
                   child: ColorWheelPanel(
                     color: 0xFF00FF00,
-                    backgroundColor: 0xFFFFFFFF,
                     onColorChanged: (_) {},
-                    onBackgroundColorChanged: (_) {},
                   ),
                 ),
               ),
@@ -191,7 +191,7 @@ void main() {
     });
 
     testWidgets('dragging in the triangle picks saturation/value (past the '
-        'black corner = black) and the hex label follows', (tester) async {
+        'black corner = black)', (tester) async {
       final changes = <int>[];
       final wheelRect = await pumpPanel(
         tester,
@@ -213,7 +213,7 @@ void main() {
 
       expect(changes, isNotEmpty);
       expect(changes.last, 0xFF000000);
-      expect(find.text('#000000'), findsOneWidget);
+      // The hex readout moved to the window's status bar (R10 R5).
     });
 
     testWidgets('a drag locked to the ring never enters the triangle', (
@@ -247,11 +247,69 @@ void main() {
       }
     });
 
-    testWidgets('the swap button exchanges foreground and background and '
-        'both swatches show their slots', (tester) async {
+  });
+
+  /// R10 R5: the pair and the swap moved OUT of the window and onto the
+  /// tool rail, so their contract is tested where they now live.
+  group('SelectedColorButton (the rail\'s dual swatch)', () {
+    Future<void> pumpButton(
+      WidgetTester tester, {
+      required int color,
+      required int backgroundColor,
+      required List<int> changes,
+      required List<int> backgroundChanges,
+    }) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: SelectedColorButton(
+                color: color,
+                backgroundColor: backgroundColor,
+                palette: const ColorPaletteState(),
+                onColorChanged: changes.add,
+                onBackgroundColorChanged: backgroundChanges.add,
+                onPaletteChanged: (_) {},
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    Color swatchColor(WidgetTester tester, String key) {
+      final container = tester.widget<Container>(
+        find.byKey(ValueKey<String>(key)),
+      );
+      return (container.decoration! as BoxDecoration).color!;
+    }
+
+    testWidgets('shows BOTH slots — the two colours you paint with are on '
+        'the rail now, not behind a window', (tester) async {
+      await pumpButton(
+        tester,
+        backgroundColor: 0xFF00FF00,
+        color: 0xFFFF0000,
+        changes: <int>[],
+        backgroundChanges: <int>[],
+      );
+
+      expect(
+        swatchColor(tester, 'tool-color-foreground-swatch'),
+        const Color(0xFFFF0000),
+      );
+      expect(
+        swatchColor(tester, 'tool-color-background-swatch'),
+        const Color(0xFF00FF00),
+      );
+      // …and it is exactly the rail's button cell.
+      expect(ColorSlotPair.extent, 42);
+    });
+
+    testWidgets('the swap glyph exchanges the slots', (tester) async {
       final changes = <int>[];
       final backgroundChanges = <int>[];
-      await pumpPanel(
+      await pumpButton(
         tester,
         color: 0xFFFF0000,
         backgroundColor: 0xFF00FF00,
@@ -259,24 +317,8 @@ void main() {
         backgroundChanges: backgroundChanges,
       );
 
-      Color swatchColor(String key) {
-        final container = tester.widget<Container>(
-          find.byKey(ValueKey<String>(key)),
-        );
-        return (container.decoration! as BoxDecoration).color!;
-      }
-
-      expect(
-        swatchColor('color-wheel-foreground-swatch'),
-        const Color(0xFFFF0000),
-      );
-      expect(
-        swatchColor('color-wheel-background-swatch'),
-        const Color(0xFF00FF00),
-      );
-
       await tester.tap(
-        find.byKey(const ValueKey<String>('color-wheel-swap-button')),
+        find.byKey(const ValueKey<String>('tool-color-swap-button')),
       );
       await tester.pump();
 
@@ -284,10 +326,11 @@ void main() {
       expect(backgroundChanges, [0xFFFF0000]);
     });
 
-    testWidgets('tapping the background swatch also swaps', (tester) async {
+    testWidgets('tapping the background slot also swaps (the Photoshop '
+        'gesture the pair brought with it)', (tester) async {
       final changes = <int>[];
       final backgroundChanges = <int>[];
-      await pumpPanel(
+      await pumpButton(
         tester,
         color: 0xFFFF0000,
         backgroundColor: 0xFF0000FF,
@@ -296,7 +339,7 @@ void main() {
       );
 
       await tester.tap(
-        find.byKey(const ValueKey<String>('color-wheel-background-swatch')),
+        find.byKey(const ValueKey<String>('tool-color-background-swatch')),
       );
       await tester.pump();
 

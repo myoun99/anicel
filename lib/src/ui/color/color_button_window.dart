@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
+import 'dart:math' as math;
 
 import '../../services/color_palette_file_service.dart';
-import '../theme/app_theme.dart';
 import '../widgets/anchored_popup.dart';
+import '../panels/editor_panel_tabs.dart';
 import 'color_palette_strip.dart';
+import 'color_slot_pair.dart';
+import 'color_rgb_panel.dart';
+import 'color_status_bar.dart';
 import 'color_wheel_panel.dart';
 
 /// The 「컬러 버튼창」 (R9 #14, the user's name for it): the window the tool
@@ -21,8 +25,15 @@ import 'color_wheel_panel.dart';
 const double colorButtonWindowWidth = 236;
 const double colorButtonWindowHeight = 320;
 
-/// The selected-colour swatch that opens the window — the tool rail's
+/// The selected-colour control that opens the window — the tool rail's
 /// bottom control (R9 #14).
+///
+/// R10 R5 made it the DUAL swatch: foreground over background, with a
+/// swap glyph under it. Both were inside the window before, which meant
+/// the two colours you paint with were invisible until you opened
+/// something, while the rail — where a hand rests — showed one flat
+/// circle. The pair is exactly the rail's 42px button cell, so nothing
+/// about the rail had to change to hold it.
 ///
 /// [diameter] is the rail's own width minus its padding: the swatch is a
 /// stylus target, so the rail was sized to hold it rather than the swatch
@@ -47,40 +58,69 @@ class SelectedColorButton extends StatelessWidget {
   final ValueChanged<ColorPaletteState> onPaletteChanged;
   final double diameter;
 
+  /// Exchanges the two slots. It lives HERE rather than in the wheel
+  /// because the pair does: the swap is what the pair means, and the
+  /// window may not even be open.
+  void _swap() {
+    onColorChanged(backgroundColor);
+    onBackgroundColorChanged(color);
+  }
+
   @override
   Widget build(BuildContext context) {
     return Builder(
-      builder: (anchorContext) => Tooltip(
-        message: 'Colour',
-        child: Material(
-          color: Colors.transparent,
-          shape: const CircleBorder(),
-          clipBehavior: Clip.antiAlias,
-          child: InkWell(
-            key: const ValueKey<String>('tool-color-button'),
-            customBorder: const CircleBorder(),
-            onTap: () => showColorButtonWindow(
-              anchorContext,
-              color: color,
-              backgroundColor: backgroundColor,
-              palette: palette,
-              onColorChanged: onColorChanged,
-              onBackgroundColorChanged: onBackgroundColorChanged,
-              onPaletteChanged: onPaletteChanged,
-            ),
-            child: SizedBox(
-              width: diameter,
-              height: diameter,
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: Color(color),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: AppColors.hairlineStrong),
+      builder: (anchorContext) => Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Tooltip(
+            message: 'Colour',
+            child: Material(
+              color: Colors.transparent,
+              clipBehavior: Clip.antiAlias,
+              borderRadius: BorderRadius.circular(4),
+              child: InkWell(
+                key: const ValueKey<String>('tool-color-button'),
+                borderRadius: BorderRadius.circular(4),
+                onTap: () => showColorButtonWindow(
+                  anchorContext,
+                  color: color,
+                  palette: palette,
+                  onColorChanged: onColorChanged,
+                  onPaletteChanged: onPaletteChanged,
+                ),
+                // The pair's own extent IS the rail cell; `diameter` is
+                // kept as the floor so a host that sizes the rail
+                // differently still gets a square that fits.
+                child: SizedBox(
+                  width: math.max(diameter, ColorSlotPair.extent),
+                  height: math.max(diameter, ColorSlotPair.extent),
+                  child: Center(
+                    child: ColorSlotPair(
+                      keyPrefix: 'tool-color',
+                      foreground: Color(color),
+                      background: Color(backgroundColor),
+                      onBackgroundTap: _swap,
+                    ),
+                  ),
                 ),
               ),
             ),
           ),
-        ),
+          // The swap glyph under the pair (the user's placement): the same
+          // verb as tapping the back slot, said in a way you can find.
+          SizedBox(
+            height: 16,
+            child: IconButton(
+              key: const ValueKey<String>('tool-color-swap-button'),
+              tooltip: 'Swap Colors',
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints.tightFor(width: 24, height: 16),
+              iconSize: 13,
+              icon: const Icon(Icons.swap_horiz),
+              onPressed: _swap,
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -89,10 +129,8 @@ class SelectedColorButton extends StatelessWidget {
 Future<void> showColorButtonWindow(
   BuildContext anchorContext, {
   required int color,
-  required int backgroundColor,
   required ColorPaletteState palette,
   required ValueChanged<int> onColorChanged,
-  required ValueChanged<int> onBackgroundColorChanged,
   required ValueChanged<ColorPaletteState> onPaletteChanged,
 }) {
   return showAnchoredPopup<void>(
@@ -102,10 +140,8 @@ Future<void> showColorButtonWindow(
     height: colorButtonWindowHeight,
     builder: (context) => ColorButtonWindow(
       color: color,
-      backgroundColor: backgroundColor,
       palette: palette,
       onColorChanged: onColorChanged,
-      onBackgroundColorChanged: onBackgroundColorChanged,
       onPaletteChanged: onPaletteChanged,
     ),
   );
@@ -115,19 +151,19 @@ class ColorButtonWindow extends StatefulWidget {
   const ColorButtonWindow({
     super.key,
     required this.color,
-    required this.backgroundColor,
     required this.palette,
     required this.onColorChanged,
-    required this.onBackgroundColorChanged,
     required this.onPaletteChanged,
   });
 
   final int color;
-  final int backgroundColor;
   final ColorPaletteState palette;
   final ValueChanged<int> onColorChanged;
-  final ValueChanged<int> onBackgroundColorChanged;
   final ValueChanged<ColorPaletteState> onPaletteChanged;
+
+  // R10 R5: the BACKGROUND slot is the tool rail's, so the window no
+  // longer carries it — not as state, not as a parameter, not as a
+  // callback threaded through a picker that never touches it.
 
   @override
   State<ColorButtonWindow> createState() => _ColorButtonWindowState();
@@ -138,18 +174,16 @@ class _ColorButtonWindowState extends State<ColorButtonWindow> {
   /// whatever opened it, and the wheel is dragged live, so reading the
   /// caller's captured values back would snap the drag to where it started.
   late int _color = widget.color;
-  late int _background = widget.backgroundColor;
   late ColorPaletteState _palette = widget.palette;
-  bool _paletteTab = false;
+
+  /// R10 R5: the tab is an ID, not a bool, because the tab LIST is data
+  /// now — the user is building toward AE-style plugins that add tabs, and
+  /// a plugin cannot add a case to a boolean.
+  String _tabId = 'wheel';
 
   void _setColor(int color) {
     setState(() => _color = color);
     widget.onColorChanged(color);
-  }
-
-  void _setBackground(int color) {
-    setState(() => _background = color);
-    widget.onBackgroundColorChanged(color);
   }
 
   void _setPalette(ColorPaletteState palette) {
@@ -170,100 +204,70 @@ class _ColorButtonWindowState extends State<ColorButtonWindow> {
       // bounded box to expand into.
       child: SizedBox(
         height: colorButtonWindowHeight,
+        // LAYOUT B (the user's): tabs / content / a status bar shared by
+        // every tab, so "what colour am I on" never moves when you switch
+        // how you are picking it.
         child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              _WindowTab(
-                keyValue: 'color-window-tab-wheel',
-                label: 'Wheel',
-                selected: !_paletteTab,
-                onTap: () => setState(() => _paletteTab = false),
-              ),
-              _WindowTab(
-                keyValue: 'color-window-tab-palette',
-                label: 'Palette',
-                selected: _paletteTab,
-                onTap: () => setState(() => _paletteTab = true),
-              ),
-            ],
-          ),
-          Expanded(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-              child: _paletteTab
-                  ? SingleChildScrollView(
-                      child: ColorPaletteStrip(
-                        palette: _palette,
-                        currentColor: _color,
-                        onColorSelected: _setColor,
-                        onPaletteChanged: _setPalette,
-                      ),
-                    )
-                  : ColorWheelPanel(
-                      color: _color,
-                      backgroundColor: _background,
-                      onColorChanged: _setColor,
-                      onBackgroundColorChanged: _setBackground,
-                    ),
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Expanded(
+              child: EditorPanelTabs(
+                tabs: _tabs,
+                activeTabId: _tabId,
+                onTabSelected: (id) => setState(() => _tabId = id),
+                // Icon-only: at 236px three labelled tabs would not fit,
+                // and the dock's own narrow groups already read this way.
+                compact: true,
               ),
             ),
+            ColorStatusBar(color: _color, onColorChanged: _setColor),
           ],
         ),
       ),
     );
   }
-}
 
-class _WindowTab extends StatelessWidget {
-  const _WindowTab({
-    required this.keyValue,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final String keyValue;
-  final String label;
-  final bool selected;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Expanded(
-      child: InkWell(
-        key: ValueKey<String>(keyValue),
-        onTap: onTap,
-        child: Container(
-          padding: const EdgeInsets.symmetric(vertical: 7),
-          decoration: BoxDecoration(
-            // The dock tabs' language: the selected tab wears the body
-            // colour and takes an accent top rule.
-            color: selected ? colorScheme.surfaceContainerHighest : null,
-            border: Border(
-              top: BorderSide(
-                width: 2,
-                color: selected ? colorScheme.primary : Colors.transparent,
-              ),
-              bottom: BorderSide(color: colorScheme.outlineVariant),
-            ),
-          ),
-          child: Center(
-            child: Text(
-              label,
-              style: TextStyle(
-                fontSize: 12,
-                // Selection reads by COLOUR only (user rule).
-                color: selected
-                    ? colorScheme.onSurface
-                    : colorScheme.onSurfaceVariant,
-              ),
-            ),
+  /// The window's tabs AS DATA — the shape [EditorPanelTabs] already
+  /// takes, and the shape a plugin can append to.
+  List<EditorPanelTab> get _tabs => [
+    EditorPanelTab(
+      id: 'wheel',
+      label: 'Wheel',
+      icon: Icons.color_lens_outlined,
+      buttonKey: const ValueKey<String>('color-window-tab-wheel'),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+        child: ColorWheelPanel(color: _color, onColorChanged: _setColor),
+      ),
+    ),
+    EditorPanelTab(
+      id: 'rgb',
+      label: 'RGB',
+      icon: Icons.tune,
+      buttonKey: const ValueKey<String>('color-window-tab-rgb'),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+        child: ColorRgbPanel(color: _color, onColorChanged: _setColor),
+      ),
+    ),
+    EditorPanelTab(
+      id: 'palette',
+      label: 'Palette',
+      icon: Icons.grid_view_outlined,
+      buttonKey: const ValueKey<String>('color-window-tab-palette'),
+      builder: (context) => Padding(
+        padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
+        // The scroll view belongs to the TAB, not to the window: the
+        // wheel and the RGB bars must not scroll.
+        child: SingleChildScrollView(
+          child: ColorPaletteStrip(
+            palette: _palette,
+            currentColor: _color,
+            onColorSelected: _setColor,
+            onPaletteChanged: _setPalette,
           ),
         ),
       ),
-    );
-  }
+    ),
+  ];
 }

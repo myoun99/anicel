@@ -145,7 +145,6 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
               // The bar reads percent, so the numeric field must TYPE
               // percent: without this a typed 80 means 80× and clamps to
               // the 2.0 ceiling — 200% from a keystroke that asked for 80.
-              displayFactor: 100,
               valueText: _gainText(gain),
               valueTextBuilder: _gainText,
               onChanged: (value) => setState(() => _gainDrag = value),
@@ -170,7 +169,6 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
               fillOrigin: 0,
               // Same unit contract as the fader: the label says L50/R50,
               // so the field takes ±100.
-              displayFactor: 100,
               valueText: _panText(pan),
               valueTextBuilder: _panText,
               onChanged: (value) => setState(() => _panDrag = value),
