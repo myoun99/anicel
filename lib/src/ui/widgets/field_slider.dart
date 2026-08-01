@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import '../text/full_width_numerals.dart';
 
 import '../theme/app_theme.dart';
 
@@ -30,11 +29,19 @@ enum FieldSliderScale {
 ///   switches to relative movement at 1/10 speed for fine control.
 /// - The scroll wheel steps the value by 1% of the track (Shift: 0.1%); with
 ///   [divisions] it steps one division instead.
-/// - Double-tap opens inline numeric entry in display units (see
-///   [displayFactor]); Enter or tapping away commits, Escape cancels. The
-///   value jump caused by the first tap of the pair is rolled back.
 /// - A vertical scroll gesture that wins the arena rolls back the tentative
 ///   value jump from pointer-down, so bars inside scrollables stay safe.
+///
+/// It does NOT type (R10 R5). A bar is a bar: tap or drag sets the value,
+/// and that is the whole control. The inline editor it used to carry was
+/// reached by a DOUBLE-tap, which held every ordinary tap hostage for
+/// 300ms — on the one control whose entire job is to answer a tap
+/// immediately. The user: "수동입력 없어져도 ok. 어차피 조작할때
+/// 번거롭기만했어."
+///
+/// Where an exact number really is needed, put a [DragValueLabel] BESIDE
+/// the bar rather than inside it: that one types on a single tap, so the
+/// app-wide rule ("tap = pick or edit, double-tap = open") stays whole.
 class FieldSlider extends StatefulWidget {
   const FieldSlider({
     super.key,
@@ -49,7 +56,6 @@ class FieldSlider extends StatefulWidget {
     this.label,
     this.scale = FieldSliderScale.linear,
     this.divisions,
-    this.displayFactor = 1.0,
     this.fillOrigin,
     this.height = 24,
   }) : assert(max > min, 'max must exceed min'),
@@ -99,9 +105,6 @@ class FieldSlider extends StatefulWidget {
   /// Snaps values to `divisions` equal steps (linear scale only).
   final int? divisions;
 
-  /// Multiplier from model units to the units the user types: opacity 0..1
-  /// displayed as percent passes 100 so a typed `80` commits 0.8.
-  final double displayFactor;
 
   /// The value the filled bar grows FROM; null means [min], which is what a
   /// quantity wants (a fader reads "how much"). A BALANCE — pan, a signed
@@ -117,11 +120,6 @@ class FieldSlider extends StatefulWidget {
 
 class _FieldSliderState extends State<FieldSlider> {
   static const Color _valueInk = Color(0xFFE8ECEE);
-  static const Duration _doubleTapWindow = Duration(milliseconds: 300);
-  static const double _doubleTapSlop = 16.0;
-
-  bool _editing = false;
-  late final TextEditingController _editController = TextEditingController();
 
   double _trackWidth = 0;
 
@@ -130,19 +128,6 @@ class _FieldSliderState extends State<FieldSlider> {
   // always derives from widget.value (the widget stays fully controlled).
   double? _gestureT;
   double? _preDownValue;
-
-  // Manual double-tap detection: a GestureDetector.onDoubleTap would hold
-  // every tap hostage in the arena for 300ms (the S4 entry-unification
-  // gotcha), so the down handler compares timestamps itself.
-  DateTime? _lastDownTime;
-  Offset? _lastDownPosition;
-  double? _preSequenceValue;
-
-  @override
-  void dispose() {
-    _editController.dispose();
-    super.dispose();
-  }
 
   bool get _enabled => widget.onChanged != null;
 
@@ -184,33 +169,9 @@ class _FieldSliderState extends State<FieldSlider> {
   void _emit(double value) => widget.onChanged?.call(value);
 
   void _handleDown(DragDownDetails details) {
-    if (!_enabled || _editing) {
+    if (!_enabled) {
       return;
     }
-    final now = DateTime.now();
-    final lastTime = _lastDownTime;
-    final lastPosition = _lastDownPosition;
-    final isDoubleTap =
-        lastTime != null &&
-        lastPosition != null &&
-        now.difference(lastTime) < _doubleTapWindow &&
-        (details.localPosition - lastPosition).distance < _doubleTapSlop;
-    if (isDoubleTap) {
-      _lastDownTime = null;
-      _lastDownPosition = null;
-      // Unconditional: widget.value may be stale intra-frame (the first
-      // tap's emit only lands on the next build), so an equality guard here
-      // would swallow the rollback.
-      final restore = _preSequenceValue;
-      if (restore != null) {
-        _emit(restore);
-      }
-      _startEdit(restore ?? widget.value);
-      return;
-    }
-    _lastDownTime = now;
-    _lastDownPosition = details.localPosition;
-    _preSequenceValue = widget.value;
     _preDownValue = widget.value;
     if (_trackWidth <= 0) {
       return;
@@ -225,7 +186,7 @@ class _FieldSliderState extends State<FieldSlider> {
   }
 
   void _handleUpdate(DragUpdateDetails details) {
-    if (!_enabled || _editing || _trackWidth <= 0) {
+    if (!_enabled || _trackWidth <= 0) {
       return;
     }
     final current = _gestureT ?? _tFor(widget.value);
@@ -266,7 +227,7 @@ class _FieldSliderState extends State<FieldSlider> {
   }
 
   void _handleWheel(PointerScrollEvent event) {
-    if (!_enabled || _editing || event.scrollDelta.dy == 0) {
+    if (!_enabled || event.scrollDelta.dy == 0) {
       return;
     }
     final divisions = widget.divisions;
@@ -285,83 +246,8 @@ class _FieldSliderState extends State<FieldSlider> {
     widget.onChangeEnd?.call(value);
   }
 
-  void _startEdit(double seedValue) {
-    final display = seedValue * widget.displayFactor;
-    final rounded = display.roundToDouble();
-    _editController.text = (display - rounded).abs() < 0.05
-        ? rounded.toStringAsFixed(0)
-        : display.toStringAsFixed(1);
-    _editController.selection = TextSelection(
-      baseOffset: 0,
-      extentOffset: _editController.text.length,
-    );
-    setState(() => _editing = true);
-  }
-
-  void _commitEdit() {
-    if (!_editing) {
-      return;
-    }
-    setState(() => _editing = false);
-    final match = RegExp(r'-?\d+\.?\d*').firstMatch(_editController.text);
-    final typed = match == null ? null : double.tryParse(match.group(0)!);
-    if (typed == null) {
-      return;
-    }
-    double value = (typed / widget.displayFactor).clamp(widget.min, widget.max);
-    final divisions = widget.divisions;
-    if (divisions != null) {
-      final step = (widget.max - widget.min) / divisions;
-      value = widget.min + ((value - widget.min) / step).round() * step;
-    }
-    _emit(value);
-    widget.onChangeEnd?.call(value);
-  }
-
-  void _cancelEdit() {
-    if (_editing) {
-      setState(() => _editing = false);
-    }
-  }
 
   double get _radius => widget.height < 20 ? 3 : 4;
-
-  Widget _buildEditor(TextStyle valueStyle) {
-    return Focus(
-      onKeyEvent: (node, event) {
-        if (event is KeyDownEvent &&
-            event.logicalKey == LogicalKeyboardKey.escape) {
-          _cancelEdit();
-          return KeyEventResult.handled;
-        }
-        return KeyEventResult.ignored;
-      },
-      child: TextField(
-        controller: _editController,
-        autofocus: true,
-        textAlign: TextAlign.center,
-        keyboardType: const TextInputType.numberWithOptions(
-          decimal: true,
-          signed: true,
-        ),
-        // R9 #15: a Japanese IME sitting in 全角 types numerals this
-        // field's parser cannot read; converting as they arrive is what
-        // keeps every downstream tryParse innocent.
-        inputFormatters: halfWidthNumerals,
-        style: valueStyle,
-        decoration: const InputDecoration(
-          // Bare: the editor sits ON the slider track, so it opts out of
-          // the app-wide filled box.
-          filled: false,
-          isDense: true,
-          isCollapsed: true,
-          border: InputBorder.none,
-        ),
-        onSubmitted: (_) => _commitEdit(),
-        onTapOutside: (_) => _commitEdit(),
-      ),
-    );
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -381,9 +267,7 @@ class _FieldSliderState extends State<FieldSlider> {
         : widget.valueText;
 
     final Widget inner;
-    if (_editing) {
-      inner = Center(child: _buildEditor(valueStyle ?? const TextStyle()));
-    } else if (widget.label == null) {
+    if (widget.label == null) {
       inner = Center(
         child: Text(
           valueText,
@@ -415,24 +299,20 @@ class _FieldSliderState extends State<FieldSlider> {
           decoration: BoxDecoration(
             color: AppColors.surface,
             borderRadius: BorderRadius.circular(_radius),
-            border: Border.all(
-              color: _editing ? AppColors.accent : AppColors.hairline,
-            ),
+            border: Border.all(color: AppColors.hairline),
           ),
           child: ClipRRect(
             borderRadius: BorderRadius.circular(_radius),
             child: CustomPaint(
-              painter: _editing
-                  ? null
-                  : _FieldSliderTrackPainter(
-                      t: t,
-                      originT: widget.fillOrigin == null
-                          ? 0.0
-                          : _tFor(widget.fillOrigin!).clamp(0.0, 1.0),
-                      accent: dragging
-                          ? AppColors.accent
-                          : (widget.restingAccent ?? AppColors.accent),
-                    ),
+              painter: _FieldSliderTrackPainter(
+                t: t,
+                originT: widget.fillOrigin == null
+                    ? 0.0
+                    : _tFor(widget.fillOrigin!).clamp(0.0, 1.0),
+                accent: dragging
+                    ? AppColors.accent
+                    : (widget.restingAccent ?? AppColors.accent),
+              ),
               child: SizedBox(
                 height: widget.height,
                 child: Padding(
@@ -449,20 +329,18 @@ class _FieldSliderState extends State<FieldSlider> {
     if (!_enabled) {
       return Opacity(opacity: 0.4, child: bar);
     }
-    if (!_editing) {
-      bar = MouseRegion(
-        cursor: SystemMouseCursors.resizeLeftRight,
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          dragStartBehavior: DragStartBehavior.down,
-          onHorizontalDragDown: _handleDown,
-          onHorizontalDragUpdate: _handleUpdate,
-          onHorizontalDragEnd: _handleEnd,
-          onHorizontalDragCancel: _handleCancel,
-          child: bar,
-        ),
-      );
-    }
+    bar = MouseRegion(
+      cursor: SystemMouseCursors.resizeLeftRight,
+      child: GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        dragStartBehavior: DragStartBehavior.down,
+        onHorizontalDragDown: _handleDown,
+        onHorizontalDragUpdate: _handleUpdate,
+        onHorizontalDragEnd: _handleEnd,
+        onHorizontalDragCancel: _handleCancel,
+        child: bar,
+      ),
+    );
     return Semantics(
       slider: true,
       label: widget.label,

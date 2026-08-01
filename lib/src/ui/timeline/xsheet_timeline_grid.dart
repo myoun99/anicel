@@ -2225,7 +2225,6 @@ class _LayerHeader extends StatelessWidget {
       value: value,
       valueText: '${(value * 100).round()}%',
       valueTextBuilder: (next) => '${(next * 100).round()}%',
-      displayFactor: 100,
       height: 18,
       onChanged: (opacity) => onLayerOpacityChanged(layer.id, opacity),
       onChangeEnd: onLayerOpacityChangeEnd == null

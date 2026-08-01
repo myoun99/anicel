@@ -99,7 +99,6 @@ class BrushSettingsPanel extends StatelessWidget {
             value: BrushToolState.clampOpacity(state.opacity),
             min: 0,
             max: 1,
-            displayFactor: 100,
             keyValue: 'brush-tool-opacity-slider',
             onChanged: (value) => onChanged(state.copyWith(opacity: value)),
             trailing: _pressureButton(
@@ -113,7 +112,6 @@ class BrushSettingsPanel extends StatelessWidget {
             value: BrushToolState.clampUnit(state.flow),
             min: 0,
             max: 1,
-            displayFactor: 100,
             keyValue: 'brush-tool-flow-slider',
             onChanged: (value) => onChanged(state.copyWith(flow: value)),
             trailing: _pressureButton(
@@ -141,7 +139,6 @@ class BrushSettingsPanel extends StatelessWidget {
             value: BrushToolState.clampUnit(state.hardness),
             min: 0,
             max: 1,
-            displayFactor: 100,
             keyValue: 'brush-tool-hardness-slider',
             onChanged: (value) => onChanged(state.copyWith(hardness: value)),
             trailing: _pressureButton(
@@ -155,7 +152,6 @@ class BrushSettingsPanel extends StatelessWidget {
             value: BrushToolState.clampRoundness(state.roundness),
             min: BrushToolState.minRoundness,
             max: 1,
-            displayFactor: 100,
             keyValue: 'brush-tool-roundness-slider',
             onChanged: (value) => onChanged(state.copyWith(roundness: value)),
           ),
@@ -176,7 +172,6 @@ class BrushSettingsPanel extends StatelessWidget {
             min: BrushToolState.minSpacing,
             max: BrushToolState.maxSpacing,
             scale: FieldSliderScale.exponential,
-            displayFactor: 100,
             keyValue: 'brush-tool-spacing-slider',
             onChanged: (value) => onChanged(state.copyWith(spacing: value)),
           ),
@@ -191,7 +186,6 @@ class BrushSettingsPanel extends StatelessWidget {
             value: BrushToolState.clampZeroToOne(state.sizeJitter),
             min: 0,
             max: 1,
-            displayFactor: 100,
             keyValue: 'brush-tool-size-jitter-slider',
             onChanged: (value) => onChanged(state.copyWith(sizeJitter: value)),
           ),
@@ -201,7 +195,6 @@ class BrushSettingsPanel extends StatelessWidget {
             value: BrushToolState.clampZeroToOne(state.opacityJitter),
             min: 0,
             max: 1,
-            displayFactor: 100,
             keyValue: 'brush-tool-opacity-jitter-slider',
             onChanged: (value) =>
                 onChanged(state.copyWith(opacityJitter: value)),
@@ -212,7 +205,6 @@ class BrushSettingsPanel extends StatelessWidget {
             value: BrushToolState.clampZeroToOne(state.angleJitter),
             min: 0,
             max: 1,
-            displayFactor: 100,
             keyValue: 'brush-tool-angle-jitter-slider',
             onChanged: (value) => onChanged(state.copyWith(angleJitter: value)),
           ),
@@ -222,7 +214,6 @@ class BrushSettingsPanel extends StatelessWidget {
             value: BrushToolState.clampZeroToOne(state.roundnessJitter),
             min: 0,
             max: 1,
-            displayFactor: 100,
             keyValue: 'brush-tool-roundness-jitter-slider',
             onChanged: (value) =>
                 onChanged(state.copyWith(roundnessJitter: value)),
@@ -233,7 +224,6 @@ class BrushSettingsPanel extends StatelessWidget {
             value: BrushToolState.clampZeroToOne(state.spacingJitter),
             min: 0,
             max: 1,
-            displayFactor: 100,
             keyValue: 'brush-tool-spacing-jitter-slider',
             onChanged: (value) =>
                 onChanged(state.copyWith(spacingJitter: value)),
@@ -253,7 +243,6 @@ class BrushSettingsPanel extends StatelessWidget {
               value: BrushToolState.clampZeroToOne(state.paintAmount),
               min: 0,
               max: 1,
-              displayFactor: 100,
               keyValue: 'brush-tool-paint-amount-slider',
               onChanged: (value) =>
                   onChanged(state.copyWith(paintAmount: value)),
@@ -264,7 +253,6 @@ class BrushSettingsPanel extends StatelessWidget {
               value: BrushToolState.clampZeroToOne(state.paintDensity),
               min: 0,
               max: 1,
-              displayFactor: 100,
               keyValue: 'brush-tool-paint-density-slider',
               onChanged: (value) =>
                   onChanged(state.copyWith(paintDensity: value)),
@@ -275,7 +263,6 @@ class BrushSettingsPanel extends StatelessWidget {
               value: BrushToolState.clampZeroToOne(state.colorStretch),
               min: 0,
               max: 1,
-              displayFactor: 100,
               keyValue: 'brush-tool-color-stretch-slider',
               onChanged: (value) =>
                   onChanged(state.copyWith(colorStretch: value)),
@@ -290,7 +277,6 @@ class BrushSettingsPanel extends StatelessWidget {
             value: BrushToolState.clampScatterRadius(state.scatterRadiusRatio),
             min: 0,
             max: 4,
-            displayFactor: 100,
             keyValue: 'brush-tool-scatter-slider',
             onChanged: (value) =>
                 onChanged(state.copyWith(scatterRadiusRatio: value)),
@@ -333,7 +319,6 @@ class BrushSettingsPanel extends StatelessWidget {
                 min: 0.05,
                 max: 10,
                 scale: FieldSliderScale.exponential,
-                displayFactor: 100,
                 keyValue: 'brush-tool-dual-scale-slider',
                 onChanged: (value) =>
                     onChanged(state.copyWith(dualMaskScale: value)),
@@ -355,7 +340,6 @@ class BrushSettingsPanel extends StatelessWidget {
                 min: 0.05,
                 max: 10,
                 scale: FieldSliderScale.exponential,
-                displayFactor: 100,
                 keyValue: 'brush-tool-texture-scale-slider',
                 onChanged: (value) =>
                     onChanged(state.copyWith(textureScale: value)),
@@ -366,7 +350,6 @@ class BrushSettingsPanel extends StatelessWidget {
                 value: BrushToolState.clampZeroToOne(state.textureDensity),
                 min: 0,
                 max: 1,
-                displayFactor: 100,
                 keyValue: 'brush-tool-texture-density-slider',
                 onChanged: (value) =>
                     onChanged(state.copyWith(textureDensity: value)),
@@ -635,7 +618,6 @@ class _PanelSlider extends StatelessWidget {
     required this.keyValue,
     required this.onChanged,
     this.scale = FieldSliderScale.linear,
-    this.displayFactor = 1,
     this.trailing,
   });
 
@@ -647,7 +629,6 @@ class _PanelSlider extends StatelessWidget {
   final String keyValue;
   final ValueChanged<double> onChanged;
   final FieldSliderScale scale;
-  final double displayFactor;
 
   /// Optional right-edge control (BB-3: the pressure-curve button).
   final Widget? trailing;
@@ -662,7 +643,6 @@ class _PanelSlider extends StatelessWidget {
       label: label,
       valueText: valueLabel,
       scale: scale,
-      displayFactor: displayFactor,
       onChanged: onChanged,
     );
     return Padding(

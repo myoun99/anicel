@@ -15,7 +15,6 @@ void main() {
     double max = 1,
     FieldSliderScale scale = FieldSliderScale.linear,
     int? divisions,
-    double displayFactor = 1,
     String? label = 'Test',
     bool enabled = true,
     List<double>? changeEnds,
@@ -37,7 +36,6 @@ void main() {
                 max: max,
                 scale: scale,
                 divisions: divisions,
-                displayFactor: displayFactor,
                 label: label,
                 valueText: fmt(v),
                 onChanged: enabled ? (next) => value.value = next : null,
@@ -128,60 +126,24 @@ void main() {
     expect(value.value, 2);
   });
 
-  testWidgets('double tap rolls back the first-tap jump and opens the editor', (
-    tester,
-  ) async {
+  testWidgets('R10 R5: a bar does not TYPE — a double tap is just two taps, '
+      'and the second one sets the value like the first', (tester) async {
     final value = ValueNotifier<double>(0.2);
     await tester.pumpWidget(harness(value: value));
-    final center = tester.getCenter(find.byKey(sliderKey));
-    await tester.tapAt(center);
-    await tester.pump(const Duration(milliseconds: 60));
-    expect(value.value, moreOrLessEquals(0.5, epsilon: 0.02));
-    await tester.tapAt(center);
-    await tester.pump();
-    expect(find.byType(TextField), findsOneWidget);
-    expect(value.value, moreOrLessEquals(0.2, epsilon: 0.001));
-  });
+    final box = tester.getRect(find.byKey(sliderKey));
+    final quarter = Offset(box.left + box.width * 0.25, box.center.dy);
 
-  testWidgets('typed value commits through displayFactor and clamps', (
-    tester,
-  ) async {
-    final value = ValueNotifier<double>(0.2);
-    await tester.pumpWidget(harness(value: value, displayFactor: 100));
-    final center = tester.getCenter(find.byKey(sliderKey));
-    await tester.tapAt(center);
+    await tester.tapAt(quarter);
     await tester.pump(const Duration(milliseconds: 60));
-    await tester.tapAt(center);
+    await tester.tapAt(quarter);
     await tester.pump();
-    await tester.enterText(find.byType(TextField), '75');
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pump();
-    expect(find.byType(TextField), findsNothing);
-    expect(value.value, moreOrLessEquals(0.75, epsilon: 0.001));
 
-    await tester.tapAt(center);
-    await tester.pump(const Duration(milliseconds: 60));
-    await tester.tapAt(center);
-    await tester.pump();
-    await tester.enterText(find.byType(TextField), '250');
-    await tester.testTextInput.receiveAction(TextInputAction.done);
-    await tester.pump();
-    expect(value.value, 1.0);
-  });
-
-  testWidgets('escape cancels the editor without committing', (tester) async {
-    final value = ValueNotifier<double>(0.2);
-    await tester.pumpWidget(harness(value: value, displayFactor: 100));
-    final center = tester.getCenter(find.byKey(sliderKey));
-    await tester.tapAt(center);
-    await tester.pump(const Duration(milliseconds: 60));
-    await tester.tapAt(center);
-    await tester.pump();
-    await tester.enterText(find.byType(TextField), '99');
-    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
-    await tester.pump();
-    expect(find.byType(TextField), findsNothing);
-    expect(value.value, moreOrLessEquals(0.2, epsilon: 0.001));
+    expect(
+      find.byType(TextField),
+      findsNothing,
+      reason: 'the inline editor is gone; the bar answers taps immediately',
+    );
+    expect(value.value, moreOrLessEquals(0.25, epsilon: 0.02));
   });
 
   testWidgets('micro variant (no label) centers the value text', (

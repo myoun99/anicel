@@ -2828,7 +2828,6 @@ class _StoryboardSeLabel extends StatelessWidget {
       value: value,
       valueText: '${(value * 100).round()}%',
       valueTextBuilder: (next) => '${(next * 100).round()}%',
-      displayFactor: 100,
       height: 18,
       onChanged: (opacity) => onLayerOpacityChanged!(layer.id, opacity),
       onChangeEnd: onLayerOpacityChangeEnd == null
@@ -4036,7 +4035,6 @@ class _StoryboardTrackLabel extends StatelessWidget {
                         value: trackOpacity.clamp(0.0, 1.0).toDouble(),
                         valueText: '${(trackOpacity * 100).round()}%',
                         valueTextBuilder: (next) => '${(next * 100).round()}%',
-                        displayFactor: 100,
                         height: 18,
                         onChanged: onTrackOpacityChanged,
                         onChangeEnd: onTrackOpacityChangeEnd,
