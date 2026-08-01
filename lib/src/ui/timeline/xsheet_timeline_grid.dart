@@ -352,6 +352,12 @@ class XSheetTimelineGrid extends StatefulWidget {
 
   /// How much sheet the header must leave standing: four frame rows, plus
   /// the bottom scrollbar rail the Column below spends.
+  ///
+  /// Deliberately in DEFAULT frame units rather than the live zoomed ones.
+  /// The zoom slider spans 2.4–96px a row: measuring the reserve in live
+  /// rows would leave a 10px sheet at one end and squeeze the header to its
+  /// floor at the other, and — worse — the header would resize every time
+  /// the user zoomed. A stable pixel reserve is the one that behaves.
   static const double _minimumSheetExtent =
       4 * timelineFrameCellWidth + timelineBottomScrollbarRailHeight;
 
@@ -410,10 +416,14 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// What the header sheds, in order, when the panel is too short to stack
   /// the whole rail. Least useful on a timesheet first; the KIND icon, the
   /// NAME and the EYE are never on the list.
+  /// ★ The LANE TWIRL is deliberately absent: it is the only way out of a
+  /// state it puts the sheet into. Lane expansion is host state that
+  /// survives a resize, so shedding the twirl in a short panel leaves the
+  /// lane columns on screen with nothing to close them. A control that owns
+  /// live state cannot be shed, whatever it costs (16px here).
   static const List<LayerRailSlot> _shedLadder = [
     LayerRailSlot.fillReference,
     LayerRailSlot.mark,
-    LayerRailSlot.laneToggle,
     LayerRailSlot.mute,
     LayerRailSlot.fx,
     LayerRailSlot.timesheet,
@@ -424,41 +434,54 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// Two rules, in this order:
   ///
   /// 1. **The sheet comes first.** The header may spend everything above
-  ///    [_minimumSheetExtent], and not a pixel more than its natural size —
-  ///    so making the panel taller adds FRAME ROWS, never more header. (The
+  ///    [_minimumSheetExtent], and not a pixel more than it needs — so
+  ///    making the panel taller adds FRAME ROWS, never more header. (The
   ///    first cut of this got that backwards: the block grew with the panel
   ///    up to 354, and the sheet sat pinned at 80px across a 160px range of
-  ///    panel heights.)
-  /// 2. **The name outranks the controls.** The richest column set whose
-  ///    floor — every remaining control plus a name at [_minimumNameExtent]
-  ///    — fits the budget is the one that is carried, and whatever is left
-  ///    over goes back to the name up to its natural share. Shedding is the
-  ///    skeleton's own mechanism, so what remains stays in its slot and the
-  ///    legend above stays over it.
+  ///    panel heights.) The reserve holds until the ladder runs out of
+  ///    rungs: under a panel of about 254 the last rung's floor is more
+  ///    than the budget, and the header takes what is left of the reserve
+  ///    rather than shrink past a kind icon, a name and an eye.
+  /// 2. **The name outranks the controls.** ★ Which means the name is paid
+  ///    IN FULL before a shed control may come back. The first cut said this
+  ///    and did the opposite: it took the richest column set the budget
+  ///    could floor, so one pixel more panel promoted a rung and the
+  ///    re-added control was paid for out of the NAME — measured shrinking
+  ///    71px → 48px at six panel heights inside the dock's own drag range,
+  ///    every one of them while the panel got BIGGER.
   ///
-  /// Both are monotonic in [availableExtent]: growing the panel never
-  /// shortens the header and never takes a column away, so nothing flickers
-  /// under a splitter drag.
+  /// So the name grows to [_naturalNameExtent] first, and only then do the
+  /// rungs come back, last-shed-first. Both the name and the column count
+  /// are non-decreasing in [availableExtent] — a splitter drag can never
+  /// take away something it just gave.
   static XSheetHeaderLayout headerLayoutFor(double availableExtent) {
     final budget = availableExtent - _minimumSheetExtent;
 
-    final shed = <LayerRailSlot>{..._neverCarried};
-    var floor = _headerBlockHeightFor(
+    // Start from the poorest header the ladder allows, then buy back what
+    // the budget can afford AT A FULL-LENGTH NAME.
+    final shed = <LayerRailSlot>{..._neverCarried, ..._shedLadder};
+    for (final rung in _shedLadder.reversed) {
+      final candidate = {...shed}..remove(rung);
+      if (_headerBlockHeightFor(
+            shed: candidate,
+            nameExtent: _naturalNameExtent,
+          ) >
+          budget) {
+        break;
+      }
+      shed
+        ..clear()
+        ..addAll(candidate);
+    }
+
+    final floor = _headerBlockHeightFor(
       shed: shed,
       nameExtent: _minimumNameExtent,
     );
-    for (final rung in _shedLadder) {
-      if (budget >= floor) {
-        break;
-      }
-      shed.add(rung);
-      floor = _headerBlockHeightFor(shed: shed, nameExtent: _minimumNameExtent);
-    }
     final natural = _headerBlockHeightFor(
       shed: shed,
       nameExtent: _naturalNameExtent,
     );
-
     final wanted = budget.clamp(floor, natural).toDouble();
     return XSheetHeaderLayout(
       // Below the last rung's floor the panel is shorter than a kind icon,
@@ -501,9 +524,16 @@ class XSheetHeaderLayout {
   /// same set, or the legend's icons stop naming the columns under them.
   final Set<LayerRailSlot> shed;
 
+  /// The section band strip. It gives ground too: [blockHeight] is capped
+  /// at what the panel HAS, so under a 52px panel the strip's own fixed
+  /// extent already exceeds the block — and a fixed-height Container does
+  /// not stripe quietly there, the leftover goes negative into
+  /// [headerHeight] and asserts.
+  double get bandHeight =>
+      math.min(XSheetTimelineGrid._sectionBandHeight, blockHeight);
+
   /// Just the column headers — the band strip has its own row above.
-  double get headerHeight =>
-      blockHeight - XSheetTimelineGrid._sectionBandHeight;
+  double get headerHeight => math.max(0, blockHeight - bandHeight);
 }
 
 class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
@@ -828,7 +858,16 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     widget.onScrubEnd?.call();
   }
 
-  void _selectFrameFromRailGlobalPosition(Offset globalPosition) {
+  /// [autoPan] false is a PRESS: landing near an end of the rail is not a
+  /// push toward it. R10 R6 found this the expensive way — the rail runs
+  /// this from `onPointerDown` as well as from drag updates, so a plain tap
+  /// inside the edge band scrolled the sheet under the finger before the
+  /// frame was even resolved. The band is a fraction of the viewport, so
+  /// the shorter the rail the larger the share of it that was untappable.
+  void _selectFrameFromRailGlobalPosition(
+    Offset globalPosition, {
+    bool autoPan = true,
+  }) {
     final renderObject = _railScrubViewportKey.currentContext
         ?.findRenderObject();
     if (renderObject is! RenderBox) {
@@ -836,7 +875,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     }
 
     final localY = renderObject.globalToLocal(globalPosition).dy;
-    _autoPanRailEdge(renderObject, localY);
+    if (autoPan) {
+      _autoPanRailEdge(renderObject, localY);
+    }
     final frameIndex = _frameIndexForRailLocalY(localY);
     if (frameIndex == null) {
       return;
@@ -902,6 +943,11 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
           metrics: _metrics,
           width: _metrics.layerRowHeight,
           height: _headerLayout.headerHeight,
+          // The layer header beside it clips below the last rung; the lane
+          // header has to, or it stripes where its neighbour degrades.
+          minContentExtent: XSheetTimelineGrid.headerContentExtentFor(
+            _headerLayout,
+          ),
           currentFrameIndex: cursorFrame,
           onSelectFrame: widget.onSelectFrame,
           laneEdit: widget.laneEdit,
@@ -1226,6 +1272,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                   _resetRailScrubTracking();
                                   _selectFrameFromRailGlobalPosition(
                                     event.position,
+                                    autoPan: false,
                                   );
                                 },
                                 onPointerUp: (_) => _endRailScrub(),
@@ -1235,6 +1282,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                   onVerticalDragStart: (details) {
                                     _selectFrameFromRailGlobalPosition(
                                       details.globalPosition,
+                                      autoPan: false,
                                     );
                                   },
                                   onVerticalDragUpdate: (details) {
@@ -1451,6 +1499,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                             for (final run in sectionRuns)
                                               _XSheetSectionBandCell(
                                                 run: run,
+                                                height: headerLayout.bandHeight,
                                                 extent:
                                                     timelineSectionRunExtent(
                                                       run,
@@ -2121,7 +2170,14 @@ class XSheetFrameRailPainter extends CustomPainter {
 /// lives on the toolbar toggles. The band label is horizontal already (the
 /// band runs along the layer axis here).
 class _XSheetSectionBandCell extends StatelessWidget {
-  const _XSheetSectionBandCell({required this.run, required this.extent});
+  const _XSheetSectionBandCell({
+    required this.run,
+    required this.extent,
+    required this.height,
+  });
+
+  /// Resolved per layout: the strip gives ground with the block (R10 R6).
+  final double height;
 
   final TimelineSectionRun run;
   final double extent;
@@ -2132,7 +2188,7 @@ class _XSheetSectionBandCell extends StatelessWidget {
     return ExcludeSemantics(
       child: Container(
         width: extent,
-        height: XSheetTimelineGrid._sectionBandHeight,
+        height: height,
         decoration: BoxDecoration(
           color: colorScheme.surfaceContainerLow,
           border: Border.all(color: colorScheme.outline, width: 1),

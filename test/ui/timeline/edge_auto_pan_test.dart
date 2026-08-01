@@ -14,28 +14,30 @@ void main() {
     expect(edgeAutoPanDelta(10, 300), -14);
   });
 
-  test('a viewport shorter than BOTH bands pans nothing at all', () {
-    // R10 R6 made this reachable for the first time: the x-sheet's frame
-    // rail can be 16px tall in a short panel, and with the bands
-    // overlapping every pointer position read as an edge push — a plain
-    // press scrolled 32px and five sub-pixel moves ran the playhead
-    // through five frames under a stationary pen.
-    for (final extent in [0.0, 1.0, 16.0, 40.0, 47.9]) {
-      for (final pos in [0.0, extent / 2, extent]) {
+  test('HALF of any viewport is neutral middle, however small', () {
+    // R10 R6 made small viewports reachable: the x-sheet's frame rail is
+    // 66–96px at real dock heights. A fixed 24px band there is most of the
+    // rail, and the rail scrubs from `onPointerDown` — so a plain press
+    // inside the band scrolled the sheet and the playhead ran away under a
+    // stationary pen. The band narrows instead.
+    for (final extent in [
+      1.0, 8.0, 16.0, 40.0, 48.0, 66.0, 96.0, 200.0, 1000.0,
+    ]) {
+      for (final t in [0.25, 0.4, 0.5, 0.6, 0.75]) {
         expect(
-          edgeAutoPanDelta(pos, extent),
+          edgeAutoPanDelta(extent * t, extent),
           0,
-          reason: 'pos $pos in a $extent viewport must not pan',
+          reason: 'the middle of a $extent viewport must not pan (at $t)',
         );
       }
+      // Both ends still push, so a real edge drag keeps working.
+      expect(edgeAutoPanDelta(extent, extent), greaterThan(0));
+      expect(edgeAutoPanDelta(0, extent), lessThan(0));
     }
   });
 
-  test('the guard lets go exactly where the bands stop overlapping', () {
-    // 48 is the first extent with a middle; a centre press there is still
-    // quiet, and only a real edge push moves.
-    expect(edgeAutoPanDelta(24, 48), 0);
-    expect(edgeAutoPanDelta(30, 48), 6);
-    expect(edgeAutoPanDelta(47.9, 47.8), 0);
+  test('a degenerate viewport pans nothing', () {
+    expect(edgeAutoPanDelta(0, 0), 0);
+    expect(edgeAutoPanDelta(10, -5), 0);
   });
 }

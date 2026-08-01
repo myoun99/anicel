@@ -184,9 +184,15 @@ class VerticalWritingText extends StatelessWidget {
         // one no longer throws — `SectionBandZone` passes a null extent and
         // is saved today only by the Positioned around it.
         child: CustomPaint(
-          // Two ems across: one for the glyph, one so a corner-shifted `。`
-          // has somewhere to go without meeting a ClipRect.
-          size: Size(fontSize * 2, cellCount * fontSize * lineHeight),
+          // One em across, plus headroom ONLY when something in the text
+          // actually moves to a corner. Reserving the spare em always made
+          // every SE name pay for a punctuation form they never contain:
+          // the 16px name box's FittedBox went width-limited at 16/18 and
+          // shrank every label ~11%.
+          size: Size(
+            fontSize * (1 + 2 * _maxShiftEm(text, tateChuYokoDigits)),
+            cellCount * fontSize * lineHeight,
+          ),
           painter: _VerticalWritingPainter(
             text: text,
             style: resolved,
@@ -198,6 +204,21 @@ class VerticalWritingText extends StatelessWidget {
       ),
     );
   }
+}
+
+/// The largest corner shift anything in [text] takes, as an em fraction —
+/// zero for text with no shifted glyph, which is most of it.
+double _maxShiftEm(String text, int tateChuYokoDigits) {
+  var most = 0.0;
+  for (final cell in verticalTextCells(
+    text,
+    tateChuYokoDigits: tateChuYokoDigits,
+  )) {
+    if (cell.shiftEm > most) {
+      most = cell.shiftEm;
+    }
+  }
+  return most;
 }
 
 class _VerticalWritingPainter extends CustomPainter {

@@ -22,6 +22,17 @@ import 'timeline_grid_metrics.dart';
 /// not a second block edge.
 const double _selectedLaneKeyBorderWidth = 4 / 3;
 
+/// How short a stood-up lane label may get before its column sheds a
+/// control instead — two frame rows of vertical writing, the same floor the
+/// x-sheet's layer heading keeps (R10 R6). Long names pack into it; what
+/// they must not do is pack into three pixels.
+const double _laneLabelFloor = 2 * timelineFrameCellWidth;
+
+/// The stood-up navigator (three 20px buttons) and value readout, plus
+/// their leading gaps.
+const double _laneNavigatorExtent = 3 * 20 + 4;
+const double _laneValueExtent = 20;
+
 /// The label cell of one property lane: an AE-style property name, the
 /// keyframe navigator (◀ previous key · ◆ toggle key at the playhead · ▶
 /// next key) and the property's value at the playhead — tappable to type a
@@ -46,6 +57,7 @@ class TimelineLaneControlsRow extends StatefulWidget {
     this.keyPrefix = 'timeline',
     this.width,
     this.height,
+    this.minContentExtent,
     this.leadingInset = 0,
   });
 
@@ -81,6 +93,11 @@ class TimelineLaneControlsRow extends StatefulWidget {
   /// Explicit cell size; defaults to the horizontal rail-row geometry.
   final double? width;
   final double? height;
+
+  /// What the stood-up contents need along the cell's own axis even when
+  /// [height] is less — the cell then CLIPS rather than overflowing, the
+  /// same degradation the x-sheet's layer header takes (R10 R6).
+  final double? minContentExtent;
 
   @override
   State<TimelineLaneControlsRow> createState() =>
@@ -416,7 +433,13 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
                 // (each effect). The shared `fx` glyph, so restyling fx
                 // still happens in exactly one place.
                 if (lane.groupEnabled != null) ...[
-                  const SizedBox(width: 4),
+                  // Along the ROW's axis: a width-only box contributes
+                  // nothing to a vertical Flex, so on the sheet the switch
+                  // sat flush against the label.
+                  SizedBox(
+                    width: widget.axis == Axis.horizontal ? 4 : null,
+                    height: widget.axis == Axis.horizontal ? null : 4,
+                  ),
                   IconButton(
                     key: ValueKey<String>(
                       '$_keyPrefix-lane-group-fx-${layer.id}-${lane.laneId}',
@@ -483,22 +506,44 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
         ],
       );
     } else {
-      // X-sheet lane column header: the same controls stacked vertically.
-      // The NAME takes the remainder (the row's `Flexible`, stood up) so a
-      // long lane label packs instead of pushing the navigator off the end.
-      content = Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Expanded(child: label),
-          if (lane.showsKeyNavigator) ...[
-            const SizedBox(height: 4),
-            _navigator(colorScheme),
-          ],
-          if (valueLabel != null) ...[
-            const SizedBox(height: 4),
-            _valueCell(colorScheme, valueLabel),
-          ],
-        ],
+      // X-sheet lane column header: the same controls stacked vertically,
+      // and the same rule the LAYER heading beside it follows — the NAME is
+      // what a heading is for, so it is paid first and the controls shed.
+      //
+      // R10 R6: without that, the label was simply `Expanded` over whatever
+      // the navigator and the value left, and at the default dock height
+      // 'Position' packed into 35px — 2.6px per glyph, against the layer
+      // heading's guaranteed 48 one column to its left.
+      content = LayoutBuilder(
+        builder: (context, constraints) {
+          final extent = constraints.maxHeight;
+          // Value first (it is a readout, and the same number is on the
+          // timeline rail), then the navigator (whose diamond is also on
+          // the frame axis).
+          final showsValue =
+              valueLabel != null &&
+              extent >= _laneLabelFloor + _laneValueExtent;
+          final showsNavigator =
+              lane.showsKeyNavigator &&
+              extent >=
+                  _laneLabelFloor +
+                      _laneNavigatorExtent +
+                      (showsValue ? _laneValueExtent : 0);
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              Expanded(child: label),
+              if (showsNavigator) ...[
+                const SizedBox(height: 4),
+                _navigator(colorScheme),
+              ],
+              if (showsValue) ...[
+                const SizedBox(height: 4),
+                _valueCell(colorScheme, valueLabel),
+              ],
+            ],
+          );
+        },
       );
     }
 
@@ -536,7 +581,27 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
                 Expanded(child: content),
               ],
             )
-          : content,
+          : _clipToContent(content),
+    );
+  }
+
+  /// Below the host's stated content extent the cell CLIPS instead of
+  /// striping — the x-sheet's layer header takes the same degradation, and
+  /// a lane column that overflowed while its neighbour clipped would be the
+  /// only yellow stripe on the panel.
+  Widget _clipToContent(Widget child) {
+    final extent = widget.minContentExtent;
+    final height = widget.height;
+    if (extent == null || height == null || height >= extent) {
+      return child;
+    }
+    return ClipRect(
+      child: OverflowBox(
+        alignment: Alignment.topCenter,
+        minHeight: extent,
+        maxHeight: extent,
+        child: child,
+      ),
     );
   }
 }
