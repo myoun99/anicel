@@ -1172,7 +1172,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    const bottomScrollbarRailHeight = 16.0;
+    const bottomScrollbarRailHeight = timelineBottomScrollbarRailHeight;
     final rows = buildTimelineDisplayRows(
       layers: widget.layers,
       expandedLayerIds: widget.expandedLaneLayerIds,

@@ -71,10 +71,60 @@ Widget layerRailSlot(Axis axis, double extent, [Widget? child]) {
 /// [axis] is the rail's own direction: horizontal for the timeline's rows
 /// and the storyboard's, vertical for the x-sheet's column headers, where
 /// the identical list runs top-to-bottom instead of left-to-right.
+/// A slot a host can DECLINE to carry.
+///
+/// R10 R6: the stood-up x-sheet header stacks the rail single-file down a
+/// 28px column, so in a short panel it cannot afford every control and has
+/// to shed some. Shedding is the skeleton's own answer — the slot and its
+/// gap leave together, so what remains stays in its place and the legend
+/// above stays over it. Naming them means the ladder is a list, not seven
+/// booleans that can disagree.
+enum LayerRailSlot {
+  laneToggle,
+  timesheet,
+  mark,
+  fillReference,
+  fx,
+  mute,
+  opacity,
+}
+
+double _shedSlotExtent(LayerRailSlot slot) => switch (slot) {
+  // Slots that own a following chip gap take it with them.
+  LayerRailSlot.laneToggle => layerLaneToggleSlotWidth,
+  LayerRailSlot.timesheet => layerTimesheetSlotWidth + layerControlChipGap,
+  LayerRailSlot.mark => layerMarkSlotWidth + layerControlChipGap,
+  LayerRailSlot.fillReference => layerFillReferenceSlotWidth,
+  LayerRailSlot.fx => layerFxSlotWidth,
+  LayerRailSlot.mute => layerMuteSlotWidth,
+  LayerRailSlot.opacity => layerOpacitySlotWidth,
+};
+
+/// The TWIRL glyph, for every rail surface in either orientation.
+///
+/// R10 R6 shipped two of them disagreeing: the layer's lane toggle drew
+/// `▾ = open` while the lane GROUP header beside it drew `▸ = open`, so the
+/// identical state read as opposite arrows two columns apart. `▾ open, ▸
+/// shut` is what every other twirl in the app says, and pointing the glyph
+/// at where the lanes physically open would have made the sheet disagree
+/// with the timeline instead — one convention beats two geometries.
+IconData layerRailTwirlIcon({required bool expanded}) =>
+    expanded ? Icons.arrow_drop_down : Icons.arrow_right;
+
+/// What a set of shed slots costs a rail row end to end.
+double layerRailShedExtent(Set<LayerRailSlot> shed) {
+  var total = 0.0;
+  for (final slot in shed) {
+    total += _shedSlotExtent(slot);
+  }
+  return total;
+}
+
 List<Widget> layerRailLeadingCells({
   double indent = 0,
   Axis axis = Axis.horizontal,
   bool includeSectionSlot = true,
+  Set<LayerRailSlot> shed = const {},
   Widget? sectionBand,
   Widget? laneToggle,
   Widget? timesheet,
@@ -96,11 +146,18 @@ List<Widget> layerRailLeadingCells({
           ? LayerSectionBandCell(axis: axis)
           : layerRailSlot(axis, layerSectionLabelSlotWidth, sectionBand),
     layerRailSlot(axis, layerRailSectionGap + indent),
-    layerRailSlot(axis, layerLaneToggleSlotWidth, laneToggle),
-    layerRailSlot(axis, layerTimesheetSlotWidth, timesheet),
-    layerRailSlot(axis, layerControlChipGap),
-    layerRailSlot(axis, layerMarkSlotWidth, mark),
-    layerRailSlot(axis, layerControlChipGap),
+    if (!shed.contains(LayerRailSlot.laneToggle))
+      layerRailSlot(axis, layerLaneToggleSlotWidth, laneToggle),
+    if (!shed.contains(LayerRailSlot.timesheet)) ...[
+      layerRailSlot(axis, layerTimesheetSlotWidth, timesheet),
+      layerRailSlot(axis, layerControlChipGap),
+    ],
+    if (!shed.contains(LayerRailSlot.mark)) ...[
+      layerRailSlot(axis, layerMarkSlotWidth, mark),
+      layerRailSlot(axis, layerControlChipGap),
+    ],
+    // The KIND icon and the NAME are what a column heading IS; neither is
+    // ever shed.
     layerRailSlot(axis, layerTypeSlotWidth, typeButton),
     layerRailSlot(axis, layerControlChipGap),
   ];
@@ -112,26 +169,29 @@ List<Widget> layerRailLeadingCells({
 /// as distinct from a row that merely has nothing to put there.
 List<Widget> layerRailTrailingCells({
   Axis axis = Axis.horizontal,
-  bool hasFillReferenceColumn = true,
+  Set<LayerRailSlot> shed = const {},
   Widget? fillReference,
   Widget? fx,
   bool hasOnionColumn = false,
   Widget? onion,
   Widget? visibility,
   Widget? mute,
-  bool hasOpacityColumn = true,
   Widget? opacity,
   bool hasBlendColumn = false,
   Widget? blend,
 }) {
   return [
-    if (hasFillReferenceColumn)
+    if (!shed.contains(LayerRailSlot.fillReference))
       layerRailSlot(axis, layerFillReferenceSlotWidth, fillReference),
-    layerRailSlot(axis, layerFxSlotWidth, fx),
+    if (!shed.contains(LayerRailSlot.fx))
+      layerRailSlot(axis, layerFxSlotWidth, fx),
     if (hasOnionColumn) layerRailSlot(axis, layerOnionSlotWidth, onion),
+    // The EYE is never shed: hiding a layer is the one control a timesheet
+    // reader reaches for.
     layerRailSlot(axis, layerVisibilitySlotWidth, visibility),
-    layerRailSlot(axis, layerMuteSlotWidth, mute),
-    if (hasOpacityColumn)
+    if (!shed.contains(LayerRailSlot.mute))
+      layerRailSlot(axis, layerMuteSlotWidth, mute),
+    if (!shed.contains(LayerRailSlot.opacity))
       layerRailSlot(axis, layerOpacitySlotWidth, opacity),
     if (hasBlendColumn) layerRailSlot(axis, layerBlendSlotWidth, blend),
   ];
@@ -168,9 +228,8 @@ double _trailingSlotWidth(LayerRailTrailingSlot slot) => switch (slot) {
 /// therefore without going stale the next time a column is added.
 double layerRailTrailingWidth({
   LayerRailTrailingSlot from = LayerRailTrailingSlot.fillReference,
-  bool hasFillReferenceColumn = true,
+  Set<LayerRailSlot> shed = const {},
   bool hasOnionColumn = false,
-  bool hasOpacityColumn = true,
   bool hasBlendColumn = false,
 }) {
   var total = 0.0;
@@ -179,11 +238,15 @@ double layerRailTrailingWidth({
       continue;
     }
     final carried = switch (slot) {
-      LayerRailTrailingSlot.fillReference => hasFillReferenceColumn,
+      LayerRailTrailingSlot.fillReference => !shed.contains(
+        LayerRailSlot.fillReference,
+      ),
+      LayerRailTrailingSlot.fx => !shed.contains(LayerRailSlot.fx),
+      LayerRailTrailingSlot.mute => !shed.contains(LayerRailSlot.mute),
+      LayerRailTrailingSlot.opacity => !shed.contains(LayerRailSlot.opacity),
       LayerRailTrailingSlot.onion => hasOnionColumn,
-      LayerRailTrailingSlot.opacity => hasOpacityColumn,
       LayerRailTrailingSlot.blend => hasBlendColumn,
-      _ => true,
+      LayerRailTrailingSlot.visibility => true,
     };
     if (!carried) {
       continue;
@@ -260,7 +323,9 @@ class LayerTypeButton extends StatelessWidget {
         color: colorScheme.onSurfaceVariant,
       );
     } else {
-      label = semanticLabel ?? (kind == null ? 'Row' : layerTypeSemanticLabel(kind!));
+      label =
+          semanticLabel ??
+          (kind == null ? 'Row' : layerTypeSemanticLabel(kind!));
       glyph = Icon(
         icon ?? layerKindIcon(kind!),
         key: ValueKey<String>('$keyPrefix-layer-kind-icon-$idValue'),

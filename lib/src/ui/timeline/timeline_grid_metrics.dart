@@ -53,6 +53,12 @@ const double timelineSectionLabelGutterWidth = 0;
 /// the frame grid.
 const double timelineVerticalScrollbarWidth = 14;
 
+/// The horizontal scrollbar rail closing the bottom of a grid. Both grids
+/// declared it privately (R10 R6 found the third copy while deriving the
+/// x-sheet's header against it); a number two surfaces subtract from the
+/// same viewport belongs to neither of them.
+const double timelineBottomScrollbarRailHeight = 16;
+
 class TimelineGridMetrics {
   static const int defaultMinimumVisibleFrameCells = 24;
 

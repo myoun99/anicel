@@ -9,6 +9,7 @@ import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart' show AppColors;
 import 'layer_label_controls.dart' show LayerSectionBandCell, fxGlyph;
+import 'layer_rail_columns.dart' show layerRailTwirlIcon;
 import 'property_lane_model.dart';
 import 'transform_lane_policy.dart' show laneSelectionCoversBandRow;
 import 'timeline_cell_style.dart' show timelineDrawingStartColor;
@@ -207,9 +208,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           buttonKey: ValueKey<String>(
             '$_keyPrefix-lane-prev-key-${layer.id}-${lane.laneId}',
           ),
-          icon: horizontal
-              ? Icons.chevron_left
-              : Icons.keyboard_arrow_up,
+          icon: horizontal ? Icons.chevron_left : Icons.keyboard_arrow_up,
           enabled: previousKey != null && onSelectFrame != null,
           onTap: () => onSelectFrame!(previousKey!),
         ),
@@ -240,9 +239,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           buttonKey: ValueKey<String>(
             '$_keyPrefix-lane-next-key-${layer.id}-${lane.laneId}',
           ),
-          icon: horizontal
-              ? Icons.chevron_right
-              : Icons.keyboard_arrow_down,
+          icon: horizontal ? Icons.chevron_right : Icons.keyboard_arrow_down,
           enabled: nextKey != null && onSelectFrame != null,
           onTap: () => onSelectFrame!(nextKey!),
         ),
@@ -326,10 +323,18 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           onTap: laneEdit?.onSetValue == null
               ? null
               : () => _startValueEdit(valueLabel),
-          child: Text(
-            _scrubPreview ?? valueLabel,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 11, color: colorScheme.primary),
+          // AE's blue value, scaled to whatever the column gives it rather
+          // than ellipsised away. R10 R6 narrowed the x-sheet's lane column
+          // 164 → 28, where `0.0, 0.0` ellipsises to `0…` — the scrub and
+          // the tap still worked, so nothing threw and nothing noticed.
+          child: FittedBox(
+            fit: BoxFit.scaleDown,
+            child: Text(
+              _scrubPreview ?? valueLabel,
+              maxLines: 1,
+              softWrap: false,
+              style: TextStyle(fontSize: 11, color: colorScheme.primary),
+            ),
           ),
         ),
       ),
@@ -384,13 +389,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
                   const SizedBox(width: 10),
                 ],
                 Icon(
-                  widget.axis == Axis.horizontal
-                      ? (lane.groupExpanded
-                            ? Icons.arrow_drop_down
-                            : Icons.arrow_right)
-                      : (lane.groupExpanded
-                            ? Icons.arrow_right
-                            : Icons.arrow_drop_down),
+                  layerRailTwirlIcon(expanded: lane.groupExpanded),
                   size: 16,
                 ),
                 Flexible(
