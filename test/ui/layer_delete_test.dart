@@ -15,6 +15,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 
 import 'flyout_test_helpers.dart';
 
@@ -281,12 +282,14 @@ String _layerText(WidgetTester tester, LayerId layerId) {
   return tester.widget<Text>(textFinder.first).data!;
 }
 
+/// R10 R6: a column name reads DOWN its 28px column, so it is vertical
+/// writing rather than a `Text` — one painter draws the whole stack.
 String _xsheetLayerText(WidgetTester tester, LayerId layerId) {
   final textFinder = find.descendant(
     of: find.byKey(ValueKey<String>('xsheet-layer-name-$layerId')),
-    matching: find.byType(Text),
+    matching: find.byType(VerticalWritingText),
   );
-  return tester.widget<Text>(textFinder.first).data!;
+  return tester.widget<VerticalWritingText>(textFinder.first).text;
 }
 
 Project _project({List<Layer>? layers}) {

@@ -2,27 +2,67 @@
 ///
 /// These values mirror the current [LayerTimelineGrid] layout so calculation-
 /// only virtualization helpers can use the same geometry as the rendered UI.
+///
+/// The constants below are the HORIZONTAL timeline's geometry, named at the
+/// top level so the TRANSPOSED surface can derive from them (R10 R6).
+///
+/// The x-sheet is the same grid turned on its side, and until R6 it said so
+/// only in a comment: it carried its own 36/164/72/92, hand-tuned and free
+/// to drift. Every one of those numbers is now one of these constants
+/// rotated, so when the timeline's layer area is made compact the sheet
+/// follows without anyone remembering to move it.
+///
+/// The mapping, in one place:
+///
+/// | x-sheet                  | is the timeline's        |
+/// |--------------------------|--------------------------|
+/// | column width             | row height               |
+/// | frame row height         | frame cell width         |
+/// | header block height      | rail width               |
+/// | frame-number rail width  | ruler height             |
+library;
+
+/// Width of one frame cell on the frame axis.
+/// 48 → 24 (R-toolbar slim round, CSP/TVPaint density).
+const double timelineFrameCellWidth = 24;
+
+/// Height of one layer row on the layer axis.
+/// 52 → 28 (same round).
+const double timelineLayerRowHeight = 28;
+
+/// Width of the fixed layer rail.
+/// 288 → 312 when the layer rows gained the fx switch (R3 ⑪); the row
+/// controls need the width, cramming them under 288 overflowed.
+/// 312 → 340 → 372: wider layer-name column (UI-R3 #8, UI-R4 #9; the
+/// R4 hop also absorbs the legend's new kind cell).
+/// 372 → 434 (R27 #6): the blend-mode dropdown moved from the toolbar
+/// into the label's rightmost slot — the rail pays its width, as the
+/// user directed ("레이어라벨 더 키워야겟지").
+const double timelineLayerControlsWidth = 434;
+
+/// How thick the frame RULER is across the layer axis — exactly one row
+/// (`headerHeight = _metrics.layerRowHeight` in the grid), which is why the
+/// ruler's ticks line up with the rows below it.
+const double timelineFrameRulerExtent = timelineLayerRowHeight;
+
+/// The section-bracket gutter leading the rail: retired in UI-R5, section
+/// labels live INSIDE their first row now.
+const double timelineSectionLabelGutterWidth = 0;
+
+/// Width reserved for the visible vertical scrollbar between the rail and
+/// the frame grid.
+const double timelineVerticalScrollbarWidth = 14;
+
 class TimelineGridMetrics {
   static const int defaultMinimumVisibleFrameCells = 24;
 
   const TimelineGridMetrics({
     this.minimumVisibleFrameCells = defaultMinimumVisibleFrameCells,
-    // 288 → 312 when the layer rows gained the fx switch (R3 ⑪); the row
-    // controls need the width, cramming them under 288 overflowed.
-    // 312 → 340 → 372: wider layer-name column (UI-R3 #8, UI-R4 #9; the
-    // R4 hop also absorbs the legend's new kind cell).
-    // 372 → 434 (R27 #6): the blend-mode dropdown moved from the toolbar
-    // into the label's rightmost slot — the rail pays its width, as the
-    // user directed ("레이어라벨 더 키워야겟지").
-    this.layerControlsWidth = 434,
-    // 48×52 → 24×28 (R-toolbar slim round, CSP/TVPaint density): the frame
-    // shell reads twice as many cells and rows in the same viewport.
-    this.frameCellWidth = 24,
-    this.layerRowHeight = 28,
-    this.verticalScrollbarWidth = 14,
-    // 24 → 0 (UI-R5): the section-bracket gutter is retired — section
-    // labels live INSIDE their first row now (user rule).
-    this.sectionLabelGutterWidth = 0,
+    this.layerControlsWidth = timelineLayerControlsWidth,
+    this.frameCellWidth = timelineFrameCellWidth,
+    this.layerRowHeight = timelineLayerRowHeight,
+    this.verticalScrollbarWidth = timelineVerticalScrollbarWidth,
+    this.sectionLabelGutterWidth = timelineSectionLabelGutterWidth,
   }) : assert(minimumVisibleFrameCells >= 0),
        assert(layerControlsWidth >= 0),
        assert(frameCellWidth > 0),

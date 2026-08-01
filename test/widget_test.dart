@@ -7,9 +7,11 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/input/app_input_settings.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/storyboard_timeline_layout.dart';
+import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
+import 'helpers/vertical_text_finder.dart';
 import 'ui/storyboard_cut_block_probe.dart';
 import 'ui/timeline/timeline_cell_probe.dart';
 import 'ui/timeline/timeline_row_chrome_probe.dart';
@@ -760,17 +762,22 @@ void main() {
 
     // The rail is painterized (UI-R14 #1): row geometry probes off its
     // painter.
-    expect(xsheetFrameRowGlobalRect(tester, 0).height, 36);
+    //
+    // R10 R6: a frame ROW is a frame CELL turned on its side, so the sheet
+    // reads the slider 1:1 instead of scaling it by an old 36/24 ratio —
+    // one slider position now means one frame extent on both surfaces.
+    expect(
+      xsheetFrameRowGlobalRect(tester, 0).height,
+      timelineFrameCellWidth,
+    );
 
-    // The X-sheet row height tracks the slider proportionally (36 at the
-    // slim default 24, ratio 1.5).
     tester
         .widget<FieldSlider>(
           find.byKey(const ValueKey<String>('timeline-zoom-slider')),
         )
         .onChanged!(72);
     await tester.pumpAndSettle();
-    expect(xsheetFrameRowGlobalRect(tester, 0).height, 108);
+    expect(xsheetFrameRowGlobalRect(tester, 0).height, 72);
   });
 
   testWidgets('the time display toggle switches the counter to seconds', (
@@ -1676,10 +1683,11 @@ Line 8''';
 
     await tapTimelineCell(tester, 'default-layer-1', 0, prefix: 'xsheet');
     await tester.pumpAndSettle();
+    // R10 R6: the selected column's name is vertical writing now.
     expect(
       find.descendant(
         of: find.byKey(const ValueKey<String>('xsheet-selected-layer')),
-        matching: find.text('A'),
+        matching: findVerticalText('A'),
       ),
       findsOneWidget,
     );

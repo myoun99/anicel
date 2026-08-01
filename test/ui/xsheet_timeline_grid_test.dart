@@ -10,6 +10,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_ruler_cursor_overlay.dart';
 
+import '../helpers/vertical_text_finder.dart';
 import 'timeline/timeline_cell_probe.dart';
 import 'timeline/timeline_ruler_probe.dart';
 
@@ -21,8 +22,10 @@ void main() {
   testWidgets('renders integrated layer controls in headers', (tester) async {
     await tester.pumpWidget(_grid());
 
-    expect(find.text('Layer 1'), findsOneWidget);
-    expect(find.text('Layer 2'), findsOneWidget);
+    // R10 R6: column names read DOWN their 28px column now, so they are
+    // vertical writing rather than `Text`.
+    expect(findVerticalText('Layer 1'), findsOneWidget);
+    expect(findVerticalText('Layer 2'), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('xsheet-add-layer-button')),
       findsNothing,

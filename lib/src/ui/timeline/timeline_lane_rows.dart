@@ -6,6 +6,7 @@ import '../input/eager_pan_gesture_recognizer.dart';
 
 import '../../models/layer.dart';
 import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
+import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart' show AppColors;
 import 'layer_label_controls.dart' show LayerSectionBandCell, fxGlyph;
 import 'property_lane_model.dart';
@@ -193,14 +194,22 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     final onSelectFrame = widget.onSelectFrame;
     final laneEdit = widget.laneEdit;
 
-    return Row(
+    // R10 R6: stood up with the rest of the x-sheet header. The three
+    // buttons are ~65px side by side and the sheet's columns are 28 — the
+    // navigator was the widest thing in a column that no longer exists.
+    // Chevrons follow the axis too: on the sheet the previous key is UP.
+    final horizontal = widget.axis == Axis.horizontal;
+    return Flex(
+      direction: widget.axis,
       mainAxisSize: MainAxisSize.min,
       children: [
         _NavigatorButton(
           buttonKey: ValueKey<String>(
             '$_keyPrefix-lane-prev-key-${layer.id}-${lane.laneId}',
           ),
-          icon: Icons.chevron_left,
+          icon: horizontal
+              ? Icons.chevron_left
+              : Icons.keyboard_arrow_up,
           enabled: previousKey != null && onSelectFrame != null,
           onTap: () => onSelectFrame!(previousKey!),
         ),
@@ -231,7 +240,9 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           buttonKey: ValueKey<String>(
             '$_keyPrefix-lane-next-key-${layer.id}-${lane.laneId}',
           ),
-          icon: Icons.chevron_right,
+          icon: horizontal
+              ? Icons.chevron_right
+              : Icons.keyboard_arrow_down,
           enabled: nextKey != null && onSelectFrame != null,
           onTap: () => onSelectFrame!(nextKey!),
         ),
@@ -357,8 +368,10 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           child: Padding(
             padding: widget.axis == Axis.horizontal
                 ? const EdgeInsets.only(right: 8)
-                : const EdgeInsets.symmetric(horizontal: 2),
-            child: Row(
+                : const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+            // R10 R6: stood up on the sheet, like every other header.
+            child: Flex(
+              direction: widget.axis,
               mainAxisAlignment: widget.axis == Axis.horizontal
                   ? MainAxisAlignment.start
                   : MainAxisAlignment.center,
@@ -371,21 +384,34 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
                   const SizedBox(width: 10),
                 ],
                 Icon(
-                  lane.groupExpanded
-                      ? Icons.arrow_drop_down
-                      : Icons.arrow_right,
+                  widget.axis == Axis.horizontal
+                      ? (lane.groupExpanded
+                            ? Icons.arrow_drop_down
+                            : Icons.arrow_right)
+                      : (lane.groupExpanded
+                            ? Icons.arrow_right
+                            : Icons.arrow_drop_down),
                   size: 16,
                 ),
                 Flexible(
-                  child: Text(
-                    lane.label,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      color: colorScheme.onSurface,
-                    ),
-                  ),
+                  child: widget.axis == Axis.horizontal
+                      ? Text(
+                          lane.label,
+                          overflow: TextOverflow.ellipsis,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: colorScheme.onSurface,
+                          ),
+                        )
+                      : VerticalWritingText(
+                          text: lane.label,
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                            color: colorScheme.onSurface,
+                          ),
+                        ),
                 ),
                 // R6: the group's own switch, for the headers that have one
                 // (each effect). The shared `fx` glyph, so restyling fx
@@ -423,11 +449,16 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       );
     }
     final valueLabel = lane.valueLabel?.call(widget.currentFrameIndex);
-    final label = Text(
-      lane.label,
-      overflow: TextOverflow.ellipsis,
-      style: TextStyle(fontSize: 12, color: colorScheme.onSurfaceVariant),
+    final labelStyle = TextStyle(
+      fontSize: 12,
+      color: colorScheme.onSurfaceVariant,
     );
+    // A lane's name reads down its column on the sheet, through the shared
+    // vertical-writing table — 'Position' will not fit across 28px, and
+    // ellipsis would have left one glyph and a dot.
+    final label = widget.axis == Axis.horizontal
+        ? Text(lane.label, overflow: TextOverflow.ellipsis, style: labelStyle)
+        : VerticalWritingText(text: lane.label, style: labelStyle);
 
     final Widget content;
     if (widget.axis == Axis.horizontal) {
@@ -454,10 +485,12 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       );
     } else {
       // X-sheet lane column header: the same controls stacked vertically.
+      // The NAME takes the remainder (the row's `Flexible`, stood up) so a
+      // long lane label packs instead of pushing the navigator off the end.
       content = Column(
-        mainAxisAlignment: MainAxisAlignment.center,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          label,
+          Expanded(child: label),
           if (lane.showsKeyNavigator) ...[
             const SizedBox(height: 4),
             _navigator(colorScheme),
@@ -485,7 +518,8 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           ? (widget.leadingInset > 0
                 ? const EdgeInsets.only(right: 8)
                 : const EdgeInsets.only(left: 24, right: 8))
-          : const EdgeInsets.symmetric(horizontal: 8),
+          // 8 → 2: a 28px column cannot spend 16 of it on side padding.
+          : const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerLow,
         border: Border.all(color: colorScheme.outlineVariant, width: 0.5),

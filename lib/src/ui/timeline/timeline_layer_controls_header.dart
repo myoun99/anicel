@@ -14,6 +14,7 @@ import 'timeline_grid_metrics.dart';
 import 'timeline_row_filter.dart';
 import 'timeline_section_policy.dart';
 import '../text/app_strings.dart';
+import '../text/vertical_writing_text.dart';
 
 /// The rail legend's bulk commands (session-backed; the host wires them).
 /// Project-state sweeps (sheet/mark/fill-ref) land as ONE undo; the
@@ -92,10 +93,19 @@ class LayerLegendCallbacks {
 /// lined up exactly over its slot (Excel-header reading), and clicking a
 /// legend icon opens the shared flyout with that column's bulk commands.
 /// The corner cell above the section gutter opens the sections flyout.
+///
+/// R10 R6: stood up ([axis] vertical) this is the X-SHEET'S CORNER — the
+/// box above the frame-number rail that used to read 'Frame' and label
+/// nothing. Same list, same order, same slot extents, turned 90°, so the
+/// sheet's column headers get named by the icons that name the timeline's.
 class TimelineLayerControlsHeader extends StatelessWidget {
   const TimelineLayerControlsHeader({
     super.key,
     required this.metrics,
+    this.axis = Axis.horizontal,
+    this.railExtent,
+    this.hasFillReferenceColumn = true,
+    this.hasOpacityColumn = true,
     this.legend,
     this.hiddenSections = const {},
     this.onToggleSection,
@@ -118,6 +128,22 @@ class TimelineLayerControlsHeader extends StatelessWidget {
   final AppLanguage blendLanguage;
 
   final TimelineGridMetrics metrics;
+
+  /// The rail's own direction (R10 R6): horizontal above the timeline's
+  /// rail, vertical in the x-sheet's corner.
+  final Axis axis;
+
+  /// Overrides how far the legend runs along [axis]. The x-sheet's corner
+  /// passes the header block's resolved height, which is the natural
+  /// stood-up rail only when the panel is tall enough to hold it; null
+  /// takes the natural extent.
+  final double? railExtent;
+
+  /// The optional columns the ROWS carry. The legend must drop exactly what
+  /// they drop or its icons stop sitting over the columns they name — the
+  /// x-sheet's stood-up header sheds these two in a short panel.
+  final bool hasFillReferenceColumn;
+  final bool hasOpacityColumn;
 
   /// Null renders a display-only legend (no flyouts) — passive hosts.
   final LayerLegendCallbacks? legend;
@@ -234,24 +260,58 @@ class TimelineLayerControlsHeader extends StatelessWidget {
     Widget legendIcon(IconData icon, {bool engaged = false}) =>
         Icon(icon, size: 13, color: engaged ? AppColors.accent : restColor);
 
+    final isVertical = axis == Axis.vertical;
+    // Which optional columns this host carries. Hoisted because the stood-up
+    // legend has to SIZE itself from the same answer it lays out from — a
+    // Column has no `Expanded` slack to hide a disagreement in, unlike the
+    // horizontal rail where the LAYER heading absorbs it.
+    final bool hasOnion = legend?.onToggleOnionSkinForDisplayed != null;
+    final bool hasBlend =
+        legend?.onSetBlendModeForDisplayed != null && displayedLayerIds != null;
+
+    // The legend spans the rail: the rail's extent along its own axis, one
+    // row across it. Stood up, the two swap — and the rail's extent is the
+    // TIMELINE'S, because the x-sheet's own `layerControlsWidth` means its
+    // frame-number rail, a different thing entirely.
+    final double railExtent =
+        this.railExtent ??
+        (isVertical
+            ? timelineLayerControlsWidth -
+                  (hasOnion ? 0 : layerOnionSlotWidth) -
+                  (hasBlend ? 0 : layerBlendSlotWidth) -
+                  (hasFillReferenceColumn ? 0 : layerFillReferenceSlotWidth) -
+                  (hasOpacityColumn ? 0 : layerOpacitySlotWidth)
+            : metrics.layerControlsWidth);
+    final double crossExtent = isVertical
+        ? metrics.layerControlsWidth
+        : metrics.layerRowHeight;
+
     return Container(
-      width: metrics.layerControlsWidth,
-      height: metrics.layerRowHeight,
+      width: isVertical ? crossExtent : railExtent,
+      height: isVertical ? railExtent : crossExtent,
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest,
         border: Border.all(color: colorScheme.outlineVariant),
       ),
-      child: Row(
+      child: Flex(
+        direction: axis,
         children: [
           Expanded(
             child: Padding(
-              padding: const EdgeInsets.only(right: 8),
-              child: Row(
+              // The rail's trailing breathing room. Stood up there is none
+              // to give: the sheet's header block is sized to exactly this
+              // list of slots, so 8px of padding is 8px of overflow.
+              padding: isVertical
+                  ? EdgeInsets.zero
+                  : const EdgeInsets.only(right: 8),
+              child: Flex(
+                direction: axis,
                 children: [
                   // The rows' own column skeleton, so every legend icon
                   // sits over the column it names (R9 #22). The sections
                   // cell rides the reserved band slot (UI-R5/R6 #5).
                   ...layerRailLeadingCells(
+                    axis: axis,
                     // Over the rows' inline section band (UI-R5/R6 #5):
                     // the sections flyout.
                     sectionBand: cell(
@@ -387,23 +447,37 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                   ),
                   // Plain heading (R4 #3): the old LAYER ▾ flyout's jobs
                   // moved to the command bar (add) and the lane-column
-                  // toggle (fold all).
+                  // toggle (fold all). Stood up it writes vertically, the
+                  // same table the columns' own names use.
                   Expanded(
-                    child: Align(
-                      alignment: Alignment.centerLeft,
-                      child: Text(
-                        'LAYER',
-                        key: const ValueKey<String>('legend-layer'),
-                        style: TextStyle(
-                          fontSize: 9,
-                          letterSpacing: 0.8,
-                          fontWeight: FontWeight.w600,
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
-                    ),
+                    child: isVertical
+                        ? VerticalWritingText(
+                            key: const ValueKey<String>('legend-layer'),
+                            text: 'LAYER',
+                            style: TextStyle(
+                              fontSize: 9,
+                              fontWeight: FontWeight.w600,
+                              color: colorScheme.onSurfaceVariant,
+                            ),
+                          )
+                        : Align(
+                            alignment: Alignment.centerLeft,
+                            child: Text(
+                              'LAYER',
+                              key: const ValueKey<String>('legend-layer'),
+                              style: TextStyle(
+                                fontSize: 9,
+                                letterSpacing: 0.8,
+                                fontWeight: FontWeight.w600,
+                                color: colorScheme.onSurfaceVariant,
+                              ),
+                            ),
+                          ),
                   ),
                   ...layerRailTrailingCells(
+                    axis: axis,
+                    hasFillReferenceColumn: hasFillReferenceColumn,
+                    hasOpacityColumn: hasOpacityColumn,
                     fillReference: cell(
                       keyValue: 'legend-fill-ref',
                       tooltip: AppText.strings.tlColFillReference,
@@ -472,7 +546,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     // displayed layers + the panel reveal. Hosts without
                     // the callback (storyboard rail) skip the COLUMN so
                     // their row columns stay aligned.
-                    hasOnionColumn: legend?.onToggleOnionSkinForDisplayed != null,
+                    hasOnionColumn: hasOnion,
                     onion: legend?.onToggleOnionSkinForDisplayed == null
                         ? null
                         : cell(
@@ -560,7 +634,11 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     // first to scope it). Gray at rest on the LAST
                     // committed value (UI-R6 #2); accent + live % while
                     // adjusting; preview per move, ONE write on release.
-                    opacity: legend != null && displayedLayerIds != null
+                    // Stood up, the bar stands down: a 28px-wide column is
+                    // not a slider, and a rotated one would lose the arena
+                    // (a vertical screen drag never reaches a horizontal
+                    // recognizer). The column keeps its heading.
+                    opacity: legend != null && displayedLayerIds != null && !isVertical
                         ? Tooltip(
                             message: 'All displayed layers opacity',
                             child: FieldSlider(
@@ -605,9 +683,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                     // without the bulk callback (the storyboard rail) skip
                     // the COLUMN so their row columns stay aligned (the
                     // onion precedent).
-                    hasBlendColumn:
-                        legend?.onSetBlendModeForDisplayed != null &&
-                        displayedLayerIds != null,
+                    hasBlendColumn: hasBlend,
                     blend:
                         legend?.onSetBlendModeForDisplayed == null ||
                             displayedLayerIds == null
