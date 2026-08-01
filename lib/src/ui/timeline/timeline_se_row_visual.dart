@@ -10,6 +10,7 @@ import '../../models/timeline_coverage.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import '../audio/waveform_painter.dart';
 import '../media/media_asset_drag_data.dart';
+import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
 import 'dialogue_fit_text.dart';
 import 'timeline_cell_style.dart';
@@ -480,14 +481,12 @@ class _SeNameBox extends StatelessWidget {
       fontWeight: FontWeight.bold,
       height: 1.05,
     );
+    // R10 R6: the vertical arm was its own glyph stack, so an SE name with
+    // a long vowel or a bracket — `ドアー`, `[SE]` — kept those glyphs lying
+    // the wrong way while the timesheet beside it rotated them. It reads
+    // the one shared table now.
     final writing = axis == Axis.horizontal
-        ? Column(
-            mainAxisSize: MainAxisSize.min,
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [
-              for (final glyph in name.characters) Text(glyph, style: style),
-            ],
-          )
+        ? VerticalWritingText(text: name, style: style, lineHeight: 1.05)
         : Text(name, maxLines: 1, softWrap: false, style: style);
     final box = Semantics(
       label: 'SE name $name',

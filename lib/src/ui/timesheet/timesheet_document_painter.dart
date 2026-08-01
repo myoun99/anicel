@@ -8,6 +8,7 @@ import '../../models/canvas_viewport.dart';
 import '../../models/timesheet_document.dart';
 import '../../models/timesheet_info.dart';
 import '../text/dialogue_fit_layout.dart';
+import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
 import '../timeline/timeline_drag_preview.dart';
 import 'timesheet_notation.dart';
@@ -1527,19 +1528,12 @@ class TimesheetDocumentPainter extends CustomPainter {
   /// A notation word written VERTICALLY down a chain of rows (UI-R11
   /// #14/#15 — リ/ピ/ー/ト one per row): with fewer rows than characters
   /// the glyphs shrink and pack so the whole word still fits the span.
-  /// Characters that ROTATE 90° in vertical writing (UI-R13 #3): the
-  /// long-vowel bar family reads as a vertical stroke down the column —
-  /// stacking the horizontal glyphs was 가로쓰기 in disguise.
-  static const Set<String> _rotatedVerticalChars = {
-    'ー',
-    '－',
-    'ｰ',
-    '〜',
-    '~',
-    '…',
-    '-',
-  };
-
+  ///
+  /// R10 R6: the rotation table and the shrink rule moved to
+  /// `ui/text/vertical_writing.dart` and the drawing to [paintVerticalText],
+  /// so the widget tree's section band writes vertically the same way this
+  /// sheet does — it used to stack every glyph upright and leave `ー` lying
+  /// on its side.
   void _paintVerticalWord(
     Canvas canvas,
     String word, {
@@ -1551,40 +1545,16 @@ class TimesheetDocumentPainter extends CustomPainter {
     if (word.isEmpty || rows <= 0) {
       return;
     }
-    final chars = word.split('');
-    const rowHeight = TimesheetDocumentLayout.rowHeight;
-    final step = rows >= chars.length
-        ? rowHeight
-        : rows * rowHeight / chars.length;
-    final fontSize = math.min(10.0, step - 3).clamp(4.0, 10.0).toDouble();
-    for (var index = 0; index < chars.length; index += 1) {
-      final char = chars[index];
-      if (_rotatedVerticalChars.contains(char)) {
-        final painter = TextPainter(
-          text: TextSpan(
-            text: char,
-            style: TextStyle(color: _ink, fontSize: fontSize),
-          ),
-          textDirection: TextDirection.ltr,
-          maxLines: 1,
-        )..layout();
-        canvas.save();
-        canvas.translate(centerX, top + index * step + step / 2 - 1);
-        canvas.rotate(math.pi / 2);
-        painter.paint(canvas, Offset(-painter.width / 2, -painter.height / 2));
-        canvas.restore();
-        continue;
-      }
-      _text(
-        canvas,
-        char,
-        Offset(centerX, top + index * step + (step - fontSize) / 2 - 1),
-        fontSize: fontSize,
-        color: _ink,
-        centeredAtX: true,
-        maxWidth: columnWidth - 2,
-      );
-    }
+    paintVerticalText(
+      canvas,
+      word,
+      style: const TextStyle(color: _ink, fontSize: 10),
+      centerX: centerX,
+      top: top,
+      mainExtent: rows * TimesheetDocumentLayout.rowHeight,
+      naturalCellExtent: TimesheetDocumentLayout.rowHeight,
+      maxCellWidth: columnWidth - 2,
+    );
   }
 
   void _text(
