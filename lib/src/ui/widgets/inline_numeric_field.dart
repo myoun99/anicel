@@ -28,6 +28,7 @@ class InlineNumericField extends StatefulWidget {
     this.textStyle,
     this.textAlign = TextAlign.center,
     this.signed = true,
+    this.keyboardType,
   });
 
   /// Seeds the field, and is selected whole so the first keystroke
@@ -45,8 +46,13 @@ class InlineNumericField extends StatefulWidget {
   final TextStyle? textStyle;
   final TextAlign textAlign;
 
-  /// HEX takes no sign; a signed offset does.
+  /// A signed offset takes a minus; a channel value does not.
   final bool signed;
+
+  /// Overrides the soft keyboard. HEX is the reason this exists: it wants
+  /// the field's focus/escape/commit behaviour but its digits run A–F, so
+  /// a numeric pad would leave a phone unable to type half of them.
+  final TextInputType? keyboardType;
 
   @override
   State<InlineNumericField> createState() => _InlineNumericFieldState();
@@ -106,10 +112,12 @@ class _InlineNumericFieldState extends State<InlineNumericField> {
         controller: _controller,
         autofocus: true,
         textAlign: widget.textAlign,
-        keyboardType: TextInputType.numberWithOptions(
-          decimal: true,
-          signed: widget.signed,
-        ),
+        keyboardType:
+            widget.keyboardType ??
+            TextInputType.numberWithOptions(
+              decimal: true,
+              signed: widget.signed,
+            ),
         inputFormatters: halfWidthNumerals,
         style: widget.textStyle ?? const TextStyle(fontSize: 12),
         decoration: const InputDecoration(
