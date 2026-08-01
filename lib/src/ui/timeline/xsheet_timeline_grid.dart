@@ -2551,6 +2551,7 @@ class _LayerHeader extends StatelessWidget {
                     onLayerBlendModeSelected != null &&
                         layerKindShowsBlendControl(layer.kind)
                     ? LayerBlendModeChip(
+                        axis: Axis.vertical,
                         keyValue: 'xsheet-layer-blend-${layer.id}',
                         optionKeyPrefix: 'xsheet-layer-blend-option-',
                         blendMode: layer.blendMode,
@@ -2579,8 +2580,12 @@ class _LayerHeader extends StatelessWidget {
   /// The header's opacity slider, live-following the session's drag preview
   /// when it targets this layer (UI-R6 #2).
   Widget _opacityField(Layer layer) {
+    // Stood up like every other control in this column: the fader fills
+    // upward and its readout writes downward. `RotatedBox` was not an
+    // option — see [FieldSlider.axis].
     Widget slider(double value) => FieldSlider(
       key: ValueKey<String>('xsheet-layer-opacity-${layer.id}'),
+      axis: Axis.vertical,
       min: 0,
       max: 1,
       value: value,

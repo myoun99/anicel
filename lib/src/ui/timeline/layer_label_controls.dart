@@ -169,7 +169,14 @@ class LayerBlendModeChip extends StatelessWidget {
     required this.onBlendModeSelected,
     this.subject = 'Layer',
     this.isGroup = false,
+    this.axis = Axis.horizontal,
   });
+
+  /// The RAIL's direction. Vertical is the x-sheet's stood-up column: the
+  /// slot spends its 58 as HEIGHT and the mode name reads down the button.
+  /// This was the one control in the shared skeleton that hardcoded its
+  /// axis, so on the sheet it drew a 58-wide chip inside a 28px column.
+  final Axis axis;
 
   /// The full widget key string ('timeline-layer-blend-a').
   final String keyValue;
@@ -193,14 +200,16 @@ class LayerBlendModeChip extends StatelessWidget {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final nonNormal = blendMode != LayerBlendMode.normal;
+    final vertical = axis == Axis.vertical;
     return SizedBox(
-      width: layerBlendSlotWidth,
-      height: 20,
+      width: vertical ? 20 : layerBlendSlotWidth,
+      height: vertical ? layerBlendSlotWidth : 20,
       // Centered in the slot so the button lines up under the legend's
       // BLND column header (R28 #2).
       child: Center(
         child: PanelFlyoutButton(
           key: ValueKey<String>(keyValue),
+          axis: axis,
           label: blendMode.labelFor(language),
           tooltip: '$subject blend mode',
           showCaret: false,
@@ -210,7 +219,9 @@ class LayerBlendModeChip extends StatelessWidget {
           labelColor: nonNormal
               ? AppColors.accent
               : colorScheme.onSurfaceVariant,
-          padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
+          padding: vertical
+              ? const EdgeInsets.symmetric(horizontal: 2, vertical: 3)
+              : const EdgeInsets.symmetric(horizontal: 3, vertical: 2),
           entriesBuilder: () => [
             for (final mode in LayerBlendMode.optionsFor(isGroup: isGroup))
               PanelFlyoutItem(
@@ -586,9 +597,7 @@ class LayerAttachArrowCell extends StatelessWidget {
               flipY: above,
               child: Icon(
                 Icons.subdirectory_arrow_right,
-                key: ValueKey<String>(
-                  '$keyPrefix-layer-attach-arrow-$idValue',
-                ),
+                key: ValueKey<String>('$keyPrefix-layer-attach-arrow-$idValue'),
                 size: 16,
                 color: Theme.of(context).colorScheme.onSurfaceVariant,
               ),
