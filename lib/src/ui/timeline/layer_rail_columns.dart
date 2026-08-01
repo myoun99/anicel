@@ -71,35 +71,6 @@ Widget layerRailSlot(Axis axis, double extent, [Widget? child]) {
 /// [axis] is the rail's own direction: horizontal for the timeline's rows
 /// and the storyboard's, vertical for the x-sheet's column headers, where
 /// the identical list runs top-to-bottom instead of left-to-right.
-/// A slot a host can DECLINE to carry.
-///
-/// R10 R6: the stood-up x-sheet header stacks the rail single-file down a
-/// 28px column, so in a short panel it cannot afford every control and has
-/// to shed some. Shedding is the skeleton's own answer — the slot and its
-/// gap leave together, so what remains stays in its place and the legend
-/// above stays over it. Naming them means the ladder is a list, not seven
-/// booleans that can disagree.
-enum LayerRailSlot {
-  laneToggle,
-  timesheet,
-  mark,
-  fillReference,
-  fx,
-  mute,
-  opacity,
-}
-
-double _shedSlotExtent(LayerRailSlot slot) => switch (slot) {
-  // Slots that own a following chip gap take it with them.
-  LayerRailSlot.laneToggle => layerLaneToggleSlotWidth,
-  LayerRailSlot.timesheet => layerTimesheetSlotWidth + layerControlChipGap,
-  LayerRailSlot.mark => layerMarkSlotWidth + layerControlChipGap,
-  LayerRailSlot.fillReference => layerFillReferenceSlotWidth,
-  LayerRailSlot.fx => layerFxSlotWidth,
-  LayerRailSlot.mute => layerMuteSlotWidth,
-  LayerRailSlot.opacity => layerOpacitySlotWidth,
-};
-
 /// The TWIRL glyph, for every rail surface in either orientation.
 ///
 /// R10 R6 shipped two of them disagreeing: the layer's lane toggle drew
@@ -111,20 +82,10 @@ double _shedSlotExtent(LayerRailSlot slot) => switch (slot) {
 IconData layerRailTwirlIcon({required bool expanded}) =>
     expanded ? Icons.arrow_drop_down : Icons.arrow_right;
 
-/// What a set of shed slots costs a rail row end to end.
-double layerRailShedExtent(Set<LayerRailSlot> shed) {
-  var total = 0.0;
-  for (final slot in shed) {
-    total += _shedSlotExtent(slot);
-  }
-  return total;
-}
-
 List<Widget> layerRailLeadingCells({
   double indent = 0,
   Axis axis = Axis.horizontal,
   bool includeSectionSlot = true,
-  Set<LayerRailSlot> shed = const {},
   Widget? sectionBand,
   Widget? laneToggle,
   Widget? timesheet,
@@ -146,18 +107,11 @@ List<Widget> layerRailLeadingCells({
           ? LayerSectionBandCell(axis: axis)
           : layerRailSlot(axis, layerSectionLabelSlotWidth, sectionBand),
     layerRailSlot(axis, layerRailSectionGap + indent),
-    if (!shed.contains(LayerRailSlot.laneToggle))
-      layerRailSlot(axis, layerLaneToggleSlotWidth, laneToggle),
-    if (!shed.contains(LayerRailSlot.timesheet)) ...[
-      layerRailSlot(axis, layerTimesheetSlotWidth, timesheet),
-      layerRailSlot(axis, layerControlChipGap),
-    ],
-    if (!shed.contains(LayerRailSlot.mark)) ...[
-      layerRailSlot(axis, layerMarkSlotWidth, mark),
-      layerRailSlot(axis, layerControlChipGap),
-    ],
-    // The KIND icon and the NAME are what a column heading IS; neither is
-    // ever shed.
+    layerRailSlot(axis, layerLaneToggleSlotWidth, laneToggle),
+    layerRailSlot(axis, layerTimesheetSlotWidth, timesheet),
+    layerRailSlot(axis, layerControlChipGap),
+    layerRailSlot(axis, layerMarkSlotWidth, mark),
+    layerRailSlot(axis, layerControlChipGap),
     layerRailSlot(axis, layerTypeSlotWidth, typeButton),
     layerRailSlot(axis, layerControlChipGap),
   ];
@@ -169,7 +123,6 @@ List<Widget> layerRailLeadingCells({
 /// as distinct from a row that merely has nothing to put there.
 List<Widget> layerRailTrailingCells({
   Axis axis = Axis.horizontal,
-  Set<LayerRailSlot> shed = const {},
   Widget? fillReference,
   Widget? fx,
   bool hasOnionColumn = false,
@@ -181,18 +134,12 @@ List<Widget> layerRailTrailingCells({
   Widget? blend,
 }) {
   return [
-    if (!shed.contains(LayerRailSlot.fillReference))
-      layerRailSlot(axis, layerFillReferenceSlotWidth, fillReference),
-    if (!shed.contains(LayerRailSlot.fx))
-      layerRailSlot(axis, layerFxSlotWidth, fx),
+    layerRailSlot(axis, layerFillReferenceSlotWidth, fillReference),
+    layerRailSlot(axis, layerFxSlotWidth, fx),
     if (hasOnionColumn) layerRailSlot(axis, layerOnionSlotWidth, onion),
-    // The EYE is never shed: hiding a layer is the one control a timesheet
-    // reader reaches for.
     layerRailSlot(axis, layerVisibilitySlotWidth, visibility),
-    if (!shed.contains(LayerRailSlot.mute))
-      layerRailSlot(axis, layerMuteSlotWidth, mute),
-    if (!shed.contains(LayerRailSlot.opacity))
-      layerRailSlot(axis, layerOpacitySlotWidth, opacity),
+    layerRailSlot(axis, layerMuteSlotWidth, mute),
+    layerRailSlot(axis, layerOpacitySlotWidth, opacity),
     if (hasBlendColumn) layerRailSlot(axis, layerBlendSlotWidth, blend),
   ];
 }
@@ -228,7 +175,6 @@ double _trailingSlotWidth(LayerRailTrailingSlot slot) => switch (slot) {
 /// therefore without going stale the next time a column is added.
 double layerRailTrailingWidth({
   LayerRailTrailingSlot from = LayerRailTrailingSlot.fillReference,
-  Set<LayerRailSlot> shed = const {},
   bool hasOnionColumn = false,
   bool hasBlendColumn = false,
 }) {
@@ -238,15 +184,9 @@ double layerRailTrailingWidth({
       continue;
     }
     final carried = switch (slot) {
-      LayerRailTrailingSlot.fillReference => !shed.contains(
-        LayerRailSlot.fillReference,
-      ),
-      LayerRailTrailingSlot.fx => !shed.contains(LayerRailSlot.fx),
-      LayerRailTrailingSlot.mute => !shed.contains(LayerRailSlot.mute),
-      LayerRailTrailingSlot.opacity => !shed.contains(LayerRailSlot.opacity),
       LayerRailTrailingSlot.onion => hasOnionColumn,
       LayerRailTrailingSlot.blend => hasBlendColumn,
-      LayerRailTrailingSlot.visibility => true,
+      _ => true,
     };
     if (!carried) {
       continue;
