@@ -50,13 +50,81 @@ const double layerRailLeadingWidth =
     layerTypeSlotWidth +
     layerControlChipGap;
 
-/// The cells left of a rail row's name, in order. Null cells reserve their
+/// ONE slot, measured along the rail's OWN axis.
+///
+/// R10 R6: the horizontal rail spends a slot's extent as width, the x-sheet's
+/// stood-up column header spends it as height. Both read the same numbers
+/// from the same list — an axis parameter, not a second skeleton, because a
+/// second skeleton is exactly what R9 #22 was.
+Widget layerRailSlot(Axis axis, double extent, [Widget? child]) {
+  return axis == Axis.horizontal
+      ? SizedBox(width: extent, child: child)
+      : SizedBox(height: extent, child: child);
+}
+
+/// The cells BEFORE a rail row's name, in order. Null cells reserve their
 /// slot.
 ///
 /// [indent] is the folder-nesting inset; it widens the section gap so the
 /// row's whole leading cluster shifts as one.
+///
+/// [axis] is the rail's own direction: horizontal for the timeline's rows
+/// and the storyboard's, vertical for the x-sheet's column headers, where
+/// the identical list runs top-to-bottom instead of left-to-right.
+/// A slot a host can DECLINE to carry.
+///
+/// R10 R6: the stood-up x-sheet header stacks the rail single-file down a
+/// 28px column, so in a short panel it cannot afford every control and has
+/// to shed some. Shedding is the skeleton's own answer — the slot and its
+/// gap leave together, so what remains stays in its place and the legend
+/// above stays over it. Naming them means the ladder is a list, not seven
+/// booleans that can disagree.
+enum LayerRailSlot {
+  laneToggle,
+  timesheet,
+  mark,
+  fillReference,
+  fx,
+  mute,
+  opacity,
+}
+
+double _shedSlotExtent(LayerRailSlot slot) => switch (slot) {
+  // Slots that own a following chip gap take it with them.
+  LayerRailSlot.laneToggle => layerLaneToggleSlotWidth,
+  LayerRailSlot.timesheet => layerTimesheetSlotWidth + layerControlChipGap,
+  LayerRailSlot.mark => layerMarkSlotWidth + layerControlChipGap,
+  LayerRailSlot.fillReference => layerFillReferenceSlotWidth,
+  LayerRailSlot.fx => layerFxSlotWidth,
+  LayerRailSlot.mute => layerMuteSlotWidth,
+  LayerRailSlot.opacity => layerOpacitySlotWidth,
+};
+
+/// The TWIRL glyph, for every rail surface in either orientation.
+///
+/// R10 R6 shipped two of them disagreeing: the layer's lane toggle drew
+/// `▾ = open` while the lane GROUP header beside it drew `▸ = open`, so the
+/// identical state read as opposite arrows two columns apart. `▾ open, ▸
+/// shut` is what every other twirl in the app says, and pointing the glyph
+/// at where the lanes physically open would have made the sheet disagree
+/// with the timeline instead — one convention beats two geometries.
+IconData layerRailTwirlIcon({required bool expanded}) =>
+    expanded ? Icons.arrow_drop_down : Icons.arrow_right;
+
+/// What a set of shed slots costs a rail row end to end.
+double layerRailShedExtent(Set<LayerRailSlot> shed) {
+  var total = 0.0;
+  for (final slot in shed) {
+    total += _shedSlotExtent(slot);
+  }
+  return total;
+}
+
 List<Widget> layerRailLeadingCells({
   double indent = 0,
+  Axis axis = Axis.horizontal,
+  bool includeSectionSlot = true,
+  Set<LayerRailSlot> shed = const {},
   Widget? sectionBand,
   Widget? laneToggle,
   Widget? timesheet,
@@ -68,25 +136,40 @@ List<Widget> layerRailLeadingCells({
     // upright label, flyout tap — overlays the whole run from the grid
     // (SectionBandZone), old-gutter style. The legend header is the one
     // surface that puts something IN the slot (its sections flyout).
-    sectionBand == null
-        ? const LayerSectionBandCell()
-        : SizedBox(width: layerSectionLabelSlotWidth, child: sectionBand),
-    SizedBox(width: layerRailSectionGap + indent),
-    SizedBox(width: layerLaneToggleSlotWidth, child: laneToggle),
-    SizedBox(width: layerTimesheetSlotWidth, child: timesheet),
-    const SizedBox(width: layerControlChipGap),
-    SizedBox(width: layerMarkSlotWidth, child: mark),
-    const SizedBox(width: layerControlChipGap),
-    SizedBox(width: layerTypeSlotWidth, child: typeButton),
-    const SizedBox(width: layerControlChipGap),
+    //
+    // [includeSectionSlot] false is the x-sheet's column header (R10 R6):
+    // its section band is a strip of its OWN above the headers, spanning
+    // each run's columns, so reserving the slot again inside every header
+    // would count the band twice.
+    if (includeSectionSlot)
+      sectionBand == null
+          ? LayerSectionBandCell(axis: axis)
+          : layerRailSlot(axis, layerSectionLabelSlotWidth, sectionBand),
+    layerRailSlot(axis, layerRailSectionGap + indent),
+    if (!shed.contains(LayerRailSlot.laneToggle))
+      layerRailSlot(axis, layerLaneToggleSlotWidth, laneToggle),
+    if (!shed.contains(LayerRailSlot.timesheet)) ...[
+      layerRailSlot(axis, layerTimesheetSlotWidth, timesheet),
+      layerRailSlot(axis, layerControlChipGap),
+    ],
+    if (!shed.contains(LayerRailSlot.mark)) ...[
+      layerRailSlot(axis, layerMarkSlotWidth, mark),
+      layerRailSlot(axis, layerControlChipGap),
+    ],
+    // The KIND icon and the NAME are what a column heading IS; neither is
+    // ever shed.
+    layerRailSlot(axis, layerTypeSlotWidth, typeButton),
+    layerRailSlot(axis, layerControlChipGap),
   ];
 }
 
-/// The cells right of a rail row's name, in order. Null cells reserve
+/// The cells AFTER a rail row's name, in order. Null cells reserve
 /// their slot; [hasOnionColumn]/[hasBlendColumn] false drops the column
 /// outright, which is the HOST's answer (the storyboard rail has neither),
 /// as distinct from a row that merely has nothing to put there.
 List<Widget> layerRailTrailingCells({
+  Axis axis = Axis.horizontal,
+  Set<LayerRailSlot> shed = const {},
   Widget? fillReference,
   Widget? fx,
   bool hasOnionColumn = false,
@@ -98,14 +181,79 @@ List<Widget> layerRailTrailingCells({
   Widget? blend,
 }) {
   return [
-    SizedBox(width: layerFillReferenceSlotWidth, child: fillReference),
-    SizedBox(width: layerFxSlotWidth, child: fx),
-    if (hasOnionColumn) SizedBox(width: layerOnionSlotWidth, child: onion),
-    SizedBox(width: layerVisibilitySlotWidth, child: visibility),
-    SizedBox(width: layerMuteSlotWidth, child: mute),
-    SizedBox(width: layerOpacitySlotWidth, child: opacity),
-    if (hasBlendColumn) SizedBox(width: layerBlendSlotWidth, child: blend),
+    if (!shed.contains(LayerRailSlot.fillReference))
+      layerRailSlot(axis, layerFillReferenceSlotWidth, fillReference),
+    if (!shed.contains(LayerRailSlot.fx))
+      layerRailSlot(axis, layerFxSlotWidth, fx),
+    if (hasOnionColumn) layerRailSlot(axis, layerOnionSlotWidth, onion),
+    // The EYE is never shed: hiding a layer is the one control a timesheet
+    // reader reaches for.
+    layerRailSlot(axis, layerVisibilitySlotWidth, visibility),
+    if (!shed.contains(LayerRailSlot.mute))
+      layerRailSlot(axis, layerMuteSlotWidth, mute),
+    if (!shed.contains(LayerRailSlot.opacity))
+      layerRailSlot(axis, layerOpacitySlotWidth, opacity),
+    if (hasBlendColumn) layerRailSlot(axis, layerBlendSlotWidth, blend),
   ];
+}
+
+/// The trailing run's slots, in the order [layerRailTrailingCells] emits
+/// them. Naming them lets a host LOCATE a column instead of re-adding the
+/// widths in a comment — see [layerRailTrailingWidth].
+enum LayerRailTrailingSlot {
+  fillReference,
+  fx,
+  onion,
+  visibility,
+  mute,
+  opacity,
+  blend,
+}
+
+double _trailingSlotWidth(LayerRailTrailingSlot slot) => switch (slot) {
+  LayerRailTrailingSlot.fillReference => layerFillReferenceSlotWidth,
+  LayerRailTrailingSlot.fx => layerFxSlotWidth,
+  LayerRailTrailingSlot.onion => layerOnionSlotWidth,
+  LayerRailTrailingSlot.visibility => layerVisibilitySlotWidth,
+  LayerRailTrailingSlot.mute => layerMuteSlotWidth,
+  LayerRailTrailingSlot.opacity => layerOpacitySlotWidth,
+  LayerRailTrailingSlot.blend => layerBlendSlotWidth,
+};
+
+/// What the trailing cells cost, counting only from [from] onward.
+///
+/// The default counts the whole run. Starting part-way through answers
+/// "how much sits to the right of this column" — which is how the
+/// eye-swipe band finds the eye without restating the control order, and
+/// therefore without going stale the next time a column is added.
+double layerRailTrailingWidth({
+  LayerRailTrailingSlot from = LayerRailTrailingSlot.fillReference,
+  Set<LayerRailSlot> shed = const {},
+  bool hasOnionColumn = false,
+  bool hasBlendColumn = false,
+}) {
+  var total = 0.0;
+  for (final slot in LayerRailTrailingSlot.values) {
+    if (slot.index < from.index) {
+      continue;
+    }
+    final carried = switch (slot) {
+      LayerRailTrailingSlot.fillReference => !shed.contains(
+        LayerRailSlot.fillReference,
+      ),
+      LayerRailTrailingSlot.fx => !shed.contains(LayerRailSlot.fx),
+      LayerRailTrailingSlot.mute => !shed.contains(LayerRailSlot.mute),
+      LayerRailTrailingSlot.opacity => !shed.contains(LayerRailSlot.opacity),
+      LayerRailTrailingSlot.onion => hasOnionColumn,
+      LayerRailTrailingSlot.blend => hasBlendColumn,
+      LayerRailTrailingSlot.visibility => true,
+    };
+    if (!carried) {
+      continue;
+    }
+    total += _trailingSlotWidth(slot);
+  }
+  return total;
 }
 
 /// The row's TYPE BUTTON (UI-R24 #7): the kind icon, in the rail's fixed
@@ -175,7 +323,9 @@ class LayerTypeButton extends StatelessWidget {
         color: colorScheme.onSurfaceVariant,
       );
     } else {
-      label = semanticLabel ?? (kind == null ? 'Row' : layerTypeSemanticLabel(kind!));
+      label =
+          semanticLabel ??
+          (kind == null ? 'Row' : layerTypeSemanticLabel(kind!));
       glyph = Icon(
         icon ?? layerKindIcon(kind!),
         key: ValueKey<String>('$keyPrefix-layer-kind-icon-$idValue'),

@@ -346,16 +346,17 @@ class _TimelinePanelState extends State<TimelinePanel> {
         : TimelineOrientation.horizontal;
     final showToolbar = widget.timelineActionToolbar != null;
 
-    // The slider value is the horizontal cell width; the X-sheet's frame
-    // row height scales proportionally (36 at the classic 48).
+    // The slider value is the frame-axis extent for BOTH orientations.
+    //
+    // R10 R6: this used to scale the sheet by 36/24, because the sheet's
+    // frame row was its own hand-typed number. A frame row is a frame cell
+    // turned on its side now, so the ratio is 1 and the zoom means the same
+    // thing on both surfaces — one slider position, one frame extent.
     final horizontalMetrics = TimelineGridMetrics.defaults.copyWith(
       frameCellWidth: widget.pixelsPerFrame,
     );
     final xsheetMetrics = XSheetTimelineGrid.defaultMetrics.copyWith(
-      frameCellWidth:
-          widget.pixelsPerFrame *
-          (XSheetTimelineGrid.defaultMetrics.frameCellWidth /
-              TimelineGridMetrics.defaults.frameCellWidth),
+      frameCellWidth: widget.pixelsPerFrame,
     );
 
     return Material(

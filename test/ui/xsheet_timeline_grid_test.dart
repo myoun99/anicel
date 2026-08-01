@@ -10,6 +10,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_ruler_cursor_overlay.dart';
 
+import '../helpers/vertical_text_finder.dart';
 import 'timeline/timeline_cell_probe.dart';
 import 'timeline/timeline_ruler_probe.dart';
 
@@ -21,18 +22,16 @@ void main() {
   testWidgets('renders integrated layer controls in headers', (tester) async {
     await tester.pumpWidget(_grid());
 
-    expect(find.text('Layer 1'), findsOneWidget);
-    expect(find.text('Layer 2'), findsOneWidget);
+    // R10 R6: column names read DOWN their 28px column now, so they are
+    // vertical writing rather than `Text`.
+    expect(findVerticalText('Layer 1'), findsOneWidget);
+    expect(findVerticalText('Layer 2'), findsOneWidget);
     expect(
       find.byKey(const ValueKey<String>('xsheet-add-layer-button')),
       findsNothing,
     );
     expect(
       find.byKey(const ValueKey<String>('xsheet-layer-visibility-layer-1')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('xsheet-layer-opacity-layer-1')),
       findsOneWidget,
     );
   });
@@ -61,25 +60,19 @@ void main() {
     expect(toggledLayerId, const LayerId('layer-2'));
   });
 
-  testWidgets('opacity control calls callback', (tester) async {
-    LayerId? changedLayerId;
-    double? changedOpacity;
+  testWidgets('the sheet carries NO opacity slider — a 28px column cannot '
+      'show one (R10 R6)', (tester) async {
+    await tester.pumpWidget(_grid());
 
-    await tester.pumpWidget(
-      _grid(
-        onLayerOpacityChanged: (layerId, opacity) {
-          changedLayerId = layerId;
-          changedOpacity = opacity;
-        },
-      ),
-    );
-    await tester.drag(
+    // The column narrowed 164 → 28 when the header stood up, which leaves
+    // the readout 11px: the number the slot exists to show can never be
+    // read. The value lives on the timeline rail and in the layer panel,
+    // and the legend beside this had already stood its master bar down for
+    // the same reason.
+    expect(
       find.byKey(const ValueKey<String>('xsheet-layer-opacity-layer-1')),
-      const Offset(-30, 0),
+      findsNothing,
     );
-
-    expect(changedLayerId, const LayerId('layer-1'));
-    expect(changedOpacity, isNotNull);
   });
 
   testWidgets('timesheet toggle calls callback from the header', (

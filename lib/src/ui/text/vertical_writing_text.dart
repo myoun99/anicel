@@ -1,0 +1,271 @@
+import 'dart:math' as math;
+
+import 'package:flutter/widgets.dart';
+
+import 'vertical_writing.dart';
+
+/// The ONE renderer for Japanese vertical writing — [paintVerticalText] for
+/// canvases and [VerticalWritingText] for the widget tree, both reading the
+/// table in `vertical_writing.dart`.
+///
+/// The widget is a painter underneath rather than a `Column` of `Text`,
+/// because a column of Texts cannot rotate a bracket, cannot lean a small
+/// kana, and cannot put two digits in one cell — and going through the same
+/// code as the timesheet is the only way the two stay agreed.
+
+/// Paints [text] as a vertical column of glyph cells.
+///
+/// The column starts at [top] and runs [mainExtent] down, centered on
+/// [centerX]. [style]'s `fontSize` is the MAXIMUM: a column with more cells
+/// than the span holds packs tighter and shrinks (see [verticalTextFit]).
+/// [mainAlignment] places the packed block inside the span — 0 starts at
+/// [top] (the timesheet's notation words begin on their span's first row),
+/// 0.5 centers it (the section band).
+///
+/// Returns the extent actually painted.
+///
+/// [style]'s `fontSize` is taken as already scaled: text scaling is the
+/// WIDGET's business (it owns the MediaQuery, and the scaled size has to
+/// reach the fit math or the glyphs grow while their cells do not). A
+/// canvas host with fixed paper geometry — the timesheet — has no scaler
+/// and wants none.
+double paintVerticalText(
+  Canvas canvas,
+  String text, {
+  required TextStyle style,
+  required double centerX,
+  required double top,
+  required double mainExtent,
+  required double naturalCellExtent,
+  double minFontSize = 4,
+  double cellPadding = 3,
+  double? maxCellWidth,
+  double mainAlignment = 0,
+  int tateChuYokoDigits = verticalTateChuYokoDigits,
+}) {
+  final cells = verticalTextCells(text, tateChuYokoDigits: tateChuYokoDigits);
+  if (cells.isEmpty) {
+    return 0;
+  }
+  final fit = verticalTextFit(
+    cellCount: cells.length,
+    mainExtent: mainExtent,
+    naturalCellExtent: naturalCellExtent,
+    maxFontSize: style.fontSize ?? 12,
+    minFontSize: minFontSize,
+    cellPadding: cellPadding,
+  );
+  final fontSize = fit.fontSize;
+  if (fontSize <= 0) {
+    return 0;
+  }
+  // Letter spacing is a HORIZONTAL notion; in a vertical column it would
+  // only pad each glyph's box sideways and pull it off centre, so it is
+  // dropped here and the leading comes from the cell extent instead.
+  final glyphStyle = style.copyWith(
+    fontSize: fontSize,
+    letterSpacing: 0,
+    height: 1.0,
+  );
+  final start = top + (mainExtent - fit.totalExtent) * mainAlignment;
+  final widthLimit = maxCellWidth ?? double.infinity;
+
+  for (var index = 0; index < cells.length; index += 1) {
+    final cell = cells[index];
+    final cellCenterY = start + index * fit.cellExtent + fit.cellExtent / 2;
+    final painter = TextPainter(
+      text: TextSpan(text: cell.text, style: glyphStyle),
+      textDirection: TextDirection.ltr,
+      maxLines: 1,
+    )..layout();
+
+    // Every form scales UNIFORMLY when it is wider than the column allows —
+    // never anamorphically. A 縦中横 pair squeezed on one axis alone reads
+    // as a font bug, and the SE columns really do get this narrow: a
+    // four-column SE group is 10px per column, so the limit is reachable,
+    // not theoretical.
+    double fitScale(double extentAcrossColumn) {
+      return extentAcrossColumn > widthLimit && extentAcrossColumn > 0
+          ? widthLimit / extentAcrossColumn
+          : 1.0;
+    }
+
+    canvas.save();
+    switch (cell.form) {
+      case VerticalGlyphForm.rotated:
+        // Turned 90° clockwise about the cell's centre: the long-vowel bar
+        // and the brackets become strokes along the column. Lying down, it
+        // is the glyph's HEIGHT that has to clear the column.
+        canvas.translate(centerX, cellCenterY);
+        canvas.rotate(math.pi / 2);
+        final scale = fitScale(painter.height);
+        if (scale != 1.0) {
+          canvas.scale(scale, scale);
+        }
+      case VerticalGlyphForm.tateChuYoko:
+        // 縦中横: the digits stay horizontal and condense into the width one
+        // upright glyph would have taken.
+        canvas.translate(centerX, cellCenterY);
+        final target = math.min(fontSize, widthLimit);
+        final scale = painter.width > target && painter.width > 0
+            ? target / painter.width
+            : 1.0;
+        if (scale != 1.0) {
+          canvas.scale(scale, scale);
+        }
+      case VerticalGlyphForm.shifted:
+      case VerticalGlyphForm.upright:
+        final shift = cell.shiftEm * fontSize;
+        canvas.translate(centerX + shift, cellCenterY - shift);
+        final scale = fitScale(painter.width);
+        if (scale != 1.0) {
+          canvas.scale(scale, scale);
+        }
+    }
+    painter.paint(canvas, Offset(-painter.width / 2, -painter.height / 2));
+    canvas.restore();
+  }
+  return fit.totalExtent;
+}
+
+/// Vertical writing in the widget tree: one glyph cell per line, top to
+/// bottom, rotating and leaning and pairing digits exactly as the timesheet
+/// painter does. Exposes ONE semantics node carrying the whole [text].
+///
+/// Replaces the old `UprightVerticalText`, whose name was the bug: it
+/// stacked every character upright, so `ー` stayed a horizontal bar in the
+/// section band while the timesheet had rotated it since UI-R13 #3.
+class VerticalWritingText extends StatelessWidget {
+  const VerticalWritingText({
+    super.key,
+    required this.text,
+    this.style,
+    this.lineHeight = 1.15,
+    this.minFontSize = 1,
+    this.tateChuYokoDigits = verticalTateChuYokoDigits,
+  });
+
+  final String text;
+  final TextStyle? style;
+
+  /// The natural cell extent as a multiple of the font size — the leading
+  /// between glyphs when the column is not cramped.
+  final double lineHeight;
+
+  /// Long headings shrink to their host rather than overflow (a one-row
+  /// section bracket is shorter than its label), so the floor is a hair
+  /// rather than a legible size.
+  final double minFontSize;
+
+  final int tateChuYokoDigits;
+
+  @override
+  Widget build(BuildContext context) {
+    final merged = DefaultTextStyle.of(context).style.merge(style);
+    // Accessibility scaling has to reach the FIT, not just the glyphs: the
+    // old widget was a FittedBox and got this for free, and scaling only
+    // the TextPainters would grow the letters inside cells that stayed the
+    // same height. The style carries the scaled size from here on.
+    final fontSize = MediaQuery.textScalerOf(
+      context,
+    ).scale(merged.fontSize ?? 12);
+    final resolved = merged.copyWith(fontSize: fontSize);
+    final cellCount = verticalTextCells(
+      text,
+      tateChuYokoDigits: tateChuYokoDigits,
+    ).length;
+
+    return Semantics(
+      label: text,
+      child: ExcludeSemantics(
+        // An INTRINSIC size, not `SizedBox.expand`: a loose host (the
+        // section band's Center) gets the column's natural extent, a tight
+        // one gets clamped down and the fit packs to it, and an UNBOUNDED
+        // one no longer throws — `SectionBandZone` passes a null extent and
+        // is saved today only by the Positioned around it.
+        child: CustomPaint(
+          // One em across, plus headroom ONLY when something in the text
+          // actually moves to a corner. Reserving the spare em always made
+          // every SE name pay for a punctuation form they never contain:
+          // the 16px name box's FittedBox went width-limited at 16/18 and
+          // shrank every label ~11%.
+          size: Size(
+            fontSize * (1 + 2 * _maxShiftEm(text, tateChuYokoDigits)),
+            cellCount * fontSize * lineHeight,
+          ),
+          painter: _VerticalWritingPainter(
+            text: text,
+            style: resolved,
+            lineHeight: lineHeight,
+            minFontSize: minFontSize,
+            tateChuYokoDigits: tateChuYokoDigits,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The largest corner shift anything in [text] takes, as an em fraction —
+/// zero for text with no shifted glyph, which is most of it.
+double _maxShiftEm(String text, int tateChuYokoDigits) {
+  var most = 0.0;
+  for (final cell in verticalTextCells(
+    text,
+    tateChuYokoDigits: tateChuYokoDigits,
+  )) {
+    if (cell.shiftEm > most) {
+      most = cell.shiftEm;
+    }
+  }
+  return most;
+}
+
+class _VerticalWritingPainter extends CustomPainter {
+  const _VerticalWritingPainter({
+    required this.text,
+    required this.style,
+    required this.lineHeight,
+    required this.minFontSize,
+    required this.tateChuYokoDigits,
+  });
+
+  final String text;
+
+  /// Already carries the text-scaled font size (see the widget's build).
+  final TextStyle style;
+  final double lineHeight;
+  final double minFontSize;
+  final int tateChuYokoDigits;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final fontSize = style.fontSize ?? 12;
+    paintVerticalText(
+      canvas,
+      text,
+      style: style,
+      centerX: size.width / 2,
+      top: 0,
+      mainExtent: size.height,
+      naturalCellExtent: fontSize * lineHeight,
+      // The leading is proportional here, unlike the timesheet's fixed-row
+      // sheet: at the natural extent this returns the full font size, and
+      // as cells pack it gives the leading back first.
+      cellPadding: fontSize * (lineHeight - 1),
+      maxCellWidth: size.width,
+      mainAlignment: 0.5,
+      minFontSize: minFontSize,
+      tateChuYokoDigits: tateChuYokoDigits,
+    );
+  }
+
+  @override
+  bool shouldRepaint(_VerticalWritingPainter oldDelegate) {
+    return text != oldDelegate.text ||
+        style != oldDelegate.style ||
+        lineHeight != oldDelegate.lineHeight ||
+        minFontSize != oldDelegate.minFontSize ||
+        tateChuYokoDigits != oldDelegate.tateChuYokoDigits;
+  }
+}

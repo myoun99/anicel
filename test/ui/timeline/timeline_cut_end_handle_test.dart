@@ -114,6 +114,11 @@ void main() {
   testWidgets('X-sheet grid: the grip rides the VERTICAL frame axis', (
     tester,
   ) async {
+    // R10 R6 stood the sheet's header up, so the frame rows start lower;
+    // the cut-end grip at frame 10 sits past the bottom of the default
+    // 600px surface and the gesture would land on nothing.
+    await tester.binding.setSurfaceSize(const Size(900, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     final cursor = ValueNotifier<int>(0);
     addTearDown(cursor.dispose);
     final channel = ValueNotifier<TimelineDragPreview?>(null);

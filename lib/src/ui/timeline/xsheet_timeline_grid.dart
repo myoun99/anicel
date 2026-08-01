@@ -12,7 +12,6 @@ import '../../models/attached_placement.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
-import '../widgets/field_slider.dart';
 import 'layer_label_controls.dart';
 import 'layer_rail_columns.dart';
 import 'timeline_cel_content_source.dart';
@@ -49,6 +48,8 @@ import 'timeline_grid_metrics.dart';
 import 'se_audio_lane.dart';
 import 'timeline_lane_rows.dart';
 import 'timeline_horizontal_offset_policy.dart';
+import 'timeline_layer_controls_header.dart';
+import '../text/vertical_writing_text.dart';
 import 'pen_friendly_scroll_controller.dart';
 import 'stylus_glide_stop.dart';
 import 'timeline_horizontal_scrollbar_rail.dart';
@@ -285,22 +286,254 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// = layer column width, layerControlsWidth = frame-number rail width.
   /// No section gutter here — the X-sheet's section axis is horizontal and
   /// section controls live on the column headers.
+  ///
+  /// R10 R6: every number here is now the timeline's, turned on its side.
+  /// They used to be 36/164/72 — hand-tuned, and free to drift the moment
+  /// anyone touched the timeline. A column is exactly as wide as a row is
+  /// tall now, which is what makes the two grids read as one grid.
   static const TimelineGridMetrics defaultMetrics = TimelineGridMetrics(
-    frameCellWidth: 36,
-    layerRowHeight: 164,
-    layerControlsWidth: 72,
+    // A frame ROW is as tall as a frame CELL is wide.
+    frameCellWidth: timelineFrameCellWidth,
+    // A layer COLUMN is as wide as a layer ROW is tall — 164 → 28. This is
+    // the change that makes everything in the header stand up: nothing
+    // reads horizontally in 28px.
+    layerRowHeight: timelineLayerRowHeight,
+    // The frame-number RAIL is as wide as the ruler is tall — 72 → 28. If
+    // the seconds label gets tight it is fixed in the SHARED ruler, so both
+    // panels get better at once (no per-panel exception).
+    layerControlsWidth: timelineFrameRulerExtent,
     sectionLabelGutterWidth: 0,
   );
 
-  static const double _headerHeight = 92;
-
   /// The section band above the layer headers: the paper sheet's
-  /// ACTION/SE/CAM group headings, each wrapping its columns.
-  static const double _sectionBandHeight = 20;
-  static const double _totalHeaderHeight = _headerHeight + _sectionBandHeight;
+  /// ACTION/SE/CAM group headings, each wrapping its columns. It is the
+  /// rail's reserved section SLOT stood up, so it is that slot's extent.
+  static const double _sectionBandHeight = layerSectionLabelSlotWidth;
+
+  /// The columns the sheet never carries, whatever the panel height.
+  ///
+  /// Onion and blend are the storyboard rail's precedent — a host says which
+  /// columns it has. Opacity joins them here: a slider 28px wide cannot show
+  /// its own value (the readout gets 11px of the 27 the column has), and the
+  /// legend beside it already stood the bar down for exactly that reason.
+  /// The value is still on the timeline rail and in the layer panel.
+  static const Set<LayerRailSlot> _neverCarried = {LayerRailSlot.opacity};
+
+  /// ★ The header block is the timeline's rail, turned on its side — every
+  /// control single file, plus a name as generous as the rail's own name
+  /// column. That equality is the point of the round: making the rail
+  /// compact makes the sheet's header shallow, with nothing to remember.
+  static final double _naturalHeaderBlockHeight = _headerBlockHeightFor(
+    shed: _neverCarried,
+    nameExtent: _naturalNameExtent,
+  );
+
+  /// The NAME's share of the rail — what the horizontal row's `Expanded`
+  /// resolves to once every slot has been served.
+  static const double _naturalNameExtent =
+      timelineLayerControlsWidth -
+      layerRailLeadingWidth -
+      layerFillReferenceSlotWidth -
+      layerFxSlotWidth -
+      layerOnionSlotWidth -
+      layerVisibilitySlotWidth -
+      layerMuteSlotWidth -
+      layerOpacitySlotWidth -
+      layerBlendSlotWidth;
+
+  /// How short a column name may get before the header sheds a control
+  /// instead. Two frame rows of vertical writing: long names pack into it
+  /// (which is what the vertical fit is for) but SOMETHING always reads.
+  ///
+  /// The name never goes to zero. A column heading that cannot say which
+  /// layer it heads is not a heading, and the sheet is the surface the user
+  /// reads most.
+  static const double _minimumNameExtent = 2 * timelineFrameCellWidth;
+
+  /// How much sheet the header must leave standing: four frame rows, plus
+  /// the bottom scrollbar rail the Column below spends.
+  ///
+  /// Deliberately in DEFAULT frame units rather than the live zoomed ones.
+  /// The zoom slider spans 2.4–96px a row: measuring the reserve in live
+  /// rows would leave a 10px sheet at one end and squeeze the header to its
+  /// floor at the other, and — worse — the header would resize every time
+  /// the user zoomed. A stable pixel reserve is the one that behaves.
+  static const double _minimumSheetExtent =
+      4 * timelineFrameCellWidth + timelineBottomScrollbarRailHeight;
+
+  /// The column header's own hairlines, top and bottom.
+  static const double _headerBorderExtent = 2;
+
+  /// What a column header's CONTENT needs once the ladder has shed
+  /// everything it can: a kind icon, a name at its floor and an eye. Below
+  /// this the header clips rather than overflows.
+  static final double _minimumHeaderContentExtent =
+      _headerBlockHeightFor(
+        shed: {..._neverCarried, ..._shedLadder},
+        nameExtent: _minimumNameExtent,
+      ) -
+      _sectionBandHeight -
+      _headerBorderExtent;
+
+  /// The stood-up slot list's own extent inside a column header — the box
+  /// the hairlines leave it. Getting this wrong by the border's 2px pushes
+  /// everything after the NAME down by two, and the legend's icons stop
+  /// sitting on the columns they name.
+  static double headerContentExtentFor(XSheetHeaderLayout layout) =>
+      math.max(
+        layout.contentBlockHeight - _sectionBandHeight,
+        _minimumHeaderContentExtent,
+      ) -
+      _headerBorderExtent;
+
+  /// The same box for the LEGEND, which spans the band strip too.
+  static double legendContentExtentFor(XSheetHeaderLayout layout) =>
+      math.max(
+        layout.contentBlockHeight,
+        _minimumHeaderContentExtent + _sectionBandHeight,
+      ) -
+      _headerBorderExtent;
+
+  static double _headerBlockHeightFor({
+    required Set<LayerRailSlot> shed,
+    required double nameExtent,
+  }) {
+    return _sectionBandHeight +
+        (layerRailLeadingWidth -
+            layerSectionLabelSlotWidth -
+            layerRailShedExtent(
+              shed.intersection(const {
+                LayerRailSlot.laneToggle,
+                LayerRailSlot.timesheet,
+                LayerRailSlot.mark,
+              }),
+            )) +
+        nameExtent +
+        layerRailTrailingWidth(shed: shed) +
+        _headerBorderExtent;
+  }
+
+  /// What the header sheds, in order, when the panel is too short to stack
+  /// the whole rail. Least useful on a timesheet first; the KIND icon, the
+  /// NAME and the EYE are never on the list.
+  /// ★ The LANE TWIRL is deliberately absent: it is the only way out of a
+  /// state it puts the sheet into. Lane expansion is host state that
+  /// survives a resize, so shedding the twirl in a short panel leaves the
+  /// lane columns on screen with nothing to close them. A control that owns
+  /// live state cannot be shed, whatever it costs (16px here).
+  static const List<LayerRailSlot> _shedLadder = [
+    LayerRailSlot.fillReference,
+    LayerRailSlot.mark,
+    LayerRailSlot.mute,
+    LayerRailSlot.fx,
+    LayerRailSlot.timesheet,
+  ];
+
+  /// How the header block resolves against a panel of [availableExtent].
+  ///
+  /// Two rules, in this order:
+  ///
+  /// 1. **The sheet comes first.** The header may spend everything above
+  ///    [_minimumSheetExtent], and not a pixel more than it needs — so
+  ///    making the panel taller adds FRAME ROWS, never more header. (The
+  ///    first cut of this got that backwards: the block grew with the panel
+  ///    up to 354, and the sheet sat pinned at 80px across a 160px range of
+  ///    panel heights.) The reserve holds until the ladder runs out of
+  ///    rungs: under a panel of about 254 the last rung's floor is more
+  ///    than the budget, and the header takes what is left of the reserve
+  ///    rather than shrink past a kind icon, a name, a twirl and an eye.
+  /// 2. **The name outranks the controls.** ★ Which means the name is paid
+  ///    IN FULL before a shed control may come back. The first cut said this
+  ///    and did the opposite: it took the richest column set the budget
+  ///    could floor, so one pixel more panel promoted a rung and the
+  ///    re-added control was paid for out of the NAME — measured shrinking
+  ///    71px → 48px at six panel heights inside the dock's own drag range,
+  ///    every one of them while the panel got BIGGER.
+  ///
+  /// So the name grows to [_naturalNameExtent] first, and only then do the
+  /// rungs come back, last-shed-first. Both the name and the column count
+  /// are non-decreasing in [availableExtent] — a splitter drag can never
+  /// take away something it just gave.
+  static XSheetHeaderLayout headerLayoutFor(double availableExtent) {
+    final budget = availableExtent - _minimumSheetExtent;
+
+    // Start from the poorest header the ladder allows, then buy back what
+    // the budget can afford AT A FULL-LENGTH NAME.
+    final shed = <LayerRailSlot>{..._neverCarried, ..._shedLadder};
+    for (final rung in _shedLadder.reversed) {
+      final candidate = {...shed}..remove(rung);
+      if (_headerBlockHeightFor(
+            shed: candidate,
+            nameExtent: _naturalNameExtent,
+          ) >
+          budget) {
+        break;
+      }
+      shed
+        ..clear()
+        ..addAll(candidate);
+    }
+
+    final floor = _headerBlockHeightFor(
+      shed: shed,
+      nameExtent: _minimumNameExtent,
+    );
+    final natural = _headerBlockHeightFor(
+      shed: shed,
+      nameExtent: _naturalNameExtent,
+    );
+    final wanted = budget.clamp(floor, natural).toDouble();
+    return XSheetHeaderLayout(
+      // Below the last rung's floor the panel is shorter than a kind icon,
+      // a name and an eye stacked. There is nothing left to shed, so the
+      // block takes what the panel HAS — never more, or the grid's own
+      // Columns overflow — and the content clips inside it.
+      blockHeight: math.min(
+        wanted,
+        math.max(0, availableExtent - timelineBottomScrollbarRailHeight),
+      ),
+      contentBlockHeight: wanted,
+      shed: shed,
+    );
+  }
 
   @override
   State<XSheetTimelineGrid> createState() => _XSheetTimelineGridState();
+}
+
+/// How the x-sheet's stood-up header block resolved for the panel it is in
+/// (see [XSheetTimelineGrid.headerLayoutFor]).
+class XSheetHeaderLayout {
+  const XSheetHeaderLayout({
+    required this.blockHeight,
+    required this.shed,
+    double? contentBlockHeight,
+  }) : contentBlockHeight = contentBlockHeight ?? blockHeight;
+
+  /// The section band strip plus the column headers, as LAID OUT — capped
+  /// at what the panel has.
+  final double blockHeight;
+
+  /// What the shed-down slot list still needs. Equal to [blockHeight]
+  /// except in a panel shorter than the ladder's last rung, where the
+  /// content is forced to this and clipped.
+  final double contentBlockHeight;
+
+  /// The slots this panel is too short to carry (plus the ones the sheet
+  /// never carries). The column headers AND the legend above them read the
+  /// same set, or the legend's icons stop naming the columns under them.
+  final Set<LayerRailSlot> shed;
+
+  /// The section band strip. It gives ground too: [blockHeight] is capped
+  /// at what the panel HAS, so under a 52px panel the strip's own fixed
+  /// extent already exceeds the block — and a fixed-height Container does
+  /// not stripe quietly there, the leftover goes negative into
+  /// [headerHeight] and asserts.
+  double get bandHeight =>
+      math.min(XSheetTimelineGrid._sectionBandHeight, blockHeight);
+
+  /// Just the column headers — the band strip has its own row above.
+  double get headerHeight => math.max(0, blockHeight - bandHeight);
 }
 
 class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
@@ -344,6 +577,14 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   /// The frame-axis viewport recorded by the last build — the window's
   /// extent, needed again when the bucket moves outside a build.
   double _frameViewportExtent = 0;
+
+  /// How the header block resolved for the panel this build is laying out
+  /// (see [XSheetTimelineGrid.headerLayoutFor]). Recorded because the
+  /// header builders are methods, outside the LayoutBuilder's scope.
+  XSheetHeaderLayout _headerLayout = XSheetHeaderLayout(
+    blockHeight: XSheetTimelineGrid._naturalHeaderBlockHeight,
+    shed: XSheetTimelineGrid._neverCarried,
+  );
 
   TimelineFrameGeometry _baseFrameGeometry() => TimelineFrameGeometry(
     frameCellExtent: _metrics.frameCellWidth,
@@ -617,7 +858,16 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     widget.onScrubEnd?.call();
   }
 
-  void _selectFrameFromRailGlobalPosition(Offset globalPosition) {
+  /// [autoPan] false is a PRESS: landing near an end of the rail is not a
+  /// push toward it. R10 R6 found this the expensive way — the rail runs
+  /// this from `onPointerDown` as well as from drag updates, so a plain tap
+  /// inside the edge band scrolled the sheet under the finger before the
+  /// frame was even resolved. The band is a fraction of the viewport, so
+  /// the shorter the rail the larger the share of it that was untappable.
+  void _selectFrameFromRailGlobalPosition(
+    Offset globalPosition, {
+    bool autoPan = true,
+  }) {
     final renderObject = _railScrubViewportKey.currentContext
         ?.findRenderObject();
     if (renderObject is! RenderBox) {
@@ -625,7 +875,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     }
 
     final localY = renderObject.globalToLocal(globalPosition).dy;
-    _autoPanRailEdge(renderObject, localY);
+    if (autoPan) {
+      _autoPanRailEdge(renderObject, localY);
+    }
     final frameIndex = _frameIndexForRailLocalY(localY);
     if (frameIndex == null) {
       return;
@@ -690,7 +942,12 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
           ),
           metrics: _metrics,
           width: _metrics.layerRowHeight,
-          height: XSheetTimelineGrid._headerHeight,
+          height: _headerLayout.headerHeight,
+          // The layer header beside it clips below the last rung; the lane
+          // header has to, or it stripes where its neighbour degrades.
+          minContentExtent: XSheetTimelineGrid.headerContentExtentFor(
+            _headerLayout,
+          ),
           currentFrameIndex: cursorFrame,
           onSelectFrame: widget.onSelectFrame,
           laneEdit: widget.laneEdit,
@@ -824,7 +1081,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    const bottomScrollbarRailHeight = 16.0;
+    const bottomScrollbarRailHeight = timelineBottomScrollbarRailHeight;
 
     // PEN-9: a stylus approach stops a coasting fling — mid-glide the
     // viewports ignore-pointer their children, so without the stop a pen
@@ -838,9 +1095,23 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
         behavior: ScrollConfiguration.of(context).copyWith(overscroll: false),
         child: LayoutBuilder(
           builder: (context, constraints) {
+            // The header block's real shape for THIS panel — the stood-up
+            // rail's natural extent where it fits, giving ground in a fixed
+            // order where it does not (R10 R6).
+            final headerLayout = constraints.hasBoundedHeight
+                ? XSheetTimelineGrid.headerLayoutFor(constraints.maxHeight)
+                : XSheetHeaderLayout(
+                    blockHeight: XSheetTimelineGrid._naturalHeaderBlockHeight,
+                    shed: XSheetTimelineGrid._neverCarried,
+                  );
+            // Recorded for the header builders below, which are methods and
+            // cannot see this local (the `_frameViewportExtent` precedent).
+            // Written before anything reads it, in the same build pass.
+            _headerLayout = headerLayout;
+            final headerBlockHeight = headerLayout.blockHeight;
             final bodyViewportHeight = constraints.hasBoundedHeight
                 ? (constraints.maxHeight -
-                          XSheetTimelineGrid._totalHeaderHeight -
+                          headerBlockHeight -
                           bottomScrollbarRailHeight)
                       .clamp(0.0, double.infinity)
                       .toDouble()
@@ -949,8 +1220,12 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                   layerCount: entries.length,
                 );
             final totalFrameContentHeight = _totalFrameContentHeight;
-            // Columns are no longer uniformly wide: collapsed sections fold to
-            // a slim strip.
+            // Every column is ONE width (`timelineDisplayRowExtent` returns
+            // `layerRowHeight` unconditionally). The old note here claimed
+            // collapsed sections folded to a slim strip; they never did, and
+            // believing it would send someone to the height-table row
+            // resolver when `uniformRowDeltaForCrossOffset` — which requires
+            // this uniformity — is the right one.
             final columnsContentWidth = timelineDisplayRowsExtent(
               entries,
               _metrics,
@@ -970,10 +1245,22 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                         width: _metrics.layerControlsWidth,
                         child: Column(
                           children: [
-                            _HeaderCell(
-                              width: _metrics.layerControlsWidth,
-                              height: XSheetTimelineGrid._totalHeaderHeight,
-                              child: const Text('Frame'),
+                            // R10 R6: the corner is the LEGEND COLUMN now.
+                            // It used to read 'Frame' and label nothing —
+                            // the sheet was the one grid whose columns had
+                            // no headings at all. Same legend widget as the
+                            // timeline's, stood up, so each icon lands on
+                            // the header slot it names.
+                            TimelineLayerControlsHeader(
+                              axis: Axis.vertical,
+                              metrics: _metrics,
+                              railExtent: headerBlockHeight,
+                              contentExtent:
+                                  XSheetTimelineGrid.legendContentExtentFor(
+                                    headerLayout,
+                                  ),
+                              shed: headerLayout.shed,
+                              hiddenSections: widget.hiddenSections,
                             ),
                             Expanded(
                               child: Listener(
@@ -985,6 +1272,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                   _resetRailScrubTracking();
                                   _selectFrameFromRailGlobalPosition(
                                     event.position,
+                                    autoPan: false,
                                   );
                                 },
                                 onPointerUp: (_) => _endRailScrub(),
@@ -994,6 +1282,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                   onVerticalDragStart: (details) {
                                     _selectFrameFromRailGlobalPosition(
                                       details.globalPosition,
+                                      autoPan: false,
                                     );
                                   },
                                   onVerticalDragUpdate: (details) {
@@ -1158,7 +1447,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                           children: [
                             TimelineVerticalScrollbarSlot(
                               width: _metrics.verticalScrollbarWidth,
-                              height: XSheetTimelineGrid._totalHeaderHeight,
+                              height: headerBlockHeight,
                             ),
                             Expanded(
                               child: TimelineVerticalScrollbarRail(
@@ -1210,6 +1499,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                             for (final run in sectionRuns)
                                               _XSheetSectionBandCell(
                                                 run: run,
+                                                height: headerLayout.bandHeight,
                                                 extent:
                                                     timelineSectionRunExtent(
                                                       run,
@@ -1229,9 +1519,12 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                               entries[index].isLane
                                                   ? _laneHeader(entries[index])
                                                   : _LayerHeader(
+                                                      headerLayout:
+                                                          headerLayout,
                                                       wearsBaseComposite:
                                                           attachRowWearsBaseComposite(
-                                                            entries[index].layer,
+                                                            entries[index]
+                                                                .layer,
                                                             widget.layers,
                                                           ),
                                                       layer:
@@ -1257,8 +1550,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                       onToggleLayerTimesheet: widget
                                                           .onToggleLayerTimesheet,
                                                       fxState:
-                                                          widget
-                                                              .layerFxStateOf
+                                                          widget.layerFxStateOf
                                                               ?.call(
                                                                 entries[index]
                                                                     .layer
@@ -1274,14 +1566,13 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                               .onToggleLayerFillReference,
                                                       onOpenLayerMixer: widget
                                                           .onOpenLayerMixer,
-                                                      attachArrowPlacement:
-                                                          widget
-                                                              .attachArrowPlacementOf
-                                                              ?.call(
-                                                                entries[index]
-                                                                    .layer
-                                                                    .id,
-                                                              ),
+                                                      attachArrowPlacement: widget
+                                                          .attachArrowPlacementOf
+                                                          ?.call(
+                                                            entries[index]
+                                                                .layer
+                                                                .id,
+                                                          ),
                                                       isLayerSoloed:
                                                           widget.isLayerSoloed
                                                               ?.call(
@@ -1764,18 +2055,25 @@ class XSheetFrameRailPainter extends CustomPainter {
         canvas.drawRect(rect.deflate(0.5), borderPaint..color = borderColor);
       }
 
-      // Seconds column on the left (UI-R10 #27): the 1-based second
-      // prints bold on its boundary row.
+      // Seconds on the row's leading CORNER (UI-R10 #27): the 1-based
+      // second prints bold on its boundary row.
+      //
+      // R10 R6: the rail narrowed 72 → 28 with the frame-number rail now
+      // derived from the ruler's height, and a centred 14pt three-digit
+      // number filled the whole 28px — straight through a seconds glyph
+      // that sat beside it. Both numbers converge on the SHARED ruler's
+      // answers instead of the sheet growing an exception: the corner
+      // placement (`rect.left + 2, rect.top + 1` there) and the 11pt base.
       if (model.secondsLabel.isNotEmpty) {
         final seconds = _label(
           model.secondsLabel,
           TextStyle(
-            fontSize: 9,
+            fontSize: 8,
             fontWeight: FontWeight.w700,
             color: colorScheme.onSurfaceVariant,
           ),
         );
-        seconds.paint(canvas, Offset(3, rect.center.dy - seconds.height / 2));
+        seconds.paint(canvas, Offset(rect.left + 2, rect.top + 1));
       }
 
       if (model.label.isNotEmpty) {
@@ -1786,8 +2084,11 @@ class XSheetFrameRailPainter extends CustomPainter {
         final number = _label(
           model.label,
           TextStyle(
+            // 14 → 11, the SHARED ruler's base (R10 R6). The 14 was the
+            // sheet's own number, affordable only while the rail was 72
+            // wide.
             fontSize: timelineFittedGlyphFontSize(
-              14,
+              11,
               metrics.frameCellWidth,
               crossExtent: metrics.layerControlsWidth,
             ),
@@ -1869,7 +2170,14 @@ class XSheetFrameRailPainter extends CustomPainter {
 /// lives on the toolbar toggles. The band label is horizontal already (the
 /// band runs along the layer axis here).
 class _XSheetSectionBandCell extends StatelessWidget {
-  const _XSheetSectionBandCell({required this.run, required this.extent});
+  const _XSheetSectionBandCell({
+    required this.run,
+    required this.extent,
+    required this.height,
+  });
+
+  /// Resolved per layout: the strip gives ground with the block (R10 R6).
+  final double height;
 
   final TimelineSectionRun run;
   final double extent;
@@ -1880,21 +2188,32 @@ class _XSheetSectionBandCell extends StatelessWidget {
     return ExcludeSemantics(
       child: Container(
         width: extent,
-        height: XSheetTimelineGrid._sectionBandHeight,
+        height: height,
         decoration: BoxDecoration(
           color: colorScheme.surfaceContainerLow,
           border: Border.all(color: colorScheme.outline, width: 1),
         ),
+        // The band runs ALONG the layer axis, so its label stays horizontal
+        // — but a run is now 28px per column instead of 164, and 'ACTION'
+        // needs ~40. R10 R6 converted every other label on this surface to
+        // vertical writing and left this one with the note "it is
+        // horizontal already", which was true only while the columns were
+        // wide. Scaling down beats ellipsis: 'AC…' names no section.
         child: Center(
-          child: Text(
-            timelineSectionLabel(run.section),
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-              fontSize: 9,
-              letterSpacing: 1.2,
-              fontWeight: FontWeight.bold,
-              color: colorScheme.onSurfaceVariant,
+          child: ClipRect(
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(
+                timelineSectionLabel(run.section),
+                maxLines: 1,
+                softWrap: false,
+                style: TextStyle(
+                  fontSize: 9,
+                  letterSpacing: 1.2,
+                  fontWeight: FontWeight.bold,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
             ),
           ),
         ),
@@ -1925,9 +2244,15 @@ class _LayerHeader extends StatelessWidget {
     this.fxState = LayerFxState.on,
     this.onToggleLayerFx,
     this.isLayerSoloed = false,
+    required this.headerLayout,
   });
 
   final TimelineGridMetrics metrics;
+
+  /// How the header block resolved for this panel — its height and which
+  /// optional columns it can afford. Not a constant (see
+  /// [XSheetTimelineGrid.headerLayoutFor]).
+  final XSheetHeaderLayout headerLayout;
 
   final Layer layer;
   final bool active;
@@ -1986,8 +2311,9 @@ class _LayerHeader extends StatelessWidget {
       onTap: () => onSelectLayer(layer.id),
       child: Container(
         width: metrics.layerRowHeight,
-        height: XSheetTimelineGrid._headerHeight,
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        height: headerLayout.headerHeight,
+        // No padding: a 28px column has none to give, and the shared slot
+        // skeleton already carries the row's gaps.
         decoration: BoxDecoration(
           color: active
               ? colorScheme.secondaryContainer
@@ -2020,190 +2346,182 @@ class _LayerHeader extends StatelessWidget {
           key: active ? const ValueKey<String>('xsheet-selected-layer') : null,
           label: active ? 'selected layer' : 'layer',
           container: true,
-          child: Stack(
-            children: [
-              // Fill-reference toggle (R20-C2): OVERLAID top-right over the
-              // name row's balance slot — the fixed-height header column
-              // has no layout row to spare (adding it inline overflowed).
-              // Drawing columns only; selection reads by COLOR.
-              if (onToggleLayerFillReference != null &&
-                  layer.kind == LayerKind.animation)
-                Positioned(
-                  top: 0,
-                  right: 0,
-                  child: IconButton(
-                    key: ValueKey<String>(
-                      'xsheet-layer-fill-reference-${layer.id}',
-                    ),
-                    tooltip: layer.isFillReference
-                        ? 'Fill reference layer (on)'
-                        : 'Fill reference layer',
-                    padding: EdgeInsets.zero,
-                    constraints: const BoxConstraints.tightFor(
-                      width: 20,
-                      height: 20,
-                    ),
-                    icon: Icon(
-                      Icons.format_color_fill,
-                      size: 13,
-                      color: layer.isFillReference
-                          ? colorScheme.primary
-                          : colorScheme.outline.withValues(alpha: 0.45),
-                    ),
-                    onPressed: () => onToggleLayerFillReference!(layer.id),
-                  ),
-                ),
-              Column(
-                mainAxisAlignment: MainAxisAlignment.center,
+          // R10 R6 — THE RAIL ROW, STOOD UP. This used to be a hand-rolled
+          // two-row box 164px wide, which is why it had no fill-reference
+          // slot (the toggle was Positioned over the name's balance), no
+          // onion, no blend, and a "balance" SizedBox doing arithmetic to
+          // keep the name centred. It is the shared skeleton now, in the
+          // shared order, at the shared extents — the same list the
+          // timeline's rows and the legend above read, running downward.
+          //
+          // `stretch`: a reserved (childless) slot keeps its extent either
+          // way, but a POPULATED one would take its intrinsic width under
+          // the default `center` and could out-grow a 28px column. Stretch
+          // makes every slot exactly one column wide, which is what the
+          // horizontal rail gets from its row height.
+          //
+          // The clip is for panels shorter than the ladder's last rung —
+          // shorter than a kind icon, a name, a twirl and an eye stacked. There is
+          // nothing left to shed there, so the header runs off the bottom;
+          // clipping it degrades quietly instead of striping the panel.
+          child: ClipRect(
+            child: OverflowBox(
+              alignment: Alignment.topCenter,
+              minHeight: XSheetTimelineGrid.headerContentExtentFor(
+                headerLayout,
+              ),
+              maxHeight: XSheetTimelineGrid.headerContentExtentFor(
+                headerLayout,
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  Row(
-                    children: [
-                      if (showLaneToggle)
-                        InkWell(
-                          key: ValueKey<String>(
-                            'xsheet-lane-toggle-${layer.id}',
-                          ),
-                          onTap: () => onToggleLanes!(layer.id),
-                          customBorder: const CircleBorder(), // R26 #28
-                          child: SizedBox(
-                            width: 16,
-                            height: 24,
+                  ...layerRailLeadingCells(
+                    axis: Axis.vertical,
+                    // The band is the strip above, not a slot in here.
+                    includeSectionSlot: false,
+                    shed: headerLayout.shed,
+                    laneToggle: showLaneToggle
+                        ? InkWell(
+                            key: ValueKey<String>(
+                              'xsheet-lane-toggle-${layer.id}',
+                            ),
+                            onTap: () => onToggleLanes!(layer.id),
+                            customBorder: const CircleBorder(), // R26 #28
                             child: Icon(
-                              lanesExpanded
-                                  ? Icons.arrow_drop_down
-                                  : Icons.arrow_right,
+                              layerRailTwirlIcon(expanded: lanesExpanded),
                               size: 16,
                             ),
-                          ),
-                        ),
-                      // Timesheet + mark chips lead the name; ineligible layers
-                      // keep empty slots so names align across columns.
-                      //
-                      // R10 R3: the attach ARROW takes this slot on attach
-                      // columns, and the gate finally matches the rail's —
-                      // the x-sheet had no `attachedToLayerId` check, so an
-                      // attach column showed a live sheet toggle the rail
-                      // hides, and flipping it put an attach row ON the
-                      // sheet in a state the rail could never undo.
-                      if (attachArrowPlacement != null)
-                        LayerAttachArrowCell(
-                          keyPrefix: 'xsheet',
-                          idValue: '${layer.id}',
-                          placement: attachArrowPlacement!,
-                        )
-                      else if (layerKindEligibleForTimesheetToggle(
-                            layer.kind,
-                          ) &&
-                          layer.attachedToLayerId == null)
-                        LayerTimesheetToggleButton(
-                          keyPrefix: 'xsheet',
-                          layerId: layer.id,
-                          onTimesheet: layer.onTimesheet,
-                          onToggle: onToggleLayerTimesheet,
-                        )
-                      else
-                        const SizedBox(width: layerTimesheetSlotWidth),
-                      const SizedBox(width: 4),
-                      LayerMarkChip(
-                        keyPrefix: 'xsheet',
-                        layerId: layer.id,
-                        mark: layer.mark,
-                        onMarkSelected: onLayerMarkSelected,
-                      ),
-                      Expanded(
-                        child: InkWell(
-                          key: ValueKey<String>(
-                            'xsheet-layer-name-${layer.id}',
-                          ),
-                          onTap: () => onSelectLayer(layer.id),
-                          // Selection reads by COLOR only (user rule): no
-                          // bold flip on the active column's name.
-                          child: Text(
-                            layer.name,
-                            overflow: TextOverflow.ellipsis,
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      ),
-                      // R9 (S3): the TYPE BUTTON reaches the x-sheet — the
-                      // kind icon, or an attach column's placement arrow.
-                      // The sheet had neither, so a column's kind and its
-                      // attach relationship were invisible on the surface
-                      // the user reads most.
-                      //
-                      // It rides the BALANCE that already keeps the name
-                      // centered rather than adding to the leading chips:
-                      // the column's 40px of name is the scarce thing here,
-                      // and the balance was empty space doing arithmetic.
-                      LayerTypeButton(
-                        keyPrefix: 'xsheet',
-                        idValue: '${layer.id}',
-                        kind: layer.kind,
-                        folderCollapsed: layer.collapsed,
-                        onTap: () => onSelectLayer(layer.id),
-                      ),
-                      SizedBox(
-                        width:
-                            layerTimesheetSlotWidth +
-                            layerMarkSlotWidth +
-                            4 +
-                            (showLaneToggle ? 16 : 0) -
-                            layerTypeSlotWidth,
-                      ),
-                    ],
+                          )
+                        : null,
+                    // R10 R3: the attach ARROW takes the SHEET slot on attach
+                    // columns, and the gate matches the rail's — the x-sheet
+                    // had no `attachedToLayerId` check, so an attach column
+                    // showed a live sheet toggle the rail hides.
+                    timesheet: attachArrowPlacement != null
+                        ? LayerAttachArrowCell(
+                            keyPrefix: 'xsheet',
+                            idValue: '${layer.id}',
+                            placement: attachArrowPlacement!,
+                          )
+                        : (layerKindEligibleForTimesheetToggle(layer.kind) &&
+                              layer.attachedToLayerId == null)
+                        ? LayerTimesheetToggleButton(
+                            keyPrefix: 'xsheet',
+                            layerId: layer.id,
+                            onTimesheet: layer.onTimesheet,
+                            onToggle: onToggleLayerTimesheet,
+                          )
+                        : null,
+                    mark: LayerMarkChip(
+                      keyPrefix: 'xsheet',
+                      layerId: layer.id,
+                      mark: layer.mark,
+                      onMarkSelected: onLayerMarkSelected,
+                    ),
+                    typeButton: LayerTypeButton(
+                      keyPrefix: 'xsheet',
+                      idValue: '${layer.id}',
+                      kind: layer.kind,
+                      folderCollapsed: layer.collapsed,
+                      onTap: () => onSelectLayer(layer.id),
+                    ),
                   ),
-                  Row(
-                    children: [
-                      // Attach rows and their 공정 organizer folder hide the
-                      // switch in BOTH orientations: they wear their base's
-                      // fx, so a flip here would burn an undo step writing
-                      // a flag nothing reads.
-                      if (onToggleLayerFx != null &&
-                          layerKindShowsFxToggle(layer.kind) &&
-                          !wearsBaseComposite)
-                        FxToggleButton(
-                          keyValue: 'xsheet-layer-fx-${layer.id}',
-                          state: fxState,
-                          onToggle: () => onToggleLayerFx!(layer.id),
+                  // The NAME takes the remainder, exactly as the row's
+                  // `Expanded` does — written vertically, because a 28px column
+                  // is a paper timesheet column and that is how one is read.
+                  Expanded(
+                    child: InkWell(
+                      key: ValueKey<String>('xsheet-layer-name-${layer.id}'),
+                      onTap: () => onSelectLayer(layer.id),
+                      // Selection reads by COLOR only (user rule): no bold flip
+                      // on the active column's name.
+                      child: ClipRect(
+                        child: VerticalWritingText(
+                          text: layer.name,
+                          style: TextStyle(
+                            fontSize: 11,
+                            color: colorScheme.onSurface,
+                          ),
                         ),
-                      LayerVisibilityToggleButton(
-                        keyValue: 'xsheet-layer-visibility-${layer.id}',
-                        isVisible: layer.isVisible,
-                        onToggle: () => onToggleLayerVisibility(layer.id),
-                        size: 28,
-                        iconSize: 16,
                       ),
-                      // SE columns carry the mute speaker beside the eye. Tight
-                      // SizedBox: the M3 IconButton otherwise inflates to the
-                      // 48px tap target, overflowing the header column.
-                      if (layer.kind == LayerKind.se &&
-                          onOpenLayerMixer != null)
-                        SizedBox(
-                          width: 24,
-                          height: 28,
-                          child: LayerMuteToggleButton(
+                    ),
+                  ),
+                  ...layerRailTrailingCells(
+                    axis: Axis.vertical,
+                    // Short panels shed columns down a fixed ladder — see
+                    // [XSheetTimelineGrid.headerLayoutFor].
+                    shed: headerLayout.shed,
+                    // R20-C2: the fill-reference toggle finally has a SLOT
+                    // instead of an overlay. Drawing columns only.
+                    fillReference:
+                        onToggleLayerFillReference != null &&
+                            layer.kind == LayerKind.animation
+                        ? IconButton(
+                            key: ValueKey<String>(
+                              'xsheet-layer-fill-reference-${layer.id}',
+                            ),
+                            tooltip: layer.isFillReference
+                                ? 'Fill reference layer (on)'
+                                : 'Fill reference layer',
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints.tightFor(
+                              width: 20,
+                              height: 20,
+                            ),
+                            icon: Icon(
+                              Icons.format_color_fill,
+                              size: 13,
+                              color: layer.isFillReference
+                                  ? colorScheme.primary
+                                  : colorScheme.outline.withValues(alpha: 0.45),
+                            ),
+                            onPressed: () =>
+                                onToggleLayerFillReference!(layer.id),
+                          )
+                        : null,
+                    // Attach rows and their 공정 organizer folder hide the
+                    // switch in BOTH orientations: they wear their base's fx,
+                    // so a flip here would burn an undo step writing a flag
+                    // nothing reads.
+                    fx:
+                        onToggleLayerFx != null &&
+                            layerKindShowsFxToggle(layer.kind) &&
+                            !wearsBaseComposite
+                        ? FxToggleButton(
+                            keyValue: 'xsheet-layer-fx-${layer.id}',
+                            state: fxState,
+                            onToggle: () => onToggleLayerFx!(layer.id),
+                          )
+                        : null,
+                    visibility: LayerVisibilityToggleButton(
+                      keyValue: 'xsheet-layer-visibility-${layer.id}',
+                      isVisible: layer.isVisible,
+                      onToggle: () => onToggleLayerVisibility(layer.id),
+                      size: layerVisibilitySlotWidth,
+                      iconSize: 16,
+                    ),
+                    // SE columns carry the mute speaker — the mixer's door.
+                    mute: layer.kind == LayerKind.se && onOpenLayerMixer != null
+                        ? LayerMuteToggleButton(
                             keyValue: 'xsheet-layer-mute-${layer.id}',
                             muted: layer.muted,
                             soloed: isLayerSoloed,
-                            width: 24,
-                            height: 28,
+                            width: metrics.layerRowHeight,
+                            height: layerMuteSlotWidth,
                             onOpenMixer: (anchorContext) =>
                                 onOpenLayerMixer!(anchorContext, layer.id),
-                          ),
-                        ),
-                      // The camera column's slider drives the camera-view DIM
-                      // opacity (unified layer controls). Wrapped in the
-                      // session's opacity-drag preview (UI-R6 #2) so a
-                      // master-bar sweep updates it live.
-                      if (layerKindShowsOpacityControl(layer.kind))
-                        Expanded(child: _opacityField(layer))
-                      else
-                        const Spacer(),
-                    ],
+                          )
+                        : null,
+                    // No opacity slider on the sheet (R10 R6): a 28px column
+                    // leaves the readout 11px, so the number the slot exists to
+                    // show can never be read. The value lives on the timeline
+                    // rail and in the layer panel, and the legend beside this
+                    // had already stood its master bar down for the same reason.
                   ),
                 ],
               ),
-            ],
+            ),
           ),
         ),
       ),
@@ -2213,65 +2531,5 @@ class _LayerHeader extends StatelessWidget {
     // boundary (R3 feedback #6) — the extra 2px overlay double-lined them;
     // the band above carries the section identity.
     return header;
-  }
-
-  /// The header's opacity slider, live-following the session's drag
-  /// preview when it targets this layer (UI-R6 #2).
-  Widget _opacityField(Layer layer) {
-    Widget slider(double value) => FieldSlider(
-      key: ValueKey<String>('xsheet-layer-opacity-${layer.id}'),
-      min: 0,
-      max: 1,
-      value: value,
-      valueText: '${(value * 100).round()}%',
-      valueTextBuilder: (next) => '${(next * 100).round()}%',
-      height: 18,
-      onChanged: (opacity) => onLayerOpacityChanged(layer.id, opacity),
-      onChangeEnd: onLayerOpacityChangeEnd == null
-          ? null
-          : (opacity) => onLayerOpacityChangeEnd!(layer.id, opacity),
-    );
-
-    final preview = opacityDragPreview;
-    final resting = layer.opacity.clamp(0.0, 1.0).toDouble();
-    if (preview == null) {
-      return slider(resting);
-    }
-    return ValueListenableBuilder<({Set<LayerId> layerIds, double opacity})?>(
-      valueListenable: preview,
-      builder: (context, dragging, _) => slider(
-        dragging != null && dragging.layerIds.contains(layer.id)
-            ? dragging.opacity
-            : resting,
-      ),
-    );
-  }
-}
-
-class _HeaderCell extends StatelessWidget {
-  const _HeaderCell({
-    required this.width,
-    required this.height,
-    required this.child,
-  });
-
-  final double width;
-  final double height;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-
-    return Container(
-      width: width,
-      height: height,
-      alignment: Alignment.center,
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest,
-        border: Border.all(color: colorScheme.outlineVariant),
-      ),
-      child: child,
-    );
   }
 }

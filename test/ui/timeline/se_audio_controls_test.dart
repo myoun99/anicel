@@ -158,8 +158,19 @@ void main() {
 
   testWidgets('the SE speaker opens the MIXER in both orientations, and '
       'mute lives inside it (view state, not undoable)', (tester) async {
+    // R10 R6: the x-sheet's stood-up header sheds controls when the panel
+    // is too short to stack them, and the speaker is on that ladder. This
+    // test is about the DOOR being the same in both orientations, so give
+    // the dock the height a user working in the sheet would.
+    await tester.binding.setSurfaceSize(const Size(1200, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     late ProjectRepository repository;
     await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
+    await tester.drag(
+      find.byKey(const ValueKey<String>('dock-resize-bottom')),
+      const Offset(0, -300),
+    );
+    await tester.pumpAndSettle();
 
     await _ensureVisibleAndTap(
       tester,

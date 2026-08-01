@@ -25,6 +25,7 @@ import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show timelineDrawingStartColor;
 import 'package:anicel/src/ui/timeline/transform_lane_editing.dart';
 import 'package:anicel/src/ui/timeline/transform_lane_policy.dart';
+import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
 import '../flyout_test_helpers.dart';
 import 'timeline_cell_probe.dart';
@@ -1364,9 +1365,14 @@ void main() {
       );
       await expand(tester);
 
-      // X-sheet zoom default = 36px per frame row. R10: the slop is part
-      // of the travel, so the TOTAL snaps — 72 = 2×36 = +2 frames.
-      await tester.drag(laneKey('position', 4), const Offset(0, 72));
+      // R10: the slop is part of the travel, so the TOTAL snaps — two
+      // frame rows is +2 frames. Read from the metrics rather than typed:
+      // R6 made the sheet's frame row the timeline's frame cell (36 → 24),
+      // and a literal here just meant a different answer, silently.
+      await tester.drag(
+        laneKey('position', 4),
+        Offset(0, XSheetTimelineGrid.defaultMetrics.frameCellWidth * 2),
+      );
       await tester.pumpAndSettle();
 
       expect(laneKey('position', 4), findsNothing);

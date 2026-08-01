@@ -8,8 +8,8 @@ import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../theme/app_theme.dart';
 import '../widgets/panel_flyout.dart';
-import 'upright_vertical_text.dart';
 import '../text/app_strings.dart';
+import '../text/vertical_writing_text.dart';
 
 /// Layer-label chip controls shared by both timeline orientations
 /// (horizontal rows and XSheet column headers): the timesheet-output toggle
@@ -32,14 +32,23 @@ const double layerSectionLabelSlotWidth = 36;
 /// S1·S2-style neighbours read as ONE vertical sub-zone exactly like the
 /// old gutter bracket, just inside the rows.
 class LayerSectionBandCell extends StatelessWidget {
-  const LayerSectionBandCell({super.key});
+  const LayerSectionBandCell({super.key, this.axis = Axis.horizontal});
+
+  /// The rail's own direction — the slot's extent is measured along it, and
+  /// the cell fills the other way (R10 R6).
+  final Axis axis;
 
   @override
   Widget build(BuildContext context) {
-    return const SizedBox(
-      width: layerSectionLabelSlotWidth,
-      height: double.infinity,
-    );
+    return axis == Axis.horizontal
+        ? const SizedBox(
+            width: layerSectionLabelSlotWidth,
+            height: double.infinity,
+          )
+        : const SizedBox(
+            height: layerSectionLabelSlotWidth,
+            width: double.infinity,
+          );
   }
 }
 
@@ -86,7 +95,7 @@ class SectionBandZone extends StatelessWidget {
           ),
           child: Center(
             child: ClipRect(
-              child: UprightVerticalText(
+              child: VerticalWritingText(
                 text: label,
                 style: TextStyle(
                   fontSize: 9,

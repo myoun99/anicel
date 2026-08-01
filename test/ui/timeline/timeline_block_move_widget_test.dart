@@ -851,19 +851,24 @@ void main() {
     );
     expect(gestureLayer, findsOneWidget);
 
-    // Two frame rows down (X-sheet frame row height 36): head = frame 2.
+    // Two frame rows down: head = frame 2. Both distances come from the
+    // metrics now — R10 R6 made a frame row the timeline's frame cell
+    // (36 → 24) and a column the timeline's row height (164 → 28), and a
+    // literal here would keep passing while meaning something else.
+    final rowExtent = XSheetTimelineGrid.defaultMetrics.frameCellWidth;
+    final columnExtent = XSheetTimelineGrid.defaultMetrics.layerRowHeight;
     final start = tester.getTopLeft(gestureLayer) + const Offset(20, 18);
     final gesture = await tester.startGesture(
       start,
       kind: PointerDeviceKind.mouse,
     );
-    await gesture.moveBy(const Offset(0, 72));
+    await gesture.moveBy(Offset(0, rowExtent * 2));
     await gesture.up();
     await tester.pump();
     expect(selectUpdates.last, (const LayerId('layer-a'), 0, 2));
 
     // With a selection in place, dragging inside it one COLUMN right
-    // (column width 164) targets layer B.
+    // targets layer B.
     selection.value = const TimelineFrameRangeSelection(
       layerId: LayerId('layer-a'),
       startIndex: 0,
@@ -873,7 +878,7 @@ void main() {
       start,
       kind: PointerDeviceKind.mouse,
     );
-    await move.moveBy(const Offset(164, 0));
+    await move.moveBy(Offset(columnExtent, 0));
     await move.up();
     await tester.pump();
     expect(moveUpdates.last, (0, const LayerId('layer-b')));

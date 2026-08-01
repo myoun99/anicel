@@ -38,10 +38,10 @@ import 'timeline_frame_window.dart';
 import 'layer_label_controls.dart'
     show
         SectionBandZone,
-        layerMuteSlotWidth,
-        layerOpacitySlotWidth,
         layerSectionLabelSlotWidth,
         layerVisibilitySlotWidth;
+import 'layer_rail_columns.dart'
+    show LayerRailTrailingSlot, layerRailTrailingWidth;
 import 'timeline_grid_metrics.dart';
 import 'timeline_horizontal_offset_policy.dart';
 import 'timeline_horizontal_scrollbar_rail.dart';
@@ -456,11 +456,22 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   ({double left, double right}) _eyeColumnBand() {
     final rowWidth =
         _metrics.layerControlsWidth - _metrics.sectionLabelGutterWidth;
-    // From the row's right edge: 8px padding, opacity(64), mute(18), then
-    // the eye slot(22).
+    // From the row's right edge: 8px padding, then every trailing slot the
+    // rows actually draw, up to and including the eye.
+    //
+    // R10 R6: this used to restate the tail by hand — '8px padding,
+    // opacity(64), mute(18)' — which was wrong twice over: opacity is 42,
+    // and R27 #6 put the BLEND column to opacity's right without anyone
+    // updating the arithmetic, so the swipe band sat 58px off the eye
+    // whenever blend was shown. Restating derived geometry by hand is the
+    // exact failure this round exists to retire; the tail is read from the
+    // skeleton now, with the same host gates the rows use.
     const rightPadding = 8.0;
-    final eyeRight =
-        rowWidth - rightPadding - layerOpacitySlotWidth - layerMuteSlotWidth;
+    final tailAfterEye = layerRailTrailingWidth(
+      from: LayerRailTrailingSlot.mute,
+      hasBlendColumn: widget.onLayerBlendModeSelected != null,
+    );
+    final eyeRight = rowWidth - rightPadding - tailAfterEye;
     final eyeLeft = eyeRight - layerVisibilitySlotWidth;
     // A little tolerance so the thin 22px band is easy to hit with a pen.
     return (left: eyeLeft - 4, right: eyeRight + 4);
@@ -1161,7 +1172,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    const bottomScrollbarRailHeight = 16.0;
+    const bottomScrollbarRailHeight = timelineBottomScrollbarRailHeight;
     final rows = buildTimelineDisplayRows(
       layers: widget.layers,
       expandedLayerIds: widget.expandedLaneLayerIds,

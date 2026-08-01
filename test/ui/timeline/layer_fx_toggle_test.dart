@@ -91,8 +91,21 @@ void main() {
     testWidgets('the X-sheet header carries the same switch (Axis policy)', (
       tester,
     ) async {
+      // R10 R6: the sheet's stood-up header sheds controls down a ladder
+      // when the panel is too short to stack them, and the fx switch is on
+      // that ladder. The bottom dock's default 350 is past it, so give the
+      // dock the height a user working in the sheet would — this test is
+      // about the Axis policy, not about what a cramped panel gives up
+      // (that has its own tests).
+      await tester.binding.setSurfaceSize(const Size(1200, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
         MaterialApp(home: HomePage(initialProject: _project())),
+      );
+      await tester.pumpAndSettle();
+      await tester.drag(
+        find.byKey(const ValueKey<String>('dock-resize-bottom')),
+        const Offset(0, -300),
       );
       await tester.pumpAndSettle();
       await tester.tap(
