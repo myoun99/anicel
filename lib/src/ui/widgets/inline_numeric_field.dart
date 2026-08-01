@@ -59,15 +59,16 @@ class InlineNumericField extends StatefulWidget {
 }
 
 class _InlineNumericFieldState extends State<InlineNumericField> {
-  late final TextEditingController _controller = TextEditingController.fromValue(
-    TextEditingValue(
-      text: widget.initialText,
-      selection: TextSelection(
-        baseOffset: 0,
-        extentOffset: widget.initialText.length,
-      ),
-    ),
-  );
+  late final TextEditingController _controller =
+      TextEditingController.fromValue(
+        TextEditingValue(
+          text: widget.initialText,
+          selection: TextSelection(
+            baseOffset: 0,
+            extentOffset: widget.initialText.length,
+          ),
+        ),
+      );
 
   /// Commit exactly once. `onSubmitted` and `onTapOutside` can both land
   /// for one edit (Enter, then the focus loss it causes), and a host that
@@ -86,6 +87,22 @@ class _InlineNumericFieldState extends State<InlineNumericField> {
     }
     _done = true;
     widget.onSubmit(_controller.text.trim());
+  }
+
+  /// Tapping AWAY commits what you typed — but if you typed nothing, it
+  /// must not commit anything at all.
+  ///
+  /// The seed goes stale the instant the host's value moves under an open
+  /// field, and the pointer-down that closes the field is usually the one
+  /// that moved it: open the hex field, then pick on the wheel, and a
+  /// commit would write the OLD hex back over the colour you just chose.
+  /// An untouched field abandons instead.
+  void _submitFromOutside() {
+    if (_controller.text == widget.initialText) {
+      _cancel();
+      return;
+    }
+    _submit();
   }
 
   void _cancel() {
@@ -129,7 +146,7 @@ class _InlineNumericFieldState extends State<InlineNumericField> {
           border: InputBorder.none,
         ),
         onSubmitted: (_) => _submit(),
-        onTapOutside: (_) => _submit(),
+        onTapOutside: (_) => _submitFromOutside(),
       ),
     );
   }

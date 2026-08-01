@@ -19,20 +19,18 @@ class ColorWheelPanel extends StatefulWidget {
   const ColorWheelPanel({
     super.key,
     required this.color,
-    required this.backgroundColor,
     required this.onColorChanged,
-    required this.onBackgroundColorChanged,
   });
 
   /// The active brush color (ARGB int, the brush tool state's format).
   final int color;
 
-  /// The spare background slot (ARGB int); lives with the owner so it
-  /// survives tab switches.
-  final int backgroundColor;
-
   final ValueChanged<int> onColorChanged;
-  final ValueChanged<int> onBackgroundColorChanged;
+
+  // R10 R5: the BACKGROUND slot left with the swatch pair. This panel
+  // only ever knew about it to draw the pair and to swap — both of which
+  // are the tool rail's now — so keeping the parameters would have been
+  // an argument every caller passes and nothing reads.
 
   @override
   State<ColorWheelPanel> createState() => _ColorWheelPanelState();

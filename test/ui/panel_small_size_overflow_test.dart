@@ -42,9 +42,7 @@ void main() {
           Expanded(
             child: ColorWheelPanel(
               color: 0xFF3366CC,
-              backgroundColor: 0xFFFFFFFF,
               onColorChanged: (_) {},
-              onBackgroundColorChanged: (_) {},
             ),
           ),
           ConstrainedBox(

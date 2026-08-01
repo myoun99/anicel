@@ -81,6 +81,10 @@ class _ColorStatusBarState extends State<ColorStatusBar> {
                   ),
                   initialText: '$value',
                   textStyle: _readout,
+                  // The readout it replaces is right-aligned, and this bar
+                  // promises the digits do not move. A centred field would
+                  // shift them the moment you tapped.
+                  textAlign: TextAlign.right,
                   signed: false,
                   onSubmit: (text) => _commitChannel(which, text),
                   onCancel: () => setState(() => _editing = _Editing.none),

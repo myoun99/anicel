@@ -77,8 +77,8 @@ class FieldSlider extends StatefulWidget {
   /// Live per-move callback; `null` disables the control (dimmed, inert).
   final ValueChanged<double>? onChanged;
 
-  /// Fires once when a drag ends, a wheel step lands or a typed value
-  /// commits — the hook for commit-on-release consumers (opacity/zoom drag
+  /// Fires once when a drag ends or a wheel step lands — the hook for
+  /// commit-on-release consumers (opacity/zoom drag
   /// smoothness, R4 #4/#5): route the cheap live preview through
   /// [onChanged] and the real write through this.
   final ValueChanged<double>? onChangeEnd;

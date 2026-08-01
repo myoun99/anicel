@@ -98,10 +98,7 @@ void main() {
                 height: 300,
                 child: ColorWheelPanel(
                   color: color,
-                  backgroundColor: backgroundColor,
                   onColorChanged: changes.add,
-                  onBackgroundColorChanged: (color) =>
-                      backgroundChanges?.add(color),
                 ),
               ),
             ),
@@ -123,9 +120,7 @@ void main() {
                   height: size.height,
                   child: ColorWheelPanel(
                     color: 0xFFFF0000,
-                    backgroundColor: 0xFFFFFFFF,
                     onColorChanged: (_) {},
-                    onBackgroundColorChanged: (_) {},
                   ),
                 ),
               ),
@@ -161,9 +156,7 @@ void main() {
                   height: size.height,
                   child: ColorWheelPanel(
                     color: 0xFF00FF00,
-                    backgroundColor: 0xFFFFFFFF,
                     onColorChanged: (_) {},
-                    onBackgroundColorChanged: (_) {},
                   ),
                 ),
               ),
@@ -295,8 +288,8 @@ void main() {
         'the rail now, not behind a window', (tester) async {
       await pumpButton(
         tester,
-        color: 0xFFFF0000,
         backgroundColor: 0xFF00FF00,
+        color: 0xFFFF0000,
         changes: <int>[],
         backgroundChanges: <int>[],
       );

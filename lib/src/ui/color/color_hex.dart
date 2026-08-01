@@ -26,6 +26,12 @@ int? parseColorHex(String text) {
   if (body.length != 6) {
     return null;
   }
+  // `int.tryParse` takes a SIGN, so '-12345' parses to a negative and
+  // `0xFF000000 | it` is not a colour at all — it is whatever the sign
+  // bits make of it. A colour has no sign.
+  if (!RegExp(r'^[0-9a-fA-F]{6}$').hasMatch(body)) {
+    return null;
+  }
   final rgb = int.tryParse(body, radix: 16);
   return rgb == null ? null : 0xFF000000 | rgb;
 }

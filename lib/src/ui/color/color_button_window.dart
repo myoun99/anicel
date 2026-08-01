@@ -84,10 +84,8 @@ class SelectedColorButton extends StatelessWidget {
                 onTap: () => showColorButtonWindow(
                   anchorContext,
                   color: color,
-                  backgroundColor: backgroundColor,
                   palette: palette,
                   onColorChanged: onColorChanged,
-                  onBackgroundColorChanged: onBackgroundColorChanged,
                   onPaletteChanged: onPaletteChanged,
                 ),
                 // The pair's own extent IS the rail cell; `diameter` is
@@ -131,10 +129,8 @@ class SelectedColorButton extends StatelessWidget {
 Future<void> showColorButtonWindow(
   BuildContext anchorContext, {
   required int color,
-  required int backgroundColor,
   required ColorPaletteState palette,
   required ValueChanged<int> onColorChanged,
-  required ValueChanged<int> onBackgroundColorChanged,
   required ValueChanged<ColorPaletteState> onPaletteChanged,
 }) {
   return showAnchoredPopup<void>(
@@ -144,10 +140,8 @@ Future<void> showColorButtonWindow(
     height: colorButtonWindowHeight,
     builder: (context) => ColorButtonWindow(
       color: color,
-      backgroundColor: backgroundColor,
       palette: palette,
       onColorChanged: onColorChanged,
-      onBackgroundColorChanged: onBackgroundColorChanged,
       onPaletteChanged: onPaletteChanged,
     ),
   );
@@ -157,19 +151,19 @@ class ColorButtonWindow extends StatefulWidget {
   const ColorButtonWindow({
     super.key,
     required this.color,
-    required this.backgroundColor,
     required this.palette,
     required this.onColorChanged,
-    required this.onBackgroundColorChanged,
     required this.onPaletteChanged,
   });
 
   final int color;
-  final int backgroundColor;
   final ColorPaletteState palette;
   final ValueChanged<int> onColorChanged;
-  final ValueChanged<int> onBackgroundColorChanged;
   final ValueChanged<ColorPaletteState> onPaletteChanged;
+
+  // R10 R5: the BACKGROUND slot is the tool rail's, so the window no
+  // longer carries it — not as state, not as a parameter, not as a
+  // callback threaded through a picker that never touches it.
 
   @override
   State<ColorButtonWindow> createState() => _ColorButtonWindowState();
@@ -180,7 +174,6 @@ class _ColorButtonWindowState extends State<ColorButtonWindow> {
   /// whatever opened it, and the wheel is dragged live, so reading the
   /// caller's captured values back would snap the drag to where it started.
   late int _color = widget.color;
-  late int _background = widget.backgroundColor;
   late ColorPaletteState _palette = widget.palette;
 
   /// R10 R5: the tab is an ID, not a bool, because the tab LIST is data
@@ -191,11 +184,6 @@ class _ColorButtonWindowState extends State<ColorButtonWindow> {
   void _setColor(int color) {
     setState(() => _color = color);
     widget.onColorChanged(color);
-  }
-
-  void _setBackground(int color) {
-    setState(() => _background = color);
-    widget.onBackgroundColorChanged(color);
   }
 
   void _setPalette(ColorPaletteState palette) {
@@ -249,12 +237,7 @@ class _ColorButtonWindowState extends State<ColorButtonWindow> {
       buttonKey: const ValueKey<String>('color-window-tab-wheel'),
       builder: (context) => Padding(
         padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-        child: ColorWheelPanel(
-          color: _color,
-          backgroundColor: _background,
-          onColorChanged: _setColor,
-          onBackgroundColorChanged: _setBackground,
-        ),
+        child: ColorWheelPanel(color: _color, onColorChanged: _setColor),
       ),
     ),
     EditorPanelTab(
