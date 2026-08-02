@@ -6,6 +6,7 @@ import '../../services/canvas_color_sampler.dart' show CanvasColorSampleSource;
 import '../../services/canvas_flood_fill.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
+import '../../services/resample/resample_kernel.dart';
 import '../widgets/drag_value_label.dart';
 import '../widgets/field_slider.dart';
 import 'brush_settings_panel.dart';
@@ -27,6 +28,8 @@ class ToolSettingsPanel extends StatelessWidget {
     required this.onFillOptionsChanged,
     this.selectionMaskOptions = SelectionMaskOptions.none,
     this.onSelectionMaskOptionsChanged,
+    this.transformResampleMode = ResampleMode.blend,
+    this.onTransformResampleModeChanged,
     this.selectionCommands,
     this.language = AppLanguage.en,
     this.eyedropperSource = CanvasColorSampleSource.display,
@@ -54,6 +57,11 @@ class ToolSettingsPanel extends StatelessWidget {
   /// inward feather, edge AA).
   final SelectionMaskOptions selectionMaskOptions;
   final ValueChanged<SelectionMaskOptions>? onSelectionMaskOptionsChanged;
+
+  /// P3a: the Move tool's resampler choice — the tent that smooths, or the
+  /// coverage argmax that keeps a two-value drawing two-valued.
+  final ResampleMode transformResampleMode;
+  final ValueChanged<ResampleMode>? onTransformResampleModeChanged;
 
   /// The mounted selection layer's imperative channel — the Move tool's
   /// numeric inputs read and write the live transform through it.
@@ -100,7 +108,11 @@ class ToolSettingsPanel extends StatelessWidget {
           selectionCommands: selectionCommands,
           language: language,
         ),
-        CanvasTool.move => _MoveSettings(selectionCommands: selectionCommands),
+        CanvasTool.move => _MoveSettings(
+          selectionCommands: selectionCommands,
+          resampleMode: transformResampleMode,
+          onResampleModeChanged: onTransformResampleModeChanged,
+        ),
       },
     );
   }
@@ -256,9 +268,19 @@ class _SelectionModeRow extends StatelessWidget {
 /// transform box, applied on submit through the selection channel. The
 /// channel notifies on session changes so the fields track handle drags.
 class _MoveSettings extends StatefulWidget {
-  const _MoveSettings({required this.selectionCommands});
+  const _MoveSettings({
+    required this.selectionCommands,
+    required this.resampleMode,
+    required this.onResampleModeChanged,
+  });
 
   final CanvasSelectionCommands? selectionCommands;
+
+  /// P3a: which resampler a transform commit runs through. A null handler
+  /// shows the switch disabled — the same convention the eyedropper's
+  /// source picker uses for hosts that do not own the setting.
+  final ResampleMode resampleMode;
+  final ValueChanged<ResampleMode>? onResampleModeChanged;
 
   @override
   State<_MoveSettings> createState() => _MoveSettingsState();
@@ -441,7 +463,34 @@ class _MoveSettingsState extends State<_MoveSettings> {
             _apply();
           },
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: 8),
+        // P3a: which resampler the commit runs through. Deliberately NOT
+        // labelled "anti-alias" — two rows away in the Select tool's own
+        // settings there is already an anti-alias switch that softens the
+        // LIFT MASK edge, and the flood fill has a third. Naming this one
+        // after what it PROTECTS rather than what it turns off keeps them
+        // apart, and it is the honest description: the argmax elects a
+        // source colour and copies its bytes through, so the palette a
+        // two-value drawing came in with is the palette it leaves with.
+        SwitchListTile(
+          key: const ValueKey<String>('transform-preserve-colors-switch'),
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          title: Text(AppText.strings.brTransformPreserveColors),
+          subtitle: Text(
+            AppText.strings.brTransformPreserveColorsHint,
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.onSurfaceVariant,
+            ),
+          ),
+          value: widget.resampleMode == ResampleMode.pick,
+          onChanged: widget.onResampleModeChanged == null
+              ? null
+              : (value) => widget.onResampleModeChanged!(
+                  value ? ResampleMode.pick : ResampleMode.blend,
+                ),
+        ),
+        const SizedBox(height: 8),
         // R20-D3 mesh warp: opens the control grid on the selection —
         // or, with none, on the whole picture (R26 #13). Enter commits
         // the triangulated warp; Esc reverts. Perspective rides the

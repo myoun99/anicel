@@ -6,6 +6,7 @@ import 'package:anicel/src/models/brush_stamp_image.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/services/canvas_selection.dart';
+import 'package:anicel/src/services/resample/resample_kernel.dart';
 
 /// R19 pixel selection: Ctrl+T resamples the LIFTED STAMP through the
 /// affine. Pins the exactness tiers: identity = same object, pure
@@ -382,6 +383,268 @@ void main() {
         }
       }
       expect(rightHit, isTrue);
+    });
+  });
+
+  group('Pick — the AA-OFF mode (P3a)', () {
+    /// A two-value cel in miniature: white ground, black ink, one 1px
+    /// diagonal and one 1px vertical. Deliberately 24×24 and not 2×2 —
+    /// every assertion in this file skips fully transparent pixels, so a
+    /// fixture small enough for its border ring to swallow the content
+    /// passes while reading nothing.
+    BrushDab lineArtDab({int size = 24}) {
+      final rgba = Uint8List(size * size * 4);
+      final words = Uint32List.view(rgba.buffer);
+      const white = 0xffffffff;
+      const ink = 0xff101010;
+      for (var i = 0; i < words.length; i += 1) {
+        words[i] = white;
+      }
+      for (var i = 2; i < size - 2; i += 1) {
+        words[i * size + i] = ink;
+        words[i * size + size ~/ 2] = ink;
+      }
+      return BrushDab(
+        center: CanvasPoint(x: size / 2, y: size / 2),
+        color: 0xFFFFFFFF,
+        size: size.toDouble(),
+        opacity: 1,
+        flow: 1,
+        hardness: 1,
+        tipShape: BrushTipShape.square,
+        pressure: 1,
+        sequence: 0,
+        stamp: BrushStampImage(
+          id: 'line-art',
+          width: size,
+          height: size,
+          rgba: rgba,
+        ),
+      );
+    }
+
+    Set<int> wordsOf(BrushStampImage stamp) =>
+        Uint32List.view(stamp.rgba.buffer).toSet();
+
+    test('introduces no colour that was not already in the source — '
+        'the whole point of the mode', () {
+      final dab = lineArtDab();
+      final source = wordsOf(dab.stamp!);
+      final out = transformStampDab(
+        dab,
+        SelectionAffine(
+          pivot: CanvasPoint(x: 12, y: 12),
+          rotationDegrees: 23,
+          sx: 1.4,
+          sy: 0.9,
+        ),
+        mode: ResampleMode.pick,
+      );
+      final produced = wordsOf(out.stamp!);
+      expect(
+        produced.difference(source).difference({0x00000000}),
+        isEmpty,
+        reason:
+            'every word must be one the source already held, or the '
+            'transparent outside token',
+      );
+      // And the alpha stays two-valued: no soft edge sneaks in.
+      for (var i = 3; i < out.stamp!.rgba.length; i += 4) {
+        expect(out.stamp!.rgba[i], anyOf(0, 255));
+      }
+    });
+
+    test('the same rotation under AA ON DOES make in-between colours — '
+        'so the switch is not decorative', () {
+      final dab = lineArtDab();
+      final source = wordsOf(dab.stamp!);
+      final out = transformStampDab(
+        dab,
+        SelectionAffine(pivot: CanvasPoint(x: 12, y: 12), rotationDegrees: 23),
+        mode: ResampleMode.blend,
+      );
+      expect(
+        wordsOf(out.stamp!).difference(source).difference({0x00000000}),
+        isNotEmpty,
+      );
+    });
+
+    test('a quarter turn keeps every ink pixel — the case the kernel\'s '
+        'own 1.5 radius floor would have halved', () {
+      final dab = lineArtDab();
+      const ink = 0xff101010;
+      final before = Uint32List.view(
+        dab.stamp!.rgba.buffer,
+      ).where((word) => word == ink).length;
+      for (final degrees in <double>[90, 180, 270]) {
+        final out = transformStampDab(
+          dab,
+          SelectionAffine(
+            pivot: CanvasPoint(x: 12, y: 12),
+            rotationDegrees: degrees,
+          ),
+          mode: ResampleMode.pick,
+        );
+        final after = Uint32List.view(
+          out.stamp!.rgba.buffer,
+        ).where((word) => word == ink).length;
+        expect(after, before, reason: '$degrees° lost ink');
+        expect(out.stamp!.width, 24);
+        expect(out.stamp!.height, 24);
+      }
+    });
+
+    test('integer magnification is exact block replication', () {
+      final dab = lineArtDab(size: 8);
+      final out = transformStampDab(
+        dab,
+        SelectionAffine(pivot: CanvasPoint(x: 4, y: 4), sx: 2, sy: 2),
+        mode: ResampleMode.pick,
+      );
+      final stamp = out.stamp!;
+      expect((stamp.width, stamp.height), (16, 16));
+      final sourceWords = Uint32List.view(dab.stamp!.rgba.buffer);
+      final outWords = Uint32List.view(stamp.rgba.buffer);
+      for (var y = 0; y < 16; y += 1) {
+        for (var x = 0; x < 16; x += 1) {
+          expect(
+            outWords[y * 16 + x],
+            sourceWords[(y ~/ 2) * 8 + (x ~/ 2)],
+            reason: 'at ($x,$y)',
+          );
+        }
+      }
+    });
+
+    test('an opaque block stays opaque to its own edge — the outside '
+        'token must not win a border vote', () {
+      final rgba = Uint8List(16 * 16 * 4);
+      final words = Uint32List.view(rgba.buffer);
+      for (var i = 0; i < words.length; i += 1) {
+        words[i] = 0xff2040c0;
+      }
+      final dab = BrushDab(
+        center: CanvasPoint(x: 8, y: 8),
+        color: 0xFFFFFFFF,
+        size: 16,
+        opacity: 1,
+        flow: 1,
+        hardness: 1,
+        tipShape: BrushTipShape.square,
+        pressure: 1,
+        sequence: 0,
+        stamp: BrushStampImage(id: 'block', width: 16, height: 16, rgba: rgba),
+      );
+      final out = transformStampDab(
+        dab,
+        SelectionAffine(pivot: CanvasPoint(x: 8, y: 8), rotationDegrees: 90),
+        mode: ResampleMode.pick,
+      );
+      final outWords = Uint32List.view(out.stamp!.rgba.buffer);
+      expect(
+        outWords.where((word) => word == 0).length,
+        0,
+        reason: 'a quarter turn of a solid block punched holes in it',
+      );
+    });
+
+    test('the quad and the mesh honour the mode too — an AA-off switch '
+        'that only works in one of three warp modes is worse than none', () {
+      final dab = lineArtDab();
+      final source = wordsOf(dab.stamp!);
+      final quad = transformStampDabQuad(dab, [
+        CanvasPoint(x: 2, y: 1),
+        CanvasPoint(x: 21, y: 0),
+        CanvasPoint(x: 24, y: 25),
+        CanvasPoint(x: -1, y: 23),
+      ], mode: ResampleMode.pick);
+      expect(
+        wordsOf(quad.stamp!).difference(source).difference({0x00000000}),
+        isEmpty,
+      );
+
+      final points = <CanvasPoint>[
+        for (var row = 0; row <= 2; row += 1)
+          for (var column = 0; column <= 2; column += 1)
+            CanvasPoint(x: column * 12.0, y: row * 12.0),
+      ];
+      points[4] = CanvasPoint(x: 15, y: 13); // pull the centre
+      final mesh = transformStampDabMesh(
+        dab,
+        columns: 2,
+        rows: 2,
+        points: points,
+        mode: ResampleMode.pick,
+      );
+      expect(
+        wordsOf(mesh.stamp!).difference(source).difference({0x00000000}),
+        isEmpty,
+      );
+    });
+
+    test('a whole-quad and a whole-mesh drag are pure translations — '
+        'they must not resample at all', () {
+      final dab = lineArtDab();
+      final quad = transformStampDabQuad(dab, [
+        CanvasPoint(x: 3.5, y: -1.5),
+        CanvasPoint(x: 27.5, y: -1.5),
+        CanvasPoint(x: 27.5, y: 22.5),
+        CanvasPoint(x: 3.5, y: 22.5),
+      ], mode: ResampleMode.pick);
+      expect(identical(quad.stamp!.rgba, dab.stamp!.rgba), isTrue);
+      expect(quad.center, CanvasPoint(x: 15.5, y: 10.5));
+
+      final points = <CanvasPoint>[
+        for (var row = 0; row <= 2; row += 1)
+          for (var column = 0; column <= 2; column += 1)
+            CanvasPoint(x: column * 12.0 + 3.5, y: row * 12.0 - 1.5),
+      ];
+      final mesh = transformStampDabMesh(
+        dab,
+        columns: 2,
+        rows: 2,
+        points: points,
+        mode: ResampleMode.pick,
+      );
+      expect(identical(mesh.stamp!.rgba, dab.stamp!.rgba), isTrue);
+      expect(mesh.center, CanvasPoint(x: 15.5, y: 10.5));
+    });
+
+    test('a mesh fold-over still resolves first-hit-wins', () {
+      // Drag one control point across its neighbour so two triangles
+      // claim the same destination pixels. The EARLIER triangle owns
+      // them — that is what makes the warp deterministic, and it is the
+      // property a whole-output kernel call would have destroyed.
+      final dab = lineArtDab(size: 12);
+      final points = <CanvasPoint>[
+        for (var row = 0; row <= 2; row += 1)
+          for (var column = 0; column <= 2; column += 1)
+            CanvasPoint(x: column * 6.0, y: row * 6.0),
+      ];
+      points[4] = CanvasPoint(x: -4, y: 6); // the centre, pulled past the left
+      final folded = transformStampDabMesh(
+        dab,
+        columns: 2,
+        rows: 2,
+        points: points,
+        mode: ResampleMode.pick,
+      );
+      // Deterministic across runs and identical on a rerun: the ONLY
+      // thing that decides an overlap is visit order.
+      final again = transformStampDabMesh(
+        dab,
+        columns: 2,
+        rows: 2,
+        points: points,
+        mode: ResampleMode.pick,
+      );
+      expect(folded.stamp!.rgba, again.stamp!.rgba);
+      expect(
+        wordsOf(
+          folded.stamp!,
+        ).difference(wordsOf(dab.stamp!)).difference({0x00000000}),
+        isEmpty,
+      );
     });
   });
 

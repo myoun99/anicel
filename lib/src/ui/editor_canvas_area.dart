@@ -10,6 +10,7 @@ import '../models/project_background.dart';
 import '../services/canvas_color_sampler.dart';
 import '../services/canvas_flood_fill.dart';
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
+import '../services/resample/resample_kernel.dart' show ResampleMode;
 import '../services/se_name_tag_plan.dart';
 import 'brush/brush_tool_state.dart';
 import 'dev_profile.dart';
@@ -59,6 +60,7 @@ class EditorCanvasArea extends StatefulWidget {
     this.expandedLaneLayerIds,
     this.fillOptions,
     this.selectionMaskOptions,
+    this.transformResampleMode,
     this.eyedropperSource,
     this.onInvokeAction,
   });
@@ -105,6 +107,10 @@ class EditorCanvasArea extends StatefulWidget {
   /// The Select tool's lift-time mask knobs (R26); null keeps the
   /// classic byte-preserving hard mask.
   final ValueListenable<SelectionMaskOptions>? selectionMaskOptions;
+
+  /// P3a: which resampler a transform commit runs through; null keeps the
+  /// smoothing default.
+  final ValueListenable<ResampleMode>? transformResampleMode;
 
   @override
   State<EditorCanvasArea> createState() => _EditorCanvasAreaState();
@@ -580,6 +586,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               // P6 fill: the flood region as ONE mask dab; the panel commits it
               // through the stroke funnel onto the active layer's frame.
               selectionMaskOptions: widget.selectionMaskOptions,
+              transformResampleMode: widget.transformResampleMode,
               fillDabAt: (point, color) => buildFillDab(
                 cut: session.requireActiveCut,
                 frameIndex: session.currentFrameIndex,
@@ -801,7 +808,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                           cameraPoseOf: session.cameraPoseForCut,
                           seNameTagsOf: session.seNameTagsForCutFrame,
                           cutFxEnabledOf: session.isCutFxEnabled,
-      trackStaticOpacityOf: session.trackStaticOpacityForCut,
+                          trackStaticOpacityOf:
+                              session.trackStaticOpacityForCut,
                           cutPictureVisibleOf: session.isCutPictureVisible,
                           viewport: viewport,
                           background: session.projectBackground,

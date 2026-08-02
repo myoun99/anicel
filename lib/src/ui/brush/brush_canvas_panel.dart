@@ -14,6 +14,7 @@ import '../../models/brush_frame_key.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_paint_clip.dart';
 import '../../services/canvas_selection_region.dart';
+import '../../services/resample/resample_kernel.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
@@ -120,6 +121,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.onAltColorPick,
     this.fillDabAt,
     this.selectionMaskOptions,
+    this.transformResampleMode,
     this.viewCommands,
     this.selectionCommands,
     this.onStrokeInputActiveChanged,
@@ -285,6 +287,10 @@ class BrushCanvasPanel extends StatefulWidget {
   /// Null/absent keeps the classic byte-preserving hard mask.
   final ValueListenable<SelectionMaskOptions>? selectionMaskOptions;
 
+  /// P3a: which resampler a Ctrl+T commit runs through. Null keeps the
+  /// smoothing default, which is what focused tests want.
+  final ValueListenable<ResampleMode>? transformResampleMode;
+
   /// The app-level rotate/flip shortcut channel (P8); the panel binds its
   /// viewport-center handlers while mounted.
   final CanvasViewCommands? viewCommands;
@@ -315,6 +321,13 @@ class BrushCanvasPanel extends StatefulWidget {
   @override
   State<BrushCanvasPanel> createState() => _BrushCanvasPanelState();
 }
+
+/// The stand-in when no host owns the resample mode (focused tests). Const
+/// in spirit — nothing ever writes it, so one instance for the process is
+/// correct and it is never disposed.
+final ValueNotifier<ResampleMode> _defaultResampleMode = ValueNotifier(
+  ResampleMode.blend,
+);
 
 class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     with SingleTickerProviderStateMixin {
@@ -1137,67 +1150,82 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                       // strokes cannot start below the layer.
                                       if (selectionLayerActive)
                                         Positioned.fill(
-                                          child: CanvasSelectionLayer(
-                                            tool: switch (widget
-                                                .brushToolState
-                                                .tool) {
-                                              CanvasTool.lasso =>
-                                                CanvasSelectionTool.lasso,
-                                              CanvasTool.move =>
-                                                CanvasSelectionTool.move,
-                                              _ => CanvasSelectionTool.rect,
-                                            },
-                                            // R17-U: Move = 이동+변형 통합 툴
-                                            // — 핸들 상시.
-                                            alwaysShowTransformBox:
-                                                widget.brushToolState.tool ==
-                                                CanvasTool.move,
-                                            onShapeCommitted:
-                                                _recordSelectionChange,
-                                            viewport: _viewport,
-                                            canvasSize: widget.canvasSize,
-                                            // No frame = a stable sentinel:
-                                            // the selection survives until a
-                                            // real frame context arrives.
-                                            frameToken:
-                                                widget
-                                                    .coordinator
-                                                    ?.activeFrameKey ??
-                                                'selection-no-frame',
-                                            selectionCommands:
-                                                widget.selectionCommands,
-                                            onDragActiveChanged: (active) {
-                                              if (_selectionDragActive !=
-                                                  active) {
-                                                widget
-                                                    .onSelectionInteractionChanged
-                                                    ?.call(active);
-                                                setState(
-                                                  () => _selectionDragActive =
-                                                      active,
-                                                );
-                                              }
-                                            },
-                                            // R14-④: the Move tool lifts the
-                                            // selection's PIXELS (never whole
-                                            // strokes) — 유저 direction ⑧b.
-                                            onLiftRequested:
-                                                _handleSelectionLift,
-                                            onLiftLanded: _handleLiftLanded,
-                                            onLiftConfirmed:
-                                                _handleLiftConfirmed,
-                                            onLiftReverted: _handleLiftReverted,
-                                            // R26 #13 follow-up: the implicit
-                                            // whole-picture box frames the
-                                            // cel's tight ink bounds.
-                                            contentBoundsProvider:
-                                                _activeCelContentBounds,
-                                            // Pending move sessions hold the
-                                            // session's edit lock (seeks
-                                            // refused) WITHOUT locking
-                                            // viewport navigation.
-                                            onMoveSessionPendingChanged: widget
-                                                .onSelectionInteractionChanged,
+                                          child: ValueListenableBuilder<ResampleMode>(
+                                            valueListenable:
+                                                widget.transformResampleMode ??
+                                                _defaultResampleMode,
+                                            builder: (context, transformResampleMode, _) => CanvasSelectionLayer(
+                                              tool: switch (widget
+                                                  .brushToolState
+                                                  .tool) {
+                                                CanvasTool.lasso =>
+                                                  CanvasSelectionTool.lasso,
+                                                CanvasTool.move =>
+                                                  CanvasSelectionTool.move,
+                                                _ => CanvasSelectionTool.rect,
+                                              },
+                                              // R17-U: Move = 이동+변형 통합 툴
+                                              // — 핸들 상시.
+                                              alwaysShowTransformBox:
+                                                  widget.brushToolState.tool ==
+                                                  CanvasTool.move,
+                                              onShapeCommitted:
+                                                  _recordSelectionChange,
+                                              viewport: _viewport,
+                                              canvasSize: widget.canvasSize,
+                                              // No frame = a stable sentinel:
+                                              // the selection survives until a
+                                              // real frame context arrives.
+                                              frameToken:
+                                                  widget
+                                                      .coordinator
+                                                      ?.activeFrameKey ??
+                                                  'selection-no-frame',
+                                              selectionCommands:
+                                                  widget.selectionCommands,
+                                              onDragActiveChanged: (active) {
+                                                if (_selectionDragActive !=
+                                                    active) {
+                                                  widget
+                                                      .onSelectionInteractionChanged
+                                                      ?.call(active);
+                                                  setState(
+                                                    () => _selectionDragActive =
+                                                        active,
+                                                  );
+                                                }
+                                              },
+                                              // R14-④: the Move tool lifts the
+                                              // selection's PIXELS (never whole
+                                              // strokes) — 유저 direction ⑧b.
+                                              onLiftRequested:
+                                                  _handleSelectionLift,
+                                              onLiftLanded: _handleLiftLanded,
+                                              onLiftConfirmed:
+                                                  _handleLiftConfirmed,
+                                              onLiftReverted:
+                                                  _handleLiftReverted,
+                                              // R26 #13 follow-up: the implicit
+                                              // whole-picture box frames the
+                                              // cel's tight ink bounds.
+                                              contentBoundsProvider:
+                                                  _activeCelContentBounds,
+                                              // Pending move sessions hold the
+                                              // session's edit lock (seeks
+                                              // refused) WITHOUT locking
+                                              // viewport navigation.
+                                              onMoveSessionPendingChanged: widget
+                                                  .onSelectionInteractionChanged,
+                                              // P3a: which resampler a
+                                              // transform runs through. Read
+                                              // through the listenable above,
+                                              // so flipping the switch mid
+                                              // session re-resamples the open
+                                              // preview instead of waiting for
+                                              // the next gesture.
+                                              resampleMode:
+                                                  transformResampleMode,
+                                            ),
                                           ),
                                         ),
                                       // R28-S: the selection is a DOCUMENT

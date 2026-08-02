@@ -16,6 +16,7 @@ import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/canvas_selection.dart' show SelectionMaskOptions;
+import '../../services/resample/resample_kernel.dart' show ResampleMode;
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
 import '../canvas/active_stroke_overlay.dart';
@@ -71,6 +72,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.onAltColorPick,
     this.fillDabAt,
     this.selectionMaskOptions,
+    this.transformResampleMode,
     this.viewCommands,
     this.selectionCommands,
     this.onStrokeInputActiveChanged,
@@ -161,6 +163,10 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// Forwarded to [BrushCanvasPanel] (R26): the Select tool's lift-time
   /// mask knobs.
   final ValueListenable<SelectionMaskOptions>? selectionMaskOptions;
+
+  /// Forwarded to [BrushCanvasPanel] (P3a): which resampler a transform
+  /// commit runs through.
+  final ValueListenable<ResampleMode>? transformResampleMode;
 
   /// Forwarded to [BrushCanvasPanel]: the P8 rotate/flip shortcut channel.
   final CanvasViewCommands? viewCommands;
@@ -304,6 +310,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       onAltColorPick: widget.onAltColorPick,
       fillDabAt: widget.fillDabAt,
       selectionMaskOptions: widget.selectionMaskOptions,
+      transformResampleMode: widget.transformResampleMode,
       viewCommands: widget.viewCommands,
       selectionCommands: widget.selectionCommands,
       onStrokeInputActiveChanged: widget.onStrokeInputActiveChanged,

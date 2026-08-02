@@ -1,9 +1,12 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
 
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/native/qa_engine_abi.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
+import 'package:anicel/src/services/canvas_selection.dart';
 import 'package:anicel/src/services/resample/resample_kernel.dart';
+import 'package:anicel/src/services/resample/selection_resample.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import '../helpers/native_engine_path.dart';
@@ -58,9 +61,8 @@ Uint8List _fixture(int width, int height, int seed) {
   return bytes;
 }
 
-Float64List _inverseOf(ResampleTransform t) => Float64List.fromList(
-  <double>[t.a, t.b, t.c, t.d, t.e, t.f, t.g, t.h, t.i],
-);
+Float64List _inverseOf(ResampleTransform t) =>
+    Float64List.fromList(<double>[t.a, t.b, t.c, t.d, t.e, t.f, t.g, t.h, t.i]);
 
 ResampleTransform _rotationAbout(double degrees, double cx, double cy) {
   final theta = -degrees * math.pi / 180;
@@ -97,7 +99,8 @@ void main() {
     expect(
       loaded,
       isNotNull,
-      reason: 'the engine at $libraryPath did not load — an ABI mismatch '
+      reason:
+          'the engine at $libraryPath did not load — an ABI mismatch '
           'after a bump is the usual cause; rebuild the standalone binary',
     );
     engine = loaded!;
@@ -142,14 +145,7 @@ void main() {
       e: 1 / 1.3,
       f: 0,
     ),
-    'shear': ResampleTransform(
-      a: 1,
-      b: 0.31,
-      c: -4,
-      d: 0.11,
-      e: 1,
-      f: -2,
-    ),
+    'shear': ResampleTransform(a: 1, b: 0.31, c: -4, d: 0.11, e: 1, f: -2),
     'perspective': ResampleTransform(
       a: 1,
       b: 0.12,
@@ -160,6 +156,77 @@ void main() {
       g: 0.0012,
       h: 0.0007,
       i: 1,
+    ),
+    // P3a: matrices produced by the SELECTION TRANSFORM's own folds rather
+    // than written by hand. Every case above is a literal, so none of them
+    // exercises the arithmetic the tool actually feeds the kernel — and a
+    // fold that lands a half pixel off would still be perfectly consistent
+    // between the two implementations, so parity alone cannot catch it.
+    // What these DO catch is the shape of the numbers the folds produce:
+    // an offset built from a pivot and an AABB origin has a much larger
+    // magnitude than the tidy literals above, which is where a float that
+    // rounds differently on one side would show.
+    'selection: rotate 21, non-uniform, off-origin AABB':
+        selectionAffineResampleTransform(
+          affine: SelectionAffine(
+            pivot: CanvasPoint(x: width / 2, y: height / 2),
+            sx: 1.3,
+            sy: 0.8,
+            rotationDegrees: 21,
+            tx: 2.5,
+            ty: -1.25,
+          ),
+          srcLeft: 12.5,
+          srcTop: -7.25,
+          outLeft: -6,
+          outTop: 9,
+        ),
+    'selection: negative scale (a flipped box)':
+        selectionAffineResampleTransform(
+          affine: SelectionAffine(
+            pivot: CanvasPoint(x: width / 2, y: height / 2),
+            sx: -1.1,
+            sy: 0.7,
+            rotationDegrees: -47,
+          ),
+          srcLeft: 0,
+          srcTop: 0,
+          outLeft: -12,
+          outTop: -8,
+        ),
+    'selection: perspective quad': selectionQuadResampleTransform(
+      h: solveHomography(
+        <CanvasPoint>[
+          CanvasPoint(x: 6, y: 2),
+          CanvasPoint(x: 64, y: 9),
+          CanvasPoint(x: 71, y: 58),
+          CanvasPoint(x: -3, y: 49),
+        ],
+        <CanvasPoint>[
+          CanvasPoint(x: 0, y: 0),
+          CanvasPoint(x: width.toDouble(), y: 0),
+          CanvasPoint(x: width.toDouble(), y: height.toDouble()),
+          CanvasPoint(x: 0, y: height.toDouble()),
+        ],
+      )!,
+      srcLeft: 0,
+      srcTop: 0,
+      outLeft: -3,
+      outTop: 2,
+    ),
+    'selection: one mesh triangle': selectionTriangleResampleTransform(
+      d0: CanvasPoint(x: 2, y: 3),
+      d1: CanvasPoint(x: 40, y: -4),
+      d2: CanvasPoint(x: 9, y: 44),
+      s0: CanvasPoint(x: 0, y: 0),
+      s1: CanvasPoint(x: 36, y: 0),
+      s2: CanvasPoint(x: 0, y: 30),
+      // The cross product the rasteriser hands in, computed the same way.
+      denominator: (40 - 2) * (44 - 3) - (9 - 2) * (-4 - 3),
+      left: -1,
+      top: -4,
+      srcLeft: 0,
+      srcTop: 0,
     ),
     // A quad steep enough that w falls to 0.06 across the frame. The gentle
     // case above never leaves the radius floor, so it could not have caught
@@ -480,7 +547,8 @@ void main() {
         mode: 0,
       ),
       isNull,
-      reason: 'a six-element inverse would leave malloc bytes as the '
+      reason:
+          'a six-element inverse would leave malloc bytes as the '
           'homogeneous row',
     );
   });

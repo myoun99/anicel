@@ -21,6 +21,7 @@ import '../widgets/app_window.dart';
 import '../../services/bitmap_surface_brush_commit.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
+import '../../services/resample/resample_kernel.dart';
 import '../brush/canvas_selection_commands.dart';
 import 'selection_ants_painter.dart';
 import 'bitmap_surface_painter.dart';
@@ -57,7 +58,16 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.onMoveSessionPendingChanged,
     this.alwaysShowTransformBox = false,
     this.contentBoundsProvider,
+    this.resampleMode = ResampleMode.blend,
   });
+
+  /// How a transform turns pixels into other pixels (P3a): the tent mean
+  /// that smooths, or the coverage argmax that copies source words through
+  /// untouched so a two-value drawing stays two-valued.
+  ///
+  /// This is a property of the RESAMPLE, not a declaration about the
+  /// layer's content — nothing here inspects the picture to decide.
+  final ResampleMode resampleMode;
 
   /// R26 #13 follow-up: the active cel's tight ink bounds (canvas
   /// coordinates, exclusive right/bottom) — the implicit whole-picture
@@ -570,7 +580,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         ? _pendingLiftStamp
         : (openAffine.isIdentity
               ? _pendingLiftStamp
-              : transformStampDab(_pendingLiftStamp!, openAffine));
+              : transformStampDab(
+                  _pendingLiftStamp!,
+                  openAffine,
+                  mode: widget.resampleMode,
+                ));
     final liftId = _liftToken;
     if (pendingStamp != null && liftId != null) {
       widget.onMoveSessionPendingChanged?.call(false);
@@ -944,6 +958,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         columns: _meshColumns,
         rows: _meshRows,
         points: meshPoints,
+        mode: widget.resampleMode,
       );
       if (identical(warped, pending)) {
         setState(_clearTransform);
@@ -956,9 +971,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         // A warped region collapses to its boundary polygon: the mesh
         // maps the LIFTED pixels, so what is selected afterwards is the
         // warped outline, not the old step list.
-        _setRegion(
-          CanvasSelectionRegion.shape(CanvasSelectionShape(boundary)),
-        );
+        _setRegion(CanvasSelectionRegion.shape(CanvasSelectionShape(boundary)));
         _moveSessionDirty = true;
         _clearTransform();
       });
@@ -968,7 +981,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // R20-D2: an open quad resamples through the homography instead.
     final warpCorners = _warpCorners;
     if (warpCorners != null && pending != null) {
-      final warped = transformStampDabQuad(pending, warpCorners);
+      final warped = transformStampDabQuad(
+        pending,
+        warpCorners,
+        mode: widget.resampleMode,
+      );
       if (identical(warped, pending)) {
         // Untouched (or degenerate) quad: close the box, session pends on.
         setState(_clearTransform);
@@ -981,9 +998,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         _pendingLiftStamp = warped;
         _setRegion(
           h == null
-              ? CanvasSelectionRegion.shape(
-                  CanvasSelectionShape(warpCorners),
-                )
+              ? CanvasSelectionRegion.shape(CanvasSelectionShape(warpCorners))
               : region.mapped((point) => _applyHomography(h, point)),
         );
         _moveSessionDirty = true;
@@ -994,7 +1009,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     if (!affine.isIdentity && pending != null) {
       setState(() {
-        _pendingLiftStamp = transformStampDab(pending, affine);
+        _pendingLiftStamp = transformStampDab(
+          pending,
+          affine,
+          mode: widget.resampleMode,
+        );
         _setRegion(region.mapped(affine.apply));
         _moveSessionDirty = true;
         _clearTransform();
@@ -1111,7 +1130,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (affine == null || pending == null || affine.isIdentity) {
       return;
     }
-    _pendingLiftStamp = transformStampDab(pending, affine);
+    _pendingLiftStamp = transformStampDab(
+      pending,
+      affine,
+      mode: widget.resampleMode,
+    );
     final region = _region;
     if (region != null) {
       _setRegion(region.mapped(affine.apply));
@@ -2188,4 +2211,3 @@ class _MeshWarpPainter extends CustomPainter {
       oldDelegate.columns != columns ||
       oldDelegate.rows != rows;
 }
-
