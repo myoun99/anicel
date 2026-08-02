@@ -510,6 +510,71 @@ class QaNativeEngine {
     );
   }
 
+  /// [resampleRgba] for a caller that owns Dart buffers and runs on a hot
+  /// path — the transform tool resamples on every drag frame, and its mesh
+  /// mode calls this once per triangle.
+  ///
+  /// Nothing is allocated per call. The SOURCE goes through the
+  /// identity-keyed [uploadStampBytes] cache, which is exactly what it was
+  /// built for: a transform session hands the same lift stamp in on every
+  /// frame, so only the first one copies. The DESTINATION is a grow-only
+  /// engine scratch — never the upload cache, because each resample mints a
+  /// fresh result buffer and uploading those would evict the source it just
+  /// read.
+  ///
+  /// Returns false when the kernel refuses the arguments, and the caller
+  /// must then run the Dart reference: the scratch is not cleared on that
+  /// path, so returning true after a non-zero status would ship whatever
+  /// the previous resample left behind as pixels.
+  bool resampleRgbaInto({
+    required Uint8List src,
+    required int srcWidth,
+    required int srcHeight,
+    required Uint8List dst,
+    required int dstWidth,
+    required int dstHeight,
+    required Float64List inverse,
+    required double radiusFloor,
+    required int mode,
+  }) {
+    if (inverse.length != 9) {
+      return false;
+    }
+    final byteLength = dstWidth * dstHeight * 4;
+    if (byteLength <= 0 || dst.length < byteLength) {
+      return false;
+    }
+    final source = uploadStampBytes(src);
+    _resampleDst = _ensureUint8(_resampleDst, _resampleDstLength, byteLength);
+    if (_resampleDstLength < byteLength) {
+      _resampleDstLength = byteLength;
+    }
+    if (_resampleInverse == nullptr) {
+      _resampleInverse = malloc<Double>(9);
+    }
+    _resampleInverse.asTypedList(9).setAll(0, inverse);
+    final status = resampleRgba(
+      src: source,
+      srcWidth: srcWidth,
+      srcHeight: srcHeight,
+      dst: _resampleDst,
+      dstWidth: dstWidth,
+      dstHeight: dstHeight,
+      inverse: _resampleInverse,
+      radiusFloor: radiusFloor,
+      mode: mode,
+    );
+    if (status != 0) {
+      return false;
+    }
+    dst.setRange(0, byteLength, _resampleDst.asTypedList(byteLength));
+    return true;
+  }
+
+  Pointer<Uint8> _resampleDst = nullptr;
+  int _resampleDstLength = 0;
+  Pointer<Double> _resampleInverse = nullptr;
+
   /// Copy-in/copy-out convenience over [resampleRgba] for callers (and the
   /// parity suite) holding Dart lists.
   ///

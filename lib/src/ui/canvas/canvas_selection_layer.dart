@@ -21,6 +21,8 @@ import '../widgets/app_window.dart';
 import '../../services/bitmap_surface_brush_commit.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
+import '../../services/resample/resample_kernel.dart';
+import '../../models/pasteboard_bounds.dart';
 import '../brush/canvas_selection_commands.dart';
 import 'selection_ants_painter.dart';
 import 'bitmap_surface_painter.dart';
@@ -57,7 +59,16 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.onMoveSessionPendingChanged,
     this.alwaysShowTransformBox = false,
     this.contentBoundsProvider,
+    this.resampleMode = ResampleMode.blend,
   });
+
+  /// How a transform turns pixels into other pixels (P3a): the tent mean
+  /// that smooths, or the coverage argmax that copies source words through
+  /// untouched so a two-value drawing stays two-valued.
+  ///
+  /// This is a property of the RESAMPLE, not a declaration about the
+  /// layer's content — nothing here inspects the picture to decide.
+  final ResampleMode resampleMode;
 
   /// R26 #13 follow-up: the active cel's tight ink bounds (canvas
   /// coordinates, exclusive right/bottom) — the implicit whole-picture
@@ -142,6 +153,54 @@ class CanvasSelectionLayer extends StatefulWidget {
 enum CanvasSelectionTool { rect, lasso, move }
 
 enum _DragMode { none, marquee, move, transform }
+
+/// The float the transform preview last resampled.
+///
+/// A test hook. It exists because the contract P3a is built around — "what
+/// the preview showed is what Enter writes" — is otherwise unobservable
+/// from outside: the preview holds a decoded image and the commit writes
+/// bytes, and only the layer sees that both came from one buffer.
+///
+/// Written and cleared inside `assert(() { ... }())`, which is stripped in
+/// release. `@visibleForTesting` is an analyzer annotation and removes
+/// nothing from a build, so an unguarded assignment here would pin the
+/// last transform's straight-alpha buffer — tens of megabytes for a
+/// whole-picture Ctrl+T — for the rest of the process, in every shipped
+/// app, released by nothing.
+@visibleForTesting
+BrushDab? debugLastResampledFloat;
+
+/// Records [dab] for the test hook and returns true, so it can sit inside
+/// an assert and vanish from release builds.
+bool _recordResampledFloat(BrushDab? dab) {
+  debugLastResampledFloat = dab;
+  return true;
+}
+
+/// What a cached resample belongs to: the mode, the source buffer, and the
+/// warp's numbers.
+///
+/// The source is compared by IDENTITY. A lift stamp's bytes never change
+/// in place — a new lift means a new buffer — so identity is the exact
+/// question, and comparing multi-megabyte cels by value on every drag
+/// frame would cost more than the resample this is guarding.
+class _ResampleKey {
+  const _ResampleKey(this.mode, this.source, this.shape);
+
+  final ResampleMode mode;
+  final Uint8List source;
+  final String shape;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _ResampleKey &&
+      other.mode == mode &&
+      identical(other.source, source) &&
+      other.shape == shape;
+
+  @override
+  int get hashCode => Object.hash(mode, identityHashCode(source), shape);
+}
 
 /// Which part of the Ctrl+T box a drag grabbed.
 enum _TransformHandle {
@@ -480,6 +539,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // the drag-end notify reaches ancestor setState and must defer.
       _resetAll(deferDragNotify: true);
     }
+    if (oldWidget.resampleMode != widget.resampleMode) {
+      // P3a: flipping the switch with a box already open re-resamples on
+      // the spot. Waiting for the next drag would show the old kernel's
+      // picture and land the new one's.
+      _scheduleFloatResample();
+    }
     // R17-①: a context change over a pending move ASKS (CSP grammar) —
     // 확정 lands the session as one undo entry, 되돌리기 puts the pixels
     // back exactly. Deferred post-frame: dialogs and history commands
@@ -565,12 +630,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // the stamp landed back where it was LIFTED, so the transform read as
     // "did it commit or not?". Fold the affine in first: whatever the box
     // showed is what lands.
-    final openAffine = _transform;
-    final pendingStamp = openAffine == null || _pendingLiftStamp == null
-        ? _pendingLiftStamp
-        : (openAffine.isIdentity
-              ? _pendingLiftStamp
-              : transformStampDab(_pendingLiftStamp!, openAffine));
+    // P3a: `_warpedFloat` covers the quad and the mesh too, which this
+    // path never did — an unmount during a perspective or mesh session
+    // used to land the UNwarped float.
+    final pendingStamp = _pendingLiftStamp == null
+        ? null
+        : (_warpedFloat() ?? _pendingLiftStamp);
     final liftId = _liftToken;
     if (pendingStamp != null && liftId != null) {
       widget.onMoveSessionPendingChanged?.call(false);
@@ -584,6 +649,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         }
       });
     }
+    // The preview image is a GPU allocation and an in-flight decode holds
+    // a callback into this state. Neither is reached by _clearTransform on
+    // this path — dispose does not close the box, it folds it — so the
+    // discard has to be explicit here or every tool switch during a
+    // transform leaks a full-selection image.
+    _discardFloatResample();
     _ants.dispose();
     super.dispose();
   }
@@ -657,6 +728,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         sy: scale,
       );
     });
+    _scheduleFloatResample();
     _syncAnts();
   }
 
@@ -780,25 +852,185 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             ),
       ];
     });
-    _decodeMeshFloatImage();
+    _scheduleFloatResample();
     _syncAnts();
   }
 
-  /// The float stamp decoded once per mesh session for the LIVE warp
-  /// preview: drawVertices over the SAME fixed-diagonal triangulation
-  /// the commit resampler uses — what warps on screen is what lands.
-  /// Until the (few-ms) decode completes the float shows unwarped.
-  ui.Image? _meshFloatImage;
-  int _meshImageRequest = 0;
+  // ---------------------------------------------------------------
+  // The transform preview (P3a).
+  //
+  // What is on screen while a box is open is the RESAMPLED float —
+  // literally the bytes Enter will write — drawn at the rect it will
+  // land in, with no filtering. It used to be a Skia transform of the
+  // UNtransformed float: the affine and quad previews were a widget
+  // `Transform` over tiles drawn at FilterQuality.none, and the mesh
+  // preview was drawVertices through an ImageShader at
+  // FilterQuality.medium. So the picture on screen was nearest where
+  // the commit was bicubic, and smooth where the commit was hard.
+  //
+  // With a resampler that can elect to preserve colours exactly, that
+  // gap stops being cosmetic: the whole reason to turn AA off is to
+  // SEE what you are going to get, and a preview that shows something
+  // else defeats the feature it is previewing.
+  //
+  // Byte identity is made structural rather than numerical. The commit
+  // does not recompute — it reuses this exact dab when the key still
+  // matches. Two computations that ought to agree is a weaker promise,
+  // and its failure mode (native on one side, Dart on the other; two
+  // radius floors) is silent.
 
-  void _decodeMeshFloatImage() {
+  /// What a resampled float belongs to. Any change here means the cached
+  /// result is stale.
+  ///
+  /// The source is compared by IDENTITY, not equality: the lift stamp's
+  /// buffer is immutable for its lifetime, and a value comparison of a
+  /// multi-megabyte cel on every drag frame would cost more than the
+  /// resample it is guarding.
+  _ResampleKey? _currentResampleKey() {
     final stamp = _pendingLiftStamp?.stamp;
     if (stamp == null) {
+      return null;
+    }
+    final mesh = _meshPoints;
+    final quad = _warpCorners;
+    final affine = _transform;
+    final shape = StringBuffer();
+    if (mesh != null) {
+      shape.write('m$_meshColumns,$_meshRows');
+      for (final point in mesh) {
+        shape.write(':${point.x},${point.y}');
+      }
+    } else if (quad != null) {
+      shape.write('q');
+      for (final point in quad) {
+        shape.write(':${point.x},${point.y}');
+      }
+    } else if (affine != null && !affine.isIdentity) {
+      shape.write(
+        'a${affine.sx},${affine.sy},${affine.rotationDegrees},'
+        '${affine.tx},${affine.ty},${affine.pivot.x},${affine.pivot.y}',
+      );
+    } else {
+      // Identity, or no box at all: the untransformed float is already
+      // the right picture and the resampler has nothing to do.
+      return null;
+    }
+    return _ResampleKey(widget.resampleMode, stamp.rgba, shape.toString());
+  }
+
+  /// The float through whatever warp is open — the ONE place the three
+  /// warp functions are called from during a session.
+  BrushDab? _resampleOpenTransform() {
+    final pending = _pendingLiftStamp;
+    if (pending == null) {
+      return null;
+    }
+    final mesh = _meshPoints;
+    if (mesh != null) {
+      return transformStampDabMesh(
+        pending,
+        columns: _meshColumns,
+        rows: _meshRows,
+        points: mesh,
+        mode: widget.resampleMode,
+      );
+    }
+    final quad = _warpCorners;
+    if (quad != null) {
+      return transformStampDabQuad(pending, quad, mode: widget.resampleMode);
+    }
+    final affine = _transform;
+    if (affine != null && !affine.isIdentity) {
+      return transformStampDab(pending, affine, mode: widget.resampleMode);
+    }
+    return null;
+  }
+
+  /// The cached resample, or a fresh one — what every commit path calls
+  /// so that "what you saw" and "what landed" are the same object.
+  BrushDab? _warpedFloat() {
+    final key = _currentResampleKey();
+    if (key == null) {
+      return null;
+    }
+    final cached = _resampledFloat;
+    if (cached != null && cached.key == key) {
+      return cached.dab;
+    }
+    return _resampleOpenTransform();
+  }
+
+  ({_ResampleKey key, BrushDab dab})? _resampledFloat;
+
+  /// The premultiplied copy for display, and the dab it was decoded FROM.
+  ///
+  /// Kept as a pair, and deliberately NOT compared against
+  /// [_resampledFloat]: the newest resample is computed and stored before
+  /// its decode is even requested, so a guard demanding the two agree
+  /// would hide the preview for the whole time a decode is in flight —
+  /// which is most of a drag. The float would blink back to its
+  /// untransformed self on every pointer move.
+  ///
+  /// Showing the last COMPLETED resample instead is both the honest
+  /// picture (it is a real state the transform passed through) and the
+  /// whole point of coalescing. The last scheduling always runs, so the
+  /// picture just before Enter is always the exact one.
+  ui.Image? _resampledFloatImage;
+  BrushDab? _resampledImageDab;
+  int _resampleImageRequest = 0;
+  bool _resampleInFlight = false;
+  bool _resampleDirty = false;
+
+  /// Ask for the preview to catch up.
+  ///
+  /// Safe to call from inside a setState: it never calls setState itself.
+  /// The decode callback does, and that is always a later turn.
+  void _scheduleFloatResample() {
+    _resampleDirty = true;
+    _runFloatResampleIfIdle();
+  }
+
+  /// Coalescing is the whole design. One resample may be in flight; every
+  /// pointer move that arrives while it is only sets the dirty flag, and
+  /// the decode callback runs the LAST state rather than each intermediate
+  /// one. Without it a drag would queue one full-canvas resample per
+  /// pointer event and fall further behind with every frame.
+  ///
+  /// It also degrades honestly. On a machine with no native engine the
+  /// Dart reference is roughly fifteen times slower, so the preview
+  /// updates a few times a second while the handles and the ants stay at
+  /// 60 fps — and the state just before Enter is always the exact one,
+  /// because the last scheduling always runs.
+  void _runFloatResampleIfIdle() {
+    if (_resampleInFlight || !_resampleDirty) {
       return;
     }
-    final request = ++_meshImageRequest;
-    // drawVertices composites premultiplied — premultiply a copy first
-    // (the same rule the tile image cache follows).
+    final key = _currentResampleKey();
+    if (key == null) {
+      _resampleDirty = false;
+      if (_resampledFloat != null || _resampledFloatImage != null) {
+        _discardFloatResample();
+      }
+      return;
+    }
+    if (_resampledFloat?.key == key) {
+      _resampleDirty = false;
+      return;
+    }
+    _resampleDirty = false;
+    final dab = _resampleOpenTransform();
+    final stamp = dab?.stamp;
+    if (dab == null || stamp == null) {
+      return;
+    }
+    _resampledFloat = (key: key, dab: dab);
+    assert(_recordResampledFloat(dab));
+
+    // decodeImageFromPixels wants premultiplied bytes; the resampler
+    // produces straight alpha, which is the app's storage convention and
+    // must stay that way — premultiplying the RESULT would round the very
+    // colours Pick exists to carry through untouched. So the copy is for
+    // display only and the dab keeps its own bytes.
     final premultiplied = Uint8List.fromList(stamp.rgba);
     final native = QaNativeEngine.instance;
     if (native != null) {
@@ -814,22 +1046,41 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         premultiplied[i + 2] = (premultiplied[i + 2] * alpha + 127) ~/ 255;
       }
     }
+    final request = ++_resampleImageRequest;
+    _resampleInFlight = true;
     ui.decodeImageFromPixels(
       premultiplied,
       stamp.width,
       stamp.height,
       ui.PixelFormat.rgba8888,
       (image) {
-        if (!mounted || request != _meshImageRequest || _meshPoints == null) {
+        _resampleInFlight = false;
+        if (!mounted || request != _resampleImageRequest) {
           image.dispose();
           return;
         }
         setState(() {
-          _meshFloatImage?.dispose();
-          _meshFloatImage = image;
+          _resampledFloatImage?.dispose();
+          _resampledFloatImage = image;
+          _resampledImageDab = dab;
         });
+        _runFloatResampleIfIdle();
       },
     );
+  }
+
+  void _discardFloatResample() {
+    _resampleImageRequest += 1; // Invalidate an in-flight decode.
+    _resampleDirty = false;
+    _resampledFloat = null;
+    _resampledImageDab = null;
+    _resampledFloatImage?.dispose();
+    _resampledFloatImage = null;
+    // The hook holds a whole resampled cel. Letting it outlive the session
+    // that made it would keep that buffer resident for as long as the app
+    // runs, which is the same defect in a debug build that the assert
+    // guard prevents in a release one.
+    assert(_recordResampledFloat(null));
   }
 
   int? _hitTestMeshPoint(Offset local) {
@@ -874,9 +1125,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _meshPoints = null;
     _meshDragIndex = null;
     _meshDragStartPoints = null;
-    _meshImageRequest += 1; // Invalidate an in-flight decode.
-    _meshFloatImage?.dispose();
-    _meshFloatImage = null;
+    _discardFloatResample();
     // A pending session's float must keep rendering — its pixels are NOT
     // in the base surface (they left with the lift's erase).
     _floatSurface = _movePending ? _buildFloatSurface() : null;
@@ -937,14 +1186,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return;
     }
     // R20-D3: an open mesh resamples through the triangulated warp.
+    // `_warpedFloat` returns the buffer the PREVIEW is already showing
+    // when nothing has changed since, so Enter lands the same bytes the
+    // screen held rather than a second computation that ought to match.
     final meshPoints = _meshPoints;
     if (meshPoints != null && pending != null) {
-      final warped = transformStampDabMesh(
-        pending,
-        columns: _meshColumns,
-        rows: _meshRows,
-        points: meshPoints,
-      );
+      final warped = _warpedFloat() ?? pending;
       if (identical(warped, pending)) {
         setState(_clearTransform);
         _syncAnts();
@@ -956,9 +1203,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         // A warped region collapses to its boundary polygon: the mesh
         // maps the LIFTED pixels, so what is selected afterwards is the
         // warped outline, not the old step list.
-        _setRegion(
-          CanvasSelectionRegion.shape(CanvasSelectionShape(boundary)),
-        );
+        _setRegion(CanvasSelectionRegion.shape(CanvasSelectionShape(boundary)));
         _moveSessionDirty = true;
         _clearTransform();
       });
@@ -968,7 +1213,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // R20-D2: an open quad resamples through the homography instead.
     final warpCorners = _warpCorners;
     if (warpCorners != null && pending != null) {
-      final warped = transformStampDabQuad(pending, warpCorners);
+      final warped = _warpedFloat() ?? pending;
       if (identical(warped, pending)) {
         // Untouched (or degenerate) quad: close the box, session pends on.
         setState(_clearTransform);
@@ -981,9 +1226,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         _pendingLiftStamp = warped;
         _setRegion(
           h == null
-              ? CanvasSelectionRegion.shape(
-                  CanvasSelectionShape(warpCorners),
-                )
+              ? CanvasSelectionRegion.shape(CanvasSelectionShape(warpCorners))
               : region.mapped((point) => _applyHomography(h, point)),
         );
         _moveSessionDirty = true;
@@ -994,7 +1237,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
     if (!affine.isIdentity && pending != null) {
       setState(() {
-        _pendingLiftStamp = transformStampDab(pending, affine);
+        _pendingLiftStamp = _warpedFloat() ?? pending;
         _setRegion(region.mapped(affine.apply));
         _moveSessionDirty = true;
         _clearTransform();
@@ -1064,6 +1307,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           ty: transform.ty + dy,
         );
       });
+      // The preview is a resampled bitmap now, not a matrix evaluated in
+      // build, so a mutation that does not schedule a resample moves the
+      // ants and the box while the PICTURE stays where it was — and Enter
+      // then lands the ink where the outline is, not where the artwork
+      // was drawn. Every path that changes the open warp has to say so.
+      _scheduleFloatResample();
       return;
     }
     final region = _region;
@@ -1111,7 +1360,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (affine == null || pending == null || affine.isIdentity) {
       return;
     }
-    _pendingLiftStamp = transformStampDab(pending, affine);
+    _pendingLiftStamp = _warpedFloat() ?? pending;
     final region = _region;
     if (region != null) {
       _setRegion(region.mapped(affine.apply));
@@ -1266,6 +1515,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             _warpDragStartCorners = List.of(corners);
             _transformDragStartPointer = canvasPoint;
           });
+          // Entering quad mode carries the affine's rotation and scale
+          // into the corners, so the picture already differs from the
+          // untransformed float — the preview must catch up before the
+          // first drag move arrives.
+          _scheduleFloatResample();
           widget.onDragActiveChanged?.call(true);
           return;
         }
@@ -1369,7 +1623,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     }
   }
 
+  /// Every branch below mutates the open warp, and every one of them must
+  /// then ask the preview to catch up. Wrapping rather than sprinkling the
+  /// call through five early returns is the difference between "the mesh
+  /// preview stopped updating" being impossible and being a future bug.
   void _updateTransformDrag(CanvasPoint pointer) {
+    _updateTransformDragGeometry(pointer);
+    _scheduleFloatResample();
+  }
+
+  void _updateTransformDragGeometry(CanvasPoint pointer) {
     // R20-D3 mesh drag: one control point follows the pointer, or
     // (inside) the whole grid translates.
     final meshStart = _meshDragStartPoints;
@@ -1719,43 +1982,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     );
   }
 
-  /// The quad preview matrix (R20-D2): the forward homography from the
-  /// pending stamp's rect onto the warp corners, wrapped into screen
-  /// space through the SAME viewport transform as the affine preview.
-  Matrix4? _quadScreenMatrix(List<CanvasPoint> corners) {
-    final base = _stampRectCorners();
-    if (base == null) {
-      return null;
-    }
-    final h = solveHomography(base, corners);
-    if (h == null) {
-      return null;
-    }
-    // Row-major 3×3 homography embedded into a column-major 4×4 acting
-    // on (x, y, z, 1) with the perspective terms on the w row.
-    final canvasMatrix = Matrix4(
-      h[0],
-      h[3],
-      0,
-      h[6], //
-      h[1],
-      h[4],
-      0,
-      h[7], //
-      0,
-      0,
-      1,
-      0, //
-      h[2],
-      h[5],
-      0,
-      h[8],
-    );
-    return viewportTransformMatrix(widget.viewport)
-      ..multiply(canvasMatrix)
-      ..multiply(viewportInverseTransformMatrix(widget.viewport));
-  }
-
   /// A base-local point mapped through [affine] into viewport space.
   Offset _mapLocalToViewport(SelectionAffine affine, CanvasPoint local) {
     final canvasPoint = affine.apply(
@@ -1856,26 +2082,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     return null;
   }
 
-  /// The Ctrl+T preview matrix: the canvas-space affine wrapped into
-  /// screen space through the SAME viewport transform painters use.
-  Matrix4 _affineScreenMatrix(SelectionAffine affine) {
-    final radians = affine.rotationDegrees * math.pi / 180;
-    final canvasMatrix =
-        Matrix4.translationValues(
-            affine.pivot.x + affine.tx,
-            affine.pivot.y + affine.ty,
-            0,
-          )
-          ..multiply(Matrix4.rotationZ(radians))
-          ..multiply(Matrix4.diagonal3Values(affine.sx, affine.sy, 1))
-          ..multiply(
-            Matrix4.translationValues(-affine.pivot.x, -affine.pivot.y, 0),
-          );
-    return viewportTransformMatrix(widget.viewport)
-      ..multiply(canvasMatrix)
-      ..multiply(viewportInverseTransformMatrix(widget.viewport));
-  }
-
   /// The floating lift stamp rendered alone (the live float shown while
   /// moving) — the base no longer draws it, the float draws exactly it
   /// (R15-④), so there is never a double image.
@@ -1897,6 +2103,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final transform = _transform;
     final region = _region;
     final warpCorners = _warpCorners;
+    // The image and the dab it was decoded from travel together, so the
+    // rect the preview draws into always belongs to the pixels in it.
+    final resampledImage = _resampledFloatImage;
+    final resampledDab = _resampledImageDab;
     // With an open Ctrl+T session the ants show the TRANSFORMED region
     // and the box chrome renders around the transformed base box. An
     // open QUAD (R20-D2) maps the region through the homography instead.
@@ -1994,27 +2204,38 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       onPointerCancel: _handlePointerCancel,
       child: Stack(
         children: [
-          // R21 mesh LIVE warp preview: drawVertices over the SAME
-          // fixed-diagonal triangulation the commit resampler uses —
-          // the warped picture on screen is exactly what Enter lands.
-          if (meshPoints != null && _meshFloatImage != null)
+          // P3a: with a warp open the preview IS the resampled result,
+          // drawn unfiltered at the rect it will land in. Affine, quad
+          // and mesh alike — one painter, because there is no longer any
+          // per-mode screen approximation to differ between them.
+          if (resampledImage != null && resampledDab != null)
             Positioned.fill(
               child: IgnorePointer(
                 child: CustomPaint(
-                  key: const ValueKey<String>('mesh-warp-preview'),
-                  painter: _MeshWarpPainter(
-                    image: _meshFloatImage!,
-                    columns: _meshColumns,
-                    rows: _meshRows,
-                    positions: [
-                      for (final point in meshPoints)
-                        _mapCanvasToViewportOffset(point),
-                    ],
+                  key: const ValueKey<String>('transform-resample-preview'),
+                  painter: _ResampledFloatPainter(
+                    image: resampledImage,
+                    // The landing rect, computed the way the stamp blend
+                    // computes it: the dab centre rounded to an integer
+                    // top-left. Previewing at the unrounded position
+                    // would put a sub-pixel Ctrl+T on screen half a pixel
+                    // from where it lands.
+                    left: (resampledDab.center.x - resampledImage.width / 2)
+                        .round()
+                        .toDouble(),
+                    top: (resampledDab.center.y - resampledImage.height / 2)
+                        .round()
+                        .toDouble(),
+                    viewport: widget.viewport,
+                    canvasSize: widget.canvasSize,
                   ),
                   child: const SizedBox.expand(),
                 ),
               ),
             )
+          // A pure MOVE drag has no warp: the translation is byte-exact
+          // by short circuit, so a screen-space offset of the untouched
+          // float IS the result and costs nothing.
           else if (floatSurface != null &&
               (_dragMode == _DragMode.move ||
                   transform != null ||
@@ -2022,15 +2243,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
             Positioned.fill(
               child: IgnorePointer(
                 child: Transform(
-                  transform: warpCorners != null
-                      ? (_quadScreenMatrix(warpCorners) ?? Matrix4.identity())
-                      : transform != null
-                      ? _affineScreenMatrix(transform)
-                      : Matrix4.translationValues(
-                          _moveScreenDelta.dx,
-                          _moveScreenDelta.dy,
-                          0,
-                        ),
+                  transform: Matrix4.translationValues(
+                    _moveScreenDelta.dx,
+                    _moveScreenDelta.dy,
+                    0,
+                  ),
                   child: CustomPaint(
                     painter: BitmapSurfacePainter(
                       surface: floatSurface,
@@ -2114,78 +2331,68 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   }
 }
 
-/// The mesh session's LIVE warp preview (R21): the float stamp as a
-/// textured triangle mesh — destination positions are the control grid
-/// in viewport space, texture coordinates the uniform stamp-local grid,
-/// triangulated with the SAME fixed TL–BR diagonal as
-/// [transformStampDabMesh], so preview == commit by construction.
-class _MeshWarpPainter extends CustomPainter {
-  _MeshWarpPainter({
+/// The transform preview (P3a): the RESAMPLED float, drawn at the canvas
+/// rect it will land in, through the ordinary viewport transform.
+///
+/// `FilterQuality.none` is not a performance choice — it is the contract.
+/// The image already holds the destination pixels, one for one, so any
+/// filtering here would show the user something other than the bytes Enter
+/// is about to write. Zoomed in that means visible blocks, which is
+/// correct: those blocks ARE the result. This replaced three different
+/// screen approximations (a widget `Transform` for the affine, a
+/// homography matrix for the quad, and a `drawVertices` mesh at
+/// `FilterQuality.medium`), none of which agreed with the commit and none
+/// of which agreed with each other.
+class _ResampledFloatPainter extends CustomPainter {
+  _ResampledFloatPainter({
     required this.image,
-    required this.columns,
-    required this.rows,
-    required this.positions,
+    required this.left,
+    required this.top,
+    required this.viewport,
+    required this.canvasSize,
   });
 
   final ui.Image image;
-  final int columns;
-  final int rows;
 
-  /// `(columns+1)*(rows+1)` viewport-space grid positions, row-major.
-  final List<Offset> positions;
+  /// Canvas-space top-left of the landing rect.
+  final double left;
+  final double top;
+
+  final CanvasViewport viewport;
+  final CanvasSize canvasSize;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final vertexPositions = Float32List(columns * rows * 12);
-    final textureCoordinates = Float32List(columns * rows * 12);
-    final cellWidth = image.width / columns;
-    final cellHeight = image.height / rows;
-    var write = 0;
-    void vertex(int column, int row) {
-      final position = positions[row * (columns + 1) + column];
-      vertexPositions[write] = position.dx;
-      textureCoordinates[write] = column * cellWidth;
-      write += 1;
-      vertexPositions[write] = position.dy;
-      textureCoordinates[write] = row * cellHeight;
-      write += 1;
-    }
-
-    for (var row = 0; row < rows; row += 1) {
-      for (var column = 0; column < columns; column += 1) {
-        // Fixed TL–BR diagonal: (TL, TR, BL) + (TR, BR, BL).
-        vertex(column, row);
-        vertex(column + 1, row);
-        vertex(column, row + 1);
-        vertex(column + 1, row);
-        vertex(column + 1, row + 1);
-        vertex(column, row + 1);
-      }
-    }
-    final paint = Paint()
-      ..shader = ui.ImageShader(
-        image,
-        TileMode.clamp,
-        TileMode.clamp,
-        Matrix4.identity().storage,
-        filterQuality: FilterQuality.medium,
-      );
-    canvas.drawVertices(
-      ui.Vertices.raw(
-        ui.VertexMode.triangles,
-        vertexPositions,
-        textureCoordinates: textureCoordinates,
+    canvas.save();
+    canvas.transform(viewportTransformMatrix(viewport).storage);
+    // The pasteboard wall, because the landing clips there too
+    // (`bitmap_surface_brush_commit`): a selection dragged past the stage
+    // edge loses those pixels on Enter, and a preview that kept showing
+    // them would be promising something the commit will not deliver.
+    canvas.clipRect(
+      Rect.fromLTRB(
+        canvasSize.pasteboardLeft.toDouble(),
+        canvasSize.pasteboardTop.toDouble(),
+        canvasSize.pasteboardRightExclusive.toDouble(),
+        canvasSize.pasteboardBottomExclusive.toDouble(),
       ),
-      BlendMode.srcOver,
-      paint,
     );
+    canvas.drawImageRect(
+      image,
+      Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      Rect.fromLTWH(left, top, image.width.toDouble(), image.height.toDouble()),
+      Paint()
+        ..filterQuality = FilterQuality.none
+        ..isAntiAlias = false,
+    );
+    canvas.restore();
   }
 
   @override
-  bool shouldRepaint(covariant _MeshWarpPainter oldDelegate) =>
+  bool shouldRepaint(covariant _ResampledFloatPainter oldDelegate) =>
       oldDelegate.image != image ||
-      oldDelegate.positions != positions ||
-      oldDelegate.columns != columns ||
-      oldDelegate.rows != rows;
+      oldDelegate.left != left ||
+      oldDelegate.top != top ||
+      oldDelegate.viewport != viewport ||
+      oldDelegate.canvasSize != canvasSize;
 }
-

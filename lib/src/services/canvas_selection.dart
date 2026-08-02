@@ -10,6 +10,8 @@ import '../models/brush_tip_shape.dart';
 import '../models/canvas_point.dart';
 import '../models/tile_coord.dart';
 import 'canvas_selection_region.dart';
+import 'resample/resample_kernel.dart';
+import 'resample/selection_resample.dart';
 
 /// A selection region in canvas coordinates (P9): a closed polygon — the
 /// rectangle marquee is its 4-corner special case, the lasso is the
@@ -68,7 +70,8 @@ class CanvasSelectionShape {
     if (identical(this, other)) {
       return true;
     }
-    if (other is! CanvasSelectionShape || other.points.length != points.length) {
+    if (other is! CanvasSelectionShape ||
+        other.points.length != points.length) {
       return false;
     }
     for (var i = 0; i < points.length; i += 1) {
@@ -111,11 +114,45 @@ class SelectionAffine {
 
   double get _radians => rotationDegrees * math.pi / 180;
 
+  /// The rotation's cosine and sine, EXACT at the quarter turns.
+  ///
+  /// `math.cos(pi / 2)` is 6.1e-17, not zero, and that residue is enough to
+  /// make a quarter turn miss the resampler's lattice: destination pixel
+  /// centres land a hair off source pixel centres, the footprint reaches a
+  /// neighbour it should not, and "rotating by 90° gives back the same
+  /// pixels" becomes a rounding accident rather than a guarantee. Reading
+  /// the table for exact multiples of 90 makes it structural.
+  ///
+  /// Both the geometry ([apply], which moves the selection outline) and the
+  /// pixels (the resample fold) read these, so the ants and the picture can
+  /// never disagree about where the rotation went.
+  double get cosTheta {
+    final quarter = _exactQuarterTurn;
+    return quarter == null ? math.cos(_radians) : _quarterCos[quarter];
+  }
+
+  double get sinTheta {
+    final quarter = _exactQuarterTurn;
+    return quarter == null ? math.sin(_radians) : _quarterSin[quarter];
+  }
+
+  /// 0/1/2/3 for an exact 0/90/180/270, null for anything in between.
+  int? get _exactQuarterTurn {
+    if (rotationDegrees % 90 != 0 || !rotationDegrees.isFinite) {
+      return null;
+    }
+    final quarter = (rotationDegrees ~/ 90) % 4;
+    return quarter < 0 ? quarter + 4 : quarter;
+  }
+
+  static const List<double> _quarterCos = <double>[1, 0, -1, 0];
+  static const List<double> _quarterSin = <double>[0, 1, 0, -1];
+
   CanvasPoint apply(CanvasPoint point) {
     final lx = (point.x - pivot.x) * sx;
     final ly = (point.y - pivot.y) * sy;
-    final cos = math.cos(_radians);
-    final sin = math.sin(_radians);
+    final cos = cosTheta;
+    final sin = sinTheta;
     return CanvasPoint(
       x: lx * cos - ly * sin + pivot.x + tx,
       y: lx * sin + ly * cos + pivot.y + ty,
@@ -173,14 +210,26 @@ CanvasSelectionShape transformShape(
 /// - a pure translation only moves the center — byte-exact, the same
 ///   arithmetic as a drag move;
 /// - anything else resamples the stamp's straight-alpha RGBA into the
-///   transformed region's axis-aligned bounding box with a Catmull-Rom
-///   BICUBIC kernel (R20-D1 — the PS default-quality tier; noticeably
-///   sharper than bilinear on rotate/scale). The kernel is interpolating
-///   (δ at integer alignment), so axis-aligned 90° rotations stay EXACT
-///   pixel permutations. Sampling is alpha-weighted so transparent
-///   texels never bleed dark fringes; the negative lobes clamp at the
-///   byte edge (the usual bicubic ringing contract).
-BrushDab transformStampDab(BrushDab stampDab, SelectionAffine affine) {
+///   transformed region's axis-aligned bounding box through the shared
+///   kernel (P3a), in [mode]: a tent mean, or the coverage argmax that
+///   copies source words through untouched.
+///
+/// The kernel replaced a Catmull-Rom bicubic. A cubic has negative lobes,
+/// and a negative lobe beside a dark line emits a pixel BRIGHTER than
+/// anything in its own footprint — the pale halo that made free transform
+/// unusable on line art. A tent is a convex combination, so the halo cannot
+/// exist by construction.
+///
+/// The returned center is `outLeft + outWidth / 2` with both terms
+/// integers, so it rounds back to exactly `outLeft` where the stamp lands
+/// (`bitmap_surface_brush_commit.dart`). That is what makes byte identity
+/// between what the preview showed and what Enter writes reachable at all:
+/// the resampled buffer travels to the surface without a second resample.
+BrushDab transformStampDab(
+  BrushDab stampDab,
+  SelectionAffine affine, {
+  ResampleMode mode = ResampleMode.blend,
+}) {
   final stamp = stampDab.stamp;
   if (stamp == null || affine.isIdentity) {
     return stampDab;
@@ -220,36 +269,23 @@ BrushDab transformStampDab(BrushDab stampDab, SelectionAffine affine) {
   final outWidth = math.max(1, maxX.ceil() - outLeft);
   final outHeight = math.max(1, maxY.ceil() - outTop);
 
-  // Inverse mapping: q = R·S·(p − pivot) + pivot + t
-  //              ⇒  p = S⁻¹·R⁻¹·(q − pivot − t) + pivot.
-  final radians = affine.rotationDegrees * math.pi / 180;
-  final cos = math.cos(radians);
-  final sin = math.sin(radians);
-  final invSx = 1 / affine.sx;
-  final invSy = 1 / affine.sy;
-
-  final source = stamp.rgba;
   final bytes = Uint8List(outWidth * outHeight * 4);
-  for (var oy = 0; oy < outHeight; oy += 1) {
-    final qy = outTop + oy + 0.5 - affine.pivot.y - affine.ty;
-    for (var ox = 0; ox < outWidth; ox += 1) {
-      final qx = outLeft + ox + 0.5 - affine.pivot.x - affine.tx;
-      // R(−θ) then S⁻¹, back into stamp pixel space.
-      final px = (qx * cos + qy * sin) * invSx + affine.pivot.x;
-      final py = (-qx * sin + qy * cos) * invSy + affine.pivot.y;
-      _bicubicSampleInto(
-        bytes,
-        (oy * outWidth + ox) * 4,
-        source,
-        stamp.width,
-        stamp.height,
-        px,
-        py,
-        srcLeft,
-        srcTop,
-      );
-    }
-  }
+  resampleSelectionInto(
+    src: stamp.rgba,
+    srcWidth: stamp.width,
+    srcHeight: stamp.height,
+    dst: bytes,
+    dstWidth: outWidth,
+    dstHeight: outHeight,
+    transform: selectionAffineResampleTransform(
+      affine: affine,
+      srcLeft: srcLeft,
+      srcTop: srcTop,
+      outLeft: outLeft,
+      outTop: outTop,
+    ),
+    mode: mode,
+  );
 
   return stampDab.copyWith(
     center: CanvasPoint(x: outLeft + outWidth / 2, y: outTop + outHeight / 2),
@@ -328,11 +364,16 @@ Float64List? solveHomography(List<CanvasPoint> from, List<CanvasPoint> to) {
 
 /// The lifted stamp through a free QUAD (R20-D2 perspective transform,
 /// the PS Ctrl+corner mode): [corners] are the destination positions of
-/// the stamp rect's TL/TR/BR/BL corners in canvas space. Resamples with
-/// the same alpha-weighted Catmull-Rom kernel as the affine path,
-/// through the inverse homography. Corners exactly at the source rect =
-/// untouched; a degenerate quad refuses (returns the dab unchanged).
-BrushDab transformStampDabQuad(BrushDab stampDab, List<CanvasPoint> corners) {
+/// the stamp rect's TL/TR/BR/BL corners in canvas space. Resamples through
+/// the inverse homography with the same shared kernel and [mode] the affine
+/// path uses. Corners exactly at the source rect = untouched; every corner
+/// moved by the SAME delta is a pure translation and travels byte-exact; a
+/// degenerate quad refuses (returns the dab unchanged).
+BrushDab transformStampDabQuad(
+  BrushDab stampDab,
+  List<CanvasPoint> corners, {
+  ResampleMode mode = ResampleMode.blend,
+}) {
   final stamp = stampDab.stamp;
   if (stamp == null) {
     return stampDab;
@@ -346,15 +387,31 @@ BrushDab transformStampDabQuad(BrushDab stampDab, List<CanvasPoint> corners) {
     CanvasPoint(x: srcLeft + stamp.width, y: srcTop + stamp.height),
     CanvasPoint(x: srcLeft, y: srcTop + stamp.height),
   ];
-  var identity = true;
-  for (var i = 0; i < 4; i += 1) {
-    if (corners[i].x != base[i].x || corners[i].y != base[i].y) {
-      identity = false;
+  // Identity, and the pure translation that the affine path short-circuits
+  // at the top. Dragging the whole quad is reachable, and without this it
+  // would run the per-pixel vote: solveHomography's elimination leaves a
+  // ~1e-15 residue, so the kernel's own whole-pixel-translation circuit
+  // never fires here no matter how exactly the user dragged.
+  final deltaX = corners[0].x - base[0].x;
+  final deltaY = corners[0].y - base[0].y;
+  var translationOnly = true;
+  for (var i = 1; i < 4; i += 1) {
+    if (corners[i].x - base[i].x != deltaX ||
+        corners[i].y - base[i].y != deltaY) {
+      translationOnly = false;
       break;
     }
   }
-  if (identity) {
-    return stampDab;
+  if (translationOnly) {
+    if (deltaX == 0 && deltaY == 0) {
+      return stampDab;
+    }
+    return stampDab.copyWith(
+      center: CanvasPoint(
+        x: stampDab.center.x + deltaX,
+        y: stampDab.center.y + deltaY,
+      ),
+    );
   }
   // dst → src directly: no matrix inversion, one solve.
   final h = solveHomography(corners, base);
@@ -375,31 +432,27 @@ BrushDab transformStampDabQuad(BrushDab stampDab, List<CanvasPoint> corners) {
   final outWidth = math.max(1, maxX.ceil() - outLeft);
   final outHeight = math.max(1, maxY.ceil() - outTop);
 
-  final source = stamp.rgba;
   final bytes = Uint8List(outWidth * outHeight * 4);
-  for (var oy = 0; oy < outHeight; oy += 1) {
-    final qy = outTop + oy + 0.5;
-    for (var ox = 0; ox < outWidth; ox += 1) {
-      final qx = outLeft + ox + 0.5;
-      final w = h[6] * qx + h[7] * qy + h[8];
-      if (w.abs() < 1e-12) {
-        continue;
-      }
-      final px = (h[0] * qx + h[1] * qy + h[2]) / w;
-      final py = (h[3] * qx + h[4] * qy + h[5]) / w;
-      _bicubicSampleInto(
-        bytes,
-        (oy * outWidth + ox) * 4,
-        source,
-        stamp.width,
-        stamp.height,
-        px,
-        py,
-        srcLeft,
-        srcTop,
-      );
-    }
-  }
+  // The per-pixel `w ≈ 0` guard the old loop carried lives in the kernel
+  // now, along with a non-finite check the old one did not have. Both write
+  // the outside token where this used to leave the pixel untouched, which
+  // is the same thing on a freshly allocated buffer.
+  resampleSelectionInto(
+    src: stamp.rgba,
+    srcWidth: stamp.width,
+    srcHeight: stamp.height,
+    dst: bytes,
+    dstWidth: outWidth,
+    dstHeight: outHeight,
+    transform: selectionQuadResampleTransform(
+      h: h,
+      srcLeft: srcLeft,
+      srcTop: srcTop,
+      outLeft: outLeft,
+      outTop: outTop,
+    ),
+    mode: mode,
+  );
 
   return stampDab.copyWith(
     center: CanvasPoint(x: outLeft + outWidth / 2, y: outTop + outHeight / 2),
@@ -415,18 +468,26 @@ BrushDab transformStampDabQuad(BrushDab stampDab, List<CanvasPoint> corners) {
 
 /// The lifted stamp through a MESH warp (R20-D3): an n×m control grid
 /// over the stamp rect, each cell split into two triangles with a fixed
-/// diagonal; destination triangles inverse-map affinely (barycentric)
-/// onto the source and sample with the same alpha-weighted Catmull-Rom
-/// kernel. The preview renders the SAME triangulation, so what warps on
-/// screen is what commits. [points] holds `(columns+1)*(rows+1)`
-/// destination grid positions, row-major; the base grid is the stamp
-/// rect subdivided uniformly. All points at base = untouched. Fold-overs
-/// resolve by triangle order (first hit wins — deterministic).
+/// diagonal. [points] holds `(columns+1)*(rows+1)` destination grid
+/// positions, row-major; the base grid is the stamp rect subdivided
+/// uniformly. All points at base = untouched, all points moved by one
+/// delta = a pure translation. Fold-overs resolve by triangle order (first
+/// hit wins — deterministic).
+///
+/// Barycentric interpolation of the three source corners is an AFFINE
+/// function of the destination point, so each triangle is one ordinary
+/// call into the shared kernel over its clipped bounding box, in [mode].
+/// What stays in Dart is the triangle's insideness test and the `covered`
+/// map: the kernel has no notion of a clip or of coverage and writes EVERY
+/// pixel of the rectangle it is given, so a single whole-output call would
+/// erase each triangle with the next one and lose fold-over resolution
+/// entirely.
 BrushDab transformStampDabMesh(
   BrushDab stampDab, {
   required int columns,
   required int rows,
   required List<CanvasPoint> points,
+  ResampleMode mode = ResampleMode.blend,
 }) {
   final stamp = stampDab.stamp;
   if (stamp == null || columns < 1 || rows < 1) {
@@ -442,19 +503,31 @@ BrushDab transformStampDabMesh(
     y: srcTop + row * cellHeight,
   );
 
-  var identity = true;
-  for (var row = 0; row <= rows && identity; row += 1) {
+  // Identity and pure translation, for the same reason the quad path has
+  // both: dragging the whole grid is reachable and must not resample.
+  final deltaX = points[0].x - baseAt(0, 0).x;
+  final deltaY = points[0].y - baseAt(0, 0).y;
+  var translationOnly = true;
+  for (var row = 0; row <= rows && translationOnly; row += 1) {
     for (var column = 0; column <= columns; column += 1) {
       final base = baseAt(column, row);
       final point = points[row * (columns + 1) + column];
-      if (point.x != base.x || point.y != base.y) {
-        identity = false;
+      if (point.x - base.x != deltaX || point.y - base.y != deltaY) {
+        translationOnly = false;
         break;
       }
     }
   }
-  if (identity) {
-    return stampDab;
+  if (translationOnly) {
+    if (deltaX == 0 && deltaY == 0) {
+      return stampDab;
+    }
+    return stampDab.copyWith(
+      center: CanvasPoint(
+        x: stampDab.center.x + deltaX,
+        y: stampDab.center.y + deltaY,
+      ),
+    );
   }
 
   var minX = double.infinity, minY = double.infinity;
@@ -469,9 +542,14 @@ BrushDab transformStampDabMesh(
   final outTop = minY.floor();
   final outWidth = math.max(1, maxX.ceil() - outLeft);
   final outHeight = math.max(1, maxY.ceil() - outTop);
-  final source = stamp.rgba;
   final bytes = Uint8List(outWidth * outHeight * 4);
   final covered = Uint8List(outWidth * outHeight);
+  // One scratch grown across the triangles of THIS call — not a
+  // module-level buffer. The Catmull-Rom this replaced kept its weights in
+  // top-level mutable state shared by all three warp paths, which is
+  // exactly the thing that stops being safe the moment anything runs off
+  // the main isolate.
+  var scratch = Uint8List(0);
 
   void rasterizeTriangle(
     CanvasPoint d0,
@@ -499,6 +577,42 @@ BrushDab transformStampDabMesh(
       outTop + outHeight,
       math.max(d0.y, math.max(d1.y, d2.y)).ceil(),
     );
+    final tileWidth = right - left;
+    final tileHeight = bottom - top;
+    if (tileWidth <= 0 || tileHeight <= 0) {
+      return;
+    }
+    // Resample the triangle's whole bounding box, then keep only the
+    // pixels inside it. The kernel reads the WHOLE source stamp, never a
+    // per-triangle crop, so a footprint straddling a source-triangle edge
+    // picks up its neighbour's texels exactly as the bicubic taps did —
+    // seam continuity for free.
+    final needed = tileWidth * tileHeight * 4;
+    if (scratch.length < needed) {
+      scratch = Uint8List(needed);
+    }
+    resampleSelectionInto(
+      src: stamp.rgba,
+      srcWidth: stamp.width,
+      srcHeight: stamp.height,
+      dst: scratch,
+      dstWidth: tileWidth,
+      dstHeight: tileHeight,
+      transform: selectionTriangleResampleTransform(
+        d0: d0,
+        d1: d1,
+        d2: d2,
+        s0: s0,
+        s1: s1,
+        s2: s2,
+        denominator: denominator,
+        left: left,
+        top: top,
+        srcLeft: srcLeft,
+        srcTop: srcTop,
+      ),
+      mode: mode,
+    );
     for (var y = top; y < bottom; y += 1) {
       final qy = y + 0.5;
       for (var x = left; x < right; x += 1) {
@@ -519,22 +633,15 @@ BrushDab transformStampDabMesh(
         if (w0 < slack || w1 < slack || w2 < slack) {
           continue;
         }
-        final px = s0.x * w0 + s1.x * w1 + s2.x * w2;
-        final py = s0.y * w0 + s1.y * w1 + s2.y * w2;
         // The pixel is inside this triangle regardless of what it samples,
         // so it is covered even when the sampled color is fully transparent.
         covered[index] = 1;
-        _bicubicSampleInto(
-          bytes,
-          index * 4,
-          source,
-          stamp.width,
-          stamp.height,
-          px,
-          py,
-          srcLeft,
-          srcTop,
-        );
+        final from = ((y - top) * tileWidth + (x - left)) * 4;
+        final to = index * 4;
+        bytes[to] = scratch[from];
+        bytes[to + 1] = scratch[from + 1];
+        bytes[to + 2] = scratch[from + 2];
+        bytes[to + 3] = scratch[from + 3];
       }
     }
   }
@@ -574,87 +681,6 @@ BrushDab transformStampDabMesh(
       rgba: bytes,
     ),
   );
-}
-
-/// Catmull-Rom weights for taps at offsets {-1, 0, +1, +2} around the
-/// floor sample, written into [out] (reused scratch — the resample loop
-/// is per-pixel hot). Interpolating: f == 0 → (0, 1, 0, 0).
-void _catmullRomWeights(double f, Float64List out) {
-  final f2 = f * f;
-  final f3 = f2 * f;
-  out[0] = 0.5 * (-f3 + 2.0 * f2 - f);
-  out[1] = 0.5 * (3.0 * f3 - 5.0 * f2 + 2.0);
-  out[2] = 0.5 * (-3.0 * f3 + 4.0 * f2 + f);
-  out[3] = 0.5 * (f3 - f2);
-}
-
-final Float64List _cubicWeightsX = Float64List(4);
-final Float64List _cubicWeightsY = Float64List(4);
-
-/// Bicubic (Catmull-Rom) resample of the stamp at source pixel [px], [py]
-/// into [bytes] at [outOffset], premultiplied-weighted so transparent taps
-/// never bleed. The three warp paths (affine, homography, mesh) differ only
-/// in how they derive [px]/[py] — this is the sampling kernel they share,
-/// byte-for-byte. Uses the shared per-pixel weight scratch; single-threaded
-/// like its callers. Writes nothing when the accumulated coverage is zero.
-void _bicubicSampleInto(
-  Uint8List bytes,
-  int outOffset,
-  Uint8List source,
-  int stampWidth,
-  int stampHeight,
-  double px,
-  double py,
-  double srcLeft,
-  double srcTop,
-) {
-  final sampleX = px - srcLeft - 0.5;
-  final sampleY = py - srcTop - 0.5;
-  final x0 = sampleX.floor();
-  final y0 = sampleY.floor();
-  _catmullRomWeights(sampleX - x0, _cubicWeightsX);
-  _catmullRomWeights(sampleY - y0, _cubicWeightsY);
-
-  var alphaAcc = 0.0;
-  var redAcc = 0.0, greenAcc = 0.0, blueAcc = 0.0;
-  for (var tapJ = 0; tapJ < 4; tapJ += 1) {
-    final tapY = y0 - 1 + tapJ;
-    if (tapY < 0 || tapY >= stampHeight) {
-      continue;
-    }
-    final weightY = _cubicWeightsY[tapJ];
-    if (weightY == 0) {
-      continue;
-    }
-    final rowOffset = tapY * stampWidth;
-    for (var tapI = 0; tapI < 4; tapI += 1) {
-      final tapX = x0 - 1 + tapI;
-      if (tapX < 0 || tapX >= stampWidth) {
-        continue;
-      }
-      final weight = _cubicWeightsX[tapI] * weightY;
-      if (weight == 0) {
-        continue;
-      }
-      final offset = (rowOffset + tapX) * 4;
-      final alpha = source[offset + 3];
-      if (alpha == 0) {
-        continue;
-      }
-      final weightedAlpha = weight * alpha;
-      alphaAcc += weightedAlpha;
-      redAcc += weightedAlpha * source[offset];
-      greenAcc += weightedAlpha * source[offset + 1];
-      blueAcc += weightedAlpha * source[offset + 2];
-    }
-  }
-  if (alphaAcc <= 0) {
-    return;
-  }
-  bytes[outOffset] = (redAcc / alphaAcc).round().clamp(0, 255);
-  bytes[outOffset + 1] = (greenAcc / alphaAcc).round().clamp(0, 255);
-  bytes[outOffset + 2] = (blueAcc / alphaAcc).round().clamp(0, 255);
-  bytes[outOffset + 3] = alphaAcc.round().clamp(0, 255);
 }
 
 /// The bitmap-lift pair (R14-④): an erase mask dab that cuts the

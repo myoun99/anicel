@@ -6,6 +6,7 @@ import '../../services/canvas_color_sampler.dart' show CanvasColorSampleSource;
 import '../../services/canvas_flood_fill.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
+import '../../services/resample/resample_kernel.dart';
 import '../widgets/drag_value_label.dart';
 import '../widgets/field_slider.dart';
 import 'brush_settings_panel.dart';
@@ -27,6 +28,8 @@ class ToolSettingsPanel extends StatelessWidget {
     required this.onFillOptionsChanged,
     this.selectionMaskOptions = SelectionMaskOptions.none,
     this.onSelectionMaskOptionsChanged,
+    this.transformResampleMode = ResampleMode.blend,
+    this.onTransformResampleModeChanged,
     this.selectionCommands,
     this.language = AppLanguage.en,
     this.eyedropperSource = CanvasColorSampleSource.display,
@@ -54,6 +57,11 @@ class ToolSettingsPanel extends StatelessWidget {
   /// inward feather, edge AA).
   final SelectionMaskOptions selectionMaskOptions;
   final ValueChanged<SelectionMaskOptions>? onSelectionMaskOptionsChanged;
+
+  /// P3a: the Move tool's resampler choice — the tent that smooths, or the
+  /// coverage argmax that keeps a two-value drawing two-valued.
+  final ResampleMode transformResampleMode;
+  final ValueChanged<ResampleMode>? onTransformResampleModeChanged;
 
   /// The mounted selection layer's imperative channel — the Move tool's
   /// numeric inputs read and write the live transform through it.
@@ -100,7 +108,11 @@ class ToolSettingsPanel extends StatelessWidget {
           selectionCommands: selectionCommands,
           language: language,
         ),
-        CanvasTool.move => _MoveSettings(selectionCommands: selectionCommands),
+        CanvasTool.move => _MoveSettings(
+          selectionCommands: selectionCommands,
+          resampleMode: transformResampleMode,
+          onResampleModeChanged: onTransformResampleModeChanged,
+        ),
       },
     );
   }
@@ -256,9 +268,24 @@ class _SelectionModeRow extends StatelessWidget {
 /// transform box, applied on submit through the selection channel. The
 /// channel notifies on session changes so the fields track handle drags.
 class _MoveSettings extends StatefulWidget {
-  const _MoveSettings({required this.selectionCommands});
+  const _MoveSettings({
+    required this.selectionCommands,
+    required this.resampleMode,
+    required this.onResampleModeChanged,
+  });
 
   final CanvasSelectionCommands? selectionCommands;
+
+  /// P3a: which resampler a transform commit runs through.
+  ///
+  /// Deliberately UNREAD for now — see the note where the switch belongs,
+  /// in [build]. The value already reaches the resampler through the
+  /// selection layer; what is missing is only the control, and it is
+  /// missing because the kernel's coverage argmax erases the artwork the
+  /// mode exists for. Wiring stays so that round is a UI change and not
+  /// another pass down five widget layers.
+  final ResampleMode resampleMode;
+  final ValueChanged<ResampleMode>? onResampleModeChanged;
 
   @override
   State<_MoveSettings> createState() => _MoveSettingsState();
@@ -442,6 +469,35 @@ class _MoveSettingsState extends State<_MoveSettings> {
           },
         ),
         const SizedBox(height: 12),
+        // ⚠️ The "Preserve exact colours" switch belongs here and is
+        // deliberately NOT built yet.
+        //
+        // Everything behind it works — the mode threads from this panel to
+        // all three warp paths and the preview, and its contracts are
+        // tested. What is not ready is the KERNEL's coverage argmax, which
+        // erases the artwork the mode exists for. Measured on 1px line art
+        // through the shipping kernel: a 50% reduction keeps 3 ink pixels
+        // of 381, and an isolated 1px diagonal rotated 37° or 45° comes
+        // back with none at all.
+        //
+        // The cause is that Pick's contract is stated in terms of COVERED
+        // AREA but the accumulator weighs taps with a TENT — a
+        // reconstruction filter, not a coverage measure. At 45° that puts
+        // ink at 1.172 against ground's 1.343 around every ink pixel, so
+        // every one of them loses. Replacing the tent with the actual
+        // overlap length of a source pixel and the destination pixel's
+        // preimage takes that 50% reduction from 3 ink pixels to 127 and
+        // the 37° rotation from 0 to 26, and is better or equal on 16 of
+        // 18 measured fixture rows. Exactly 45° stays at 0 under both,
+        // because there the feature covers exactly half of every
+        // destination pixel and no argmax can break that tie.
+        //
+        // That is a change to the shared kernel and its C mirror, with its
+        // own parity pass and its own tuning question (what replaces the
+        // radius floor once the weight means coverage), so it is its own
+        // round rather than a rider on this one. Shipping the switch first
+        // would hand the user a control that does the opposite of its
+        // label on exactly the artwork it advertises.
         // R20-D3 mesh warp: opens the control grid on the selection —
         // or, with none, on the whole picture (R26 #13). Enter commits
         // the triangulated warp; Esc reverts. Perspective rides the

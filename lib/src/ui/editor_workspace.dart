@@ -18,6 +18,7 @@ import '../services/brush_tip_library_service.dart';
 import '../services/canvas_color_sampler.dart' show CanvasColorSampleSource;
 import '../services/canvas_flood_fill.dart' show FloodFillOptions;
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
+import '../services/resample/resample_kernel.dart' show ResampleMode;
 import 'brush/brush_preset_library.dart';
 import 'brush/brush_preset_panel.dart';
 import 'brush/brush_tip_library.dart';
@@ -297,6 +298,19 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// feather, edge AA. Defaults keep the lift byte-preserving.
   final ValueNotifier<SelectionMaskOptions> _selectionMaskOptions =
       ValueNotifier(SelectionMaskOptions.none);
+
+  /// P3a: which resampler a transform commit runs through. Session state
+  /// like its three neighbours here, deliberately NOT a [BrushToolState]
+  /// field — everything there other than the tool itself forwards into
+  /// [BrushShape], which is what a saved brush preset serialises, so the
+  /// bit would follow every preset around for no reason.
+  ///
+  /// Blend is the default: smoothing is what a transform is expected to do
+  /// everywhere else in the industry, and the argmax is the deliberate
+  /// choice for two-value work.
+  final ValueNotifier<ResampleMode> _transformResampleMode = ValueNotifier(
+    ResampleMode.blend,
+  );
 
   /// R28 #6: the eyedropper's reference source (Tool Settings knob). The
   /// user's default is "pick what you SEE".
@@ -733,6 +747,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       _brushTool.dispose();
     }
     _fillOptions.dispose();
+    _transformResampleMode.dispose();
     _eyedropperSource.dispose();
     _colorWheelBackground.dispose();
     _cameraViewEnabled.dispose();
@@ -948,6 +963,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             expandedLaneLayerIds: _expandedLaneLayerIds,
             fillOptions: _fillOptions,
             selectionMaskOptions: _selectionMaskOptions,
+            transformResampleMode: _transformResampleMode,
             eyedropperSource: _eyedropperSource,
           ),
         );
@@ -1042,58 +1058,75 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                         keys: CanvasTool.values,
                         activeKey: toolState.tool,
                         stateOf: () => (toolState, fillOptions),
-                        builder: (context) =>
-                            ValueListenableBuilder<SelectionMaskOptions>(
-                              valueListenable: _selectionMaskOptions,
-                              builder: (context, maskOptions, _) =>
-                                  ValueListenableBuilder<
-                                    CanvasColorSampleSource
-                                  >(
-                                    valueListenable: _eyedropperSource,
-                                    // The tip library loads in two passes,
-                                    // so the pickers have to follow it.
-                                    builder: (context, eyedropperSource, _) =>
-                                        ListenableBuilder(
-                                          listenable: _tipLibrary,
-                                          builder: (context, _) =>
-                                              ToolSettingsPanel(
-                                                state: toolState,
-                                                onChanged: (state) =>
-                                                    _brushTool.value = state,
-                                                tips: _tipLibrary.tips,
-                                                onTipImportRequested: () {
-                                                  unawaited(_importTipImage());
-                                                },
-                                                fillOptions: fillOptions,
-                                                onFillOptionsChanged:
-                                                    (options) =>
-                                                        _fillOptions.value =
-                                                            options,
-                                                eyedropperSource:
-                                                    eyedropperSource,
-                                                onEyedropperSourceChanged:
-                                                    (source) =>
-                                                        _eyedropperSource
-                                                                .value =
-                                                            source,
-                                                selectionMaskOptions:
-                                                    maskOptions,
-                                                onSelectionMaskOptionsChanged:
-                                                    (options) =>
-                                                        _selectionMaskOptions
-                                                                .value =
-                                                            options,
-                                                selectionCommands: widget
-                                                    .canvasSelectionCommands,
-                                                language: widget
-                                                    .session
-                                                    .languageSettings
-                                                    .value
-                                                    .programLanguage,
-                                              ),
-                                        ),
-                                  ),
-                            ),
+                        // The inner listenables SUBSCRIBE for themselves,
+                        // which is why they need not appear in the
+                        // keep-alive tuple above: that tuple decides when
+                        // the kept-alive subtree is thrown away, not when
+                        // it rebuilds.
+                        builder: (context) => ValueListenableBuilder<ResampleMode>(
+                          valueListenable: _transformResampleMode,
+                          builder: (context, resampleMode, _) =>
+                              ValueListenableBuilder<SelectionMaskOptions>(
+                                valueListenable: _selectionMaskOptions,
+                                builder: (context, maskOptions, _) =>
+                                    ValueListenableBuilder<
+                                      CanvasColorSampleSource
+                                    >(
+                                      valueListenable: _eyedropperSource,
+                                      // The tip library loads in two passes,
+                                      // so the pickers have to follow it.
+                                      builder: (context, eyedropperSource, _) =>
+                                          ListenableBuilder(
+                                            listenable: _tipLibrary,
+                                            builder: (context, _) =>
+                                                ToolSettingsPanel(
+                                                  state: toolState,
+                                                  onChanged: (state) =>
+                                                      _brushTool.value = state,
+                                                  tips: _tipLibrary.tips,
+                                                  onTipImportRequested: () {
+                                                    unawaited(
+                                                      _importTipImage(),
+                                                    );
+                                                  },
+                                                  fillOptions: fillOptions,
+                                                  onFillOptionsChanged:
+                                                      (options) =>
+                                                          _fillOptions.value =
+                                                              options,
+                                                  eyedropperSource:
+                                                      eyedropperSource,
+                                                  onEyedropperSourceChanged:
+                                                      (source) =>
+                                                          _eyedropperSource
+                                                                  .value =
+                                                              source,
+                                                  selectionMaskOptions:
+                                                      maskOptions,
+                                                  onSelectionMaskOptionsChanged:
+                                                      (options) =>
+                                                          _selectionMaskOptions
+                                                                  .value =
+                                                              options,
+                                                  transformResampleMode:
+                                                      resampleMode,
+                                                  onTransformResampleModeChanged:
+                                                      (mode) =>
+                                                          _transformResampleMode
+                                                                  .value =
+                                                              mode,
+                                                  selectionCommands: widget
+                                                      .canvasSelectionCommands,
+                                                  language: widget
+                                                      .session
+                                                      .languageSettings
+                                                      .value
+                                                      .programLanguage,
+                                                ),
+                                          ),
+                                    ),
+                              ),
+                        ),
                       ),
                 ),
           ),

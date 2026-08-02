@@ -111,8 +111,7 @@ void main() {
     'convertLinkedCutLinksTemplate': (s) => s.convertLinkedCutLinksTemplate,
     'convertLinkedCutReplacedTemplate': (s) =>
         s.convertLinkedCutReplacedTemplate,
-    'convertLinkedCutJoiningTemplate': (s) =>
-        s.convertLinkedCutJoiningTemplate,
+    'convertLinkedCutJoiningTemplate': (s) => s.convertLinkedCutJoiningTemplate,
     'convertLinkedCutTargetGainsTemplate': (s) =>
         s.convertLinkedCutTargetGainsTemplate,
     'convertLinkedCutOriginGainsTemplate': (s) =>
@@ -377,6 +376,8 @@ void main() {
     'brGrowShrink': (s) => s.brGrowShrink,
     'brAntiAlias': (s) => s.brAntiAlias,
     'brAntiAliasEdge': (s) => s.brAntiAliasEdge,
+    'brTransformPreserveColors': (s) => s.brTransformPreserveColors,
+    'brTransformPreserveColorsHint': (s) => s.brTransformPreserveColorsHint,
     'brFillBeyondCanvas': (s) => s.brFillBeyondCanvas,
     'brOpenRegionsRefuse': (s) => s.brOpenRegionsRefuse,
     'brName': (s) => s.brName,
@@ -553,6 +554,6 @@ void main() {
   test('the reader table covers every getter the class declares', () {
     // Guards the guard: a string added without a line here would other-
     // wise be silently unchecked.
-    expect(readers, hasLength(498));
+    expect(readers, hasLength(500));
   });
 }

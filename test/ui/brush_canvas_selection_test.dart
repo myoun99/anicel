@@ -109,6 +109,138 @@ void main() {
     await tester.pump();
   }
 
+  testWidgets('P3a: the bytes the PREVIEW showed are the bytes Enter '
+      'writes — the contract, tested at last', (tester) async {
+    // Before P3a this was untestable because it was false. The affine and
+    // quad previews were a Skia widget Transform over tiles drawn at
+    // FilterQuality.none, and the mesh preview was drawVertices through an
+    // ImageShader at FilterQuality.medium — three screen approximations,
+    // none of which agreed with the Catmull-Rom the commit ran. The whole
+    // point of a mode that preserves colours exactly is to SEE the result
+    // before committing to it, so the preview and the commit now share one
+    // buffer rather than two computations that ought to match.
+    final env = await pumpSelectionPanel(tester);
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    await env.setTool(CanvasTool.move);
+
+    debugLastResampledFloat = null;
+    env.commands.beginTransform();
+    await tester.pump();
+    // A rotation, so the resampler actually runs (a pure translation
+    // short-circuits and never reaches it).
+    env.commands.setTransformValues(
+      tx: 0,
+      ty: 0,
+      rotationDegrees: 24,
+      scale: 1,
+    );
+    await tester.pump();
+
+    final previewed = debugLastResampledFloat;
+    expect(
+      previewed,
+      isNotNull,
+      reason: 'an open rotation must have produced a resampled float',
+    );
+    final stamp = previewed!.stamp!;
+    final previewBytes = Uint8List.fromList(stamp.rgba);
+    final left = (previewed.center.x - stamp.width / 2).round();
+    final top = (previewed.center.y - stamp.height / 2).round();
+
+    env.commands.commitTransform();
+    await tester.pump();
+    expect(env.commands.movePending, isFalse);
+
+    // Every fully opaque pixel of the preview must be exactly that colour
+    // in the landed picture. Opaque only: a partial-alpha pixel composites
+    // against whatever was underneath, which is a different question.
+    var checked = 0;
+    for (var y = 0; y < stamp.height; y += 1) {
+      for (var x = 0; x < stamp.width; x += 1) {
+        final offset = (y * stamp.width + x) * 4;
+        if (previewBytes[offset + 3] != 255) {
+          continue;
+        }
+        final landed = surfacePixelRgba(
+          currentSurface(env.coordinator),
+          left + x,
+          top + y,
+        );
+        expect(
+          landed,
+          isNotNull,
+          reason: 'the preview showed a pixel at ($x,$y) and nothing landed',
+        );
+        expect(
+          [
+            landed! & 0xff,
+            (landed >> 8) & 0xff,
+            (landed >> 16) & 0xff,
+            (landed >> 24) & 0xff,
+          ],
+          [
+            previewBytes[offset],
+            previewBytes[offset + 1],
+            previewBytes[offset + 2],
+            previewBytes[offset + 3],
+          ],
+          reason: 'preview and commit disagree at ($x,$y)',
+        );
+        checked += 1;
+      }
+    }
+    expect(
+      checked,
+      greaterThan(0),
+      reason: 'a preview with no opaque pixel proves nothing',
+    );
+  });
+
+  testWidgets('P3a: an arrow-key nudge with the box open moves the '
+      'PICTURE, not just the outline', (tester) async {
+    // Caught by adversarial review, not by the suite. Once the preview is
+    // a resampled bitmap rather than a matrix evaluated in build, any
+    // mutation of the open warp that forgets to schedule a resample moves
+    // the ants and the box chrome while the artwork stays put — and Enter
+    // then lands the ink where the outline is, not where the picture was.
+    // Master could not have this bug: it recomputed the screen matrix on
+    // every build.
+    final env = await pumpSelectionPanel(tester);
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    await env.setTool(CanvasTool.move);
+
+    env.commands.beginTransform();
+    await tester.pump();
+    env.commands.setTransformValues(
+      tx: 0,
+      ty: 0,
+      rotationDegrees: 24,
+      scale: 1,
+    );
+    await tester.pump();
+    final before = debugLastResampledFloat!.center;
+
+    await tester.runAsync(() async {
+      for (var i = 0; i < 10; i += 1) {
+        env.commands.nudge(1, 0);
+      }
+      // The decode from the rotation above is still in flight, so the
+      // nudges only mark the preview dirty; the callback runs the last
+      // state. Letting that settle is the realistic path, and asserting
+      // after it is what makes this test about the SCHEDULING rather than
+      // about how many resamples one drag happens to trigger.
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    await tester.pump();
+
+    expect(
+      debugLastResampledFloat!.center.x,
+      before.x + 10,
+      reason: 'the resampled float must follow the nudge',
+    );
+    expect(debugLastResampledFloat!.center.y, before.y);
+  });
+
   testWidgets('the layer mounts for selection tools only', (tester) async {
     await pumpSelectionPanel(tester, tool: CanvasTool.brush);
     expect(find.byKey(layerKey), findsNothing);
@@ -247,7 +379,8 @@ void main() {
     expect(
       inkAt(env.coordinator, 40, 30),
       0,
-      reason: 'R28 #10: the second lift has to ERASE its origin too — '
+      reason:
+          'R28 #10: the second lift has to ERASE its origin too — '
           'leaving it is how the user saw "원본그림 존재하고 변형된 그림도 존재"',
     );
 
@@ -262,7 +395,6 @@ void main() {
     );
     expect(inkAt(env.coordinator, 40, 30), 0);
   });
-
 
   testWidgets('R26 #13: REVERTING the implicit whole-picture session '
       'restores the picture, leaves NO selection and records NOTHING', (
@@ -343,7 +475,7 @@ void main() {
       reason: 'a mesh has no affine channels — the fields blank out',
     );
     expect(
-      find.byKey(const ValueKey<String>('mesh-warp-preview')),
+      find.byKey(const ValueKey<String>('transform-resample-preview')),
       findsOneWidget,
       reason: 'the live warp preview mounts once the float image decodes',
     );
@@ -727,11 +859,17 @@ void main() {
       ),
     );
     await tester.pump();
-    expect(find.byKey(layerKey), findsOneWidget,
-        reason: 'the layer used to refuse to mount without a coordinator');
+    expect(
+      find.byKey(layerKey),
+      findsOneWidget,
+      reason: 'the layer used to refuse to mount without a coordinator',
+    );
 
     await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
-    expect(commands.hasSelection, isTrue,
-        reason: '"어느 상황에서든 무조건" — the marquee works on empty ground');
+    expect(
+      commands.hasSelection,
+      isTrue,
+      reason: '"어느 상황에서든 무조건" — the marquee works on empty ground',
+    );
   });
 }

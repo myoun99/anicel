@@ -672,6 +672,9 @@ class AppStrings {
   String get brGrowShrink => _s('brGrowShrink');
   String get brAntiAlias => _s('brAntiAlias');
   String get brAntiAliasEdge => _s('brAntiAliasEdge');
+  String get brTransformPreserveColors => _s('brTransformPreserveColors');
+  String get brTransformPreserveColorsHint =>
+      _s('brTransformPreserveColorsHint');
   String get brFillBeyondCanvas => _s('brFillBeyondCanvas');
   String get brOpenRegionsRefuse => _s('brOpenRegionsRefuse');
   String get brName => _s('brName');
@@ -1213,6 +1216,10 @@ class AppStrings {
     'brGrowShrink': 'Grow/Shrink',
     'brAntiAlias': 'Anti-alias',
     'brAntiAliasEdge': 'Anti-alias edge',
+    'brTransformPreserveColors': 'Preserve exact colours',
+    'brTransformPreserveColorsHint':
+        'Transform without making in-between '
+        'colours',
     'brFillBeyondCanvas': 'Fill Beyond Canvas',
     'brOpenRegionsRefuse': 'Open regions refuse to fill',
     'brName': 'Name',
@@ -1751,8 +1758,7 @@ class AppStrings {
     'mediaViewerOpenFile': 'ファイルを開く…',
     'mediaViewerLoadFailed': 'このファイルを読み込めませんでした。',
     'mediaViewerCannotDisplay': 'この種類のメディアはまだ表示できません。',
-    'mediaViewerNoPdfRenderer':
-        'このビルドにはPDFレンダラーがありません — PDFページを表示できません。',
+    'mediaViewerNoPdfRenderer': 'このビルドにはPDFレンダラーがありません — PDFページを表示できません。',
     'panelMediaViewer': 'ビューア',
     'panelCanvas': 'カンバス',
     'panelColor': 'カラー',
@@ -1883,6 +1889,8 @@ class AppStrings {
     'brGrowShrink': '拡張 / 収縮',
     'brAntiAlias': 'アンチエイリアス',
     'brAntiAliasEdge': '縁のアンチエイリアス',
+    'brTransformPreserveColors': '元の色を保持',
+    'brTransformPreserveColorsHint': '変形しても中間色を作りません',
     'brFillBeyondCanvas': 'カンバス外も塗る',
     'brOpenRegionsRefuse': '開いた領域は塗られません',
     'brName': '名前',
@@ -2418,8 +2426,7 @@ class AppStrings {
     'mediaViewerOpenFile': '파일 열기…',
     'mediaViewerLoadFailed': '이 파일을 읽지 못했습니다.',
     'mediaViewerCannotDisplay': '이 종류의 미디어는 아직 표시할 수 없습니다.',
-    'mediaViewerNoPdfRenderer':
-        '이 빌드에는 PDF 렌더러가 없습니다 — PDF 페이지를 표시할 수 없습니다.',
+    'mediaViewerNoPdfRenderer': '이 빌드에는 PDF 렌더러가 없습니다 — PDF 페이지를 표시할 수 없습니다.',
     'panelMediaViewer': '뷰어',
     'panelCanvas': '캔버스',
     'panelColor': '색',
@@ -2548,6 +2555,8 @@ class AppStrings {
     'brGrowShrink': '확장 / 축소',
     'brAntiAlias': '앤티에일리어스',
     'brAntiAliasEdge': '가장자리 앤티에일리어스',
+    'brTransformPreserveColors': '원본 색 보존',
+    'brTransformPreserveColorsHint': '변형해도 중간색을 만들지 않습니다',
     'brFillBeyondCanvas': '캔버스 밖도 채우기',
     'brOpenRegionsRefuse': '열린 영역은 채워지지 않습니다',
     'brName': '이름',
@@ -3245,6 +3254,10 @@ class AppStrings {
     'brGrowShrink': 'Étendre / Réduire',
     'brAntiAlias': 'Anticrénelage',
     'brAntiAliasEdge': 'Anticrénelage du bord',
+    'brTransformPreserveColors': 'Préserver les couleurs exactes',
+    'brTransformPreserveColorsHint':
+        'Transformer sans créer de couleurs '
+        'intermédiaires',
     'brFillBeyondCanvas': 'Remplir au-delà du canevas',
     'brOpenRegionsRefuse': 'Les zones ouvertes ne se remplissent pas',
     'brName': 'Nom',
@@ -3889,6 +3902,8 @@ class AppStrings {
     'brGrowShrink': '扩展 / 收缩',
     'brAntiAlias': '抗锯齿',
     'brAntiAliasEdge': '边缘抗锯齿',
+    'brTransformPreserveColors': '保留原始颜色',
+    'brTransformPreserveColorsHint': '变换时不生成中间色',
     'brFillBeyondCanvas': '填充到画布之外',
     'brOpenRegionsRefuse': '开放区域不会被填充',
     'brName': '名称',

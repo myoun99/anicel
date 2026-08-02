@@ -86,8 +86,27 @@ enum ResampleMode {
 }
 
 /// Lower bound for the footprint radius, per mode. See [ResampleMode].
+///
+/// ⚠️ This DEFAULT is not right for every consumer. The 1.5 was tuned on a
+/// dense production cel where it cut jagged spurs along rotated edges; on
+/// two-value line art it deletes features outright, because the extra ring
+/// of ground pixels outvotes a line one pixel wide. Measured on a 40×40
+/// fixture holding a 1px diagonal and a 1px vertical (63 ink pixels): an
+/// exact 90° rotation returns 32 ink pixels at floor 1.5 and all 63 at
+/// floor 1.0. The selection transform therefore passes 1.0 explicitly —
+/// see `kSelectionResampleRadiusFloor`.
+///
+/// The floor can only ever bite in the band `1.0 < extent < 1.5`, and a
+/// pure rotation's extent is `|cos| + |sin| ∈ [1, √2]` — so this is a
+/// rotation-only knob, inert under reduction and short-circuited under
+/// magnification.
 double resampleRadiusFloor(ResampleMode mode) =>
     mode == ResampleMode.pick ? 1.5 : 1.0;
+
+/// The mode as the C kernel's integer selector. One definition, because
+/// the alternative is every call site open-coding the same ternary and one
+/// of them eventually getting it backwards.
+int resampleModeCode(ResampleMode mode) => mode == ResampleMode.pick ? 1 : 0;
 
 /// Upper bound for the footprint radius.
 ///

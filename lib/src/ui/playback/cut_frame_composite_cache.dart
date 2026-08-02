@@ -10,7 +10,7 @@ import '../../services/brush_frame_store.dart';
 import '../../services/playback/cut_frame_composite_signature.dart';
 import '../canvas/composite_effect_paint.dart';
 import '../canvas/deferred_image_disposal.dart';
-import '../canvas/layer_pose_paint.dart';
+import '../canvas/layer_image_draw.dart';
 import 'layer_frame_image_cache.dart';
 import 'playback_cache_budget.dart';
 
@@ -301,66 +301,36 @@ class CutFrameCompositeCache {
             // Folder FX is already COMPOSED into this pose by the shared
             // visit (an affine transform distributes over compositing, so
             // it needs no buffer) — one pose, every route identical.
-            final layerPose = layer.pose;
-            if (layerPose != null) {
-              canvas.save();
-              applyLayerPoseTransform(
-                canvas,
-                layerPose,
-                cut.canvasSize,
-                anchorPoint: layer.anchorPoint,
-                rasterScale: scale,
-              );
-            }
-            final layerPaint = ui.Paint()
-              ..filterQuality = ui.FilterQuality.low
-              ..color = ui.Color.fromRGBO(0, 0, 0, layer.opacity)
-              // R26 #30: the layer blend applies at composite time,
-              // exactly like every other route.
-              ..blendMode = layer.blendMode.paintBlendMode;
+            //
             // R6: the row's effects filter its own picture before the
-            // opacity/blend meet the stack. The images here are ALREADY at
-            // this quality tier's raster, so a canvas-pixel blur radius
-            // has to be scaled with them — otherwise a half-size preview
-            // would show a double-strength blur.
-            resolveCompositeEffectPaint(
-              layer.effects,
-              rasterScale: scale,
-            ).applyTo(layerPaint);
+            // opacity/blend meet the stack, and the images here are
+            // ALREADY at this quality tier's raster — so the scale reaches
+            // the effect resolver too, or a half-size preview would show a
+            // double-strength blur.
             final worldRect = layerImage.worldRect;
-            if (worldRect.left == 0 &&
-                worldRect.top == 0 &&
-                layerImage.image.width == (worldRect.width * scale).round() &&
-                layerImage.image.height ==
-                    (worldRect.height * scale).round()) {
-              // Canvas-extent image at this raster's resolution — the exact
-              // legacy draw (bytes pinned by the composite parity suites).
-              canvas.drawImage(layerImage.image, ui.Offset.zero, layerPaint);
-            } else {
-              // Pasteboard-extent image: map src onto its world rect
-              // (raster scale applied). The canvas-sized toImage below
-              // crops the off-canvas remainder, so playback/export stay
-              // stage-only.
-              canvas.drawImageRect(
-                layerImage.image,
-                ui.Rect.fromLTWH(
-                  0,
-                  0,
-                  layerImage.image.width.toDouble(),
-                  layerImage.image.height.toDouble(),
-                ),
-                ui.Rect.fromLTWH(
-                  worldRect.left * scale,
-                  worldRect.top * scale,
-                  worldRect.width * scale,
-                  worldRect.height * scale,
-                ),
-                layerPaint,
-              );
-            }
-            if (layerPose != null) {
-              canvas.restore();
-            }
+            drawPosedLayerImage(
+              canvas,
+              image: layerImage.image,
+              worldRect: worldRect,
+              canvasSize: cut.canvasSize,
+              pose: layer.pose,
+              anchorPoint: layer.anchorPoint,
+              opacity: layer.opacity,
+              blendMode: layer.blendMode,
+              effects: layer.effects,
+              rasterScale: scale,
+              // A canvas-extent image at this raster's resolution takes
+              // the legacy whole-image draw, whose bytes the composite
+              // parity suites pin. A pasteboard-extent one maps src onto
+              // its world rect instead; the canvas-sized toImage below
+              // crops the off-canvas remainder, so playback and export
+              // stay stage-only either way.
+              drawAtOrigin:
+                  worldRect.left == 0 &&
+                  worldRect.top == 0 &&
+                  layerImage.image.width == (worldRect.width * scale).round() &&
+                  layerImage.image.height == (worldRect.height * scale).round(),
+            );
         }
       }
     }
