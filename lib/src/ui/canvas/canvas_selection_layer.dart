@@ -930,6 +930,20 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     return _ResampleKey(widget.resampleMode, stamp.rgba, shape.toString());
   }
 
+  /// [key] narrowed by the preview's clip, so a cached crop is only reused
+  /// while the same region is on screen. A null clip leaves the key alone,
+  /// which is what a commit asks for.
+  _ResampleKey _keyWithClip(_ResampleKey key, Rect? clip) {
+    if (clip == null) {
+      return key;
+    }
+    return _ResampleKey(
+      key.mode,
+      key.source,
+      '${key.shape}|clip:${clip.left},${clip.top},${clip.right},${clip.bottom}',
+    );
+  }
+
   /// The float through whatever warp is open — the ONE place the three
   /// warp functions are called from during a session.
   ///
@@ -978,8 +992,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// as "do not clip" — a preview that resampled nothing would be worse
   /// than one that resampled too much.
   Rect? _visibleCanvasRect() {
-    final size = context.size;
-    if (size == null || size.isEmpty) {
+    // NOT `context.size`: that asserts "Cannot get size during build", and
+    // one of the callers is didUpdateWidget. Asking the render object and
+    // checking hasSize is the version that is safe to call from anywhere,
+    // including the frame before this layer has ever been laid out.
+    final box = context.findRenderObject();
+    if (box is! RenderBox || !box.hasSize) {
+      return null;
+    }
+    final size = box.size;
+    if (size.isEmpty) {
       return null;
     }
     return MatrixUtils.transformRect(
@@ -1089,10 +1111,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       }
       return;
     }
-    if (_resampledFloat?.key == key) {
-      _resampleDirty = false;
-      return;
-    }
     _resampleDirty = false;
 
     // Resample only what is on screen when the whole thing would be much
@@ -1124,16 +1142,34 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
                 math.max(full.top, clip.top.floor()),
           );
       final whole = full.width * full.height;
+      if (visible == 0) {
+        // The warp landed entirely off screen. Resampling the clip would
+        // return the UNTRANSFORMED dab (an empty intersection has nothing
+        // to narrow to), and drawing that would put the original picture
+        // back at its original place — a visible lie, and worse than
+        // showing nothing.
+        _discardFloatResample();
+        return;
+      }
       if (whole <= _kFullPreviewPixelBudget || visible * 2 >= whole) {
         clip = null;
       }
+    }
+    // The clip is part of the identity of the result: pan or zoom with a
+    // box open and the visible rect moves, so the cached crop is stale
+    // even though the warp did not change. Keying on it is what makes a
+    // pan re-resample — and, because an unclipped preview keys on `null`,
+    // what stops a pan from re-resampling when it does not have to.
+    final clipped = _keyWithClip(key, clip);
+    if (_resampledFloat?.key == clipped) {
+      return;
     }
     final dab = _resampleOpenTransform(clip: clip);
     final stamp = dab?.stamp;
     if (dab == null || stamp == null) {
       return;
     }
-    _resampledFloat = (key: key, dab: dab, complete: clip == null);
+    _resampledFloat = (key: clipped, dab: dab, complete: clip == null);
     assert(_recordResampledFloat(dab));
 
     // decodeImageFromPixels wants premultiplied bytes; the resampler
