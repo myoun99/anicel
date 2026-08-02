@@ -85,35 +85,46 @@ Uint8List _nearest(
   ResampleTransform t,
 ) {
   final out = Uint8List(dstWidth * dstHeight * 4);
-  final srcWords = Uint32List.view(src.buffer, src.offsetInBytes,
-      srcWidth * srcHeight);
+  final srcWords = Uint32List.view(
+    src.buffer,
+    src.offsetInBytes,
+    srcWidth * srcHeight,
+  );
   final dstWords = Uint32List.view(out.buffer, 0, dstWidth * dstHeight);
   for (var y = 0; y < dstHeight; y += 1) {
     for (var x = 0; x < dstWidth; x += 1) {
       final u = t.a * (x + 0.5) + t.b * (y + 0.5) + t.c - 0.5;
       final v = t.d * (x + 0.5) + t.e * (y + 0.5) + t.f - 0.5;
       final sx = u.round(), sy = v.round();
-      dstWords[y * dstWidth + x] =
-          (sx < 0 || sy < 0 || sx >= srcWidth || sy >= srcHeight)
-              ? kResampleOutsideToken
-              : srcWords[sy * srcWidth + sx];
+      dstWords[y * dstWidth +
+          x] = (sx < 0 || sy < 0 || sx >= srcWidth || sy >= srcHeight)
+          ? kResampleOutsideToken
+          : srcWords[sy * srcWidth + sx];
     }
   }
   return out;
 }
 
-Set<int> _tokensOf(Uint8List bytes) =>
-    Uint32List.view(bytes.buffer, bytes.offsetInBytes, bytes.length ~/ 4)
-        .toSet();
+Set<int> _tokensOf(Uint8List bytes) => Uint32List.view(
+  bytes.buffer,
+  bytes.offsetInBytes,
+  bytes.length ~/ 4,
+).toSet();
 
-int _tokenAt(Uint8List bytes, int width, int x, int y) =>
-    Uint32List.view(bytes.buffer, bytes.offsetInBytes, bytes.length ~/ 4)[y * width + x];
+int _tokenAt(Uint8List bytes, int width, int x, int y) => Uint32List.view(
+  bytes.buffer,
+  bytes.offsetInBytes,
+  bytes.length ~/ 4,
+)[y * width + x];
 
 /// Ink pixels whose eight neighbours hold at most one of the same colour —
 /// the "spur" count the TVPaint comparison used as its quality yardstick.
 int _isolatedPixels(Uint8List bytes, int width, int height) {
-  final words =
-      Uint32List.view(bytes.buffer, bytes.offsetInBytes, width * height);
+  final words = Uint32List.view(
+    bytes.buffer,
+    bytes.offsetInBytes,
+    width * height,
+  );
   const white = 0xffffffff;
   var count = 0;
   for (var y = 1; y < height - 1; y += 1) {
@@ -210,7 +221,8 @@ void main() {
         expect(
           novel,
           isEmpty,
-          reason: '${entry.key} invented '
+          reason:
+              '${entry.key} invented '
               '${novel.map((t) => t.toRadixString(16)).toList()}',
         );
       }
@@ -220,8 +232,8 @@ void main() {
       // The fixture holds 0x80 as well as 0x00 and 0xff, so this asserts
       // something: Pick may emit the source's partial alpha, but must not
       // manufacture a NEW one the way an averaging kernel would.
-      final sourceAlphas =
-          sourceTokens.map((t) => (t >> 24) & 0xff).toSet()..add(0);
+      final sourceAlphas = sourceTokens.map((t) => (t >> 24) & 0xff).toSet()
+        ..add(0);
       for (final transform in <ResampleTransform>[
         _rotationAbout(15, width / 2, height / 2),
         _rotationAbout(37.4, width / 2, height / 2),
@@ -270,14 +282,17 @@ void main() {
             final v = (y + 0.5) / scale - 0.5;
             // Pixels whose unit square meets the preimage box, plus the
             // sampling floor the kernel is allowed to widen to.
-            final reach = math.max(extent, resampleRadiusFloor(
-              ResampleMode.pick,
-            ));
+            final reach = math.max(
+              extent,
+              resampleRadiusFloor(ResampleMode.pick),
+            );
             var found = false;
             for (var sy = (v - reach).floor(); sy <= (v + reach).ceil(); sy++) {
-              for (var sx = (u - reach).floor();
-                  sx <= (u + reach).ceil();
-                  sx++) {
+              for (
+                var sx = (u - reach).floor();
+                sx <= (u + reach).ceil();
+                sx++
+              ) {
                 if (sx < 0 || sy < 0 || sx >= width || sy >= height) continue;
                 if (srcWords[sy * width + sx] == token) {
                   found = true;
@@ -286,9 +301,13 @@ void main() {
               }
               if (found) break;
             }
-            expect(found, isTrue,
-                reason: 'scale $scale: ($x,$y) emitted '
-                    '${token.toRadixString(16)} from outside its preimage');
+            expect(
+              found,
+              isTrue,
+              reason:
+                  'scale $scale: ($x,$y) emitted '
+                  '${token.toRadixString(16)} from outside its preimage',
+            );
           }
         }
       }
@@ -401,8 +420,9 @@ void main() {
             transform: entry.value,
             mode: mode,
           );
-          expect(_tokensOf(out), {kResampleOutsideToken},
-              reason: '${entry.key} / $mode');
+          expect(_tokensOf(out), {
+            kResampleOutsideToken,
+          }, reason: '${entry.key} / $mode');
         }
       }
     });
@@ -460,8 +480,11 @@ void main() {
         transform: ResampleTransform.scaleTranslate(scale: 1 / 8),
         mode: ResampleMode.pick,
       );
-      expect(_tokenAt(out, 8, 1, 1), dominant,
-          reason: 'a 0.1% colour outvoted a 99% one');
+      expect(
+        _tokenAt(out, 8, 1, 1),
+        dominant,
+        reason: 'a 0.1% colour outvoted a 99% one',
+      );
     });
 
     test('an edge footprint whose interior is opaque is not punched out', () {
@@ -484,9 +507,13 @@ void main() {
         transform: ResampleTransform.scaleTranslate(scale: 1 / 8),
         mode: ResampleMode.pick,
       );
-      expect(_tokenAt(out, 8, 0, 0), isNot(kResampleOutsideToken),
-          reason: 'a transparent hole was punched where the footprint is '
-              'mostly opaque');
+      expect(
+        _tokenAt(out, 8, 0, 0),
+        isNot(kResampleOutsideToken),
+        reason:
+            'a transparent hole was punched where the footprint is '
+            'mostly opaque',
+      );
     });
   });
 
@@ -610,7 +637,11 @@ void main() {
           final r = token & 0xff;
           final g = (token >> 8) & 0xff;
           final b = (token >> 16) & 0xff;
-          if (r < minR || r > maxR || g < minG || g > maxG || b < minB ||
+          if (r < minR ||
+              r > maxR ||
+              g < minG ||
+              g > maxG ||
+              b < minB ||
               b > maxB) {
             excursions += 1;
           }
@@ -653,8 +684,11 @@ void main() {
             final expected = (sx < 0 || sy < 0 || sx >= width || sy >= height)
                 ? kResampleOutsideToken
                 : _tokenAt(source, width, sx, sy);
-            expect(_tokenAt(out, width, x, y), expected,
-                reason: '$mode at $x,$y');
+            expect(
+              _tokenAt(out, width, x, y),
+              expected,
+              reason: '$mode at $x,$y',
+            );
           }
         }
       }
@@ -697,35 +731,69 @@ void main() {
   });
 
   group('quality yardstick', () {
-    test('Pick leaves fewer spurs than a point sampler on rotation', () {
-      final transform = _rotationAbout(15, width / 2, height / 2);
+    test('Pick keeps more of a reduced drawing than a point sampler, and '
+        'keeps it in one piece', () {
+      // This test used to compare Pick at floor 1.5 against Pick at floor
+      // 1.0 and call the second one "nearest-ish" — so it measured a
+      // TUNING KNOB against itself, not the tool it has to beat. Once the
+      // weight became coverage the floor stopped meaning anything and the
+      // comparison became 55 against 55: a tautology that had been reading
+      // as a quality guarantee.
+      //
+      // The honest yardstick is the real point sampler, at the transform
+      // where the difference is decided. A halving is where a point
+      // sampler starts dropping whole strokes — its grid either lands on
+      // a stroke or misses it, and a stroke narrower than the step is a
+      // coin flip — while an area rule sees every stroke that covers half
+      // its destination pixel.
+      const scale = 0.5;
+      final outWidth = (width * scale).round();
+      final outHeight = (height * scale).round();
+      final transform = ResampleTransform.scaleTranslate(scale: scale);
       final pick = resampleRgbaReference(
         src: source,
         srcWidth: width,
         srcHeight: height,
-        dstWidth: width,
-        dstHeight: height,
+        dstWidth: outWidth,
+        dstHeight: outHeight,
         transform: transform,
         mode: ResampleMode.pick,
       );
-      // Pick with the floor forced to 1.0 degenerates towards nearest; that
-      // is the comparison the TVPaint measurement made, and the reason the
-      // shipped floor is 1.5.
-      final nearestish = resampleRgbaReference(
-        src: source,
-        srcWidth: width,
-        srcHeight: height,
-        dstWidth: width,
-        dstHeight: height,
-        transform: transform,
-        mode: ResampleMode.pick,
-        radiusFloor: 1.0,
+      final nearest = _nearest(
+        source,
+        width,
+        height,
+        outWidth,
+        outHeight,
+        transform,
       );
-      final spursPick = _isolatedPixels(pick, width, height);
-      final spursNearest = _isolatedPixels(nearestish, width, height);
-      expect(spursPick, lessThan(spursNearest),
-          reason: 'floor 1.5 produced $spursPick spurs, floor 1.0 produced '
-              '$spursNearest');
+      int inkOf(Uint8List bytes) => Uint32List.view(
+        bytes.buffer,
+        0,
+        outWidth * outHeight,
+      ).where((token) => token == 0xff101010).length;
+
+      final inkPick = inkOf(pick);
+      final inkNearest = inkOf(nearest);
+      expect(
+        inkPick,
+        greaterThan(inkNearest),
+        reason:
+            'Pick kept $inkPick ink pixels, the point sampler '
+            '$inkNearest — if this ever inverts, Pick is costing its '
+            'footprint arithmetic for nothing',
+      );
+      // And what survives has to read as line, not as dust: more ink AND
+      // more spurs would be a worse picture reported as a better number.
+      final spursPick = _isolatedPixels(pick, outWidth, outHeight);
+      final spursNearest = _isolatedPixels(nearest, outWidth, outHeight);
+      expect(
+        spursPick,
+        lessThanOrEqualTo(spursNearest),
+        reason:
+            'Pick left $spursPick isolated pixels against the point '
+            "sampler's $spursNearest",
+      );
     });
 
     test('a reduction still carries line art through', () {
@@ -756,8 +824,11 @@ void main() {
       for (final token in words) {
         if (token == 0xff101010) inkPixels += 1;
       }
-      expect(inkPixels, greaterThan(0),
-          reason: 'the reduction lost every stroke');
+      expect(
+        inkPixels,
+        greaterThan(0),
+        reason: 'the reduction lost every stroke',
+      );
     });
 
     test('Pick leaves fewer spurs than point sampling under reduction', () {
@@ -774,8 +845,14 @@ void main() {
         transform: transform,
         mode: ResampleMode.pick,
       );
-      final nearest =
-          _nearest(source, width, height, outWidth, outHeight, transform);
+      final nearest = _nearest(
+        source,
+        width,
+        height,
+        outWidth,
+        outHeight,
+        transform,
+      );
       expect(
         _isolatedPixels(pick, outWidth, outHeight),
         lessThan(_isolatedPixels(nearest, outWidth, outHeight)),

@@ -241,6 +241,67 @@ void main() {
     expect(debugLastResampledFloat!.center.y, before.y);
   });
 
+  testWidgets('the DEFAULT mode smooths — the guard that keeps the '
+      'colour-preservation assertions from being vacuous', (tester) async {
+    // Named for what it actually does. It does NOT drive the AA-off
+    // switch: this harness builds BrushCanvasPanel without
+    // transformResampleMode, so the layer reads the blend default and no
+    // test here can change it.
+    //
+    // What it is for: the colour-preservation tests elsewhere assert that
+    // Pick invents no new colours. That assertion is worth nothing unless
+    // the default DOES invent them on the same transform — otherwise a
+    // resampler that had quietly stopped interpolating would satisfy both.
+    // This is the control.
+    final env = await pumpSelectionPanel(tester);
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    await env.setTool(CanvasTool.move);
+
+    final before = currentSurface(env.coordinator);
+    final sourceColours = <int>{};
+    for (var y = 0; y < 90; y += 1) {
+      for (var x = 0; x < 90; x += 1) {
+        final pixel = surfacePixelRgba(before, x, y);
+        if (pixel != null && (pixel >> 24) != 0) sourceColours.add(pixel);
+      }
+    }
+    expect(sourceColours, isNotEmpty);
+
+    env.commands.beginTransform();
+    await tester.pump();
+    env.commands.setTransformValues(
+      tx: 0,
+      ty: 0,
+      rotationDegrees: 24,
+      scale: 1,
+    );
+    await tester.pump();
+    env.commands.commitTransform();
+    await tester.pump();
+
+    // Blend is the default, and a rotation through it MUST invent
+    // in-between colours — otherwise the assertion below proves nothing.
+    final landed = currentSurface(env.coordinator);
+    var invented = 0;
+    for (var y = 0; y < 90; y += 1) {
+      for (var x = 0; x < 90; x += 1) {
+        final pixel = surfacePixelRgba(landed, x, y);
+        if (pixel != null &&
+            (pixel >> 24) != 0 &&
+            !sourceColours.contains(pixel)) {
+          invented += 1;
+        }
+      }
+    }
+    expect(
+      invented,
+      greaterThan(0),
+      reason:
+          'AA on must smooth; if it does not, the AA-off assertion in '
+          'the sibling test is vacuous',
+    );
+  });
+
   testWidgets('the layer mounts for selection tools only', (tester) async {
     await pumpSelectionPanel(tester, tool: CanvasTool.brush);
     expect(find.byKey(layerKey), findsNothing);

@@ -55,12 +55,23 @@ import 'dart:typed_data';
 /// space, one along y moves `(b, e)` — so the preimage reaches `|a| + |b|`
 /// horizontally and `|d| + |e|` vertically.
 ///
-/// The floor differs by mode and the difference is not cosmetic. Blend at
-/// r=1 is already bilinear and widening it only blurs; Pick at r=1 collapses
-/// into nearest-neighbour, losing the majority vote it exists for. Measured
-/// against a production cel (2150x1518, 16 colours), raising Pick's floor
-/// from 1.0 to 1.5 took the jagged-spur count at a 15 degree rotation from
-/// 90 to 65 while the ink pixel count stayed identical.
+/// The floor is 1.0 for both modes and does almost nothing: it stops a
+/// tent narrower than a pixel. It used to be 1.5 for Pick, on a measured
+/// argument about jagged spurs that only holds while the weight is a tent
+/// — see [resampleRadiusFloor] for why a floor above the true extent is
+/// meaningless once the weight is coverage.
+///
+/// ⚠️ The footprint below is the preimage's axis-aligned BOUNDING BOX, not
+/// the preimage. `|a| + |b|` is the width of the box around the
+/// parallelogram, so a rotated map votes over an area larger than it
+/// covers by `1 + |sin 2θ|` — double at 45° — and the excess is corners
+/// the destination pixel never reached. Blend barely notices (a slightly
+/// wider blur), but Pick elects from it, so rotating while shrinking
+/// erases features one pixel wide: a 1px line survives only while
+/// `scale > (|cos θ| + |sin θ|)/2`, which is 0.5 axis-aligned and 0.707 at
+/// 45°, where the true preimage would give 0.5 at every angle. Fixing it
+/// means weighing taps in the DESTINATION frame, where the preimage is the
+/// unit square. Until then Pick has no user-facing control.
 ///
 /// ## Byte order
 ///
@@ -85,23 +96,25 @@ enum ResampleMode {
   pick,
 }
 
-/// Lower bound for the footprint radius, per mode. See [ResampleMode].
+/// Lower bound for the footprint radius. One value, both modes.
 ///
-/// ⚠️ This DEFAULT is not right for every consumer. The 1.5 was tuned on a
-/// dense production cel where it cut jagged spurs along rotated edges; on
-/// two-value line art it deletes features outright, because the extra ring
-/// of ground pixels outvotes a line one pixel wide. Measured on a 40×40
-/// fixture holding a 1px diagonal and a 1px vertical (63 ink pixels): an
-/// exact 90° rotation returns 32 ink pixels at floor 1.5 and all 63 at
-/// floor 1.0. The selection transform therefore passes 1.0 explicitly —
-/// see `kSelectionResampleRadiusFloor`.
+/// It stops a tent narrower than a pixel, which would sample nothing but
+/// the pixel it sits on and make Blend a point sampler. That is the only
+/// job it has left.
 ///
-/// The floor can only ever bite in the band `1.0 < extent < 1.5`, and a
-/// pure rotation's extent is `|cos| + |sin| ∈ [1, √2]` — so this is a
-/// rotation-only knob, inert under reduction and short-circuited under
-/// magnification.
-double resampleRadiusFloor(ResampleMode mode) =>
-    mode == ResampleMode.pick ? 1.5 : 1.0;
+/// It used to be 1.5 for Pick, on the theory that a wider ring smooths the
+/// jagged spurs a rotation leaves along an edge — measured on a dense
+/// production cel, where it did. That number stopped meaning anything when
+/// Pick's weight became COVERAGE: a floor above the true extent claims the
+/// preimage reaches further than it does, so the vote counts area the
+/// destination pixel never covered. It is not a quality knob under a
+/// coverage measure, it is a lie about geometry, and it cost exactly what
+/// a lie about geometry costs — on 1px line art the inflated ring let
+/// ground outvote ink and deleted the drawing.
+///
+/// Pick never reaches this anyway: below extent 1 it point-samples, and at
+/// or above it the floor is inert.
+double resampleRadiusFloor(ResampleMode mode) => 1.0;
 
 /// The mode as the C kernel's integer selector. One definition, because
 /// the alternative is every call site open-coding the same ternary and one
@@ -408,8 +421,21 @@ void resampleRgbaReferenceInto({
         continue;
       }
 
-      final radX = radiusX.ceil();
-      final radY = radiusY.ceil();
+      // Pick's footprint is the preimage itself — a box of HALF-width
+      // radius/2 around (u, v) — because its weight is how much area a
+      // source pixel covers, and a source pixel is one unit wide. Blend's
+      // is the tent's own support, which reaches a full radius.
+      //
+      // The narrower window is not a shortcut, it is what "coverage" means:
+      // a tap further than half the preimage plus half a pixel cannot
+      // overlap the preimage at all, so it has nothing to contribute to a
+      // vote about area. It happens to be much cheaper under reduction —
+      // at r=10 the box needs 13×13 taps where the tent needs 21×21.
+      final halfX = radiusX / 2;
+      final halfY = radiusY / 2;
+      final isPick = mode == ResampleMode.pick;
+      final radX = isPick ? (halfX + 0.5).ceil() : radiusX.ceil();
+      final radY = isPick ? (halfY + 0.5).ceil() : radiusY.ceil();
 
       // Flat support: when every tap reads the same word there is nothing
       // to average and nothing to elect, so both modes must return that
@@ -442,18 +468,18 @@ void resampleRgbaReferenceInto({
         continue;
       }
 
-      if (mode == ResampleMode.pick) {
+      if (isPick) {
         var slots = 0;
         var evicted = false;
         for (var dy = -radY; dy <= radY; dy += 1) {
           final sourceY = centreY + dy;
-          final weightY = 1 - (sourceY - v).abs() / radiusY;
+          final weightY = _coverage(sourceY, v, halfY);
           if (weightY <= 0) continue;
           final rowOffset = sourceY * srcWidth;
           final rowInside = sourceY >= 0 && sourceY < srcHeight;
           for (var dx = -radX; dx <= radX; dx += 1) {
             final sourceX = centreX + dx;
-            final weightX = 1 - (sourceX - u).abs() / radiusX;
+            final weightX = _coverage(sourceX, u, halfX);
             if (weightX <= 0) continue;
             final token = (!rowInside || sourceX < 0 || sourceX >= srcWidth)
                 ? kResampleOutsideToken
@@ -502,13 +528,13 @@ void resampleRgbaReferenceInto({
           }
           for (var dy = -radY; dy <= radY; dy += 1) {
             final sourceY = centreY + dy;
-            final weightY = 1 - (sourceY - v).abs() / radiusY;
+            final weightY = _coverage(sourceY, v, halfY);
             if (weightY <= 0) continue;
             final rowOffset = sourceY * srcWidth;
             final rowInside = sourceY >= 0 && sourceY < srcHeight;
             for (var dx = -radX; dx <= radX; dx += 1) {
               final sourceX = centreX + dx;
-              final weightX = 1 - (sourceX - u).abs() / radiusX;
+              final weightX = _coverage(sourceX, u, halfX);
               if (weightX <= 0) continue;
               final token = (!rowInside || sourceX < 0 || sourceX >= srcWidth)
                   ? kResampleOutsideToken
@@ -583,6 +609,37 @@ void resampleRgbaReferenceInto({
 }
 
 const int _kVoteSlots = 16;
+
+/// How much of the destination pixel's preimage source pixel [source]
+/// covers, along one axis.
+///
+/// The preimage spans `centre ± half`; a source pixel spans
+/// `source ± 0.5`; the weight is the length they share. Separable, so the
+/// two axes multiply — exact when the preimage is axis-aligned, and the
+/// bounding box of it when the map rotates, which is the same
+/// approximation the extents already make.
+///
+/// ## Why Pick weighs coverage and not a tent
+///
+/// Pick's contract is about AREA: the colour covering the most of the
+/// preimage wins. A tent is a reconstruction filter — it falls off
+/// linearly to a radius and reaches taps the preimage never touched — so
+/// weighing votes with one answers a different question, and answers it
+/// wrongly in the direction that matters. Measured on a 45° rotation, the
+/// tent put a line pixel at 1.172 against the ground's 1.343 and EVERY
+/// pixel of a one-pixel line lost; the same footprint by coverage is 1.086
+/// against 0.914 and the line survives.
+///
+/// The cost of getting this wrong was not subtle. On 1px line art the tent
+/// left 14 ink pixels of 381 at a half-size reduction where coverage
+/// leaves 416, and returned an empty buffer for an isolated diagonal at
+/// 37°. Blend keeps the tent, which is correct: it is interpolating, not
+/// electing.
+double _coverage(int source, double centre, double half) {
+  final low = math.max(source - 0.5, centre - half);
+  final high = math.min(source + 0.5, centre + half);
+  return high - low;
+}
 
 /// A 32-bit word view for READING.
 ///

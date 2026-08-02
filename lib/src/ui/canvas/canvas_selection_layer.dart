@@ -946,6 +946,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     return null;
   }
 
+  /// The canvas-space rect the user can actually see.
+  ///
   /// The cached resample, or a fresh one — what every commit path calls
   /// so that "what you saw" and "what landed" are the same object.
   BrushDab? _warpedFloat() {
@@ -1031,11 +1033,21 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // must stay that way — premultiplying the RESULT would round the very
     // colours Pick exists to carry through untouched. So the copy is for
     // display only and the dab keeps its own bytes.
-    final premultiplied = Uint8List.fromList(stamp.rgba);
+    //
+    // The copy and the multiply are ONE native pass into native memory,
+    // the same fused kernel the fill overlay uses. Doing it as a Dart
+    // `Uint8List.fromList` plus a per-pixel loop cost a second full-size
+    // allocation and a second full traversal on every frame of a drag,
+    // which on a whole-picture transform is tens of megabytes per pointer
+    // move. The scratch is freed in the decode callback, on every path.
     final native = QaNativeEngine.instance;
+    final Uint8List premultiplied;
+    QaStampScratch? scratch;
     if (native != null) {
-      native.premultiplyRgba(premultiplied);
+      scratch = native.premultipliedStampCopy(stamp.rgba);
+      premultiplied = scratch.view;
     } else {
+      premultiplied = Uint8List.fromList(stamp.rgba);
       for (var i = 0; i < premultiplied.length; i += 4) {
         final alpha = premultiplied[i + 3];
         if (alpha == 255) {
@@ -1054,6 +1066,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       stamp.height,
       ui.PixelFormat.rgba8888,
       (image) {
+        scratch?.free();
         _resampleInFlight = false;
         if (!mounted || request != _resampleImageRequest) {
           image.dispose();

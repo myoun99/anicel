@@ -177,6 +177,33 @@ class SelectionAffine {
   }
 }
 
+/// The integer canvas rect a warp lands in: the bounding box of [points],
+/// snapped outward.
+///
+/// Shared by all three warps so their geometry cannot drift apart — they
+/// each had their own copy of this loop, and three copies of a bounding
+/// box is three chances for one of them to snap the wrong way.
+({int left, int top, int width, int height}) selectionWarpOutputRect(
+  List<CanvasPoint> points,
+) {
+  var minX = double.infinity, minY = double.infinity;
+  var maxX = double.negativeInfinity, maxY = double.negativeInfinity;
+  for (final point in points) {
+    minX = math.min(minX, point.x);
+    maxX = math.max(maxX, point.x);
+    minY = math.min(minY, point.y);
+    maxY = math.max(maxY, point.y);
+  }
+  final left = minX.floor();
+  final top = minY.floor();
+  return (
+    left: left,
+    top: top,
+    width: math.max(1, maxX.ceil() - left),
+    height: math.max(1, maxY.ceil() - top),
+  );
+}
+
 /// The selected dabs through [affine] (the Ctrl+T commit): centers map
 /// exactly, the scalar dab size scales by √|sx·sy| (the plan's mapping —
 /// non-uniform scale approximates through the area factor) and the tip
@@ -225,6 +252,13 @@ CanvasSelectionShape transformShape(
 /// (`bitmap_surface_brush_commit.dart`). That is what makes byte identity
 /// between what the preview showed and what Enter writes reachable at all:
 /// the resampled buffer travels to the surface without a second resample.
+/// [clip] narrows the OUTPUT to a canvas-space rect — the preview's
+/// visible-region optimisation. A clipped result is a crop of the
+/// unclipped one, byte for byte (the fold takes the output origin, so
+/// shifting it shifts the destination index equally and every pixel's
+/// source coordinate is unchanged), which is what lets a clipped preview
+/// and an unclipped commit agree. It must NEVER be passed on a path that
+/// commits: what lands would be missing everything off screen.
 BrushDab transformStampDab(
   BrushDab stampDab,
   SelectionAffine affine, {
@@ -256,18 +290,11 @@ BrushDab transformStampDab(
     ),
     affine.apply(CanvasPoint(x: srcLeft, y: srcTop + stamp.height)),
   ];
-  var minX = corners.first.x, maxX = corners.first.x;
-  var minY = corners.first.y, maxY = corners.first.y;
-  for (final corner in corners.skip(1)) {
-    minX = math.min(minX, corner.x);
-    maxX = math.max(maxX, corner.x);
-    minY = math.min(minY, corner.y);
-    maxY = math.max(maxY, corner.y);
-  }
-  final outLeft = minX.floor();
-  final outTop = minY.floor();
-  final outWidth = math.max(1, maxX.ceil() - outLeft);
-  final outHeight = math.max(1, maxY.ceil() - outTop);
+  final out = selectionWarpOutputRect(corners);
+  final outLeft = out.left;
+  final outTop = out.top;
+  final outWidth = out.width;
+  final outHeight = out.height;
 
   final bytes = Uint8List(outWidth * outHeight * 4);
   resampleSelectionInto(
@@ -419,18 +446,11 @@ BrushDab transformStampDabQuad(
     return stampDab;
   }
 
-  var minX = double.infinity, minY = double.infinity;
-  var maxX = double.negativeInfinity, maxY = double.negativeInfinity;
-  for (final corner in corners) {
-    minX = math.min(minX, corner.x);
-    maxX = math.max(maxX, corner.x);
-    minY = math.min(minY, corner.y);
-    maxY = math.max(maxY, corner.y);
-  }
-  final outLeft = minX.floor();
-  final outTop = minY.floor();
-  final outWidth = math.max(1, maxX.ceil() - outLeft);
-  final outHeight = math.max(1, maxY.ceil() - outTop);
+  final out = selectionWarpOutputRect(corners);
+  final outLeft = out.left;
+  final outTop = out.top;
+  final outWidth = out.width;
+  final outHeight = out.height;
 
   final bytes = Uint8List(outWidth * outHeight * 4);
   // The per-pixel `w ≈ 0` guard the old loop carried lives in the kernel
@@ -530,18 +550,11 @@ BrushDab transformStampDabMesh(
     );
   }
 
-  var minX = double.infinity, minY = double.infinity;
-  var maxX = double.negativeInfinity, maxY = double.negativeInfinity;
-  for (final point in points) {
-    minX = math.min(minX, point.x);
-    maxX = math.max(maxX, point.x);
-    minY = math.min(minY, point.y);
-    maxY = math.max(maxY, point.y);
-  }
-  final outLeft = minX.floor();
-  final outTop = minY.floor();
-  final outWidth = math.max(1, maxX.ceil() - outLeft);
-  final outHeight = math.max(1, maxY.ceil() - outTop);
+  final out = selectionWarpOutputRect(points);
+  final outLeft = out.left;
+  final outTop = out.top;
+  final outWidth = out.width;
+  final outHeight = out.height;
   final bytes = Uint8List(outWidth * outHeight * 4);
   final covered = Uint8List(outWidth * outHeight);
   // One scratch grown across the triangles of THIS call — not a

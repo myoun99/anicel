@@ -300,6 +300,30 @@ void main() {
     });
   });
 
+  group('the output rect and its clip', () {
+    test('the rect snaps outward, so no covered pixel is dropped', () {
+      final rect = selectionWarpOutputRect(<CanvasPoint>[
+        CanvasPoint(x: 3.2, y: -4.9),
+        CanvasPoint(x: 17.8, y: -4.9),
+        CanvasPoint(x: 17.8, y: 6.1),
+        CanvasPoint(x: 3.2, y: 6.1),
+      ]);
+      expect(rect.left, 3);
+      expect(rect.top, -5);
+      expect(rect.width, 18 - 3);
+      expect(rect.height, 7 - -5);
+    });
+
+    test('a degenerate point set still gets at least one pixel', () {
+      final rect = selectionWarpOutputRect(<CanvasPoint>[
+        CanvasPoint(x: 5, y: 5),
+        CanvasPoint(x: 5, y: 5),
+      ]);
+      expect(rect.width, 1);
+      expect(rect.height, 1);
+    });
+  });
+
   group('the router', () {
     test('native and the Dart reference produce the same bytes', () {
       // The whole point of routing through one function: which kernel ran
@@ -375,15 +399,17 @@ void main() {
       }
     });
 
-    test('the floor it passes is 1.0, and 1.5 would delete line art', () {
-      // The kernel's Pick default is 1.5, tuned on a dense production cel
-      // to smooth jagged spurs. On the two-value line art this feature
-      // exists for it is destructive, because the extra ring lets ground
-      // pixels the preimage never touched outvote the ink it did. This
-      // test is the guard: it fails the day someone "simplifies" the
-      // override away.
+    test('the floor it passes matches the kernel default, and raising it '
+        'would delete line art', () {
+      // The floor is 1.0 for both modes now. It used to be 1.5 for Pick,
+      // which stopped meaning anything when the weight became coverage: a
+      // floor above the true extent claims the preimage reaches further
+      // than it does, so the vote counts area the destination pixel never
+      // covered. The second assertion is the guard — it fails the day
+      // somebody reintroduces a wider ring as a "quality" knob.
       expect(kSelectionResampleRadiusFloor, 1.0);
-      expect(resampleRadiusFloor(ResampleMode.pick), 1.5);
+      expect(resampleRadiusFloor(ResampleMode.pick), 1.0);
+      expect(resampleRadiusFloor(ResampleMode.blend), 1.0);
 
       const size = 40;
       final source = Uint8List(size * size * 4);

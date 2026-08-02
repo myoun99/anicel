@@ -276,14 +276,9 @@ class _MoveSettings extends StatefulWidget {
 
   final CanvasSelectionCommands? selectionCommands;
 
-  /// P3a: which resampler a transform commit runs through.
-  ///
-  /// Deliberately UNREAD for now — see the note where the switch belongs,
-  /// in [build]. The value already reaches the resampler through the
-  /// selection layer; what is missing is only the control, and it is
-  /// missing because the kernel's coverage argmax erases the artwork the
-  /// mode exists for. Wiring stays so that round is a UI change and not
-  /// another pass down five widget layers.
+  /// Which resampler a transform commit runs through. A null handler shows
+  /// the switch disabled — the convention the eyedropper's source picker
+  /// uses for hosts that do not own the setting.
   final ResampleMode resampleMode;
   final ValueChanged<ResampleMode>? onResampleModeChanged;
 
@@ -469,35 +464,41 @@ class _MoveSettingsState extends State<_MoveSettings> {
           },
         ),
         const SizedBox(height: 12),
-        // ⚠️ The "Preserve exact colours" switch belongs here and is
-        // deliberately NOT built yet.
+        // ⚠️ The "Preserve exact colours" switch belongs here and is STILL
+        // not built. Second round of holding it back, and the reason moved
+        // one level deeper each time.
         //
-        // Everything behind it works — the mode threads from this panel to
-        // all three warp paths and the preview, and its contracts are
-        // tested. What is not ready is the KERNEL's coverage argmax, which
-        // erases the artwork the mode exists for. Measured on 1px line art
-        // through the shipping kernel: a 50% reduction keeps 3 ink pixels
-        // of 381, and an isolated 1px diagonal rotated 37° or 45° comes
-        // back with none at all.
+        // Round one: the argmax weighed taps with a tent, which is a
+        // reconstruction filter and not a measure of area. Fixed — the
+        // weight is the real overlap now, and it took a 50% reduction of
+        // 1px line art from 3 surviving ink pixels to 416.
         //
-        // The cause is that Pick's contract is stated in terms of COVERED
-        // AREA but the accumulator weighs taps with a TENT — a
-        // reconstruction filter, not a coverage measure. At 45° that puts
-        // ink at 1.172 against ground's 1.343 around every ink pixel, so
-        // every one of them loses. Replacing the tent with the actual
-        // overlap length of a source pixel and the destination pixel's
-        // preimage takes that 50% reduction from 3 ink pixels to 127 and
-        // the 37° rotation from 0 to 26, and is better or equal on 16 of
-        // 18 measured fixture rows. Exactly 45° stays at 0 under both,
-        // because there the feature covers exactly half of every
-        // destination pixel and no argmax can break that tie.
+        // Round two, found the same way: the footprint is still the
+        // preimage's axis-aligned BOUNDING BOX rather than the preimage.
+        // `extentX = |a| + |b|` is the width of the box around the
+        // parallelogram, so a rotated footprint votes over an area larger
+        // than it covers by a factor 1 + |sin 2θ| — twice the area at 45°
+        // — and every one of those extra corners is pure ground. Rotating
+        // WHILE shrinking, the ordinary Ctrl+T gesture, therefore still
+        // erases 1px line art: measured through the product path, 0.70×
+        // at 0° keeps 47 ink pixels of 67 and 0.70× at 25° keeps 16.
         //
-        // That is a change to the shared kernel and its C mirror, with its
-        // own parity pass and its own tuning question (what replaces the
-        // radius floor once the weight means coverage), so it is its own
-        // round rather than a rider on this one. Shipping the switch first
-        // would hand the user a control that does the opposite of its
-        // label on exactly the artwork it advertises.
+        // The closed form says exactly when: a 1px feature survives while
+        // scale > (|cos θ| + |sin θ|) / 2, which is 0.5 axis-aligned but
+        // 0.707 at 45°. Over the TRUE preimage it would be 0.5 at every
+        // angle, and a supersampled parallelogram-area argmax keeps 83–99
+        // of the pixels this kernel drops.
+        //
+        // So the fix is an anisotropic footprint — weigh each tap in the
+        // DESTINATION frame, where the preimage is the unit square, rather
+        // than in source space where it is a rotated parallelogram we are
+        // approximating by its box. That is a third pass over the kernel
+        // and its C mirror with a supersampled ground truth to measure
+        // against, and it is not a rider on this one.
+        //
+        // Everything behind the switch stays wired and tested. Only the
+        // control waits, because a control labelled "preserve exact
+        // colours" that erases the drawing is worse than no control.
         // R20-D3 mesh warp: opens the control grid on the selection —
         // or, with none, on the whole picture (R26 #13). Enter commits
         // the triangulated warp; Esc reverts. Perspective rides the
