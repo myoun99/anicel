@@ -637,6 +637,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         }
       });
     }
+    // The preview image is a GPU allocation and an in-flight decode holds
+    // a callback into this state. Neither is reached by _clearTransform on
+    // this path — dispose does not close the box, it folds it — so the
+    // discard has to be explicit here or every tool switch during a
+    // transform leaks a full-selection image.
+    _discardFloatResample();
     _ants.dispose();
     super.dispose();
   }
@@ -944,11 +950,21 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   ({_ResampleKey key, BrushDab dab})? _resampledFloat;
 
-  /// The premultiplied copy of [_resampledFloat] for display, and the key
-  /// it was decoded from — a stale image must not be drawn at a fresh
-  /// dab's rect.
+  /// The premultiplied copy for display, and the dab it was decoded FROM.
+  ///
+  /// Kept as a pair, and deliberately NOT compared against
+  /// [_resampledFloat]: the newest resample is computed and stored before
+  /// its decode is even requested, so a guard demanding the two agree
+  /// would hide the preview for the whole time a decode is in flight —
+  /// which is most of a drag. The float would blink back to its
+  /// untransformed self on every pointer move.
+  ///
+  /// Showing the last COMPLETED resample instead is both the honest
+  /// picture (it is a real state the transform passed through) and the
+  /// whole point of coalescing. The last scheduling always runs, so the
+  /// picture just before Enter is always the exact one.
   ui.Image? _resampledFloatImage;
-  _ResampleKey? _resampledImageKey;
+  BrushDab? _resampledImageDab;
   int _resampleImageRequest = 0;
   bool _resampleInFlight = false;
   bool _resampleDirty = false;
@@ -981,15 +997,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (key == null) {
       _resampleDirty = false;
       if (_resampledFloat != null || _resampledFloatImage != null) {
-        _resampleImageRequest += 1;
-        _resampledFloat = null;
-        _resampledImageKey = null;
-        _resampledFloatImage?.dispose();
-        _resampledFloatImage = null;
+        _discardFloatResample();
       }
       return;
     }
-    if (_resampledFloat?.key == key && _resampledImageKey == key) {
+    if (_resampledFloat?.key == key) {
       _resampleDirty = false;
       return;
     }
@@ -1038,7 +1050,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         setState(() {
           _resampledFloatImage?.dispose();
           _resampledFloatImage = image;
-          _resampledImageKey = key;
+          _resampledImageDab = dab;
         });
         _runFloatResampleIfIdle();
       },
@@ -1049,7 +1061,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _resampleImageRequest += 1; // Invalidate an in-flight decode.
     _resampleDirty = false;
     _resampledFloat = null;
-    _resampledImageKey = null;
+    _resampledImageDab = null;
     _resampledFloatImage?.dispose();
     _resampledFloatImage = null;
   }
@@ -2068,14 +2080,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final transform = _transform;
     final region = _region;
     final warpCorners = _warpCorners;
-    // The preview draws only when the decoded image and the dab it came
-    // from agree — a stale image at a fresh dab's rect would be a picture
-    // in the wrong place, which is worse than one frame of lag.
-    final resampledImage =
-        _resampledImageKey != null && _resampledImageKey == _resampledFloat?.key
-        ? _resampledFloatImage
-        : null;
-    final resampledDab = resampledImage == null ? null : _resampledFloat?.dab;
+    // The image and the dab it was decoded from travel together, so the
+    // rect the preview draws into always belongs to the pixels in it.
+    final resampledImage = _resampledFloatImage;
+    final resampledDab = _resampledImageDab;
     // With an open Ctrl+T session the ants show the TRANSFORMED region
     // and the box chrome renders around the transformed base box. An
     // open QUAD (R20-D2) maps the region through the homography instead.
