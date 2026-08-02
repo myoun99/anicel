@@ -122,9 +122,18 @@ void main() {
     }
   });
 
-  test('scaling a mid-tone edge OVERSHOOTS (bicubic ringing signature — '
-      'R20-D1; bilinear could never leave the source range)', () {
+  test('scaling a mid-tone edge NEVER leaves the source range — the tent '
+      'is convex, so the pale halo beside a dark line cannot exist', () {
     // A 4×1 opaque stamp: two gray-100 texels then two gray-200 texels.
+    //
+    // This test used to assert the OPPOSITE. It pinned the Catmull-Rom's
+    // negative lobes ("the negative lobes must ring across the edge"),
+    // which is precisely the defect that made free transform unusable on
+    // line art: a cubic beside a dark edge emits a pixel brighter than
+    // anything it read. Measured against TVPaint 12 at 80% reduction, its
+    // Medium leaves 6,990 such halo pixels and its VeryHigh 16,366. A
+    // convex kernel leaves zero by construction, and that is now the
+    // contract.
     final rgba = Uint8List.fromList([
       for (var i = 0; i < 2; i += 1) ...[100, 100, 100, 255],
       for (var i = 0; i < 2; i += 1) ...[200, 200, 200, 255],
@@ -146,20 +155,31 @@ void main() {
       SelectionAffine(pivot: CanvasPoint(x: 10, y: 10), sx: 2, sy: 1),
     );
     final stamp = out.stamp!;
-    var overshoot = false;
+    var visible = 0;
+    var between = 0;
     for (var x = 0; x < stamp.width; x += 1) {
       final pixel = pixelOf(stamp, x, 0);
       if (pixel[3] == 0) {
         continue;
       }
-      if (pixel[0] < 100 || pixel[0] > 200) {
-        overshoot = true;
+      visible += 1;
+      expect(
+        pixel[0],
+        inInclusiveRange(100, 200),
+        reason: 'x=$x left the footprint\'s own min..max',
+      );
+      if (pixel[0] > 100 && pixel[0] < 200) {
+        between += 1;
       }
     }
+    // Without these two the assertion above passes vacuously on an
+    // all-transparent or all-flat result — which is exactly what a broken
+    // fold would produce.
+    expect(visible, greaterThan(0), reason: 'the warp landed nothing');
     expect(
-      overshoot,
-      isTrue,
-      reason: 'the Catmull-Rom negative lobes must ring across the edge',
+      between,
+      greaterThan(0),
+      reason: 'AA ON must interpolate across the edge, not step',
     );
   });
 
