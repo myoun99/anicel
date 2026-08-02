@@ -26,6 +26,7 @@ import '../../models/pasteboard_bounds.dart';
 import '../brush/canvas_selection_commands.dart';
 import 'selection_ants_painter.dart';
 import 'bitmap_surface_painter.dart';
+import 'bitmap_tile_image_cache.dart';
 import 'viewport_canvas_transform.dart';
 
 /// The P9 selection interaction layer, mounted over the canvas while a
@@ -679,7 +680,24 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       cancelTransform: _cancelTransform,
       applyRegion: applyCommittedRegion,
       movePending: () => _movePending,
-      confirmPendingMove: _confirmMoveSession,
+      // The THIRD caller with the button's old wiring, and the worst of
+      // them: `home_page.dart` binds this to `HistoryManager
+      // .onBeforeUndoRedo`, which every undo and redo runs
+      // unconditionally. Bare, it landed the unwarped lift as a fresh
+      // entry that the same Ctrl+Z then popped — so one keypress consumed
+      // itself, the warped landing was never written, and the box was left
+      // OPEN with no float and `_transform` still set, which wedges the
+      // next Ctrl+T against its own guard. Measured: transformActive true,
+      // movePending false, a ghost float painter still mounted, and Escape
+      // the only way out.
+      confirmPendingMove: () {
+        if (_transform != null) {
+          _commitTransform();
+        }
+        if (_movePending) {
+          _confirmMoveSession();
+        }
+      },
       revertPendingMove: _revertMoveSession,
       transformValues: () {
         final transform = _transform;
@@ -946,8 +964,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     return null;
   }
 
-  /// The canvas-space rect the user can actually see.
-  ///
   /// The cached resample, or a fresh one — what every commit path calls
   /// so that "what you saw" and "what landed" are the same object.
   BrushDab? _warpedFloat() {
@@ -1211,6 +1227,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         return;
       }
       final boundary = _meshBoundary(meshPoints);
+      _floatContentReplaced();
       setState(() {
         _pendingLiftStamp = warped;
         // A warped region collapses to its boundary polygon: the mesh
@@ -1235,6 +1252,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       }
       final base = _stampRectCorners();
       final h = base == null ? null : solveHomography(base, warpCorners);
+      _floatContentReplaced();
       setState(() {
         _pendingLiftStamp = warped;
         _setRegion(
@@ -1249,6 +1267,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return;
     }
     if (!affine.isIdentity && pending != null) {
+      _floatContentReplaced();
       setState(() {
         _pendingLiftStamp = _warpedFloat() ?? pending;
         _setRegion(region.mapped(affine.apply));
@@ -1353,11 +1372,39 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return false;
     }
     _liftToken = lift.liftToken;
+    // A fresh lift is a picture this scope has never seen.
+    _floatContentReplaced();
     _pendingLiftStamp = lift.stampDab;
     _moveSessionDirty = false;
     _moveSessionStartShape = region;
     widget.onMoveSessionPendingChanged?.call(true);
     return true;
+  }
+
+  /// The transform float's stale-fallback lineage — ONE object for every
+  /// float this app ever lifts.
+  ///
+  /// A scope per generation would be worse than none: the cache retains
+  /// eight and evicts the least recent, so a session of transforms would
+  /// push out the `(layerId, frameId)` buckets the brush depends on.
+  static final Object _floatStaleScope = Object();
+
+  /// Empties [_floatStaleScope] — call wherever the float is about to
+  /// hold a DIFFERENT picture, never where it holds the same one
+  /// somewhere else.
+  ///
+  /// That distinction is the whole fix. `_floatSurface` is rebuilt from
+  /// an empty surface at five sites, and three of them regenerate a
+  /// float that already exists — a drag release, every arrow-key nudge,
+  /// and Ctrl+T over a pending move. There the previous generation IS a
+  /// legitimate predecessor and borrowing it is correct; refusing to
+  /// borrow left a float wider than the painter's four-tile per-pixel
+  /// budget three-quarters blank for a frame, and a held arrow key
+  /// strobed it thirty times a second. Only a LIFT, and a warp that
+  /// resamples the stamp, give the float a picture its scope has never
+  /// seen.
+  void _floatContentReplaced() {
+    BitmapTileImageCache.instance.resetScope(_floatStaleScope);
   }
 
   /// R28 #10: resamples the pending stamp through an OPEN transform box,
@@ -1373,6 +1420,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     if (affine == null || pending == null || affine.isIdentity) {
       return;
     }
+    _floatContentReplaced();
     _pendingLiftStamp = _warpedFloat() ?? pending;
     final region = _region;
     if (region != null) {
@@ -2266,6 +2314,30 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
                       surface: floatSurface,
                       viewport: widget.viewport,
                       showTransparentBackground: false,
+                      // ONE scope for every float this app ever lifts, and
+                      // it is emptied when a lift gives the float new
+                      // pixels — see [_floatStaleScope]. Without a scope
+                      // at all, which is what this was, the float shared
+                      // the null bucket with every float ever lifted, so
+                      // opening a second transform painted the FIRST one's
+                      // artwork at the first one's place and size:
+                      // measured, 36 pixels of ink where this float's own
+                      // surface is empty.
+                      //
+                      // ⚠️ That ghost is a DUPLICATE, not a move. The base
+                      // painter's own fallback is on and its
+                      // (layerId, frameId) bucket still holds the
+                      // pre-erase tiles, so on the same frame it redraws
+                      // the artwork in place — 48 ink pixels over a base
+                      // surface that contains none. How much of the
+                      // reported "teleport" this accounts for is still
+                      // open; what is measured is the ghost. ⚠️ Both
+                      // painters have to be recorded in ONE synchronous
+                      // burst: an await between them lets the pending
+                      // decodes land and the base reads zero, which is how
+                      // an earlier version of this comment came to claim
+                      // the base drew nothing.
+                      staleScope: _floatStaleScope,
                     ),
                     child: const SizedBox.expand(),
                   ),
@@ -2312,7 +2384,31 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
                 elevation: 2,
                 child: InkWell(
                   customBorder: const CircleBorder(),
-                  onTap: _confirmMoveSession,
+                  // The button is offered while a transform box is OPEN —
+                  // its visibility test is `_movePending`, which says
+                  // nothing about `_transform`. Wired straight to
+                  // `_confirmMoveSession` it landed the unwarped lift: the
+                  // artwork committed at its PRE-transform position and
+                  // size, the warped preview kept painting on top until
+                  // something closed the box, and the wrong landing went
+                  // into history. Enter has branched on this since R16-①;
+                  // the button never did.
+                  //
+                  // Both `if`s, not Enter's single branch. `_commitTransform`
+                  // on an identity affine only closes the box and leaves
+                  // the session pending, so Enter's form would make one tap
+                  // of a button labelled "confirm" into two. With both, a
+                  // warped box commits warped (the inner confirm fires and
+                  // the outer no-ops on a null pending stamp) and an
+                  // untouched box closes and confirms in one tap.
+                  onTap: () {
+                    if (_transform != null) {
+                      _commitTransform();
+                    }
+                    if (_movePending) {
+                      _confirmMoveSession();
+                    }
+                  },
                   child: const Padding(
                     padding: EdgeInsets.all(6),
                     child: Icon(Icons.check, size: 18, color: Colors.white),

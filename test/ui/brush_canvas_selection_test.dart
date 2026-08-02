@@ -1,3 +1,4 @@
+import 'dart:ui' show ImageByteFormat, PictureRecorder;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -13,6 +14,8 @@ import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
+import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
+import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
@@ -737,6 +740,349 @@ void main() {
         isNonZero,
         reason: 'one Ctrl+Z retires the whole lift session',
       );
+    });
+
+    testWidgets('a freshly lifted float never paints pixels its own surface '
+        'does not have', (tester) async {
+      // The user-visible bug: opening a transform made the artwork
+      // "teleport somewhere else, apparently enlarged" for a frame and
+      // come back.
+      //
+      // The float surface is materialised fresh from the lift, so every
+      // tile object is new and the identity-keyed image cache misses on
+      // all of them. The painter's answer to a missing image is to borrow
+      // whatever decoded last at that COORDINATE within its stale scope —
+      // and the float was the one painter in lib/ built without a scope,
+      // which put it in a bucket shared by every float ever lifted. The
+      // second Ctrl+T of a session therefore drew the FIRST one's artwork,
+      // at the first one's place and size, into this float's tile grid.
+      //
+      // Stated as the invariant rather than the symptom: a painter may not
+      // put ink where its own surface is empty. That holds whatever the
+      // borrowing policy is, and it is what fails if the opt-out is
+      // removed.
+      final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+
+      Future<void> settle() async {
+        for (var i = 0; i < 8; i += 1) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 16)),
+          );
+          await tester.pump(const Duration(milliseconds: 16));
+        }
+      }
+
+      BitmapSurfacePainter floatPainter() {
+        final committed = env.coordinator.currentSurfaceOf(
+          env.coordinator.activeFrameKey,
+        );
+        final floats = tester
+            .widgetList<CustomPaint>(find.byType(CustomPaint))
+            .map((paint) => paint.painter)
+            .whereType<BitmapSurfacePainter>()
+            .where((painter) => !identical(painter.surface, committed))
+            .toList();
+        expect(
+          floats,
+          hasLength(1),
+          reason: 'expected exactly one float painter over the committed one',
+        );
+        return floats.single;
+      }
+
+      // Generation one, decoded, so the shared bucket is populated with a
+      // float's tiles at these coordinates.
+      env.commands.beginTransform();
+      await tester.pump();
+      final generationOne = floatPainter().surface;
+      await settle();
+      env.commands.setTransformValues(
+        tx: 0,
+        ty: 0,
+        rotationDegrees: 0,
+        scale: 0.4,
+      );
+      await tester.pump();
+      await settle();
+      env.commands.commitTransform();
+      await tester.pump();
+      await settle();
+
+      // Generation two — the reported gesture. Its tiles are new and
+      // undecoded, and the bucket from generation one is waiting.
+      env.commands.beginTransform();
+      await tester.pump();
+      final painter = floatPainter();
+      expect(
+        identical(painter.surface, generationOne),
+        isFalse,
+        reason:
+            'the second lift reused the first float — no borrowing '
+            'could happen and this test would prove nothing',
+      );
+      await tester.runAsync(() async {
+        final recorder = PictureRecorder();
+        const size = Size(256, 256);
+        painter.paint(Canvas(recorder, Offset.zero & size), size);
+        final image = await recorder.endRecording().toImage(256, 256);
+        final data = await image.toByteData(format: ImageByteFormat.rawRgba);
+        final painted = data!.buffer.asUint8List();
+        var ghost = 0;
+        var missing = 0;
+        for (var y = 0; y < 256; y += 1) {
+          for (var x = 0; x < 256; x += 1) {
+            final alpha = painted[(y * 256 + x) * 4 + 3];
+            final own = surfacePixelRgba(painter.surface, x, y) ?? 0;
+            if (alpha > 0 && ((own >> 24) & 0xff) == 0) {
+              ghost += 1;
+            } else if (alpha == 0 && ((own >> 24) & 0xff) > 0) {
+              missing += 1;
+            }
+          }
+        }
+        expect(
+          ghost,
+          0,
+          reason:
+              'the float painted $ghost pixels of artwork its own '
+              'surface does not contain',
+        );
+        // The other half of the same frame, and the half a first attempt
+        // at this fix got wrong. Not borrowing trades a wrong picture for
+        // an ABSENT one, and absent is only acceptable while it does not
+        // happen: an undecoded tile falls to the painter's per-pixel path,
+        // whose budget is FOUR TILES a frame.
+        expect(
+          missing,
+          0,
+          reason:
+              'the float left $missing pixels of its own artwork '
+              'unpainted — the per-pixel budget no longer covers it',
+        );
+      });
+
+      // Secondary, and deliberately AFTER the render: the scope is how the
+      // invariant is currently kept, but the invariant is the contract. A
+      // test that asserted only the scope would pass a painter that had one
+      // and borrowed across a lift anyway.
+      expect(
+        painter.staleScope,
+        isNotNull,
+        reason: 'a scopeless painter shares the bucket every float writes to',
+      );
+    });
+
+    testWidgets('a float that only MOVED keeps borrowing its own previous '
+        'generation', (tester) async {
+      // The regression the first version of this fix shipped, and the test
+      // that would have caught it.
+      //
+      // `_floatSurface` is rebuilt from an empty surface at five sites, and
+      // three of them regenerate a float that ALREADY EXISTS: a drag
+      // release, every arrow-key nudge, and Ctrl+T over a pending move.
+      // There the previous generation is a legitimate predecessor. Refusing
+      // to borrow across it left a float wider than the painter's four-tile
+      // per-pixel budget three-quarters blank for a frame — and under a
+      // held arrow key, which regenerates about thirty times a second, it
+      // strobed.
+      //
+      // So the scope is emptied when the float's CONTENT changes and not
+      // when it merely moves. This is the "merely moves" half, and the
+      // fixture must be WIDER than four tiles or the per-pixel path covers
+      // the mistake and the test proves nothing.
+      final env = await pumpSelectionPanel(tester);
+      // The float only holds tiles where the lift found pixels, so the
+      // fixture's small stroke yields two however wide the marquee is. A
+      // diagonal across the cel is what puts more than four tiles in it —
+      // and more than four is the whole point, because at four or fewer
+      // the painter's per-pixel path hides the defect.
+      env.coordinator.commitSourceStroke(
+        sourceDabs: <BrushDab>[
+          for (var step = 0; step <= 24; step += 1)
+            dab(80 + step * 36.0, 80 + step * 26.0),
+        ],
+      );
+      await tester.pump();
+      await dragOnLayer(tester, const Offset(6, 6), const Offset(720, 540));
+      await env.setTool(CanvasTool.move);
+
+      BitmapSurfacePainter floatPainter() {
+        final committed = env.coordinator.currentSurfaceOf(
+          env.coordinator.activeFrameKey,
+        );
+        return tester
+            .widgetList<CustomPaint>(find.byType(CustomPaint))
+            .map((paint) => paint.painter)
+            .whereType<BitmapSurfacePainter>()
+            .firstWhere((painter) => !identical(painter.surface, committed));
+      }
+
+      // A move drag: the lift happens on the way, and the release runs
+      // `_commitMove`, which is the first of the three rebuilds that have
+      // a legitimate predecessor.
+      await dragOnLayer(tester, const Offset(300, 250), const Offset(310, 258));
+      for (var i = 0; i < 10; i += 1) {
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 16)),
+        );
+        await tester.pump(const Duration(milliseconds: 16));
+      }
+
+      final lifted = floatPainter().surface;
+      expect(
+        lifted.tiles.length,
+        greaterThan(4),
+        reason:
+            'a float inside the four-tile per-pixel budget cannot show '
+            'this defect — widen the marquee',
+      );
+
+      // A NUDGE: the same picture, one pixel over. The float is rebuilt, so
+      // every tile object is new and undecoded, and the only thing that can
+      // paint them this frame is its own previous generation.
+      env.commands.nudge(1, 0);
+      await tester.pump();
+      final nudged = floatPainter();
+      expect(
+        identical(nudged.surface, lifted),
+        isFalse,
+        reason: 'the nudge did not rebuild the float, so this proves nothing',
+      );
+      var undecoded = 0;
+      var borrowable = 0;
+      for (final tile in nudged.surface.tiles.values) {
+        if (BitmapTileImageCache.instance.imageFor(tile) != null) continue;
+        undecoded += 1;
+        final stale = BitmapTileImageCache.instance.latestImageForCoord(
+          tile.coord,
+          scope: nudged.staleScope,
+        );
+        if (stale != null) borrowable += 1;
+      }
+      expect(
+        undecoded,
+        greaterThan(4),
+        reason: 'nothing was undecoded, so no borrow was ever needed',
+      );
+      expect(
+        borrowable,
+        undecoded,
+        reason:
+            'the float could not borrow its own previous generation for '
+            '${undecoded - borrowable} of $undecoded tiles — past the '
+            'four-tile per-pixel budget, those frames are blank',
+      );
+    });
+
+    testWidgets('the green confirm button commits the WARPED stamp, the '
+        'same as Enter', (tester) async {
+      // The button's visibility test is `_movePending`, which says nothing
+      // about whether a transform box is open — so it IS offered mid-Ctrl+T.
+      // Wired straight to `_confirmMoveSession` it landed the UNWARPED
+      // lift: the artwork committed at its pre-transform position and size,
+      // the warped preview kept painting on top of the wrong landing until
+      // something closed the box, and the wrong landing went into history.
+      // Enter has branched on `_transform != null` since R16-①; the button
+      // never did, and a user reaching for the check mark instead of the
+      // key silently lost their transform.
+      final env = await pumpSelectionPanel(tester);
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      env.commands.beginTransform();
+      await tester.pump();
+      // BR (70,70) → (95,95): 1.5× about the anchored TL (20,20).
+      await dragOnLayer(tester, const Offset(70, 70), const Offset(95, 95));
+      await tester.pump();
+
+      final button = find.byKey(
+        const ValueKey<String>('selection-move-confirm'),
+      );
+      expect(
+        button,
+        findsOneWidget,
+        reason:
+            'the button is offered with the box open — that is the '
+            'premise of this test, not an accident of it',
+      );
+      await tester.tap(button, warnIfMissed: false);
+      await tester.pump();
+
+      // The same landing the corner-scale test asserts for Enter.
+      expect(inkAt(env.coordinator, 35, 35), isNonZero);
+      expect(inkAt(env.coordinator, 80, 80), isNonZero);
+      expect(
+        inkAt(env.coordinator, 30, 30),
+        0,
+        reason: 'the unwarped lift landed at its pre-transform position',
+      );
+      expect(
+        env.commands.transformActive,
+        isFalse,
+        reason: 'confirm left the box open over an already-committed stamp',
+      );
+    });
+
+    testWidgets('the confirm button still confirms an untouched box in one '
+        'tap', (tester) async {
+      // The guard on the fix. `_commitTransform` on an identity affine only
+      // closes the box and leaves the session pending, so branching the way
+      // Enter does would turn one tap of a button labelled "confirm" into
+      // two.
+      final env = await pumpSelectionPanel(tester);
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      env.commands.beginTransform();
+      await tester.pump();
+      final undoBefore = env.history.undoCount;
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('selection-move-confirm')),
+        warnIfMissed: false,
+      );
+      await tester.pump();
+      expect(env.commands.transformActive, isFalse);
+      expect(env.commands.movePending, isFalse);
+      // Two cleared booleans say the session ENDED, not that it was
+      // confirmed — a revert clears them too, and on an IDENTITY box the
+      // pixels cannot tell them apart either, because both leave the
+      // artwork where it started. What distinguishes them is that a
+      // confirm lands an entry and a revert does not.
+      expect(
+        env.history.undoCount,
+        greaterThan(undoBefore),
+        reason: 'the button reverted the session instead of confirming it',
+      );
+    });
+
+    testWidgets('Ctrl+Z over an open transform box folds it in rather than '
+        'wedging the box', (tester) async {
+      // The third caller with the button's old wiring, and the one that
+      // hurt most: `home_page.dart` binds `confirmPendingMove` to
+      // `HistoryManager.onBeforeUndoRedo`, which every undo runs
+      // unconditionally. Bare, it landed the UNWARPED lift as a fresh
+      // entry that the same Ctrl+Z then popped — the keypress consumed
+      // itself — and left the box open with `_transform` still set and no
+      // float, which wedges the next Ctrl+T against its own guard. Escape
+      // was the only way out.
+      final env = await pumpSelectionPanel(tester);
+      env.history.onBeforeUndoRedo = env.commands.confirmPendingMove;
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      env.commands.beginTransform();
+      await tester.pump();
+      await dragOnLayer(tester, const Offset(70, 70), const Offset(95, 95));
+      await tester.pump();
+
+      env.history.undo();
+      await tester.pump();
+
+      expect(
+        env.commands.transformActive,
+        isFalse,
+        reason: 'the box was left open with no float — Ctrl+T is now wedged',
+      );
+      // And the session can be reopened, which is what "wedged" cost.
+      env.commands.beginTransform();
+      await tester.pump();
+      expect(env.commands.transformActive, isTrue);
     });
 
     testWidgets('a corner drag scales anchored on the opposite corner: the '

@@ -52,9 +52,17 @@ class BitmapSurfacePainter extends CustomPainter {
 
   final bool showTransparentBackground;
 
-  /// Identifies this surface's lineage (e.g. the brush frame) so the stale
-  /// tile fallback never shows another frame's artwork; see
+  /// Identifies this surface's lineage so the stale tile fallback never
+  /// shows another lineage's artwork; see
   /// [BitmapTileImageCache.latestImageForCoord].
+  ///
+  /// ⚠️ A lineage, not a surface instance. Every painter in `lib/` must
+  /// pass one: the transform float went without, which put it in a bucket
+  /// shared by every float ever lifted, so opening a second transform drew
+  /// the FIRST one's artwork at the first one's place and size. Where a
+  /// lineage's CONTENT is replaced rather than edited, the owner empties
+  /// its scope at that moment — [BitmapTileImageCache.resetScope] — rather
+  /// than going without one.
   final Object? staleScope;
 
   final BitmapTileImageCache tileImageCache;
@@ -244,6 +252,12 @@ class BitmapSurfacePainter extends CustomPainter {
         // changed tile froze the UI after large strokes. The active
         // overlay keeps the in-progress stroke visible until the new tiles
         // are decoded.
+        //
+        // What makes "slightly stale" true rather than a guess is the
+        // SCOPE: it must name a lineage in which this coordinate's last
+        // decode really is an older version of this tile. A surface whose
+        // content gets replaced empties its scope at that moment instead
+        // of borrowing across the replacement.
         final tileImage =
             tileImageCache.imageFor(tile) ??
             tileImageCache.latestImageForCoord(tile.coord, scope: staleScope);
