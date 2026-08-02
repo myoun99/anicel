@@ -252,13 +252,14 @@ CanvasSelectionShape transformShape(
 /// (`bitmap_surface_brush_commit.dart`). That is what makes byte identity
 /// between what the preview showed and what Enter writes reachable at all:
 /// the resampled buffer travels to the surface without a second resample.
-/// [clip] narrows the OUTPUT to a canvas-space rect — the preview's
-/// visible-region optimisation. A clipped result is a crop of the
-/// unclipped one, byte for byte (the fold takes the output origin, so
-/// shifting it shifts the destination index equally and every pixel's
-/// source coordinate is unchanged), which is what lets a clipped preview
-/// and an unclipped commit agree. It must NEVER be passed on a path that
-/// commits: what lands would be missing everything off screen.
+///
+/// ⚠️ There is NO `clip` parameter, and there was not one when this
+/// paragraph described it. The clipped preview was added and then reverted
+/// inside its own branch — a sweep found 241 of 400 transforms where a
+/// clipped resample differs from the same region of an unclipped one, so
+/// the byte identity the paragraph claimed was false. The orphan text
+/// outlived the code by long enough to send a rendering investigation
+/// hunting a mechanism that does not exist.
 BrushDab transformStampDab(
   BrushDab stampDab,
   SelectionAffine affine, {

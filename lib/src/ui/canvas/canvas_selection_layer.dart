@@ -946,8 +946,6 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     return null;
   }
 
-  /// The canvas-space rect the user can actually see.
-  ///
   /// The cached resample, or a fresh one — what every commit path calls
   /// so that "what you saw" and "what landed" are the same object.
   BrushDab? _warpedFloat() {
@@ -2266,6 +2264,18 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
                       surface: floatSurface,
                       viewport: widget.viewport,
                       showTransparentBackground: false,
+                      // The float is materialised fresh from the lift
+                      // every time a box opens, so no image decoded at its
+                      // coordinates is an older version of it. Left on —
+                      // and with no scope, which is the shared bucket
+                      // every float writes to — opening a second transform
+                      // painted the FIRST one's artwork, at the first
+                      // one's place and size, into this float's tile grid.
+                      // Measured on the second Ctrl+T of a session: 36
+                      // pixels of ink where this float's own surface is
+                      // empty, while the base drew none, so the drawing
+                      // really was only in the wrong place for that frame.
+                      useStaleFallback: false,
                     ),
                     child: const SizedBox.expand(),
                   ),
@@ -2312,7 +2322,31 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
                 elevation: 2,
                 child: InkWell(
                   customBorder: const CircleBorder(),
-                  onTap: _confirmMoveSession,
+                  // The button is offered while a transform box is OPEN —
+                  // its visibility test is `_movePending`, which says
+                  // nothing about `_transform`. Wired straight to
+                  // `_confirmMoveSession` it landed the unwarped lift: the
+                  // artwork committed at its PRE-transform position and
+                  // size, the warped preview kept painting on top until
+                  // something closed the box, and the wrong landing went
+                  // into history. Enter has branched on this since R16-①;
+                  // the button never did.
+                  //
+                  // Both `if`s, not Enter's single branch. `_commitTransform`
+                  // on an identity affine only closes the box and leaves
+                  // the session pending, so Enter's form would make one tap
+                  // of a button labelled "confirm" into two. With both, a
+                  // warped box commits warped (the inner confirm fires and
+                  // the outer no-ops on a null pending stamp) and an
+                  // untouched box closes and confirms in one tap.
+                  onTap: () {
+                    if (_transform != null) {
+                      _commitTransform();
+                    }
+                    if (_movePending) {
+                      _confirmMoveSession();
+                    }
+                  },
                   child: const Padding(
                     padding: EdgeInsets.all(6),
                     child: Icon(Icons.check, size: 18, color: Colors.white),
