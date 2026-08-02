@@ -3844,6 +3844,424 @@ QA_EXPORT int64_t qa_audio_resample_frames(int64_t input_frames,
   return input_frames * interpolation / decimation;
 }
 
+// ---------------------------------------------------------------------------
+// Image resample (ABI 25). Mirrors lib/src/services/resample/
+// resample_kernel.dart byte for byte - see that file for WHY the kernel is
+// shaped this way; this one only has to agree with it.
+//
+// Every expression below is written in the same order as the Dart, because
+// "the same maths" is not the contract - the same rounding of the same
+// intermediate values is. -ffp-contract=off keeps the compiler from fusing
+// a multiply-add and rounding once where Dart rounds twice; that flag has
+// to be present in BOTH the CMake flags and the Apple podspec, and a build
+// that loses it fails the parity suite on Apple silicon only.
+//
+// Pixels are straight-alpha RGBA8 read four bytes at a time as one word:
+// on the little-endian targets the app ships to that is A<<24|B<<16|G<<8|R,
+// matching the Dart shifts.
+
+#define QA_RESAMPLE_MODE_BLEND 0
+#define QA_RESAMPLE_MODE_PICK 1
+#define QA_RESAMPLE_VOTE_SLOTS 16
+// Mirrors kResampleRadiusCeiling in resample_kernel.dart - see there for
+// why. Must change in both files or the parity suite fails.
+#define QA_RESAMPLE_RADIUS_CEILING 16.0
+// Rows per pooled item. Bands are independent by construction (each writes
+// only its own destination rows and reads only the source), so the split
+// cannot change a byte - the Dart suite pins that with a banded run.
+#define QA_RESAMPLE_BAND_ROWS 16
+
+typedef struct {
+  const uint32_t* src;
+  int32_t src_width;
+  int32_t src_height;
+  uint32_t* dst;
+  int32_t dst_width;
+  int32_t dst_height;
+  double a, b, c, d, e, f, g, h, i;
+  int32_t is_affine;
+  int32_t is_integer_translation;
+  double radius_floor;
+  int32_t mode;
+} qa_resample_context;
+
+static void qa_resample_rows(
+    const qa_resample_context* ctx, int32_t row_start, int32_t row_end) {
+  const uint32_t* src = ctx->src;
+  uint32_t* dst = ctx->dst;
+  const int32_t src_width = ctx->src_width;
+  const int32_t src_height = ctx->src_height;
+  const int32_t dst_width = ctx->dst_width;
+
+  // Whole-pixel translation: copy the overlapping rectangle verbatim. The
+  // gather would agree numerically; callers rely on "the same bytes".
+  if (ctx->is_integer_translation) {
+    // 64-bit throughout, because Dart's int is: narrowing to int32 here
+    // would wrap a translation past 2^31 into a SMALL offset and copy real
+    // pixels where the reference copies nothing.
+    const int64_t shift_x = -llround(ctx->c);
+    const int64_t shift_y = -llround(ctx->f);
+    for (int32_t y = row_start; y < row_end; y += 1) {
+      const int64_t source_y = (int64_t)y - shift_y;
+      uint32_t* row = dst + (ptrdiff_t)y * dst_width;
+      if (source_y < 0 || source_y >= src_height) {
+        for (int32_t x = 0; x < dst_width; x += 1) {
+          row[x] = 0u;
+        }
+        continue;
+      }
+      const uint32_t* source_row = src + (ptrdiff_t)source_y * src_width;
+      for (int32_t x = 0; x < dst_width; x += 1) {
+        const int64_t source_x = (int64_t)x - shift_x;
+        row[x] = (source_x < 0 || source_x >= src_width)
+                     ? 0u
+                     : source_row[source_x];
+      }
+    }
+    return;
+  }
+
+  const double floor_radius = ctx->radius_floor;
+  double extent_x = fabs(ctx->a) + fabs(ctx->b);
+  double extent_y = fabs(ctx->d) + fabs(ctx->e);
+  double radius_x = extent_x;
+  double radius_y = extent_y;
+  if (radius_x < floor_radius) radius_x = floor_radius;
+  if (radius_y < floor_radius) radius_y = floor_radius;
+  if (radius_x > QA_RESAMPLE_RADIUS_CEILING)
+    radius_x = QA_RESAMPLE_RADIUS_CEILING;
+  if (radius_y > QA_RESAMPLE_RADIUS_CEILING)
+    radius_y = QA_RESAMPLE_RADIUS_CEILING;
+
+  uint32_t keys[QA_RESAMPLE_VOTE_SLOTS];
+  double weights[QA_RESAMPLE_VOTE_SLOTS];
+
+  for (int32_t y = row_start; y < row_end; y += 1) {
+    const double centre_of_y = (double)y + 0.5;
+    uint32_t* row = dst + (ptrdiff_t)y * dst_width;
+    for (int32_t x = 0; x < dst_width; x += 1) {
+      const double centre_of_x = (double)x + 0.5;
+
+      double u;
+      double v;
+      if (ctx->is_affine) {
+        u = ctx->a * centre_of_x + ctx->b * centre_of_y + ctx->c - 0.5;
+        v = ctx->d * centre_of_x + ctx->e * centre_of_y + ctx->f - 0.5;
+      } else {
+        const double w = ctx->g * centre_of_x + ctx->h * centre_of_y + ctx->i;
+        if (w == 0.0) {
+          row[x] = 0u;
+          continue;
+        }
+        const double inverse_w = 1.0 / w;
+        const double projected_u =
+            (ctx->a * centre_of_x + ctx->b * centre_of_y + ctx->c) * inverse_w;
+        const double projected_v =
+            (ctx->d * centre_of_x + ctx->e * centre_of_y + ctx->f) * inverse_w;
+        u = projected_u - 0.5;
+        v = projected_v - 0.5;
+        const double dudx = (ctx->a - projected_u * ctx->g) * inverse_w;
+        const double dudy = (ctx->b - projected_u * ctx->h) * inverse_w;
+        const double dvdx = (ctx->d - projected_v * ctx->g) * inverse_w;
+        const double dvdy = (ctx->e - projected_v * ctx->h) * inverse_w;
+        extent_x = fabs(dudx) + fabs(dudy);
+        extent_y = fabs(dvdx) + fabs(dvdy);
+        radius_x = extent_x;
+        radius_y = extent_y;
+        if (radius_x < floor_radius) radius_x = floor_radius;
+        if (radius_y < floor_radius) radius_y = floor_radius;
+        if (radius_x > QA_RESAMPLE_RADIUS_CEILING)
+          radius_x = QA_RESAMPLE_RADIUS_CEILING;
+        if (radius_y > QA_RESAMPLE_RADIUS_CEILING)
+          radius_y = QA_RESAMPLE_RADIUS_CEILING;
+      }
+
+      // A degenerate map puts u, v or a radius outside the finite doubles,
+      // where llround() and ceil() are undefined - on arm64 the latter
+      // saturates to INT32_MAX and the gather becomes an unbreakable loop.
+      // Both kernels declare the pixel outside instead.
+      if (!isfinite(u) || !isfinite(v) || !isfinite(radius_x) ||
+          !isfinite(radius_y)) {
+        row[x] = 0u;
+        continue;
+      }
+
+      const int64_t centre_x = llround(u);
+      const int64_t centre_y = llround(v);
+
+      // Magnifying on BOTH axes: the preimage is narrower than one source
+      // pixel, so point sampling IS the area argmax and integer
+      // magnification is exact block replication. Applying the floor here
+      // instead would let pixels the preimage never reached outvote the
+      // one it did. See the Dart reference for the full reasoning.
+      if (ctx->mode == QA_RESAMPLE_MODE_PICK && extent_x < 1.0 &&
+          extent_y < 1.0) {
+        row[x] = (centre_x < 0 || centre_x >= src_width || centre_y < 0 ||
+                  centre_y >= src_height)
+                     ? 0u
+                     : src[(ptrdiff_t)centre_y * src_width + centre_x];
+        continue;
+      }
+
+      const int32_t rad_x = (int32_t)ceil(radius_x);
+      const int32_t rad_y = (int32_t)ceil(radius_y);
+
+      // Flat support: when every tap reads the same word both modes must
+      // return that word. Cheap on line art, where most of a frame is one
+      // colour.
+      uint32_t flat_token = 0u;
+      int flat = 1;
+      int seen_any = 0;
+      for (int32_t dy = -rad_y; dy <= rad_y && flat; dy += 1) {
+        const int64_t source_y = centre_y + dy;
+        const int row_inside = source_y >= 0 && source_y < src_height;
+        const uint32_t* source_row =
+            row_inside ? src + (ptrdiff_t)source_y * src_width : NULL;
+        for (int32_t dx = -rad_x; dx <= rad_x; dx += 1) {
+          const int64_t source_x = centre_x + dx;
+          const uint32_t token =
+              (!row_inside || source_x < 0 || source_x >= src_width)
+                  ? 0u
+                  : source_row[source_x];
+          if (!seen_any) {
+            flat_token = token;
+            seen_any = 1;
+          } else if (token != flat_token) {
+            flat = 0;
+            break;
+          }
+        }
+      }
+      if (flat) {
+        row[x] = flat_token;
+        continue;
+      }
+
+      if (ctx->mode == QA_RESAMPLE_MODE_PICK) {
+        int32_t slots = 0;
+        int evicted = 0;
+        for (int32_t dy = -rad_y; dy <= rad_y; dy += 1) {
+          const int64_t source_y = centre_y + dy;
+          const double weight_y =
+              1.0 - fabs((double)source_y - v) / radius_y;
+          if (weight_y <= 0.0) continue;
+          const int row_inside = source_y >= 0 && source_y < src_height;
+          const uint32_t* source_row =
+              row_inside ? src + (ptrdiff_t)source_y * src_width : NULL;
+          for (int32_t dx = -rad_x; dx <= rad_x; dx += 1) {
+            const int64_t source_x = centre_x + dx;
+            const double weight_x =
+                1.0 - fabs((double)source_x - u) / radius_x;
+            if (weight_x <= 0.0) continue;
+            const uint32_t token =
+                (!row_inside || source_x < 0 || source_x >= src_width)
+                    ? 0u
+                    : source_row[source_x];
+            const double weight = weight_x * weight_y;
+            int32_t slot = -1;
+            for (int32_t s = 0; s < slots; s += 1) {
+              if (keys[s] == token) {
+                slot = s;
+                break;
+              }
+            }
+            if (slot >= 0) {
+              weights[slot] += weight;
+            } else if (slots < QA_RESAMPLE_VOTE_SLOTS) {
+              keys[slots] = token;
+              weights[slots] = weight;
+              slots += 1;
+            } else {
+              // The weakest slot yields its key and keeps its weight, so a
+              // token can only be evicted while it holds less than a
+              // sixteenth of the footprint. Lowest index on a tie.
+              int32_t lightest = 0;
+              for (int32_t s = 1; s < QA_RESAMPLE_VOTE_SLOTS; s += 1) {
+                if (weights[s] < weights[lightest]) lightest = s;
+              }
+              keys[lightest] = token;
+              weights[lightest] += weight;
+              evicted = 1;
+            }
+          }
+        }
+        if (slots == 0) {
+          row[x] = 0u;
+          continue;
+        }
+        if (evicted) {
+          // An inherited weight over-estimates its new owner; re-weigh the
+          // survivors exactly. Gated on the eviction, so an ordinary
+          // footprint never pays for it.
+          for (int32_t s = 0; s < slots; s += 1) {
+            weights[s] = 0.0;
+          }
+          for (int32_t dy = -rad_y; dy <= rad_y; dy += 1) {
+            const int64_t source_y = centre_y + dy;
+            const double weight_y =
+                1.0 - fabs((double)source_y - v) / radius_y;
+            if (weight_y <= 0.0) continue;
+            const int row_inside = source_y >= 0 && source_y < src_height;
+            const uint32_t* source_row =
+                row_inside ? src + (ptrdiff_t)source_y * src_width : NULL;
+            for (int32_t dx = -rad_x; dx <= rad_x; dx += 1) {
+              const int64_t source_x = centre_x + dx;
+              const double weight_x =
+                  1.0 - fabs((double)source_x - u) / radius_x;
+              if (weight_x <= 0.0) continue;
+              const uint32_t token =
+                  (!row_inside || source_x < 0 || source_x >= src_width)
+                      ? 0u
+                      : source_row[source_x];
+              for (int32_t s = 0; s < slots; s += 1) {
+                if (keys[s] == token) {
+                  weights[s] += weight_x * weight_y;
+                  break;
+                }
+              }
+            }
+          }
+        }
+        int32_t best = 0;
+        for (int32_t s = 1; s < slots; s += 1) {
+          // Strictly greater: a tie goes to whichever token was met first,
+          // and taps are visited in a fixed order - that is what makes the
+          // tie deterministic across platforms and worker counts.
+          if (weights[s] > weights[best]) best = s;
+        }
+        row[x] = keys[best];
+        continue;
+      }
+
+      double acc_red = 0.0;
+      double acc_green = 0.0;
+      double acc_blue = 0.0;
+      double acc_alpha = 0.0;
+      double weight_sum = 0.0;
+      for (int32_t dy = -rad_y; dy <= rad_y; dy += 1) {
+        const int64_t source_y = centre_y + dy;
+        const double weight_y = 1.0 - fabs((double)source_y - v) / radius_y;
+        if (weight_y <= 0.0) continue;
+        const int row_inside = source_y >= 0 && source_y < src_height;
+        const uint32_t* source_row =
+            row_inside ? src + (ptrdiff_t)source_y * src_width : NULL;
+        for (int32_t dx = -rad_x; dx <= rad_x; dx += 1) {
+          const int64_t source_x = centre_x + dx;
+          const double weight_x = 1.0 - fabs((double)source_x - u) / radius_x;
+          if (weight_x <= 0.0) continue;
+          const uint32_t token =
+              (!row_inside || source_x < 0 || source_x >= src_width)
+                  ? 0u
+                  : source_row[source_x];
+          const double weight = weight_x * weight_y;
+          const double alpha = (double)((token >> 24) & 0xFFu);
+          const double colour_weight = weight * alpha;
+          acc_red += (double)(token & 0xFFu) * colour_weight;
+          acc_green += (double)((token >> 8) & 0xFFu) * colour_weight;
+          acc_blue += (double)((token >> 16) & 0xFFu) * colour_weight;
+          acc_alpha += alpha * weight;
+          weight_sum += weight;
+        }
+      }
+      if (weight_sum <= 0.0 || acc_alpha <= 0.0) {
+        row[x] = 0u;
+        continue;
+      }
+      int64_t out_alpha = llround(acc_alpha / weight_sum);
+      if (out_alpha < 0) out_alpha = 0;
+      if (out_alpha > 255) out_alpha = 255;
+      if (out_alpha == 0) {
+        row[x] = 0u;
+        continue;
+      }
+      int64_t out_red = llround(acc_red / acc_alpha);
+      int64_t out_green = llround(acc_green / acc_alpha);
+      int64_t out_blue = llround(acc_blue / acc_alpha);
+      if (out_red < 0) out_red = 0;
+      if (out_red > 255) out_red = 255;
+      if (out_green < 0) out_green = 0;
+      if (out_green > 255) out_green = 255;
+      if (out_blue < 0) out_blue = 0;
+      if (out_blue > 255) out_blue = 255;
+      row[x] = ((uint32_t)out_alpha << 24) | ((uint32_t)out_blue << 16) |
+               ((uint32_t)out_green << 8) | (uint32_t)out_red;
+    }
+  }
+}
+
+static void qa_resample_item(int32_t item_index, void* context) {
+  const qa_resample_context* ctx = (const qa_resample_context*)context;
+  const int32_t row_start = item_index * QA_RESAMPLE_BAND_ROWS;
+  int32_t row_end = row_start + QA_RESAMPLE_BAND_ROWS;
+  if (row_end > ctx->dst_height) {
+    row_end = ctx->dst_height;
+  }
+  qa_resample_rows(ctx, row_start, row_end);
+}
+
+// Resamples src into dst through the destination-to-source map `inverse`
+// (9 doubles, row-major, homogeneous row last). mode 0 = tent mean,
+// 1 = coverage argmax. Returns 0 ok, negative on bad arguments.
+QA_EXPORT int32_t qa_resample_rgba(
+    const uint8_t* src,
+    int32_t src_width,
+    int32_t src_height,
+    uint8_t* dst,
+    int32_t dst_width,
+    int32_t dst_height,
+    const double* inverse,
+    double radius_floor,
+    int32_t mode) {
+  if (src == NULL || dst == NULL || inverse == NULL) {
+    return -1;
+  }
+  if (src_width <= 0 || src_height <= 0 || dst_width <= 0 || dst_height <= 0) {
+    return -2;
+  }
+  if (mode != QA_RESAMPLE_MODE_BLEND && mode != QA_RESAMPLE_MODE_PICK) {
+    return -3;
+  }
+  if (radius_floor < 1.0) {
+    return -4;
+  }
+
+  qa_resample_context ctx;
+  ctx.src = (const uint32_t*)src;
+  ctx.src_width = src_width;
+  ctx.src_height = src_height;
+  ctx.dst = (uint32_t*)dst;
+  ctx.dst_width = dst_width;
+  ctx.dst_height = dst_height;
+  ctx.a = inverse[0];
+  ctx.b = inverse[1];
+  ctx.c = inverse[2];
+  ctx.d = inverse[3];
+  ctx.e = inverse[4];
+  ctx.f = inverse[5];
+  ctx.g = inverse[6];
+  ctx.h = inverse[7];
+  ctx.i = inverse[8];
+  ctx.radius_floor = radius_floor;
+  ctx.mode = mode;
+  ctx.is_affine = (ctx.g == 0.0 && ctx.h == 0.0 && ctx.i == 1.0) ? 1 : 0;
+  // "Is a whole number" via trunc(), not llround(): llround is undefined
+  // past the int64 range, where Dart's roundToDouble() is simply the
+  // identity. trunc() answers the same question for every finite double
+  // and gives the same answer as Dart for every value the short circuit
+  // can accept.
+  ctx.is_integer_translation =
+      (ctx.is_affine && ctx.a == 1.0 && ctx.b == 0.0 && ctx.d == 0.0 &&
+       ctx.e == 1.0 && isfinite(ctx.c) && isfinite(ctx.f) &&
+       ctx.c == trunc(ctx.c) && ctx.f == trunc(ctx.f))
+          ? 1
+          : 0;
+
+  const int32_t band_count =
+      (dst_height + QA_RESAMPLE_BAND_ROWS - 1) / QA_RESAMPLE_BAND_ROWS;
+  qa_pool_run(qa_resample_item, &ctx, band_count);
+  return 0;
+}
+
 // Engine ABI version - ONE number for this whole binary, and the Dart
 // loader refuses a mismatched one.
 //
@@ -3851,4 +4269,7 @@ QA_EXPORT int64_t qa_audio_resample_frames(int64_t input_frames,
 // reads this from: lib/src/native/qa_engine_abi.dart. Bumping here
 // without bumping there fails qa_engine_abi_test.dart, which compares the
 // literal below against kQaEngineAbiVersion and needs no binary to do it.
-QA_EXPORT int32_t qa_engine_abi_version(void) { return 24; }
+// v25: qa_resample_rgba - the shared image resampler (tent mean / coverage
+// argmax) behind the transform tool, FX transforms, import fit and screen
+// minification.
+QA_EXPORT int32_t qa_engine_abi_version(void) { return 25; }
