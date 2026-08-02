@@ -13,7 +13,7 @@ import '../../models/canvas_size.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
 import '../canvas/composite_effect_paint.dart';
-import '../canvas/layer_pose_paint.dart';
+import '../canvas/layer_image_draw.dart';
 import '../canvas/tiled_surface_compose.dart';
 
 /// File name for one exported frame: `frame_0001.png` (1-based).
@@ -162,9 +162,7 @@ class CameraFrameRenderService {
         [for (final layer in layers) CutFrameCompositeSurfaceLeaf(layer)];
     final resolvedOutput = outputSize ?? cameraFrameSize;
     final layerImages = <CutFrameCompositeLayer, ui.Image>{};
-    Future<void> composeImages(
-      List<CutFrameCompositeSurfaceNode> list,
-    ) async {
+    Future<void> composeImages(List<CutFrameCompositeSurfaceNode> list) async {
       for (final node in list) {
         switch (node) {
           case CutFrameCompositeSurfaceLeaf(:final layer):
@@ -284,27 +282,27 @@ class CameraFrameRenderService {
           case CutFrameCompositeSurfaceLeaf(:final layer):
             // Layer transforms apply at composite time (never baked);
             // identity layers skip the save/restore.
-            final layerPose = layer.pose;
-            if (layerPose != null) {
-              canvas.save();
-              applyLayerPoseTransform(
-                canvas,
-                layerPose,
-                layer.surface.canvasSize,
-                anchorPoint: layer.anchorPoint,
-              );
-            }
-            final layerPaint = Paint()
-              ..filterQuality = filterQuality
-              ..color = Color.fromRGBO(0, 0, 0, layer.opacity)
-              // R26 #30: the layer blend applies at composite time.
-              ..blendMode = layer.blendMode.paintBlendMode;
-            // R6: the row's effects filter its own picture first.
-            resolveCompositeEffectPaint(layer.effects).applyTo(layerPaint);
-            canvas.drawImage(layerImages[layer]!, Offset.zero, layerPaint);
-            if (layerPose != null) {
-              canvas.restore();
-            }
+            final layerImage = layerImages[layer]!;
+            drawPosedLayerImage(
+              canvas,
+              image: layerImage,
+              worldRect: Rect.fromLTWH(
+                0,
+                0,
+                layerImage.width.toDouble(),
+                layerImage.height.toDouble(),
+              ),
+              canvasSize: layer.surface.canvasSize,
+              pose: layer.pose,
+              anchorPoint: layer.anchorPoint,
+              opacity: layer.opacity,
+              blendMode: layer.blendMode,
+              effects: layer.effects,
+              filterQuality: filterQuality,
+              // This route has always drawn its canvas-extent image whole,
+              // and a camera test pins its pixels exactly.
+              drawAtOrigin: true,
+            );
         }
       }
     }

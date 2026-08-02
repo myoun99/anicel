@@ -17,7 +17,7 @@ import '../dev_profile.dart';
 import '../playback/layer_frame_image_cache.dart';
 import 'bitmap_surface_painter.dart';
 import 'composite_effect_paint.dart';
-import 'layer_pose_paint.dart';
+import 'layer_image_draw.dart';
 import 'paper_background.dart';
 import 'viewport_canvas_transform.dart';
 
@@ -571,136 +571,128 @@ class _LayerStackPainter extends CustomPainter {
           _PaintActiveSurface(:final anchorPoint) => anchorPoint,
           _PaintGroup() || _PaintAdjustment() => null,
         };
-        if (nodePose != null) {
-          canvas.save();
-          applyLayerPoseTransform(
-            canvas,
-            nodePose,
-            canvasSize,
-            anchorPoint: nodeAnchor,
-          );
-        }
-        switch (node) {
-          case _PaintGroup(
-            :final children,
-            :final opacity,
-            :final blendMode,
-            :final effects,
-          ):
-            // R27 #29: one buffer for the group, one blend on it — and
-            // because the ACTIVE layer is a node in here, a stroke drawn
-            // inside a blended folder finally reads the way it will play
-            // back. R6: the folder's effect chain lands on the same buffer.
-            final groupEffects = resolveCompositeEffectPaint(effects);
-            final groupPaint = Paint()
-              ..color = Color.fromRGBO(0, 0, 0, opacity.clamp(0.0, 1.0))
-              ..blendMode = blendMode.paintBlendMode;
-            groupEffects.applyTo(groupPaint);
-            canvas.saveLayer(
-              // The size hint grows by the blur's spread, so artwork just
-              // OUTSIDE the visible rect still bleeds in — without this the
-              // blur at the screen edge would change as you scroll.
-              effectBufferBounds(groupBounds, groupEffects),
-              groupPaint,
-            );
-            paintNodes(children);
-            canvas.restore();
-          case _PaintAdjustment(:final children, :final effects, :final mix):
-            // R6b: the scope into one buffer, the row's chain onto it —
-            // which is what lets a stroke drawn UNDER an adjustment read
-            // through the grade while you draw it.
-            final pass = resolveAdjustmentScopePass(
-              bounds: groupBounds,
-              effects: effects,
-              mix: mix,
-            );
-            if (pass.crossfades) {
-              canvas.saveLayer(pass.bufferBounds, pass.crossfadeLayerPaint!);
-              canvas.saveLayer(pass.bufferBounds, pass.unfilteredPaint!);
-              paintNodes(children);
-              canvas.restore();
+        // The wrap straddles the live-surface node too, which HAS a pose
+        // and no image — that is why the pose and the draw are separate
+        // helpers rather than one.
+        withLayerPose(
+          canvas,
+          pose: nodePose,
+          canvasSize: canvasSize,
+          anchorPoint: nodeAnchor,
+          body: () {
+            switch (node) {
+              case _PaintGroup(
+                :final children,
+                :final opacity,
+                :final blendMode,
+                :final effects,
+              ):
+                // R27 #29: one buffer for the group, one blend on it — and
+                // because the ACTIVE layer is a node in here, a stroke drawn
+                // inside a blended folder finally reads the way it will play
+                // back. R6: the folder's effect chain lands on the same buffer.
+                final groupEffects = resolveCompositeEffectPaint(effects);
+                final groupPaint = Paint()
+                  ..color = Color.fromRGBO(0, 0, 0, opacity.clamp(0.0, 1.0))
+                  ..blendMode = blendMode.paintBlendMode;
+                groupEffects.applyTo(groupPaint);
+                canvas.saveLayer(
+                  // The size hint grows by the blur's spread, so artwork just
+                  // OUTSIDE the visible rect still bleeds in — without this the
+                  // blur at the screen edge would change as you scroll.
+                  effectBufferBounds(groupBounds, groupEffects),
+                  groupPaint,
+                );
+                paintNodes(children);
+                canvas.restore();
+              case _PaintAdjustment(
+                :final children,
+                :final effects,
+                :final mix,
+              ):
+                // R6b: the scope into one buffer, the row's chain onto it —
+                // which is what lets a stroke drawn UNDER an adjustment read
+                // through the grade while you draw it.
+                final pass = resolveAdjustmentScopePass(
+                  bounds: groupBounds,
+                  effects: effects,
+                  mix: mix,
+                );
+                if (pass.crossfades) {
+                  canvas.saveLayer(
+                    pass.bufferBounds,
+                    pass.crossfadeLayerPaint!,
+                  );
+                  canvas.saveLayer(pass.bufferBounds, pass.unfilteredPaint!);
+                  paintNodes(children);
+                  canvas.restore();
+                }
+                canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
+                paintNodes(children);
+                canvas.restore();
+                if (pass.crossfades) {
+                  canvas.restore();
+                }
+              case _PaintActiveSurface(:final effects):
+                // The live surface, drawn by the SAME painter the standalone
+                // interactive view uses — the canvas is already
+                // viewport-transformed, so only the content body runs.
+                //
+                // R6: the row's own effects need a buffer here, because the
+                // surface painter draws MANY tiles and a filter must see the
+                // assembled picture (a per-tile blur would show seams).
+                final activeEffects = resolveCompositeEffectPaint(effects);
+                if (activeEffects.isNotEmpty) {
+                  final activePaint = Paint();
+                  activeEffects.applyTo(activePaint);
+                  canvas.saveLayer(
+                    effectBufferBounds(
+                      activeSurfacePainter!.pasteboardRect,
+                      activeEffects,
+                    ),
+                    activePaint,
+                  );
+                }
+                canvas.save();
+                canvas.clipRect(activeSurfacePainter!.pasteboardRect);
+                activeSurfacePainter!.paintContentInto(canvas);
+                canvas.restore();
+                if (activeEffects.isNotEmpty) {
+                  canvas.restore();
+                }
+              case _PaintImage(
+                :final image,
+                :final worldRect,
+                :final opacity,
+                :final blendMode,
+                :final tint,
+                :final effects,
+              ):
+                // Dest = the image's WORLD rect: the canvas rect for plain
+                // cels, grown for pasteboard content so off-canvas artwork of
+                // non-active layers shows at its position. The pose is already
+                // applied by the wrap above, which this node shares with the
+                // live surface — hence pose: null here rather than a second
+                // save/restore around the same matrix.
+                drawPosedLayerImage(
+                  canvas,
+                  image: image,
+                  worldRect: worldRect,
+                  canvasSize: canvasSize,
+                  pose: null,
+                  opacity: opacity,
+                  blendMode: blendMode,
+                  effects: effects,
+                  // Onion-skin Colors mode: the ghost CONVERTS fully to the
+                  // tint — every drawn pixel takes the tint's RGB, only alpha
+                  // survives (TVPaint's look, R11-①; modulate kept light
+                  // artwork un-tinted). The paint alpha still fades the whole
+                  // ghost.
+                  tint: tint,
+                );
             }
-            canvas.saveLayer(pass.bufferBounds, pass.filteredPaint);
-            paintNodes(children);
-            canvas.restore();
-            if (pass.crossfades) {
-              canvas.restore();
-            }
-          case _PaintActiveSurface(:final effects):
-            // The live surface, drawn by the SAME painter the standalone
-            // interactive view uses — the canvas is already
-            // viewport-transformed, so only the content body runs.
-            //
-            // R6: the row's own effects need a buffer here, because the
-            // surface painter draws MANY tiles and a filter must see the
-            // assembled picture (a per-tile blur would show seams).
-            final activeEffects = resolveCompositeEffectPaint(effects);
-            if (activeEffects.isNotEmpty) {
-              final activePaint = Paint();
-              activeEffects.applyTo(activePaint);
-              canvas.saveLayer(
-                effectBufferBounds(
-                  activeSurfacePainter!.pasteboardRect,
-                  activeEffects,
-                ),
-                activePaint,
-              );
-            }
-            canvas.save();
-            canvas.clipRect(activeSurfacePainter!.pasteboardRect);
-            activeSurfacePainter!.paintContentInto(canvas);
-            canvas.restore();
-            if (activeEffects.isNotEmpty) {
-              canvas.restore();
-            }
-          case _PaintImage(
-            :final image,
-            :final worldRect,
-            :final opacity,
-            :final blendMode,
-            :final tint,
-            :final effects,
-          ):
-            final paint = Paint()
-              ..filterQuality = FilterQuality.low
-              ..color = Color.fromRGBO(0, 0, 0, opacity.clamp(0.0, 1.0))
-              // R26 #30: the layer blend applies at composite time — the
-              // stack shows the same picture playback composes.
-              ..blendMode = blendMode.paintBlendMode;
-            // Onion-skin Colors mode: the ghost CONVERTS fully to the tint
-            // — every drawn pixel takes the tint's RGB, only alpha
-            // survives (TVPaint's look, R11-①; modulate kept light artwork
-            // un-tinted). The paint alpha above still fades the whole
-            // ghost.
-            if (tint != null) {
-              paint.colorFilter = ColorFilter.mode(
-                Color(tint),
-                BlendMode.srcIn,
-              );
-            }
-            // R6: the row's effects filter its own picture. Ghosts resolve
-            // to no effects at all, which is what keeps them from fighting
-            // the tint above for this paint's colorFilter slot.
-            resolveCompositeEffectPaint(effects).applyTo(paint);
-            // Dest = the image's WORLD rect: the canvas rect for plain
-            // cels (legacy path, unchanged bytes), grown for pasteboard
-            // content so off-canvas artwork of non-active layers shows at
-            // its position.
-            canvas.drawImageRect(
-              image,
-              Rect.fromLTWH(
-                0,
-                0,
-                image.width.toDouble(),
-                image.height.toDouble(),
-              ),
-              worldRect,
-              paint,
-            );
-        }
-        if (nodePose != null) {
-          canvas.restore();
-        }
+          },
+        );
       }
     }
 
@@ -713,10 +705,7 @@ class _LayerStackPainter extends CustomPainter {
     return oldDelegate.canvasSize != canvasSize ||
         oldDelegate.viewport != viewport ||
         oldDelegate.paintPaper != paintPaper ||
-        !identical(
-          oldDelegate.activeSurfacePainter,
-          activeSurfacePainter,
-        ) ||
+        !identical(oldDelegate.activeSurfacePainter, activeSurfacePainter) ||
         !_treesMatch(oldDelegate.nodes, nodes);
   }
 
