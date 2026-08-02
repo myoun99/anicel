@@ -32,7 +32,6 @@ class BitmapSurfacePainter extends CustomPainter {
     this.overlayModel,
     this.showTransparentBackground = true,
     this.staleScope,
-    this.useStaleFallback = true,
     BitmapTileImageCache? tileImageCache,
   }) : tileImageCache = tileImageCache ?? BitmapTileImageCache.instance,
        super(
@@ -53,34 +52,18 @@ class BitmapSurfacePainter extends CustomPainter {
 
   final bool showTransparentBackground;
 
-  /// Identifies this surface's lineage (e.g. the brush frame) so the stale
-  /// tile fallback never shows another frame's artwork; see
+  /// Identifies this surface's lineage so the stale tile fallback never
+  /// shows another lineage's artwork; see
   /// [BitmapTileImageCache.latestImageForCoord].
+  ///
+  /// ⚠️ A lineage, not a surface instance. Every painter in `lib/` must
+  /// pass one: the transform float went without, which put it in a bucket
+  /// shared by every float ever lifted, so opening a second transform drew
+  /// the FIRST one's artwork at the first one's place and size. Where a
+  /// lineage's CONTENT is replaced rather than edited, the owner empties
+  /// its scope at that moment — [BitmapTileImageCache.resetScope] — rather
+  /// than going without one.
   final Object? staleScope;
-
-  /// Whether an undecoded tile may borrow the last image decoded at its
-  /// COORDINATE, within [staleScope].
-  ///
-  /// True for a surface with a history — a cel being drawn on, where the
-  /// previous version of a tile is a reasonable stand-in for one frame
-  /// while its replacement decodes, and the live overlay covers the
-  /// difference anyway.
-  ///
-  /// **False for a surface that has no predecessor**, and the transform
-  /// float is one: it is materialised fresh from the lift every time a box
-  /// opens, so nothing decoded at its coordinates is an older version of
-  /// IT. The float used to leave this on with a null scope, which put it
-  /// in a bucket shared by every float ever lifted — so opening a second
-  /// transform borrowed the FIRST one's pixels, the same artwork at
-  /// another place and another size, drawn into the new float's tile grid.
-  /// That is what "the drawing teleports and comes back" was.
-  ///
-  /// ⚠️ Giving the float a scope instead of turning the borrowing off is
-  /// not a fix, and a unique scope per lift is actively harmful: the cache
-  /// retains eight scopes and evicts the least recent, so a session of
-  /// transforms would push out the `(layerId, frameId)` buckets the brush
-  /// depends on.
-  final bool useStaleFallback;
 
   final BitmapTileImageCache tileImageCache;
 
@@ -270,18 +253,14 @@ class BitmapSurfacePainter extends CustomPainter {
         // overlay keeps the in-progress stroke visible until the new tiles
         // are decoded.
         //
-        // Only for a surface whose coordinates HAVE a previous version —
-        // see [useStaleFallback]. Borrowing on one that does not is how a
-        // freshly lifted transform float came to paint the previous
-        // float's artwork, at the previous float's place and size.
+        // What makes "slightly stale" true rather than a guess is the
+        // SCOPE: it must name a lineage in which this coordinate's last
+        // decode really is an older version of this tile. A surface whose
+        // content gets replaced empties its scope at that moment instead
+        // of borrowing across the replacement.
         final tileImage =
             tileImageCache.imageFor(tile) ??
-            (useStaleFallback
-                ? tileImageCache.latestImageForCoord(
-                    tile.coord,
-                    scope: staleScope,
-                  )
-                : null);
+            tileImageCache.latestImageForCoord(tile.coord, scope: staleScope);
         if (tileImage != null) {
           canvas.drawImage(
             tileImage,

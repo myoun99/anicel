@@ -139,11 +139,7 @@ class BitmapTileImageCache extends ChangeNotifier {
   ///
   /// A tile that somehow already has an image keeps it and the incoming
   /// one is retired — never two owners for one image.
-  void adoptDecoded(
-    BitmapTile tile,
-    ui.Image image, {
-    Object? staleScope,
-  }) {
+  void adoptDecoded(BitmapTile tile, ui.Image image, {Object? staleScope}) {
     if (_images[tile] != null) {
       DeferredImageDisposer.instance.retire(image);
       return;
@@ -161,6 +157,27 @@ class BitmapTileImageCache extends ChangeNotifier {
             scoped ?? <TileCoord, BitmapTile>{})[tile.coord] =
         tile;
     _evictScopesBeyondBudget();
+  }
+
+  /// Forgets every stale-fallback tile in [scope], so the next paint of a
+  /// surface in that scope has nothing to borrow.
+  ///
+  /// For a lineage whose CONTENT is replaced rather than edited. The
+  /// transform float is the case: a new lift makes a surface that is not a
+  /// later version of the previous float, it is a different picture, and
+  /// letting it borrow drew the previous transform's artwork at the
+  /// previous transform's place and size. Emptying the scope at the moment
+  /// the content changes says exactly that, and says nothing about the
+  /// float's ordinary regenerations — a nudge or a drag release rebuilds
+  /// the same picture and SHOULD borrow, which is what an unconditional
+  /// opt-out took away.
+  ///
+  /// Cheaper than a scope per generation, which would be actively harmful:
+  /// [retainedScopeLimit] evicts least-recently-used, so a session of
+  /// transforms would push out the `(layerId, frameId)` buckets the brush
+  /// depends on.
+  void resetScope(Object? scope) {
+    _latestDecodedByScope.remove(scope);
   }
 
   void _evictScopesBeyondBudget() {
@@ -246,10 +263,8 @@ class BitmapTileImageCache extends ChangeNotifier {
     final native = QaNativeEngine.instance;
     if (native != null) {
       final scratch = tile.readPixels(
-        (pointer, _) => native.premultipliedTileScratch(
-          pointer,
-          tile.size * tile.size,
-        ),
+        (pointer, _) =>
+            native.premultipliedTileScratch(pointer, tile.size * tile.size),
       );
       return PremultipliedTileUpload._(scratch.view, scratch);
     }
