@@ -399,14 +399,17 @@ void main() {
       }
     });
 
-    test('the floor it passes matches the kernel default, and raising it '
-        'would delete line art', () {
-      // The floor is 1.0 for both modes now. It used to be 1.5 for Pick,
-      // which stopped meaning anything when the weight became coverage: a
-      // floor above the true extent claims the preimage reaches further
-      // than it does, so the vote counts area the destination pixel never
-      // covered. The second assertion is the guard — it fails the day
-      // somebody reintroduces a wider ring as a "quality" knob.
+    test('the floor it passes matches the kernel default, and Pick no '
+        'longer has a radius for it to reach', () {
+      // The floor is 1.0 and belongs to Blend. It was 1.5 for Pick once,
+      // on an argument about jagged spurs that only held while the weight
+      // was a tent; it stopped meaning anything when the weight became
+      // area, and it stopped existing when Pick started supersampling the
+      // preimage instead of gathering taps around it.
+      //
+      // The second assertion is the guard, and it points the opposite way
+      // from the one it replaced: a floor that changed what Pick elected
+      // would mean a radius had come back.
       expect(kSelectionResampleRadiusFloor, 1.0);
       expect(resampleRadiusFloor(ResampleMode.pick), 1.0);
       expect(resampleRadiusFloor(ResampleMode.blend), 1.0);
@@ -435,29 +438,30 @@ void main() {
         outLeft: 0,
         outTop: 0,
       );
-      int inkCount(double floor) {
-        final out = resampleRgbaReference(
-          src: source,
-          srcWidth: size,
-          srcHeight: size,
-          dstWidth: size,
-          dstHeight: size,
-          transform: transform,
-          mode: ResampleMode.pick,
-          radiusFloor: floor,
-        );
-        return Uint32List.view(out.buffer).where((word) => word == ink).length;
-      }
+      Uint8List pickAt(double floor) => resampleRgbaReference(
+        src: source,
+        srcWidth: size,
+        srcHeight: size,
+        dstWidth: size,
+        dstHeight: size,
+        transform: transform,
+        mode: ResampleMode.pick,
+        radiusFloor: floor,
+      );
 
       expect(
-        inkCount(kSelectionResampleRadiusFloor),
+        Uint32List.view(
+          pickAt(kSelectionResampleRadiusFloor).buffer,
+        ).where((word) => word == ink).length,
         expected,
         reason: 'a quarter turn must be an exact permutation',
       );
       expect(
-        inkCount(1.5),
-        lessThan(expected),
-        reason: 'if this ever stops being true, the override is free to go',
+        pickAt(4.0),
+        pickAt(kSelectionResampleRadiusFloor),
+        reason:
+            'Pick read the radius floor — it has no radius, and a value '
+            'that reaches one is a footprint that has grown back',
       );
     });
   });

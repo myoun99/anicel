@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/resample/resample_kernel.dart';
 
+import 'coverage_truth.dart';
+
 /// A stand-in for a production cel: flat white ground, a handful of solid
 /// fills, and hard-edged strokes crossing at angles that make a point
 /// sampler stumble. Deliberately two-valued at every edge — no soft pixels
@@ -157,6 +159,68 @@ ResampleTransform _rotationAbout(double degrees, double cx, double cy) {
   );
 }
 
+/// Rotate by [degrees] and scale by [scale] about ([cx], [cy]), inverted
+/// into the kernel's destination-index → source-index form. Independent
+/// x/y scales, because anisotropy is where every previous design broke.
+ResampleTransform _rotateScaleAbout(
+  double degrees,
+  double sx,
+  double sy,
+  double cx,
+  double cy,
+) {
+  final r = degrees * math.pi / 180;
+  final cos = math.cos(r), sin = math.sin(r);
+  return ResampleTransform(
+    a: cos / sx,
+    b: sin / sx,
+    c: (-cx * cos - cy * sin) / sx + cx,
+    d: -sin / sy,
+    e: cos / sy,
+    f: (cx * sin - cy * cos) / sy + cy,
+  );
+}
+
+/// Solid colour everywhere, no transparency at all, so a transparent
+/// output pixel can only be a hole the kernel punched.
+Uint8List _opaqueArt(int width, int height) {
+  final bytes = Uint8List(width * height * 4);
+  final words = Uint32List.view(bytes.buffer);
+  for (var y = 0; y < height; y += 1) {
+    for (var x = 0; x < width; x += 1) {
+      final band = ((x ~/ 3) + (y ~/ 5)) % 3;
+      words[y * width + x] = band == 0
+          ? 0xffffffff
+          : band == 1
+          ? 0xff101010
+          : 0xffc8dcf0;
+    }
+  }
+  return bytes;
+}
+
+int _countToken(Uint8List bytes, int token) {
+  var n = 0;
+  for (final word in Uint32List.view(
+    bytes.buffer,
+    bytes.offsetInBytes,
+    bytes.length ~/ 4,
+  )) {
+    if (word == token) n += 1;
+  }
+  return n;
+}
+
+int _disagreements(Uint8List a, Uint8List b) {
+  final wa = Uint32List.view(a.buffer, a.offsetInBytes, a.length ~/ 4);
+  final wb = Uint32List.view(b.buffer, b.offsetInBytes, b.length ~/ 4);
+  var n = 0;
+  for (var i = 0; i < wa.length; i += 1) {
+    if (wa[i] != wb[i]) n += 1;
+  }
+  return n;
+}
+
 void main() {
   const width = 96;
   const height = 96;
@@ -166,6 +230,173 @@ void main() {
   setUp(() {
     source = _lineArt(width, height);
     sourceTokens = _tokensOf(source);
+  });
+
+  group('Pick is the area argmax its oracle defines', () {
+    // `coverage_truth.dart` computes Pick the slow honest way: it cuts the
+    // destination pixel into 32×32 or 48×48 points, maps every one, and
+    // counts. That is the definition, so measuring against it says how far
+    // the kernel is from RIGHT rather than how far it is from its own
+    // previous behaviour — which is what the two rounds before this one
+    // measured, and why both shipped a kernel whose error was invisible.
+    //
+    // The angle steps here are five degrees. The round before used ten,
+    // and ten stepped straight over the angles where its footprint failed.
+
+    test('agrees with the truth, and keeps the line art the truth keeps', () {
+      // Two assertions over one sweep because they share the expensive
+      // half: the oracle costs a thousand inverse maps per pixel, and
+      // running the grid twice to state the two properties separately
+      // spent fifty seconds saying the same thing.
+      //
+      // The second assertion is the failure this whole feature exists to
+      // end. Rotating while shrinking — an ordinary Ctrl+T — erased line
+      // art, because the boxed footprint kept a 1px feature only while
+      // scale > (|cos| + |sin|)/2: 0.5 axis-aligned but 0.707 at 45°. A
+      // 0.7× at 25° kept 16 ink pixels of 67, and a 0.65× at 25° kept 2.
+      // Stated against the oracle rather than against fixed counts, so it
+      // says "the kernel keeps what is really there" instead of pinning
+      // numbers a later change would simply edit.
+      final art = _lineArt(64, 64);
+      var inkCasesChecked = 0;
+      for (var degrees = 0; degrees <= 90; degrees += 5) {
+        for (final scale in <double>[1.0, 0.85, 0.7, 0.55, 0.4]) {
+          final out = (64 * scale).round();
+          final transform = _rotateScaleAbout(
+            degrees.toDouble(),
+            scale,
+            scale,
+            32,
+            32,
+          );
+          final got = resampleRgbaReference(
+            src: art,
+            srcWidth: 64,
+            srcHeight: 64,
+            dstWidth: out,
+            dstHeight: out,
+            transform: transform,
+            mode: ResampleMode.pick,
+          );
+          final truth = coverageTruth(
+            src: art,
+            srcWidth: 64,
+            srcHeight: 64,
+            dstWidth: out,
+            dstHeight: out,
+            transform: transform,
+            samples: 32,
+          );
+          // Not zero: the kernel samples an ordinary pixel 64 times and
+          // the oracle 1024, so pixels whose top two colours sit within a
+          // hair of each other can land either way.
+          //
+          // 1.5% is set from a measurement of both kernels over this exact
+          // sweep, not from taste. This one peaks at 1.06% (45° × 0.55,
+          // where a 1px feature covers almost exactly half its preimage
+          // and no sample count settles it); the boxed footprint it
+          // replaces peaks at 3.26%. A bar between the two is a bar that
+          // fails if the footprint ever comes back.
+          expect(
+            _disagreements(got, truth) / (out * out),
+            lessThan(0.015),
+            reason: '$degrees° × $scale disagrees with the truth too often',
+          );
+          // Only where the truth still has a drawing to keep. Past the
+          // half-scale threshold a 1px line genuinely loses its own area
+          // argmax and the oracle is down to single digits, where "within
+          // 80%" is a statement about two or three pixels and would fail
+          // on noise rather than on a defect.
+          final truthInk = _countToken(truth, 0xff101010);
+          if (truthInk >= 20) {
+            inkCasesChecked += 1;
+            // 80% for the same reason as above: measured. This kernel's
+            // worst case over the sweep keeps 96% of the truth's ink; the
+            // boxed one keeps 17%.
+            expect(
+              _countToken(got, 0xff101010),
+              greaterThanOrEqualTo((truthInk * 0.8).floor()),
+              reason: '$degrees° × $scale dropped ink the truth keeps',
+            );
+          }
+        }
+      }
+      // The guard on the guard: a fixture or a scale list edited until the
+      // ink assertion never runs would leave this test green while saying
+      // nothing, which is how the provenance test spent a round unable to
+      // fail.
+      expect(
+        inkCasesChecked,
+        greaterThan(50),
+        reason: 'the ink assertion stopped running on most of the sweep',
+      );
+    });
+
+    test('opaque artwork never comes back transparent, at any anisotropy '
+        'or angle', () {
+      // The way the previous design died, twice, by two different
+      // mechanisms: a footprint box that had to be shrunk to match a
+      // rotated parallelogram's area either scored no tap at all (a hole)
+      // or scored taps outside the image (a hole). Supersampling cannot do
+      // either — every subsample lands somewhere — and this walks the
+      // shape that broke it: strong anisotropy, rotated.
+      final solid = _opaqueArt(width, height);
+      const out = 6;
+      final shift = 0.5 * (width - out);
+      for (var degrees = 0; degrees < 90; degrees += 6) {
+        for (final sx in <double>[0.2, 0.5, 1.0, 2.0, 4.0, 12.0, 20.0]) {
+          for (final sy in <double>[0.2, 0.5, 1.0, 2.0, 4.0, 12.0, 20.0]) {
+            final t = _rotateScaleAbout(
+              degrees.toDouble(),
+              sx,
+              sy,
+              width / 2,
+              height / 2,
+            );
+            // A small patch at the image centre, so the preimage stays
+            // inside and a transparent pixel is the kernel's doing rather
+            // than the edge's.
+            final inner = ResampleTransform(
+              a: t.a,
+              b: t.b,
+              c: t.c + t.a * shift + t.b * shift,
+              d: t.d,
+              e: t.e,
+              f: t.f + t.d * shift + t.e * shift,
+            );
+            final got = resampleRgbaReference(
+              src: solid,
+              srcWidth: width,
+              srcHeight: height,
+              dstWidth: out,
+              dstHeight: out,
+              transform: inner,
+              mode: ResampleMode.pick,
+            );
+            final truth = coverageTruth(
+              src: solid,
+              srcWidth: width,
+              srcHeight: height,
+              dstWidth: out,
+              dstHeight: out,
+              transform: inner,
+              samples: 32,
+            );
+            final gotWords = Uint32List.view(got.buffer);
+            final truthWords = Uint32List.view(truth.buffer);
+            for (var i = 0; i < gotWords.length; i += 1) {
+              if (truthWords[i] != kResampleOutsideToken) {
+                expect(
+                  gotWords[i],
+                  isNot(kResampleOutsideToken),
+                  reason: '$degrees° sx=$sx sy=$sy punched a hole at $i',
+                );
+              }
+            }
+          }
+        }
+      }
+    });
   });
 
   group('Pick keeps its provenance contract', () {
@@ -560,31 +791,73 @@ void main() {
       }
     });
 
-    test('a wider floor changes what Pick elects', () {
-      // Pins that radiusFloor is actually consumed: a kernel that ignored
-      // it would return identical bytes for both.
+    test('a wider floor changes what Blend produces and nothing Pick '
+        'elects', () {
+      // Two contracts in one fixture, because they are the same
+      // measurement pointed in opposite directions. Blend still gathers
+      // taps, so its floor has to be consumed — a kernel that ignored it
+      // would return identical bytes. Pick does not gather taps at all any
+      // more, so its bytes must NOT move: a floor that reached the vote
+      // would mean a footprint had grown back around the preimage, and a
+      // footprint is what deleted line art under rotation for three
+      // rounds.
       final transform = _rotationAbout(15, width / 2, height / 2);
-      final tight = resampleRgbaReference(
+      Uint8List at(ResampleMode mode, double floor) => resampleRgbaReference(
         src: source,
         srcWidth: width,
         srcHeight: height,
         dstWidth: width,
         dstHeight: height,
         transform: transform,
-        mode: ResampleMode.pick,
-        radiusFloor: 1.0,
+        mode: mode,
+        radiusFloor: floor,
       );
-      final wide = resampleRgbaReference(
-        src: source,
-        srcWidth: width,
-        srcHeight: height,
-        dstWidth: width,
-        dstHeight: height,
-        transform: transform,
-        mode: ResampleMode.pick,
-        radiusFloor: 3.0,
+      expect(
+        at(ResampleMode.blend, 1.0),
+        isNot(at(ResampleMode.blend, 3.0)),
+        reason: 'Blend ignored its radius floor',
       );
-      expect(tight, isNot(wide));
+      expect(
+        at(ResampleMode.pick, 3.0),
+        at(ResampleMode.pick, 1.0),
+        reason: 'Pick read a radius floor it is not supposed to have',
+      );
+    });
+
+    test('the sample rate follows each axis, not the area they multiply '
+        'to', () {
+      // The rule that came before this one took the rate from the
+      // preimage's AREA, and an anisotropic map is exactly where that is
+      // wrong: shrinking 5:1 across while magnifying 2× down is an area of
+      // 2.5 — the same as a gentle uniform reduction — while needing ten
+      // samples across and eight down. It dropped a whole column of an
+      // opaque image when it got four.
+      expect(resampleSamplesPerAxis(25), 10, reason: 'a 5px step');
+      expect(resampleSamplesPerAxis(0.25), kResampleMinSamplesPerAxis);
+      expect(resampleSamplesPerAxis(1), kResampleMinSamplesPerAxis);
+      expect(resampleSamplesPerAxis(10000), kResampleMaxSamplesPerAxis);
+      expect(
+        resampleSamplesPerAxis(double.nan),
+        kResampleMaxSamplesPerAxis,
+        reason: 'a degenerate rate must terminate, not run away',
+      );
+      // ⌈2√q⌉ at each threshold, so the chain cannot drift from the rule
+      // it stands for.
+      for (
+        var n = kResampleMinSamplesPerAxis;
+        n <= kResampleMaxSamplesPerAxis;
+        n += 1
+      ) {
+        final atThreshold = n * n / 4;
+        expect(resampleSamplesPerAxis(atThreshold), n, reason: 'q = $n²/4');
+        if (n < kResampleMaxSamplesPerAxis) {
+          expect(
+            resampleSamplesPerAxis(atThreshold + 1e-9),
+            n + 1,
+            reason: 'just past q = $n²/4',
+          );
+        }
+      }
     });
   });
 

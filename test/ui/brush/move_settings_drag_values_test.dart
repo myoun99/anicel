@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
+import 'package:anicel/src/services/resample/resample_kernel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
@@ -14,6 +15,8 @@ void main() {
   Future<CanvasSelectionCommands> pumpMoveSettings(
     WidgetTester tester, {
     required List<SelectionTransformValues> applied,
+    ResampleMode resampleMode = ResampleMode.blend,
+    ValueChanged<ResampleMode>? onResampleModeChanged,
   }) async {
     final commands = CanvasSelectionCommands();
     commands.bind(
@@ -48,6 +51,8 @@ void main() {
               fillOptions: const FloodFillOptions(),
               onFillOptionsChanged: (_) {},
               selectionCommands: commands,
+              transformResampleMode: resampleMode,
+              onTransformResampleModeChanged: onResampleModeChanged,
             ),
           ),
         ),
@@ -92,6 +97,64 @@ void main() {
 
     expect(applied, isNotEmpty);
     expect(applied.last.scale, closeTo(0.01, 1e-9));
+  });
+
+  testWidgets('the preserve-colours switch reaches the resampler, and '
+      'reads back from it', (tester) async {
+    // P3e. The control was wired and tested for three rounds while the
+    // switch itself stayed unbuilt, because Pick erased line art under an
+    // ordinary rotate-and-shrink. It is built now, so the tap that turns
+    // it on has to actually land on the kernel selector — and the state
+    // has to come from the host, not from a local bool that would drift
+    // away from what a commit runs through.
+    final applied = <SelectionTransformValues>[];
+    final chosen = <ResampleMode>[];
+    await pumpMoveSettings(
+      tester,
+      applied: applied,
+      onResampleModeChanged: chosen.add,
+    );
+
+    final switchKey = find.byKey(
+      const ValueKey<String>('move-preserve-colours-switch'),
+    );
+    expect(switchKey, findsOneWidget);
+    expect(
+      tester.widget<SwitchListTile>(switchKey).value,
+      isFalse,
+      reason: 'Blend is the default, so the switch starts off',
+    );
+
+    await tester.tap(switchKey);
+    await tester.pump();
+    expect(chosen, <ResampleMode>[ResampleMode.pick]);
+
+    // Now with the host holding Pick: the switch must read on, and turning
+    // it off must ask for Blend.
+    await pumpMoveSettings(
+      tester,
+      applied: applied,
+      resampleMode: ResampleMode.pick,
+      onResampleModeChanged: chosen.add,
+    );
+    expect(tester.widget<SwitchListTile>(switchKey).value, isTrue);
+    await tester.tap(switchKey);
+    await tester.pump();
+    expect(chosen.last, ResampleMode.blend);
+  });
+
+  testWidgets('a host that does not own the setting shows the switch '
+      'disabled rather than lying about it', (tester) async {
+    final applied = <SelectionTransformValues>[];
+    await pumpMoveSettings(tester, applied: applied);
+    expect(
+      tester
+          .widget<SwitchListTile>(
+            find.byKey(const ValueKey<String>('move-preserve-colours-switch')),
+          )
+          .onChanged,
+      isNull,
+    );
   });
 
   testWidgets('the Mesh Warp entrance stays enabled without a selection '

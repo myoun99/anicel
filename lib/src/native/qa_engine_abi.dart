@@ -59,11 +59,18 @@ import 'dart:io';
 ///   premultiplies a whole frame's overlay tiles in one pooled call. The
 ///   mask field carries the selection, so "draw inside the selection
 ///   only" happens in the kernel instead of a painter clip.
-/// - v25: `qa_resample_rgba` — the shared image resampler. One gather with
-///   a Jacobian-derived footprint, splitting only at the accumulator: a
-///   tent mean, or the coverage argmax that carries source words through
-///   untouched. The transform tool, FX transforms, import fit and screen
-///   minification all resample through it.
+/// - v25: `qa_resample_rgba` — the shared image resampler. One inverse
+///   map, splitting at the accumulator: a tent mean, or the area argmax
+///   that carries source words through untouched. The transform tool
+///   resamples through it; FX transforms, import fit and screen
+///   minification are still to move over.
+///
+///   The argmax has since been rewritten twice inside this version, from
+///   a tent to a coverage box to a supersampled count of where the
+///   subsamples land, and the number did not move: the exported signature
+///   never changed, app builds recompile the C, and a stale standalone
+///   test binary fails the parity suite loudly rather than quietly
+///   resampling differently.
 const int kQaEngineAbiVersion = 25;
 
 /// Test hook: point EVERY engine loader at a locally built binary.

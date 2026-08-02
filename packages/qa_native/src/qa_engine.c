@@ -3864,30 +3864,40 @@ QA_EXPORT int64_t qa_audio_resample_frames(int64_t input_frames,
 #define QA_RESAMPLE_MODE_PICK 1
 #define QA_RESAMPLE_VOTE_SLOTS 16
 // Mirrors kResampleRadiusCeiling in resample_kernel.dart - see there for
-// why. Must change in both files or the parity suite fails.
+// why. Blend's, now that Pick has no radius. Must change in both files or
+// the parity suite fails.
 #define QA_RESAMPLE_RADIUS_CEILING 16.0
+// Mirrors kResampleRefineLimit - how far a TIED Pick vote may refine, per
+// axis, and the stride of the subsample offset table below. See the Dart
+// for why one doubling and not two: the second changes no pixel and costs
+// two and a half times as much at a half-size reduction, where a 1px line
+// covers exactly half its preimage and ties on every edge.
+#define QA_RESAMPLE_REFINE_LIMIT 16
+// Mirrors kResampleIndexLimit: past 2^53 a double cannot name consecutive
+// integers, llround() is undefined and Dart's round() saturates, so both
+// kernels answer "outside" before rounding rather than after.
+#define QA_RESAMPLE_INDEX_LIMIT 9007199254740992.0
 // Rows per pooled item. Bands are independent by construction (each writes
 // only its own destination rows and reads only the source), so the split
 // cannot change a byte - the Dart suite pins that with a banded run.
 #define QA_RESAMPLE_BAND_ROWS 16
 
-// How much of the destination pixel's preimage a source pixel covers along
-// one axis: the preimage spans centre +/- half, a source pixel spans
-// source +/- 0.5, and the weight is the length they share. Mirrors
-// `_coverage` in resample_kernel.dart - see there for why Pick weighs
-// coverage and Blend weighs a tent. The operand ORDER matters for parity:
-// Dart evaluates max(source - 0.5, centre - half) and this must subtract
-// the same two products in the same order, or a rounding difference walks
-// straight into a vote.
-static double qa_resample_coverage(int64_t source, double centre,
-                                   double half) {
-  const double source_low = (double)source - 0.5;
-  const double source_high = (double)source + 0.5;
-  const double pre_low = centre - half;
-  const double pre_high = centre + half;
-  const double low = source_low > pre_low ? source_low : pre_low;
-  const double high = source_high < pre_high ? source_high : pre_high;
-  return high - low;
+// Mirrors resampleSamplesPerAxis: how many subsamples one destination axis
+// is cut into, from the SQUARED source-space length of that axis's step.
+// The rule is ceil(2*sqrt(squared_step)) clamped to 8..16, written as a
+// comparison chain against the squared thresholds so that no sqrt and no
+// cast to an integer appear - see the Dart for why that matters. NaN fails
+// every `<=` here exactly as it does in Dart, and lands on the ceiling.
+static int32_t qa_resample_samples_per_axis(double squared_step) {
+  if (squared_step <= 16.0) return 8;
+  if (squared_step <= 20.25) return 9;
+  if (squared_step <= 25.0) return 10;
+  if (squared_step <= 30.25) return 11;
+  if (squared_step <= 36.0) return 12;
+  if (squared_step <= 42.25) return 13;
+  if (squared_step <= 49.0) return 14;
+  if (squared_step <= 56.25) return 15;
+  return 16;
 }
 
 typedef struct {
@@ -3940,6 +3950,8 @@ static void qa_resample_rows(
     return;
   }
 
+  const int is_pick = ctx->mode == QA_RESAMPLE_MODE_PICK;
+
   const double floor_radius = ctx->radius_floor;
   double extent_x = fabs(ctx->a) + fabs(ctx->b);
   double extent_y = fabs(ctx->d) + fabs(ctx->e);
@@ -3952,8 +3964,30 @@ static void qa_resample_rows(
   if (radius_y > QA_RESAMPLE_RADIUS_CEILING)
     radius_y = QA_RESAMPLE_RADIUS_CEILING;
 
+  // The squared source-space length of one destination step along each
+  // axis - the columns of the same Jacobian, and the only thing that sets
+  // Pick's sample rate.
+  double step_x_squared = ctx->a * ctx->a + ctx->d * ctx->d;
+  double step_y_squared = ctx->b * ctx->b + ctx->e * ctx->e;
+
   uint32_t keys[QA_RESAMPLE_VOTE_SLOTS];
-  double weights[QA_RESAMPLE_VOTE_SLOTS];
+  int32_t counts[QA_RESAMPLE_VOTE_SLOTS];
+  // Where the subsamples land, so an eviction recount re-reads a scratch
+  // array instead of re-running the inverse map.
+  uint32_t landings[QA_RESAMPLE_REFINE_LIMIT * QA_RESAMPLE_REFINE_LIMIT];
+  // Subsample centres for every count either axis can take. Built once per
+  // band rather than per pixel, and by the SAME expression as the Dart -
+  // `(s + 0.5) / n`, not a multiply by a reciprocal, because those two do
+  // not round alike.
+  static const int32_t offset_stride = QA_RESAMPLE_REFINE_LIMIT;
+  double offsets[(QA_RESAMPLE_REFINE_LIMIT + 1) * QA_RESAMPLE_REFINE_LIMIT];
+  if (is_pick) {
+    for (int32_t n = 1; n <= QA_RESAMPLE_REFINE_LIMIT; n += 1) {
+      for (int32_t s = 0; s < n; s += 1) {
+        offsets[n * offset_stride + s] = ((double)s + 0.5) / (double)n;
+      }
+    }
+  }
 
   for (int32_t y = row_start; y < row_end; y += 1) {
     const double centre_of_y = (double)y + 0.5;
@@ -3985,6 +4019,10 @@ static void qa_resample_rows(
         const double dvdy = (ctx->e - projected_v * ctx->h) * inverse_w;
         extent_x = fabs(dudx) + fabs(dudy);
         extent_y = fabs(dvdx) + fabs(dvdy);
+        // Per-pixel, from the per-pixel Jacobian - taking these from the
+        // matrix entries would describe a pixel somewhere else entirely.
+        step_x_squared = dudx * dudx + dvdx * dvdx;
+        step_y_squared = dudy * dudy + dvdy * dvdy;
         radius_x = extent_x;
         radius_y = extent_y;
         if (radius_x < floor_radius) radius_x = floor_radius;
@@ -4008,159 +4046,203 @@ static void qa_resample_rows(
       const int64_t centre_x = llround(u);
       const int64_t centre_y = llround(v);
 
-      // Magnifying on BOTH axes: the preimage is narrower than one source
-      // pixel, so point sampling IS the area argmax and integer
-      // magnification is exact block replication. Applying the floor here
-      // instead would let pixels the preimage never reached outvote the
-      // one it did. See the Dart reference for the full reasoning.
-      if (ctx->mode == QA_RESAMPLE_MODE_PICK && extent_x < 1.0 &&
-          extent_y < 1.0) {
-        row[x] = (centre_x < 0 || centre_x >= src_width || centre_y < 0 ||
-                  centre_y >= src_height)
-                     ? 0u
-                     : src[(ptrdiff_t)centre_y * src_width + centre_x];
-        continue;
-      }
+      const int32_t samples_x =
+          is_pick ? qa_resample_samples_per_axis(step_x_squared) : 0;
+      const int32_t samples_y =
+          is_pick ? qa_resample_samples_per_axis(step_y_squared) : 0;
 
-      // Pick's footprint is the preimage itself — a box of half-width
-      // radius/2 — because its weight is how much AREA a source pixel
-      // covers, and a source pixel is one unit wide. Blend's is the tent's
-      // own support, which reaches a full radius. See the Dart reference's
-      // `_coverage` for why the two differ.
-      const int is_pick = ctx->mode == QA_RESAMPLE_MODE_PICK;
-      const double half_x = radius_x * 0.5;
-      const double half_y = radius_y * 0.5;
-      const int32_t rad_x =
-          (int32_t)ceil(is_pick ? half_x + 0.5 : radius_x);
-      const int32_t rad_y =
-          (int32_t)ceil(is_pick ? half_y + 0.5 : radius_y);
-
-      // Flat support: when every tap reads the same word both modes must
-      // return that word. Cheap on line art, where most of a frame is one
-      // colour.
-      uint32_t flat_token = 0u;
-      int flat = 1;
-      int seen_any = 0;
-      for (int32_t dy = -rad_y; dy <= rad_y && flat; dy += 1) {
-        const int64_t source_y = centre_y + dy;
-        const int row_inside = source_y >= 0 && source_y < src_height;
-        const uint32_t* source_row =
-            row_inside ? src + (ptrdiff_t)source_y * src_width : NULL;
-        for (int32_t dx = -rad_x; dx <= rad_x; dx += 1) {
-          const int64_t source_x = centre_x + dx;
-          const uint32_t token =
-              (!row_inside || source_x < 0 || source_x >= src_width)
-                  ? 0u
-                  : source_row[source_x];
-          if (!seen_any) {
-            flat_token = token;
-            seen_any = 1;
-          } else if (token != flat_token) {
-            flat = 0;
-            break;
-          }
-        }
-      }
-      if (flat) {
-        row[x] = flat_token;
-        continue;
-      }
-
+      // The window for the flat-support probe, which is NOT a window
+      // anything is gathered from: Blend gathers from the tent's support
+      // and Pick gathers from nowhere at all. Pick's bound is derived - see
+      // the Dart reference - and holds only while the preimage really is
+      // the parallelogram the extents describe, so Pick does not probe a
+      // homography at all. The cell count is compared as a double because
+      // a large reduction overflows an int32 on the way to the comparison.
+      int run_flat = 1;
+      int32_t flat_rad_x;
+      int32_t flat_rad_y;
       if (is_pick) {
-        int32_t slots = 0;
-        int evicted = 0;
-        for (int32_t dy = -rad_y; dy <= rad_y; dy += 1) {
+        const double span_x = floor(extent_x * 0.5 + 1.0);
+        const double span_y = floor(extent_y * 0.5 + 1.0);
+        run_flat = ctx->is_affine &&
+                   (2.0 * span_x + 1.0) * (2.0 * span_y + 1.0) <=
+                       (double)samples_x * (double)samples_y;
+        flat_rad_x = run_flat ? (int32_t)span_x : 0;
+        flat_rad_y = run_flat ? (int32_t)span_y : 0;
+      } else {
+        flat_rad_x = (int32_t)ceil(radius_x);
+        flat_rad_y = (int32_t)ceil(radius_y);
+      }
+
+      // Flat support: when every source pixel in reach holds the same word
+      // both modes must return that word. Cheap on line art, where most of
+      // a frame is one colour.
+      if (run_flat) {
+        uint32_t flat_token = 0u;
+        int flat = 1;
+        int seen_any = 0;
+        for (int32_t dy = -flat_rad_y; dy <= flat_rad_y && flat; dy += 1) {
           const int64_t source_y = centre_y + dy;
-          const double weight_y =
-              qa_resample_coverage(source_y, v, half_y);
-          if (weight_y <= 0.0) continue;
           const int row_inside = source_y >= 0 && source_y < src_height;
           const uint32_t* source_row =
               row_inside ? src + (ptrdiff_t)source_y * src_width : NULL;
-          for (int32_t dx = -rad_x; dx <= rad_x; dx += 1) {
+          for (int32_t dx = -flat_rad_x; dx <= flat_rad_x; dx += 1) {
             const int64_t source_x = centre_x + dx;
-            const double weight_x =
-                qa_resample_coverage(source_x, u, half_x);
-            if (weight_x <= 0.0) continue;
             const uint32_t token =
                 (!row_inside || source_x < 0 || source_x >= src_width)
                     ? 0u
                     : source_row[source_x];
-            const double weight = weight_x * weight_y;
+            if (!seen_any) {
+              flat_token = token;
+              seen_any = 1;
+            } else if (token != flat_token) {
+              flat = 0;
+              break;
+            }
+          }
+        }
+        if (flat) {
+          row[x] = flat_token;
+          continue;
+        }
+      }
+
+      if (is_pick) {
+        // Sample, count, and if the count came back TIED, sample again at
+        // twice the rate. A tie is nearly always the grid's fault rather
+        // than the geometry's; only tied pixels pay for the refinement,
+        // and a tie that survives the cap is a real one and falls through
+        // to the token met first. See the Dart reference.
+        int32_t nx = samples_x;
+        int32_t ny = samples_y;
+        int32_t slots = 0;
+        int32_t best = 0;
+        for (;;) {
+          const int32_t base_x = nx * offset_stride;
+          const int32_t base_y = ny * offset_stride;
+          int32_t votes = 0;
+          for (int32_t sy = 0; sy < ny; sy += 1) {
+            const double sample_y = (double)y + offsets[base_y + sy];
+            for (int32_t sx = 0; sx < nx; sx += 1) {
+              const double sample_x = (double)x + offsets[base_x + sx];
+              double sample_u;
+              double sample_v;
+              if (ctx->is_affine) {
+                sample_u =
+                    ctx->a * sample_x + ctx->b * sample_y + ctx->c - 0.5;
+                sample_v =
+                    ctx->d * sample_x + ctx->e * sample_y + ctx->f - 0.5;
+              } else {
+                const double sample_w =
+                    ctx->g * sample_x + ctx->h * sample_y + ctx->i;
+                if (sample_w == 0.0) continue;
+                sample_u =
+                    (ctx->a * sample_x + ctx->b * sample_y + ctx->c) / sample_w -
+                    0.5;
+                sample_v =
+                    (ctx->d * sample_x + ctx->e * sample_y + ctx->f) / sample_w -
+                    0.5;
+              }
+              if (!isfinite(sample_u) || !isfinite(sample_v)) continue;
+              if (fabs(sample_u) >= QA_RESAMPLE_INDEX_LIMIT ||
+                  fabs(sample_v) >= QA_RESAMPLE_INDEX_LIMIT) {
+                landings[votes] = 0u;
+                votes += 1;
+                continue;
+              }
+              const int64_t source_x = llround(sample_u);
+              const int64_t source_y = llround(sample_v);
+              landings[votes] =
+                  (source_x < 0 || source_x >= src_width || source_y < 0 ||
+                   source_y >= src_height)
+                      ? 0u
+                      : src[(ptrdiff_t)source_y * src_width + source_x];
+              votes += 1;
+            }
+          }
+
+          slots = 0;
+          int evicted = 0;
+          for (int32_t s = 0; s < votes; s += 1) {
+            const uint32_t token = landings[s];
             int32_t slot = -1;
-            for (int32_t s = 0; s < slots; s += 1) {
-              if (keys[s] == token) {
-                slot = s;
+            for (int32_t k = 0; k < slots; k += 1) {
+              if (keys[k] == token) {
+                slot = k;
                 break;
               }
             }
             if (slot >= 0) {
-              weights[slot] += weight;
+              counts[slot] += 1;
             } else if (slots < QA_RESAMPLE_VOTE_SLOTS) {
               keys[slots] = token;
-              weights[slots] = weight;
+              counts[slots] = 1;
               slots += 1;
             } else {
-              // The weakest slot yields its key and keeps its weight, so a
+              // The weakest slot yields its key and keeps its count, so a
               // token can only be evicted while it holds less than a
-              // sixteenth of the footprint. Lowest index on a tie.
+              // sixteenth of the samples. Lowest index on a tie.
               int32_t lightest = 0;
-              for (int32_t s = 1; s < QA_RESAMPLE_VOTE_SLOTS; s += 1) {
-                if (weights[s] < weights[lightest]) lightest = s;
+              for (int32_t k = 1; k < QA_RESAMPLE_VOTE_SLOTS; k += 1) {
+                if (counts[k] < counts[lightest]) lightest = k;
               }
               keys[lightest] = token;
-              weights[lightest] += weight;
+              counts[lightest] += 1;
               evicted = 1;
             }
           }
-        }
-        if (slots == 0) {
-          row[x] = 0u;
-          continue;
-        }
-        if (evicted) {
-          // An inherited weight over-estimates its new owner; re-weigh the
-          // survivors exactly. Gated on the eviction, so an ordinary
-          // footprint never pays for it.
-          for (int32_t s = 0; s < slots; s += 1) {
-            weights[s] = 0.0;
+          if (slots == 0) {
+            break;
           }
-          for (int32_t dy = -rad_y; dy <= rad_y; dy += 1) {
-            const int64_t source_y = centre_y + dy;
-            const double weight_y =
-                qa_resample_coverage(source_y, v, half_y);
-            if (weight_y <= 0.0) continue;
-            const int row_inside = source_y >= 0 && source_y < src_height;
-            const uint32_t* source_row =
-                row_inside ? src + (ptrdiff_t)source_y * src_width : NULL;
-            for (int32_t dx = -rad_x; dx <= rad_x; dx += 1) {
-              const int64_t source_x = centre_x + dx;
-              const double weight_x =
-                  qa_resample_coverage(source_x, u, half_x);
-              if (weight_x <= 0.0) continue;
-              const uint32_t token =
-                  (!row_inside || source_x < 0 || source_x >= src_width)
-                      ? 0u
-                      : source_row[source_x];
-              for (int32_t s = 0; s < slots; s += 1) {
-                if (keys[s] == token) {
-                  weights[s] += weight_x * weight_y;
+          if (evicted) {
+            // An inherited count over-estimates its new owner; recount the
+            // survivors exactly. Gated on the eviction, so an ordinary
+            // preimage never pays for it.
+            for (int32_t s = 0; s < slots; s += 1) {
+              counts[s] = 0;
+            }
+            for (int32_t s = 0; s < votes; s += 1) {
+              const uint32_t token = landings[s];
+              for (int32_t k = 0; k < slots; k += 1) {
+                if (keys[k] == token) {
+                  counts[k] += 1;
                   break;
                 }
               }
             }
           }
+          best = 0;
+          for (int32_t s = 1; s < slots; s += 1) {
+            if (counts[s] > counts[best]) best = s;
+          }
+          int tied = 0;
+          for (int32_t s = 0; s < slots; s += 1) {
+            if (s != best && counts[s] == counts[best]) {
+              tied = 1;
+              break;
+            }
+          }
+          if (!tied || (nx >= QA_RESAMPLE_REFINE_LIMIT &&
+                        ny >= QA_RESAMPLE_REFINE_LIMIT)) {
+            break;
+          }
+          nx = nx * 2 < QA_RESAMPLE_REFINE_LIMIT ? nx * 2
+                                                 : QA_RESAMPLE_REFINE_LIMIT;
+          ny = ny * 2 < QA_RESAMPLE_REFINE_LIMIT ? ny * 2
+                                                 : QA_RESAMPLE_REFINE_LIMIT;
         }
-        int32_t best = 0;
-        for (int32_t s = 1; s < slots; s += 1) {
-          // Strictly greater: a tie goes to whichever token was met first,
-          // and taps are visited in a fixed order - that is what makes the
-          // tie deterministic across platforms and worker counts.
-          if (weights[s] > weights[best]) best = s;
+        if (slots == 0) {
+          // Every subsample was degenerate - a homography pole through this
+          // pixel, or a matrix that maps it nowhere finite.
+          row[x] = 0u;
+          continue;
         }
         row[x] = keys[best];
         continue;
       }
+
+      const int32_t rad_x = flat_rad_x;
+      const int32_t rad_y = flat_rad_y;
 
       double acc_red = 0.0;
       double acc_green = 0.0;
@@ -4230,7 +4312,8 @@ static void qa_resample_item(int32_t item_index, void* context) {
 
 // Resamples src into dst through the destination-to-source map `inverse`
 // (9 doubles, row-major, homogeneous row last). mode 0 = tent mean,
-// 1 = coverage argmax. Returns 0 ok, negative on bad arguments.
+// 1 = supersampled area argmax. `radius_floor` is Blend's; Pick has no
+// radius and ignores it. Returns 0 ok, negative on bad arguments.
 QA_EXPORT int32_t qa_resample_rgba(
     const uint8_t* src,
     int32_t src_width,

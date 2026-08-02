@@ -242,6 +242,27 @@ void main() {
       h: -0.94 / 61,
       i: 1,
     ),
+    // P3e. Pick refines a TIED vote by re-sampling at twice the rate, up
+    // to three rounds — a whole loop the cases above can step through
+    // without ever entering, because none of them lands a colour on
+    // exactly half a destination pixel. These do. An axis-aligned 0.7×
+    // splits a one-pixel line 0.5/0.2 across two destination rows, so the
+    // row holding 0.5 ties at every rate and runs the refinement to its
+    // cap; 0.55× ties at the first rate and is decided by the second.
+    'tie: axis-aligned 0.7': ResampleTransform.scaleTranslate(scale: 1 / 0.7),
+    'tie: axis-aligned 0.55': ResampleTransform.scaleTranslate(scale: 1 / 0.55),
+    // Strong anisotropy WITH rotation: 5:1 across against 2× down. The
+    // rate is per axis for exactly this shape — read from the area the two
+    // multiply to, it comes out at 2.5 and undersamples the long axis by a
+    // factor of three.
+    'anisotropic 5:1 rotated 23': ResampleTransform(
+      a: 5 * math.cos(23 * math.pi / 180),
+      b: 5 * math.sin(23 * math.pi / 180),
+      c: -11,
+      d: -0.5 * math.sin(23 * math.pi / 180),
+      e: 0.5 * math.cos(23 * math.pi / 180),
+      f: 6,
+    ),
     // Past int32. A C kernel that narrowed the offset would wrap this into
     // a small shift and copy real pixels where the reference copies none.
     'huge translation': ResampleTransform(
