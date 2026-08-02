@@ -180,11 +180,9 @@ class SelectionAffine {
 /// The integer canvas rect a warp lands in: the bounding box of [points],
 /// snapped outward.
 ///
-/// Shared by all three warps so their geometry cannot drift apart, and
-/// exported so the PREVIEW can ask how big a resample would be before
-/// paying for it. That question is the whole of the visible-rect
-/// optimisation: a whole-picture transform scaled 3× produces a 165 MB
-/// output of which the user can see one screenful.
+/// Shared by all three warps so their geometry cannot drift apart — they
+/// each had their own copy of this loop, and three copies of a bounding
+/// box is three chances for one of them to snap the wrong way.
 ({int left, int top, int width, int height}) selectionWarpOutputRect(
   List<CanvasPoint> points,
 ) {
