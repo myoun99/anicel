@@ -42,6 +42,7 @@ class QaNativeEngine {
     this._floodFillWave,
     this._fillComposeBatch,
     this._gridRasterTile,
+    this._resampleRgba,
   ) : _spec = calloc<QaDabSpecStruct>();
 
   /// R25-③ batched fill compose: packs compose-tile items + their
@@ -462,6 +463,102 @@ class QaNativeEngine {
       atlasWidth,
       atlasHeight,
     );
+  }
+
+  final int Function(
+    Pointer<Uint8> src,
+    int srcWidth,
+    int srcHeight,
+    Pointer<Uint8> dst,
+    int dstWidth,
+    int dstHeight,
+    Pointer<Double> inverse,
+    double radiusFloor,
+    int mode,
+  )
+  _resampleRgba;
+
+  /// The shared image resampler (ABI 25). Semantics =
+  /// `resampleRgbaReference` in
+  /// `lib/src/services/resample/resample_kernel.dart`, byte parity pinned
+  /// by `resample_parity_test.dart`.
+  ///
+  /// [inverse] is nine doubles, row-major, destination-to-source, with the
+  /// homogeneous row last. [mode] is 0 for the tent mean and 1 for the
+  /// coverage argmax. Returns 0, or negative on bad arguments.
+  int resampleRgba({
+    required Pointer<Uint8> src,
+    required int srcWidth,
+    required int srcHeight,
+    required Pointer<Uint8> dst,
+    required int dstWidth,
+    required int dstHeight,
+    required Pointer<Double> inverse,
+    required double radiusFloor,
+    required int mode,
+  }) {
+    return _resampleRgba(
+      src,
+      srcWidth,
+      srcHeight,
+      dst,
+      dstWidth,
+      dstHeight,
+      inverse,
+      radiusFloor,
+      mode,
+    );
+  }
+
+  /// Copy-in/copy-out convenience over [resampleRgba] for callers (and the
+  /// parity suite) holding Dart lists.
+  ///
+  /// The staging copies are the price of crossing the boundary with a
+  /// typed list; callers on the hot path hand in native pointers instead.
+  Uint8List? resampleRgbaBytes({
+    required Uint8List src,
+    required int srcWidth,
+    required int srcHeight,
+    required int dstWidth,
+    required int dstHeight,
+    required Float64List inverse,
+    required double radiusFloor,
+    required int mode,
+  }) {
+    // Nine doubles or nothing. `setAll` under-fills in silence — it only
+    // throws when the source is LONGER — so a short list would hand the
+    // kernel whatever malloc last held as the homogeneous row.
+    if (inverse.length != 9) {
+      return null;
+    }
+    final srcNative = malloc<Uint8>(src.length);
+    final dstNative = malloc<Uint8>(dstWidth * dstHeight * 4);
+    final inverseNative = malloc<Double>(9);
+    try {
+      srcNative.asTypedList(src.length).setAll(0, src);
+      inverseNative.asTypedList(9).setAll(0, inverse);
+      final result = resampleRgba(
+        src: srcNative,
+        srcWidth: srcWidth,
+        srcHeight: srcHeight,
+        dst: dstNative,
+        dstWidth: dstWidth,
+        dstHeight: dstHeight,
+        inverse: inverseNative,
+        radiusFloor: radiusFloor,
+        mode: mode,
+      );
+      if (result != 0) {
+        return null;
+      }
+      return Uint8List.fromList(
+        dstNative.asTypedList(dstWidth * dstHeight * 4),
+      );
+    } finally {
+      malloc.free(srcNative);
+      malloc.free(dstNative);
+      malloc.free(inverseNative);
+    }
   }
 
   /// Copy-in/copy-out convenience over [gridRasterTile] for callers (and
@@ -918,6 +1015,31 @@ class QaNativeEngine {
               int,
             )
           >('qa_grid_raster_tile');
+      final resampleRgba = library
+          .lookupFunction<
+            Int32 Function(
+              Pointer<Uint8>,
+              Int32,
+              Int32,
+              Pointer<Uint8>,
+              Int32,
+              Int32,
+              Pointer<Double>,
+              Double,
+              Int32,
+            ),
+            int Function(
+              Pointer<Uint8>,
+              int,
+              int,
+              Pointer<Uint8>,
+              int,
+              int,
+              Pointer<Double>,
+              double,
+              int,
+            )
+          >('qa_resample_rgba');
       return QaNativeEngine._(
         premultiplyRgba,
         fillPaperRect,
@@ -938,6 +1060,7 @@ class QaNativeEngine {
         floodFillWave,
         fillComposeBatch,
         gridRasterTile,
+        resampleRgba,
       );
     } on Object {
       return null;
