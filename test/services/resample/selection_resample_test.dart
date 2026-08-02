@@ -304,6 +304,75 @@ void main() {
     });
   });
 
+  group('the output rect and its clip', () {
+    test('the rect snaps outward, so no covered pixel is dropped', () {
+      final rect = selectionWarpOutputRect(<CanvasPoint>[
+        CanvasPoint(x: 3.2, y: -4.9),
+        CanvasPoint(x: 17.8, y: -4.9),
+        CanvasPoint(x: 17.8, y: 6.1),
+        CanvasPoint(x: 3.2, y: 6.1),
+      ]);
+      expect(rect.left, 3);
+      expect(rect.top, -5);
+      expect(rect.width, 18 - 3);
+      expect(rect.height, 7 - -5);
+    });
+
+    test('a degenerate point set still gets at least one pixel', () {
+      final rect = selectionWarpOutputRect(<CanvasPoint>[
+        CanvasPoint(x: 5, y: 5),
+        CanvasPoint(x: 5, y: 5),
+      ]);
+      expect(rect.width, 1);
+      expect(rect.height, 1);
+    });
+
+    test('an empty intersection returns NULL rather than an empty rect', () {
+      // The caller has to be able to tell "the warp is entirely off
+      // screen" apart from "here is a small rect". Returning the
+      // unclipped rect, or a zero-size one, both end with the preview
+      // drawing something that is not what the transform does.
+      final full = (left: 0, top: 0, width: 20, height: 20);
+      expect(
+        clipWarpOutputRect(full, const Rect.fromLTRB(100, 100, 140, 140)),
+        isNull,
+      );
+      expect(
+        clipWarpOutputRect(full, const Rect.fromLTRB(-60, 0, -1, 20)),
+        isNull,
+      );
+      // Touching edge-on is still empty: the right edge is exclusive.
+      expect(
+        clipWarpOutputRect(full, const Rect.fromLTRB(20, 0, 40, 20)),
+        isNull,
+      );
+    });
+
+    test('a null clip is the identity, and a containing clip changes '
+        'nothing', () {
+      final full = (left: -3, top: 7, width: 20, height: 12);
+      expect(clipWarpOutputRect(full, null), full);
+      expect(
+        clipWarpOutputRect(full, const Rect.fromLTRB(-100, -100, 100, 100)),
+        full,
+      );
+    });
+
+    test('a partial clip narrows to the intersection', () {
+      final full = (left: 0, top: 0, width: 100, height: 100);
+      final clipped = clipWarpOutputRect(
+        full,
+        const Rect.fromLTRB(30.2, 12.7, 61.4, 44.1),
+      )!;
+      // Outward on both sides: a preview must not be narrower than the
+      // region it claims to cover.
+      expect(clipped.left, 30);
+      expect(clipped.top, 12);
+      expect(clipped.left + clipped.width, 62);
+      expect(clipped.top + clipped.height, 45);
+    });
+  });
+
   group('the crop invariant', () {
     test('resampling a sub-rect gives exactly the bytes cropping the whole '
         'result would', () {
