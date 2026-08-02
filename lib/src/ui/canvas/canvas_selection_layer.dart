@@ -154,6 +154,18 @@ enum CanvasSelectionTool { rect, lasso, move }
 
 enum _DragMode { none, marquee, move, transform }
 
+/// Below this many destination pixels the preview resamples the whole
+/// output rather than the visible part.
+///
+/// Two million is where a full resample stops fitting a frame: the native
+/// kernel does 3.3 Mpx in about 12 ms and the budget is 16.6. Under it the
+/// preview stays whole and the commit reuses its exact buffer, so the
+/// byte-identity between what was shown and what lands is structural. Over
+/// it that guarantee is traded for a drag that keeps up, and identity
+/// falls back to the crop invariant — which the resample suite pins
+/// directly rather than leaving to argument.
+const int _kFullPreviewPixelBudget = 2000000;
+
 /// The float the transform preview last resampled.
 ///
 /// A test hook. It exists because the contract P3a is built around — "what
@@ -920,7 +932,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   /// The float through whatever warp is open — the ONE place the three
   /// warp functions are called from during a session.
-  BrushDab? _resampleOpenTransform() {
+  ///
+  /// [clip] narrows the result to a canvas-space rect. The PREVIEW passes
+  /// the visible region; commits pass nothing, ever.
+  BrushDab? _resampleOpenTransform({Rect? clip}) {
     final pending = _pendingLiftStamp;
     if (pending == null) {
       return null;
@@ -933,17 +948,75 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         rows: _meshRows,
         points: mesh,
         mode: widget.resampleMode,
+        clip: clip,
       );
     }
     final quad = _warpCorners;
     if (quad != null) {
-      return transformStampDabQuad(pending, quad, mode: widget.resampleMode);
+      return transformStampDabQuad(
+        pending,
+        quad,
+        mode: widget.resampleMode,
+        clip: clip,
+      );
     }
     final affine = _transform;
     if (affine != null && !affine.isIdentity) {
-      return transformStampDab(pending, affine, mode: widget.resampleMode);
+      return transformStampDab(
+        pending,
+        affine,
+        mode: widget.resampleMode,
+        clip: clip,
+      );
     }
     return null;
+  }
+
+  /// The canvas-space rect the user can actually see.
+  ///
+  /// Null when the layer has not been laid out yet, which the caller reads
+  /// as "do not clip" — a preview that resampled nothing would be worse
+  /// than one that resampled too much.
+  Rect? _visibleCanvasRect() {
+    final size = context.size;
+    if (size == null || size.isEmpty) {
+      return null;
+    }
+    return MatrixUtils.transformRect(
+      viewportInverseTransformMatrix(widget.viewport),
+      Offset.zero & size,
+    );
+  }
+
+  /// The destination rect a full resample of the open warp would produce,
+  /// so the preview can decide whether clipping is worth the loss of the
+  /// commit's ability to reuse its buffer.
+  ({int left, int top, int width, int height})? _openTransformOutputRect() {
+    final stamp = _pendingLiftStamp?.stamp;
+    final pending = _pendingLiftStamp;
+    if (stamp == null || pending == null) {
+      return null;
+    }
+    final mesh = _meshPoints;
+    if (mesh != null) {
+      return selectionWarpOutputRect(mesh);
+    }
+    final quad = _warpCorners;
+    if (quad != null) {
+      return selectionWarpOutputRect(quad);
+    }
+    final affine = _transform;
+    if (affine == null || affine.isIdentity) {
+      return null;
+    }
+    final left = pending.center.x - stamp.width / 2;
+    final top = pending.center.y - stamp.height / 2;
+    return selectionWarpOutputRect(<CanvasPoint>[
+      affine.apply(CanvasPoint(x: left, y: top)),
+      affine.apply(CanvasPoint(x: left + stamp.width, y: top)),
+      affine.apply(CanvasPoint(x: left + stamp.width, y: top + stamp.height)),
+      affine.apply(CanvasPoint(x: left, y: top + stamp.height)),
+    ]);
   }
 
   /// The cached resample, or a fresh one — what every commit path calls
@@ -954,13 +1027,16 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return null;
     }
     final cached = _resampledFloat;
-    if (cached != null && cached.key == key) {
+    // `complete` is the whole reason this flag exists. A clipped preview
+    // is a crop, and landing a crop would delete everything that was off
+    // screen when the user pressed Enter.
+    if (cached != null && cached.key == key && cached.complete) {
       return cached.dab;
     }
     return _resampleOpenTransform();
   }
 
-  ({_ResampleKey key, BrushDab dab})? _resampledFloat;
+  ({_ResampleKey key, BrushDab dab, bool complete})? _resampledFloat;
 
   /// The premultiplied copy for display, and the dab it was decoded FROM.
   ///
@@ -1018,12 +1094,46 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return;
     }
     _resampleDirty = false;
-    final dab = _resampleOpenTransform();
+
+    // Resample only what is on screen when the whole thing would be much
+    // bigger. A whole-picture transform scaled 3× lands a 7398×5569
+    // output — 165 MB, of which the user can see one screenful — and
+    // paying for all of it inside a pointer handler is what made the drag
+    // stall. Clipping is free of consequence for correctness because the
+    // fold takes the output origin: a clipped resample is a byte-exact
+    // CROP of the unclipped one, not an approximation of it.
+    //
+    // The threshold keeps the common case on the structural guarantee.
+    // Below it the preview resamples the whole output, the commit reuses
+    // that exact buffer, and preview and commit are the same object
+    // rather than two computations that agree. Above it the commit pays
+    // for one full resample at Enter, which is a deliberate action the
+    // user is waiting on anyway, instead of once per pointer move.
+    final full = _openTransformOutputRect();
+    var clip = _visibleCanvasRect();
+    if (clip != null && full != null) {
+      final visible =
+          math.max(
+            0,
+            math.min(full.left + full.width, clip.right.ceil()) -
+                math.max(full.left, clip.left.floor()),
+          ) *
+          math.max(
+            0,
+            math.min(full.top + full.height, clip.bottom.ceil()) -
+                math.max(full.top, clip.top.floor()),
+          );
+      final whole = full.width * full.height;
+      if (whole <= _kFullPreviewPixelBudget || visible * 2 >= whole) {
+        clip = null;
+      }
+    }
+    final dab = _resampleOpenTransform(clip: clip);
     final stamp = dab?.stamp;
     if (dab == null || stamp == null) {
       return;
     }
-    _resampledFloat = (key: key, dab: dab);
+    _resampledFloat = (key: key, dab: dab, complete: clip == null);
     assert(_recordResampledFloat(dab));
 
     // decodeImageFromPixels wants premultiplied bytes; the resampler
@@ -1031,11 +1141,21 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // must stay that way — premultiplying the RESULT would round the very
     // colours Pick exists to carry through untouched. So the copy is for
     // display only and the dab keeps its own bytes.
-    final premultiplied = Uint8List.fromList(stamp.rgba);
+    //
+    // The copy and the multiply are ONE native pass into native memory,
+    // the same fused kernel the fill overlay uses. Doing it as a Dart
+    // `Uint8List.fromList` plus a per-pixel loop cost a second full-size
+    // allocation and a second full traversal on every frame of a drag,
+    // which on a whole-picture transform is tens of megabytes per pointer
+    // move. The scratch is freed in the decode callback, on every path.
     final native = QaNativeEngine.instance;
+    final Uint8List premultiplied;
+    QaStampScratch? scratch;
     if (native != null) {
-      native.premultiplyRgba(premultiplied);
+      scratch = native.premultipliedStampCopy(stamp.rgba);
+      premultiplied = scratch.view;
     } else {
+      premultiplied = Uint8List.fromList(stamp.rgba);
       for (var i = 0; i < premultiplied.length; i += 4) {
         final alpha = premultiplied[i + 3];
         if (alpha == 255) {
@@ -1054,6 +1174,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       stamp.height,
       ui.PixelFormat.rgba8888,
       (image) {
+        scratch?.free();
         _resampleInFlight = false;
         if (!mounted || request != _resampleImageRequest) {
           image.dispose();
