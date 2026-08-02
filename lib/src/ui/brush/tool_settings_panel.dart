@@ -276,9 +276,14 @@ class _MoveSettings extends StatefulWidget {
 
   final CanvasSelectionCommands? selectionCommands;
 
-  /// P3a: which resampler a transform commit runs through. A null handler
-  /// shows the switch disabled — the same convention the eyedropper's
-  /// source picker uses for hosts that do not own the setting.
+  /// P3a: which resampler a transform commit runs through.
+  ///
+  /// Deliberately UNREAD for now — see the note where the switch belongs,
+  /// in [build]. The value already reaches the resampler through the
+  /// selection layer; what is missing is only the control, and it is
+  /// missing because the kernel's coverage argmax erases the artwork the
+  /// mode exists for. Wiring stays so that round is a UI change and not
+  /// another pass down five widget layers.
   final ResampleMode resampleMode;
   final ValueChanged<ResampleMode>? onResampleModeChanged;
 
