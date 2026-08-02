@@ -463,41 +463,42 @@ class _MoveSettingsState extends State<_MoveSettings> {
             _apply();
           },
         ),
-        const SizedBox(height: 8),
-        // Which resampler the transform runs through. Deliberately NOT
-        // labelled "anti-alias": two rows away in the Select tool's own
-        // settings there is already an anti-alias switch that softens the
-        // LIFT MASK edge, and the flood fill has a third. Naming this one
-        // after what it PROTECTS keeps them apart, and it is the honest
-        // description — the argmax elects a source colour and copies its
-        // bytes through, so the palette a two-value drawing came in with
-        // is the palette it leaves with.
+        const SizedBox(height: 12),
+        // ⚠️ The "Preserve exact colours" switch belongs here and is STILL
+        // not built. Second round of holding it back, and the reason moved
+        // one level deeper each time.
         //
-        // It was held back for one round. The mode worked, its contracts
-        // were tested, and it still erased line art, because the kernel's
-        // argmax weighed taps with a tent instead of measuring coverage.
-        // Turning the switch on before fixing that would have handed the
-        // user a control that did the opposite of its label on exactly
-        // the artwork it advertises.
-        SwitchListTile(
-          key: const ValueKey<String>('transform-preserve-colors-switch'),
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          title: Text(AppText.strings.brTransformPreserveColors),
-          subtitle: Text(
-            AppText.strings.brTransformPreserveColorsHint,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          value: widget.resampleMode == ResampleMode.pick,
-          onChanged: widget.onResampleModeChanged == null
-              ? null
-              : (value) => widget.onResampleModeChanged!(
-                  value ? ResampleMode.pick : ResampleMode.blend,
-                ),
-        ),
-        const SizedBox(height: 8),
+        // Round one: the argmax weighed taps with a tent, which is a
+        // reconstruction filter and not a measure of area. Fixed — the
+        // weight is the real overlap now, and it took a 50% reduction of
+        // 1px line art from 3 surviving ink pixels to 416.
+        //
+        // Round two, found the same way: the footprint is still the
+        // preimage's axis-aligned BOUNDING BOX rather than the preimage.
+        // `extentX = |a| + |b|` is the width of the box around the
+        // parallelogram, so a rotated footprint votes over an area larger
+        // than it covers by a factor 1 + |sin 2θ| — twice the area at 45°
+        // — and every one of those extra corners is pure ground. Rotating
+        // WHILE shrinking, the ordinary Ctrl+T gesture, therefore still
+        // erases 1px line art: measured through the product path, 0.70×
+        // at 0° keeps 47 ink pixels of 67 and 0.70× at 25° keeps 16.
+        //
+        // The closed form says exactly when: a 1px feature survives while
+        // scale > (|cos θ| + |sin θ|) / 2, which is 0.5 axis-aligned but
+        // 0.707 at 45°. Over the TRUE preimage it would be 0.5 at every
+        // angle, and a supersampled parallelogram-area argmax keeps 83–99
+        // of the pixels this kernel drops.
+        //
+        // So the fix is an anisotropic footprint — weigh each tap in the
+        // DESTINATION frame, where the preimage is the unit square, rather
+        // than in source space where it is a rotated parallelogram we are
+        // approximating by its box. That is a third pass over the kernel
+        // and its C mirror with a supersampled ground truth to measure
+        // against, and it is not a rider on this one.
+        //
+        // Everything behind the switch stays wired and tested. Only the
+        // control waits, because a control labelled "preserve exact
+        // colours" that erases the drawing is worse than no control.
         // R20-D3 mesh warp: opens the control grid on the selection —
         // or, with none, on the whole picture (R26 #13). Enter commits
         // the triangulated warp; Esc reverts. Perspective rides the

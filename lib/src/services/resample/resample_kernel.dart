@@ -55,12 +55,23 @@ import 'dart:typed_data';
 /// space, one along y moves `(b, e)` — so the preimage reaches `|a| + |b|`
 /// horizontally and `|d| + |e|` vertically.
 ///
-/// The floor differs by mode and the difference is not cosmetic. Blend at
-/// r=1 is already bilinear and widening it only blurs; Pick at r=1 collapses
-/// into nearest-neighbour, losing the majority vote it exists for. Measured
-/// against a production cel (2150x1518, 16 colours), raising Pick's floor
-/// from 1.0 to 1.5 took the jagged-spur count at a 15 degree rotation from
-/// 90 to 65 while the ink pixel count stayed identical.
+/// The floor is 1.0 for both modes and does almost nothing: it stops a
+/// tent narrower than a pixel. It used to be 1.5 for Pick, on a measured
+/// argument about jagged spurs that only holds while the weight is a tent
+/// — see [resampleRadiusFloor] for why a floor above the true extent is
+/// meaningless once the weight is coverage.
+///
+/// ⚠️ The footprint below is the preimage's axis-aligned BOUNDING BOX, not
+/// the preimage. `|a| + |b|` is the width of the box around the
+/// parallelogram, so a rotated map votes over an area larger than it
+/// covers by `1 + |sin 2θ|` — double at 45° — and the excess is corners
+/// the destination pixel never reached. Blend barely notices (a slightly
+/// wider blur), but Pick elects from it, so rotating while shrinking
+/// erases features one pixel wide: a 1px line survives only while
+/// `scale > (|cos θ| + |sin θ|)/2`, which is 0.5 axis-aligned and 0.707 at
+/// 45°, where the true preimage would give 0.5 at every angle. Fixing it
+/// means weighing taps in the DESTINATION frame, where the preimage is the
+/// unit square. Until then Pick has no user-facing control.
 ///
 /// ## Byte order
 ///

@@ -241,13 +241,18 @@ void main() {
     expect(debugLastResampledFloat!.center.y, before.y);
   });
 
-  testWidgets('AA off: the mode reaches the commit and keeps the palette', (
-    tester,
-  ) async {
-    // The switch itself lives in the tool settings panel, which this
-    // harness does not mount; what matters here is that the value the
-    // panel writes actually changes the pixels the transform lands, and
-    // that it changes them in the promised direction.
+  testWidgets('the DEFAULT mode smooths — the guard that keeps the '
+      'colour-preservation assertions from being vacuous', (tester) async {
+    // Named for what it actually does. It does NOT drive the AA-off
+    // switch: this harness builds BrushCanvasPanel without
+    // transformResampleMode, so the layer reads the blend default and no
+    // test here can change it.
+    //
+    // What it is for: the colour-preservation tests elsewhere assert that
+    // Pick invents no new colours. That assertion is worth nothing unless
+    // the default DOES invent them on the same transform — otherwise a
+    // resampler that had quietly stopped interpolating would satisfy both.
+    // This is the control.
     final env = await pumpSelectionPanel(tester);
     await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
     await env.setTool(CanvasTool.move);

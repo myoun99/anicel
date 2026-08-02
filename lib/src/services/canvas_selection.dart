@@ -1,6 +1,5 @@
 import 'dart:math' as math;
 import 'dart:typed_data';
-import 'dart:ui' show Rect;
 
 import '../core/floor_math.dart';
 import '../models/bitmap_surface.dart';
@@ -207,28 +206,6 @@ class SelectionAffine {
   );
 }
 
-/// [full] narrowed to [clip] (canvas space, snapped outward), or [full]
-/// when there is no clip or it does not bite.
-///
-/// A null result means the clip and the output do not meet at all — the
-/// warp landed entirely off screen, and the honest preview is nothing.
-({int left, int top, int width, int height})? clipWarpOutputRect(
-  ({int left, int top, int width, int height}) full,
-  Rect? clip,
-) {
-  if (clip == null) {
-    return full;
-  }
-  final left = math.max(full.left, clip.left.floor());
-  final top = math.max(full.top, clip.top.floor());
-  final right = math.min(full.left + full.width, clip.right.ceil());
-  final bottom = math.min(full.top + full.height, clip.bottom.ceil());
-  if (right <= left || bottom <= top) {
-    return null;
-  }
-  return (left: left, top: top, width: right - left, height: bottom - top);
-}
-
 /// The selected dabs through [affine] (the Ctrl+T commit): centers map
 /// exactly, the scalar dab size scales by √|sx·sy| (the plan's mapping —
 /// non-uniform scale approximates through the area factor) and the tip
@@ -288,7 +265,6 @@ BrushDab transformStampDab(
   BrushDab stampDab,
   SelectionAffine affine, {
   ResampleMode mode = ResampleMode.blend,
-  Rect? clip,
 }) {
   final stamp = stampDab.stamp;
   if (stamp == null || affine.isIdentity) {
@@ -316,10 +292,7 @@ BrushDab transformStampDab(
     ),
     affine.apply(CanvasPoint(x: srcLeft, y: srcTop + stamp.height)),
   ];
-  final out = clipWarpOutputRect(selectionWarpOutputRect(corners), clip);
-  if (out == null) {
-    return stampDab;
-  }
+  final out = selectionWarpOutputRect(corners);
   final outLeft = out.left;
   final outTop = out.top;
   final outWidth = out.width;
@@ -429,7 +402,6 @@ BrushDab transformStampDabQuad(
   BrushDab stampDab,
   List<CanvasPoint> corners, {
   ResampleMode mode = ResampleMode.blend,
-  Rect? clip,
 }) {
   final stamp = stampDab.stamp;
   if (stamp == null) {
@@ -476,10 +448,7 @@ BrushDab transformStampDabQuad(
     return stampDab;
   }
 
-  final out = clipWarpOutputRect(selectionWarpOutputRect(corners), clip);
-  if (out == null) {
-    return stampDab;
-  }
+  final out = selectionWarpOutputRect(corners);
   final outLeft = out.left;
   final outTop = out.top;
   final outWidth = out.width;
@@ -541,7 +510,6 @@ BrushDab transformStampDabMesh(
   required int rows,
   required List<CanvasPoint> points,
   ResampleMode mode = ResampleMode.blend,
-  Rect? clip,
 }) {
   final stamp = stampDab.stamp;
   if (stamp == null || columns < 1 || rows < 1) {
@@ -584,10 +552,7 @@ BrushDab transformStampDabMesh(
     );
   }
 
-  final out = clipWarpOutputRect(selectionWarpOutputRect(points), clip);
-  if (out == null) {
-    return stampDab;
-  }
+  final out = selectionWarpOutputRect(points);
   final outLeft = out.left;
   final outTop = out.top;
   final outWidth = out.width;

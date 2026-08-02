@@ -154,18 +154,6 @@ enum CanvasSelectionTool { rect, lasso, move }
 
 enum _DragMode { none, marquee, move, transform }
 
-/// Below this many destination pixels the preview resamples the whole
-/// output rather than the visible part.
-///
-/// Two million is where a full resample stops fitting a frame: the native
-/// kernel does 3.3 Mpx in about 12 ms and the budget is 16.6. Under it the
-/// preview stays whole and the commit reuses its exact buffer, so the
-/// byte-identity between what was shown and what lands is structural. Over
-/// it that guarantee is traded for a drag that keeps up, and identity
-/// falls back to the crop invariant — which the resample suite pins
-/// directly rather than leaving to argument.
-const int _kFullPreviewPixelBudget = 2000000;
-
 /// The float the transform preview last resampled.
 ///
 /// A test hook. It exists because the contract P3a is built around — "what
@@ -930,26 +918,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     return _ResampleKey(widget.resampleMode, stamp.rgba, shape.toString());
   }
 
-  /// [key] narrowed by the preview's clip, so a cached crop is only reused
-  /// while the same region is on screen. A null clip leaves the key alone,
-  /// which is what a commit asks for.
-  _ResampleKey _keyWithClip(_ResampleKey key, Rect? clip) {
-    if (clip == null) {
-      return key;
-    }
-    return _ResampleKey(
-      key.mode,
-      key.source,
-      '${key.shape}|clip:${clip.left},${clip.top},${clip.right},${clip.bottom}',
-    );
-  }
-
   /// The float through whatever warp is open — the ONE place the three
   /// warp functions are called from during a session.
-  ///
-  /// [clip] narrows the result to a canvas-space rect. The PREVIEW passes
-  /// the visible region; commits pass nothing, ever.
-  BrushDab? _resampleOpenTransform({Rect? clip}) {
+  BrushDab? _resampleOpenTransform() {
     final pending = _pendingLiftStamp;
     if (pending == null) {
       return null;
@@ -962,85 +933,21 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         rows: _meshRows,
         points: mesh,
         mode: widget.resampleMode,
-        clip: clip,
       );
     }
     final quad = _warpCorners;
     if (quad != null) {
-      return transformStampDabQuad(
-        pending,
-        quad,
-        mode: widget.resampleMode,
-        clip: clip,
-      );
+      return transformStampDabQuad(pending, quad, mode: widget.resampleMode);
     }
     final affine = _transform;
     if (affine != null && !affine.isIdentity) {
-      return transformStampDab(
-        pending,
-        affine,
-        mode: widget.resampleMode,
-        clip: clip,
-      );
+      return transformStampDab(pending, affine, mode: widget.resampleMode);
     }
     return null;
   }
 
   /// The canvas-space rect the user can actually see.
   ///
-  /// Null when the layer has not been laid out yet, which the caller reads
-  /// as "do not clip" — a preview that resampled nothing would be worse
-  /// than one that resampled too much.
-  Rect? _visibleCanvasRect() {
-    // NOT `context.size`: that asserts "Cannot get size during build", and
-    // one of the callers is didUpdateWidget. Asking the render object and
-    // checking hasSize is the version that is safe to call from anywhere,
-    // including the frame before this layer has ever been laid out.
-    final box = context.findRenderObject();
-    if (box is! RenderBox || !box.hasSize) {
-      return null;
-    }
-    final size = box.size;
-    if (size.isEmpty) {
-      return null;
-    }
-    return MatrixUtils.transformRect(
-      viewportInverseTransformMatrix(widget.viewport),
-      Offset.zero & size,
-    );
-  }
-
-  /// The destination rect a full resample of the open warp would produce,
-  /// so the preview can decide whether clipping is worth the loss of the
-  /// commit's ability to reuse its buffer.
-  ({int left, int top, int width, int height})? _openTransformOutputRect() {
-    final stamp = _pendingLiftStamp?.stamp;
-    final pending = _pendingLiftStamp;
-    if (stamp == null || pending == null) {
-      return null;
-    }
-    final mesh = _meshPoints;
-    if (mesh != null) {
-      return selectionWarpOutputRect(mesh);
-    }
-    final quad = _warpCorners;
-    if (quad != null) {
-      return selectionWarpOutputRect(quad);
-    }
-    final affine = _transform;
-    if (affine == null || affine.isIdentity) {
-      return null;
-    }
-    final left = pending.center.x - stamp.width / 2;
-    final top = pending.center.y - stamp.height / 2;
-    return selectionWarpOutputRect(<CanvasPoint>[
-      affine.apply(CanvasPoint(x: left, y: top)),
-      affine.apply(CanvasPoint(x: left + stamp.width, y: top)),
-      affine.apply(CanvasPoint(x: left + stamp.width, y: top + stamp.height)),
-      affine.apply(CanvasPoint(x: left, y: top + stamp.height)),
-    ]);
-  }
-
   /// The cached resample, or a fresh one — what every commit path calls
   /// so that "what you saw" and "what landed" are the same object.
   BrushDab? _warpedFloat() {
@@ -1049,16 +956,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return null;
     }
     final cached = _resampledFloat;
-    // `complete` is the whole reason this flag exists. A clipped preview
-    // is a crop, and landing a crop would delete everything that was off
-    // screen when the user pressed Enter.
-    if (cached != null && cached.key == key && cached.complete) {
+    if (cached != null && cached.key == key) {
       return cached.dab;
     }
     return _resampleOpenTransform();
   }
 
-  ({_ResampleKey key, BrushDab dab, bool complete})? _resampledFloat;
+  ({_ResampleKey key, BrushDab dab})? _resampledFloat;
 
   /// The premultiplied copy for display, and the dab it was decoded FROM.
   ///
@@ -1111,70 +1015,17 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       }
       return;
     }
-    _resampleDirty = false;
-
-    // Resample only what is on screen when the whole thing would be much
-    // bigger. A whole-picture transform scaled 3× lands a 7398×5569
-    // output — 165 MB, of which the user can see one screenful — and
-    // paying for all of it inside a pointer handler is what made the drag
-    // stall. Clipping is free of consequence for correctness because the
-    // fold takes the output origin: a clipped resample is a byte-exact
-    // CROP of the unclipped one, not an approximation of it.
-    //
-    // The threshold keeps the common case on the structural guarantee.
-    // Below it the preview resamples the whole output, the commit reuses
-    // that exact buffer, and preview and commit are the same object
-    // rather than two computations that agree. Above it the commit pays
-    // for one full resample at Enter, which is a deliberate action the
-    // user is waiting on anyway, instead of once per pointer move.
-    final full = _openTransformOutputRect();
-    var clip = _visibleCanvasRect();
-    if (full == null) {
-      // Nothing measured the output, so nothing has earned the right to
-      // narrow it. Clipping a warp whose size is unknown is how a
-      // never-anticipated warp mode ends up silently previewing a crop.
-      clip = null;
-    } else if (clip != null) {
-      final visible =
-          math.max(
-            0,
-            math.min(full.left + full.width, clip.right.ceil()) -
-                math.max(full.left, clip.left.floor()),
-          ) *
-          math.max(
-            0,
-            math.min(full.top + full.height, clip.bottom.ceil()) -
-                math.max(full.top, clip.top.floor()),
-          );
-      final whole = full.width * full.height;
-      if (visible == 0) {
-        // The warp landed entirely off screen. Resampling the clip would
-        // return the UNTRANSFORMED dab (an empty intersection has nothing
-        // to narrow to), and drawing that would put the original picture
-        // back at its original place — a visible lie, and worse than
-        // showing nothing.
-        _discardFloatResample();
-        return;
-      }
-      if (whole <= _kFullPreviewPixelBudget || visible * 2 >= whole) {
-        clip = null;
-      }
-    }
-    // The clip is part of the identity of the result: pan or zoom with a
-    // box open and the visible rect moves, so the cached crop is stale
-    // even though the warp did not change. Keying on it is what makes a
-    // pan re-resample — and, because an unclipped preview keys on `null`,
-    // what stops a pan from re-resampling when it does not have to.
-    final clipped = _keyWithClip(key, clip);
-    if (_resampledFloat?.key == clipped) {
+    if (_resampledFloat?.key == key) {
+      _resampleDirty = false;
       return;
     }
-    final dab = _resampleOpenTransform(clip: clip);
+    _resampleDirty = false;
+    final dab = _resampleOpenTransform();
     final stamp = dab?.stamp;
     if (dab == null || stamp == null) {
       return;
     }
-    _resampledFloat = (key: clipped, dab: dab, complete: clip == null);
+    _resampledFloat = (key: key, dab: dab);
     assert(_recordResampledFloat(dab));
 
     // decodeImageFromPixels wants premultiplied bytes; the resampler
