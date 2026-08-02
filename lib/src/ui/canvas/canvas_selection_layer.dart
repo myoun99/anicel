@@ -1129,7 +1129,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // user is waiting on anyway, instead of once per pointer move.
     final full = _openTransformOutputRect();
     var clip = _visibleCanvasRect();
-    if (clip != null && full != null) {
+    if (full == null) {
+      // Nothing measured the output, so nothing has earned the right to
+      // narrow it. Clipping a warp whose size is unknown is how a
+      // never-anticipated warp mode ends up silently previewing a crop.
+      clip = null;
+    } else if (clip != null) {
       final visible =
           math.max(
             0,
