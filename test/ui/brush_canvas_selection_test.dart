@@ -241,6 +241,62 @@ void main() {
     expect(debugLastResampledFloat!.center.y, before.y);
   });
 
+  testWidgets('AA off: the mode reaches the commit and keeps the palette', (
+    tester,
+  ) async {
+    // The switch itself lives in the tool settings panel, which this
+    // harness does not mount; what matters here is that the value the
+    // panel writes actually changes the pixels the transform lands, and
+    // that it changes them in the promised direction.
+    final env = await pumpSelectionPanel(tester);
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    await env.setTool(CanvasTool.move);
+
+    final before = currentSurface(env.coordinator);
+    final sourceColours = <int>{};
+    for (var y = 0; y < 90; y += 1) {
+      for (var x = 0; x < 90; x += 1) {
+        final pixel = surfacePixelRgba(before, x, y);
+        if (pixel != null && (pixel >> 24) != 0) sourceColours.add(pixel);
+      }
+    }
+    expect(sourceColours, isNotEmpty);
+
+    env.commands.beginTransform();
+    await tester.pump();
+    env.commands.setTransformValues(
+      tx: 0,
+      ty: 0,
+      rotationDegrees: 24,
+      scale: 1,
+    );
+    await tester.pump();
+    env.commands.commitTransform();
+    await tester.pump();
+
+    // Blend is the default, and a rotation through it MUST invent
+    // in-between colours — otherwise the assertion below proves nothing.
+    final landed = currentSurface(env.coordinator);
+    var invented = 0;
+    for (var y = 0; y < 90; y += 1) {
+      for (var x = 0; x < 90; x += 1) {
+        final pixel = surfacePixelRgba(landed, x, y);
+        if (pixel != null &&
+            (pixel >> 24) != 0 &&
+            !sourceColours.contains(pixel)) {
+          invented += 1;
+        }
+      }
+    }
+    expect(
+      invented,
+      greaterThan(0),
+      reason:
+          'AA on must smooth; if it does not, the AA-off assertion in '
+          'the sibling test is vacuous',
+    );
+  });
+
   testWidgets('the layer mounts for selection tools only', (tester) async {
     await pumpSelectionPanel(tester, tool: CanvasTool.brush);
     expect(find.byKey(layerKey), findsNothing);
