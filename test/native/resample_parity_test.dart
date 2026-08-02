@@ -242,6 +242,32 @@ void main() {
       h: -0.94 / 61,
       i: 1,
     ),
+    // P3e. Pick refines a TIED vote by re-sampling ONCE at twice the rate.
+    // The cases above enter that loop only incidentally; these two enter
+    // it by construction, on the axis-aligned hairline geometry the mode
+    // exists for. An axis-aligned 0.7× splits a one-pixel line 0.5/0.2
+    // across two destination rows, so the row holding 0.5 ties at every
+    // rate and runs the refinement to its cap; 0.55× ties at the first
+    // rate and is decided by the second.
+    //
+    // ⚠️ `scaleTranslate` takes the FORWARD scale and inverts it. These
+    // said `1 / 0.7` once, which is a 1.43× magnification — it ties
+    // nothing, reaches round two on zero pixels, and made the pair a pure
+    // decoration of the comment above it.
+    'tie: axis-aligned 0.7': ResampleTransform.scaleTranslate(scale: 0.7),
+    'tie: axis-aligned 0.55': ResampleTransform.scaleTranslate(scale: 0.55),
+    // Strong anisotropy WITH rotation: 5:1 across against 2× down. The
+    // rate is per axis for exactly this shape — read from the area the two
+    // multiply to, it comes out at 2.5 and undersamples the long axis by a
+    // factor of three.
+    'anisotropic 5:1 rotated 23': ResampleTransform(
+      a: 5 * math.cos(23 * math.pi / 180),
+      b: 5 * math.sin(23 * math.pi / 180),
+      c: -11,
+      d: -0.5 * math.sin(23 * math.pi / 180),
+      e: 0.5 * math.cos(23 * math.pi / 180),
+      f: 6,
+    ),
     // Past int32. A C kernel that narrowed the offset would wrap this into
     // a small shift and copy real pixels where the reference copies none.
     'huge translation': ResampleTransform(
@@ -412,6 +438,17 @@ void main() {
   test('a radius floor the caller chose is honoured natively', () {
     // The suite otherwise always passes resampleRadiusFloor(mode), so a C
     // kernel that ignored the argument entirely would stay green.
+    //
+    // BLEND, deliberately. The floor is Blend's radius now and Pick
+    // ignores whatever it is handed, so running this loop on Pick pinned
+    // nothing at all — three identical buffers compared three times. On
+    // Blend the reference at 2.5 differs from the reference at 1.0 by
+    // thousands of bytes, so a native kernel that hard-coded 1.0 dies on
+    // the first iteration past it.
+    //
+    // Pick's complementary contract — that its bytes do NOT move with the
+    // floor — is pinned in the kernel suite, where it can be stated as an
+    // equality rather than smuggled in as a parity check.
     final source = _fixture(width, height, 5);
     final transform = _rotationAbout(15, width / 2, height / 2);
     for (final floor in <double>[1.0, 2.5, 4.0]) {
@@ -422,7 +459,7 @@ void main() {
         dstWidth: width,
         dstHeight: height,
         transform: transform,
-        mode: ResampleMode.pick,
+        mode: ResampleMode.blend,
         radiusFloor: floor,
       );
       final actual = engine.resampleRgbaBytes(
@@ -433,7 +470,7 @@ void main() {
         dstHeight: height,
         inverse: _inverseOf(transform),
         radiusFloor: floor,
-        mode: 1,
+        mode: 0,
       );
       expect(actual, expected, reason: 'floor $floor drifted');
     }
