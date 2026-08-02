@@ -156,14 +156,26 @@ enum _DragMode { none, marquee, move, transform }
 
 /// The float the transform preview last resampled.
 ///
-/// A test hook, in the shape this repo already uses for the native engine
-/// path override. It exists because the contract P3a is built around —
-/// "what the preview showed is what Enter writes" — is otherwise
-/// unobservable from outside: the preview holds a decoded image and the
-/// commit writes bytes, and only the layer sees that both came from one
-/// buffer.
+/// A test hook. It exists because the contract P3a is built around — "what
+/// the preview showed is what Enter writes" — is otherwise unobservable
+/// from outside: the preview holds a decoded image and the commit writes
+/// bytes, and only the layer sees that both came from one buffer.
+///
+/// Written and cleared inside `assert(() { ... }())`, which is stripped in
+/// release. `@visibleForTesting` is an analyzer annotation and removes
+/// nothing from a build, so an unguarded assignment here would pin the
+/// last transform's straight-alpha buffer — tens of megabytes for a
+/// whole-picture Ctrl+T — for the rest of the process, in every shipped
+/// app, released by nothing.
 @visibleForTesting
 BrushDab? debugLastResampledFloat;
+
+/// Records [dab] for the test hook and returns true, so it can sit inside
+/// an assert and vanish from release builds.
+bool _recordResampledFloat(BrushDab? dab) {
+  debugLastResampledFloat = dab;
+  return true;
+}
 
 /// What a cached resample belongs to: the mode, the source buffer, and the
 /// warp's numbers.
@@ -1012,7 +1024,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return;
     }
     _resampledFloat = (key: key, dab: dab);
-    debugLastResampledFloat = dab;
+    assert(_recordResampledFloat(dab));
 
     // decodeImageFromPixels wants premultiplied bytes; the resampler
     // produces straight alpha, which is the app's storage convention and
@@ -1064,6 +1076,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _resampledImageDab = null;
     _resampledFloatImage?.dispose();
     _resampledFloatImage = null;
+    // The hook holds a whole resampled cel. Letting it outlive the session
+    // that made it would keep that buffer resident for as long as the app
+    // runs, which is the same defect in a debug build that the assert
+    // guard prevents in a release one.
+    assert(_recordResampledFloat(null));
   }
 
   int? _hitTestMeshPoint(Offset local) {
@@ -1290,6 +1307,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           ty: transform.ty + dy,
         );
       });
+      // The preview is a resampled bitmap now, not a matrix evaluated in
+      // build, so a mutation that does not schedule a resample moves the
+      // ants and the box while the PICTURE stays where it was — and Enter
+      // then lands the ink where the outline is, not where the artwork
+      // was drawn. Every path that changes the open warp has to say so.
+      _scheduleFloatResample();
       return;
     }
     final region = _region;

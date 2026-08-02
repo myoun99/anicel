@@ -463,34 +463,36 @@ class _MoveSettingsState extends State<_MoveSettings> {
             _apply();
           },
         ),
-        const SizedBox(height: 8),
-        // P3a: which resampler the commit runs through. Deliberately NOT
-        // labelled "anti-alias" — two rows away in the Select tool's own
-        // settings there is already an anti-alias switch that softens the
-        // LIFT MASK edge, and the flood fill has a third. Naming this one
-        // after what it PROTECTS rather than what it turns off keeps them
-        // apart, and it is the honest description: the argmax elects a
-        // source colour and copies its bytes through, so the palette a
-        // two-value drawing came in with is the palette it leaves with.
-        SwitchListTile(
-          key: const ValueKey<String>('transform-preserve-colors-switch'),
-          dense: true,
-          contentPadding: EdgeInsets.zero,
-          title: Text(AppText.strings.brTransformPreserveColors),
-          subtitle: Text(
-            AppText.strings.brTransformPreserveColorsHint,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-          value: widget.resampleMode == ResampleMode.pick,
-          onChanged: widget.onResampleModeChanged == null
-              ? null
-              : (value) => widget.onResampleModeChanged!(
-                  value ? ResampleMode.pick : ResampleMode.blend,
-                ),
-        ),
-        const SizedBox(height: 8),
+        const SizedBox(height: 12),
+        // ⚠️ The "Preserve exact colours" switch belongs here and is
+        // deliberately NOT built yet.
+        //
+        // Everything behind it works — the mode threads from this panel to
+        // all three warp paths and the preview, and its contracts are
+        // tested. What is not ready is the KERNEL's coverage argmax, which
+        // erases the artwork the mode exists for. Measured on 1px line art
+        // through the shipping kernel: a 50% reduction keeps 3 ink pixels
+        // of 381, and an isolated 1px diagonal rotated 37° or 45° comes
+        // back with none at all.
+        //
+        // The cause is that Pick's contract is stated in terms of COVERED
+        // AREA but the accumulator weighs taps with a TENT — a
+        // reconstruction filter, not a coverage measure. At 45° that puts
+        // ink at 1.172 against ground's 1.343 around every ink pixel, so
+        // every one of them loses. Replacing the tent with the actual
+        // overlap length of a source pixel and the destination pixel's
+        // preimage takes that 50% reduction from 3 ink pixels to 127 and
+        // the 37° rotation from 0 to 26, and is better or equal on 16 of
+        // 18 measured fixture rows. Exactly 45° stays at 0 under both,
+        // because there the feature covers exactly half of every
+        // destination pixel and no argmax can break that tie.
+        //
+        // That is a change to the shared kernel and its C mirror, with its
+        // own parity pass and its own tuning question (what replaces the
+        // radius floor once the weight means coverage), so it is its own
+        // round rather than a rider on this one. Shipping the switch first
+        // would hand the user a control that does the opposite of its
+        // label on exactly the artwork it advertises.
         // R20-D3 mesh warp: opens the control grid on the selection —
         // or, with none, on the whole picture (R26 #13). Enter commits
         // the triangulated warp; Esc reverts. Perspective rides the

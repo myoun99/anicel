@@ -196,6 +196,51 @@ void main() {
     );
   });
 
+  testWidgets('P3a: an arrow-key nudge with the box open moves the '
+      'PICTURE, not just the outline', (tester) async {
+    // Caught by adversarial review, not by the suite. Once the preview is
+    // a resampled bitmap rather than a matrix evaluated in build, any
+    // mutation of the open warp that forgets to schedule a resample moves
+    // the ants and the box chrome while the artwork stays put — and Enter
+    // then lands the ink where the outline is, not where the picture was.
+    // Master could not have this bug: it recomputed the screen matrix on
+    // every build.
+    final env = await pumpSelectionPanel(tester);
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    await env.setTool(CanvasTool.move);
+
+    env.commands.beginTransform();
+    await tester.pump();
+    env.commands.setTransformValues(
+      tx: 0,
+      ty: 0,
+      rotationDegrees: 24,
+      scale: 1,
+    );
+    await tester.pump();
+    final before = debugLastResampledFloat!.center;
+
+    await tester.runAsync(() async {
+      for (var i = 0; i < 10; i += 1) {
+        env.commands.nudge(1, 0);
+      }
+      // The decode from the rotation above is still in flight, so the
+      // nudges only mark the preview dirty; the callback runs the last
+      // state. Letting that settle is the realistic path, and asserting
+      // after it is what makes this test about the SCHEDULING rather than
+      // about how many resamples one drag happens to trigger.
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+    });
+    await tester.pump();
+
+    expect(
+      debugLastResampledFloat!.center.x,
+      before.x + 10,
+      reason: 'the resampled float must follow the nudge',
+    );
+    expect(debugLastResampledFloat!.center.y, before.y);
+  });
+
   testWidgets('the layer mounts for selection tools only', (tester) async {
     await pumpSelectionPanel(tester, tool: CanvasTool.brush);
     expect(find.byKey(layerKey), findsNothing);
