@@ -3871,6 +3871,25 @@ QA_EXPORT int64_t qa_audio_resample_frames(int64_t input_frames,
 // cannot change a byte - the Dart suite pins that with a banded run.
 #define QA_RESAMPLE_BAND_ROWS 16
 
+// How much of the destination pixel's preimage a source pixel covers along
+// one axis: the preimage spans centre +/- half, a source pixel spans
+// source +/- 0.5, and the weight is the length they share. Mirrors
+// `_coverage` in resample_kernel.dart - see there for why Pick weighs
+// coverage and Blend weighs a tent. The operand ORDER matters for parity:
+// Dart evaluates max(source - 0.5, centre - half) and this must subtract
+// the same two products in the same order, or a rounding difference walks
+// straight into a vote.
+static double qa_resample_coverage(int64_t source, double centre,
+                                   double half) {
+  const double source_low = (double)source - 0.5;
+  const double source_high = (double)source + 0.5;
+  const double pre_low = centre - half;
+  const double pre_high = centre + half;
+  const double low = source_low > pre_low ? source_low : pre_low;
+  const double high = source_high < pre_high ? source_high : pre_high;
+  return high - low;
+}
+
 typedef struct {
   const uint32_t* src;
   int32_t src_width;
@@ -4003,8 +4022,18 @@ static void qa_resample_rows(
         continue;
       }
 
-      const int32_t rad_x = (int32_t)ceil(radius_x);
-      const int32_t rad_y = (int32_t)ceil(radius_y);
+      // Pick's footprint is the preimage itself — a box of half-width
+      // radius/2 — because its weight is how much AREA a source pixel
+      // covers, and a source pixel is one unit wide. Blend's is the tent's
+      // own support, which reaches a full radius. See the Dart reference's
+      // `_coverage` for why the two differ.
+      const int is_pick = ctx->mode == QA_RESAMPLE_MODE_PICK;
+      const double half_x = radius_x * 0.5;
+      const double half_y = radius_y * 0.5;
+      const int32_t rad_x =
+          (int32_t)ceil(is_pick ? half_x + 0.5 : radius_x);
+      const int32_t rad_y =
+          (int32_t)ceil(is_pick ? half_y + 0.5 : radius_y);
 
       // Flat support: when every tap reads the same word both modes must
       // return that word. Cheap on line art, where most of a frame is one
@@ -4037,13 +4066,13 @@ static void qa_resample_rows(
         continue;
       }
 
-      if (ctx->mode == QA_RESAMPLE_MODE_PICK) {
+      if (is_pick) {
         int32_t slots = 0;
         int evicted = 0;
         for (int32_t dy = -rad_y; dy <= rad_y; dy += 1) {
           const int64_t source_y = centre_y + dy;
           const double weight_y =
-              1.0 - fabs((double)source_y - v) / radius_y;
+              qa_resample_coverage(source_y, v, half_y);
           if (weight_y <= 0.0) continue;
           const int row_inside = source_y >= 0 && source_y < src_height;
           const uint32_t* source_row =
@@ -4051,7 +4080,7 @@ static void qa_resample_rows(
           for (int32_t dx = -rad_x; dx <= rad_x; dx += 1) {
             const int64_t source_x = centre_x + dx;
             const double weight_x =
-                1.0 - fabs((double)source_x - u) / radius_x;
+                qa_resample_coverage(source_x, u, half_x);
             if (weight_x <= 0.0) continue;
             const uint32_t token =
                 (!row_inside || source_x < 0 || source_x >= src_width)
@@ -4099,7 +4128,7 @@ static void qa_resample_rows(
           for (int32_t dy = -rad_y; dy <= rad_y; dy += 1) {
             const int64_t source_y = centre_y + dy;
             const double weight_y =
-                1.0 - fabs((double)source_y - v) / radius_y;
+                qa_resample_coverage(source_y, v, half_y);
             if (weight_y <= 0.0) continue;
             const int row_inside = source_y >= 0 && source_y < src_height;
             const uint32_t* source_row =
@@ -4107,7 +4136,7 @@ static void qa_resample_rows(
             for (int32_t dx = -rad_x; dx <= rad_x; dx += 1) {
               const int64_t source_x = centre_x + dx;
               const double weight_x =
-                  1.0 - fabs((double)source_x - u) / radius_x;
+                  qa_resample_coverage(source_x, u, half_x);
               if (weight_x <= 0.0) continue;
               const uint32_t token =
                   (!row_inside || source_x < 0 || source_x >= src_width)

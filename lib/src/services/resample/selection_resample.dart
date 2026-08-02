@@ -15,27 +15,15 @@ import 'resample_kernel.dart';
 /// screen and the picture Enter lands to come out of different kernels with
 /// nothing in the type system to notice.
 
-/// The footprint floor the selection transform uses, overriding the
-/// mode-derived default in [resampleRadiusFloor].
+/// The footprint floor, named once so both sides of the native/Dart split
+/// are handed the same number.
 ///
-/// 1.0, not the kernel's 1.5 for Pick, and the difference is destructive
-/// rather than cosmetic. Measured on a 40×40 two-value fixture holding a
-/// 1px diagonal and a 1px vertical (63 ink pixels), driven straight through
-/// the reference:
-///
-/// | rotation | floor 1.5 | floor 1.0 |
-/// |---|---|---|
-/// | 90° | 32 ink | **63 ink** (exact permutation) |
-/// | 15° | 33 ink | 47 ink |
-///
-/// The 1.5 was tuned on a dense 16-colour production cel, where the extra
-/// ring smooths jagged spurs along a rotated edge. On line art the same
-/// ring lets ground pixels the preimage never touched outvote the one it
-/// did, which is the very breach the kernel's magnification early-out
-/// exists to prevent — only here it is reached from the other side.
-///
-/// Blend's default already IS 1.0, so one constant serves both modes and
-/// the two share it by construction.
+/// It is no longer an override — the kernel's floor is 1.0 for both modes
+/// now, since a floor above the true extent has no meaning under a
+/// coverage weight. The constant survives because the native binding
+/// REQUIRES an explicit floor while the Dart reference defaults it, and
+/// two call sites free to disagree is exactly how the picture on screen
+/// and the picture Enter lands come out of different kernels.
 const double kSelectionResampleRadiusFloor = 1.0;
 
 /// Resample [src] into [dst] through [transform], native when the engine is
