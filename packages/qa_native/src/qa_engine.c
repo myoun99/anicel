@@ -3868,10 +3868,11 @@ QA_EXPORT int64_t qa_audio_resample_frames(int64_t input_frames,
 // the parity suite fails.
 #define QA_RESAMPLE_RADIUS_CEILING 16.0
 // Mirrors kResampleRefineLimit - how far a TIED Pick vote may refine, per
-// axis, and the stride of the subsample offset table below. See the Dart
-// for why one doubling and not two: the second changes no pixel and costs
-// two and a half times as much at a half-size reduction, where a 1px line
-// covers exactly half its preimage and ties on every edge.
+// axis, and the stride of the subsample offset table below. One doubling,
+// not two: a second DOES change pixels, but the ones it changes are almost
+// all axis-aligned, and those no longer reach the sampler at all - they go
+// down the exact-coverage path, where there is no quantisation to refine
+// away. See the Dart for the measurement.
 #define QA_RESAMPLE_REFINE_LIMIT 16
 // Mirrors kResampleIndexLimit: past 2^53 a double cannot name consecutive
 // integers, llround() is undefined and Dart's round() saturates, so both
@@ -3881,6 +3882,25 @@ QA_EXPORT int64_t qa_audio_resample_frames(int64_t input_frames,
 // only its own destination rows and reads only the source), so the split
 // cannot change a byte - the Dart suite pins that with a banded run.
 #define QA_RESAMPLE_BAND_ROWS 16
+
+// How much of the destination pixel's preimage a source pixel covers along
+// one axis: the preimage spans centre +/- half, a source pixel spans
+// source +/- 0.5, and the weight is the length they share. Mirrors
+// `_coverage` in resample_kernel.dart, and like it is used ONLY where the
+// preimage is an axis-aligned rectangle, where the product of the two
+// lengths is the shared area rather than an estimate of it. The operand
+// ORDER matters for parity: Dart evaluates max(source - 0.5, centre - half)
+// and this must compare the same two values in the same order.
+static double qa_resample_coverage(int64_t source, double centre,
+                                   double half) {
+  const double source_low = (double)source - 0.5;
+  const double source_high = (double)source + 0.5;
+  const double pre_low = centre - half;
+  const double pre_high = centre + half;
+  const double low = source_low > pre_low ? source_low : pre_low;
+  const double high = source_high < pre_high ? source_high : pre_high;
+  return high - low;
+}
 
 // Mirrors resampleSamplesPerAxis: how many subsamples one destination axis
 // is cut into, from the SQUARED source-space length of that axis's step.
@@ -3970,8 +3990,25 @@ static void qa_resample_rows(
   double step_x_squared = ctx->a * ctx->a + ctx->d * ctx->d;
   double step_y_squared = ctx->b * ctx->b + ctx->e * ctx->e;
 
+  // Pick's EXACT path. When both destination steps land on the axes - `b`
+  // and `d` zero (no rotation or a half turn), or `a` and `e` zero (a
+  // quarter turn, axes swapped) - the preimage is an axis-aligned
+  // rectangle, and then the separable coverage product is not an estimate
+  // of the shared area, it IS the shared area. See the Dart reference for
+  // why that distinction is worth a branch: counting samples quantises,
+  // leaving a band of coverages just over half that come back tied, and an
+  // axis-aligned line loses all of itself at once there.
+  const int pick_exact =
+      is_pick && ctx->is_affine &&
+      ((ctx->b == 0.0 && ctx->d == 0.0) || (ctx->a == 0.0 && ctx->e == 0.0)) &&
+      extent_x > 0.0 && extent_y > 0.0 &&
+      extent_x <= QA_RESAMPLE_RADIUS_CEILING &&
+      extent_y <= QA_RESAMPLE_RADIUS_CEILING;
+
   uint32_t keys[QA_RESAMPLE_VOTE_SLOTS];
-  int32_t counts[QA_RESAMPLE_VOTE_SLOTS];
+  // One table for both of Pick's gathers: the supersampler adds 1.0 per
+  // landing, which a double counts exactly far past the 1024 it can reach.
+  double weights[QA_RESAMPLE_VOTE_SLOTS];
   // Where the subsamples land, so an eviction recount re-reads a scratch
   // array instead of re-running the inverse map.
   uint32_t landings[QA_RESAMPLE_REFINE_LIMIT * QA_RESAMPLE_REFINE_LIMIT];
@@ -3981,7 +4018,7 @@ static void qa_resample_rows(
   // not round alike.
   static const int32_t offset_stride = QA_RESAMPLE_REFINE_LIMIT;
   double offsets[(QA_RESAMPLE_REFINE_LIMIT + 1) * QA_RESAMPLE_REFINE_LIMIT];
-  if (is_pick) {
+  if (is_pick && !pick_exact) {
     for (int32_t n = 1; n <= QA_RESAMPLE_REFINE_LIMIT; n += 1) {
       for (int32_t s = 0; s < n; s += 1) {
         offsets[n * offset_stride + s] = ((double)s + 0.5) / (double)n;
@@ -4046,22 +4083,38 @@ static void qa_resample_rows(
       const int64_t centre_x = llround(u);
       const int64_t centre_y = llround(v);
 
-      const int32_t samples_x =
-          is_pick ? qa_resample_samples_per_axis(step_x_squared) : 0;
-      const int32_t samples_y =
-          is_pick ? qa_resample_samples_per_axis(step_y_squared) : 0;
+      const int32_t samples_x = (is_pick && !pick_exact)
+                                    ? qa_resample_samples_per_axis(
+                                          step_x_squared)
+                                    : 0;
+      const int32_t samples_y = (is_pick && !pick_exact)
+                                    ? qa_resample_samples_per_axis(
+                                          step_y_squared)
+                                    : 0;
 
-      // The window for the flat-support probe, which is NOT a window
-      // anything is gathered from: Blend gathers from the tent's support
-      // and Pick gathers from nowhere at all. Pick's bound is derived - see
-      // the Dart reference - and holds only while the preimage really is
-      // the parallelogram the extents describe, so Pick does not probe a
-      // homography at all. The cell count is compared as a double because
-      // a large reduction overflows an int32 on the way to the comparison.
+      // The exact path's half-widths. NO floor is applied: a floor above
+      // the true extent claims the preimage reaches further than it does.
+      const double half_x = extent_x * 0.5;
+      const double half_y = extent_y * 0.5;
+      const int32_t exact_rad_x =
+          pick_exact ? (int32_t)ceil(half_x + 0.5) : 0;
+      const int32_t exact_rad_y =
+          pick_exact ? (int32_t)ceil(half_y + 0.5) : 0;
+
+      // The window for the flat-support probe. For Blend and for exact
+      // Pick it IS the gather window. For the supersampler it is derived -
+      // see the Dart reference - and the derivation holds only while the
+      // preimage really is the parallelogram the extents describe, so the
+      // supersampler does not probe a homography at all. The cell count is
+      // compared as a double because a large reduction overflows an int32
+      // on the way to the comparison.
       int run_flat = 1;
       int32_t flat_rad_x;
       int32_t flat_rad_y;
-      if (is_pick) {
+      if (pick_exact) {
+        flat_rad_x = exact_rad_x;
+        flat_rad_y = exact_rad_y;
+      } else if (is_pick) {
         const double span_x = floor(extent_x * 0.5 + 1.0);
         const double span_y = floor(extent_y * 0.5 + 1.0);
         run_flat = ctx->is_affine &&
@@ -4105,6 +4158,97 @@ static void qa_resample_rows(
           row[x] = flat_token;
           continue;
         }
+      }
+
+      if (pick_exact) {
+        // Exact area, gathered rather than sampled: each tap's weight is
+        // the length its source pixel shares with the preimage along x
+        // times the same along y, and because the preimage is an
+        // axis-aligned rectangle here that product IS the shared area. No
+        // quantisation, so no tie band. A surviving tie is real and goes
+        // to the token met first - see the Dart reference for the two
+        // tie-breaks that were built, measured and reverted.
+        int32_t slots = 0;
+        int evicted = 0;
+        for (int32_t dy = -exact_rad_y; dy <= exact_rad_y; dy += 1) {
+          const int64_t source_y = centre_y + dy;
+          const double weight_y = qa_resample_coverage(source_y, v, half_y);
+          if (weight_y <= 0.0) continue;
+          const int row_inside = source_y >= 0 && source_y < src_height;
+          const uint32_t* source_row =
+              row_inside ? src + (ptrdiff_t)source_y * src_width : NULL;
+          for (int32_t dx = -exact_rad_x; dx <= exact_rad_x; dx += 1) {
+            const int64_t source_x = centre_x + dx;
+            const double weight_x = qa_resample_coverage(source_x, u, half_x);
+            if (weight_x <= 0.0) continue;
+            const uint32_t token =
+                (!row_inside || source_x < 0 || source_x >= src_width)
+                    ? 0u
+                    : source_row[source_x];
+            const double weight = weight_x * weight_y;
+            int32_t slot = -1;
+            for (int32_t s = 0; s < slots; s += 1) {
+              if (keys[s] == token) {
+                slot = s;
+                break;
+              }
+            }
+            if (slot >= 0) {
+              weights[slot] += weight;
+            } else if (slots < QA_RESAMPLE_VOTE_SLOTS) {
+              keys[slots] = token;
+              weights[slots] = weight;
+              slots += 1;
+            } else {
+              int32_t lightest = 0;
+              for (int32_t s = 1; s < QA_RESAMPLE_VOTE_SLOTS; s += 1) {
+                if (weights[s] < weights[lightest]) lightest = s;
+              }
+              keys[lightest] = token;
+              weights[lightest] += weight;
+              evicted = 1;
+            }
+          }
+        }
+        if (slots == 0) {
+          row[x] = 0u;
+          continue;
+        }
+        if (evicted) {
+          for (int32_t s = 0; s < slots; s += 1) {
+            weights[s] = 0.0;
+          }
+          for (int32_t dy = -exact_rad_y; dy <= exact_rad_y; dy += 1) {
+            const int64_t source_y = centre_y + dy;
+            const double weight_y = qa_resample_coverage(source_y, v, half_y);
+            if (weight_y <= 0.0) continue;
+            const int row_inside = source_y >= 0 && source_y < src_height;
+            const uint32_t* source_row =
+                row_inside ? src + (ptrdiff_t)source_y * src_width : NULL;
+            for (int32_t dx = -exact_rad_x; dx <= exact_rad_x; dx += 1) {
+              const int64_t source_x = centre_x + dx;
+              const double weight_x =
+                  qa_resample_coverage(source_x, u, half_x);
+              if (weight_x <= 0.0) continue;
+              const uint32_t token =
+                  (!row_inside || source_x < 0 || source_x >= src_width)
+                      ? 0u
+                      : source_row[source_x];
+              for (int32_t s = 0; s < slots; s += 1) {
+                if (keys[s] == token) {
+                  weights[s] += weight_x * weight_y;
+                  break;
+                }
+              }
+            }
+          }
+        }
+        int32_t best = 0;
+        for (int32_t s = 1; s < slots; s += 1) {
+          if (weights[s] > weights[best]) best = s;
+        }
+        row[x] = keys[best];
+        continue;
       }
 
       if (is_pick) {
@@ -4173,10 +4317,10 @@ static void qa_resample_rows(
               }
             }
             if (slot >= 0) {
-              counts[slot] += 1;
+              weights[slot] += 1.0;
             } else if (slots < QA_RESAMPLE_VOTE_SLOTS) {
               keys[slots] = token;
-              counts[slots] = 1;
+              weights[slots] = 1.0;
               slots += 1;
             } else {
               // The weakest slot yields its key and keeps its count, so a
@@ -4184,10 +4328,10 @@ static void qa_resample_rows(
               // sixteenth of the samples. Lowest index on a tie.
               int32_t lightest = 0;
               for (int32_t k = 1; k < QA_RESAMPLE_VOTE_SLOTS; k += 1) {
-                if (counts[k] < counts[lightest]) lightest = k;
+                if (weights[k] < weights[lightest]) lightest = k;
               }
               keys[lightest] = token;
-              counts[lightest] += 1;
+              weights[lightest] += 1.0;
               evicted = 1;
             }
           }
@@ -4199,13 +4343,13 @@ static void qa_resample_rows(
             // survivors exactly. Gated on the eviction, so an ordinary
             // preimage never pays for it.
             for (int32_t s = 0; s < slots; s += 1) {
-              counts[s] = 0;
+              weights[s] = 0.0;
             }
             for (int32_t s = 0; s < votes; s += 1) {
               const uint32_t token = landings[s];
               for (int32_t k = 0; k < slots; k += 1) {
                 if (keys[k] == token) {
-                  counts[k] += 1;
+                  weights[k] += 1.0;
                   break;
                 }
               }
@@ -4213,11 +4357,11 @@ static void qa_resample_rows(
           }
           best = 0;
           for (int32_t s = 1; s < slots; s += 1) {
-            if (counts[s] > counts[best]) best = s;
+            if (weights[s] > weights[best]) best = s;
           }
           int tied = 0;
           for (int32_t s = 0; s < slots; s += 1) {
-            if (s != best && counts[s] == counts[best]) {
+            if (s != best && weights[s] == weights[best]) {
               tied = 1;
               break;
             }
@@ -4311,9 +4455,10 @@ static void qa_resample_item(int32_t item_index, void* context) {
 }
 
 // Resamples src into dst through the destination-to-source map `inverse`
-// (9 doubles, row-major, homogeneous row last). mode 0 = tent mean,
-// 1 = supersampled area argmax. `radius_floor` is Blend's; Pick has no
-// radius and ignores it. Returns 0 ok, negative on bad arguments.
+// (9 doubles, row-major, homogeneous row last). mode 0 = tent mean, 1 =
+// area argmax - measured exactly when the preimage is an axis-aligned
+// rectangle, supersampled otherwise. `radius_floor` is Blend's; Pick has
+// no radius and ignores it. Returns 0 ok, negative on bad arguments.
 QA_EXPORT int32_t qa_resample_rgba(
     const uint8_t* src,
     int32_t src_width,

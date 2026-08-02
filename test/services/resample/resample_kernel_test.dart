@@ -181,6 +181,73 @@ ResampleTransform _rotateScaleAbout(
   );
 }
 
+/// A bare 1px cross on white.
+///
+/// `_lineArt`'s horizontal rule sits at a phase where the axis-aligned tie
+/// never forms, so it is structurally unable to see the failure that band
+/// produces. This one is chosen for the opposite reason: nothing but
+/// hairlines, at a phase that does tie.
+Uint8List _hairlines(int size) {
+  final bytes = Uint8List(size * size * 4);
+  final words = Uint32List.view(bytes.buffer);
+  for (var i = 0; i < words.length; i += 1) {
+    words[i] = 0xffffffff;
+  }
+  for (var i = 0; i < size; i += 1) {
+    words[(size ~/ 2 + 1) * size + i] = 0xff101010;
+    words[i * size + (size ~/ 2 + 1)] = 0xff101010;
+  }
+  return bytes;
+}
+
+/// Reduce by [scale] and rotate by [degrees], with the DESTINATION centred
+/// on the source centre — otherwise a reduction throws most of the picture
+/// out of frame and an ink count measures the crop instead of the kernel.
+///
+/// Quarter turns take their cos and sin from a TABLE, because the product
+/// path does: `SelectionAffine.cosTheta` exists precisely so that 90° is
+/// `cos == 0` rather than 6.1e-17. Computing them here with `math.cos`
+/// would leave `b` and `d` a hair off zero, miss the kernel's exact
+/// branch, and quietly test a path the app never runs.
+ResampleTransform _reduceAbout(
+  double degrees,
+  double scale,
+  int srcSize,
+  int dstSize,
+) {
+  final turn = ((degrees % 360) + 360) % 360;
+  final quarter = turn % 90 == 0;
+  final radians = degrees * math.pi / 180;
+  final cos = quarter
+      ? (turn == 0
+            ? 1.0
+            : turn == 180
+            ? -1.0
+            : 0.0)
+      : math.cos(radians);
+  final sin = quarter
+      ? (turn == 90
+            ? 1.0
+            : turn == 270
+            ? -1.0
+            : 0.0)
+      : math.sin(radians);
+  final a = cos / scale;
+  final b = sin / scale;
+  final d = -sin / scale;
+  final e = cos / scale;
+  final dstCentre = dstSize / 2;
+  final srcCentre = srcSize / 2;
+  return ResampleTransform(
+    a: a,
+    b: b,
+    c: -a * dstCentre - b * dstCentre + srcCentre,
+    d: d,
+    e: e,
+    f: -d * dstCentre - e * dstCentre + srcCentre,
+  );
+}
+
 /// Solid colour everywhere, no transparency at all, so a transparent
 /// output pixel can only be a hole the kernel punched.
 Uint8List _opaqueArt(int width, int height) {
@@ -257,66 +324,88 @@ void main() {
       // Stated against the oracle rather than against fixed counts, so it
       // says "the kernel keeps what is really there" instead of pinning
       // numbers a later change would simply edit.
-      final art = _lineArt(64, 64);
+      //
+      // ⚠️ THE GRID IS PART OF THE ASSERTION. An earlier version of this
+      // test walked five scales — 1.0, 0.85, 0.7, 0.55, 0.4 — and both
+      // thresholds below were measured on them, which made both true of
+      // the grid rather than of the kernel. One step in from 0.55 the
+      // kernel deleted whole hairlines and this test stayed green. Steps
+      // of 0.025 are what catch that; do not thin them to buy time.
+      //
+      // ⚠️ SO IS THE FIXTURE. `_lineArt`'s horizontal rule happens to sit
+      // at a phase where the axis-aligned tie never forms, so it cannot
+      // see that failure at all. `_hairlines` is a bare 1px cross chosen
+      // for the opposite reason. Both are swept.
+      final fixtures = <String, Uint8List>{
+        'line art': _lineArt(64, 64),
+        'hairlines': _hairlines(64),
+      };
       var inkCasesChecked = 0;
-      for (var degrees = 0; degrees <= 90; degrees += 5) {
-        for (final scale in <double>[1.0, 0.85, 0.7, 0.55, 0.4]) {
-          final out = (64 * scale).round();
-          final transform = _rotateScaleAbout(
-            degrees.toDouble(),
-            scale,
-            scale,
-            32,
-            32,
-          );
-          final got = resampleRgbaReference(
-            src: art,
-            srcWidth: 64,
-            srcHeight: 64,
-            dstWidth: out,
-            dstHeight: out,
-            transform: transform,
-            mode: ResampleMode.pick,
-          );
-          final truth = coverageTruth(
-            src: art,
-            srcWidth: 64,
-            srcHeight: 64,
-            dstWidth: out,
-            dstHeight: out,
-            transform: transform,
-            samples: 32,
-          );
-          // Not zero: the kernel samples an ordinary pixel 64 times and
-          // the oracle 1024, so pixels whose top two colours sit within a
-          // hair of each other can land either way.
-          //
-          // 1.5% is set from a measurement of both kernels over this exact
-          // sweep, not from taste. This one peaks at 1.06% (45° × 0.55,
-          // where a 1px feature covers almost exactly half its preimage
-          // and no sample count settles it); the boxed footprint it
-          // replaces peaks at 3.26%. A bar between the two is a bar that
-          // fails if the footprint ever comes back.
-          expect(
-            _disagreements(got, truth) / (out * out),
-            lessThan(0.015),
-            reason: '$degrees° × $scale disagrees with the truth too often',
-          );
-          // Only where the truth still has a drawing to keep. Past the
-          // half-scale threshold a 1px line genuinely loses its own area
-          // argmax and the oracle is down to single digits, where "within
-          // 80%" is a statement about two or three pixels and would fail
-          // on noise rather than on a defect.
-          final truthInk = _countToken(truth, 0xff101010);
-          if (truthInk >= 20) {
+      var tiedCasesSkipped = 0;
+      for (final entry in fixtures.entries) {
+        for (var degrees = 0; degrees <= 90; degrees += 5) {
+          for (var step = 0; step <= 24; step += 1) {
+            final scale = 0.4 + step * 0.025;
+            final out = (64 * scale).round();
+            final transform = _reduceAbout(degrees.toDouble(), scale, 64, out);
+            final got = resampleRgbaReference(
+              src: entry.value,
+              srcWidth: 64,
+              srcHeight: 64,
+              dstWidth: out,
+              dstHeight: out,
+              transform: transform,
+              mode: ResampleMode.pick,
+            );
+            final truth = coverageTruth(
+              src: entry.value,
+              srcWidth: 64,
+              srcHeight: 64,
+              dstWidth: out,
+              dstHeight: out,
+              transform: transform,
+              samples: 32,
+            );
+            final where =
+                '${entry.key} $degrees° × '
+                '${scale.toStringAsFixed(3)}';
+            // EXACTLY half is a genuine tie — a 1px feature covers exactly
+            // one of the two source pixels its preimage spans, so the two
+            // areas are equal and the winner is whichever tie-break each
+            // implementation happens to use. The oracle's is a map's
+            // insertion order and the kernel's is its scan order. Comparing
+            // them there measures the two tie-breaks, not the kernel, so
+            // neither assertion below is meaningful and both are skipped.
+            // The tie itself is pinned on its own, exactly, below.
+            if (scale == 0.5) {
+              tiedCasesSkipped += 1;
+              continue;
+            }
+            // Not zero: the supersampled half of the kernel reads an
+            // ordinary pixel 64 times and the oracle 1024, so pixels whose
+            // top two colours sit within a hair of each other can land
+            // either way. 6% is the measured worst over this grid (45° ×
+            // 0.4, a strong rotated reduction where nearly every edge
+            // pixel is a near-tie); the boxed footprint this replaces
+            // peaks far above it and fails.
+            expect(
+              _disagreements(got, truth) / (out * out),
+              lessThan(0.06),
+              reason: '$where disagrees with the truth too often',
+            );
+            final truthInk = _countToken(truth, 0xff101010);
+            // Only where the truth still has a drawing to keep. Past the
+            // half-scale threshold a 1px line genuinely loses its own area
+            // argmax and the oracle is down to single digits, where
+            // "within 80%" is a statement about two or three pixels.
+            if (truthInk < 20) {
+              continue;
+            }
             inkCasesChecked += 1;
-            // 80% for the same reason as above: measured. This kernel's
-            // worst case over the sweep keeps 96% of the truth's ink; the
-            // boxed one keeps 17%.
             expect(
               _countToken(got, 0xff101010),
               greaterThanOrEqualTo((truthInk * 0.8).floor()),
-              reason: '$degrees° × $scale dropped ink the truth keeps',
+              reason: '$where dropped ink the truth keeps',
             );
           }
         }
@@ -327,9 +416,59 @@ void main() {
       // fail.
       expect(
         inkCasesChecked,
-        greaterThan(50),
+        greaterThan(300),
         reason: 'the ink assertion stopped running on most of the sweep',
       );
+      expect(
+        tiedCasesSkipped,
+        lessThan(inkCasesChecked ~/ 10),
+        reason: 'the tie carve-out grew into a way of not asserting',
+      );
+    });
+
+    test('an exact tie is decided by scan order, without inventing a '
+        'colour', () {
+      // The one case the sweep declines to judge, pinned here exactly
+      // rather than statistically — a two-pixel source reduced to one
+      // destination pixel, where the preimage is precisely the two source
+      // pixels and the two areas are precisely equal. No oracle needed and
+      // no phase to get lucky with: this IS the tie.
+      //
+      // At exactly half scale a 1px line meets this everywhere along its
+      // length at once, which is why the whole line flips together and
+      // looks like the defect this feature exists to prevent. It is not
+      // one. There is no larger area to elect, the kernel this replaced
+      // answers the same way, and BOTH tie-breaks that were tried instead
+      // won one scale by losing another — deciding by the pixel's own
+      // centre fixed 0.500 and cost 0.750 ninety-five ink pixels of
+      // ninety-five. If this assertion is ever flipped, the tie-break has
+      // changed, and the 0.750 sweep is what says whether that was worth
+      // it.
+      final source = Uint8List(2 * 4);
+      final sourceWords = Uint32List.view(source.buffer);
+      sourceWords[0] = 0xff101010;
+      sourceWords[1] = 0xffffffff;
+      // dst 1×1 over src 2×1: the preimage spans u ∈ [−0.5, 1.5], which is
+      // source pixel 0 and source pixel 1, each covered exactly 1.0.
+      final out = resampleRgbaReference(
+        src: source,
+        srcWidth: 2,
+        srcHeight: 1,
+        dstWidth: 1,
+        dstHeight: 1,
+        transform: ResampleTransform(a: 2, b: 0, c: 0, d: 0, e: 1, f: 0),
+        mode: ResampleMode.pick,
+      );
+      expect(
+        _tokenAt(out, 1, 0, 0),
+        0xff101010,
+        reason:
+            'the tie went to the token met SECOND — the scan order that '
+            'makes this answer identical on every platform and worker '
+            'count has changed',
+      );
+      // Whatever wins, it is a colour that was already in the source.
+      expect(_tokensOf(out).difference(_tokensOf(source)), isEmpty);
     });
 
     test('opaque artwork never comes back transparent, at any anisotropy '
@@ -342,60 +481,78 @@ void main() {
       // shape that broke it: strong anisotropy, rotated.
       final solid = _opaqueArt(width, height);
       const out = 6;
-      final shift = 0.5 * (width - out);
-      for (var degrees = 0; degrees < 90; degrees += 6) {
-        for (final sx in <double>[0.2, 0.5, 1.0, 2.0, 4.0, 12.0, 20.0]) {
-          for (final sy in <double>[0.2, 0.5, 1.0, 2.0, 4.0, 12.0, 20.0]) {
-            final t = _rotateScaleAbout(
-              degrees.toDouble(),
-              sx,
-              sy,
-              width / 2,
-              height / 2,
-            );
-            // A small patch at the image centre, so the preimage stays
-            // inside and a transparent pixel is the kernel's doing rather
-            // than the edge's.
-            final inner = ResampleTransform(
-              a: t.a,
-              b: t.b,
-              c: t.c + t.a * shift + t.b * shift,
-              d: t.d,
-              e: t.e,
-              f: t.f + t.d * shift + t.e * shift,
-            );
-            final got = resampleRgbaReference(
-              src: solid,
-              srcWidth: width,
-              srcHeight: height,
-              dstWidth: out,
-              dstHeight: out,
-              transform: inner,
-              mode: ResampleMode.pick,
-            );
-            final truth = coverageTruth(
-              src: solid,
-              srcWidth: width,
-              srcHeight: height,
-              dstWidth: out,
-              dstHeight: out,
-              transform: inner,
-              samples: 32,
-            );
-            final gotWords = Uint32List.view(got.buffer);
-            final truthWords = Uint32List.view(truth.buffer);
-            for (var i = 0; i < gotWords.length; i += 1) {
-              if (truthWords[i] != kResampleOutsideToken) {
-                expect(
-                  gotWords[i],
-                  isNot(kResampleOutsideToken),
-                  reason: '$degrees° sx=$sx sy=$sy punched a hole at $i',
-                );
+      // TWO placements, and the second is what gives the test teeth. At
+      // the CENTRE the preimage is wholly inside the source, so the gate
+      // below (`the truth says this pixel is opaque`) never fires — it
+      // fired on 0 of 26,460 cells, which is why the boxed kernel this
+      // test exists to indict used to pass it. At the CORNER half the
+      // preimage hangs off the image, the gate goes live, and that kernel
+      // punches 13 holes through artwork the truth calls opaque.
+      var gatedCells = 0;
+      for (final shift in <double>[0, 0.5 * (width - out)]) {
+        for (var degrees = 0; degrees < 90; degrees += 6) {
+          for (final sx in <double>[0.2, 0.5, 1.0, 2.0, 4.0, 12.0, 20.0]) {
+            for (final sy in <double>[0.2, 0.5, 1.0, 2.0, 4.0, 12.0, 20.0]) {
+              final t = _rotateScaleAbout(
+                degrees.toDouble(),
+                sx,
+                sy,
+                width / 2,
+                height / 2,
+              );
+              final inner = ResampleTransform(
+                a: t.a,
+                b: t.b,
+                c: t.c + t.a * shift + t.b * shift,
+                d: t.d,
+                e: t.e,
+                f: t.f + t.d * shift + t.e * shift,
+              );
+              final got = resampleRgbaReference(
+                src: solid,
+                srcWidth: width,
+                srcHeight: height,
+                dstWidth: out,
+                dstHeight: out,
+                transform: inner,
+                mode: ResampleMode.pick,
+              );
+              final truth = coverageTruth(
+                src: solid,
+                srcWidth: width,
+                srcHeight: height,
+                dstWidth: out,
+                dstHeight: out,
+                transform: inner,
+                samples: 32,
+              );
+              final gotWords = Uint32List.view(got.buffer);
+              final truthWords = Uint32List.view(truth.buffer);
+              for (var i = 0; i < gotWords.length; i += 1) {
+                if (truthWords[i] != kResampleOutsideToken) {
+                  gatedCells += 1;
+                  expect(
+                    gotWords[i],
+                    isNot(kResampleOutsideToken),
+                    reason:
+                        'shift $shift $degrees° sx=$sx sy=$sy punched a '
+                        'hole at $i',
+                  );
+                }
               }
             }
           }
         }
       }
+      // A hole test whose gate never fires is a hole test that cannot
+      // fail. This is the assertion that says the gate fired.
+      expect(
+        gatedCells,
+        greaterThan(1000),
+        reason:
+            'the truth never called a pixel opaque, so nothing was '
+            'checked — the placements stopped straddling the edge',
+      );
     });
   });
 
@@ -699,8 +856,16 @@ void main() {
       for (var i = 0; i < crowdedWords.length; i += 1) {
         crowdedWords[i] = dominant;
       }
-      for (var i = 0; i < 16; i += 1) {
-        crowdedWords[4 * size + (4 + i)] = 0xff000000 | (i * 0x080808);
+      // 24 DISTINCT greys inside ONE destination pixel's preimage. At
+      // scale 1/8 that is dst(0,0), whose preimage is source [0,8)×[0,8).
+      // Seeded along a single row instead — as they were — no preimage
+      // ever sees more than eight of them, the sixteen-slot table never
+      // overflows, and the eviction policy this test is named for is
+      // never exercised at all.
+      for (var y = 0; y < 3; y += 1) {
+        for (var x = 0; x < 8; x += 1) {
+          crowdedWords[y * size + x] = 0xff000000 | ((y * 8 + x) * 0x040404);
+        }
       }
       final out = resampleRgbaReference(
         src: crowded,
@@ -712,9 +877,9 @@ void main() {
         mode: ResampleMode.pick,
       );
       expect(
-        _tokenAt(out, 8, 1, 1),
+        _tokenAt(out, 8, 0, 0),
         dominant,
-        reason: 'a 0.1% colour outvoted a 99% one',
+        reason: 'a 1.5% colour outvoted a 62% one',
       );
     });
 

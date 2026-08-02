@@ -475,12 +475,14 @@ class _MoveSettingsState extends State<_MoveSettings> {
         // shrink that box onto the true parallelogram each traded the lost
         // line art for transparent holes.
         //
-        // What ships it is the kernel no longer having a box: Pick
-        // supersamples the preimage and counts where the samples land, so
-        // the area argmax is exact by construction. Measured against a
-        // 1024-sample oracle over 95 angle/scale pairs it keeps at worst
-        // 96% of the ink the oracle keeps, where the boxed version kept
-        // 17%.
+        // What ships it is the kernel no longer having one box for every
+        // shape. Where the preimage really is an axis-aligned rectangle it
+        // measures the area exactly; everywhere else it supersamples and
+        // counts where the samples land. Measured against a 1024-sample
+        // oracle over a 0.4–1.0 scale grid at every fifth degree, it drops
+        // below 80% of the oracle's ink in 3 of 390 cases — all of them at
+        // EXACTLY half scale, where the two areas are equal and there is
+        // nothing to elect — against the boxed version's 110 of 390.
         SwitchListTile(
           key: const ValueKey<String>('move-preserve-colours-switch'),
           dense: true,

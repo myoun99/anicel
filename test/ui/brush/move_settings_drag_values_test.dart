@@ -131,6 +131,14 @@ void main() {
 
     // Now with the host holding Pick: the switch must read on, and turning
     // it off must ask for Blend.
+    //
+    // The empty pump matters — it tears the panel's State down, so the ON
+    // the switch reads back can only have come from the host. Without it,
+    // pumping the identical tree reuses `_MoveSettingsState`, and a widget
+    // that kept the value in a local bool set by the tap above would read
+    // ON too and this half of the test would pass for the implementation
+    // it exists to rule out.
+    await tester.pumpWidget(const SizedBox.shrink());
     await pumpMoveSettings(
       tester,
       applied: applied,

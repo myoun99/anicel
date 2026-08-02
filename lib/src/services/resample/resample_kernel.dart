@@ -87,10 +87,16 @@ import 'dart:typed_data';
 /// written for clarity rather than speed, and the kernel is pinned against
 /// it.
 ///
-/// The measured consequence: a one-pixel feature now survives while
+/// The measured consequence: a one-pixel LINE now survives while
 /// `scale > 0.5` at EVERY angle, where the boxed version needed
 /// `scale > (|cos θ| + |sin θ|)/2` — 0.707 at 45°, which is why an
 /// ordinary rotate-and-shrink used to erase line art.
+///
+/// An ISOLATED one-pixel mark is a different sum and a different bound: it
+/// holds `scale²` of its preimage against a ground that votes as one
+/// token, so it needs `scale > 1/√2` at every angle including 0°. That is
+/// the area argmax answering correctly rather than a footprint failing —
+/// the oracle drops it in the same place.
 ///
 /// The radius floor is 1.0 and belongs to Blend alone now; Pick has no
 /// radius left to floor. See [resampleRadiusFloor].
@@ -146,16 +152,18 @@ double resampleRadiusFloor(ResampleMode mode) => 1.0;
 
 /// Subsamples per axis at the two ends of [resampleSamplesPerAxis].
 ///
-/// Both ends were measured against the oracle rather than reasoned about,
-/// and both are where the curve flattens. **8** is the floor because 4 —
-/// the two-per-source-pixel rate the rule would otherwise give near 1:1 —
-/// cannot resolve a vote that is nearly tied, which is exactly the vote a
-/// one-pixel line casts: at 0.60× it kept 30 ink pixels where the oracle
-/// keeps 115, because a line covering 60% of a preimage sampled four times
-/// per axis reads as 2 of 4 half the time. At 8 the same sweep tracks the
-/// oracle to within 3%. **16** is the ceiling because nothing above it
-/// moved: 24 and 32 per axis returned the same pixels for four and sixteen
-/// times the samples.
+/// **8** is the floor as MARGIN above the two-per-source-pixel rate the
+/// rule gives near 1:1 — not as a rescue, which is what an earlier version
+/// of this comment claimed on a measurement that does not reproduce. Rate
+/// 4 collapses on a hairline only with [kResampleRefineLimit] disabled;
+/// with refinement in place the two are close, and over the sweep in
+/// `resample_kernel_test.dart` rate 4 keeps 91.7% of the oracle's ink at
+/// worst against 8's 95.8%, at the same worst disagreement. **8 buys the
+/// margin. The refinement loop buys the drawing.**
+///
+/// **16** is the ceiling because nothing above it moved on the rotated
+/// work the sampler is responsible for: 24 and 32 per axis returned the
+/// same pixels for four and sixteen times the samples.
 ///
 /// The ceiling is also what bounds Pick's work without a radius clamp. A
 /// corner-pin that used to ask for 2.5×10⁸ taps in a single destination
@@ -170,17 +178,25 @@ const int kResampleMaxSamplesPerAxis = 16;
 /// preimage; a pixel whose top two colours come back with equal counts is
 /// re-sampled at twice that, up to this.
 ///
-/// 16 rather than 32, and the difference is entirely cost. Both keep 96%
-/// of the ink the oracle keeps and both peak at 1.06% disagreement — the
-/// second doubling changes no pixel in the sweep — but a half-size
-/// reduction ties on nearly every edge (a 1px line covers EXACTLY half its
-/// preimage there, a tie no sample count can break), and paying 1024
-/// samples for each of those cost 278 ms on a full canvas where 16 costs
-/// 110. Refinement is for ties the grid invented, and one doubling finds
-/// all of those; the rest are real.
-///
 /// Not refining at all is not an option: it kept 54% of the oracle's ink
 /// at 0.55×, which is a hairline going missing.
+///
+/// 16 rather than 32 is a cost call, and the honest version of it is
+/// narrower than the one this comment used to make. **A second doubling
+/// does change pixels** — 397 across a three-fixture sweep, and it fixes
+/// most of the decisively-wrong ones the sampler still has. What makes 16
+/// defensible is that the failures it leaves are almost all AXIS-ALIGNED,
+/// and those no longer reach the sampler at all: they go down the exact
+/// path above, where there is no quantisation to refine away. What is left
+/// for the sampler is rotated work, where one doubling is enough and a
+/// second costs 1.1–1.7× on a full canvas for pixels nobody can pick out.
+///
+/// ⚠️ And do not repeat the claim this replaced — "ties that survive the
+/// cap are the real ones, a feature covering exactly half". Traced, the
+/// surviving ties were 55/45, not 50/50. The proof that SOME ties are
+/// unbreakable is not a proof that all surviving ones are, which is the
+/// same shape of error as the round before: a bound asserted in a comment,
+/// believed, and wrong.
 const int kResampleRefineLimit = 16;
 
 /// Any source index this large is outside every possible image, so the
@@ -439,15 +455,65 @@ void resampleRgbaReferenceInto({
 
   // Footprint extents from the inverse Jacobian: the size of the
   // preimage's bounding box. Blend clamps them into its tent radius; Pick
-  // uses the raw pair only to size its flat-support probe, never to weigh
-  // anything. Constant for an affine map, so hoist them; a homography
-  // re-derives them per pixel below.
+  // uses the raw pair to size its flat-support probe, and — when the box
+  // and the preimage are the same rectangle — to weigh with. Constant for
+  // an affine map, so hoist them; a homography re-derives them per pixel
+  // below.
   var extentX = t.a.abs() + t.b.abs();
   var extentY = t.d.abs() + t.e.abs();
   var radiusX = math.max(floor, extentX);
   var radiusY = math.max(floor, extentY);
   if (radiusX > kResampleRadiusCeiling) radiusX = kResampleRadiusCeiling;
   if (radiusY > kResampleRadiusCeiling) radiusY = kResampleRadiusCeiling;
+
+  // ⚠️ READ THIS BEFORE CONCLUDING THE FOOTPRINT BOX IS BACK. It is not.
+  //
+  // A destination pixel's preimage is a parallelogram, and the reason
+  // three rounds of separable weighting failed is that a product of two
+  // one-dimensional weights integrates over a RECTANGLE. But the preimage
+  // sometimes IS a rectangle — sides parallel to the axes, by construction
+  // rather than by approximation — and then the separable product is not
+  // an estimate of the area, it is the area.
+  //
+  // Exactly when: the two destination steps are `(a, d)` and `(b, e)`, so
+  // they land on the axes either when `b` and `d` are both zero (no
+  // rotation, or a half turn) or when `a` and `e` are both zero (a quarter
+  // turn, which swaps the axes and is just as rectangular). The quarter
+  // turn is not an afterthought — it is where the worst measured failures
+  // were, and it reaches this test exactly because `SelectionAffine`
+  // carries cos and sin from a table, so 90° really does give `a == 0`
+  // rather than 6.1e-17.
+  //
+  // That distinction is worth the paragraph, because the two look
+  // identical in the code and only one of them is a lie. Every failure
+  // this exactness fixes lives at 0°, 90° and 180°; every failure the
+  // supersampler fixes lives everywhere else.
+  //
+  // Why it MATTERS rather than merely being cheaper: counting n samples
+  // quantises coverage to multiples of 1/n, so a feature owning `scale` of
+  // its preimage only wins when `n·scale` rounds strictly past n/2. That
+  // leaves an ambiguity band of `(0.5, 0.5 + 1/(2n))` where the vote comes
+  // back exactly tied, and a tie goes to the token met first, which under
+  // reduction is systematically the ground. An axis-aligned 1px line
+  // presents the SAME coverage at every pixel along its length, so the
+  // whole line flips together: measured on the supersampler alone, a 90°
+  // reduction to 0.525 kept 5 ink pixels where the truth keeps 38. The
+  // line did not thin. It vanished — the exact failure this feature exists
+  // to end, reappearing at the least exotic angle there is. Raising the
+  // refinement cap narrows the band and never closes it. Computing the
+  // area instead of sampling it closes it.
+  //
+  // The bound: `extentX <= kResampleRadiusCeiling`, so the tap window
+  // stays bounded. Past a 16× reduction a one-pixel feature has long lost
+  // its own area argmax and the supersampler's cap is the honest answer.
+  final pickExact =
+      isPick &&
+      t.isAffine &&
+      ((t.b == 0 && t.d == 0) || (t.a == 0 && t.e == 0)) &&
+      extentX > 0 &&
+      extentY > 0 &&
+      extentX <= kResampleRadiusCeiling &&
+      extentY <= kResampleRadiusCeiling;
 
   // The squared source-space length of one destination step along each
   // axis — the columns of the same Jacobian, and the only thing that sets
@@ -464,17 +530,19 @@ void resampleRgbaReferenceInto({
   // still in the table when the vote is counted. Dropping the newcomer
   // instead — the obvious cheap policy — lets a colour covering 99% of a
   // preimage lose to one covering 0.1%.
+  //
+  // One table serves both of Pick's gathers. The supersampler adds 1.0 per
+  // landing rather than an integer, which costs nothing (a double counts
+  // whole numbers exactly far past the 1024 it can reach) and buys one
+  // election instead of two.
   final keys = Uint32List(_kVoteSlots);
-  final counts = Int32List(_kVoteSlots);
+  final weights = Float64List(_kVoteSlots);
 
   // Where the subsamples land, filled once per sampling round and read
   // again when an eviction forces an exact recount. Keeping the landings
   // instead of the sample coordinates is what makes that recount cheap:
   // it re-reads a scratch array rather than re-running the inverse map.
-  // Counts are integers bounded by the sample total, so the whole election
-  // is exact arithmetic — the inverse map is the only place a rounding
-  // difference between Dart and C can enter.
-  final landings = isPick
+  final landings = isPick && !pickExact
       ? Uint32List(kResampleRefineLimit * kResampleRefineLimit)
       : Uint32List(0);
 
@@ -486,7 +554,7 @@ void resampleRgbaReferenceInto({
   final offsets = Float64List(
     (kResampleRefineLimit + 1) * kResampleRefineLimit,
   );
-  if (isPick) {
+  if (isPick && !pickExact) {
     for (var n = 1; n <= kResampleRefineLimit; n += 1) {
       for (var s = 0; s < n; s += 1) {
         offsets[n * kResampleRefineLimit + s] = (s + 0.5) / n;
@@ -554,29 +622,45 @@ void resampleRgbaReferenceInto({
       final centreX = u.round();
       final centreY = v.round();
 
-      final samplesX = isPick ? resampleSamplesPerAxis(stepXSquared) : 0;
-      final samplesY = isPick ? resampleSamplesPerAxis(stepYSquared) : 0;
+      final samplesX = isPick && !pickExact
+          ? resampleSamplesPerAxis(stepXSquared)
+          : 0;
+      final samplesY = isPick && !pickExact
+          ? resampleSamplesPerAxis(stepYSquared)
+          : 0;
 
-      // The window for the flat-support probe, which is NOT the window
-      // anything is gathered from — Blend gathers from the tent's support
-      // and Pick gathers from nowhere at all.
+      // The exact path's half-widths. The preimage spans `u ± extentX/2`,
+      // and NO FLOOR is applied: a floor above the true extent claims the
+      // preimage reaches further than it does, which is what deleted line
+      // art when the floor was 1.5.
+      final halfX = extentX * 0.5;
+      final halfY = extentY * 0.5;
+      // A tap further than half the preimage plus half a pixel cannot
+      // overlap it at all, so it has nothing to say about area.
+      final exactRadX = pickExact ? (halfX + 0.5).ceil() : 0;
+      final exactRadY = pickExact ? (halfY + 0.5).ceil() : 0;
+
+      // The window for the flat-support probe. For Blend and for exact
+      // Pick it IS the gather window, so "flat here" and "every tap reads
+      // this" are the same statement.
       //
-      // Blend's probe is its own support, so "flat here" and "every tap
-      // reads this" are the same statement whatever the geometry does.
-      //
-      // Pick's has to be derived, and derived conservatively: a subsample
-      // lands in `round(u_s)`, `u_s` stays within `extent/2` of `u`, and
-      // `u` stays within half a pixel of `centreX`, so no landing is
-      // further than `extent/2 + 1` away and the floor of that is a true
-      // bound because landings are whole numbers. That argument needs the
-      // preimage to actually BE the parallelogram the extents describe,
-      // which is true of an affine map and only linearly approximate under
-      // a perspective divide — so Pick simply does not probe a homography.
-      // A window that disagrees with the thing it is standing in for is
-      // how the previous design elected a colour by a loop bound.
+      // For the supersampler it has to be derived, and derived
+      // conservatively: a subsample lands in `round(u_s)`, `u_s` stays
+      // within `extent/2` of `u`, and `u` stays within half a pixel of
+      // `centreX`, so no landing is further than `extent/2 + 1` away and
+      // the floor of that is a true bound because landings are whole
+      // numbers. That argument needs the preimage to actually BE the
+      // parallelogram the extents describe, which is true of an affine map
+      // and only linearly approximate under a perspective divide — so the
+      // supersampler does not probe a homography at all. A window that
+      // disagrees with the thing it stands in for is how the previous
+      // design elected a colour by a loop bound.
       var runFlat = true;
       int flatRadX, flatRadY;
-      if (isPick) {
+      if (pickExact) {
+        flatRadX = exactRadX;
+        flatRadY = exactRadY;
+      } else if (isPick) {
         final spanX = (extentX * 0.5 + 1).floorToDouble();
         final spanY = (extentY * 0.5 + 1).floorToDouble();
         // Only while the probe is cheaper than the sampling it would save.
@@ -623,6 +707,114 @@ void resampleRgbaReferenceInto({
           dstWords[rowBase + x] = flatToken;
           continue;
         }
+      }
+
+      if (pickExact) {
+        // Exact area, gathered rather than sampled. Every tap's weight is
+        // the length its source pixel shares with the preimage along x,
+        // times the same along y — and because the preimage is an
+        // axis-aligned rectangle here, that product IS the shared area.
+        // No quantisation, so no tie band: a feature owning 50.8% of the
+        // preimage wins with 50.8%.
+        var slots = 0;
+        var evicted = false;
+        for (var dy = -exactRadY; dy <= exactRadY; dy += 1) {
+          final sourceY = centreY + dy;
+          final weightY = _coverage(sourceY, v, halfY);
+          if (weightY <= 0) continue;
+          final rowOffset = sourceY * srcWidth;
+          final rowInside = sourceY >= 0 && sourceY < srcHeight;
+          for (var dx = -exactRadX; dx <= exactRadX; dx += 1) {
+            final sourceX = centreX + dx;
+            final weightX = _coverage(sourceX, u, halfX);
+            if (weightX <= 0) continue;
+            final token = (!rowInside || sourceX < 0 || sourceX >= srcWidth)
+                ? kResampleOutsideToken
+                : srcWords[rowOffset + sourceX];
+            final weight = weightX * weightY;
+            var slot = -1;
+            for (var s = 0; s < slots; s += 1) {
+              if (keys[s] == token) {
+                slot = s;
+                break;
+              }
+            }
+            if (slot >= 0) {
+              weights[slot] += weight;
+            } else if (slots < _kVoteSlots) {
+              keys[slots] = token;
+              weights[slots] = weight;
+              slots += 1;
+            } else {
+              var lightest = 0;
+              for (var s = 1; s < _kVoteSlots; s += 1) {
+                if (weights[s] < weights[lightest]) lightest = s;
+              }
+              keys[lightest] = token;
+              weights[lightest] += weight;
+              evicted = true;
+            }
+          }
+        }
+        if (slots == 0) {
+          dstWords[rowBase + x] = kResampleOutsideToken;
+          continue;
+        }
+        if (evicted) {
+          for (var s = 0; s < slots; s += 1) {
+            weights[s] = 0;
+          }
+          for (var dy = -exactRadY; dy <= exactRadY; dy += 1) {
+            final sourceY = centreY + dy;
+            final weightY = _coverage(sourceY, v, halfY);
+            if (weightY <= 0) continue;
+            final rowOffset = sourceY * srcWidth;
+            final rowInside = sourceY >= 0 && sourceY < srcHeight;
+            for (var dx = -exactRadX; dx <= exactRadX; dx += 1) {
+              final sourceX = centreX + dx;
+              final weightX = _coverage(sourceX, u, halfX);
+              if (weightX <= 0) continue;
+              final token = (!rowInside || sourceX < 0 || sourceX >= srcWidth)
+                  ? kResampleOutsideToken
+                  : srcWords[rowOffset + sourceX];
+              for (var s = 0; s < slots; s += 1) {
+                if (keys[s] == token) {
+                  weights[s] += weightX * weightY;
+                  break;
+                }
+              }
+            }
+          }
+        }
+        // A tie here is REAL: the areas are equal and nothing further will
+        // separate them. It goes to the token met first, in a fixed scan
+        // order, which is what keeps the answer identical on every
+        // platform and worker count.
+        //
+        // ⚠️ The visible cost, written down because it looks like a defect
+        // and is not one: at EXACTLY half scale a one-pixel line covers
+        // exactly one of the two source pixels its preimage spans, every
+        // pixel along an axis-aligned line ties at once, and the whole line
+        // goes to the ground. Measured: 1 ink pixel kept where a
+        // supersampled oracle keeps 32 — the oracle differing only because
+        // its own tie-break is a map's insertion order. Both answers ARE
+        // the area argmax; neither is more correct, and the kernel this
+        // replaced behaves the same way.
+        //
+        // Two tie-breaks were built and measured and both were reverted,
+        // so do not reach for a third without a sweep. Deciding by the
+        // pixel's own centre fixes 0.500 and destroys 0.750 — 95 ink pixels
+        // down to 3 — because at 0.750 the tie is between a feature and a
+        // ground the centre happens to sit in. The same rule on the
+        // supersampled path traded 0.55 for 0.70 in exactly the same shape.
+        // The tie is genuinely undecidable from area, and every rule that
+        // decides it anyway wins one scale by losing another.
+        var best = 0;
+        for (var s = 1; s < slots; s += 1) {
+          if (weights[s] > weights[best]) best = s;
+        }
+        dstWords[rowBase + x] = keys[best];
+        continue;
       }
 
       if (isPick) {
@@ -703,10 +895,10 @@ void resampleRgbaReferenceInto({
               }
             }
             if (slot >= 0) {
-              counts[slot] += 1;
+              weights[slot] += 1;
             } else if (slots < _kVoteSlots) {
               keys[slots] = token;
-              counts[slots] = 1;
+              weights[slots] = 1;
               slots += 1;
             } else {
               // The weakest slot yields its key and keeps its count, so a
@@ -715,10 +907,10 @@ void resampleRgbaReferenceInto({
               // choice is identical on every platform and worker count.
               var lightest = 0;
               for (var k = 1; k < _kVoteSlots; k += 1) {
-                if (counts[k] < counts[lightest]) lightest = k;
+                if (weights[k] < weights[lightest]) lightest = k;
               }
               keys[lightest] = token;
-              counts[lightest] += 1;
+              weights[lightest] += 1;
               evicted = true;
             }
           }
@@ -731,14 +923,22 @@ void resampleRgbaReferenceInto({
             // the surviving keys are known, recount them exactly. Gated on
             // the eviction, so the ordinary preimage — line art holds two
             // or three colours — never pays for it.
+            //
+            // ⚠️ This branch is DEFENSIVE and the suite does not pin it. A
+            // search over a thousand fixtures found none where an
+            // inherited count actually beats the true argmax, so no test
+            // fails if the recount is deleted. Said out loud rather than
+            // left to look like coverage: the eviction ITSELF is pinned
+            // (see "a dominant colour still wins past 16 distinct
+            // tokens"), the correction on top of it is not.
             for (var s = 0; s < slots; s += 1) {
-              counts[s] = 0;
+              weights[s] = 0;
             }
             for (var s = 0; s < votes; s += 1) {
               final token = landings[s];
               for (var k = 0; k < slots; k += 1) {
                 if (keys[k] == token) {
-                  counts[k] += 1;
+                  weights[k] += 1;
                   break;
                 }
               }
@@ -746,11 +946,11 @@ void resampleRgbaReferenceInto({
           }
           best = 0;
           for (var s = 1; s < slots; s += 1) {
-            if (counts[s] > counts[best]) best = s;
+            if (weights[s] > weights[best]) best = s;
           }
           var tied = false;
           for (var s = 0; s < slots; s += 1) {
-            if (s != best && counts[s] == counts[best]) {
+            if (s != best && weights[s] == weights[best]) {
               tied = true;
               break;
             }
@@ -825,6 +1025,32 @@ void resampleRgbaReferenceInto({
 }
 
 const int _kVoteSlots = 16;
+
+/// How much of the destination pixel's preimage source pixel [source]
+/// covers, along one axis: the preimage spans `centre ± half`, a source
+/// pixel spans `source ± 0.5`, and this is the length they share.
+///
+/// ⚠️ This is separable, and separability is what made three rounds of this
+/// feature wrong. It is used on exactly one path — `b == 0 && d == 0` —
+/// where the preimage is an axis-aligned RECTANGLE and the product of the
+/// two lengths is therefore the shared AREA rather than an estimate of it.
+/// Off that path the preimage is a rotated parallelogram, the product
+/// integrates over its bounding box instead, and the supersampler is what
+/// answers.
+///
+/// The reason exactness earns its own path rather than being left to the
+/// sampler: counting quantises. A one-pixel feature owning `scale` of its
+/// preimage only beats the ground when `n·scale` rounds past `n/2`, so
+/// coverages in `(0.5, 0.5 + 1/(2n))` come back tied however large `n` is,
+/// and an axis-aligned line — presenting identical coverage at every pixel
+/// along its length — loses all of itself at once. Measured on the sampler
+/// alone: a 90° reduction to 0.525 kept 5 ink pixels where the truth keeps
+/// 38. Here 0.525 simply beats 0.475.
+double _coverage(int source, double centre, double half) {
+  final low = math.max(source - 0.5, centre - half);
+  final high = math.min(source + 0.5, centre + half);
+  return high - low;
+}
 
 /// A 32-bit word view for READING.
 ///
