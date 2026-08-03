@@ -906,13 +906,19 @@ class _InteractiveBrushEditCanvasViewState
   /// pixels. Closing that needs the painter to stop borrowing for the
   /// settling coordinates — a change to a painter three surfaces share.
   ///
-  /// ⚠️ That gap is TEN DAYS OLD (`ccafbd74`, the commit that introduced
-  /// promotion and took the pin off this path). The user's report of an
-  /// intermittent rectangular hole goes back years, so this is not that
-  /// bug, whatever it also fixes. It also only bites where the coordinate
-  /// ALREADY holds decoded content — drawing over existing ink, or a
-  /// second pass through the same tile. On blank paper the painter's
-  /// per-pixel fallback draws the correct pixels.
+  /// ⚠️ The dates, because they say this IS the user's report rather than
+  /// a neighbour of it. The stale fallback landed 2026-07-05; the settle
+  /// pin that covered pen-up landed 2026-07-08; `ccafbd74` took the pin
+  /// off this path on 2026-07-23. So the hole existed for three days in
+  /// early July, went away, and came back in late July — which is exactly
+  /// the shape of "intermittent, since early July" that was reported. An
+  /// earlier version of this comment said the report "goes back years" and
+  /// concluded this was a different bug; the repository's first commit is
+  /// 2026-06-02, so that was never possible.
+  ///
+  /// It only bites where the coordinate ALREADY holds decoded content —
+  /// drawing over existing ink, or a second pass through the same tile. On
+  /// blank paper the painter's per-pixel fallback draws the correct pixels.
   void _commitStroke() {
     final rasterizer = _liveRasterizer;
     final base = _overlayModel.preBlendBase;
