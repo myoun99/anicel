@@ -22,8 +22,7 @@ import 'package:anicel/src/models/canvas_surface_state.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
-import 'package:anicel/src/ui/brush/brush_tool_state.dart'
-    show CanvasTool;
+import 'package:anicel/src/ui/brush/brush_tool_state.dart' show CanvasTool;
 import 'package:anicel/src/ui/canvas/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/ui/canvas/brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
@@ -345,6 +344,88 @@ void main() {
     });
 
     testWidgets(
+      'pen-up never leaves a promoted tile with no picture anywhere',
+      (tester) async {
+        // The user's long-standing report: finishing a stroke leaves a
+        // RECTANGULAR patch of the line missing for a frame.
+        //
+        // Promotion hands each committed tile the image the overlay was
+        // already showing, and where that works the handoff is invisible.
+        // But it is revision-gated, and the revision is written inside the
+        // decode CALLBACK, while `_flushPendingOverlayDabs()` and
+        // `_commitStroke()` run in ONE synchronous handler — so a tile the
+        // final flush touched cannot have recorded its new revision by the
+        // time the handoff compares. Those tiles reach the committed
+        // surface with no picture, and dropping the overlay in the same
+        // turn left the painter's stale fallback to answer for them with
+        // the PRE-STROKE tile. Tile-shaped, one frame, and worst on short
+        // strokes because then the whole line lives in the tiles that
+        // final flush touched.
+        //
+        // The invariant, stated so it does not depend on which tiles
+        // missed: after pen-up, every coordinate the stroke touched is
+        // still covered by SOMETHING that has its pixels — and in this
+        // harness the host does not apply the commit, so the only thing
+        // that can be is the overlay.
+        final results = <List<BrushDab>>[];
+        await tester.pumpWidget(
+          _app(
+            _view(
+              _sessionState(),
+              results.add,
+              inputSettings: BrushEditCanvasInputSettings(size: 4),
+            ),
+          ),
+        );
+
+        final gesture = await tester.startGesture(
+          canvasGlobalOffset(tester, const Offset(1, 1)),
+          pointer: 1,
+        );
+        await gesture.moveTo(canvasGlobalOffset(tester, const Offset(5, 1)));
+        await tester.pump();
+        // Let the overlay's decode LAND. Without this the tile has no
+        // image at any revision, the overlay has nothing to show either,
+        // and the test would be measuring a harness that never yields
+        // rather than the handoff. In the app this always happens — the
+        // user has been looking at those pixels.
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)),
+        );
+        await tester.pump();
+        final overlay = tester
+            .widget<BrushEditCanvasView>(find.byType(BrushEditCanvasView))
+            .overlayModel!;
+        expect(
+          overlay.tileImages,
+          isNotEmpty,
+          reason: 'the mid-stroke decode never landed — bad premise',
+        );
+
+        // One more segment, so the flush at pen-up bumps the revision
+        // past the one the landed image recorded. That is the miss, and it
+        // is guaranteed rather than racy: the new revision is written
+        // inside a decode callback that cannot run before the handoff
+        // compares against it, in this same synchronous handler.
+        await gesture.moveTo(canvasGlobalOffset(tester, const Offset(9, 1)));
+        await gesture.up();
+
+        final canvasView = tester.widget<BrushEditCanvasView>(
+          find.byType(BrushEditCanvasView),
+        );
+        expect(results, hasLength(1), reason: 'the stroke did not commit');
+        expect(
+          canvasView.overlayModel!.tileImages,
+          isNotEmpty,
+          reason:
+              'the overlay was dropped while a promoted tile had no '
+              'picture — that coordinate now paints its PRE-STROKE tile, '
+              'which is the hole the user reported',
+        );
+      },
+    );
+
+    testWidgets(
       'drag stroke keeps continuous active path before commit and clears after commit',
       (tester) async {
         final results = <List<BrushDab>>[];
@@ -372,16 +453,44 @@ void main() {
         expect(results, isEmpty);
 
         await gesture.up();
-        // PROMOTION round: pen-up commits INSIDE the pointer event and
-        // the overlay clears with it — one atomic handoff, no deferred
-        // flush and no settling window. (Both existed to hide a commit
-        // that re-derived pixels the screen already had; the commit now
-        // installs the tiles the overlay was showing.)
+        // The COMMIT is atomic — it happens inside the pointer event, and
+        // the promotion round's point stands: no deferred flush, no
+        // re-derived pixels.
         canvasView = tester.widget<BrushEditCanvasView>(
           find.byType(BrushEditCanvasView),
         );
         expect(results, hasLength(1));
-        expect(canvasView.overlayModel!.dabs, isEmpty);
+
+        // The OVERLAY is not always. This test used to assert it cleared
+        // in the same turn, on the promotion round's claim that every
+        // promoted tile gets handed the image it was already showing. That
+        // claim is false for the tiles the final flush touched: the
+        // handoff is revision-gated and the revision is written inside the
+        // decode callback, so a tile flushed in this same synchronous
+        // handler cannot have recorded it yet. Dropping the overlay for
+        // those left the stroke missing in a tile-shaped patch, so a
+        // missed handoff now keeps it up until the committed tiles decode.
+        //
+        // What the test can still say without asserting which case it got:
+        // the overlay ALWAYS ends up clear.
+        for (
+          var i = 0;
+          i < 40 && canvasView.overlayModel!.dabs.isNotEmpty;
+          i++
+        ) {
+          await tester.runAsync(
+            () => Future<void>.delayed(const Duration(milliseconds: 16)),
+          );
+          await tester.pump(const Duration(milliseconds: 16));
+          canvasView = tester.widget<BrushEditCanvasView>(
+            find.byType(BrushEditCanvasView),
+          );
+        }
+        expect(
+          canvasView.overlayModel!.dabs,
+          isEmpty,
+          reason: 'the overlay never released after the commit',
+        );
         expect(canvasView.overlayModel!.tileImages, isEmpty);
         expect(canvasView.overlayModel!.settleHoldTiles, isNull);
         expect(canvasView.overlayModel!.preBlended, isFalse);
