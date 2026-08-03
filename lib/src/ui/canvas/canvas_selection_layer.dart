@@ -1455,6 +1455,33 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// leaves a full-canvas commit unpainted. The float already holds these
   /// exact bytes at this exact place, so it is the correct picture, not a
   /// stand-in for one.
+  ///
+  /// ⚠️ TWO THINGS THIS DOES NOT YET CLOSE, both measured, both still
+  /// better than what they replace:
+  ///
+  /// 1. The release is ALL-OR-NOTHING while the base converges tile by
+  ///    tile (32 decode starts a paint). For a landing rect wider than one
+  ///    decode round, there are frames where the base already draws the
+  ///    final pixels for some tiles and the float is still drawn over the
+  ///    whole rect — so partial-alpha pixels take a second source-over and
+  ///    a feathered edge reads darker. Measured on a whole-picture move of
+  ///    a 2340×1654 cel: 208,234 pixels differ across two frames, every
+  ///    one of them darker, max channel delta 56. A selection whose tiles
+  ///    all decode in one round shows zero differing pixels, so ordinary
+  ///    selections are unaffected. The fix is to clip the held float to
+  ///    the tiles the base cannot paint yet, which needs the predicate to
+  ///    return those tiles rather than a bool.
+  ///
+  /// 2. On the Ctrl+T (warped) path the held float cannot paint ITSELF for
+  ///    that frame: `_commitTransform` empties the float's stale scope and
+  ///    `_clearTransform` discards the decoded resample, then rebuilds the
+  ///    float from the warped stamp — all-new tiles, no cache entries. So
+  ///    the hold covers four tiles and no more. Measured: 6 float tiles,
+  ///    0 decoded, 0 borrowable. Not a regression — master painted ZERO on
+  ///    that frame — but the doc's "it is the correct picture" is true of
+  ///    the move path and not yet of the transform path. The fix is to
+  ///    keep the decoded resample alive through the confirm instead of
+  ///    discarding it; the build already gives it precedence.
   void _holdFloatUntilCommittedCanPaint(BrushDab landed) {
     _cancelFloatHold();
     final ready = widget.committedRegionReady;

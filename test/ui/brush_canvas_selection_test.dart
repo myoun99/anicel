@@ -1091,26 +1091,58 @@ void main() {
       // float, or a committed surface whose tiles have decoded. Stated as
       // the OR because which one it is depends on decode timing, and the
       // defect is that on the confirm frame it was NEITHER.
-      bool somethingCanPaintIt() {
+      // ⚠️ "The float is UP" is NOT "the float PAINTS", and an earlier
+      // version of this oracle only asked the first. Its tiles are new
+      // objects, so they miss the identity-keyed image cache, and the
+      // painter's per-pixel fallback covers four tiles a frame — so a
+      // mutant that pinned an EMPTY surface, which is the user's symptom
+      // verbatim, passed all 29 tests in this file. It asks the raster now.
+      Future<bool> somethingCanPaintIt() async {
         final committed = env.coordinator.currentSurfaceOf(
           env.coordinator.activeFrameKey,
         );
-        final painters = tester
+        final floats = tester
             .widgetList<CustomPaint>(find.byType(CustomPaint))
             .map((paint) => paint.painter)
             .whereType<BitmapSurfacePainter>()
+            .where((painter) => !identical(painter.surface, committed))
             .toList();
-        final floatUp = painters.any(
-          (painter) => !identical(painter.surface, committed),
-        );
-        if (floatUp) return true;
-        return committed.tiles.values.every(
+        // Sampled BEFORE any render: the render below runs through
+        // runAsync, which lets the pending decodes land and would make
+        // this frame read as ready when it was not.
+        final committedReady = committed.tiles.values.every(
           (tile) => BitmapTileImageCache.instance.imageFor(tile) != null,
         );
+        for (final painter in floats) {
+          var own = 0;
+          var missing = 0;
+          await tester.runAsync(() async {
+            final recorder = PictureRecorder();
+            const size = Size(128, 128);
+            painter.paint(Canvas(recorder, Offset.zero & size), size);
+            final image = await recorder.endRecording().toImage(128, 128);
+            final data = await image.toByteData(
+              format: ImageByteFormat.rawRgba,
+            );
+            final painted = data!.buffer.asUint8List();
+            for (var y = 0; y < 128; y += 1) {
+              for (var x = 0; x < 128; x += 1) {
+                final own32 = surfacePixelRgba(painter.surface, x, y) ?? 0;
+                if (((own32 >> 24) & 0xff) == 0) continue;
+                own += 1;
+                if (painted[(y * 128 + x) * 4 + 3] == 0) missing += 1;
+              }
+            }
+          });
+          // `own > 0` rejects an empty pinned surface; `missing == 0`
+          // rejects a float the four-tile budget cannot cover.
+          if (own > 0 && missing == 0) return true;
+        }
+        return committedReady;
       }
 
       expect(
-        somethingCanPaintIt(),
+        await somethingCanPaintIt(),
         isTrue,
         reason: 'the float is not up during the session — bad premise',
       );
@@ -1120,7 +1152,7 @@ void main() {
 
       // THE frame the symptom is about.
       expect(
-        somethingCanPaintIt(),
+        await somethingCanPaintIt(),
         isTrue,
         reason:
             'the confirm frame has nothing that can paint the artwork — '

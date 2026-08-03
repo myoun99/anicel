@@ -1588,15 +1588,23 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     final surface = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
     final size = surface.tileSize;
     final cache = BitmapTileImageCache.instance;
+    // ⚠️ tileAt, NOT `surface.tiles[...]`. `tiles` is
+    // `Map.unmodifiable(_tiles)` — a getter that COPIES the cel's whole
+    // tile map on every call — so indexing it inside this walk made one
+    // predicate O(coords × tiles) entry copies instead of O(coords) hash
+    // lookups. Measured on the real surface at the 8192² the canvas dialog
+    // allows (1024 tiles): 82.7 ms per walk against 28 µs, and the walk
+    // that finds everything ready is by definition the complete one, so
+    // that stall landed on the release frame of every confirm.
+    //
     // floorDiv, not ~/: a stamp can land in the pasteboard, where the
     // coordinates are negative and truncation picks the wrong tile.
-    for (var ty = floorDiv(top, size); ty <= floorDiv(bottom - 1, size); ty++) {
-      for (
-        var tx = floorDiv(left, size);
-        tx <= floorDiv(right - 1, size);
-        tx++
-      ) {
-        final tile = surface.tiles[TileCoord(x: tx, y: ty)];
+    final firstTx = floorDiv(left, size);
+    final lastTx = floorDiv(right - 1, size);
+    final lastTy = floorDiv(bottom - 1, size);
+    for (var ty = floorDiv(top, size); ty <= lastTy; ty++) {
+      for (var tx = firstTx; tx <= lastTx; tx++) {
+        final tile = surface.tileAt(TileCoord(x: tx, y: ty));
         if (tile != null && cache.imageFor(tile) == null) {
           return false;
         }
