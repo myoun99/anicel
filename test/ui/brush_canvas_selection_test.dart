@@ -232,7 +232,19 @@ void main() {
       // state. Letting that settle is the realistic path, and asserting
       // after it is what makes this test about the SCHEDULING rather than
       // about how many resamples one drag happens to trigger.
-      await Future<void>.delayed(const Duration(milliseconds: 100));
+      //
+      // Waits for the EVENT, not for the clock. A fixed delay here failed
+      // in the full suite and passed on its own, which is the signature of
+      // a test that measures the machine: under load the resample had not
+      // landed in 100 ms. Polling for "the float moved at all" keeps the
+      // assertion honest — it can still be the wrong value, and a
+      // resample that never happens still times out and fails.
+      for (var waited = 0; waited < 60; waited += 1) {
+        if (debugLastResampledFloat!.center != before) {
+          break;
+        }
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
     });
     await tester.pump();
 
@@ -1050,6 +1062,101 @@ void main() {
         env.history.undoCount,
         greaterThan(undoBefore),
         reason: 'the button reverted the session instead of confirming it',
+      );
+    });
+
+    testWidgets('the frame a move CONFIRMS on still has the artwork on it', (
+      tester,
+    ) async {
+      // The user's third symptom: "확정짓는 버튼 누르면 100%로 그림이
+      // 아예 사라졌다가 다시생겨."
+      //
+      // `_confirmMoveSession` used to null the float in the same setState
+      // that landed the stamp. The stamp's destination tiles are brand-new
+      // objects with no decoded image, so the base painter's stale
+      // fallback answered for them with the tiles the LIFT ERASED —
+      // emptiness — and the float that had been covering them was already
+      // gone. Measured, the selection vanished for two frames.
+      //
+      // The float is what should cover that, because it is not a stand-in:
+      // by P3a's preview/commit byte-identity contract it holds exactly
+      // these bytes at exactly this place.
+      final env = await pumpSelectionPanel(tester);
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      await env.setTool(CanvasTool.move);
+      await dragOnLayer(tester, const Offset(45, 45), const Offset(58, 49));
+      await tester.pump();
+
+      // Something on screen must be able to paint the moved artwork: the
+      // float, or a committed surface whose tiles have decoded. Stated as
+      // the OR because which one it is depends on decode timing, and the
+      // defect is that on the confirm frame it was NEITHER.
+      // ⚠️ "The float is UP" is NOT "the float PAINTS", and an earlier
+      // version of this oracle only asked the first. Its tiles are new
+      // objects, so they miss the identity-keyed image cache, and the
+      // painter's per-pixel fallback covers four tiles a frame — so a
+      // mutant that pinned an EMPTY surface, which is the user's symptom
+      // verbatim, passed all 29 tests in this file. It asks the raster now.
+      Future<bool> somethingCanPaintIt() async {
+        final committed = env.coordinator.currentSurfaceOf(
+          env.coordinator.activeFrameKey,
+        );
+        final floats = tester
+            .widgetList<CustomPaint>(find.byType(CustomPaint))
+            .map((paint) => paint.painter)
+            .whereType<BitmapSurfacePainter>()
+            .where((painter) => !identical(painter.surface, committed))
+            .toList();
+        // Sampled BEFORE any render: the render below runs through
+        // runAsync, which lets the pending decodes land and would make
+        // this frame read as ready when it was not.
+        final committedReady = committed.tiles.values.every(
+          (tile) => BitmapTileImageCache.instance.imageFor(tile) != null,
+        );
+        for (final painter in floats) {
+          var own = 0;
+          var missing = 0;
+          await tester.runAsync(() async {
+            final recorder = PictureRecorder();
+            const size = Size(128, 128);
+            painter.paint(Canvas(recorder, Offset.zero & size), size);
+            final image = await recorder.endRecording().toImage(128, 128);
+            final data = await image.toByteData(
+              format: ImageByteFormat.rawRgba,
+            );
+            final painted = data!.buffer.asUint8List();
+            for (var y = 0; y < 128; y += 1) {
+              for (var x = 0; x < 128; x += 1) {
+                final own32 = surfacePixelRgba(painter.surface, x, y) ?? 0;
+                if (((own32 >> 24) & 0xff) == 0) continue;
+                own += 1;
+                if (painted[(y * 128 + x) * 4 + 3] == 0) missing += 1;
+              }
+            }
+          });
+          // `own > 0` rejects an empty pinned surface; `missing == 0`
+          // rejects a float the four-tile budget cannot cover.
+          if (own > 0 && missing == 0) return true;
+        }
+        return committedReady;
+      }
+
+      expect(
+        await somethingCanPaintIt(),
+        isTrue,
+        reason: 'the float is not up during the session — bad premise',
+      );
+
+      env.commands.confirmPendingMove();
+      await tester.pump();
+
+      // THE frame the symptom is about.
+      expect(
+        await somethingCanPaintIt(),
+        isTrue,
+        reason:
+            'the confirm frame has nothing that can paint the artwork — '
+            'the float went before the committed tiles could take over',
       );
     });
 

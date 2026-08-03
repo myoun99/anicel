@@ -36,6 +36,9 @@ import '../canvas/paper_background.dart'
 import '../theme/app_workspace_colors.dart';
 import '../widgets/color_swatch_button.dart';
 import 'brush_cursor_overlay.dart';
+import '../../core/floor_math.dart';
+import '../../models/tile_coord.dart';
+import '../canvas/bitmap_tile_image_cache.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart';
 import '../canvas/layer_pose_paint.dart';
 import 'brush_canvas_defaults.dart';
@@ -1210,6 +1213,17 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                               // cel's tight ink bounds.
                                               contentBoundsProvider:
                                                   _activeCelContentBounds,
+                                              // The float stays up until the
+                                              // committed surface can paint
+                                              // what the session just landed —
+                                              // its destination tiles are new
+                                              // objects with no decoded image
+                                              // for a frame or two, and the
+                                              // base's stale fallback answers
+                                              // for them with the tiles the
+                                              // LIFT ERASED.
+                                              committedRegionReady:
+                                                  _committedRegionReady,
                                               // Pending move sessions hold the
                                               // session's edit lock (seeks
                                               // refused) WITHOUT locking
@@ -1558,6 +1572,45 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     return bitmapSurfaceContentBounds(
       coordinator.currentSurfaceOf(coordinator.activeFrameKey),
     );
+  }
+
+  /// Whether every tile the committed surface holds under this canvas rect
+  /// has a decoded image — the signal the selection layer waits on before
+  /// it drops the float that landed there.
+  ///
+  /// A coordinate with NO tile counts as ready: the surface has nothing to
+  /// draw there, so waiting on it would wait forever.
+  bool _committedRegionReady(int left, int top, int right, int bottom) {
+    final coordinator = widget.coordinator;
+    if (coordinator == null) {
+      return true;
+    }
+    final surface = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
+    final size = surface.tileSize;
+    final cache = BitmapTileImageCache.instance;
+    // ⚠️ tileAt, NOT `surface.tiles[...]`. `tiles` is
+    // `Map.unmodifiable(_tiles)` — a getter that COPIES the cel's whole
+    // tile map on every call — so indexing it inside this walk made one
+    // predicate O(coords × tiles) entry copies instead of O(coords) hash
+    // lookups. Measured on the real surface at the 8192² the canvas dialog
+    // allows (1024 tiles): 82.7 ms per walk against 28 µs, and the walk
+    // that finds everything ready is by definition the complete one, so
+    // that stall landed on the release frame of every confirm.
+    //
+    // floorDiv, not ~/: a stamp can land in the pasteboard, where the
+    // coordinates are negative and truncation picks the wrong tile.
+    final firstTx = floorDiv(left, size);
+    final lastTx = floorDiv(right - 1, size);
+    final lastTy = floorDiv(bottom - 1, size);
+    for (var ty = floorDiv(top, size); ty <= lastTy; ty++) {
+      for (var tx = firstTx; tx <= lastTx; tx++) {
+        final tile = surface.tileAt(TileCoord(x: tx, y: ty));
+        if (tile != null && cache.imageFor(tile) == null) {
+          return false;
+        }
+      }
+    }
+    return true;
   }
 
   /// shape covers no pixels.
