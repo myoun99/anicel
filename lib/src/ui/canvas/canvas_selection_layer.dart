@@ -60,8 +60,25 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.onMoveSessionPendingChanged,
     this.alwaysShowTransformBox = false,
     this.contentBoundsProvider,
+    this.committedRegionReady,
     this.resampleMode = ResampleMode.blend,
   });
+
+  /// Whether the host's committed surface can already PAINT the canvas
+  /// rect a session just landed into — every tile under it decoded.
+  ///
+  /// The float is kept until it can. Dropping it the moment the stamp is
+  /// handed over left two frames with the artwork nowhere: the stamp's
+  /// destination tiles are new objects, so they have no image yet, and the
+  /// base painter's stale fallback answers with the tiles the LIFT ERASED.
+  /// The float meanwhile holds exactly those bytes at exactly that place —
+  /// that is P3a's preview/commit byte-identity contract — so keeping it
+  /// one moment longer is not a patch over the gap, it is the picture.
+  ///
+  /// A host that does not supply this clears the float immediately, which
+  /// is the old behaviour; the focused tests rely on it.
+  final bool Function(int left, int top, int right, int bottom)?
+  committedRegionReady;
 
   /// How a transform turns pixels into other pixels (P3a): the tent mean
   /// that smooths, or the coverage argmax that copies source words through
@@ -427,10 +444,12 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           _shapeIsImplicitWholePicture = false;
           _shapeNeedsLift = false;
         }
-        if (_transform == null) {
-          _floatSurface = null;
-        }
+        // NOT cleared here — see _holdFloatUntilCommittedCanPaint, called
+        // once this setState has run.
       });
+      if (_transform == null) {
+        _holdFloatUntilCommittedCanPaint(pending);
+      }
     } else {
       _pendingLiftStamp = null;
       _liftToken = null;
@@ -618,6 +637,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   @override
   void dispose() {
+    _cancelFloatHold();
     widget.selectionCommands?.removeListener(_adoptChannelRegion);
     widget.selectionCommands?.unbind();
     if (_dragMode != _DragMode.none) {
@@ -1404,7 +1424,68 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// resamples the stamp, give the float a picture its scope has never
   /// seen.
   void _floatContentReplaced() {
+    // A hold from the previous session must not survive into this one, or
+    // it would clear the float that just replaced the one it was watching.
+    _cancelFloatHold();
     BitmapTileImageCache.instance.resetScope(_floatStaleScope);
+  }
+
+  VoidCallback? _floatHold;
+
+  void _cancelFloatHold() {
+    final hold = _floatHold;
+    if (hold == null) {
+      return;
+    }
+    _floatHold = null;
+    BitmapTileImageCache.instance.removeListener(hold);
+  }
+
+  /// Keeps the float on screen until the host's committed surface can
+  /// paint what the session just landed.
+  ///
+  /// The stamp's destination tiles are brand-new objects, so they have no
+  /// decoded image for a frame or two, and the base painter's stale
+  /// fallback answers for them with the tiles the LIFT ERASED — emptiness
+  /// where the artwork should be. Measured, the whole selection vanished
+  /// for two frames on every confirm.
+  ///
+  /// Holding rather than opting out is the point: an opt-out only moves
+  /// the base onto its per-pixel path, which covers four tiles a frame and
+  /// leaves a full-canvas commit unpainted. The float already holds these
+  /// exact bytes at this exact place, so it is the correct picture, not a
+  /// stand-in for one.
+  void _holdFloatUntilCommittedCanPaint(BrushDab landed) {
+    _cancelFloatHold();
+    final ready = widget.committedRegionReady;
+    final stamp = landed.stamp;
+    if (ready == null || stamp == null) {
+      setState(() => _floatSurface = null);
+      return;
+    }
+    // The landing rect, by the same arithmetic the stamp blend uses.
+    final left = (landed.center.x - stamp.width / 2).round();
+    final top = (landed.center.y - stamp.height / 2).round();
+    final right = left + stamp.width;
+    final bottom = top + stamp.height;
+    if (ready(left, top, right, bottom)) {
+      setState(() => _floatSurface = null);
+      return;
+    }
+    void release() {
+      if (!mounted) {
+        _cancelFloatHold();
+        return;
+      }
+      if (!ready(left, top, right, bottom)) {
+        return;
+      }
+      _cancelFloatHold();
+      setState(() => _floatSurface = null);
+    }
+
+    _floatHold = release;
+    BitmapTileImageCache.instance.addListener(release);
   }
 
   /// R28 #10: resamples the pending stamp through an OPEN transform box,
@@ -2297,10 +2378,20 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
           // A pure MOVE drag has no warp: the translation is byte-exact
           // by short circuit, so a screen-space offset of the untouched
           // float IS the result and costs nothing.
+          //
+          // `_floatHold != null` is the fourth reason to draw it, and the
+          // only one that outlives the session: after a confirm the stamp
+          // has landed but its destination tiles have no decoded image
+          // yet, so the base cannot paint what it was just handed. The
+          // float can — it holds those exact bytes at that exact place —
+          // and the hold releases the moment the base is ready. Without
+          // this clause the session ends, `_movePending` goes false, and
+          // the artwork is on screen nowhere for two frames.
           else if (floatSurface != null &&
               (_dragMode == _DragMode.move ||
                   transform != null ||
-                  _movePending))
+                  _movePending ||
+                  _floatHold != null))
             Positioned.fill(
               child: IgnorePointer(
                 child: Transform(
