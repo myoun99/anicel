@@ -362,11 +362,24 @@ void main() {
         // strokes because then the whole line lives in the tiles that
         // final flush touched.
         //
-        // The invariant, stated so it does not depend on which tiles
-        // missed: after pen-up, every coordinate the stroke touched is
-        // still covered by SOMETHING that has its pixels — and in this
-        // harness the host does not apply the commit, so the only thing
-        // that can be is the overlay.
+        // ⚠️ WHAT THIS DOES AND DOES NOT SAY. It says the overlay is
+        // RETAINED — that the miss took the settle branch instead of
+        // dropping the overlay. It does NOT say every promoted coordinate
+        // is covered, and that stronger claim is FALSE on this branch.
+        //
+        // `takeTileImageAt` removes the images it hands over, so what the
+        // overlay still holds is exactly the missed-with-an-older-image
+        // set. A coordinate the final flush touched for the FIRST time was
+        // never decoded by the overlay, so the overlay has nothing for it
+        // either — and if the cel already had artwork there, the painter's
+        // stale fallback still answers with the pre-stroke tile. Measured
+        // on a wide in-canvas fixture: 62 promoted, 50 of them still
+        // painting pre-stroke pixels.
+        //
+        // So this fix closes one class of the hole and not the other. The
+        // remaining class needs the painter to stop borrowing for the
+        // settling coordinates, which is a change to a painter three
+        // surfaces share and is not a rider on this one.
         final results = <List<BrushDab>>[];
         await tester.pumpWidget(
           _app(
@@ -422,6 +435,80 @@ void main() {
               'picture — that coordinate now paints its PRE-STROKE tile, '
               'which is the hole the user reported',
         );
+      },
+    );
+
+    testWidgets(
+      'a handoff that fully succeeds retires the overlay in the SAME turn',
+      (tester) async {
+        // The other half, and the one that says this is not simply a
+        // revert of the promotion round: when every promoted tile DOES get
+        // its image, the overlay must go inside the pointer event, with no
+        // settle window and no periodic timer.
+        //
+        // Nothing pinned that. `missedHandoff = true` unconditionally —
+        // which makes every stroke settle and `_resetOverlay()` dead code
+        // on this path — passed all 51 tests in this file, because the
+        // default harness surface has no tiles, so every settle releases
+        // vacuously on the next frame and no assertion is made between
+        // `up()` and the next `pump()`.
+        //
+        // The difference from the miss test above is one line: no final
+        // segment, so nothing is pending at pen-up, the flush bumps no
+        // revision, and every promoted tile matches the image the overlay
+        // already holds.
+        final results = <List<BrushDab>>[];
+        await tester.pumpWidget(
+          _app(
+            _view(
+              _sessionState(),
+              results.add,
+              inputSettings: BrushEditCanvasInputSettings(size: 4),
+            ),
+          ),
+        );
+
+        final gesture = await tester.startGesture(
+          canvasGlobalOffset(tester, const Offset(1, 1)),
+          pointer: 1,
+        );
+        await gesture.moveTo(canvasGlobalOffset(tester, const Offset(5, 1)));
+        await tester.pump();
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)),
+        );
+        await tester.pump();
+        expect(
+          tester
+              .widget<BrushEditCanvasView>(find.byType(BrushEditCanvasView))
+              .overlayModel!
+              .tileImages,
+          isNotEmpty,
+          reason: 'the mid-stroke decode never landed — bad premise',
+        );
+
+        await gesture.up();
+
+        // No pump: the question is whether the overlay went in the pointer
+        // event itself.
+        //
+        // On `dabs`, not `tileImages`. A successful handoff TAKES the
+        // images, so `tileImages` is empty either way and cannot tell the
+        // two branches apart — I wrote that assertion first and the
+        // `missedHandoff = true` mutant sailed through it. `dabs` is
+        // cleared only by `reset()`, so it says which branch ran.
+        expect(
+          tester
+              .widget<BrushEditCanvasView>(find.byType(BrushEditCanvasView))
+              .overlayModel!
+              .dabs,
+          isEmpty,
+          reason:
+              'a fully successful handoff entered the settle window — every '
+              'stroke now pays the periodic timer and the decode re-requests '
+              'that promotion exists to avoid',
+        );
+        expect(results, hasLength(1));
       },
     );
 

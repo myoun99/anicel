@@ -885,11 +885,26 @@ class _InteractiveBrushEditCanvasViewState
   /// written inside the decode callback, and `_flushPendingOverlayDabs()`
   /// runs in this same synchronous handler — so a tile the final flush
   /// touched cannot have recorded its new revision yet. For those the
-  /// settle window is still needed and still exists; it is now entered
-  /// only when one is missed, rather than on every stroke as it was before
-  /// promotion. Dropping the overlay for them instead is what left a
-  /// tile-shaped patch of the line missing for a frame, showing the
-  /// pre-stroke pixels the painter's stale fallback answers with.
+  /// settle window is still needed and still exists. Dropping the overlay
+  /// for them instead is what left a tile-shaped patch of the line missing
+  /// for a frame, showing the pre-stroke pixels the painter's stale
+  /// fallback answers with.
+  ///
+  /// ⚠️ "Only on a rare miss" would be the comfortable thing to write here
+  /// and it is false: on an ordinary two-segment stroke, 12 of 21 promoted
+  /// coordinates miss. A stroke with nothing pending at pen-up does take
+  /// the synchronous path, and that is pinned by a test — but the settle
+  /// window is the common case, not the exception.
+  ///
+  /// ⚠️ And it covers only PART of the hole. What the overlay still holds
+  /// is exactly the missed-WITH-an-older-image set, because
+  /// `takeTileImageAt` removes the ones it hands over. A coordinate the
+  /// final flush touched for the FIRST time was never decoded by the
+  /// overlay either, so if the cel already had artwork there the stale
+  /// fallback still answers with the pre-stroke tile: measured on a wide
+  /// in-canvas fixture, 62 promoted and 50 still painting pre-stroke
+  /// pixels. Closing that needs the painter to stop borrowing for the
+  /// settling coordinates — a change to a painter three surfaces share.
   ///
   /// ⚠️ That gap is TEN DAYS OLD (`ccafbd74`, the commit that introduced
   /// promotion and took the pin off this path). The user's report of an
@@ -901,8 +916,8 @@ class _InteractiveBrushEditCanvasViewState
   void _commitStroke() {
     final rasterizer = _liveRasterizer;
     final base = _overlayModel.preBlendBase;
-    final blendMode = (_activeStrokeInputSettings ?? widget.inputSettings)
-        .blendMode;
+    final blendMode =
+        (_activeStrokeInputSettings ?? widget.inputSettings).blendMode;
     final erase = _overlayModel.erase;
     _liveRasterizer = null;
     if (rasterizer == null) {
@@ -1600,12 +1615,7 @@ class _InteractiveBrushEditCanvasViewState
     // fill only reaches a different function, never a different rule.
     applySelectionMaskToStrokeAlpha(
       pixels: masked,
-      mask: region.maskFor(
-        left: left,
-        top: top,
-        width: width,
-        height: height,
-      ),
+      mask: region.maskFor(left: left, top: top, width: width, height: height),
       pixelCount: width * height,
     );
     return masked;
