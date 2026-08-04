@@ -180,6 +180,42 @@ class BitmapTileImageCache extends ChangeNotifier {
     _latestDecodedByScope.remove(scope);
   }
 
+  /// Forgets [coords] in [scope] — the surgical [resetScope], for content
+  /// removed at KNOWN coordinates while the rest of the lineage stayed put.
+  ///
+  /// A lift is the case. It commits an erase, so the cel's tiles at the
+  /// lifted coordinates are new, empty objects with no image; the bucket
+  /// still holds the PRE-erase tiles, and the painter answers with them —
+  /// drawing the artwork in its old place while the float draws it in its
+  /// new one. Emptying the whole scope would blank the rest of the cel,
+  /// which did not move.
+  ///
+  /// ⚠️ Only for coordinates the removal took WHOLE. Where something
+  /// survives at a coordinate, the pre-change tile is still the closest
+  /// truth available and dropping it trades a stale pixel for no pixel.
+  ///
+  /// Notifies: forgetting changes what the next paint draws, and nothing
+  /// else here would mark the painters dirty.
+  void invalidateCoords(Object? scope, Iterable<TileCoord> coords) {
+    final scoped = _latestDecodedByScope[scope];
+    if (scoped == null || scoped.isEmpty) {
+      return;
+    }
+    var removed = false;
+    for (final coord in coords) {
+      if (scoped.remove(coord) != null) {
+        removed = true;
+      }
+    }
+    if (!removed) {
+      return;
+    }
+    if (scoped.isEmpty) {
+      _latestDecodedByScope.remove(scope);
+    }
+    _scheduleNotify();
+  }
+
   /// Gives [scope] a starting point: for each entry, the coordinate's
   /// stale-fallback becomes that already-decoded tile.
   ///
