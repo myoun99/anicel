@@ -1,5 +1,6 @@
 import 'dart:ui' show ImageByteFormat, PictureRecorder;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
@@ -75,7 +76,9 @@ void main() {
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
-            body: BrushCanvasPanel(
+            body: RepaintBoundary(
+              key: const ValueKey<String>('panel-capture'),
+              child: BrushCanvasPanel(
               coordinator: coordinator,
               // The panel carries its OWN canvas size, independent of the
               // coordinator's session store — passing only the fixture's
@@ -87,6 +90,7 @@ void main() {
               historyManager: history,
               brushToolState: BrushToolState.defaults.copyWith(tool: tool),
               selectionCommands: commands,
+              ),
             ),
           ),
         ),
@@ -103,6 +107,13 @@ void main() {
     );
   }
 
+  /// A picture that covers more than the painter's four-tile per-pixel
+  /// budget (tiles are 256 px), which is the threshold below which every
+  /// float defect is invisible.
+  final wideDiagonal = <BrushDab>[
+    for (var i = 0; i <= 34; i += 1) dab(30 + i * 20, 30 + i * 14),
+  ];
+
   /// The cel's CURRENT pixels — 0/null means transparent.
   int inkAt(BrushFrameEditingCoordinator coordinator, int x, int y) {
     return surfacePixelRgba(
@@ -115,6 +126,44 @@ void main() {
 
   BitmapSurface currentSurface(BrushFrameEditingCoordinator coordinator) =>
       coordinator.currentSurfaceOf(coordinator.activeFrameKey);
+
+  /// How much of the RED fixture ink the COMPOSITED panel is showing —
+  /// base, float, held preview and all, exactly what the user's eye gets.
+  ///
+  /// ⚠️ `toImageSync`, captured before any `runAsync`: the frame under
+  /// test is one where nothing has decoded yet, and giving the pipeline an
+  /// idle slice first would let the committed tiles land and report the
+  /// defect as fixed. The snapshot is read afterwards, which is safe
+  /// because it is a snapshot.
+  Future<int> screenInk(WidgetTester tester) async {
+    final boundary = tester.renderObject<RenderRepaintBoundary>(
+      find.byKey(const ValueKey<String>('panel-capture')),
+    );
+    final image = boundary.toImageSync();
+    var red = 0;
+    await tester.runAsync(() async {
+      final data = await image.toByteData(format: ImageByteFormat.rawRgba);
+      final bytes = data!.buffer.asUint8List();
+      for (var i = 0; i < bytes.length; i += 4) {
+        if (bytes[i] > 128 && bytes[i + 1] < 100 && bytes[i + 2] < 100) {
+          red += 1;
+        }
+      }
+    });
+    image.dispose();
+    return red;
+  }
+
+  /// Lets the real decode pipeline run to completion, so the committed
+  /// surface can paint and any hold releases.
+  Future<void> settle(WidgetTester tester) async {
+    for (var i = 0; i < 8; i += 1) {
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 16)),
+      );
+      await tester.pump();
+    }
+  }
 
   Future<void> dragOnLayer(WidgetTester tester, Offset from, Offset to) async {
     final origin = tester.getTopLeft(find.byKey(layerKey));
@@ -1287,6 +1336,181 @@ void main() {
         reason:
             'the confirm frame has nothing that can paint the artwork — '
             'the float went before the committed tiles could take over',
+      );
+    });
+
+    testWidgets('the frame a WARPED transform confirms on still has the '
+        'artwork on it', (tester) async {
+      // User report (08-04): "on confirming the transform the target
+      // disappears for about a frame, almost 100% of the time."
+      //
+      // The move path above was covered; this one was not, and this is the
+      // one the user hits. `_clearTransform` discarded the decoded
+      // resample — the single image of exactly the bytes about to land —
+      // and rebuilt the float from the warped stamp instead, which is
+      // all-new tiles with no cache entries, so what replaced it could not
+      // paint. Measured on the real panel: 0 of 107 sampled ink pixels on
+      // the confirm frame.
+      //
+      // The oracle is the COMPOSITED panel, because the question is what
+      // the user sees, not which object is mounted.
+      //
+      // ⚠️ The picture has to be BIGGER THAN FOUR TILES or the defect
+      // cannot show: the painter's per-pixel fallback covers four tiles a
+      // frame, so a landing that fits inside them is painted whatever
+      // else is broken. Written first with the file's 30..60 fixture,
+      // this test passed without the fix — that is the whole reason the
+      // user sees this on big transforms and not on small ones.
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        sourceDabs: wideDiagonal,
+      );
+
+      env.commands.beginTransform();
+      await tester.pump();
+      env.commands.setTransformValues(
+        tx: 20,
+        ty: 12,
+        rotationDegrees: 0,
+        scale: 1.5,
+      );
+      // The resample decodes asynchronously; the preview being up is what
+      // says the image the confirm will keep actually exists yet.
+      await settle(tester);
+      expect(
+        find.byKey(const ValueKey<String>('transform-resample-preview')),
+        findsOneWidget,
+        reason: 'the warped preview never came up — bad premise',
+      );
+
+      env.commands.commitTransform();
+      await tester.pump();
+      final atConfirm = await screenInk(tester);
+
+      await settle(tester);
+      final settled = await screenInk(tester);
+
+      expect(settled, greaterThan(0), reason: 'the landing has ink at all');
+      expect(
+        atConfirm,
+        greaterThan((settled * 0.9).round()),
+        reason:
+            'the confirm frame is missing the artwork: on screen $atConfirm '
+            'of the $settled it settles to',
+      );
+    });
+
+    testWidgets('the held preview lets go once the base can paint, and does '
+        'not keep painting over it', (tester) async {
+      // Keeping a decoded image alive past the session is only safe if it
+      // is also let go. A hold that outlived its release would paint one
+      // transform state over every later edit for the rest of the session.
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        sourceDabs: wideDiagonal,
+      );
+      env.commands.beginTransform();
+      await tester.pump();
+      env.commands.setTransformValues(
+        tx: 20,
+        ty: 12,
+        rotationDegrees: 0,
+        scale: 1.5,
+      );
+      await settle(tester);
+      env.commands.commitTransform();
+      await tester.pump();
+      expect(
+        find.byKey(const ValueKey<String>('transform-resample-preview')),
+        findsOneWidget,
+        reason: 'the confirm did not hold the picture it just landed',
+      );
+
+      await settle(tester);
+      expect(
+        find.byKey(const ValueKey<String>('transform-resample-preview')),
+        findsNothing,
+        reason: 'the hold released but the preview is still mounted',
+      );
+    });
+
+    testWidgets('a WIDE move confirms with the picture on screen too — the '
+        'other branch of the hold', (tester) async {
+      // The move path holds a float SURFACE rather than a resample image,
+      // and it is the path the 208,234-pixel double-composite was measured
+      // on. Both branches are clipped to the tiles the base cannot paint
+      // yet, so both need a landing wider than one decode round.
+      //
+      // This one is GREEN without the fix, deliberately: the move path
+      // already worked, and what it guards is that clipping the hold to
+      // the pending tiles does not take away pixels the base still cannot
+      // paint. A clip that is too eager fails here and nowhere else.
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        sourceDabs: wideDiagonal,
+      );
+      await dragOnLayer(tester, const Offset(300, 200), const Offset(340, 225));
+      expect(env.commands.movePending, isTrue);
+
+      env.commands.confirmPendingMove();
+      await tester.pump();
+      final atConfirm = await screenInk(tester);
+      await settle(tester);
+      final settled = await screenInk(tester);
+
+      expect(settled, greaterThan(0));
+      expect(
+        atConfirm,
+        greaterThan((settled * 0.9).round()),
+        reason: 'on screen $atConfirm of the $settled it settles to',
+      );
+    });
+
+    testWidgets('a resample the confirm overtook is NOT held — an absent '
+        'picture beats a wrong one', (tester) async {
+      // `_resampledFloatImage` is deliberately the last COMPLETED
+      // resample, while the confirm recomputes synchronously when the warp
+      // changed since. Holding it unconditionally would paint the earlier
+      // transform state over the landing for the whole hold. The keep is
+      // gated on the image being `identical`ly the dab that landed.
+      final env = await pumpSelectionPanel(tester);
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      await env.setTool(CanvasTool.move);
+      env.commands.beginTransform();
+      await tester.pump();
+
+      env.commands.setTransformValues(
+        tx: 0,
+        ty: 0,
+        rotationDegrees: 0,
+        scale: 1.4,
+      );
+      await settle(tester);
+      expect(
+        find.byKey(const ValueKey<String>('transform-resample-preview')),
+        findsOneWidget,
+        reason: 'the 1.4 preview decoded — bad premise otherwise',
+      );
+
+      // Change the warp and confirm WITHOUT letting the new decode land:
+      // the image on hand is now the 1.4 picture, the landing is 2.4.
+      env.commands.setTransformValues(
+        tx: 0,
+        ty: 0,
+        rotationDegrees: 0,
+        scale: 2.4,
+      );
+      await tester.pump();
+      env.commands.commitTransform();
+      await tester.pump();
+
+      expect(
+        find.byKey(const ValueKey<String>('transform-resample-preview')),
+        findsNothing,
+        reason: 'a stale resample was held over the landing',
       );
     });
 
