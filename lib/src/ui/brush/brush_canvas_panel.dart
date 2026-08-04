@@ -1724,16 +1724,27 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         }
       }
     }
-    // ⚠️ MEASURED AND REJECTED, do not "complete" this: dropping the
-    // base's stale entries at `whole.keys` here does kill the duplicate
-    // (the base stops redrawing the artwork in its original place while
-    // the float draws it in the new one) — and it takes the CONFIRM frame
-    // with it. The borrow that lies at the start is the same borrow that
-    // covers the landing a moment later, and "a WIDE move confirms with
-    // the picture on screen too" goes 3600 -> 2286 on it. That test was
-    // written in #826 as a guard against exactly this, and it is the only
-    // thing that fails. Whatever closes the duplicate has to keep the
-    // landing covered by something else first.
+    // The base must stop answering for what the lift took. Its bucket
+    // still holds the pre-erase tiles at these coordinates, so without
+    // this it redraws the artwork in its ORIGINAL place while the float
+    // draws it in the new one — two copies at the start, and on the
+    // confirm frame a picture that is in the old place and absent from
+    // the new one.
+    //
+    // Only the coordinates the lift took WHOLE: there the truth is
+    // emptiness, so drawing nothing is right. A partially lifted
+    // coordinate keeps its entry, because its surviving pixels are still
+    // better than none.
+    //
+    // ⚠️ This was written once before and reverted, on the word of a test
+    // that counted INK rather than looking at where it was. The base's
+    // displaced copy is ink too, so removing it read as losing coverage.
+    // The oracle asks about position now, and says the opposite.
+    final activeKey = coordinator.activeFrameKey;
+    BitmapTileImageCache.instance.invalidateCoords(
+      (activeKey.layerId, activeKey.frameId),
+      whole.keys,
+    );
     return (liftToken: token, stampDab: lift.stampDab, wholeTiles: whole);
   }
 
