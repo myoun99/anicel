@@ -37,6 +37,38 @@ abstract final class MeasurementMode {
     startWithFrameTimingOverlay,
   );
 
+  /// Paints MAGENTA wherever the canvas painter had no picture for a
+  /// coordinate it was asked to draw (Edit ▸ Show Unpainted Tiles).
+  ///
+  /// The third switch, and the one this app should have had first. Every
+  /// artifact in the stale-tile family — a stroke's last tiles missing at
+  /// pen-up, a commit arriving tile by tile, a transform's landing half
+  /// absent — is the same event underneath: a tile whose bytes exist and
+  /// whose image does not. It is invisible by construction, because the
+  /// painter's answer to "I have nothing here" is to draw nothing, so
+  /// each one had to be found by hand and reported from a real session.
+  /// Turned on, they announce themselves in the frame they happen.
+  ///
+  /// Borrowed from MyPaint's `visualize_rendering`, whose own comment
+  /// says it exists to make it apparent if something is not being
+  /// painted.
+  ///
+  /// ⚠️ Magenta means "no picture", not "no artwork". A coordinate that
+  /// is genuinely empty is never drawn at all and never flashes; what
+  /// flashes is a coordinate with content the painter could not show.
+  static final ValueNotifier<bool> showUnpaintedTiles = ValueNotifier<bool>(
+    startWithUnpaintedTiles,
+  );
+
+  /// Seeds [showUnpaintedTiles], same shape as the overlay's define:
+  ///
+  /// ```
+  /// flutter run --dart-define=QA_SHOW_UNPAINTED=true
+  /// ```
+  static const bool startWithUnpaintedTiles = bool.fromEnvironment(
+    'QA_SHOW_UNPAINTED',
+  );
+
   /// Seeds [frameTimingOverlay] so a measurement run can start with the
   /// graphs already up:
   ///
@@ -54,5 +86,6 @@ abstract final class MeasurementMode {
   @visibleForTesting
   static void reset() {
     frameTimingOverlay.value = startWithFrameTimingOverlay;
+    showUnpaintedTiles.value = startWithUnpaintedTiles;
   }
 }

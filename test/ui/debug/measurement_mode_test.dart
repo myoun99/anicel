@@ -59,4 +59,22 @@ void main() {
       MeasurementMode.startWithFrameTimingOverlay,
     );
   });
+
+  test('the unpainted-tile marker is off unless seeded, and resets', () {
+    expect(
+      MeasurementMode.startWithUnpaintedTiles,
+      isFalse,
+      reason: 'default builds must not paint magenta over the canvas',
+    );
+    expect(
+      MeasurementMode.showUnpaintedTiles.value,
+      MeasurementMode.startWithUnpaintedTiles,
+    );
+    MeasurementMode.showUnpaintedTiles.value = true;
+    MeasurementMode.reset();
+    expect(
+      MeasurementMode.showUnpaintedTiles.value,
+      MeasurementMode.startWithUnpaintedTiles,
+    );
+  });
 }

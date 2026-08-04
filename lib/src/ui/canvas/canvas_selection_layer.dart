@@ -1237,7 +1237,20 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _discardFloatResample();
     // A pending session's float must keep rendering — its pixels are NOT
     // in the base surface (they left with the lift's erase).
-    _floatSurface = _movePending ? _buildFloatSurface() : null;
+    //
+    // ⚠️ EXCEPT on a confirm whose preview could not be kept. There
+    // `_floatContentReplaced()` has just emptied the float's stale scope,
+    // so a surface built here has no decoded image and nothing to borrow
+    // for any of its tiles — measured on a warm-cache Ctrl+T confirm, 20
+    // tiles, 0 and 0. Building it re-materialises the entire warped stamp
+    // (651 ms on a 2340×1654 cel scaled to the pasteboard) to produce
+    // something that cannot draw. The other callers — Escape over a
+    // pending move, a tool switch — did not empty the scope, and there
+    // the previous generation is a legitimate predecessor.
+    final canPaintIfBuilt = !keepLandedPreview;
+    _floatSurface = _movePending && canPaintIfBuilt
+        ? _buildFloatSurface()
+        : null;
   }
 
   /// True when THIS Ctrl+T session opened the lift (Escape then reverts
