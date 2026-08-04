@@ -6,6 +6,7 @@ import 'package:flutter/widgets.dart';
 import '../../models/canvas_viewport.dart';
 import '../input/app_input_settings.dart';
 import '../../models/viewport_point.dart';
+import 'flip_hud_controller.dart';
 
 /// Viewport pan/zoom input for the canvas panel, independent of what the
 /// viewport currently shows (interactive canvas, blank paper, playback).
@@ -36,6 +37,7 @@ class CanvasViewportGestureLayer extends StatefulWidget {
     this.onBrushSizeDragStart,
     this.onBrushSizeDragUpdate,
     this.onBrushSizeDragEnd,
+    this.flipHud,
     required this.child,
   });
 
@@ -54,6 +56,13 @@ class CanvasViewportGestureLayer extends StatefulWidget {
   final void Function(double upwardDelta, {required bool snap})?
   onBrushSizeDragUpdate;
   final VoidCallback? onBrushSizeDragEnd;
+
+  /// The flip HUD's state, if the host shows one. This layer only REPORTS
+  /// to it — when the axis locked, that a step has landed, when the
+  /// gesture ended. Where the step landed is the session's answer, which
+  /// the HUD reads for itself; deciding it here would make the HUD a
+  /// second movement rule.
+  final FlipHudController? flipHud;
 
   /// True while the user is drawing; blocks new viewport gestures.
   final bool strokeActive;
@@ -261,6 +270,15 @@ class _CanvasViewportGestureLayerState
   CanvasViewport get _liveViewport => _lastEmittedViewport ?? widget.viewport;
 
   @override
+  void dispose() {
+    // A panel torn down mid-flip must not leave the window on screen.
+    if (_groupAction == CanvasTouchDragAction.flip) {
+      widget.flipHud?.end();
+    }
+    super.dispose();
+  }
+
+  @override
   void didUpdateWidget(covariant CanvasViewportGestureLayer oldWidget) {
     super.didUpdateWidget(oldWidget);
     // An exact catch-up (prop == our latest emission) keeps the cache; any
@@ -319,9 +337,16 @@ class _CanvasViewportGestureLayerState
     _groupAction = AppInput.touchDragActionFor(_groupPointers.length);
     switch (_groupAction) {
       case CanvasTouchDragAction.flip:
-        _flipAxisHorizontal =
-            firstMovedDelta.dx.abs() >= firstMovedDelta.dy.abs();
+        final horizontal = firstMovedDelta.dx.abs() >= firstMovedDelta.dy.abs();
+        _flipAxisHorizontal = horizontal;
         _flipEmittedSteps = 0;
+        // The HUD appears on the LOCK, not on touchdown: a tap or a plain
+        // pan must never flash it.
+        widget.flipHud?.begin(
+          axis: horizontal ? FlipHudAxis.frame : FlipHudAxis.row,
+          anchor: _groupCentroid(_groupDownPositions),
+          frameStep: _flipFrameStep,
+        );
       case CanvasTouchDragAction.navigate:
         // Anchor at the DOWN positions: the whole travel since touchdown
         // counts (the legacy pinch contract — nothing swallowed by the
@@ -370,12 +395,13 @@ class _CanvasViewportGestureLayerState
         ? nowCentroid.dx - downCentroid.dx
         : nowCentroid.dy - downCentroid.dy;
     final steps = (along / flipStepExtent).truncate();
+    if (_flipEmittedSteps == steps) {
+      return;
+    }
     while (_flipEmittedSteps != steps) {
       final forward = steps > _flipEmittedSteps;
       _flipEmittedSteps += forward ? 1 : -1;
-      final fine =
-          _modifierPointers.isNotEmpty &&
-          AppInput.settings.value.extraFingerModifier;
+      final fine = _flipModifierActive;
       final actionId = horizontal
           ? (forward
                 // Drag right = next, drag left = previous; the modifier
@@ -387,6 +413,9 @@ class _CanvasViewportGestureLayerState
           : (forward ? 'selection-nudge-down' : 'selection-nudge-up');
       widget.onInvokeAction?.call(actionId);
     }
+    // The action has LANDED by now (the funnel is synchronous), so the
+    // HUD reads where the session actually went rather than guessing.
+    widget.flipHud?.refresh(frameStep: _flipFrameStep);
   }
 
   void _anchorNavigate({bool fromDownPositions = false}) {
@@ -409,7 +438,24 @@ class _CanvasViewportGestureLayerState
     _navStartViewport = _liveViewport;
   }
 
+  /// Whether the +1-finger modifier is engaged at all.
+  bool get _flipModifierActive =>
+      _modifierPointers.isNotEmpty &&
+      AppInput.settings.value.extraFingerModifier;
+
+  /// Whether the flip is stepping single FRAMES. Only the horizontal axis
+  /// has a finer unit to drop to — the vertical walk is rows either way,
+  /// so reporting the modifier there would make the HUD claim a mode
+  /// change that did not happen.
+  bool get _flipFrameStep =>
+      (_flipAxisHorizontal ?? false) && _flipModifierActive;
+
   void _engageModifier() {
+    if (_groupAction == CanvasTouchDragAction.flip) {
+      // Frame steps are the OTHER mode, not a finer version of this one —
+      // the HUD re-rules itself so the eye sees the change first.
+      widget.flipHud?.refresh(frameStep: _flipFrameStep);
+    }
     if (_groupAction == CanvasTouchDragAction.navigate) {
       // Re-anchor so the constraint takes over from HERE, not from the
       // gesture start — the view never jumps when the finger lands.
@@ -420,6 +466,9 @@ class _CanvasViewportGestureLayerState
   }
 
   void _releaseModifier() {
+    if (_groupAction == CanvasTouchDragAction.flip) {
+      widget.flipHud?.refresh(frameStep: _flipFrameStep);
+    }
     if (_groupAction == CanvasTouchDragAction.navigate) {
       _navModifierActive = false;
       _navModifierLockRotation = null;
@@ -531,6 +580,9 @@ class _CanvasViewportGestureLayerState
   }
 
   void _resetControlEngine() {
+    if (_groupAction == CanvasTouchDragAction.flip) {
+      widget.flipHud?.end();
+    }
     _groupPointers.clear();
     _groupDownPositions.clear();
     _groupLocked = false;

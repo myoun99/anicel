@@ -21,6 +21,7 @@ import 'canvas/viewport_canvas_transform.dart';
 import 'brush/main_canvas_brush_host.dart';
 import 'camera/camera_frame_overlay.dart';
 import 'canvas/active_stroke_overlay.dart';
+import 'canvas/flip_hud_controller.dart';
 import 'canvas/canvas_layer_stack_view.dart';
 import 'canvas/layer_pose_paint.dart';
 import 'canvas/layer_position_gizmo.dart';
@@ -63,6 +64,7 @@ class EditorCanvasArea extends StatefulWidget {
     this.transformResampleMode,
     this.eyedropperSource,
     this.onInvokeAction,
+    this.flipHud,
   });
 
   final EditorSessionManager session;
@@ -70,6 +72,10 @@ class EditorCanvasArea extends StatefulWidget {
   /// PEN-7b: the shell's action funnel — the flip touch slot fires the
   /// same registry ids as the arrow keys.
   final void Function(String actionId)? onInvokeAction;
+
+  /// The flip HUD's state (shell-owned), forwarded to the panel that
+  /// mounts the window.
+  final FlipHudController? flipHud;
 
   /// The active brush tool + settings (workspace-owned; the tools and
   /// brush-settings panels write it).
@@ -583,6 +589,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 );
               },
               onBrushSizeDragEnd: () => _brushSizeDragStartSize = null,
+              flipHud: widget.flipHud,
               // P6 fill: the flood region as ONE mask dab; the panel commits it
               // through the stroke funnel onto the active layer's frame.
               selectionMaskOptions: widget.selectionMaskOptions,

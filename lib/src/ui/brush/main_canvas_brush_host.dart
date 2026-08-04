@@ -11,6 +11,7 @@ import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/project.dart' show defaultProjectBackdropArgb;
 import '../../models/project_background.dart';
+import '../canvas/flip_hud_controller.dart';
 import '../theme/app_workspace_colors.dart';
 import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_store.dart';
@@ -68,6 +69,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.onBrushSizeDragStart,
     this.onBrushSizeDragUpdate,
     this.onBrushSizeDragEnd,
+    this.flipHud,
     this.onEyedropperPick,
     this.onAltColorPick,
     this.fillDabAt,
@@ -156,6 +158,9 @@ class MainCanvasBrushHost extends StatefulWidget {
   final void Function(double upwardDelta, {required bool snap})?
   onBrushSizeDragUpdate;
   final VoidCallback? onBrushSizeDragEnd;
+
+  /// The flip HUD's state, threaded down to the panel that mounts it.
+  final FlipHudController? flipHud;
   final ValueChanged<int>? onEyedropperPick;
   final ValueChanged<int>? onAltColorPick;
   final BrushDab? Function(CanvasPoint point, int color)? fillDabAt;
@@ -306,6 +311,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       onBrushSizeDragStart: widget.onBrushSizeDragStart,
       onBrushSizeDragUpdate: widget.onBrushSizeDragUpdate,
       onBrushSizeDragEnd: widget.onBrushSizeDragEnd,
+      flipHud: widget.flipHud,
       onEyedropperPick: widget.onEyedropperPick,
       onAltColorPick: widget.onAltColorPick,
       fillDabAt: widget.fillDabAt,
