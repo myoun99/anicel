@@ -194,6 +194,10 @@ class BitmapSurfacePainter extends CustomPainter {
     // lookup per tile), so off-screen tiles keep pre-warming in the
     // background and scroll in already decoded — the visibility priority
     // lives in _startPrioritizedDecodes.
+    // Coordinates the base pass drew from the COMMITTED tile even though
+    // the overlay holds a stand-in for them; the overlay pass leaves
+    // these alone.
+    Set<TileCoord>? committedWins;
     List<BitmapTile>? pendingDecodes;
     for (final tile in surface.tiles.values) {
       if (tileImageCache.needsDecodeStart(tile)) {
@@ -227,6 +231,36 @@ class BitmapSurfacePainter extends CustomPainter {
         // ready by the time the override releases.
         if (overlayReplacesCoords &&
             overlay.tileImages.containsKey(tile.coord)) {
+          // While the overlay is LIVE its image IS the stroke and the
+          // committed tile is still the pre-stroke surface, so the
+          // overlay must win. Once it is SETTLING the commit has landed:
+          // a committed tile that has its OWN image holds the finished
+          // picture, and this overlay is at best a revision behind it.
+          //
+          // The invariant that makes preferring the committed tile
+          // truthful rather than hopeful: images are keyed by tile
+          // OBJECT, a promoted tile is a fresh object, and only two
+          // things can give it one — a decode of its own bytes, or an
+          // adoption the handoff already revision-matched. There is no
+          // third path, so an image here is always the final picture.
+          //
+          // Drawn HERE and skipped in the overlay pass, never both: two
+          // draws of the same coordinate is the double-density ghost.
+          final settledImage = overlay.settling
+              ? tileImageCache.imageFor(tile)
+              : null;
+          if (settledImage == null) {
+            continue;
+          }
+          canvas.drawImage(
+            settledImage,
+            Offset(
+              (tile.coord.x * tile.size).toDouble(),
+              (tile.coord.y * tile.size).toDouble(),
+            ),
+            tileImagePaint,
+          );
+          (committedWins ??= <TileCoord>{}).add(tile.coord);
           continue;
         }
         if (settleHold != null && settleHold.containsKey(tile.coord)) {
@@ -332,6 +366,10 @@ class BitmapSurfacePainter extends CustomPainter {
       // replacement path below instead of an isolation layer.
       final overlayTileSize = overlay.tileSize.toDouble();
       for (final entry in overlay.tileImages.entries) {
+        if (committedWins != null && committedWins.contains(entry.key)) {
+          // The base pass already drew this coordinate's finished tile.
+          continue;
+        }
         canvas.drawImage(
           entry.value,
           Offset(entry.key.x * overlayTileSize, entry.key.y * overlayTileSize),

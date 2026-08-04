@@ -17,6 +17,7 @@ import 'package:anicel/src/services/bitmap_surface_brush_commit.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
+import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 
 /// The live stroke is CPU-rasterized with the same math as the commit path,
 /// so the pixels on screen while drawing must be byte-identical to the
@@ -533,6 +534,104 @@ void main() {
     ) {
       model.updateRegion(source: rasterizer, region: region);
     }
+
+    test('a SETTLING overlay yields a coordinate whose committed tile can '
+        'draw itself; a LIVE one does not', () async {
+      // Once the commit has landed, a committed tile that has its own
+      // decoded image holds the finished picture and the overlay is at
+      // best a revision behind it — so the overlay must stop being
+      // preferred. While the overlay is LIVE the opposite holds: the
+      // committed tiles are still the pre-stroke surface and the overlay
+      // is the only thing showing the stroke.
+      //
+      // The oracle is the RASTER, and the two pictures are made to differ
+      // in a way no weaker check would catch: the committed tile is solid
+      // RED, the overlay's stand-in is that same red with BLUE painted
+      // over it. "Is blue on screen" answers which one was drawn.
+      const tile = 16;
+      final blank = BitmapSurface(canvasSize: _canvasSize, tileSize: tile);
+      final committed = materializeBrushDabSequenceOnBitmapSurface(
+        surface: blank,
+        sequence: BrushDabSequence([
+          _dab(
+            x: 8,
+            y: 8,
+            size: 14,
+            color: 0xFFFF0000,
+            opacity: 1,
+            flow: 1,
+            hardness: 1,
+          ),
+        ]),
+      ).surface;
+      final committedTile = committed.tileAt(TileCoord(x: 0, y: 0));
+      expect(committedTile, isNotNull, reason: 'the fixture has a tile at 0,0');
+
+      final rasterizer = BrushLiveStrokeRasterizer(canvasSize: _canvasSize);
+      final region = rasterizer.blendFrom([
+        _dab(
+          x: 8,
+          y: 8,
+          size: 10,
+          color: 0xFF0000FF,
+          opacity: 1,
+          flow: 1,
+          hardness: 1,
+        ),
+      ], from: 0)!;
+      final model = ActiveStrokeOverlayModel(tileSize: tile);
+      addTearDown(model.dispose);
+      model.preBlendBase = committed;
+      model.updateRegion(source: rasterizer, region: region);
+      await model.waitForPendingDecodes();
+      expect(model.tileImages.containsKey(TileCoord(x: 0, y: 0)), isTrue);
+
+      int bluePixels(Uint8List bytes) {
+        var blue = 0;
+        for (var i = 0; i < bytes.length; i += 4) {
+          if (bytes[i + 2] > 128 && bytes[i] < 100) blue += 1;
+        }
+        return blue;
+      }
+
+      // LIVE: the overlay is the stroke and must win outright.
+      model.settling = false;
+      final live = bluePixels(
+        await paintedCanvasBytes(model, baseSurface: committed),
+      );
+      expect(live, greaterThan(0), reason: 'a live overlay must be drawn');
+
+      // Give the committed tile its own image, the way the promotion path
+      // does, and wait for the real decode to land.
+      final scope = Object();
+      BitmapTileImageCache.instance.ensureDecoded(
+        committedTile!,
+        staleScope: scope,
+      );
+      for (var i = 0; i < 400; i += 1) {
+        if (BitmapTileImageCache.instance.imageFor(committedTile) != null) break;
+        await Future<void>.delayed(const Duration(milliseconds: 5));
+      }
+      expect(
+        BitmapTileImageCache.instance.imageFor(committedTile),
+        isNotNull,
+        reason: 'the committed tile never decoded — bad premise',
+      );
+
+      // SETTLING: the committed tile can draw itself, so it wins and the
+      // stand-in is skipped — drawn once, by one of them, never both.
+      model.settling = true;
+      final settled = bluePixels(
+        await paintedCanvasBytes(model, baseSurface: committed),
+      );
+      expect(
+        settled,
+        0,
+        reason:
+            'the settling stand-in was drawn over a committed tile that '
+            'already held the finished picture ($settled blue pixels)',
+      );
+    });
 
     test('decoded overlay tiles equal the premultiplied buffer', () async {
       final dabs = [

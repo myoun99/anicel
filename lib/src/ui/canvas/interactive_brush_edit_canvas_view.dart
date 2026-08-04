@@ -634,6 +634,10 @@ class _InteractiveBrushEditCanvasViewState
     _groundMixer = strokeSettings.shape.mixesGroundColor
         ? BrushGroundColorMixer(shape: strokeSettings.shape)
         : null;
+    // ⚠️ MEASURED HOLE, deliberately not closed here — see
+    // [_beginStrokeOverlay]. This reset drops a previous stroke's
+    // stand-ins, and that is the one true "it was there, it vanished, it
+    // came back" anyone has reproduced in this family.
     _resetOverlay();
     // Overlay stroke configuration AFTER the reset — reset() clears
     // preBlendBase, so setting it earlier silently disabled the whole
@@ -1368,6 +1372,37 @@ class _InteractiveBrushEditCanvasViewState
     _pendingOverlayDabs.clear();
   }
 
+  /// ⚠️ THE REMAINING PEN-UP HOLE, measured and NOT closed. Read this
+  /// before touching `_beginStroke`'s reset.
+  ///
+  /// Starting a stroke resets the overlay unconditionally. What is left
+  /// in the overlay after a commit is exactly the coordinates whose
+  /// handoff missed, so that reset puts them back on the painter's stale
+  /// fallback — the PRE-stroke tile — and the stroke the user just
+  /// finished disappears in tile-shaped patches until its decodes land.
+  /// Measured: stroke 1 pen-up, one frame, stroke 2 pen-down, and 2 of 5
+  /// promoted coordinates went overlay → stale. It is the only true "it
+  /// was there, it vanished, it came back" reproduced in this family;
+  /// everything else the census found is LATENESS (ink arriving a frame
+  /// after pen-up), which looks different.
+  ///
+  /// The window is the gap between one pen-up and the next pen-down —
+  /// which is why it would show up when short strokes are drawn one after
+  /// another, and the user's report says short strokes are the worst
+  /// case. That match is suggestive, not established: the loss reproduced
+  /// at a 0 ms gap and not at 2 ms on an unloaded debug machine, so on
+  /// hardware the window's width is unmeasured.
+  ///
+  /// Why it is not fixed here: keeping the stand-ins means the settle
+  /// WINDOW must end (its timer and its release check both reset the
+  /// whole overlay, which would take the live stroke with them) while the
+  /// stand-ins outlive it — and `ActiveStrokeOverlayModel.settling` must
+  /// then be false, which is exactly what stops the painter's settling
+  /// branch from superseding them. Doing it properly needs the stand-in
+  /// coordinates tracked separately from the live stroke's, and released
+  /// per coordinate. That is a round, with its own raster oracle, not a
+  /// line here. `beginStrokeKeepingStandIns` is built and waiting for it.
+  ///
   /// Clears the visible overlay (live or settling) and its tile images.
   void _resetOverlay() {
     _settling = false;
@@ -1392,6 +1427,10 @@ class _InteractiveBrushEditCanvasViewState
 
   void _beginSettling() {
     _settling = true;
+    // The overlay stops being the stroke and starts being a stand-in —
+    // the painter needs to know, so it can prefer a committed tile that
+    // has caught up over an image that is a revision behind it.
+    _overlayModel.settling = true;
     _settlingFallbackTimer?.cancel();
     var waited = Duration.zero;
     _settlingFallbackTimer = Timer.periodic(_settlingRecheckInterval, (timer) {

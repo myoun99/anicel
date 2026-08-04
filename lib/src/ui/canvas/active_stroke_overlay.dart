@@ -103,6 +103,18 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// semantics) rather than stroke-only pixels the painter must blend.
   bool get preBlended => preBlendBase != null;
 
+  /// True once the stroke has COMMITTED and these tiles are standing in
+  /// for committed tiles that cannot paint themselves yet.
+  ///
+  /// The distinction decides who wins a coordinate. While it is false the
+  /// overlay is the live stroke and the committed tiles are still the
+  /// PRE-stroke surface, so the overlay must win outright. Once it is
+  /// true the commit has landed, so a committed tile that has its own
+  /// decoded image is the finished picture and this overlay is at best a
+  /// revision behind it — and the painter should stop preferring the
+  /// stand-in over the real thing.
+  bool settling = false;
+
   final Map<TileCoord, ui.Image> _tileImages = <TileCoord, ui.Image>{};
 
   /// The stroke revision each decoded image represents (promotable path
@@ -481,7 +493,47 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// committed tiles atomic.
   void reset() {
     _generation += 1;
+    settling = false;
     _clearTiles();
+    _settleHoldTiles = null;
+    preBlendBase = null;
+    dabs.clear();
+    notifyListeners();
+  }
+
+  /// Starts a new stroke WITHOUT throwing away the tiles that are still
+  /// standing in for committed tiles which cannot paint themselves yet.
+  ///
+  /// A plain [reset] at the start of a stroke was a hole: what remains in
+  /// [tileImages] after a commit is exactly the coordinates whose handoff
+  /// missed, so dropping them puts those coordinates back on the painter's
+  /// stale fallback — the PRE-stroke tile — and the previous stroke's ink
+  /// disappears in tile-shaped patches until its decodes land. The gap
+  /// between one pen-up and the next pen-down is the whole window, which
+  /// is why it shows up when short strokes are drawn one after another.
+  ///
+  /// Keeping them is only safe because a stand-in is superseded the
+  /// moment the real tile can draw itself: see the settling branch in
+  /// `BitmapSurfacePainter`, which prefers the committed image over this
+  /// overlay once one exists. Without that, a kept stand-in would shadow
+  /// the truth instead of standing in for its absence.
+  void beginStrokeKeepingStandIns() {
+    _generation += 1;
+    // ⚠️ The flag goes even though the tiles stay. It means "this overlay
+    // is a stand-in, prefer the committed tile once it can draw itself" —
+    // and once a new stroke is live that would make the painter prefer
+    // the PRE-stroke committed tile over the stroke being drawn, which is
+    // the live stroke not appearing at all. The kept tiles are superseded
+    // by the new stroke's own tiles where it touches them, and dropped
+    // with the whole overlay at its commit.
+    settling = false;
+    // The tiles stay; the STROKE state does not. Revisions go with the
+    // old stroke — a kept image can no longer be handed to a new stroke's
+    // promoted tile, and a revision that survived would be compared
+    // against the new stroke's numbering.
+    _tileImageRevisions.clear();
+    _decoding.clear();
+    _dirtyWhileDecoding.clear();
     _settleHoldTiles = null;
     preBlendBase = null;
     dabs.clear();
