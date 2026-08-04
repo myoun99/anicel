@@ -110,8 +110,14 @@ void main() {
   /// A picture that covers more than the painter's four-tile per-pixel
   /// budget (tiles are 256 px), which is the threshold below which every
   /// float defect is invisible.
-  final wideDiagonal = <BrushDab>[
-    for (var i = 0; i <= 34; i += 1) dab(30 + i * 20, 30 + i * 14),
+  ///
+  /// ⚠️ A grid, not a diagonal. The first version of this ran from
+  /// (30,30) to (710,506) and touched EXACTLY four tiles, so the budget
+  /// covered all of it and the tests it was written for passed without
+  /// their fixes. Nine tiles here, comfortably past it.
+  final widePicture = <BrushDab>[
+    for (var y = 30; y <= 550; y += 40)
+      for (var x = 30; x <= 750; x += 40) dab(x.toDouble(), y.toDouble()),
   ];
 
   /// The cel's CURRENT pixels — 0/null means transparent.
@@ -1339,6 +1345,78 @@ void main() {
       );
     });
 
+    testWidgets('a freshly lifted float paints on its FIRST frame, not '
+        'four tiles of it', (tester) async {
+      // User report (08-04): "from the second transform on, when the
+      // transform STARTS, the target intermittently disappears for about
+      // a frame."
+      //
+      // What kept it on screen was never the float: it was the BASE
+      // painter's stale borrow, still holding the pre-erase tiles. That
+      // borrow dies the moment the erased tiles decode, and the float's
+      // own tiles decode on their own schedule — so whether anything is
+      // on screen in between is a race nothing in the code orders. The
+      // float now borrows the tiles the lift took WHOLE, which are its
+      // own pixels by construction, and paints immediately.
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        sourceDabs: widePicture,
+      );
+      // The cel has to be ON SCREEN before it is lifted — that is the
+      // premise of the whole mechanism, and it is not free in a widget
+      // test: `decodeImageFromPixels` never completes inside `pump`'s
+      // fake-async zone, so without this the base has no decoded tiles to
+      // hand over and the seeding has nothing to seed.
+      await settle(tester);
+
+      env.commands.beginTransform();
+      await tester.pump();
+
+      final committed = env.coordinator.currentSurfaceOf(
+        env.coordinator.activeFrameKey,
+      );
+      final floats = tester
+          .widgetList<CustomPaint>(find.byType(CustomPaint))
+          .map((paint) => paint.painter)
+          .whereType<BitmapSurfacePainter>()
+          .where((painter) => !identical(painter.surface, committed))
+          .toList();
+      expect(floats, isNotEmpty, reason: 'no float is up — bad premise');
+
+      var own = 0;
+      var missing = 0;
+      await tester.runAsync(() async {
+        final recorder = PictureRecorder();
+        const size = Size(800, 600);
+        floats.first.paint(Canvas(recorder, Offset.zero & size), size);
+        final image = await recorder.endRecording().toImage(800, 600);
+        final data = await image.toByteData(format: ImageByteFormat.rawRgba);
+        final painted = data!.buffer.asUint8List();
+        // Every second pixel on each axis: a tile the float cannot draw is
+        // a 256 px square, and `surfacePixelRgba` is a tile lookup per
+        // call — the exhaustive walk took minutes for no more evidence.
+        for (var y = 0; y < 600; y += 2) {
+          for (var x = 0; x < 800; x += 2) {
+            final own32 = surfacePixelRgba(floats.first.surface, x, y) ?? 0;
+            if (((own32 >> 24) & 0xff) == 0) continue;
+            own += 1;
+            if (painted[(y * 800 + x) * 4 + 3] == 0) missing += 1;
+          }
+        }
+        image.dispose();
+      });
+
+      expect(own, greaterThan(0), reason: 'the float has no pixels at all');
+      expect(
+        missing,
+        0,
+        reason:
+            'the float cannot draw $missing of its own $own pixels on the '
+            'frame the lift opened',
+      );
+    });
+
     testWidgets('the frame a WARPED transform confirms on still has the '
         'artwork on it', (tester) async {
       // User report (08-04): "on confirming the transform the target
@@ -1364,7 +1442,7 @@ void main() {
       final env = await pumpSelectionPanel(
         tester,
         tool: CanvasTool.move,
-        sourceDabs: wideDiagonal,
+        sourceDabs: widePicture,
       );
 
       env.commands.beginTransform();
@@ -1409,7 +1487,7 @@ void main() {
       final env = await pumpSelectionPanel(
         tester,
         tool: CanvasTool.move,
-        sourceDabs: wideDiagonal,
+        sourceDabs: widePicture,
       );
       env.commands.beginTransform();
       await tester.pump();
@@ -1450,7 +1528,7 @@ void main() {
       final env = await pumpSelectionPanel(
         tester,
         tool: CanvasTool.move,
-        sourceDabs: wideDiagonal,
+        sourceDabs: widePicture,
       );
       await dragOnLayer(tester, const Offset(300, 200), const Offset(340, 225));
       expect(env.commands.movePending, isTrue);

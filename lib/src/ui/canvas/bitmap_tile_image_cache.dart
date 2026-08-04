@@ -180,6 +180,46 @@ class BitmapTileImageCache extends ChangeNotifier {
     _latestDecodedByScope.remove(scope);
   }
 
+  /// Gives [scope] a starting point: for each entry, the coordinate's
+  /// stale-fallback becomes that already-decoded tile.
+  ///
+  /// The counterpart of [resetScope], for a lineage whose new content is
+  /// not new PIXELS. A transform's float is built from a lift, and a lift
+  /// is a copy of what was already on screen — so where the lift took a
+  /// coordinate whole, the surface it copied from is a truthful
+  /// predecessor and the float can draw immediately instead of waiting a
+  /// decode round with nothing to show. Without it a fresh float paints
+  /// four tiles and no more.
+  ///
+  /// ⚠️ "Where the lift took the coordinate WHOLE" is the caller's
+  /// obligation and it is not a detail. Seeding a coordinate the lift only
+  /// partly took would put pixels in the float that the user did not
+  /// select, and the float MOVES — it would carry its neighbours along.
+  /// That is the same lie as giving the float the base's scope outright.
+  ///
+  /// Entries with no decoded image are skipped. Nothing here takes
+  /// ownership: the tile is held exactly the way [ensureDecoded] holds it,
+  /// and [resetScope] lets go of it the same way.
+  void seedScope(Object? scope, Map<TileCoord, BitmapTile> tiles) {
+    if (tiles.isEmpty) {
+      return;
+    }
+    final scoped = _latestDecodedByScope.remove(scope);
+    final bucket = scoped ?? <TileCoord, BitmapTile>{};
+    for (final entry in tiles.entries) {
+      if (_images[entry.value] == null) {
+        continue;
+      }
+      bucket[entry.key] = entry.value;
+    }
+    if (bucket.isEmpty) {
+      return;
+    }
+    // Re-inserted last, so a seeded scope is the most recently used.
+    _latestDecodedByScope[scope] = bucket;
+    _evictScopesBeyondBudget();
+  }
+
   void _evictScopesBeyondBudget() {
     while (_latestDecodedByScope.length > retainedScopeLimit) {
       _latestDecodedByScope.remove(_latestDecodedByScope.keys.first);

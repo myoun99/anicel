@@ -1,3 +1,5 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
 
 import '../../core/floor_math.dart';
@@ -421,8 +423,15 @@ class BitmapSurfacePainter extends CustomPainter {
   }
 
   void _paintTilePixels(Canvas canvas, BitmapTile tile) {
+    // `readPixels`, not the `pixels` getter: that getter is a defensive
+    // 256 KB COPY per call, and this path already runs on the frames
+    // where there is least room for it — the budget above is spent
+    // exactly when nothing has decoded yet.
+    tile.readPixels((_, pixels) => _paintTilePixelsFrom(canvas, tile, pixels));
+  }
+
+  void _paintTilePixelsFrom(Canvas canvas, BitmapTile tile, Uint8List pixels) {
     final pixelPaint = Paint()..style = PaintingStyle.fill;
-    final pixels = tile.pixels;
     final tileOriginX = tile.coord.x * tile.size;
     final tileOriginY = tile.coord.y * tile.size;
 
