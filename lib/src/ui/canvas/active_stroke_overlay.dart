@@ -115,6 +115,54 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// stand-in over the real thing.
   bool settling = false;
 
+  /// Coordinates whose image is standing in for a COMMITTED tile that
+  /// cannot paint itself yet — the pen-up handoff's misses.
+  ///
+  /// Tracked apart from [tileImages] because the two have opposite
+  /// lifetimes once a new stroke starts: the live stroke's tiles belong
+  /// to the stroke and go with it, while a stand-in belongs to the
+  /// COMMITTED surface and must outlive the stroke that produced it. A
+  /// plain reset at the next pen-down dropped them, which put those
+  /// coordinates back on the painter's stale fallback — the pre-stroke
+  /// tile — and the stroke the user had just finished vanished in
+  /// tile-shaped patches. Measured: stroke 1 pen-up, one frame, stroke 2
+  /// pen-down, and 2 of 5 promoted coordinates went overlay → stale.
+  final Set<TileCoord> _standInCoords = <TileCoord>{};
+
+  /// Whether anything here is covering for a committed tile.
+  bool get hasStandIns => _standInCoords.isNotEmpty;
+
+  /// This coordinate's image is now covering for its committed tile.
+  void markStandIn(TileCoord coord) {
+    _standInCoords.add(coord);
+  }
+
+  /// Lets go of every stand-in [settled] accepts — one notification for
+  /// the lot, so the swap to committed pixels is atomic.
+  ///
+  /// Per coordinate, and driven by decodes landing rather than by a
+  /// clock: a barrier cannot leak, and a timer leaks exactly when the
+  /// work runs long.
+  void releaseStandIns(bool Function(TileCoord coord) settled) {
+    if (_standInCoords.isEmpty) {
+      return;
+    }
+    final done = _standInCoords.where(settled).toList(growable: false);
+    if (done.isEmpty) {
+      return;
+    }
+    for (final coord in done) {
+      _standInCoords.remove(coord);
+      _tileImageRevisions.remove(coord);
+      final image = _tileImages.remove(coord);
+      if (image != null) {
+        // Deferred: the frame on screen may still reference it.
+        DeferredImageDisposer.instance.retire(image);
+      }
+    }
+    notifyListeners();
+  }
+
   final Map<TileCoord, ui.Image> _tileImages = <TileCoord, ui.Image>{};
 
   /// The stroke revision each decoded image represents (promotable path
@@ -519,6 +567,18 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
   /// the truth instead of standing in for its absence.
   void beginStrokeKeepingStandIns() {
     _generation += 1;
+    // Only the stand-ins survive. Anything else still here belonged to
+    // the stroke that just ended and has either been handed over or been
+    // superseded by the commit.
+    for (final coord in _tileImages.keys.toList(growable: false)) {
+      if (_standInCoords.contains(coord)) {
+        continue;
+      }
+      final image = _tileImages.remove(coord);
+      if (image != null) {
+        DeferredImageDisposer.instance.retire(image);
+      }
+    }
     // ⚠️ The flag goes even though the tiles stay. It means "this overlay
     // is a stand-in, prefer the committed tile once it can draw itself" —
     // and once a new stroke is live that would make the painter prefer
@@ -556,6 +616,7 @@ class ActiveStrokeOverlayModel extends ChangeNotifier {
       DeferredImageDisposer.instance.retire(image);
     }
     _tileImages.clear();
+    _standInCoords.clear();
     _tileImageRevisions.clear();
     _decoding.clear();
     _dirtyWhileDecoding.clear();

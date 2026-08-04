@@ -634,11 +634,7 @@ class _InteractiveBrushEditCanvasViewState
     _groundMixer = strokeSettings.shape.mixesGroundColor
         ? BrushGroundColorMixer(shape: strokeSettings.shape)
         : null;
-    // ⚠️ MEASURED HOLE, deliberately not closed here — see
-    // [_beginStrokeOverlay]. This reset drops a previous stroke's
-    // stand-ins, and that is the one true "it was there, it vanished, it
-    // came back" anyone has reproduced in this family.
-    _resetOverlay();
+    _beginStrokeOverlay();
     // Overlay stroke configuration AFTER the reset — reset() clears
     // preBlendBase, so setting it earlier silently disabled the whole
     // pre-blend pipeline for real pointer strokes (the R27 #4 ordering
@@ -985,6 +981,11 @@ class _InteractiveBrushEditCanvasViewState
           // catch-up segment guarantees that flush has fresh dabs, so it
           // is guaranteed to happen at all.
           missedHandoff = true;
+          // What the overlay still holds here is covering for a COMMITTED
+          // tile now, not for the stroke. Saying so is what lets it
+          // outlive the stroke: the next pen-down must not take it away
+          // before its committed tile can paint.
+          _overlayModel.markStandIn(entry.tile.coord);
           BitmapTileImageCache.instance.ensureDecoded(
             entry.tile,
             staleScope: (widget.layerId, widget.frameId),
@@ -1372,37 +1373,60 @@ class _InteractiveBrushEditCanvasViewState
     _pendingOverlayDabs.clear();
   }
 
-  /// ⚠️ THE REMAINING PEN-UP HOLE, measured and NOT closed. Read this
-  /// before touching `_beginStroke`'s reset.
+  /// Starts a stroke without taking away what is covering for the LAST
+  /// one's committed tiles.
   ///
-  /// Starting a stroke resets the overlay unconditionally. What is left
-  /// in the overlay after a commit is exactly the coordinates whose
-  /// handoff missed, so that reset puts them back on the painter's stale
-  /// fallback — the PRE-stroke tile — and the stroke the user just
-  /// finished disappears in tile-shaped patches until its decodes land.
-  /// Measured: stroke 1 pen-up, one frame, stroke 2 pen-down, and 2 of 5
-  /// promoted coordinates went overlay → stale. It is the only true "it
-  /// was there, it vanished, it came back" reproduced in this family;
-  /// everything else the census found is LATENESS (ink arriving a frame
-  /// after pen-up), which looks different.
+  /// An unconditional reset here was the pen-up hole. What remains in the
+  /// overlay after a commit is exactly the coordinates whose handoff
+  /// missed, so dropping them put those coordinates back on the painter's
+  /// stale fallback — the PRE-stroke tile — and the stroke the user had
+  /// just finished vanished in tile-shaped patches until its decodes
+  /// landed. Measured: stroke 1 pen-up, one frame, stroke 2 pen-down, 2
+  /// of 5 promoted coordinates overlay → stale. The window is the gap
+  /// between one pen-up and the next pen-down, which is why short strokes
+  /// drawn one after another are the case that shows it.
   ///
-  /// The window is the gap between one pen-up and the next pen-down —
-  /// which is why it would show up when short strokes are drawn one after
-  /// another, and the user's report says short strokes are the worst
-  /// case. That match is suggestive, not established: the loss reproduced
-  /// at a 0 ms gap and not at 2 ms on an unloaded debug machine, so on
-  /// hardware the window's width is unmeasured.
+  /// The settle WINDOW still ends here — its timer and its release both
+  /// reset the whole overlay, which would now take the live stroke with
+  /// them. The stand-ins outlive it, which is why they are tracked
+  /// separately from the stroke's own tiles, and they are let go per
+  /// coordinate from [_onTileImagesChanged] as each committed tile
+  /// becomes able to paint itself.
+  void _beginStrokeOverlay() {
+    if (!_overlayModel.hasStandIns) {
+      _resetOverlay();
+      return;
+    }
+    _settling = false;
+    _settlingBounds = null;
+    _settlingFallbackTimer?.cancel();
+    _settlingFallbackTimer = null;
+    _fillOverlayToken += 1;
+    _overlayModel.beginStrokeKeepingStandIns();
+  }
+
+  /// Lets go of every stand-in whose committed tile can now paint itself.
   ///
-  /// Why it is not fixed here: keeping the stand-ins means the settle
-  /// WINDOW must end (its timer and its release check both reset the
-  /// whole overlay, which would take the live stroke with them) while the
-  /// stand-ins outlive it — and `ActiveStrokeOverlayModel.settling` must
-  /// then be false, which is exactly what stops the painter's settling
-  /// branch from superseding them. Doing it properly needs the stand-in
-  /// coordinates tracked separately from the live stroke's, and released
-  /// per coordinate. That is a round, with its own raster oracle, not a
-  /// line here. `beginStrokeKeepingStandIns` is built and waiting for it.
-  ///
+  /// A barrier, not a clock: the release is driven by decodes landing, so
+  /// it cannot fire early, and it cannot leak when the work runs long.
+  void _releaseSettledStandIns() {
+    if (!_overlayModel.hasStandIns || !mounted) {
+      return;
+    }
+    final surface = widget.sessionState.canvasState.currentSurface;
+    final cache = BitmapTileImageCache.instance;
+    _overlayModel.releaseStandIns((coord) {
+      final tile = surface.tileAt(coord);
+      // ⚠️ No tile is NOT "settled". The commit reaches this widget's
+      // session state a rebuild later than it reaches the store, so
+      // between the handoff's miss and that rebuild the coordinate the
+      // stamp just wrote to can still be absent here — and letting go
+      // then is letting go before anything can paint it. A stand-in that
+      // never finds a tile is bounded by the next reset.
+      return tile != null && cache.imageFor(tile) != null;
+    });
+  }
+
   /// Clears the visible overlay (live or settling) and its tile images.
   void _resetOverlay() {
     _settling = false;
@@ -1495,6 +1519,10 @@ class _InteractiveBrushEditCanvasViewState
   }
 
   void _onTileImagesChanged() {
+    // BEFORE the settle gate: a stand-in outlives the window that made
+    // it, so once a new stroke is live this is the only thing that lets
+    // it go.
+    _releaseSettledStandIns();
     if (!_settling || !mounted) {
       return;
     }
