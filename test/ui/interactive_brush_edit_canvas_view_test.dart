@@ -25,6 +25,8 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart' show CanvasTool;
 import 'package:anicel/src/ui/canvas/brush_edit_canvas_input_settings.dart';
 import 'package:anicel/src/ui/canvas/brush_edit_canvas_view.dart';
+import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
+import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
@@ -92,6 +94,72 @@ void main() {
         expect(canvasView.showTransparentBackground, isFalse);
       },
     );
+
+    testWidgets('the next pen-down does not take away what is covering for '
+        'the last stroke', (tester) async {
+      // The pen-up handoff misses by construction — the tile revision is
+      // written inside the decode callback and the final flush runs in
+      // the same synchronous handler — so after a commit the overlay is
+      // holding images that stand in for COMMITTED tiles which cannot
+      // paint themselves yet. Resetting it at the next pen-down put those
+      // coordinates back on the painter's stale fallback, the PRE-stroke
+      // tile, and the stroke the user had just finished vanished in
+      // tile-shaped patches. Measured: 2 of 5 promoted coordinates went
+      // overlay → stale at a 0 ms inter-stroke gap.
+      //
+      // The oracle is the model's own state rather than the raster,
+      // because this harness reports commits instead of applying them, so
+      // there is no committed surface to composite against. What it pins
+      // is the mechanism: an image kept here is one the painter draws
+      // (the overlay-replaces-coordinate path is pinned in
+      // active_stroke_overlay_parity_test), and one dropped here is one
+      // nothing can draw.
+      final results = <List<BrushDab>>[];
+      await tester.pumpWidget(_app(_view(_sessionState(), results.add)));
+
+      ActiveStrokeOverlayModel overlay() => tester
+          .widgetList<CustomPaint>(find.byType(CustomPaint))
+          .map((paint) => paint.painter)
+          .whereType<BitmapSurfacePainter>()
+          .map((painter) => painter.overlayModel)
+          .whereType<ActiveStrokeOverlayModel>()
+          .first;
+
+      await _pressureStroke(
+        tester,
+        canvasPoints: const [Offset(1.5, 1.5), Offset(6.5, 4.5)],
+        pressure: 1,
+      );
+      expect(
+        overlay().hasStandIns,
+        isTrue,
+        reason:
+            'the handoff did not miss, so there is nothing to lose — this '
+            'test proves nothing without it',
+      );
+
+      // One frame, then the next stroke begins: the whole window.
+      await tester.pump();
+      tester.binding.handlePointerEvent(
+        PointerDownEvent(
+          pointer: 2,
+          kind: PointerDeviceKind.stylus,
+          position: canvasGlobalOffset(tester, const Offset(12.5, 12.5)),
+          pressure: 1,
+          pressureMin: 0,
+          pressureMax: 1,
+        ),
+      );
+      await tester.pump();
+
+      expect(
+        overlay().hasStandIns,
+        isTrue,
+        reason:
+            'starting a stroke took away the cover for the previous one, so '
+            'those coordinates fall back to their pre-stroke pixels',
+      );
+    });
 
     testWidgets('pointer down does not throw', (tester) async {
       final results = <List<BrushDab>>[];
