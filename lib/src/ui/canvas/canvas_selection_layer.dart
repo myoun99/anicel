@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
 import '../../models/bitmap_surface.dart';
+import '../../models/bitmap_tile.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_dab_sequence.dart';
 import '../../models/canvas_point.dart';
@@ -151,9 +152,18 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// shape covers no pixels: the move is a no-op. R19 pixel model: every
   /// session lifts fresh from the CURRENT raster (a confirmed move's next
   /// move re-lifts the landed pixels — byte-identical by construction).
-  final ({int liftToken, BrushDab stampDab})? Function(
-    CanvasSelectionRegion region,
-  )?
+  ///
+  /// `wholeTiles` names the coordinates the lift took ENTIRELY, paired
+  /// with the tiles that held them before — the float about to be built
+  /// holds exactly those pixels there, so it can borrow them and paint on
+  /// its first frame. A host that has nothing to offer returns an empty
+  /// map and the float waits for its own decodes, as it used to.
+  final ({
+    int liftToken,
+    BrushDab stampDab,
+    Map<TileCoord, BitmapTile> wholeTiles,
+  })?
+  Function(CanvasSelectionRegion region)?
   onLiftRequested;
 
   /// Raw landing of the floating stamp at its pending position (no
@@ -1442,8 +1452,15 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       return false;
     }
     _liftToken = lift.liftToken;
-    // A fresh lift is a picture this scope has never seen.
+    // A fresh lift is a picture this scope has never seen — except at the
+    // coordinates it took whole, where the surface it copied from IS this
+    // float's own previous generation. Emptying and then seeding says
+    // both things in the right order.
     _floatContentReplaced();
+    BitmapTileImageCache.instance.seedScope(
+      _floatStaleScope,
+      lift.wholeTiles,
+    );
     _pendingLiftStamp = lift.stampDab;
     _moveSessionDirty = false;
     _moveSessionStartShape = region;

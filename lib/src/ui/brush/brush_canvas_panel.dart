@@ -9,6 +9,7 @@ import '../../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
 import '../../services/brush_stroke_commit_data.dart';
 import '../../models/bitmap_surface.dart';
+import '../../models/bitmap_tile.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_frame_key.dart';
 import '../../services/canvas_selection.dart';
@@ -1648,9 +1649,20 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   }
 
   /// shape covers no pixels.
-  ({int liftToken, BrushDab stampDab})? _handleSelectionLift(
-    CanvasSelectionRegion region,
-  ) {
+  ///
+  /// [wholeTiles] names the coordinates the lift took ENTIRELY — the ones
+  /// left with nothing behind — paired with the tiles that held them
+  /// before. The float that is about to be built from this stamp holds,
+  /// at those coordinates, exactly those pixels, so it can borrow them
+  /// and paint on its first frame instead of waiting a decode round with
+  /// four tiles' worth of fallback. Coordinates the lift only partly took
+  /// are deliberately absent: see [BitmapTileImageCache.seedScope].
+  ({
+    int liftToken,
+    BrushDab stampDab,
+    Map<TileCoord, BitmapTile> wholeTiles,
+  })?
+  _handleSelectionLift(CanvasSelectionRegion region) {
     final coordinator = widget.coordinator;
     if (coordinator == null) {
       return null;
@@ -1675,7 +1687,21 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     final token = ++_liftTokenSeq;
     _liftAnchors[token] = preLift;
     setState(() {});
-    return (liftToken: token, stampDab: lift.stampDab);
+    final after = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
+    final whole = <TileCoord, BitmapTile>{};
+    for (final entry in preLift.tiles.entries) {
+      // Emptied by the erase => the lift took this coordinate whole. The
+      // erase does not drop emptied tiles, so the test is the alpha, not
+      // the tile's absence.
+      final left = after.tileAt(entry.key);
+      // `isFullyTransparent`, not a hand-rolled alpha scan: it walks the
+      // tile's own view, where `tile.pixels` is a 256 KB defensive COPY
+      // per call and this loop runs once per tile of the lift.
+      if (left == null || left.isFullyTransparent) {
+        whole[entry.key] = entry.value;
+      }
+    }
+    return (liftToken: token, stampDab: lift.stampDab, wholeTiles: whole);
   }
 
   /// R16-① confirm: lands the floating stamp and adopts the whole move
