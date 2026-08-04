@@ -77,6 +77,149 @@ void main() {
     return bytes;
   }
 
+  test('the tile-major gather equals a per-pixel reference, swept across '
+      'tile boundaries and the pasteboard', () {
+    // The gather walks TILES and the pixels inside them, instead of
+    // walking destination rows and asking which tile each pixel belongs
+    // to. The existing tests here pin the lift's semantics but not its
+    // TILING — a rewrite that dropped, doubled or misaddressed a tile's
+    // share of a straddling bbox passes all of them. This is the oracle
+    // for the axis the rewrite actually changed: a reference gather
+    // written the naive way, right here, compared byte for byte.
+    //
+    // Cases are chosen to straddle: a bbox inside one tile, one crossing
+    // a tile edge, one spanning several, one starting on an exact
+    // boundary, one entirely in the negative (pasteboard) quadrant, and
+    // one over a coordinate that has no tile at all.
+    Uint8List referenceGather({
+      required BitmapSurface surface,
+      required Uint8List mask,
+      required int left,
+      required int top,
+      required int width,
+      required int height,
+    }) {
+      final out = Uint8List(width * height * 4);
+      final tileSize = surface.tileSize;
+      for (var row = 0; row < height; row += 1) {
+        final y = top + row;
+        for (var col = 0; col < width; col += 1) {
+          final maskValue = mask[row * width + col];
+          if (maskValue == 0) {
+            continue;
+          }
+          final x = left + col;
+          final tile = surface.tiles[TileCoord(
+            x: floorDiv(x, tileSize),
+            y: floorDiv(y, tileSize),
+          )];
+          if (tile == null) {
+            continue;
+          }
+          final pixels = tile.pixels;
+          final source = ((y % tileSize) * tileSize + (x % tileSize)) * 4;
+          final alpha = pixels[source + 3];
+          if (alpha == 0) {
+            continue;
+          }
+          final target = (row * width + col) * 4;
+          out[target] = pixels[source];
+          out[target + 1] = pixels[source + 1];
+          out[target + 2] = pixels[source + 2];
+          if (maskValue == 255) {
+            out[target + 3] = alpha;
+          } else {
+            final product = alpha * maskValue + 128;
+            out[target + 3] = (product + (product >> 8)) >> 8;
+          }
+        }
+      }
+      return out;
+    }
+
+    // A cel with ink in several tiles including negative coordinates, so
+    // the sweep below really does cross tile edges with content on both
+    // sides of them.
+    var surface = BitmapSurface(canvasSize: canvasSize, tileSize: 8);
+    for (final centre in [
+      CanvasPoint(x: 3, y: 3),
+      CanvasPoint(x: 9, y: 5),
+      CanvasPoint(x: 7.5, y: 8.5),
+      CanvasPoint(x: -5, y: -3),
+      CanvasPoint(x: -2, y: 6),
+    ]) {
+      surface = materializeBrushDabSequenceOnBitmapSurface(
+        surface: surface,
+        sequence: BrushDabSequence([
+          BrushDab(
+            center: centre,
+            color: 0xC03377AA,
+            size: 5,
+            opacity: 0.8,
+            flow: 0.9,
+            hardness: 0.4,
+            tipShape: BrushTipShape.round,
+            pressure: 1,
+            sequence: 0,
+          ),
+        ]),
+      ).surface;
+    }
+
+    const cases = <({int left, int top, int width, int height})>[
+      (left: 1, top: 1, width: 5, height: 5), // inside one tile
+      (left: 5, top: 2, width: 7, height: 4), // crosses a vertical edge
+      (left: 2, top: 5, width: 4, height: 7), // crosses a horizontal edge
+      (left: 8, top: 8, width: 6, height: 6), // starts ON a boundary
+      (left: 3, top: 3, width: 11, height: 11), // spans four tiles
+      (left: -7, top: -5, width: 9, height: 9), // pasteboard, negative
+      (left: -3, top: 2, width: 8, height: 8), // straddles x = 0
+      (left: 12, top: 12, width: 4, height: 4), // over an empty coordinate
+    ];
+
+    for (final box in cases) {
+      // Two masks per case: hard, and a soft one that exercises the
+      // mul-div-255 branch at every pixel.
+      for (final soft in const [false, true]) {
+        final mask = Uint8List(box.width * box.height);
+        for (var i = 0; i < mask.length; i += 1) {
+          // A varying pattern, with genuine zeroes so the skip path runs.
+          final v = (i * 37) % 256;
+          mask[i] = v < 24 ? 0 : (soft ? v : 255);
+        }
+        final expected = referenceGather(
+          surface: surface,
+          mask: mask,
+          left: box.left,
+          top: box.top,
+          width: box.width,
+          height: box.height,
+        );
+        final actual = gatherMaskedSurfacePixels(
+          surface: surface,
+          mask: mask,
+          left: box.left,
+          top: box.top,
+          width: box.width,
+          height: box.height,
+        );
+        expect(
+          actual.rgba,
+          expected,
+          reason:
+              'tile-major gather differs from the reference at '
+              '${box.left},${box.top} ${box.width}x${box.height} '
+              '(soft: $soft)',
+        );
+        expect(
+          actual.liftedAnything,
+          expected.any((byte) => byte != 0),
+          reason: 'liftedAnything disagrees at ${box.left},${box.top}',
+        );
+      }
+    }
+  });
+
   test('a zero-move lift-and-drop is byte-identical to the original', () {
     final surface = paintedSurface();
     final before = snapshot(surface);
