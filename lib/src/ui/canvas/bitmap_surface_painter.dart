@@ -210,9 +210,16 @@ class BitmapSurfacePainter extends CustomPainter {
     // repaint hook), and a big cel drawn all over holds far more tiles
     // than fit a zoomed-in view — the old draw-everything walk issued a
     // drawImage per committed tile (~2.2ms at 1024 tiles, growing
-    // linearly) for pixels the pasteboard clip drops anyway. The tile map
-    // is a coordinate hash, so each lookup is O(1) and the draw cost is
-    // O(visible tiles).
+    // linearly) for pixels the pasteboard clip drops anyway.
+    //
+    // ⚠️ `tileAt`, NOT `surface.tiles[...]`. The comment here used to say
+    // "the tile map is a coordinate hash, so each lookup is O(1)" and that
+    // was false: `tiles` is `Map.unmodifiable(_tiles)`, a getter that
+    // COPIES the cel's whole tile map on every read, so the walk below
+    // was O(visible coords × cel tiles) map entries. Measured 0.49 ms per
+    // paint at 70 tiles and 1.48 ms at 88 — and the same shape was
+    // measured at 82.7 ms per walk at the 1024 tiles the canvas dialog
+    // allows, which is a cliff, not a smoothness question.
     final tileSize = surface.tileSize;
     final firstTileX = floorDiv(visibleRect.left.floor(), tileSize);
     final lastTileX = floorDiv(visibleRect.right.ceil() - 1, tileSize);
@@ -220,7 +227,7 @@ class BitmapSurfacePainter extends CustomPainter {
     final lastTileY = floorDiv(visibleRect.bottom.ceil() - 1, tileSize);
     for (var tileY = firstTileY; tileY <= lastTileY; tileY += 1) {
       for (var tileX = firstTileX; tileX <= lastTileX; tileX += 1) {
-        final tile = surface.tiles[TileCoord(x: tileX, y: tileY)];
+        final tile = surface.tileAt(TileCoord(x: tileX, y: tileY));
         if (tile == null) {
           continue;
         }
