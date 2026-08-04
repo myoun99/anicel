@@ -6,6 +6,8 @@ import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
 import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/canvas_selection_region.dart';
@@ -50,16 +52,23 @@ void main() {
   pumpSelectionPanel(
     WidgetTester tester, {
     CanvasTool tool = CanvasTool.selectRect,
+    // Extra committed ink, mounted with the fixture. `null` replaces the
+    // in-canvas stroke entirely (a cel whose only ink is off-canvas).
+    List<BrushDab>? sourceDabs,
+    // A canvas SMALLER than the 800×600 test viewport, so pasteboard
+    // coordinates are reachable by a pointer at all.
+    CanvasSize canvasSize = BrushCanvasFixture.canvasSize,
   }) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
       frameKeys: frameKeys,
+      canvasSize: canvasSize,
     );
     final history = HistoryManager();
     final commands = CanvasSelectionCommands();
     // One committed stroke around canvas (30..60, 30..60).
     coordinator.commitSourceStroke(
-      sourceDabs: [dab(30, 30), dab(45, 45), dab(60, 60)],
+      sourceDabs: sourceDabs ?? [dab(30, 30), dab(45, 45), dab(60, 60)],
     );
 
     Future<void> pumpWith(CanvasTool tool) async {
@@ -68,6 +77,11 @@ void main() {
           home: Scaffold(
             body: BrushCanvasPanel(
               coordinator: coordinator,
+              // The panel carries its OWN canvas size, independent of the
+              // coordinator's session store — passing only the fixture's
+              // left the panel at the 2340×1654 default, which silently
+              // put every reachable pointer position back on canvas.
+              canvasSize: canvasSize,
               availableFrameKeys: frameKeys,
               cacheInvalidationSink: BrushEditCacheInvalidationSink(),
               historyManager: history,
@@ -417,6 +431,122 @@ void main() {
       isNonZero,
       reason: 'one undo restores the pre-lift picture',
     );
+  });
+
+  testWidgets('the whole picture means the PASTEBOARD too — no-selection '
+      'move carries off-canvas ink with the rest', (tester) async {
+    // User report (08-04): "when the drawing runs out into the pasteboard
+    // and I transform with nothing selected, only the part inside the
+    // canvas becomes the target". The implicit whole-picture shape was
+    // reading the cel's true ink bounds and then clamping them to the
+    // canvas rect, so off-canvas ink stood still while the picture moved
+    // out from under it.
+    //
+    // The oracle is the RASTER at the off-canvas coordinate, not the
+    // region bounds: a fix that lifts the right rect and then clips at
+    // the commit would pass a bounds assertion and still be the bug.
+    final env = await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.move,
+      sourceDabs: [dab(-20, -20), dab(30, 30), dab(45, 45), dab(60, 60)],
+    );
+    expect(
+      inkAt(env.coordinator, -20, -20),
+      isNonZero,
+      reason: 'the fixture really does hold pasteboard ink',
+    );
+
+    await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 50));
+    env.commands.confirmPendingMove();
+    await tester.pump();
+
+    expect(inkAt(env.coordinator, 40, 35), isNonZero, reason: '+10,+5 landed');
+    expect(
+      inkAt(env.coordinator, -10, -15),
+      isNonZero,
+      reason: 'the pasteboard dab moved by the same +10,+5',
+    );
+    expect(
+      inkAt(env.coordinator, -20, -20),
+      0,
+      reason: 'and it LEFT its old place — not copied, moved',
+    );
+  });
+
+  testWidgets('a cel whose only ink is on the pasteboard still has a whole '
+      'picture to move', (tester) async {
+    // The degenerate branch: with the canvas clamp, pasteboard-only ink
+    // collapsed to an empty rect and fell back to the whole canvas —
+    // which holds nothing — so the drag lifted emptiness and the drawing
+    // could not be moved at all.
+    final env = await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.move,
+      sourceDabs: [dab(-200, -200), dab(-180, -180)],
+    );
+    expect(inkAt(env.coordinator, -200, -200), isNonZero);
+
+    await dragOnLayer(tester, const Offset(45, 45), const Offset(55, 50));
+    env.commands.confirmPendingMove();
+    await tester.pump();
+
+    expect(
+      inkAt(env.coordinator, -190, -195),
+      isNonZero,
+      reason: 'pasteboard-only ink moves like any other picture',
+    );
+    expect(inkAt(env.coordinator, -200, -200), 0);
+  });
+
+  testWidgets('a press on the PASTEBOARD grabs the whole picture too — the '
+      'box frames ink you can also take hold of', (tester) async {
+    // The handles were already grabbable off-canvas (_hitTestTransformHandle
+    // has no stage gate), so once the box frames pasteboard ink, a
+    // canvas-only press gate leaves exactly one thing you can see framed
+    // and cannot grab by pressing on it.
+    const small = CanvasSize(width: 200, height: 150);
+    final env = await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.move,
+      canvasSize: small,
+      sourceDabs: [dab(30, 30), dab(300, 100)],
+    );
+    // The viewport is identity here, so widget offsets ARE canvas
+    // coordinates. (250,60) is past the 200-wide canvas — pasteboard —
+    // and well clear of the implicit box's handles, which sit on the
+    // corners and edge midpoints of the ink bounds and are grabbable
+    // off-canvas already: pressing the corner at (300,100) scales
+    // instead of moving, which is how this test first read as a failure.
+    expect(inkAt(env.coordinator, 300, 100), isNonZero);
+    expect(
+      small.containsPasteboardPoint(x: 250, y: 60),
+      isTrue,
+      reason: '(250,60) is past the 200×150 canvas but inside its pasteboard',
+    );
+
+    await dragOnLayer(tester, const Offset(250, 60), const Offset(260, 65));
+    expect(
+      env.commands.movePending,
+      isTrue,
+      reason: 'the press on the pasteboard opened the implicit session',
+    );
+    env.commands.confirmPendingMove();
+    await tester.pump();
+    // TRANSLATION, asserted at both ends: a handle grab would scale about
+    // the opposite corner and leave the anchor ink standing, so "the old
+    // place is empty" is the assertion that tells a move from a scale.
+    expect(
+      inkAt(env.coordinator, 310, 105),
+      isNonZero,
+      reason: 'the pasteboard dab moved +10,+5',
+    );
+    expect(inkAt(env.coordinator, 298, 98), 0, reason: 'and left its old one');
+    expect(
+      inkAt(env.coordinator, 40, 35),
+      isNonZero,
+      reason: 'and so did the in-canvas one — one picture, one move',
+    );
+    expect(inkAt(env.coordinator, 28, 28), 0, reason: 'nothing stayed behind');
   });
 
   testWidgets('R28 #10: a SECOND transform on the same tool works — the '

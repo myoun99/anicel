@@ -20,9 +20,14 @@ import '../native/qa_native_engine.dart';
 /// pixel exists. R26 #13 follow-up (user rule 07-22): the whole-picture
 /// transform box frames exactly the picture, PS-style, not the canvas.
 ///
-/// One full scan per call — callers open a session with it, never a
-/// per-frame path. The word loop fast-skips fully transparent pixels
-/// (most of an animation cel), so the common cost is memory bandwidth.
+/// One full scan per call, and `surface.tiles` copies the cel's whole
+/// tile map before the scan even starts. The word loop fast-skips fully
+/// transparent pixels (most of an animation cel), so the common cost is
+/// memory bandwidth — but it is still far too much to spend per frame.
+/// ⚠️ This comment used to promise "callers open a session with it,
+/// never a per-frame path" and that was already false: the selection
+/// layer frames the always-on move box from `build`. Callers on a build
+/// path MUST memoize on the surface instance (BrushCanvasPanel does).
 ({int left, int top, int rightExclusive, int bottomExclusive})?
 bitmapSurfaceContentBounds(BitmapSurface surface) {
   final tileSize = surface.tileSize;
