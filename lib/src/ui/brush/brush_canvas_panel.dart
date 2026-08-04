@@ -1569,10 +1569,28 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (coordinator == null) {
       return null;
     }
-    return bitmapSurfaceContentBounds(
-      coordinator.currentSurfaceOf(coordinator.activeFrameKey),
-    );
+    final surface = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
+    // Memoized on the surface INSTANCE. `bitmapSurfaceContentBounds`
+    // documents itself as "never a per-frame path", and that was false:
+    // the selection layer calls this provider from `build` to frame the
+    // always-on move box, so it ran once per rebuild — a full alpha scan
+    // of every tile, preceded by `surface.tiles`, which is
+    // `Map.unmodifiable(_tiles)` and copies the whole tile map on each
+    // read. BitmapSurface is immutable with structural tile sharing (the
+    // painter's shouldRepaint already relies on that), so identity is an
+    // exact key: a changed cel is always a new instance.
+    if (identical(surface, _contentBoundsSurface)) {
+      return _contentBoundsCached;
+    }
+    final bounds = bitmapSurfaceContentBounds(surface);
+    _contentBoundsSurface = surface;
+    _contentBoundsCached = bounds;
+    return bounds;
   }
+
+  BitmapSurface? _contentBoundsSurface;
+  ({int left, int top, int rightExclusive, int bottomExclusive})?
+  _contentBoundsCached;
 
   /// Whether every tile the committed surface holds under this canvas rect
   /// has a decoded image — the signal the selection layer waits on before

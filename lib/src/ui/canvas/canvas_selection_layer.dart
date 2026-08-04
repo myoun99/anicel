@@ -289,22 +289,34 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   bool _shapeIsImplicitWholePicture = false;
 
   /// The implicit whole-picture shape: the cel's tight INK bounds when
-  /// the host provides them (PS-style — the box frames the picture),
-  /// clamped to the canvas; the full canvas rect otherwise. Lifting it
-  /// lifts the whole picture (the tool guard upstream already refuses
-  /// the MOVE tool when the cel has no picture at all).
+  /// the host provides them (PS-style — the box frames the picture), the
+  /// full canvas rect otherwise. Lifting it lifts the whole picture (the
+  /// tool guard upstream already refuses the MOVE tool when the cel has
+  /// no picture at all).
+  ///
+  /// "The whole picture" means the whole PICTURE, pasteboard included.
+  /// This used to clamp to the canvas rect, which was defended as "the
+  /// same coverage the canvas-rect box had" — but the pasteboard is a
+  /// first-class part of the drawing here, so a transform with nothing
+  /// selected left the off-canvas ink standing still while the rest of
+  /// the picture moved out from under it. The clamp stays, widened to
+  /// the pasteboard: it is what keeps the box inside the finite wall
+  /// every stage downstream (lift, resample, preview, commit) treats as
+  /// the edge of the world.
   CanvasSelectionShape _wholeCanvasShape() {
     final width = widget.canvasSize.width.toDouble();
     final height = widget.canvasSize.height.toDouble();
     var left = 0.0, top = 0.0, right = width, bottom = height;
     final content = widget.contentBoundsProvider?.call();
     if (content != null) {
-      // Clamp to the canvas: off-canvas ink stays outside the lift, the
-      // same coverage the canvas-rect box had.
-      left = content.left.toDouble().clamp(0.0, width);
-      top = content.top.toDouble().clamp(0.0, height);
-      right = content.rightExclusive.toDouble().clamp(0.0, width);
-      bottom = content.bottomExclusive.toDouble().clamp(0.0, height);
+      final wallLeft = widget.canvasSize.pasteboardLeft.toDouble();
+      final wallTop = widget.canvasSize.pasteboardTop.toDouble();
+      final wallRight = widget.canvasSize.pasteboardRightExclusive.toDouble();
+      final wallBottom = widget.canvasSize.pasteboardBottomExclusive.toDouble();
+      left = content.left.toDouble().clamp(wallLeft, wallRight);
+      top = content.top.toDouble().clamp(wallTop, wallBottom);
+      right = content.rightExclusive.toDouble().clamp(wallLeft, wallRight);
+      bottom = content.bottomExclusive.toDouble().clamp(wallTop, wallBottom);
       if (right <= left || bottom <= top) {
         left = 0;
         top = 0;
@@ -1714,15 +1726,20 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       // WHOLE picture through the implicit whole-canvas shape.
       var targetShape = region;
       if (targetShape == null) {
-        // A press anywhere ON CANVAS grabs the whole picture (PS move
-        // grammar) — the implicit shape itself may be the tighter ink
-        // bounds, which would make small drawings fiddly to grab.
-        final onCanvas =
-            canvasPoint.x >= 0 &&
-            canvasPoint.y >= 0 &&
-            canvasPoint.x <= widget.canvasSize.width &&
-            canvasPoint.y <= widget.canvasSize.height;
-        if (widget.onLiftRequested == null || !onCanvas) {
+        // A press anywhere on the PASTEBOARD grabs the whole picture (PS
+        // move grammar) — the implicit shape itself may be the tighter
+        // ink bounds, which would make small drawings fiddly to grab.
+        //
+        // The pasteboard, not the canvas rect: the box this press opens
+        // frames pasteboard ink now, and its HANDLES were already
+        // grabbable out there (_hitTestTransformHandle has no such
+        // gate), so a canvas-only gate meant the drawing you could see
+        // framed was one you could not grab by pressing on it.
+        final onStage = widget.canvasSize.containsPasteboardPoint(
+          x: canvasPoint.x,
+          y: canvasPoint.y,
+        );
+        if (widget.onLiftRequested == null || !onStage) {
           return;
         }
         setState(() {
