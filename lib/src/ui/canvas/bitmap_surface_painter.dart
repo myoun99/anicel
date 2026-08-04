@@ -11,6 +11,7 @@ import '../../models/tile_coord.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/pasteboard_bounds.dart';
 import '../../models/project_background.dart';
+import '../debug/measurement_mode.dart';
 import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
 import 'viewport_canvas_transform.dart';
@@ -40,6 +41,10 @@ class BitmapSurfacePainter extends CustomPainter {
          repaint: Listenable.merge([
            tileImageCache ?? BitmapTileImageCache.instance,
            ?overlayModel,
+           // So toggling Edit ▸ Show Unpainted Tiles repaints instead of
+           // waiting for the next edit — a diagnosis switch that needs a
+           // gesture before it takes effect is one nobody trusts.
+           MeasurementMode.showUnpaintedTiles,
          ]),
        );
 
@@ -329,6 +334,12 @@ class BitmapSurfacePainter extends CustomPainter {
           if (_paintTilePixels(canvas, tile)) {
             pixelFallbackBudget -= 1;
           }
+        } else {
+          // Nothing to draw with: no image, nothing to borrow, no budget
+          // left. This branch is the whole stale-tile family's event, and
+          // it is invisible because its answer is silence — see
+          // [MeasurementMode.showUnpaintedTiles].
+          _markUnpainted(canvas, tile);
         }
       }
     }
@@ -474,6 +485,26 @@ class BitmapSurfacePainter extends CustomPainter {
     for (var i = 0; i < startCount; i += 1) {
       tileImageCache.ensureDecoded(ordered[i], staleScope: staleScope);
     }
+  }
+
+  /// Fills [tile]'s rect with magenta when Edit ▸ Show Unpainted Tiles is
+  /// on, so a coordinate the painter could not draw stops being silent.
+  ///
+  /// Inert otherwise: one bool read per undrawable coordinate, and those
+  /// are the coordinates that were about to cost nothing anyway.
+  void _markUnpainted(Canvas canvas, BitmapTile tile) {
+    if (!MeasurementMode.showUnpaintedTiles.value) {
+      return;
+    }
+    canvas.drawRect(
+      Rect.fromLTWH(
+        (tile.coord.x * tile.size).toDouble(),
+        (tile.coord.y * tile.size).toDouble(),
+        tile.size.toDouble(),
+        tile.size.toDouble(),
+      ),
+      Paint()..color = const Color(0x99FF00FF),
+    );
   }
 
   /// Draws [tile] a pixel at a time; true when it put anything on the

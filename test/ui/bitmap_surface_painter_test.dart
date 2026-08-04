@@ -15,6 +15,7 @@ import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart'
     show ActiveStrokePixelSource;
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
+import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/viewport_canvas_transform.dart';
 
@@ -146,6 +147,72 @@ void main() {
         reason:
             'the four budget slots went to empty tiles instead of the '
             'inked ones behind them ($inked of 5 inked tiles drawn)',
+      );
+    });
+
+    test('Show Unpainted Tiles marks the coordinates the painter could not '
+        'draw, and only those', () async {
+      // The switch exists because this event is silent: the painter's
+      // answer to "I have no picture here" is to draw nothing, so every
+      // artifact in this family had to be found by hand from a real
+      // session. Magenta means "no picture", never "no artwork" — an
+      // empty coordinate is never drawn and must never flash.
+      addTearDown(MeasurementMode.reset);
+      const tileSize = 2;
+      const columns = 8;
+      final tiles = <TileCoord, BitmapTile>{};
+      for (var column = 0; column < columns; column += 1) {
+        final coord = TileCoord(x: column, y: 0);
+        tiles[coord] = _tile(
+          coord: coord,
+          size: tileSize,
+          colors: {const _Point(0, 0): RgbaColor(r: 255, g: 0, b: 0, a: 255)},
+        );
+      }
+      final surface = BitmapSurface(
+        canvasSize: CanvasSize(width: columns * tileSize, height: tileSize),
+        tileSize: tileSize,
+        tiles: tiles,
+      );
+      BitmapSurfacePainter painter() => BitmapSurfacePainter(
+        surface: surface,
+        showTransparentBackground: false,
+        staleScope: Object(),
+      );
+
+      int magentaCount(Uint8List pixels) {
+        var magenta = 0;
+        for (var x = 0; x < columns * tileSize; x += 1) {
+          final rgba = _rgbaAt(pixels, width: columns * tileSize, x: x, y: 1);
+          if (rgba[3] != 0 && rgba[0] > 100 && rgba[2] > 100 && rgba[1] < 80) {
+            magenta += 1;
+          }
+        }
+        return magenta;
+      }
+
+      final off = await _paintPixels(
+        painter(),
+        width: columns * tileSize,
+        height: tileSize,
+      );
+      expect(magentaCount(off), 0, reason: 'inert until asked for');
+
+      MeasurementMode.showUnpaintedTiles.value = true;
+      final on = await _paintPixels(
+        painter(),
+        width: columns * tileSize,
+        height: tileSize,
+      );
+      // Eight inked tiles, a budget of four: the four the budget could not
+      // reach are marked, and the four it drew are not.
+      expect(
+        magentaCount(on),
+        (columns - 4) * tileSize,
+        reason:
+            'the marker should cover exactly the tiles the budget could not '
+            'reach — ${magentaCount(on)} px of a possible '
+            '${(columns - 4) * tileSize}',
       );
     });
 

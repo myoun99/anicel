@@ -1652,6 +1652,26 @@ void main() {
         findsNothing,
         reason: 'a stale resample was held over the landing',
       );
+      // And nothing is built to stand in its place. `_floatContentReplaced`
+      // has just emptied the float's stale scope, so a surface built here
+      // would have no image and nothing to borrow for any of its tiles —
+      // measured 20 tiles, 0 decoded, 0 borrowable, contributing zero
+      // pixels — after re-materialising the whole warped stamp to make it.
+      final committed = env.coordinator.currentSurfaceOf(
+        env.coordinator.activeFrameKey,
+      );
+      final floats = tester
+          .widgetList<CustomPaint>(find.byType(CustomPaint))
+          .map((paint) => paint.painter)
+          .whereType<BitmapSurfacePainter>()
+          .where((painter) => !identical(painter.surface, committed));
+      expect(
+        floats,
+        isEmpty,
+        reason:
+            'a float was built into an emptied scope: it cannot paint, and '
+            'making it costs a full re-materialisation of the stamp',
+      );
     });
 
     testWidgets('Ctrl+Z over an open transform box folds it in rather than '

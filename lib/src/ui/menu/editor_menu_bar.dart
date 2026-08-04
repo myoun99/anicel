@@ -371,6 +371,22 @@ class EditorMenuBar extends StatelessWidget {
             !MeasurementMode.frameTimingOverlay.value;
       },
     ),
+    // The third: where the canvas painter had NO picture for a
+    // coordinate it was asked to draw. The whole stale-tile family is
+    // that one event, and it is invisible because the painter's answer
+    // to "I have nothing here" is to draw nothing — so every instance
+    // had to be found by hand, from a real session, one report at a
+    // time. Magenta means "no picture", never "no artwork".
+    _item(
+      id: 'edit-show-unpainted-tiles',
+      label: MeasurementMode.showUnpaintedTiles.value
+          ? 'Hide Unpainted Tiles'
+          : 'Show Unpainted Tiles',
+      onPressed: () {
+        MeasurementMode.showUnpaintedTiles.value =
+            !MeasurementMode.showUnpaintedTiles.value;
+      },
+    ),
     // R3b: the BACKDROP plane rendered as the alpha checkerboard —
     // display-only, showing exactly what an alpha export leaves open.
     KeyedSubtree(
