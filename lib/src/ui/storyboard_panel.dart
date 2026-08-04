@@ -441,9 +441,7 @@ class StoryboardPanel extends StatefulWidget {
   /// picture. Above and below it sit chrome that does not shrink — and the
   /// bottom scrollbar row is what the user watched disappear.
   static const double minPanelHeight =
-      _headerBandHeight +
-      2 * minTrackLaneHeight +
-      _bottomScrollbarRailHeight;
+      _headerBandHeight + 2 * minTrackLaneHeight + _bottomScrollbarRailHeight;
 
   static const double _timelineTrailingPadding = 12;
 

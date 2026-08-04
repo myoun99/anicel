@@ -201,9 +201,9 @@ class EditorWorkspace extends StatefulWidget {
   ///
   /// Each panel states what it actually costs (chrome + two rows), so the
   /// body is what shrinks and the three rows the user needs to see stay on
-  /// screen. [_dockMinimumExtent] then stops the splitter there, which is
-  /// what keeps the vertical scroller from ever engaging in practice — it
-  /// survives only as the guard for hosts that are smaller still.
+  /// screen. `_verticalDockMinimumExtent` then stops the splitter there,
+  /// which is what keeps the vertical scroller from ever engaging in
+  /// practice — it survives only as the guard for hosts smaller still.
   static double? _minContentHeightFor(String tabId) => switch (tabId) {
     timelineTabId => TimelinePanel.minPanelHeight,
     storyboardTabId => StoryboardTabHost.minPanelHeight,
@@ -1711,7 +1711,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     for (final section in sections) {
       var floor = 0.0;
       for (final tabId in section.tabs) {
-        floor = math.max(floor, EditorWorkspace._minContentHeightFor(tabId) ?? 0);
+        floor = math.max(
+          floor,
+          EditorWorkspace._minContentHeightFor(tabId) ?? 0,
+        );
       }
       total += EditorPanelTabs.stripHeight + floor;
     }

@@ -156,7 +156,8 @@ void main() {
       expect(
         body.height,
         greaterThan(32),
-        reason: 'a body under the 32px thumb minimum is a bar that cannot '
+        reason:
+            'a body under the 32px thumb minimum is a bar that cannot '
             'be dragged',
       );
       expect(
@@ -172,7 +173,11 @@ void main() {
     });
 
     testWidgets('storyboard', (tester) async {
-      await pumpAt(tester, storyboard, height: StoryboardTabHost.minPanelHeight);
+      await pumpAt(
+        tester,
+        storyboard,
+        height: StoryboardTabHost.minPanelHeight,
+      );
 
       expect(tester.takeException(), isNull);
       final host = tester.getRect(find.byType(StoryboardTabHost));
@@ -204,7 +209,8 @@ void main() {
       expect(
         host.bottom - splitter.bottom,
         layerRailFrameReserveExtent,
-        reason: 'stood on its side the frame axis is vertical, so the floor '
+        reason:
+            'stood on its side the frame axis is vertical, so the floor '
             'has to leave the frame area its two-cell reserve',
       );
     });
@@ -341,7 +347,8 @@ void main() {
     expect(
       bottomRail.bottom,
       lessThanOrEqualTo(group.bottom),
-      reason: 'the bottom scrollbar row is inside the dock, not scrolled off '
+      reason:
+          'the bottom scrollbar row is inside the dock, not scrolled off '
           'the end of it',
     );
     expect(
@@ -357,7 +364,8 @@ void main() {
     expect(
       panel.bottom,
       group.bottom,
-      reason: 'the panel FILLS the dock instead of overhanging it — no '
+      reason:
+          'the panel FILLS the dock instead of overhanging it — no '
           'vertical scroller engaged',
     );
     expect(
