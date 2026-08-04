@@ -53,6 +53,19 @@ class StoryboardTabHost extends StatefulWidget {
     this.cameraViewEnabled,
   });
 
+  /// The ONE command-bar row's height, padding included.
+  ///
+  /// MEASURED, not chosen: the row sizes itself from the controls in it,
+  /// and it is NOT the timeline's number — this bar carries no zoom slider
+  /// column. `panel_shrink_floor_test.dart` pins it against the real host.
+  static const double commandBarHeight = 48;
+
+  /// The shortest this tab is laid out at — the dock splitter's floor and
+  /// the tab shell's minimum content height. See
+  /// [StoryboardPanel.minPanelHeight] for the two-row rule.
+  static const double minPanelHeight =
+      commandBarHeight + StoryboardPanel.minPanelHeight;
+
   final EditorSessionManager session;
   final double pixelsPerFrame;
   final ValueChanged<double> onPixelsPerFrameChanged;

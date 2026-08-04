@@ -265,6 +265,36 @@ class TimelinePanel extends StatefulWidget {
   // CSP/TVPaint-density default.
   static const double defaultPixelsPerFrame = 24;
 
+  /// The ONE command-bar row's height, padding included.
+  ///
+  /// MEASURED, not chosen: the row sizes itself from the icon buttons in
+  /// it. `panel_shrink_floor_test.dart` pins it against the real panel, so
+  /// a taller control cannot quietly eat into [minPanelHeight]'s two rows.
+  static const double commandBarHeight = 56;
+
+  /// The shortest this panel is laid out at — the floor the dock splitter
+  /// stops on and the tab shell's minimum content height.
+  ///
+  /// The user's rule (2026-08-02): shrinking the panel shrinks the BODY,
+  /// and the body stops at TWO ROWS. Two is the same number the frame area
+  /// reserves ([layerRailFrameReserveExtent]) and for the same reason — the
+  /// vertical scrollbar's thumb has a 32px minimum, so a body shorter than
+  /// that becomes one solid bar with nowhere to travel.
+  ///
+  /// Everything else in the column is chrome that does NOT shrink: the
+  /// command bar, the grid's frame ruler, and the pinned bottom scrollbar
+  /// row. That bottom row is what the user watched disappear.
+  ///
+  /// The x-sheet shares this floor (it is the same tab, toggled): standing
+  /// the grid on its side puts the frame axis here, and at this height its
+  /// own clamp leaves the frame area exactly [layerRailFrameReserveExtent]
+  /// — two cells, the same two.
+  static const double minPanelHeight =
+      commandBarHeight +
+      timelineFrameRulerExtent +
+      2 * timelineLayerRowHeight +
+      timelineBottomScrollbarRailHeight;
+
   /// The ACTIVE view's zoom (the host routes it to the timeline or the
   /// storyboard value depending on the shown mode).
   final double pixelsPerFrame;

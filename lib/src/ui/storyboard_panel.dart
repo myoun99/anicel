@@ -424,6 +424,27 @@ class StoryboardPanel extends StatefulWidget {
   /// value (UI-R10 #21 3-row unification).
   static const double _bottomScrollbarRailHeight = 16;
 
+  /// The header band above the track rows: the pinned ruler row, which the
+  /// legend header beside it stands one row tall for.
+  ///
+  /// MEASURED, not chosen — [_rulerHeight] is the ruler's own paint and the
+  /// row it sits in is the taller of the two. `panel_shrink_floor_test.dart`
+  /// pins this against the real panel.
+  static const double _headerBandHeight = 28;
+
+  /// The shortest this panel is laid out at, ITS OWN chrome only — the host
+  /// adds its command bar ([StoryboardTabHost.minPanelHeight]).
+  ///
+  /// The user's rule (2026-08-02): the body stops at TWO ROWS. Here a row
+  /// is a track lane at its floor ([minTrackLaneHeight]), which is the same
+  /// 28px the timeline's layer row is, so both panels stop on the same
+  /// picture. Above and below it sit chrome that does not shrink — and the
+  /// bottom scrollbar row is what the user watched disappear.
+  static const double minPanelHeight =
+      _headerBandHeight +
+      2 * minTrackLaneHeight +
+      _bottomScrollbarRailHeight;
+
   static const double _timelineTrailingPadding = 12;
 
   final Project project;

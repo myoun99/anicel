@@ -183,11 +183,35 @@ class EditorWorkspace extends StatefulWidget {
   static const String timesheetTabId = 'timesheet';
   static const String mediaViewerTabId = 'media-viewer';
 
-  /// The size frame-axis panels lay out at when docked somewhere smaller
+  /// The WIDTH frame-axis panels lay out at when docked somewhere narrower
   /// (their label rails and toolbars assume a wide region); the tab shell
-  /// hosts them inside scrollers then.
+  /// hosts them inside a horizontal scroller then. Unchanged by the
+  /// shrink-floor round — in a narrow side dock, scrolling sideways is
+  /// genuinely what helps.
   static const double _frameAxisMinContentWidth = 640;
-  static const double _frameAxisMinContentHeight = 280;
+
+  /// The HEIGHT is each panel's own floor now, not one number for three.
+  ///
+  /// It used to be a flat 280 for all of them, and that is what the user
+  /// reported (2026-08-02): shrinking the dock did not shrink the panel, it
+  /// rendered the panel at 280 inside a vertical scroller and CUT the
+  /// bottom off — the pinned horizontal scrollbar row first, then the foot
+  /// of the vertical scrollbar rail. At the dock's own minimum 150px was
+  /// already gone.
+  ///
+  /// Each panel states what it actually costs (chrome + two rows), so the
+  /// body is what shrinks and the three rows the user needs to see stay on
+  /// screen. [_dockMinimumExtent] then stops the splitter there, which is
+  /// what keeps the vertical scroller from ever engaging in practice — it
+  /// survives only as the guard for hosts that are smaller still.
+  static double? _minContentHeightFor(String tabId) => switch (tabId) {
+    timelineTabId => TimelinePanel.minPanelHeight,
+    storyboardTabId => StoryboardTabHost.minPanelHeight,
+    // The conte sheet has no fixed rows to protect: it is a page that
+    // scales, and the sweep finds no height at which it overflows. Giving
+    // it a floor would only re-create the scroller this round removes.
+    _ => null,
+  };
 
   @override
   State<EditorWorkspace> createState() => _EditorWorkspaceState();
@@ -1359,7 +1383,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           // existing flow (and test helper) keeps working.
           buttonKey: const ValueKey<String>('timeline-mode-timeline-button'),
           minContentWidth: EditorWorkspace._frameAxisMinContentWidth,
-          minContentHeight: EditorWorkspace._frameAxisMinContentHeight,
+          minContentHeight: EditorWorkspace._minContentHeightFor(tabId),
           locked: locked,
           // The heavy frame-axis panels keep their subtree offstage
           // across switches (R10-②) — switching back is instant.
@@ -1429,7 +1453,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           icon: Icons.movie_outlined,
           buttonKey: const ValueKey<String>('timeline-mode-storyboard-button'),
           minContentWidth: EditorWorkspace._frameAxisMinContentWidth,
-          minContentHeight: EditorWorkspace._frameAxisMinContentHeight,
+          minContentHeight: EditorWorkspace._minContentHeightFor(tabId),
           locked: locked,
           keepAlive: true,
           builder: (context) => PanelAwareListenableBuilder(
@@ -1477,7 +1501,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           icon: Icons.grid_on_outlined,
           buttonKey: const ValueKey<String>('timeline-mode-conte-button'),
           minContentWidth: EditorWorkspace._frameAxisMinContentWidth,
-          minContentHeight: EditorWorkspace._frameAxisMinContentHeight,
+          minContentHeight: EditorWorkspace._minContentHeightFor(tabId),
           locked: locked,
           keepAlive: true,
           // The sheet reads the project and the SAME picture store the
@@ -1671,14 +1695,43 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     );
   }
 
+  /// What a dock stacked along the VERTICAL axis needs before its panels
+  /// start losing rows: every section's tab strip plus the tallest floor
+  /// among that section's tabs, and the splitters between sections.
+  ///
+  /// The tallest among ALL of a section's tabs, not the active one: a dock
+  /// that shrinks while the conte is up and clips the moment you switch
+  /// back to the timeline is the same bug wearing a different hat.
+  double _verticalDockMinimumExtent(String dockId) {
+    final sections = _layout.sectionsIn(dockId);
+    if (sections.isEmpty) {
+      return 0;
+    }
+    var total = (sections.length - 1) * DockEdgeSplitter.thickness;
+    for (final section in sections) {
+      var floor = 0.0;
+      for (final tabId in section.tabs) {
+        floor = math.max(floor, EditorWorkspace._minContentHeightFor(tabId) ?? 0);
+      }
+      total += EditorPanelTabs.stripHeight + floor;
+    }
+    return total;
+  }
+
   Widget _buildBottomDock() {
     if (_layout.sectionsIn(EditorWorkspace.bottomGroupId).isEmpty) {
       return _emptyDockZone(EditorWorkspace.bottomGroupId, Axis.horizontal);
     }
     return SizedBox(
-      height: _layout.dockExtent(
-        EditorWorkspace.bottomGroupId,
-        fallback: EditorWorkspace.bottomPanelHeight,
+      // Clamped on the way OUT as well as on the drag: a workspace saved
+      // before this floor existed, or one whose bottom dock gained a
+      // taller tab since, must still open at a height its panels fit in.
+      height: math.max(
+        _layout.dockExtent(
+          EditorWorkspace.bottomGroupId,
+          fallback: EditorWorkspace.bottomPanelHeight,
+        ),
+        _verticalDockMinimumExtent(EditorWorkspace.bottomGroupId),
       ),
       child: _buildDockHost(EditorWorkspace.bottomGroupId),
     );
@@ -1826,6 +1879,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                         EditorWorkspace.bottomGroupId,
                         -delta,
                         fallback: EditorWorkspace.bottomPanelHeight,
+                        // The splitter stops where the panels stop
+                        // shrinking. Without this the drag runs on past
+                        // the floor and the tab shell's scroller — kept
+                        // only as a guard — starts cutting the bottom
+                        // rows off, which is the reported bug.
+                        minExtent: _verticalDockMinimumExtent(
+                          EditorWorkspace.bottomGroupId,
+                        ),
                       ),
                     ),
                   _buildBottomDock(),
