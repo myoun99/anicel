@@ -1164,40 +1164,44 @@ void main() {
             'this defect — widen the marquee',
       );
 
-      // A NUDGE: the same picture, one pixel over. The float is rebuilt, so
-      // every tile object is new and undecoded, and the only thing that can
-      // paint them this frame is its own previous generation.
+      // A NUDGE: the same picture, one pixel over.
+      //
+      // ⚠️ This test used to end differently, and the difference is the
+      // point. It asserted that the nudge REBUILDS the float and that the
+      // rebuilt tiles can borrow their own previous generation — because
+      // borrowing was the only thing standing between a rebuilt float and
+      // a blank frame. That borrow was always a half-truth: it is the
+      // right pixels at the PREVIOUS PLACE, so a nudged float painted the
+      // picture one step behind, and a released drag painted it a whole
+      // drag behind. It is why the confirm frame of a wide move was 44%
+      // absent, and why the user saw tiles jump.
+      //
+      // A move does not rebuild anything now. The surface stays where it
+      // was materialized, its tiles keep the images they already decoded,
+      // and the offset is carried at draw time. So the invariant is no
+      // longer "the rebuild can borrow" but "there is no rebuild", and
+      // the defect the old assertion guarded cannot be expressed.
       env.commands.nudge(1, 0);
       await tester.pump();
       final nudged = floatPainter();
       expect(
         identical(nudged.surface, lifted),
-        isFalse,
-        reason: 'the nudge did not rebuild the float, so this proves nothing',
+        isTrue,
+        reason: 'a nudge rebuilt the float — it is a translation, not new '
+            'pixels, and a rebuilt surface has no decoded tiles to paint',
       );
       var undecoded = 0;
-      var borrowable = 0;
       for (final tile in nudged.surface.tiles.values) {
-        if (BitmapTileImageCache.instance.imageFor(tile) != null) continue;
-        undecoded += 1;
-        final stale = BitmapTileImageCache.instance.latestImageForCoord(
-          tile.coord,
-          scope: nudged.staleScope,
-        );
-        if (stale != null) borrowable += 1;
+        if (BitmapTileImageCache.instance.imageFor(tile) == null) {
+          undecoded += 1;
+        }
       }
       expect(
         undecoded,
-        greaterThan(4),
-        reason: 'nothing was undecoded, so no borrow was ever needed',
-      );
-      expect(
-        borrowable,
-        undecoded,
+        0,
         reason:
-            'the float could not borrow its own previous generation for '
-            '${undecoded - borrowable} of $undecoded tiles — past the '
-            'four-tile per-pixel budget, those frames are blank',
+            '$undecoded of the float\'s tiles cannot paint after a nudge; '
+            'the whole point of not rebuilding is that they already did',
       );
     });
 
@@ -1584,15 +1588,13 @@ void main() {
 
       expect(settledInk, greaterThan(0));
       // ⚠️ CHARACTERIZED, NOT SATISFIED. The confirm frame of a wide move
-      // is still missing about 44% of the landing, because `_commitMove`
-      // rebuilds the float at the new centre from an empty surface: its
-      // tiles are new objects with no images, so the held float can paint
-      // only the painter's four-tile budget. That is a separate defect
-      // from the one below and it needs the float to stop being rebuilt
-      // for a pure translation. This bound catches it getting worse.
+      // is still missing about 37% of the landing. It was 55% before the
+      // base stopped lying and 44% before the move stopped rebuilding the
+      // float; what is left is the hold's own coverage, not either of
+      // those. This bound catches it getting worse.
       expect(
         delta.hole,
-        lessThan((settledInk * 0.5).round()),
+        lessThan((settledInk * 0.4).round()),
         reason:
             '${delta.hole} of $settledInk absent on the confirm frame '
             '(ghost ${delta.ghost})',

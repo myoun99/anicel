@@ -1550,6 +1550,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// runs.
   void _holdFloatUntilCommittedCanPaint(BrushDab landed) {
     _cancelFloatHold();
+    // The pending stamp is gone by now, so the float's drift has to come
+    // from the dab that actually landed.
+    _floatHoldCentre = landed.center;
     final pendingTiles = widget.committedRegionPendingTiles;
     final stamp = landed.stamp;
     if (pendingTiles == null || stamp == null) {
@@ -1596,7 +1599,9 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   /// hold would keep painting over the base for the rest of the session.
   void _releaseFloatHold() {
     _floatHoldTiles = null;
+    _floatHoldCentre = null;
     _floatSurface = null;
+    _floatSurfaceCentre = null;
     _discardFloatResample();
   }
 
@@ -2258,7 +2263,13 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         center: CanvasPoint(x: pending.center.x + dx, y: pending.center.y + dy),
       );
       _moveSessionDirty = true;
-      _floatSurface = _buildFloatSurface();
+      // ⚠️ NO rebuild. This used to re-materialize the whole stamp onto a
+      // fresh surface at the new centre, on every drag release and every
+      // arrow nudge — and the tiles it made were new objects with no
+      // decoded images, so what replaced a float that could paint was one
+      // that could not. Measured on the confirm frame of a wide move:
+      // 44% of the landing absent. A move is a translation; the surface
+      // stays where it was built and [_floatDrawOffset] carries it.
       _setRegion(region.translated(dx: dx, dy: dy));
     });
     _syncAnts();
@@ -2381,6 +2392,11 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   BitmapSurface _buildFloatSurface() {
     final surface = BitmapSurface(canvasSize: widget.canvasSize);
     final pending = _pendingLiftStamp;
+    // Recorded HERE so every rebuild site zeroes the drift by
+    // construction — [_floatDrawOffset] measures from the place the
+    // surface was actually materialized at, not from the lift, so a
+    // rebuild mid-session cannot leave an offset applied twice.
+    _floatSurfaceCentre = pending?.center;
     if (pending == null) {
       return surface;
     }
@@ -2388,6 +2404,41 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
       surface: surface,
       sequence: BrushDabSequence([pending]),
     ).surface;
+  }
+
+  /// Canvas-space centre [_floatSurface]'s pixels were materialized at.
+  CanvasPoint? _floatSurfaceCentre;
+
+  /// The landed centre while a hold is up — the pending stamp is gone by
+  /// then, but the float still has to be drawn where it landed.
+  CanvasPoint? _floatHoldCentre;
+
+  /// Where the float is drawn relative to its own surface: the live drag
+  /// offset, plus the drift its stamp has accumulated since the surface
+  /// was built.
+  ///
+  /// A move used to rebuild the surface at the new centre, which is what
+  /// made the confirm frame blank: the rebuilt tiles are new objects with
+  /// no decoded images, so the held float could paint only the painter's
+  /// four-tile budget and 44% of a wide landing was simply absent. The
+  /// surface's tiles decode ONCE now and a translation is a translation.
+  ///
+  /// ⚠️ The drift is mapped through [CanvasViewport.canvasDeltaToViewportDelta],
+  /// which carries rotation and flip, and it is applied INSIDE the hold's
+  /// ClipPath: the clip is a screen-space mask over the base's not-yet-
+  /// paintable tiles, and what has to fill it is whatever the float shows
+  /// there AFTER the offset.
+  Offset get _floatDrawOffset {
+    final from = _floatSurfaceCentre;
+    final to = _pendingLiftStamp?.center ?? _floatHoldCentre;
+    if (from == null || to == null) {
+      return _moveScreenDelta;
+    }
+    final drift = widget.viewport.canvasDeltaToViewportDelta(
+      dx: to.x - from.x,
+      dy: to.y - from.y,
+    );
+    return _moveScreenDelta + Offset(drift.x, drift.y);
   }
 
   @override
@@ -2558,8 +2609,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
                 child: clipToHold(
                   Transform(
                   transform: Matrix4.translationValues(
-                    _moveScreenDelta.dx,
-                    _moveScreenDelta.dy,
+                    _floatDrawOffset.dx,
+                    _floatDrawOffset.dy,
                     0,
                   ),
                   child: CustomPaint(
