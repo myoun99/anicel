@@ -1689,18 +1689,51 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     setState(() {});
     final after = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
     final whole = <TileCoord, BitmapTile>{};
-    for (final entry in preLift.tiles.entries) {
-      // Emptied by the erase => the lift took this coordinate whole. The
-      // erase does not drop emptied tiles, so the test is the alpha, not
-      // the tile's absence.
-      final left = after.tileAt(entry.key);
-      // `isFullyTransparent`, not a hand-rolled alpha scan: it walks the
-      // tile's own view, where `tile.pixels` is a 256 KB defensive COPY
-      // per call and this loop runs once per tile of the lift.
-      if (left == null || left.isFullyTransparent) {
-        whole[entry.key] = entry.value;
+    // ⚠️ The LIFT'S tile range, not the whole cel. This walked
+    // `preLift.tiles.entries` — one whole-map copy, then a full 256 KB
+    // read per emptied tile — over every tile the cel had, including all
+    // the ones the erase could not possibly have touched. A coordinate
+    // outside the region's bounds cannot have been emptied by it, so the
+    // answer is the same and the work is the lift's size instead of the
+    // drawing's.
+    final size = preLift.tileSize;
+    final bounds = region.bounds;
+    final lastTx = floorDiv(bounds.right.ceil() - 1, size);
+    final lastTy = floorDiv(bounds.bottom.ceil() - 1, size);
+    final firstTx = floorDiv(bounds.left.floor(), size);
+    for (var ty = floorDiv(bounds.top.floor(), size); ty <= lastTy; ty += 1) {
+      for (var tx = firstTx; tx <= lastTx; tx += 1) {
+        final coord = TileCoord(x: tx, y: ty);
+        final before = preLift.tileAt(coord);
+        if (before == null) {
+          continue;
+        }
+        // Untouched by the erase => structural sharing hands back the SAME
+        // object, and a coordinate the lift did not take cannot be one it
+        // took whole. Free, and it skips the byte scan entirely.
+        final left = after.tileAt(coord);
+        if (identical(left, before)) {
+          continue;
+        }
+        // Emptied by the erase => the lift took this coordinate whole. The
+        // erase does not drop emptied tiles, so the test is the alpha, not
+        // the tile's absence. `isFullyTransparent` walks the tile's own
+        // view; `tile.pixels` would be a 256 KB defensive COPY per call.
+        if (left == null || left.isFullyTransparent) {
+          whole[coord] = before;
+        }
       }
     }
+    // ⚠️ MEASURED AND REJECTED, do not "complete" this: dropping the
+    // base's stale entries at `whole.keys` here does kill the duplicate
+    // (the base stops redrawing the artwork in its original place while
+    // the float draws it in the new one) — and it takes the CONFIRM frame
+    // with it. The borrow that lies at the start is the same borrow that
+    // covers the landing a moment later, and "a WIDE move confirms with
+    // the picture on screen too" goes 3600 -> 2286 on it. That test was
+    // written in #826 as a guard against exactly this, and it is the only
+    // thing that fails. Whatever closes the duplicate has to keep the
+    // landing covered by something else first.
     return (liftToken: token, stampDab: lift.stampDab, wholeTiles: whole);
   }
 
