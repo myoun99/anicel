@@ -201,6 +201,17 @@ class InputSettingsSection extends StatelessWidget {
               ),
             ),
             SwitchListTile(
+              key: const ValueKey<String>('settings-flip-haptics'),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: Text(strings.inputFlipHaptics),
+              subtitle: Text(strings.inputFlipHapticsHelp),
+              value: settings.flipHaptics,
+              onChanged: (enabled) => session.setInputSettings(
+                settings.copyWith(flipHaptics: enabled),
+              ),
+            ),
+            SwitchListTile(
               key: const ValueKey<String>('settings-nav-rotation'),
               contentPadding: EdgeInsets.zero,
               dense: true,

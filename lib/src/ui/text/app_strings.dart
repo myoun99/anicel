@@ -327,6 +327,8 @@ class AppStrings {
   String get inputDragThreeFingers => _s('inputDragThreeFingers');
   String get inputExtraFinger => _s('inputExtraFinger');
   String get inputExtraFingerHelp => _s('inputExtraFingerHelp');
+  String get inputFlipHaptics => _s('inputFlipHaptics');
+  String get inputFlipHapticsHelp => _s('inputFlipHapticsHelp');
   String get inputTwoFingerRotation => _s('inputTwoFingerRotation');
   String get inputTwoFingerRotationHelp => _s('inputTwoFingerRotationHelp');
   String get inputRotationLock => _s('inputRotationLock');
@@ -985,6 +987,10 @@ class AppStrings {
     'inputExtraFingerHelp':
         'A finger added DURING a gesture constrains it — snap '
         'zoom/rotation/size, fine frame steps.',
+    'inputFlipHaptics': 'Flip haptics',
+    'inputFlipHapticsHelp':
+        'A tick each time the flip lands on a different drawing. Silent '
+        'over empty space, and on devices without a motor.',
     'inputTwoFingerRotation': 'Two-finger rotation',
     'inputTwoFingerRotationHelp':
         'OFF: the navigate gesture pans and zooms only (the rotate '
@@ -1627,6 +1633,10 @@ class AppStrings {
     'inputExtraFingerHelp':
         'ジェスチャーの途中で指を足すと動作が制限されます — ズーム・回転・'
         'サイズのスナップ、フレームの微送り。',
+    'inputFlipHaptics': 'フリップの触覚フィードバック',
+    'inputFlipHapticsHelp':
+        'フリップが別の絵に着地するたびに小さく振動します。空白の上では'
+        '鳴らず、振動子のない機器では何も起きません。',
     'inputTwoFingerRotation': '2本指の回転',
     'inputTwoFingerRotationHelp':
         'OFF：ナビゲートは移動とズームのみになります（回転ボタンと'
@@ -2299,6 +2309,10 @@ class AppStrings {
     'inputExtraFingerHelp':
         '제스처 도중에 손가락을 더하면 동작이 제한됩니다 — 줌·회전·크기 '
         '스냅, 프레임 미세 이동.',
+    'inputFlipHaptics': '플립 진동',
+    'inputFlipHapticsHelp':
+        '플립이 다른 그림에 착지할 때마다 짧게 울립니다. 빈 공간에서는 '
+        '울리지 않고, 진동자가 없는 기기에서는 아무 일도 없습니다.',
     'inputTwoFingerRotation': '두 손가락 회전',
     'inputTwoFingerRotationHelp': 'OFF: 내비게이트가 이동과 줌만 합니다(회전 버튼과 단축키는 유지).',
     'inputRotationLock': '모디파이어가 회전을 잠금',
@@ -2981,6 +2995,10 @@ class AppStrings {
     'inputExtraFingerHelp':
         'Un doigt ajouté PENDANT un geste le contraint — zoom, rotation et '
         'taille par crans, avance image par image fine.',
+    'inputFlipHaptics': 'Retour haptique du feuilletage',
+    'inputFlipHapticsHelp':
+        'Une pulsation à chaque fois que le feuilletage arrive sur un autre '
+        'dessin. Silencieux sur le vide et sans moteur haptique.',
     'inputTwoFingerRotation': 'Rotation à deux doigts',
     'inputTwoFingerRotationHelp':
         'DÉSACTIVÉ : le geste de navigation ne fait que déplacer et zoomer '
@@ -3657,6 +3675,8 @@ class AppStrings {
     'inputDragThreeFingers': '三指拖动',
     'inputExtraFinger': '加指修饰键',
     'inputExtraFingerHelp': '手势进行中再加一根手指会约束它 — 缩放/旋转/笔刷大小吸附，逐帧微调。',
+    'inputFlipHaptics': '翻页震动',
+    'inputFlipHapticsHelp': '每当翻页落到另一张画上时轻震一下。空白处不震动，没有马达的设备也不会。',
     'inputTwoFingerRotation': '双指旋转',
     'inputTwoFingerRotationHelp': '关闭：导航手势只做平移和缩放（旋转按钮与快捷键保留）。',
     'inputRotationLock': '修饰键锁定旋转',

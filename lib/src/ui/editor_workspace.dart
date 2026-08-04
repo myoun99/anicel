@@ -55,6 +55,14 @@ import 'storyboard_panel.dart' show StoryboardPanel;
 import 'storyboard_playhead_mapping.dart';
 import '../models/timeline_row_address.dart';
 import 'timeline/layer_rail_window.dart';
+import '../models/layer_kind.dart' show layerKindHoldsDrawings;
+import 'canvas/flip_hud_controller.dart';
+import 'canvas/flip_hud_model.dart';
+import 'timeline/layer_timeline_display_adapter.dart'
+    show horizontalLayerDisplayOrder;
+import 'timeline/property_lane_model.dart'
+    show TimelineDisplayRow, buildTimelineDisplayRows;
+import 'timeline/timeline_se_row_visual.dart' show layerKindUsesSeSheetCells;
 import 'timeline/timeline_lane_provider.dart';
 import 'timeline/timeline_layer_nav.dart';
 import 'timeline/timeline_row_filter.dart';
@@ -100,6 +108,7 @@ class EditorWorkspace extends StatefulWidget {
     this.canvasSelectionCommands,
     this.layerNav,
     this.onInvokeAction,
+    this.flipHud,
   });
 
   final EditorSessionManager session;
@@ -123,6 +132,11 @@ class EditorWorkspace extends StatefulWidget {
 
   /// PEN-7b: the shell's action funnel for the canvas flip touch slot.
   final void Function(String actionId)? onInvokeAction;
+
+  /// The flip HUD's state (shell-owned). This state BINDS the snapshot
+  /// supplier — the displayed rows are its view state, exactly as the
+  /// ↑/↓ walk's are.
+  final FlipHudController? flipHud;
 
   /// Injectable preset persistence; defaults to the app-data preset file.
   final BrushPresetFileService? presetFileService;
@@ -549,6 +563,146 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       layoutReset: _resetWorkspaceLayout,
     );
     widget.layerNav?.bind(_stepDisplayedLayer);
+    widget.flipHud?.bind(_flipHudSnapshot);
+  }
+
+  /// What the flip HUD draws: the rows the timeline is DISPLAYING, in its
+  /// order, filtered and folded exactly as they are on screen.
+  ///
+  /// Same inputs as [_stepDisplayedLayer] on purpose — the window and the
+  /// walk must not be able to disagree about which rows exist. The HUD
+  /// reads this AFTER a step has landed; it never predicts one.
+  FlipHudSnapshot _flipHudSnapshot(FlipHudAxis axis) {
+    final session = widget.session;
+    final cut = session.activeCutOrNull;
+    if (cut == null) {
+      return FlipHudSnapshot.empty;
+    }
+    final rows = buildTimelineDisplayRows(
+      layers: horizontalLayerDisplayOrder(session.layers),
+      expandedLayerIds: _expandedLaneLayerIds.value,
+      lanesForLayer: (layer) => timelineLanesForLayer(
+        layer: layer,
+        session: session,
+        expandedGroupKeys: _expandedLaneGroupKeys.value,
+      ),
+      hiddenSections: _hiddenTimelineSections.value,
+      rowFilter: _timelineRowFilter.value,
+      collapsedAttachBaseIds: _collapsedAttachBaseIds.value,
+      activeLayerId: session.activeLayerId,
+      fxEnabledOf: session.isLayerFxEnabled,
+      stack: session.layers,
+    );
+    if (rows.isEmpty) {
+      return FlipHudSnapshot.empty;
+    }
+    final currentRow = session.currentRow;
+    var rowIndex = -1;
+    for (var index = 0; index < rows.length; index += 1) {
+      final row = rows[index];
+      final address = row.isLane
+          ? LaneRowAddress(row.layer.id, row.lane!.laneId)
+          : LayerRowAddress(row.layer.id);
+      if (address == currentRow) {
+        rowIndex = index;
+        break;
+      }
+    }
+    if (rowIndex == -1) {
+      // The row on record is not on screen — a track row (the storyboard
+      // owns one), or a row a filter has hidden. The ↑/↓ walk falls back
+      // to the active layer's own row in exactly this case, so the window
+      // does too rather than pointing at whatever sits at the top.
+      final activeLayerId = session.activeLayerId;
+      for (var index = 0; index < rows.length; index += 1) {
+        if (!rows[index].isLane && rows[index].layer.id == activeLayerId) {
+          rowIndex = index;
+          break;
+        }
+      }
+    }
+    if (rowIndex == -1) {
+      rowIndex = 0;
+    }
+    // A frame-axis window draws ONE row, so only that row's blocks are
+    // worth building. The others still take their place in the list (the
+    // row index has to keep meaning what it means), but scanning every
+    // layer's timeline for runs nobody draws is work per flip step.
+    final onlyCurrent = axis == FlipHudAxis.frame;
+    final hudRows = <FlipHudRow>[
+      for (var index = 0; index < rows.length; index += 1)
+        _flipHudRow(
+          rows[index],
+          session,
+          withRuns: !onlyCurrent || index == rowIndex,
+        ),
+    ];
+    return FlipHudSnapshot(
+      rows: hudRows,
+      rowIndex: rowIndex,
+      frameIndex: session.currentFrameIndex,
+      frameCount: cut.duration,
+    );
+  }
+
+  FlipHudRow _flipHudRow(
+    TimelineDisplayRow row,
+    EditorSessionManager session, {
+    required bool withRuns,
+  }) {
+    final layer = row.layer;
+    final lane = row.lane;
+    if (lane != null) {
+      final keys = withRuns
+          ? (lane.keyedFrames.toList()..sort())
+          : const <int>[];
+      return FlipHudRow(
+        name: lane.label,
+        kind: layer.kind,
+        isLane: true,
+        // A key row has no cels, so it prints no timesheet X — the same
+        // reason the cells painter withholds one there.
+        holdsDrawings: false,
+        runs: [
+          for (final frame in keys)
+            FlipHudRun(
+              startIndex: frame,
+              length: 1,
+              isKey: true,
+              holdKey: lane.holdOutFrames.contains(frame),
+            ),
+        ],
+      );
+    }
+    final runs = <FlipHudRun>[];
+    if (withRuns) {
+      for (final entry in layer.timeline.entries) {
+        final exposure = entry.value;
+        // Ghosts are derived edges, not authored blocks — the run-label
+        // painter leaves them out for the same reason.
+        if (!exposure.isDrawing || exposure.ghost) {
+          continue;
+        }
+        runs.add(
+          FlipHudRun(
+            startIndex: entry.key,
+            length: exposure.length ?? 1,
+            label: session.frameNameForLayer(layer, entry.key) ?? '',
+          ),
+        );
+      }
+      runs.sort((a, b) => a.startIndex.compareTo(b.startIndex));
+    }
+    return FlipHudRow(
+      name: layer.name,
+      kind: layer.kind,
+      runs: runs,
+      // The cells painter's own rule for the X: only rows that hold
+      // drawings print one, and SE columns stay blank between entries.
+      holdsDrawings:
+          layerKindHoldsDrawings(layer.kind) &&
+          !layerKindUsesSeSheetCells(layer.kind),
+    );
   }
 
   /// ↑/↓ layer nav (UI-R20 #14): steps the active layer through the rows
@@ -775,6 +929,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _mediaViewerViewport.dispose();
     _draggingTab.dispose();
     widget.layerNav?.unbind();
+    widget.flipHud?.unbind();
     widget.panelsMenu?.detach();
     _layoutSaveTimer?.cancel();
     _layout.removeListener(_scheduleLayoutSave);
@@ -965,6 +1120,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             selectionMaskOptions: _selectionMaskOptions,
             transformResampleMode: _transformResampleMode,
             eyedropperSource: _eyedropperSource,
+            flipHud: widget.flipHud,
           ),
         );
       case EditorWorkspace.brushesTabId:

@@ -35,6 +35,7 @@ class AppInputSettings {
     this.touchDragTwoFingers = CanvasTouchDragAction.navigate,
     this.touchDragThreeFingers = CanvasTouchDragAction.brushSize,
     this.extraFingerModifier = true,
+    this.flipHaptics = true,
     this.navigationRotationEnabled = true,
     this.navigationModifierRotationLock = false,
     this.rotationSnapDegrees = 15,
@@ -55,6 +56,11 @@ class AppInputSettings {
   /// The +1-finger modifier globally (PEN-7b): ON by default; OFF for
   /// users who dislike late fingers changing a locked gesture at all.
   final bool extraFingerModifier;
+
+  /// The flip's per-drawing haptic tick. Devices without a motor ignore
+  /// the call on their own (HapticFeedback is an optional platform
+  /// channel), so this is a preference rather than a capability gate.
+  final bool flipHaptics;
 
   /// Navigate-action composition: rotation entirely off = two fingers
   /// pan+zoom only (the canvas rotate buttons/shortcut stay separate).
@@ -157,6 +163,7 @@ class AppInputSettings {
     CanvasTouchDragAction? touchDragTwoFingers,
     CanvasTouchDragAction? touchDragThreeFingers,
     bool? extraFingerModifier,
+    bool? flipHaptics,
     bool? navigationRotationEnabled,
     bool? navigationModifierRotationLock,
     double? rotationSnapDegrees,
@@ -172,6 +179,7 @@ class AppInputSettings {
     touchDragTwoFingers: touchDragTwoFingers ?? this.touchDragTwoFingers,
     touchDragThreeFingers: touchDragThreeFingers ?? this.touchDragThreeFingers,
     extraFingerModifier: extraFingerModifier ?? this.extraFingerModifier,
+    flipHaptics: flipHaptics ?? this.flipHaptics,
     navigationRotationEnabled:
         navigationRotationEnabled ?? this.navigationRotationEnabled,
     navigationModifierRotationLock:
@@ -191,6 +199,7 @@ class AppInputSettings {
     'touchDragTwoFingers': touchDragTwoFingers.name,
     'touchDragThreeFingers': touchDragThreeFingers.name,
     'extraFingerModifier': extraFingerModifier,
+    'flipHaptics': flipHaptics,
     'navigationRotationEnabled': navigationRotationEnabled,
     'navigationModifierRotationLock': navigationModifierRotationLock,
     'rotationSnapDegrees': rotationSnapDegrees,
@@ -254,6 +263,7 @@ class AppInputSettings {
             .asNameMap()[json['touchDragThreeFingers']] ??
         CanvasTouchDragAction.brushSize,
     extraFingerModifier: json['extraFingerModifier'] as bool? ?? true,
+    flipHaptics: json['flipHaptics'] as bool? ?? true,
     navigationRotationEnabled:
         json['navigationRotationEnabled'] as bool? ?? true,
     navigationModifierRotationLock:
@@ -284,6 +294,7 @@ class AppInputSettings {
       other.touchDragTwoFingers == touchDragTwoFingers &&
       other.touchDragThreeFingers == touchDragThreeFingers &&
       other.extraFingerModifier == extraFingerModifier &&
+      other.flipHaptics == flipHaptics &&
       other.navigationRotationEnabled == navigationRotationEnabled &&
       other.navigationModifierRotationLock == navigationModifierRotationLock &&
       other.rotationSnapDegrees == rotationSnapDegrees &&
@@ -301,6 +312,7 @@ class AppInputSettings {
     touchDragTwoFingers,
     touchDragThreeFingers,
     extraFingerModifier,
+    flipHaptics,
     navigationRotationEnabled,
     navigationModifierRotationLock,
     rotationSnapDegrees,

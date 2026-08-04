@@ -30,6 +30,8 @@ import '../canvas/active_stroke_overlay.dart';
 import '../canvas/canvas_selection_layer.dart';
 import '../canvas/selection_ants_painter.dart';
 import '../canvas/canvas_viewport_gesture_layer.dart';
+import '../canvas/flip_hud_controller.dart';
+import '../canvas/flip_hud_overlay.dart';
 import '../../models/project.dart' show defaultProjectBackdropArgb;
 import '../../models/project_background.dart';
 import '../canvas/paper_background.dart'
@@ -121,6 +123,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.onBrushSizeDragStart,
     this.onBrushSizeDragUpdate,
     this.onBrushSizeDragEnd,
+    this.flipHud,
     this.onEyedropperPick,
     this.onAltColorPick,
     this.fillDabAt,
@@ -282,6 +285,11 @@ class BrushCanvasPanel extends StatefulWidget {
   final void Function(double upwardDelta, {required bool snap})?
   onBrushSizeDragUpdate;
   final VoidCallback? onBrushSizeDragEnd;
+
+  /// The flip HUD's state, when the host shows one. The panel mounts the
+  /// overlay above the gesture layer so the window lands in the same
+  /// coordinates the gesture reports its anchor in.
+  final FlipHudController? flipHud;
 
   /// Builds the fill-region dab for a tap (P6); the panel commits it
   /// through the exact stroke funnel. Null disables the fill tool.
@@ -836,10 +844,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                   final idleSelection = _idleSelectionRegion;
 
                   Widget gestureLayer(bool contentStrokeIsActive) {
-                    return CanvasViewportGestureLayer(
+                    final hud = widget.flipHud;
+                    final layer = CanvasViewportGestureLayer(
                       viewport: _viewport,
                       onViewportChanged: _setViewport,
                       rotationEnabled: widget.allowViewRotation,
+                      flipHud: hud,
                       // PEN-7b: the control-mode touch slots — flip
                       // dispatches shell actions, brush size drives the
                       // tool state (both threaded from the workspace).
@@ -1274,6 +1284,18 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                         ),
                       ),
                     );
+                    if (hud == null) {
+                      return layer;
+                    }
+                    // Above the gesture layer, in the same box: the anchor
+                    // the gesture reports is already in these coordinates.
+                    return Stack(
+                      fit: StackFit.expand,
+                      children: [
+                        layer,
+                        FlipHudOverlay(controller: hud),
+                      ],
+                    );
                   }
 
                   return SizedBox.expand(
@@ -1657,11 +1679,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// and paint on its first frame instead of waiting a decode round with
   /// four tiles' worth of fallback. Coordinates the lift only partly took
   /// are deliberately absent: see [BitmapTileImageCache.seedScope].
-  ({
-    int liftToken,
-    BrushDab stampDab,
-    Map<TileCoord, BitmapTile> wholeTiles,
-  })?
+  ({int liftToken, BrushDab stampDab, Map<TileCoord, BitmapTile> wholeTiles})?
   _handleSelectionLift(CanvasSelectionRegion region) {
     final coordinator = widget.coordinator;
     if (coordinator == null) {
@@ -1741,10 +1759,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // displaced copy is ink too, so removing it read as losing coverage.
     // The oracle asks about position now, and says the opposite.
     final activeKey = coordinator.activeFrameKey;
-    BitmapTileImageCache.instance.invalidateCoords(
-      (activeKey.layerId, activeKey.frameId),
-      whole.keys,
-    );
+    BitmapTileImageCache.instance.invalidateCoords((
+      activeKey.layerId,
+      activeKey.frameId,
+    ), whole.keys);
     return (liftToken: token, stampDab: lift.stampDab, wholeTiles: whole);
   }
 

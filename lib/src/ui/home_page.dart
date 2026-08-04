@@ -42,6 +42,7 @@ import 'shortcuts/shortcut_settings_store.dart';
 import 'timeline/timeline_action_toolbar.dart'
     show showTimelineCommaCountDialog;
 import 'text/app_strings.dart';
+import 'canvas/flip_hud_controller.dart' show FlipHudController;
 import 'timeline/timeline_layer_nav.dart' show TimelineLayerNavCommands;
 import 'widgets/cursor_notice.dart';
 
@@ -88,6 +89,11 @@ class _HomePageState extends State<HomePage> {
   /// vertical arrows walk the timeline's DISPLAYED layer rows; the
   /// workspace binds the handler (it owns the row filter view state).
   final TimelineLayerNavCommands _timelineLayerNav = TimelineLayerNavCommands();
+
+  /// The flip HUD's state (R10 hand-feel): shown while a one-finger flip
+  /// is live. Shell-owned like the nav channel above — a live-drag verb
+  /// parked in a panel's State is how a release silently fails to land.
+  final FlipHudController _flipHud = FlipHudController();
 
   /// The customizable shortcut bindings (P1): registry defaults + the
   /// user's persisted overrides. Persistence is disabled under
@@ -261,6 +267,7 @@ class _HomePageState extends State<HomePage> {
     _panelsMenu.dispose();
     _brushTool.dispose();
     _shortcuts.dispose();
+    _flipHud.dispose();
     super.dispose();
   }
 
@@ -546,6 +553,7 @@ class _HomePageState extends State<HomePage> {
                                 canvasSelectionCommands:
                                     _canvasSelectionCommands,
                                 layerNav: _timelineLayerNav,
+                                flipHud: _flipHud,
                                 onInvokeAction: _invokeAction,
                               ),
                             ),
