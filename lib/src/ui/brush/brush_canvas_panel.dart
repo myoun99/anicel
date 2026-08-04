@@ -1222,8 +1222,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                               // base's stale fallback answers
                                               // for them with the tiles the
                                               // LIFT ERASED.
-                                              committedRegionReady:
-                                                  _committedRegionReady,
+                                              committedRegionPendingTiles:
+                                                  _committedRegionPendingTiles,
                                               // Pending move sessions hold the
                                               // session's edit lock (seeks
                                               // refused) WITHOUT locking
@@ -1592,16 +1592,27 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   ({int left, int top, int rightExclusive, int bottomExclusive})?
   _contentBoundsCached;
 
-  /// Whether every tile the committed surface holds under this canvas rect
-  /// has a decoded image — the signal the selection layer waits on before
-  /// it drops the float that landed there.
+  /// WHICH tiles the committed surface holds under this canvas rect have
+  /// no decoded image yet — the tiles the selection layer keeps its float
+  /// over until they arrive. Empty means the base can paint the lot.
   ///
   /// A coordinate with NO tile counts as ready: the surface has nothing to
   /// draw there, so waiting on it would wait forever.
-  bool _committedRegionReady(int left, int top, int right, int bottom) {
+  ///
+  /// ⚠️ The set, not a bool. The base becomes paintable 32 tiles a paint,
+  /// so a single yes/no made the float cover the whole landing until the
+  /// last tile arrived — double-compositing every partial-alpha pixel
+  /// under it, and, when the float could not paint, showing the user the
+  /// convergence itself, tile by tile.
+  Set<TileCoord> _committedRegionPendingTiles(
+    int left,
+    int top,
+    int right,
+    int bottom,
+  ) {
     final coordinator = widget.coordinator;
     if (coordinator == null) {
-      return true;
+      return const <TileCoord>{};
     }
     final surface = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
     final size = surface.tileSize;
@@ -1620,15 +1631,20 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     final firstTx = floorDiv(left, size);
     final lastTx = floorDiv(right - 1, size);
     final lastTy = floorDiv(bottom - 1, size);
+    var pending = const <TileCoord>{};
     for (var ty = floorDiv(top, size); ty <= lastTy; ty++) {
       for (var tx = firstTx; tx <= lastTx; tx++) {
-        final tile = surface.tileAt(TileCoord(x: tx, y: ty));
+        final coord = TileCoord(x: tx, y: ty);
+        final tile = surface.tileAt(coord);
         if (tile != null && cache.imageFor(tile) == null) {
-          return false;
+          if (identical(pending, const <TileCoord>{})) {
+            pending = <TileCoord>{};
+          }
+          pending.add(coord);
         }
       }
     }
-    return true;
+    return pending;
   }
 
   /// shape covers no pixels.
