@@ -92,6 +92,63 @@ void main() {
       expect(_rgbaAt(pixels, width: 4, x: 0, y: 0), [0, 0, 0, 0]);
     });
 
+    test('the per-pixel budget is spent on tiles that DREW, so empty ones '
+        'earlier in raster order cannot eat it', () async {
+      // Measured on a Ctrl+T confirm: the walk is raster order, the
+      // landing sat below a blank pasteboard row, and all four budget
+      // slots went to tiles with no ink in them — the float contributed
+      // zero pixels while five inked tiles drew nothing.
+      //
+      // Five empty tiles first, then five inked ones, none decoded. With
+      // the budget spent on the attempt, only the empties are visited and
+      // nothing appears. Spent on the result, the ink does.
+      const tileSize = 2;
+      const columns = 10;
+      final tiles = <TileCoord, BitmapTile>{};
+      for (var column = 0; column < columns; column += 1) {
+        final coord = TileCoord(x: column, y: 0);
+        tiles[coord] = _tile(
+          coord: coord,
+          size: tileSize,
+          colors: column < 5
+              ? const {}
+              : {const _Point(0, 0): RgbaColor(r: 255, g: 0, b: 0, a: 255)},
+        );
+      }
+      final surface = BitmapSurface(
+        canvasSize: CanvasSize(width: columns * tileSize, height: tileSize),
+        tileSize: tileSize,
+        tiles: tiles,
+      );
+
+      final pixels = await _paintPixels(
+        BitmapSurfacePainter(
+          surface: surface,
+          showTransparentBackground: false,
+          // A scope of its own: a borrow would answer before the
+          // per-pixel path is ever reached, and then this proves nothing.
+          staleScope: Object(),
+        ),
+        width: columns * tileSize,
+        height: tileSize,
+      );
+
+      var inked = 0;
+      for (var column = 5; column < columns; column += 1) {
+        if (_rgbaAt(pixels, width: columns * tileSize, x: column * tileSize, y: 0)[3] !=
+            0) {
+          inked += 1;
+        }
+      }
+      expect(
+        inked,
+        4,
+        reason:
+            'the four budget slots went to empty tiles instead of the '
+            'inked ones behind them ($inked of 5 inked tiles drawn)',
+      );
+    });
+
     // Committed strokes are now materialized into the surface on commit and
     // painted from tile pixels; the painter no longer draws source-dab
     // stamps, so the old committedSourceDabStrokes square test was removed.

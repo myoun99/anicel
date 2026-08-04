@@ -318,8 +318,17 @@ class BitmapSurfacePainter extends CustomPainter {
           // draw per pixel for this frame only — within the budget. Every
           // coordinate here is visible, so the budget spends only where it
           // shows (R27 #2).
-          pixelFallbackBudget -= 1;
-          _paintTilePixels(canvas, tile);
+          //
+          // ⚠️ Spent only where it DREW. The walk is raster order, so a
+          // commit whose landing sits below empty rows hands the first
+          // four slots to tiles with no ink in them and the picture gets
+          // none: measured on a Ctrl+T confirm, all four went to the blank
+          // pasteboard row above the artwork and the float contributed
+          // zero pixels. A transparent tile costs the same scan either
+          // way — it just no longer costs a slot.
+          if (_paintTilePixels(canvas, tile)) {
+            pixelFallbackBudget -= 1;
+          }
         }
       }
     }
@@ -467,15 +476,21 @@ class BitmapSurfacePainter extends CustomPainter {
     }
   }
 
-  void _paintTilePixels(Canvas canvas, BitmapTile tile) {
+  /// Draws [tile] a pixel at a time; true when it put anything on the
+  /// canvas. The caller spends its budget on the answer, not on the
+  /// attempt.
+  bool _paintTilePixels(Canvas canvas, BitmapTile tile) {
     // `readPixels`, not the `pixels` getter: that getter is a defensive
     // 256 KB COPY per call, and this path already runs on the frames
     // where there is least room for it — the budget above is spent
     // exactly when nothing has decoded yet.
-    tile.readPixels((_, pixels) => _paintTilePixelsFrom(canvas, tile, pixels));
+    return tile.readPixels(
+      (_, pixels) => _paintTilePixelsFrom(canvas, tile, pixels),
+    );
   }
 
-  void _paintTilePixelsFrom(Canvas canvas, BitmapTile tile, Uint8List pixels) {
+  bool _paintTilePixelsFrom(Canvas canvas, BitmapTile tile, Uint8List pixels) {
+    var drew = false;
     final pixelPaint = Paint()..style = PaintingStyle.fill;
     final tileOriginX = tile.coord.x * tile.size;
     final tileOriginY = tile.coord.y * tile.size;
@@ -508,8 +523,10 @@ class BitmapSurfacePainter extends CustomPainter {
           Rect.fromLTWH(globalX.toDouble(), globalY.toDouble(), 1, 1),
           pixelPaint,
         );
+        drew = true;
       }
     }
+    return drew;
   }
 
   @override
