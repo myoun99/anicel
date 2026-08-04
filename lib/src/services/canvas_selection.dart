@@ -872,6 +872,99 @@ void _antiAliasMask(Uint8List mask, int width, int height) {
   }
 }
 
+/// Copies the surface's pixels under [mask] into a `width x height`
+/// straight-alpha RGBA buffer, scaling alpha by the mask where it is
+/// partial. `liftedAnything` is false when the mask found nothing.
+///
+/// TILE-MAJOR, and the walk order is the whole cost of a lift. Going by
+/// destination rows meant asking which tile every single pixel belonged
+/// to: a [TileCoord] allocation and a map lookup per pixel of the bbox —
+/// 3.9 million of them for a whole-picture lift on the shipping canvas —
+/// and behind that map, `surface.tiles[coord]?.pixels`, which is a copy
+/// of the cel's ENTIRE tile map followed by a 256 KB defensive copy of
+/// the tile. Grabbing a handle to start a transform froze for 263-283 ms
+/// on a realistic character cel and about 78% of it was here. Walking the
+/// tiles, and the pixels inside them, makes the question free: measured
+/// 251.9 ms -> 29.6 ms in canvas, 314.2 -> 49.9 with a pasteboard
+/// overhang.
+///
+/// The result is byte-identical by construction rather than by hope:
+/// every destination pixel belongs to exactly one tile, so this writes
+/// the same bytes to the same places in a different order, and
+/// `liftedAnything` is an OR. Pulled out of [buildSelectionLiftDabs] so a
+/// test can hold it against a per-pixel reference across bboxes that
+/// straddle tile edges — the axis the rewrite changed and the one the
+/// lift's existing tests do not exercise.
+({Uint8List rgba, bool liftedAnything}) gatherMaskedSurfacePixels({
+  required BitmapSurface surface,
+  required Uint8List mask,
+  required int left,
+  required int top,
+  required int width,
+  required int height,
+}) {
+  final rgba = Uint8List(width * height * 4);
+  final tileSize = surface.tileSize;
+  final rightExclusive = left + width;
+  final bottomExclusive = top + height;
+  var liftedAnything = false;
+  // floorDiv, not ~/: pasteboard tiles sit at negative coordinates.
+  final firstTileX = floorDiv(left, tileSize);
+  final lastTileX = floorDiv(rightExclusive - 1, tileSize);
+  final lastTileY = floorDiv(bottomExclusive - 1, tileSize);
+  for (var ty = floorDiv(top, tileSize); ty <= lastTileY; ty += 1) {
+    final tileTop = ty * tileSize;
+    final y0 = math.max(top, tileTop);
+    final y1 = math.min(bottomExclusive, tileTop + tileSize);
+    for (var tx = firstTileX; tx <= lastTileX; tx += 1) {
+      final tile = surface.tileAt(TileCoord(x: tx, y: ty));
+      if (tile == null) {
+        continue;
+      }
+      final tileLeft = tx * tileSize;
+      final x0 = math.max(left, tileLeft);
+      final x1 = math.min(rightExclusive, tileLeft + tileSize);
+      // `readPixels`, so the tile's bytes are read in place and the view
+      // never leaves the callback — that is the lifetime rule, and the
+      // `pixels` getter it replaces was the 256 KB copy.
+      tile.readPixels((_, pixels) {
+        for (var y = y0; y < y1; y += 1) {
+          final rowBase = (y - top) * width;
+          final sourceRowBase = (y - tileTop) * tileSize;
+          for (var x = x0; x < x1; x += 1) {
+            final col = x - left;
+            final maskValue = mask[rowBase + col];
+            if (maskValue == 0) {
+              continue;
+            }
+            final sourceOffset = (sourceRowBase + (x - tileLeft)) * 4;
+            final sourceAlpha = pixels[sourceOffset + 3];
+            if (sourceAlpha == 0) {
+              continue;
+            }
+            final targetOffset = (rowBase + col) * 4;
+            rgba[targetOffset] = pixels[sourceOffset];
+            rgba[targetOffset + 1] = pixels[sourceOffset + 1];
+            rgba[targetOffset + 2] = pixels[sourceOffset + 2];
+            if (maskValue == 255) {
+              rgba[targetOffset + 3] = sourceAlpha;
+            } else {
+              // Soft mask (R26): the stamp carries alpha scaled by
+              // coverage, matching the erase's partial removal at the
+              // same pixel — Skia's mul-div-255 rounding, like the
+              // overlay pipeline.
+              final product = sourceAlpha * maskValue + 128;
+              rgba[targetOffset + 3] = (product + (product >> 8)) >> 8;
+            }
+            liftedAnything = true;
+          }
+        }
+      });
+    }
+  }
+  return (rgba: rgba, liftedAnything: liftedAnything);
+}
+
 /// Builds the lift pair for [region] over the active layer's committed
 /// [surface]. Null when the selection covers no canvas pixels. The mask is
 /// HARD-EDGED (a pixel is in or out by its center, the same even-odd rule
@@ -933,54 +1026,17 @@ SelectionLiftDabs? buildSelectionLiftDabs({
     }
   }
 
-  // Lift the surface pixels under the mask (straight alpha, byte copies —
-  // tile buffers snapshot once per tile).
-  final rgba = Uint8List(width * height * 4);
-  final tileSize = surface.tileSize;
-  var liftedAnything = false;
-  final tileCache = <TileCoord, Uint8List?>{};
-  for (var row = 0; row < height; row += 1) {
-    final y = top + row;
-    for (var col = 0; col < width; col += 1) {
-      if (mask[row * width + col] == 0) {
-        continue;
-      }
-      final x = left + col;
-      // floorDiv, not ~/: pasteboard pixels sit at negative coords (Dart's
-      // % already floor-mods for a positive divisor, so the local offset
-      // below is correct as-is).
-      final coord = TileCoord(
-        x: floorDiv(x, tileSize),
-        y: floorDiv(y, tileSize),
-      );
-      final pixels = tileCache.putIfAbsent(
-        coord,
-        () => surface.tiles[coord]?.pixels,
-      );
-      if (pixels == null) {
-        continue;
-      }
-      final sourceOffset = ((y % tileSize) * tileSize + (x % tileSize)) * 4;
-      if (pixels[sourceOffset + 3] == 0) {
-        continue;
-      }
-      final targetOffset = (row * width + col) * 4;
-      rgba[targetOffset] = pixels[sourceOffset];
-      rgba[targetOffset + 1] = pixels[sourceOffset + 1];
-      rgba[targetOffset + 2] = pixels[sourceOffset + 2];
-      final maskValue = mask[row * width + col];
-      if (maskValue == 255) {
-        rgba[targetOffset + 3] = pixels[sourceOffset + 3];
-      } else {
-        // Soft mask (R26): the stamp carries alpha scaled by coverage,
-        // matching the erase's partial removal at the same pixel —
-        // Skia's mul-div-255 rounding, like the overlay pipeline.
-        final product = pixels[sourceOffset + 3] * maskValue + 128;
-        rgba[targetOffset + 3] = (product + (product >> 8)) >> 8;
-      }
-      liftedAnything = true;
-    }
-  }
+  // Lift the surface pixels under the mask (straight alpha, byte copies).
+  final gathered = gatherMaskedSurfacePixels(
+    surface: surface,
+    mask: mask,
+    left: left,
+    top: top,
+    width: width,
+    height: height,
+  );
+  final rgba = gathered.rgba;
+  final liftedAnything = gathered.liftedAnything;
   if (!liftedAnything) {
     return null;
   }
