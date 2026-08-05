@@ -7534,8 +7534,6 @@ class EditorSessionManager extends ChangeNotifier {
   Map<CutId, int>? _edgeDragAfterDurations;
   Map<CutId, int>? _edgeDragAfterGaps;
 
-  bool get isExposureEdgeDragActive => _edgeDragBefore != null;
-
   /// Where [layer]'s stored row ends — the cut-length twin the sync rule
   /// keeps the cut's duration equal to.
   int _storedRowEndOf(Layer layer) {
@@ -7665,9 +7663,28 @@ class EditorSessionManager extends ChangeNotifier {
   /// left by an earlier drag would land on release without the pointer
   /// ever having asked for it.
   void _seedStoryboardCommaDrag(Cut cut, Layer row, int blockKey) {
+    _clearEdgeDragFields();
     _edgeDragBefore = row;
     _edgeDragEdge = TimelineBlockEdge.end;
     _edgeDragBlockStart = blockKey;
+    _edgeDragCutSync = _cutSyncSnapshotFor(cut: cut, row: row);
+  }
+
+  /// Every field a comma drag reads, back to nothing.
+  ///
+  /// The reason is above: a press that never moves commits whatever
+  /// `_edgeDragAfter` holds, so a value an earlier drag left behind lands
+  /// on release without the pointer ever asking for it.
+  ///
+  /// It lives HERE rather than being spelled out at each entry point
+  /// because the two entry points had drifted — the storyboard's seed
+  /// cleared all of them and [beginExposureEdgeDrag] cleared some, which
+  /// is the shape of thing that is latent until an unrelated round adds a
+  /// path where the terminators do not run.
+  void _clearEdgeDragFields() {
+    _edgeDragBefore = null;
+    _edgeDragEdge = null;
+    _edgeDragBlockStart = null;
     _edgeDragAfter = null;
     _edgeDragWindow = null;
     _edgeDragBulkStartsByLayer = null;
@@ -7675,7 +7692,7 @@ class EditorSessionManager extends ChangeNotifier {
     _edgeDragBulkEdits = null;
     _edgeDragAfterDurations = null;
     _edgeDragAfterGaps = null;
-    _edgeDragCutSync = _cutSyncSnapshotFor(cut: cut, row: row);
+    _edgeDragCutSync = null;
   }
 
   /// Starts a comma drag on the block keyed [blockStartIndex] (cut-local)
@@ -7737,6 +7754,10 @@ class EditorSessionManager extends ChangeNotifier {
     if (_isSyncedAttachedLayerId(layerId)) {
       return false;
     }
+    // From scratch, the way the storyboard's seed already did it. The two
+    // entry points set overlapping halves of the same field set, and only
+    // one of them cleared the rest.
+    _clearEdgeDragFields();
     if (isTrackSeLayerId(layerId)) {
       final global = trackSeGlobalLayerById(layerId);
       if (global == null) {
