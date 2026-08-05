@@ -28,7 +28,6 @@ import 'brush/canvas_view_commands.dart';
 import 'brush/paint_tool_state_notifier.dart';
 import 'brush/tool_library_panel.dart';
 import 'brush/tool_settings_panel.dart';
-import 'color/color_button_window.dart';
 import 'brush/tools_panel.dart';
 import 'editor_canvas_area.dart';
 import 'editor_session_manager.dart';
@@ -69,7 +68,6 @@ import 'timeline/timeline_layer_nav.dart';
 import 'timeline/timeline_row_filter.dart';
 import 'timeline/timeline_section_policy.dart';
 import '../models/onion_skin_settings.dart';
-import '../services/color_palette_file_service.dart';
 import 'panels/onion_skin_panel.dart';
 import 'storyboard_tab_host.dart';
 import '../models/canvas_viewport.dart';
@@ -221,8 +219,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         tabs: [
           EditorWorkspace.brushesTabId,
           // The Color TAB retired (R9 #14): the wheel and the palette are
-          // the two tabs of the 「컬러 버튼창」 now, opened from the tool
-          // rail's selected-colour swatch — the control the user actually
+          // the two tabs of the 「컬러 버튼창」 now, opened from the TOP
+          // STRIP's selected-colour swatch — the control the user actually
           // reaches for, in the place they reach for it.
           // The camera PANEL retired (R11-⑤): the canvas overlay handles
           // pose editing, the timeline camera row its eye/opacity, and the
@@ -333,20 +331,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   final ValueNotifier<CanvasColorSampleSource> _eyedropperSource =
       ValueNotifier(CanvasColorSampleSource.display);
 
-  /// The color wheel's spare (background) slot; the foreground IS the
-  /// brush color. Held here so it survives tab switches.
-  final ValueNotifier<int> _colorWheelBackground = ValueNotifier(0xFFFFFFFF);
-
-  /// The pinned palette + recent colors (P4), persisted app-side.
-  final ValueNotifier<ColorPaletteState> _colorPalette = ValueNotifier(
-    const ColorPaletteState(),
-  );
-  ColorPaletteFileService? _paletteService;
-
-  void _setColorPalette(ColorPaletteState next) {
-    _colorPalette.value = next;
-    unawaited(_paletteService?.save(next));
-  }
+  // The colour state — the background slot, the pinned palette, its file
+  // service and the recent-colour recorder — is the SHELL's now, alongside
+  // `_brushTool`: the colour button moved to the top strip, and the strip is
+  // mounted by the shell. Nothing in the workspace reads a colour any more.
 
   /// The head of the tool rail: undo, redo and the onion toggle — what a
   /// hand reaches for BETWEEN strokes, which is the rail's whole job.
@@ -406,12 +394,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           ],
         );
       },
-    );
-  }
-
-  void _recordRecentColor() {
-    _setColorPalette(
-      _colorPalette.value.withRecentColor(_brushTool.value.color),
     );
   }
 
@@ -591,19 +573,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     // Warm the conte's embedded faces so the sheet opens with its type
     // ready (the tab host still awaits, for the cold path).
     unawaited(ensureConteFontsLoaded());
-    _paletteService = Platform.environment['FLUTTER_TEST'] == 'true'
-        ? null
-        : ColorPaletteFileService();
-    unawaited(
-      _paletteService?.loadOrDefaults().then((palette) {
-        if (mounted) {
-          _colorPalette.value = palette;
-        }
-      }),
-    );
-    // Recent colors record on COMMITTED work (history changes) — the color
-    // actually drawn with, not every wheel drag sample (P4).
-    widget.session.historyManager.addListener(_recordRecentColor);
     _brushTool.addListener(_rememberSelectionVariant);
     _storyboardThumbnails = StoryboardCutThumbnailStore(
       render: _renderStoryboardThumbnail,
@@ -1010,8 +979,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   @override
   void dispose() {
     _brushTool.removeListener(_rememberSelectionVariant);
-    widget.session.historyManager.removeListener(_recordRecentColor);
-    _colorPalette.dispose();
     _storyboardThumbnails.dispose();
     _presetLibrary.dispose();
     _tipLibrary.dispose();
@@ -1023,7 +990,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _fillOptions.dispose();
     _transformResampleMode.dispose();
     _eyedropperSource.dispose();
-    _colorWheelBackground.dispose();
     _cameraViewEnabled.dispose();
     _cameraDimOpacity.dispose();
     _timelineOrientation.dispose();
@@ -1184,41 +1150,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                   selectionVariant: _lastSelectionVariant,
                   onToolChanged: (tool) =>
                       _brushTool.value = _brushTool.value.copyWith(tool: tool),
-                  // The between-strokes group. Its own listeners for the
-                  // same reason the colour swatch has them: undoing must
-                  // not rebuild the tool column above it.
+                  // The between-strokes group. Its own listeners, so undoing
+                  // does not rebuild the tool column above it.
                   historyControls: _railHistoryControls(),
-                  // R9 #14: the selected colour rides the tool rail and
-                  // opens the 「컬러 버튼창」. Its own listeners, so a
-                  // colour change repaints the swatch without rebuilding
-                  // the tool column above it.
-                  colorButton:
-                      SlicedValueListenableBuilder<BrushToolState, int>(
-                        valueListenable: _brushTool,
-                        slice: (state) => state.color,
-                        builder: (context, colorState) =>
-                            ValueListenableBuilder<int>(
-                              valueListenable: _colorWheelBackground,
-                              builder: (context, background, _) =>
-                                  ValueListenableBuilder<ColorPaletteState>(
-                                    valueListenable: _colorPalette,
-                                    builder: (context, palette, _) =>
-                                        SelectedColorButton(
-                                          color: colorState.color,
-                                          backgroundColor: background,
-                                          palette: palette,
-                                          onColorChanged: (color) =>
-                                              _brushTool.value = _brushTool
-                                                  .value
-                                                  .copyWith(color: color),
-                                          onBackgroundColorChanged: (color) =>
-                                              _colorWheelBackground.value =
-                                                  color,
-                                          onPaletteChanged: _setColorPalette,
-                                        ),
-                                  ),
-                            ),
-                      ),
                 ),
               ),
         );
@@ -1412,7 +1346,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           ),
         );
       // R9 #14: there is no Color TAB. The wheel and the palette are the
-      // two tabs of the 「컬러 버튼창」, opened from the tool rail's
+      // two tabs of the 「컬러 버튼창」, opened from the top strip's
       // selected-colour swatch. A saved layout still naming this id drops
       // it on restore — the store validates against the current defaults.
       case EditorWorkspace.onionSkinTabId:

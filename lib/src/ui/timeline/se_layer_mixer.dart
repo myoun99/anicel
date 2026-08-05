@@ -32,7 +32,7 @@ Future<void> showSeLayerMixer(
     label: 'se-layer-mixer',
     width: seLayerMixerWidth,
     height: seLayerMixerHeight,
-    builder: (context) => _SeLayerMixer(session: session, layerId: layerId),
+    builder: (context, _) => _SeLayerMixer(session: session, layerId: layerId),
   );
 }
 

@@ -93,19 +93,19 @@ class BrushTipPickerRow extends StatelessWidget {
       label: 'brush-tip-picker-popup',
       width: 232,
       height: _popupHeight,
-      builder: (popupContext) => _BrushTipPickerBody(
+      builder: (popupContext, close) => _BrushTipPickerBody(
         height: _popupHeight,
         role: role,
         tips: tips,
         selectedId: selected?.id,
         onPicked: (mask) {
-          Navigator.of(popupContext).pop();
+          close();
           onPicked(mask);
         },
         onImportRequested: onImportRequested == null
             ? null
             : () {
-                Navigator.of(popupContext).pop();
+                close();
                 onImportRequested!();
               },
       ),

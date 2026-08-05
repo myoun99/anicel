@@ -249,9 +249,10 @@ void main() {
 
   });
 
-  /// R10 R5: the pair and the swap moved OUT of the window and onto the
-  /// tool rail, so their contract is tested where they now live.
-  group('SelectedColorButton (the rail\'s dual swatch)', () {
+  /// R10 R5: the pair and the swap moved OUT of the window and onto a rail,
+  /// so their contract is tested where they now live — which the rail-and-
+  /// strip round moved again, to the top strip.
+  group('SelectedColorButton (the strip\'s dual swatch)', () {
     Future<void> pumpButton(
       WidgetTester tester, {
       required int color,
@@ -345,6 +346,137 @@ void main() {
 
       expect(changes, [0xFF0000FF]);
       expect(backgroundChanges, [0xFFFF0000]);
+    });
+  });
+
+  /// The PINNED popup's contract, which is the whole reason the colour window
+  /// stopped being a route: it has to outlive being ignored.
+  group('the colour window is pinned', () {
+    /// A host that owns the colour and can drop the button, so a test can
+    /// change the colour from OUTSIDE the window (what an eyedropper does) or
+    /// take the anchor away (what closing a project does).
+    ///
+    /// Anchored TOP-RIGHT because that is where the strip puts it. Centred,
+    /// the 320px window has room neither below nor above in an 800x600 test
+    /// view, and the shared placement then clamps it back over its own
+    /// anchor — which for a pinned popup would bury its only switch.
+    Future<void> pumpAnchor(
+      WidgetTester tester, {
+      required ValueNotifier<int> color,
+      required ValueNotifier<bool> present,
+    }) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.topRight,
+              child: ValueListenableBuilder<bool>(
+                valueListenable: present,
+                builder: (context, mounted, _) => mounted
+                    ? ValueListenableBuilder<int>(
+                        valueListenable: color,
+                        builder: (context, value, _) => SelectedColorButton(
+                          color: value,
+                          backgroundColor: 0xFFFFFFFF,
+                          palette: const ColorPaletteState(),
+                          onColorChanged: (next) => color.value = next,
+                          onBackgroundColorChanged: (_) {},
+                          onPaletteChanged: (_) {},
+                        ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    late ValueNotifier<int> color;
+    late ValueNotifier<bool> present;
+
+    setUp(() {
+      color = ValueNotifier<int>(0xFFFF0000);
+      present = ValueNotifier<bool>(true);
+    });
+
+    tearDown(() {
+      color.dispose();
+      present.dispose();
+    });
+
+    final anchor = find.byKey(const ValueKey<String>('tool-color-button'));
+
+    testWidgets('an anchor tap opens it and a second tap closes it — with no '
+        'barrier to dismiss it, the anchor IS the switch', (tester) async {
+      await pumpAnchor(tester, color: color, present: present);
+      expect(find.byType(ColorButtonWindow), findsNothing);
+
+      await tester.tap(anchor);
+      await tester.pumpAndSettle();
+      expect(find.byType(ColorButtonWindow), findsOneWidget);
+
+      await tester.tap(anchor);
+      await tester.pumpAndSettle();
+      expect(find.byType(ColorButtonWindow), findsNothing);
+    });
+
+    testWidgets('a tap OUTSIDE leaves it open — the one popup that survives '
+        'being ignored (유저: 색만 안 사라지게)', (tester) async {
+      await pumpAnchor(tester, color: color, present: present);
+      await tester.tap(anchor);
+      await tester.pumpAndSettle();
+
+      // Bottom-left: far from both the anchor and the window. On the
+      // dismissing kind this is the gesture that closes the popup, and a
+      // route's modal barrier would have swallowed it before it landed.
+      final gesture = await tester.startGesture(const Offset(40, 560));
+      await gesture.moveBy(const Offset(30, 0));
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ColorButtonWindow), findsOneWidget);
+    });
+
+    testWidgets('a colour set from OUTSIDE reaches the open window — the '
+        'eyedropper case the dismissing kind could never have', (tester) async {
+      await pumpAnchor(tester, color: color, present: present);
+      await tester.tap(anchor);
+      await tester.pumpAndSettle();
+
+      int windowColor() =>
+          tester.widget<ColorWheelPanel>(find.byType(ColorWheelPanel)).color;
+      expect(windowColor(), 0xFFFF0000);
+
+      color.value = 0xFF00FF00;
+      await tester.pumpAndSettle();
+
+      expect(
+        windowColor(),
+        0xFF00FF00,
+        reason:
+            'the pinned window rebuilds with its anchor, so a colour picked '
+            'while it is open cannot leave it stale — the window keeps no '
+            'working copy any more',
+      );
+    });
+
+    testWidgets('unmounting the anchor takes the window with it', (
+      tester,
+    ) async {
+      await pumpAnchor(tester, color: color, present: present);
+      await tester.tap(anchor);
+      await tester.pumpAndSettle();
+      expect(find.byType(ColorButtonWindow), findsOneWidget);
+
+      present.value = false;
+      await tester.pumpAndSettle();
+
+      // A hand-rolled OverlayEntry would still be sitting over the canvas
+      // here, with the only thing that could dismiss it gone.
+      expect(find.byType(ColorButtonWindow), findsNothing);
+      expect(tester.takeException(), isNull);
     });
   });
 }

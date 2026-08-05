@@ -126,7 +126,7 @@ Future<void> showPressureCurvePopup(
     label: 'pressure-curve-popup',
     width: 216,
     height: 236,
-    builder: (context) => _PressureCurveEditor(
+    builder: (context, _) => _PressureCurveEditor(
       title: title,
       initialCurve: curve,
       onChanged: onChanged,
