@@ -53,12 +53,19 @@ class FlipHudRow {
     required this.runs,
     this.isLane = false,
     this.holdsDrawings = true,
+    this.showsKindIcon = true,
   });
 
   final String name;
 
   /// Drives the rail's kind icon — the same [LayerKind] the rails read.
   final LayerKind kind;
+
+  /// Whether the rail draws that icon. A property lane carries its
+  /// property's name, not its owner's kind, and a TRACK row is not a
+  /// layer at all; neither should be stamped with a layer glyph the
+  /// timeline has never drawn on them.
+  final bool showsKindIcon;
 
   /// Content runs in frame order, non-overlapping.
   final List<FlipHudRun> runs;

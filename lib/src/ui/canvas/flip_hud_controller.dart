@@ -70,6 +70,21 @@ class FlipHudController extends ChangeNotifier {
   Timer? _hideTimer;
   Timer? _clearTimer;
 
+  (int, int)? _lastPosition;
+  DateTime? _lastLandedAt;
+  Duration? _lastStepInterval;
+
+  /// How long the last step took to arrive, measured landing to landing.
+  ///
+  /// The strip's slide reads this to size itself: an implicit animation
+  /// RESTARTS at full duration whenever its target moves, so a sweep that
+  /// steps faster than the slide lasts leaves the strip permanently
+  /// behind the hand — and the selection rides the strip, so the picture
+  /// visibly disagrees with the cell it says you are on. Sizing each leg
+  /// to the interval that preceded it makes the strip arrive exactly as
+  /// the next step lands. Null before the second landing of a gesture.
+  Duration? get lastStepInterval => _lastStepInterval;
+
   /// Whether the HUD is at full opacity. It stays mounted through the
   /// fade that follows — [displayAxis] is what says "still on screen".
   bool get visible => _visible;
@@ -125,6 +140,9 @@ class FlipHudController extends ChangeNotifier {
     _frameStep = frameStep;
     _snapshot = _snapshotOf?.call(axis) ?? FlipHudSnapshot.empty;
     _lastContentKey = _snapshot.contentKey;
+    _lastPosition = (_snapshot.frameIndex, _snapshot.rowIndex);
+    _lastLandedAt = null;
+    _lastStepInterval = null;
     _visible = !_snapshot.isEmpty;
     if (!_visible) {
       _displayAxis = null;
@@ -146,6 +164,17 @@ class FlipHudController extends ChangeNotifier {
     _visible = !_snapshot.isEmpty;
     if (_visible) {
       _displayAxis = _axis;
+    }
+    // Only a LANDING re-times the slide. A modifier change re-renders
+    // without moving the cursor, and letting that reset the interval
+    // would size the next leg off a non-event.
+    final position = (_snapshot.frameIndex, _snapshot.rowIndex);
+    if (position != _lastPosition) {
+      final now = _clock();
+      final previous = _lastLandedAt;
+      _lastStepInterval = previous == null ? null : now.difference(previous);
+      _lastLandedAt = now;
+      _lastPosition = position;
     }
     final key = _snapshot.contentKey;
     if (key != null && key != _lastContentKey) {

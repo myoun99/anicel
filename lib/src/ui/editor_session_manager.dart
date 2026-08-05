@@ -76,6 +76,7 @@ import '../models/se_name_tag.dart';
 import '../models/storyboard_coverage.dart';
 import '../models/text_cel_style.dart';
 import '../models/timeline_coverage.dart';
+import '../models/flip_column_step.dart';
 import '../models/timeline_exposure.dart';
 import '../models/timeline_frame_range.dart';
 import '../models/timeline_repeat.dart';
@@ -2692,8 +2693,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// gone. It was reachable only through a context menu, it never left the
   /// session, and while editing shows one cut at a time it said exactly
   /// what the track switch already says.
-  bool isCutFxEnabled(CutId cutId) =>
-      trackOwningCut(cutId)?.fxEnabled ?? true;
+  bool isCutFxEnabled(CutId cutId) => trackOwningCut(cutId)?.fxEnabled ?? true;
 
   // --- V track display: the static opacity and the fx master (R9 #21) ----
 
@@ -7280,10 +7280,7 @@ class EditorSessionManager extends ChangeNotifier {
     if (layer == null || isAttachedLayer(layer)) {
       return;
     }
-    final targets = _laneVerbTargets(
-      lane.spanLaneIds,
-      effects: layer.effects,
-    );
+    final targets = _laneVerbTargets(lane.spanLaneIds, effects: layer.effects);
     // R6: an EFFECT-lane selection freezes keys on the effect chain
     // instead — same rule, same single undo.
     if (targets.any((laneId) => parseEffectLaneId(laneId) != null)) {
@@ -8430,7 +8427,6 @@ class EditorSessionManager extends ChangeNotifier {
     dragPreview.value = null;
   }
 
-
   /// The cut after [cutId] on its own track, or null at the track's end.
   Cut? _nextCutInTrack(CutId cutId) {
     for (final track in _repository.requireProject().tracks) {
@@ -8715,7 +8711,9 @@ class EditorSessionManager extends ChangeNotifier {
       // 막힘" report. A row this rail does not hold (or none at all) simply
       // leaves the anchor alone: what is not on the list is unreachable,
       // which is the same guard the clamp used to be.
-      final headIndex = headRow == null ? anchorIndex : railRows.indexOf(headRow);
+      final headIndex = headRow == null
+          ? anchorIndex
+          : railRows.indexOf(headRow);
       final resolvedHead = headIndex < 0 ? anchorIndex : headIndex;
       final first = math.min(anchorIndex, resolvedHead);
       final last = math.max(anchorIndex, resolvedHead);
@@ -12230,6 +12228,13 @@ class EditorSessionManager extends ChangeNotifier {
   /// identity on an edit — rebuilding the whole cross-track layout each
   /// call was a fixed per-move tax (the same memo the storyboard host
   /// keeps).
+  /// The memoized layout, for surfaces outside this class that need the
+  /// same cut ranges — the flip HUD's gap window reads the track's cuts
+  /// through here rather than rebuilding a second layout that could
+  /// disagree with the one the flip walks.
+  List<StoryboardTimelineLayoutEntry> projectTimelineLayout() =>
+      _projectLayout();
+
   List<StoryboardTimelineLayoutEntry> _projectLayout() {
     final project = repository.requireProject();
     if (!identical(project, _projectLayoutProject)) {
@@ -12390,11 +12395,15 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  void selectGlobalFrame(int globalFrame) {
+  /// [onAxis] lands the frame on a SPECIFIC track's axis instead of the
+  /// selected track's. A caller that computed its move on one axis must
+  /// land it on the same one — resolving on a different track would put
+  /// the playhead in a cut the move never chose.
+  void selectGlobalFrame(int globalFrame, {TrackFrameAxis? onAxis}) {
     if (editingInteractionBusy) {
       return;
     }
-    final axis = trackFrameAxis();
+    final axis = onAxis ?? trackFrameAxis();
     if (axis.isEmpty) {
       return;
     }
@@ -12750,6 +12759,11 @@ class EditorSessionManager extends ChangeNotifier {
       case LayerRowAddress(:final layerId):
         final layer = _layerById(layerId) ?? activeLayer;
         if (layer == null) {
+          // No such layer to stand on — the playhead is parked in a GAP
+          // (no cut, so no rows), or the stored row outlived its cut. The
+          // row you are actually on is the TRACK, so walk cuts rather
+          // than dead-ending: that is how a gap is stepped out of.
+          _flipCuts(selectedTrackId, forward: forward);
           return;
         }
         _flipBlocks(layer, forward: forward);
@@ -12768,43 +12782,64 @@ class EditorSessionManager extends ChangeNotifier {
     }
   }
 
-  /// The layer-row half — unchanged behaviour, moved under the rule.
+  /// The layer-row half: the row's drawing blocks are its columns.
+  ///
+  /// It used to step between authored KEYS, which is why the directions
+  /// disagreed. A key list has no entry for an uncovered frame, so a gap
+  /// between two blocks was not a destination at all: forward jumped
+  /// clean over it, and backward — which had no equivalent of forward's
+  /// "escape past the block I am on" clause — jumped all the way to the
+  /// previous block's head. Counting COLUMNS instead makes both
+  /// directions the same sentence and puts the gap back on the axis.
   void _flipBlocks(Layer layer, {required bool forward}) {
+    final cut = activeCutOrNull;
+    if (cut == null) {
+      return; // Gap state: no cut axis — the TRACK row is the one to walk.
+    }
     final current = _timelineController.currentFrameIndex;
-    if (!forward) {
-      final block = previousDrawingBlockBefore(layer.timeline, current);
-      if (block != null) {
-        selectFrameIndex(block.startIndex);
-      } else {
-        // PEN-8 #2: no earlier drawing — walk EMPTY space one frame at a
-        // time instead of dead-ending (the plain-arrow/파라파라 unit:
-        // blocks where blocks exist, frames where they don't).
-        selectPreviousFrame();
-      }
+    final next = flipColumnStep(
+      frame: current,
+      direction: forward ? 1 : -1,
+      columnAt: (frame) {
+        final block = coveringDrawingBlockAt(layer.timeline, frame);
+        return block == null
+            ? null
+            : (start: block.startIndex, endExclusive: block.endIndexExclusive);
+      },
+    );
+    if (next == current) {
       return;
     }
-    final block = nextDrawingBlockAfter(layer.timeline, current);
-    if (block != null) {
-      selectFrameIndex(block.startIndex);
+    if (next >= 0 && next < cut.duration) {
+      selectFrameIndex(next);
       return;
     }
-    // PEN-12 #2: no NEXT drawing but the cursor sits ON a block — escape
-    // past its end in one press (never crawl through a long tail block one
-    // frame at a time); pure empty space keeps the PEN-8 one-frame walk.
-    final covering = coveringDrawingBlockAt(layer.timeline, current);
-    if (covering != null) {
-      selectFrameIndex(covering.endIndexExclusive);
-    } else {
-      selectNextFrame();
+    // The step left the cut. A cut's edge is not the end of the axis —
+    // the film continues — so the landing is handed to the track's
+    // global axis, which puts it in the neighbouring cut or parks it in
+    // the gap. Rightward this never runs out; leftward it stops at the
+    // start of the film, the one real floor there is.
+    final cutStart = trackFrameAxis().globalOf(cut.id, 0);
+    if (cutStart == null) {
+      return;
+    }
+    final global = cutStart + next;
+    if (global >= 0) {
+      selectGlobalFrame(global);
     }
   }
 
-  /// The V-row half: the track's CUTS are its blocks, on the global axis.
+  /// The V-row half: the track's CUTS are its columns, on the global axis.
   ///
-  /// Backwards from mid-cut lands on THIS cut's start — the same
-  /// clip-navigation convention [_flipBlocks] uses for a block. With no cut
-  /// that way (a gap at either end of the film) the row walks one global
-  /// frame, which is the "no blocks here" half of the rule.
+  /// The same column step the layer row takes, with the track's cuts as
+  /// the covering material instead of a layer's blocks — which is the
+  /// whole point of stating the rule as columns. It carried the identical
+  /// key-stepping defect before, so a gap between two cuts was skipped in
+  /// both directions here too.
+  ///
+  /// This is also the axis a GAP is walked on: [selectGlobalFrame] lands
+  /// the result inside a cut or parks it in the void, so a playhead
+  /// standing between cuts can step out under its own power.
   void _flipCuts(TrackId trackId, {required bool forward}) {
     final entries = [
       for (final entry in buildStoryboardTimelineLayout(
@@ -12812,36 +12847,28 @@ class EditorSessionManager extends ChangeNotifier {
       ))
         if (entry.trackId == trackId) entry,
     ];
-    final globalFrame = editingGlobalFrame;
-    StoryboardTimelineLayoutEntry? target;
-    if (forward) {
-      for (final entry in entries) {
-        if (entry.startFrame > globalFrame) {
-          target = entry;
-          break;
-        }
-      }
-    } else {
-      for (final entry in entries) {
-        if (entry.startFrame < globalFrame) {
-          target = entry;
-        }
-      }
-    }
-    if (target == null) {
-      // No cut that way: the "no blocks here" half of the rule — one
-      // global frame, which [selectGlobalFrame] lands inside a cut or
-      // parks in a gap.
-      final next = globalFrame + (forward ? 1 : -1);
-      if (next >= 0) {
-        selectGlobalFrame(next);
-      }
+    if (entries.isEmpty) {
       return;
     }
-    if (target.cutId != activeCutId) {
-      selectCut(target.cutId);
+    final axis = TrackFrameAxis(entries);
+    final globalFrame = editingGlobalFrame;
+    final next = flipColumnStep(
+      frame: globalFrame,
+      direction: forward ? 1 : -1,
+      columnAt: (frame) {
+        final block = axis.cutBlockAt(frame);
+        return block == null
+            ? null
+            : (start: block.startIndex, endExclusive: block.endIndexExclusive);
+      },
+    );
+    // The start of the film is the only floor; rightward the runway past
+    // the last cut is a place you may stand.
+    if (next != globalFrame && next >= 0) {
+      // Land on the axis the step was measured on: this row may name a
+      // track that is not the selected one.
+      selectGlobalFrame(next, onAxis: axis);
     }
-    selectFrameIndex(0);
   }
 
   // --- Editing frame scrub (ruler drags ride the cursor path) --------------
