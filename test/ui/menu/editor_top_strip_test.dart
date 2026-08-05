@@ -210,6 +210,22 @@ void main() {
     expect(sizeOnBar(), eraserSize, reason: 'and the eraser keeps its own');
   });
 
+  testWidgets('the blend mode is a popover beside the bars', (tester) async {
+    await pumpHome(tester);
+
+    // A list, not a bar: you pick one and go. It is also one of the three
+    // settings a preset never carries, which is why it stands with the
+    // hand's own choices instead of living inside a preset.
+    await openStrip(tester, 'top-strip-blend-button');
+    await tapEntry(tester, 'top-strip-blend-multiply');
+
+    await openStrip(tester, 'top-strip-blend-button');
+    final item = tester.widget<PopupMenuItem<PanelFlyoutItem>>(
+      find.byKey(const ValueKey<String>('top-strip-blend-multiply')),
+    );
+    expect(item.value?.checked, isTrue);
+  });
+
   testWidgets('the strip survives a narrow window', (tester) async {
     // 844x390 is the size that used to overflow the bottom dock; the strip
     // now carries two 140px bars, so it has to be checked too.

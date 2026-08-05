@@ -9,6 +9,7 @@ import '../../services/persistence/app_documents.dart';
 import '../../services/persistence/app_save_settings.dart';
 import '../../services/persistence/project_autosave_service.dart';
 import '../dialogs/app_confirm_dialog.dart';
+import '../../models/brush_blend_mode.dart';
 import '../brush/brush_tool_state.dart';
 import '../brush/tools_panel.dart' show RailButton;
 import '../widgets/field_slider.dart';
@@ -452,6 +453,8 @@ class EditorTopStrip extends StatelessWidget {
         if (brushTool != null) ...[
           _BrushValueBars(brushTool: brushTool!),
           const SizedBox(width: 4),
+          _BlendModeButton(brushTool: brushTool!),
+          const SizedBox(width: 4),
         ],
         const SizedBox(width: 3),
       ],
@@ -520,6 +523,45 @@ class _BrushValueBars extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The blend mode, beside the two bars.
+///
+/// A popover rather than a bar: it is a LIST, and unlike size and opacity
+/// you pick one and go — there is nothing to nudge against a test stroke.
+/// It is also one of the three settings a preset deliberately never
+/// carries (R26 #10), which is exactly what makes it belong on the strip
+/// with the hand's other standing choices rather than inside a preset.
+class _BlendModeButton extends StatelessWidget {
+  const _BlendModeButton({required this.brushTool});
+
+  final ValueNotifier<BrushToolState> brushTool;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<BrushToolState>(
+      valueListenable: brushTool,
+      builder: (context, state, _) {
+        final language = AppText.settings.value.programLanguage;
+        return _StripPopoverButton(
+          keyValue: 'top-strip-blend-button',
+          tooltip: state.brushBlendMode.labelFor(language),
+          icon: Icons.layers_outlined,
+          entriesBuilder: () => [
+            for (final mode in BrushBlendMode.values)
+              PanelFlyoutItem(
+                keyValue: 'top-strip-blend-${mode.name}',
+                label: mode.labelFor(language),
+                checked: mode == state.brushBlendMode,
+                onSelected: () => brushTool.value = brushTool.value.copyWith(
+                  brushBlendMode: mode,
+                ),
+              ),
+          ],
+        );
+      },
     );
   }
 }
