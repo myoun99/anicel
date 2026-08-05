@@ -687,10 +687,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         initialContent: content,
         defaultPosition: cut == null
             ? null
-            : Offset(
-                cut.canvasSize.width / 2,
-                cut.canvasSize.height / 2,
-              ),
+            : Offset(cut.canvasSize.width / 2, cut.canvasSize.height / 2),
       ),
     );
     if (!mounted || result == null) {
@@ -946,398 +943,419 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     // progress listenable repaints the rulers' green bars the same way.
     // The camera-view notifiers keep the camera row's unified controls
     // live.
-    return ListenableBuilder(
-      listenable: Listenable.merge([
-        ?widget.cameraViewEnabled,
-        // The camera DIM is NOT here (R27 #9): its slider subscribes to it
-        // directly, so a drag repaints one control instead of the panel.
-        // Live take preview (REC1-C): the armed SE lane swaps identity at
-        // most once per FRAME while recording — this panel-scoped rebuild
-        // is the notify-free channel (R12-B: ticks never notify the
-        // session).
-        _session.voiceRecordPreviewLane,
-        // R27 #13: the empty-cel tint must clear the INSTANT a stroke
-        // lands. Cel pixels live outside the Layer value, so nothing in
-        // the ordinary notify path told this panel to look again — the
-        // tint sat until an unrelated rebuild. Only EMPTY↔drawn crossings
-        // bump this, so ordinary strokes cost nothing.
-        _session.brushFrameStore.celContentRevision,
-      ]),
-      builder: (context, _) {
-        // Zoom scoping (UI-R6 #4): the toolbar widget is built ONCE per
-        // host rebuild and reused across zoom steps — the identical
-        // instance lets its transport + ~25 buttons skip rebuilding while
-        // the ValueListenableBuilder below re-lays-out just the panel.
-        final timelineToolbar = _buildTimelineToolbar();
-        Widget buildPanel(
-          BuildContext context,
-          double pixelsPerFrame,
-          Widget? child,
-        ) => TimelinePanel(
-          layers: _displayLayers(),
-          activeLayerId: _session.activeLayerId,
-          // Edit drags (comma/trim) preview through the scoped channel: a
-          // step rebuilds the dragged row's gate + the cursor overlay only,
-          // never this host (the release commit is the one session notify).
-          dragPreview: _session.dragPreview,
-          frameCursor: _frameCursor,
-          frameCachedSignal: _frameCachedSignal,
-          isFrameCached: _session.isPlaybackFrameCached,
-          playbackFrameCount: _session.activeCutPlaybackFrameCount,
-          exposureStateForLayer: _session.exposureStateForLayer,
-          frameNameForLayer: _session.frameNameForLayer,
-          // R26 #44: ACTION-section blocks whose cel is still blank gray
-          // their paper; the token keys the row memo (cel pixels live
-          // outside the Layer value).
-          celContent: _celContent,
-          onSelectLayer: _session.selectLayer,
-          // Ruler scrubs during playback SEEK the playback clock instead of
-          // moving the (hidden) editing playhead.
-          onSelectFrame: (frameIndex) {
-            if (_session.playback.isActive) {
-              _session.playback.seekToLocalFrame(frameIndex);
-            } else {
-              _session.selectFrameIndex(frameIndex);
-            }
-          },
-          // Ruler drags: per-move seeks ride the cursor path (value-only —
-          // the playhead and the canvas preview follow, nothing rebuilds);
-          // the release commits the selection as ONE ordinary seek.
-          onScrubFrame: (frameIndex) {
-            if (_session.playback.isActive) {
-              _session.playback.seekToLocalFrame(frameIndex);
-            } else {
-              _session.scrubFrameIndex(frameIndex);
-            }
-          },
-          onScrubEnd: () {
-            if (!_session.playback.isActive) {
-              _session.commitFrameScrub();
-            }
-          },
-          // End-line drag = cut length (UI-R18 #14): the boundary grip
-          // end-trims the ACTIVE cut through the storyboard's trim
-          // channel — live preview, ONE undo on release.
-          cutEndDrag: _cutEndDragCallbacks(),
-          // Sparse-row memo identities (UI-R20 #4): camera/instruction
-          // rows re-enter the row memo, invalidated exactly by these.
-          memoAux: TimelineRowMemoAux(
-            cameraTrack: _session.activeCutOrNull?.camera.track,
-            instructionDefs: _session.cameraInstructionSet,
-          ),
-          onActivateCell: _activateCellEditor,
-          instructionDefById: (instructionId) =>
-              _session.cameraInstructionSet.defById(instructionId),
-          // Display resolver: the live take's sentinel path maps to the
-          // growing envelope (REC1-C), everything else to the conform
-          // store's peaks.
-          audioPeaksFor: _session.audioPeaksForDisplay,
-          // The tooltip string doubles as the marker switch (REC1-D):
-          // null while the clipping notice is off.
-          seClipMarkerTooltip: _session.audioSyncSettings.value.clippingNotice
-              ? _session.uiStrings.recordClipMarkerTooltip
-              : null,
-          // Everything the audio lane may ask of the session, bound once
-          // here instead of threaded as six parameters through the panel
-          // and both grids.
-          //
-          // The slide edit previews LOCALLY in the lane span (its own
-          // painter, no session traffic per move) and commits ONE undo on
-          // release — the repo-live drag session rebuilt every panel per
-          // move and made the slide feel heavy (R5-⑧); the session drag
-          // API stays for callers that need the cross-panel mirror.
-          audioLane: TimelineAudioLaneCallbacks(
-            // Media-browser drops: link the dragged sound to the block.
-            onDropMediaAsset: (layerId, blockStartFrame, path) =>
-                _session.linkMediaAssetToSeBlock(
-                  layerId: layerId,
-                  blockStartFrame: blockStartFrame,
-                  path: path,
-                ),
-            onSetClipOffset: _session.setAudioClipOffset,
-            onSetClipFades: (layerId, clipIndex, fadeIn, fadeOut) =>
-                _session.setAudioClipFades(
-                  layerId,
-                  clipIndex,
-                  fadeInFrames: fadeIn,
-                  fadeOutFrames: fadeOut,
-                ),
-          ),
-          onAddLayer: _session.addLayer,
-          isLayerSoloed: (layerId) =>
-              _session.soloedSeLayerIds.value.contains(layerId),
-          onOpenLayerMixer: (anchorContext, layerId) => unawaited(
-            showSeLayerMixer(anchorContext, session: _session, layerId: layerId),
-          ),
-          // Kind-dispatched (unified layer controls): the camera row drives
-          // the camera-view notifiers, every other row the layer flags.
-          onToggleLayerVisibility: _toggleLayerVisibility,
-          onLayerOpacityChanged: _previewLayerOpacity,
-          onLayerOpacityChangeEnd: _commitLayerOpacity,
-          onToggleLayerTimesheet: _session.toggleLayerTimesheet,
-          onToggleLayerFillReference: _session.toggleLayerFillReference,
-          onLayerMarkSelected: _session.setLayerMark,
-          // The AE-style fx MASTER over the row's per-group switches (R8:
-          // model state, read straight off the layer).
-          layerFxStateOf: _session.layerFxState,
-          layerIsLinkedOf: _session.isLayerLinked,
-          // Folder rows are layer rows: their eye, opacity, blend, fx
-          // switch, FX lanes and selection all ride the layer hooks
-          // already threaded above. Only the members' twirl lands here.
-          onToggleLayerCollapsed: _session.toggleLayerCollapsed,
-          onToggleLayerFx: _session.toggleLayerFx,
-          // Per-layer onion skin (UI-R17 #5, TVPaint style).
-          layerOnionSkinEnabledOf: _session.isLayerOnionSkinEnabled,
-          onToggleLayerOnionSkin: _session.toggleLayerOnionSkin,
-          displayedOnionSkinOn: _session.displayedLayersOnionSkinEnabled,
-          // Comma edge drags preview live from the session's drag-start
-          // snapshot and commit as ONE undo entry on release.
-          commaDrag: TimelineCommaDragCallbacks(
-            onBegin: (layerId, blockStartIndex, edge) =>
-                _session.beginExposureEdgeDrag(
-                  layerId: layerId,
-                  blockStartIndex: blockStartIndex,
-                  edge: edge,
-                ),
-            onUpdate: _session.updateExposureEdgeDrag,
-            onEnd: _session.endExposureEdgeDrag,
-            onCancel: _session.cancelExposureEdgeDrag,
-          ),
-          // TVP-style frame ranges (UI-R8): a cell drag SELECTS a range
-          // (block-snapped), a drag starting inside the selection MOVES it
-          // — the block-body immediate move's successor, same live-preview
-          // + one-undo discipline.
-          rangeHooks: TimelineFrameRangeHooks(
-            selection: _session.frameRangeSelection,
-            onSelectUpdate:
-                (layerId, anchorIndex, headIndex, {headLayerId, headLaneId}) =>
-                    _session.updateFrameRangeSelectionDrag(
-                      layerId: layerId,
-                      anchorIndex: anchorIndex,
-                      headIndex: headIndex,
-                      headLayerId: headLayerId,
-                      headLaneId: headLaneId,
-                    ),
-            onClear: _session.clearFrameRangeSelection,
-            move: TimelineRangeMoveCallbacks(
-              onBegin: _session.beginFrameRangeMoveDrag,
-              onUpdate: ({required frameDelta, targetLayerId}) =>
-                  _session.updateFrameRangeMoveDrag(
-                    frameDelta: frameDelta,
-                    targetLayerId: targetLayerId,
-                  ),
-              onEnd: _session.endFrameRangeMoveDrag,
-              onCancel: _session.cancelFrameRangeMoveDrag,
+    // Touching this panel makes it the one the frame-axis verbs answer to
+    // (user, 2026-08-05). A row pick is no longer the only way to move the
+    // flip's subject — working here at all is, which is what picking up a
+    // panel actually feels like. Translucent so every child still gets its
+    // own gesture; this only listens.
+    return Listener(
+      behavior: HitTestBehavior.translucent,
+      onPointerDown: (_) => _session.claimTimelineRow(),
+      child: ListenableBuilder(
+        listenable: Listenable.merge([
+          ?widget.cameraViewEnabled,
+          // The camera DIM is NOT here (R27 #9): its slider subscribes to it
+          // directly, so a drag repaints one control instead of the panel.
+          // Live take preview (REC1-C): the armed SE lane swaps identity at
+          // most once per FRAME while recording — this panel-scoped rebuild
+          // is the notify-free channel (R12-B: ticks never notify the
+          // session).
+          _session.voiceRecordPreviewLane,
+          // R27 #13: the empty-cel tint must clear the INSTANT a stroke
+          // lands. Cel pixels live outside the Layer value, so nothing in
+          // the ordinary notify path told this panel to look again — the
+          // tint sat until an unrelated rebuild. Only EMPTY↔drawn crossings
+          // bump this, so ordinary strokes cost nothing.
+          _session.brushFrameStore.celContentRevision,
+        ]),
+        builder: (context, _) {
+          // Zoom scoping (UI-R6 #4): the toolbar widget is built ONCE per
+          // host rebuild and reused across zoom steps — the identical
+          // instance lets its transport + ~25 buttons skip rebuilding while
+          // the ValueListenableBuilder below re-lays-out just the panel.
+          final timelineToolbar = _buildTimelineToolbar();
+          Widget buildPanel(
+            BuildContext context,
+            double pixelsPerFrame,
+            Widget? child,
+          ) => TimelinePanel(
+            layers: _displayLayers(),
+            activeLayerId: _session.activeLayerId,
+            // Edit drags (comma/trim) preview through the scoped channel: a
+            // step rebuilds the dragged row's gate + the cursor overlay only,
+            // never this host (the release commit is the one session notify).
+            dragPreview: _session.dragPreview,
+            frameCursor: _frameCursor,
+            frameCachedSignal: _frameCachedSignal,
+            isFrameCached: _session.isPlaybackFrameCached,
+            playbackFrameCount: _session.activeCutPlaybackFrameCount,
+            exposureStateForLayer: _session.exposureStateForLayer,
+            frameNameForLayer: _session.frameNameForLayer,
+            // R26 #44: ACTION-section blocks whose cel is still blank gray
+            // their paper; the token keys the row memo (cel pixels live
+            // outside the Layer value).
+            celContent: _celContent,
+            onSelectLayer: _session.selectLayer,
+            // Ruler scrubs during playback SEEK the playback clock instead of
+            // moving the (hidden) editing playhead.
+            onSelectFrame: (frameIndex) {
+              if (_session.playback.isActive) {
+                _session.playback.seekToLocalFrame(frameIndex);
+              } else {
+                _session.selectFrameIndex(frameIndex);
+              }
+            },
+            // Ruler drags: per-move seeks ride the cursor path (value-only —
+            // the playhead and the canvas preview follow, nothing rebuilds);
+            // the release commits the selection as ONE ordinary seek.
+            onScrubFrame: (frameIndex) {
+              if (_session.playback.isActive) {
+                _session.playback.seekToLocalFrame(frameIndex);
+              } else {
+                _session.scrubFrameIndex(frameIndex);
+              }
+            },
+            onScrubEnd: () {
+              if (!_session.playback.isActive) {
+                _session.commitFrameScrub();
+              }
+            },
+            // End-line drag = cut length (UI-R18 #14): the boundary grip
+            // end-trims the ACTIVE cut through the storyboard's trim
+            // channel — live preview, ONE undo on release.
+            cutEndDrag: _cutEndDragCallbacks(),
+            // Sparse-row memo identities (UI-R20 #4): camera/instruction
+            // rows re-enter the row memo, invalidated exactly by these.
+            memoAux: TimelineRowMemoAux(
+              cameraTrack: _session.activeCutOrNull?.camera.track,
+              instructionDefs: _session.cameraInstructionSet,
             ),
-          ),
-          // The LANE selection domain (UI-R23 #3 part 2; MULTI-LANE since
-          // R26 #3): a lane-band pan selects lane rows — the cross-row
-          // delta spans the layer's lane group like cells span layers,
-          // the group header anchors the WHOLE group — and a pan inside
-          // the selection moves every spanned lane's keys. Frame
-          // selection ⊥ transform keys, mutually exclusive domains.
-          laneRange: TimelineLaneRangeCallbacks(
-            selection: _session.laneRangeSelection,
-            onSelectUpdate:
-                (layerId, laneId, anchorIndex, headIndex, headRowDelta) =>
-                    _session.updateLaneRangeSelectionDrag(
-                      layerId: layerId,
-                      laneId: laneId,
-                      anchorIndex: anchorIndex,
-                      headIndex: headIndex,
-                      headLaneId: _laneSpanHeadLane(
-                        layerId,
-                        laneId,
-                        headRowDelta,
+            onActivateCell: _activateCellEditor,
+            instructionDefById: (instructionId) =>
+                _session.cameraInstructionSet.defById(instructionId),
+            // Display resolver: the live take's sentinel path maps to the
+            // growing envelope (REC1-C), everything else to the conform
+            // store's peaks.
+            audioPeaksFor: _session.audioPeaksForDisplay,
+            // The tooltip string doubles as the marker switch (REC1-D):
+            // null while the clipping notice is off.
+            seClipMarkerTooltip: _session.audioSyncSettings.value.clippingNotice
+                ? _session.uiStrings.recordClipMarkerTooltip
+                : null,
+            // Everything the audio lane may ask of the session, bound once
+            // here instead of threaded as six parameters through the panel
+            // and both grids.
+            //
+            // The slide edit previews LOCALLY in the lane span (its own
+            // painter, no session traffic per move) and commits ONE undo on
+            // release — the repo-live drag session rebuilt every panel per
+            // move and made the slide feel heavy (R5-⑧); the session drag
+            // API stays for callers that need the cross-panel mirror.
+            audioLane: TimelineAudioLaneCallbacks(
+              // Media-browser drops: link the dragged sound to the block.
+              onDropMediaAsset: (layerId, blockStartFrame, path) =>
+                  _session.linkMediaAssetToSeBlock(
+                    layerId: layerId,
+                    blockStartFrame: blockStartFrame,
+                    path: path,
+                  ),
+              onSetClipOffset: _session.setAudioClipOffset,
+              onSetClipFades: (layerId, clipIndex, fadeIn, fadeOut) =>
+                  _session.setAudioClipFades(
+                    layerId,
+                    clipIndex,
+                    fadeInFrames: fadeIn,
+                    fadeOutFrames: fadeOut,
+                  ),
+            ),
+            onAddLayer: _session.addLayer,
+            isLayerSoloed: (layerId) =>
+                _session.soloedSeLayerIds.value.contains(layerId),
+            onOpenLayerMixer: (anchorContext, layerId) => unawaited(
+              showSeLayerMixer(
+                anchorContext,
+                session: _session,
+                layerId: layerId,
+              ),
+            ),
+            // Kind-dispatched (unified layer controls): the camera row drives
+            // the camera-view notifiers, every other row the layer flags.
+            onToggleLayerVisibility: _toggleLayerVisibility,
+            onLayerOpacityChanged: _previewLayerOpacity,
+            onLayerOpacityChangeEnd: _commitLayerOpacity,
+            onToggleLayerTimesheet: _session.toggleLayerTimesheet,
+            onToggleLayerFillReference: _session.toggleLayerFillReference,
+            onLayerMarkSelected: _session.setLayerMark,
+            // The AE-style fx MASTER over the row's per-group switches (R8:
+            // model state, read straight off the layer).
+            layerFxStateOf: _session.layerFxState,
+            layerIsLinkedOf: _session.isLayerLinked,
+            // Folder rows are layer rows: their eye, opacity, blend, fx
+            // switch, FX lanes and selection all ride the layer hooks
+            // already threaded above. Only the members' twirl lands here.
+            onToggleLayerCollapsed: _session.toggleLayerCollapsed,
+            onToggleLayerFx: _session.toggleLayerFx,
+            // Per-layer onion skin (UI-R17 #5, TVPaint style).
+            layerOnionSkinEnabledOf: _session.isLayerOnionSkinEnabled,
+            onToggleLayerOnionSkin: _session.toggleLayerOnionSkin,
+            displayedOnionSkinOn: _session.displayedLayersOnionSkinEnabled,
+            // Comma edge drags preview live from the session's drag-start
+            // snapshot and commit as ONE undo entry on release.
+            commaDrag: TimelineCommaDragCallbacks(
+              onBegin: (layerId, blockStartIndex, edge) =>
+                  _session.beginExposureEdgeDrag(
+                    layerId: layerId,
+                    blockStartIndex: blockStartIndex,
+                    edge: edge,
+                  ),
+              onUpdate: _session.updateExposureEdgeDrag,
+              onEnd: _session.endExposureEdgeDrag,
+              onCancel: _session.cancelExposureEdgeDrag,
+            ),
+            // TVP-style frame ranges (UI-R8): a cell drag SELECTS a range
+            // (block-snapped), a drag starting inside the selection MOVES it
+            // — the block-body immediate move's successor, same live-preview
+            // + one-undo discipline.
+            rangeHooks: TimelineFrameRangeHooks(
+              selection: _session.frameRangeSelection,
+              onSelectUpdate:
+                  (
+                    layerId,
+                    anchorIndex,
+                    headIndex, {
+                    headLayerId,
+                    headLaneId,
+                  }) => _session.updateFrameRangeSelectionDrag(
+                    layerId: layerId,
+                    anchorIndex: anchorIndex,
+                    headIndex: headIndex,
+                    headLayerId: headLayerId,
+                    headLaneId: headLaneId,
+                  ),
+              onClear: _session.clearFrameRangeSelection,
+              move: TimelineRangeMoveCallbacks(
+                onBegin: _session.beginFrameRangeMoveDrag,
+                onUpdate: ({required frameDelta, targetLayerId}) =>
+                    _session.updateFrameRangeMoveDrag(
+                      frameDelta: frameDelta,
+                      targetLayerId: targetLayerId,
+                    ),
+                onEnd: _session.endFrameRangeMoveDrag,
+                onCancel: _session.cancelFrameRangeMoveDrag,
+              ),
+            ),
+            // The LANE selection domain (UI-R23 #3 part 2; MULTI-LANE since
+            // R26 #3): a lane-band pan selects lane rows — the cross-row
+            // delta spans the layer's lane group like cells span layers,
+            // the group header anchors the WHOLE group — and a pan inside
+            // the selection moves every spanned lane's keys. Frame
+            // selection ⊥ transform keys, mutually exclusive domains.
+            laneRange: TimelineLaneRangeCallbacks(
+              selection: _session.laneRangeSelection,
+              onSelectUpdate:
+                  (layerId, laneId, anchorIndex, headIndex, headRowDelta) =>
+                      _session.updateLaneRangeSelectionDrag(
+                        layerId: layerId,
+                        laneId: laneId,
+                        anchorIndex: anchorIndex,
+                        headIndex: headIndex,
+                        headLaneId: _laneSpanHeadLane(
+                          layerId,
+                          laneId,
+                          headRowDelta,
+                        ),
+                      ),
+              onTapAt: _standOnLane,
+              onMoveBegin: _session.beginLaneRangeMoveDrag,
+              onMoveUpdate: (frameDelta) =>
+                  _session.updateLaneRangeMoveDrag(frameDelta: frameDelta),
+              onMoveEnd: _session.endLaneRangeMoveDrag,
+              onMoveCancel: _session.cancelLaneRangeMoveDrag,
+            ),
+            // The TVP run-edge cluster (UI-R9 #10): [+] drags new one-frame
+            // drawings onto a run; the property tag sets the edge's
+            // None/Hold/Repeat mode (ghosts fill to the cut boundary).
+            runEdit: TimelineRunEditCallbacks(
+              onAddBegin: (layerId, blockStartIndex, {required atEnd}) =>
+                  _session.beginRunFramesAddDrag(
+                    layerId: layerId,
+                    blockStartIndex: blockStartIndex,
+                    atEnd: atEnd,
+                  ),
+              onAddUpdate: _session.updateRunFramesAddDrag,
+              onAddEnd: _session.endRunFramesAddDrag,
+              onAddCancel: _session.cancelRunFramesAddDrag,
+              onEdgeModeSelected:
+                  (
+                    layerId,
+                    blockStartIndex,
+                    side,
+                    mode, {
+                    scopeToSelection = false,
+                  }) => _session.setRunEdgeBehavior(
+                    layerId: layerId,
+                    blockStartIndex: blockStartIndex,
+                    side: side,
+                    mode: mode,
+                    scopeToSelection: scopeToSelection,
+                  ),
+              // The flyout's "Repeat selection" entry gates on this
+              // (UI-R19 #2).
+              canScopeToSelection: (layerId, blockStartIndex, side) =>
+                  _session.canScopeRepeatToSelection(
+                    layerId: layerId,
+                    blockStartIndex: blockStartIndex,
+                    side: side,
+                  ),
+            ),
+            orientation: widget.orientation,
+            onOrientationChanged: widget.onOrientationChanged,
+            pixelsPerFrame: pixelsPerFrame,
+            onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
+            showSeconds: widget.showSeconds,
+            onShowSecondsChanged: widget.onShowSecondsChanged,
+            timelineRailExtent: widget.timelineRailExtent,
+            xsheetRailExtent: widget.xsheetRailExtent,
+            projectFrameRate: _session.projectFrameRate,
+            expandedLaneLayerIds: widget.expandedLaneLayerIds,
+            onToggleLayerLanes: widget.onToggleLayerLanes,
+            hiddenSections: widget.hiddenSections,
+            onToggleSection: widget.onToggleSection,
+            rowFilter: widget.rowFilter,
+            onSetRowFilter: widget.onSetRowFilter,
+            collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
+            onToggleAttachGroup: widget.onToggleAttachGroup,
+            visibilitySoloEnabled: _session.layerVisibilitySoloEnabled,
+            // Master-bar drags (UI-R6 #2): rows' sliders follow the preview
+            // channel live; at rest the bar shows the last committed value.
+            opacityDragPreview: _session.opacityDragPreview,
+            masterOpacityValue: _session.lastMasterOpacity,
+            // R27 #6: the blend mode reads and commits from the LABEL now.
+            onLayerBlendModeSelected: _session.setLayerBlendMode,
+            blendLanguage: _session.languageSettings.value.programLanguage,
+            // R27 #9: the camera row's opacity IS the camera-view dim
+            // notifier — handing it to the slider keeps a drag off the host.
+            layerOpacityOverrideOf: _cameraDimOverrideFor,
+            // Sounds carrying over from the previous cut (UI-R7 #6): the
+            // cut start draws `~` and the spill block's start grip stands
+            // down.
+            seSpillInLayerIds: _session.trackSeSpillInLayerIds,
+            // The rail legend's bulk sweeps + the section brackets' flyout —
+            // all session-backed (R-toolbar round); the R2 filter/dim/opacity
+            // facets ride the same struct.
+            legend: LayerLegendCallbacks(
+              onShowAllLayers: () => _session.setAllLayersVisibility(true),
+              onHideAllLayers: () => _session.setAllLayersVisibility(false),
+              onToggleVisibilitySolo: _session.toggleLayerVisibilitySolo,
+              // Onion legend (UI-R17 #5): displayed-layer bulk + the panel
+              // reveal (already open = flash-in-place).
+              onToggleOnionSkinForDisplayed:
+                  _session.toggleOnionSkinForDisplayedLayers,
+              onRevealOnionSkinPanel: widget.onRevealOnionSkinPanel,
+              onSheetAllOn: () => _session.setAllLayersOnTimesheet(true),
+              onSheetAllOff: () => _session.setAllLayersOnTimesheet(false),
+              onClearAllMarks: _session.clearAllLayerMarks,
+              onClearAllFillReferences: _session.clearAllFillReferences,
+              onMuteAllSe: () => _session.setAllSeLayersMuted(true),
+              onUnmuteAllSe: () => _session.setAllSeLayersMuted(false),
+              onBypassAllFx: () => _session.setAllLayersFxBypassed(true),
+              onEnableAllFx: () => _session.setAllLayersFxBypassed(false),
+              onToggleMarkFilter: (mark) => widget.onSetRowFilter?.call(
+                widget.rowFilter.toggledMark(mark),
+              ),
+              onToggleKindFilter: (kind) => widget.onSetRowFilter?.call(
+                widget.rowFilter.toggledKind(kind),
+              ),
+              onToggleSheetOnlyFilter: () => widget.onSetRowFilter?.call(
+                widget.rowFilter.copyWith(
+                  onTimesheetOnly: !widget.rowFilter.onTimesheetOnly,
+                ),
+              ),
+              onToggleFxOnlyFilter: () => widget.onSetRowFilter?.call(
+                widget.rowFilter.copyWith(fxOnly: !widget.rowFilter.fxOnly),
+              ),
+              onToggleFillReferenceOnlyFilter: () =>
+                  widget.onSetRowFilter?.call(
+                    widget.rowFilter.copyWith(
+                      fillReferenceOnly: !widget.rowFilter.fillReferenceOnly,
+                    ),
+                  ),
+              // The legend master bar (R4 #6): preview per move, one commit.
+              onPreviewLayersOpacity: _session.previewLayersOpacity,
+              onCommitLayersOpacity: _session.commitLayersOpacity,
+              // R27 #6: the blend column's bulk pick, same displayed set.
+              onSetBlendModeForDisplayed: _session.setBlendModeForLayers,
+            ),
+            sectionRail: widget.onToggleSection == null
+                ? null
+                : TimelineSectionRailCallbacks(
+                    onToggleSection: widget.onToggleSection!,
+                    onAddLayerOfKind: _session.addLayerOfKind,
+                    onSetSectionLayersVisibility:
+                        _session.setSectionLayersVisibility,
+                    onSoloSection: _soloSection,
+                  ),
+            lanesForLayer: _lanesForLayer,
+            laneEdit: _laneEdit,
+            // A group header's twirl (AE collapse) — Transform or one of the
+            // row's effects, told apart by the lane the tap carries.
+            onToggleLaneGroup: widget.onToggleLaneGroupKey == null
+                ? null
+                : (layer, lane) => widget.onToggleLaneGroupKey!(
+                    laneGroupKey(layer.id, lane.laneId),
+                  ),
+            // R6: the per-effect eyeball on an effect's header row. One undo
+            // step through the ordinary effect-chain commit.
+            onToggleLaneGroupEnabled: (layer, lane) {
+              // R8: the Transform group's switch is the layer's own field.
+              if (lane.laneId == transformGroupHeaderLane.laneId) {
+                _session.toggleLayerTransformFx(layer.id);
+                return;
+              }
+              final effectId = parseEffectLaneId(lane.laneId)?.effectId;
+              if (effectId == null) {
+                return;
+              }
+              _commitEffectLaneEdit(
+                layer,
+                effectsWithEnabledToggled(layer.effects, effectId),
+                'Toggle ${lane.label}',
+              );
+            },
+            timelineActionToolbar: timelineToolbar,
+          );
+          // The GAP empty state (UI-R9 #3): no cut selected — no rows, no
+          // grid; the toolbar stays (its cut-scoped commands disable via
+          // their own enablement gates).
+          if (_session.activeCutOrNull == null) {
+            return Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                timelineToolbar,
+                Expanded(
+                  child: Center(
+                    child: ValueListenableBuilder(
+                      valueListenable: _session.languageSettings,
+                      builder: (context, settings, _) => Text(
+                        AppStrings.of(settings.programLanguage).noCutSelected,
+                        key: const ValueKey<String>('timeline-empty-no-cut'),
                       ),
                     ),
-            onTapAt: _standOnLane,
-            onMoveBegin: _session.beginLaneRangeMoveDrag,
-            onMoveUpdate: (frameDelta) =>
-                _session.updateLaneRangeMoveDrag(frameDelta: frameDelta),
-            onMoveEnd: _session.endLaneRangeMoveDrag,
-            onMoveCancel: _session.cancelLaneRangeMoveDrag,
-          ),
-          // The TVP run-edge cluster (UI-R9 #10): [+] drags new one-frame
-          // drawings onto a run; the property tag sets the edge's
-          // None/Hold/Repeat mode (ghosts fill to the cut boundary).
-          runEdit: TimelineRunEditCallbacks(
-            onAddBegin: (layerId, blockStartIndex, {required atEnd}) =>
-                _session.beginRunFramesAddDrag(
-                  layerId: layerId,
-                  blockStartIndex: blockStartIndex,
-                  atEnd: atEnd,
-                ),
-            onAddUpdate: _session.updateRunFramesAddDrag,
-            onAddEnd: _session.endRunFramesAddDrag,
-            onAddCancel: _session.cancelRunFramesAddDrag,
-            onEdgeModeSelected:
-                (
-                  layerId,
-                  blockStartIndex,
-                  side,
-                  mode, {
-                  scopeToSelection = false,
-                }) => _session.setRunEdgeBehavior(
-                  layerId: layerId,
-                  blockStartIndex: blockStartIndex,
-                  side: side,
-                  mode: mode,
-                  scopeToSelection: scopeToSelection,
-                ),
-            // The flyout's "Repeat selection" entry gates on this
-            // (UI-R19 #2).
-            canScopeToSelection: (layerId, blockStartIndex, side) =>
-                _session.canScopeRepeatToSelection(
-                  layerId: layerId,
-                  blockStartIndex: blockStartIndex,
-                  side: side,
-                ),
-          ),
-          orientation: widget.orientation,
-          onOrientationChanged: widget.onOrientationChanged,
-          pixelsPerFrame: pixelsPerFrame,
-          onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
-          showSeconds: widget.showSeconds,
-          onShowSecondsChanged: widget.onShowSecondsChanged,
-          timelineRailExtent: widget.timelineRailExtent,
-          xsheetRailExtent: widget.xsheetRailExtent,
-          projectFrameRate: _session.projectFrameRate,
-          expandedLaneLayerIds: widget.expandedLaneLayerIds,
-          onToggleLayerLanes: widget.onToggleLayerLanes,
-          hiddenSections: widget.hiddenSections,
-          onToggleSection: widget.onToggleSection,
-          rowFilter: widget.rowFilter,
-          onSetRowFilter: widget.onSetRowFilter,
-          collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
-          onToggleAttachGroup: widget.onToggleAttachGroup,
-          visibilitySoloEnabled: _session.layerVisibilitySoloEnabled,
-          // Master-bar drags (UI-R6 #2): rows' sliders follow the preview
-          // channel live; at rest the bar shows the last committed value.
-          opacityDragPreview: _session.opacityDragPreview,
-          masterOpacityValue: _session.lastMasterOpacity,
-          // R27 #6: the blend mode reads and commits from the LABEL now.
-          onLayerBlendModeSelected: _session.setLayerBlendMode,
-          blendLanguage: _session.languageSettings.value.programLanguage,
-          // R27 #9: the camera row's opacity IS the camera-view dim
-          // notifier — handing it to the slider keeps a drag off the host.
-          layerOpacityOverrideOf: _cameraDimOverrideFor,
-          // Sounds carrying over from the previous cut (UI-R7 #6): the
-          // cut start draws `~` and the spill block's start grip stands
-          // down.
-          seSpillInLayerIds: _session.trackSeSpillInLayerIds,
-          // The rail legend's bulk sweeps + the section brackets' flyout —
-          // all session-backed (R-toolbar round); the R2 filter/dim/opacity
-          // facets ride the same struct.
-          legend: LayerLegendCallbacks(
-            onShowAllLayers: () => _session.setAllLayersVisibility(true),
-            onHideAllLayers: () => _session.setAllLayersVisibility(false),
-            onToggleVisibilitySolo: _session.toggleLayerVisibilitySolo,
-            // Onion legend (UI-R17 #5): displayed-layer bulk + the panel
-            // reveal (already open = flash-in-place).
-            onToggleOnionSkinForDisplayed:
-                _session.toggleOnionSkinForDisplayedLayers,
-            onRevealOnionSkinPanel: widget.onRevealOnionSkinPanel,
-            onSheetAllOn: () => _session.setAllLayersOnTimesheet(true),
-            onSheetAllOff: () => _session.setAllLayersOnTimesheet(false),
-            onClearAllMarks: _session.clearAllLayerMarks,
-            onClearAllFillReferences: _session.clearAllFillReferences,
-            onMuteAllSe: () => _session.setAllSeLayersMuted(true),
-            onUnmuteAllSe: () => _session.setAllSeLayersMuted(false),
-            onBypassAllFx: () => _session.setAllLayersFxBypassed(true),
-            onEnableAllFx: () => _session.setAllLayersFxBypassed(false),
-            onToggleMarkFilter: (mark) =>
-                widget.onSetRowFilter?.call(widget.rowFilter.toggledMark(mark)),
-            onToggleKindFilter: (kind) =>
-                widget.onSetRowFilter?.call(widget.rowFilter.toggledKind(kind)),
-            onToggleSheetOnlyFilter: () => widget.onSetRowFilter?.call(
-              widget.rowFilter.copyWith(
-                onTimesheetOnly: !widget.rowFilter.onTimesheetOnly,
-              ),
-            ),
-            onToggleFxOnlyFilter: () => widget.onSetRowFilter?.call(
-              widget.rowFilter.copyWith(fxOnly: !widget.rowFilter.fxOnly),
-            ),
-            onToggleFillReferenceOnlyFilter: () => widget.onSetRowFilter?.call(
-              widget.rowFilter.copyWith(
-                fillReferenceOnly: !widget.rowFilter.fillReferenceOnly,
-              ),
-            ),
-            // The legend master bar (R4 #6): preview per move, one commit.
-            onPreviewLayersOpacity: _session.previewLayersOpacity,
-            onCommitLayersOpacity: _session.commitLayersOpacity,
-            // R27 #6: the blend column's bulk pick, same displayed set.
-            onSetBlendModeForDisplayed: _session.setBlendModeForLayers,
-          ),
-          sectionRail: widget.onToggleSection == null
-              ? null
-              : TimelineSectionRailCallbacks(
-                  onToggleSection: widget.onToggleSection!,
-                  onAddLayerOfKind: _session.addLayerOfKind,
-                  onSetSectionLayersVisibility:
-                      _session.setSectionLayersVisibility,
-                  onSoloSection: _soloSection,
-                ),
-          lanesForLayer: _lanesForLayer,
-          laneEdit: _laneEdit,
-          // A group header's twirl (AE collapse) — Transform or one of the
-          // row's effects, told apart by the lane the tap carries.
-          onToggleLaneGroup: widget.onToggleLaneGroupKey == null
-              ? null
-              : (layer, lane) => widget.onToggleLaneGroupKey!(
-                  laneGroupKey(layer.id, lane.laneId),
-                ),
-          // R6: the per-effect eyeball on an effect's header row. One undo
-          // step through the ordinary effect-chain commit.
-          onToggleLaneGroupEnabled: (layer, lane) {
-            // R8: the Transform group's switch is the layer's own field.
-            if (lane.laneId == transformGroupHeaderLane.laneId) {
-              _session.toggleLayerTransformFx(layer.id);
-              return;
-            }
-            final effectId = parseEffectLaneId(lane.laneId)?.effectId;
-            if (effectId == null) {
-              return;
-            }
-            _commitEffectLaneEdit(
-              layer,
-              effectsWithEnabledToggled(layer.effects, effectId),
-              'Toggle ${lane.label}',
-            );
-          },
-          timelineActionToolbar: timelineToolbar,
-        );
-        // The GAP empty state (UI-R9 #3): no cut selected — no rows, no
-        // grid; the toolbar stays (its cut-scoped commands disable via
-        // their own enablement gates).
-        if (_session.activeCutOrNull == null) {
-          return Column(
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              timelineToolbar,
-              Expanded(
-                child: Center(
-                  child: ValueListenableBuilder(
-                    valueListenable: _session.languageSettings,
-                    builder: (context, settings, _) => Text(
-                      AppStrings.of(settings.programLanguage).noCutSelected,
-                      key: const ValueKey<String>('timeline-empty-no-cut'),
-                    ),
                   ),
                 ),
-              ),
-            ],
+              ],
+            );
+          }
+          final zoom = widget.pixelsPerFrameListenable;
+          if (zoom == null) {
+            return buildPanel(context, widget.pixelsPerFrame, null);
+          }
+          return ValueListenableBuilder<double>(
+            valueListenable: zoom,
+            builder: buildPanel,
           );
-        }
-        final zoom = widget.pixelsPerFrameListenable;
-        if (zoom == null) {
-          return buildPanel(context, widget.pixelsPerFrame, null);
-        }
-        return ValueListenableBuilder<double>(
-          valueListenable: zoom,
-          builder: buildPanel,
-        );
-      },
+        },
+      ),
     );
   }
 

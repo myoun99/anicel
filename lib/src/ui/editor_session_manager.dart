@@ -833,6 +833,39 @@ class EditorSessionManager extends ChangeNotifier {
   /// was asking.
   TimelineRowAddress? _verbRow;
 
+  /// The TIMELINE's own row, the way [_storyboardRow] is the rail's: the
+  /// layer or property lane last engaged there. Kept so that returning to
+  /// the timeline restores the row you were on rather than resetting to
+  /// whatever the active layer happens to be.
+  TimelineRowAddress? _timelineRow;
+
+  /// The panel being worked in owns the frame-axis verbs (user, 2026-08-05:
+  /// "마지막으로 무언가 액션이 있었던 패널을 기준으로"). Picking a row is
+  /// no longer the only way to move the flip's subject — touching the
+  /// panel at all is, because that is what "I am working here" looks like.
+  ///
+  /// Each panel claims the row IT remembers rather than a fresh one, so
+  /// coming back to the timeline lands on the lane you left open instead
+  /// of dropping to the layer row.
+  ///
+  /// QUIET: nothing on screen draws [currentRow] — every reader asks at
+  /// command time — so a claim moves what the next verb acts on without
+  /// notifying. It has to be quiet: the claim fires on pointer-DOWN, and
+  /// a ruler drag's whole contract is that it stays silent per move and
+  /// commits once on release.
+  void claimTimelineRow() {
+    final layerId = activeLayerId;
+    final next =
+        _timelineRow ?? (layerId == null ? null : LayerRowAddress(layerId));
+    if (next != null) {
+      _verbRow = next;
+    }
+  }
+
+  void claimStoryboardRow() {
+    _verbRow = selectedRow;
+  }
+
   /// Defaults to the active layer's row, not the track's: with nothing
   /// picked yet the row you are on is the one you draw on. Only a cut with
   /// no layers at all falls through to the track row.
@@ -899,6 +932,11 @@ class EditorSessionManager extends ChangeNotifier {
         // R10 #19: a property row is a row you can be ON. The rail's own
         // highlight resolves it to the containing V row, like any other
         // in-cut row; what moves is the verb's subject.
+        //
+        // A lane lives in the TIMELINE, so it is the timeline's row to
+        // remember: coming back to that panel restores the lane rather
+        // than dropping to the layer it hangs under.
+        _timelineRow = row;
         if (_storeStoryboardRow(row)) {
           notifyListeners();
         }
@@ -2900,6 +2938,12 @@ class EditorSessionManager extends ChangeNotifier {
       // (selectFrameIndex also clears the parking).
       selectFrameIndex(0);
     }
+    // Yield the warm window first, exactly as a frame seek does. A cut
+    // switch used to warm immediately, which was fine while switching was
+    // a click — but the V row's flip switches cuts once per press, so a
+    // run of them queued a full-canvas warm per step and the run stuttered
+    // on work it was about to invalidate anyway.
+    prerenderScheduler.notifyEditActivity();
     _warmActiveCut();
     notifyListeners();
   }
@@ -3645,6 +3689,7 @@ class EditorSessionManager extends ChangeNotifier {
     // that stays where the user put it (2026-07-27), and it is a different
     // question: which row of the FILM is lit.
     _verbRow = LayerRowAddress(layerId);
+    _timelineRow = _verbRow;
     if (changed) {
       notifyListeners();
     }
@@ -12832,10 +12877,11 @@ class EditorSessionManager extends ChangeNotifier {
   /// the result inside a cut or parks it in the void, so a playhead
   /// standing between cuts can step out under its own power.
   void _flipCuts(TrackId trackId, {required bool forward}) {
+    // The MEMOIZED layout (identity-keyed on the project): a flip step is
+    // a per-move cost, and rebuilding the whole cross-track layout for
+    // each one is exactly the tax that memo exists to remove.
     final entries = [
-      for (final entry in buildStoryboardTimelineLayout(
-        _repository.requireProject(),
-      ))
+      for (final entry in _projectLayout())
         if (entry.trackId == trackId) entry,
     ];
     if (entries.isEmpty) {
