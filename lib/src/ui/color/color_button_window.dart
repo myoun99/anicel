@@ -39,6 +39,10 @@ const double colorButtonWindowHeight = 320;
 /// invisible until you opened something. The pair is exactly one 42px button
 /// cell, so it drops into the strip beside the blend button without the
 /// strip learning a new size.
+///
+/// ⛔**There is no swap GLYPH** (유저 확정, 두 번 말했다): tapping the back
+/// slot already swaps, so a separate button is the same verb twice. The pair
+/// is the whole control.
 class SelectedColorButton extends StatefulWidget {
   const SelectedColorButton({
     super.key,
@@ -57,12 +61,6 @@ class SelectedColorButton extends StatefulWidget {
   final ValueChanged<int> onBackgroundColorChanged;
   final ValueChanged<ColorPaletteState> onPaletteChanged;
 
-  /// The swap glyph's lane beside the pair. The glyph sat UNDER the pair on
-  /// the rail (the user's placement), which a 48px strip has no room for —
-  /// 42 + 16 does not fit — so it moved to the pair's side rather than being
-  /// dropped.
-  static const double swapExtent = 16;
-
   @override
   State<SelectedColorButton> createState() => _SelectedColorButtonState();
 }
@@ -73,9 +71,10 @@ class _SelectedColorButtonState extends State<SelectedColorButton> {
   /// rebuilds this widget gets.
   final OverlayPortalController _window = OverlayPortalController();
 
-  /// Exchanges the two slots. It lives HERE rather than in the wheel
-  /// because the pair does: the swap is what the pair means, and the
-  /// window may not even be open.
+  /// Exchanges the two slots — the Photoshop gesture, carried by the BACK
+  /// SLOT itself. It lives HERE rather than in the wheel because the pair
+  /// does: the swap is what the pair means, and the window may not even be
+  /// open.
   void _swap() {
     widget.onColorChanged(widget.backgroundColor);
     widget.onBackgroundColorChanged(widget.color);
@@ -83,75 +82,44 @@ class _SelectedColorButtonState extends State<SelectedColorButton> {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        // The swap glyph: the same verb as tapping the back slot, said in a
-        // way you can find.
-        SizedBox(
-          width: SelectedColorButton.swapExtent,
-          height: ColorSlotPair.extent,
-          child: IconButton(
-            key: const ValueKey<String>('tool-color-swap-button'),
-            tooltip: 'Swap Colors',
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints.tightFor(
-              width: SelectedColorButton.swapExtent,
-              height: ColorSlotPair.extent,
-            ),
-            iconSize: 13,
-            icon: const Icon(Icons.swap_horiz),
-            // The 16px lane IS the target: M3 inflates an icon button to 48
-            // unless told otherwise, which in a 48px strip would swallow the
-            // swatch beside it (the same inflation R9 #17 caught on the rail).
-            style: IconButton.styleFrom(
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            onPressed: _swap,
-          ),
-        ),
-        PinnedAnchoredPopup(
-          controller: _window,
-          label: 'color-button-window',
-          width: colorButtonWindowWidth,
-          height: colorButtonWindowHeight,
-          // Built from the LIVE values: the portal rebuilds this whenever
-          // the strip rebuilds, so a colour picked with the eyedropper on
-          // the canvas reaches the open window. That only became possible —
-          // and necessary — when the window stopped closing on the first
-          // touch outside it.
-          builder: (context, _) => ColorButtonWindow(
-            color: widget.color,
-            palette: widget.palette,
-            onColorChanged: widget.onColorChanged,
-            onPaletteChanged: widget.onPaletteChanged,
-          ),
-          child: Tooltip(
-            message: 'Colour',
-            child: Material(
-              color: Colors.transparent,
-              clipBehavior: Clip.antiAlias,
-              borderRadius: BorderRadius.circular(4),
-              child: InkWell(
-                key: const ValueKey<String>('tool-color-button'),
-                borderRadius: BorderRadius.circular(4),
-                // Tap again to close: with no barrier to swallow the
-                // gesture, the anchor is the window's switch.
-                onTap: _window.toggle,
-                // The pair sizes itself to one 42px button cell, which is
-                // what the anchor's box has to be: the window is placed
-                // against it.
-                child: ColorSlotPair(
-                  keyPrefix: 'tool-color',
-                  foreground: Color(widget.color),
-                  background: Color(widget.backgroundColor),
-                  onBackgroundTap: _swap,
-                ),
-              ),
+    return PinnedAnchoredPopup(
+      controller: _window,
+      label: 'color-button-window',
+      width: colorButtonWindowWidth,
+      height: colorButtonWindowHeight,
+      // Built from the LIVE values: the portal rebuilds this whenever the
+      // strip rebuilds, so a colour picked with the eyedropper on the canvas
+      // reaches the open window. That only became possible — and necessary —
+      // when the window stopped closing on the first touch outside it.
+      builder: (context, _) => ColorButtonWindow(
+        color: widget.color,
+        palette: widget.palette,
+        onColorChanged: widget.onColorChanged,
+        onPaletteChanged: widget.onPaletteChanged,
+      ),
+      child: Tooltip(
+        message: 'Colour',
+        child: Material(
+          color: Colors.transparent,
+          clipBehavior: Clip.antiAlias,
+          borderRadius: BorderRadius.circular(4),
+          child: InkWell(
+            key: const ValueKey<String>('tool-color-button'),
+            borderRadius: BorderRadius.circular(4),
+            // Tap again to close: with no barrier to swallow the gesture,
+            // the anchor is the window's switch.
+            onTap: _window.toggle,
+            // The pair sizes itself to one 42px button cell, which is what
+            // the anchor's box has to be: the window is placed against it.
+            child: ColorSlotPair(
+              keyPrefix: 'tool-color',
+              foreground: Color(widget.color),
+              background: Color(widget.backgroundColor),
+              onBackgroundTap: _swap,
             ),
           ),
         ),
-      ],
+      ),
     );
   }
 }
