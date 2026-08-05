@@ -58,7 +58,6 @@ void main() {
   }) {
     return TimelineRowCellsPainter(
       layer: layer,
-      playbackFrameCount: 24,
       geometry: testFrameGeometry(
         frameCellExtent: 24,
         frameEndIndexExclusive: 24,

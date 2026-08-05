@@ -177,7 +177,6 @@ class TimelineGridTileStore {
       _entries.remove(key)?.image.dispose();
       _entries[key] = _TileEntry(
         layer: request.painter.layer,
-        playbackFrameCount: request.painter.playbackFrameCount,
         frameCellExtent: request.painter.frameCellExtent,
         crossAxisExtent: request.painter.crossAxisExtent,
         colorScheme: request.painter.colorScheme,
@@ -498,7 +497,6 @@ class _TileRequest {
 class _TileEntry {
   const _TileEntry({
     required this.layer,
-    required this.playbackFrameCount,
     required this.frameCellExtent,
     required this.crossAxisExtent,
     required this.colorScheme,
@@ -513,7 +511,6 @@ class _TileEntry {
   });
 
   final Object layer;
-  final int playbackFrameCount;
   final double frameCellExtent;
   final double crossAxisExtent;
   final Object colorScheme;
@@ -540,8 +537,10 @@ class _TileEntry {
     int spanEndIndexExclusive,
     double devicePixelRatio,
   ) {
+    // The cut's LENGTH is deliberately absent: it is not baked into these
+    // tiles any more (the out-of-cut wash became its own overlay), so a
+    // cut-length drag re-rasters nothing.
     return identical(layer, painter.layer) &&
-        playbackFrameCount == painter.playbackFrameCount &&
         frameCellExtent == painter.frameCellExtent &&
         crossAxisExtent == painter.crossAxisExtent &&
         identical(colorScheme, painter.colorScheme) &&

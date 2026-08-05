@@ -129,24 +129,27 @@ Future<void> _dragGrip(WidgetTester tester, String id, int frames) async {
 }
 
 void main() {
-  testWidgets('R10 R4: a LEAD grip belongs to the CUT, so only a cut\'s '
-      'first panel hangs one — one boundary, one handle', (tester) async {
+  testWidgets('EVERY panel hangs a leading grip — the two edges of one '
+      'boundary name two edits, not one', (tester) async {
     await _openStoryboard(tester);
 
     // Panels in track order: cut 1's two, then one each for cuts 2 and 3.
-    // Panel 1 is INTERIOR to cut 1, so it has no front grip: that boundary
-    // is already served by panel 0's back grip. P5 #8 hung one there too
-    // and had it impersonate the neighbour — two handles doing one thing.
+    // Panel 1 is INTERIOR to cut 1 and hangs a front grip all the same
+    // (user's rule 2026-08-02). It is not the impersonation P5 #8 shipped:
+    // panel 0's BACK grip grows the cut at its tail, panel 1's FRONT grip
+    // shortens the cut at its head. Same boundary, opposite ends give way.
     expect(
       timelineRowChromeIds(tester, _trackId.value, prefix: 'storyboard'),
       <String>[
         'block-edge-grip-start-grip-track-0',
         'block-edge-grip-end-grip-track-0',
+        'block-edge-grip-start-grip-track-1',
         'block-edge-grip-end-grip-track-1',
         'block-edge-grip-start-grip-track-2',
         'block-edge-grip-end-grip-track-2',
         'block-edge-grip-start-grip-track-3',
         'block-edge-grip-end-grip-track-3',
+        'block-edge-grip-start-grip-track-4',
         'block-edge-grip-end-grip-track-4',
       ],
     );
@@ -321,9 +324,62 @@ void main() {
         0,
         reason: 'the end held, so the follower never moved',
       );
-      // The conte row is not re-keyed: it bounds the drag (you cannot trim
-      // past your own panels) but the gesture is about the CUT.
+      // The panel the grip sat on is the one that lost the frames. Before
+      // 2026-08-02 the row kept its keys and the LAST panel was silently
+      // clipped to the new duration instead — the user's report.
+      expect(_divisionsOf(tester, 'cut-1'), [0, 3]);
+      final row = storyboardLayerForCut(cut)!;
+      expect(row.timeline[0]!.length, 3, reason: 'the grabbed panel, 5 -> 3');
+      expect(row.timeline[3]!.length, 5, reason: 'the other one, untouched');
+    });
+
+    testWidgets('an INNER panel\'s front grip takes the frames off the same '
+        'panel, and the cut\'s head still absorbs them', (tester) async {
+      await _openStoryboard(tester);
       expect(_divisionsOf(tester, 'cut-1'), [0, 5]);
+
+      await _dragGrip(tester, 'block-edge-grip-start-grip-track-1', 2);
+
+      final cut = _cutById(tester, 'cut-1');
+      expect(cut.duration, 8);
+      expect(cut.leadingGapFrames, 2);
+      final row = storyboardLayerForCut(cut)!;
+      expect(
+        _divisionsOf(tester, 'cut-1'),
+        [0, 5],
+        reason: 'the panels IN FRONT of the grab keep their cut-local keys — '
+            'on screen they translate, because the cut head moved with them',
+      );
+      expect(row.timeline[0]!.length, 5, reason: 'untouched');
+      expect(row.timeline[5]!.length, 3, reason: 'the grabbed panel, 5 -> 3');
+      expect(
+        _cutById(tester, 'cut-2').leadingGapFrames,
+        0,
+        reason: 'the end held, so nothing behind the cut moved',
+      );
+    });
+
+    testWidgets('the two edges of one boundary are two edits: the back grip '
+        'grows the cut at its TAIL, the front grip shortens it at its HEAD', (
+      tester,
+    ) async {
+      await _openStoryboard(tester);
+
+      // Panel 0's trailing edge and panel 1's leading edge sit on the same
+      // boundary. This is the pair R4 called "two handles, one thing" — and
+      // the reason it is not: they move opposite ends of the cut.
+      await _dragGrip(tester, 'block-edge-grip-end-grip-track-0', 2);
+      expect(_divisionsOf(tester, 'cut-1'), [0, 7]);
+      expect(_cutById(tester, 'cut-1').duration, 12);
+      expect(_cutById(tester, 'cut-1').leadingGapFrames, 0);
+
+      await tester.tap(find.byKey(const ValueKey<String>('undo-button')));
+      await tester.pumpAndSettle();
+
+      await _dragGrip(tester, 'block-edge-grip-start-grip-track-1', 2);
+      expect(_divisionsOf(tester, 'cut-1'), [0, 5]);
+      expect(_cutById(tester, 'cut-1').duration, 8);
+      expect(_cutById(tester, 'cut-1').leadingGapFrames, 2);
     });
 
     testWidgets('ONE undo restores the cut length and the head together', (

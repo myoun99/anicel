@@ -851,7 +851,17 @@ void main() {
       expect(updatedLayer.id, layer.id);
       expect(updatedLayer.name, layer.name);
       expect(updatedLayer.frames, [frame]);
-      expect(updatedLayer.timeline, layer.timeline);
+      // A storyboard row COVERS its cut, and the repository enforces that on
+      // every write ([cutWithCoveringStoryboardRow]) — the block's entry is
+      // the same one, stretched. The kind is what changed the shape; nothing
+      // in the entry was dropped.
+      expect(updatedLayer.timeline.keys, layer.timeline.keys);
+      expect(updatedLayer.timeline[0]!.frameId, layer.timeline[0]!.frameId);
+      expect(
+        updatedLayer.timeline[0]!.breakdownOffsets,
+        layer.timeline[0]!.breakdownOffsets,
+      );
+      expect(updatedLayer.timeline[0]!.length, updatedCut.duration);
       expect(updatedLayer.isVisible, isFalse);
       expect(updatedLayer.opacity, 0.25);
       expect(updatedCut.metadata, const CutMetadata(note: 'Cut note'));

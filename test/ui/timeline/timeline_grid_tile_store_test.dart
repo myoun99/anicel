@@ -52,7 +52,6 @@ void main() {
   }) {
     return TimelineRowCellsPainter(
       layer: layer,
-      playbackFrameCount: 24,
       geometry: testFrameGeometry(
         frameCellExtent: 24,
         frameEndIndexExclusive: 40,
@@ -321,7 +320,6 @@ void main() {
     // simply scales while the fresh one lands.
     TimelineRowCellsPainter zoomedTo(double extent) => TimelineRowCellsPainter(
       layer: editedPainter.layer,
-      playbackFrameCount: 24,
       geometry: testFrameGeometry(
         frameCellExtent: extent,
         frameEndIndexExclusive: 40,

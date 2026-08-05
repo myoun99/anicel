@@ -5,11 +5,14 @@ import 'package:flutter/material.dart';
 
 import '../../models/camera_instruction.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/cut_id.dart';
 import '../../models/timesheet_document.dart';
 import '../../models/timesheet_info.dart';
 import '../text/dialogue_fit_layout.dart';
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
+import '../timeline/timeline_cut_end_handle.dart'
+    show timelineCutEndPreviewFrameCount;
 import '../timeline/timeline_drag_preview.dart';
 import 'timesheet_notation.dart';
 
@@ -322,8 +325,16 @@ class TimesheetDocumentLayout {
   /// The data-driven cut-end line (the paper's horizontal strikethrough,
   /// S2-0): the bottom edge of the LAST playback frame row, spanning its
   /// half — not ink, same concept as the timeline's cut-end boundary.
-  ({int page, int half, double y}) get cutEndLine {
-    final lastFrame = document.playbackFrameCount - 1;
+  ({int page, int half, double y}) get cutEndLine =>
+      cutEndLineFor(document.playbackFrameCount);
+
+  /// The same line for a length the document does not carry — what a
+  /// cut-length drag is previewing. The geometry is pure arithmetic over
+  /// the sheet's rows, so it answers for any count without the document
+  /// having to be rebuilt (which is the whole reason the sheet stays
+  /// memoized against the committed cut).
+  ({int page, int half, double y}) cutEndLineFor(int playbackFrameCount) {
+    final lastFrame = playbackFrameCount - 1;
     final position = positionOfFrame(lastFrame);
     return (
       page: position.page,
@@ -371,6 +382,7 @@ class TimesheetDocumentPainter extends CustomPainter {
     this.notation = TimesheetNotation.english,
     this.paintLayer,
     this.dragPreview,
+    this.cutId,
   }) : super(repaint: dragPreview);
 
   final TimesheetDocument document;
@@ -392,8 +404,26 @@ class TimesheetDocumentPainter extends CustomPainter {
   /// release commits.
   final ValueListenable<TimelineDragPreview?>? dragPreview;
 
+  /// Which cut this sheet is printing, so a cut-length drag can be read off
+  /// [dragPreview]. Null in exports and focused tests — the sheet then
+  /// prints the committed length, which is what those want anyway.
+  final CutId? cutId;
+
   bool get _drawForm => paintLayer != TimesheetPaintLayer.content;
   bool get _drawContent => paintLayer != TimesheetPaintLayer.form;
+
+  /// The cut's length as this PAINT should print it: the in-flight drag's
+  /// duration while one is targeting this cut, the document's otherwise.
+  ///
+  /// Read LIVE at paint time, never captured — the same discipline
+  /// [displayCellsFor] already follows one method below. The document stays
+  /// stale on purpose (it is memoized against the committed cut); only the
+  /// things a drag actually moves ask this.
+  int get livePlaybackFrameCount => timelineCutEndPreviewFrameCount(
+    preview: dragPreview?.value,
+    cutId: cutId,
+    playbackFrameCount: document.playbackFrameCount,
+  );
 
   /// The column's display cells, with an in-flight drag preview
   /// substituted for its layer. Every layer-backed column kind previews
@@ -619,11 +649,11 @@ class TimesheetDocumentPainter extends CustomPainter {
   /// frame row — DATA rendering (S2-0), the same visual language as the
   /// timeline's cut-end boundary, never ink.
   void _paintCutEndLine(Canvas canvas) {
-    if (document.playbackFrameCount < 1 ||
-        document.playbackFrameCount > document.rowCount) {
+    final frameCount = livePlaybackFrameCount;
+    if (frameCount < 1 || frameCount > document.rowCount) {
       return;
     }
-    final line = layout.cutEndLine;
+    final line = layout.cutEndLineFor(frameCount);
     // In page view the cut may end on a page that isn't on screen (R26
     // #41) — its row geometry belongs to another sheet, so nothing prints.
     if (!layout.visiblePageIndexes.contains(line.page)) {
@@ -646,7 +676,10 @@ class TimesheetDocumentPainter extends CustomPainter {
   /// spills into row 0 — the mark sits on the column's first row edge.
   /// Pure display, exactly the timeline rows' meaning.
   void _paintSeCrossingMarks(Canvas canvas) {
-    final endLine = layout.cutEndLine;
+    // The `~` straddles the red line, so it follows the same live length —
+    // otherwise a drag leaves the mark hanging where the line used to be.
+    final frameCount = livePlaybackFrameCount;
+    final endLine = layout.cutEndLineFor(frameCount);
     final startTop = layout.frameRowTop(0);
     final startPosition = layout.positionOfFrame(0);
     for (var column = 0; column < document.columns.length; column += 1) {
@@ -657,8 +690,8 @@ class TimesheetDocumentPainter extends CustomPainter {
       }
       final columnWidth = layout.columnWidthFor(spec.kind);
       if (spec.crossesCutEnd &&
-          document.playbackFrameCount >= 1 &&
-          document.playbackFrameCount <= document.rowCount &&
+          frameCount >= 1 &&
+          frameCount <= document.rowCount &&
           layout.visiblePageIndexes.contains(endLine.page)) {
         final left =
             layout.halfLeft(endLine.page, endLine.half) +

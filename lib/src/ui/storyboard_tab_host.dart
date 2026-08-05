@@ -551,8 +551,12 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   // could re-route the release onto a verb whose fields
                   // were never set): the continuations are one funnel.
                   stripEdges: StoryboardStripEdgeCallbacks(
-                    onCutEdgeBegin: (cutId, edge) =>
-                        _session.beginCutEdgeDrag(cutId: cutId, edge: edge),
+                    onCutEdgeBegin: (cutId, edge, panelIndex) =>
+                        _session.beginCutEdgeDrag(
+                          cutId: cutId,
+                          edge: edge,
+                          panelIndex: panelIndex,
+                        ),
                     onCommaBegin: (cutId, blockStartIndex) =>
                         _session.beginStoryboardCommaDrag(
                           cutId: cutId,

@@ -46,6 +46,56 @@ import 'timeline_cell_style.dart';
   );
 }
 
+/// The OUT-OF-CUT wash: everything past the cut's last frame, greyed.
+///
+/// One rect over the whole grid, in the same content coordinate space the
+/// line overlay uses — it used to be blended into every cell, inside the
+/// baked substrate tiles, which is what tied those tiles to the cut's
+/// LENGTH. A length that moved therefore could not be drawn without
+/// re-rastering the row, so the drag showed the committed shading for its
+/// whole duration and snapped on release. Lifted out, it costs one
+/// `drawRect` and follows the drag for free (user's layering 2026-08-02).
+///
+/// The blend is the same colour and alpha the per-cell version used, and
+/// over an already-painted cell it composites to the same pixels. Block
+/// BORDERS differ slightly: they had their own dim ink, and one rect cannot
+/// tell a border from its cell — accepted by the user, and the wash reads
+/// as one region rather than as a run of separately shaded cells.
+class TimelineOutsideCutWashPainter extends CustomPainter {
+  const TimelineOutsideCutWashPainter({
+    required this.outsideStart,
+    required this.colorScheme,
+    this.axis = Axis.horizontal,
+  });
+
+  /// Where the cut ends, in content pixels along the frame axis.
+  final double outsideStart;
+  final ColorScheme colorScheme;
+  final Axis axis;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final mainExtent = axis == Axis.horizontal ? size.width : size.height;
+    if (outsideStart >= mainExtent) {
+      return;
+    }
+    final start = outsideStart < 0 ? 0.0 : outsideStart;
+    canvas.drawRect(
+      axis == Axis.horizontal
+          ? Rect.fromLTWH(start, 0, size.width - start, size.height)
+          : Rect.fromLTWH(0, start, size.width, size.height - start),
+      Paint()
+        ..color = colorScheme.surfaceContainerHighest.withValues(alpha: 0.54),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant TimelineOutsideCutWashPainter oldDelegate) =>
+      oldDelegate.outsideStart != outsideStart ||
+      oldDelegate.colorScheme != colorScheme ||
+      oldDelegate.axis != axis;
+}
+
 class TimelineBeatLinesPainter extends CustomPainter {
   TimelineBeatLinesPainter({
     required this.frameCellExtent,

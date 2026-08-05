@@ -7569,12 +7569,13 @@ class EditorSessionManager extends ChangeNotifier {
   /// from the cut duration, and then the row's last comma clamps at one
   /// frame while the duration keeps absorbing the whole delta.
   ({Map<CutId, int> durations, Map<CutId, int> gaps})? _cutSyncResizeFor(
-    int afterRowEnd,
+    Layer afterRow,
   ) {
     final sync = _edgeDragCutSync;
     if (sync == null) {
       return null;
     }
+    final afterRowEnd = _storedRowEndOf(afterRow);
     // Nothing moved on the row = nothing to sync (a drag that never left
     // its frame must not snap a mismatched pair on its own).
     if (afterRowEnd == sync.beforeRowEnd) {
@@ -7585,10 +7586,28 @@ class EditorSessionManager extends ChangeNotifier {
     // the sync, the storyboard row's divisions are somebody else's data —
     // clamp to their floor explicitly so shrinking through the IMAGE row
     // can never strand a division outside the cut.
-    final syncedCut = activeCutOrNull?.id == sync.cutId
-        ? activeCutOrNull
-        : null;
-    final floor = syncedCut == null ? 1 : minimumCutDurationFor(syncedCut);
+    //
+    // Whichever row holds the divisions, the floor must be read off the
+    // form THIS DRAG is previewing, not off the repository's: the drag
+    // never writes mid-gesture, so a repository read answers about the row
+    // as it was when the pointer went down. Reading a stale floor against a
+    // live row end is `max()` comparing two different rows, and it pinned
+    // the duration above the row's end — the committed desync the user hit,
+    // invisible on the strip (whose last cell stretches to the duration) and
+    // a hole in the timeline (which paints the stored blocks).
+    //
+    // On the storyboard row this now collapses: a previewed row's end is its
+    // last block's end, so `floor <= afterRowEnd` always and the duration
+    // simply follows the row.
+    final syncedCut = cutById(sync.cutId);
+    final divisionRow = syncedCut == null
+        ? null
+        : storyboardLayerForCut(syncedCut);
+    final floor = divisionRow == null
+        ? 1
+        : minimumCutDurationForStoryboardRow(
+            divisionRow.id == afterRow.id ? afterRow : divisionRow,
+          );
     final duration = math.max(floor, afterRowEnd);
     return (
       durations: {sync.cutId: duration},
@@ -7940,7 +7959,7 @@ class EditorSessionManager extends ChangeNotifier {
       if (sync != null) {
         for (final edit in edits) {
           if (edit.after.id == sync.layerId) {
-            resize = _cutSyncResizeFor(_storedRowEndOf(edit.after));
+            resize = _cutSyncResizeFor(edit.after);
             break;
           }
         }
@@ -7974,9 +7993,7 @@ class EditorSessionManager extends ChangeNotifier {
     _edgeDragAfter = after == before ? null : after;
     // A storyboard row's comma moves its cut's end with it (feedback #9):
     // the resize previews and commits WITH the row, never beside it.
-    final resize = after == before
-        ? null
-        : _cutSyncResizeFor(_storedRowEndOf(after));
+    final resize = after == before ? null : _cutSyncResizeFor(after);
     _edgeDragAfterDurations = resize?.durations;
     _edgeDragAfterGaps = resize?.gaps;
     if (resize != null) {
@@ -8072,6 +8089,10 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     final beforeDurations = <CutId, int>{sync.cutId: sync.beforeDuration};
+    // No re-tile here: "the row tiles its cut" is a WRITE-TIME invariant now
+    // ([cutWithCoveringStoryboardRow]), so it holds for this commit, for the
+    // undo replay, and for the verbs that never come through a drag at all.
+    //
     // No fade re-anchor rides along any more (R4): the fade keys are the
     // TRACK's, on the global axis — a cut resize edits the cut, not them.
     _timelineController.commitLayerTimelineDragsWithCutDurations(
@@ -8105,6 +8126,19 @@ class EditorSessionManager extends ChangeNotifier {
   List<CutId>? _cutTrimOrder;
   int? _cutTrimIndex;
 
+  /// Which conte PANEL a START-edge drag grabbed, cut-local. Every panel
+  /// hangs a front grip on the strip (user's rule 2026-08-02), and the
+  /// panel you grabbed is the one that loses commas — so the verb cannot be
+  /// resolved from the cut alone. Taken at BEGIN and kept here for the same
+  /// reason [_cutEdgeDragVerb] is.
+  int? _cutTrimPanelIndex;
+
+  /// The conte row as the in-flight LEAD drag would leave it, stashed for
+  /// the release. The row rewrite is part of the SAME edit as the duration
+  /// change — deriving it again at commit time would read the repository,
+  /// which no longer says what the drag decided.
+  List<({Layer before, Layer after})>? _cutTrimAfterRowEdits;
+
   /// Which verb the in-flight cut-edge drag belongs to. One shape of edge,
   /// and where it sits decides what it re-times — the answer is taken at
   /// BEGIN and kept HERE, in the session the continuations already reach,
@@ -8118,9 +8152,12 @@ class EditorSessionManager extends ChangeNotifier {
   /// - the LEAD edge is one verb for every cut (R10 R4): the cut loses
   ///   frames off its front, its END holds so the cuts behind never move,
   ///   the cut GLUED in front translates wholesale, and the difference
-  ///   comes to rest at the head of the film ([planCutLeadEdge]). A conte
-  ///   row no longer changes the verb — it only floors how far the drag
-  ///   may go, through [minimumCutDurationFor];
+  ///   comes to rest at the head of the film ([planCutLeadEdge]). On a cut
+  ///   WITH a conte row the frames come off [panelIndex] — the panel the
+  ///   grip belongs to — and every other panel keeps its commas
+  ///   ([storyboardTimelineWithPanelLeadRetimed], user's rule 2026-08-02).
+  ///   The row is what floors the drag, and it floors the GRABBED panel,
+  ///   not the last one;
   /// - the TRAILING edge still asks what it sits on (feedback #9): on a
   ///   cut with a storyboard row it is the LAST cell's comma and the cut's
   ///   length follows it (the always-synced pair); otherwise it trims the
@@ -8132,6 +8169,7 @@ class EditorSessionManager extends ChangeNotifier {
   bool beginCutEdgeDrag({
     required CutId cutId,
     required TimelineBlockEdge edge,
+    int panelIndex = 0,
   }) {
     final cut = cutById(cutId);
     final row = cut == null ? null : storyboardLayerForCut(cut);
@@ -8147,7 +8185,11 @@ class EditorSessionManager extends ChangeNotifier {
         return true;
       }
     }
-    if (_beginCutTrimDrag(cutId: cutId, edge: edge)) {
+    if (_beginCutTrimDrag(
+      cutId: cutId,
+      edge: edge,
+      panelIndex: panelIndex,
+    )) {
       _cutEdgeDragVerb = _CutEdgeDragVerb.cutTrim;
       return true;
     }
@@ -8199,6 +8241,7 @@ class EditorSessionManager extends ChangeNotifier {
   bool _beginCutTrimDrag({
     required CutId cutId,
     required TimelineBlockEdge edge,
+    int panelIndex = 0,
   }) {
     final layout = buildStoryboardTimelineLayout(_repository.requireProject());
     StoryboardTimelineLayoutEntry? entry;
@@ -8246,12 +8289,40 @@ class EditorSessionManager extends ChangeNotifier {
     _cutTrimCutId = cutId;
     _cutTrimNextCutId = next?.cutId;
     _cutTrimEdge = edge;
+    _cutTrimPanelIndex = panelIndex;
     // The release commits from these, so a new drag must not inherit the
     // previous one's result: a press that never moves would otherwise land
     // an edit the pointer never asked for.
     _cutTrimAfterDurations = null;
     _cutTrimAfterGaps = null;
+    _cutTrimAfterRowEdits = null;
     return true;
+  }
+
+  /// How far a LEAD drag on [cutId]'s [panelIndex] may shrink the cut, as a
+  /// minimum DURATION — the shape [planCutLeadEdge] wants.
+  ///
+  /// The floor belongs to the panel the grip is on: that panel keeps one
+  /// frame, and since every other panel keeps its commas, the cut's floor is
+  /// its current duration less that panel's room. A cut with no conte row
+  /// (or a row a drag cannot address) keeps the plain one-frame floor.
+  ///
+  /// ⚠️ [minimumCutDurationFor] is the LAST panel's floor and is the right
+  /// answer for the trailing edge only. Using it here let a drag ask the
+  /// first cell for a negative length — the assert in
+  /// [StoryboardCoverageCell] — whenever the grabbed panel was shorter than
+  /// the last one.
+  int _leadMinimumDurationFor(Cut cut, int panelIndex) {
+    final row = storyboardLayerForCut(cut);
+    if (row == null) {
+      return 1;
+    }
+    final maxShrink = storyboardPanelLeadMaxShrink(
+      timeline: row.timeline,
+      cutDuration: cut.duration,
+      panelIndex: panelIndex,
+    );
+    return maxShrink == null ? 1 : math.max(1, cut.duration - maxShrink);
   }
 
   /// Applies the drag's cumulative frame delta as a live preview on
@@ -8282,13 +8353,19 @@ class EditorSessionManager extends ChangeNotifier {
     final durations = <CutId, int>{};
     final gaps = <CutId, int>{};
     // The floor is the STORYBOARD row's extent, not one frame: its cells
-    // are panels OF this cut, so the end cannot be dragged past the last
-    // division on it (delete the cells to shrink further). Cuts without a
+    // are panels OF this cut, so an edge cannot be dragged past the panel it
+    // belongs to (delete the cells to shrink further). Cuts without a
     // storyboard row keep the plain one-frame floor.
+    //
+    // WHICH panel is the floor differs by edge, and that is not a detail:
+    // the trailing edge sits on the LAST panel, the leading edge on the one
+    // it was grabbed from.
     final trimmedCut = cutById(cutId);
     final minDuration = trimmedCut == null
         ? 1
-        : minimumCutDurationFor(trimmedCut);
+        : edge == TimelineBlockEdge.end
+        ? minimumCutDurationFor(trimmedCut)
+        : _leadMinimumDurationFor(trimmedCut, _cutTrimPanelIndex ?? 0);
     if (edge == TimelineBlockEdge.end) {
       final newDuration = math.max(
         minDuration,
@@ -8336,6 +8413,23 @@ class EditorSessionManager extends ChangeNotifier {
       gaps.addAll(plan.gaps);
     }
 
+    // The conte row is re-keyed by the SAME drag, and it is re-keyed HERE
+    // rather than at the release: the strip and the timeline both re-derive
+    // panels from (row, duration), so a preview that moved only the duration
+    // showed the LAST panel shrinking for the whole gesture and then jumped
+    // to the real answer on pointer-up.
+    //
+    // The shift is read off the plan's own result, never off
+    // [cumulativeDelta] — the plan clamps, and the raw delta does not know
+    // it did.
+    final rowEdits = edge == TimelineBlockEdge.start
+        ? _storyboardRowEditsForLeadDrag(
+            cutId: cutId,
+            panelIndex: _cutTrimPanelIndex ?? 0,
+            applied: beforeDurations[cutId]! - (durations[cutId] ?? 0),
+          )
+        : const <({Layer before, Layer after})>[];
+
     final changed =
         durations[cutId] != beforeDurations[cutId] ||
         gaps.entries.any((entry) => beforeGaps[entry.key] != entry.value);
@@ -8344,9 +8438,47 @@ class EditorSessionManager extends ChangeNotifier {
     // the commit.
     _cutTrimAfterDurations = changed ? durations : null;
     _cutTrimAfterGaps = changed ? gaps : null;
+    _cutTrimAfterRowEdits = changed ? rowEdits : null;
     dragPreview.value = changed
-        ? CutTrimDragPreview(previewDurations: durations, previewGaps: gaps)
+        ? CutTrimDragPreview(
+            previewDurations: durations,
+            previewGaps: gaps,
+            previewLayers: {
+              for (final edit in rowEdits) edit.after.id: edit.after,
+            },
+          )
         : null;
+  }
+
+  /// The conte-row rewrite a LEAD drag owes: the grabbed panel loses
+  /// [applied] frames off its front and every other panel keeps its commas.
+  ///
+  /// Empty when the cut has no row, when the drag was clamped to nothing, or
+  /// when the row cannot be addressed — in each of those the plain cut
+  /// duration change is the whole edit.
+  List<({Layer before, Layer after})> _storyboardRowEditsForLeadDrag({
+    required CutId cutId,
+    required int panelIndex,
+    required int applied,
+  }) {
+    if (applied == 0) {
+      return const [];
+    }
+    final cut = cutById(cutId);
+    final row = cut == null ? null : storyboardLayerForCut(cut);
+    if (row == null) {
+      return const [];
+    }
+    final retimed = storyboardTimelineWithPanelLeadRetimed(
+      timeline: row.timeline,
+      cutDuration: cut!.duration,
+      panelIndex: panelIndex,
+      delta: applied,
+    );
+    if (retimed == null || mapEquals(retimed, row.timeline)) {
+      return const [];
+    }
+    return [(before: row, after: row.copyWith(timeline: retimed))];
   }
 
   /// Commits the drag as a single undo step (no-op when nothing changed):
@@ -8361,6 +8493,7 @@ class EditorSessionManager extends ChangeNotifier {
     final beforeGaps = _cutTrimBeforeGaps;
     final afterDurations = _cutTrimAfterDurations;
     final afterGaps = _cutTrimAfterGaps;
+    final leadRowEdits = _cutTrimAfterRowEdits;
     _cancelCutTrimDrag();
     if (beforeDurations == null ||
         beforeGaps == null ||
@@ -8376,17 +8509,22 @@ class EditorSessionManager extends ChangeNotifier {
       for (final id in afterGaps.keys) id: beforeGaps[id]!,
     };
 
-    // "The cut ENDS WHERE THE ROW ENDS" (see [_cutSyncResizeFor]). A LEAD
-    // drag changes the duration without going near the row, so a conte
-    // cut's stored row would be left ending somewhere the cut no longer
-    // does — and the next end/comma drag, which derives the duration FROM
-    // the row end, would snap the cut back to the stale one and shove the
-    // cuts behind it. The row's LAST panel follows the new end, keeping
-    // every division key where the user put it.
-    final rowEdits = _storyboardRowEditsForResizedCuts(
-      beforeDurations: scopedBeforeDurations,
-      afterDurations: afterDurations,
-    );
+    // "The cut ENDS WHERE THE ROW ENDS" (see [_cutSyncResizeFor]). A drag
+    // that changes the duration without going near the row would leave a
+    // conte cut's stored row ending somewhere the cut no longer does — and
+    // the next end/comma drag, which derives the duration FROM the row end,
+    // would snap the cut back to the stale one and shove the cuts behind it.
+    //
+    // The two edges pay that debt at opposite ends of the row. A LEAD drag
+    // already decided which panel gives way, back when it knew the pointer's
+    // grip. A TRAILING one has no such record, and its last panel simply
+    // follows the new end.
+    final rowEdits = leadRowEdits != null && leadRowEdits.isNotEmpty
+        ? leadRowEdits
+        : _storyboardRowEditsForResizedCuts(
+            beforeDurations: scopedBeforeDurations,
+            afterDurations: afterDurations,
+          );
     if (rowEdits.isNotEmpty) {
       _timelineController.commitLayerTimelineDragsWithCutDurations(
         edits: rowEdits,
@@ -8469,6 +8607,8 @@ class EditorSessionManager extends ChangeNotifier {
     _cutTrimEdge = null;
     _cutTrimOrder = null;
     _cutTrimIndex = null;
+    _cutTrimPanelIndex = null;
+    _cutTrimAfterRowEdits = null;
     dragPreview.value = null;
   }
 
