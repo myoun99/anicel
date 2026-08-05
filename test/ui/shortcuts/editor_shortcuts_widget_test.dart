@@ -9,6 +9,8 @@ import 'package:anicel/src/ui/brush/tools_panel.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 
+import '../flyout_test_helpers.dart';
+
 /// P1: the app-level shortcut layer end to end — flipping, tools, undo,
 /// the text-field bare-letter guard and live re-recording through the
 /// Keyboard Shortcuts dialog.
@@ -56,11 +58,9 @@ void main() {
     // A drawing at the cut start, playhead moved ahead: Ctrl+, walks back
     // one COLUMN a press — the empty frame between is a column of its
     // own, which is the half of the rule the old jump skipped.
-    await tester.tap(find.byKey(const ValueKey<String>('menu-edit')));
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('menu-edit-new-drawing')),
-    );
+    // Making a drawing is the timeline's Add button now — the Edit menu
+    // that used to carry it is gone.
+    await tester.tap(find.byKey(const ValueKey<String>('new-frame-button')));
     await tester.pumpAndSettle();
     await tester.sendKeyEvent(LogicalKeyboardKey.period);
     await tester.sendKeyEvent(LogicalKeyboardKey.period);
@@ -96,10 +96,9 @@ void main() {
     expect(toolOf(), CanvasTool.brush);
 
     // A focused text field absorbs bare letters (the rename dialog).
-    await tester.tap(find.byKey(const ValueKey<String>('menu-cut')));
-    await tester.pumpAndSettle();
-    await tester.tap(find.byKey(const ValueKey<String>('menu-cut-rename')));
-    await tester.pumpAndSettle();
+    // Renaming a cut lives in the Cut flyout; the helper opens the owning
+    // menu and brings it into view first.
+    await tapCommandButton(tester, const ValueKey<String>('rename-cut-button'));
     await tester.tap(find.byType(TextField).last);
     await tester.pumpAndSettle();
     await tester.sendKeyEvent(LogicalKeyboardKey.keyE);
@@ -179,11 +178,9 @@ void main() {
     await pumpHome(tester);
 
     // Create an undoable step (a drawing via the menu).
-    await tester.tap(find.byKey(const ValueKey<String>('menu-edit')));
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('menu-edit-new-drawing')),
-    );
+    // Making a drawing is the timeline's Add button now — the Edit menu
+    // that used to carry it is gone.
+    await tester.tap(find.byKey(const ValueKey<String>('new-frame-button')));
     await tester.pumpAndSettle();
     final undoButton = find.byKey(const ValueKey<String>('undo-button'));
     expect(tester.widget<IconButton>(undoButton).onPressed, isNotNull);
@@ -264,7 +261,9 @@ void main() {
       'and Reset All restores the defaults', (tester) async {
     await pumpHome(tester);
 
-    await tester.tap(find.byKey(const ValueKey<String>('menu-edit')));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('top-strip-settings-button')),
+    );
     await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(const ValueKey<String>('menu-edit-keyboard-shortcuts')),
@@ -304,7 +303,9 @@ void main() {
     expect(counterText(tester), '2');
 
     // Reset All restores the stock bindings.
-    await tester.tap(find.byKey(const ValueKey<String>('menu-edit')));
+    await tester.tap(
+      find.byKey(const ValueKey<String>('top-strip-settings-button')),
+    );
     await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(const ValueKey<String>('menu-edit-keyboard-shortcuts')),

@@ -30,9 +30,7 @@ import 'brush/canvas_view_commands.dart';
 import 'editor_command_actions.dart';
 import 'editor_session_manager.dart';
 import 'editor_workspace.dart';
-import '../services/persistence/app_export_settings_store.dart';
-import 'export/export_dialog.dart';
-import 'menu/editor_menu_bar.dart';
+import 'menu/editor_top_strip.dart';
 import 'panels/workspace_panels_menu.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'playback/playback_transport_controls.dart'
@@ -477,66 +475,30 @@ class _HomePageState extends State<HomePage> {
                       child: InputInspectorHost(
                         child: Column(
                           children: [
-                            // The top strip: title, the menu bar, and the quick actions
-                            // (undo/redo/export keep their long-standing keys).
+                            // The top strip: two popover buttons and the
+                            // work's name. The seven-menu bar it replaced
+                            // is gone — every command it carried now lives
+                            // on the surface that shows its result, and
+                            // undo/redo/export went with them. 48px so the
+                            // buttons sit on the same grid as the rail's.
                             Material(
                               color: colorScheme.surfaceContainerHigh,
-                              child: Row(
-                                children: [
-                                  // R26 #24: no app-name label in the strip —
-                                  // the menu bar starts at the left edge.
-                                  const SizedBox(width: 8),
-                                  Expanded(
-                                    // Narrow windows scroll the menu bar instead of
-                                    // overflowing the strip.
-                                    child: SingleChildScrollView(
-                                      scrollDirection: Axis.horizontal,
-                                      // The menu re-reads its enablement per notify: the
-                                      // history manager is merged in because brush strokes
-                                      // execute into it straight from the canvas (no session
-                                      // notify fires for a pen-up), the playback controller
-                                      // for the Playback menu's state, the panels bridge for
-                                      // the Window checkboxes.
-                                      child: ListenableBuilder(
-                                        listenable: Listenable.merge([
-                                          _session,
-                                          _session.historyManager,
-                                          _session.playback,
-                                          _panelsMenu,
-                                        ]),
-                                        builder: (context, _) => EditorMenuBar(
-                                          session: _session,
-                                          panelsMenu: _panelsMenu,
-                                          shortcuts: _shortcuts,
-                                        ),
-                                      ),
-                                    ),
+                              child: SizedBox(
+                                height: 48,
+                                // Re-reads per notify: the panels bridge
+                                // drives the visibility checks, the session
+                                // the project name and the export gate.
+                                child: ListenableBuilder(
+                                  listenable: Listenable.merge([
+                                    _session,
+                                    _panelsMenu,
+                                  ]),
+                                  builder: (context, _) => EditorTopStrip(
+                                    session: _session,
+                                    panelsMenu: _panelsMenu,
+                                    shortcuts: _shortcuts,
                                   ),
-                                  // Undo/redo left this strip for the head
-                                  // of the tool rail, where the hand
-                                  // already is between strokes. They took
-                                  // their keys with them.
-                                  IconButton(
-                                    key: const ValueKey<String>(
-                                      'export-png-button',
-                                    ),
-                                    tooltip: 'Export',
-                                    onPressed: () {
-                                      unawaited(
-                                        showDialog<void>(
-                                          context: context,
-                                          builder: (context) => ExportDialog(
-                                            session: _session,
-                                            settingsStore:
-                                                AppExportSettingsStore(),
-                                          ),
-                                        ),
-                                      );
-                                    },
-                                    icon: const Icon(Icons.save_alt),
-                                  ),
-                                  const SizedBox(width: 8),
-                                ],
+                                ),
                               ),
                             ),
                             Expanded(
