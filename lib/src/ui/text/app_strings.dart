@@ -256,6 +256,10 @@ class AppStrings {
   String get commonNotNow => _s('commonNotNow');
 
   // --- The menu bar's own headings and its one stateful entry ---
+  /// The top strip's two buttons (the menu bar's successor).
+  String get topStripProject => _s('topStripProject');
+  String get topStripSettings => _s('topStripSettings');
+
   String get menuBarFile => _s('menuBarFile');
   String get menuBarEdit => _s('menuBarEdit');
   String get menuBarCut => _s('menuBarCut');
@@ -909,6 +913,8 @@ class AppStrings {
         'This project has never been saved, so autosave has nowhere to '
         'write. Pick a file and autosave will guard it from then on.',
     'commonNotNow': 'Not now',
+    'topStripProject': 'Project',
+    'topStripSettings': 'Settings',
     'menuBarFile': 'File',
     'menuBarEdit': 'Edit',
     'menuBarCut': 'Cut',
@@ -1511,6 +1517,8 @@ class AppStrings {
         'このプロジェクトはまだ一度も保存されていないため、自動保存の書き込み'
         '先がありません。ファイルを選べば、以降は自動保存が守ります。',
     'commonNotNow': '後で',
+    'topStripProject': 'プロジェクト',
+    'topStripSettings': '設定',
     'menuBarFile': 'ファイル',
     'menuBarEdit': '編集',
     'menuBarCut': 'カット',
@@ -2194,6 +2202,8 @@ class AppStrings {
         '이 프로젝트는 한 번도 저장된 적이 없어서 자동 저장이 쓸 곳이 '
         '없습니다. 파일을 지정하면 그때부터 자동 저장이 지켜줍니다.',
     'commonNotNow': '나중에',
+    'topStripProject': '프로젝트',
+    'topStripSettings': '설정',
     'menuBarFile': '파일',
     'menuBarEdit': '편집',
     'menuBarCut': '컷',
@@ -2880,6 +2890,8 @@ class AppStrings {
         "n'a nulle part où écrire. Choisissez un fichier et elle le "
         'protégera ensuite.',
     'commonNotNow': 'Plus tard',
+    'topStripProject': 'Projet',
+    'topStripSettings': 'Paramètres',
     'menuBarFile': 'Fichier',
     'menuBarEdit': 'Édition',
     'menuBarCut': 'Plan',
@@ -3582,6 +3594,8 @@ class AppStrings {
         '此项目从未保存过，自动保存没有可写入的位置。选择一个文件后，'
         '自动保存就会开始守护它。',
     'commonNotNow': '暂不',
+    'topStripProject': '项目',
+    'topStripSettings': '设置',
     'menuBarFile': '文件',
     'menuBarEdit': '编辑',
     'menuBarCut': '镜头',
