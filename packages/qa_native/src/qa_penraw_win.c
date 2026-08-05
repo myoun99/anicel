@@ -312,6 +312,13 @@ __declspec(dllexport) void qpr_stop(void) {
   qpr_thread = NULL;
   qpr_thread_id = 0;
   InterlockedExchange(&qpr_flags, 0);
+  // The observer thread is gone, so nothing else can be reading the
+  // cached descriptor.
+  if (qpr_cached_preparsed != NULL) {
+    HeapFree(GetProcessHeap(), 0, qpr_cached_preparsed);
+    qpr_cached_preparsed = NULL;
+    qpr_cached_device = NULL;
+  }
 }
 
 // Snapshots the newest decoded report into [out]:
