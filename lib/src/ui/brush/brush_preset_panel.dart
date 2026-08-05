@@ -663,16 +663,16 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     final reorderable = widget.onGroupsReordered != null;
     return SizedBox(
       key: _railKey,
-      width:
-          (_railShowName ? _BrushGroupTab.namedWidth : _BrushGroupTab.extent) +
-          panelScrollbarGutter,
+      // The tab's own width, nothing added: the rail's scrollbar is laid
+      // over the tabs and only while they overflow, so the rail no longer
+      // pays a lane's width for a bar that is usually not there.
+      width: _railShowName ? _BrushGroupTab.namedWidth : _BrushGroupTab.extent,
       child: PanelScrollbar(
         controller: _railController,
         child: ReorderableListView.builder(
           key: const ValueKey<String>('brush-preset-tab-rail'),
           scrollController: _railController,
           buildDefaultDragHandles: false,
-          padding: const EdgeInsets.only(right: panelScrollbarGutter),
           itemCount: tabs.length,
           onReorderStart: (_) => setState(() => _railDragging = true),
           onReorderEnd: (_) => setState(() => _railDragging = false),
@@ -725,7 +725,6 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
         key: const ValueKey<String>('brush-preset-list'),
         scrollController: _scrollController,
         buildDefaultDragHandles: false,
-        padding: const EdgeInsets.only(right: panelScrollbarGutter),
         itemCount: visible.length,
         onReorderStart: (_) => _dragging = true,
         onReorderEnd: (_) {
@@ -999,7 +998,9 @@ class _BrushGroupTab extends StatelessWidget {
     // — the rail scrolls, and a press that becomes a scroll must not
     // switch groups under the finger.
     final instant = InstantTapRegion(onTap: (_) => onTap(), child: body);
-    final face = showTooltip ? Tooltip(message: label, child: instant) : instant;
+    final face = showTooltip
+        ? Tooltip(message: label, child: instant)
+        : instant;
     return SizedBox(
       height: extent,
       child: hasMenu

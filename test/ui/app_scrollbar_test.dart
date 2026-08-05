@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/widgets/app_scrollbar.dart';
 
 void main() {
@@ -81,7 +83,7 @@ void main() {
 
     Future<double Function()> pumpBar(
       WidgetTester tester, {
-    required Axis axis,
+      required Axis axis,
       AppScrollbarLanePress lanePress = AppScrollbarLanePress.relativeDrag,
       double viewportExtent = 100,
       double contentExtent = 1000,
@@ -264,6 +266,113 @@ void main() {
       await gesture.cancel();
       await tester.pump();
       expect(changeEnds, 1);
+    });
+
+    Color? thumbColour(WidgetTester tester) {
+      final thumb = tester.widget<AnimatedContainer>(
+        find.byKey(const ValueKey<String>('app-scrollbar-thumb')),
+      );
+      return (thumb.decoration as BoxDecoration?)?.color;
+    }
+
+    double thumbThickness(WidgetTester tester, Axis axis) {
+      final thumb = tester.widget<AnimatedContainer>(
+        find.byKey(const ValueKey<String>('app-scrollbar-thumb')),
+      );
+      final constraints = thumb.constraints!;
+      return axis == Axis.vertical
+          ? constraints.maxWidth
+          : constraints.maxHeight;
+    }
+
+    testWidgets('a press turns the thumb accent and releasing restores it', (
+      tester,
+    ) async {
+      await pumpBar(tester, axis: Axis.vertical);
+      final bar = find.byKey(
+        const ValueKey<String>('app-scrollbar-under-test'),
+      );
+      expect(thumbColour(tester), AppColors.hairlineStrong);
+
+      final gesture = await tester.startGesture(tester.getCenter(bar));
+      await tester.pump();
+      expect(thumbColour(tester), AppColors.accent);
+
+      await gesture.up();
+      await tester.pump();
+      expect(thumbColour(tester), AppColors.hairlineStrong);
+    });
+
+    testWidgets('a press lights the thumb even with nothing to scroll', (
+      tester,
+    ) async {
+      // The timeline rails live in this state whenever the layer list is
+      // short: the thumb fills the lane and the drag recognisers bail out
+      // early, which is exactly why pressing them used to do nothing at
+      // all — no movement AND no colour (user-reported).
+      await pumpBar(
+        tester,
+        axis: Axis.vertical,
+        viewportExtent: 300,
+        contentExtent: 100,
+      );
+      final bar = find.byKey(
+        const ValueKey<String>('app-scrollbar-under-test'),
+      );
+
+      final gesture = await tester.startGesture(tester.getCenter(bar));
+      await tester.pump();
+      expect(thumbColour(tester), AppColors.accent);
+
+      await gesture.up();
+      await tester.pump();
+      expect(thumbColour(tester), AppColors.hairlineStrong);
+    });
+
+    testWidgets('hovering brightens the thumb to white', (tester) async {
+      await pumpBar(tester, axis: Axis.vertical);
+      final bar = find.byKey(
+        const ValueKey<String>('app-scrollbar-under-test'),
+      );
+
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: Offset.zero);
+      addTearDown(mouse.removePointer);
+
+      await mouse.moveTo(tester.getCenter(bar));
+      await tester.pump();
+      expect(thumbColour(tester), Colors.white);
+
+      // Well clear of the bar: it is pinned to the top-left, so the origin
+      // is still inside it.
+      await mouse.moveTo(const Offset(200, 200));
+      await tester.pump();
+      expect(thumbColour(tester), AppColors.hairlineStrong);
+    });
+
+    testWidgets('thumb thickness is the same at rest, hovered and pressed', (
+      tester,
+    ) async {
+      await pumpBar(tester, axis: Axis.vertical);
+      final bar = find.byKey(
+        const ValueKey<String>('app-scrollbar-under-test'),
+      );
+      final atRest = thumbThickness(tester, Axis.vertical);
+
+      final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+      await mouse.addPointer(location: Offset.zero);
+      addTearDown(mouse.removePointer);
+      await mouse.moveTo(tester.getCenter(bar));
+      await tester.pump();
+      expect(thumbThickness(tester, Axis.vertical), atRest);
+
+      final gesture = await tester.startGesture(tester.getCenter(bar));
+      await tester.pump();
+      expect(thumbThickness(tester, Axis.vertical), atRest);
+
+      await gesture.up();
+      await tester.pump();
+      expect(thumbThickness(tester, Axis.vertical), atRest);
     });
   });
 

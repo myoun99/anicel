@@ -3,11 +3,9 @@ import 'dart:io' show Platform;
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
-import '../../models/cut_id.dart';
 import '../../services/persistence/anicel_project_archive.dart';
 import '../../services/persistence/app_documents.dart';
 import '../../services/persistence/app_save_settings.dart';
@@ -16,7 +14,6 @@ import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/canvas_size_dialog.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
-import '../dialogs/convert_to_linked_cut_dialog.dart';
 import '../dialogs/delete_layer_dialog.dart';
 import '../dialogs/file_browser_dialog.dart';
 import '../dialogs/preferences_dialog.dart';
@@ -26,9 +23,8 @@ import '../debug/measurement_mode.dart';
 import '../dialogs/project_background_dialog.dart';
 import '../dialogs/rename_cut_dialog.dart';
 import '../dialogs/rename_layer_dialog.dart';
-import '../dialogs/se_name_tag_dialog.dart';
+import '../editor_command_actions.dart';
 import '../editor_session_manager.dart';
-import '../export/ae_keyframe_data.dart';
 import '../../services/persistence/app_export_settings_store.dart';
 import '../export/export_dialog.dart';
 import '../import/import_dialog.dart';
@@ -451,10 +447,8 @@ class EditorMenuBar extends StatelessWidget {
     _item(
       id: 'cut-convert-linked',
       label: 'Convert to linked cut…',
-      onPressed:
-          session.activeCutOrNull != null &&
-              session.convertToLinkedCutCandidates.isNotEmpty
-          ? () => unawaited(_convertActiveCutToLinked(context))
+      onPressed: canConvertActiveCutToLinked(session)
+          ? () => unawaited(showConvertActiveCutToLinked(context, session))
           : null,
     ),
     _item(
@@ -488,7 +482,7 @@ class EditorMenuBar extends StatelessWidget {
     _item(
       id: 'cut-copy-ae-camera',
       label: 'Copy camera AE keyframes',
-      onPressed: () => _copyCameraAeKeyframes(context),
+      onPressed: () => copyCameraAeKeyframes(context, session),
     ),
     const Divider(height: 8),
     _item(
@@ -497,51 +491,6 @@ class EditorMenuBar extends StatelessWidget {
       onPressed: session.deleteActiveCut,
     ),
   ];
-
-  Future<void> _convertActiveCutToLinked(BuildContext context) async {
-    final activeCut = session.activeCutOrNull;
-    if (activeCut == null) {
-      return;
-    }
-    final targetCutId = await showDialog<CutId>(
-      context: context,
-      builder: (context) => ConvertToLinkedCutDialog(
-        activeCutName: activeCut.name,
-        candidates: session.convertToLinkedCutCandidates,
-        previewOf: session.convertToLinkedCutPreviewData,
-      ),
-    );
-    if (!context.mounted || targetCutId == null) {
-      return;
-    }
-    session.convertActiveCutToLinked(targetCutId);
-  }
-
-  /// Bakes per frame; paste onto the canvas-sequence layer in a
-  /// camera-frame-sized comp.
-  void _copyCameraAeKeyframes(BuildContext context) {
-    final cut = session.activeCutOrNull;
-    if (cut == null) {
-      return; // Gap state: no camera work to bake.
-    }
-    final cameraSize = session.cameraFrameSize;
-    final text = buildAeTransformKeyframeData(
-      framesPerSecond: session.projectFps,
-      sourceWidth: cameraSize.width,
-      sourceHeight: cameraSize.height,
-      samples: bakeCameraAeSamples(
-        camera: cut.camera,
-        canvasSize: cut.canvasSize,
-        frameCount: session.activeCutPlaybackFrameCount,
-      ),
-    );
-    unawaited(Clipboard.setData(ClipboardData(text: text)));
-    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
-      const SnackBar(
-        content: Text('Camera keyframes copied for After Effects.'),
-      ),
-    );
-  }
 
   // --- Layer ----------------------------------------------------------------
 
@@ -563,26 +512,6 @@ class EditorMenuBar extends StatelessWidget {
   /// The SE row's on-canvas name tag (R5b): opens on what the row draws
   /// TODAY (its configured tag, or the stacked default), and Delete
   /// resets it back to that default.
-  Future<void> _editSeNameTag(BuildContext context) async {
-    final layer = session.activeLayer;
-    final defaultPosition = session.activeSeNameTagDefaultPosition;
-    if (layer == null || defaultPosition == null) {
-      return;
-    }
-    final result = await showDialog<SeNameTagDialogResult>(
-      context: context,
-      builder: (context) => SeNameTagDialog(
-        storedTag: layer.seNameTag,
-        defaultPosition: defaultPosition,
-        rowName: layer.name,
-      ),
-    );
-    if (!context.mounted || result == null) {
-      return;
-    }
-    session.setActiveSeNameTag(result.tag);
-  }
-
   Future<void> _deleteActiveLayer(BuildContext context) async {
     final activeLayer = session.activeLayer;
     if (activeLayer == null || !session.canDeleteActiveLayer) {
@@ -697,7 +626,7 @@ class EditorMenuBar extends StatelessWidget {
       id: 'layer-se-name-tag',
       label: 'SE name tag…',
       onPressed: session.canEditActiveSeNameTag
-          ? () => unawaited(_editSeNameTag(context))
+          ? () => unawaited(showSeNameTagEditor(context, session))
           : null,
     ),
     const Divider(height: 8),

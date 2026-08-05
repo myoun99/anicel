@@ -69,6 +69,16 @@ abstract final class EditorActionIds {
   static const timelineComma3 = 'timeline-comma-3';
   static const timelineComma4 = 'timeline-comma-4';
   static const timelineCommaN = 'timeline-comma-n';
+
+  /// The film verbs. These are the buttons a rough pass wears out — a
+  /// two-second three-comma test is about thirty presses of them — and
+  /// until now they existed ONLY as toolbar icons, so there was nothing to
+  /// bind a key to and nothing for a custom rail slot to point at.
+  static const frameNewDrawing = 'frame-new-drawing';
+  static const frameBlankExposure = 'frame-blank-exposure';
+  static const frameToggleMark = 'frame-toggle-mark';
+  static const timelinePushBlocks = 'timeline-push-blocks';
+  static const timelinePullBlocks = 'timeline-pull-blocks';
 }
 
 /// The default action set. Frame flipping on `,`/`.` (with arrow aliases)
@@ -304,5 +314,41 @@ final List<EditorActionDefinition> editorActionDefinitions = [
     label: 'Set N Commas…',
     category: 'Timeline',
     defaultActivators: [SingleActivator(LogicalKeyboardKey.digit5)],
+  ),
+  // The film verbs ship UNBOUND. Every one of them is a key an animator
+  // will want under a finger, but which key is a working habit, not a
+  // default we can guess — and the digits are already spoken for by the
+  // comma set above. Registering them is what makes them assignable at
+  // all: the shortcut dialog lists the registry, so an unbound action is
+  // still a row the user can put a key on.
+  const EditorActionDefinition(
+    id: EditorActionIds.frameNewDrawing,
+    label: 'New Drawing',
+    category: 'Timeline',
+    defaultActivators: [],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.frameBlankExposure,
+    label: 'Blank Exposure',
+    category: 'Timeline',
+    defaultActivators: [],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.frameToggleMark,
+    label: 'Toggle Mark',
+    category: 'Timeline',
+    defaultActivators: [],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.timelinePushBlocks,
+    label: 'Push Blocks',
+    category: 'Timeline',
+    defaultActivators: [],
+  ),
+  const EditorActionDefinition(
+    id: EditorActionIds.timelinePullBlocks,
+    label: 'Pull Blocks',
+    category: 'Timeline',
+    defaultActivators: [],
   ),
 ];

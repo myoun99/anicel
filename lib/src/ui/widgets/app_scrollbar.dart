@@ -1,6 +1,12 @@
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import 'app_scrollbar_lane.dart';
+
+/// The lane vocabulary lives next door so calculation-only files can name
+/// a width without importing a widget; everyone who has the scrollbar has
+/// the vocabulary too.
+export 'app_scrollbar_lane.dart';
 
 /// How a press on the lane (outside the thumb) behaves.
 enum AppScrollbarLanePress {
@@ -81,9 +87,17 @@ class AppScrollbarGeometry {
   }
 }
 
-/// The app-wide scrollbar visual: no track, a thin grey thumb that
-/// brightens on hover and turns accent while dragged. Parents supply the
-/// hit lane (12-14px) — the thumb stays visually thin inside it.
+/// The app-wide scrollbar visual: no track, a thin grey thumb whose ONLY
+/// state signal is colour — grey at rest, white under the pointer, accent
+/// while pressed. The thickness never changes (유저 지시: 어떤 레일이든
+/// 눌렀다고 크기가 바뀌지 않는다), so a press cannot nudge the layout of
+/// whatever sits beside the lane. Parents supply the hit lane
+/// ([AppScrollbarLane]) — the thumb stays visually thin inside it.
+///
+/// The pressed colour lights on pointer-DOWN and is deliberately
+/// independent of whether there is anything to scroll: a full-lane thumb
+/// (the nothing-to-scroll state below) is still a control the user
+/// pressed, and staying grey read as a dead widget.
 ///
 /// Fully controlled: position comes from [offset] against
 /// [viewportExtent]/[contentExtent]; interactions emit absolute offsets
@@ -120,12 +134,18 @@ class AppScrollbar extends StatefulWidget {
 }
 
 class _AppScrollbarState extends State<AppScrollbar> {
-  static const double _idleThickness = 4;
-  static const double _activeThickness = 6;
+  /// One thickness for every state — see the class doc.
+  static const double _thickness = 4;
   static const Duration _stateAnimation = Duration(milliseconds: 100);
 
   bool _hovered = false;
-  bool _dragging = false;
+
+  /// Whether a pointer is down on the lane. Tracked by a [Listener] rather
+  /// than the drag recognisers because a plain TAP must light it too, and
+  /// because the drag callbacks bail out early when there is nothing to
+  /// scroll — that pair of gaps is why the timeline rails never turned
+  /// accent no matter how hard they were clicked.
+  bool _pressed = false;
   double? _dragThumbStart;
   double? _dragPointerStart;
 
@@ -146,75 +166,96 @@ class _AppScrollbarState extends State<AppScrollbar> {
             ? constraints.maxWidth
             : constraints.maxHeight;
         final geometry = _geometry(trackExtent);
-        final active = _dragging || _hovered;
-        final thickness = active ? _activeThickness : _idleThickness;
-        final color = _dragging
+        // Colour is the whole state machine (see the class doc). White
+        // rather than a palette grey because a 4px thumb has to win
+        // against the lane behind it to read as "the pointer is here".
+        final color = _pressed
             ? AppColors.accent
             : _hovered
-            ? AppColors.textDim
+            ? Colors.white
             : AppColors.hairlineStrong;
-        return GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTapDown: widget.lanePress == AppScrollbarLanePress.jumpToPointer
-              ? (details) =>
-                    _lanePressed(_axisPosition(details.localPosition), geometry)
-              : null,
-          onHorizontalDragStart: horizontal
-              ? (details) =>
-                    _dragStart(_axisPosition(details.localPosition), geometry)
-              : null,
-          onVerticalDragStart: horizontal
-              ? null
-              : (details) =>
-                    _dragStart(_axisPosition(details.localPosition), geometry),
-          onHorizontalDragUpdate: horizontal
-              ? (details) =>
-                    _dragUpdate(_axisPosition(details.localPosition), geometry)
-              : null,
-          onVerticalDragUpdate: horizontal
-              ? null
-              : (details) =>
-                    _dragUpdate(_axisPosition(details.localPosition), geometry),
-          onHorizontalDragEnd: horizontal ? (_) => _dragEnd() : null,
-          onVerticalDragEnd: horizontal ? null : (_) => _dragEnd(),
-          onHorizontalDragCancel: horizontal ? _dragEnd : null,
-          onVerticalDragCancel: horizontal ? null : _dragEnd,
-          child: MouseRegion(
-            onEnter: (_) => setState(() => _hovered = true),
-            onExit: (_) => setState(() => _hovered = false),
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                Positioned.fill(
-                  child: SizedBox.expand(key: widget.laneKey),
-                ),
-                Positioned(
-                  left: horizontal ? geometry.thumbStart : 0,
-                  right: horizontal ? null : 0,
-                  top: horizontal ? 0 : geometry.thumbStart,
-                  bottom: horizontal ? 0 : null,
-                  width: horizontal ? geometry.thumbExtent : null,
-                  height: horizontal ? null : geometry.thumbExtent,
-                  child: Center(
-                    child: AnimatedContainer(
-                      key: widget.thumbKey,
-                      duration: _stateAnimation,
-                      curve: Curves.easeOut,
-                      width: horizontal ? double.infinity : thickness,
-                      height: horizontal ? thickness : double.infinity,
-                      decoration: BoxDecoration(
-                        color: color,
-                        borderRadius: BorderRadius.circular(thickness / 2),
+        return Listener(
+          // Outside the recognisers on purpose: a tap and a press on a
+          // full-lane thumb both have to light the accent, and neither
+          // reaches the drag callbacks.
+          onPointerDown: (_) => _setPressed(true),
+          onPointerUp: (_) => _setPressed(false),
+          onPointerCancel: (_) => _setPressed(false),
+          child: GestureDetector(
+            behavior: HitTestBehavior.opaque,
+            onTapDown: widget.lanePress == AppScrollbarLanePress.jumpToPointer
+                ? (details) => _lanePressed(
+                    _axisPosition(details.localPosition),
+                    geometry,
+                  )
+                : null,
+            onHorizontalDragStart: horizontal
+                ? (details) =>
+                      _dragStart(_axisPosition(details.localPosition), geometry)
+                : null,
+            onVerticalDragStart: horizontal
+                ? null
+                : (details) => _dragStart(
+                    _axisPosition(details.localPosition),
+                    geometry,
+                  ),
+            onHorizontalDragUpdate: horizontal
+                ? (details) => _dragUpdate(
+                    _axisPosition(details.localPosition),
+                    geometry,
+                  )
+                : null,
+            onVerticalDragUpdate: horizontal
+                ? null
+                : (details) => _dragUpdate(
+                    _axisPosition(details.localPosition),
+                    geometry,
+                  ),
+            onHorizontalDragEnd: horizontal ? (_) => _dragEnd() : null,
+            onVerticalDragEnd: horizontal ? null : (_) => _dragEnd(),
+            onHorizontalDragCancel: horizontal ? _dragEnd : null,
+            onVerticalDragCancel: horizontal ? null : _dragEnd,
+            child: MouseRegion(
+              onEnter: (_) => setState(() => _hovered = true),
+              onExit: (_) => setState(() => _hovered = false),
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  Positioned.fill(child: SizedBox.expand(key: widget.laneKey)),
+                  Positioned(
+                    left: horizontal ? geometry.thumbStart : 0,
+                    right: horizontal ? null : 0,
+                    top: horizontal ? 0 : geometry.thumbStart,
+                    bottom: horizontal ? 0 : null,
+                    width: horizontal ? geometry.thumbExtent : null,
+                    height: horizontal ? null : geometry.thumbExtent,
+                    child: Center(
+                      child: AnimatedContainer(
+                        key: widget.thumbKey,
+                        duration: _stateAnimation,
+                        curve: Curves.easeOut,
+                        width: horizontal ? double.infinity : _thickness,
+                        height: horizontal ? _thickness : double.infinity,
+                        decoration: BoxDecoration(
+                          color: color,
+                          borderRadius: BorderRadius.circular(_thickness / 2),
+                        ),
                       ),
                     ),
                   ),
-                ),
-              ],
+                ],
+              ),
             ),
           ),
         );
       },
     );
+  }
+
+  void _setPressed(bool value) {
+    if (_pressed != value) {
+      setState(() => _pressed = value);
+    }
   }
 
   double _axisPosition(Offset localPosition) =>
@@ -243,7 +284,6 @@ class _AppScrollbarState extends State<AppScrollbar> {
     }
     _dragThumbStart = thumbStart;
     _dragPointerStart = position;
-    setState(() => _dragging = true);
   }
 
   void _dragUpdate(double position, AppScrollbarGeometry geometry) {
@@ -265,9 +305,9 @@ class _AppScrollbarState extends State<AppScrollbar> {
     final wasDragging = _dragThumbStart != null;
     _dragThumbStart = null;
     _dragPointerStart = null;
-    if (_dragging) {
-      setState(() => _dragging = false);
-    }
+    // The pressed colour is the Listener's to clear — a drag that ends
+    // with the pointer still down (a cancel from an arena loss) must stay
+    // lit until the finger actually lifts.
     if (wasDragging) {
       widget.onChangeEnd?.call();
     }
@@ -359,9 +399,7 @@ class _AppControllerScrollbarState extends State<AppControllerScrollbar> {
       return;
     }
     widget.controller.jumpTo(
-      offset
-          .clamp(0.0, widget.controller.position.maxScrollExtent)
-          .toDouble(),
+      offset.clamp(0.0, widget.controller.position.maxScrollExtent).toDouble(),
     );
   }
 }

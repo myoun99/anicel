@@ -8,6 +8,7 @@ import '../../models/layer_kind.dart';
 import '../../models/project_frame_rate.dart';
 import '../cut_command_group.dart';
 import '../dialogs/fps_audio_choice_dialog.dart';
+import '../editor_command_actions.dart';
 import '../editor_session_manager.dart';
 import '../widgets/app_icon_button.dart';
 import 'timeline_shift_buttons.dart';
@@ -283,7 +284,7 @@ class TimelineActionToolbar extends StatelessWidget {
     ];
   }
 
-  List<PanelFlyoutEntry> _layerEntries() {
+  List<PanelFlyoutEntry> _layerEntries(BuildContext context) {
     final active = session.activeLayer;
     return [
       PanelFlyoutItem(
@@ -361,6 +362,34 @@ class TimelineActionToolbar extends StatelessWidget {
         icon: Icons.create_new_folder_outlined,
         enabled: session.canGroupActiveLayerIntoFolder,
         onSelected: session.groupActiveLayerIntoFolder,
+      ),
+      // The rest of R27 #21's errand: these reached only the top menu bar,
+      // which is even further from the rail than the folder commands were.
+      // They borrow the MENU's wording by id rather than growing a second
+      // translation key for the same verb.
+      PanelFlyoutItem(
+        keyValue: 'timeline-group-attach-into-folder-button',
+        label: AppText.strings.menuLabel(
+          'layer-group-attach-into-folder',
+          'New attach folder',
+        ),
+        icon: Icons.folder_special_outlined,
+        enabled: session.canGroupActiveAttachIntoFolder,
+        onSelected: session.groupActiveAttachIntoFolder,
+      ),
+      PanelFlyoutItem(
+        keyValue: 'timeline-rasterize-layer-button',
+        label: AppText.strings.menuLabel('layer-rasterize', 'Rasterize layer'),
+        icon: Icons.texture_outlined,
+        enabled: session.canRasterizeActiveLayer,
+        onSelected: session.rasterizeActiveLayer,
+      ),
+      PanelFlyoutItem(
+        keyValue: 'timeline-se-name-tag-button',
+        label: AppText.strings.menuLabel('layer-se-name-tag', 'SE name tag…'),
+        icon: Icons.label_outline,
+        enabled: session.canEditActiveSeNameTag,
+        onSelected: () => unawaited(showSeNameTagEditor(context, session)),
       ),
       PanelFlyoutItem(
         keyValue: 'timeline-link-duplicate-button',
@@ -633,7 +662,7 @@ class TimelineActionToolbar extends StatelessWidget {
                       key: const ValueKey<String>('timeline-layer-menu-button'),
                       label: AppText.strings.tlLayer,
                       tooltip: AppText.strings.tlLayerCommands,
-                      entriesBuilder: _layerEntries,
+                      entriesBuilder: () => _layerEntries(context),
                     ),
                     // R27 #6: the layer BLEND dropdown left this toolbar for
                     // the layer LABEL's rightmost column (user placement) —
@@ -722,9 +751,7 @@ class TimelineActionToolbar extends StatelessWidget {
                     key: const ValueKey<String>(
                       'timeline-samplerate-menu-button',
                     ),
-                    label: audioSampleRateLabel(
-                      session.projectAudioSampleRate,
-                    ),
+                    label: audioSampleRateLabel(session.projectAudioSampleRate),
                     tooltip: AppText.strings.tlProjectAudioRate,
                     entriesBuilder: _audioSampleRateEntries,
                   ),

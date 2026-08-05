@@ -22,6 +22,8 @@
 /// | frame-number rail width  | ruler height             |
 library;
 
+import '../widgets/app_scrollbar_lane.dart';
+
 /// Width of one frame cell on the frame axis.
 /// 48 → 24 (R-toolbar slim round, CSP/TVPaint density).
 const double timelineFrameCellWidth = 24;
@@ -56,13 +58,13 @@ const double timelineSectionLabelGutterWidth = 0;
 /// The timeline moved it to the far left so the splitter could have that
 /// gap; the x-sheet's column now carries two bars, the rail's above the
 /// splitter and the frame's below it.
-const double timelineVerticalScrollbarWidth = 16;
+const double timelineVerticalScrollbarWidth = AppScrollbarLane.wide;
 
 /// The horizontal scrollbar rail closing the bottom of a grid. Both grids
 /// declared it privately (R10 R6 found the third copy while deriving the
 /// x-sheet's header against it); a number two surfaces subtract from the
 /// same viewport belongs to neither of them.
-const double timelineBottomScrollbarRailHeight = 16;
+const double timelineBottomScrollbarRailHeight = AppScrollbarLane.wide;
 
 class TimelineGridMetrics {
   static const int defaultMinimumVisibleFrameCells = 24;
