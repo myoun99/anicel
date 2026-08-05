@@ -232,12 +232,21 @@ __declspec(dllexport) int32_t qat_open(void) {
   }
   QAT_LOGCONTEXTW context;
   ZeroMemory(&context, sizeof(context));
-  if (qat_WTInfoW(WTI_DEFCONTEXT, 0, &context) == 0) {
+  // A SYSTEM context is what "observe alongside the OS" actually MEANS in
+  // Wintab, and the default to clone is WTI_DEFSYSCTX. The driver keeps
+  // driving the system cursor - legacy mouse/Ink events go on flowing to
+  // the window - while our queue fills in parallel.
+  //
+  // The opposite reading bricked the app: a NON-system (digitizing)
+  // context is not a quiet observer, it DECLARES "this app takes the
+  // tablet directly, no mouse emulation needed", so the driver stops
+  // synthesizing pointer input for the window. Picking Wintab in Input
+  // Settings killed the cursor outright (and the choice is persisted, so
+  // a restart came up dead too).
+  if (qat_WTInfoW(WTI_DEFSYSCTX, 0, &context) == 0) {
     return 0;
   }
-  // Sidecar contract: OBSERVE only - a non-system context (no CXO_SYSTEM)
-  // never moves the cursor or competes with the OS pointer stream.
-  context.lcOptions &= ~(UINT)CXO_SYSTEM;
+  context.lcOptions |= (UINT)CXO_SYSTEM;
   context.lcPktData = QAT_PKTDATA;
   context.lcPktMode = 0; // absolute
   context.lcMoveMask = QAT_PKTDATA;
