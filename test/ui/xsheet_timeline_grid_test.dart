@@ -6,6 +6,8 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
+import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
+import 'package:anicel/src/ui/timeline/timeline_body_cut_end_boundary.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
 import 'package:anicel/src/ui/timeline/timeline_ruler_cursor_overlay.dart';
@@ -499,17 +501,34 @@ void main() {
     );
   });
 
-  testWidgets('dims frames beyond the playback range like the timeline', (
-    tester,
-  ) async {
+  testWidgets('the out-of-cut wash states where the film stops, in its own '
+      'layer rather than in every cell', (tester) async {
     await tester.pumpWidget(_grid(frameCount: 12));
 
-    // The visible window extends to the shared 24-frame minimum, so frames
-    // past the 12-frame playback range render dimmed (on the inactive layer
-    // to keep the active-layer tint out of the comparison).
+    // The shading used to be blended into each cell, which put the CUT'S
+    // LENGTH inside the baked substrate tiles — so a length that moved could
+    // not be drawn without re-rastering the row. It is one rect above the
+    // cells now, and the cells themselves read the same on both sides of the
+    // cut's end.
     final inside = _cellDecoration(tester, 'xsheet-cell-layer-2-0').color;
     final outside = _cellDecoration(tester, 'xsheet-cell-layer-2-13').color;
-    expect(outside, isNot(inside));
+    expect(outside, inside);
+
+    // The wash is what says it instead, and it starts exactly where the
+    // cut-end line is drawn — the two mark the same instant, so they answer
+    // from the same number or the picture disagrees with itself.
+    final washes = tester
+        .widgetList<CustomPaint>(find.byType(CustomPaint))
+        .map((paint) => paint.painter)
+        .whereType<TimelineOutsideCutWashPainter>()
+        .toList();
+    expect(washes, isNotEmpty);
+    expect(washes.first.axis, Axis.vertical);
+    final boundary = tester.widget<TimelineBodyCutEndBoundary>(
+      find.byType(TimelineBodyCutEndBoundary),
+    );
+    expect(washes.first.outsideStart, boundary.left);
+    expect(boundary.left, greaterThan(0));
   });
 
   testWidgets('dragging the frame rail scrubs the current frame', (

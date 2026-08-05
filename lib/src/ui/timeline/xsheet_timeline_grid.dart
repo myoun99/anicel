@@ -1749,6 +1749,55 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                                           .layerRowHeight,
                                                                 ),
                                                               ),
+                                                              // The out-of-cut wash,
+                                                              // TOP of the stack with
+                                                              // the cut-end line (the
+                                                              // user's layer order):
+                                                              // where the film stops
+                                                              // is stated over
+                                                              // everything, cursor and
+                                                              // selection included.
+                                                              Positioned.fill(
+                                                                child: IgnorePointer(
+                                                                  child: RepaintBoundary(
+                                                                    child:
+                                                                        widget.cutEndDrag ==
+                                                                                null ||
+                                                                            widget.dragPreview ==
+                                                                                null
+                                                                        ? CustomPaint(
+                                                                            painter: TimelineOutsideCutWashPainter(
+                                                                              axis: Axis.vertical,
+                                                                              outsideStart: cutEndBoundaryOffset,
+                                                                              colorScheme: colorScheme,
+                                                                            ),
+                                                                          )
+                                                                        : ValueListenableBuilder<
+                                                                            TimelineDragPreview?
+                                                                          >(
+                                                                            valueListenable: widget.dragPreview!,
+                                                                            builder:
+                                                                                (
+                                                                                  context,
+                                                                                  preview,
+                                                                                  _,
+                                                                                ) => CustomPaint(
+                                                                                  painter: TimelineOutsideCutWashPainter(
+                                                                                    axis: Axis.vertical,
+                                                                                    outsideStart:
+                                                                                        timelineCutEndPreviewFrameCount(
+                                                                                          preview: preview,
+                                                                                          cutId: widget.cutEndDrag!.cutId,
+                                                                                          playbackFrameCount: widget.frameCount,
+                                                                                        ) *
+                                                                                        _metrics.frameCellWidth,
+                                                                                    colorScheme: colorScheme,
+                                                                                  ),
+                                                                                ),
+                                                                          ),
+                                                                  ),
+                                                                ),
+                                                              ),
                                                               // UI-R18 #14: live
                                                               // line + trim grip
                                                               // on the frame axis

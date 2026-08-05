@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 
+import 'timeline_beat_lines.dart';
 import 'timeline_body_cut_end_boundary.dart';
 import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
@@ -48,6 +49,47 @@ class TimelineFrameGridStack extends StatelessWidget {
         rowsBody,
         if (beatLines != null)
           Positioned.fill(child: IgnorePointer(child: beatLines)),
+        if (showPlayhead)
+          Positioned(
+            left: 0,
+            top: 0,
+            width: playheadWidth,
+            child: RepaintBoundary(child: playhead),
+          ),
+        // The out-of-cut wash and the cut-end line are the TOP layers (the
+        // user's layer order 2026-08-02): where the film stops is stated over
+        // everything, cursor and selection included. The wash being its own
+        // layer at all is what lets a cut-length drag repaint one rect
+        // instead of re-baking every row's tiles.
+        if (frameCellExtent > 0)
+          Positioned.fill(
+            child: IgnorePointer(
+              child: RepaintBoundary(
+                child: dragPreview == null || cutEndDrag == null
+                    ? CustomPaint(
+                        painter: TimelineOutsideCutWashPainter(
+                          outsideStart: playbackFrameCount * frameCellExtent,
+                          colorScheme: Theme.of(context).colorScheme,
+                        ),
+                      )
+                    : ValueListenableBuilder<TimelineDragPreview?>(
+                        valueListenable: dragPreview,
+                        builder: (context, preview, _) => CustomPaint(
+                          painter: TimelineOutsideCutWashPainter(
+                            outsideStart:
+                                timelineCutEndPreviewFrameCount(
+                                  preview: preview,
+                                  cutId: cutEndDrag.cutId,
+                                  playbackFrameCount: playbackFrameCount,
+                                ) *
+                                frameCellExtent,
+                            colorScheme: Theme.of(context).colorScheme,
+                          ),
+                        ),
+                      ),
+              ),
+            ),
+          ),
         if (cutEndDrag != null && dragPreview != null && frameCellExtent > 0)
           ValueListenableBuilder<TimelineDragPreview?>(
             valueListenable: dragPreview,
@@ -63,13 +105,6 @@ class TimelineFrameGridStack extends StatelessWidget {
           )
         else
           TimelineBodyCutEndBoundary(left: cutEndBoundaryLeft),
-        if (showPlayhead)
-          Positioned(
-            left: 0,
-            top: 0,
-            width: playheadWidth,
-            child: RepaintBoundary(child: playhead),
-          ),
         if (cutEndDrag != null && frameCellExtent > 0)
           TimelineCutEndDragHandle(
             cellExtent: frameCellExtent,

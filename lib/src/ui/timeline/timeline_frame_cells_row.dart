@@ -322,7 +322,6 @@ class TimelineFrameCellsRow extends StatelessWidget {
           keyPrefix: keyPrefix,
           layer: layer,
           active: active,
-          playbackFrameCount: playbackFrameCount,
           geometry: geometry,
           crossAxisExtent: crossAxisExtent,
           axis: axis,

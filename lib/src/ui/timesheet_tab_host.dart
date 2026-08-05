@@ -560,6 +560,13 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                                 viewport: viewport,
                                 paintLayer: TimesheetPaintLayer.content,
                                 dragPreview: session.dragPreview,
+                                // Which cut the sheet is printing, so a
+                                // cut-length drag on it can be read off the
+                                // channel: the red cut-end line is DATA, and
+                                // it was the one data line still printing the
+                                // committed length while the cells beside it
+                                // already previewed.
+                                cutId: session.activeCutOrNull?.id,
                                 notation: TimesheetNotation.of(
                                   session
                                       .languageSettings

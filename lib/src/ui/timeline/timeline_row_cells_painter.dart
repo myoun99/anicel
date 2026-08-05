@@ -69,7 +69,6 @@ TextPainter _glyphPainter(String text, TextStyle style) =>
 class TimelineRowCellsPainter extends CustomPainter {
   TimelineRowCellsPainter({
     required this.layer,
-    required this.playbackFrameCount,
     required this.geometry,
     required this.crossAxisExtent,
     required this.exposureStateForLayer,
@@ -104,7 +103,6 @@ class TimelineRowCellsPainter extends CustomPainter {
   int get celContentRevision => celContent?.revision.value ?? 0;
 
   final Layer layer;
-  final int playbackFrameCount;
 
   /// The LIVE frame-axis geometry (R28 #4): read through, never copied, so a
   /// zoom step repaints this painter instead of rebuilding the row that
@@ -232,7 +230,6 @@ class TimelineRowCellsPainter extends CustomPainter {
   TimelineRowCellModel _resolveCellModelAt(int frameIndex) {
     final exposureState = _stateAt(frameIndex);
     final ghost = timelineIndexIsGhost(layer, frameIndex);
-    final outsidePlaybackRange = frameIndex >= playbackFrameCount;
     final previous = frameIndex == 0 ? null : _stateAt(frameIndex - 1);
     final emptyRunStart = timelineEmptyRunStartsAt(
       current: exposureState,
@@ -264,7 +261,6 @@ class TimelineRowCellsPainter extends CustomPainter {
       glyph = _marker(
         exposureState: exposureState,
         emptyRunStart: emptyRunStart,
-        outsidePlaybackRange: outsidePlaybackRange,
         frameName: frameName,
       );
     }
@@ -277,7 +273,11 @@ class TimelineRowCellsPainter extends CustomPainter {
         next: _chromeStateAt(frameIndex + 1),
       ),
       ghost: ghost,
-      dimmed: outsidePlaybackRange || ghost,
+      // GHOSTS only. "Outside the cut" used to dim here too, and that is
+      // what tied this baked layer to the cut's length — the wash is its
+      // own overlay now, above the cells, so it can follow a drag without
+      // re-baking a single tile.
+      dimmed: ghost,
       glyph: glyph,
       semanticsLabel: _semanticsLabel(
         exposureState: exposureState,
@@ -289,20 +289,23 @@ class TimelineRowCellsPainter extends CustomPainter {
   String _marker({
     required TimelineCellExposureState exposureState,
     required bool emptyRunStart,
-    required bool outsidePlaybackRange,
     String? frameName,
   }) {
     // THE marker table, all kinds (it was split across this painter and
     // TimelineFrameCell while the sparse rows were still widgets).
     return switch (exposureState) {
-      // The timesheet "X": the FIRST cell of each empty run inside the
-      // playback range (paper-sheet style). Camera rows mirror keyframes,
-      // instruction rows carry instruction events and SE columns stay blank
-      // between entries on paper — no X on any of those.
+      // The timesheet "X": the FIRST cell of each empty run (paper-sheet
+      // style). Camera rows mirror keyframes, instruction rows carry
+      // instruction events and SE columns stay blank between entries on
+      // paper — no X on any of those.
+      //
+      // It used to stop at the cut's end, which made the X the one GLYPH
+      // that knew the cut's length — so a length that moved could not be
+      // drawn without re-baking the glyphs. The rule is the same everywhere
+      // now (user's rule 2026-08-02): an empty run starts where it starts.
       TimelineCellExposureState.uncovered =>
         !layerKindHoldsDrawings(layer.kind) ||
                 layerKindUsesSeSheetCells(layer.kind) ||
-                outsidePlaybackRange ||
                 !emptyRunStart
             ? ''
             : 'X',
@@ -361,9 +364,6 @@ class TimelineRowCellsPainter extends CustomPainter {
           : model.exposureState,
       selected: false,
     );
-    final washDim = model.ghost
-        ? frameIndex >= playbackFrameCount
-        : model.dimmed;
     // R26 #44: a block whose cel has no picture yet grays its paper
     // slightly — the whole covered run, ACTION-section rows only (the
     // resolver stands down elsewhere). Ghosts stay plain (they carry no
@@ -379,20 +379,12 @@ class TimelineRowCellsPainter extends CustomPainter {
     // UI-R18 #8); the PLAIN grid draws NOTHING here — the grid-wide
     // overlay owns every per-cell line now (UI-R18 #2: the grid is
     // always there, lanes and all).
-    final blockBorder = washDim
-        ? Color.alphaBlend(
-            colorScheme.outlineVariant.withValues(alpha: 0.55),
-            styleColors.border,
-          )
-        : styleColors.border;
+    // Nothing here asks where the cut ends any more: the out-of-cut wash is
+    // one rect in its own overlay ([TimelineOutsideCutWashPainter]), which
+    // is what lets it follow a live drag while these tiles stay baked.
     return (
-      background: washDim
-          ? Color.alphaBlend(
-              colorScheme.surfaceContainerHighest.withValues(alpha: 0.54),
-              baseBackground,
-            )
-          : baseBackground,
-      border: model.segment.isBlock ? blockBorder : Colors.transparent,
+      background: baseBackground,
+      border: model.segment.isBlock ? styleColors.border : Colors.transparent,
       radius: _cellRadius(model.segment),
     );
   }
@@ -702,7 +694,6 @@ class TimelineRowCellsPainter extends CustomPainter {
       // both read as "changed" and this painter re-recorded on every
       // rebuild it saw (the churn that hid in the rulers, F2).
       !identical(oldDelegate.layer, layer) ||
-      oldDelegate.playbackFrameCount != playbackFrameCount ||
       oldDelegate.crossAxisExtent != crossAxisExtent ||
       oldDelegate.axis != axis ||
       !identical(oldDelegate.windowBucket, windowBucket) ||
@@ -758,7 +749,6 @@ Widget timelineRowCellsPaintArea({
   required String keyPrefix,
   required Layer layer,
   required bool active,
-  required int playbackFrameCount,
   required TimelineFrameGeometryHandle geometry,
   required double crossAxisExtent,
   required Axis axis,
@@ -776,7 +766,6 @@ Widget timelineRowCellsPaintArea({
 }) {
   final painter = TimelineRowCellsPainter(
     layer: layer,
-    playbackFrameCount: playbackFrameCount,
     geometry: geometry,
     crossAxisExtent: crossAxisExtent,
     exposureStateForLayer: exposureStateForLayer,

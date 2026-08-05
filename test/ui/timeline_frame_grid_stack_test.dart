@@ -73,15 +73,20 @@ void main() {
 
       final stack = tester.widget<Stack>(find.byType(Stack));
 
+      // The user's layer order (2026-08-02): where the film STOPS is stated
+      // over everything, so the out-of-cut wash and the cut-end line are the
+      // top layers and the cursor/selection sits under them. (No wash child
+      // here — this harness leaves frameCellExtent at 0, which is the
+      // "geometry unknown" case the wash stands down for.)
       expect(stack.children, hasLength(3));
       expect(stack.children[0].key, rowsBodyKey);
-      expect(stack.children[1], isA<TimelineBodyCutEndBoundary>());
-      final playheadPositioned = stack.children[2] as Positioned;
+      final playheadPositioned = stack.children[1] as Positioned;
       // The playhead rides its OWN RepaintBoundary: a cursor move repaints
       // just that layer instead of re-rasterizing the whole grid (the beat
       // lines already had one; the playhead was the odd overlay without).
       final playheadBoundary = playheadPositioned.child as RepaintBoundary;
       expect(playheadBoundary.child!.key, playheadKey);
+      expect(stack.children[2], isA<TimelineBodyCutEndBoundary>());
     });
 
     testWidgets('does not duplicate stable keys', (tester) async {

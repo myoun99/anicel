@@ -44,7 +44,6 @@ void main() {
                 keyPrefix: 'timeline',
                 layer: layer,
                 active: true,
-                playbackFrameCount: 6,
                 geometry: testFrameGeometry(
                   frameCellExtent: cellExtent,
                   frameEndIndexExclusive: 6,
