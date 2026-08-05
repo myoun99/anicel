@@ -79,7 +79,6 @@ class _EditorPanelDockState extends State<EditorPanelDock> {
               controller: _scrollController,
               child: ListView.separated(
                 controller: _scrollController,
-                padding: const EdgeInsets.only(right: panelScrollbarGutter),
                 itemCount: children.length,
                 separatorBuilder: (_, _) => const SizedBox(height: 8),
                 itemBuilder: (context, index) => children[index],
