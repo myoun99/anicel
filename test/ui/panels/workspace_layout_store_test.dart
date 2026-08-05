@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/panels/editor_panel_layout.dart';
 import 'package:anicel/src/ui/panels/workspace_layout_store.dart';
@@ -212,6 +213,8 @@ void main() {
             'timeline': 'wide',
             'xsheet': -4,
             'storyboard': 0,
+            'nan': double.nan,
+            'infinite': double.infinity,
             'ok': 240,
           },
         }),
@@ -219,5 +222,106 @@ void main() {
       );
       expect(restoreRailExtents({'railExtents': 'nonsense'}), isEmpty);
     });
+  });
+
+  group('restored splitter numbers all go through one door', () {
+    // The rail extents were filtered from the start and the dock extents
+    // were not, which is a difference nobody chose. What made it matter:
+    // `jsonDecode` rejects NaN and Infinity, so those never come out of the
+    // file — but `-100` decodes fine, and a negative width reaching
+    // `SizedBox` throws instead of clamping. See the widget test below.
+    test('a dock extent must be a usable positive size, like a rail is', () {
+      final restored = restoreWorkspaceLayout(
+        payload: {
+          'layout': {
+            'docks': {
+              'left': [
+                {'tabs': ['brushes']},
+              ],
+            },
+            'extents': {
+              'left': -100,
+              'center': 0,
+              'tool-left': 'wide',
+              'unknown-dock': 260,
+            },
+          },
+        },
+        defaults: _defaults(),
+      );
+
+      expect(restored, isNotNull);
+      expect(
+        restored!.dockExtents,
+        isEmpty,
+        reason: 'every one of those is either unusable or not a dock',
+      );
+    });
+
+    test('a good extent still comes back', () {
+      final restored = restoreWorkspaceLayout(
+        payload: {
+          'layout': {
+            'docks': {
+              'left': [
+                {'tabs': ['brushes']},
+              ],
+            },
+            'extents': {'left': 300.0},
+          },
+        },
+        defaults: _defaults(),
+      );
+
+      expect(restored!.dockExtents, {'left': 300.0});
+    });
+
+    test('an unusable section weight falls back to 1 instead of dividing '
+        'the dock by it', () {
+      for (final weight in [-3, 0, 'heavy', double.nan, double.infinity]) {
+        final restored = restoreWorkspaceLayout(
+          payload: {
+            'layout': {
+              'docks': {
+                'left': [
+                  {
+                    'tabs': ['brushes'],
+                    'weight': weight,
+                  },
+                ],
+              },
+            },
+          },
+          defaults: _defaults(),
+        );
+        final section = restored!.docks['left']!.single;
+        expect(section.weight, 1, reason: 'weight $weight');
+        expect(section.weight, isPositive);
+      }
+    });
+  });
+
+  testWidgets('WHY: a negative extent is not clamped on the way to the '
+      'screen — it throws', (tester) async {
+    // The consequence the filter exists for, measured rather than assumed.
+    // Zero and absurdly large values are survivable (a collapsed dock, and
+    // the side docks scale to fit); a negative one takes the workspace down.
+    await tester.pumpWidget(
+      const MaterialApp(
+        home: Scaffold(
+          body: Row(
+            children: [
+              SizedBox(width: -100, child: SizedBox.expand()),
+              Expanded(child: SizedBox()),
+            ],
+          ),
+        ),
+      ),
+    );
+    expect(
+      tester.takeException(),
+      isA<FlutterError>(),
+      reason: 'this is what a hand-edited layout file used to reach',
+    );
   });
 }
