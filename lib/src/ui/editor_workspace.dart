@@ -647,7 +647,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       rows: hudRows,
       rowIndex: rowIndex,
       frameIndex: session.currentFrameIndex,
-      frameCount: cut.duration,
+      // The axis has to reach wherever the cursor stands: rightward the
+      // flip walks past the cut's end into the timeline's runway, and an
+      // axis that stopped at the duration would show the last column as
+      // the one you are on.
+      frameCount: math.max(cut.duration, session.currentFrameIndex + 1),
+      playbackFrameCount: cut.duration,
     );
   }
 

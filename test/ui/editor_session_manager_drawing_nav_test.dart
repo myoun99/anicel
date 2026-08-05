@@ -223,44 +223,56 @@ void main() {
       return EditorSessionManager(initialProject: project);
     }
 
-    test('★ a LAYER row walks out of its cut and keeps going — the space '
-        'between cuts is frames, one press each', () {
-      // The user's decision: a gap is frames on BOTH panels, so crossing
-      // one from a layer row costs a press per frame rather than
-      // teleporting to the next cut.
+    test('★ a LAYER row keeps walking its OWN axis past the cut end — it '
+        'never leaves the row it is flipping', () {
+      // The timeline's frame axis is endless: it papers what has been
+      // scrolled into existence and dims the cells past the cut end. So
+      // rightwards never runs out WITHOUT the flip changing rows, which
+      // is the point — handing the landing to the track would drop the
+      // layer being flipped.
       final session = gappedCutSession();
       addTearDown(session.dispose);
       expect(session.currentRow, isA<LayerRowAddress>());
 
       final duration = session.requireActiveCut.duration;
       session.selectFrameIndex(duration - 1);
-      expect(session.editingGlobalFrame, duration - 1);
 
-      // Off the end of the cut: the axis does not stop there.
-      session.selectNextDrawing();
-      expect(session.activeCutId, isNull, reason: 'parked in the gap');
-      expect(session.editingGlobalFrame, duration);
+      for (var press = 1; press <= 3; press += 1) {
+        session.selectNextDrawing();
+        expect(session.currentFrameIndex, duration - 1 + press);
+        expect(
+          session.activeCutId,
+          const CutId('cut-1'),
+          reason: 'still the same cut, still the same row',
+        );
+      }
 
-      // In the gap the row falls to the TRACK, whose columns here are
-      // bare frames — so the walk continues one frame at a time.
-      session.selectNextDrawing();
-      expect(session.editingGlobalFrame, duration + 1);
-      session.selectNextDrawing();
-      expect(session.editingGlobalFrame, duration + 2);
-
-      // The far side of the gap is the next cut, and the row becomes a
-      // layer row again.
-      session.selectNextDrawing();
-      expect(session.activeCutId, const CutId('cut-2'));
-      expect(session.currentFrameIndex, 0);
-
-      // And back the same way, column for column.
+      // And back down the same cells.
       session.selectPreviousDrawing();
-      expect(session.activeCutId, isNull);
-      expect(session.editingGlobalFrame, duration + 2);
+      expect(session.currentFrameIndex, duration + 1);
+      expect(session.activeCutId, const CutId('cut-1'));
     });
 
-    test('★ crossing lands on the row that cut was last worked on', () {
+    test('★ leftwards the cut\'s own start is the floor — a layer row does '
+        'not fall out of the front of its cut either', () {
+      final session = gappedCutSession();
+      addTearDown(session.dispose);
+
+      session.selectCut(const CutId('cut-2'));
+      expect(session.currentRow, isA<LayerRowAddress>());
+      session.selectFrameIndex(0);
+
+      session.selectPreviousDrawing();
+      expect(session.currentFrameIndex, 0);
+      expect(
+        session.activeCutId,
+        const CutId('cut-2'),
+        reason: 'the gap before this cut belongs to the V row, not to this one',
+      );
+    });
+
+    test('★ a V row DOES cross, and lands on the row that cut was last '
+        'worked on', () {
       final session = gappedCutSession();
       addTearDown(session.dispose);
 
@@ -270,21 +282,30 @@ void main() {
       final rememberedRow = session.activeLayerId;
       expect(rememberedRow, isNot(const LayerId('layer-2')));
 
-      // Back to cut 1, then walk across the gap into cut 2 again.
+      // Back to cut 1, then walk the TRACK across the gap into cut 2.
       session.selectCut(const CutId('cut-1'));
+      session.selectTrackRow(const TrackId('default-track'));
       final duration = session.requireActiveCut.duration;
       session.selectFrameIndex(duration - 1);
-      for (var press = 0; press < 4; press += 1) {
-        session.selectNextDrawing();
-      }
 
+      // A gap is frames on both panels alike, so the crossing costs a
+      // press per frame rather than teleporting to the next cut.
+      session.selectNextDrawing();
+      expect(session.activeCutId, isNull, reason: 'parked in the gap');
+      expect(session.editingGlobalFrame, duration);
+      session.selectNextDrawing();
+      expect(session.editingGlobalFrame, duration + 1);
+      session.selectNextDrawing();
+      expect(session.editingGlobalFrame, duration + 2);
+
+      session.selectNextDrawing();
       expect(session.activeCutId, const CutId('cut-2'));
       expect(
         session.activeLayerId,
         rememberedRow,
         reason:
-            'the cut comes back on the row it was left on — not on the '
-            'row the flip arrived from',
+            'the cut comes back on the row it was last worked on — not on '
+            'the row the flip arrived from',
       );
     });
 
