@@ -25,6 +25,7 @@ import '../services/persistence/app_documents.dart' show appRecordingsDirectory;
 import '../services/persistence/app_save_settings.dart';
 import '../services/persistence/app_save_settings_store.dart';
 import '../services/persistence/audio_sync_settings_store.dart';
+import 'brush/brush_tool_state.dart' show CanvasTool;
 import 'input/app_input_settings.dart';
 import 'theme/app_accents.dart';
 import 'theme/app_theme.dart' show AppColors;
@@ -402,6 +403,16 @@ class EditorSessionManager extends ChangeNotifier {
       unawaited(store.save(settings));
     }
   }
+
+  /// The tool a temporary hold sprang FROM; null = no hold live.
+  ///
+  /// It lives here rather than in the canvas area's State because the PEN
+  /// TAIL holds for as long as the pen stays flipped — across strokes,
+  /// panel rebuilds and tab switches — where a barrel hold lasted one
+  /// press. A State that unmounted mid-hold would lose the tool to spring
+  /// back to, and leave the user holding an eraser with nothing to undo
+  /// it. Not a listenable: only the release path reads it.
+  CanvasTool? heldOriginalTool;
 
   // --- Save settings (SAVE-1) -----------------------------------------------
 

@@ -31,6 +31,9 @@ class AppInputSettings {
     this.canvasWheelClick = const CanvasPointerMapping(
       action: CanvasPointerAction.pan,
     ),
+    this.canvasPenTail = const CanvasPointerMapping(
+      action: CanvasPointerAction.eraser,
+    ),
     this.touchDragOneFinger = CanvasTouchDragAction.flip,
     this.touchDragTwoFingers = CanvasTouchDragAction.navigate,
     this.touchDragThreeFingers = CanvasTouchDragAction.brushSize,
@@ -134,6 +137,17 @@ class AppInputSettings {
   /// mouse wheel click.
   final CanvasPointerMapping canvasWheelClick;
 
+  /// The canvas mapping for the pen's TAIL — the eraser end of pens that
+  /// have one (Wacom Pro Pen 2/3, Surface Pen, and other desktop-tablet
+  /// pens; Apple Pencil and the S Pen have no tail at all).
+  ///
+  /// Unlike the other two rows this one is not a button but a STATE: it
+  /// engages while the pen is turned tail-down and springs back when it
+  /// is turned upright, so a single flip covers a whole erasing pass
+  /// instead of re-arming per stroke. The tail is only visible at all
+  /// through the Raw Input HID observer ([PenSidecars.freshInverted]).
+  final CanvasPointerMapping canvasPenTail;
+
   final bool touchTimelineScroll;
 
   /// The pen pressure RESPONSE curve (PEN-3, cross-platform): output =
@@ -159,6 +173,7 @@ class AppInputSettings {
     double? pressureCurveGamma,
     CanvasPointerMapping? canvasRightClick,
     CanvasPointerMapping? canvasWheelClick,
+    CanvasPointerMapping? canvasPenTail,
     CanvasTouchDragAction? touchDragOneFinger,
     CanvasTouchDragAction? touchDragTwoFingers,
     CanvasTouchDragAction? touchDragThreeFingers,
@@ -175,6 +190,7 @@ class AppInputSettings {
     pressureCurveGamma: pressureCurveGamma ?? this.pressureCurveGamma,
     canvasRightClick: canvasRightClick ?? this.canvasRightClick,
     canvasWheelClick: canvasWheelClick ?? this.canvasWheelClick,
+    canvasPenTail: canvasPenTail ?? this.canvasPenTail,
     touchDragOneFinger: touchDragOneFinger ?? this.touchDragOneFinger,
     touchDragTwoFingers: touchDragTwoFingers ?? this.touchDragTwoFingers,
     touchDragThreeFingers: touchDragThreeFingers ?? this.touchDragThreeFingers,
@@ -195,6 +211,7 @@ class AppInputSettings {
     'pressureCurveGamma': pressureCurveGamma,
     'canvasRightClick': canvasRightClick.toJson(),
     'canvasWheelClick': canvasWheelClick.toJson(),
+    'canvasPenTail': canvasPenTail.toJson(),
     'touchDragOneFinger': touchDragOneFinger.name,
     'touchDragTwoFingers': touchDragTwoFingers.name,
     'touchDragThreeFingers': touchDragThreeFingers.name,
@@ -252,6 +269,10 @@ class AppInputSettings {
       json['canvasWheelClick'],
       fallback: const CanvasPointerMapping(action: CanvasPointerAction.pan),
     ),
+    canvasPenTail: CanvasPointerMapping.fromJson(
+      json['canvasPenTail'],
+      fallback: const CanvasPointerMapping(action: CanvasPointerAction.eraser),
+    ),
     touchDragOneFinger:
         CanvasTouchDragAction.values.asNameMap()[json['touchDragOneFinger']] ??
         CanvasTouchDragAction.flip,
@@ -290,6 +311,7 @@ class AppInputSettings {
       other.pressureCurveGamma == pressureCurveGamma &&
       other.canvasRightClick == canvasRightClick &&
       other.canvasWheelClick == canvasWheelClick &&
+      other.canvasPenTail == canvasPenTail &&
       other.touchDragOneFinger == touchDragOneFinger &&
       other.touchDragTwoFingers == touchDragTwoFingers &&
       other.touchDragThreeFingers == touchDragThreeFingers &&
@@ -308,6 +330,7 @@ class AppInputSettings {
     pressureCurveGamma,
     canvasRightClick,
     canvasWheelClick,
+    canvasPenTail,
     touchDragOneFinger,
     touchDragTwoFingers,
     touchDragThreeFingers,

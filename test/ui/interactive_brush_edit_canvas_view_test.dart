@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/native/qa_tablet_bridge.dart';
+import 'package:anicel/src/services/input/raw_pen_input_service.dart';
 import 'package:anicel/src/services/input/wintab_pen_service.dart';
 import 'package:anicel/src/ui/input/app_input_settings.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
@@ -1459,6 +1460,77 @@ void main() {
         expect(results, hasLength(2));
         expect(results.last.map((dab) => dab.erase).toSet(), {false});
       });
+
+      testWidgets(
+        'the pen TAIL engages on the flip, erases the stroke, and springs '
+        'back when the pen is turned upright',
+        (tester) async {
+          final raw = RawPenInputService.instance;
+          addTearDown(raw.debugReset);
+          RawPenInputService.debugClockOverride = () => DateTime(2024);
+          raw.debugPollOverride = () => null; // reports are injected below
+          raw.start();
+
+          final results = <List<BrushDab>>[];
+          final holds = <CanvasTool>[];
+          final releases = <bool>[];
+          await tester.pumpWidget(
+            _app(
+              _view(
+                _sessionState(width: 200, height: 16),
+                results.add,
+                inputSettings: BrushEditCanvasInputSettings(size: 8),
+                onTemporaryToolHold: holds.add,
+                onTemporaryToolRelease: ({required keep}) => releases.add(keep),
+              ),
+            ),
+          );
+
+          Future<void> hover(Offset at) async {
+            tester.binding.handlePointerEvent(
+              PointerHoverEvent(
+                kind: PointerDeviceKind.stylus,
+                position: canvasGlobalOffset(tester, at),
+              ),
+            );
+            await tester.pump();
+          }
+
+          // HID Invert with nothing touching: the pen has been turned
+          // over in the air. That is the moment the eraser arrives —
+          // before anything reaches the surface — which is the whole
+          // reason the mapping is flip-scoped rather than contact-scoped.
+          raw.debugInjectState(const QaPenRawState(flags: 0x08, sequence: 1));
+          await hover(const Offset(2, 1));
+          expect(holds, [CanvasTool.eraser]);
+          expect(results, isEmpty, reason: 'hovering never draws');
+
+          // The tail's stroke erases without waiting for the async tool
+          // switch to come back around.
+          raw.debugInjectState(
+            const QaPenRawState(flags: 0x04 | 0x08, sequence: 2),
+          );
+          await _pressureStroke(
+            tester,
+            canvasPoints: const [Offset(2, 1), Offset(40, 1)],
+            pressure: 1.0,
+            kind: PointerDeviceKind.stylus,
+          );
+          expect(results, hasLength(1));
+          expect(
+            results.single.map((dab) => dab.erase).toSet(),
+            {true},
+            reason: 'the whole tail stroke erases',
+          );
+
+          // Turned upright again: spring back to the original tool.
+          raw.debugInjectState(const QaPenRawState(flags: 0, sequence: 3));
+          await hover(const Offset(60, 1));
+          expect(releases, [false], reason: 'returnToTool = spring back');
+
+          raw.debugReset();
+        },
+      );
 
       testWidgets('mapped NONE swallows the press entirely', (tester) async {
         AppInput.settings.value = const AppInputSettings(

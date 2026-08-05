@@ -139,6 +139,18 @@ class InputSettingsSection extends StatelessWidget {
                 settings.copyWith(canvasWheelClick: mapping),
               ),
             ),
+            // The pen's TAIL — a state, not a press: it engages when the
+            // pen is turned over and springs back when it is turned
+            // upright. Shown to everyone rather than gated on a pen being
+            // present: the row is where a user learns the feature exists.
+            _CanvasMappingRow(
+              keyPrefix: 'settings-canvas-pen-tail',
+              label: strings.inputPenTail,
+              mapping: settings.canvasPenTail,
+              onChanged: (mapping) => session.setInputSettings(
+                settings.copyWith(canvasPenTail: mapping),
+              ),
+            ),
             // PEN-7b: the CANVAS TOUCH system — the finger-count
             // drag slots (all assignable; PEN-12 #4 folded the old
             // control/draw mode into the ONE-FINGER slot's Drawing
