@@ -1645,8 +1645,9 @@ Future<void> _pumpStoryboardPanel(
   bool showSeconds = false,
   ProjectFrameRate projectFrameRate = const ProjectFrameRate.integer(24),
 }) async {
-  // The rail widened to the timeline's 372 (UI-R5): keep every cut block
-  // of the three-cut fixtures on screen for the drag gestures.
+  // The rail matches the timeline's — 372 in UI-R5, 434 since the user
+  // unified the two widths (2026-08-04) — so the surface must stay wide
+  // enough to keep every cut block of the three-cut fixtures on screen.
   await tester.binding.setSurfaceSize(const Size(1400, 600));
   addTearDown(() => tester.binding.setSurfaceSize(null));
 

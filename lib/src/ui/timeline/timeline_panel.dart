@@ -12,7 +12,12 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart' show LayerFxState;
 import '../../models/layer_mark.dart';
 import 'layer_timeline_display_adapter.dart';
-import 'layer_rail_window.dart' show LayerRailExtent;
+import 'layer_rail_window.dart'
+    show
+        LayerRailExtent,
+        LayerRailSplitter,
+        layerRailFrameReserveExtent,
+        layerRailMinimumWindowExtent;
 import 'layer_timeline_grid.dart';
 import 'property_lane_model.dart';
 import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
@@ -267,10 +272,17 @@ class TimelinePanel extends StatefulWidget {
 
   /// The ONE command-bar row's height, padding included.
   ///
-  /// MEASURED, not chosen: the row sizes itself from the icon buttons in
-  /// it. `panel_shrink_floor_test.dart` pins it against the real panel, so
-  /// a taller control cannot quietly eat into [minPanelHeight]'s two rows.
-  static const double commandBarHeight = 56;
+  /// MEASURED, not chosen: the row sizes itself from the tallest control in
+  /// it, and under [buildAppTheme] that is the orientation toggle's plain
+  /// Material `IconButton` (the one control here that is not an
+  /// `AppIconButton`) at 46, plus the row's 4+4 padding.
+  ///
+  /// ⚠️ Measure it under the SHIPPED theme. The first round of this change
+  /// measured 56 against a bare `MaterialApp`, where the same button gets
+  /// Material's 48px `minimumSize` instead of the app theme's compact 32 —
+  /// a number the user never sees. `panel_shrink_floor_test.dart` pins this
+  /// against the real panel WITH `buildAppTheme()`.
+  static const double commandBarHeight = 54;
 
   /// The shortest this panel is laid out at — the floor the dock splitter
   /// stops on and the tab shell's minimum content height.
@@ -284,16 +296,38 @@ class TimelinePanel extends StatefulWidget {
   /// Everything else in the column is chrome that does NOT shrink: the
   /// command bar, the grid's frame ruler, and the pinned bottom scrollbar
   /// row. That bottom row is what the user watched disappear.
-  ///
-  /// The x-sheet shares this floor (it is the same tab, toggled): standing
-  /// the grid on its side puts the frame axis here, and at this height its
-  /// own clamp leaves the frame area exactly [layerRailFrameReserveExtent]
-  /// — two cells, the same two.
   static const double minPanelHeight =
       commandBarHeight +
       timelineFrameRulerExtent +
       2 * timelineLayerRowHeight +
       timelineBottomScrollbarRailHeight;
+
+  /// The x-sheet's floor, which is NOT the timeline's even though they
+  /// share a tab.
+  ///
+  /// Stood on its side the sheet spends the panel's HEIGHT on what the
+  /// timeline spends its width on: the rail. Its column-header block is the
+  /// timeline's layer rail turned vertical, so the number that governs it
+  /// is [layerRailMinimumWindowExtent] — the leading control cluster plus
+  /// the first character of a name, the same floor the rail splitter obeys
+  /// on both surfaces.
+  ///
+  /// Measured, not assumed: at the timeline's 154 the sheet does not
+  /// overflow, but its header window lands at 31px. That is under the 32px
+  /// thumb minimum, so the rail scrollbar fills its lane with nowhere to
+  /// travel AND the splitter's ceiling collapses — 405px of header is
+  /// hidden behind a control that says there is nothing to scroll. The
+  /// panel fits and is useless, which is not what the floor is for.
+  ///
+  /// Below the header block sit the layer-axis scrollbar strip, the rail
+  /// splitter, and the frame area's own two-cell reserve — two cells at the
+  /// default zoom, which is how [layerRailFrameReserveExtent] states it.
+  static const double minSheetPanelHeight =
+      commandBarHeight +
+      timelineBottomScrollbarRailHeight +
+      layerRailMinimumWindowExtent +
+      LayerRailSplitter.thickness +
+      layerRailFrameReserveExtent;
 
   /// The ACTIVE view's zoom (the host routes it to the timeline or the
   /// storyboard value depending on the shown mode).

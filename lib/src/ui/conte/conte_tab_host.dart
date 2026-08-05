@@ -81,6 +81,21 @@ class ConteTabHost extends StatefulWidget {
   final bool inkEnabled;
   final ValueChanged<bool>? onInkEnabledChanged;
 
+  /// The shortest this tab is laid out at.
+  ///
+  /// The conte has no fixed rows to protect — it is a PAGE that scales into
+  /// whatever it is given, and a height sweep finds no size at which the
+  /// page itself overflows. So unlike the timeline and the storyboard its
+  /// floor is not "chrome plus two rows"; it is chrome alone.
+  ///
+  /// The chrome is one row and it is conditional: the ACTION field that
+  /// mounts under the page when a cell is selected. It is a plain (not
+  /// flexible) child of the column, so it takes its height whether or not
+  /// there is room — a 32px dense field inside 4+8 of padding, measured.
+  /// Below that the page gets zero and the column overflows.
+  static const double _actionEditorExtent = 32 + 4 + 8;
+  static const double minPanelHeight = _actionEditorExtent;
+
   @override
   State<ConteTabHost> createState() => _ConteTabHostState();
 }

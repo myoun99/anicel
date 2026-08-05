@@ -87,9 +87,12 @@ class TimelineGridMetrics {
   /// Same geometry with a different frame-axis cell extent (zoom), or a
   /// different NATURAL rail extent.
   ///
-  /// The rail extent is here for hosts that state their own (the
-  /// storyboard's shorter rail), NOT for the splitter: the window size is a
-  /// listenable precisely so it stays out of this memo key.
+  /// The rail extent is here for hosts that state their own — the
+  /// storyboard's rail, which carries the same number as this one since
+  /// 2026-08-04 and is deliberately still its own constant (the user's
+  /// condition: same width, independent in code). NOT for the splitter:
+  /// the window size is a listenable precisely so it stays out of this
+  /// memo key.
   TimelineGridMetrics copyWith({
     double? frameCellWidth,
     double? layerControlsWidth,

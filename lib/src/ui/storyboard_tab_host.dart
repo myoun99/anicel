@@ -55,10 +55,18 @@ class StoryboardTabHost extends StatefulWidget {
 
   /// The ONE command-bar row's height, padding included.
   ///
-  /// MEASURED, not chosen: the row sizes itself from the controls in it,
-  /// and it is NOT the timeline's number — this bar carries no zoom slider
-  /// column. `panel_shrink_floor_test.dart` pins it against the real host.
-  static const double commandBarHeight = 48;
+  /// MEASURED, not chosen: the row sizes itself from the tallest control in
+  /// it, and it is NOT the timeline's number even though it mounts the same
+  /// [TimelineViewCluster] — the timeline's bar also carries a plain
+  /// Material `IconButton` (the orientation toggle) that opts out of the
+  /// app theme's compact icon sizing, and this bar has no equivalent.
+  ///
+  /// ⚠️ Measure it under the SHIPPED theme ([buildAppTheme]). The first
+  /// round of this change measured 48 against a bare `MaterialApp`, where
+  /// Material's 48px `minimumSize` applies instead of the app theme's
+  /// compact 32 — 12px the user never spends.
+  /// `panel_shrink_floor_test.dart` pins this against the real host.
+  static const double commandBarHeight = 36;
 
   /// The shortest this tab is laid out at — the dock splitter's floor and
   /// the tab shell's minimum content height. See

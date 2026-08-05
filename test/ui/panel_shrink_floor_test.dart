@@ -4,9 +4,12 @@ import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/panels/editor_dock_host.dart';
+import 'package:anicel/src/ui/panels/editor_panel_layout.dart';
 import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/layer_rail_window.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
@@ -21,12 +24,14 @@ import 'package:anicel/src/ui/timeline_tab_host.dart';
 ///
 /// The panels used to lay out at a flat 280px whatever the dock gave them
 /// and scroll, so shrinking the dock CUT the bottom off instead of shrinking
-/// the body. Each panel states its own floor now — chrome plus two rows —
-/// and the dock splitter stops there.
+/// the body. Each panel states its own floor now, and BOTH places a height
+/// gets handed out honour it: the dock splitter and the section layout.
 ///
-/// These tests measure the REAL widgets, never the constants against
-/// themselves: the command-bar heights are claims about how the rows lay
-/// out, and a claim nobody measures is how the 280 got there.
+/// ⚠️ Everything here pumps `buildAppTheme()`. The first round measured the
+/// command bars against a bare `MaterialApp`, where Material's 48px icon
+/// button applies instead of the app theme's compact 32 — the constants
+/// came out 2px and 12px too large, pinned against a panel the user never
+/// sees. A layout constant measured under the wrong theme is a guess.
 void main() {
   Future<EditorSessionManager> pumpAt(
     WidgetTester tester,
@@ -44,6 +49,7 @@ void main() {
     }
     await tester.pumpWidget(
       MaterialApp(
+        theme: buildAppTheme(),
         home: Scaffold(
           body: Align(
             alignment: Alignment.topLeft,
@@ -78,6 +84,9 @@ void main() {
     showSeconds: false,
     onShowSecondsChanged: (_) {},
   );
+
+  Widget xsheet(EditorSessionManager session) =>
+      timeline(session, orientation: TimelineOrientation.vertical);
 
   Widget storyboard(EditorSessionManager session) => StoryboardTabHost(
     session: session,
@@ -114,9 +123,8 @@ void main() {
       );
     });
 
-    testWidgets('the storyboard command bar is '
-        'StoryboardTabHost.commandBarHeight, and its header band is the '
-        'height StoryboardPanel.minPanelHeight reserves', (tester) async {
+    testWidgets('the storyboard command bar and header band are the ones '
+        'StoryboardPanel.minPanelHeight reserves', (tester) async {
       await pumpAt(tester, storyboard, height: 600);
 
       final host = tester.getRect(find.byType(StoryboardTabHost));
@@ -139,8 +147,8 @@ void main() {
     });
   });
 
-  group('at its floor a panel shows exactly two rows and loses no chrome', () {
-    testWidgets('timeline', (tester) async {
+  group('at its floor a panel keeps its chrome and a usable body', () {
+    testWidgets('timeline — exactly two rows', (tester) async {
       await pumpAt(tester, timeline, height: TimelinePanel.minPanelHeight);
 
       expect(tester.takeException(), isNull);
@@ -172,7 +180,9 @@ void main() {
       );
     });
 
-    testWidgets('storyboard', (tester) async {
+    testWidgets('storyboard — a body of two lanes at the lane floor', (
+      tester,
+    ) async {
       await pumpAt(
         tester,
         storyboard,
@@ -184,54 +194,105 @@ void main() {
       final body = rectOf(tester, 'storyboard-vertical-scrollbar');
       final bottomRail = rectOf(tester, 'storyboard-horizontal-scrollbar');
 
-      expect(
-        body.height,
-        2 * StoryboardPanel.minTrackLaneHeight,
-        reason: 'two track lanes at their floor — the timeline\'s 28 twice',
-      );
+      expect(body.height, 2 * StoryboardPanel.minTrackLaneHeight);
       expect(body.height, greaterThan(32));
       expect(bottomRail.bottom, host.bottom);
       expect(body.bottom, bottomRail.top);
     });
 
-    testWidgets('the x-sheet shares the timeline\'s floor and lands on its '
-        'own two cells there', (tester) async {
-      await pumpAt(
+    testWidgets('the x-sheet does NOT share the timeline\'s floor — at that '
+        'height its header window falls under the thumb minimum and stops '
+        'being reachable', (tester) async {
+      EditorSessionManager? session;
+
+      double headerWindow(WidgetTester tester) {
+        // The header block runs from under the layer-axis scrollbar strip
+        // down to the rail splitter.
+        final strip = rectOf(tester, 'timeline-bottom-scrollbar-rail');
+        return rectOf(tester, 'xsheet-rail-splitter').top - strip.bottom;
+      }
+
+      session = await pumpAt(
         tester,
-        (session) =>
-            timeline(session, orientation: TimelineOrientation.vertical),
+        xsheet,
         height: TimelinePanel.minPanelHeight,
+        reuse: session,
+      );
+      expect(
+        headerWindow(tester),
+        lessThan(32),
+        reason:
+            'this is WHY the sheet needs its own floor: at the '
+            'timeline\'s the rail scrollbar has nowhere to travel',
       );
 
+      session = await pumpAt(
+        tester,
+        xsheet,
+        height: TimelinePanel.minSheetPanelHeight,
+        reuse: session,
+      );
       expect(tester.takeException(), isNull);
       final host = tester.getRect(find.byType(TimelineTabHost));
-      final splitter = rectOf(tester, 'xsheet-rail-splitter');
       expect(
-        host.bottom - splitter.bottom,
+        headerWindow(tester),
+        layerRailMinimumWindowExtent,
+        reason:
+            'the sheet\'s floor is the rail\'s own minimum window, '
+            'stood on its side',
+      );
+      expect(
+        host.bottom - rectOf(tester, 'xsheet-rail-splitter').bottom,
         layerRailFrameReserveExtent,
         reason:
-            'stood on its side the frame axis is vertical, so the floor '
-            'has to leave the frame area its two-cell reserve',
+            'and the frame area still keeps its reserve — two cells at '
+            'the DEFAULT zoom, which is how that constant states itself',
       );
+    });
+
+    testWidgets('the conte keeps room for the action field its selected '
+        'cell mounts', (tester) async {
+      final session = await pumpAt(
+        tester,
+        (s) => ConteTabHost(session: s, thumbnailFor: null),
+        height: ConteTabHost.minPanelHeight,
+      );
+      expect(tester.takeException(), isNull);
+
+      // Select a cell so the non-flexible action row mounts.
+      final page = rectOf(tester, 'conte-page');
+      outer:
+      for (var fx = 0.1; fx < 1.0; fx += 0.2) {
+        for (var fy = 0.1; fy < 1.0; fy += 0.2) {
+          await tester.tapAt(
+            Offset(page.left + page.width * fx, page.top + page.height * fy),
+          );
+          await tester.pumpAndSettle();
+          if (find
+              .byKey(const ValueKey<String>('conte-action-field'))
+              .evaluate()
+              .isNotEmpty) {
+            break outer;
+          }
+        }
+      }
+      expect(
+        tester.takeException(),
+        isNull,
+        reason:
+            'the action row is a plain column child — it takes its '
+            'height whether or not there is room',
+      );
+      expect(session.repository.requireProject(), isNotNull);
     });
   });
 
   group('no height from the floor up overflows or clips', () {
-    const heights = [
-      156.0,
-      160.0,
-      170.0,
-      186.0,
-      200.0,
-      240.0,
-      280.0,
-      350.0,
-      500.0,
-    ];
+    const heights = [200.0, 240.0, 280.0, 350.0, 500.0];
 
     testWidgets('timeline', (tester) async {
       EditorSessionManager? session;
-      for (final height in heights) {
+      for (final height in [TimelinePanel.minPanelHeight, ...heights]) {
         session = await pumpAt(
           tester,
           timeline,
@@ -255,7 +316,7 @@ void main() {
 
     testWidgets('storyboard', (tester) async {
       EditorSessionManager? session;
-      for (final height in heights) {
+      for (final height in [StoryboardTabHost.minPanelHeight, ...heights]) {
         session = await pumpAt(
           tester,
           storyboard,
@@ -279,28 +340,34 @@ void main() {
 
     testWidgets('x-sheet', (tester) async {
       EditorSessionManager? session;
-      for (final height in heights) {
-        session = await pumpAt(
-          tester,
-          (s) => timeline(s, orientation: TimelineOrientation.vertical),
-          height: height,
-          reuse: session,
-        );
+      // Its floor is higher than the timeline's, so the shared sweep list
+      // starts below it — take only the heights this panel is allowed to
+      // be asked for.
+      for (final height in [
+        TimelinePanel.minSheetPanelHeight,
+        ...heights.where((h) => h >= TimelinePanel.minSheetPanelHeight),
+      ]) {
+        session = await pumpAt(tester, xsheet, height: height, reuse: session);
         expect(tester.takeException(), isNull, reason: 'x-sheet at $height');
         final host = tester.getRect(find.byType(TimelineTabHost));
+        final splitter = rectOf(tester, 'xsheet-rail-splitter');
         expect(
-          host.bottom - rectOf(tester, 'xsheet-rail-splitter').bottom,
+          host.bottom - splitter.bottom,
           greaterThanOrEqualTo(layerRailFrameReserveExtent),
-          reason: 'two frame cells or more at $height',
+          reason: 'the frame reserve survives at $height',
+        );
+        expect(
+          splitter.top -
+              rectOf(tester, 'timeline-bottom-scrollbar-rail').bottom,
+          greaterThanOrEqualTo(layerRailMinimumWindowExtent),
+          reason: 'and so does a readable header window at $height',
         );
       }
     });
 
-    testWidgets('the conte sheet, which is why it gets no floor at all', (
-      tester,
-    ) async {
+    testWidgets('the conte sheet, whose floor is chrome alone', (tester) async {
       EditorSessionManager? session;
-      for (final height in [...heights, 120.0, 80.0, 40.0]) {
+      for (final height in [ConteTabHost.minPanelHeight, ...heights]) {
         session = await pumpAt(
           tester,
           (s) => ConteTabHost(session: s, thumbnailFor: null),
@@ -312,93 +379,246 @@ void main() {
     });
   });
 
-  testWidgets('dragging the bottom dock splitter all the way down stops at '
-      'the floor — the bottom scrollbar row and the vertical rail\'s foot '
-      'are still there, which is the report', (tester) async {
-    await tester.binding.setSurfaceSize(const Size(1600, 1000));
-    addTearDown(() => tester.binding.setSurfaceSize(null));
-    await tester.pumpWidget(const MaterialApp(home: HomePage()));
-    await tester.pumpAndSettle();
+  group('a dock divides its height so no SECTION lands under its floor', () {
+    // The first round guarded only the dock's outer splitter, and the dock
+    // host still split by WEIGHT — so one tab drag made a second section
+    // and starved the timeline back into the shell's scroller at the
+    // untouched default height. Measured then: 13.5px of overhang at 350,
+    // 78px at the splitter's own stop, 151.5px with the section splitter
+    // pushed to its weight limit.
+    List<double> extentsFor(
+      List<double> weights,
+      List<double> floors,
+      double h,
+    ) => dockSectionExtents(weights: weights, floors: floors, totalExtent: h);
 
-    await tester.drag(
-      find.byKey(const ValueKey<String>('dock-resize-bottom')),
-      const Offset(0, 2000),
-    );
-    await tester.pumpAndSettle();
-    expect(tester.takeException(), isNull);
+    test('two sections, equal weights: the taller floor is paid first', () {
+      final extents = extentsFor([1, 1], [186, 30], 350);
+      expect(extents[0], greaterThanOrEqualTo(186));
+      expect(extents[1], greaterThanOrEqualTo(30));
+      expect(extents[0] + extents[1], closeTo(345, 0.001));
+    });
 
-    final panel = tester.getRect(find.byType(TimelineTabHost));
-    final bottomRail = rectOf(tester, 'timeline-bottom-scrollbar-rail');
-    final body = rectOf(tester, 'timeline-vertical-scrollbar');
-    // The GROUP is the visible region — the tab strip plus whatever the
-    // dock left for content. This is the assertion the bug fails: laid out
-    // at a fixed height inside a scroller, the panel keeps its full
-    // geometry and hangs out the bottom of the group, which is exactly the
-    // rows the user watched disappear.
-    final group = tester.getRect(
-      find
-          .ancestor(
-            of: find.byType(TimelineTabHost),
-            matching: find.byType(EditorPanelTabs),
-          )
-          .first,
-    );
+    test('the section splitter cannot starve a section below its floor', () {
+      final extents = extentsFor([0.2, 1.8], [186, 30], 350);
+      expect(
+        extents[0],
+        greaterThanOrEqualTo(186),
+        reason: 'a weight of 0.2 used to buy 34.5px and 151px of overhang',
+      );
+      expect(extents[0] + extents[1], closeTo(345, 0.001));
+    });
 
-    expect(
-      bottomRail.bottom,
-      lessThanOrEqualTo(group.bottom),
-      reason:
-          'the bottom scrollbar row is inside the dock, not scrolled off '
-          'the end of it',
-    );
-    expect(
-      body.bottom,
-      lessThanOrEqualTo(group.bottom),
-      reason: 'the vertical rail\'s foot is inside the dock',
-    );
-    expect(
-      panel.height,
-      greaterThanOrEqualTo(TimelinePanel.minPanelHeight),
-      reason: 'the splitter stopped at the floor instead of dragging past it',
-    );
-    expect(
-      panel.bottom,
-      group.bottom,
-      reason:
-          'the panel FILLS the dock instead of overhanging it — no '
-          'vertical scroller engaged',
-    );
-    expect(
-      body.height,
-      greaterThanOrEqualTo(2 * timelineLayerRowHeight),
-      reason: 'the splitter stopped where the body stopped shrinking',
-    );
-    expect(
-      body.bottom,
-      bottomRail.top,
-      reason: 'the vertical rail still reaches the bottom row',
-    );
-    expect(
-      bottomRail.bottom,
-      panel.bottom,
-      reason: 'the row the user watched vanish is still on the bottom edge',
-    );
-    expect(
-      bottomRail.bottom,
-      lessThanOrEqualTo(1000.0),
-      reason: 'nothing was pushed off the window',
-    );
+    test('when every floor is already paid the split is EXACTLY the '
+        'proportional one it always was — the floors change nothing', () {
+      final extents = extentsFor([1, 3], [30, 30], 430);
+      expect(extents[0], closeTo(425 * 0.25, 0.001));
+      expect(extents[1], closeTo(425 * 0.75, 0.001));
+    });
+
+    test('a dock too small for every floor shares the shortfall instead of '
+        'starving whoever is last', () {
+      final extents = extentsFor([1, 1], [200, 100], 155);
+      expect(extents[0], closeTo(100, 0.001));
+      expect(extents[1], closeTo(50, 0.001));
+      expect(extents[0], greaterThan(extents[1]));
+    });
+
+    test('one section takes everything', () {
+      expect(extentsFor([1], [186], 350), [350]);
+    });
+
+    testWidgets('and the real dock host lays them out that way', (
+      tester,
+    ) async {
+      EditorPanelTab tabFor(String id) => EditorPanelTab(
+        id: id,
+        label: id,
+        icon: Icons.circle,
+        minContentHeight: id == 'tall' ? 156 : null,
+        builder: (context) => ColoredBox(
+          key: ValueKey<String>('body-$id'),
+          color: const Color(0xFF223344),
+          child: const SizedBox.expand(),
+        ),
+      );
+
+      final layout = EditorPanelLayoutModel(
+        docks: {
+          'bottom': [
+            DockSection(tabs: ['tall'], weight: 0.2),
+            DockSection(tabs: ['short'], weight: 1.8),
+          ],
+        },
+      );
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildAppTheme(),
+          home: Scaffold(
+            body: Align(
+              alignment: Alignment.topLeft,
+              child: SizedBox(
+                width: 1200,
+                height: 350,
+                child: EditorDockHost(
+                  layout: layout,
+                  dockId: 'bottom',
+                  tabResolver: tabFor,
+                  draggingTab: ValueNotifier<EditorPanelTabDragData?>(null),
+                  canAcceptTab: (_) => false,
+                  onTabSelected: (_, _) {},
+                  onTabMovedToSection: (_, _, _) {},
+                  onTabMovedToNewSection: (_, _) {},
+                  onTabDragChanged: (_) {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+
+      final body = tester.getRect(
+        find.byKey(const ValueKey<String>('body-tall')),
+      );
+      final group = tester.getRect(
+        find
+            .ancestor(
+              of: find.byKey(const ValueKey<String>('body-tall')),
+              matching: find.byType(EditorPanelTabs),
+            )
+            .first,
+      );
+      expect(
+        body.bottom,
+        lessThanOrEqualTo(group.bottom),
+        reason: 'the starved section used to overhang its group by 151.5px',
+      );
+      expect(
+        group.height - EditorPanelTabs.stripHeight,
+        greaterThanOrEqualTo(156),
+      );
+    });
   });
 
-  testWidgets('the floor a dock reserves counts the tab STRIP too, so the '
-      'panel keeps its rows once the strip is subtracted', (tester) async {
-    // Guards the arithmetic in _verticalDockMinimumExtent without reaching
-    // into it: a section costs its strip plus the tallest tab floor in it,
-    // and the bottom dock ships timeline + storyboard + conte in one.
-    expect(
-      EditorPanelTabs.stripHeight + TimelinePanel.minPanelHeight,
-      greaterThan(StoryboardTabHost.minPanelHeight),
-      reason: 'the timeline is the tallest floor in the bottom dock',
-    );
+  group('the dock splitter stops at the floor, and the floor yields to the '
+      'window', () {
+    testWidgets('dragging the bottom dock splitter all the way down keeps '
+        'the bottom scrollbar row and the vertical rail\'s foot — which is '
+        'the report', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1600, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(theme: buildAppTheme(), home: const HomePage()),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.drag(
+        find.byKey(const ValueKey<String>('dock-resize-bottom')),
+        const Offset(0, 2000),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+
+      final panel = tester.getRect(find.byType(TimelineTabHost));
+      final bottomRail = rectOf(tester, 'timeline-bottom-scrollbar-rail');
+      final body = rectOf(tester, 'timeline-vertical-scrollbar');
+      // The GROUP is the visible region. This is the assertion the bug
+      // fails: laid out at a fixed height inside a scroller, the panel
+      // keeps its full geometry and hangs out the bottom of the group.
+      final group = tester.getRect(
+        find
+            .ancestor(
+              of: find.byType(TimelineTabHost),
+              matching: find.byType(EditorPanelTabs),
+            )
+            .first,
+      );
+
+      expect(
+        bottomRail.bottom,
+        lessThanOrEqualTo(group.bottom),
+        reason:
+            'the bottom scrollbar row is inside the dock, not scrolled '
+            'off the end of it',
+      );
+      expect(body.bottom, lessThanOrEqualTo(group.bottom));
+      expect(panel.height, greaterThanOrEqualTo(TimelinePanel.minPanelHeight));
+      expect(
+        panel.bottom,
+        group.bottom,
+        reason:
+            'the panel FILLS the dock instead of overhanging it — no '
+            'vertical scroller engaged',
+      );
+      expect(
+        body.height,
+        greaterThanOrEqualTo(2 * timelineLayerRowHeight),
+        reason: 'the splitter stopped where the body stopped shrinking',
+      );
+    });
+
+    testWidgets('in a window too short to pay the floor the dock yields '
+        'rather than pushing the canvas out', (tester) async {
+      // The floor is a promise about how a dock divides its own height,
+      // not a claim on someone else's. Without this the splitter went
+      // inert at a height the window could not show, and the user could
+      // no longer drag their way back — worse than before the round.
+      await tester.binding.setSurfaceSize(const Size(1000, 320));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(theme: buildAppTheme(), home: const HomePage()),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull, reason: 'nothing overflows');
+
+      final canvas = find.byKey(const ValueKey<String>('panel-tab-canvas'));
+      expect(canvas, findsOneWidget, reason: 'the canvas tab still exists');
+
+      await tester.drag(
+        find.byKey(const ValueKey<String>('dock-resize-bottom')),
+        const Offset(0, 2000),
+      );
+      await tester.pumpAndSettle();
+      expect(tester.takeException(), isNull);
+    });
+  });
+
+  group('the dock splitter model', () {
+    test('minExtent raises the floor above _minDockExtent but never past '
+        'the maximum', () {
+      final model = EditorPanelLayoutModel(
+        docks: {
+          'bottom': [
+            DockSection(tabs: ['a']),
+          ],
+        },
+      );
+      model.resizeDock('bottom', -1000, fallback: 350, minExtent: 186);
+      expect(model.dockExtent('bottom', fallback: 350), 186);
+
+      // Without one, the model's own 160 still applies.
+      model.resizeDock('bottom', -1000, fallback: 350);
+      expect(model.dockExtent('bottom', fallback: 350), 160);
+
+      // A floor past the maximum cannot invert the clamp.
+      model.resizeDock('bottom', 0, fallback: 350, minExtent: 5000);
+      expect(model.dockExtent('bottom', fallback: 350), 640);
+    });
+
+    test('a stored extent under the floor is lifted before the delta lands, '
+        'so the first drag frame does not jump', () {
+      final model = EditorPanelLayoutModel(
+        docks: {
+          'bottom': [
+            DockSection(tabs: ['a']),
+          ],
+        },
+        dockExtents: {'bottom': 160},
+      );
+      model.resizeDock('bottom', 10, fallback: 350, minExtent: 186);
+      expect(model.dockExtent('bottom', fallback: 350), 196);
+    });
   });
 }

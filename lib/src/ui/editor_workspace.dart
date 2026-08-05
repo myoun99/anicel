@@ -190,29 +190,6 @@ class EditorWorkspace extends StatefulWidget {
   /// genuinely what helps.
   static const double _frameAxisMinContentWidth = 640;
 
-  /// The HEIGHT is each panel's own floor now, not one number for three.
-  ///
-  /// It used to be a flat 280 for all of them, and that is what the user
-  /// reported (2026-08-02): shrinking the dock did not shrink the panel, it
-  /// rendered the panel at 280 inside a vertical scroller and CUT the
-  /// bottom off — the pinned horizontal scrollbar row first, then the foot
-  /// of the vertical scrollbar rail. At the dock's own minimum 150px was
-  /// already gone.
-  ///
-  /// Each panel states what it actually costs (chrome + two rows), so the
-  /// body is what shrinks and the three rows the user needs to see stay on
-  /// screen. `_verticalDockMinimumExtent` then stops the splitter there,
-  /// which is what keeps the vertical scroller from ever engaging in
-  /// practice — it survives only as the guard for hosts smaller still.
-  static double? _minContentHeightFor(String tabId) => switch (tabId) {
-    timelineTabId => TimelinePanel.minPanelHeight,
-    storyboardTabId => StoryboardTabHost.minPanelHeight,
-    // The conte sheet has no fixed rows to protect: it is a page that
-    // scales, and the sweep finds no height at which it overflows. Giving
-    // it a floor would only re-create the scroller this round removes.
-    _ => null,
-  };
-
   @override
   State<EditorWorkspace> createState() => _EditorWorkspaceState();
 }
@@ -1383,7 +1360,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           // existing flow (and test helper) keeps working.
           buttonKey: const ValueKey<String>('timeline-mode-timeline-button'),
           minContentWidth: EditorWorkspace._frameAxisMinContentWidth,
-          minContentHeight: EditorWorkspace._minContentHeightFor(tabId),
+          minContentHeight: _minContentHeightFor(tabId),
           locked: locked,
           // The heavy frame-axis panels keep their subtree offstage
           // across switches (R10-②) — switching back is instant.
@@ -1453,7 +1430,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           icon: Icons.movie_outlined,
           buttonKey: const ValueKey<String>('timeline-mode-storyboard-button'),
           minContentWidth: EditorWorkspace._frameAxisMinContentWidth,
-          minContentHeight: EditorWorkspace._minContentHeightFor(tabId),
+          minContentHeight: _minContentHeightFor(tabId),
           locked: locked,
           keepAlive: true,
           builder: (context) => PanelAwareListenableBuilder(
@@ -1501,7 +1478,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           icon: Icons.grid_on_outlined,
           buttonKey: const ValueKey<String>('timeline-mode-conte-button'),
           minContentWidth: EditorWorkspace._frameAxisMinContentWidth,
-          minContentHeight: EditorWorkspace._minContentHeightFor(tabId),
+          minContentHeight: _minContentHeightFor(tabId),
           locked: locked,
           keepAlive: true,
           // The sheet reads the project and the SAME picture store the
@@ -1695,13 +1672,46 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     );
   }
 
-  /// What a dock stacked along the VERTICAL axis needs before its panels
-  /// start losing rows: every section's tab strip plus the tallest floor
-  /// among that section's tabs, and the splitters between sections.
+  /// The HEIGHT floor each frame-axis panel states for itself, replacing
+  /// the flat 280 all three used to share.
   ///
-  /// The tallest among ALL of a section's tabs, not the active one: a dock
-  /// that shrinks while the conte is up and clips the moment you switch
-  /// back to the timeline is the same bug wearing a different hat.
+  /// That 280 is what the user reported (2026-08-02): shrinking the dock
+  /// did not shrink the panel, it rendered the panel at 280 inside the tab
+  /// shell's vertical scroller and CUT the bottom off — the pinned
+  /// horizontal scrollbar row first, then the foot of the vertical
+  /// scrollbar rail. At the dock's own minimum 150px was already gone.
+  ///
+  /// Each panel states what it actually costs, so the body is what shrinks
+  /// and the rows the user needs to see stay on screen. BOTH places a
+  /// height gets handed out honour it — [_verticalDockMinimumExtent] for
+  /// the dock splitter, [dockSectionExtents] for the sections inside a
+  /// dock. The shell's scroller is left as the guard for what neither can
+  /// reach: an unbounded parent, or a dock too small to pay every section's
+  /// floor at once.
+  double? _minContentHeightFor(String tabId) => switch (tabId) {
+    // NOT one number for this tab: the x-sheet is the timeline toggled on
+    // its side, and standing the rail up spends the panel's HEIGHT on what
+    // the timeline spends its width on. Sharing the timeline's floor fits
+    // the sheet without overflowing it and leaves its column headers a
+    // 31px window — under the scrollbar's own 32px thumb minimum, so
+    // nothing scrolls and nothing is readable. A floor that fits and is
+    // useless is not a floor.
+    EditorWorkspace.timelineTabId =>
+      _timelineOrientation.value == TimelineOrientation.horizontal
+          ? TimelinePanel.minPanelHeight
+          : TimelinePanel.minSheetPanelHeight,
+    EditorWorkspace.storyboardTabId => StoryboardTabHost.minPanelHeight,
+    // The conte has no fixed ROWS — it is a page that scales — but it does
+    // have one conditional chrome row, the action field under a selected
+    // cell, and that row is not flexible.
+    EditorWorkspace.conteTabId => ConteTabHost.minPanelHeight,
+    _ => null,
+  };
+
+  /// What a dock stacked along the VERTICAL axis needs before its panels
+  /// start losing rows: every section's floor, plus the splitters between
+  /// them. Same helper the dock host divides by, so the number the
+  /// splitter stops on is the number the layout will actually honour.
   double _verticalDockMinimumExtent(String dockId) {
     final sections = _layout.sectionsIn(dockId);
     if (sections.isEmpty) {
@@ -1709,33 +1719,58 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     }
     var total = (sections.length - 1) * DockEdgeSplitter.thickness;
     for (final section in sections) {
-      var floor = 0.0;
-      for (final tabId in section.tabs) {
-        floor = math.max(
-          floor,
-          EditorWorkspace._minContentHeightFor(tabId) ?? 0,
-        );
-      }
-      total += EditorPanelTabs.stripHeight + floor;
+      total += dockSectionFloorExtent([
+        for (final tabId in section.tabs) _tabFor(tabId),
+      ]);
     }
     return total;
   }
 
-  Widget _buildBottomDock() {
+  /// The canvas keeps at least this much of the workspace's height, the
+  /// way [minCenterWidth] keeps it width against the side docks. The bottom
+  /// dock had no such guard, and the floor this round added is a force that
+  /// GROWS it — without a ceiling a few stacked sections would push the
+  /// canvas to zero and then refuse to shrink back.
+  static const double _minCenterHeight = 120;
+
+  /// What the window can spare for the bottom dock: everything but the
+  /// canvas's own minimum and the splitter between them.
+  ///
+  /// ONE helper, read by BOTH the render clamp and the splitter's stop. The
+  /// first round of this change wrote those two from different premises —
+  /// one capped at the model's maximum, the other capped at nothing — and
+  /// they agreed only in the default configuration.
+  double _bottomDockCeiling(double availableExtent) {
+    if (!availableExtent.isFinite) {
+      return double.infinity;
+    }
+    return math.max(
+      0.0,
+      availableExtent - _minCenterHeight - DockEdgeSplitter.thickness,
+    );
+  }
+
+  Widget _buildBottomDock({required double availableExtent}) {
     if (_layout.sectionsIn(EditorWorkspace.bottomGroupId).isEmpty) {
       return _emptyDockZone(EditorWorkspace.bottomGroupId, Axis.horizontal);
     }
-    return SizedBox(
-      // Clamped on the way OUT as well as on the drag: a workspace saved
-      // before this floor existed, or one whose bottom dock gained a
-      // taller tab since, must still open at a height its panels fit in.
-      height: math.max(
-        _layout.dockExtent(
-          EditorWorkspace.bottomGroupId,
-          fallback: EditorWorkspace.bottomPanelHeight,
-        ),
-        _verticalDockMinimumExtent(EditorWorkspace.bottomGroupId),
+    // Clamped on the way OUT as well as on the drag: a workspace saved
+    // before this floor existed, or one whose bottom dock gained a taller
+    // tab since, must still open at a height its panels fit in.
+    final wanted = math.max(
+      _layout.dockExtent(
+        EditorWorkspace.bottomGroupId,
+        fallback: EditorWorkspace.bottomPanelHeight,
       ),
+      _verticalDockMinimumExtent(EditorWorkspace.bottomGroupId),
+    );
+    // …but never past what the window has. A floor is a promise about how
+    // the dock divides its own height, not a claim on someone else's: when
+    // the window cannot pay it, the dock yields and the sections share the
+    // shortfall ([dockSectionExtents]) with the shell's scroller behind
+    // them. The user can always drag their way back out.
+    return SizedBox(
+      height: math.min(wanted, _bottomDockCeiling(availableExtent)),
       child: _buildDockHost(EditorWorkspace.bottomGroupId),
     );
   }
@@ -1781,7 +1816,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   Widget _buildWorkspace(BuildContext context) {
     return ListenableBuilder(
-      listenable: _layout,
+      // The ORIENTATION belongs here as well as inside the tab: the
+      // timeline and the x-sheet do not have the same floor, so toggling
+      // between them changes what the dock owes its panel. Merged at this
+      // level and not deeper because the floor is read by the dock
+      // splitter and the section layout, both of which are built here.
+      // (Zoom stays out on purpose — that one is per-drag.)
+      listenable: Listenable.merge([_layout, _timelineOrientation]),
       builder: (context, _) {
         final hasLeftDock = _layout
             .sectionsIn(EditorWorkspace.leftGroupId)
@@ -1801,99 +1842,114 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               EditorPanelDockSide.left,
             ),
             Expanded(
-              child: Column(
-                children: [
-                  Expanded(
-                    child: LayoutBuilder(
-                      builder: (context, constraints) {
-                        // The side docks keep their saved extents but may
-                        // never squeeze the canvas out: scale both down
-                        // proportionally when the window can't fit them.
-                        const minCenterWidth = 120.0;
-                        var leftWidth = hasLeftDock
-                            ? _layout.dockExtent(
-                                EditorWorkspace.leftGroupId,
-                                fallback: EditorWorkspace.sideDockWidth,
-                              )
-                            : 0.0;
-                        var rightWidth = hasRightDock
-                            ? _layout.dockExtent(
-                                EditorWorkspace.rightGroupId,
-                                fallback: EditorWorkspace.sideDockWidth,
-                              )
-                            : 0.0;
-                        final splitters =
-                            (hasLeftDock ? DockEdgeSplitter.thickness : 0) +
-                            (hasRightDock ? DockEdgeSplitter.thickness : 0);
-                        final room =
-                            (constraints.maxWidth - splitters - minCenterWidth)
-                                .clamp(0.0, double.infinity);
-                        final wanted = leftWidth + rightWidth;
-                        if (wanted > room && wanted > 0) {
-                          final scale = room / wanted;
-                          leftWidth *= scale;
-                          rightWidth *= scale;
-                        }
-                        return Row(
-                          children: [
-                            _buildSideDock(
-                              EditorWorkspace.leftGroupId,
-                              EditorPanelDockSide.left,
-                              width: leftWidth,
-                            ),
-                            if (hasLeftDock)
-                              DockEdgeSplitter(
-                                key: const ValueKey<String>('dock-resize-left'),
-                                axis: Axis.vertical,
-                                onDragDelta: (delta) => _layout.resizeDock(
+              // The bottom dock's height is measured against THIS column,
+              // so it can be told what the window actually has to give.
+              child: LayoutBuilder(
+                builder: (context, columnConstraints) => Column(
+                  children: [
+                    Expanded(
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          // The side docks keep their saved extents but may
+                          // never squeeze the canvas out: scale both down
+                          // proportionally when the window can't fit them.
+                          const minCenterWidth = 120.0;
+                          var leftWidth = hasLeftDock
+                              ? _layout.dockExtent(
                                   EditorWorkspace.leftGroupId,
-                                  delta,
                                   fallback: EditorWorkspace.sideDockWidth,
-                                ),
-                              ),
-                            Expanded(child: _buildCenterDock()),
-                            if (hasRightDock)
-                              DockEdgeSplitter(
-                                key: const ValueKey<String>(
-                                  'dock-resize-right',
-                                ),
-                                axis: Axis.vertical,
-                                onDragDelta: (delta) => _layout.resizeDock(
+                                )
+                              : 0.0;
+                          var rightWidth = hasRightDock
+                              ? _layout.dockExtent(
                                   EditorWorkspace.rightGroupId,
-                                  -delta,
                                   fallback: EditorWorkspace.sideDockWidth,
-                                ),
+                                )
+                              : 0.0;
+                          final splitters =
+                              (hasLeftDock ? DockEdgeSplitter.thickness : 0) +
+                              (hasRightDock ? DockEdgeSplitter.thickness : 0);
+                          final room =
+                              (constraints.maxWidth -
+                                      splitters -
+                                      minCenterWidth)
+                                  .clamp(0.0, double.infinity);
+                          final wanted = leftWidth + rightWidth;
+                          if (wanted > room && wanted > 0) {
+                            final scale = room / wanted;
+                            leftWidth *= scale;
+                            rightWidth *= scale;
+                          }
+                          return Row(
+                            children: [
+                              _buildSideDock(
+                                EditorWorkspace.leftGroupId,
+                                EditorPanelDockSide.left,
+                                width: leftWidth,
                               ),
-                            _buildSideDock(
-                              EditorWorkspace.rightGroupId,
-                              EditorPanelDockSide.right,
-                              width: rightWidth,
-                            ),
-                          ],
-                        );
-                      },
-                    ),
-                  ),
-                  if (hasBottomDock)
-                    DockEdgeSplitter(
-                      key: const ValueKey<String>('dock-resize-bottom'),
-                      axis: Axis.horizontal,
-                      onDragDelta: (delta) => _layout.resizeDock(
-                        EditorWorkspace.bottomGroupId,
-                        -delta,
-                        fallback: EditorWorkspace.bottomPanelHeight,
-                        // The splitter stops where the panels stop
-                        // shrinking. Without this the drag runs on past
-                        // the floor and the tab shell's scroller — kept
-                        // only as a guard — starts cutting the bottom
-                        // rows off, which is the reported bug.
-                        minExtent: _verticalDockMinimumExtent(
-                          EditorWorkspace.bottomGroupId,
-                        ),
+                              if (hasLeftDock)
+                                DockEdgeSplitter(
+                                  key: const ValueKey<String>(
+                                    'dock-resize-left',
+                                  ),
+                                  axis: Axis.vertical,
+                                  onDragDelta: (delta) => _layout.resizeDock(
+                                    EditorWorkspace.leftGroupId,
+                                    delta,
+                                    fallback: EditorWorkspace.sideDockWidth,
+                                  ),
+                                ),
+                              Expanded(child: _buildCenterDock()),
+                              if (hasRightDock)
+                                DockEdgeSplitter(
+                                  key: const ValueKey<String>(
+                                    'dock-resize-right',
+                                  ),
+                                  axis: Axis.vertical,
+                                  onDragDelta: (delta) => _layout.resizeDock(
+                                    EditorWorkspace.rightGroupId,
+                                    -delta,
+                                    fallback: EditorWorkspace.sideDockWidth,
+                                  ),
+                                ),
+                              _buildSideDock(
+                                EditorWorkspace.rightGroupId,
+                                EditorPanelDockSide.right,
+                                width: rightWidth,
+                              ),
+                            ],
+                          );
+                        },
                       ),
                     ),
-                  _buildBottomDock(),
-                ],
+                    if (hasBottomDock)
+                      DockEdgeSplitter(
+                        key: const ValueKey<String>('dock-resize-bottom'),
+                        axis: Axis.horizontal,
+                        onDragDelta: (delta) => _layout.resizeDock(
+                          EditorWorkspace.bottomGroupId,
+                          -delta,
+                          fallback: EditorWorkspace.bottomPanelHeight,
+                          // The splitter stops where the panels stop
+                          // shrinking. Without this the drag runs on past
+                          // the floor and the tab shell's scroller — kept
+                          // only as a guard — starts cutting the bottom
+                          // rows off, which is the reported bug. Capped by
+                          // what the window has, so a tall floor in a short
+                          // window never leaves the splitter inert.
+                          minExtent: math.min(
+                            _verticalDockMinimumExtent(
+                              EditorWorkspace.bottomGroupId,
+                            ),
+                            _bottomDockCeiling(columnConstraints.maxHeight),
+                          ),
+                        ),
+                      ),
+                    _buildBottomDock(
+                      availableExtent: columnConstraints.maxHeight,
+                    ),
+                  ],
+                ),
               ),
             ),
             _buildEdgeDock(
