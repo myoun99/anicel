@@ -624,6 +624,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       toggler: _togglePanelVisibility,
       relay: _layout,
       layoutReset: _resetWorkspaceLayout,
+      toolRailOnRight: () =>
+          _layout.sectionsIn(EditorWorkspace.toolRightGroupId).isNotEmpty,
+      toolRailMover: _setToolRailOnRight,
     );
     widget.layerNav?.bind(_stepDisplayedLayer);
     widget.flipHud?.bind(_flipHudSnapshot);
@@ -1701,8 +1704,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   }
 
   /// A dock's stacked sections with the PS/AE-style drop feedback.
-  Widget _buildDockHost(String dockId, {bool compact = false}) {
+  Widget _buildDockHost(
+    String dockId, {
+    bool compact = false,
+    bool chromeless = false,
+  }) {
     return EditorDockHost(
+      chromeless: chromeless,
       layout: _layout,
       dockId: dockId,
       tabResolver: _tabFor,
@@ -1760,6 +1768,33 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     );
   }
 
+  /// Moves the tool strip to the requested edge (the left-handed choice).
+  ///
+  /// This used to be a tab drag across the workspace. With 고정 도킹 the
+  /// tab has no grip, so the choice needed a switch — and it lands in the
+  /// LAYOUT, which is already persisted, rather than a new setting file.
+  void _setToolRailOnRight(bool onRight) {
+    final from = onRight
+        ? EditorWorkspace.toolLeftGroupId
+        : EditorWorkspace.toolRightGroupId;
+    final to = onRight
+        ? EditorWorkspace.toolRightGroupId
+        : EditorWorkspace.toolLeftGroupId;
+    final sections = _layout.sectionsIn(from);
+    if (sections.isEmpty) {
+      return; // Already on the requested edge.
+    }
+    _mutatingLayout(() {
+      for (final tabId in [for (final section in sections) ...section.tabs]) {
+        _layout.moveTabToNewSection(
+          tabId: tabId,
+          toDockId: to,
+          atSectionIndex: _layout.sectionsIn(to).length,
+        );
+      }
+    });
+  }
+
   /// A slim edge dock homing the vertical tool bar on either workspace
   /// edge (left-handed choice); collapsed when empty.
   Widget _buildEdgeDock(String dockId, EditorPanelDockSide side) {
@@ -1770,7 +1805,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       side: side,
       width: ToolsPanel.dockWidth,
       dockId: dockId,
-      child: _buildDockHost(dockId, compact: true),
+      // 고정 도킹 (유저 확정): the tool strip renders with NO panel frame —
+      // no tab name, no lock, no X, no grip. It holds one thing forever,
+      // and a header over a column of tool buttons is a title for
+      // something that needs no title. Every other dock keeps its strip.
+      child: _buildDockHost(dockId, compact: true, chromeless: true),
     );
   }
 

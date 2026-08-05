@@ -138,6 +138,7 @@ class EditorDockHost extends StatelessWidget {
     this.onCloseTab,
     this.flash,
     this.compact = false,
+    this.chromeless = false,
   });
 
   final EditorPanelLayoutModel layout;
@@ -165,6 +166,10 @@ class EditorDockHost extends StatelessWidget {
   /// section's panel shell.
   final PanelFlashController? flash;
   final bool compact;
+
+  /// Drops the tab strip entirely — see [EditorPanelTabs.chromeless]. Used
+  /// by the fixed tool strip, which holds one panel forever.
+  final bool chromeless;
 
   @override
   Widget build(BuildContext context) {
@@ -198,6 +203,7 @@ class EditorDockHost extends StatelessWidget {
           child: EditorPanelTabs(
             groupId: dockId,
             compact: compact,
+            chromeless: chromeless,
             tabs: resolved[i],
             activeTabId: sections[i].activeTabId,
             onTabSelected: (tabId) => onTabSelected(i, tabId),

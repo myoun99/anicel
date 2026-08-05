@@ -81,23 +81,23 @@ void main() {
     );
   });
 
-  testWidgets('Settings: a closed panel comes back from the panel rows', (
+  testWidgets('Settings: the panel rows are the show/hide switch now', (
     tester,
   ) async {
     await pumpHome(tester);
 
-    await tester.tap(find.byKey(const ValueKey<String>('panel-close-brushes')));
-    await tester.pumpAndSettle();
+    // The tab's X is gone with the rest of the panel chrome (고정 도킹), so
+    // this list is not just the way BACK any more — it is the only switch
+    // in either direction.
+    await openStrip(tester, 'top-strip-settings-button');
+    await tapEntry(tester, 'panels-menu-item-brushes');
     expect(
       find.byKey(const ValueKey<String>('panel-tab-brushes')),
       findsNothing,
     );
 
-    // The old Window menu, now a section of Settings. This is the ONLY way
-    // back for an X-ed panel, which is why it survived the teardown.
     await openStrip(tester, 'top-strip-settings-button');
     await tapEntry(tester, 'panels-menu-item-brushes');
-
     expect(
       find.byKey(const ValueKey<String>('panel-tab-brushes')),
       findsOneWidget,
@@ -109,8 +109,8 @@ void main() {
   ) async {
     await pumpHome(tester);
 
-    await tester.tap(find.byKey(const ValueKey<String>('panel-close-brushes')));
-    await tester.pumpAndSettle();
+    await openStrip(tester, 'top-strip-settings-button');
+    await tapEntry(tester, 'panels-menu-item-brushes');
     expect(
       find.byKey(const ValueKey<String>('panel-tab-brushes')),
       findsNothing,
