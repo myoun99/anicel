@@ -548,7 +548,7 @@ class _InteractiveBrushEditCanvasViewState
     if (!mappedErase &&
         (_multiTouchNavigation ||
             _activeDrawingPointer != null ||
-            !_isPrimaryButton(event.buttons))) {
+            !_isPrimaryButton(_effectiveButtons(event)))) {
       return;
     }
 
@@ -1076,8 +1076,29 @@ class _InteractiveBrushEditCanvasViewState
     if (event.kind == PointerDeviceKind.touch) {
       return null;
     }
-    return _mappingForButtons(_mappedButtonBits(event.buttons));
+    return _mappingForButtons(_mappedButtonBits(_effectiveButtons(event)));
   }
+
+  /// The buttons to BELIEVE for [event].
+  ///
+  /// A driver sidecar that speaks for this moment WINS — the same
+  /// contract [_normalizedPressure] already follows, and for the same
+  /// reason: the OS path can be lying about what the pen just did.
+  ///
+  /// The lie this catches: Windows Ink hands a Wacom barrel press to a
+  /// legacy window (Flutter never asks for WM_POINTER) as a PHANTOM PEN
+  /// TAP — kind stylus, pressure exactly 0.0, the PRIMARY button down,
+  /// on its own pointer id, while the pen is still hovering. Taken
+  /// literally that is a drawing contact, so the barrel never reached
+  /// its mapping AND the phantom opened a real stroke on top of it.
+  ///
+  /// Note this is a truth source, not a fingerprint: nothing here
+  /// guesses from pressure being 0. A device with no pressure at all
+  /// reports 0 for every honest contact it ever makes, so reading the
+  /// zero as "must be a barrel press" would turn every stroke on such a
+  /// tablet into a button press.
+  int _effectiveButtons(PointerEvent event) =>
+      PenSidecars.freshButtons() ?? event.buttons;
 
   /// The mapping a set of non-primary [bits] drives: the wheel click owns
   /// the tertiary bit, and everything else reads as the secondary — the
@@ -1101,7 +1122,7 @@ class _InteractiveBrushEditCanvasViewState
   int _lastHoverButtons = 0;
 
   bool _mappedButtonHeldSinceHover(PointerDownEvent event) =>
-      (_lastHoverButtons & _mappedButtonBits(event.buttons)) != 0;
+      (_lastHoverButtons & _mappedButtonBits(_effectiveButtons(event))) != 0;
 
   /// R26 #19/#20: a mapped HOLD tool (eyedropper) engaged from a hover
   /// button press — a Wacom barrel button pressed while the pen hovers
@@ -1116,10 +1137,11 @@ class _InteractiveBrushEditCanvasViewState
     if (event.kind == PointerDeviceKind.touch) {
       return;
     }
+    final buttons = _effectiveButtons(event);
     final previousButtons = _lastHoverButtons;
-    final pressed = event.buttons & ~previousButtons;
-    final released = previousButtons & ~event.buttons;
-    _lastHoverButtons = event.buttons;
+    final pressed = buttons & ~previousButtons;
+    final released = previousButtons & ~buttons;
+    _lastHoverButtons = buttons;
     if (_hoverToolHoldActive && (released & _hoverToolHoldButton) != 0) {
       final keep = _hoverToolHoldRelease == CanvasPointerRelease.keep;
       _hoverToolHoldActive = false;
@@ -1164,9 +1186,10 @@ class _InteractiveBrushEditCanvasViewState
     if (event.kind == PointerDeviceKind.touch) {
       return;
     }
+    final buttons = _effectiveButtons(event);
     final previous = _lastContactButtons[event.pointer] ?? 0;
-    final pressed = event.buttons & ~previous;
-    _lastContactButtons[event.pointer] = event.buttons;
+    final pressed = buttons & ~previous;
+    _lastContactButtons[event.pointer] = buttons;
     if (pressed == 0 ||
         _mappedHoldPointer != null ||
         _hoverToolHoldActive ||
