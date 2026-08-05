@@ -98,6 +98,7 @@ class FlipHudSnapshot {
     required this.rowIndex,
     required this.frameIndex,
     required this.frameCount,
+    this.playbackFrameCount,
   });
 
   static const FlipHudSnapshot empty = FlipHudSnapshot(
@@ -106,6 +107,18 @@ class FlipHudSnapshot {
     frameIndex: 0,
     frameCount: 0,
   );
+
+  /// Where the CUT ends, when the axis reaches past it. The timeline's
+  /// frame axis is endless — the flip can stand in the runway beyond the
+  /// last frame — and out there its cells carry no timesheet X, so the
+  /// window's do not either. Null means the whole axis plays.
+  final int? playbackFrameCount;
+
+  /// Whether [frameIndex] sits past the cut's last frame.
+  bool outsidePlayback(int frameIndex) {
+    final playback = playbackFrameCount;
+    return playback != null && frameIndex >= playback;
+  }
 
   /// The displayed rows, in the timeline's own order — filtered, folded
   /// and section-hidden exactly as they are on screen.

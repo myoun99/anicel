@@ -344,6 +344,7 @@ class FlipHudPainter extends CustomPainter {
           ),
           row: row,
           slot: slot,
+          outsidePlayback: snapshot.outsidePlayback(slot.startIndex),
           // On the frame axis a block's body spans its whole run and only
           // its first cell carries the name — the timeline's own shape.
           spanWidth: frameStep && run != null
@@ -544,12 +545,17 @@ class FlipHudPainter extends CustomPainter {
     required FlipHudSlot slot,
     required double spanWidth,
     required bool isRunHead,
+    bool outsidePlayback = false,
   }) {
     final run = slot.run;
     if (run == null) {
-      // The timesheet X, on the first cell of an empty stretch and only
-      // on rows that hold drawings — the cells painter's own rule.
-      if (row.holdsDrawings && row.emptyRunStartsAt(slot.startIndex)) {
+      // The timesheet X, on the first cell of an empty stretch, only on
+      // rows that hold drawings, and never past the cut's last frame —
+      // the cells painter's own three conditions. The runway beyond the
+      // cut is bare grid there, so it is bare grid here.
+      if (row.holdsDrawings &&
+          !outsidePlayback &&
+          row.emptyRunStartsAt(slot.startIndex)) {
         _paintGlyph(
           canvas,
           rect,

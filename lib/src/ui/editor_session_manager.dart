@@ -12791,9 +12791,17 @@ class EditorSessionManager extends ChangeNotifier {
   /// "escape past the block I am on" clause — jumped all the way to the
   /// previous block's head. Counting COLUMNS instead makes both
   /// directions the same sentence and puts the gap back on the axis.
+  ///
+  /// Past the cut's last frame is still THIS row's axis. The timeline's
+  /// frame axis is endless: it papers whatever has been scrolled into
+  /// existence, marks the cut end with its boundary line and draws the
+  /// cells beyond it dimmed. So rightward never runs out without the
+  /// flip having to leave — handing the landing to the track would drop
+  /// the row being flipped, which is the one thing a layer row must not
+  /// do. Leftward the cut's own frame 0 is the floor, which keeps
+  /// "which row of the next cut do I land on?" a question nobody asks.
   void _flipBlocks(Layer layer, {required bool forward}) {
-    final cut = activeCutOrNull;
-    if (cut == null) {
+    if (activeCutOrNull == null) {
       return; // Gap state: no cut axis — the TRACK row is the one to walk.
     }
     final current = _timelineController.currentFrameIndex;
@@ -12807,25 +12815,8 @@ class EditorSessionManager extends ChangeNotifier {
             : (start: block.startIndex, endExclusive: block.endIndexExclusive);
       },
     );
-    if (next == current) {
-      return;
-    }
-    if (next >= 0 && next < cut.duration) {
+    if (next != current && next >= 0) {
       selectFrameIndex(next);
-      return;
-    }
-    // The step left the cut. A cut's edge is not the end of the axis —
-    // the film continues — so the landing is handed to the track's
-    // global axis, which puts it in the neighbouring cut or parks it in
-    // the gap. Rightward this never runs out; leftward it stops at the
-    // start of the film, the one real floor there is.
-    final cutStart = trackFrameAxis().globalOf(cut.id, 0);
-    if (cutStart == null) {
-      return;
-    }
-    final global = cutStart + next;
-    if (global >= 0) {
-      selectGlobalFrame(global);
     }
   }
 
