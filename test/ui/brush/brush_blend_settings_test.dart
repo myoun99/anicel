@@ -1,19 +1,20 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/brush_blend_mode.dart';
 import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 
-/// BB-2 (R26 #9/#10/#11): the CSP-grouped brush settings — the ink
-/// group's blend dropdown, the eraser lock, the retired color/tip rows,
-/// and the hand-setting independence of size + blend.
+/// BB-2 (R26 #9/#10/#11): the CSP-grouped brush settings — the retired
+/// color/tip rows, and the hand-setting independence of size + blend.
+///
+/// The blend DROPDOWN itself is no longer here. It moved to the top strip
+/// with size and opacity, so its widget tests live in
+/// `test/ui/menu/editor_top_strip_test.dart`.
 void main() {
   Future<void> pumpPanel(
     WidgetTester tester, {
     required BrushToolState state,
     required ValueChanged<BrushToolState> onChanged,
-    AppLanguage language = AppLanguage.en,
   }) {
     return tester.pumpWidget(
       MaterialApp(
@@ -21,11 +22,7 @@ void main() {
           child: SingleChildScrollView(
             child: SizedBox(
               width: 320,
-              child: BrushSettingsPanel(
-                state: state,
-                onChanged: onChanged,
-                language: language,
-              ),
+              child: BrushSettingsPanel(state: state, onChanged: onChanged),
             ),
           ),
         ),
@@ -33,67 +30,47 @@ void main() {
     );
   }
 
-  testWidgets('the ink group carries the blend dropdown: picking 乗算 '
-      'commits multiply, and ja reads the CSP term', (tester) async {
-    var state = BrushToolState.defaults;
-    await pumpPanel(
-      tester,
-      state: state,
-      onChanged: (next) => state = next,
-      language: AppLanguage.ja,
-    );
-
-    final button = find.byKey(
-      const ValueKey<String>('brush-tool-blend-menu-button'),
-    );
-    expect(button, findsOneWidget);
-    expect(
-      find.descendant(of: button, matching: find.text('通常')),
-      findsOneWidget,
-      reason: 'the resting label IS the current mode, CSP Japanese',
-    );
-
-    await tester.tap(button);
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('brush-tool-blend-multiply')),
-    );
-    await tester.pumpAndSettle();
-    expect(state.brushBlendMode, BrushBlendMode.multiply);
-  });
-
-  testWidgets('the ERASER locks the blend to 消去 — no flyout, a lock '
-      'chip instead', (tester) async {
-    await pumpPanel(
-      tester,
-      state: BrushToolState.defaults.copyWith(tool: CanvasTool.eraser),
-      onChanged: (_) {},
-      language: AppLanguage.ja,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('brush-tool-blend-locked')),
-      findsOneWidget,
-    );
-    expect(find.text('消去'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey<String>('brush-tool-blend-menu-button')),
-      findsNothing,
-    );
-  });
-
   testWidgets('R26 #11: the color swatches and the tip shape segment are '
       'GONE from the settings panel', (tester) async {
-    await pumpPanel(
-      tester,
-      state: BrushToolState.defaults,
-      onChanged: (_) {},
-    );
+    await pumpPanel(tester, state: BrushToolState.defaults, onChanged: (_) {});
     expect(
       find.byKey(const ValueKey<String>('brush-tool-tip-shape-toggle')),
       findsNothing,
     );
     expect(find.text('Round'), findsNothing);
     expect(find.text('Black'), findsNothing, reason: 'no swatch chips');
+  });
+
+  testWidgets('size, opacity and blend LEFT this panel for the strip — one '
+      'number, one place to read it (유저 확정)', (tester) async {
+    await pumpPanel(tester, state: BrushToolState.defaults, onChanged: (_) {});
+
+    for (final gone in [
+      'brush-tool-size-slider',
+      'brush-tool-opacity-slider',
+      'brush-tool-blend-menu-button',
+      'brush-tool-blend-lock-toggle',
+      // The pressure curves went WITH their values: a curve belongs
+      // beside the number it shapes.
+      'brush-tool-pressure-size',
+      'brush-tool-pressure-opacity',
+    ]) {
+      expect(
+        find.byKey(ValueKey<String>(gone)),
+        findsNothing,
+        reason: '$gone belongs to the top strip now',
+      );
+    }
+
+    // What stays: the settings a hand does NOT change mid-stroke.
+    expect(
+      find.byKey(const ValueKey<String>('brush-tool-flow-slider')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('brush-tool-hardness-slider')),
+      findsOneWidget,
+    );
   });
 
   test('R26 #10: size and the brush blend are HAND settings — presets '

@@ -83,8 +83,13 @@ void main() {
           ),
         ),
       );
-      // The brush settings panel's size slider is its signature control.
-      expect(find.text('Size'), findsWidgets);
+      // Size left for the top strip, so the signature control is now the
+      // first knob a preset DOES carry and a hand does not reach for
+      // mid-stroke.
+      expect(
+        find.byKey(const ValueKey<String>('brush-tool-flow-slider')),
+        findsOneWidget,
+      );
     });
   });
 }
