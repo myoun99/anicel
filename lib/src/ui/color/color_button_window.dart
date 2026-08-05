@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'dart:math' as math;
 
 import '../../services/color_palette_file_service.dart';
 import '../widgets/anchored_popup.dart';
@@ -10,35 +9,37 @@ import 'color_rgb_panel.dart';
 import 'color_status_bar.dart';
 import 'color_wheel_panel.dart';
 
-/// The 「컬러 버튼창」 (R9 #14, the user's name for it): the window the tool
-/// rail's SELECTED-COLOUR swatch opens, carrying the colour wheel and the
-/// palette as two tabs.
+/// The 「컬러 버튼창」 (R9 #14, the user's name for it): the window the
+/// SELECTED-COLOUR swatch opens, carrying the colour wheel, the RGB bars and
+/// the palette as three tabs.
 ///
 /// It replaces the Color dock TAB. The wheel had been a docked panel
 /// competing for a whole column of workspace next to the canvas, while the
-/// thing the user actually reaches for — the current colour — was not on
-/// the tool rail at all. Now the swatch IS the control and the window is
-/// where its two ways of picking live.
+/// thing the user actually reaches for — the current colour — was not on a
+/// rail at all. Now the swatch IS the control and the window is where its
+/// ways of picking live.
 ///
-/// It rides [showAnchoredPopup], so where it lands and how it dismisses are
-/// the app's one sub-window behaviour (R28 #9).
+/// It rides [PinnedAnchoredPopup] — the app's one sub-window (R28 #9) in its
+/// PINNED kind, which is what lets a colour be nudged and tried against a
+/// real stroke without the window blinking out.
 const double colorButtonWindowWidth = 236;
 const double colorButtonWindowHeight = 320;
 
-/// The selected-colour control that opens the window — the tool rail's
-/// bottom control (R9 #14).
+/// The selected-colour control at the TOP STRIP's right end — the last of
+/// the strip's four standing choices (크기 · 불투명도 · 합성모드 · 색).
 ///
-/// R10 R5 made it the DUAL swatch: foreground over background, with a
-/// swap glyph under it. Both were inside the window before, which meant
-/// the two colours you paint with were invisible until you opened
-/// something, while the rail — where a hand rests — showed one flat
-/// circle. The pair is exactly the rail's 42px button cell, so nothing
-/// about the rail had to change to hold it.
+/// It began as the tool rail's bottom control (R9 #14), then the rail-and-
+/// strip round moved it up: the rail is what a hand reaches for BETWEEN
+/// STROKES, and the strip is for what stands between pieces of work. The
+/// swatch is also the reason the rail no longer needs a colour at all — the
+/// strip button IS the swatch.
 ///
-/// [diameter] is the rail's own width minus its padding: the swatch is a
-/// stylus target, so the rail was sized to hold it rather than the swatch
-/// shrunk to fit the rail (the user's rule when #17 was decided).
-class SelectedColorButton extends StatelessWidget {
+/// R10 R5 made it the DUAL swatch: foreground over background. Both were
+/// inside the window before, which meant the two colours you paint with were
+/// invisible until you opened something. The pair is exactly one 42px button
+/// cell, so it drops into the strip beside the blend button without the
+/// strip learning a new size.
+class SelectedColorButton extends StatefulWidget {
   const SelectedColorButton({
     super.key,
     required this.color,
@@ -47,7 +48,6 @@ class SelectedColorButton extends StatelessWidget {
     required this.onColorChanged,
     required this.onBackgroundColorChanged,
     required this.onPaletteChanged,
-    this.diameter = 42,
   });
 
   final int color;
@@ -56,23 +56,77 @@ class SelectedColorButton extends StatelessWidget {
   final ValueChanged<int> onColorChanged;
   final ValueChanged<int> onBackgroundColorChanged;
   final ValueChanged<ColorPaletteState> onPaletteChanged;
-  final double diameter;
+
+  /// The swap glyph's lane beside the pair. The glyph sat UNDER the pair on
+  /// the rail (the user's placement), which a 48px strip has no room for —
+  /// 42 + 16 does not fit — so it moved to the pair's side rather than being
+  /// dropped.
+  static const double swapExtent = 16;
+
+  @override
+  State<SelectedColorButton> createState() => _SelectedColorButtonState();
+}
+
+class _SelectedColorButtonState extends State<SelectedColorButton> {
+  /// The pinned window's switch. It lives in the State because the window
+  /// outlives every rebuild of the colour it is showing — which is most
+  /// rebuilds this widget gets.
+  final OverlayPortalController _window = OverlayPortalController();
 
   /// Exchanges the two slots. It lives HERE rather than in the wheel
   /// because the pair does: the swap is what the pair means, and the
   /// window may not even be open.
   void _swap() {
-    onColorChanged(backgroundColor);
-    onBackgroundColorChanged(color);
+    widget.onColorChanged(widget.backgroundColor);
+    widget.onBackgroundColorChanged(widget.color);
   }
 
   @override
   Widget build(BuildContext context) {
-    return Builder(
-      builder: (anchorContext) => Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Tooltip(
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        // The swap glyph: the same verb as tapping the back slot, said in a
+        // way you can find.
+        SizedBox(
+          width: SelectedColorButton.swapExtent,
+          height: ColorSlotPair.extent,
+          child: IconButton(
+            key: const ValueKey<String>('tool-color-swap-button'),
+            tooltip: 'Swap Colors',
+            padding: EdgeInsets.zero,
+            constraints: const BoxConstraints.tightFor(
+              width: SelectedColorButton.swapExtent,
+              height: ColorSlotPair.extent,
+            ),
+            iconSize: 13,
+            icon: const Icon(Icons.swap_horiz),
+            // The 16px lane IS the target: M3 inflates an icon button to 48
+            // unless told otherwise, which in a 48px strip would swallow the
+            // swatch beside it (the same inflation R9 #17 caught on the rail).
+            style: IconButton.styleFrom(
+              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+            ),
+            onPressed: _swap,
+          ),
+        ),
+        PinnedAnchoredPopup(
+          controller: _window,
+          label: 'color-button-window',
+          width: colorButtonWindowWidth,
+          height: colorButtonWindowHeight,
+          // Built from the LIVE values: the portal rebuilds this whenever
+          // the strip rebuilds, so a colour picked with the eyedropper on
+          // the canvas reaches the open window. That only became possible —
+          // and necessary — when the window stopped closing on the first
+          // touch outside it.
+          builder: (context, _) => ColorButtonWindow(
+            color: widget.color,
+            palette: widget.palette,
+            onColorChanged: widget.onColorChanged,
+            onPaletteChanged: widget.onPaletteChanged,
+          ),
+          child: Tooltip(
             message: 'Colour',
             child: Material(
               color: Colors.transparent,
@@ -81,70 +135,25 @@ class SelectedColorButton extends StatelessWidget {
               child: InkWell(
                 key: const ValueKey<String>('tool-color-button'),
                 borderRadius: BorderRadius.circular(4),
-                onTap: () => showColorButtonWindow(
-                  anchorContext,
-                  color: color,
-                  palette: palette,
-                  onColorChanged: onColorChanged,
-                  onPaletteChanged: onPaletteChanged,
-                ),
-                // The pair's own extent IS the rail cell; `diameter` is
-                // kept as the floor so a host that sizes the rail
-                // differently still gets a square that fits.
-                child: SizedBox(
-                  width: math.max(diameter, ColorSlotPair.extent),
-                  height: math.max(diameter, ColorSlotPair.extent),
-                  child: Center(
-                    child: ColorSlotPair(
-                      keyPrefix: 'tool-color',
-                      foreground: Color(color),
-                      background: Color(backgroundColor),
-                      onBackgroundTap: _swap,
-                    ),
-                  ),
+                // Tap again to close: with no barrier to swallow the
+                // gesture, the anchor is the window's switch.
+                onTap: _window.toggle,
+                // The pair sizes itself to one 42px button cell, which is
+                // what the anchor's box has to be: the window is placed
+                // against it.
+                child: ColorSlotPair(
+                  keyPrefix: 'tool-color',
+                  foreground: Color(widget.color),
+                  background: Color(widget.backgroundColor),
+                  onBackgroundTap: _swap,
                 ),
               ),
             ),
           ),
-          // The swap glyph under the pair (the user's placement): the same
-          // verb as tapping the back slot, said in a way you can find.
-          SizedBox(
-            height: 16,
-            child: IconButton(
-              key: const ValueKey<String>('tool-color-swap-button'),
-              tooltip: 'Swap Colors',
-              padding: EdgeInsets.zero,
-              constraints: const BoxConstraints.tightFor(width: 24, height: 16),
-              iconSize: 13,
-              icon: const Icon(Icons.swap_horiz),
-              onPressed: _swap,
-            ),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
-}
-
-Future<void> showColorButtonWindow(
-  BuildContext anchorContext, {
-  required int color,
-  required ColorPaletteState palette,
-  required ValueChanged<int> onColorChanged,
-  required ValueChanged<ColorPaletteState> onPaletteChanged,
-}) {
-  return showAnchoredPopup<void>(
-    anchorContext,
-    label: 'color-button-window',
-    width: colorButtonWindowWidth,
-    height: colorButtonWindowHeight,
-    builder: (context) => ColorButtonWindow(
-      color: color,
-      palette: palette,
-      onColorChanged: onColorChanged,
-      onPaletteChanged: onPaletteChanged,
-    ),
-  );
 }
 
 class ColorButtonWindow extends StatefulWidget {
@@ -156,12 +165,20 @@ class ColorButtonWindow extends StatefulWidget {
     required this.onPaletteChanged,
   });
 
+  /// CONTROLLED, both of them: the window used to keep working copies so it
+  /// could outlive the rebuild of whatever opened it. The pinned popup
+  /// rebuilds with its anchor now, so a copy would only be a way to go
+  /// stale — the eyedropper, a preset, a recent colour recorded on stroke
+  /// commit all have to land here while the window is open. Live dragging
+  /// does not snap back because [ColorWheelPanel] already ignores the echo
+  /// of its own last emission.
   final int color;
   final ColorPaletteState palette;
+
   final ValueChanged<int> onColorChanged;
   final ValueChanged<ColorPaletteState> onPaletteChanged;
 
-  // R10 R5: the BACKGROUND slot is the tool rail's, so the window no
+  // R10 R5: the BACKGROUND slot is the strip button's, so the window no
   // longer carries it — not as state, not as a parameter, not as a
   // callback threaded through a picker that never touches it.
 
@@ -170,26 +187,13 @@ class ColorButtonWindow extends StatefulWidget {
 }
 
 class _ColorButtonWindowState extends State<ColorButtonWindow> {
-  /// The window keeps its OWN working copies: it outlives the rebuild of
-  /// whatever opened it, and the wheel is dragged live, so reading the
-  /// caller's captured values back would snap the drag to where it started.
-  late int _color = widget.color;
-  late ColorPaletteState _palette = widget.palette;
-
   /// R10 R5: the tab is an ID, not a bool, because the tab LIST is data
   /// now — the user is building toward AE-style plugins that add tabs, and
   /// a plugin cannot add a case to a boolean.
+  ///
+  /// The only state left here: which tab, which nothing outside the window
+  /// has an opinion about.
   String _tabId = 'wheel';
-
-  void _setColor(int color) {
-    setState(() => _color = color);
-    widget.onColorChanged(color);
-  }
-
-  void _setPalette(ColorPaletteState palette) {
-    setState(() => _palette = palette);
-    widget.onPaletteChanged(palette);
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -220,7 +224,10 @@ class _ColorButtonWindowState extends State<ColorButtonWindow> {
                 compact: true,
               ),
             ),
-            ColorStatusBar(color: _color, onColorChanged: _setColor),
+            ColorStatusBar(
+              color: widget.color,
+              onColorChanged: widget.onColorChanged,
+            ),
           ],
         ),
       ),
@@ -237,7 +244,10 @@ class _ColorButtonWindowState extends State<ColorButtonWindow> {
       buttonKey: const ValueKey<String>('color-window-tab-wheel'),
       builder: (context) => Padding(
         padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-        child: ColorWheelPanel(color: _color, onColorChanged: _setColor),
+        child: ColorWheelPanel(
+          color: widget.color,
+          onColorChanged: widget.onColorChanged,
+        ),
       ),
     ),
     EditorPanelTab(
@@ -247,7 +257,10 @@ class _ColorButtonWindowState extends State<ColorButtonWindow> {
       buttonKey: const ValueKey<String>('color-window-tab-rgb'),
       builder: (context) => Padding(
         padding: const EdgeInsets.fromLTRB(10, 8, 10, 10),
-        child: ColorRgbPanel(color: _color, onColorChanged: _setColor),
+        child: ColorRgbPanel(
+          color: widget.color,
+          onColorChanged: widget.onColorChanged,
+        ),
       ),
     ),
     EditorPanelTab(
@@ -261,10 +274,10 @@ class _ColorButtonWindowState extends State<ColorButtonWindow> {
         // wheel and the RGB bars must not scroll.
         child: SingleChildScrollView(
           child: ColorPaletteStrip(
-            palette: _palette,
-            currentColor: _color,
-            onColorSelected: _setColor,
-            onPaletteChanged: _setPalette,
+            palette: widget.palette,
+            currentColor: widget.color,
+            onColorSelected: widget.onColorChanged,
+            onPaletteChanged: widget.onPaletteChanged,
           ),
         ),
       ),

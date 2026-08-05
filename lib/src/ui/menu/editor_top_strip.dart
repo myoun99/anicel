@@ -10,8 +10,11 @@ import '../../services/persistence/app_save_settings.dart';
 import '../../services/persistence/project_autosave_service.dart';
 import '../dialogs/app_confirm_dialog.dart';
 import '../../models/brush_blend_mode.dart';
+import '../../services/color_palette_file_service.dart';
 import '../brush/brush_tool_state.dart';
 import '../brush/tools_panel.dart' show RailButton;
+import '../color/color_button_window.dart' show SelectedColorButton;
+import '../sliced_value_listenable_builder.dart';
 import '../widgets/field_slider.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
@@ -50,6 +53,9 @@ class EditorTopStrip extends StatelessWidget {
     required this.session,
     required this.panelsMenu,
     this.brushTool,
+    this.colorBackground,
+    this.colorPalette,
+    this.onColorPaletteChanged,
     this.shortcuts,
     this.anicelOpenFilePicker,
     this.anicelSaveFilePicker,
@@ -65,6 +71,19 @@ class EditorTopStrip extends StatelessWidget {
   ///
   /// Null leaves the right end empty (passive hosts and focused tests).
   final ValueNotifier<BrushToolState>? brushTool;
+
+  /// The colour control's other two pieces: the spare (background) slot and
+  /// the pinned palette. The FOREGROUND colour is not here — it rides
+  /// [brushTool], which is where a colour has always lived.
+  ///
+  /// All three are null together in practice; the colour button needs the
+  /// set, so a host that supplies part of it gets no button.
+  final ValueNotifier<int>? colorBackground;
+  final ValueNotifier<ColorPaletteState>? colorPalette;
+
+  /// Palette writes go back through the host because they PERSIST — the
+  /// strip must not learn where a palette file lives.
+  final ValueChanged<ColorPaletteState>? onColorPaletteChanged;
 
   /// Injectable for tests; default to the platform file dialogs.
   final Future<String?> Function()? anicelOpenFilePicker;
@@ -455,6 +474,15 @@ class EditorTopStrip extends StatelessWidget {
           const SizedBox(width: 4),
           _BlendModeButton(brushTool: brushTool!),
           const SizedBox(width: 4),
+          if (colorBackground != null &&
+              colorPalette != null &&
+              onColorPaletteChanged != null)
+            _ColorButton(
+              brushTool: brushTool!,
+              background: colorBackground!,
+              palette: colorPalette!,
+              onPaletteChanged: onColorPaletteChanged!,
+            ),
         ],
         const SizedBox(width: 3),
       ],
@@ -562,6 +590,57 @@ class _BlendModeButton extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+}
+
+/// The colour, at the strip's very end.
+///
+/// 유저 확정 (rail-and-strip): 「컬러 스와치는 레일에서 빠진다 — 상단 색
+/// 버튼이 곧 스와치라 대체된다」. It was the tool rail's bottom control (R9
+/// #14); the rail is now what a hand reaches for BETWEEN STROKES, and a
+/// colour is a standing choice like size, opacity and blend.
+///
+/// Its window is the PINNED popup, the one thing on the strip that behaves
+/// differently from the others: you nudge a colour, draw a test stroke, and
+/// nudge again — so it must not close when the canvas is touched.
+///
+/// Its own listeners: a colour change must not re-read the project name or
+/// rebuild the two bars beside it.
+class _ColorButton extends StatelessWidget {
+  const _ColorButton({
+    required this.brushTool,
+    required this.background,
+    required this.palette,
+    required this.onPaletteChanged,
+  });
+
+  final ValueNotifier<BrushToolState> brushTool;
+  final ValueNotifier<int> background;
+  final ValueNotifier<ColorPaletteState> palette;
+  final ValueChanged<ColorPaletteState> onPaletteChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return SlicedValueListenableBuilder<BrushToolState, int>(
+      valueListenable: brushTool,
+      slice: (state) => state.color,
+      builder: (context, toolState) => ValueListenableBuilder<int>(
+        valueListenable: background,
+        builder: (context, backgroundColor, _) =>
+            ValueListenableBuilder<ColorPaletteState>(
+              valueListenable: palette,
+              builder: (context, paletteState, _) => SelectedColorButton(
+                color: toolState.color,
+                backgroundColor: backgroundColor,
+                palette: paletteState,
+                onColorChanged: (color) =>
+                    brushTool.value = brushTool.value.copyWith(color: color),
+                onBackgroundColorChanged: (color) => background.value = color,
+                onPaletteChanged: onPaletteChanged,
+              ),
+            ),
+      ),
     );
   }
 }

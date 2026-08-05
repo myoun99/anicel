@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/color/color_button_window.dart';
 import 'package:anicel/src/ui/debug/input_inspector.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/menu/editor_top_strip.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
@@ -224,6 +226,76 @@ void main() {
       find.byKey(const ValueKey<String>('top-strip-blend-multiply')),
     );
     expect(item.value?.checked, isTrue);
+  });
+
+  testWidgets('the colour rides the strip now, and the rail has none', (
+    tester,
+  ) async {
+    await pumpHome(tester);
+
+    final swatch = find.byKey(const ValueKey<String>('tool-color-button'));
+    expect(
+      find.descendant(of: find.byType(EditorTopStrip), matching: swatch),
+      findsOneWidget,
+    );
+    // 유저 확정: 「컬러 스와치는 레일에서 빠진다 — 상단 색 버튼이 곧
+    // 스와치라」. Two places showing one colour is what this removed.
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('tools-panel')),
+        matching: swatch,
+      ),
+      findsNothing,
+    );
+  });
+
+  testWidgets('the colour window opens BELOW its button, so the switch that '
+      'closes it is never buried under it', (tester) async {
+    await pumpHome(tester);
+
+    final anchor = find.byKey(const ValueKey<String>('tool-color-button'));
+    final anchorRect = tester.getRect(anchor);
+    await tester.tap(anchor);
+    await tester.pumpAndSettle();
+
+    // The shared placement flips a popup above its anchor when there is no
+    // room below, and clamps it into the overlay when there is room for
+    // neither — which for a DISMISSING popup is harmless (anything closes
+    // it) but for this one would hide the only thing that can.
+    expect(
+      tester.getRect(find.byType(ColorButtonWindow)).top,
+      greaterThanOrEqualTo(anchorRect.bottom),
+    );
+  });
+
+  testWidgets('the colour window is PINNED: the size bar still works while it '
+      'is open, because there is no barrier over the app', (tester) async {
+    await pumpHome(tester);
+
+    await tester.tap(find.byKey(const ValueKey<String>('tool-color-button')));
+    await tester.pumpAndSettle();
+    expect(find.byType(ColorButtonWindow), findsOneWidget);
+
+    double sizeOnBar() => tester
+        .widget<FieldSlider>(
+          find.byKey(const ValueKey<String>('top-strip-size-bar')),
+        )
+        .value;
+    final before = sizeOnBar();
+
+    // This is the R27 #5 gesture that closes every other anchored popup. A
+    // route-based popup would not merely close — its modal barrier would eat
+    // the drag, so the size would not move either.
+    final bar = find.byKey(const ValueKey<String>('top-strip-size-bar'));
+    await tester.tapAt(tester.getCenter(bar) + const Offset(50, 0));
+    await tester.pumpAndSettle();
+
+    expect(sizeOnBar(), isNot(before), reason: 'the drag reached the bar');
+    expect(
+      find.byType(ColorButtonWindow),
+      findsOneWidget,
+      reason: 'and the window is still open to be nudged again',
+    );
   });
 
   testWidgets('the strip survives a narrow window', (tester) async {

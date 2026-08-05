@@ -85,8 +85,11 @@ Future<void> showColorPickerPopup(
     label: 'color-picker-popup',
     width: 216,
     height: 252,
-    builder: (context) =>
-        _ColorPickerBody(title: title, initialColor: color, onChanged: onChanged),
+    builder: (context, _) => _ColorPickerBody(
+      title: title,
+      initialColor: color,
+      onChanged: onChanged,
+    ),
   );
 }
 

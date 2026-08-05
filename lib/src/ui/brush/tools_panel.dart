@@ -16,15 +16,14 @@ class ToolsPanel extends StatelessWidget {
     required this.onToolChanged,
     this.selectionVariant = CanvasTool.selectRect,
     this.historyControls,
-    this.colorButton,
   });
 
   final CanvasTool tool;
   final ValueChanged<CanvasTool> onToolChanged;
 
   /// Undo / redo / onion — the things a hand reaches for BETWEEN strokes,
-  /// which is what the rail is for. They sit above the tools, separated by
-  /// the same rule the colour swatch uses below them.
+  /// which is what the rail is for. They sit above the tools, separated by a
+  /// rule.
   ///
   /// A slot rather than built here so the panel stays session-free: the
   /// host owns the history manager these listen to. Null keeps the rail
@@ -36,19 +35,14 @@ class ToolsPanel extends StatelessWidget {
   /// settings; the host remembers the last-used one).
   final CanvasTool selectionVariant;
 
-  /// R9 #14: the SELECTED-COLOUR swatch, under the tools — where the user
-  /// put it. Tapping it opens the 「컬러 버튼창」 (wheel + palette tabs),
-  /// which is what retired the Color dock tab. Null keeps the rail
-  /// tools-only (passive hosts and the panel's own tests).
-  final Widget? colorButton;
-
   /// The edge dock width this panel is designed for.
   ///
   /// R9 #17: 72 → 48, a third of the rail's width back to the canvas. The
   /// tool BUTTONS are what the old number was padding out; the compact
   /// tab strip scrolls, so its close/lock glyphs cost the rail nothing.
-  /// 48 is chosen to HOLD the 42px colour swatch rather than the swatch
-  /// shrunk to fit — it is a stylus target (the user's rule).
+  /// 48 was chosen to HOLD a 42px stylus target rather than shrink the
+  /// target to fit (the user's rule); the rail-and-strip round then handed
+  /// the colour swatch to the top strip, and 42 is still the cell.
   static const double dockWidth = 48;
 
   /// The rail's button box: a stylus-sized square that fits [dockWidth]
@@ -135,20 +129,10 @@ class ToolsPanel extends StatelessWidget {
             selected: tool == CanvasTool.move,
             onPressed: () => onToolChanged(CanvasTool.move),
           ),
-          // R9 #14: the colour lives with the tools — the last control in
-          // the column, separated by the same rule the dock uses.
-          if (colorButton != null) ...[
-            const SizedBox(height: 8),
-            Divider(
-              height: 1,
-              thickness: 1,
-              indent: 2,
-              endIndent: 2,
-              color: Theme.of(context).colorScheme.outlineVariant,
-            ),
-            const SizedBox(height: 8),
-            colorButton!,
-          ],
+          // 유저 확정 (rail-and-strip): 「컬러 스와치는 레일에서 빠진다」 —
+          // the top strip's colour button IS the swatch, so keeping one here
+          // would be two places to read the same colour. The rail is
+          // history + onion + the six tools, and that is all.
         ],
       ),
     );

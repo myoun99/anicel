@@ -18,6 +18,7 @@ import '../services/persistence/app_save_settings.dart';
 import '../services/persistence/app_save_settings_store.dart';
 import '../services/persistence/audio_sync_settings_store.dart';
 import '../services/persistence/project_autosave_service.dart';
+import '../services/color_palette_file_service.dart';
 import '../services/project_repository.dart';
 import 'brush/brush_tool_state.dart';
 import 'brush/paint_tool_state_notifier.dart';
@@ -74,6 +75,44 @@ class _HomePageState extends State<HomePage> {
   final ValueNotifier<BrushToolState> _brushTool = PaintToolStateNotifier(
     BrushToolState.defaults,
   );
+
+  /// The colour wheel's spare (background) slot; the foreground IS the brush
+  /// colour, so it rides [_brushTool] and only the spare needs a home.
+  ///
+  /// Shell-owned like the tool itself, and for the same reason: the colour
+  /// button is on the TOP STRIP, which the shell mounts. It sat in the
+  /// workspace while the swatch was the tool rail's bottom control, and
+  /// nothing in the workspace reads a colour any more.
+  final ValueNotifier<int> _colorWheelBackground = ValueNotifier(0xFFFFFFFF);
+
+  /// The pinned palette + recent colours (P4), persisted app-side — which is
+  /// itself an argument for it living here rather than beside a panel.
+  final ValueNotifier<ColorPaletteState> _colorPalette = ValueNotifier(
+    const ColorPaletteState(),
+  );
+  ColorPaletteFileService? _paletteService;
+
+  void _setColorPalette(ColorPaletteState next) {
+    // `withRecentColor` hands back the SAME object when the colour is already
+    // the newest, which is the common case: draw two strokes without changing
+    // colour and the second has nothing to record. The notifier already knew
+    // to stay quiet; the file write did not, so a palette JSON was being
+    // written on every stroke commit.
+    if (identical(next, _colorPalette.value)) {
+      return;
+    }
+    _colorPalette.value = next;
+    unawaited(_paletteService?.save(next));
+  }
+
+  /// Recent colours record on COMMITTED work (P4): the colour actually drawn
+  /// with, not every wheel drag sample. That is why it hangs off the history
+  /// manager rather than off [_brushTool].
+  void _recordRecentColor() {
+    _setColorPalette(
+      _colorPalette.value.withRecentColor(_brushTool.value.color),
+    );
+  }
 
   /// The canvas rotate/flip channel (P8): the R/Shift+R/H shortcuts call
   /// in here; the mounted canvas panel binds the viewport handlers.
@@ -163,6 +202,17 @@ class _HomePageState extends State<HomePage> {
         _canvasSelectionCommands.confirmPendingMove;
     widget.onRepositoryCreated?.call(_session.repository);
     unawaited(_shortcuts.restore());
+    _paletteService = Platform.environment.containsKey('FLUTTER_TEST')
+        ? null
+        : ColorPaletteFileService();
+    unawaited(
+      _paletteService?.loadOrDefaults().then((palette) {
+        if (mounted) {
+          _colorPalette.value = palette;
+        }
+      }),
+    );
+    _session.historyManager.addListener(_recordRecentColor);
     // Apple Pencil double-tap (PEN-5): honor the user's SYSTEM Pencil
     // preference — the switch actions toggle brush↔eraser; the palette/
     // ink-attribute actions stay no-ops for now (no matching surface).
@@ -258,6 +308,7 @@ class _HomePageState extends State<HomePage> {
   @override
   void dispose() {
     PencilInteractionService.instance.onPencilTap = null;
+    _session.historyManager.removeListener(_recordRecentColor);
     _session.voiceRecordingNotice.removeListener(_showVoiceRecordingNotice);
     AppSave.settings.removeListener(_syncAutosaveService);
     _lifecycle?.dispose();
@@ -265,6 +316,8 @@ class _HomePageState extends State<HomePage> {
     _session.dispose();
     _panelsMenu.dispose();
     _brushTool.dispose();
+    _colorWheelBackground.dispose();
+    _colorPalette.dispose();
     _shortcuts.dispose();
     _flipHud.dispose();
     super.dispose();
@@ -504,6 +557,9 @@ class _HomePageState extends State<HomePage> {
                                     session: _session,
                                     panelsMenu: _panelsMenu,
                                     brushTool: _brushTool,
+                                    colorBackground: _colorWheelBackground,
+                                    colorPalette: _colorPalette,
+                                    onColorPaletteChanged: _setColorPalette,
                                     shortcuts: _shortcuts,
                                   ),
                                 ),
