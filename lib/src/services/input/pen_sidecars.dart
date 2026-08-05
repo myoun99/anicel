@@ -1,6 +1,8 @@
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:flutter/gestures.dart'
+    show kPrimaryButton, kPrimaryStylusButton, kSecondaryStylusButton;
 
 import 'pencil_interaction_service.dart';
 import 'platform_pen_channel_service.dart';
@@ -57,6 +59,39 @@ abstract final class PenSidecars {
     }
     return null;
   }
+
+  /// The freshest driver-side BUTTON state, as FLUTTER button bits; null =
+  /// no sidecar speaks for this moment (use the pointer event's own).
+  ///
+  /// Only Wintab answers: the macOS/Linux channel sidecars restore
+  /// pressure the embedder drops, not buttons.
+  ///
+  /// Wintab's bits are positional per cursor — bit 0 is the TIP, bit 1 the
+  /// lower barrel switch, bit 2 the upper one — and Flutter spells the
+  /// same three as primary / primary-stylus / secondary-stylus. The
+  /// translation is written out rather than passed through because the
+  /// numeric agreement between the two is a coincidence, not a contract.
+  static int? freshButtons({DateTime? now}) {
+    final wintab = WintabPenService.instance.freshButtons(now: now);
+    if (wintab == null) {
+      return null;
+    }
+    var bits = 0;
+    if (wintab & _wintabTip != 0) {
+      bits |= kPrimaryButton;
+    }
+    if (wintab & _wintabLowerBarrel != 0) {
+      bits |= kPrimaryStylusButton;
+    }
+    if (wintab & _wintabUpperBarrel != 0) {
+      bits |= kSecondaryStylusButton;
+    }
+    return bits;
+  }
+
+  static const int _wintabTip = 0x01;
+  static const int _wintabLowerBarrel = 0x02;
+  static const int _wintabUpperBarrel = 0x04;
 
   @visibleForTesting
   static void debugReset() {

@@ -1327,6 +1327,67 @@ void main() {
         expect(releases, [false], reason: 'returnToTool = spring back');
       });
 
+      testWidgets(
+        'a barrel press Ink disguises as a phantom pen tap still reaches '
+        'its mapping — and never strokes',
+        (tester) async {
+          final service = WintabPenService.instance;
+          addTearDown(service.debugReset);
+          WintabPenService.debugClockOverride = () => DateTime(2024);
+          service.debugPollOverride = () => const [];
+          service.start();
+
+          final results = <List<BrushDab>>[];
+          final picks = <CanvasPoint>[];
+          final holds = <CanvasTool>[];
+          await tester.pumpWidget(
+            _app(
+              _view(
+                _sessionState(width: 200, height: 16),
+                results.add,
+                inputSettings: BrushEditCanvasInputSettings(size: 8),
+                onAltPick: picks.add,
+                onTemporaryToolHold: holds.add,
+              ),
+            ),
+          );
+
+          // The DRIVER's truth: the lower barrel switch is down (Wintab
+          // bit 1) and the tip is not touching anything.
+          service.debugInjectPacket(
+            const QaTabletPacket(
+              pressure: 0,
+              tiltAzimuthDegrees: 0,
+              altitude: 1,
+              timeMs: 1,
+              buttons: 0x02,
+            ),
+          );
+
+          // What Windows Ink actually hands a legacy window for that same
+          // press: a phantom pen TAP carrying the PRIMARY button, with
+          // pressure 0, while the pen is still hovering.
+          tester.binding.handlePointerEvent(
+            PointerDownEvent(
+              pointer: 21,
+              kind: PointerDeviceKind.stylus,
+              buttons: kPrimaryButton,
+              pressure: 0,
+              position: canvasGlobalOffset(tester, const Offset(2, 1)),
+            ),
+          );
+          await tester.pump();
+
+          expect(results, isEmpty, reason: 'the phantom must not draw');
+          expect(holds, [CanvasTool.eyedropper], reason: 'the mapping fires');
+          expect(picks, isNotEmpty);
+
+          // The poll timer must die before the binding's pending-timer
+          // invariant check.
+          service.debugReset();
+        },
+      );
+
       testWidgets('a mouse RIGHT drag routes the same mapping', (tester) async {
         final results = <List<BrushDab>>[];
         final picks = <CanvasPoint>[];

@@ -201,7 +201,17 @@ class WintabPenService {
   /// null tells the caller to use the pointer event's own pressure.
   /// Contact = pressure above zero; hovering pens stream 0 and must not
   /// flatten a real 0-pressure … the caller only asks mid-stroke.
-  double? freshContactPressure({DateTime? now}) {
+  double? freshContactPressure({DateTime? now}) =>
+      _freshPacket(now)?.pressure.clamp(0.0, 1.0);
+
+  /// The driver's BUTTON state (raw Wintab bits) while the stream is live
+  /// and fresh — null tells the caller to trust the pointer event's own
+  /// buttons. [PenSidecars.freshButtons] translates the bits.
+  int? freshButtons({DateTime? now}) => _freshPacket(now)?.buttons;
+
+  /// The newest packet, or null when this service is idle or its last
+  /// packet has aged out of [freshWindow].
+  QaTabletPacket? _freshPacket(DateTime? now) {
     if (_timer == null) {
       return null;
     }
@@ -213,7 +223,7 @@ class WintabPenService {
     if (age > freshWindow) {
       return null;
     }
-    return packet.pressure.clamp(0.0, 1.0);
+    return packet;
   }
 
   /// Test hook: lands one packet as if the poll just delivered it (the
