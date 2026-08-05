@@ -130,13 +130,80 @@ void main() {
 
     // Beyond the fresh window the override stands down — built off the
     // frozen base the packet was delivered at.
-    final stale = DateTime(2024).add(
-      WintabPenService.freshWindow + const Duration(milliseconds: 1),
-    );
+    final stale = DateTime(
+      2024,
+    ).add(WintabPenService.freshWindow + const Duration(milliseconds: 1));
     expect(service.freshContactPressure(now: stale), isNull);
 
     service.stop();
     expect(service.latest.value, isNull);
     expect(service.freshContactPressure(), isNull);
   });
+
+  test('the dead-path guard demotes when packets flow but nothing reaches '
+      'the window', () async {
+    final service = WintabPenService.instance;
+    WintabPenService.debugClockOverride = () => DateTime(2024);
+    AppInputSettings? persisted;
+    service.persistSettings = (settings) => persisted = settings;
+    var queue = <QaTabletPacket>[];
+    service.debugPollOverride = () {
+      final drained = queue;
+      queue = [];
+      return drained;
+    };
+    AppInput.settings.value = const AppInputSettings(
+      tabletService: TabletService.wintab,
+    );
+    service.start();
+
+    // Under the budget the choice is left alone.
+    queue = _fakePackets(WintabPenService.deadPathPacketBudget - 1);
+    await Future<void>.delayed(WintabPenService.pollInterval * 3);
+    expect(service.autoDemoted.value, isFalse);
+    expect(persisted, isNull);
+    expect(service.running, isTrue);
+
+    // Crossing it with STILL nothing reaching the window demotes, and the
+    // demotion persists — the whole point is surviving the restart that
+    // would otherwise reopen the dead context.
+    queue = _fakePackets(1);
+    await Future<void>.delayed(WintabPenService.pollInterval * 3);
+    expect(service.autoDemoted.value, isTrue);
+    expect(persisted?.tabletService, TabletService.standard);
+    expect(service.running, isFalse);
+  });
+
+  test('any pointer activity calls the dead-path guard off', () async {
+    final service = WintabPenService.instance;
+    WintabPenService.debugClockOverride = () => DateTime(2024);
+    AppInputSettings? persisted;
+    service.persistSettings = (settings) => persisted = settings;
+    var queue = <QaTabletPacket>[];
+    service.debugPollOverride = () {
+      final drained = queue;
+      queue = [];
+      return drained;
+    };
+    service.start();
+    // The window is alive: one event is enough to settle it for good.
+    service.notePointerActivity();
+
+    queue = _fakePackets(WintabPenService.deadPathPacketBudget * 2);
+    await Future<void>.delayed(WintabPenService.pollInterval * 3);
+    expect(service.autoDemoted.value, isFalse);
+    expect(persisted, isNull);
+    expect(service.running, isTrue, reason: 'a live window keeps Wintab');
+  });
 }
+
+List<QaTabletPacket> _fakePackets(int count) => List<QaTabletPacket>.generate(
+  count,
+  (i) => QaTabletPacket(
+    pressure: 0.5,
+    tiltAzimuthDegrees: 0,
+    altitude: 0.5,
+    timeMs: 1000.0 + i,
+    buttons: 1,
+  ),
+);

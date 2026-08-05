@@ -341,6 +341,7 @@ class AppStrings {
   String get inputTabletStandardHelp => _s('inputTabletStandardHelp');
   String get inputTabletWintab => _s('inputTabletWintab');
   String get inputTabletWintabHelp => _s('inputTabletWintabHelp');
+  String get inputTabletAutoDemoted => _s('inputTabletAutoDemoted');
   String get dragActionFlip => _s('dragActionFlip');
   String get dragActionScreen => _s('dragActionScreen');
   String get dragActionBrushSize => _s('dragActionBrushSize');
@@ -1011,6 +1012,9 @@ class AppStrings {
     'inputTabletWintabHelp':
         'Reads pressure straight from the tablet driver — the escape hatch '
         'when the pen arrives without pressure or as touch/mouse.',
+    'inputTabletAutoDemoted':
+        'Switched back to Standard: on the Wintab path the pen stopped '
+        'reaching the window at all.',
     'dragActionFlip': 'Flip (frames / layers)',
     'dragActionScreen': 'Screen (pan · zoom · rotate)',
     'dragActionBrushSize': 'Brush size',
@@ -1657,6 +1661,9 @@ class AppStrings {
     'inputTabletWintabHelp':
         'タブレットドライバから直接筆圧を読みます — ペンが筆圧なし、または'
         'タッチ／マウスとして届くときの逃げ道です。',
+    'inputTabletAutoDemoted':
+        'Standard に戻しました：Wintab 経路ではペンがウィンドウに'
+        '届かなくなっていました。',
     'dragActionFlip': 'めくり（フレーム / レイヤー）',
     'dragActionScreen': '画面（移動・ズーム・回転）',
     'dragActionBrushSize': 'ブラシサイズ',
@@ -2338,6 +2345,9 @@ class AppStrings {
     'inputTabletWintabHelp':
         '태블릿 드라이버에서 필압을 직접 읽습니다 — 펜이 필압 없이, 또는 '
         '터치/마우스로 들어올 때의 탈출구입니다.',
+    'inputTabletAutoDemoted':
+        'Standard로 되돌렸습니다: Wintab 경로에서는 펜이 창에 '
+        '아예 도달하지 못했습니다.',
     'dragActionFlip': '넘기기 (프레임 / 레이어)',
     'dragActionScreen': '화면 (이동·줌·회전)',
     'dragActionBrushSize': '브러시 크기',
@@ -3036,6 +3046,9 @@ class AppStrings {
         'Lit la pression directement depuis le pilote de la tablette — la '
         'solution de secours quand le stylet arrive sans pression ou comme '
         'toucher/souris.',
+    'inputTabletAutoDemoted':
+        'Retour à Standard : sur le chemin Wintab, le stylet n\'atteignait '
+        'plus du tout la fenêtre.',
     'dragActionFlip': 'Feuilleter (images / calques)',
     'dragActionScreen': 'Écran (déplacer · zoomer · pivoter)',
     'dragActionBrushSize': 'Taille du pinceau',
@@ -3712,6 +3725,7 @@ class AppStrings {
     'inputTabletStandardHelp': '系统指针通道（Windows Ink）— 适合新版驱动和内置笔。',
     'inputTabletWintab': 'Wintab',
     'inputTabletWintabHelp': '直接从数位板驱动读取压感 — 当笔没有压感或被识别为触摸/鼠标时的退路。',
+    'inputTabletAutoDemoted': '已切回 Standard：在 Wintab 通道下，笔完全无法到达窗口。',
     'dragActionFlip': '翻页（帧 / 图层）',
     'dragActionScreen': '画面（平移·缩放·旋转）',
     'dragActionBrushSize': '笔刷大小',
