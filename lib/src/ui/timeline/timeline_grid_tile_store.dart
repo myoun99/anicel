@@ -14,13 +14,23 @@ import 'timeline_row_cells_painter.dart';
 
 /// The drawing rows' SUBSTRATE tile store (UI-R18 O7 T2, R18-T).
 ///
-/// A row's cell substrate — the paper-block fills and their borders, the
-/// dense mostly-static part of every repaint — rasterizes ONCE per
-/// (row, span, look) through the native `qa_grid_raster_tile` and lands
-/// here as a premultiplied [ui.Image]; the row painter then draws one
-/// `drawImageRect` per span instead of 2-3 canvas calls per cell.
-/// Foreground ink (glyphs, hold dashes, the sparse part) stays the
-/// painter's Dart pass on top.
+/// A row's cells — the paper-block fills and their borders, plus the ink
+/// over them — rasterize ONCE per (row, span, look) through the native
+/// `qa_grid_raster_tile` and land here as a premultiplied [ui.Image]; the
+/// row painter then draws one `drawImageRect` per span instead of 2-3
+/// canvas calls per cell.
+///
+/// ⚠️ The ink is IN the tile. The emitter writes the substrate and then
+/// the foreground — hold-dash capsules inline, glyph text through the A8
+/// atlas (T3) — into one op stream, and `_paint` skips its Dart foreground
+/// pass for any span a tile covers. This doc used to say the opposite
+/// ("foreground ink stays the painter's Dart pass on top"), which was true
+/// of the tile's first shape and has misled at least one reader into
+/// costing a text-layering round wrongly; the stale-while-revalidate note
+/// below is the honest description, naming the two technologies it chooses
+/// between as "baked A8 glyphs ↔ TextPainter".
+///
+/// The classic Dart pass is the FALLBACK, for spans with no usable tile.
 ///
 /// Contracts:
 /// - Tiles are TRANSPARENT (background 0): accumulation from
