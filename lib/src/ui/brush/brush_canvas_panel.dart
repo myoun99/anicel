@@ -1951,7 +1951,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
 class _CanvasEditorPanelShell extends StatelessWidget {
   static const double statusStripHeight = 20;
-  static const double rightStripWidth = 14;
+
+  /// The strip holds exactly one thing — the vertical panbar — so its
+  /// width IS that bar's hit lane.
+  static const double rightStripWidth = AppScrollbarLane.medium;
 
   const _CanvasEditorPanelShell({
     required this.title,
