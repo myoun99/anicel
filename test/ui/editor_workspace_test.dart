@@ -95,9 +95,32 @@ void main() {
       await _pumpHome(tester);
 
       expect(find.byType(ToolsPanel), findsOneWidget);
-      expect(find.byKey(_toolsTabKey), findsOneWidget);
       expect(
         find.byKey(const ValueKey<String>('editor-panel-dock-tool-left')),
+        findsOneWidget,
+      );
+
+      // 고정 도킹 (유저 확정): the tool strip has NO panel frame — no tab
+      // name, no lock, no X, no grip. It holds one thing forever.
+      expect(
+        find.byKey(_toolsTabKey),
+        findsNothing,
+        reason: 'the tool strip carries no tab at all',
+      );
+      expect(
+        find.byKey(const ValueKey<String>('panel-close-tools')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('panel-grip-tools')),
+        findsNothing,
+      );
+
+      // …while an ordinary dock keeps its tabs: this is a strip-by-strip
+      // decision, not a workspace-wide teardown.
+      expect(find.byKey(_brushesTabKey), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('panel-close-brushes')),
         findsOneWidget,
       );
       expect(
@@ -110,14 +133,24 @@ void main() {
       );
     });
 
-    testWidgets('the tool bar re-docks to the right edge', (tester) async {
+    testWidgets('Settings moves the tool strip to the right edge', (
+      tester,
+    ) async {
       await _pumpHome(tester);
 
-      await _dragTab(
-        tester,
-        find.byKey(_toolsTabKey),
-        () => tester.getCenter(find.byKey(_toolRightRailKey)),
+      // The strip has no grip to drag any more (고정 도킹), so the
+      // left-handed choice is a switch in the Settings popover.
+      await tester.tap(
+        find.byKey(const ValueKey<String>('top-strip-settings-button')),
       );
+      await tester.pumpAndSettle();
+      final row = find.byKey(
+        const ValueKey<String>('menu-window-tool-rail-right'),
+      );
+      await tester.ensureVisible(row);
+      await tester.pumpAndSettle();
+      await tester.tap(row);
+      await tester.pumpAndSettle();
 
       expect(find.byType(ToolsPanel), findsOneWidget);
       expect(

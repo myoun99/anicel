@@ -431,13 +431,20 @@ class _HomePageState extends State<HomePage> {
         }
       },
       child: Scaffold(
-        // PEN-8 #1: keep the editor OUT of the OS chrome (Android status
-        // bar / gesture areas, notches) — desktop insets are zero, so this
-        // is a tablet-only effect.
+        // PEN-8 #1: keep the editor out of the notch and the side cutouts —
+        // desktop insets are zero, so this is a tablet-only effect.
+        //
+        // The BOTTOM inset is deliberately not honoured (유저 확정, 프로크리
+        // ·카리페그처럼): on iPad that inset is the home-indicator strip, and
+        // it was costing a band of canvas on every tablet while desktop —
+        // where the padding is zero — showed nothing. The indicator draws
+        // over the bottom dock instead, the way it does in Procreate.
+        //
         // The app-level shortcut layer (P1): the manager stands bare-letter
         // shortcuts down while a text field has focus; the bindings notifier
         // rebuilds the map live as the user re-records keys.
         body: SafeArea(
+          bottom: false,
           child: ListenableBuilder(
             listenable: _shortcuts,
             builder: (context, _) => Shortcuts.manager(

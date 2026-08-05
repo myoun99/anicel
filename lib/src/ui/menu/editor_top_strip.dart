@@ -322,6 +322,18 @@ class EditorTopStrip extends StatelessWidget {
         checked: entry.visible,
         onSelected: () => panelsMenu.toggle(entry.tabId),
       ),
+    // The left-handed choice. It was a tab drag until 고정 도킹 took the
+    // grip away, and a strip you cannot move is the wrong answer for half
+    // the people holding the stylus.
+    _item(
+      id: 'window-tool-rail-right',
+      label: 'Tool strip on the right',
+      icon: Icons.flip,
+      checked: panelsMenu.toolRailOnRight,
+      onPressed: panelsMenu.canMoveToolRail
+          ? () => panelsMenu.setToolRailOnRight(!panelsMenu.toolRailOnRight)
+          : null,
+    ),
     _item(
       id: 'window-reset-layout',
       label: 'Reset workspace layout',

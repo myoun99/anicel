@@ -83,6 +83,7 @@ class EditorPanelTabs extends StatefulWidget {
     required this.activeTabId,
     required this.onTabSelected,
     this.compact = false,
+    this.chromeless = false,
     this.groupId,
     this.onTabMoved,
     this.canAcceptTab,
@@ -103,6 +104,16 @@ class EditorPanelTabs extends StatefulWidget {
   /// Icon-only tab buttons (the label moves into the tooltip) — for narrow
   /// docks where full labels would overflow the strip.
   final bool compact;
+
+  /// Renders the CONTENT with no tab strip at all — no names, no glyphs,
+  /// no grip, nothing to drop onto.
+  ///
+  /// For the fixed strips (사이드 띠 / 상단 띠, 유저 확정 「고정 도킹」):
+  /// they hold one thing, it never moves, and a row of chrome above a
+  /// column of tool buttons is a title for something that needs no title.
+  /// Every other dock keeps its strip — a panel you switch between and
+  /// rearrange still needs the tabs that say so.
+  final bool chromeless;
 
   /// This group's identity in the dock layout; tags outgoing drags.
   final String? groupId;
@@ -188,39 +199,41 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Container(
-          height: EditorPanelTabs.stripHeight,
-          color: colorScheme.surfaceContainerLow,
-          child: Stack(
-            children: [
-              // The append drop target carpets the whole strip BEHIND the
-              // tabs: drops on empty strip space append, drops on a tab
-              // hit its own insertion targets above.
-              if (_dragEnabled)
-                Positioned.fill(
-                  child: _TabStripTailDropRegion(
-                    willAccept: _willAccept,
-                    onDropped: (data) => widget.onTabMoved!(data, tabs.length),
+        if (!widget.chromeless)
+          Container(
+            height: EditorPanelTabs.stripHeight,
+            color: colorScheme.surfaceContainerLow,
+            child: Stack(
+              children: [
+                // The append drop target carpets the whole strip BEHIND the
+                // tabs: drops on empty strip space append, drops on a tab
+                // hit its own insertion targets above.
+                if (_dragEnabled)
+                  Positioned.fill(
+                    child: _TabStripTailDropRegion(
+                      willAccept: _willAccept,
+                      onDropped: (data) =>
+                          widget.onTabMoved!(data, tabs.length),
+                    ),
+                  ),
+                // Tabs keep their natural width (name always visible) and
+                // the strip scrolls when they overflow the dock. Buttons
+                // STRETCH the strip's full height so the selected tab meets
+                // the content edge-to-edge (no strip-colored gap under it).
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      for (var index = 0; index < tabs.length; index += 1)
+                        _buildTabButton(index),
+                    ],
                   ),
                 ),
-              // Tabs keep their natural width (name always visible) and
-              // the strip scrolls when they overflow the dock. Buttons
-              // STRETCH the strip's full height so the selected tab meets
-              // the content edge-to-edge (no strip-colored gap under it).
-              SingleChildScrollView(
-                scrollDirection: Axis.horizontal,
-                child: Row(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    for (var index = 0; index < tabs.length; index += 1)
-                      _buildTabButton(index),
-                  ],
-                ),
-              ),
-            ],
+              ],
+            ),
           ),
-        ),
         // The content area shares the selected tab's background so the tab
         // reads as part of the panel, not a floating chip above it. Built
         // keep-alive tabs stay in the stack offstage (state, scroll
