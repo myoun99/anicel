@@ -1,9 +1,10 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 
-import '../../native/qa_tablet_bridge.dart' show QaTabletPacket;
+import '../../native/qa_tablet_bridge.dart' show QaPenRawState, QaTabletPacket;
 import '../../services/input/pen_sidecars.dart';
 import '../../services/input/platform_pen_channel_service.dart';
+import '../../services/input/raw_pen_input_service.dart';
 import '../../services/input/wintab_pen_service.dart';
 import '../theme/app_theme.dart' show AppColors;
 
@@ -241,6 +242,18 @@ class _InspectorCard extends StatelessWidget {
 
   static const int _visibleRows = 10;
 
+  /// The HID switches currently declared down, or '-' for none.
+  static String _rawPenLabel(QaPenRawState state) {
+    final parts = <String>[
+      if (state.tip) 'tip',
+      if (state.barrel) 'barrel',
+      if (state.eraser) 'eraser',
+      if (state.inverted) 'inv',
+      if (state.secondaryBarrel) 'barrel2',
+    ];
+    return parts.isEmpty ? '-' : parts.join('+');
+  }
+
   Color _kindColor(ColorScheme colorScheme, PointerDeviceKind kind) =>
       switch (kind) {
         PointerDeviceKind.stylus ||
@@ -310,6 +323,28 @@ class _InspectorCard extends StatelessWidget {
                                   '${packet.pressure.toStringAsFixed(2)}',
                                   key: const ValueKey<String>(
                                     'input-inspector-wintab',
+                                  ),
+                                  style: rowStyle.copyWith(
+                                    color: AppColors.accent2,
+                                  ),
+                                ),
+                              ),
+                      ),
+                      // The RAW HID observer: the switches the PEN itself
+                      // declares. On Windows this is the only place the
+                      // tail end appears at all — Ink drops it and the
+                      // pointer stream calls both ends "stylus" — so this
+                      // line is what a tail-switch report is read from.
+                      ValueListenableBuilder<QaPenRawState?>(
+                        valueListenable: RawPenInputService.instance.latest,
+                        builder: (context, state, _) => state == null
+                            ? const SizedBox.shrink()
+                            : Padding(
+                                padding: const EdgeInsets.only(left: 6),
+                                child: Text(
+                                  'hid ${_rawPenLabel(state)}',
+                                  key: const ValueKey<String>(
+                                    'input-inspector-rawpen',
                                   ),
                                   style: rowStyle.copyWith(
                                     color: AppColors.accent2,
