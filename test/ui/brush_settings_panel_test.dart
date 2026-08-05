@@ -99,8 +99,8 @@ void main() {
     );
   });
 
-  testWidgets('BrushSettingsPanel updates size opacity and spacing (the '
-      'color swatches left with R26 #11 — the color wheel owns color)', (
+  testWidgets('BrushSettingsPanel updates spacing (the color swatches left '
+      'with R26 #11, and size/opacity left for the top strip)', (
     tester,
   ) async {
     var state = BrushToolState.defaults;
@@ -118,20 +118,6 @@ void main() {
         ),
       ),
     );
-
-    await tester.drag(
-      find.byKey(const ValueKey<String>('brush-tool-size-slider')),
-      const Offset(60, 0),
-    );
-    await tester.pumpAndSettle();
-    expect(state.size, greaterThan(BrushToolState.defaultSize));
-
-    await tester.drag(
-      find.byKey(const ValueKey<String>('brush-tool-opacity-slider')),
-      const Offset(-80, 0),
-    );
-    await tester.pumpAndSettle();
-    expect(state.opacity, lessThan(BrushToolState.defaultOpacity));
 
     final spacingSlider = find.byKey(
       const ValueKey<String>('brush-tool-spacing-slider'),
@@ -249,10 +235,14 @@ void main() {
         ),
       );
 
-      expect(state.sizePressureCurve, isNull);
+      expect(state.flowPressureCurve, isNull);
 
-      // Every pressure-capable row carries its curve button.
-      for (final target in BrushPressureTarget.values) {
+      // Every pressure-capable row STILL HERE carries its curve button;
+      // size and opacity took theirs to the top strip with them.
+      for (final target in [
+        BrushPressureTarget.flow,
+        BrushPressureTarget.hardness,
+      ]) {
         expect(
           find.byKey(ValueKey<String>('brush-tool-pressure-${target.name}')),
           findsOneWidget,
@@ -264,11 +254,11 @@ void main() {
         findsNothing,
       );
 
-      final sizeButton = find.byKey(
-        const ValueKey<String>('brush-tool-pressure-size'),
+      final flowButton = find.byKey(
+        const ValueKey<String>('brush-tool-pressure-flow'),
       );
-      await tester.ensureVisible(sizeButton);
-      await tester.tap(sizeButton);
+      await tester.ensureVisible(flowButton);
+      await tester.tap(flowButton);
       await tester.pumpAndSettle();
       expect(
         find.byKey(const ValueKey<String>('pressure-curve-popup')),
@@ -280,8 +270,8 @@ void main() {
         find.byKey(const ValueKey<String>('pressure-curve-enable-switch')),
       );
       await tester.pumpAndSettle();
-      expect(state.sizePressureCurve, BrushPressureCurve.identity());
-      expect(state.toInputSettings().sizePressureCurve, isNotNull);
+      expect(state.flowPressureCurve, BrushPressureCurve.identity());
+      expect(state.toInputSettings().flowPressureCurve, isNotNull);
 
       // Disabling clears it back to null (the copyWith-preserve rule is
       // bypassed through withPressureCurve).
@@ -289,7 +279,7 @@ void main() {
         find.byKey(const ValueKey<String>('pressure-curve-enable-switch')),
       );
       await tester.pumpAndSettle();
-      expect(state.sizePressureCurve, isNull);
+      expect(state.flowPressureCurve, isNull);
     },
   );
 
@@ -353,27 +343,8 @@ void main() {
       expect(read().spacingJitter, greaterThan(0));
     });
 
-    testWidgets('the blend lock pins and releases', (tester) async {
-      final read = await pumpPanel(tester);
-      final lock = find.byKey(
-        const ValueKey<String>('brush-tool-blend-lock-toggle'),
-      );
-
-      expect(read().lockedBlendMode, isNull);
-
-      await tester.ensureVisible(lock);
-      await tester.tap(lock);
-      await tester.pumpAndSettle();
-
-      // Locking captures what was showing, so the stroke does not change
-      // under you at the moment you pin it.
-      expect(read().lockedBlendMode, read().brushBlendMode);
-
-      await tester.tap(lock);
-      await tester.pumpAndSettle();
-
-      expect(read().lockedBlendMode, isNull);
-    });
+    // The blend lock moved to the top strip with the blend button; its
+    // pin/release test went with it (editor_top_strip_test.dart).
 
     testWidgets('mixing hides its knobs until it is switched on', (
       tester,

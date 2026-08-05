@@ -87,7 +87,6 @@ class ToolSettingsPanel extends StatelessWidget {
         CanvasTool.brush || CanvasTool.eraser => BrushSettingsPanel(
           state: state,
           onChanged: onChanged,
-          language: language,
           tips: tips,
           onTipImportRequested: onTipImportRequested,
         ),

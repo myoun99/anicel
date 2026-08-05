@@ -212,20 +212,136 @@ void main() {
     expect(sizeOnBar(), eraserSize, reason: 'and the eraser keeps its own');
   });
 
-  testWidgets('the blend mode is a popover beside the bars', (tester) async {
+  testWidgets('the blend button says its mode, and picking one changes what '
+      'it says', (tester) async {
     await pumpHome(tester);
 
-    // A list, not a bar: you pick one and go. It is also one of the three
-    // settings a preset never carries, which is why it stands with the
-    // hand's own choices instead of living inside a preset.
-    await openStrip(tester, 'top-strip-blend-button');
-    await tapEntry(tester, 'top-strip-blend-multiply');
-
-    await openStrip(tester, 'top-strip-blend-button');
-    final item = tester.widget<PopupMenuItem<PanelFlyoutItem>>(
-      find.byKey(const ValueKey<String>('top-strip-blend-multiply')),
+    // A NAMED button, not the icon popover the strip briefly wore: a blend
+    // you cannot read without opening it is a blend you check by opening
+    // it. This is the tool-settings dropdown, moved here whole.
+    final button = find.byKey(
+      const ValueKey<String>('brush-tool-blend-menu-button'),
     );
-    expect(item.value?.checked, isTrue);
+    expect(
+      find.descendant(of: button, matching: find.text('Color')),
+      findsOneWidget,
+      reason: 'the resting label IS the current mode',
+    );
+
+    await openStrip(tester, 'brush-tool-blend-menu-button');
+    await tapEntry(tester, 'brush-tool-blend-multiply');
+
+    expect(
+      find.descendant(of: button, matching: find.text('Multiply')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('the blend button keeps ONE width, so changing the mode never '
+      'shoves the bars sideways', (tester) async {
+    await pumpHome(tester);
+
+    final button = find.byKey(
+      const ValueKey<String>('brush-tool-blend-menu-button'),
+    );
+    final sizeBar = find.byKey(const ValueKey<String>('top-strip-size-bar'));
+    final widthBefore = tester.getSize(button).width;
+    final barLeftBefore = tester.getTopLeft(sizeBar).dx;
+
+    // 'Color' and 'Color Dodge' are nowhere near the same length.
+    await openStrip(tester, 'brush-tool-blend-menu-button');
+    await tapEntry(tester, 'brush-tool-blend-colorDodge');
+
+    expect(tester.getSize(button).width, widthBefore);
+    expect(tester.getTopLeft(sizeBar).dx, barLeftBefore);
+  });
+
+  testWidgets('the blend lock pins and releases', (tester) async {
+    await pumpHome(tester);
+    final lock = find.byKey(
+      const ValueKey<String>('brush-tool-blend-lock-toggle'),
+    );
+    final button = find.byKey(
+      const ValueKey<String>('brush-tool-blend-menu-button'),
+    );
+
+    // Pin the CURRENT mode, so the stroke does not change under you at the
+    // moment you pin it, and the button keeps saying what it said.
+    await tester.tap(lock);
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: button, matching: find.text('Color')),
+      findsOneWidget,
+    );
+
+    // While pinned, picking a mode edits the PIN rather than the hand
+    // setting — the button still follows.
+    await openStrip(tester, 'brush-tool-blend-menu-button');
+    await tapEntry(tester, 'brush-tool-blend-screen');
+    expect(
+      find.descendant(of: button, matching: find.text('Screen')),
+      findsOneWidget,
+    );
+
+    // Releasing drops back to the hand setting, which was never touched.
+    await tester.tap(lock);
+    await tester.pumpAndSettle();
+    expect(
+      find.descendant(of: button, matching: find.text('Color')),
+      findsOneWidget,
+      reason: 'the pin edited itself, not the hand setting underneath',
+    );
+  });
+
+  testWidgets('the ERASER locks the blend — a lock chip, no flyout, and the '
+      'bars do not move', (tester) async {
+    await pumpHome(tester);
+
+    final sizeBar = find.byKey(const ValueKey<String>('top-strip-size-bar'));
+    final barLeftWithBrush = tester.getTopLeft(sizeBar).dx;
+
+    await tester.tap(find.byKey(const ValueKey<String>('tool-eraser-button')));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const ValueKey<String>('brush-tool-blend-locked')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('brush-tool-blend-menu-button')),
+      findsNothing,
+      reason: 'the eraser IS the erase blend; there is nothing to choose',
+    );
+    // The lock toggle retires with the flyout, and its width has to stay
+    // spoken for — otherwise picking up the eraser slides every bar left.
+    expect(tester.getTopLeft(sizeBar).dx, barLeftWithBrush);
+  });
+
+  testWidgets('the strip right group reads: blend | size, opacity, colour — '
+      'each value followed by its own lock', (tester) async {
+    await pumpHome(tester);
+
+    double leftOf(String key) =>
+        tester.getTopLeft(find.byKey(ValueKey<String>(key))).dx;
+
+    // 유저 확정 order. Asserted by POSITION, because the order is the
+    // point — a list of findsOneWidget would pass on any arrangement.
+    final order = [
+      'brush-tool-blend-menu-button',
+      'brush-tool-blend-lock-toggle',
+      'top-strip-size-bar',
+      'brush-tool-pressure-size',
+      'top-strip-opacity-bar',
+      'brush-tool-pressure-opacity',
+      'tool-color-button',
+    ];
+    for (var i = 1; i < order.length; i++) {
+      expect(
+        leftOf(order[i]),
+        greaterThan(leftOf(order[i - 1])),
+        reason: '${order[i]} sits right of ${order[i - 1]}',
+      );
+    }
   });
 
   testWidgets('the colour rides the strip now, and the rail has none', (

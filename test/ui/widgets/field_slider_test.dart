@@ -214,6 +214,106 @@ void main() {
     },
   );
 
+  testWidgets('a TAP inside that same scrollable sets the value and keeps it', (
+    tester,
+  ) async {
+    // The other half of the rule above, and where three bugs lived: the
+    // drag recognizer is rejected in BOTH cases and cannot tell them
+    // apart, so the bar used to roll a tap back like a scroll. A pen tap
+    // in the tool settings did nothing while a MOUSE tap worked (a
+    // desktop Scrollable only contests touch and stylus), and the
+    // layer-opacity bar failed for both. 유저: "싹 통일하고싶어".
+    final value = ValueNotifier<double>(0.2);
+    final commits = <double>[];
+    final controller = ScrollController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: Scaffold(
+          body: ListView(
+            controller: controller,
+            children: [
+              const SizedBox(height: 100),
+              ValueListenableBuilder<double>(
+                valueListenable: value,
+                builder: (context, v, _) => FieldSlider(
+                  key: sliderKey,
+                  value: v,
+                  min: 0,
+                  max: 1,
+                  label: 'Test',
+                  valueText: v.toStringAsFixed(2),
+                  onChanged: (next) => value.value = next,
+                  onChangeEnd: commits.add,
+                ),
+              ),
+              const SizedBox(height: 1200),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final rect = tester.getRect(find.byKey(sliderKey));
+    await tester.tapAt(Offset(rect.left + rect.width * 0.75, rect.center.dy));
+    await tester.pumpAndSettle();
+
+    expect(value.value, moreOrLessEquals(0.75, epsilon: 0.02));
+    expect(
+      commits.last,
+      moreOrLessEquals(0.75, epsilon: 0.02),
+      reason:
+          'commit-on-release hosts must be told too, or the live '
+          'preview is all the tap ever produces',
+    );
+    expect(controller.offset, 0, reason: 'a tap is not a scroll');
+  });
+
+  testWidgets('a tap sets the value from a STYLUS too — the device must not '
+      'decide whether a tap counts', (tester) async {
+    final value = ValueNotifier<double>(0.2);
+    final controller = ScrollController();
+    addTearDown(controller.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: buildAppTheme(),
+        home: Scaffold(
+          body: ListView(
+            controller: controller,
+            children: [
+              const SizedBox(height: 100),
+              ValueListenableBuilder<double>(
+                valueListenable: value,
+                builder: (context, v, _) => FieldSlider(
+                  key: sliderKey,
+                  value: v,
+                  min: 0,
+                  max: 1,
+                  label: 'Test',
+                  valueText: v.toStringAsFixed(2),
+                  onChanged: (next) => value.value = next,
+                ),
+              ),
+              const SizedBox(height: 1200),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    final rect = tester.getRect(find.byKey(sliderKey));
+    final at = Offset(rect.left + rect.width * 0.4, rect.center.dy);
+    final gesture = await tester.startGesture(
+      at,
+      kind: PointerDeviceKind.stylus,
+    );
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(value.value, moreOrLessEquals(0.4, epsilon: 0.02));
+  });
+
   group('stood up (the x-sheet rail)', () {
     Widget verticalHarness(ValueNotifier<double> value) => MaterialApp(
       theme: buildAppTheme(),

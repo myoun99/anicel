@@ -10,6 +10,7 @@ import '../../services/persistence/app_save_settings.dart';
 import '../../services/persistence/project_autosave_service.dart';
 import '../dialogs/app_confirm_dialog.dart';
 import '../../models/brush_blend_mode.dart';
+import '../../models/brush_pressure_curve.dart';
 import '../../services/color_palette_file_service.dart';
 import '../brush/brush_tool_state.dart';
 import '../brush/tools_panel.dart' show RailButton;
@@ -19,6 +20,7 @@ import '../widgets/field_slider.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 import '../widgets/panel_flyout.dart';
+import '../widgets/pressure_curve_popup.dart';
 import '../dialogs/file_browser_dialog.dart';
 import '../dialogs/preferences_dialog.dart';
 import '../canvas/paper_background.dart' show alphaPreviewEnabled;
@@ -469,10 +471,16 @@ class EditorTopStrip extends StatelessWidget {
             ),
           ),
         ),
+        // 유저 확정 order, left to right: blend + its lock, a rule, then
+        // size and opacity each with their pressure curve, then the colour.
+        // The rule is what makes the first two read as one group rather
+        // than as a button that has wandered next to a slider.
         if (brushTool != null) ...[
+          _BlendModeControl(brushTool: brushTool!),
+          const SizedBox(width: 6),
+          const _StripGroupRule(),
+          const SizedBox(width: 6),
           _BrushValueBars(brushTool: brushTool!),
-          const SizedBox(width: 4),
-          _BlendModeButton(brushTool: brushTool!),
           const SizedBox(width: 4),
           if (colorBackground != null &&
               colorPalette != null &&
@@ -490,13 +498,18 @@ class EditorTopStrip extends StatelessWidget {
   }
 }
 
-/// Size and opacity at the strip's right end.
+/// Size and opacity, each followed by its pressure curve button.
 ///
 /// Bars rather than value buttons: these are set WHILE drawing, against a
 /// test mark on the canvas, and an anchored popover closes on the first
 /// pointer-down outside it (R27 #5) — a button would force open-adjust-
 /// close-draw every time. [FieldSlider] already puts the name and the
 /// number inside the track, so one 140px run says everything.
+///
+/// The pressure buttons came WITH them from the tool settings panel (유저
+/// 확정): a curve belongs beside the value it shapes, and splitting them
+/// across two surfaces would mean setting a size here and asking how the
+/// pen affects it over there.
 ///
 /// Its own listener: a size drag must not rebuild the popover buttons or
 /// re-read the project name beside them.
@@ -512,81 +525,219 @@ class _BrushValueBars extends StatelessWidget {
   Widget build(BuildContext context) {
     return ValueListenableBuilder<BrushToolState>(
       valueListenable: brushTool,
-      builder: (context, state, _) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          SizedBox(
-            width: _barWidth,
-            height: _barHeight,
-            child: FieldSlider(
-              key: const ValueKey<String>('top-strip-size-bar'),
-              label: AppText.strings.brSize,
-              value: BrushToolState.clampSize(state.size),
-              min: BrushToolState.minSize,
-              max: BrushToolState.maxSize,
-              // Equal travel multiplies the value, so the left half covers
-              // the small sizes where a pixel matters.
-              scale: FieldSliderScale.exponential,
-              valueText: '${state.size.round()} px',
+      builder: (context, state, _) {
+        Widget pressure(BrushPressureTarget target, String title) {
+          return PressureCurveButton(
+            keyValue: 'brush-tool-pressure-${target.name}',
+            title: title,
+            curve: state.pressureCurveFor(target),
+            onChanged: (curve) =>
+                brushTool.value = state.withPressureCurve(target, curve),
+          );
+        }
+
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: _barWidth,
               height: _barHeight,
-              onChanged: (value) =>
-                  brushTool.value = brushTool.value.copyWith(size: value),
+              child: FieldSlider(
+                key: const ValueKey<String>('top-strip-size-bar'),
+                label: AppText.strings.brSize,
+                value: BrushToolState.clampSize(state.size),
+                min: BrushToolState.minSize,
+                max: BrushToolState.maxSize,
+                // Equal travel multiplies the value, so the left half covers
+                // the small sizes where a pixel matters.
+                scale: FieldSliderScale.exponential,
+                valueText: '${state.size.round()} px',
+                height: _barHeight,
+                onChanged: (value) =>
+                    brushTool.value = brushTool.value.copyWith(size: value),
+              ),
             ),
-          ),
-          const SizedBox(width: 4),
-          SizedBox(
-            width: _barWidth,
-            height: _barHeight,
-            child: FieldSlider(
-              key: const ValueKey<String>('top-strip-opacity-bar'),
-              label: AppText.strings.brOpacity,
-              value: BrushToolState.clampOpacity(state.opacity),
-              min: 0,
-              max: 1,
-              valueText: '${(state.opacity * 100).round()}%',
+            const SizedBox(width: 4),
+            pressure(BrushPressureTarget.size, AppText.strings.brSize),
+            const SizedBox(width: 4),
+            SizedBox(
+              width: _barWidth,
               height: _barHeight,
-              onChanged: (value) =>
-                  brushTool.value = brushTool.value.copyWith(opacity: value),
+              child: FieldSlider(
+                key: const ValueKey<String>('top-strip-opacity-bar'),
+                label: AppText.strings.brOpacity,
+                value: BrushToolState.clampOpacity(state.opacity),
+                min: 0,
+                max: 1,
+                valueText: '${(state.opacity * 100).round()}%',
+                height: _barHeight,
+                onChanged: (value) =>
+                    brushTool.value = brushTool.value.copyWith(opacity: value),
+              ),
             ),
-          ),
-        ],
-      ),
+            const SizedBox(width: 4),
+            pressure(BrushPressureTarget.opacity, AppText.strings.brOpacity),
+          ],
+        );
+      },
     );
   }
 }
 
-/// The blend mode, beside the two bars.
+/// The rule between the strip's groups — the same one the tool rail draws
+/// between its history head and its tools, stood on its end.
+class _StripGroupRule extends StatelessWidget {
+  const _StripGroupRule();
+
+  @override
+  Widget build(BuildContext context) {
+    return VerticalDivider(
+      width: 1,
+      thickness: 1,
+      indent: 6,
+      endIndent: 6,
+      color: Theme.of(context).colorScheme.outlineVariant,
+    );
+  }
+}
+
+/// The blend mode and its lock, at the strip's left-most right-group slot.
 ///
-/// A popover rather than a bar: it is a LIST, and unlike size and opacity
-/// you pick one and go — there is nothing to nudge against a test stroke.
-/// It is also one of the three settings a preset deliberately never
-/// carries (R26 #10), which is exactly what makes it belong on the strip
-/// with the hand's other standing choices rather than inside a preset.
-class _BlendModeButton extends StatelessWidget {
-  const _BlendModeButton({required this.brushTool});
+/// The BRUSH BLEND dropdown (BB-2) moved here whole from the tool settings
+/// panel (유저 확정) — the PS/CSP vocabulary where the LABEL is the current
+/// mode, plus the pin that keeps a brush on one blend. A named button beats
+/// the icon popover the strip briefly wore: a blend you cannot read without
+/// opening it is a blend you check by opening it.
+///
+/// It is one of the three settings a preset deliberately never carries
+/// (R26 #10), which is what makes it belong out here with the hand's other
+/// standing choices rather than inside a preset.
+///
+/// The width is FIXED (유저 확정): the label is the mode name, and letting
+/// the button breathe with the text meant every blend change shoved the
+/// bars beside it sideways. Long names ellipsize instead.
+class _BlendModeControl extends StatelessWidget {
+  const _BlendModeControl({required this.brushTool});
 
   final ValueNotifier<BrushToolState> brushTool;
+
+  /// Wider than the label needs on average, so the common modes read whole
+  /// and only the long ones are cut.
+  static const double _buttonWidth = 116;
+  static const double _lockWidth = 32;
+
+  /// What the whole group occupies — held constant across BOTH states, so
+  /// picking up the eraser (which retires the lock, since the eraser is not
+  /// making a blend choice) does not slide the bars sideways either. Same
+  /// reason the button width is fixed.
+  static const double _groupWidth = _buttonWidth + _lockWidth;
 
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<BrushToolState>(
       valueListenable: brushTool,
       builder: (context, state, _) {
+        final theme = Theme.of(context);
         final language = AppText.settings.value.programLanguage;
-        return _StripPopoverButton(
-          keyValue: 'top-strip-blend-button',
-          tooltip: state.brushBlendMode.labelFor(language),
-          icon: Icons.layers_outlined,
-          entriesBuilder: () => [
-            for (final mode in BrushBlendMode.values)
-              PanelFlyoutItem(
-                keyValue: 'top-strip-blend-${mode.name}',
-                label: mode.labelFor(language),
-                checked: mode == state.brushBlendMode,
-                onSelected: () => brushTool.value = brushTool.value.copyWith(
-                  brushBlendMode: mode,
-                ),
+        // The ERASER tool locks it to 消去/Erase — the eraser IS the erase
+        // blend — and that is not a blend CHOICE, so the flyout stands down.
+        final toolLocked = state.tool == CanvasTool.eraser;
+        // The brush's own pin, if it has one; distinct from the eraser's.
+        final pinned = state.lockedBlendMode;
+        final mode = toolLocked
+            ? BrushBlendMode.erase
+            : state.effectiveBlendMode;
+        if (toolLocked) {
+          return SizedBox(
+            width: _groupWidth,
+            child: Container(
+              key: const ValueKey<String>('brush-tool-blend-locked'),
+              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+              decoration: BoxDecoration(
+                border: Border.all(color: theme.colorScheme.outlineVariant),
+                borderRadius: BorderRadius.circular(4),
               ),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: Text(
+                      mode.labelFor(language),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                  Icon(
+                    Icons.lock_outline,
+                    size: 14,
+                    color: theme.colorScheme.onSurfaceVariant,
+                  ),
+                ],
+              ),
+            ),
+          );
+        }
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: _buttonWidth,
+              child: PanelFlyoutButton(
+                key: const ValueKey<String>('brush-tool-blend-menu-button'),
+                label: mode.labelFor(language),
+                tooltip: AppText.strings.brBlendMode,
+                // `expand` is what makes the fixed box hold: the label
+                // becomes Flexible inside it, so it ellipsizes rather than
+                // overflowing the width the strip budgeted.
+                expand: true,
+                entriesBuilder: () => [
+                  for (final candidate in BrushBlendMode.values)
+                    PanelFlyoutItem(
+                      keyValue: 'brush-tool-blend-${candidate.name}',
+                      label: candidate.labelFor(language),
+                      checked: candidate == mode,
+                      // Editing a pinned brush edits its pin; the hand
+                      // setting is only touched when nothing is pinned.
+                      onSelected: () => brushTool.value = pinned == null
+                          ? state.copyWith(brushBlendMode: candidate)
+                          : state.copyWith(lockedBlendMode: candidate),
+                    ),
+                ],
+              ),
+            ),
+            SizedBox(
+              width: _lockWidth,
+              child: IconButton(
+                key: const ValueKey<String>('brush-tool-blend-lock-toggle'),
+                icon: Icon(
+                  pinned == null
+                      ? Icons.lock_open_outlined
+                      : Icons.lock_outline,
+                  size: 16,
+                ),
+                color: pinned == null
+                    ? theme.colorScheme.onSurfaceVariant
+                    : theme.colorScheme.primary,
+                tooltip: AppText.strings.brBlendLock,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints.tightFor(
+                  width: _lockWidth,
+                  height: _lockWidth,
+                ),
+                // The 32px box IS the target: M3 would otherwise inflate to
+                // 48 and blow the width this group promised to hold.
+                style: IconButton.styleFrom(
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                // Locking captures whatever is showing, so the stroke does
+                // not change under you at the moment you pin it.
+                onPressed: () => brushTool.value = pinned == null
+                    ? state.copyWith(lockedBlendMode: mode)
+                    : state.copyWith(clearBlendLock: true),
+              ),
+            ),
           ],
         );
       },

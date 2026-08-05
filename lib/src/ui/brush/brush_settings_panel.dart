@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import '../../models/app_language.dart';
-import '../../models/brush_blend_mode.dart';
 import '../../models/brush_pressure_curve.dart';
 import '../../models/brush_shape.dart' show BrushMaskSlot;
 import '../../models/brush_tip_entry.dart';
@@ -28,7 +26,6 @@ class BrushSettingsPanel extends StatelessWidget {
     super.key,
     required this.state,
     required this.onChanged,
-    this.language = AppLanguage.en,
     this.tips = const <BrushTipEntry>[],
     this.onTipImportRequested,
   });
@@ -43,9 +40,9 @@ class BrushSettingsPanel extends StatelessWidget {
   /// Opens the add-a-tip-from-an-image flow.
   final VoidCallback? onTipImportRequested;
 
-  /// The program language — the blend mode labels localize (ja = CSP
-  /// terms); the rest of the panel keeps the incremental-coverage rule.
-  final AppLanguage language;
+  // The `language` parameter left with the blend row: it existed only for
+  // the blend labels (ja = CSP terms), and the rest of the panel reads its
+  // wording from `AppText.strings`.
 
   /// The CSP-style per-setting pressure button (BB-3): sits at the right
   /// of each pressure-capable slider row and opens the shared curve popup.
@@ -60,8 +57,6 @@ class BrushSettingsPanel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final sizeLabel = '${state.size.round()} px';
-    final opacityLabel = '${(state.opacity * 100).round()}%';
     final spacingLabel = '${(state.spacing * 100).round()}%';
     final hardnessLabel = '${(state.hardness * 100).round()}%';
     final flowLabel = '${(state.flow * 100).round()}%';
@@ -74,38 +69,13 @@ class BrushSettingsPanel extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         mainAxisSize: MainAxisSize.min,
         children: [
-          _GroupHeader('Brush size', first: true),
-          _PanelSlider(
-            label: AppText.strings.brSize,
-            valueLabel: sizeLabel,
-            value: BrushToolState.clampSize(state.size),
-            min: BrushToolState.minSize,
-            max: BrushToolState.maxSize,
-            // Log mapping: the track's left half covers the small sizes
-            // where precision matters (CSP-style 1..2000 px range).
-            scale: FieldSliderScale.exponential,
-            keyValue: 'brush-tool-size-slider',
-            onChanged: (value) => onChanged(state.copyWith(size: value)),
-            trailing: _pressureButton(
-              BrushPressureTarget.size,
-              AppText.strings.brSize,
-            ),
-          ),
-          _GroupHeader('Ink'),
-          _BlendModeRow(state: state, onChanged: onChanged, language: language),
-          _PanelSlider(
-            label: AppText.strings.brOpacity,
-            valueLabel: opacityLabel,
-            value: BrushToolState.clampOpacity(state.opacity),
-            min: 0,
-            max: 1,
-            keyValue: 'brush-tool-opacity-slider',
-            onChanged: (value) => onChanged(state.copyWith(opacity: value)),
-            trailing: _pressureButton(
-              BrushPressureTarget.opacity,
-              AppText.strings.brOpacity,
-            ),
-          ),
+          // 유저 확정 (rail-and-strip): SIZE, OPACITY and BLEND — each with
+          // its pressure curve or lock — left this panel for the TOP STRIP.
+          // They are the settings a hand changes mid-stroke, against a test
+          // mark on the canvas, and this panel scrolls; the strip is always
+          // where it was. Keeping a second copy here would be two places
+          // showing one number.
+          _GroupHeader('Ink', first: true),
           _PanelSlider(
             label: AppText.strings.brFlow,
             valueLabel: flowLabel,
@@ -415,10 +385,6 @@ class _GroupHeader extends StatelessWidget {
   }
 }
 
-/// The BRUSH BLEND dropdown (BB-2): the ink group's first row, the
-/// PS/CSP dropdown vocabulary — the label IS the current mode. The
-/// ERASER tool locks it to 消去/Erase (the eraser IS the erase blend);
-/// the flyout stands down there.
 /// How a dab picks its angle: the fixed [BrushToolState.angleDegrees], or
 /// the stroke's own direction with that angle as an offset.
 ///
@@ -504,109 +470,9 @@ class _PanelSwitch extends StatelessWidget {
   }
 }
 
-class _BlendModeRow extends StatelessWidget {
-  const _BlendModeRow({
-    required this.state,
-    required this.onChanged,
-    required this.language,
-  });
-
-  final BrushToolState state;
-  final ValueChanged<BrushToolState> onChanged;
-  final AppLanguage language;
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final locked = state.tool == CanvasTool.eraser;
-    // The brush's own lock, if it pinned one — distinct from the eraser
-    // tool's, which is not a blend choice at all.
-    final pinned = state.lockedBlendMode;
-    final mode = locked ? BrushBlendMode.erase : state.effectiveBlendMode;
-    if (locked) {
-      return Padding(
-        padding: const EdgeInsets.only(bottom: 6),
-        child: Container(
-          key: const ValueKey<String>('brush-tool-blend-locked'),
-          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
-          decoration: BoxDecoration(
-            border: Border.all(color: theme.colorScheme.outlineVariant),
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Row(
-            children: [
-              Expanded(
-                child: Text(
-                  mode.labelFor(language),
-                  style: theme.textTheme.bodySmall?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
-                  ),
-                ),
-              ),
-              Icon(
-                Icons.lock_outline,
-                size: 14,
-                color: theme.colorScheme.onSurfaceVariant,
-              ),
-            ],
-          ),
-        ),
-      );
-    }
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Row(
-        children: [
-          Expanded(
-            child: Text(
-              AppText.strings.brBlend,
-              style: theme.textTheme.labelSmall,
-            ),
-          ),
-          PanelFlyoutButton(
-            key: const ValueKey<String>('brush-tool-blend-menu-button'),
-            label: mode.labelFor(language),
-            tooltip: AppText.strings.brBlendMode,
-            entriesBuilder: () => [
-              for (final candidate in BrushBlendMode.values)
-                PanelFlyoutItem(
-                  keyValue: 'brush-tool-blend-${candidate.name}',
-                  label: candidate.labelFor(language),
-                  checked: candidate == mode,
-                  // Editing a pinned brush edits its pin; the hand setting
-                  // is only touched when nothing is pinned.
-                  onSelected: () => onChanged(
-                    pinned == null
-                        ? state.copyWith(brushBlendMode: candidate)
-                        : state.copyWith(lockedBlendMode: candidate),
-                  ),
-                ),
-            ],
-          ),
-          IconButton(
-            key: const ValueKey<String>('brush-tool-blend-lock-toggle'),
-            icon: Icon(
-              pinned == null ? Icons.lock_open_outlined : Icons.lock_outline,
-              size: 16,
-            ),
-            color: pinned == null
-                ? theme.colorScheme.onSurfaceVariant
-                : theme.colorScheme.primary,
-            tooltip: AppText.strings.brBlendLock,
-            visualDensity: VisualDensity.compact,
-            // Locking captures whatever is showing, so the stroke does not
-            // change under you at the moment you pin it.
-            onPressed: () => onChanged(
-              pinned == null
-                  ? state.copyWith(lockedBlendMode: mode)
-                  : state.copyWith(clearBlendLock: true),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
+// The BRUSH BLEND row moved to the TOP STRIP with size and opacity (유저
+// 확정). It is the same button and the same lock, transplanted rather than
+// rebuilt — see `_BlendModeControl` in editor_top_strip.dart.
 
 class _PanelSlider extends StatelessWidget {
   const _PanelSlider({
