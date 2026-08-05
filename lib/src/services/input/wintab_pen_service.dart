@@ -31,6 +31,23 @@ class WintabPenService {
   /// (the pen left proximity / the stream hiccuped).
   static const Duration freshWindow = Duration(milliseconds: 150);
 
+  /// How many packets may arrive with ZERO pointer events before the
+  /// service calls this path DEAD and demotes itself.
+  ///
+  /// The guard exists because the failure it catches is unrecoverable by
+  /// hand: the service choice is persisted, so a Wintab context that eats
+  /// the window's pointer input comes up eating it again after a restart,
+  /// with no working pointer left to reach Input Settings and undo it.
+  /// Packets flowing while NOTHING reaches the window means the driver
+  /// stopped synthesizing pointer input for us.
+  ///
+  /// Drivers stream 133–200Hz, so this is ~1–1.5s of real pen use. It is
+  /// deliberately generous, and any pointer event at all (mouse included)
+  /// clears the suspicion for the session: a false demotion silently
+  /// rewrites a working user's settings, which is worse than missing one
+  /// — a missed case still leaves the mouse to fix it by hand.
+  static const int deadPathPacketBudget = 200;
+
   /// Test hook: replaces the bridge's poll (packets in, wall-clocked as
   /// now). Null = the real DLL.
   List<QaTabletPacket> Function()? debugPollOverride;
@@ -41,11 +58,23 @@ class WintabPenService {
     null,
   );
 
+  /// Raised when [deadPathPacketBudget] tripped and the service put the
+  /// setting back to [TabletService.standard] on its own — Input Settings
+  /// reads this to explain why the choice reverted.
+  final ValueNotifier<bool> autoDemoted = ValueNotifier<bool>(false);
+
+  /// How a safety demotion PERSISTS. The service knows when the path went
+  /// dead; the session owns the settings store, and the demotion has to
+  /// survive the restart that would otherwise reopen the dead context.
+  void Function(AppInputSettings settings)? persistSettings;
+
   QaTabletBridge? _bridge;
   Timer? _timer;
   bool _opened = false;
   DateTime _lastPacketAt = DateTime.fromMillisecondsSinceEpoch(0);
   VoidCallback? _settingsListener;
+  int _packetsWithoutPointer = 0;
+  bool _sawPointerEvent = false;
 
   /// The clock the freshness window reads. Production uses wall time;
   /// tests inject a fixed clock so a packet stays "fresh" regardless of
@@ -86,6 +115,8 @@ class WintabPenService {
     if (debugPollOverride == null && (_bridge == null || !_bridge!.available)) {
       return; // No driver — stay idle (the standard graceful absence).
     }
+    _packetsWithoutPointer = 0;
+    _sawPointerEvent = false;
     _timer = Timer.periodic(pollInterval, (_) => _pump());
   }
 
@@ -97,6 +128,36 @@ class WintabPenService {
       _opened = false;
     }
     latest.value = null;
+  }
+
+  /// The dead-path guard's other half: ANY pointer event arriving anywhere
+  /// in the app proves the window still receives input, which is exactly
+  /// what a tablet-eating context takes away.
+  ///
+  /// The app-wide observer calls this (see `InputInspectorHost`) rather
+  /// than the service reaching for a global pointer route itself — a
+  /// pressure sidecar has no business requiring a widgets binding, and
+  /// the unit tests that drive it directly have none.
+  void notePointerActivity() {
+    _sawPointerEvent = true;
+  }
+
+  /// Puts the setting back to the standard path and persists it — the one
+  /// caller is the dead-path guard in [_pump].
+  void _demoteForSafety() {
+    autoDemoted.value = true;
+    stop();
+    final demoted = AppInput.settings.value.copyWith(
+      tabletService: TabletService.standard,
+    );
+    final persist = persistSettings;
+    if (persist != null) {
+      persist(demoted);
+    } else {
+      // No shell wired (tests, or a very early failure): at least make the
+      // live setting agree with the service that just stood down.
+      AppInput.settings.value = demoted;
+    }
   }
 
   void _pump() {
@@ -124,6 +185,16 @@ class WintabPenService {
     }
     _lastPacketAt = _now();
     latest.value = packets.last;
+    // Dead-path guard: the driver is clearly talking to US, so if nothing
+    // at all reaches the WINDOW the context has taken the pointer stream
+    // away and the user cannot undo the choice by hand.
+    if (_sawPointerEvent) {
+      return;
+    }
+    _packetsWithoutPointer += packets.length;
+    if (_packetsWithoutPointer >= deadPathPacketBudget) {
+      _demoteForSafety();
+    }
   }
 
   /// The driver's CONTACT pressure when the stream is live and fresh —
@@ -163,7 +234,11 @@ class WintabPenService {
     }
     debugPollOverride = null;
     debugClockOverride = null;
+    persistSettings = null;
+    autoDemoted.value = false;
     _bridge = null;
     _lastPacketAt = DateTime.fromMillisecondsSinceEpoch(0);
+    _packetsWithoutPointer = 0;
+    _sawPointerEvent = false;
   }
 }

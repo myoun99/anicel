@@ -13,6 +13,7 @@ import '../models/import/cut_folder_parse.dart';
 import '../services/commands/import_media_command.dart';
 import '../services/import/media_import_planner.dart';
 import '../services/import/raster_cel_import.dart';
+import '../services/input/wintab_pen_service.dart';
 import '../services/pdf/pdf_render_service.dart';
 import '../services/project_lookup.dart' show cutIdOfLayer;
 import '../models/app_language.dart';
@@ -381,6 +382,10 @@ class EditorSessionManager extends ChangeNotifier {
   final AppInputSettingsStore? _inputSettingsStore;
 
   Future<void> _restoreInputSettings() async {
+    // The Wintab guard decides WHEN the tablet path went dead; persisting
+    // that demotion is this side's half. Without it the dead choice
+    // reloads on the next launch — with no working pointer to undo it.
+    WintabPenService.instance.persistSettings = setInputSettings;
     final restored = await _inputSettingsStore?.load();
     if (restored != null) {
       AppInput.settings.value = restored;
@@ -8185,11 +8190,7 @@ class EditorSessionManager extends ChangeNotifier {
         return true;
       }
     }
-    if (_beginCutTrimDrag(
-      cutId: cutId,
-      edge: edge,
-      panelIndex: panelIndex,
-    )) {
+    if (_beginCutTrimDrag(cutId: cutId, edge: edge, panelIndex: panelIndex)) {
       _cutEdgeDragVerb = _CutEdgeDragVerb.cutTrim;
       return true;
     }

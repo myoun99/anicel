@@ -186,7 +186,13 @@ class InputInspectorHost extends StatelessWidget {
 
   final Widget child;
 
-  static void _recordIfVisible(PointerEvent event) {
+  static void _observePointer(PointerEvent event) {
+    // Unconditional, and not the inspector's own business: this listener
+    // is the app's ONE always-mounted view of every pointer event, and the
+    // Wintab dead-path guard needs exactly that signal — packets arriving
+    // while NOTHING reaches the window is what a tablet-eating context
+    // looks like from the inside.
+    WintabPenService.instance.notePointerActivity();
     if (InputInspector.visible.value) {
       InputInspector.record(event);
     }
@@ -206,14 +212,14 @@ class InputInspectorHost extends StatelessWidget {
       children: [
         Listener(
           behavior: HitTestBehavior.translucent,
-          onPointerDown: _recordIfVisible,
-          onPointerMove: _recordIfVisible,
-          onPointerUp: _recordIfVisible,
-          onPointerCancel: _recordIfVisible,
-          onPointerHover: _recordIfVisible,
-          onPointerSignal: _recordIfVisible,
-          onPointerPanZoomStart: _recordIfVisible,
-          onPointerPanZoomUpdate: _recordIfVisible,
+          onPointerDown: _observePointer,
+          onPointerMove: _observePointer,
+          onPointerUp: _observePointer,
+          onPointerCancel: _observePointer,
+          onPointerHover: _observePointer,
+          onPointerSignal: _observePointer,
+          onPointerPanZoomStart: _observePointer,
+          onPointerPanZoomUpdate: _observePointer,
           child: child,
         ),
         Positioned(
@@ -221,9 +227,8 @@ class InputInspectorHost extends StatelessWidget {
           bottom: 12,
           child: ValueListenableBuilder<bool>(
             valueListenable: InputInspector.visible,
-            builder: (context, visible, _) => visible
-                ? const _InspectorCard()
-                : const SizedBox.shrink(),
+            builder: (context, visible, _) =>
+                visible ? const _InspectorCard() : const SizedBox.shrink(),
           ),
         ),
       ],

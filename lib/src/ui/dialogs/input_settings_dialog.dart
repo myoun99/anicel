@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show defaultTargetPlatform;
 import 'package:flutter/material.dart';
 
+import '../../services/input/wintab_pen_service.dart';
 import '../editor_session_manager.dart';
 import '../input/app_input_settings.dart';
 import '../widgets/field_slider.dart';
@@ -314,6 +315,28 @@ class InputSettingsSection extends StatelessWidget {
                     ),
                   ],
                 ),
+              ),
+              // Why the choice reverted on its own: the guard only fires
+              // when the Wintab context took the window's pointer input
+              // away, and silently undoing a user's setting without
+              // saying so is its own bug.
+              ValueListenableBuilder<bool>(
+                valueListenable: WintabPenService.instance.autoDemoted,
+                builder: (context, demoted, _) => demoted
+                    ? Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text(
+                          strings.inputTabletAutoDemoted,
+                          key: const ValueKey<String>(
+                            'settings-tablet-auto-demoted',
+                          ),
+                          style: Theme.of(context).textTheme.bodySmall
+                              ?.copyWith(
+                                color: Theme.of(context).colorScheme.error,
+                              ),
+                        ),
+                      )
+                    : const SizedBox.shrink(),
               ),
             ],
           ],
