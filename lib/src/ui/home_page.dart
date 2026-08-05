@@ -27,6 +27,7 @@ import '../services/input/pencil_interaction_service.dart';
 import 'shortcuts/touch_shortcuts.dart';
 import 'brush/canvas_selection_commands.dart';
 import 'brush/canvas_view_commands.dart';
+import 'editor_command_actions.dart';
 import 'editor_session_manager.dart';
 import 'editor_workspace.dart';
 import '../services/persistence/app_export_settings_store.dart';
@@ -335,6 +336,27 @@ class _HomePageState extends State<HomePage> {
         _brushTool.value = _brushTool.value.copyWith(tool: CanvasTool.fill);
       case EditorActionIds.onionSkinToggle:
         _session.toggleOnionSkin();
+      // The film verbs. Each one guards itself the way the toolbar button
+      // above it does — a key that fires on a row with nothing to do is a
+      // no-op, not an error.
+      case EditorActionIds.frameNewDrawing:
+        createActiveInstance(_session);
+      case EditorActionIds.frameBlankExposure:
+        if (_session.canCutExposureAtCurrentFrame) {
+          _session.cutExposureAtCurrentFrame();
+        }
+      case EditorActionIds.frameToggleMark:
+        if (_session.canToggleMarkAtCurrentFrame) {
+          _session.toggleMarkAtCurrentFrame();
+        }
+      case EditorActionIds.timelinePushBlocks:
+        if (_session.canPushBlocks()) {
+          _session.pushBlocks(1);
+        }
+      case EditorActionIds.timelinePullBlocks:
+        if (_session.canPullBlocks()) {
+          _session.pullBlocks(1);
+        }
       case EditorActionIds.canvasRotateCcw:
         _canvasViewCommands.rotateBy(-15);
       case EditorActionIds.canvasRotateCw:

@@ -22,6 +22,7 @@ import 'dialogs/rename_frame_dialog.dart';
 import 'dialogs/rename_layer_dialog.dart';
 import 'dialogs/se_instance_dialog.dart';
 import 'dialogs/text_cel_dialog.dart';
+import 'editor_command_actions.dart';
 import 'editor_session_manager.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'playback/playback_transport_controls.dart';
@@ -551,37 +552,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   /// A live selection fills the WHOLE selection instead (UI-R25 #3):
   /// anywhere selectable creates — drawing gaps, SE gaps, instruction
   /// gaps, camera keys, lane keys.
-  Future<void> _createActiveInstance() async {
-    if (_session.createInstancesForSelection()) {
-      return;
-    }
-    final layer = _session.activeLayer;
-    if (layer == null) {
-      return;
-    }
-    switch (layer.kind) {
-      case LayerKind.camera:
-        _session.setCameraKeyframeAtCurrentFrame(
-          _session.cameraPoseAtCurrentFrame,
-        );
-      case LayerKind.se:
-        _session.createSeEntryAtCurrentFrame(name: '', lengthFrames: 1);
-      case LayerKind.instruction:
-        _session.createDefaultInstructionEventAtCurrentFrame();
-      case LayerKind.folder:
-      case LayerKind.adjustment:
-        // Nothing to create on either row — a folder holds rows and an
-        // adjustment holds effects; neither holds cels.
-        break;
-      // A text cel is born BLANK like a drawing cel (UI-R25 #2: creation
-      // never opens a dialog) — double-tap types into it afterwards.
-      case LayerKind.animation ||
-          LayerKind.storyboard ||
-          LayerKind.image ||
-          LayerKind.text:
-        _session.createDrawingAtCurrentFrame();
-    }
-  }
+  void _createActiveInstance() => createActiveInstance(_session);
 
   /// Camera cells: per-lane key/value/interpolation dialog at the frame;
   /// the edited states fold into ONE track commit (one undo).
@@ -687,10 +658,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         initialContent: content,
         defaultPosition: cut == null
             ? null
-            : Offset(
-                cut.canvasSize.width / 2,
-                cut.canvasSize.height / 2,
-              ),
+            : Offset(cut.canvasSize.width / 2, cut.canvasSize.height / 2),
       ),
     );
     if (!mounted || result == null) {
@@ -1067,7 +1035,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           isLayerSoloed: (layerId) =>
               _session.soloedSeLayerIds.value.contains(layerId),
           onOpenLayerMixer: (anchorContext, layerId) => unawaited(
-            showSeLayerMixer(anchorContext, session: _session, layerId: layerId),
+            showSeLayerMixer(
+              anchorContext,
+              session: _session,
+              layerId: layerId,
+            ),
           ),
           // Kind-dispatched (unified layer controls): the camera row drives
           // the camera-view notifiers, every other row the layer flags.
