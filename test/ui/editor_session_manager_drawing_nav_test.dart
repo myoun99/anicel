@@ -5,6 +5,7 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
@@ -194,6 +195,96 @@ void main() {
         session.editingGlobalFrame,
         globalBefore + 1,
         reason: 'one frame past the film, which parks',
+      );
+    });
+
+    /// The same three cuts with EMPTY FRAMES between them — cut 2 and 3
+    /// each carry a leading gap.
+    EditorSessionManager gappedCutSession() {
+      final project = Project(
+        id: const ProjectId('p-gapped-cuts'),
+        name: 'Gapped Cuts',
+        createdAt: DateTime.utc(2026, 8, 5),
+        tracks: [
+          Track(
+            id: const TrackId('default-track'),
+            name: 'Video Track',
+            cuts: [
+              for (var index = 1; index <= 3; index += 1)
+                createDefaultCut(
+                  cutId: CutId('cut-$index'),
+                  name: '$index',
+                  layerId: LayerId('layer-$index'),
+                ).copyWith(leadingGapFrames: index == 1 ? 0 : 3),
+            ],
+          ),
+        ],
+      );
+      return EditorSessionManager(initialProject: project);
+    }
+
+    test('★ a LAYER row walks out of its cut and keeps going — the space '
+        'between cuts is frames, one press each', () {
+      // The user's decision: a gap is frames on BOTH panels, so crossing
+      // one from a layer row costs a press per frame rather than
+      // teleporting to the next cut.
+      final session = gappedCutSession();
+      addTearDown(session.dispose);
+      expect(session.currentRow, isA<LayerRowAddress>());
+
+      final duration = session.requireActiveCut.duration;
+      session.selectFrameIndex(duration - 1);
+      expect(session.editingGlobalFrame, duration - 1);
+
+      // Off the end of the cut: the axis does not stop there.
+      session.selectNextDrawing();
+      expect(session.activeCutId, isNull, reason: 'parked in the gap');
+      expect(session.editingGlobalFrame, duration);
+
+      // In the gap the row falls to the TRACK, whose columns here are
+      // bare frames — so the walk continues one frame at a time.
+      session.selectNextDrawing();
+      expect(session.editingGlobalFrame, duration + 1);
+      session.selectNextDrawing();
+      expect(session.editingGlobalFrame, duration + 2);
+
+      // The far side of the gap is the next cut, and the row becomes a
+      // layer row again.
+      session.selectNextDrawing();
+      expect(session.activeCutId, const CutId('cut-2'));
+      expect(session.currentFrameIndex, 0);
+
+      // And back the same way, column for column.
+      session.selectPreviousDrawing();
+      expect(session.activeCutId, isNull);
+      expect(session.editingGlobalFrame, duration + 2);
+    });
+
+    test('★ crossing lands on the row that cut was last worked on', () {
+      final session = gappedCutSession();
+      addTearDown(session.dispose);
+
+      // Visit cut 2 and leave it on a SECOND layer.
+      session.selectCut(const CutId('cut-2'));
+      session.addLayerOfKind(LayerKind.animation);
+      final rememberedRow = session.activeLayerId;
+      expect(rememberedRow, isNot(const LayerId('layer-2')));
+
+      // Back to cut 1, then walk across the gap into cut 2 again.
+      session.selectCut(const CutId('cut-1'));
+      final duration = session.requireActiveCut.duration;
+      session.selectFrameIndex(duration - 1);
+      for (var press = 0; press < 4; press += 1) {
+        session.selectNextDrawing();
+      }
+
+      expect(session.activeCutId, const CutId('cut-2'));
+      expect(
+        session.activeLayerId,
+        rememberedRow,
+        reason:
+            'the cut comes back on the row it was left on — not on the '
+            'row the flip arrived from',
       );
     });
 
