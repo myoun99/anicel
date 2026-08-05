@@ -118,38 +118,37 @@ void main() {
       );
     });
 
-    test('R10 R4: a LEAD drag is the same gesture whether or not the cut '
-        'has a conte row — the row only says how FAR it may go', () {
+    test('a LEAD drag is floored by the panel it GRABBED, not by the last '
+        'one — the grabbed panel keeps one frame', () {
       final session = sessionFor();
       session.addLayerOfKind(LayerKind.storyboard);
       session.selectFrameIndex(5);
       session.createDrawingAtCurrentFrame();
       final cutId = session.activeCutId!;
       final duration = session.requireActiveCut.duration;
-      final layerBefore = storyboardLayerForCut(session.requireActiveCut)!;
+      // Row {0: 5, 5: 19} — a SHORT first panel and a long last one, which
+      // is the shape that tells the two floors apart. The last division sits
+      // at 5, so [minimumCutDurationFor] would let the cut shrink to 6; the
+      // first panel has 4 frames to give, so the real floor is 4 less than
+      // the duration.
+      expect(minimumCutDurationFor(session.requireActiveCut), 6);
 
       session.beginCutEdgeDrag(cutId: cutId, edge: TimelineBlockEdge.start);
       session.updateCutEdgeDrag(100);
       session.endCutEdgeDrag();
 
-      // The floor is the ROW's extent — the cut cannot be trimmed past its
-      // own last panel (delete cells to shrink further). This is the whole
-      // remaining role of the conte row in this gesture; before R10 R4 its
-      // presence sent the drag to an entirely different verb.
-      expect(
-        session.requireActiveCut.duration,
-        minimumCutDurationFor(session.requireActiveCut),
-      );
+      expect(session.requireActiveCut.duration, duration - 4);
       expect(
         session.requireActiveCut.leadingGapFrames,
-        duration - session.requireActiveCut.duration,
+        4,
         reason: 'the head takes exactly what the cut gave up',
       );
-      // Every division stays where the user put it — the gesture is about
-      // the CUT, not about the panels. What follows the cut is the LAST
-      // panel's length, because the cut ends where the row ends.
+      // The panel the grip sat on is the one that gave the frames up, and
+      // it stopped at one. Every other panel kept its commas.
       final row = storyboardLayerForCut(session.requireActiveCut)!;
-      expect(row.timeline.keys, layerBefore.timeline.keys);
+      expect(row.timeline.keys, [0, 1]);
+      expect(row.timeline[0]!.length, 1);
+      expect(row.timeline[1]!.length, 19);
       final lastKey = row.timeline.keys.last;
       expect(
         lastKey + row.timeline[lastKey]!.length!,
@@ -182,8 +181,9 @@ void main() {
       // The invariant this whole file is about: the row's cells still
       // reach the cut's end, so the timeline row shows no uncovered
       // frames where the strip shows a full panel.
+      final stored = storyboardLayerForCut(cut)!.timeline;
       final cells = storyboardCoverageCells(
-        timeline: storyboardLayerForCut(cut)!.timeline,
+        timeline: stored,
         cutDuration: cut.duration,
       );
       expect(cells, isNotEmpty);
@@ -191,6 +191,16 @@ void main() {
         cells.last.endIndexExclusive,
         cut.duration,
         reason: 'a storyboard row TILES its cut, on either side of the drag',
+      );
+      // ⚠️ The derived cells above say nothing about WHICH panel absorbed —
+      // they read the same whoever did. The STORE is what tells a symmetric
+      // verb from a sign-blind one: shrink 3 then grow 3 must land on the
+      // row it started from, or the commas drift a little every round trip
+      // while the cut length keeps looking correct.
+      expect(
+        {for (final key in stored.keys) key: stored[key]!.length},
+        {0: 5, 5: 19},
+        reason: 'a round trip through the lead edge is the identity',
       );
     });
 
@@ -216,12 +226,19 @@ void main() {
       expect(
         lastKey + row.timeline[lastKey]!.length!,
         trimmed,
-        reason: 'the row\'s last panel follows the cut\'s new end',
+        reason: 'the row still ends exactly where the cut does',
       );
       expect(
         row.timeline.keys,
-        [0, 5],
-        reason: 'and every division stays where the user put it',
+        [0, 3],
+        reason: 'the GRABBED panel gave up the 2 frames — 5 becomes 3 — and '
+            'the division behind it rode along keeping its own comma',
+      );
+      expect(row.timeline[0]!.length, 3);
+      expect(
+        row.timeline[3]!.length,
+        19,
+        reason: 'nobody else changed length; that is the whole rule',
       );
 
       // Undo takes the row and the duration back together, in ONE step.

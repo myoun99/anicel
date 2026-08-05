@@ -9,8 +9,15 @@
 /// consequences the design lists: growing the cut lengthens the last cell,
 /// deleting a block hands its frames to the one before it, and dragging a
 /// trailing edge is the ordinary comma resize with the cut's length riding
-/// the row end (edge unification — the row has no front-edge grips, so no
-/// drag can open a hole).
+/// the row end (edge unification).
+///
+/// A LEADING edge is the mirror of that trailing one and lives on the
+/// storyboard strip only ([storyboardTimelineWithPanelLeadRetimed]): it
+/// shortens the panel you grabbed and the cut's length gives way, so it
+/// cannot open a hole either. The timeline panel deliberately hangs no
+/// front grips at all — user's rule 2026-08-02, "grabbing the front and
+/// watching the back shrink feels wrong", so that surface keeps the
+/// trailing-edge vocabulary and nothing else.
 ///
 /// The cells are DERIVED here rather than maintained in the store, so the
 /// invariant cannot be broken by an edit path that forgot about it. Stored
@@ -138,6 +145,121 @@ List<int> storyboardDivisionKeys({
     }
   }
   return keys;
+}
+
+/// How far the panel at [panelIndex] may be shortened from its FRONT, or
+/// null when there is no such panel to re-time.
+///
+/// The panel keeps one frame — the same one-frame floor every other
+/// boundary rule here has. Growing (a negative delta) is NOT bounded here:
+/// what stops it is the cut axis, where the frames come from ([planCutLeadEdge]
+/// clamps against the slack that actually exists ahead of the cut).
+int? storyboardPanelLeadMaxShrink({
+  required SplayTreeMap<int, TimelineExposure>? timeline,
+  required int cutDuration,
+  required int panelIndex,
+}) {
+  final bounds = _panelLeadBounds(
+    timeline: timeline,
+    cutDuration: cutDuration,
+    panelIndex: panelIndex,
+  );
+  if (bounds == null) {
+    return null;
+  }
+  final room = bounds.end - bounds.start - 1;
+  return room < 0 ? 0 : room;
+}
+
+/// [timeline] with the panel at [panelIndex] shortened by [delta] frames at
+/// its FRONT, or null when there is nothing to re-time or the clamped delta
+/// is zero.
+///
+/// This is the ONE thing a front-edge drag does, and it is the same
+/// operation whether the panel is the cut's first or one of its inner ones
+/// — the user's rule 2026-08-02: *the panel you grabbed loses commas, every
+/// other panel keeps the commas it had, and the cut's length gives way by
+/// the difference*. Nobody grows.
+///
+/// The keys BEFORE the grabbed panel do not move and the grabbed panel keeps
+/// its own key; every later key rides by -[delta] so it keeps its comma.
+/// That looks like it contradicts the cascade the user asked for — the
+/// panels in FRONT visibly come along — but it does not, because these are
+/// CUT-LOCAL keys and the caller moves the cut's head by the same amount.
+/// In the cut's own coordinates the panels ahead of the grab hold still and
+/// the ones behind it slide; on screen, with the cut's end pinned, it reads
+/// as the whole run in front translating. Two frames of reference, one
+/// motion — the same trick [planBlockRunLeadEdge] plays on the frame axis.
+///
+/// The grabbed panel loses its front frames, so its inbetween dots SHIFT
+/// rather than truncate — [TimelineExposure.copyWith] would drop them off
+/// the tail, which is the wrong end.
+///
+/// A row whose first division key is negative is refused rather than
+/// repaired: that is corrupt data, and folding it onto frame 0 can collide
+/// with a real key there.
+SplayTreeMap<int, TimelineExposure>? storyboardTimelineWithPanelLeadRetimed({
+  required SplayTreeMap<int, TimelineExposure>? timeline,
+  required int cutDuration,
+  required int panelIndex,
+  required int delta,
+}) {
+  final bounds = _panelLeadBounds(
+    timeline: timeline,
+    cutDuration: cutDuration,
+    panelIndex: panelIndex,
+  );
+  if (bounds == null) {
+    return null;
+  }
+  final maxShrink = bounds.end - bounds.start - 1;
+  final applied = delta > maxShrink ? maxShrink : delta;
+  if (applied == 0) {
+    return null;
+  }
+  final source = timeline!;
+  final next = SplayTreeMap<int, TimelineExposure>();
+  for (final entry in source.entries) {
+    if (entry.key < bounds.key) {
+      next[entry.key] = entry.value;
+    } else if (entry.key == bounds.key) {
+      next[entry.key] = entry.value.copyWith(
+        length: bounds.end - applied - bounds.start,
+        breakdownOffsets: [
+          for (final offset in entry.value.breakdownOffsets)
+            if (offset - applied >= 1) offset - applied,
+        ],
+      );
+    } else {
+      // Later entries ride, comma intact — overhanging junk data past the
+      // cut end included, so its distance to the end stays what it was.
+      next[entry.key - applied] = entry.value;
+    }
+  }
+  return next;
+}
+
+/// The stored key, cell start and cell end of the panel a front-edge drag
+/// grabbed, or null when that panel does not exist.
+({int key, int start, int end})? _panelLeadBounds({
+  required SplayTreeMap<int, TimelineExposure>? timeline,
+  required int cutDuration,
+  required int panelIndex,
+}) {
+  final keys = storyboardDivisionKeys(
+    timeline: timeline,
+    cutDuration: cutDuration,
+  );
+  if (panelIndex < 0 || panelIndex >= keys.length || keys.first < 0) {
+    return null;
+  }
+  return (
+    key: keys[panelIndex],
+    // The first cell reaches back to the cut start, exactly as
+    // [storyboardCoverageCells] reads it.
+    start: panelIndex == 0 ? 0 : keys[panelIndex],
+    end: panelIndex + 1 < keys.length ? keys[panelIndex + 1] : cutDuration,
+  );
 }
 
 /// [timeline] rewritten so its STORED blocks tile `[0, cutDuration)` — the

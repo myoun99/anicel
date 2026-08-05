@@ -752,7 +752,7 @@ void main() {
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
         stripEdges: StoryboardStripEdgeCallbacks(
-          onCutEdgeBegin: (cutId, edge) {
+          onCutEdgeBegin: (cutId, edge, panelIndex) {
             trims.add(cutId);
             return true;
           },
@@ -1161,7 +1161,7 @@ void main() {
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
         stripEdges: StoryboardStripEdgeCallbacks(
-          onCutEdgeBegin: (cutId, edge) {
+          onCutEdgeBegin: (cutId, edge, panelIndex) {
             began.add((cutId, edge));
             return true;
           },

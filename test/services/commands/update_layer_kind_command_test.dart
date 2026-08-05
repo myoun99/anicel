@@ -63,7 +63,20 @@ void main() {
         expect(updatedLayer.id, layer.id);
         expect(updatedLayer.name, layer.name);
         expect(updatedLayer.frames, [frame]);
-        expect(updatedLayer.timeline, layer.timeline);
+        // Becoming a storyboard row means becoming a COVERING row, and the
+        // repository enforces that on the write
+        // ([cutWithCoveringStoryboardRow]): the block stretches to the cut.
+        // Nothing is lost — the drawing and its inbetween dots are the same
+        // entry, and the strip's reader was already drawing this block as
+        // covering the cut. Only the STORE used to disagree, which is what
+        // put a hole on the timeline that the strip never showed.
+        expect(updatedLayer.timeline.keys, layer.timeline.keys);
+        expect(updatedLayer.timeline[0]!.frameId, layer.timeline[0]!.frameId);
+        expect(
+          updatedLayer.timeline[0]!.breakdownOffsets,
+          layer.timeline[0]!.breakdownOffsets,
+        );
+        expect(updatedLayer.timeline[0]!.length, updatedCut.duration);
         expect(updatedLayer.isVisible, isFalse);
         expect(updatedLayer.opacity, 0.42);
         expect(updatedFrame.strokes, [stroke]);

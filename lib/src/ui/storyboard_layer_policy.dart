@@ -61,11 +61,20 @@ bool cutAcceptsAnotherStoryboardLayer(Cut cut, {LayerId? exceptLayerId}) {
 /// a hole to repair.
 int minimumCutDurationFor(Cut cut) {
   final layer = storyboardLayerForCut(cut);
-  if (layer == null) {
-    return 1;
-  }
+  return layer == null ? 1 : minimumCutDurationForStoryboardRow(layer);
+}
+
+/// The same floor, read off the ROW rather than off the cut.
+///
+/// A drag holds its row's next form in hand and has not written it yet, so
+/// asking the cut — which reaches the repository — answers about the row as
+/// it was BEFORE the gesture. Mixing that stale floor with a previewed row
+/// end is what let a shrink pin the duration ABOVE the row's end and commit
+/// the pair out of sync; the same drag then read as flapping, and the next
+/// one collapsed the cut onto the row it had already broken.
+int minimumCutDurationForStoryboardRow(Layer row) {
   var lastDivision = 0;
-  for (final entry in layer.timeline.entries) {
+  for (final entry in row.timeline.entries) {
     if (entry.value.isDrawing && !entry.value.ghost) {
       lastDivision = entry.key > lastDivision ? entry.key : lastDivision;
     }

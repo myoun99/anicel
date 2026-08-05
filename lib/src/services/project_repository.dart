@@ -5,6 +5,7 @@ import '../models/se_name_tag.dart';
 import '../models/camera_instruction.dart';
 import '../models/canvas_size.dart';
 import '../models/covering_image_normalize.dart';
+import '../models/covering_storyboard_normalize.dart';
 import '../models/cut.dart';
 import '../models/cut_camera.dart';
 import '../models/cut_id.dart';
@@ -79,7 +80,11 @@ class ProjectRepository {
   ///    layer's stored block always equals the cut length — runs FIRST so
   ///    the mirror pass below sees the final base timeline (an image row
   ///    can be an attach base).
-  /// 2. The ALWAYS-MIRROR invariant (UI-R23 #7 v2,
+  /// 2. The COVERING STORYBOARD row ([cutWithCoveringStoryboardRow]): its
+  ///    stored panels tile the cut exactly. Same grammar as 1, arriving
+  ///    late because the row's DERIVED reader was mistaken for a guarantee
+  ///    — it only hid the stored holes from the surface that makes them.
+  /// 3. The ALWAYS-MIRROR invariant (UI-R23 #7 v2,
   ///    [cutWithReconciledAttachedMirrors]): every synced attach row a
   ///    complete mirror of its base — one own cel + link per base cel —
   ///    no matter how the base gained the cel (create, move, paste,
@@ -94,7 +99,7 @@ class ProjectRepository {
       for (var c = 0; c < track.cuts.length; c += 1) {
         final cut = track.cuts[c];
         final reconciled = cutWithReconciledAttachedMirrors(
-          cutWithCoveringImageRows(cut),
+          cutWithCoveringStoryboardRow(cutWithCoveringImageRows(cut)),
         );
         if (identical(reconciled, cut)) {
           continue;

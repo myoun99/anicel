@@ -108,12 +108,18 @@ import 'timeline/timeline_zoom_anchor_policy.dart';
 ///
 /// There is one shape of edge on this row, and where it sits decides what
 /// it re-times (design, user's rule 2026-07-25; edge unification
-/// 2026-07-28): the first panel's leading edge is the cut's START, and
-/// EVERY trailing edge — inner and last alike — is that panel's comma,
-/// with the cut's length riding the row end. Hence two begins and one set
-/// of continuations — the grip that started decides which session verb
-/// the rest of the drag belongs to, and the mount that knows the geometry
-/// is the one that says so.
+/// 2026-07-28, every-panel leading edges 2026-08-02):
+///
+/// - EVERY leading edge — first and inner alike — is the cut's START, with
+///   the panel it belongs to the one that gives up the commas. It is one
+///   verb at every ordinal, which is why the ordinal travels with it
+///   instead of forking the callback;
+/// - EVERY trailing edge — inner and last alike — is that panel's comma,
+///   with the cut's length riding the row end.
+///
+/// Hence two begins and one set of continuations — the grip that started
+/// decides which session verb the rest of the drag belongs to, and the
+/// mount that knows the geometry is the one that says so.
 class StoryboardStripEdgeCallbacks {
   const StoryboardStripEdgeCallbacks({
     required this.onCutEdgeBegin,
@@ -123,9 +129,11 @@ class StoryboardStripEdgeCallbacks {
     required this.onCancel,
   });
 
-  /// Trims the cut itself. Returns whether the drag may start (deleted
-  /// cuts refuse).
-  final bool Function(CutId cutId, TimelineBlockEdge edge) onCutEdgeBegin;
+  /// Trims the cut itself. [panelIndex] is the CUT-LOCAL ordinal of the
+  /// panel the grip sits on — the panel a LEAD drag takes the frames from.
+  /// Returns whether the drag may start (deleted cuts refuse).
+  final bool Function(CutId cutId, TimelineBlockEdge edge, int panelIndex)
+  onCutEdgeBegin;
 
   /// Resizes the comma of the panel whose block is keyed at
   /// [blockStartIndex] (CUT-LOCAL) on [cutId]'s storyboard row — an inner
@@ -4324,9 +4332,11 @@ typedef _StoryboardStripGrip = ({
   int startFrame,
   int endFrameExclusive,
 
-  /// Whether this is its cut's FIRST panel — the only one whose leading
-  /// edge carries a grip, and that grip is the cut's start trim.
-  bool isFirst,
+  /// This panel's CUT-LOCAL ordinal. Every panel hangs a leading grip
+  /// (user's rule 2026-08-02) and the grip is the same verb whatever the
+  /// ordinal — the cut's lead edge, with this panel the one that gives up
+  /// the commas. The ordinal is what tells the session WHICH panel that is.
+  int panelIndex,
 
   /// The CUT-LOCAL timeline key of the block this panel's trailing edge
   /// comma-resizes, or null when that edge is the cut's own length
@@ -4472,7 +4482,7 @@ class _StoryboardTrackRow extends StatelessWidget {
                 startFrame: entry.startFrame + cells[index].startIndex,
                 endFrameExclusive:
                     entry.startFrame + cells[index].endIndexExclusive,
-                isFirst: index == 0,
+                panelIndex: index,
                 commaBlockKey: index == cells.length - 1 || index >= keys.length
                     ? null
                     : keys[index],
@@ -4802,13 +4812,15 @@ class _StoryboardTrackRow extends StatelessWidget {
                           ordinal: index,
                           startIndex: grips[index].startFrame,
                           endIndexExclusive: grips[index].endFrameExclusive,
-                          // R10 R4: the LEAD edge is the CUT's, so only a
-                          // cut's first panel hangs one. P5 #8 gave every
-                          // panel a front grip and had the interior ones
-                          // impersonate the previous panel's back grip —
-                          // two grips on one boundary, doing one thing.
-                          // A boundary has one handle again.
-                          startGrip: grips[index].isFirst,
+                          // EVERY panel hangs a leading grip (user's rule
+                          // 2026-08-02). R4 had left it on the first panel
+                          // alone, because P5 #8's interior front grips
+                          // DELEGATED to the previous panel's back grip —
+                          // two handles doing one thing. They are not that
+                          // any more: a front grip takes the frames off the
+                          // cut's HEAD and a back grip off its TAIL, so the
+                          // two edges of one boundary name two edits.
+                          startGrip: true,
                           endGrip: true,
                         ),
                     ],
@@ -4838,6 +4850,7 @@ class _StoryboardTrackRow extends StatelessWidget {
                         return stripEdges!.onCutEdgeBegin(
                           grip.cutId,
                           TimelineBlockEdge.start,
+                          grip.panelIndex,
                         );
                       }
                       final commaKey = grip.commaBlockKey;
@@ -4845,6 +4858,7 @@ class _StoryboardTrackRow extends StatelessWidget {
                           ? stripEdges!.onCutEdgeBegin(
                               grip.cutId,
                               TimelineBlockEdge.end,
+                              grip.panelIndex,
                             )
                           : stripEdges!.onCommaBegin(grip.cutId, commaKey);
                     },
