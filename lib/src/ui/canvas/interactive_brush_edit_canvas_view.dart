@@ -491,7 +491,12 @@ class _InteractiveBrushEditCanvasViewState
     // of the input rules untouched. The hold temporarily switches the
     // TOOL (the shared tool-switch path — cursor/panels follow free);
     // release springs back or keeps it per the mapping.
-    var mappedErase = false;
+    // The pen TAIL settles first: it is a state rather than a press, and
+    // a live tail hold suppresses the button rows below. Its erase has to
+    // reach this stroke's settings snapshot directly — the tool switch it
+    // requests is asynchronous, and the stroke starts now.
+    _syncPenTailMapping();
+    var mappedErase = _penTailErases;
     final mapping = _mappedPointerActionFor(event);
     if (mapping != null) {
       if (_multiTouchNavigation ||
@@ -1104,7 +1109,11 @@ class _InteractiveBrushEditCanvasViewState
   /// the tertiary bit, and everything else reads as the secondary — the
   /// barrel button, whichever bit the driver puts it on.
   CanvasPointerMapping? _mappingForButtons(int bits) {
-    if (bits == 0) {
+    // A live tail hold owns the tool: the two mappings share one hold
+    // slot, and whichever engaged first keeps it. Letting a barrel press
+    // take the tool mid-flip would leave the tail with nothing to spring
+    // back to when the pen is finally turned upright.
+    if (bits == 0 || _penTailActive) {
       return null;
     }
     final settings = AppInput.settings.value;
@@ -1112,6 +1121,63 @@ class _InteractiveBrushEditCanvasViewState
       return settings.canvasWheelClick;
     }
     return settings.canvasRightClick;
+  }
+
+  /// Whether the pen-tail mapping is engaged (the pen is turned
+  /// tail-down). Not a button hold: it spans strokes until the pen is
+  /// turned back over.
+  bool _penTailActive = false;
+
+  /// Whether a stroke starting NOW is a tail erase — the tool switch is
+  /// asynchronous, so the stroke's own settings snapshot has to carry
+  /// the substitution exactly as the barrel-eraser path does.
+  bool get _penTailErases =>
+      _penTailActive &&
+      AppInput.settings.value.canvasPenTail.action ==
+          CanvasPointerAction.eraser;
+
+  /// Engages or releases the tail mapping from the HID observer's view of
+  /// which end of the pen is down.
+  ///
+  /// FLIP-scoped by design, not contact-scoped: the switch happens when
+  /// the pen is turned OVER, so one flip covers a whole erasing pass and
+  /// the eraser's own size and settings are on screen before the first
+  /// stroke — rather than the tool panel blinking brush⇄eraser once per
+  /// stroke. A device whose driver reports no hover degrades to
+  /// per-contact switching for free: its first report IS the contact.
+  ///
+  /// A null reading (no observer, non-Windows, or the report aged out)
+  /// HOLDS the current state rather than releasing — losing sight of the
+  /// pen is not the same as the pen being turned back over.
+  void _syncPenTailMapping() {
+    final inverted = PenSidecars.freshInverted();
+    if (inverted == null || inverted == _penTailActive) {
+      return;
+    }
+    final mapping = AppInput.settings.value.canvasPenTail;
+    if (inverted) {
+      // A barrel hold that is already running owns the tool.
+      if (_hoverToolHoldActive || _mappedHoldPointer != null) {
+        return;
+      }
+      final tool = switch (mapping.action) {
+        CanvasPointerAction.eraser => CanvasTool.eraser,
+        CanvasPointerAction.eyedropper => CanvasTool.eyedropper,
+        // pan/undo/redo/none have no tail meaning: those are momentary
+        // verbs, and the tail is a state that can last minutes.
+        _ => null,
+      };
+      if (tool == null) {
+        return;
+      }
+      _penTailActive = true;
+      widget.onTemporaryToolHold?.call(tool);
+      return;
+    }
+    _penTailActive = false;
+    widget.onTemporaryToolRelease?.call(
+      keep: mapping.release == CanvasPointerRelease.keep,
+    );
   }
 
   /// Buttons seen on the latest HOVER event — the PEN-11 hover-press
@@ -1149,6 +1215,10 @@ class _InteractiveBrushEditCanvasViewState
       _hoverToolHoldButton = 0;
       widget.onTemporaryToolRelease?.call(keep: keep);
     }
+    // The tail is read on every hover sample: that is what makes turning
+    // the pen over — not touching down with it — the moment the eraser
+    // arrives.
+    _syncPenTailMapping();
     final pressedBits = _mappedButtonBits(pressed);
     final mapping = _mappingForButtons(pressedBits);
     if (mapping == null) {

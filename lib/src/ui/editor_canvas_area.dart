@@ -123,10 +123,6 @@ class EditorCanvasArea extends StatefulWidget {
 }
 
 class _EditorCanvasAreaState extends State<EditorCanvasArea> {
-  /// The tool held BEFORE a mapped-hold session (PEN-7a); null = no hold
-  /// live. `??=` keeps the first origin if events ever double-fire.
-  CanvasTool? _heldOriginalTool;
-
   /// The brush size at the start of a 3-finger size drag (PEN-7b); the
   /// drag maps EXPONENTIALLY from here (120px per doubling) so the feel
   /// is uniform at every size.
@@ -552,14 +548,14 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               // Release springs back (default) or keeps the switched
               // tool, per the mapping.
               onTemporaryToolHold: (tool) {
-                _heldOriginalTool ??= widget.brushToolState.value.tool;
+                session.heldOriginalTool ??= widget.brushToolState.value.tool;
                 widget.onBrushToolStateChanged?.call(
                   widget.brushToolState.value.copyWith(tool: tool),
                 );
               },
               onTemporaryToolRelease: ({required keep}) {
-                final original = _heldOriginalTool;
-                _heldOriginalTool = null;
+                final original = session.heldOriginalTool;
+                session.heldOriginalTool = null;
                 if (!keep && original != null) {
                   widget.onBrushToolStateChanged?.call(
                     widget.brushToolState.value.copyWith(tool: original),

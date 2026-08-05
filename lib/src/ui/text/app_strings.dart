@@ -321,6 +321,7 @@ class AppStrings {
   String get inputCanvasHeading => _s('inputCanvasHeading');
   String get inputRightClick => _s('inputRightClick');
   String get inputWheelClick => _s('inputWheelClick');
+  String get inputPenTail => _s('inputPenTail');
   String get inputCanvasTouchHeading => _s('inputCanvasTouchHeading');
   String get inputDragOneFinger => _s('inputDragOneFinger');
   String get inputDragTwoFingers => _s('inputDragTwoFingers');
@@ -980,6 +981,7 @@ class AppStrings {
     'inputCanvasHeading': 'Canvas',
     'inputRightClick': 'Right click / pen side button',
     'inputWheelClick': 'Wheel click / pen upper button',
+    'inputPenTail': 'Pen tail (turn the pen over)',
     'inputCanvasTouchHeading': 'Canvas touch',
     'inputDragOneFinger': '1-finger drag',
     'inputDragTwoFingers': '2-finger drag',
@@ -1631,6 +1633,7 @@ class AppStrings {
     'inputCanvasHeading': 'カンバス',
     'inputRightClick': '右クリック / ペンのサイドボタン',
     'inputWheelClick': 'ホイールクリック / ペンの上ボタン',
+    'inputPenTail': 'ペンのお尻（ペンを裏返す）',
     'inputCanvasTouchHeading': 'カンバスのタッチ',
     'inputDragOneFinger': '1本指ドラッグ',
     'inputDragTwoFingers': '2本指ドラッグ',
@@ -2317,6 +2320,7 @@ class AppStrings {
     'inputCanvasHeading': '캔버스',
     'inputRightClick': '우클릭 / 펜 사이드 버튼',
     'inputWheelClick': '휠 클릭 / 펜 위쪽 버튼',
+    'inputPenTail': '펜 엉덩이(펜을 뒤집기)',
     'inputCanvasTouchHeading': '캔버스 터치',
     'inputDragOneFinger': '한 손가락 드래그',
     'inputDragTwoFingers': '두 손가락 드래그',
@@ -3013,6 +3017,7 @@ class AppStrings {
     'inputCanvasHeading': 'Canevas',
     'inputRightClick': 'Clic droit / bouton latéral du stylet',
     'inputWheelClick': 'Clic molette / bouton supérieur du stylet',
+    'inputPenTail': 'Talon du stylet (retourner le stylet)',
     'inputCanvasTouchHeading': 'Toucher sur le canevas',
     'inputDragOneFinger': 'Glissement à 1 doigt',
     'inputDragTwoFingers': 'Glissement à 2 doigts',
@@ -3705,6 +3710,7 @@ class AppStrings {
     'inputCanvasHeading': '画布',
     'inputRightClick': '右键 / 笔侧键',
     'inputWheelClick': '滚轮点击 / 笔上键',
+    'inputPenTail': '笔尾（把笔倒过来）',
     'inputCanvasTouchHeading': '画布触摸',
     'inputDragOneFinger': '单指拖动',
     'inputDragTwoFingers': '双指拖动',
