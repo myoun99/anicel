@@ -1,12 +1,12 @@
-/// Editor commands that need more than a session call to run — a dialog to
-/// answer, the clipboard to fill, a snackbar to raise.
+/// Editor commands that are more than one session call — a dialog to
+/// answer, a clipboard to fill, a switch over the active row's kind.
 ///
-/// A plain session verb can be handed to any surface as a tear-off, so the
-/// menu bar and the timeline offer the same command by naming the same
-/// method. These three could not: the flow around the session call lived
-/// inside the menu bar as private methods, and the only way to offer them
-/// anywhere else was to write the flow again. They live here instead, so
-/// the second entrance costs one call and the flow has one author.
+/// A plain session verb can be handed to any surface as a tear-off, so two
+/// surfaces offer the same command by naming the same method. These could
+/// not: their flow lived as private methods inside whichever widget got
+/// there first, and offering them anywhere else meant writing the flow
+/// again. They live here instead, so a second entrance costs one call and
+/// the flow keeps one author.
 library;
 
 import 'dart:async';
@@ -15,10 +15,48 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 
 import '../models/cut_id.dart';
+import '../models/layer_kind.dart';
 import 'dialogs/convert_to_linked_cut_dialog.dart';
 import 'dialogs/se_name_tag_dialog.dart';
 import 'editor_session_manager.dart';
 import 'export/ae_keyframe_data.dart';
+
+/// The kind-dispatched "make one here" verb: a drawing cel, a camera key,
+/// an SE entry or an instruction event, whichever the active row holds. A
+/// live selection wins — every selected cell gets one.
+///
+/// Shared rather than private to the timeline host because the toolbar
+/// button is no longer its only entrance: [EditorActionIds.frameNewDrawing]
+/// dispatches here too, and a custom rail slot will.
+void createActiveInstance(EditorSessionManager session) {
+  if (session.createInstancesForSelection()) {
+    return;
+  }
+  final layer = session.activeLayer;
+  if (layer == null) {
+    return;
+  }
+  switch (layer.kind) {
+    case LayerKind.camera:
+      session.setCameraKeyframeAtCurrentFrame(session.cameraPoseAtCurrentFrame);
+    case LayerKind.se:
+      session.createSeEntryAtCurrentFrame(name: '', lengthFrames: 1);
+    case LayerKind.instruction:
+      session.createDefaultInstructionEventAtCurrentFrame();
+    case LayerKind.folder:
+    case LayerKind.adjustment:
+      // Nothing to create on either row — a folder holds rows and an
+      // adjustment holds effects; neither holds cels.
+      break;
+    // A text cel is born BLANK like a drawing cel (UI-R25 #2: creation
+    // never opens a dialog) — double-tap types into it afterwards.
+    case LayerKind.animation ||
+        LayerKind.storyboard ||
+        LayerKind.image ||
+        LayerKind.text:
+      session.createDrawingAtCurrentFrame();
+  }
+}
 
 /// Places the active SE row's on-canvas name tag (R5b). The TEXT stays the
 /// block's own name — this is placement and look.
