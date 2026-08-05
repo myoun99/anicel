@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 
 /// One stacked region inside a dock: a tab group with its own strip.
@@ -61,10 +63,32 @@ class EditorPanelLayoutModel extends ChangeNotifier {
       _dockExtents[dockId] ?? fallback;
 
   /// Adjusts a dock's extent by a drag delta (positive grows the dock).
-  void resizeDock(String dockId, double delta, {required double fallback}) {
-    final next = (dockExtent(dockId, fallback: fallback) + delta)
-        .clamp(_minDockExtent, _maxDockExtent)
+  ///
+  /// [minExtent] is what the dock's own PANELS need along this axis (the
+  /// caller knows the tabs; this model does not). It raises the floor above
+  /// [_minDockExtent] so the splitter stops where the content stops
+  /// shrinking, instead of dragging on past it and cutting the bottom off —
+  /// the shrink-floor round's whole point. It never LOWERS the floor, and a
+  /// dock too small for its own maximum keeps the maximum.
+  void resizeDock(
+    String dockId,
+    double delta, {
+    required double fallback,
+    double? minExtent,
+  }) {
+    final floor = math
+        .max(_minDockExtent, minExtent ?? 0)
+        .clamp(0.0, _maxDockExtent)
         .toDouble();
+    // The CURRENT value is clamped first: a dock restored from a layout
+    // saved before this floor existed sits below it, and the host already
+    // draws it at the floor. Adding the delta to the stored value instead
+    // would make the first drag frame jump.
+    final current = dockExtent(
+      dockId,
+      fallback: fallback,
+    ).clamp(floor, _maxDockExtent);
+    final next = (current + delta).clamp(floor, _maxDockExtent).toDouble();
     if (next == _dockExtents[dockId]) {
       return;
     }

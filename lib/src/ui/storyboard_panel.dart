@@ -397,7 +397,20 @@ class StoryboardPanel extends StatefulWidget {
   // 240 → the timeline rail's width (UI-R5 storyboard unification): the
   // rail rows share the timeline's slot grid and the legend header sits
   // on top, so the columns line up across both panels.
-  static const double _trackLabelWidth = 372;
+  //
+  // 372 → 434 (user, 2026-08-04: "영역의 최대 길이를 둘 다 통일하라는거야").
+  // This rail HAD been following the timeline's — the storyboard tests that
+  // widen their surfaces still say "the rail widened to the timeline's 372"
+  // — and then it missed the one hop that mattered, R27 #6's 372 → 434. It
+  // was the odd one out by accident, not by decision.
+  //
+  // ⛔ NOT `timelineLayerControlsWidth`, deliberately. The user asked for
+  // the same NUMBER and explicitly NOT for one source: "다만 코드상 독립.
+  // 하나 바꾼다고 다른게 바뀌지않도록." The two rails carry different
+  // columns — this one has no blend cell — so the day either needs a new
+  // one, the other must be free to stay put. The repetition is the point;
+  // do not "clean it up" into a shared constant.
+  static const double _trackLabelWidth = 434;
   static const double _rulerHeight = 24;
 
   /// The V rows' height, and the range the adjustment moves it through.
@@ -423,6 +436,33 @@ class StoryboardPanel extends StatefulWidget {
   /// The bottom horizontal scrollbar row's height — the timeline grids'
   /// value (UI-R10 #21 3-row unification).
   static const double _bottomScrollbarRailHeight = 16;
+
+  /// The header band above the track rows.
+  ///
+  /// DERIVED, not measured. The band is a `Row` of the seconds corner, the
+  /// [_rulerHeight] ruler, and [TimelineLayerControlsHeader] — and that
+  /// last one is a `Container(height: metrics.layerRowHeight)`, the tallest
+  /// of the three, so it is what actually sets the band. Writing 28 here as
+  /// "the ruler plus four" would be an alias that breaks silently the day
+  /// [_rulerHeight] is raised past it, which is the bug class this floor
+  /// exists to close.
+  static const double _headerBandHeight = timelineLayerRowHeight;
+
+  /// The shortest this panel is laid out at, ITS OWN chrome only — the host
+  /// adds its command bar ([StoryboardTabHost.minPanelHeight]).
+  ///
+  /// The user's rule (2026-08-02): the body stops at TWO ROWS, where a row
+  /// is a track lane at its FLOOR ([minTrackLaneHeight]) — the same 28px
+  /// the timeline's layer row is, so both panels stop on the same budget.
+  ///
+  /// WHAT LANDS in that budget is the project's business, not the floor's:
+  /// the default lane is 64 and SE rows are 30, so at the floor the user
+  /// gets a scrollable sliver rather than two whole lanes. The number's job
+  /// is that the body stays scrollABLE — 56 clears the 32px thumb minimum
+  /// with room to travel — and that the chrome above and below it survives.
+  /// The bottom scrollbar row is what the user watched disappear.
+  static const double minPanelHeight =
+      _headerBandHeight + 2 * minTrackLaneHeight + _bottomScrollbarRailHeight;
 
   static const double _timelineTrailingPadding = 12;
 
@@ -2027,9 +2067,14 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                     child: SizedBox(
                       width: StoryboardPanel._trackLabelWidth,
                       child: TimelineLayerControlsHeader(
-                        // The storyboard rail keeps its own width (R27 #6: the
-                        // timeline's grew for the blend column; this rail has
-                        // no blend cell, so it must not).
+                        // The storyboard rail states its OWN width, which
+                        // today is the same number as the timeline's and is
+                        // deliberately not the same constant (see
+                        // [StoryboardPanel._trackLabelWidth]). Widening it
+                        // adds no column here — `hasBlendColumn` is a host
+                        // answer, not something derived from the width — so
+                        // the extra width lands in the NAME, which is where
+                        // a track wants it.
                         metrics: const TimelineGridMetrics(
                           layerControlsWidth: StoryboardPanel._trackLabelWidth,
                         ),

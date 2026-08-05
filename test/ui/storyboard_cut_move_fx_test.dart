@@ -13,8 +13,9 @@ import 'storyboard_cut_block_probe.dart';
 /// Transform strips twirled open too (the state the keys get authored in).
 void main() {
   Future<EditorSessionManager> pumpHost(WidgetTester tester) async {
-    // The rail widened to the timeline's 372 (UI-R5): the default 800px
-    // surface would push the second cut's block off screen.
+    // The rail matches the timeline's — 372 in UI-R5, 434 since the user
+    // unified the two widths (2026-08-04) — so the default 800px surface
+    // would push the second cut's block off screen.
     await tester.binding.setSurfaceSize(const Size(1400, 600));
     addTearDown(() => tester.binding.setSurfaceSize(null));
 

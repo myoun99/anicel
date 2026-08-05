@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -7,6 +9,111 @@ import 'editor_panel_tabs.dart';
 import 'panel_flash.dart';
 
 export '../widgets/dock_edge_splitter.dart' show DockEdgeSplitter;
+
+/// What one section costs before its panels start losing rows: its tab
+/// strip plus the tallest floor among the tabs it hosts.
+///
+/// The tallest among ALL of them, not the active one — a section that
+/// shrinks while the conte is up and clips the moment you switch back to
+/// the timeline is the same bug wearing a different hat.
+double dockSectionFloorExtent(Iterable<EditorPanelTab> tabs) {
+  var floor = 0.0;
+  for (final tab in tabs) {
+    floor = math.max(floor, tab.minContentHeight ?? 0);
+  }
+  return EditorPanelTabs.stripHeight + floor;
+}
+
+/// How a dock's stacking axis is divided between its sections.
+///
+/// Sections used to be plain `Expanded(flex: weight)`, which is
+/// proportional and knows nothing about what a section NEEDS. That is only
+/// correct while the weights happen to be proportional to the floors, and
+/// they never are: a new section always arrives at weight 1
+/// ([EditorPanelLayoutModel.moveTabToNewSection]) whatever it holds. One
+/// tab drag was enough to starve the timeline back into the tab shell's
+/// scroller and cut its bottom rows off — the report this whole round
+/// exists to close, reached through the other door.
+///
+/// So: every section gets its floor first, and only the SURPLUS is shared
+/// by weight. The splitter still moves size between neighbours; it just
+/// cannot move a panel below what it needs. When the dock cannot pay even
+/// the floors, they are scaled down together rather than starving whoever
+/// happens to be last — and the shell's scroller is back to being the
+/// guard for exactly that case.
+List<double> dockSectionExtents({
+  required List<double> weights,
+  required List<double> floors,
+  required double totalExtent,
+}) {
+  final count = weights.length;
+  assert(floors.length == count);
+  if (count == 0) {
+    return const [];
+  }
+  final flexSpace = math.max(
+    0.0,
+    totalExtent - (count - 1) * DockEdgeSplitter.thickness,
+  );
+  var floorSum = 0.0;
+  for (final floor in floors) {
+    floorSum += floor;
+  }
+  if (floorSum >= flexSpace) {
+    return [
+      for (final floor in floors)
+        floorSum > 0 ? flexSpace * floor / floorSum : flexSpace / count,
+    ];
+  }
+  // Water-filling: pin whoever their weighted share would starve, then
+  // re-share what is left among the rest. One pin per pass, because
+  // pinning changes the divisor for everyone else.
+  final extents = List<double>.filled(count, 0);
+  final pinned = List<bool>.filled(count, false);
+  var remaining = flexSpace;
+  while (true) {
+    var freeWeight = 0.0;
+    var freeCount = 0;
+    for (var i = 0; i < count; i += 1) {
+      if (pinned[i]) {
+        continue;
+      }
+      freeWeight += weights[i];
+      freeCount += 1;
+    }
+    if (freeCount == 0) {
+      break;
+    }
+    var starved = -1;
+    for (var i = 0; i < count; i += 1) {
+      if (pinned[i]) {
+        continue;
+      }
+      final share = freeWeight > 0
+          ? remaining * weights[i] / freeWeight
+          : remaining / freeCount;
+      if (share < floors[i]) {
+        starved = i;
+        break;
+      }
+    }
+    if (starved < 0) {
+      for (var i = 0; i < count; i += 1) {
+        if (pinned[i]) {
+          continue;
+        }
+        extents[i] = freeWeight > 0
+            ? remaining * weights[i] / freeWeight
+            : remaining / freeCount;
+      }
+      break;
+    }
+    pinned[starved] = true;
+    extents[starved] = floors[starved];
+    remaining -= floors[starved];
+  }
+  return extents;
+}
 
 /// Renders one dock of an [EditorPanelLayoutModel]: its sections stacked
 /// vertically (panel below panel) with draggable splitters between them,
@@ -62,9 +169,47 @@ class EditorDockHost extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final sections = layout.sectionsIn(dockId);
+    final resolved = [
+      for (final section in sections)
+        [for (final id in section.tabs) tabResolver(id)],
+    ];
     return LayoutBuilder(
       builder: (context, constraints) {
         final totalExtent = constraints.maxHeight;
+        // Unbounded hosts cannot be given pixel heights; they keep the
+        // proportional layout, which is what they always had.
+        final extents = constraints.hasBoundedHeight
+            ? dockSectionExtents(
+                weights: [for (final section in sections) section.weight],
+                floors: [
+                  for (final tabs in resolved) dockSectionFloorExtent(tabs),
+                ],
+                totalExtent: totalExtent,
+              )
+            : null;
+        Widget section(int i) => _SectionDropOverlay(
+          dockId: dockId,
+          sectionIndex: i,
+          tabCount: sections[i].tabs.length,
+          draggingTab: draggingTab,
+          canAcceptTab: canAcceptTab,
+          onTabMovedToSection: onTabMovedToSection,
+          onTabMovedToNewSection: onTabMovedToNewSection,
+          child: EditorPanelTabs(
+            groupId: dockId,
+            compact: compact,
+            tabs: resolved[i],
+            activeTabId: sections[i].activeTabId,
+            onTabSelected: (tabId) => onTabSelected(i, tabId),
+            canAcceptTab: canAcceptTab,
+            onTabMoved: (data, insertIndex) =>
+                onTabMovedToSection(data, i, insertIndex),
+            onTabDragChanged: onTabDragChanged,
+            onToggleLock: onToggleLock,
+            onCloseTab: onCloseTab,
+            flash: flash,
+          ),
+        );
         return Column(
           children: [
             for (var i = 0; i < sections.length; i += 1) ...[
@@ -81,32 +226,13 @@ class EditorDockHost extends StatelessWidget {
                     totalExtent: totalExtent,
                   ),
                 ),
-              Expanded(
-                flex: (sections[i].weight * 1000).round(),
-                child: _SectionDropOverlay(
-                  dockId: dockId,
-                  sectionIndex: i,
-                  tabCount: sections[i].tabs.length,
-                  draggingTab: draggingTab,
-                  canAcceptTab: canAcceptTab,
-                  onTabMovedToSection: onTabMovedToSection,
-                  onTabMovedToNewSection: onTabMovedToNewSection,
-                  child: EditorPanelTabs(
-                    groupId: dockId,
-                    compact: compact,
-                    tabs: [for (final id in sections[i].tabs) tabResolver(id)],
-                    activeTabId: sections[i].activeTabId,
-                    onTabSelected: (tabId) => onTabSelected(i, tabId),
-                    canAcceptTab: canAcceptTab,
-                    onTabMoved: (data, insertIndex) =>
-                        onTabMovedToSection(data, i, insertIndex),
-                    onTabDragChanged: onTabDragChanged,
-                    onToggleLock: onToggleLock,
-                    onCloseTab: onCloseTab,
-                    flash: flash,
-                  ),
-                ),
-              ),
+              if (extents == null)
+                Expanded(
+                  flex: (sections[i].weight * 1000).round(),
+                  child: section(i),
+                )
+              else
+                SizedBox(height: extents[i], child: section(i)),
             ],
           ],
         );

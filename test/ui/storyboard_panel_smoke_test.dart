@@ -227,8 +227,11 @@ void main() {
       expect(splitter, findsOneWidget);
       expect(
         tester.getTopLeft(splitter).dx,
-        panelLeft + 16 + 372,
-        reason: 'the splitter follows the 16px lane and the 372px rail',
+        panelLeft + 16 + 434,
+        reason:
+            'the splitter follows the 16px lane and the 434px rail — '
+            'the timeline\'s number since 2026-08-04, though still this '
+            'panel\'s own constant',
       );
       expect(
         find.byKey(const ValueKey<String>('storyboard-rail-scrollbar')),
