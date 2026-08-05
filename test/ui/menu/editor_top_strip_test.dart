@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/debug/input_inspector.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/widgets/field_slider.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 /// The top strip that replaced the seven-menu bar: a Project button, a
@@ -154,6 +155,71 @@ void main() {
       find.byKey(const ValueKey<String>('input-inspector-card')),
       findsNothing,
     );
+  });
+
+  testWidgets('the size and opacity bars ride the right end', (tester) async {
+    await pumpHome(tester);
+
+    expect(
+      find.byKey(const ValueKey<String>('top-strip-size-bar')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('top-strip-opacity-bar')),
+      findsOneWidget,
+    );
+  });
+
+  testWidgets('the bars show the ACTIVE tool — brush and eraser bank apart', (
+    tester,
+  ) async {
+    await pumpHome(tester);
+
+    double sizeOnBar() => tester
+        .widget<FieldSlider>(
+          find.byKey(const ValueKey<String>('top-strip-size-bar')),
+        )
+        .value;
+
+    final bar = find.byKey(const ValueKey<String>('top-strip-size-bar'));
+    Future<void> dragBarTo(double dx) async {
+      await tester.tapAt(tester.getCenter(bar) + Offset(dx, 0));
+      await tester.pumpAndSettle();
+    }
+
+    await dragBarTo(50);
+    final brushSize = sizeOnBar();
+
+    // The FIRST switch carries the settings across — the eraser's bank is
+    // empty until it has been the active tool once (R11-④), so this is not
+    // where the split shows.
+    await tester.tap(find.byKey(const ValueKey<String>('tool-eraser-button')));
+    await tester.pumpAndSettle();
+    await dragBarTo(-50);
+    final eraserSize = sizeOnBar();
+    expect(eraserSize, isNot(brushSize));
+
+    // Now both banks are filled, and the bar is a WINDOW onto whichever
+    // tool is active rather than one global number.
+    await tester.tap(find.byKey(const ValueKey<String>('tool-brush-button')));
+    await tester.pumpAndSettle();
+    expect(sizeOnBar(), brushSize, reason: 'the brush gets its own back');
+
+    await tester.tap(find.byKey(const ValueKey<String>('tool-eraser-button')));
+    await tester.pumpAndSettle();
+    expect(sizeOnBar(), eraserSize, reason: 'and the eraser keeps its own');
+  });
+
+  testWidgets('the strip survives a narrow window', (tester) async {
+    // 844x390 is the size that used to overflow the bottom dock; the strip
+    // now carries two 140px bars, so it has to be checked too.
+    tester.view.physicalSize = const Size(844, 390);
+    tester.view.devicePixelRatio = 1.0;
+    addTearDown(tester.view.reset);
+
+    await pumpHome(tester);
+
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('Settings: Frame Timing Overlay drives the measurement switch', (

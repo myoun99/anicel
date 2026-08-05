@@ -9,7 +9,9 @@ import '../../services/persistence/app_documents.dart';
 import '../../services/persistence/app_save_settings.dart';
 import '../../services/persistence/project_autosave_service.dart';
 import '../dialogs/app_confirm_dialog.dart';
+import '../brush/brush_tool_state.dart';
 import '../brush/tools_panel.dart' show RailButton;
+import '../widgets/field_slider.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 import '../widgets/panel_flyout.dart';
@@ -46,6 +48,7 @@ class EditorTopStrip extends StatelessWidget {
     super.key,
     required this.session,
     required this.panelsMenu,
+    this.brushTool,
     this.shortcuts,
     this.anicelOpenFilePicker,
     this.anicelSaveFilePicker,
@@ -53,6 +56,14 @@ class EditorTopStrip extends StatelessWidget {
 
   final EditorSessionManager session;
   final WorkspacePanelsMenuController panelsMenu;
+
+  /// The active tool's settings. The size and opacity bars ride the strip's
+  /// right end (프로크리·카리페그 배치) because they are values you set
+  /// mid-stroke, and an anchored popover closes the moment you touch the
+  /// canvas — a value button could never be adjusted against a test mark.
+  ///
+  /// Null leaves the right end empty (passive hosts and focused tests).
+  final ValueNotifier<BrushToolState>? brushTool;
 
   /// Injectable for tests; default to the platform file dialogs.
   final Future<String?> Function()? anicelOpenFilePicker;
@@ -426,10 +437,77 @@ class EditorTopStrip extends StatelessWidget {
             ),
           ),
         ),
-        // The right end is deliberately empty: size, opacity, blend and
-        // colour land there next, and they need the whole run.
+        if (brushTool != null) ...[
+          _BrushValueBars(brushTool: brushTool!),
+          const SizedBox(width: 4),
+        ],
         const SizedBox(width: 3),
       ],
+    );
+  }
+}
+
+/// Size and opacity at the strip's right end.
+///
+/// Bars rather than value buttons: these are set WHILE drawing, against a
+/// test mark on the canvas, and an anchored popover closes on the first
+/// pointer-down outside it (R27 #5) — a button would force open-adjust-
+/// close-draw every time. [FieldSlider] already puts the name and the
+/// number inside the track, so one 140px run says everything.
+///
+/// Its own listener: a size drag must not rebuild the popover buttons or
+/// re-read the project name beside them.
+class _BrushValueBars extends StatelessWidget {
+  const _BrushValueBars({required this.brushTool});
+
+  final ValueNotifier<BrushToolState> brushTool;
+
+  static const double _barWidth = 140;
+  static const double _barHeight = 42;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<BrushToolState>(
+      valueListenable: brushTool,
+      builder: (context, state, _) => Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          SizedBox(
+            width: _barWidth,
+            height: _barHeight,
+            child: FieldSlider(
+              key: const ValueKey<String>('top-strip-size-bar'),
+              label: AppText.strings.brSize,
+              value: BrushToolState.clampSize(state.size),
+              min: BrushToolState.minSize,
+              max: BrushToolState.maxSize,
+              // Equal travel multiplies the value, so the left half covers
+              // the small sizes where a pixel matters.
+              scale: FieldSliderScale.exponential,
+              valueText: '${state.size.round()} px',
+              height: _barHeight,
+              onChanged: (value) =>
+                  brushTool.value = brushTool.value.copyWith(size: value),
+            ),
+          ),
+          const SizedBox(width: 4),
+          SizedBox(
+            width: _barWidth,
+            height: _barHeight,
+            child: FieldSlider(
+              key: const ValueKey<String>('top-strip-opacity-bar'),
+              label: AppText.strings.brOpacity,
+              value: BrushToolState.clampOpacity(state.opacity),
+              min: 0,
+              max: 1,
+              valueText: '${(state.opacity * 100).round()}%',
+              height: _barHeight,
+              onChanged: (value) =>
+                  brushTool.value = brushTool.value.copyWith(opacity: value),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
