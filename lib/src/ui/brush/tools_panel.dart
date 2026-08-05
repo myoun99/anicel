@@ -15,11 +15,21 @@ class ToolsPanel extends StatelessWidget {
     required this.tool,
     required this.onToolChanged,
     this.selectionVariant = CanvasTool.selectRect,
+    this.historyControls,
     this.colorButton,
   });
 
   final CanvasTool tool;
   final ValueChanged<CanvasTool> onToolChanged;
+
+  /// Undo / redo / onion — the things a hand reaches for BETWEEN strokes,
+  /// which is what the rail is for. They sit above the tools, separated by
+  /// the same rule the colour swatch uses below them.
+  ///
+  /// A slot rather than built here so the panel stays session-free: the
+  /// host owns the history manager these listen to. Null keeps the rail
+  /// tools-only (passive hosts and the panel's own tests).
+  final Widget? historyControls;
 
   /// Which selection VARIANT the single Select button activates (R17-U:
   /// rectangle/lasso are one toolbar tool — the variant lives in the tool
@@ -58,7 +68,19 @@ class ToolsPanel extends StatelessWidget {
         key: const ValueKey<String>('tools-panel'),
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          _ToolButton(
+          if (historyControls != null) ...[
+            historyControls!,
+            const SizedBox(height: 8),
+            Divider(
+              height: 1,
+              thickness: 1,
+              indent: 2,
+              endIndent: 2,
+              color: Theme.of(context).colorScheme.outlineVariant,
+            ),
+            const SizedBox(height: 8),
+          ],
+          RailButton(
             keyValue: 'tool-brush-button',
             tooltip: AppText.strings.toolBrushTip,
             icon: Icons.brush_outlined,
@@ -66,7 +88,7 @@ class ToolsPanel extends StatelessWidget {
             onPressed: () => onToolChanged(CanvasTool.brush),
           ),
           const SizedBox(height: 4),
-          _ToolButton(
+          RailButton(
             keyValue: 'tool-eraser-button',
             tooltip: AppText.strings.toolEraserTip,
             // No dedicated eraser glyph in this icon set; the "magic
@@ -76,7 +98,7 @@ class ToolsPanel extends StatelessWidget {
             onPressed: () => onToolChanged(CanvasTool.eraser),
           ),
           const SizedBox(height: 4),
-          _ToolButton(
+          RailButton(
             keyValue: 'tool-eyedropper-button',
             tooltip: AppText.strings.toolEyedropperTip,
             icon: Icons.colorize_outlined,
@@ -84,7 +106,7 @@ class ToolsPanel extends StatelessWidget {
             onPressed: () => onToolChanged(CanvasTool.eyedropper),
           ),
           const SizedBox(height: 4),
-          _ToolButton(
+          RailButton(
             keyValue: 'tool-fill-button',
             tooltip: AppText.strings.toolFillTip,
             icon: Icons.format_color_fill_outlined,
@@ -94,7 +116,7 @@ class ToolsPanel extends StatelessWidget {
           const SizedBox(height: 4),
           // R17-U: ONE selection tool — the rectangle/lasso variant is a
           // tool SETTING, not a separate toolbar entry (유저 채택 설계).
-          _ToolButton(
+          RailButton(
             keyValue: 'tool-select-button',
             tooltip: AppText.strings.toolSelectTip,
             icon: Icons.highlight_alt_outlined,
@@ -106,7 +128,7 @@ class ToolsPanel extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 4),
-          _ToolButton(
+          RailButton(
             keyValue: 'tool-move-button',
             tooltip: AppText.strings.toolMoveTip,
             icon: Icons.open_with,
@@ -133,8 +155,15 @@ class ToolsPanel extends StatelessWidget {
   }
 }
 
-class _ToolButton extends StatelessWidget {
-  const _ToolButton({
+/// One button on the tool rail: a stylus-sized square that says its state
+/// with colour, not size.
+///
+/// Public because the rail is no longer only tools — undo, redo and the
+/// onion toggle are handed in by the host and have to be the SAME button,
+/// or the column stops reading as one grid.
+class RailButton extends StatelessWidget {
+  const RailButton({
+    super.key,
     required this.keyValue,
     required this.tooltip,
     required this.icon,
@@ -146,7 +175,10 @@ class _ToolButton extends StatelessWidget {
   final String tooltip;
   final IconData icon;
   final bool selected;
-  final VoidCallback onPressed;
+
+  /// Null disables the button — a tool is always available, but undo and
+  /// redo are not, and they wear this same square.
+  final VoidCallback? onPressed;
 
   @override
   Widget build(BuildContext context) {

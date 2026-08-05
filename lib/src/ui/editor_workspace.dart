@@ -32,6 +32,7 @@ import 'color/color_button_window.dart';
 import 'brush/tools_panel.dart';
 import 'editor_canvas_area.dart';
 import 'editor_session_manager.dart';
+import 'shortcuts/editor_action_registry.dart';
 import 'export/export_frame_renderer.dart';
 import 'export/export_plan.dart';
 import 'import/import_dialog.dart';
@@ -345,6 +346,67 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   void _setColorPalette(ColorPaletteState next) {
     _colorPalette.value = next;
     unawaited(_paletteService?.save(next));
+  }
+
+  /// The head of the tool rail: undo, redo and the onion toggle — what a
+  /// hand reaches for BETWEEN strokes, which is the rail's whole job.
+  ///
+  /// Undo and redo keep the keys they wore in the top strip
+  /// (`undo-button` / `redo-button`); they are old keys and a good number
+  /// of tests hold them, so the move costs those tests nothing.
+  ///
+  /// Wording is borrowed from the action registry by id rather than tabled
+  /// again — these three are registry actions, and their names are already
+  /// translated for the shortcut dialog.
+  Widget _railHistoryControls() {
+    final session = widget.session;
+    return ListenableBuilder(
+      listenable: Listenable.merge([
+        session,
+        session.historyManager,
+        session.onionSkinLayerIds,
+      ]),
+      builder: (context, _) {
+        final strings = AppText.strings;
+        final layer = session.activeLayer;
+        // Onion is PER LAYER (the per-layer model retired the master
+        // switch), so this button is the active row's onion — the same
+        // thing the `O` action toggles, not the legend's bulk sweep.
+        final onionOn =
+            layer != null && session.onionSkinLayerIds.value.contains(layer.id);
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            RailButton(
+              keyValue: 'undo-button',
+              tooltip: strings.shortcutLabel(EditorActionIds.undo, 'Undo'),
+              icon: Icons.undo,
+              selected: false,
+              onPressed: session.canUndo ? session.undo : null,
+            ),
+            const SizedBox(height: 4),
+            RailButton(
+              keyValue: 'redo-button',
+              tooltip: strings.shortcutLabel(EditorActionIds.redo, 'Redo'),
+              icon: Icons.redo,
+              selected: false,
+              onPressed: session.canRedo ? session.redo : null,
+            ),
+            const SizedBox(height: 4),
+            RailButton(
+              keyValue: 'rail-onion-skin-button',
+              tooltip: strings.shortcutLabel(
+                EditorActionIds.onionSkinToggle,
+                'Toggle Onion Skin',
+              ),
+              icon: Icons.filter_none_outlined,
+              selected: onionOn,
+              onPressed: layer != null ? session.toggleOnionSkin : null,
+            ),
+          ],
+        );
+      },
+    );
   }
 
   void _recordRecentColor() {
@@ -1119,6 +1181,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                   selectionVariant: _lastSelectionVariant,
                   onToolChanged: (tool) =>
                       _brushTool.value = _brushTool.value.copyWith(tool: tool),
+                  // The between-strokes group. Its own listeners for the
+                  // same reason the colour swatch has them: undoing must
+                  // not rebuild the tool column above it.
+                  historyControls: _railHistoryControls(),
                   // R9 #14: the selected colour rides the tool rail and
                   // opens the 「컬러 버튼창」. Its own listeners, so a
                   // colour change repaints the swatch without rebuilding

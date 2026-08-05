@@ -512,37 +512,10 @@ class _HomePageState extends State<HomePage> {
                                       ),
                                     ),
                                   ),
-                                  ListenableBuilder(
-                                    listenable: Listenable.merge([
-                                      _session,
-                                      _session.historyManager,
-                                    ]),
-                                    builder: (context, _) => Row(
-                                      mainAxisSize: MainAxisSize.min,
-                                      children: [
-                                        IconButton(
-                                          key: const ValueKey<String>(
-                                            'undo-button',
-                                          ),
-                                          tooltip: 'Undo',
-                                          onPressed: _session.canUndo
-                                              ? _session.undo
-                                              : null,
-                                          icon: const Icon(Icons.undo),
-                                        ),
-                                        IconButton(
-                                          key: const ValueKey<String>(
-                                            'redo-button',
-                                          ),
-                                          tooltip: 'Redo',
-                                          onPressed: _session.canRedo
-                                              ? _session.redo
-                                              : null,
-                                          icon: const Icon(Icons.redo),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
+                                  // Undo/redo left this strip for the head
+                                  // of the tool rail, where the hand
+                                  // already is between strokes. They took
+                                  // their keys with them.
                                   IconButton(
                                     key: const ValueKey<String>(
                                       'export-png-button',
