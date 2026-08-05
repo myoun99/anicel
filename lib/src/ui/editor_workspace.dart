@@ -1488,15 +1488,18 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           locked: locked,
           keepAlive: true,
           builder: (context) => PanelAwareListenableBuilder(
-            // Session subscription (see the timeline tab) + COMMITTED
-            // seeks only (W4 perf pass): scrub moves and playback ticks
-            // ride the host's playhead notifier straight into the panel's
-            // playhead overlay + ruler — the panel never rebuilds per
-            // tick anymore. Panel-aware (R12-①): offstage notifies defer
-            // to one catch-up on re-activation.
+            // Session subscription — the timeline tab's list exactly, and
+            // for the same reason: seeks are NOT session notifies, so this
+            // panel never rebuilds for one. Scrub moves, playback ticks and
+            // committed seeks all ride the host's own channels (playhead
+            // overlay + ruler, the rail's lane-label cursor, the command
+            // bar's own subscription). `frameSeekCommitted` sat in THIS
+            // merge until 2026-08-05 and cost a whole-panel rebuild per
+            // arrow press — measured at 38ms a step (12 build / 22 layout /
+            // 3 paint) with a six-cut project. Panel-aware (R12-①):
+            // offstage notifies defer to one catch-up on re-activation.
             listenable: Listenable.merge([
               widget.session,
-              widget.session.frameSeekCommitted,
               _storyboardPixelsPerFrame,
               _storyboardTrackLaneHeight,
               _showSecondsDisplay,
