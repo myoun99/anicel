@@ -6,6 +6,7 @@ import 'package:flutter/gestures.dart'
 
 import 'pencil_interaction_service.dart';
 import 'platform_pen_channel_service.dart';
+import 'raw_pen_input_service.dart';
 import 'wintab_pen_service.dart';
 
 /// The pen program's sidecar FACADE (PEN-4): one question — "does a
@@ -35,6 +36,7 @@ abstract final class PenSidecars {
     }
     _bound = true;
     WintabPenService.instance.bind();
+    RawPenInputService.instance.bind();
     PencilInteractionService.instance.bind();
     if (Platform.isMacOS) {
       channelServices.add(PlatformPenChannelService.macos()..start());
@@ -72,6 +74,12 @@ abstract final class PenSidecars {
   /// translation is written out rather than passed through because the
   /// numeric agreement between the two is a coincidence, not a contract.
   static int? freshButtons({DateTime? now}) {
+    // Raw Input first: HID states each switch outright, where Wintab's
+    // button word is a positional convention we have to translate.
+    final raw = RawPenInputService.instance.freshButtons(now: now);
+    if (raw != null) {
+      return raw;
+    }
     final wintab = WintabPenService.instance.freshButtons(now: now);
     if (wintab == null) {
       return null;
@@ -93,12 +101,23 @@ abstract final class PenSidecars {
   static const int _wintabLowerBarrel = 0x02;
   static const int _wintabUpperBarrel = 0x04;
 
+  /// Whether the pen is turned TAIL-DOWN right now — null when no sidecar
+  /// speaks for this moment (which includes every platform but Windows).
+  ///
+  /// Only Raw Input answers. Windows Ink loses the tail before Flutter
+  /// sees it, and Wintab has no portable eraser test; HID declares it.
+  static bool? freshInverted({DateTime? now}) =>
+      RawPenInputService.instance.freshInverted(now: now);
+
   @visibleForTesting
   static void debugReset() {
     for (final service in channelServices) {
       service.stop();
     }
     channelServices.clear();
+    // Only the observer is stood down here; a test that installed hooks
+    // on it resets those through its own debugReset.
+    RawPenInputService.instance.stop();
     _bound = false;
   }
 }

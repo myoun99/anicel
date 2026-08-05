@@ -37,12 +37,17 @@ set_target_properties(qa_engine PROPERTIES
   C_STANDARD_REQUIRED ON
 )
 
-# The Wintab sidecar (pen program, PEN-2) — Windows only: talks to the
-# tablet driver directly through wintab32.dll (loaded dynamically at
-# runtime; building needs no vendor SDK). Same bundle-beside-the-exe +
-# dart:ffi consumption pattern as qa_engine, absence = graceful.
+# The pen sidecars (pen program) — Windows only, one DLL:
+#   qa_tablet_win.c  PEN-2, talks to the tablet driver through wintab32.dll
+#   qa_penraw_win.c  reads the HID digitizer report through Raw Input
+# Both load their system DLL dynamically at runtime, so building needs no
+# vendor SDK and no extra link libraries, and absence of a driver is a
+# normal silent state. Same bundle-beside-the-exe + dart:ffi consumption
+# pattern as qa_engine.
 if(WIN32)
-  add_library(qa_tablet SHARED "${CMAKE_CURRENT_LIST_DIR}/qa_tablet_win.c")
+  add_library(qa_tablet SHARED
+    "${CMAKE_CURRENT_LIST_DIR}/qa_tablet_win.c"
+    "${CMAKE_CURRENT_LIST_DIR}/qa_penraw_win.c")
   set_target_properties(qa_tablet PROPERTIES
     C_STANDARD 99
     C_STANDARD_REQUIRED ON
