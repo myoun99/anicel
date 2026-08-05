@@ -1,6 +1,9 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 
 import 'cut/cut_note_dialog.dart';
+import 'editor_command_actions.dart';
 import 'dialogs/canvas_size_dialog.dart';
 import 'dialogs/rename_cut_dialog.dart';
 import 'editor_session_manager.dart';
@@ -87,6 +90,20 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
         icon: Icons.content_copy,
         onSelected: session.duplicateActiveCut,
       ),
+      // 겸용컷: same pictures, own timing. It only ever lived in the top
+      // menu bar, and it belongs beside the other ways of making a cut.
+      // Borrows the menu's wording by id rather than growing a second
+      // translation key for the same verb.
+      PanelFlyoutItem(
+        keyValue: 'add-cut-create-linked',
+        label: AppText.strings.menuLabel(
+          'cut-create-linked',
+          'Create linked cut',
+        ),
+        icon: Icons.link,
+        enabled: session.activeCutOrNull != null,
+        onSelected: session.createLinkedCutFromActiveCut,
+      ),
     ];
   }
 
@@ -116,6 +133,17 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
         label: AppText.strings.cutDuplicateCut,
         icon: Icons.content_copy,
         onSelected: session.duplicateActiveCut,
+      ),
+      PanelFlyoutItem(
+        keyValue: 'convert-cut-to-linked-button',
+        label: AppText.strings.menuLabel(
+          'cut-convert-linked',
+          'Convert to linked cut…',
+        ),
+        icon: Icons.add_link,
+        enabled: canConvertActiveCutToLinked(session),
+        onSelected: () =>
+            unawaited(showConvertActiveCutToLinked(context, session)),
       ),
       PanelFlyoutItem(
         keyValue: 'set-cut-thumbnail-button',
@@ -148,6 +176,19 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
       // (TimelineShiftButtons) rather than a cut-flavoured copy in this
       // menu. The cut axis is still what it commits when a cut row is what
       // the selection is on.
+      const PanelFlyoutDivider(),
+      // Relocated from the retired camera panel to the top menu bar
+      // (R11-⑤), and now to the cut it bakes: the active cut's camera work
+      // as AE keyframe data on the clipboard.
+      PanelFlyoutItem(
+        keyValue: 'copy-cut-ae-camera-button',
+        label: AppText.strings.menuLabel(
+          'cut-copy-ae-camera',
+          'Copy camera AE keyframes',
+        ),
+        icon: Icons.videocam_outlined,
+        onSelected: () => copyCameraAeKeyframes(context, session),
+      ),
       const PanelFlyoutDivider(),
       PanelFlyoutItem(
         keyValue: 'delete-cut-button',
