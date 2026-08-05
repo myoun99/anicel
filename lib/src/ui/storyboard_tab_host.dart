@@ -120,6 +120,14 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// rails, waveforms) never rebuilds on a tick.
   final ValueNotifier<int?> _playheadGlobalFrame = ValueNotifier<int?>(null);
 
+  /// The ACTIVE cut's LOCAL playhead, as a channel (timeline parity with
+  /// [_TimelineTabHostState]'s `_frameCursor`): the rail's lane labels read
+  /// the value at the cursor and subscribe to THIS, so a committed seek
+  /// repaints those cells instead of rebuilding the panel.
+  late final ValueNotifier<int> _activeCutFrameCursor = ValueNotifier<int>(
+    _session.currentFrameIndex,
+  );
+
   /// Whatever can change a frame's cached-ness — warm progress AND pixel
   /// edits (composites self-validate by signature, so an edit raises no
   /// event of its own). The ruler's green bar repaints off this; the
@@ -156,6 +164,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
       _session,
       layout: _activeTrackLayout(),
     );
+    _activeCutFrameCursor.value = _session.currentFrameIndex;
   }
 
   /// "To start" (REC1-B): the first cut's first frame — where an
@@ -197,6 +206,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
       _refreshPlayheadGlobalFrame,
     );
     _playheadGlobalFrame.dispose();
+    _activeCutFrameCursor.dispose();
     super.dispose();
   }
 
@@ -451,6 +461,9 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
+            // No seek subscription HERE: the one control on this bar a
+            // committed seek can change is the push/pull pair, and it owns
+            // that subscription itself ([TimelineShiftButtons]).
             _commandBar(context),
             Expanded(
               // Edit drags (cut trims, SE comma drags) preview through the
@@ -683,7 +696,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onMoveCancel: _session.cancelLaneRangeMoveDrag,
                   ),
                   layerLaneEdit: _layerLaneEdit,
-                  activeCutFrameIndex: _session.currentFrameIndex,
+                  activeCutFrameCursor: _activeCutFrameCursor,
                   onSelectFrameIndex: _session.selectFrameIndex,
                   poseDisplaySize: _session.cameraFrameSize,
                   onSetCutFade: (cutId, fadeIn, fadeOut) => _session.setCutFade(

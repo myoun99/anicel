@@ -356,7 +356,7 @@ class StoryboardPanel extends StatefulWidget {
     this.trackLaneEditFor,
     this.laneRange,
     this.layerLaneEdit,
-    this.activeCutFrameIndex = 0,
+    this.activeCutFrameCursor,
     this.onSelectFrameIndex,
     this.poseDisplaySize,
     this.onSetCutFade,
@@ -634,7 +634,14 @@ class StoryboardPanel extends StatefulWidget {
 
   /// The ACTIVE cut's playhead (cut-local): the lane labels' value column
   /// and keyframe navigator read here.
-  final int activeCutFrameIndex;
+  ///
+  /// A CHANNEL, not a number — the timeline's rail and the X-sheet's lane
+  /// headers already take the cursor this way ("lane labels show the value
+  /// AT the cursor: subscribe here so a tick rebuilds only these small
+  /// cells"). Passing an `int` was the last place a storyboard surface kept
+  /// the RAW value where the others had unified the channel, and it cost a
+  /// whole-panel rebuild per committed seek to keep it fresh.
+  final ValueListenable<int>? activeCutFrameCursor;
 
   /// Key-navigator jumps (◀ ▶) select this cut-local frame on the session.
   final ValueChanged<int>? onSelectFrameIndex;
@@ -1095,7 +1102,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     required List<PropertyLaneRow> lanes,
     required PropertyLaneEditCallbacks? laneEdit,
     required bool active,
-    int? currentFrameIndex,
+    ValueListenable<int?>? frameCursor,
     ValueChanged<int>? onSelectFrame,
   }) {
     final metrics = TimelineGridMetrics(
@@ -1103,27 +1110,37 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       layerRowHeight: _transformLaneHeight - 2,
     );
     final onToggleGroup = widget.onToggleTransformGroup;
+    Widget row(PropertyLaneRow lane, int frameIndex) => TimelineLaneControlsRow(
+      layer: carrier,
+      lane: lane,
+      metrics: metrics,
+      width: StoryboardPanel._trackLabelWidth,
+      height: _transformLaneHeight,
+      currentFrameIndex: frameIndex,
+      onSelectFrame: active
+          ? (onSelectFrame ?? widget.onSelectFrameIndex)
+          : null,
+      laneEdit: lane.isGroupHeader || !active ? null : laneEdit,
+      onToggleLaneGroup: onToggleGroup == null
+          ? null
+          : (_, _) => onToggleGroup(groupKey),
+      keyPrefix: 'storyboard',
+      leadingInset: layerSectionLabelSlotWidth,
+    );
+
+    // Cut-owned rows speak the ACTIVE cut's local frames; the V track's
+    // rows pass the GLOBAL playhead instead (R4b) — either way the row
+    // SUBSCRIBES, so a committed seek rebuilds these label cells and
+    // nothing else (the timeline rail's own line).
     return [
       for (final lane in lanes)
-        TimelineLaneControlsRow(
-          layer: carrier,
-          lane: lane,
-          metrics: metrics,
-          width: StoryboardPanel._trackLabelWidth,
-          height: _transformLaneHeight,
-          // Cut-owned rows speak the active cut's local frames; the V
-          // track's rows pass the GLOBAL playhead instead (R4b).
-          currentFrameIndex: currentFrameIndex ?? widget.activeCutFrameIndex,
-          onSelectFrame: active
-              ? (onSelectFrame ?? widget.onSelectFrameIndex)
-              : null,
-          laneEdit: lane.isGroupHeader || !active ? null : laneEdit,
-          onToggleLaneGroup: onToggleGroup == null
-              ? null
-              : (_, _) => onToggleGroup(groupKey),
-          keyPrefix: 'storyboard',
-          leadingInset: layerSectionLabelSlotWidth,
-        ),
+        if (frameCursor == null)
+          row(lane, 0)
+        else
+          ValueListenableBuilder<int?>(
+            valueListenable: frameCursor,
+            builder: (context, frameIndex, _) => row(lane, frameIndex ?? 0),
+          ),
     ];
   }
 
@@ -1235,6 +1252,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
             ),
             laneEdit: widget.layerLaneEdit,
             active: activeCut != null && _trackSeAt(track, slot) != null,
+            frameCursor: widget.activeCutFrameCursor,
           ),
         ],
       ],
@@ -1291,7 +1309,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           // The TRACK's lanes need no cut (R4b): the rail keys and jumps
           // on the GLOBAL axis wherever the playhead parks.
           active: true,
-          currentFrameIndex: widget.playheadFrame?.value ?? 0,
+          frameCursor: widget.playheadFrame,
           onSelectFrame: widget.onSeekGlobalFrame,
         ),
     ];
