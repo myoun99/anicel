@@ -1380,6 +1380,25 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// selection band (R27 #14 — cells, lanes and now this rail draw exactly
   /// the same band, so a storyboard span cannot read as a different kind
   /// of selection).
+  /// One track's strip rows, re-timed by an in-flight drag.
+  ///
+  /// This is where the preview channel is READ — not at the panel's root,
+  /// which is where it used to be. A cut-length drag published one number
+  /// and the whole body re-recorded for it: the rail, the ruler, the label
+  /// column, the scrollbars, every SE strip. Measured at 172ms a step
+  /// against the timeline's 24ms for the same edit — and 112ms of that was
+  /// the rebuild ALONE, with the previewed project swapped back out for the
+  /// committed one so nothing downstream had changed.
+  ///
+  /// The timeline never paid it, for a structural reason rather than a
+  /// clever one: it subscribes at the LEAVES — the cut-end line, the ruler
+  /// line, the out-of-cut wash, and a per-row gate that substitutes one
+  /// Layer. This is the storyboard's version of that gate, at the altitude
+  /// the strip's own unit of work sits at.
+  ///
+  /// The SE rows are already handed in from outside the subscription (R10-③,
+  /// the same idea reached one row at a time); everything else in the body
+  /// now builds from the committed project once.
   Widget _trackGroupSection(
     Track track,
     int index,
@@ -1388,18 +1407,29 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     TimelineScale scale,
     List<Widget> seRows,
   ) {
+    final dragPreview = widget.dragPreview;
     return Stack(
       children: [
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
-          children: _stripRowsForTrack(
-            track,
-            index,
-            entries,
-            width,
-            scale,
-            seRows,
-          ),
+          children: dragPreview == null
+              ? _stripRowsForTrack(track, index, entries, width, scale, seRows)
+              : [
+                  ValueListenableBuilder<TimelineDragPreview?>(
+                    valueListenable: dragPreview,
+                    builder: (context, preview, _) => Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: _stripRowsForTrack(
+                        track,
+                        index,
+                        _previewedEntriesFor(index, preview, entries),
+                        width,
+                        scale,
+                        seRows,
+                      ),
+                    ),
+                  ),
+                ],
         ),
         Positioned.fill(
           child: IgnorePointer(child: _trackRangeBand(track, scale)),
@@ -1409,6 +1439,33 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         ),
       ],
     );
+  }
+
+  /// [committed]'s track re-timed by [preview], or [committed] itself when
+  /// no drag is in flight.
+  ///
+  /// The layout is recomputed for the WHOLE film and then filtered, because
+  /// a cut's length or leading gap moves every cut behind it — the strip's
+  /// geometry is global in a way the timeline's per-row one is not. It is a
+  /// walk over a list of cuts, which is the cheap half of what the root
+  /// subscription used to do; the expensive half was rebuilding the panel
+  /// around it.
+  List<StoryboardTimelineLayoutEntry> _previewedEntriesFor(
+    int trackIndex,
+    TimelineDragPreview? preview,
+    List<StoryboardTimelineLayoutEntry> committed,
+  ) {
+    if (preview == null) {
+      return committed;
+    }
+    final project = projectWithTimelineDragPreview(widget.project, preview);
+    if (identical(project, widget.project)) {
+      return committed;
+    }
+    return [
+      for (final entry in buildStoryboardTimelineLayout(project))
+        if (entry.trackIndex == trackIndex) entry,
+    ];
   }
 
   /// The LANE selection's band over this track's own Transform lane rows
@@ -1946,18 +2003,10 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           // their cut-boundary marks until release. SE comma drags edit the
           // ACTIVE layer through the timeline gates, unaffected here.
           final seStripRowsByTrack = _seStripRowsByTrack();
-          final dragPreview = widget.dragPreview;
-          if (dragPreview == null) {
-            return _buildBody(context, widget.project, seStripRowsByTrack);
-          }
-          return ValueListenableBuilder<TimelineDragPreview?>(
-            valueListenable: dragPreview,
-            builder: (context, preview, _) => _buildBody(
-              context,
-              projectWithTimelineDragPreview(widget.project, preview),
-              seStripRowsByTrack,
-            ),
-          );
+          // The body builds from the COMMITTED project, once. The drag
+          // preview is read further down, at [_trackGroupSection] — see the
+          // measurement in its doc for why the difference is not small.
+          return _buildBody(context, widget.project, seStripRowsByTrack);
         },
       ),
     );
