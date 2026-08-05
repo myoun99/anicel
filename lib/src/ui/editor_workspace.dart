@@ -55,7 +55,7 @@ import 'storyboard_panel.dart' show StoryboardPanel;
 import 'storyboard_playhead_mapping.dart';
 import '../models/timeline_row_address.dart';
 import 'timeline/layer_rail_window.dart';
-import '../models/layer_kind.dart' show layerKindHoldsDrawings;
+import '../models/layer_kind.dart' show LayerKind, layerKindHoldsDrawings;
 import 'canvas/flip_hud_controller.dart';
 import 'canvas/flip_hud_model.dart';
 import 'timeline/layer_timeline_display_adapter.dart'
@@ -577,7 +577,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     final session = widget.session;
     final cut = session.activeCutOrNull;
     if (cut == null) {
-      return FlipHudSnapshot.empty;
+      // Parked in a GAP. There is no cut, so there are no layer rows —
+      // but there IS a row: the track, whose blocks are its cuts. That is
+      // the axis the flip actually walks here (`_flipCuts`), so the
+      // window shows it rather than going blank on the one occasion you
+      // most need to know where you are.
+      return _flipHudTrackSnapshot(session);
     }
     final rows = buildTimelineDisplayRows(
       layers: horizontalLayerDisplayOrder(session.layers),
@@ -643,6 +648,50 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       rowIndex: rowIndex,
       frameIndex: session.currentFrameIndex,
       frameCount: cut.duration,
+    );
+  }
+
+  /// The gap's window: one row — the track — with its cuts as blocks.
+  ///
+  /// Same model, same columns, same haptic rule; only the material
+  /// changes, which is exactly what the flip itself does down in the
+  /// session. A cut is a run, the space between cuts is uncovered.
+  FlipHudSnapshot _flipHudTrackSnapshot(EditorSessionManager session) {
+    final trackId = session.selectedTrackId;
+    final entries = [
+      for (final entry in session.projectTimelineLayout())
+        if (entry.trackId == trackId) entry,
+    ];
+    if (entries.isEmpty) {
+      return FlipHudSnapshot.empty;
+    }
+    final globalFrame = session.editingGlobalFrame;
+    return FlipHudSnapshot(
+      rows: [
+        FlipHudRow(
+          name: session.trackOwningCut(entries.first.cutId)?.name ?? 'Track',
+          kind: LayerKind.storyboard,
+          // A track is not a layer; the rail shows its name alone.
+          showsKindIcon: false,
+          // The space between cuts is not a missing drawing, so it
+          // carries no timesheet X.
+          holdsDrawings: false,
+          runs: [
+            for (final entry in entries)
+              FlipHudRun(
+                startIndex: entry.startFrame,
+                length: entry.duration,
+                label: entry.cut.name,
+              ),
+          ],
+        ),
+      ],
+      rowIndex: 0,
+      frameIndex: globalFrame,
+      // Rightwards never runs out, so the playhead can stand PAST the
+      // last cut. The axis has to reach wherever it is standing or the
+      // window would show the final cut as the column you are on.
+      frameCount: math.max(entries.last.endFrame, globalFrame + 1),
     );
   }
 

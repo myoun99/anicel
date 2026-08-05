@@ -46,10 +46,28 @@ abstract final class FlipHudMetrics {
   /// Never closer than this to the panel's edge.
   static const double edgeInset = 16;
 
-  /// The strip's slide between steps. Short enough to keep up with a
-  /// sweeping hand, long enough that the film reads as continuous rather
-  /// than as a slideshow.
+  /// The strip's slide between steps, at its LONGEST — a leisurely flip.
   static const Duration slide = Duration(milliseconds: 120);
+
+  /// Below this a leg is a cut in all but name; there is no point asking
+  /// the compositor for a two-frame tween.
+  static const Duration slideFloor = Duration(milliseconds: 16);
+
+  /// How long this leg of the slide should take.
+  ///
+  /// An implicit animation restarts at FULL duration whenever its target
+  /// moves, so a leg longer than the gap between steps never finishes:
+  /// the strip falls behind the hand and stays there, and because the
+  /// selection rides the strip the window ends up pointing at the wrong
+  /// column while you sweep. Sizing the leg to the interval that preceded
+  /// it makes the strip arrive just as the next step lands — smooth when
+  /// flipping slowly, and honest when sweeping fast.
+  static Duration slideFor(Duration? stepInterval) {
+    if (stepInterval == null || stepInterval >= slide) {
+      return slide;
+    }
+    return stepInterval <= slideFloor ? Duration.zero : stepInterval;
+  }
 
   /// Where the current column's CENTRE sits in strip content pixels — the
   /// one number the slide animates.
@@ -206,7 +224,10 @@ class FlipHudOverlay extends StatelessWidget {
       // begin is read only on this key's first build, where it equals end
       // and nothing moves; later builds animate from wherever it is.
       tween: Tween<double>(begin: centre, end: centre),
-      duration: _motion(context, FlipHudMetrics.slide),
+      duration: _motion(
+        context,
+        FlipHudMetrics.slideFor(controller.lastStepInterval),
+      ),
       curve: Curves.easeOutCubic,
       builder: (context, scrollCentre, _) => CustomPaint(
         painter: FlipHudPainter(
@@ -485,10 +506,6 @@ class FlipHudPainter extends CustomPainter {
     required bool active,
   }) {
     final ink = active ? _railInkActive : _railInk;
-    // A LANE row carries its property's name, not its owner's kind — the
-    // rails do not repeat the kind icon down the twirl either, and
-    // stamping the layer's brush glyph onto 'Opacity' would be this
-    // window inventing a mark the timeline has never drawn.
     final namePainter = timelineGlyphPainter(
       row.name,
       TextStyle(
@@ -505,7 +522,7 @@ class FlipHudPainter extends CustomPainter {
       canvas,
       Offset(nameLeft, rect.center.dy - namePainter.height / 2),
     );
-    if (row.isLane) {
+    if (!row.showsKindIcon) {
       return;
     }
     final icon = layerKindIcon(row.kind);

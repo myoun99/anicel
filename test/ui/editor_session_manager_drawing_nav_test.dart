@@ -40,47 +40,81 @@ void main() {
     return session;
   }
 
-  test('next: jumps to the block start, ESCAPES past the block end, then '
-      'steps frames through empty space (PEN-12 #2)', () {
+  test('next: one COLUMN a press — empty frames one at a time, a block '
+      'whole however long it holds', () {
     final session = sessionWithBlock();
     addTearDown(session.dispose);
 
     session.selectFrameIndex(0);
     session.selectNextDrawing();
-    expect(session.currentFrameIndex, 2, reason: 'jumps to the block');
+    expect(session.currentFrameIndex, 1, reason: 'an empty frame is a column');
 
-    // ON the last block with no next drawing: one press escapes past its
-    // end — never a one-frame crawl through a long tail block.
     session.selectNextDrawing();
-    expect(session.currentFrameIndex, 5, reason: 'escapes the block whole');
+    expect(session.currentFrameIndex, 2, reason: 'onto the block');
 
-    // Pure empty space keeps the PEN-8 one-frame walk.
+    // The block holds 2..4 and is ONE column: the next press leaves the
+    // whole run, landing where it ends.
+    session.selectNextDrawing();
+    expect(session.currentFrameIndex, 5, reason: 'the block ends here');
+
     session.selectNextDrawing();
     expect(session.currentFrameIndex, 6);
 
-    // From INSIDE the block the escape lands past the end too.
+    // From INSIDE the block the same column is left in one press: a hold
+    // belongs to its block, not to columns of its own.
     session.selectFrameIndex(3);
     session.selectNextDrawing();
-    expect(session.currentFrameIndex, 5, reason: 'mid-block escapes whole');
+    expect(session.currentFrameIndex, 5, reason: 'mid-block leaves whole');
   });
 
-  test('previous: steps frames through empty space, then jumps to the '
-      'block start', () {
+  test('previous: the same columns, walked back — this is the direction '
+      'that used to skip the empty space entirely', () {
     final session = sessionWithBlock();
     addTearDown(session.dispose);
 
     session.selectFrameIndex(7);
     session.selectPreviousDrawing();
-    expect(session.currentFrameIndex, 2, reason: 'jumps back to the block');
+    expect(session.currentFrameIndex, 6);
+    session.selectPreviousDrawing();
+    expect(session.currentFrameIndex, 5);
 
-    // Before the block there is no earlier drawing — empty space walks
-    // one frame at a time (and clamps at 0).
+    // The frame after a block ends steps back to that block's HEAD — it
+    // used to jump here from far away, skipping 5 and 6 on the way.
+    session.selectPreviousDrawing();
+    expect(session.currentFrameIndex, 2, reason: 'the block head');
+
+    // Before the block, empty frames again, one column each.
     session.selectPreviousDrawing();
     expect(session.currentFrameIndex, 1);
     session.selectPreviousDrawing();
     expect(session.currentFrameIndex, 0);
     session.selectPreviousDrawing();
-    expect(session.currentFrameIndex, 0, reason: 'clamped at the start');
+    expect(
+      session.currentFrameIndex,
+      0,
+      reason: 'the start of the film is the one real floor',
+    );
+  });
+
+  test('★ the two directions are the same sentence: walking right and '
+      'back left visits the same columns', () {
+    final session = sessionWithBlock();
+    addTearDown(session.dispose);
+
+    session.selectFrameIndex(0);
+    final forward = <int>[0];
+    for (var press = 0; press < 4; press += 1) {
+      session.selectNextDrawing();
+      forward.add(session.currentFrameIndex);
+    }
+    expect(forward, [0, 1, 2, 5, 6]);
+
+    final backward = <int>[];
+    for (var press = 0; press < 4; press += 1) {
+      session.selectPreviousDrawing();
+      backward.add(session.currentFrameIndex);
+    }
+    expect(backward, forward.reversed.skip(1));
   });
 
   group('R10 #13: the flip counts the CURRENT ROW\'s blocks', () {
@@ -132,15 +166,13 @@ void main() {
       session.selectNextDrawing();
       expect(session.activeCutId, const CutId('cut-3'));
 
-      // Mid-cut, backwards lands on THIS cut's start — the same
-      // clip-navigation convention a layer block follows.
+      // Mid-cut, backwards leaves this cut's column whole — a hold and
+      // its head are ONE column, so stepping back from either lands on
+      // the previous cut rather than restarting this one.
       session.selectFrameIndex(5);
       session.selectPreviousDrawing();
-      expect(session.activeCutId, const CutId('cut-3'));
-      expect(session.currentFrameIndex, 0);
-
-      session.selectPreviousDrawing();
       expect(session.activeCutId, const CutId('cut-2'));
+      expect(session.currentFrameIndex, 0, reason: 'that cut block\'s start');
     });
 
     test('past the last cut a V row walks ONE frame — "a block where there '
@@ -182,7 +214,8 @@ void main() {
       expect(
         session.activeCutId,
         cutBefore,
-        reason: 'a layer row lives inside one cut — that is why "which row '
+        reason:
+            'a layer row lives inside one cut — that is why "which row '
             'of the next cut do I land on" never gets asked',
       );
     });

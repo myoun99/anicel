@@ -53,8 +53,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(counterText(tester), '1');
 
-    // A drawing at frame 1, playhead moved ahead: Ctrl+, jumps back to
-    // the block start.
+    // A drawing at the cut start, playhead moved ahead: Ctrl+, walks back
+    // one COLUMN a press — the empty frame between is a column of its
+    // own, which is the half of the rule the old jump skipped.
     await tester.tap(find.byKey(const ValueKey<String>('menu-edit')));
     await tester.pumpAndSettle();
     await tester.tap(
@@ -66,11 +67,17 @@ void main() {
     await tester.pumpAndSettle();
     expect(counterText(tester), '3');
 
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
-    await tester.sendKeyEvent(LogicalKeyboardKey.comma);
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
-    await tester.pumpAndSettle();
-    expect(counterText(tester), '1');
+    Future<void> ctrlComma() async {
+      await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
+      await tester.sendKeyEvent(LogicalKeyboardKey.comma);
+      await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+      await tester.pumpAndSettle();
+    }
+
+    await ctrlComma();
+    expect(counterText(tester), '2', reason: 'the empty frame between');
+    await ctrlComma();
+    expect(counterText(tester), '1', reason: 'the drawing');
   });
 
   testWidgets('B/E switch tools; typing in a text field never does', (

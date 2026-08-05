@@ -203,6 +203,75 @@ void main() {
     });
   });
 
+  group('the slide keeps up with the hand', () {
+    test('a leg never outlasts the gap between the steps it joins', () {
+      // An implicit animation restarts at full duration on every target
+      // change, so a leg longer than the step interval never lands: the
+      // strip trails the hand for as long as the sweep continues.
+      expect(FlipHudMetrics.slideFor(null), FlipHudMetrics.slide);
+      expect(
+        FlipHudMetrics.slideFor(const Duration(milliseconds: 400)),
+        FlipHudMetrics.slide,
+        reason: 'a leisurely flip gets the full slide',
+      );
+      expect(
+        FlipHudMetrics.slideFor(const Duration(milliseconds: 40)),
+        const Duration(milliseconds: 40),
+        reason: 'a brisk sweep gets a leg that lands in time',
+      );
+      expect(
+        FlipHudMetrics.slideFor(const Duration(milliseconds: 8)),
+        Duration.zero,
+        reason: 'below a frame or two a tween is a cut anyway',
+      );
+    });
+
+    test('the interval is measured landing to landing, not per notify', () {
+      var frame = 0;
+      var clock = DateTime(2026);
+      final controller =
+          FlipHudController(
+            hapticTick: () {},
+            hapticsEnabled: () => false,
+            clock: () => clock,
+          )..bind(
+            (_) => FlipHudSnapshot(
+              rows: const [rowA],
+              rowIndex: 0,
+              frameIndex: frame,
+              frameCount: 15,
+            ),
+          );
+      addTearDown(controller.dispose);
+      controller.begin(
+        axis: FlipHudAxis.frame,
+        anchor: Offset.zero,
+        frameStep: false,
+      );
+      expect(controller.lastStepInterval, isNull);
+
+      clock = clock.add(const Duration(milliseconds: 30));
+      frame = 2;
+      controller.refresh();
+      expect(
+        controller.lastStepInterval,
+        isNull,
+        reason: 'the first landing has nothing to measure against',
+      );
+
+      clock = clock.add(const Duration(milliseconds: 30));
+      frame = 5;
+      controller.refresh();
+      expect(controller.lastStepInterval, const Duration(milliseconds: 30));
+
+      // A modifier change re-renders without moving the cursor; letting
+      // that re-time the slide would size the next leg off a non-event.
+      clock = clock.add(const Duration(milliseconds: 500));
+      controller.refresh(frameStep: true);
+      expect(controller.lastStepInterval, const Duration(milliseconds: 30));
+    });
+  });
+
   group('the window\'s lifetime', () {
     testWidgets('shows on the lock, holds after the lift, then lets go', (
       tester,
