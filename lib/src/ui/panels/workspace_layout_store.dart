@@ -60,6 +60,29 @@ typedef RestoredWorkspaceLayout = ({
   Set<String> lockedTabIds,
 });
 
+/// One saved splitter number, or null when the file cannot be trusted for
+/// it.
+///
+/// The rail extents were filtered this way from the start; the dock extents
+/// were not, and a NEGATIVE one is the reachable half of that. Measured:
+/// `jsonDecode` rejects `NaN` and `Infinity` outright, so those cannot come
+/// out of the file at all — but `-100` decodes fine, and a negative width
+/// reaching `SizedBox` throws a `FlutterError` rather than clamping. A
+/// hand-edited or half-written `workspace_layout.json` took the workspace
+/// down with it. Zero and absurdly large values are harmless (a collapsed
+/// dock, and the side docks' own scale-to-fit), but they are not USEFUL, so
+/// falling back to the default is the better answer for them too.
+///
+/// `isFinite` is here for the callers, not for the file: these are public
+/// functions taking a plain map, and nothing about their signature says the
+/// map came from JSON.
+double? restoredSplitterValue(Object? value) {
+  if (value is! num || !value.isFinite || value <= 0) {
+    return null;
+  }
+  return value.toDouble();
+}
+
 /// Rail window sizes ([LayerRailId] → logical pixels), sanitized: a rail
 /// the user never dragged is simply absent and follows its natural size.
 ///
@@ -71,11 +94,8 @@ Map<String, double> restoreRailExtents(Map<String, Object?> payload) {
   return <String, double>{
     if (railsJson is Map)
       for (final entry in railsJson.entries)
-        if (entry.key is String &&
-            entry.value is num &&
-            (entry.value as num).isFinite &&
-            (entry.value as num) > 0)
-          entry.key as String: (entry.value as num).toDouble(),
+        if (entry.key is String)
+          entry.key as String: ?restoredSplitterValue(entry.value),
   };
 }
 
@@ -138,7 +158,12 @@ RestoredWorkspaceLayout? restoreWorkspaceLayout({
           activeTabId: active is String && tabs.contains(active)
               ? active
               : null,
-          weight: weight is num ? weight.toDouble() : 1,
+          // Through the same door as the extents, though nothing reachable
+          // changes: [DockSection] already refuses a weight at or below its
+          // own floor. Uniform because a weight IS a splitter position —
+          // the next reader should not have to work out which of three
+          // restorers checks what.
+          weight: restoredSplitterValue(weight) ?? 1,
         ),
       );
     }
@@ -188,10 +213,8 @@ RestoredWorkspaceLayout? restoreWorkspaceLayout({
   final dockExtents = <String, double>{
     if (extentsJson is Map)
       for (final entry in extentsJson.entries)
-        if (entry.key is String &&
-            docks.containsKey(entry.key) &&
-            entry.value is num)
-          entry.key as String: (entry.value as num).toDouble(),
+        if (entry.key is String && docks.containsKey(entry.key))
+          entry.key as String: ?restoredSplitterValue(entry.value),
   };
 
   final lockedJson = payload['lockedTabs'];
