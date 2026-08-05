@@ -307,28 +307,29 @@ void main() {
       expect(ColorSlotPair.extent, 42);
     });
 
-    testWidgets('the swap glyph exchanges the slots', (tester) async {
-      final changes = <int>[];
-      final backgroundChanges = <int>[];
+    testWidgets('there is NO swap glyph — the back slot already is one', (
+      tester,
+    ) async {
       await pumpButton(
         tester,
         color: 0xFFFF0000,
         backgroundColor: 0xFF00FF00,
-        changes: changes,
-        backgroundChanges: backgroundChanges,
+        changes: <int>[],
+        backgroundChanges: <int>[],
       );
 
-      await tester.tap(
+      // 유저 확정, 두 번: a separate swap button says the same verb the pair
+      // already says by being a pair. The control is the pair and nothing
+      // else — this guards the glyph from growing back.
+      expect(
         find.byKey(const ValueKey<String>('tool-color-swap-button')),
+        findsNothing,
       );
-      await tester.pump();
-
-      expect(changes, [0xFF00FF00]);
-      expect(backgroundChanges, [0xFFFF0000]);
+      expect(find.byIcon(Icons.swap_horiz), findsNothing);
     });
 
-    testWidgets('tapping the background slot also swaps (the Photoshop '
-        'gesture the pair brought with it)', (tester) async {
+    testWidgets('tapping the background slot swaps (the Photoshop gesture '
+        'the pair brought with it, and the only one it needs)', (tester) async {
       final changes = <int>[];
       final backgroundChanges = <int>[];
       await pumpButton(
