@@ -1,3 +1,8 @@
+import '../core/collection_equality.dart';
+import 'production_staff.dart';
+
+export 'production_staff.dart';
+
 /// The paper form's header boxes, in printing order — the episode number
 /// (話数 / Ep.no) leads like the real reference sheets (R7-⑥), then Title,
 /// Cut, Duration, Name and Page; SCENE is the user-requested addition
@@ -18,6 +23,8 @@ class TimesheetInfo {
     this.hiddenFields = const {},
     this.exposureBarThreshold,
     this.seEmptyFill = true,
+    this.staff = const {},
+    this.logoAssetPath,
   });
 
   static const TimesheetInfo empty = TimesheetInfo();
@@ -42,6 +49,23 @@ class TimesheetInfo {
   /// wash) — default on, toggleable per project.
   final bool seEmptyFill;
 
+  /// Who holds each production role, keyed by [ProductionRole] (or any key
+  /// a studio's own form binds — the process list differs per production,
+  /// so this stays an open map rather than fixed fields).
+  ///
+  /// Read by every paper surface: the cut envelope's 担当 row, and the
+  /// approval boxes a timesheet or conte prints.
+  final Map<String, ProductionStaff> staff;
+
+  /// The studio logo, as a [MediaAsset] path of kind `image` — the mark a
+  /// form prints in its corner. Null prints nothing.
+  final String? logoAssetPath;
+
+  /// The role's assignee, or an empty one when nobody is set — so a form
+  /// binding never has to null-check.
+  ProductionStaff staffFor(String role) =>
+      staff[role] ?? ProductionStaff.empty;
+
   /// The header boxes the form prints, in printing order.
   List<TimesheetHeaderField> get visibleFields => [
     for (final field in TimesheetHeaderField.values)
@@ -56,6 +80,8 @@ class TimesheetInfo {
     Set<TimesheetHeaderField>? hiddenFields,
     int? Function()? exposureBarThreshold,
     bool? seEmptyFill,
+    Map<String, ProductionStaff>? staff,
+    String? Function()? logoAssetPath,
   }) {
     return TimesheetInfo(
       title: title ?? this.title,
@@ -67,7 +93,23 @@ class TimesheetInfo {
           ? this.exposureBarThreshold
           : exposureBarThreshold(),
       seEmptyFill: seEmptyFill ?? this.seEmptyFill,
+      staff: staff ?? this.staff,
+      logoAssetPath: logoAssetPath == null
+          ? this.logoAssetPath
+          : logoAssetPath(),
     );
+  }
+
+  /// One role's assignee replaced; an empty one drops the entry so the map
+  /// never accumulates blanks.
+  TimesheetInfo withStaff(String role, ProductionStaff assignee) {
+    final next = {...staff};
+    if (assignee.isEmpty) {
+      next.remove(role);
+    } else {
+      next[role] = assignee;
+    }
+    return copyWith(staff: next);
   }
 
   Map<String, dynamic> toJson() => {
@@ -79,6 +121,11 @@ class TimesheetInfo {
     if (exposureBarThreshold != null)
       'exposureBarThreshold': exposureBarThreshold,
     if (!seEmptyFill) 'seEmptyFill': false,
+    if (staff.isNotEmpty)
+      'staff': {
+        for (final entry in staff.entries) entry.key: entry.value.toJson(),
+      },
+    if (logoAssetPath != null) 'logo': logoAssetPath,
   };
 
   factory TimesheetInfo.fromJson(Map<String, dynamic> json) {
@@ -95,6 +142,14 @@ class TimesheetInfo {
       },
       exposureBarThreshold: json['exposureBarThreshold'] as int?,
       seEmptyFill: json['seEmptyFill'] as bool? ?? true,
+      staff: {
+        for (final entry
+            in (json['staff'] as Map<String, dynamic>? ?? const {}).entries)
+          entry.key: ProductionStaff.fromJson(
+            entry.value as Map<String, dynamic>,
+          ),
+      },
+      logoAssetPath: json['logo'] as String?,
     );
   }
 
@@ -108,6 +163,8 @@ class TimesheetInfo {
           other.artist == artist &&
           other.exposureBarThreshold == exposureBarThreshold &&
           other.seEmptyFill == seEmptyFill &&
+          other.logoAssetPath == logoAssetPath &&
+          mapEquals(other.staff, staff) &&
           other.hiddenFields.length == hiddenFields.length &&
           other.hiddenFields.containsAll(hiddenFields);
 
@@ -119,6 +176,10 @@ class TimesheetInfo {
     artist,
     exposureBarThreshold,
     seEmptyFill,
+    logoAssetPath,
+    Object.hashAllUnordered(
+      staff.entries.map((entry) => Object.hash(entry.key, entry.value)),
+    ),
     Object.hashAllUnordered(hiddenFields),
   );
 
