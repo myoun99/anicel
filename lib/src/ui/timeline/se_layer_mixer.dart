@@ -94,7 +94,7 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
 
     return Material(
       key: const ValueKey<String>('se-layer-mixer'),
-      color: AppColors.surfaceRaised,
+      color: AppColors.surfaceHigh,
       borderRadius: BorderRadius.circular(6),
       elevation: 6,
       child: Padding(

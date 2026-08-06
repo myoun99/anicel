@@ -202,7 +202,7 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
   Widget build(BuildContext context) {
     return Material(
       key: const ValueKey<String>('pressure-curve-popup'),
-      color: AppColors.surfaceRaised,
+      color: AppColors.surfaceHigh,
       borderRadius: BorderRadius.circular(6),
       elevation: 6,
       child: Padding(

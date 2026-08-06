@@ -541,8 +541,13 @@ class _HomePageState extends State<HomePage> {
                             // on the surface that shows its result, and
                             // undo/redo/export went with them. 48px so the
                             // buttons sit on the same grid as the rail's.
+                            //
+                            // The SAME fill as the tool rail, because they are
+                            // the same thing: inert chrome. It used to sit two
+                            // steps up the container ladder, which is why the
+                            // strip and the rail never looked like one app.
                             Material(
-                              color: colorScheme.surfaceContainerHigh,
+                              color: colorScheme.surface,
                               child: SizedBox(
                                 height: 48,
                                 // Re-reads per notify: the panels bridge

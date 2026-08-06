@@ -623,9 +623,14 @@ class _PanelTabButton extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 8),
           decoration: BoxDecoration(
-            // The selected tab wears the PANEL BODY color so it flows
-            // seamlessly into the content below it.
-            color: selected ? colorScheme.surface : Colors.transparent,
+            // The selected tab used to wear the PANEL BODY color so it flowed
+            // into the content below it. Now that the strip and the body are
+            // the same one chrome fill, that flow is free and the fill has to
+            // say something else instead: this tab is SWITCHED ON, so it wears
+            // the one level reserved for exactly that.
+            color: selected
+                ? colorScheme.surfaceContainerHigh
+                : Colors.transparent,
             border: Border(
               top: BorderSide(
                 width: 2,
