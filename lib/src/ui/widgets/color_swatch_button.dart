@@ -128,7 +128,7 @@ class _ColorPickerBodyState extends State<_ColorPickerBody> {
     final theme = Theme.of(context);
     return Material(
       elevation: 8,
-      color: theme.colorScheme.surfaceContainerHighest,
+      color: theme.colorScheme.surfaceContainerHigh,
       borderRadius: BorderRadius.circular(6),
       child: Padding(
         padding: const EdgeInsets.all(10),

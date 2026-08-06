@@ -2244,7 +2244,7 @@ class _XSheetSectionBandCell extends StatelessWidget {
         width: extent,
         height: height,
         decoration: BoxDecoration(
-          color: colorScheme.surfaceContainerLow,
+          color: AppColors.washDown,
           border: Border.all(color: colorScheme.outline, width: 1),
         ),
         // The band runs ALONG the layer axis, so its label stays

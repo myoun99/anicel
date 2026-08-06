@@ -210,7 +210,7 @@ class _SeNameTagDialogState extends State<SeNameTagDialog> {
         constraints: const BoxConstraints(minHeight: 48, maxHeight: 96),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest,
+          color: theme.colorScheme.surfaceContainerLowest,
           borderRadius: BorderRadius.circular(4),
         ),
         padding: const EdgeInsets.all(8),

@@ -283,7 +283,7 @@ class _TextCelDialogState extends State<TextCelDialog> {
         constraints: const BoxConstraints(minHeight: 56, maxHeight: 120),
         alignment: Alignment.center,
         decoration: BoxDecoration(
-          color: theme.colorScheme.surfaceContainerHighest,
+          color: theme.colorScheme.surfaceContainerLowest,
           borderRadius: BorderRadius.circular(4),
         ),
         padding: const EdgeInsets.all(8),

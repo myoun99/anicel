@@ -138,9 +138,10 @@ Color storyboardCutBlockBackgroundColor(
   required bool hovered,
   required bool rangeSelected,
 }) {
-  final resting = active
-      ? colorScheme.primaryContainer
-      : colorScheme.surfaceContainerHighest;
+  // A cut block is a PLATE on the rows body, not a chrome surface: with one
+  // chrome fill it would have collapsed into the body it sits on and read
+  // only by its edge.
+  final resting = active ? colorScheme.primaryContainer : AppColors.washUp;
   final base = hovered && !active
       ? Color.alphaBlend(
           colorScheme.onSurface.withValues(alpha: 0.10),

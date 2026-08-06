@@ -287,11 +287,15 @@ class AppWindow extends StatelessWidget {
         onPressed: action.onPressed,
         child: label,
       ),
+      // These two carry no border, so with one chrome fill they would be
+      // invisible rectangles on the window body. A quiet action reads as a
+      // well sunk into the surface — the same level every field already uses
+      // — which also puts it a step BELOW the confirm rather than beside it.
       AppWindowActionEmphasis.quiet => TextButton(
         key: action.actionKey,
         onPressed: action.onPressed,
         style: TextButton.styleFrom(
-          backgroundColor: colorScheme.surfaceContainerHighest,
+          backgroundColor: colorScheme.surfaceContainerLowest,
         ),
         child: label,
       ),
@@ -299,7 +303,7 @@ class AppWindow extends StatelessWidget {
         key: action.actionKey,
         onPressed: action.onPressed,
         style: TextButton.styleFrom(
-          backgroundColor: colorScheme.surfaceContainerHighest,
+          backgroundColor: colorScheme.surfaceContainerLowest,
           foregroundColor: colorScheme.error,
         ),
         child: label,

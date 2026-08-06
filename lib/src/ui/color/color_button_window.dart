@@ -168,7 +168,7 @@ class _ColorButtonWindowState extends State<ColorButtonWindow> {
     final colorScheme = Theme.of(context).colorScheme;
     return Material(
       elevation: 8,
-      color: colorScheme.surfaceContainerHighest,
+      color: colorScheme.surfaceContainerHigh,
       borderRadius: BorderRadius.circular(6),
       clipBehavior: Clip.antiAlias,
       // The shared popup positions by width alone (height only decides

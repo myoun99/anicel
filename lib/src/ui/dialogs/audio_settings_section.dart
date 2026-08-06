@@ -234,7 +234,7 @@ class _AudioSettingsSectionState extends State<AudioSettingsSection> {
                           width: 140,
                           height: 8,
                           decoration: BoxDecoration(
-                            color: scheme.surfaceContainerHighest,
+                            color: scheme.surfaceContainerLowest,
                             borderRadius: BorderRadius.circular(2),
                           ),
                           alignment: Alignment.centerLeft,

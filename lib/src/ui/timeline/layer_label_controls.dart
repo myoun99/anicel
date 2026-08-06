@@ -84,7 +84,10 @@ class SectionBandZone extends StatelessWidget {
           width: layerSectionLabelSlotWidth,
           height: extent,
           decoration: BoxDecoration(
-            color: colorScheme.surfaceContainerLow,
+            // The band is a PLATE grouping a run of rows, not a chrome
+            // surface — one chrome fill would have left it reading by its two
+            // hairlines alone.
+            color: AppColors.washDown,
             // One shared table (R3 #5/#6): the bottom hairline sits on the
             // run's last row boundary, the right hairline is the band/rail
             // divider — no enclosing box.

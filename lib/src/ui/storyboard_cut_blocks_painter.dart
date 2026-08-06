@@ -14,6 +14,7 @@ import '../models/timeline_row_address.dart';
 import '../models/track_frame_range.dart';
 import 'storyboard_layer_policy.dart';
 import 'storyboard_timeline_layout.dart';
+import 'theme/app_theme.dart';
 import 'timeline/timeline_cell_style.dart';
 import 'timeline/timeline_frame_geometry.dart';
 import 'timeline/timeline_frame_range_policy.dart' show timelineDurationLabel;
@@ -628,11 +629,9 @@ class StoryboardCutBlocksPainter extends CustomPainter {
   ) {
     if (block.cells.isEmpty || block.thumbnails.length != block.cells.length) {
       // No coverage reading (or a mid-rebuild mismatch): the block is one
-      // slot, and the placeholder covers it.
-      canvas.drawRect(
-        block.rect,
-        Paint()..color = colorScheme.surfaceContainerHighest,
-      );
+      // slot, and the placeholder covers it. It is a plate on the rows body,
+      // so it wears the shade rather than a chrome fill.
+      canvas.drawRect(block.rect, Paint()..color = AppColors.washUp);
       return;
     }
     for (var index = 0; index < block.cells.length; index += 1) {
@@ -755,10 +754,7 @@ class StoryboardCutBlocksPainter extends CustomPainter {
   void _paintPanelPicture(Canvas canvas, ui.Image? image, Rect slot) {
     if (image == null) {
       // The pending placeholder the empty thumbnail slot used to be.
-      canvas.drawRect(
-        slot,
-        Paint()..color = colorScheme.surfaceContainerHighest,
-      );
+      canvas.drawRect(slot, Paint()..color = AppColors.washUp);
       return;
     }
     final source = Rect.fromLTWH(

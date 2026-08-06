@@ -50,8 +50,10 @@ abstract final class AppColors {
   /// on, and the surfaces the pointer summons (menus, tooltips).
   static const Color surfaceHigh = Color(0xFF303336);
 
-  /// The two WASHES: the only neutrals that are painted AT ALPHA over a fill,
-  /// and that may never be poured into a rectangle of their own.
+  /// The two SHADES of the chrome: a wash laid over a fill, or the resting
+  /// plate of something that sits ON a fill (a storyboard cut block, a
+  /// section band). What they may never be is a chrome surface themselves —
+  /// there are three of those and these are not among them.
   ///
   /// They exist because a wash used to borrow whichever surface happened to
   /// sit one step away, and those surfaces are collapsing into ONE fill — a

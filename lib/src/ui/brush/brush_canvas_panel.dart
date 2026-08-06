@@ -2064,7 +2064,10 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                       ),
                       width: rightStripWidth,
                       alignment: Alignment.center,
-                      color: colorScheme.surfaceContainerHighest,
+                      // A lane is a GROOVE, not a panel: it carries no border,
+                      // so with one chrome fill it would dissolve into the
+                      // shell around it and the thumb would ride on nothing.
+                      color: colorScheme.surfaceContainerLowest,
                       child: rightStripBar,
                     ),
                   ],

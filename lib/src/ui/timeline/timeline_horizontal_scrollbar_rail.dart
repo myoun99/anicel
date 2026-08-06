@@ -29,7 +29,7 @@ class TimelineHorizontalScrollbarRail extends StatelessWidget {
       key: const ValueKey<String>('timeline-bottom-scrollbar-rail'),
       height: height,
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest,
+        color: colorScheme.surfaceContainerLowest,
         border: Border(top: BorderSide(color: colorScheme.outlineVariant)),
       ),
       child: AppControllerScrollbar(
