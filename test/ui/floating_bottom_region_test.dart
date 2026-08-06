@@ -160,6 +160,64 @@ void main() {
     });
   });
 
+  group('docking the region on the other edge', () {
+    testWidgets('flips the whole geometry out of ONE flag — handle, '
+        'threshold, corners and cover', (tester) async {
+      await pumpApp(tester);
+
+      Rect regionRect() => tester.getRect(region());
+      Rect handle() => tester.getRect(
+        find.byKey(const ValueKey<String>('dock-resize-bottom')),
+      );
+      Rect threshold() => tester.getRect(
+        find
+            .descendant(of: region(), matching: find.byType(EditorPanelTabs))
+            .first,
+      );
+
+      // Docked at the bottom: 기하는 캔버스 향한 변에 (the handle is on the
+      // TOP edge, facing the artwork), 정체성은 창틀 향한 변에 (the 문턱 is
+      // on the bottom, against the frame).
+      final low = regionRect();
+      expect(handle().bottom, lessThanOrEqualTo(low.top + 0.5));
+      expect(threshold().bottom, closeTo(low.bottom, 0.5));
+      final canvas = tester.getRect(mainCanvasPanelShell());
+      expect(low.bottom, closeTo(canvas.bottom, 0.5));
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('top-strip-settings-button')),
+      );
+      await tester.pumpAndSettle();
+      final row = find.byKey(
+        const ValueKey<String>('menu-window-region-on-top'),
+      );
+      await tester.ensureVisible(row);
+      await tester.pumpAndSettle();
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+
+      // Both edges flip, and neither needed a rule of its own.
+      final high = regionRect();
+      expect(high.top, closeTo(canvas.top, 0.5));
+      expect(
+        handle().top,
+        greaterThanOrEqualTo(high.bottom - 0.5),
+        reason: 'the handle followed the artwork-facing edge',
+      );
+      expect(
+        threshold().top,
+        closeTo(high.top, 0.5),
+        reason: 'the threshold followed the frame-facing edge',
+      );
+
+      // And the FLOOR is told the cover moved with it, so Fit still frames
+      // the artwork where it can be seen.
+      final panel = tester.widget<BrushCanvasPanel>(mainCanvasPanelShell());
+      expect(panel.floorCover!.top, greaterThan(0));
+      expect(panel.floorCover!.bottom, 0);
+    });
+  });
+
   group('the floor knows what is covering it', () {
     testWidgets('the canvas is told exactly what the panels hide', (
       tester,

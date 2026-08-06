@@ -62,6 +62,22 @@ class WorkspacePanelsMenuController extends ChangeNotifier {
   List<WorkspaceFloorTab> Function()? _floorTabs;
   void Function(String tabId)? _floorTabSelector;
 
+  /// Which edge the FLOATING REGION is docked to — the timeline and the
+  /// paper panels it switches between.
+  ///
+  /// 아래 도킹 영역은 위/아래 설정 가능 (유저 확정). No new rule was needed
+  /// for what flips: 「기하는 캔버스 향한 변에, 정체성은 창틀 향한 변에」
+  /// already decides it, so docking at the top puts the resize handle below
+  /// and the 문턱 above out of the same one law.
+  bool get regionOnTop => _regionOnTop?.call() ?? false;
+
+  bool get canMoveRegion => _regionMover != null;
+
+  void setRegionOnTop(bool onTop) => _regionMover?.call(onTop);
+
+  bool Function()? _regionOnTop;
+  void Function(bool onTop)? _regionMover;
+
   /// Called by the workspace; [relay] (the layout model) drives menu
   /// refreshes.
   void attach({
@@ -74,6 +90,8 @@ class WorkspacePanelsMenuController extends ChangeNotifier {
     String? Function()? floorTabId,
     List<WorkspaceFloorTab> Function()? floorTabs,
     void Function(String tabId)? floorTabSelector,
+    bool Function()? regionOnTop,
+    void Function(bool onTop)? regionMover,
   }) {
     _relay?.removeListener(notifyListeners);
     _entriesProvider = entriesProvider;
@@ -84,6 +102,8 @@ class WorkspacePanelsMenuController extends ChangeNotifier {
     _floorTabId = floorTabId;
     _floorTabs = floorTabs;
     _floorTabSelector = floorTabSelector;
+    _regionOnTop = regionOnTop;
+    _regionMover = regionMover;
     _relay = relay..addListener(notifyListeners);
     // Attach runs inside the workspace's initState — mid-build. The menu
     // strip sits ABOVE the workspace in the tree and is already built, so
@@ -107,5 +127,7 @@ class WorkspacePanelsMenuController extends ChangeNotifier {
     _floorTabId = null;
     _floorTabs = null;
     _floorTabSelector = null;
+    _regionOnTop = null;
+    _regionMover = null;
   }
 }

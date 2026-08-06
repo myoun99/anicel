@@ -354,6 +354,19 @@ class EditorTopStrip extends StatelessWidget {
           ? () => panelsMenu.setToolRailOnRight(!panelsMenu.toolRailOnRight)
           : null,
     ),
+    // 아래 도킹 영역은 위/아래 설정 가능 (유저 확정). What flips with it —
+    // the resize handle to the other edge, the 문턱 with it, the square
+    // corners to whichever side is against the frame — needed no new rule:
+    // 「기하는 캔버스 향한 변에, 정체성은 창틀 향한 변에」 decides all of it.
+    _item(
+      id: 'window-region-on-top',
+      label: 'Timeline region on top',
+      icon: Icons.vertical_align_top,
+      checked: panelsMenu.regionOnTop,
+      onPressed: panelsMenu.canMoveRegion
+          ? () => panelsMenu.setRegionOnTop(!panelsMenu.regionOnTop)
+          : null,
+    ),
     _item(
       id: 'window-reset-layout',
       label: 'Reset workspace layout',

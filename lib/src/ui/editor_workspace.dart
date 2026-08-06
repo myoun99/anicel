@@ -744,6 +744,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           ),
       ],
       floorTabSelector: _selectFloorTab,
+      regionOnTop: () => _regionOnTop,
+      regionMover: (onTop) {
+        if (_regionOnTop == onTop) {
+          return;
+        }
+        setState(() => _regionOnTop = onTop);
+        _scheduleLayoutSave();
+      },
     );
     widget.layerNav?.bind(_stepDisplayedLayer);
     widget.flipHud?.bind(_flipHudSnapshot);
@@ -1091,6 +1099,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     setState(() {
       _lockedTabIds = restored.lockedTabIds;
       _bottomDockCollapsed = payload['bottomCollapsed'] == true;
+      _regionOnTop = payload['regionOnTop'] == true;
       final savedInset = payload['bottomInset'];
       if (savedInset is num && savedInset.isFinite && savedInset >= 0) {
         _bottomInset = savedInset.toDouble();
@@ -1150,6 +1159,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               'bottomCollapsed': _bottomDockCollapsed,
               'bottomInset': _bottomInset,
               'openRails': _openRails.toList(),
+              'regionOnTop': _regionOnTop,
             })
             .catchError((Object _) {}),
       );
@@ -2339,6 +2349,17 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// under the hand that opened it.
   double _bottomInset = 0;
 
+  /// Which edge the floating region is docked to.
+  ///
+  /// 아래 도킹 영역은 위/아래 설정 가능 (유저 확정), and NO new rule was
+  /// needed to say what flips with it: 「기하는 캔버스 향한 변에, 정체성은
+  /// 창틀 향한 변에」 already decides every piece. Docked at the top, the
+  /// edge facing the artwork is the BOTTOM one — so the resize handle goes
+  /// there and the 문턱 goes above it, and the region's square corners move
+  /// to whichever side is against the frame. One flag, and the law does the
+  /// rest.
+  bool _regionOnTop = false;
+
   /// How close to the rail's width counts as "the same", so the edge lands on
   /// the pass-through boundary instead of just beside it.
   ///
@@ -2402,6 +2423,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   Widget _buildBottomDock({
     required double availableExtent,
     bool inset = false,
+    bool onTop = false,
   }) {
     if (_layout.sectionsIn(EditorWorkspace.bottomGroupId).isEmpty) {
       return _emptyDockZone(EditorWorkspace.bottomGroupId, Axis.horizontal);
@@ -2413,14 +2435,15 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       // OUTSIDE the clip, or the clip would eat its outer half.
       position: DecorationPosition.foreground,
       decoration: ShapeDecoration(
-        shape: _floatingBottomShape(
-          inset: inset,
+        shape: _floatingBottomShape(inset: inset, onTop: onTop,
           side: const BorderSide(color: AppColors.backdrop),
         ),
       ),
       child: ClipPath(
         key: const ValueKey<String>('floating-bottom-region'),
-        clipper: AppShapes.clipper(_floatingBottomShape(inset: inset)),
+        clipper: AppShapes.clipper(
+          _floatingBottomShape(inset: inset, onTop: onTop),
+        ),
         // The height is the layout's to hand out now (see
         // [_bottomDockHeight]); the region just fills what it is given.
         child: _buildDockHost(
@@ -2430,8 +2453,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           // accessibility name, so it moves into the tooltip rather than
           // out of existence.
           compact: true,
-          stripAtBottom: true,
-          trailing: [_bottomCollapseButton()],
+          // 정체성은 창틀 향한 변에: the 문턱 rides the edge against the
+          // window frame, which is the far side from the artwork — so it
+          // flips with the region out of the same law that moved the
+          // resize handle.
+          stripAtBottom: !onTop,
+          trailing: [_bottomCollapseButton(onTop: onTop)],
         ),
       ),
     );
@@ -2446,16 +2473,19 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// region gains its symmetric side inset.
   RoundedSuperellipseBorder _floatingBottomShape({
     bool inset = false,
+    bool onTop = false,
     BorderSide side = BorderSide.none,
   }) {
     const radius = Radius.circular(AppShapes.floatingPanelRadius);
-    // Pulled in from the sides, the bottom corners are no longer ON the
-    // window's edge — so they round too, and the region reads as one object
-    // lying on the drawing rather than as a shape growing out of the frame.
+    // The corner that lies ON the window's own edge is square; the one
+    // facing the artwork is round. Which is which flips with the region's
+    // edge, and pulling the sides in rounds the flush pair too, because
+    // then they are not touching the frame either.
+    final flush = inset ? radius : Radius.zero;
     return AppShapes.containerRadius(
       BorderRadius.vertical(
-        top: radius,
-        bottom: inset ? radius : Radius.zero,
+        top: onTop ? flush : radius,
+        bottom: onTop ? radius : flush,
       ),
       side: side,
     );
@@ -2475,13 +2505,15 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     required bool right,
     required double inset,
     required double height,
+    required bool onTop,
     required double railSpan,
     required double maxInset,
   }) {
     return Positioned(
       left: right ? null : inset,
       right: right ? inset : null,
-      bottom: 0,
+      top: onTop ? 0 : null,
+      bottom: onTop ? null : 0,
       height: height,
       width: DockEdgeSplitter.thickness,
       child: DockEdgeSplitter(
@@ -2512,7 +2544,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       ? railSpan
       : inset;
 
-  Widget _bottomCollapseButton() {
+  Widget _bottomCollapseButton({bool onTop = false}) {
     return IconButton(
       key: const ValueKey<String>('floating-bottom-collapse'),
       tooltip: _bottomDockCollapsed
@@ -2529,10 +2561,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         setState(() => _bottomDockCollapsed = !_bottomDockCollapsed);
         _scheduleLayoutSave();
       },
+      // The chevron points where the region would GO — toward the artwork
+      // to open, toward the frame to collapse — so it flips with the edge
+      // rather than always meaning "down".
       icon: Icon(
-        _bottomDockCollapsed
-            ? Icons.keyboard_arrow_up
-            : Icons.keyboard_arrow_down,
+        _bottomDockCollapsed == onTop
+            ? Icons.keyboard_arrow_down
+            : Icons.keyboard_arrow_up,
       ),
     );
   }
@@ -2705,38 +2740,34 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                   final rightRailSpan = hasRightDock
                       ? rightWidth + DockEdgeSplitter.thickness
                       : 0.0;
+                  // Which edge the region is on. Everything below reads
+                  // this and nothing anywhere else has to.
+                  final onTop = _regionOnTop;
+                  final regionSpan = hasBottomDock
+                      ? bottomHeight + DockEdgeSplitter.thickness
+                      : 0.0;
                   // What the panels hide from the artwork. The floor reads
                   // this and nothing else has to know it exists.
                   final floorCover = EdgeInsets.only(
                     left: leftRailSpan,
                     right: rightRailSpan,
-                    bottom: hasBottomDock
-                        ? bottomHeight + DockEdgeSplitter.thickness
-                        : 0,
+                    top: onTop ? regionSpan : 0,
+                    bottom: onTop ? 0 : regionSpan,
                   );
                   // ★ Whether each column runs past the floating region or
-                  // stops on its top edge — one comparison per side, because
-                  // the two rails can be different widths and the answer is
+                  // stops on its edge — one comparison per side, because the
+                  // two rails can be different widths and the answer is
                   // about whether THIS one has room.
-                  final regionTop = hasBottomDock
-                      ? bottomHeight + DockEdgeSplitter.thickness
-                      : 0.0;
-                  final leftColumnBottom =
+                  double columnStop(double railSpan) =>
                       hasBottomDock &&
                           !_railPassesBottom(
                             bottomInset: bottomInset,
-                            railWidth: leftRailSpan,
+                            railWidth: railSpan,
                           )
-                      ? regionTop
+                      ? regionSpan
                       : 0.0;
-                  final rightColumnBottom =
-                      hasBottomDock &&
-                          !_railPassesBottom(
-                            bottomInset: bottomInset,
-                            railWidth: rightRailSpan,
-                          )
-                      ? regionTop
-                      : 0.0;
+                  final leftStop = columnStop(leftRailSpan);
+                  final rightStop = columnStop(rightRailSpan);
 
                   return Stack(
                     children: [
@@ -2750,8 +2781,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                       ),
                       Positioned(
                         left: 0,
-                        top: 0,
-                        bottom: leftColumnBottom,
+                        top: onTop ? leftStop : 0,
+                        bottom: onTop ? 0 : leftStop,
                         width: hasLeftDock ? leftWidth : null,
                         child: _buildRailColumn(
                           EditorPanelDockSide.left,
@@ -2761,8 +2792,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                       if (hasLeftDock)
                         Positioned(
                           left: leftWidth,
-                          top: 0,
-                          bottom: leftColumnBottom,
+                          top: onTop ? leftStop : 0,
+                          bottom: onTop ? 0 : leftStop,
                           width: DockEdgeSplitter.thickness,
                           // ONE splitter per rail, on its inner edge: every
                           // group on the rail shares this width.
@@ -2778,8 +2809,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                         ),
                       Positioned(
                         right: 0,
-                        top: 0,
-                        bottom: rightColumnBottom,
+                        top: onTop ? rightStop : 0,
+                        bottom: onTop ? 0 : rightStop,
                         width: hasRightDock ? rightWidth : null,
                         child: _buildRailColumn(
                           EditorPanelDockSide.right,
@@ -2789,8 +2820,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                       if (hasRightDock)
                         Positioned(
                           right: rightWidth,
-                          top: 0,
-                          bottom: rightColumnBottom,
+                          top: onTop ? rightStop : 0,
+                          bottom: onTop ? 0 : rightStop,
                           width: DockEdgeSplitter.thickness,
                           child: DockEdgeSplitter(
                             key: const ValueKey<String>('dock-resize-right'),
@@ -2806,7 +2837,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                         Positioned(
                           left: bottomInset,
                           right: bottomInset,
-                          bottom: bottomHeight,
+                          // 기하는 캔버스 향한 변에: the resize handle rides
+                          // whichever edge faces the artwork, which flips
+                          // with the region and needs no rule of its own.
+                          top: onTop ? bottomHeight : null,
+                          bottom: onTop ? null : bottomHeight,
                           height: DockEdgeSplitter.thickness,
                           child: DockEdgeSplitter(
                             key: const ValueKey<String>('dock-resize-bottom'),
@@ -2822,7 +2857,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                               }
                               _layout.resizeDock(
                                 EditorWorkspace.bottomGroupId,
-                                -delta,
+                                // Toward the artwork GROWS the region, on
+                                // either edge: down when it is on top, up
+                                // when it is on the bottom.
+                                onTop ? delta : -delta,
                                 fallback: EditorWorkspace.bottomPanelHeight,
                                 // The splitter stops where the panels stop
                                 // shrinking. Without this the drag runs on
@@ -2845,11 +2883,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                       Positioned(
                         left: bottomInset,
                         right: bottomInset,
-                        bottom: 0,
+                        top: onTop ? 0 : null,
+                        bottom: onTop ? null : 0,
                         height: hasBottomDock ? bottomHeight : null,
                         child: _buildBottomDock(
                           availableExtent: constraints.maxHeight,
                           inset: bottomInset > 0,
+                          onTop: onTop,
                         ),
                       ),
                       // The region's side grips. TWO of them and ONE number
@@ -2863,6 +2903,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                           right: false,
                           inset: bottomInset,
                           height: bottomHeight,
+                          onTop: onTop,
                           railSpan: leftRailSpan,
                           maxInset: math.max(
                             0.0,
@@ -2873,6 +2914,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                           right: true,
                           inset: bottomInset,
                           height: bottomHeight,
+                          onTop: onTop,
                           railSpan: rightRailSpan,
                           maxInset: math.max(
                             0.0,
