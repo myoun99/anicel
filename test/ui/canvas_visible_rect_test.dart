@@ -74,7 +74,9 @@ void main() {
                   ),
                   availableFrameKeys: frameKeys,
                   cacheInvalidationSink: BrushEditCacheInvalidationSink(),
-                  visibleInsets: insets,
+                  // Being covered is what makes a panel the floor, so the
+                  // cover IS the way to say "something is floating on me".
+                  floorCover: insets,
                 ),
               ),
             ),

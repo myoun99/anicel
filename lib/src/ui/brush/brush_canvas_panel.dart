@@ -36,6 +36,7 @@ import '../../models/project.dart' show defaultProjectBackdropArgb;
 import '../../models/project_background.dart';
 import '../canvas/paper_background.dart'
     show AlphaCheckerboardPainter, alphaPreviewEnabled;
+import '../theme/app_theme.dart';
 import '../theme/app_workspace_colors.dart';
 import '../widgets/color_swatch_button.dart';
 import 'brush_cursor_overlay.dart';
@@ -110,7 +111,6 @@ class BrushCanvasPanel extends StatefulWidget {
     this.interactiveContentPose,
     this.contentOverride,
     this.fitFocusRect,
-    this.visibleInsets = EdgeInsets.zero,
     this.floorCover,
     this.autoFrame,
     this.contentStrokeActive,
@@ -241,28 +241,23 @@ class BrushCanvasPanel extends StatefulWidget {
   /// active). Null keeps Fit on the canvas itself.
   final Rect? fitFocusRect;
 
-  /// The edges of this panel's box that are COVERED by something floating
-  /// over the canvas, and therefore are not part of the window the artist
-  /// looks through. See [canvasVisibleRect] for what this is for and which
-  /// half of the panel's geometry it does and does not touch.
-  ///
-  /// Zero — the default, and everything the app passes today — makes every
-  /// framing verb reduce to the arithmetic it had before this existed.
-  final EdgeInsets visibleInsets;
-
   /// Non-null when this panel is the app's FLOOR: the canvas fills the whole
-  /// box, the panels floating on it cover these edges, and the shell's own
-  /// three chrome pieces float too rather than taking space out of the box.
+  /// box, and the panels lying on it cover these edges.
   ///
-  /// This is the cover from the PANELS only. The shell's chrome hides
-  /// artwork exactly the way a panel does, but only the panel knows how
-  /// thick its own chrome is, so it adds [floorChromeInsets] itself —
-  /// one number, stated in one place, instead of a caller reconstructing it.
+  /// This is the concrete form of the split [canvasVisibleRect] describes —
+  /// the edges of the panel's box that are covered, and therefore are not
+  /// part of the window the artist looks through. It carries a layout
+  /// meaning as well as a framing one, because on this app only the floor
+  /// is ever covered: a docked panel takes the region it was given and
+  /// nothing lies on it.
+  ///
+  /// The PANELS only. The shell's own controls are capsules that float on
+  /// the drawing rather than bands that reserve their thickness, so they do
+  /// not deflate the window the way a panel does — Fit frames the artwork
+  /// behind them, and a capsule that hides a corner of it is the price of
+  /// not spending a strip of the screen on chrome that is idle most of the
+  /// time.
   final EdgeInsets? floorCover;
-
-  /// What the shell's own chrome hides once it floats.
-  static const EdgeInsets floorChromeInsets =
-      _CanvasEditorPanelShell.floatingChromeInsets;
 
   /// Playback-follow reframing: when the request's token changes between
   /// updates the panel reframes onto its rect (see
@@ -747,10 +742,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     bool rotation,
     String title,
     Object? leading,
+    bool floor,
   })?
   _shellBarsToken;
   Widget? _memoRightStripBar;
+  Widget? _memoHorizontalStripBar;
   Widget? _memoBottomBar;
+
+  bool get _isFloor => widget.floorCover != null;
 
   void _ensureShellBars() {
     final token = (
@@ -760,6 +759,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       rotation: widget.allowViewRotation,
       title: widget.selectionLabels.title,
       leading: widget.bottomBarLeadingToken,
+      floor: _isFloor,
     );
     // A leading list without a token can't be memoized (see
     // [bottomBarLeadingToken]) — rebuild rather than serve a stale bar.
@@ -779,7 +779,19 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       onViewportChanged: _setViewportDuringPanbarDrag,
       onViewportChangeEnd: _syncViewportParent,
     );
+    // Floating, the horizontal panbar is its own capsule; docked it is
+    // still the stretchy middle of the bottom bar.
+    _memoHorizontalStripBar = _isFloor
+        ? CanvasViewportHorizontalScrollbar(
+            viewport: _viewport,
+            editorViewportSize: _resolvedEditorViewportSize(),
+            canvasSize: widget.canvasSize,
+            onViewportChanged: _setViewportDuringPanbarDrag,
+            onViewportChangeEnd: _syncViewportParent,
+          )
+        : null;
     _memoBottomBar = _CanvasViewportBottomBar(
+      variant: _isFloor ? _ViewBarVariant.pill : _ViewBarVariant.docked,
       leading: widget.bottomBarLeading,
       viewport: _viewport,
       editorViewportSize: _resolvedEditorViewportSize(),
@@ -807,6 +819,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   Widget _memoizedRightStripBar() {
     _ensureShellBars();
     return _memoRightStripBar!;
+  }
+
+  Widget? _memoizedHorizontalStripBar() {
+    _ensureShellBars();
+    return _memoHorizontalStripBar;
   }
 
   Widget _memoizedBottomBar() {
@@ -858,9 +875,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               title: widget.selectionLabels.title,
               actions: widget.statusStripActions,
               rightStripBar: _memoizedRightStripBar(),
+              horizontalStripBar: _memoizedHorizontalStripBar(),
               bottomBar: _memoizedBottomBar(),
-              // The chrome floats INSIDE what the panels left over.
+              // The capsules float INSIDE what the panels left over.
               floatingChromeCover: widget.floorCover,
+              strokeActive: _strokeActive || _selectionDragActive,
+              contentStrokeActive: widget.contentStrokeActive,
               child: LayoutBuilder(
                 builder: (context, viewportConstraints) {
                   final viewportSize = Size(
@@ -1561,18 +1581,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         );
   }
 
-  /// What is hidden from the artwork, whoever is hiding it.
-  ///
-  /// Docked, that is only what the caller passed. On the FLOOR the shell's
-  /// own chrome lies on the canvas too, and a bar that covers artwork is a
-  /// cover — the same edge arithmetic, not a special case.
-  EdgeInsets get _framingInsets {
-    final cover = widget.floorCover;
-    if (cover == null) {
-      return widget.visibleInsets;
-    }
-    return cover + BrushCanvasPanel.floorChromeInsets;
-  }
+  /// What is hidden from the artwork by the panels lying on it. Nothing, for
+  /// a panel that is not the floor — nothing lies on those.
+  EdgeInsets get _framingInsets => widget.floorCover ?? EdgeInsets.zero;
 
   /// The window you LOOK THROUGH, in layout coordinates. Every verb that
   /// frames the artwork wants this one — see [canvasVisibleRect].
@@ -2052,30 +2063,37 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// width IS that bar's hit lane.
   static const double rightStripWidth = AppScrollbarLane.medium;
 
-  /// What the shell's own chrome hides from the artwork when it FLOATS.
-  ///
-  /// Docked, these three pieces take their space out of the panel and the
-  /// canvas never sits under them. On the floor they lie on the canvas, so
-  /// a framing verb has to count them exactly like it counts the timeline.
-  static const EdgeInsets floatingChromeInsets = EdgeInsets.only(
-    top: statusStripHeight,
-    right: rightStripWidth,
-    bottom: _CanvasViewportBottomBar.height,
-  );
-
   const _CanvasEditorPanelShell({
     required this.title,
     required this.child,
     required this.bottomBar,
     required this.rightStripBar,
+    this.horizontalStripBar,
     this.actions = const <Widget>[],
     this.floatingChromeCover,
+    this.strokeActive = false,
+    this.contentStrokeActive,
   });
 
   final String title;
   final Widget child;
   final Widget bottomBar;
   final Widget rightStripBar;
+
+  /// The horizontal panbar as its OWN surface. Docked it is inside
+  /// [bottomBar]; floating it rides the top edge on its own, because the
+  /// bar it used to live in became a capsule that no longer stretches.
+  final Widget? horizontalStripBar;
+
+  /// The floor's controls fade while a stroke is in progress.
+  ///
+  /// Hover is not the answer this reaches for and cannot be: touch has no
+  /// hover at all, and a pen hovers over the DRAWING rather than over the
+  /// controls, so a hover-to-reveal cluster would be invisible exactly when
+  /// the hand is working. What the app already knows is when a stroke is
+  /// live, and that is the moment the controls are in the way.
+  final bool strokeActive;
+  final ValueListenable<bool>? contentStrokeActive;
 
   /// Host commands living IN the status strip, right-aligned (UI-R10 #18
   /// — the timesheet's toolbar row retired into here). Always visible;
@@ -2094,30 +2112,41 @@ class _CanvasEditorPanelShell extends StatelessWidget {
 
   Widget _statusStrip(ColorScheme colorScheme) => ClipRect(
     child: Container(
-      key: const ValueKey<String>('canvas-editor-panel-status-strip'),
       alignment: Alignment.centerLeft,
       padding: const EdgeInsets.symmetric(horizontal: 10),
       decoration: BoxDecoration(
         color: colorScheme.surfaceContainerHighest,
         border: Border(bottom: BorderSide(color: colorScheme.outlineVariant)),
       ),
+      child: _statusContent(colorScheme, floating: false),
+    ),
+  );
+
+  /// The selection readout and the host's own status commands.
+  ///
+  /// Docked it fills a strip across the panel; floating it is as wide as
+  /// what it says, because a band of chrome across the drawing is the thing
+  /// the floor exists to stop.
+  Widget _statusContent(ColorScheme colorScheme, {required bool floating}) {
+    final text = Text(
+      title,
+      overflow: TextOverflow.ellipsis,
+      style: TextStyle(fontSize: 11, color: colorScheme.onSurfaceVariant),
+    );
+    return Padding(
+      key: const ValueKey<String>('canvas-editor-panel-status-strip'),
+      padding: floating
+          ? const EdgeInsets.symmetric(horizontal: 8)
+          : EdgeInsets.zero,
       child: Row(
+        mainAxisSize: floating ? MainAxisSize.min : MainAxisSize.max,
         children: [
-          Expanded(
-            child: Text(
-              title,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                fontSize: 11,
-                color: colorScheme.onSurfaceVariant,
-              ),
-            ),
-          ),
+          if (floating) Flexible(child: text) else Expanded(child: text),
           ...actions,
         ],
       ),
-    ),
-  );
+    );
+  }
 
   Widget _rightStrip(ColorScheme colorScheme) => Container(
     key: const ValueKey<String>('canvas-editor-panel-right-strip'),
@@ -2150,7 +2179,34 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     child: bottomBar,
   );
 
-  /// The floor: canvas everywhere, chrome floating over its visible part.
+  /// How far a floating capsule sits in from the window's edge.
+  static const double _capsuleMargin = 8;
+
+  /// What a scrollbar capsule spans, as a share of the edge it rides —
+  /// clamped, because the point of a capsule is that it says where you are
+  /// and lets you drag back, not that it maps the whole pasteboard.
+  static const double _capsuleTrackFraction = 0.34;
+  static const double _capsuleTrackMin = 80;
+  static const double _capsuleTrackMax = 260;
+
+  double _capsuleTrack(double edge) {
+    // Never wider than the edge it rides, and never so short that the thumb
+    // has nowhere to travel — a scrollbar that cannot be dragged is not a
+    // scrollbar, and dragging is the ONLY way back from a runaway pan.
+    final room = math.max(0.0, edge - 2 * _capsuleMargin);
+    final wanted = (edge * _capsuleTrackFraction).clamp(
+      _capsuleTrackMin,
+      _capsuleTrackMax,
+    );
+    return math.min(wanted, room);
+  }
+
+  /// The floor: canvas everywhere, controls floating on its visible part.
+  ///
+  /// Nothing here takes a band across the artwork. The chrome used to be
+  /// three strips that reserved their own thickness; on the floor they are
+  /// capsules that lie on the drawing, pinned to the edges of the part of
+  /// it you can still see, and pushed in when a panel opens.
   Widget _buildFloor(BuildContext context, EdgeInsets cover) {
     final colorScheme = Theme.of(context).colorScheme;
     return Stack(
@@ -2176,40 +2232,109 @@ class _CanvasEditorPanelShell extends StatelessWidget {
           bottom: cover.bottom,
           child: LayoutBuilder(
             builder: (context, constraints) {
-              // Same yielding as the docked path: a window too short for
-              // both bars gives up the status line before the view
-              // controls, and the two share what is left rather than
-              // overflowing. Reachable when the user drags the timeline
-              // down to the ceiling in an already-short window.
-              final room = constraints.maxHeight.clamp(0.0, double.infinity);
-              final bottom = _CanvasViewportBottomBar.height
-                  .clamp(0.0, room)
-                  .toDouble();
-              final status = statusStripHeight
-                  .clamp(0.0, room - bottom)
-                  .toDouble();
-              return Column(
+              final window = Size(
+                constraints.maxWidth.clamp(0.0, double.infinity),
+                constraints.maxHeight.clamp(0.0, double.infinity),
+              );
+              return _FloatingCanvasControls(
+                strokeActive: strokeActive,
+                contentStrokeActive: contentStrokeActive,
                 children: [
-                  SizedBox(height: status, child: _statusStrip(colorScheme)),
-                  // The hole in the middle of the chrome. An empty SizedBox
-                  // answers no hit test, so a stroke aimed between the bars
-                  // reaches the canvas underneath instead of dying here.
-                  const Expanded(
+                  // THE TOP EDGE, as one row rather than as two things
+                  // aimed at the same strip of screen. The cluster is
+                  // nailed to the corner and the panbar centres in whatever
+                  // is left of the edge, so they cannot overlap however
+                  // wide the cluster grows — a Stack would let the bar draw
+                  // straight over the zoom readout on a wide window.
+                  //
+                  // The corner, and NOT the timeline: that panel's top edge
+                  // moves on every resize and every threshold switch, and
+                  // 좌우반전 gets pressed dozens of times an hour.
+                  Positioned(
+                    left: _capsuleMargin,
+                    top: _capsuleMargin,
+                    right: _capsuleMargin,
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Expanded(child: SizedBox.expand()),
-                        SizedBox(width: rightStripWidth),
+                        if (window.width >=
+                            _CanvasViewportBottomBar.pillMinWidth +
+                                2 * _capsuleMargin)
+                          // BOUNDED on purpose: a Row hands its non-flexible
+                          // children infinite width, and the cluster decides
+                          // which of its groups it can afford from the width
+                          // it is offered. Unbounded, it would offer itself
+                          // everything, keep every control, and overflow the
+                          // row — the shedding is the whole reason it is
+                          // laid out before the panbar rather than beside it.
+                          ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxWidth: math.max(
+                                0.0,
+                                window.width - 2 * _capsuleMargin,
+                              ),
+                            ),
+                            child: _capsule(
+                              colorScheme,
+                              keyValue: 'canvas-view-pill',
+                              height: _CanvasViewportBottomBar.height,
+                              child: bottomBar,
+                            ),
+                          ),
+                        // The panbars cannot be dropped, however much chrome
+                        // the floor sheds: CanvasViewport.clamped() locks the
+                        // ZOOM and leaves pan unbounded, so their
+                        // viewportForScroll is the only code path that walks
+                        // a runaway pan back — and the only readout of where
+                        // you are on the pasteboard.
+                        Expanded(
+                          child: LayoutBuilder(
+                            builder: (context, edge) => Align(
+                              alignment: Alignment.topCenter,
+                              child: _capsule(
+                                colorScheme,
+                                keyValue: 'canvas-panbar-horizontal',
+                                height: AppScrollbarLane.medium,
+                                width: _capsuleTrack(edge.maxWidth),
+                                child:
+                                    horizontalStripBar ??
+                                    const SizedBox.shrink(),
+                              ),
+                            ),
+                          ),
+                        ),
                       ],
                     ),
                   ),
-                  SizedBox(
-                    height: bottom,
-                    child: ClipRect(
-                      child: OverflowBox(
-                        alignment: Alignment.topCenter,
-                        minHeight: _CanvasViewportBottomBar.height,
-                        maxHeight: _CanvasViewportBottomBar.height,
-                        child: _bottomBarFrame(colorScheme),
+                  Positioned(
+                    right: _capsuleMargin,
+                    top: 0,
+                    bottom: 0,
+                    child: Align(
+                      alignment: Alignment.centerRight,
+                      child: _capsule(
+                        colorScheme,
+                        keyValue: 'canvas-panbar-vertical',
+                        width: rightStripWidth,
+                        height: _capsuleTrack(window.height),
+                        child: rightStripBar,
+                      ),
+                    ),
+                  ),
+                  // The readout goes to the opposite corner from the
+                  // controls — it is something you glance at, not something
+                  // you reach for.
+                  Positioned(
+                    left: _capsuleMargin,
+                    bottom: _capsuleMargin,
+                    right: _capsuleMargin,
+                    child: Align(
+                      alignment: AlignmentDirectional.centerStart,
+                      child: _capsule(
+                        colorScheme,
+                        keyValue: 'canvas-status-capsule',
+                        height: statusStripHeight,
+                        child: _statusContent(colorScheme, floating: true),
                       ),
                     ),
                   ),
@@ -2218,15 +2343,46 @@ class _CanvasEditorPanelShell extends StatelessWidget {
             },
           ),
         ),
-        // The vertical lane rides beside the hole, full height between the
-        // two bars, so its travel matches what you can see.
-        Positioned(
-          top: cover.top + statusStripHeight,
-          right: cover.right,
-          bottom: cover.bottom + _CanvasViewportBottomBar.height,
-          child: _rightStrip(colorScheme),
-        ),
       ],
+    );
+  }
+
+  /// One floating control surface: opaque, superellipse, ringed in the
+  /// backdrop.
+  ///
+  /// The ring is not decoration. What lies beside a capsule is the
+  /// PASTEBOARD, a colour the user chooses, so no fill of ours can be
+  /// relied on to contrast with it — the same reason the panbar lane has
+  /// carried a hairline since the palette collapsed to three fills.
+  Widget _capsule(
+    ColorScheme colorScheme, {
+    required String keyValue,
+    required Widget child,
+    double? width,
+    double? height,
+  }) {
+    // The corner follows the SHORT axis, the way every control's does. A
+    // capsule with neither axis stated would ask for an infinite radius, so
+    // the fallback is the app's smallest corner rather than a crash.
+    final short = math.min(
+      width ?? double.infinity,
+      height ?? double.infinity,
+    );
+    final shape = short.isFinite
+        ? AppShapes.control(short)
+        : AppShapes.container(AppShapes.wellRadius);
+    return DecoratedBox(
+      key: ValueKey<String>(keyValue),
+      decoration: ShapeDecoration(
+        color: colorScheme.surface,
+        shape: shape.copyWith(
+          side: const BorderSide(color: AppColors.backdrop),
+        ),
+      ),
+      child: ClipPath(
+        clipper: AppShapes.clipper(shape),
+        child: SizedBox(width: width, height: height, child: child),
+      ),
     );
   }
 
@@ -2315,6 +2471,63 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   }
 }
 
+/// The floor's controls, laid on the drawing and fading out of the way of
+/// a stroke.
+///
+/// The Stack takes pointers only where its children are, so the empty
+/// middle — most of the screen — still belongs to the canvas.
+class _FloatingCanvasControls extends StatelessWidget {
+  const _FloatingCanvasControls({
+    required this.strokeActive,
+    required this.contentStrokeActive,
+    required this.children,
+  });
+
+  final bool strokeActive;
+  final ValueListenable<bool>? contentStrokeActive;
+  final List<Widget> children;
+
+  static Widget _dim({required bool active, required Widget child}) =>
+      AnimatedOpacity(
+        key: const ValueKey<String>('canvas-floating-controls'),
+        opacity: active ? 0.16 : 1,
+        duration: const Duration(milliseconds: 120),
+        child: child,
+      );
+
+  @override
+  Widget build(BuildContext context) {
+    final stack = Stack(children: children);
+    final content = contentStrokeActive;
+    if (content == null) {
+      return _dim(active: strokeActive, child: stack);
+    }
+    return ValueListenableBuilder<bool>(
+      valueListenable: content,
+      builder: (context, contentActive, child) =>
+          _dim(active: strokeActive || contentActive, child: child!),
+      child: stack,
+    );
+  }
+}
+
+/// What a canvas host's view bar IS, which follows from where the host is.
+///
+/// 법: 뷰 컨트롤은 바닥에만 (유저 확정). Fit, 1:1, the zoom steps and readout,
+/// straighten, the flips and the angle belong to the surface the app is
+/// lying on. A canvas opened in a rail column or the bottom region gets its
+/// two scrollbars and nothing else — it is a page you are reading beside
+/// the drawing, not the drawing.
+enum _ViewBarVariant {
+  /// A bar across the bottom of a docked panel: host controls and the
+  /// horizontal panbar.
+  docked,
+
+  /// A capsule pinned to the floor's top-left corner: every view control,
+  /// no scrollbar (those float on their own edges).
+  pill,
+}
+
 class _CanvasViewportBottomBar extends StatelessWidget {
   static const double height = 28;
 
@@ -2335,7 +2548,20 @@ class _CanvasViewportBottomBar extends StatelessWidget {
   /// scroll a little sooner, while under-budgeting OVERFLOWS.
   static const double _leadingControlBudget = 44;
 
+  /// Below this the pill drops the paper/pasteboard swatches. They are the
+  /// least urgent thing it carries — a colour you set once per project,
+  /// against controls you press dozens of times an hour — and they are
+  /// still in the project settings.
+  static const double _pillColorMinWidth = 470;
+
+  /// Below this the pill stands down entirely: fit, 1:1, the two zoom steps
+  /// and the readout are the last things it would drop, and they do not fit
+  /// either. The shell reads it too — a capsule around an empty row would
+  /// be a small ringed box sitting on the artwork saying nothing.
+  static const double pillMinWidth = 190;
+
   const _CanvasViewportBottomBar({
+    this.variant = _ViewBarVariant.docked,
     this.leading = const <Widget>[],
     required this.viewport,
     required this.editorViewportSize,
@@ -2358,6 +2584,8 @@ class _CanvasViewportBottomBar extends StatelessWidget {
     required this.onFlipHorizontal,
     required this.onFlipVertical,
   });
+
+  final _ViewBarVariant variant;
 
   /// R26 #41: host controls at the far left, before the panbar.
   final List<Widget> leading;
@@ -2572,51 +2800,68 @@ class _CanvasViewportBottomBar extends StatelessWidget {
       return row;
     }
 
+    if (variant == _ViewBarVariant.pill) {
+      // The floor's cluster. It has no scrollbar to stretch — those float
+      // on the window's own edges — so it is as wide as what it holds, and
+      // sheds clusters rather than scrolling when the window cannot pay
+      // for them (띠는 스크롤하지 않는다: a scrolling strip hands drags to
+      // its scroll arena before its children ever see them).
+      return SizedBox(
+        height: height,
+        child: LayoutBuilder(
+          builder: (context, constraints) {
+            final room = constraints.maxWidth;
+            if (room < pillMinWidth) {
+              // A window this narrow cannot hold even the zoom cluster.
+              // Standing down is the honest answer — the gestures still
+              // zoom and pan, and every control here has a keyboard or
+              // menu route. Overflowing onto the artwork is not.
+              return const SizedBox.shrink();
+            }
+            final wide =
+                room >=
+                _wideLayoutMinWidth + leading.length * _leadingControlBudget;
+            final roomy = room >= _pillColorMinWidth;
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const SizedBox(width: 4),
+                ...joined([
+                  leading,
+                  zoomCluster,
+                  if (wide) viewControls,
+                  if (roomy) colorControls,
+                ]),
+                const SizedBox(width: 4),
+              ],
+            );
+          },
+        ),
+      );
+    }
+
     return SizedBox(
       height: height,
       child: LayoutBuilder(
         builder: (context, constraints) {
-          final scrollFallbackWidth =
+          // A docked host keeps its own controls and its panbar, and that
+          // is all it keeps — see [_ViewBarVariant].
+          final tight =
+              constraints.maxWidth <
               _scrollFallbackWidth + leading.length * _leadingControlBudget;
-          if (constraints.maxWidth < scrollFallbackWidth) {
-            // Too tight for an Expanded scrollbar between the controls —
-            // scroll the whole bar so nothing overflows (slim edge docks).
-            return SingleChildScrollView(
-              scrollDirection: Axis.horizontal,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  const SizedBox(width: 4),
-                  // R28 #9: the surface swatches ride with the scrollbar
-                  // cluster, so they stay immediately right of it in the
-                  // scrolled layout too.
-                  ...joined([
-                    leading,
-                    viewControls,
-                    [SizedBox(width: 80, child: scrollbar()), ...colorControls],
-                    zoomCluster,
-                  ]),
-                  const SizedBox(width: 4),
-                ],
-              ),
-            );
-          }
-          final wide =
-              constraints.maxWidth >=
-              _wideLayoutMinWidth + leading.length * _leadingControlBudget;
           return Row(
             children: [
               const SizedBox(width: 4),
-              // Host controls first (R26 #41), then the view controls —
-              // narrow panels drop the rotation cluster; the ZOOM cluster
-              // (fit/1:1/−/%/+, UI-R18 #17/#20) always shows on the right.
-              ...joined([leading, if (wide) viewControls]),
-              if (leading.isNotEmpty || (wide && viewControls.isNotEmpty))
-                divider(),
-              Expanded(child: scrollbar()),
-              ...colorControls,
-              divider(),
-              ...zoomCluster,
+              ...leading,
+              if (leading.isNotEmpty) divider(),
+              // Below the fallback width the panbar takes a fixed slice
+              // rather than an Expanded one: the host controls are the
+              // reason the row is tight, and shrinking the bar under them
+              // is better than overflowing.
+              if (tight)
+                SizedBox(width: 80, child: scrollbar())
+              else
+                Expanded(child: scrollbar()),
               const SizedBox(width: 4),
             ],
           );

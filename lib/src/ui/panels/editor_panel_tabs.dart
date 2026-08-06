@@ -265,53 +265,65 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
         // keep-alive tabs stay in the stack offstage (state, scroll
         // positions and caches survive the switch).
         Expanded(
-          child: ColoredBox(
-            color: colorScheme.surface,
-            child: Stack(
-              fit: StackFit.expand,
-              children: [
-                for (final tab in tabs)
-                  if (tab.id == active.id || _builtTabIds.contains(tab.id))
-                    Offstage(
-                      key: ValueKey<String>('panel-content-${tab.id}'),
-                      offstage: tab.id != active.id,
-                      child: TickerMode(
-                        enabled: tab.id == active.id,
-                        child: PanelVisibilityScope(
-                          visible: _visibilityFor(
-                            tab.id,
-                            visible: tab.id == active.id,
+          // A panel's content may not paint outside the panel.
+          //
+          // It always could: the content box is a Stack, which does not
+          // clip, and a host that lays out a little taller than the room it
+          // was given simply spilled past the bottom. That was invisible
+          // while the strip was on TOP — the spill went off the region's
+          // bottom edge, which was the window's bottom edge. With the strip
+          // on the bottom inner edge the spill goes UNDER the 문턱, where it
+          // is still hit-testable but permanently covered: a long-press
+          // aimed at the sheet's last row switched the panel instead.
+          child: ClipRect(
+            child: ColoredBox(
+              color: colorScheme.surface,
+              child: Stack(
+                fit: StackFit.expand,
+                children: [
+                  for (final tab in tabs)
+                    if (tab.id == active.id || _builtTabIds.contains(tab.id))
+                      Offstage(
+                        key: ValueKey<String>('panel-content-${tab.id}'),
+                        offstage: tab.id != active.id,
+                        child: TickerMode(
+                          enabled: tab.id == active.id,
+                          child: PanelVisibilityScope(
+                            visible: _visibilityFor(
+                              tab.id,
+                              visible: tab.id == active.id,
+                            ),
+                            child: tab.keepAlive
+                                ? (_contentCache[tab.id] ??= _buildTabContent(
+                                    tab,
+                                  ))
+                                : _buildTabContent(tab),
                           ),
-                          child: tab.keepAlive
-                              ? (_contentCache[tab.id] ??= _buildTabContent(
-                                  tab,
-                                ))
-                              : _buildTabContent(tab),
+                        ),
+                      ),
+                  // The reveal blink (UI-R17 #5): fires when the flash
+                  // channel names a tab this group hosts.
+                  if (widget.flash != null)
+                    Positioned.fill(
+                      child: IgnorePointer(
+                        child: ValueListenableBuilder<PanelFlashRequest?>(
+                          valueListenable: widget.flash!.requests,
+                          builder: (context, request, _) {
+                            if (request == null ||
+                                !tabs.any((tab) => tab.id == request.tabId)) {
+                              return const SizedBox.shrink();
+                            }
+                            return PanelFlashOverlay(
+                              key: ValueKey<String>(
+                                'panel-flash-${request.tabId}-${request.seq}',
+                              ),
+                            );
+                          },
                         ),
                       ),
                     ),
-                // The reveal blink (UI-R17 #5): fires when the flash
-                // channel names a tab this group hosts.
-                if (widget.flash != null)
-                  Positioned.fill(
-                    child: IgnorePointer(
-                      child: ValueListenableBuilder<PanelFlashRequest?>(
-                        valueListenable: widget.flash!.requests,
-                        builder: (context, request, _) {
-                          if (request == null ||
-                              !tabs.any((tab) => tab.id == request.tabId)) {
-                            return const SizedBox.shrink();
-                          }
-                          return PanelFlashOverlay(
-                            key: ValueKey<String>(
-                              'panel-flash-${request.tabId}-${request.seq}',
-                            ),
-                          );
-                        },
-                      ),
-                    ),
-                  ),
-              ],
+                ],
+              ),
             ),
           ),
         ),

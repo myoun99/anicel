@@ -1403,17 +1403,22 @@ void main() {
       );
       await expand(tester);
 
-      await tester.longPress(laneKey('rotation', 4));
+      // Frame 0's marker, not frame 4's. The sheet is a tall panel in a
+      // dock capped at 640, so its last row sits right on the content
+      // edge — and the 문턱 is on that edge now. A marker under the
+      // threshold is a fact about the sheet's height, not about what a
+      // long-press does to a key, and this test is about the latter.
+      await tester.longPress(laneKey('rotation', 0));
       await tester.pumpAndSettle();
       expect(
         find.byKey(const ValueKey<String>('lane-key-menu-delete')),
         findsNothing,
       );
 
-      await tester.tap(laneKey('rotation', 4), buttons: kSecondaryButton);
+      await tester.tap(laneKey('rotation', 0), buttons: kSecondaryButton);
       await tester.pumpAndSettle();
       expect(find.byType(PopupMenuItem<String>), findsNothing);
-      expect(laneKey('rotation', 4), findsOneWidget);
+      expect(laneKey('rotation', 0), findsOneWidget);
     });
 
     testWidgets('the header value cell shows AE units, types and scrubs', (

@@ -59,14 +59,11 @@ Offset visibleCanvasPoint(WidgetTester tester, {Offset offset = Offset.zero}) {
   final panel = tester.widget<BrushCanvasPanel>(shellFinder);
   final cover = panel.floorCover;
   if (cover == null) {
-    // Docked: the chrome takes its own space out of the panel and nothing
-    // floats over it, so the view's own centre is already touchable.
+    // Not the floor: nothing lies on it, so the view's own centre is
+    // already a point you can put a pen on.
     return tester.getCenter(mainCanvasView()) + offset;
   }
   final shell = tester.getRect(shellFinder);
-  final visible = canvasVisibleRect(
-    shell.size,
-    cover + BrushCanvasPanel.floorChromeInsets,
-  );
+  final visible = canvasVisibleRect(shell.size, cover);
   return visible.center + shell.topLeft + offset;
 }

@@ -41,6 +41,9 @@ void main() {
             ),
             availableFrameKeys: frameKeys,
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+            // A canvas standing on its own IS the floor, and that is where the
+            // view controls live (법: 뷰 컨트롤은 바닥에만).
+            floorCover: EdgeInsets.zero,
             brushToolState: brushToolState,
             viewCommands: commands,
             sampleColorAt: sampleColorAt,

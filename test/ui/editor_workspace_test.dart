@@ -1,5 +1,6 @@
 ﻿import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
 import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
 import 'package:anicel/src/ui/brush/tools_panel.dart';
@@ -584,14 +585,30 @@ void main() {
       // Both frame views are up at once now — the sheet no longer takes
       // the bottom strip's turn.
       expect(find.byType(TimelinePanel), findsOneWidget);
-      // Canvas-style navigation shell: the sheet host carries its own
-      // viewport toolbar and panbars next to the canvas tab's.
+      // 법: 뷰 컨트롤은 바닥에만 (유저 확정). A canvas host that is NOT the
+      // app's floor carries its two panbars and nothing else — Fit and the
+      // zoom cluster belong to the surface the app is lying on, and the
+      // sheet is a page you read beside the drawing.
       expect(
         find.descendant(
           of: find.byType(TimesheetTabHost),
           matching: find.byKey(const ValueKey<String>('canvas-viewport-fit')),
         ),
-        findsOneWidget,
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(TimesheetTabHost),
+          matching: find.byType(CanvasViewportHorizontalScrollbar),
+        ),
+        findsWidgets,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(TimesheetTabHost),
+          matching: find.byType(CanvasViewportVerticalScrollbar),
+        ),
+        findsWidgets,
       );
     });
 
@@ -658,38 +675,28 @@ void main() {
     ) async {
       await openTimesheet(tester);
 
-      Finder inHost(Key key) => find.descendant(
-        of: find.byType(TimesheetTabHost),
-        matching: find.byKey(key),
-      );
-
-      // The zoom readout is a DragValueLabel now (UI-R18 #21): the key
-      // sits on its gesture shell, the Text lives inside.
-      String? zoomLabelText() => tester
-          .widget<Text>(
+      // The zoom BUTTONS are gone from a non-floor host (뷰 컨트롤은 바닥에만),
+      // so the viewport is read and driven through the panbar the host does
+      // still carry — which is the thing whose survival this test is about.
+      CanvasViewportVerticalScrollbar panbar() =>
+          tester.widgetList<CanvasViewportVerticalScrollbar>(
             find.descendant(
-              of: inHost(const ValueKey<String>('canvas-viewport-zoom-label')),
-              matching: find.byType(Text),
+              of: find.byType(TimesheetTabHost),
+              matching: find.byType(CanvasViewportVerticalScrollbar),
             ),
-          )
-          .data;
+          ).first;
 
-      // R26 #41 put the sheet-mode + page cluster in this bar, so in a
-      // narrow dock it scrolls — bring the button into view before tapping.
-      final zoomIn = inHost(const ValueKey<String>('canvas-viewport-zoom-in'));
-      await tester.ensureVisible(zoomIn);
+      expect(panbar().viewport.zoom, 1.0);
+      panbar().onViewportChanged(panbar().viewport.copyWith(zoom: 1.75));
       await tester.pumpAndSettle();
-      await tester.tap(zoomIn);
-      await tester.pumpAndSettle();
-      final zoomLabel = zoomLabelText();
-      expect(zoomLabel, isNot('100%'));
+      expect(panbar().viewport.zoom, 1.75);
 
       await tester.tap(find.byKey(_timelineTabKey));
       await tester.pumpAndSettle();
       await tester.tap(find.byKey(_storyboardTabKey));
       await tester.pumpAndSettle();
 
-      expect(zoomLabelText(), zoomLabel);
+      expect(panbar().viewport.zoom, 1.75);
     });
   });
 }

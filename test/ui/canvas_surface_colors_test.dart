@@ -44,6 +44,9 @@ void main() {
             ),
             availableFrameKeys: frameKeys,
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+            // A canvas standing on its own IS the floor, and that is where the
+            // view controls live (법: 뷰 컨트롤은 바닥에만).
+            floorCover: EdgeInsets.zero,
             paperColor: paper,
             onPaperColorChanged: (value) => paper = value,
             pasteboardColor: pasteboard,
@@ -64,17 +67,23 @@ void main() {
     expect(pasteboardButton, findsOneWidget);
     expect(find.byType(ColorSwatchButton), findsNWidgets(2));
 
-    // "가로스크롤바의 바로오른쪽에": right of the scrollbar, left of the
-    // zoom cluster that owns the far right.
-    final scrollbarRight = tester
-        .getRect(find.byType(CanvasViewportHorizontalScrollbar))
+    // The original wording — "가로스크롤바의 바로오른쪽에" — described the
+    // swatches' place in a bottom BAR that ran the width of the panel with
+    // the panbar stretched through its middle. The floor has no such bar:
+    // the panbar is its own capsule on the top edge and the view controls
+    // are a cluster in the corner. What survives is the ORDER the user
+    // asked for — the swatches come after the view controls, at the far
+    // end, because they are the thing you touch once a project.
+    final zoomRight = tester
+        .getRect(find.byKey(const ValueKey<String>('canvas-viewport-zoom-in')))
         .right;
-    final zoomLeft = tester
-        .getRect(find.byKey(const ValueKey<String>('canvas-viewport-fit')))
-        .left;
-    final paperLeft = tester.getRect(paperButton).left;
-    expect(paperLeft, greaterThanOrEqualTo(scrollbarRight));
-    expect(tester.getRect(pasteboardButton).right, lessThanOrEqualTo(zoomLeft));
+    expect(tester.getRect(paperButton).left, greaterThanOrEqualTo(zoomRight));
+    expect(
+      tester.getRect(pasteboardButton).left,
+      greaterThanOrEqualTo(tester.getRect(paperButton).right),
+    );
+    // And the panbar is no longer beside them at all — it floats.
+    expect(find.byType(CanvasViewportHorizontalScrollbar), findsOneWidget);
   });
 
   testWidgets('R28 #9: the swatch opens the shared picker and edits commit', (
@@ -95,6 +104,9 @@ void main() {
             ),
             availableFrameKeys: frameKeys,
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+            // A canvas standing on its own IS the floor, and that is where the
+            // view controls live (법: 뷰 컨트롤은 바닥에만).
+            floorCover: EdgeInsets.zero,
             paperColor: 0xFFFFFFFF,
             onPaperColorChanged: commits.add,
           ),
