@@ -244,35 +244,47 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
         widget.contentOverride ??
         (hasEditableFrame ? null : _blankCanvasContent);
 
-    final panel = _buildPanel(coordinator, hasEditableFrame, contentOverride);
     final onDrawRefused = widget.onDrawRefused;
-    if (hasEditableFrame || onDrawRefused == null) {
-      return panel;
-    }
     // R26 #35: without an editable cel a paint press does nothing at all
     // — the passive Listener above the panel turns that silence into the
     // shared cursor notice. Translucent: it observes, never consumes, so
     // viewport navigation over the paper keeps working.
+    //
+    // ★ ALWAYS mounted; only the CALLBACK stands down. Wrapping it
+    // conditionally moved the panel between two parents, and a [ValueKey]
+    // holds identity only under the SAME parent — so every flip that
+    // crossed "no cel ↔ cel" tore down `_BrushCanvasPanelState` and built
+    // a fresh one. Mid-gesture that is worse than it sounds: the pointer
+    // in flight keeps being delivered to the DISPOSED render object (a
+    // "ValueNotifier used after being disposed" assertion per move, and
+    // silence rather than an assert in release), while the gesture layer's
+    // own `dispose` ends the flip HUD for the rest of the drag — the
+    // window vanished the moment a flip landed on a block and never came
+    // back until the finger lifted. A widget whose subtree carries live
+    // gesture state must not change shape under it.
     return Listener(
       behavior: HitTestBehavior.translucent,
-      onPointerDown: (event) {
-        if (event.buttons != 0 && (event.buttons & kPrimaryButton) == 0) {
-          return;
-        }
-        final tool = widget.brushToolState.tool;
-        if (!canvasToolPaints(tool) && tool != CanvasTool.fill) {
-          return; // Eyedropper/selection/pan have their own meaning.
-        }
-        // R27 #15: only a press that would actually DRAW earns the
-        // notice. A finger whose one-finger slot is flip/pan/none is
-        // navigating, not drawing — telling it "no frame here" was noise
-        // on every page flip.
-        if (event.kind == PointerDeviceKind.touch && !AppInput.touchDraws) {
-          return;
-        }
-        onDrawRefused();
-      },
-      child: panel,
+      onPointerDown: hasEditableFrame || onDrawRefused == null
+          ? null
+          : (event) {
+              if (event.buttons != 0 && (event.buttons & kPrimaryButton) == 0) {
+                return;
+              }
+              final tool = widget.brushToolState.tool;
+              if (!canvasToolPaints(tool) && tool != CanvasTool.fill) {
+                return; // Eyedropper/selection/pan have their own meaning.
+              }
+              // R27 #15: only a press that would actually DRAW earns the
+              // notice. A finger whose one-finger slot is flip/pan/none is
+              // navigating, not drawing — telling it "no frame here" was
+              // noise on every page flip.
+              if (event.kind == PointerDeviceKind.touch &&
+                  !AppInput.touchDraws) {
+                return;
+              }
+              onDrawRefused();
+            },
+      child: _buildPanel(coordinator, hasEditableFrame, contentOverride),
     );
   }
 
