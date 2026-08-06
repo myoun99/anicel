@@ -1,11 +1,12 @@
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show ValueListenable;
+import 'package:flutter/foundation.dart' show ValueListenable, setEquals;
 import 'package:flutter/material.dart';
 
 import '../../models/camera_instruction.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cut_id.dart';
+import '../../models/sheet_paint_layer.dart';
 import '../../models/timesheet_document.dart';
 import '../../models/timesheet_info.dart';
 import '../text/dialogue_fit_layout.dart';
@@ -15,6 +16,8 @@ import '../timeline/timeline_cut_end_handle.dart'
     show timelineCutEndPreviewFrameCount;
 import '../timeline/timeline_drag_preview.dart';
 import 'timesheet_notation.dart';
+
+export '../../models/sheet_paint_layer.dart' show SheetPaintLayer;
 
 /// Geometry of the rendered sheet document in canvas (document) space,
 /// modeled on the Japanese paper form (A-1/IG style): a B4-portrait page
@@ -367,20 +370,13 @@ class TimesheetDocumentLayout {
 /// marks, X cells, camera keys, the data-driven cut-end strikethrough and
 /// the playhead row — under the panel viewport transform (the same
 /// inside-the-picture transform the brush canvas uses, crisp at any zoom).
-/// Which stratum of the sheet a painter instance draws (UI-R10 #9 — the
-/// PSD-export layering, live): the printed FORM (paper, grid, boxes,
-/// printed labels) is static per document structure; the CONTENT (cell
-/// texts, header values, memo, data lines) is what edits and drag
-/// previews re-print. Null paints both (exports, focused tests).
-enum TimesheetPaintLayer { form, content }
-
 class TimesheetDocumentPainter extends CustomPainter {
   TimesheetDocumentPainter({
     required this.document,
     required this.layout,
     this.viewport,
     this.notation = TimesheetNotation.english,
-    this.paintLayer,
+    this.layers,
     this.dragPreview,
     this.cutId,
   }) : super(repaint: dragPreview);
@@ -393,8 +389,16 @@ class TimesheetDocumentPainter extends CustomPainter {
   /// focused tests keep the pre-R10 English default.
   final TimesheetNotation notation;
 
-  /// Which stratum to draw; null = both (the pre-split single painter).
-  final TimesheetPaintLayer? paintLayer;
+  /// Which strata to draw; null = all of them (the pre-split single
+  /// painter, which exports and focused tests still want).
+  ///
+  /// UI-R10 #9 gave the sheet the FORM/CONTENT split for the PSD export;
+  /// it speaks [SheetPaintLayer] now, the vocabulary the conte and the cut
+  /// envelope share. The printed form (grid, boxes, printed labels) is
+  /// static per document STRUCTURE; the content (cell texts, header
+  /// values, memo, data lines) is what edits and drag previews re-print;
+  /// the paper is the sheet under both.
+  final Set<SheetPaintLayer>? layers;
 
   /// The session's scoped drag channel (UI-R10 #9, replacing the UI-R9
   /// patch overlay): while a timeline drag targets an ACTION column's
@@ -409,8 +413,12 @@ class TimesheetDocumentPainter extends CustomPainter {
   /// prints the committed length, which is what those want anyway.
   final CutId? cutId;
 
-  bool get _drawForm => paintLayer != TimesheetPaintLayer.content;
-  bool get _drawContent => paintLayer != TimesheetPaintLayer.form;
+  bool _draws(SheetPaintLayer layer) =>
+      layers == null || layers!.contains(layer);
+
+  bool get _drawPaper => _draws(SheetPaintLayer.paper);
+  bool get _drawForm => _draws(SheetPaintLayer.form);
+  bool get _drawContent => _draws(SheetPaintLayer.content);
 
   /// The cut's length as this PAINT should print it: the in-flight drag's
   /// duration while one is targeting this cut, the document's otherwise.
@@ -467,9 +475,7 @@ class TimesheetDocumentPainter extends CustomPainter {
     final drawTexts = (resolvedViewport?.zoom ?? 1.0) >= _textZoomThreshold;
 
     if (layout.continuous) {
-      if (_drawForm) {
-        _paintPaper(canvas, 0);
-      }
+      _paintPaper(canvas, 0);
       _paintHeaderBand(canvas, 0, drawTexts: drawTexts);
       if (_drawContent) {
         _paintMemoBand(canvas, 0, drawTexts: drawTexts);
@@ -487,9 +493,7 @@ class TimesheetDocumentPainter extends CustomPainter {
       // document prints them all.
       for (final pageIndex in layout.visiblePageIndexes) {
         final page = document.pages[pageIndex];
-        if (_drawForm) {
-          _paintPaper(canvas, page.index);
-        }
+        _paintPaper(canvas, page.index);
         _paintHeaderBand(canvas, page.index, drawTexts: drawTexts);
         if (_drawContent) {
           _paintMemoBand(canvas, page.index, drawTexts: drawTexts);
@@ -523,16 +527,22 @@ class TimesheetDocumentPainter extends CustomPainter {
     canvas.restore();
   }
 
+  /// The sheet of paper, and the printed edge around it — two strata that
+  /// used to be one call: the fill is PAPER, the border is FORM.
   void _paintPaper(Canvas canvas, int pageIndex) {
     final rect = layout.pageRect(pageIndex);
-    canvas.drawRect(rect, Paint()..color = _paper);
-    canvas.drawRect(
-      rect,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.4
-        ..color = _gridBold,
-    );
+    if (_drawPaper) {
+      canvas.drawRect(rect, Paint()..color = _paper);
+    }
+    if (_drawForm) {
+      canvas.drawRect(
+        rect,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.4
+          ..color = _gridBold,
+      );
+    }
   }
 
   /// The header band: labeled boxes like the paper form —
@@ -1633,7 +1643,7 @@ class TimesheetDocumentPainter extends CustomPainter {
         oldDelegate.layout.resolvedSinglePage != layout.resolvedSinglePage ||
         oldDelegate.viewport != viewport ||
         !identical(oldDelegate.notation, notation) ||
-        oldDelegate.paintLayer != paintLayer ||
+        !setEquals(oldDelegate.layers, layers) ||
         !identical(oldDelegate.dragPreview, dragPreview);
   }
 }

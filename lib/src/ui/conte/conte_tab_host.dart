@@ -17,7 +17,7 @@ import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../brush/brush_tool_state.dart';
 import '../editor_session_manager.dart';
 import '../storyboard_cut_thumbnail_store.dart'
-    show StoryboardThumbnailResolver;
+    show StoryboardThumbnailResolver, StoryboardThumbnailTier;
 import '../text/app_strings.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/drag_value_label.dart';
@@ -226,7 +226,10 @@ class _ConteTabHostState extends State<ConteTabHost> {
     for (final track in _session.repository.requireProject().tracks) {
       for (final cut in track.cuts) {
         if (cut.id.value == cutId) {
-          return resolver(cut, frame);
+          // The SHEET tier: a conte cell is a printed frame that also
+          // exports, not a strip block, and asking for the strip's 128px
+          // is what made the pictures look quarter-resolution.
+          return resolver(cut, frame, tier: StoryboardThumbnailTier.sheet);
         }
       }
     }
@@ -358,8 +361,9 @@ class _ConteTabHostState extends State<ConteTabHost> {
       fitFocusRect: metrics == null
           ? null
           : Rect.fromLTWH(0, 0, metrics.pageWidth, metrics.pageHeight),
-      contentStrokeActive:
-          inkController == null || !widget.inkEnabled ? null : _inkStrokeActive,
+      contentStrokeActive: inkController == null || !widget.inkEnabled
+          ? null
+          : _inkStrokeActive,
       contentOverride: (context, viewport) => Stack(
         children: [
           Positioned.fill(

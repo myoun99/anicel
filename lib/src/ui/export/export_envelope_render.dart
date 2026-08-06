@@ -33,7 +33,7 @@ class ExportEnvelopeTask {
 Future<ui.Image> renderCutEnvelopeImage({
   required CutEnvelopeLayout layout,
   required CutEnvelopeSource source,
-  Set<EnvelopePaintLayer>? layers,
+  Set<SheetPaintLayer>? layers,
   ui.Image? Function(String assetPath)? imageFor,
   BrushFrameKey Function(String boxId)? inkKeyFor,
   ui.Image? Function(BrushFrameKey key)? inkImageFor,
