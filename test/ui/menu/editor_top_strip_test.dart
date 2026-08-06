@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/ui/color/color_button_window.dart';
 import 'package:anicel/src/ui/debug/input_inspector.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -317,8 +316,8 @@ void main() {
     expect(tester.getTopLeft(sizeBar).dx, barLeftWithBrush);
   });
 
-  testWidgets('the strip right group reads: blend | size, opacity, colour — '
-      'each value followed by its own lock', (tester) async {
+  testWidgets('the strip right group reads: blend | size, opacity — the '
+      'colour has left it', (tester) async {
     await pumpHome(tester);
 
     double leftOf(String key) =>
@@ -333,7 +332,6 @@ void main() {
       'brush-tool-pressure-size',
       'top-strip-opacity-bar',
       'brush-tool-pressure-opacity',
-      'tool-color-button',
     ];
     for (var i = 1; i < order.length; i++) {
       expect(
@@ -344,73 +342,36 @@ void main() {
     }
   });
 
-  testWidgets('the colour rides the strip now, and the rail has none', (
-    tester,
-  ) async {
+  testWidgets('the colour left the strip for the sub-strip, and took its '
+      'swatch with it', (tester) async {
     await pumpHome(tester);
 
+    // 컬러 창은 상단띠에서 오른쪽 서브띠 맨 위로 (유저 확정). It was the one
+    // surface that opened DOWNWARD out of a strip; as a rail group it opens
+    // sideways like every other panel.
     final swatch = find.byKey(const ValueKey<String>('tool-color-button'));
     expect(
       find.descendant(of: find.byType(EditorTopStrip), matching: swatch),
+      findsNothing,
+    );
+    // And it is exactly ONE place, still: the group's rail button IS the
+    // pair, so the two colours you paint with stay readable without opening
+    // anything — which is what the strip swatch was for.
+    expect(
+      find.descendant(
+        of: find.byKey(
+          const ValueKey<String>('editor-panel-dock-tool-right'),
+        ),
+        matching: swatch,
+      ),
       findsOneWidget,
     );
-    // 유저 확정: 「컬러 스와치는 레일에서 빠진다 — 상단 색 버튼이 곧
-    // 스와치라」. Two places showing one colour is what this removed.
     expect(
       find.descendant(
         of: find.byKey(const ValueKey<String>('tools-panel')),
         matching: swatch,
       ),
       findsNothing,
-    );
-  });
-
-  testWidgets('the colour window opens BELOW its button, so the switch that '
-      'closes it is never buried under it', (tester) async {
-    await pumpHome(tester);
-
-    final anchor = find.byKey(const ValueKey<String>('tool-color-button'));
-    final anchorRect = tester.getRect(anchor);
-    await tester.tap(anchor);
-    await tester.pumpAndSettle();
-
-    // The shared placement flips a popup above its anchor when there is no
-    // room below, and clamps it into the overlay when there is room for
-    // neither — which for a DISMISSING popup is harmless (anything closes
-    // it) but for this one would hide the only thing that can.
-    expect(
-      tester.getRect(find.byType(ColorButtonWindow)).top,
-      greaterThanOrEqualTo(anchorRect.bottom),
-    );
-  });
-
-  testWidgets('the colour window is PINNED: the size bar still works while it '
-      'is open, because there is no barrier over the app', (tester) async {
-    await pumpHome(tester);
-
-    await tester.tap(find.byKey(const ValueKey<String>('tool-color-button')));
-    await tester.pumpAndSettle();
-    expect(find.byType(ColorButtonWindow), findsOneWidget);
-
-    double sizeOnBar() => tester
-        .widget<FieldSlider>(
-          find.byKey(const ValueKey<String>('top-strip-size-bar')),
-        )
-        .value;
-    final before = sizeOnBar();
-
-    // This is the R27 #5 gesture that closes every other anchored popup. A
-    // route-based popup would not merely close — its modal barrier would eat
-    // the drag, so the size would not move either.
-    final bar = find.byKey(const ValueKey<String>('top-strip-size-bar'));
-    await tester.tapAt(tester.getCenter(bar) + const Offset(50, 0));
-    await tester.pumpAndSettle();
-
-    expect(sizeOnBar(), isNot(before), reason: 'the drag reached the bar');
-    expect(
-      find.byType(ColorButtonWindow),
-      findsOneWidget,
-      reason: 'and the window is still open to be nudged again',
     );
   });
 

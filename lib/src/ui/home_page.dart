@@ -575,6 +575,9 @@ class _HomePageState extends State<HomePage> {
                                 session: _session,
                                 panelsMenu: _panelsMenu,
                                 brushTool: _brushTool,
+                                colorBackground: _colorWheelBackground,
+                                colorPalette: _colorPalette,
+                                onColorPaletteChanged: _setColorPalette,
                                 canvasViewCommands: _canvasViewCommands,
                                 canvasSelectionCommands:
                                     _canvasSelectionCommands,

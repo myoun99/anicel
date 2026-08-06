@@ -19,8 +19,11 @@ import '../services/canvas_color_sampler.dart' show CanvasColorSampleSource;
 import '../services/canvas_flood_fill.dart' show FloodFillOptions;
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
 import '../services/resample/resample_kernel.dart' show ResampleMode;
+import '../services/color_palette_file_service.dart' show ColorPaletteState;
 import 'brush/brush_preset_library.dart';
 import 'brush/canvas_floor_insets.dart';
+import 'color/color_button_window.dart' show ColorPickerPanel;
+import 'color/color_slot_pair.dart';
 import 'theme/app_theme.dart';
 import 'brush/brush_preset_panel.dart';
 import 'brush/brush_tip_library.dart';
@@ -108,6 +111,9 @@ class EditorWorkspace extends StatefulWidget {
     this.layoutStore,
     this.panelsMenu,
     this.brushTool,
+    this.colorBackground,
+    this.colorPalette,
+    this.onColorPaletteChanged,
     this.canvasViewCommands,
     this.canvasSelectionCommands,
     this.layerNav,
@@ -121,6 +127,15 @@ class EditorWorkspace extends StatefulWidget {
   /// shortcuts (B/E) and the workspace panels drive one state. Null keeps
   /// a workspace-local notifier (focused widget tests).
   final ValueNotifier<BrushToolState>? brushTool;
+
+  /// The BACK colour slot and the palette, owned by the shell alongside the
+  /// tool state — the colour picker is a rail panel now (유저 확정: 컬러
+  /// 창은 오른쪽 서브띠 맨 위로), so the workspace needs what used to go
+  /// only to the top strip. Null keeps the picker out of the rail
+  /// (focused widget tests).
+  final ValueNotifier<int>? colorBackground;
+  final ValueNotifier<ColorPaletteState>? colorPalette;
+  final ValueChanged<ColorPaletteState>? onColorPaletteChanged;
 
   /// The shell-owned rotate/flip shortcut channel (P8, R/Shift+R/H),
   /// forwarded to the canvas panel.
@@ -245,10 +260,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     // The rest of the rail pool: declared empty so the ids exist for a
     // restore, and so dragging a panel onto an empty slot has somewhere to
     // put it. Slot 1 of each rail is spelled out below.
-    for (var slot = 2; slot <= EditorWorkspace.railSlots; slot += 1) ...{
+    for (var slot = 2; slot <= EditorWorkspace.railSlots; slot += 1)
       EditorWorkspace.railGroupId(right: false, slot: slot): <DockSection>[],
+    for (var slot = 3; slot <= EditorWorkspace.railSlots; slot += 1)
       EditorWorkspace.railGroupId(right: true, slot: slot): <DockSection>[],
-    },
     EditorWorkspace.leftGroupId: [
       DockSection(
         tabs: [
@@ -269,7 +284,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       ),
       DockSection(tabs: [EditorWorkspace.brushSettingsTabId]),
     ],
+    // 오른쪽: 컬러(맨 위) (유저 확정). The picker is the top group of the
+    // sub-strip, and its button is the swatch itself.
     EditorWorkspace.rightGroupId: [
+      DockSection(tabs: [EditorWorkspace.colorWheelTabId]),
+    ],
+    EditorWorkspace.railGroupId(right: true, slot: 2): [
       DockSection(tabs: [EditorWorkspace.timesheetTabId]),
     ],
     // THE FLOOR (유저 확정): the bottom layer everything else is drawn on.
@@ -317,7 +337,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// panels in it has no button and cannot be opened.
   Set<String> _openRails = {
     EditorWorkspace.leftGroupId,
-    EditorWorkspace.rightGroupId,
+    EditorWorkspace.railGroupId(right: true, slot: 2),
   };
 
   /// The slots of one rail, in order, whatever is in them.
@@ -1323,6 +1343,36 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                 ),
               ),
         );
+      case EditorWorkspace.colorWheelTabId:
+        return EditorPanelTab(
+          id: tabId,
+          label: AppText.strings.panelColor,
+          icon: Icons.palette_outlined,
+          locked: locked,
+          builder: (context) {
+            final palette = widget.colorPalette;
+            final onPaletteChanged = widget.onColorPaletteChanged;
+            if (palette == null || onPaletteChanged == null) {
+              return const SizedBox.shrink();
+            }
+            return SlicedValueListenableBuilder<BrushToolState, int>(
+              valueListenable: _brushTool,
+              slice: (state) => state.color,
+              builder: (context, toolState) =>
+                  ValueListenableBuilder<ColorPaletteState>(
+                    valueListenable: palette,
+                    builder: (context, paletteState, _) => ColorPickerPanel(
+                      color: toolState.color,
+                      palette: paletteState,
+                      onColorChanged: (color) => _brushTool.value = _brushTool
+                          .value
+                          .copyWith(color: color),
+                      onPaletteChanged: onPaletteChanged,
+                    ),
+                  ),
+            );
+          },
+        );
       case EditorWorkspace.canvasTabId:
         return EditorPanelTab(
           id: tabId,
@@ -2026,6 +2076,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                     for (final section in _layout.sectionsIn(railId))
                       for (final tabId in section.tabs) _tabFor(tabId),
                   ],
+                  // The COLOUR group's button is the swatch itself. The
+                  // strip's swatch was the one place the two colours you
+                  // paint with were readable without opening anything, and
+                  // moving the picker to a rail would have taken that with
+                  // it — so the button that opens the picker shows them,
+                  // and tapping the back slot still swaps (⛔there is no
+                  // swap glyph: that would be the same verb twice).
+                  face: _colorRailFace(railId),
                   dragging: dragging,
                   onPressed: () => _toggleRailGroup(railId),
                   onTabDropped: (data) => _dropIntoRailGroup(railId, data),
@@ -2048,6 +2106,48 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           ),
         );
       },
+    );
+  }
+
+  /// The dual swatch, when [railId] is the group holding the colour picker.
+  ///
+  /// Null everywhere else: a rail button says what it holds with the glyph
+  /// of its first panel, and this is the one panel whose STATE is the thing
+  /// worth saying.
+  Widget? _colorRailFace(String railId) {
+    final background = widget.colorBackground;
+    if (background == null) {
+      return null;
+    }
+    final holdsColor = _layout
+        .sectionsIn(railId)
+        .any((section) => section.tabs.contains(EditorWorkspace.colorWheelTabId));
+    if (!holdsColor) {
+      return null;
+    }
+    return SlicedValueListenableBuilder<BrushToolState, int>(
+      valueListenable: _brushTool,
+      slice: (state) => state.color,
+      builder: (context, toolState) => ValueListenableBuilder<int>(
+        valueListenable: background,
+        // Keeps the swatch's long-standing name: it changed address, not
+        // identity, and every finder that means "the colour control" says
+        // this.
+        builder: (context, backgroundColor, _) => ColorSlotPair(
+          key: const ValueKey<String>('tool-color-button'),
+          keyPrefix: 'tool-color',
+          foreground: Color(toolState.color),
+          background: Color(backgroundColor),
+          // The Photoshop gesture, carried by the BACK SLOT itself.
+          onBackgroundTap: () {
+            final foreground = _brushTool.value.color;
+            _brushTool.value = _brushTool.value.copyWith(
+              color: backgroundColor,
+            );
+            background.value = foreground;
+          },
+        ),
+      ),
     );
   }
 
@@ -2814,12 +2914,17 @@ class _RailGroupButton extends StatelessWidget {
     required this.dragging,
     required this.onPressed,
     required this.onTabDropped,
+    this.face,
   });
 
   final String railId;
   final bool open;
   final List<EditorPanelTab> tabs;
   final EditorPanelTabDragData? dragging;
+
+  /// Drawn INSTEAD of the glyph, for a group whose state is what the button
+  /// should be saying — the colour pair.
+  final Widget? face;
 
   /// Null for the empty slot, which is a target and not a switch.
   final VoidCallback? onPressed;
@@ -2828,15 +2933,35 @@ class _RailGroupButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final button = RailButton(
-      keyValue: 'rail-group-$railId',
-      tooltip: tabs.isEmpty
-          ? AppText.strings.panelNewGroup
-          : [for (final tab in tabs) tab.label].join(' · '),
-      icon: tabs.isEmpty ? Icons.add : tabs.first.icon,
-      selected: open,
-      onPressed: onPressed,
-    );
+    final tooltip = tabs.isEmpty
+        ? AppText.strings.panelNewGroup
+        : [for (final tab in tabs) tab.label].join(' · ');
+    final Widget button = face == null
+        ? RailButton(
+            keyValue: 'rail-group-$railId',
+            tooltip: tooltip,
+            icon: tabs.isEmpty ? Icons.add : tabs.first.icon,
+            selected: open,
+            onPressed: onPressed,
+          )
+        : Tooltip(
+            message: tooltip,
+            child: Material(
+              key: ValueKey<String>('rail-group-$railId'),
+              color: open ? colorScheme.surfaceContainerHigh : Colors.transparent,
+              clipBehavior: Clip.antiAlias,
+              shape: AppShapes.control(ToolsPanel.buttonExtent),
+              child: InkWell(
+                onTap: onPressed,
+                // The pair sizes itself to one button cell, so a group that
+                // wears a face is the same square as every other.
+                child: SizedBox.square(
+                  dimension: ToolsPanel.buttonExtent,
+                  child: face,
+                ),
+              ),
+            ),
+          );
     if (dragging == null) {
       return button;
     }

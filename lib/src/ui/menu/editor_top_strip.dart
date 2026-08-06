@@ -14,8 +14,6 @@ import '../../models/brush_pressure_curve.dart';
 import '../../services/color_palette_file_service.dart';
 import '../brush/brush_tool_state.dart';
 import '../brush/tools_panel.dart' show RailButton;
-import '../color/color_button_window.dart' show SelectedColorButton;
-import '../sliced_value_listenable_builder.dart';
 import '../widgets/field_slider.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
@@ -485,16 +483,10 @@ class EditorTopStrip extends StatelessWidget {
           const _StripGroupRule(),
           const SizedBox(width: 6),
           _BrushValueBars(brushTool: brushTool!),
-          const SizedBox(width: 4),
-          if (colorBackground != null &&
-              colorPalette != null &&
-              onColorPaletteChanged != null)
-            _ColorButton(
-              brushTool: brushTool!,
-              background: colorBackground!,
-              palette: colorPalette!,
-              onPaletteChanged: onColorPaletteChanged!,
-            ),
+          // 컬러 창은 상단띠에서 오른쪽 서브띠 맨 위로 (유저 확정). It was
+          // the one surface that opened DOWNWARD out of a strip; as a rail
+          // group it opens sideways like everything else, and the swatch
+          // goes with it — the rail button IS the pair now. 42px back.
         ],
         const SizedBox(width: 3),
       ],
@@ -745,57 +737,6 @@ class _BlendModeControl extends StatelessWidget {
           ],
         );
       },
-    );
-  }
-}
-
-/// The colour, at the strip's very end.
-///
-/// 유저 확정 (rail-and-strip): 「컬러 스와치는 레일에서 빠진다 — 상단 색
-/// 버튼이 곧 스와치라 대체된다」. It was the tool rail's bottom control (R9
-/// #14); the rail is now what a hand reaches for BETWEEN STROKES, and a
-/// colour is a standing choice like size, opacity and blend.
-///
-/// Its window is the PINNED popup, the one thing on the strip that behaves
-/// differently from the others: you nudge a colour, draw a test stroke, and
-/// nudge again — so it must not close when the canvas is touched.
-///
-/// Its own listeners: a colour change must not re-read the project name or
-/// rebuild the two bars beside it.
-class _ColorButton extends StatelessWidget {
-  const _ColorButton({
-    required this.brushTool,
-    required this.background,
-    required this.palette,
-    required this.onPaletteChanged,
-  });
-
-  final ValueNotifier<BrushToolState> brushTool;
-  final ValueNotifier<int> background;
-  final ValueNotifier<ColorPaletteState> palette;
-  final ValueChanged<ColorPaletteState> onPaletteChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return SlicedValueListenableBuilder<BrushToolState, int>(
-      valueListenable: brushTool,
-      slice: (state) => state.color,
-      builder: (context, toolState) => ValueListenableBuilder<int>(
-        valueListenable: background,
-        builder: (context, backgroundColor, _) =>
-            ValueListenableBuilder<ColorPaletteState>(
-              valueListenable: palette,
-              builder: (context, paletteState, _) => SelectedColorButton(
-                color: toolState.color,
-                backgroundColor: backgroundColor,
-                palette: paletteState,
-                onColorChanged: (color) =>
-                    brushTool.value = brushTool.value.copyWith(color: color),
-                onBackgroundColorChanged: (color) => background.value = color,
-                onPaletteChanged: onPaletteChanged,
-              ),
-            ),
-      ),
     );
   }
 }

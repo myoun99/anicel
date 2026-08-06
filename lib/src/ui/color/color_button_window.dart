@@ -131,7 +131,13 @@ class ColorButtonWindow extends StatefulWidget {
     required this.palette,
     required this.onColorChanged,
     required this.onPaletteChanged,
+    this.framed = true,
   });
+
+  /// Whether to wear a popup's frame — elevation, a rounded plate and a
+  /// height of its own. False when the picker is a rail PANEL: the group
+  /// already draws the surface and hands down the height.
+  final bool framed;
 
   /// CONTROLLED, both of them: the window used to keep working copies so it
   /// could outlive the rebuild of whatever opened it. The pinned popup
@@ -165,6 +171,9 @@ class _ColorButtonWindowState extends State<ColorButtonWindow> {
 
   @override
   Widget build(BuildContext context) {
+    if (!widget.framed) {
+      return _body();
+    }
     final colorScheme = Theme.of(context).colorScheme;
     return Material(
       elevation: 8,
@@ -176,31 +185,37 @@ class _ColorButtonWindowState extends State<ColorButtonWindow> {
       // bounded box to expand into.
       child: SizedBox(
         height: colorButtonWindowHeight,
-        // LAYOUT B (the user's): tabs / content / a status bar shared by
-        // every tab, so "what colour am I on" never moves when you switch
-        // how you are picking it.
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Expanded(
-              child: EditorPanelTabs(
-                tabs: _tabs,
-                activeTabId: _tabId,
-                onTabSelected: (id) => setState(() => _tabId = id),
-                // Icon-only: at 236px three labelled tabs would not fit,
-                // and the dock's own narrow groups already read this way.
-                compact: true,
-              ),
-            ),
-            ColorStatusBar(
-              color: widget.color,
-              onColorChanged: widget.onColorChanged,
-            ),
-          ],
-        ),
+        child: _body(),
       ),
     );
   }
+
+  /// LAYOUT B (the user's): tabs / content / a status bar shared by every
+  /// tab, so "what colour am I on" never moves when you switch how you are
+  /// picking it.
+  ///
+  /// Shared with the rail PANEL, which is the same thing without a popup's
+  /// elevation and without a height of its own — it takes the height the
+  /// group hands it.
+  Widget _body() => Column(
+    crossAxisAlignment: CrossAxisAlignment.stretch,
+    children: [
+      Expanded(
+        child: EditorPanelTabs(
+          tabs: _tabs,
+          activeTabId: _tabId,
+          onTabSelected: (id) => setState(() => _tabId = id),
+          // Icon-only: at 236px three labelled tabs would not fit, and the
+          // dock's own narrow groups already read this way.
+          compact: true,
+        ),
+      ),
+      ColorStatusBar(
+        color: widget.color,
+        onColorChanged: widget.onColorChanged,
+      ),
+    ],
+  );
 
   /// The window's tabs AS DATA — the shape [EditorPanelTabs] already
   /// takes, and the shape a plugin can append to.
@@ -251,4 +266,42 @@ class _ColorButtonWindowState extends State<ColorButtonWindow> {
       ),
     ),
   ];
+}
+
+/// The colour picker AS A PANEL — the same wheel/RGB/palette tabs and the
+/// same status bar, laid out in whatever height a rail group gives it.
+///
+/// 컬러 창은 상단띠에서 오른쪽 서브띠 맨 위로 (유저 확정): it used to open
+/// downward out of a strip button, which made it the one surface in the app
+/// that opened along a different axis from everything else. As a rail group
+/// it opens sideways like every other panel, and it costs the top strip
+/// nothing.
+class ColorPickerPanel extends StatelessWidget {
+  const ColorPickerPanel({
+    super.key,
+    required this.color,
+    required this.palette,
+    required this.onColorChanged,
+    required this.onPaletteChanged,
+  });
+
+  final int color;
+  final ColorPaletteState palette;
+  final ValueChanged<int> onColorChanged;
+  final ValueChanged<ColorPaletteState> onPaletteChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    // The window widget already IS this content plus a popup's chrome, so
+    // the panel is that content with the chrome asked for and refused —
+    // one implementation of the picker, two frames around it.
+    return ColorButtonWindow(
+      key: const ValueKey<String>('color-picker-panel'),
+      framed: false,
+      color: color,
+      palette: palette,
+      onColorChanged: onColorChanged,
+      onPaletteChanged: onPaletteChanged,
+    );
+  }
 }

@@ -89,12 +89,13 @@ void main() {
     ) async {
       await pumpApp(tester);
       expect(find.byType(TimesheetTabHost), findsOneWidget);
+      final sheetGroup = EditorWorkspace.railGroupId(right: true, slot: 2);
       final railWidth = tester
           .getRect(find.byKey(const ValueKey<String>('editor-panel-dock-right')))
           .width;
       expect(railWidth, greaterThan(0));
 
-      await tester.tap(groupButton(EditorWorkspace.rightGroupId));
+      await tester.tap(groupButton(sheetGroup));
       await tester.pumpAndSettle();
       expect(find.byType(TimesheetTabHost), findsNothing);
       // The rail's column is gone, so the drawing gets the width back.
@@ -105,9 +106,9 @@ void main() {
       // …and the BUTTON is still there. Closing a group is not closing the
       // panels: the grouping survives, which is the whole point of a fixed
       // slot pool.
-      expect(groupButton(EditorWorkspace.rightGroupId), findsOneWidget);
+      expect(groupButton(sheetGroup), findsOneWidget);
 
-      await tester.tap(groupButton(EditorWorkspace.rightGroupId));
+      await tester.tap(groupButton(sheetGroup));
       await tester.pumpAndSettle();
       expect(find.byType(TimesheetTabHost), findsOneWidget);
     });
@@ -245,6 +246,37 @@ void main() {
         leftColumn().bottom,
         greaterThan(narrow.top),
         reason: 'the column runs past the region to the window bottom',
+      );
+    });
+
+    testWidgets('the colour group wears the SWATCH as its button, and opens '
+        'sideways', (tester) async {
+      await pumpApp(tester);
+
+      // The picker is the top group of the sub-strip (유저 확정), closed
+      // until you reach for it — but its colours are readable the whole
+      // time, because the button that opens it IS the pair.
+      final swatch = find.byKey(const ValueKey<String>('tool-color-button'));
+      expect(swatch, findsOneWidget);
+      expect(find.byKey(const ValueKey<String>('color-picker-panel')),
+          findsNothing);
+
+      final strip = tester.getRect(
+        find.byKey(const ValueKey<String>('editor-panel-dock-tool-right')),
+      );
+      expect(tester.getRect(swatch).center.dx, closeTo(strip.center.dx, 6));
+
+      await tester.tap(swatch);
+      await tester.pumpAndSettle();
+
+      final panel = find.byKey(const ValueKey<String>('color-picker-panel'));
+      expect(panel, findsOneWidget);
+      // SIDEWAYS: beside the strip, not hanging off it downward the way the
+      // strip popup did.
+      expect(tester.getRect(panel).right, lessThanOrEqualTo(strip.left + 0.5));
+      expect(
+        find.byKey(const ValueKey<String>('color-window-tab-wheel')),
+        findsOneWidget,
       );
     });
 
