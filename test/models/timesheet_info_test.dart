@@ -83,4 +83,64 @@ void main() {
       );
     });
   });
+
+  group('production staff', () {
+    test('staffFor answers an empty assignee rather than null', () {
+      expect(TimesheetInfo.empty.staffFor(ProductionRole.genga).name, '');
+      expect(TimesheetInfo.empty.staffFor('anything').isEmpty, isTrue);
+    });
+
+    test('withStaff sets a role and DROPS it when emptied', () {
+      final assigned = TimesheetInfo.empty.withStaff(
+        ProductionRole.genga,
+        const ProductionStaff(name: '大川'),
+      );
+      expect(assigned.staff, hasLength(1));
+      expect(assigned.staffFor(ProductionRole.genga).name, '大川');
+
+      final cleared = assigned.withStaff(
+        ProductionRole.genga,
+        ProductionStaff.empty,
+      );
+      expect(
+        cleared.staff,
+        isEmpty,
+        reason: 'a blank entry would accumulate for every role ever touched',
+      );
+    });
+
+    test('a stamp is set and cleared through the nullable closure', () {
+      const staff = ProductionStaff(name: '清', stampAssetPath: 'stamps/a.png');
+      expect(staff.copyWith(name: '明').stampAssetPath, 'stamps/a.png');
+      expect(staff.copyWith(stampAssetPath: () => null).stampAssetPath, isNull);
+    });
+
+    test('staff and logo round-trip through JSON', () {
+      final info = TimesheetInfo.empty
+          .withStaff(
+            ProductionRole.genga,
+            const ProductionStaff(name: '大川', stampAssetPath: 'stamps/o.png'),
+          )
+          .withStaff(
+            ProductionRole.director,
+            const ProductionStaff(name: '清'),
+          )
+          .copyWith(logoAssetPath: () => 'logos/studio.png');
+
+      final restored = TimesheetInfo.fromJson(info.toJson());
+
+      expect(restored, info);
+      expect(restored.staffFor(ProductionRole.genga).stampAssetPath,
+          'stamps/o.png');
+      expect(restored.staffFor(ProductionRole.director).stampAssetPath, isNull);
+      expect(restored.logoAssetPath, 'logos/studio.png');
+    });
+
+    test('an old file with no staff loads clean', () {
+      final restored = TimesheetInfo.fromJson({'title': 'X'});
+
+      expect(restored.staff, isEmpty);
+      expect(restored.logoAssetPath, isNull);
+    });
+  });
 }
