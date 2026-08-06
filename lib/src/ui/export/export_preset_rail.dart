@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../models/envelope/cut_envelope_paper.dart';
 import '../../models/export_preset.dart';
 import '../../models/export_size_mode.dart';
 import '../../models/export_spec.dart';
@@ -36,6 +37,7 @@ class ExportPresetRail extends StatelessWidget {
     ExportTab.cels => AppText.strings.exCels,
     ExportTab.timesheet => 'Timesheet',
     ExportTab.conte => 'Conte',
+    ExportTab.envelope => 'Envelope',
   };
 
   /// One-line rule summary under the preset name.
@@ -55,6 +57,10 @@ class ExportPresetRail extends StatelessWidget {
       ExportConteFormat.pdf => 'Vector PDF',
       ExportConteFormat.pageImage => 'Page image',
     },
+    EnvelopeExportSpec() =>
+      '${spec.paperMode == CutEnvelopePaperMode.cut ? 'Cut size' : 'Real sheet'}'
+          ' · ${spec.orderedLayers.length} '
+          '${spec.separateLayerFiles ? 'PNGs' : 'layers'}',
   };
 
   @override
@@ -160,9 +166,7 @@ class _PresetEntry extends StatelessWidget {
         padding: const EdgeInsets.fromLTRB(7, 3, 4, 4),
         decoration: BoxDecoration(
           color: selected ? accent.withValues(alpha: 0.12) : null,
-          border: Border.all(
-            color: selected ? accent : Colors.transparent,
-          ),
+          border: Border.all(color: selected ? accent : Colors.transparent),
           borderRadius: BorderRadius.circular(4),
         ),
         child: Row(

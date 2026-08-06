@@ -28,10 +28,17 @@ import '../../models/brush_frame_key.dart';
 import '../../models/conte/conte_ink_keys.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
+import '../../models/envelope/cut_envelope_ink_keys.dart';
+import '../../models/envelope/cut_envelope_layout.dart';
+import '../../models/envelope/cut_envelope_paint_layer.dart';
+import '../../models/envelope/cut_envelope_presets.dart';
+import '../../models/project.dart';
 import '../../services/brush_frame_store.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
 import '../canvas/tiled_surface_compose.dart';
 import '../conte/conte_sheet_builder.dart';
+import '../envelope/cut_envelope_builder.dart';
+import 'export_envelope_render.dart';
 import 'conte_pdf_writer.dart';
 import 'export_audio_mix.dart';
 import 'export_cel_group_plan.dart';
@@ -139,6 +146,7 @@ class ExportDialogState extends State<ExportDialog> {
   int _celPosition = 0;
   int _sheetPosition = 0;
   int _contePosition = 0;
+  int _envelopePosition = 0;
   // Sheet documents are chunky to derive; the modal dialog memoizes per
   // cut IDENTITY (the film cannot change under an open dialog).
   final Map<CutId, (Cut, TimesheetDocument, TimesheetDocumentLayout)>
@@ -494,6 +502,162 @@ class ExportDialogState extends State<ExportDialog> {
   String _contePageFileName(int index, int pageCount) =>
       pageCount == 1 ? 'conte.png' : 'conte_p${index + 1}.png';
 
+  /// The envelopes in scope — ONE per sheet, not one per cut.
+  ///
+  /// A 겸용 cut and its siblings share a single envelope (the folder they
+  /// share in the studio), so the plan is keyed by the sheet's OWNER cut
+  /// and a sibling that is also in scope adds no second file.
+  List<ExportEnvelopeTask> _envelopePlan() {
+    final spec = _specs.envelope;
+    final project = _session.repository.requireProject();
+    // Five things per build ask for this plan (headline, output line,
+    // transport, canExport, nav bar) and each task lays out a form and
+    // reads the whole project, so it is memoized on what it depends on:
+    // the project's identity and the spec.
+    final cached = _envelopePlanCache;
+    if (cached != null && identical(cached.$1, project) && cached.$2 == spec) {
+      return cached.$3;
+    }
+    final plan = _buildEnvelopePlan(spec, project);
+    _envelopePlanCache = (project, spec, plan);
+    return plan;
+  }
+
+  (Object, EnvelopeExportSpec, List<ExportEnvelopeTask>)? _envelopePlanCache;
+
+  List<ExportEnvelopeTask> _buildEnvelopePlan(
+    EnvelopeExportSpec spec,
+    Project project,
+  ) {
+    final form = CutEnvelopePresets.byId(spec.formId);
+    final cuts = resolveExportCuts(
+      project: project,
+      activeCutId: _activeCut.id,
+      range: spec.scope == ExportScopeKind.project
+          ? ExportRange.allCuts
+          : ExportRange.activeCut,
+    );
+    final tasks = <ExportEnvelopeTask>[];
+    final seen = <CutId>{};
+    for (final cut in cuts) {
+      if (!_cutInScope(cut)) {
+        continue;
+      }
+      final ownerId = cutEnvelopeInkOwner(project, cut.id);
+      if (!seen.add(ownerId)) {
+        continue;
+      }
+      // The sheet belongs to the owner: its canvas sizes the cut-fitted
+      // paper and its name the file, whichever sibling was in scope.
+      final owner = _cutById(ownerId) ?? cut;
+      final paper = cutEnvelopePaperSize(
+        mode: spec.paperMode,
+        cut: owner,
+        formAspectRatio: form.aspectRatio,
+        sheetWidth: spec.sheetWidth,
+      );
+      tasks.add(
+        ExportEnvelopeTask(
+          owner: owner,
+          layout: CutEnvelopeLayout.fit(
+            form: form,
+            paperWidth: paper.width.toDouble(),
+            paperHeight: paper.height.toDouble(),
+          ),
+          source: buildCutEnvelopeSource(project: project, cut: owner),
+        ),
+      );
+    }
+    return tasks;
+  }
+
+  Cut? _cutById(CutId id) {
+    for (final track in _session.repository.requireProject().tracks) {
+      for (final cut in track.cuts) {
+        if (cut.id == id) {
+          return cut;
+        }
+      }
+    }
+    return null;
+  }
+
+  /// One output file: the sheet, plus the stratum when the layers ship
+  /// separately.
+  String _envelopeFileName(ExportEnvelopeTask task, EnvelopePaintLayer? layer) {
+    final label = sanitizeExportFileComponent(task.owner.name);
+    return layer == null
+        ? 'CUT${label}_envelope.png'
+        : 'CUT${label}_envelope_${layer.jsonValue}.png';
+  }
+
+  /// Every (sheet, layer) pair the run writes, in order. A flat export
+  /// carries a null layer — one file drawing all the enabled strata.
+  List<(ExportEnvelopeTask, EnvelopePaintLayer?)> _envelopeFilePlan() {
+    final spec = _specs.envelope;
+    final tasks = _envelopePlan();
+    return [
+      for (final task in tasks)
+        if (spec.separateLayerFiles)
+          for (final layer in spec.orderedLayers) (task, layer)
+        else
+          (task, null),
+    ];
+  }
+
+  /// The envelope ink rasters for one sheet, composed from the session's
+  /// envelope store. Caller disposes the images.
+  Future<Map<BrushFrameKey, ui.Image>> _renderEnvelopeInk(
+    ExportEnvelopeTask task,
+  ) async {
+    final images = <BrushFrameKey, ui.Image>{};
+    for (final placed in task.layout.placedBoxes) {
+      if (!placed.box.takesInk) {
+        continue;
+      }
+      final key = envelopeInkBoxKey(task.owner.id, placed.box.id);
+      if (images.containsKey(key)) {
+        continue;
+      }
+      final surface = _session.envelopeInkStore.bakedSurfaceOrNull(key);
+      if (surface == null) {
+        continue;
+      }
+      final image = await composeTiledSurfaceImage(
+        surface,
+        reuse: BitmapTileImageCache.instance,
+      );
+      if (image != null) {
+        images[key] = image;
+      }
+    }
+    return images;
+  }
+
+  /// One envelope image, with the ink composed and freed around it.
+  Future<ui.Image> _renderEnvelope(
+    ExportEnvelopeTask task, {
+    required Set<EnvelopePaintLayer> layers,
+  }) async {
+    final wantsInk = layers.contains(EnvelopePaintLayer.ink);
+    final ink = wantsInk
+        ? await _renderEnvelopeInk(task)
+        : const <BrushFrameKey, ui.Image>{};
+    try {
+      return await renderCutEnvelopeImage(
+        layout: task.layout,
+        source: task.source,
+        layers: layers,
+        inkKeyFor: (boxId) => envelopeInkBoxKey(task.owner.id, boxId),
+        inkImageFor: (key) => ink[key],
+      );
+    } finally {
+      for (final image in ink.values) {
+        image.dispose();
+      }
+    }
+  }
+
   /// The sheet ink rasters for [pages] (R5), composed from the session's
   /// ink stores: the page plane plus each cell's row band. Caller
   /// disposes the images.
@@ -826,6 +990,53 @@ class ExportDialogState extends State<ExportDialog> {
             }
           },
         );
+      case ExportTab.envelope:
+        final plan = _envelopePlan();
+        if (plan.isEmpty) {
+          _preview.clear();
+          return;
+        }
+        _envelopePosition = _envelopePosition.clamp(0, plan.length - 1);
+        final task = plan[_envelopePosition];
+        final fitted = previewOutputSize(
+          sourceWidth: task.layout.paperWidth.round(),
+          sourceHeight: task.layout.paperHeight.round(),
+          maxWidth: _previewMaxWidth,
+          maxHeight: _previewMaxHeight,
+        );
+        final spec = _specs.envelope;
+        final layers = spec.layers;
+        _preview.request(
+          // Every setting that changes the picture is in the key: two
+          // different layer sets of the same SIZE must not share a
+          // cached render.
+          key:
+              'envelope:${task.owner.id.value}:${spec.formId}:'
+              '${spec.paperMode.toJson()}:${spec.sheetWidth}:'
+              '${[for (final layer in spec.orderedLayers) layer.jsonValue].join('+')}',
+          caption: 'CUT${task.owner.name}',
+          render: () async {
+            final ink = layers.contains(EnvelopePaintLayer.ink)
+                ? await _renderEnvelopeInk(task)
+                : const <BrushFrameKey, ui.Image>{};
+            try {
+              return await renderCutEnvelopeImage(
+                layout: task.layout,
+                source: task.source,
+                layers: layers,
+                inkKeyFor: (boxId) => envelopeInkBoxKey(task.owner.id, boxId),
+                inkImageFor: (key) => ink[key],
+                outputSize: fitted == null
+                    ? null
+                    : (width: fitted.width, height: fitted.height),
+              );
+            } finally {
+              for (final image in ink.values) {
+                image.dispose();
+              }
+            }
+          },
+        );
     }
   }
 
@@ -921,6 +1132,15 @@ class ExportDialogState extends State<ExportDialog> {
         final position = _contePosition.clamp(0, pages.length - 1);
         return 'p${position + 1} / ${pages.length} · '
             '${pages.length} ${_plural(pages.length, 'page')}';
+      case ExportTab.envelope:
+        final plan = _envelopePlan();
+        if (plan.isEmpty) {
+          return null;
+        }
+        final position = _envelopePosition.clamp(0, plan.length - 1);
+        final files = _envelopeFilePlan().length;
+        return 'CUT${plan[position].owner.name} · ${position + 1} / '
+            '${plan.length} · $files ${_plural(files, 'file')}';
     }
   }
 
@@ -980,6 +1200,18 @@ class ExportDialogState extends State<ExportDialog> {
         }
         return '${pages.length} conte ${_plural(pages.length, 'page')} as '
             "A4 PNG — the panel's own paper, offscreen.";
+      case ExportTab.envelope:
+        final spec = _specs.envelope;
+        final sheets = _envelopePlan().length;
+        final files = _envelopeFilePlan().length;
+        final paper = spec.paperMode == CutEnvelopePaperMode.cut
+            ? "the CUT's own pixels — drops into a working file as a layer"
+            : '${spec.sheetWidth}px wide — the real 봉투, for printing';
+        final layered = spec.separateLayerFiles
+            ? ' · one PNG per layer (${spec.orderedLayers.length})'
+            : '';
+        return '$sheets ${_plural(sheets, 'envelope')} as '
+            '$files ${_plural(files, 'PNG')} at $paper$layered.';
     }
   }
 
@@ -1027,6 +1259,13 @@ class ExportDialogState extends State<ExportDialog> {
         }
         return '→ ${_contePageFileName(0, pages.length)}'
             '${pages.length > 1 ? ' …' : ''}';
+      case ExportTab.envelope:
+        final files = _envelopeFilePlan();
+        if (files.isEmpty) {
+          return '→ (no cuts)';
+        }
+        final first = _envelopeFileName(files.first.$1, files.first.$2);
+        return '→ $first${files.length > 1 ? ' …' : ''}';
     }
   }
 
@@ -1144,6 +1383,8 @@ class ExportDialogState extends State<ExportDialog> {
             : _timesheetCuts().isNotEmpty;
       case ExportTab.conte:
         return _conteSheet().$2.isNotEmpty;
+      case ExportTab.envelope:
+        return _envelopeFilePlan().isNotEmpty;
     }
   }
 
@@ -1211,6 +1452,8 @@ class ExportDialogState extends State<ExportDialog> {
             : _exportXdts();
       case ExportTab.conte:
         return _exportConte();
+      case ExportTab.envelope:
+        return _exportEnvelopes();
     }
   }
 
@@ -1409,6 +1652,35 @@ class ExportDialogState extends State<ExportDialog> {
     }
     return 'Exported ${summary.written} sheet '
         '${_plural(summary.written, 'page')}.';
+  }
+
+  /// The envelopes, one PNG per (sheet, layer) — streamed like every image
+  /// export, so only the sheet being written holds its ink rasters.
+  Future<String> _exportEnvelopes() async {
+    final files = _envelopeFilePlan();
+    final summary = await _exportService.exportImages(
+      count: files.length,
+      renderImage: (index) {
+        final (task, layer) = files[index];
+        return _renderEnvelope(
+          task,
+          // One stratum per file when they ship separately, so only the
+          // paper file is opaque and the rest stack over it.
+          layers: layer == null ? _specs.envelope.layers : {layer},
+        );
+      },
+      fileNameFor: (index) =>
+          _envelopeFileName(files[index].$1, files[index].$2),
+      directoryPath: _location!,
+      isCancelled: () => _cancelRequested,
+      onProgress: _reportProgress,
+    );
+    if (summary.processed < files.length) {
+      return 'Export cancelled after ${summary.written} '
+          '${_plural(summary.written, 'file')}.';
+    }
+    return 'Exported ${summary.written} envelope '
+        '${_plural(summary.written, 'file')}.';
   }
 
   Future<String> _exportConte() async {
@@ -2053,6 +2325,11 @@ class ExportDialogState extends State<ExportDialog> {
         return pages.isEmpty
             ? '(no cuts)'
             : _contePageFileName(0, pages.length);
+      case ExportTab.envelope:
+        final files = _envelopeFilePlan();
+        return files.isEmpty
+            ? '(no cuts)'
+            : _envelopeFileName(files.first.$1, files.first.$2);
       case ExportTab.image:
         return '';
     }
@@ -2177,6 +2454,22 @@ class ExportDialogState extends State<ExportDialog> {
             _refreshPreview();
           },
         );
+      case ExportTab.envelope:
+        final plan = _envelopePlan();
+        return ExportNavBar(
+          axis: ExportNavAxis(
+            length: plan.length,
+            captionOf: (position) => plan.isEmpty
+                ? '-'
+                : 'CUT${plan[position.clamp(0, plan.length - 1)].owner.name}',
+          ),
+          position: _envelopePosition,
+          enabled: !_isExporting,
+          onChanged: (position) {
+            setState(() => _envelopePosition = position);
+            _refreshPreview();
+          },
+        );
     }
   }
 
@@ -2267,6 +2560,7 @@ class ExportDialogState extends State<ExportDialog> {
       ExportTab.cels => _celsModules(),
       ExportTab.timesheet => _timesheetModules(),
       ExportTab.conte => _conteModules(),
+      ExportTab.envelope => _envelopeModules(),
     };
     // A plain scroll view (not a lazy list): a handful of modules, and
     // collapsed accordions must exist for finders/ensureVisible.
@@ -3054,6 +3348,196 @@ class ExportDialogState extends State<ExportDialog> {
                         'Conte tab shows is what prints.',
             ),
           ],
+        ),
+      ),
+    ];
+  }
+
+  List<Widget> _envelopeModules() {
+    final spec = _specs.envelope;
+    final cutPaper = spec.paperMode == CutEnvelopePaperMode.cut;
+    return [
+      ExportAccordion(
+        title: 'Form',
+        summary: CutEnvelopePresets.byId(spec.formId).name,
+        expanded: _expandedFor('envelope-form', fallback: true),
+        onToggle: () => _toggleExpanded('envelope-form', fallback: true),
+        child: Wrap(
+          spacing: 5,
+          children: [
+            for (final form in CutEnvelopePresets.all)
+              ExportChip(
+                key: ValueKey<String>('export-envelope-form-${form.id}'),
+                label: form.name,
+                selected: spec.formId == form.id,
+                onTap: _isExporting
+                    ? null
+                    : () => _updateSpec(spec.copyWith(formId: form.id)),
+              ),
+          ],
+        ),
+      ),
+      ExportAccordion(
+        title: 'Paper',
+        summary: cutPaper ? 'Cut size' : 'Sheet · ${spec.sheetWidth}px',
+        expanded: _expandedFor('envelope-paper', fallback: true),
+        onToggle: () => _toggleExpanded('envelope-paper', fallback: true),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              spacing: 5,
+              children: [
+                ExportChip(
+                  key: const ValueKey<String>('export-envelope-paper-cut'),
+                  label: 'Cut size',
+                  selected: cutPaper,
+                  onTap: _isExporting
+                      ? null
+                      : () => _updateSpec(
+                          spec.copyWith(paperMode: CutEnvelopePaperMode.cut),
+                        ),
+                ),
+                ExportChip(
+                  key: const ValueKey<String>('export-envelope-paper-sheet'),
+                  label: 'Real sheet',
+                  selected: !cutPaper,
+                  onTap: _isExporting
+                      ? null
+                      : () => _updateSpec(
+                          spec.copyWith(paperMode: CutEnvelopePaperMode.sheet),
+                        ),
+                ),
+              ],
+            ),
+            if (!cutPaper) ...[
+              const SizedBox(height: 6),
+              ExportModuleRow(
+                label: 'Width',
+                child: Wrap(
+                  spacing: 5,
+                  children: [
+                    for (final width in const [1240, 2480, 3508])
+                      ExportChip(
+                        key: ValueKey<String>('export-envelope-width-$width'),
+                        label: '${width}px',
+                        selected: spec.sheetWidth == width,
+                        onTap: _isExporting
+                            ? null
+                            : () =>
+                                  _updateSpec(spec.copyWith(sheetWidth: width)),
+                      ),
+                  ],
+                ),
+              ),
+            ],
+            const SizedBox(height: 5),
+            exportModuleNote(
+              context,
+              cutPaper
+                  ? "The cut's own pixels, so the PNG drops into the "
+                        'working file as a layer and lines up with the '
+                        'artwork. The form keeps its shape and whatever is '
+                        'left over stays margin.'
+                  : 'The 봉투 at print resolution (2480px ≈ A4 at 300dpi).',
+            ),
+          ],
+        ),
+      ),
+      ExportAccordion(
+        title: 'Layers',
+        summary: spec.separateLayerFiles
+            ? '${spec.orderedLayers.length} separate PNGs'
+            : '${spec.orderedLayers.length} of 4, flat',
+        expanded: _expandedFor('envelope-layers', fallback: true),
+        onToggle: () => _toggleExpanded('envelope-layers', fallback: true),
+        resetEnabled:
+            spec.layers.length != EnvelopeExportSpec.defaultLayers.length,
+        onReset: () => _updateSpec(
+          spec.copyWith(layers: EnvelopeExportSpec.defaultLayers),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Wrap(
+              spacing: 5,
+              children: [
+                for (final layer in EnvelopePaintLayer.values)
+                  ExportChip(
+                    key: ValueKey<String>(
+                      'export-envelope-layer-${layer.jsonValue}',
+                    ),
+                    label: switch (layer) {
+                      EnvelopePaintLayer.paper => 'Paper',
+                      EnvelopePaintLayer.form => 'Form',
+                      EnvelopePaintLayer.content => 'Content',
+                      EnvelopePaintLayer.ink => 'Ink',
+                    },
+                    selected: spec.layers.contains(layer),
+                    onTap: _isExporting
+                        ? null
+                        : () => _updateSpec(
+                            spec.withLayer(layer, !spec.layers.contains(layer)),
+                          ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 6),
+            ExportModuleRow(
+              label: 'Files',
+              child: Wrap(
+                spacing: 5,
+                children: [
+                  ExportChip(
+                    key: const ValueKey<String>('export-envelope-files-flat'),
+                    label: 'One image',
+                    selected: !spec.separateLayerFiles,
+                    onTap: _isExporting
+                        ? null
+                        : () => _updateSpec(
+                            spec.copyWith(separateLayerFiles: false),
+                          ),
+                  ),
+                  ExportChip(
+                    key: const ValueKey<String>(
+                      'export-envelope-files-layered',
+                    ),
+                    label: 'One per layer',
+                    selected: spec.separateLayerFiles,
+                    onTap: _isExporting
+                        ? null
+                        : () => _updateSpec(
+                            spec.copyWith(separateLayerFiles: true),
+                          ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 5),
+            exportModuleNote(
+              context,
+              'Separate files are the PSD layering, as PNGs: whoever opens '
+              'them can delete the filled-in values without losing the '
+              'printed form. Only the paper file is opaque.',
+            ),
+          ],
+        ),
+      ),
+      ExportAccordion(
+        title: AppText.strings.exScope,
+        summary: ExportScopeModule.summarize(spec.scope),
+        // Open by default: "this cut or the whole film" is the first thing
+        // anyone asks of a per-cut document.
+        expanded: _expandedFor('envelope-scope', fallback: true),
+        onToggle: () => _toggleExpanded('envelope-scope', fallback: true),
+        child: ExportScopeModule(
+          scope: spec.scope,
+          enabled: !_isExporting,
+          onChanged: (scope) => _updateSpec(spec.copyWith(scope: scope)),
+          note:
+              'A 겸용 cut and its siblings are ONE envelope — the folder '
+              'they share in the studio — so they write one file, not one '
+              'each.',
         ),
       ),
     ];

@@ -1,3 +1,7 @@
+import 'package:flutter/foundation.dart' show setEquals;
+
+import 'envelope/cut_envelope_paint_layer.dart';
+import 'envelope/cut_envelope_paper.dart';
 import 'export_cel_naming.dart';
 import 'export_format_selection.dart';
 import 'export_size_mode.dart';
@@ -13,7 +17,8 @@ enum ExportTab {
   image,
   cels,
   timesheet,
-  conte;
+  conte,
+  envelope;
 
   String get jsonValue => name;
 
@@ -124,6 +129,7 @@ ExportTabSpec exportTabSpecFromJson(ExportTab tab, Map<String, dynamic> json) {
     ExportTab.cels => CelsExportSpec.fromJson(json),
     ExportTab.timesheet => TimesheetExportSpec.fromJson(json),
     ExportTab.conte => ConteExportSpec.fromJson(json),
+    ExportTab.envelope => EnvelopeExportSpec.fromJson(json),
   };
 }
 
@@ -269,16 +275,15 @@ class ImageExportSpec extends ExportTabSpec {
     if (!applyLayerFx) 'applyLayerFx': false,
   };
 
-  static ImageExportSpec fromJson(Map<String, dynamic> json) =>
-      ImageExportSpec(
-        format: json['format'] == null
-            ? const ExportFormatSelection(kind: ExportMediaKind.still)
-            : ExportFormatSelection.fromJson(
-                json['format'] as Map<String, dynamic>,
-              ),
-        sizeMode: ExportSizeMode.fromJson(json['sizeMode']),
-        applyLayerFx: json['applyLayerFx'] as bool? ?? true,
-      );
+  static ImageExportSpec fromJson(Map<String, dynamic> json) => ImageExportSpec(
+    format: json['format'] == null
+        ? const ExportFormatSelection(kind: ExportMediaKind.still)
+        : ExportFormatSelection.fromJson(
+            json['format'] as Map<String, dynamic>,
+          ),
+    sizeMode: ExportSizeMode.fromJson(json['sizeMode']),
+    applyLayerFx: json['applyLayerFx'] as bool? ?? true,
+  );
 
   @override
   bool operator ==(Object other) =>
@@ -396,8 +401,7 @@ class CelsExportSpec extends ExportTabSpec {
         ? const ExportCelNaming()
         : ExportCelNaming.fromJson(json['naming'] as Map<String, dynamic>),
     onTimesheetOnly: json['onTimesheetOnly'] as bool? ?? false,
-    includeInstructionLayers:
-        json['includeInstructionLayers'] as bool? ?? true,
+    includeInstructionLayers: json['includeInstructionLayers'] as bool? ?? true,
     includeSyncedAttach: json['includeSyncedAttach'] as bool? ?? true,
     includeFreeAttach: json['includeFreeAttach'] as bool? ?? true,
     includeFolderMembers: json['includeFolderMembers'] as bool? ?? false,
@@ -466,8 +470,7 @@ class TimesheetExportSpec extends ExportTabSpec {
 
   @override
   Map<String, dynamic> toJson() => {
-    if (format != ExportTimesheetFormat.sheetImage)
-      'format': format.jsonValue,
+    if (format != ExportTimesheetFormat.sheetImage) 'format': format.jsonValue,
     if (scope != ExportScopeKind.cut) 'scope': scope.jsonValue,
     if (sheetScale != 2) 'sheetScale': sheetScale,
   };
@@ -518,11 +521,10 @@ class ConteExportSpec extends ExportTabSpec {
     if (sheetScale != 2) 'sheetScale': sheetScale,
   };
 
-  static ConteExportSpec fromJson(Map<String, dynamic> json) =>
-      ConteExportSpec(
-        format: ExportConteFormat.fromJson(json['format']),
-        sheetScale: ((json['sheetScale'] as num?)?.round() ?? 2).clamp(1, 4),
-      );
+  static ConteExportSpec fromJson(Map<String, dynamic> json) => ConteExportSpec(
+    format: ExportConteFormat.fromJson(json['format']),
+    sheetScale: ((json['sheetScale'] as num?)?.round() ?? 2).clamp(1, 4),
+  );
 
   @override
   bool operator ==(Object other) =>
@@ -534,6 +536,147 @@ class ConteExportSpec extends ExportTabSpec {
   int get hashCode => Object.hash(format, sheetScale);
 }
 
+/// The Envelope tab: the 컷봉투 as an image — one sheet per cut, and one
+/// sheet for a 겸용 cut and all its siblings together.
+///
+/// The default is the CUT's own pixel size, because the point of the
+/// digital envelope is to drop into the working file as a layer and line
+/// up with the artwork. The real-envelope size is there for printing.
+class EnvelopeExportSpec extends ExportTabSpec {
+  const EnvelopeExportSpec({
+    this.formId = defaultFormId,
+    this.paperMode = CutEnvelopePaperMode.cut,
+    this.scope = ExportScopeKind.cut,
+    this.sheetWidth = 2480,
+    this.layers = defaultLayers,
+    this.separateLayerFiles = false,
+  });
+
+  /// [CutEnvelopePresets.analogId] without importing the preset table —
+  /// the spec is a value, and the table is a bundle of forms.
+  static const String defaultFormId = 'analog-wit';
+
+  /// Which bundled form prints. The export chooses its own rather than
+  /// following the panel: a studio may read the digital sheet on screen
+  /// and hand over the analog one.
+  final String formId;
+
+  /// Every stratum, which is what a flat PNG of the sheet means.
+  static const Set<EnvelopePaintLayer> defaultLayers = {
+    EnvelopePaintLayer.paper,
+    EnvelopePaintLayer.form,
+    EnvelopePaintLayer.content,
+    EnvelopePaintLayer.ink,
+  };
+
+  final CutEnvelopePaperMode paperMode;
+  final ExportScopeKind scope;
+
+  /// The real-envelope mode's pixel width (A4 at 300dpi by default); the
+  /// cut mode takes the canvas verbatim and ignores this.
+  final int sheetWidth;
+
+  /// Which strata print. Turning one off is how a printed sheet ships
+  /// without its handwriting, or how the form alone becomes a template.
+  final Set<EnvelopePaintLayer> layers;
+
+  /// One file per enabled layer instead of one flat image — the PSD
+  /// layering, shipping as PNGs until the PSD writer lands. Each file
+  /// carries exactly one stratum, so only the paper file is opaque and the
+  /// rest stack over it in whatever the recipient opens them in.
+  final bool separateLayerFiles;
+
+  /// The strata actually drawn, in painting order.
+  List<EnvelopePaintLayer> get orderedLayers => [
+    for (final layer in EnvelopePaintLayer.values)
+      if (layers.contains(layer)) layer,
+  ];
+
+  @override
+  ExportTab get tab => ExportTab.envelope;
+
+  EnvelopeExportSpec copyWith({
+    String? formId,
+    CutEnvelopePaperMode? paperMode,
+    ExportScopeKind? scope,
+    int? sheetWidth,
+    Set<EnvelopePaintLayer>? layers,
+    bool? separateLayerFiles,
+  }) => EnvelopeExportSpec(
+    formId: formId ?? this.formId,
+    paperMode: paperMode ?? this.paperMode,
+    scope: scope ?? this.scope,
+    sheetWidth: (sheetWidth ?? this.sheetWidth).clamp(64, 20000),
+    layers: layers ?? this.layers,
+    separateLayerFiles: separateLayerFiles ?? this.separateLayerFiles,
+  );
+
+  /// Toggles one stratum, refusing to leave nothing to draw.
+  EnvelopeExportSpec withLayer(EnvelopePaintLayer layer, bool enabled) {
+    final next = {...layers};
+    if (enabled) {
+      next.add(layer);
+    } else {
+      next.remove(layer);
+    }
+    return next.isEmpty ? this : copyWith(layers: next);
+  }
+
+  @override
+  Map<String, dynamic> toJson() => {
+    if (formId != defaultFormId) 'formId': formId,
+    if (paperMode != CutEnvelopePaperMode.cut) 'paperMode': paperMode.toJson(),
+    if (scope != ExportScopeKind.cut) 'scope': scope.jsonValue,
+    if (sheetWidth != 2480) 'sheetWidth': sheetWidth,
+    if (!setEquals(layers, defaultLayers))
+      'layers': [for (final layer in orderedLayers) layer.jsonValue],
+    if (separateLayerFiles) 'separateLayerFiles': true,
+  };
+
+  static EnvelopeExportSpec fromJson(Map<String, dynamic> json) {
+    final rawLayers = json['layers'];
+    final layers = rawLayers is List
+        ? {for (final entry in rawLayers) ?EnvelopePaintLayer.fromJson(entry)}
+        : defaultLayers;
+    return EnvelopeExportSpec(
+      formId: json['formId'] as String? ?? defaultFormId,
+      // Absent means the DEFAULT (cut-fitted), not the enum's own fallback.
+      paperMode: json['paperMode'] == null
+          ? CutEnvelopePaperMode.cut
+          : CutEnvelopePaperMode.fromJson(json['paperMode']),
+      scope: ExportScopeKind.fromJson(json['scope']),
+      sheetWidth: ((json['sheetWidth'] as num?)?.round() ?? 2480).clamp(
+        64,
+        20000,
+      ),
+      // An empty list would leave nothing to draw; a file that says so is
+      // saying "default", not "blank page".
+      layers: layers.isEmpty ? defaultLayers : layers,
+      separateLayerFiles: json['separateLayerFiles'] == true,
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      other is EnvelopeExportSpec &&
+      other.formId == formId &&
+      other.paperMode == paperMode &&
+      other.scope == scope &&
+      other.sheetWidth == sheetWidth &&
+      setEquals(other.layers, layers) &&
+      other.separateLayerFiles == separateLayerFiles;
+
+  @override
+  int get hashCode => Object.hash(
+    formId,
+    paperMode,
+    scope,
+    sheetWidth,
+    Object.hashAllUnordered(layers),
+    separateLayerFiles,
+  );
+}
+
 /// The dialog's last-used spec per tab (app state, persisted with the
 /// presets in the export settings file).
 class ExportTabSpecs {
@@ -543,6 +686,7 @@ class ExportTabSpecs {
     this.cels = const CelsExportSpec(),
     this.timesheet = const TimesheetExportSpec(),
     this.conte = const ConteExportSpec(),
+    this.envelope = const EnvelopeExportSpec(),
   });
 
   final SequenceExportSpec sequence;
@@ -550,6 +694,7 @@ class ExportTabSpecs {
   final CelsExportSpec cels;
   final TimesheetExportSpec timesheet;
   final ConteExportSpec conte;
+  final EnvelopeExportSpec envelope;
 
   ExportTabSpec specFor(ExportTab tab) => switch (tab) {
     ExportTab.sequence => sequence,
@@ -557,6 +702,7 @@ class ExportTabSpecs {
     ExportTab.cels => cels,
     ExportTab.timesheet => timesheet,
     ExportTab.conte => conte,
+    ExportTab.envelope => envelope,
   };
 
   ExportTabSpecs withSpec(ExportTabSpec spec) => switch (spec) {
@@ -565,6 +711,7 @@ class ExportTabSpecs {
     CelsExportSpec() => copyWith(cels: spec),
     TimesheetExportSpec() => copyWith(timesheet: spec),
     ConteExportSpec() => copyWith(conte: spec),
+    EnvelopeExportSpec() => copyWith(envelope: spec),
   };
 
   ExportTabSpecs copyWith({
@@ -573,12 +720,14 @@ class ExportTabSpecs {
     CelsExportSpec? cels,
     TimesheetExportSpec? timesheet,
     ConteExportSpec? conte,
+    EnvelopeExportSpec? envelope,
   }) => ExportTabSpecs(
     sequence: sequence ?? this.sequence,
     image: image ?? this.image,
     cels: cels ?? this.cels,
     timesheet: timesheet ?? this.timesheet,
     conte: conte ?? this.conte,
+    envelope: envelope ?? this.envelope,
   );
 
   Map<String, dynamic> toJson() => {
@@ -587,6 +736,7 @@ class ExportTabSpecs {
     'cels': cels.toJson(),
     'timesheet': timesheet.toJson(),
     'conte': conte.toJson(),
+    'envelope': envelope.toJson(),
   };
 
   static ExportTabSpecs fromJson(Map<String, dynamic> json) => ExportTabSpecs(
@@ -607,6 +757,9 @@ class ExportTabSpecs {
     conte: json['conte'] == null
         ? const ConteExportSpec()
         : ConteExportSpec.fromJson(json['conte'] as Map<String, dynamic>),
+    envelope: json['envelope'] == null
+        ? const EnvelopeExportSpec()
+        : EnvelopeExportSpec.fromJson(json['envelope'] as Map<String, dynamic>),
   );
 
   @override
@@ -617,8 +770,10 @@ class ExportTabSpecs {
           other.image == image &&
           other.cels == cels &&
           other.timesheet == timesheet &&
-          other.conte == conte;
+          other.conte == conte &&
+          other.envelope == envelope;
 
   @override
-  int get hashCode => Object.hash(sequence, image, cels, timesheet, conte);
+  int get hashCode =>
+      Object.hash(sequence, image, cels, timesheet, conte, envelope);
 }
