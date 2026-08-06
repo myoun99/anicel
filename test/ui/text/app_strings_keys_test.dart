@@ -549,6 +549,15 @@ void main() {
   test('the reader table covers every getter the class declares', () {
     // Guards the guard: a string added without a line here would other-
     // wise be silently unchecked.
-    expect(readers, hasLength(500));
+    //
+    // The number is HAND-KEPT and it does not currently reach the class:
+    // AppStrings declares 542 getters and this table reads 495 of them, so
+    // roughly fifty strings are unguarded and the count only notices that
+    // THIS file changed, not that app_strings.dart did. The shortcut half of
+    // this same file shows the fix — it iterates the registry instead of a
+    // hand list — and the equivalent here is to read the declarations out of
+    // the source. That is its own piece of work, tracked separately; five
+    // strings left with accent 2, so the number moves five.
+    expect(readers, hasLength(495));
   });
 }
