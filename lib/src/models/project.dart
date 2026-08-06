@@ -17,10 +17,13 @@ const defaultProjectCameraSize = CanvasSize(width: 1920, height: 1080);
 /// on, replacing the per-cut FO/WO wash the transparency model retired.
 const defaultProjectBackdropArgb = 0xFF000000;
 
-/// The default PASTEBOARD: the historical editor grey the app-level
-/// setting carried while the pasteboard was app state (R28 #9, reversed
-/// 2026-07-29).
-const defaultProjectPasteboardArgb = 0xFF2B2F33;
+/// The default PASTEBOARD (R28 #9, reversed 2026-07-29): darker than the
+/// historical editor grey, so the paper is the brightest thing on screen.
+///
+/// It must stay in step with `AppWorkspaceColors.defaultPasteboardArgb` — a
+/// project omits this key when it matches the default, so the two constants
+/// disagreeing would make a saved project change colour on the way back in.
+const defaultProjectPasteboardArgb = 0xFF17191B;
 
 /// The default audio rate (EXPORT-AUDIO ③): 48 kHz is the film/video
 /// production standard (44.1k is the CD/music one) and what the conform

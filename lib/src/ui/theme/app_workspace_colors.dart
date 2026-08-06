@@ -11,8 +11,15 @@ import 'package:flutter/foundation.dart';
 class AppWorkspaceColors {
   const AppWorkspaceColors({this.pasteboardArgb = defaultPasteboardArgb});
 
-  /// The backdrop the stage floats on. The historical editor grey.
-  static const int defaultPasteboardArgb = 0xFF2B2F33;
+  /// The backdrop the stage floats on.
+  ///
+  /// Darker than the historical editor grey, and deliberately darker than the
+  /// panel surface: the paper is the brightest thing on screen and everything
+  /// around it should get out of its way. It also puts a floating panel a
+  /// step ABOVE its surround instead of below it. Still just a default — the
+  /// pasteboard, the backdrop and the paper stay three colours the user picks
+  /// for themselves.
+  static const int defaultPasteboardArgb = 0xFF17191B;
 
   final int pasteboardArgb;
 
