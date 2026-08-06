@@ -1,3 +1,4 @@
+import 'dart:math' as math;
 import 'dart:ui' as ui;
 
 import 'package:flutter/foundation.dart' show setEquals;
@@ -7,28 +8,11 @@ import '../../models/brush_frame_key.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/envelope/cut_envelope_form.dart';
 import '../../models/envelope/cut_envelope_layout.dart';
+import '../../models/envelope/cut_envelope_paint_layer.dart';
 import '../../models/envelope/cut_envelope_source.dart';
 
-/// Which stratum of the envelope a painter draws.
-///
-/// Four layers, so a PSD export can hand them over separately and whoever
-/// opens it can delete the filled-in values without losing the form (user,
-/// 2026-08-06: "자동입력된거 지우고싶을때 못지우니까"). The timesheet
-/// already splits FORM from CONTENT for the same reason; the envelope is
-/// born with the whole set.
-enum EnvelopePaintLayer {
-  /// The sheet itself: kraft for a real 봉투, white for a digital one.
-  paper,
-
-  /// Printed rules, box outlines and the words the form itself carries.
-  form,
-
-  /// Values bound from the project — the layer that has to be erasable.
-  content,
-
-  /// Handwriting. Lives in its own store, never in a cel.
-  ink,
-}
+export '../../models/envelope/cut_envelope_paint_layer.dart'
+    show EnvelopePaintLayer;
 
 /// Paints a cut envelope. The panel and every export share it, so what is
 /// on screen IS the page — the timesheet's rule.
@@ -89,12 +73,18 @@ class CutEnvelopePainter extends CustomPainter {
       canvas.clipRect(Offset.zero & size);
       canvas.translate(panelViewport.panX, panelViewport.panY);
       canvas.scale(panelViewport.zoom, panelViewport.zoom);
+    } else {
+      // Fit-to-size: the export renders AT paper size (scale 1) and a
+      // preview at a fraction of it, both from these same paper units.
+      final scale = math.min(
+        size.width / layout.paperWidth,
+        size.height / layout.paperHeight,
+      );
+      canvas.scale(scale, scale);
     }
     if (_draws(EnvelopePaintLayer.paper)) {
       canvas.drawRect(
-        panelViewport == null
-            ? Rect.fromLTWH(0, 0, size.width, size.height)
-            : Rect.fromLTWH(0, 0, layout.paperWidth, layout.paperHeight),
+        Rect.fromLTWH(0, 0, layout.paperWidth, layout.paperHeight),
         Paint()..color = Color(layout.form.paperArgb),
       );
     }
