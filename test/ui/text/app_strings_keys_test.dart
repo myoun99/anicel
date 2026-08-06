@@ -287,6 +287,8 @@ void main() {
     'panelTimesheet': (s) => s.panelTimesheet,
     'panelToolLibrary': (s) => s.panelToolLibrary,
     'panelCollapseRegion': (s) => s.panelCollapseRegion,
+    'panelNewGroup': (s) => s.panelNewGroup,
+    'panelRegionWidth': (s) => s.panelRegionWidth,
     'panelExpandRegion': (s) => s.panelExpandRegion,
     'panelToolSettings': (s) => s.panelToolSettings,
     'panelTools': (s) => s.panelTools,

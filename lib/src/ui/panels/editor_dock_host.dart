@@ -45,16 +45,17 @@ List<double> dockSectionExtents({
   required List<double> weights,
   required List<double> floors,
   required double totalExtent,
+  double gap = DockEdgeSplitter.thickness,
 }) {
   final count = weights.length;
   assert(floors.length == count);
   if (count == 0) {
     return const [];
   }
-  final flexSpace = math.max(
-    0.0,
-    totalExtent - (count - 1) * DockEdgeSplitter.thickness,
-  );
+  // [gap] is what sits BETWEEN two of these — a splitter inside a dock, and
+  // nothing at all between the groups stacked on a rail, whose one splitter
+  // is the rail's own inner edge.
+  final flexSpace = math.max(0.0, totalExtent - (count - 1) * gap);
   var floorSum = 0.0;
   for (final floor in floors) {
     floorSum += floor;
@@ -454,9 +455,16 @@ class EditorDockDropZone extends StatelessWidget {
     required this.canAcceptTab,
     required this.onDropped,
     this.expandToFill = false,
+    this.keyId,
   });
 
   final String dockId;
+
+  /// Names the rail in the test key when the dock it drops INTO is an
+  /// implementation detail — a rail's empty zone targets whichever of its
+  /// group slots happens to be free, but it is still "the left rail" to
+  /// everyone looking at it.
+  final String? keyId;
   final Axis axis;
   final ValueListenable<EditorPanelTabDragData?> draggingTab;
   final bool Function(EditorPanelTabDragData data) canAcceptTab;
@@ -482,7 +490,9 @@ class EditorDockDropZone extends StatelessWidget {
           builder: (context, candidateData, rejectedData) {
             final hovered = candidateData.isNotEmpty;
             return Container(
-              key: ValueKey<String>('editor-dock-drop-rail-$dockId'),
+              key: ValueKey<String>(
+                'editor-dock-drop-rail-${keyId ?? dockId}',
+              ),
               width: expandToFill
                   ? null
                   : (axis == Axis.vertical ? thickness : null),

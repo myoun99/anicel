@@ -159,9 +159,21 @@ void main() {
         find.byKey(const ValueKey<String>('editor-panel-dock-tool-right')),
         findsOneWidget,
       );
+      // The other strip does NOT vanish any more — it is the SUB-STRIP,
+      // and it carries that side's panel-group buttons whether or not the
+      // tools are on it. What the switch moves is the tool column.
       expect(
         find.byKey(const ValueKey<String>('editor-panel-dock-tool-left')),
-        findsNothing,
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(
+            const ValueKey<String>('editor-panel-dock-tool-right'),
+          ),
+          matching: find.byType(ToolsPanel),
+        ),
+        findsOneWidget,
       );
       // Tools stay usable on the right edge.
       await tester.tap(
@@ -334,7 +346,7 @@ void main() {
         tester,
         find.byKey(_mediaTabKey),
         () => tester.getCenter(
-          find.byKey(const ValueKey<String>('dock-drop-below-left-0')),
+          find.byKey(const ValueKey<String>('dock-drop-below-rail-L1-0')),
         ),
       );
 
@@ -343,7 +355,7 @@ void main() {
       expect(find.byType(BrushPresetPanel), findsOneWidget);
       expect(find.byType(MediaBrowserPanel), findsOneWidget);
       expect(
-        find.byKey(const ValueKey<String>('dock-splitter-left-1')),
+        find.byKey(const ValueKey<String>('dock-splitter-rail-L1-1')),
         findsOneWidget,
       );
     });
@@ -354,12 +366,12 @@ void main() {
         tester,
         find.byKey(_mediaTabKey),
         () => tester.getCenter(
-          find.byKey(const ValueKey<String>('dock-drop-below-left-0')),
+          find.byKey(const ValueKey<String>('dock-drop-below-rail-L1-0')),
         ),
       );
 
       final splitter = find.byKey(
-        const ValueKey<String>('dock-splitter-left-1'),
+        const ValueKey<String>('dock-splitter-rail-L1-1'),
       );
       final beforeY = tester.getCenter(splitter).dy;
 

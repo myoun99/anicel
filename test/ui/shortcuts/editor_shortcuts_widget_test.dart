@@ -180,7 +180,14 @@ void main() {
     // Create an undoable step (a drawing via the menu).
     // Making a drawing is the timeline's Add button now — the Edit menu
     // that used to carry it is gone.
-    await tester.tap(find.byKey(const ValueKey<String>('new-frame-button')));
+    // The app reserves two 48px strips now, so the timeline's toolbar has
+    // less room and scrolls sooner — bring the button into view before
+    // aiming at it. (띠는 스크롤하지 않는다 will retire the scrolling itself;
+    // until then this is what a hand does.)
+    final addFrame = find.byKey(const ValueKey<String>('new-frame-button'));
+    await tester.ensureVisible(addFrame);
+    await tester.pumpAndSettle();
+    await tester.tap(addFrame);
     await tester.pumpAndSettle();
     final undoButton = find.byKey(const ValueKey<String>('undo-button'));
     expect(tester.widget<IconButton>(undoButton).onPressed, isNotNull);

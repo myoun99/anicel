@@ -109,7 +109,22 @@ Future<void> _switchToCut(WidgetTester tester, String cutId) async {
 
 Future<void> _tapStoryboardCutBlock(WidgetTester tester, String cutId) async {
   await _withStoryboardPanel(tester, (panel) async {
-    await tester.tapAt(cutBlockCenter(tester, cutId));
+    // The block's geometric centre is not always a point you can touch: the
+    // rows scroll, so a block near the right edge is drawn partly outside
+    // the panel's clip and its middle lands on whatever is beyond. Tap the
+    // middle of the part that is actually ON SCREEN — which is what a hand
+    // would do, and what stops this from depending on how wide the panel
+    // happens to be.
+    final block = cutBlockScreenRect(tester, cutId);
+    final visible = block.intersect(
+      tester.getRect(find.byType(StoryboardPanel)),
+    );
+    expect(
+      visible.width,
+      greaterThan(0),
+      reason: 'no visible part of $cutId to tap',
+    );
+    await tester.tapAt(visible.center);
     await tester.pumpAndSettle();
   });
 }
@@ -1743,7 +1758,14 @@ Line 8''';
     await _expectActiveCutName(tester, '1');
     expect(await _activeCutId(tester), const CutId('default-cut-1'));
 
-    await tester.tapAt(cutBlockCenter(tester, 'cut-1'));
+    // The VISIBLE middle of the block — the rows scroll, so a block near
+    // the right edge is drawn partly outside the panel's clip and its
+    // geometric centre lands on whatever is beyond it.
+    await tester.tapAt(
+      cutBlockScreenRect(tester, 'cut-1')
+          .intersect(tester.getRect(find.byType(StoryboardPanel)))
+          .center,
+    );
     await tester.pumpAndSettle();
 
     await _expectActiveCutName(tester, '2');

@@ -538,6 +538,8 @@ class AppStrings {
   String get panelTimesheet => _s('panelTimesheet');
   String get panelToolLibrary => _s('panelToolLibrary');
   String get panelCollapseRegion => _s('panelCollapseRegion');
+  String get panelNewGroup => _s('panelNewGroup');
+  String get panelRegionWidth => _s('panelRegionWidth');
   String get panelExpandRegion => _s('panelExpandRegion');
   String get panelToolSettings => _s('panelToolSettings');
   String get panelTools => _s('panelTools');
@@ -1108,6 +1110,8 @@ class AppStrings {
     'panelTimesheet': 'Timesheet',
     'panelToolLibrary': 'Tool library',
     'panelCollapseRegion': 'Collapse',
+    'panelNewGroup': 'New panel group',
+    'panelRegionWidth': 'Region width',
     'panelExpandRegion': 'Expand',
     'panelToolSettings': 'Tool settings',
     'panelTools': 'Tools',
@@ -1797,6 +1801,8 @@ class AppStrings {
     'panelTimesheet': 'タイムシート',
     'panelToolLibrary': 'ツールライブラリ',
     'panelCollapseRegion': '折りたたむ',
+    'panelNewGroup': '新しいパネルグループ',
+    'panelRegionWidth': '領域の幅',
     'panelExpandRegion': '広げる',
     'panelToolSettings': 'ツール設定',
     'panelTools': 'ツール',
@@ -2482,6 +2488,8 @@ class AppStrings {
     'panelTimesheet': '타임시트',
     'panelToolLibrary': '도구 라이브러리',
     'panelCollapseRegion': '접기',
+    'panelNewGroup': '새 패널 그룹',
+    'panelRegionWidth': '영역 너비',
     'panelExpandRegion': '펼치기',
     'panelToolSettings': '도구 설정',
     'panelTools': '도구',
@@ -3192,6 +3200,8 @@ class AppStrings {
     'panelTimesheet': 'Feuille de temps',
     'panelToolLibrary': "Bibliothèque d'outils",
     'panelCollapseRegion': 'Réduire',
+    'panelNewGroup': 'Nouveau groupe de panneaux',
+    'panelRegionWidth': 'Largeur de la zone',
     'panelExpandRegion': 'Développer',
     'panelToolSettings': "Réglages de l'outil",
     'panelTools': 'Outils',
@@ -3858,6 +3868,8 @@ class AppStrings {
     'panelTimesheet': '摄影表',
     'panelToolLibrary': '工具库',
     'panelCollapseRegion': '折叠',
+    'panelNewGroup': '新建面板组',
+    'panelRegionWidth': '区域宽度',
     'panelExpandRegion': '展开',
     'panelToolSettings': '工具设置',
     'panelTools': '工具',

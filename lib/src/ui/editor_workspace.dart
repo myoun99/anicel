@@ -163,8 +163,30 @@ class EditorWorkspace extends StatefulWidget {
   static const double bottomPanelHeight = 350;
   static const double sideDockWidth = 260;
 
-  static const String leftGroupId = 'left';
-  static const String rightGroupId = 'right';
+  /// How many GROUPS a rail can hold.
+  ///
+  /// A fixed pool declared up front rather than dock ids minted when the
+  /// user makes a group, because [restoreWorkspaceLayout] seeds only the
+  /// dock ids the defaults name and drops everything else — a runtime dock
+  /// would survive until the next restart and then quietly lose its panels.
+  static const int railSlots = 8;
+
+  /// The dock holding one rail group. [slot] is 1-based.
+  static String railGroupId({required bool right, required int slot}) =>
+      'rail-${right ? 'R' : 'L'}$slot';
+
+  /// 레일당 폭 하나 (유저 확정): every group on a rail shares one width, so
+  /// widening one widens them all and the rail reads as a column rather
+  /// than as a stack of differently-sized boxes. One splitter per rail,
+  /// on its inner edge.
+  static String railWidthKey({required bool right}) =>
+      right ? 'rail-R' : 'rail-L';
+
+  /// The first slot of each rail, which is where a panel with nowhere else
+  /// to go lands. Named separately because the whole app already calls
+  /// these "the left dock" and "the right dock".
+  static const String leftGroupId = 'rail-L1';
+  static const String rightGroupId = 'rail-R1';
   static const String centerGroupId = 'center';
   static const String bottomGroupId = 'bottom';
 
@@ -220,6 +242,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       DockSection(tabs: [EditorWorkspace.toolsTabId]),
     ],
     EditorWorkspace.toolRightGroupId: <DockSection>[],
+    // The rest of the rail pool: declared empty so the ids exist for a
+    // restore, and so dragging a panel onto an empty slot has somewhere to
+    // put it. Slot 1 of each rail is spelled out below.
+    for (var slot = 2; slot <= EditorWorkspace.railSlots; slot += 1) ...{
+      EditorWorkspace.railGroupId(right: false, slot: slot): <DockSection>[],
+      EditorWorkspace.railGroupId(right: true, slot: slot): <DockSection>[],
+    },
     EditorWorkspace.leftGroupId: [
       DockSection(
         tabs: [
@@ -279,6 +308,56 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   /// Only narrow-fit panels may live in the slim edge docks.
   static const Set<String> _edgeDockTabIds = {EditorWorkspace.toolsTabId};
+
+  /// Which rail groups are OPEN.
+  ///
+  /// 여러 버튼 동시에 열림 (유저 확정) — this is a set and not a selection,
+  /// because the rail is not a tab bar: opening a second group stacks it
+  /// under the first and they divide the rail's height. A group with no
+  /// panels in it has no button and cannot be opened.
+  Set<String> _openRails = {
+    EditorWorkspace.leftGroupId,
+    EditorWorkspace.rightGroupId,
+  };
+
+  /// The slots of one rail, in order, whatever is in them.
+  static List<String> _railSlotIds({required bool right}) => [
+    for (var slot = 1; slot <= EditorWorkspace.railSlots; slot += 1)
+      EditorWorkspace.railGroupId(right: right, slot: slot),
+  ];
+
+  /// The slots of one rail that HOLD something — the buttons that exist.
+  List<String> _railGroups({required bool right}) => [
+    for (final id in _railSlotIds(right: right))
+      if (_layout.sectionsIn(id).isNotEmpty) id,
+  ];
+
+  /// The open groups of one rail, in rail order — the column, top to
+  /// bottom.
+  List<String> _openRailGroups({required bool right}) => [
+    for (final id in _railGroups(right: right))
+      if (_openRails.contains(id)) id,
+  ];
+
+  /// The first EMPTY slot of a rail, or null when the pool is full. This is
+  /// where a panel dropped on the rail's "new group" target lands.
+  String? _emptyRailSlot({required bool right}) {
+    for (final id in _railSlotIds(right: right)) {
+      if (_layout.sectionsIn(id).isEmpty) {
+        return id;
+      }
+    }
+    return null;
+  }
+
+  void _toggleRailGroup(String railId) {
+    setState(() {
+      if (!_openRails.remove(railId)) {
+        _openRails.add(railId);
+      }
+    });
+    _scheduleLayoutSave();
+  }
 
   late final EditorPanelLayoutModel _layout = EditorPanelLayoutModel(
     docks: _defaultDocks(),
@@ -933,6 +1012,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       _mutatingLayout(() {
         _layout.addTab(tabId, toDockId: _defaultDockOf(tabId));
       });
+      _ensureRailOpen(_defaultDockOf(tabId));
     }
   }
 
@@ -958,8 +1038,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       _mutatingLayout(() {
         _layout.addTab(tabId, toDockId: _defaultDockOf(tabId));
       });
+      _ensureRailOpen(_defaultDockOf(tabId));
       return;
     }
+    // An already-placed panel can still be out of sight — in a rail group
+    // the user closed. Revealing it has to OPEN that group, or the flash
+    // plays where nobody can see it.
+    _ensureRailOpen(location.dockId);
     _mutatingLayout(() {
       _layout.selectTab(location.dockId, location.sectionIndex, tabId);
     });
@@ -982,9 +1067,27 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     if (restored == null || !mounted) {
       return;
     }
+    final openRails = payload['openRails'];
     setState(() {
       _lockedTabIds = restored.lockedTabIds;
       _bottomDockCollapsed = payload['bottomCollapsed'] == true;
+      final savedInset = payload['bottomInset'];
+      if (savedInset is num && savedInset.isFinite && savedInset >= 0) {
+        _bottomInset = savedInset.toDouble();
+      }
+      if (openRails is List) {
+        // Filtered against the POOL, not taken on trust: a file written by
+        // a build with a different pool size would otherwise leave open
+        // ids that name nothing.
+        final known = {
+          ..._railSlotIds(right: false),
+          ..._railSlotIds(right: true),
+        };
+        _openRails = {
+          for (final id in openRails)
+            if (id is String && known.contains(id)) id,
+        };
+      }
       _layout.restore(docks: restored.docks, dockExtents: restored.dockExtents);
     });
     for (final entry in _railExtents.entries) {
@@ -1020,12 +1123,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                 for (final entry in _railExtents.entries)
                   if (entry.value.value != null) entry.key: entry.value.value,
               },
-              // A NEW key rather than a new layout version: an older build
-              // reading this file simply does not see it and opens the
-              // region expanded, whereas bumping the version makes that
-              // build throw the whole arrangement away (there is no
-              // migration code, only a version check).
+              // NEW keys rather than a new layout version: an older build
+              // reading this file simply does not see them, whereas bumping
+              // the version makes that build throw the whole arrangement
+              // away (there is no migration code, only a version check).
               'bottomCollapsed': _bottomDockCollapsed,
+              'bottomInset': _bottomInset,
+              'openRails': _openRails.toList(),
             })
             .catchError((Object _) {}),
       );
@@ -1795,15 +1899,33 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         atSectionIndex: 0,
       );
     });
+    _ensureRailOpen(dockId);
+  }
+
+  /// Putting a panel somewhere OPENS that somewhere.
+  ///
+  /// A rail group can be closed, and a panel placed into a closed one is a
+  /// panel that has silently disappeared — the same failure whether it was
+  /// dropped there, reopened from the Panels menu, or revealed by a browser
+  /// "open". So every path that places a panel comes through here rather
+  /// than each remembering on its own.
+  void _ensureRailOpen(String dockId) {
+    if (!dockId.startsWith('rail-') || _openRails.contains(dockId)) {
+      return;
+    }
+    setState(() => _openRails.add(dockId));
+    _scheduleLayoutSave();
   }
 
   EditorDockDropZone _emptyDockZone(
     String dockId,
     Axis axis, {
     bool expandToFill = false,
+    String? keyId,
   }) {
     return EditorDockDropZone(
       dockId: dockId,
+      keyId: keyId,
       axis: axis,
       draggingTab: _draggingTab,
       canAcceptTab: (data) => _canDockAccept(dockId, data),
@@ -1839,42 +1961,183 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     });
   }
 
-  /// A slim edge dock homing the vertical tool bar on either workspace
-  /// edge (left-handed choice); collapsed when empty.
+  /// A workspace STRIP: 48px of buttons down one edge.
+  ///
+  /// One of the two also holds the tool column (whichever [dockId] the
+  /// `tools` tab currently lives in — the left-handed switch moves it); the
+  /// other is the SUB-STRIP, which used to be an empty 0px dock. Both carry
+  /// the same thing underneath: one button per rail GROUP, which opens and
+  /// closes that group's column beside the strip.
   Widget _buildEdgeDock(String dockId, EditorPanelDockSide side) {
-    if (_layout.sectionsIn(dockId).isEmpty) {
+    final right = side == EditorPanelDockSide.right;
+    final hasTools = _layout.sectionsIn(dockId).isNotEmpty;
+    final groups = _railGroups(right: right);
+    final emptySlot = _emptyRailSlot(right: right);
+    if (!hasTools && groups.isEmpty && emptySlot == null) {
       return _emptyDockZone(dockId, Axis.vertical);
     }
     return EditorPanelDock.filled(
       side: side,
       width: ToolsPanel.dockWidth,
       dockId: dockId,
-      // 고정 도킹 (유저 확정): the tool strip renders with NO panel frame —
-      // no tab name, no lock, no X, no grip. It holds one thing forever,
-      // and a header over a column of tool buttons is a title for
-      // something that needs no title. Every other dock keeps its strip.
-      child: _buildDockHost(dockId, compact: true, chromeless: true),
+      // 고정 도킹 (유저 확정): the strip renders with NO panel frame — no tab
+      // name, no lock, no X, no grip. It holds what it holds, and a header
+      // over a column of buttons is a title for something that needs no
+      // title. Every other dock keeps its strip.
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (hasTools)
+            Flexible(
+              child: _buildDockHost(dockId, compact: true, chromeless: true),
+            ),
+          _buildRailButtons(right: right, groups: groups, emptySlot: emptySlot),
+        ],
+      ),
     );
   }
 
-  /// A side dock: full tab dock when populated, collapsed otherwise (a
-  /// glowing drop rail appears while an eligible tab is in flight).
-  /// [width] is the extent AFTER the workspace clamped both side docks to
-  /// what the window can actually spare.
-  Widget _buildSideDock(
-    String dockId,
+  /// The rail's group buttons.
+  ///
+  /// 띠는 스크롤하지 않는다 (유저 확정): a strip that scrolls hands drags to
+  /// its scroll arena before the buttons ever see them, and dragging a
+  /// panel ONTO a button is how a group is made. So the column is plain —
+  /// eight slots is the pool, and eight 42px buttons fit any window tall
+  /// enough to draw in.
+  Widget _buildRailButtons({
+    required bool right,
+    required List<String> groups,
+    required String? emptySlot,
+  }) {
+    return ValueListenableBuilder<EditorPanelTabDragData?>(
+      valueListenable: _draggingTab,
+      builder: (context, dragging, _) {
+        return Padding(
+          padding: const EdgeInsets.only(left: 3, top: 4, bottom: 6),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final railId in groups) ...[
+                _RailGroupButton(
+                  railId: railId,
+                  open: _openRails.contains(railId),
+                  tabs: [
+                    for (final section in _layout.sectionsIn(railId))
+                      for (final tabId in section.tabs) _tabFor(tabId),
+                  ],
+                  dragging: dragging,
+                  onPressed: () => _toggleRailGroup(railId),
+                  onTabDropped: (data) => _dropIntoRailGroup(railId, data),
+                ),
+                const SizedBox(height: 4),
+              ],
+              // The one empty slot on offer, and only while something is in
+              // flight: a permanently visible "+" would be a button that
+              // does nothing until you happen to be dragging.
+              if (emptySlot != null && dragging != null)
+                _RailGroupButton(
+                  railId: emptySlot,
+                  open: false,
+                  tabs: const [],
+                  dragging: dragging,
+                  onPressed: null,
+                  onTabDropped: (data) => _dropIntoRailGroup(emptySlot, data),
+                ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+
+  /// A panel dropped on a rail button JOINS that group and opens it —
+  /// dropping something out of sight would be a silent move.
+  void _dropIntoRailGroup(String railId, EditorPanelTabDragData data) {
+    final sections = _layout.sectionsIn(railId);
+    _mutatingLayout(() {
+      if (sections.isEmpty) {
+        _layout.moveTabToNewSection(
+          tabId: data.tabId,
+          toDockId: railId,
+          atSectionIndex: 0,
+        );
+      } else {
+        _layout.moveTabToSection(
+          tabId: data.tabId,
+          toDockId: railId,
+          toSectionIndex: 0,
+          insertIndex: sections.first.tabs.length,
+        );
+      }
+    });
+    setState(() => _openRails.add(railId));
+    _scheduleLayoutSave();
+  }
+
+  /// One rail's COLUMN: every group the user has open on that side,
+  /// stacked, sharing the rail's height.
+  ///
+  /// The sharing is the same water-filling the sections inside one dock
+  /// already use ([dockSectionExtents]): each group is paid what its own
+  /// panels need before anyone gets surplus, and when the rail cannot pay
+  /// every floor they shrink together rather than starving whoever is last.
+  /// There is deliberately NO splitter between groups — the rail's one
+  /// splitter is its inner edge, and its height is divided rather than
+  /// negotiated (유저 확정).
+  ///
+  /// [width] is the extent AFTER the workspace clamped both rails to what
+  /// the window can actually spare.
+  Widget _buildRailColumn(
     EditorPanelDockSide side, {
     required double width,
   }) {
-    if (_layout.sectionsIn(dockId).isEmpty) {
-      return _emptyDockZone(dockId, Axis.vertical);
+    final right = side == EditorPanelDockSide.right;
+    final open = _openRailGroups(right: right);
+    if (open.isEmpty) {
+      return _emptyDockZone(
+        _emptyRailSlot(right: right) ??
+            (right
+                ? EditorWorkspace.rightGroupId
+                : EditorWorkspace.leftGroupId),
+        Axis.vertical,
+        // The RAIL is what the user is aiming at; which of its slots takes
+        // the panel is bookkeeping.
+        keyId: right ? 'right' : 'left',
+      );
     }
     return EditorPanelDock.filled(
       side: side,
       width: width,
-      // Panel names stay visible in every dock (the strip scrolls when
-      // they overflow); only the slim edge docks go icon-only.
-      child: _buildDockHost(dockId),
+      // The dock KEY still names the side rather than the slot: every
+      // consumer of "the left dock" means the column, and the column is
+      // what this is.
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final extents = constraints.hasBoundedHeight
+              ? dockSectionExtents(
+                  weights: [for (final _ in open) 1.0],
+                  floors: [
+                    for (final id in open) _verticalDockMinimumExtent(id),
+                  ],
+                  totalExtent: constraints.maxHeight,
+                  gap: 0,
+                )
+              : null;
+          return Column(
+            children: [
+              for (var i = 0; i < open.length; i += 1)
+                if (extents == null)
+                  Expanded(child: _buildDockHost(open[i]))
+                else
+                  SizedBox(
+                    height: extents[i],
+                    child: _buildDockHost(open[i]),
+                  ),
+            ],
+          );
+        },
+      ),
     );
   }
 
@@ -1968,6 +2231,34 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   bool _bottomDockCollapsed = false;
 
+  /// How far the floating region is pulled in from BOTH side edges.
+  ///
+  /// One number, not two: 아래 패널은 좌우 대칭 축소 (유저 확정). And the
+  /// centre it stays on is the WINDOW's, never the visible canvas's —
+  /// otherwise opening a rail column would slide the timeline sideways
+  /// under the hand that opened it.
+  double _bottomInset = 0;
+
+  /// How close to the rail's width counts as "the same", so the edge lands on
+  /// the pass-through boundary instead of just beside it.
+  ///
+  /// The rule that boundary decides ([_railPassesBottom]) has no mode and no
+  /// switch — it is a comparison — so the only way to CHOOSE it is to be
+  /// able to stop the drag exactly there.
+  static const double _bottomInsetDetent = 14;
+
+  /// ★ Whether a rail's column runs PAST the floating region to the window's
+  /// bottom edge, or stops at its top edge.
+  ///
+  /// One comparison, and deliberately not a setting: the column can go down
+  /// there exactly when the region has pulled far enough in to leave room,
+  /// which is something the user can see. [railWidth] is that rail's shared
+  /// width plus its splitter — the space the column actually occupies.
+  static bool _railPassesBottom({
+    required double bottomInset,
+    required double railWidth,
+  }) => bottomInset >= railWidth;
+
   /// How tall the bottom panel is drawn — read by the layout that positions
   /// it AND by the cover the floor is told about, so the panel and the hole
   /// it makes in the artwork can never disagree.
@@ -2008,7 +2299,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// means it takes pointers over its whole rectangle, which is why the
   /// clip is not decoration: without it the four corners the silhouette cut
   /// away would still eat strokes aimed at the canvas behind them.
-  Widget _buildBottomDock({required double availableExtent}) {
+  Widget _buildBottomDock({
+    required double availableExtent,
+    bool inset = false,
+  }) {
     if (_layout.sectionsIn(EditorWorkspace.bottomGroupId).isEmpty) {
       return _emptyDockZone(EditorWorkspace.bottomGroupId, Axis.horizontal);
     }
@@ -2020,12 +2314,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       position: DecorationPosition.foreground,
       decoration: ShapeDecoration(
         shape: _floatingBottomShape(
+          inset: inset,
           side: const BorderSide(color: AppColors.backdrop),
         ),
       ),
       child: ClipPath(
         key: const ValueKey<String>('floating-bottom-region'),
-        clipper: AppShapes.clipper(_floatingBottomShape()),
+        clipper: AppShapes.clipper(_floatingBottomShape(inset: inset)),
         // The height is the layout's to hand out now (see
         // [_bottomDockHeight]); the region just fills what it is given.
         child: _buildDockHost(
@@ -2050,14 +2345,72 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// the rule is about where the edges ARE, and it keeps holding when the
   /// region gains its symmetric side inset.
   RoundedSuperellipseBorder _floatingBottomShape({
+    bool inset = false,
     BorderSide side = BorderSide.none,
   }) {
     const radius = Radius.circular(AppShapes.floatingPanelRadius);
+    // Pulled in from the sides, the bottom corners are no longer ON the
+    // window's edge — so they round too, and the region reads as one object
+    // lying on the drawing rather than as a shape growing out of the frame.
     return AppShapes.containerRadius(
-      const BorderRadius.vertical(top: radius, bottom: Radius.zero),
+      BorderRadius.vertical(
+        top: radius,
+        bottom: inset ? radius : Radius.zero,
+      ),
       side: side,
     );
   }
+
+  /// The narrowest the floating region may be pulled: past this it stops
+  /// being a panel you can read and starts being a sliver.
+  static const double _minBottomRegionWidth = 320;
+
+  /// One side grip of the floating region.
+  ///
+  /// Both drive the SAME number, mirrored — 좌우 대칭 축소 — and both stop
+  /// on the pass-through boundary, so choosing "the columns go down past
+  /// the region" is something the hand can land on rather than something a
+  /// menu has to offer.
+  Widget _bottomInsetGrip({
+    required bool right,
+    required double inset,
+    required double height,
+    required double railSpan,
+    required double maxInset,
+  }) {
+    return Positioned(
+      left: right ? null : inset,
+      right: right ? inset : null,
+      bottom: 0,
+      height: height,
+      width: DockEdgeSplitter.thickness,
+      child: DockEdgeSplitter(
+        key: ValueKey<String>(
+          'bottom-inset-${right ? 'right' : 'left'}',
+        ),
+        axis: Axis.vertical,
+        tooltip: AppText.strings.panelRegionWidth,
+        onDoubleTap: () {
+          setState(() => _bottomInset = 0);
+          _scheduleLayoutSave();
+        },
+        onDragDelta: (delta) {
+          // Pulling the LEFT edge right and the RIGHT edge left both grow
+          // the inset, which is what "symmetric" means from the hand's side.
+          final next = (inset + (right ? -delta : delta)).clamp(0.0, maxInset);
+          setState(() => _bottomInset = _detented(next, railSpan));
+          _scheduleLayoutSave();
+        },
+      ),
+    );
+  }
+
+  /// Snaps to the rail's width when the drag lands near it, so the
+  /// pass-through boundary is reachable on purpose.
+  static double _detented(double inset, double railSpan) =>
+      railSpan > 0 && (inset - railSpan).abs() <= _bottomInsetDetent
+      ? railSpan
+      : inset;
 
   Widget _bottomCollapseButton() {
     return IconButton(
@@ -2185,12 +2538,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       // (Zoom stays out on purpose — that one is per-drag.)
       listenable: Listenable.merge([_layout, _timelineOrientation]),
       builder: (context, _) {
-        final hasLeftDock = _layout
-            .sectionsIn(EditorWorkspace.leftGroupId)
-            .isNotEmpty;
-        final hasRightDock = _layout
-            .sectionsIn(EditorWorkspace.rightGroupId)
-            .isNotEmpty;
+        // A rail is THERE when any of its groups is open; which groups
+        // those are is the rail's own business.
+        final hasLeftDock = _openRailGroups(right: false).isNotEmpty;
+        final hasRightDock = _openRailGroups(right: true).isNotEmpty;
         final hasBottomDock = _layout
             .sectionsIn(EditorWorkspace.bottomGroupId)
             .isNotEmpty;
@@ -2211,13 +2562,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                   const minCenterWidth = 120.0;
                   var leftWidth = hasLeftDock
                       ? _layout.dockExtent(
-                          EditorWorkspace.leftGroupId,
+                          EditorWorkspace.railWidthKey(right: false),
                           fallback: EditorWorkspace.sideDockWidth,
                         )
                       : 0.0;
                   var rightWidth = hasRightDock
                       ? _layout.dockExtent(
-                          EditorWorkspace.rightGroupId,
+                          EditorWorkspace.railWidthKey(right: true),
                           fallback: EditorWorkspace.sideDockWidth,
                         )
                       : 0.0;
@@ -2236,25 +2587,55 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                   final bottomHeight = hasBottomDock
                       ? _bottomDockHeight(constraints.maxHeight)
                       : 0.0;
+                  // Symmetric, and clamped against the WINDOW: the region
+                  // may narrow until it is a panel rather than a bar, and
+                  // no further.
+                  final bottomInset = _bottomInset
+                      .clamp(
+                        0.0,
+                        math.max(
+                          0.0,
+                          (constraints.maxWidth - _minBottomRegionWidth) / 2,
+                        ),
+                      )
+                      .toDouble();
+                  final leftRailSpan = hasLeftDock
+                      ? leftWidth + DockEdgeSplitter.thickness
+                      : 0.0;
+                  final rightRailSpan = hasRightDock
+                      ? rightWidth + DockEdgeSplitter.thickness
+                      : 0.0;
                   // What the panels hide from the artwork. The floor reads
                   // this and nothing else has to know it exists.
                   final floorCover = EdgeInsets.only(
-                    left: hasLeftDock
-                        ? leftWidth + DockEdgeSplitter.thickness
-                        : 0,
-                    right: hasRightDock
-                        ? rightWidth + DockEdgeSplitter.thickness
-                        : 0,
+                    left: leftRailSpan,
+                    right: rightRailSpan,
                     bottom: hasBottomDock
                         ? bottomHeight + DockEdgeSplitter.thickness
                         : 0,
                   );
-                  // The side columns still stop at the bottom panel's top
-                  // edge, exactly as they did when they were siblings in a
-                  // Column. Running them past it is a separate rule with a
-                  // number that does not exist yet (bottomInset ≥ sideWidth).
-                  final columnBottom = hasBottomDock
+                  // ★ Whether each column runs past the floating region or
+                  // stops on its top edge — one comparison per side, because
+                  // the two rails can be different widths and the answer is
+                  // about whether THIS one has room.
+                  final regionTop = hasBottomDock
                       ? bottomHeight + DockEdgeSplitter.thickness
+                      : 0.0;
+                  final leftColumnBottom =
+                      hasBottomDock &&
+                          !_railPassesBottom(
+                            bottomInset: bottomInset,
+                            railWidth: leftRailSpan,
+                          )
+                      ? regionTop
+                      : 0.0;
+                  final rightColumnBottom =
+                      hasBottomDock &&
+                          !_railPassesBottom(
+                            bottomInset: bottomInset,
+                            railWidth: rightRailSpan,
+                          )
+                      ? regionTop
                       : 0.0;
 
                   return Stack(
@@ -2270,10 +2651,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                       Positioned(
                         left: 0,
                         top: 0,
-                        bottom: columnBottom,
+                        bottom: leftColumnBottom,
                         width: hasLeftDock ? leftWidth : null,
-                        child: _buildSideDock(
-                          EditorWorkspace.leftGroupId,
+                        child: _buildRailColumn(
                           EditorPanelDockSide.left,
                           width: leftWidth,
                         ),
@@ -2282,13 +2662,15 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                         Positioned(
                           left: leftWidth,
                           top: 0,
-                          bottom: columnBottom,
+                          bottom: leftColumnBottom,
                           width: DockEdgeSplitter.thickness,
+                          // ONE splitter per rail, on its inner edge: every
+                          // group on the rail shares this width.
                           child: DockEdgeSplitter(
                             key: const ValueKey<String>('dock-resize-left'),
                             axis: Axis.vertical,
                             onDragDelta: (delta) => _layout.resizeDock(
-                              EditorWorkspace.leftGroupId,
+                              EditorWorkspace.railWidthKey(right: false),
                               delta,
                               fallback: EditorWorkspace.sideDockWidth,
                             ),
@@ -2297,10 +2679,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                       Positioned(
                         right: 0,
                         top: 0,
-                        bottom: columnBottom,
+                        bottom: rightColumnBottom,
                         width: hasRightDock ? rightWidth : null,
-                        child: _buildSideDock(
-                          EditorWorkspace.rightGroupId,
+                        child: _buildRailColumn(
                           EditorPanelDockSide.right,
                           width: rightWidth,
                         ),
@@ -2309,13 +2690,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                         Positioned(
                           right: rightWidth,
                           top: 0,
-                          bottom: columnBottom,
+                          bottom: rightColumnBottom,
                           width: DockEdgeSplitter.thickness,
                           child: DockEdgeSplitter(
                             key: const ValueKey<String>('dock-resize-right'),
                             axis: Axis.vertical,
                             onDragDelta: (delta) => _layout.resizeDock(
-                              EditorWorkspace.rightGroupId,
+                              EditorWorkspace.railWidthKey(right: true),
                               -delta,
                               fallback: EditorWorkspace.sideDockWidth,
                             ),
@@ -2323,8 +2704,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                         ),
                       if (hasBottomDock)
                         Positioned(
-                          left: 0,
-                          right: 0,
+                          left: bottomInset,
+                          right: bottomInset,
                           bottom: bottomHeight,
                           height: DockEdgeSplitter.thickness,
                           child: DockEdgeSplitter(
@@ -2362,14 +2743,43 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                           ),
                         ),
                       Positioned(
-                        left: 0,
-                        right: 0,
+                        left: bottomInset,
+                        right: bottomInset,
                         bottom: 0,
                         height: hasBottomDock ? bottomHeight : null,
                         child: _buildBottomDock(
                           availableExtent: constraints.maxHeight,
+                          inset: bottomInset > 0,
                         ),
                       ),
+                      // The region's side grips. TWO of them and ONE number
+                      // — pulling either edge in pulls the other in by the
+                      // same amount, because the region stays centred on the
+                      // window. Outside the clip on purpose: the silhouette
+                      // is rounded, and a grip that followed the curve would
+                      // be a 14px-wide target with a corner bitten out.
+                      if (hasBottomDock) ...[
+                        _bottomInsetGrip(
+                          right: false,
+                          inset: bottomInset,
+                          height: bottomHeight,
+                          railSpan: leftRailSpan,
+                          maxInset: math.max(
+                            0.0,
+                            (constraints.maxWidth - _minBottomRegionWidth) / 2,
+                          ),
+                        ),
+                        _bottomInsetGrip(
+                          right: true,
+                          inset: bottomInset,
+                          height: bottomHeight,
+                          railSpan: rightRailSpan,
+                          maxInset: math.max(
+                            0.0,
+                            (constraints.maxWidth - _minBottomRegionWidth) / 2,
+                          ),
+                        ),
+                      ],
                     ],
                   );
                 },
@@ -2380,6 +2790,74 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               EditorPanelDockSide.right,
             ),
           ],
+        );
+      },
+    );
+  }
+}
+
+/// One rail button: a GROUP of panels, opened and closed as a unit.
+///
+/// It says what it holds with the glyph of its first panel and a tooltip
+/// naming them all — 패널 이름 글자는 어디에도 안 띄운다 (유저 확정), and
+/// [EditorPanelTab.label] is still every panel's only accessibility name, so
+/// the names move into the tooltip rather than out of existence.
+///
+/// It is also a DROP target: dragging a panel onto it puts that panel in this
+/// group. That is the only way to build a group, which is why the strip must
+/// not scroll — a scrolling strip would take the drag first.
+class _RailGroupButton extends StatelessWidget {
+  const _RailGroupButton({
+    required this.railId,
+    required this.open,
+    required this.tabs,
+    required this.dragging,
+    required this.onPressed,
+    required this.onTabDropped,
+  });
+
+  final String railId;
+  final bool open;
+  final List<EditorPanelTab> tabs;
+  final EditorPanelTabDragData? dragging;
+
+  /// Null for the empty slot, which is a target and not a switch.
+  final VoidCallback? onPressed;
+  final ValueChanged<EditorPanelTabDragData> onTabDropped;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final button = RailButton(
+      keyValue: 'rail-group-$railId',
+      tooltip: tabs.isEmpty
+          ? AppText.strings.panelNewGroup
+          : [for (final tab in tabs) tab.label].join(' · '),
+      icon: tabs.isEmpty ? Icons.add : tabs.first.icon,
+      selected: open,
+      onPressed: onPressed,
+    );
+    if (dragging == null) {
+      return button;
+    }
+    return DragTarget<EditorPanelTabDragData>(
+      onAcceptWithDetails: (details) => onTabDropped(details.data),
+      builder: (context, candidate, rejected) {
+        final hovered = candidate.isNotEmpty;
+        return DecoratedBox(
+          position: DecorationPosition.foreground,
+          decoration: ShapeDecoration(
+            shape: AppShapes.control(
+              ToolsPanel.buttonExtent,
+              side: BorderSide(
+                color: hovered
+                    ? colorScheme.primary
+                    : colorScheme.primary.withValues(alpha: 0.45),
+                width: hovered ? 1.5 : 1,
+              ),
+            ),
+          ),
+          child: button,
         );
       },
     );
