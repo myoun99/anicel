@@ -34,6 +34,20 @@ abstract final class AppColors {
   /// Hover fills and exposure blocks — one step above raised.
   static const Color surfaceHigh = Color(0xFF303336);
 
+  /// The two WASHES: the only neutrals that are painted AT ALPHA over a fill,
+  /// and that may never be poured into a rectangle of their own.
+  ///
+  /// They exist because a wash used to borrow whichever surface happened to
+  /// sit one step away, and those surfaces are collapsing into ONE fill — a
+  /// wash mixed with the very surface it washes composites to nothing at all.
+  /// The readouts that ride on them ("past the cut end", "outside the
+  /// playback range", "outside the sheet") are colour-only, with no line or
+  /// glyph behind them, so they would not degrade, they would disappear.
+  ///
+  /// [washUp] lifts the fill beneath it; [washDown] sinks it.
+  static const Color washUp = Color(0xFF26282B);
+  static const Color washDown = Color(0xFF1A1C1E);
+
   /// Hairline borders between panels and cells.
   static const Color hairline = Color(0xFF37393C);
 

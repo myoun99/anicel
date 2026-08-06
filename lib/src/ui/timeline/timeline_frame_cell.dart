@@ -5,6 +5,7 @@ import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../input/app_input_settings.dart' show AppInput;
+import '../theme/app_theme.dart';
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
@@ -103,7 +104,7 @@ class TimelineFrameCell extends StatelessWidget {
     // the rhythm on the painted drawing rows.
     final backgroundColor = dimmed
         ? Color.alphaBlend(
-            colorScheme.surfaceContainerHighest.withValues(alpha: 0.54),
+            AppColors.washUp.withValues(alpha: 0.54),
             styleColors.background,
           )
         : styleColors.background;

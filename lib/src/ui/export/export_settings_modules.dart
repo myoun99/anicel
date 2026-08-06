@@ -6,6 +6,7 @@ import '../../models/export_cel_naming.dart';
 import '../../models/export_format_selection.dart';
 import '../../models/export_size_mode.dart';
 import '../../models/export_spec.dart';
+import '../theme/app_theme.dart';
 import '../widgets/app_window.dart';
 import '../text/app_strings.dart';
 
@@ -58,9 +59,7 @@ class ExportAccordion extends StatelessWidget {
           InkWell(
             onTap: onToggle,
             child: Container(
-              color: theme.colorScheme.surfaceContainerHighest.withValues(
-                alpha: 0.5,
-              ),
+              color: AppColors.washUp.withValues(alpha: 0.5),
               padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 3),
               child: Row(
                 children: [

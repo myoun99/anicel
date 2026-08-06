@@ -805,7 +805,7 @@ class TimelineLaneFrameRow extends StatelessWidget {
     final selectionListenable = laneRange?.selection;
     final band = DecoratedBox(
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow.withValues(alpha: 0.6),
+        color: AppColors.washDown.withValues(alpha: 0.6),
         // The divider faces the NEXT lane: below in the timeline, to the
         // right in the X-sheet.
         border: horizontal

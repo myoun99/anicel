@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
 import 'timeline_cell_style.dart';
 
 /// The frame grid's LINE system, one overlay per grid (UI-R10 #26 →
@@ -85,7 +86,7 @@ class TimelineOutsideCutWashPainter extends CustomPainter {
           ? Rect.fromLTWH(start, 0, size.width - start, size.height)
           : Rect.fromLTWH(0, start, size.width, size.height - start),
       Paint()
-        ..color = colorScheme.surfaceContainerHighest.withValues(alpha: 0.54),
+        ..color = AppColors.washUp.withValues(alpha: 0.54),
     );
   }
 

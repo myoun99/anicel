@@ -3926,7 +3926,7 @@ class _CutFadeSpanState extends State<_CutFadeSpan> {
         Positioned.fill(
           child: DecoratedBox(
             decoration: BoxDecoration(
-              color: colorScheme.surfaceContainerLow.withValues(alpha: 0.6),
+              color: AppColors.washDown.withValues(alpha: 0.6),
               borderRadius: const BorderRadius.all(Radius.circular(3)),
               border: Border.all(color: colorScheme.outlineVariant),
             ),

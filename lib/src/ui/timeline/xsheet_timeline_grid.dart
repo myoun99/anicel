@@ -14,6 +14,7 @@ import '../../models/layer_blend_mode.dart';
 import '../../models/layer_kind.dart';
 import '../../models/layer_mark.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
+import '../theme/app_theme.dart';
 import '../widgets/field_slider.dart';
 import 'layer_label_controls.dart';
 import 'layer_rail_columns.dart';
@@ -2074,7 +2075,7 @@ class XSheetFrameRailPainter extends CustomPainter {
               colorScheme.surface,
             )
           : outside
-          ? colorScheme.surfaceContainerHighest.withValues(alpha: 0.72)
+          ? AppColors.washUp.withValues(alpha: 0.72)
           : colorScheme.surface,
     );
   }

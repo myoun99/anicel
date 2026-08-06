@@ -298,7 +298,7 @@ class SeAudioLaneFrameRow extends StatelessWidget {
 
     final band = DecoratedBox(
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow.withValues(alpha: 0.6),
+        color: AppColors.washDown.withValues(alpha: 0.6),
         border: horizontal
             ? Border(
                 bottom: BorderSide(
