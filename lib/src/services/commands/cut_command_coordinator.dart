@@ -1172,11 +1172,18 @@ class CutCommandCoordinator {
   /// Replaces a layer's EFFECT CHAIN (R6); one undo step, no-op when
   /// unchanged.
   ///
-  /// FX lanes are per-use ("레인만 각자"), so a DRAWING row's chain stays
-  /// local — the same rule its transform track follows. An ADJUSTMENT row
-  /// is the exception ([layerKindMirrorsEffects]): its chain is its whole
-  /// content, so it MIRRORS across the 겸용 link group as one composite
-  /// step — one undo puts every member back.
+  /// The chain's SHAPE — which effects a row carries, in what order, each
+  /// on or off — is shared structure and mirrors across the 겸용 link
+  /// group as one composite step (user 2026-08-06: "겸용컷의 경우 레이어들
+  /// 완벽 미러링이잖아? 그러니 fx 리스트도 완벽 미러링되야하거든"). Only
+  /// the NUMBERS stay per-use: a sibling keeps its own parameter values and
+  /// keyframe tracks, so the mirror merges rather than copies
+  /// ([effectChainWithSharedShape]). Sharing values across cuts is the
+  /// named-union link's job.
+  ///
+  /// An ADJUSTMENT row goes further ([layerKindMirrorsEffects]): its chain
+  /// is its whole content, not decoration on a picture, so values mirror
+  /// too.
   void updateLayerEffects({
     required CutId cutId,
     required LayerId layerId,
@@ -1216,26 +1223,37 @@ class CutCommandCoordinator {
     if (!layerKindHasLayerEffects(layer.kind)) {
       throw StateError('The camera row carries no effect chain of its own.');
     }
-    final targets = layerKindMirrorsEffects(layer.kind)
-        ? linkMirrorTargets(
-            repository.requireProject(),
-            cutId: cutId,
-            layerId: layerId,
-          )
-        : [(cutId: cutId, layerId: layerId)];
+    final mirrorsValuesToo = layerKindMirrorsEffects(layer.kind);
+    final targets = linkMirrorTargets(
+      repository.requireProject(),
+      cutId: cutId,
+      layerId: layerId,
+    );
     return <Command>[
       for (final target in targets)
-        if (!listEquals(
-          _requireLayer(cutId: target.cutId, layerId: target.layerId).effects,
-          effects,
-        ))
-          UpdateLayerEffectsCommand(
-            repository: repository,
+        ...() {
+          final current = _requireLayer(
             cutId: target.cutId,
             layerId: target.layerId,
-            effects: effects,
-            description: description,
-          ),
+          ).effects;
+          final isSource = target.cutId == cutId && target.layerId == layerId;
+          // The source takes the write as authored; a sibling takes only
+          // the shape unless its kind mirrors values too.
+          final next = isSource || mirrorsValuesToo
+              ? effects
+              : effectChainWithSharedShape(effects, onto: current);
+          return listEquals(current, next)
+              ? const <Command>[]
+              : <Command>[
+                  UpdateLayerEffectsCommand(
+                    repository: repository,
+                    cutId: target.cutId,
+                    layerId: target.layerId,
+                    effects: next,
+                    description: description,
+                  ),
+                ];
+        }(),
     ];
   }
 

@@ -9,8 +9,10 @@ import '../../models/layer_kind.dart';
 import '../../models/project.dart';
 import '../../models/timeline_repeat.dart';
 import '../clipboard/layer_copy_payload.dart';
+import 'add_layer_command.dart';
 import 'convert_to_linked_cut_plan.dart';
 import 'folder_mirror.dart';
+import 'link_mirror.dart';
 
 class CreateCutCommandInputPlan {
   const CreateCutCommandInputPlan({required this.cutId, required this.layerId});
@@ -472,6 +474,100 @@ CreateFolderCommandInputPlan planCreateFolderCommandInput({
         mirror.cutId: next(),
     },
     folderGroupId: _firstAvailableId(
+      prefix: 'link',
+      usedIds: {for (final group in project.linkRegistry.groups) group.id},
+    ),
+  );
+}
+
+class AddLayerCommandInputPlan {
+  const AddLayerCommandInputPlan({
+    required this.mirrors,
+    required this.linkGroupId,
+  });
+
+  static const AddLayerCommandInputPlan none = AddLayerCommandInputPlan(
+    mirrors: [],
+    linkGroupId: null,
+  );
+
+  /// The 겸용 sibling cuts this layer also appears in, with their planned
+  /// per-cut ids.
+  final List<AddLayerMirror> mirrors;
+
+  /// Planned registry group id tying the new rows together; null when
+  /// nothing mirrors.
+  final String? linkGroupId;
+}
+
+/// Plans a layer CREATION across 겸용 cuts: one fresh layer id per sibling
+/// cut, its anchors resolved to that cut's own rows, plus the link group
+/// they join.
+///
+/// Kinds that do not link into a 겸용 cut plan no mirrors — the per-use
+/// SE/CAM fixtures already exist in every cut, and a storyboard row
+/// belongs to its own cut ([layerKindLinksIntoLinkedCut] is the one
+/// predicate for that question).
+///
+/// A sibling whose counterpart for an anchor is missing is DROPPED rather
+/// than guessed at (folder_mirror's rule): a row inheriting a folder that
+/// only exists in the origin cut would break the sibling's folder
+/// invariant, and an attach row without its base is not a row at all.
+AddLayerCommandInputPlan planAddLayerCommandInput({
+  required Project project,
+  required CutId cutId,
+  required Layer layer,
+}) {
+  if (!layerKindLinksIntoLinkedCut(layer.kind)) {
+    return AddLayerCommandInputPlan.none;
+  }
+  final siblings = linkedCutSiblings(project, cutId: cutId);
+  if (siblings.isEmpty) {
+    return AddLayerCommandInputPlan.none;
+  }
+
+  final ids = _ProjectIdSnapshot.fromProject(project);
+  LayerId next() {
+    final id = LayerId(
+      _firstAvailableId(prefix: 'layer', usedIds: ids.layerIds),
+    );
+    ids.layerIds.add(id.value);
+    return id;
+  }
+
+  LayerId? counterpart(LayerId anchor, CutId sibling) => linkCounterpartIn(
+    project,
+    cutId: cutId,
+    layerId: anchor,
+    targetCutId: sibling,
+  );
+
+  final mirrors = <AddLayerMirror>[];
+  for (final sibling in siblings) {
+    final folder = layer.folderId;
+    final base = layer.attachedToLayerId;
+    final mirroredFolder = folder == null ? null : counterpart(folder, sibling);
+    final mirroredBase = base == null ? null : counterpart(base, sibling);
+    if ((folder != null && mirroredFolder == null) ||
+        (base != null && mirroredBase == null)) {
+      continue;
+    }
+    mirrors.add(
+      AddLayerMirror(
+        cutId: sibling,
+        layerId: next(),
+        folderId: mirroredFolder,
+        attachedToLayerId: mirroredBase,
+      ),
+    );
+  }
+  if (mirrors.isEmpty) {
+    return AddLayerCommandInputPlan.none;
+  }
+
+  return AddLayerCommandInputPlan(
+    mirrors: mirrors,
+    linkGroupId: _firstAvailableId(
       prefix: 'link',
       usedIds: {for (final group in project.linkRegistry.groups) group.id},
     ),
