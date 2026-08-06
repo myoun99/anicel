@@ -10,6 +10,7 @@ import '../models/layer_kind.dart';
 import '../models/project.dart';
 import 'default_layer_helpers.dart';
 import '../services/commands/add_layer_command.dart';
+import '../services/commands/cut_command_input_planner.dart';
 import '../services/history_manager.dart';
 import '../services/project_lookup.dart';
 import '../services/project_repository.dart';
@@ -127,12 +128,22 @@ class LayerController {
     if (cutId == null) {
       return; // Gap state: nowhere to add (the UI stands down too).
     }
+    // Layer EXISTENCE is shared structure: a row created here appears in
+    // every 겸용 sibling too, with ids planned up front so redo reuses
+    // them.
+    final plan = planAddLayerCommandInput(
+      project: _repository.requireProject(),
+      cutId: cutId,
+      layer: layer,
+    );
     _historyManager.execute(
       AddLayerCommand(
         repository: _repository,
         cutId: cutId,
         layer: layer,
         insertionIndex: insertionIndex ?? _insertionIndexAboveActiveLayer(),
+        mirrors: plan.mirrors,
+        linkGroupId: plan.linkGroupId,
       ),
     );
     _activeLayerId = layer.id;

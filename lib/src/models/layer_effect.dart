@@ -476,3 +476,37 @@ List<ResolvedLayerEffect> resolveLayerEffectsAt({
 /// blur question the folder-buffer decision and the dirty-bounds math ask.
 bool resolvedEffectsSpreadPixels(List<ResolvedLayerEffect> effects) =>
     effects.any((effect) => effect.kind.spreadsPixels);
+
+/// [shape]'s chain STRUCTURE — which effects, in what order, each on or
+/// off — laid over [onto]'s own parameter values and keyframe tracks.
+///
+/// This is what a 겸용 mirror writes into a sibling: which effects a row
+/// carries is shared structure, but their numbers are lane content and
+/// stay per-use ("존재는 공유, 내용은 각자"). Copying the chain verbatim
+/// instead would wipe the sibling's keyframes, which is the whole reason
+/// this merge exists.
+///
+/// Effects are matched by [LayerEffect.id] — linked rows are created by
+/// copying, so a shared effect carries the same id in every use site. An
+/// id present only in [shape] is genuinely new and arrives with its
+/// defaults; one only in [onto] was removed and drops out.
+List<LayerEffect> effectChainWithSharedShape(
+  List<LayerEffect> shape, {
+  required List<LayerEffect> onto,
+}) {
+  if (onto.isEmpty) {
+    return shape;
+  }
+  final kept = {for (final effect in onto) effect.id: effect};
+  return [
+    for (final effect in shape)
+      switch (kept[effect.id]) {
+        // New here, or the id was reused for a different effect kind:
+        // take the incoming one whole.
+        null => effect,
+        final existing when existing.kind != effect.kind => effect,
+        // Same effect: keep this cut's numbers, take the shared switch.
+        final existing => existing.copyWith(enabled: effect.enabled),
+      },
+  ];
+}
