@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
 import 'panel_flash.dart';
 import 'panel_visibility_scope.dart';
 
@@ -161,6 +162,11 @@ class EditorPanelTabs extends StatefulWidget {
 
   static const double stripHeight = 30;
 
+  /// What one tab costs across the strip: the 8px lift zone, a 16px glyph
+  /// and its trailing breath. Stated rather than measured because the strip
+  /// has to decide how many fit BEFORE laying them out.
+  static const double _tabExtent = 32;
+
   @override
   State<EditorPanelTabs> createState() => _EditorPanelTabsState();
 }
@@ -229,20 +235,46 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
                           widget.onTabMoved!(data, tabs.length),
                     ),
                   ),
-                // Tabs keep their natural width (name always visible) and
-                // the strip scrolls when they overflow the dock. Buttons
-                // STRETCH the strip's full height so the selected tab meets
-                // the content edge-to-edge (no strip-colored gap under it).
-                SingleChildScrollView(
-                  scrollDirection: Axis.horizontal,
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      for (var index = 0; index < tabs.length; index += 1)
-                        _buildTabButton(index),
-                    ],
-                  ),
+                // ★띠는 스크롤하지 않는다 (유저 확정). It used to be a
+                // horizontal scroller, and the reason to stop is not taste
+                // but GESTURE: inside a scrollable, a drag goes to the
+                // scroll arena before the tab under the finger ever sees
+                // it — the same reason long-press was taken out of the app
+                // — and dragging a tab is how a panel is moved. Compressed,
+                // that fight does not exist.
+                //
+                // Buttons STRETCH the strip's full height so the selected
+                // tab meets the content edge-to-edge.
+                LayoutBuilder(
+                  builder: (context, constraints) {
+                    final trailingRoom = widget.trailing == null ? 0.0 : 32.0;
+                    final room = math.max(
+                      0.0,
+                      constraints.maxWidth - trailingRoom,
+                    );
+                    // How many fit. The overflow button costs one slot, so
+                    // it only appears when it actually buys room.
+                    final fits = (room / EditorPanelTabs._tabExtent).floor();
+                    final overflowing = fits < tabs.length;
+                    final shown = overflowing
+                        ? math.max(0, fits - 1)
+                        : tabs.length;
+                    return Row(
+                      mainAxisSize: MainAxisSize.min,
+                      crossAxisAlignment: CrossAxisAlignment.stretch,
+                      children: [
+                        for (var index = 0; index < shown; index += 1)
+                          _buildTabButton(index),
+                        if (overflowing)
+                          _TabOverflowButton(
+                            groupId: widget.groupId,
+                            hidden: tabs.sublist(shown),
+                            activeTabId: widget.activeTabId,
+                            onTabSelected: widget.onTabSelected,
+                          ),
+                      ],
+                    );
+                  },
                 ),
                 if (widget.trailing != null)
                   Align(
@@ -382,31 +414,22 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
   Widget _buildTabButton(int index) {
     final tab = widget.tabs[index];
     final selected = tab.id == widget.activeTabId;
-    // The grip is the ONLY drag surface (R10-⑩): the rest of the tab is
-    // a plain tap target, so selection never waits on the drag arena and
-    // a stray drag can't tear a tab off mid-click. Locked tabs keep the
-    // grip VISIBLE but inert (R12-⑨: locking must never reshape the tab).
-    final grip = _dragEnabled ? _buildDragGrip(tab) : null;
+    // The zone is the ONLY drag surface (R10-⑩): the rest of the tab is a
+    // plain tap target, so selection never waits on the drag arena and a
+    // stray drag can't tear a tab off mid-click. A LOCKED tab keeps the
+    // zone's footprint and never arms it — locking must never reshape the
+    // tab (R12-⑨).
     final button = _PanelTabButton(
       key: tab.buttonKey ?? ValueKey<String>('panel-tab-${tab.id}'),
       label: tab.label,
       icon: tab.icon,
-      compact: widget.compact,
       selected: selected,
       locked: tab.locked,
-      lockKey: ValueKey<String>('panel-lock-${tab.id}'),
-      closeKey: ValueKey<String>('panel-close-${tab.id}'),
-      dragGrip: grip,
-      // Every tab carries its controls — selecting a tab must never
-      // reshape its button.
-      onToggleLock: widget.onToggleLock != null
-          ? () => widget.onToggleLock!(tab.id)
+      gripKey: ValueKey<String>('panel-grip-${tab.id}'),
+      dragData: _dragEnabled && !tab.locked
+          ? EditorPanelTabDragData(tabId: tab.id, fromGroupId: widget.groupId!)
           : null,
-      // Locked tabs keep the X visible but inert (pinned = it does
-      // nothing, the tab's shape never changes).
-      onClose: widget.onCloseTab != null
-          ? () => widget.onCloseTab!(tab.id)
-          : null,
+      onTabDragChanged: widget.onTabDragChanged,
       onPressed: () => widget.onTabSelected(tab.id),
     );
     if (!_dragEnabled) {
@@ -421,54 +444,6 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
     );
   }
 
-  /// The drag handle at the tab's left edge — the three-line grip icon.
-  /// Locked tabs render the SAME icon dimmed and inert: the tab's footprint
-  /// never changes with the lock state (R12-⑨).
-  Widget _buildDragGrip(EditorPanelTab tab) {
-    if (tab.locked) {
-      return Padding(
-        key: ValueKey<String>('panel-grip-${tab.id}'),
-        padding: const EdgeInsets.only(right: 2),
-        child: Icon(
-          Icons.drag_indicator,
-          size: 12,
-          color: Theme.of(
-            context,
-          ).colorScheme.onSurfaceVariant.withValues(alpha: 0.35),
-        ),
-      );
-    }
-    final data = EditorPanelTabDragData(
-      tabId: tab.id,
-      fromGroupId: widget.groupId!,
-    );
-    return Draggable<EditorPanelTabDragData>(
-      data: data,
-      maxSimultaneousDrags: 1,
-      // The avatar origin IS the pointer, so drop regions can split
-      // themselves into exact before/after halves from the drag offset.
-      dragAnchorStrategy: pointerDragAnchorStrategy,
-      feedback: FractionalTranslation(
-        translation: const Offset(-0.5, -0.5),
-        child: _PanelTabDragFeedback(label: tab.label, icon: tab.icon),
-      ),
-      onDragStarted: () => widget.onTabDragChanged?.call(data),
-      // onDragEnd covers completion AND cancellation.
-      onDragEnd: (_) => widget.onTabDragChanged?.call(null),
-      child: MouseRegion(
-        cursor: SystemMouseCursors.grab,
-        child: Padding(
-          key: ValueKey<String>('panel-grip-${tab.id}'),
-          padding: const EdgeInsets.only(right: 2),
-          child: Icon(
-            Icons.drag_indicator,
-            size: 12,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
-          ),
-        ),
-      ),
-    );
-  }
 }
 
 /// Drop target around one tab button: highlights the insertion edge that
@@ -612,120 +587,172 @@ class _PanelTabDragFeedback extends StatelessWidget {
   }
 }
 
-class _PanelTabButton extends StatelessWidget {
+
+/// One tab: an icon, and an 8px strip of its leading edge that lifts it.
+///
+/// 패널 이름 글자는 어디에도 안 띄운다 (유저 확정). The name lives in the
+/// tooltip, which was always the tab's only accessibility name anyway, and
+/// [EditorPanelTab.label] stays a field because the settings popover builds
+/// its panel list out of it. What went with the name is the lock glyph and
+/// the X: closing is the settings list's job now, and the lock's job — a
+/// stray drag must not tear the drawing surface off — is done structurally,
+/// because the floor has no strip to grip in the first place.
+///
+/// ⛔The GRIP glyph is gone, not the grip. Three dots said "you may drag
+/// me" at the cost of being the widest thing on a button that is otherwise
+/// one icon. The 8px zone is the same promise in the same place, invisible
+/// at rest: the ONLY surface that lifts a tab, so selection never waits on
+/// a drag arena and a stray drag cannot tear a tab off mid-click (R10-⑩).
+class _PanelTabButton extends StatefulWidget {
   const _PanelTabButton({
     super.key,
     required this.label,
     required this.icon,
-    required this.compact,
     required this.selected,
     required this.locked,
-    required this.lockKey,
-    required this.closeKey,
+    required this.gripKey,
     required this.onPressed,
-    this.dragGrip,
-    this.onToggleLock,
-    this.onClose,
+    this.dragData,
+    this.onTabDragChanged,
   });
 
   final String label;
   final IconData icon;
-  final bool compact;
   final bool selected;
   final bool locked;
-  final Key lockKey;
-  final Key closeKey;
+  final Key gripKey;
   final VoidCallback onPressed;
 
-  /// The drag handle at the tab's left edge (R10-⑩) — the only surface
-  /// that lifts the tab; null for locked tabs and non-draggable groups.
-  final Widget? dragGrip;
+  /// What this tab carries when lifted; null for locked tabs and
+  /// non-draggable groups, which keep the zone's footprint and never arm.
+  final EditorPanelTabDragData? dragData;
+  final ValueChanged<EditorPanelTabDragData?>? onTabDragChanged;
 
-  /// Taps on the lock glyph toggle the drag lock instead of selecting.
-  final VoidCallback? onToggleLock;
+  /// The lift zone's width — a stylus-friendly sliver of the leading edge.
+  static const double gripExtent = 8;
 
-  /// Taps on the X close (hide) the panel; null hides the button.
-  final VoidCallback? onClose;
+  @override
+  State<_PanelTabButton> createState() => _PanelTabButtonState();
+}
+
+class _PanelTabButtonState extends State<_PanelTabButton> {
+  bool _buttonHovered = false;
+  bool _gripHovered = false;
+  bool _dragging = false;
+
+  /// The four states, on the ladder the app's scrollbar thumb already
+  /// climbs: invisible until the pointer is on the BUTTON, brighter on the
+  /// zone itself, accent while it is actually lifting something.
+  Color get _gripColor {
+    if (widget.dragData == null) {
+      return Colors.transparent;
+    }
+    if (_dragging) {
+      return AppColors.accent;
+    }
+    if (_gripHovered) {
+      return AppColors.gripHover;
+    }
+    if (_buttonHovered) {
+      return AppColors.hairlineStrong;
+    }
+    return Colors.transparent;
+  }
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final foreground = selected
+    final foreground = widget.selected
         ? colorScheme.primary
         : colorScheme.onSurfaceVariant;
 
-    // Every tab shows [name] [lock] [X] all the time — selection only
-    // changes colors, never the button's shape.
+    Widget grip = MouseRegion(
+      cursor: widget.dragData == null
+          ? SystemMouseCursors.basic
+          : SystemMouseCursors.grab,
+      onEnter: (_) => setState(() => _gripHovered = true),
+      onExit: (_) => setState(() => _gripHovered = false),
+      child: SizedBox(
+        key: widget.gripKey,
+        width: _PanelTabButton.gripExtent,
+        child: Center(
+          child: Container(
+            width: 2,
+            height: 14,
+            decoration: BoxDecoration(
+              color: _gripColor,
+              borderRadius: BorderRadius.circular(1),
+            ),
+          ),
+        ),
+      ),
+    );
+    final data = widget.dragData;
+    if (data != null) {
+      grip = Draggable<EditorPanelTabDragData>(
+        data: data,
+        maxSimultaneousDrags: 1,
+        // The avatar origin IS the pointer, so drop regions can split
+        // themselves into exact before/after halves from the drag offset.
+        dragAnchorStrategy: pointerDragAnchorStrategy,
+        feedback: FractionalTranslation(
+          translation: const Offset(-0.5, -0.5),
+          child: _PanelTabDragFeedback(
+            label: widget.label,
+            icon: widget.icon,
+          ),
+        ),
+        onDragStarted: () {
+          setState(() => _dragging = true);
+          widget.onTabDragChanged?.call(data);
+        },
+        // onDragEnd covers completion AND cancellation.
+        onDragEnd: (_) {
+          setState(() => _dragging = false);
+          widget.onTabDragChanged?.call(null);
+        },
+        child: grip,
+      );
+    }
+
     return Tooltip(
-      message: label,
+      message: widget.label,
       // Manual trigger: hover tooltips still work, but no long-press
       // recognizer competes with drag lifts.
       triggerMode: TooltipTriggerMode.manual,
-      child: InkWell(
-        onTap: onPressed,
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          decoration: BoxDecoration(
-            // The selected tab used to wear the PANEL BODY color so it flowed
-            // into the content below it. Now that the strip and the body are
-            // the same one chrome fill, that flow is free and the fill has to
-            // say something else instead: this tab is SWITCHED ON, so it wears
-            // the one level reserved for exactly that.
-            color: selected
-                ? colorScheme.surfaceContainerHigh
-                : Colors.transparent,
-            border: Border(
-              top: BorderSide(
-                width: 2,
-                color: selected ? colorScheme.primary : Colors.transparent,
+      child: MouseRegion(
+        onEnter: (_) => setState(() => _buttonHovered = true),
+        onExit: (_) => setState(() => _buttonHovered = false),
+        child: InkWell(
+          onTap: widget.onPressed,
+          child: Container(
+            padding: const EdgeInsets.only(right: 8),
+            decoration: BoxDecoration(
+              // The selected tab wears the one level reserved for "switched
+              // on"; everything else is the panel's own chrome fill.
+              color: widget.selected
+                  ? colorScheme.surfaceContainerHigh
+                  : Colors.transparent,
+              border: Border(
+                top: BorderSide(
+                  width: 2,
+                  color: widget.selected
+                      ? colorScheme.primary
+                      : Colors.transparent,
+                ),
               ),
             ),
-          ),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              ?dragGrip,
-              if (compact)
-                Icon(icon, size: 14, color: foreground)
-              else
-                Text(
-                  label,
-                  style: TextStyle(
-                    fontSize: 12,
-                    color: foreground,
-                    fontWeight: selected ? FontWeight.w600 : FontWeight.w400,
-                  ),
-                ),
-              const SizedBox(width: 4),
-              if (onToggleLock != null)
-                _TabGlyphButton(
-                  glyphKey: lockKey,
-                  tooltip: locked ? 'Unlock $label drag' : 'Lock $label drag',
-                  icon: locked ? Icons.lock : Icons.lock_open_outlined,
-                  // The lock reads at a glance: accent ONLY when locked.
-                  color: locked
-                      ? colorScheme.primary
-                      : colorScheme.onSurfaceVariant,
-                  onTap: onToggleLock!,
-                )
-              else if (locked)
-                Padding(
-                  padding: const EdgeInsets.all(2),
-                  child: Icon(Icons.lock, size: 11, color: colorScheme.primary),
-                ),
-              if (onClose != null)
-                _TabGlyphButton(
-                  glyphKey: closeKey,
-                  tooltip: locked ? '$label is locked' : 'Close $label',
-                  icon: Icons.close,
-                  // Locked: same footprint, dimmed and inert — the dead X
-                  // still absorbs its tap so it never selects the tab.
-                  color: locked
-                      ? colorScheme.onSurfaceVariant.withValues(alpha: 0.35)
-                      : colorScheme.onSurfaceVariant,
-                  onTap: locked ? () {} : onClose!,
-                ),
-            ],
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                grip,
+                Icon(widget.icon, size: 16, color: foreground),
+                if (widget.locked) ...[
+                  const SizedBox(width: 3),
+                  Icon(Icons.lock, size: 9, color: colorScheme.primary),
+                ],
+              ],
+            ),
           ),
         ),
       ),
@@ -733,35 +760,65 @@ class _PanelTabButton extends StatelessWidget {
   }
 }
 
-/// A small tappable glyph inside a tab button (close / lock): its own hit
-/// region so taps don't select the tab.
-class _TabGlyphButton extends StatelessWidget {
-  const _TabGlyphButton({
-    required this.glyphKey,
-    required this.tooltip,
-    required this.icon,
-    required this.color,
-    required this.onTap,
+/// The strip's overflow: what did not fit, in a popover.
+///
+/// 넘치면 오버플로로 넘긴다 (유저 확정). The list is the compressed strip's
+/// honest tail rather than a second scroll surface — and it is the one place
+/// panel NAMES are allowed, because a row of unlabelled glyphs in a menu is
+/// a puzzle rather than a list.
+class _TabOverflowButton extends StatelessWidget {
+  const _TabOverflowButton({
+    required this.groupId,
+    required this.hidden,
+    required this.activeTabId,
+    required this.onTabSelected,
   });
 
-  final Key glyphKey;
-  final String tooltip;
-  final IconData icon;
-  final Color color;
-  final VoidCallback onTap;
+  final String? groupId;
+  final List<EditorPanelTab> hidden;
+  final String activeTabId;
+  final ValueChanged<String> onTabSelected;
 
   @override
   Widget build(BuildContext context) {
-    return Tooltip(
-      message: tooltip,
-      triggerMode: TooltipTriggerMode.manual,
-      child: GestureDetector(
-        key: glyphKey,
-        behavior: HitTestBehavior.opaque,
-        onTap: onTap,
-        child: Padding(
-          padding: const EdgeInsets.all(2),
-          child: Icon(icon, size: 11, color: color),
+    final colorScheme = Theme.of(context).colorScheme;
+    return PopupMenuButton<String>(
+      key: ValueKey<String>('panel-tab-overflow-${groupId ?? 'group'}'),
+      tooltip: '+${hidden.length}',
+      position: PopupMenuPosition.under,
+      popUpAnimationStyle: instantMenuAnimation,
+      itemBuilder: (context) => [
+        for (final tab in hidden)
+          PopupMenuItem<String>(
+            key: ValueKey<String>('panel-tab-overflow-item-${tab.id}'),
+            value: tab.id,
+            height: 32,
+            child: Row(
+              children: [
+                Icon(
+                  tab.icon,
+                  size: 14,
+                  color: tab.id == activeTabId
+                      ? colorScheme.primary
+                      : colorScheme.onSurfaceVariant,
+                ),
+                const SizedBox(width: 8),
+                Text(tab.label, style: const TextStyle(fontSize: 12)),
+              ],
+            ),
+          ),
+      ],
+      onSelected: onTabSelected,
+      child: SizedBox(
+        width: EditorPanelTabs._tabExtent,
+        child: Center(
+          child: Text(
+            '+${hidden.length}',
+            style: TextStyle(
+              fontSize: 11,
+              color: colorScheme.onSurfaceVariant,
+            ),
+          ),
         ),
       ),
     );

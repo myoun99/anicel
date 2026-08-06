@@ -53,10 +53,18 @@ Future<void> _pumpHome(WidgetTester tester) async {
 /// collapsed-dock behaviours (its drop rail) need it emptied first —
 /// closing the sheet's tab is the shortest honest way there.
 Future<void> _closeTimesheet(WidgetTester tester) async {
-  final close = find.byKey(const ValueKey<String>('panel-close-timesheet'));
-  await tester.ensureVisible(close);
+  // The tab's X went with the rest of the panel frame (패널 프레임 최소화),
+  // so the settings list is the switch — in both directions.
+  await tester.tap(
+    find.byKey(const ValueKey<String>('top-strip-settings-button')),
+  );
   await tester.pumpAndSettle();
-  await tester.tap(close);
+  final entry = find.byKey(
+    const ValueKey<String>('panels-menu-item-timesheet'),
+  );
+  await tester.ensureVisible(entry);
+  await tester.pumpAndSettle();
+  await tester.tap(entry);
   await tester.pumpAndSettle();
 }
 
@@ -64,8 +72,15 @@ Future<void> _closeTimesheet(WidgetTester tester) async {
 /// lifts a tab; the rest of the button is a plain tap target). The target
 /// is a CLOSURE evaluated after the lift, because lifting reveals the
 /// section split zones and shifts the strips down.
-Finder _tabGrip(Finder tab) =>
-    find.descendant(of: tab, matching: find.byIcon(Icons.drag_indicator));
+/// The lift zone — an 8px strip of the tab's leading edge, found by KEY
+/// now that it is not a glyph.
+Finder _tabGrip(Finder tab) => find.descendant(
+  of: tab,
+  matching: find.byWidgetPredicate((widget) {
+    final key = widget.key;
+    return key is ValueKey<String> && key.value.startsWith('panel-grip-');
+  }),
+);
 
 Future<void> _dragTab(
   WidgetTester tester,
@@ -78,7 +93,10 @@ Future<void> _dragTab(
   final gesture = await tester.startGesture(tester.getCenter(_tabGrip(tab)));
   await tester.pump(const Duration(milliseconds: 20));
   // Clear the touch slop so the immediate drag wins the gesture arena.
-  await gesture.moveBy(const Offset(0, 30));
+  // SIDEWAYS, not down: the 문턱 sits on the region's bottom inner edge, so
+  // a downward nudge from a tab there leaves the window entirely and the
+  // lift never happens. A strip is horizontal wherever it is docked.
+  await gesture.moveBy(const Offset(30, 0));
   await tester.pump();
   final destination = target();
   await gesture.moveTo(destination + const Offset(0, -5));
@@ -119,11 +137,17 @@ void main() {
       );
 
       // …while an ordinary dock keeps its tabs: this is a strip-by-strip
-      // decision, not a workspace-wide teardown.
+      // decision, not a workspace-wide teardown. What a tab carries is one
+      // glyph and its lift zone now — 패널 프레임 최소화 took the name, the
+      // lock and the X, and the settings list is the way to close.
       expect(find.byKey(_brushesTabKey), findsOneWidget);
       expect(
-        find.byKey(const ValueKey<String>('panel-close-brushes')),
+        find.byKey(const ValueKey<String>('panel-grip-brushes')),
         findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('panel-close-brushes')),
+        findsNothing,
       );
       expect(
         find.byKey(const ValueKey<String>('tool-brush-button')),
@@ -401,12 +425,14 @@ void main() {
 
       // Timeline into the left strip: allowed — the shell hosts it at its
       // minimum content size inside scrollers.
-      await _dragTab(
-        tester,
-        find.byKey(_timelineTabKey),
-        () => tester.getCenter(find.byKey(_mediaTabKey)) + const Offset(60, 0),
-      );
-
+      // The strip's TAIL — tabs are one glyph wide now, so a fixed offset
+      // from a neighbour's centre no longer lands anywhere in particular.
+      await _dragTab(tester, find.byKey(_timelineTabKey), () {
+        final strip = tester.getRect(
+          find.byKey(const ValueKey<String>('editor-panel-dock-left')),
+        );
+        return Offset(strip.right - 40, strip.top + 15);
+      });
       // Timeline renders in the side dock while the bottom region falls
       // back to the storyboard.
       expect(find.byType(TimelinePanel), findsOneWidget);
@@ -473,84 +499,35 @@ void main() {
   });
 
   group('EditorWorkspace panel close + Panels menu', () {
-    testWidgets('the X on a tab closes the panel; the menu reopens it', (
-      tester,
-    ) async {
-      await _pumpHome(tester);
-      expect(find.byType(BrushPresetPanel), findsOneWidget);
-
-      await tester.tap(
-        find.byKey(const ValueKey<String>('panel-close-brushes')),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(_brushesTabKey), findsNothing);
-      expect(find.byType(BrushPresetPanel), findsNothing);
-      // The neighbouring tab takes over the section.
-      expect(find.byType(BrushSettingsPanel), findsOneWidget);
-
-      // Reopen from the Settings popover, which absorbed the Window menu
-      // (and kept the retired Panels menu's item keys).
-      await tester.tap(
-        find.byKey(const ValueKey<String>('top-strip-settings-button')),
-      );
-      await tester.pumpAndSettle();
-      await tester.tap(
-        find.byKey(const ValueKey<String>('panels-menu-item-brushes')),
-      );
-      await tester.pumpAndSettle();
-
-      expect(find.byKey(_brushesTabKey), findsOneWidget);
-    });
-
-    testWidgets('locked tabs keep the X visible but INERT — locking never '
-        'reshapes the tab (R12-⑨)', (tester) async {
+    testWidgets('the tab carries ONE glyph and its lift zone — closing is '
+        'the settings list, in both directions', (tester) async {
       await _pumpHome(tester);
 
-      // The canvas used to be this test's subject, and it cannot be any
-      // more — the floor has no strip at all now, which is a stronger
-      // statement than "locked" and is pinned by its own test. So the law
-      // is checked where a strip still exists: any tab, locked by hand.
-      final lockSheet = find.byKey(
-        const ValueKey<String>('panel-lock-timesheet'),
-      );
-      final closeSheet = find.byKey(
-        const ValueKey<String>('panel-close-timesheet'),
-      );
-
-      await tester.ensureVisible(lockSheet);
-      await tester.pumpAndSettle();
-      await tester.tap(lockSheet);
-      await tester.pumpAndSettle();
-
-      // Locked: the X is still there…
-      expect(closeSheet, findsOneWidget);
-      // …and the grip too (visible, inert).
+      // 패널 프레임 최소화 (유저 확정): no name, no lock, no X. The label is
+      // the tooltip, which was always the tab's only accessibility name.
+      for (final id in ['brushes', 'media', 'timesheet']) {
+        expect(find.byKey(ValueKey<String>('panel-close-$id')), findsNothing);
+        expect(find.byKey(ValueKey<String>('panel-lock-$id')), findsNothing);
+        expect(
+          find.byKey(ValueKey<String>('panel-grip-$id')),
+          findsOneWidget,
+          reason: 'the lift zone survives — S4 drags panels by it',
+        );
+      }
       expect(
-        find.byKey(const ValueKey<String>('panel-grip-timesheet')),
-        findsOneWidget,
+        find.descendant(
+          of: find.byKey(_brushesTabKey),
+          matching: find.byType(Text),
+        ),
+        findsNothing,
+        reason: 'no name on the button',
       );
 
-      // Ahem-wide labels push the X past the strip's scroll clip in
-      // tests — bring it into view before tapping.
-      await tester.ensureVisible(closeSheet);
-      await tester.pumpAndSettle();
-
-      // Tapping the dead X does nothing (and doesn't select-toggle).
-      await tester.tap(closeSheet);
-      await tester.pumpAndSettle();
-      expect(find.byKey(_timesheetTabKey), findsOneWidget);
-
-      // Unlocking arms it: now the X closes the panel.
-      await tester.ensureVisible(lockSheet);
-      await tester.pumpAndSettle();
-      await tester.tap(lockSheet);
-      await tester.pumpAndSettle();
-      await tester.ensureVisible(closeSheet);
-      await tester.pumpAndSettle();
-      await tester.tap(closeSheet);
-      await tester.pumpAndSettle();
+      // The settings list closes AND reopens — one switch, both ways.
+      await _closeTimesheet(tester);
       expect(find.byKey(_timesheetTabKey), findsNothing);
+      await _closeTimesheet(tester);
+      expect(find.byKey(_timesheetTabKey), findsOneWidget);
     });
   });
 

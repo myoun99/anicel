@@ -124,10 +124,7 @@ void main() {
       await tester.pumpAndSettle();
       final gesture = await tester.startGesture(
         tester.getCenter(
-          find.descendant(
-            of: mediaTab,
-            matching: find.byIcon(Icons.drag_indicator),
-          ),
+          find.byKey(const ValueKey<String>('panel-grip-media')),
         ),
       );
       await tester.pump(const Duration(milliseconds: 20));
@@ -172,14 +169,24 @@ void main() {
         'panel is never placed out of sight', (tester) async {
       await pumpApp(tester);
 
-      // Close the sheet's panel, then close its whole group.
-      final close = find.byKey(
-        const ValueKey<String>('panel-close-timesheet'),
-      );
-      await tester.ensureVisible(close);
-      await tester.pumpAndSettle();
-      await tester.tap(close);
-      await tester.pumpAndSettle();
+      // Close the sheet's panel. The tab has no X any more — 패널 프레임
+      // 최소화 took it — so the settings list IS the switch, in both
+      // directions.
+      Future<void> togglePanel() async {
+        await tester.tap(
+          find.byKey(const ValueKey<String>('top-strip-settings-button')),
+        );
+        await tester.pumpAndSettle();
+        final entry = find.byKey(
+          const ValueKey<String>('panels-menu-item-timesheet'),
+        );
+        await tester.ensureVisible(entry);
+        await tester.pumpAndSettle();
+        await tester.tap(entry);
+        await tester.pumpAndSettle();
+      }
+
+      await togglePanel();
       expect(find.byType(TimesheetTabHost), findsNothing);
 
       // Reopen it from the Settings popover's panel list. Its home is that

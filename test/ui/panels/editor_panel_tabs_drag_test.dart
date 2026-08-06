@@ -6,10 +6,18 @@ import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
 /// Two draggable single-section tab groups wired to one layout model, the
 /// way the workspace dock sections are.
 class _Harness extends StatelessWidget {
-  const _Harness({required this.model, this.lockedTabIds = const {}});
+  const _Harness({
+    required this.model,
+    this.lockedTabIds = const {},
+    this.width,
+  });
 
   final EditorPanelLayoutModel model;
   final Set<String> lockedTabIds;
+
+  /// How much room the groups get across. Null = whatever the surface has,
+  /// which is every test here but the compression one.
+  final double? width;
 
   static const Map<String, IconData> _icons = {
     'a': Icons.abc,
@@ -67,8 +75,8 @@ class _Harness extends StatelessWidget {
           listenable: model,
           builder: (context, _) => Column(
             children: [
-              SizedBox(height: 150, child: _group('one')),
-              SizedBox(height: 150, child: _group('two')),
+              SizedBox(width: width, height: 150, child: _group('one')),
+              SizedBox(width: width, height: 150, child: _group('two')),
             ],
           ),
         ),
@@ -95,8 +103,11 @@ List<String> _tabsIn(EditorPanelLayoutModel model, String dockId) {
 
 Finder _tab(String id) => find.byKey(ValueKey<String>('panel-tab-$id'));
 
-Finder _grip(String id) =>
-    find.descendant(of: _tab(id), matching: find.byIcon(Icons.drag_indicator));
+/// The lift zone. It is an 8px strip of the tab's leading edge now, not a
+/// glyph — so it is found by KEY. A finder that looked for the three dots
+/// would go quiet the moment they were replaced, which is exactly what a
+/// drag test must not do.
+Finder _grip(String id) => find.byKey(ValueKey<String>('panel-grip-$id'));
 
 /// Drags a tab to [target] by its GRIP (R10-⑩: only the grip lifts).
 Future<void> _dragTab(WidgetTester tester, String id, Offset target) async {
@@ -233,6 +244,56 @@ void main() {
 
     expect(_tabsIn(model, 'one'), ['a', 'b', 'c']);
     expect(_tabsIn(model, 'two'), ['x', 'y']);
+  });
+
+  testWidgets('a strip with no room COMPRESSES into an overflow rather than '
+      'scrolling', (tester) async {
+    final model = EditorPanelLayoutModel(
+      docks: {
+        'one': [
+          DockSection(tabs: ['a', 'b', 'c', 'x']),
+        ],
+        'two': [
+          DockSection(tabs: ['y']),
+        ],
+      },
+    );
+    // A tab costs 32 across, so three fit in 100 — and the overflow button
+    // spends one of those slots on itself.
+    await tester.pumpWidget(_Harness(model: model, width: 100));
+
+    expect(_tab('a'), findsOneWidget);
+    expect(_tab('b'), findsOneWidget);
+    expect(_tab('c'), findsNothing);
+    expect(_tab('x'), findsNothing);
+
+    // ★띠는 스크롤하지 않는다 (유저 확정), and the reason is gesture rather
+    // than taste: inside a scroller the drag that MOVES a panel is taken by
+    // the scroll arena before the tab under the finger ever sees it.
+    expect(
+      find.descendant(
+        of: find.byType(EditorPanelTabs).first,
+        matching: find.byType(Scrollable),
+      ),
+      findsNothing,
+    );
+
+    final overflow = find.byKey(
+      const ValueKey<String>('panel-tab-overflow-one'),
+    );
+    expect(overflow, findsOneWidget);
+    await tester.tap(overflow);
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('panel-tab-overflow-item-x')),
+    );
+    await tester.pumpAndSettle();
+
+    // What did not fit is still REACHABLE — and compression hides the tail,
+    // it never reorders the strip.
+    expect(model.sectionsIn('one').single.activeTabId, 'x');
+    expect(find.text('content-x'), findsOneWidget);
+    expect(_tabsIn(model, 'one'), ['a', 'b', 'c', 'x']);
   });
 
   testWidgets('plain taps still switch tabs on a draggable strip', (

@@ -131,6 +131,70 @@ void main() {
       expect(splitter.bottom, lessThanOrEqualTo(timeline.top + 0.5));
     });
 
+    testWidgets('the side grips stop at it — the leading tab keeps its lift '
+        'zone, on either edge', (tester) async {
+      await pumpApp(tester);
+
+      Rect grip(String id) => tester.getRect(find.byKey(ValueKey<String>(id)));
+      Rect leadingTab() => tester.getRect(
+        find.byKey(const ValueKey<String>('timeline-mode-timeline-button')),
+      );
+      Rect collapseButton() => tester.getRect(
+        find.byKey(const ValueKey<String>('floating-bottom-collapse')),
+      );
+
+      // Two edge gestures, five pixels. The side grip runs the region's
+      // whole side and the strip's LEADING tab carries its 8px lift zone in
+      // the same corner; the splitter hit-tests opaque, so while it reached
+      // the frame-facing edge the first panel of the region could not be
+      // lifted at all — and the same bite took the collapse button's
+      // trailing edge on the other side.
+      expect(grip('bottom-inset-left').overlaps(leadingTab()), isFalse);
+      expect(grip('bottom-inset-right').overlaps(collapseButton()), isFalse);
+
+      // Numbers are not the promise: the zone is the ONLY surface that
+      // lifts a tab, so it has to actually lift this one. With the drag
+      // live, every eligible dock puts its drop bands up.
+      final gesture = await tester.startGesture(
+        tester.getCenter(
+          find.byKey(const ValueKey<String>('panel-grip-timeline')),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 20));
+      await gesture.moveBy(const Offset(30, 0));
+      await tester.pump();
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget.key is ValueKey<String> &&
+              (widget.key! as ValueKey<String>).value.startsWith(
+                'dock-drop-join-',
+              ),
+        ),
+        findsWidgets,
+        reason: 'the tab lifted',
+      );
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      // Which 30px the grips leave alone is not a rule of their own: it
+      // follows the threshold, so it flips with the region.
+      await tester.tap(
+        find.byKey(const ValueKey<String>('top-strip-settings-button')),
+      );
+      await tester.pumpAndSettle();
+      final row = find.byKey(
+        const ValueKey<String>('menu-window-region-on-top'),
+      );
+      await tester.ensureVisible(row);
+      await tester.pumpAndSettle();
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+
+      expect(grip('bottom-inset-left').overlaps(leadingTab()), isFalse);
+      expect(grip('bottom-inset-right').overlaps(collapseButton()), isFalse);
+    });
+
     testWidgets('collapse shrinks the region without closing it', (
       tester,
     ) async {

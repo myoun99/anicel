@@ -2501,6 +2501,17 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// on the pass-through boundary, so choosing "the columns go down past
   /// the region" is something the hand can land on rather than something a
   /// menu has to offer.
+  ///
+  /// ★They also stop SHORT of the 문턱. The grip runs the region's whole
+  /// side, but the last [EditorPanelTabs.stripHeight] of that side is the
+  /// strip on the frame-facing edge — and the strip's LEADING tab carries
+  /// its 8px lift zone in exactly that corner. Two edge gestures cannot
+  /// share five pixels: the splitter hit-tests opaque and won every one of
+  /// them, so the first panel of the floating region could not be lifted at
+  /// all, and its zone was painted over besides (the same bite took the
+  /// collapse button's trailing edge on the other side). Which 30px to
+  /// leave alone needs no rule of its own — 정체성은 창틀 향한 변에 already
+  /// says whose they are, and it flips with the region out of [onTop].
   Widget _bottomInsetGrip({
     required bool right,
     required double inset,
@@ -2512,9 +2523,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     return Positioned(
       left: right ? null : inset,
       right: right ? inset : null,
-      top: onTop ? 0 : null,
-      bottom: onTop ? null : 0,
-      height: height,
+      top: onTop ? EditorPanelTabs.stripHeight : null,
+      bottom: onTop ? null : EditorPanelTabs.stripHeight,
+      height: math.max(0, height - EditorPanelTabs.stripHeight),
       width: DockEdgeSplitter.thickness,
       child: DockEdgeSplitter(
         key: ValueKey<String>(
