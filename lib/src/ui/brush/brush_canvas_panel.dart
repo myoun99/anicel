@@ -51,6 +51,7 @@ import 'canvas_selection_commands.dart';
 import 'selection_shape_history_command.dart';
 import 'canvas_view_commands.dart';
 import 'canvas_viewport_pan_metrics.dart';
+import 'canvas_visible_rect.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/app_scrollbar.dart';
 import '../widgets/drag_value_label.dart';
@@ -109,6 +110,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.interactiveContentPose,
     this.contentOverride,
     this.fitFocusRect,
+    this.visibleInsets = EdgeInsets.zero,
     this.autoFrame,
     this.contentStrokeActive,
     this.sampleColorAt,
@@ -237,6 +239,15 @@ class BrushCanvasPanel extends StatefulWidget {
   /// canvas (e.g. the camera frame's bounds while the camera layer is
   /// active). Null keeps Fit on the canvas itself.
   final Rect? fitFocusRect;
+
+  /// The edges of this panel's box that are COVERED by something floating
+  /// over the canvas, and therefore are not part of the window the artist
+  /// looks through. See [canvasVisibleRect] for what this is for and which
+  /// half of the panel's geometry it does and does not touch.
+  ///
+  /// Zero — the default, and everything the app passes today — makes every
+  /// framing verb reduce to the arithmetic it had before this existed.
+  final EdgeInsets visibleInsets;
 
   /// Playback-follow reframing: when the request's token changes between
   /// updates the panel reframes onto its rect (see
@@ -637,28 +648,41 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   }
 
   void _autoFrame(CanvasAutoFrameRequest request) {
-    final viewportSize = _resolvedEditorViewportSize();
+    final visible = _resolvedVisibleRect();
     final next = request.panOnly
-        ? _viewportRevealing(request.rect, viewportSize)
-        : CanvasViewport.fitToCanvasRect(
-            left: request.rect.left,
-            top: request.rect.top,
-            width: request.rect.width,
-            height: request.rect.height,
-            viewportWidth: viewportSize.width,
-            viewportHeight: viewportSize.height,
-          );
+        ? _viewportRevealing(request.rect, visible)
+        : _fittedInto(visible, canvasRect: request.rect);
     if (next == _viewport) {
       return;
     }
     _setViewport(next);
   }
 
+  /// Fits [canvasRect] into [visible], which is expressed in LAYOUT
+  /// coordinates: the fit is computed in the window's own frame and then slid
+  /// back, because pan is measured from the layout box's top-left. Fitting
+  /// against the box instead would centre the artwork on the box and drop its
+  /// lower edge under whatever floats there.
+  CanvasViewport _fittedInto(Rect visible, {required Rect canvasRect}) {
+    final fitted = CanvasViewport.fitToCanvasRect(
+      left: canvasRect.left,
+      top: canvasRect.top,
+      width: canvasRect.width,
+      height: canvasRect.height,
+      viewportWidth: visible.width,
+      viewportHeight: visible.height,
+    );
+    return fitted.copyWith(
+      panX: fitted.panX + visible.left,
+      panY: fitted.panY + visible.top,
+    );
+  }
+
   /// The minimal zoom-preserving pan that brings [rect] (canvas space)
   /// into the viewport with a small margin; when the rect cannot fully
   /// fit, its top-left edge wins. Under rotation/flip the rect's mapped
   /// AABB is what must land inside.
-  CanvasViewport _viewportRevealing(Rect rect, Size viewportSize) {
+  CanvasViewport _viewportRevealing(Rect rect, Rect visible) {
     const margin = 24.0;
     var panX = _viewport.panX;
     var panY = _viewport.panY;
@@ -679,17 +703,19 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       minY = math.min(minY, mapped.y);
       maxY = math.max(maxY, mapped.y);
     }
-    if (maxY + panY > viewportSize.height - margin) {
-      panY = viewportSize.height - margin - maxY;
+    // Reveal into the window, not into the box: the 24px breathing room is
+    // worthless if it is measured against an edge that is covered.
+    if (maxY + panY > visible.bottom - margin) {
+      panY = visible.bottom - margin - maxY;
     }
-    if (minY + panY < margin) {
-      panY = margin - minY;
+    if (minY + panY < visible.top + margin) {
+      panY = visible.top + margin - minY;
     }
-    if (maxX + panX > viewportSize.width - margin) {
-      panX = viewportSize.width - margin - maxX;
+    if (maxX + panX > visible.right - margin) {
+      panX = visible.right - margin - maxX;
     }
-    if (minX + panX < margin) {
-      panX = margin - minX;
+    if (minX + panX < visible.left + margin) {
+      panX = visible.left + margin - minX;
     }
     return _viewport.copyWith(panX: panX, panY: panY);
   }
@@ -1440,11 +1466,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   }
 
   void _zoomToAroundCenter(double nextZoom) {
-    final viewportSize = _resolvedEditorViewportSize();
-    final anchor = ViewportPoint(
-      x: viewportSize.width / 2,
-      y: viewportSize.height / 2,
-    );
+    // The centre of what you can SEE, not of the box: anchoring on the box
+    // walks the picture toward a covered edge one press at a time.
+    final center = _resolvedVisibleRect().center;
+    final anchor = ViewportPoint(x: center.dx, y: center.dy);
     setState(() {
       _viewport = _viewport.zoomedAround(nextZoom: nextZoom, anchor: anchor);
     });
@@ -1453,28 +1478,22 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
 
   void _fitToView() {
     final canvasSize = widget.canvasSize;
-    final focusRect = widget.fitFocusRect;
-    final viewportSize = _resolvedEditorViewportSize();
+    final target =
+        widget.fitFocusRect ??
+        Rect.fromLTWH(
+          0,
+          0,
+          canvasSize.width.toDouble(),
+          canvasSize.height.toDouble(),
+        );
     setState(() {
-      _viewport = focusRect != null
-          ? CanvasViewport.fitToCanvasRect(
-              left: focusRect.left,
-              top: focusRect.top,
-              width: focusRect.width,
-              height: focusRect.height,
-              viewportWidth: viewportSize.width,
-              viewportHeight: viewportSize.height,
-            )
-          : CanvasViewport.fitToView(
-              canvasWidth: canvasSize.width.toDouble(),
-              canvasHeight: canvasSize.height.toDouble(),
-              viewportWidth: viewportSize.width,
-              viewportHeight: viewportSize.height,
-            );
+      _viewport = _fittedInto(_resolvedVisibleRect(), canvasRect: target);
     });
     widget.onViewportChanged?.call(_viewport);
   }
 
+  /// The panel's LAYOUT box — the surface you touch. Pan bars, the gesture
+  /// layer and the shell memo want this one.
   Size _resolvedEditorViewportSize() {
     return _editorViewportSize ??
         Size(
@@ -1483,13 +1502,18 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         );
   }
 
+  /// The window you LOOK THROUGH, in layout coordinates. Every verb that
+  /// frames the artwork wants this one — see [canvasVisibleRect].
+  Rect _resolvedVisibleRect() =>
+      canvasVisibleRect(_resolvedEditorViewportSize(), widget.visibleInsets);
+
   void _resetView() {
     _setViewport(CanvasViewport());
   }
 
   ViewportPoint get _viewportCenterAnchor {
-    final viewportSize = _resolvedEditorViewportSize();
-    return ViewportPoint(x: viewportSize.width / 2, y: viewportSize.height / 2);
+    final center = _resolvedVisibleRect().center;
+    return ViewportPoint(x: center.dx, y: center.dy);
   }
 
   /// Rotates the VIEW by [degrees] around the viewport center (P8). The
