@@ -1,3 +1,4 @@
+import 'dart:ui' show Size;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -141,6 +142,75 @@ void main() {
       hasLength(windows.length),
       reason: 'one surface per box, never two boxes sharing a key',
     );
+  });
+
+  group('mount gate', () {
+    final analog = CutEnvelopeLayout.fit(
+      form: CutEnvelopePresets.analog,
+      paperWidth: 660,
+      paperHeight: 497,
+    );
+    final windows = envelopeInkWindows(analog, owner);
+
+    test('zoomed OUT almost nothing mounts — only cells still big enough '
+        'to write in', () {
+      final mounted = mountedEnvelopeInkWindows(
+        windows,
+        CanvasViewport(zoom: 0.2, panX: 0, panY: 0),
+        const Size(400, 300),
+      );
+
+      // Not zero: the sheet-space block is large enough to draw in even
+      // here, and refusing it would be wrong. What matters is that the 86
+      // collapse to a couple.
+      expect(mounted.length, lessThan(5));
+    });
+
+    test('zoomed IN the mount count drops to a conte-sized handful', () {
+      final mounted = mountedEnvelopeInkWindows(
+        windows,
+        CanvasViewport(zoom: 3, panX: 0, panY: 0),
+        const Size(900, 700),
+      );
+
+      expect(windows, hasLength(86), reason: 'measured: the analog preset');
+      expect(
+        mounted.length,
+        lessThan(20),
+        reason: 'the whole point — 86 sessions would be mounted otherwise',
+      );
+      expect(mounted, isNotEmpty);
+    });
+
+    test('a window scrolled off screen does not mount', () {
+      final far = mountedEnvelopeInkWindows(
+        windows,
+        CanvasViewport(zoom: 3, panX: -100000, panY: -100000),
+        const Size(900, 700),
+      );
+
+      expect(far, isEmpty);
+    });
+
+    test('the size gate is per-axis: a wide but flat cell stays out', () {
+      final flat = envelopeInkWindows(
+        layoutOf(const [
+          EnvelopeBox(
+            id: 'flat',
+            rect: EnvelopeRect(x: 0, y: 0, width: 1, height: 0.05),
+          ),
+        ]),
+        owner,
+      );
+
+      final mounted = mountedEnvelopeInkWindows(
+        flat,
+        CanvasViewport(zoom: 1, panX: 0, panY: 0),
+        const Size(200, 200),
+      );
+
+      expect(mounted, isEmpty, reason: 'height is 5px — nothing fits there');
+    });
   });
 
   group('controller', () {
