@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart' show setEquals;
 
-import 'envelope/cut_envelope_paint_layer.dart';
+import 'sheet_paint_layer.dart';
 import 'envelope/cut_envelope_paper.dart';
 import 'export_cel_naming.dart';
 import 'export_format_selection.dart';
@@ -562,11 +562,11 @@ class EnvelopeExportSpec extends ExportTabSpec {
   final String formId;
 
   /// Every stratum, which is what a flat PNG of the sheet means.
-  static const Set<EnvelopePaintLayer> defaultLayers = {
-    EnvelopePaintLayer.paper,
-    EnvelopePaintLayer.form,
-    EnvelopePaintLayer.content,
-    EnvelopePaintLayer.ink,
+  static const Set<SheetPaintLayer> defaultLayers = {
+    SheetPaintLayer.paper,
+    SheetPaintLayer.form,
+    SheetPaintLayer.content,
+    SheetPaintLayer.ink,
   };
 
   final CutEnvelopePaperMode paperMode;
@@ -578,7 +578,7 @@ class EnvelopeExportSpec extends ExportTabSpec {
 
   /// Which strata print. Turning one off is how a printed sheet ships
   /// without its handwriting, or how the form alone becomes a template.
-  final Set<EnvelopePaintLayer> layers;
+  final Set<SheetPaintLayer> layers;
 
   /// One file per enabled layer instead of one flat image — the PSD
   /// layering, shipping as PNGs until the PSD writer lands. Each file
@@ -587,8 +587,8 @@ class EnvelopeExportSpec extends ExportTabSpec {
   final bool separateLayerFiles;
 
   /// The strata actually drawn, in painting order.
-  List<EnvelopePaintLayer> get orderedLayers => [
-    for (final layer in EnvelopePaintLayer.values)
+  List<SheetPaintLayer> get orderedLayers => [
+    for (final layer in SheetPaintLayer.values)
       if (layers.contains(layer)) layer,
   ];
 
@@ -600,7 +600,7 @@ class EnvelopeExportSpec extends ExportTabSpec {
     CutEnvelopePaperMode? paperMode,
     ExportScopeKind? scope,
     int? sheetWidth,
-    Set<EnvelopePaintLayer>? layers,
+    Set<SheetPaintLayer>? layers,
     bool? separateLayerFiles,
   }) => EnvelopeExportSpec(
     formId: formId ?? this.formId,
@@ -612,7 +612,7 @@ class EnvelopeExportSpec extends ExportTabSpec {
   );
 
   /// Toggles one stratum, refusing to leave nothing to draw.
-  EnvelopeExportSpec withLayer(EnvelopePaintLayer layer, bool enabled) {
+  EnvelopeExportSpec withLayer(SheetPaintLayer layer, bool enabled) {
     final next = {...layers};
     if (enabled) {
       next.add(layer);
@@ -636,7 +636,7 @@ class EnvelopeExportSpec extends ExportTabSpec {
   static EnvelopeExportSpec fromJson(Map<String, dynamic> json) {
     final rawLayers = json['layers'];
     final layers = rawLayers is List
-        ? {for (final entry in rawLayers) ?EnvelopePaintLayer.fromJson(entry)}
+        ? {for (final entry in rawLayers) ?SheetPaintLayer.fromJson(entry)}
         : defaultLayers;
     return EnvelopeExportSpec(
       formId: json['formId'] as String? ?? defaultFormId,

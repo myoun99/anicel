@@ -28,7 +28,7 @@ import 'package:anicel/src/models/track_frame_range.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart'
-    show StoryboardThumbnailResolver;
+    show StoryboardThumbnailResolver, StoryboardThumbnailTier;
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/storyboard_timeline_layout.dart';
 import 'storyboard_cut_block_probe.dart';
@@ -468,7 +468,8 @@ void main() {
       expect(
         heads.last,
         LayerRowAddress(expectedHead),
-        reason: 'the pointer is two S rows up, so the head is two S rows up — '
+        reason:
+            'the pointer is two S rows up, so the head is two S rows up — '
             'the answer must not depend on how tall the V row happens to be',
       );
     });
@@ -923,7 +924,8 @@ void main() {
         ]),
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
-        thumbnailFor: (cut, _) => cut.id == const CutId('cut-a') ? image : null,
+        thumbnailFor: (cut, _, {tier = StoryboardThumbnailTier.strip}) =>
+            cut.id == const CutId('cut-a') ? image : null,
       );
 
       expect(requireCutBlock(tester, 'cut-a').thumbnails.first, isNotNull);
@@ -983,10 +985,11 @@ void main() {
         ]),
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
-        thumbnailFor: (cut, frameIndex) {
-          asked.add((cut.id, frameIndex));
-          return null;
-        },
+        thumbnailFor:
+            (cut, frameIndex, {tier = StoryboardThumbnailTier.strip}) {
+              asked.add((cut.id, frameIndex));
+              return null;
+            },
       );
 
       // Two panels, two pictures, each at the division it opens on — the
@@ -1063,7 +1066,8 @@ void main() {
         ]),
         activeCutId: const CutId('cut-a'),
         onCutSelected: (_) {},
-        thumbnailFor: (cut, _) => cut.id == const CutId('cut-a') ? image : null,
+        thumbnailFor: (cut, _, {tier = StoryboardThumbnailTier.strip}) =>
+            cut.id == const CutId('cut-a') ? image : null,
       );
 
       expect(requireCutBlock(tester, 'cut-a').thumbnails.first, same(image));
@@ -1362,7 +1366,9 @@ void main() {
       id: const TrackId('track-a'),
       name: 'Track A',
       cuts: cuts,
-      seLayers: [createTrackSeLayer(trackId: const TrackId('track-a'), slot: 1)],
+      seLayers: [
+        createTrackSeLayer(trackId: const TrackId('track-a'), slot: 1),
+      ],
     );
 
     testWidgets('dragging DOWN from an S row reports a POSITIVE row reach — '
@@ -1417,7 +1423,8 @@ void main() {
       expect(
         heads.last,
         const TrackRowAddress(TrackId('track-a')),
-        reason: 'downward on screen must reach the V row below — and now it '
+        reason:
+            'downward on screen must reach the V row below — and now it '
             'arrives as the ROW ITSELF, resolved from the painted heights, '
             'not a count derived from the anchor row\x27s own height (R9 #25)',
       );
@@ -1594,10 +1601,7 @@ void main() {
       selection.value = const TrackFrameRangeSelection(
         trackId: TrackId('track-a'),
         anchorRow: LayerRowAddress(seLayerId),
-        rows: [
-          LayerRowAddress(seLayerId),
-          TrackRowAddress(TrackId('track-a')),
-        ],
+        rows: [LayerRowAddress(seLayerId), TrackRowAddress(TrackId('track-a'))],
         startFrame: 0,
         endFrameExclusive: 24,
       );
@@ -1607,9 +1611,7 @@ void main() {
         find.byKey(const ValueKey<String>('storyboard-frame-range-selection')),
       );
       final seRow = tester.getRect(
-        find.byKey(
-          const ValueKey<String>('storyboard-se-press-track-a-se-1'),
-        ),
+        find.byKey(const ValueKey<String>('storyboard-se-press-track-a-se-1')),
       );
       final vRow = tester.getRect(
         find.byKey(

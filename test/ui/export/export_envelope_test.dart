@@ -11,7 +11,7 @@ import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_ink_keys.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_layout.dart';
-import 'package:anicel/src/models/envelope/cut_envelope_paint_layer.dart';
+import 'package:anicel/src/models/sheet_paint_layer.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_paper.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_presets.dart';
 import 'package:anicel/src/models/envelope/cut_envelope_source.dart';
@@ -103,7 +103,7 @@ void main() {
 
       expect(spec.paperMode, CutEnvelopePaperMode.cut);
       expect(spec.layers, EnvelopeExportSpec.defaultLayers);
-      expect(spec.orderedLayers, EnvelopePaintLayer.values);
+      expect(spec.orderedLayers, SheetPaintLayer.values);
       expect(spec.separateLayerFiles, isFalse);
       expect(
         spec.toJson(),
@@ -118,7 +118,7 @@ void main() {
         paperMode: CutEnvelopePaperMode.sheet,
         scope: ExportScopeKind.project,
         sheetWidth: 3508,
-        layers: {EnvelopePaintLayer.form, EnvelopePaintLayer.ink},
+        layers: {SheetPaintLayer.form, SheetPaintLayer.ink},
         separateLayerFiles: true,
       );
 
@@ -132,14 +132,14 @@ void main() {
 
     test('turning the last layer off is refused — a blank page is not an '
         'export', () {
-      const spec = EnvelopeExportSpec(layers: {EnvelopePaintLayer.form});
+      const spec = EnvelopeExportSpec(layers: {SheetPaintLayer.form});
 
-      expect(spec.withLayer(EnvelopePaintLayer.form, false).layers, {
-        EnvelopePaintLayer.form,
+      expect(spec.withLayer(SheetPaintLayer.form, false).layers, {
+        SheetPaintLayer.form,
       });
-      expect(spec.withLayer(EnvelopePaintLayer.ink, true).layers, {
-        EnvelopePaintLayer.form,
-        EnvelopePaintLayer.ink,
+      expect(spec.withLayer(SheetPaintLayer.ink, true).layers, {
+        SheetPaintLayer.form,
+        SheetPaintLayer.ink,
       });
     });
 
@@ -232,7 +232,7 @@ void main() {
         final formOnly = await renderCutEnvelopeImage(
           layout: layout,
           source: const CutEnvelopeSource(),
-          layers: const {EnvelopePaintLayer.form},
+          layers: const {SheetPaintLayer.form},
         );
         addTearDown(formOnly.dispose);
 
@@ -331,7 +331,7 @@ void main() {
       await tester.runAsync(state.export);
       await tester.pump();
 
-      for (final layer in EnvelopePaintLayer.values) {
+      for (final layer in SheetPaintLayer.values) {
         final file = File(
           '${temp.path}${Platform.pathSeparator}'
           'CUT39_envelope_${layer.jsonValue}.png',

@@ -10,7 +10,10 @@ import '../../models/conte/conte_ink_keys.dart';
 import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
 import '../../models/cut_id.dart';
+import '../../models/sheet_paint_layer.dart';
 import 'conte_fonts.dart';
+
+export '../../models/sheet_paint_layer.dart' show SheetPaintLayer;
 
 /// The conte sheet's ONE renderer.
 ///
@@ -30,6 +33,7 @@ class ContePagePainter extends CustomPainter {
     this.selectedCell,
     this.showPaper = true,
     this.viewport,
+    this.layers,
     this.inkImageFor,
     this.liveInkKeys = const {},
     // The thumbnail store (async pictures): a landed render must repaint
@@ -59,6 +63,14 @@ class ContePagePainter extends CustomPainter {
   /// own page), so the white fill is not painted twice.
   final bool showPaper;
 
+  /// Which strata to draw; null draws all four (the panel, and any export
+  /// that wants one flat page). The envelope's rule, said of the conte —
+  /// [SheetPaintLayer] is the shared vocabulary.
+  final Set<SheetPaintLayer>? layers;
+
+  bool _draws(SheetPaintLayer layer) =>
+      layers == null || layers!.contains(layer);
+
   /// The sheet ink's display raster for one window key (R5) — the page's
   /// surface and each cell's row-band surface, at [conteInkScale] over
   /// document points. Null (the resolver or the image) draws no ink.
@@ -77,6 +89,10 @@ class ContePagePainter extends CustomPainter {
 
   static const Color _ink = Color(0xFF101010);
   static const Color _rule = Color(0xFF404040);
+
+  /// The tone inside a printed picture frame — the well a panel is drawn
+  /// into. Light enough that a drawing over it still reads as the drawing.
+  static const Color _pictureWell = Color(0xFFEDEDED);
 
   /// The picture cell's heavy silhouette border — the Ghibli-conte look the
   /// design asks for, and the thing that makes the picture read as a frame
@@ -105,23 +121,66 @@ class ContePagePainter extends CustomPainter {
   }
 
   void _paintPage(Canvas canvas) {
-    if (showPaper) {
+    if (showPaper && _draws(SheetPaintLayer.paper)) {
       canvas.drawRect(
         Rect.fromLTWH(0, 0, metrics.pageWidth, metrics.pageHeight),
         Paint()..color = const Color(0xFFFFFFFF),
       );
     }
-    _paintHeader(canvas);
+    if (_draws(SheetPaintLayer.form)) {
+      _paintForm(canvas);
+    }
+    if (_draws(SheetPaintLayer.content)) {
+      _paintHeaderValues(canvas);
+      for (final band in page.cutBands) {
+        _paintCutBandValues(canvas, band);
+      }
+      for (final cell in page.cells) {
+        _paintCell(canvas, cell);
+      }
+      _paintFooterValues(canvas);
+    }
+    if (_draws(SheetPaintLayer.ink)) {
+      _paintInk(canvas);
+    }
+  }
+
+  /// Everything the blank sheet prints — and nothing else.
+  ///
+  /// The form reads the page's SHAPE (its metrics) and never the film:
+  /// an empty page draws the same rules, the same columns and the same
+  /// picture frames as a full one. That is what a printed conte pad is,
+  /// and it is why the old "X across the empty rows", the heavier box
+  /// redrawn wherever a cut happened to start, and the picture border
+  /// that only existed where a cell did are all gone (user, 2026-08-06:
+  /// *"너무 번잡해보여"*).
+  /// (The header carries no printed labels of its own yet — the title and
+  /// the page number are both values, so they are content.)
+  void _paintForm(Canvas canvas) {
     _paintGrid(canvas);
-    for (final band in page.cutBands) {
-      _paintCutBand(canvas, band);
+    _paintPictureFrames(canvas);
+  }
+
+  /// The picture window of EVERY row: the frame is printed on the sheet,
+  /// and its inside is toned so an empty one still reads as the place a
+  /// panel goes (user: *"서식에 픽처 프레임이 항상 존재하고 그 안쪽을
+  /// 진하게 칠하는 것이 기본. 그림은 그 위에 얹힐 뿐"*).
+  void _paintPictureFrames(Canvas canvas) {
+    final fill = Paint()..color = _pictureWell;
+    final border = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = _pictureBorderWidth
+      ..color = _ink;
+    for (var row = 0; row < metrics.rowsPerPage; row += 1) {
+      final frame = Rect.fromLTRB(
+        metrics.pictureLeft,
+        metrics.rowTop(row),
+        metrics.actionLeft,
+        metrics.rowTop(row + 1),
+      );
+      canvas.drawRect(frame.deflate(_pictureBorderWidth), fill);
+      canvas.drawRect(frame.deflate(_pictureBorderWidth / 2), border);
     }
-    for (final cell in page.cells) {
-      _paintCell(canvas, cell);
-    }
-    _paintHole(canvas);
-    _paintFooter(canvas);
-    _paintInk(canvas);
   }
 
   /// The sheet ink, above everything the page prints (it was drawn over
@@ -175,7 +234,7 @@ class ContePagePainter extends CustomPainter {
 
   // ---- header / footer -------------------------------------------------
 
-  void _paintHeader(Canvas canvas) {
+  void _paintHeaderValues(Canvas canvas) {
     final left = [
       if (source.title.isNotEmpty) source.title,
       if (source.episode.isNotEmpty) source.episode,
@@ -205,7 +264,7 @@ class ContePagePainter extends CustomPainter {
     );
   }
 
-  void _paintFooter(Canvas canvas) {
+  void _paintFooterValues(Canvas canvas) {
     _text(
       canvas,
       page.pageTotalLabel,
@@ -265,17 +324,16 @@ class ContePagePainter extends CustomPainter {
     }
   }
 
-  void _paintCutBand(Canvas canvas, ContePlacedCutBand band) {
-    final heavy = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.4
-      ..color = _ink;
-    // The merge is what the box says: one cut, one box, however many cells
-    // it holds. Drawing it OVER the row rules is what erases them inside.
-    canvas.drawRect(band.cutRect, Paint()..color = const Color(0xFFFFFFFF));
-    canvas.drawRect(band.timeRect, Paint()..color = const Color(0xFFFFFFFF));
-    canvas.drawRect(band.cutRect, heavy);
-    canvas.drawRect(band.timeRect, heavy);
+  /// The cut number and its length, written into the boxes the FORM
+  /// already printed.
+  ///
+  /// Nothing is drawn over the form here any more. It used to fill the
+  /// cut and time boxes white and re-stroke them heavier — a merged box
+  /// per cut, which erased the row rules inside it — and that is the
+  /// clutter the user asked to be rid of: *"컷/패널이 있을 때 서식 위에
+  /// 덧그리는 사각형 삭제 … 너무 번잡해보여"*. A box that appears because
+  /// a cut exists is content pretending to be form.
+  void _paintCutBandValues(Canvas canvas, ContePlacedCutBand band) {
     if (band.showsNumber) {
       // Number TOP-LEFT, length BOTTOM-RIGHT: the diagonal the paper sheet
       // uses, and the same one the panel's cut block copies in its bands.
@@ -300,6 +358,12 @@ class ContePagePainter extends CustomPainter {
 
   // ---- cells -----------------------------------------------------------
 
+  /// A cell's picture and its texts — laid ON the frame the form printed.
+  ///
+  /// The border is the form's now, so nothing is stroked here. A cell that
+  /// spans rows or reaches into the action column (camera work) still
+  /// draws its picture at its own size: the panel overflows its printed
+  /// window exactly the way a pan drawn on paper does.
   void _paintCell(Canvas canvas, ContePlacedCell cell) {
     final picture = cell.pictureRect;
     if (picture.width > 0 && picture.height > 0) {
@@ -310,13 +374,6 @@ class ContePagePainter extends CustomPainter {
         _paintPicture(canvas, image, picture.deflate(_pictureBorderWidth));
       }
       canvas.restore();
-      canvas.drawRect(
-        picture.deflate(_pictureBorderWidth / 2),
-        Paint()
-          ..style = PaintingStyle.stroke
-          ..strokeWidth = _pictureBorderWidth
-          ..color = _ink,
-      );
       _paintCameraLabels(canvas, cell, picture);
       if (selectedCell == (cell.cutId, cell.cellIndex)) {
         canvas.drawRect(
@@ -386,26 +443,11 @@ class ContePagePainter extends CustomPainter {
     }
   }
 
-  /// The hole a page break leaves: ONE big X across the rows nothing could
-  /// be placed on. Paper says "deliberately empty" with a stroke.
-  void _paintHole(Canvas canvas) {
-    final from = page.emptyRowsFrom;
-    if (from == null || from >= metrics.rowsPerPage) {
-      return;
-    }
-    final hole = Rect.fromLTRB(
-      metrics.pictureLeft,
-      metrics.rowTop(from),
-      metrics.timeLeft,
-      metrics.bodyBottom,
-    );
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1
-      ..color = _rule;
-    canvas.drawLine(hole.topLeft, hole.bottomRight, paint);
-    canvas.drawLine(hole.topRight, hole.bottomLeft, paint);
-  }
+  // The big X across the rows a page break left empty is gone (user,
+  // 2026-08-06). A blank row on a printed sheet is just a blank row — the
+  // form is always fully there, so nothing has to say "deliberately
+  // empty". [ContePageLayout.emptyRowsFrom] still records the hole for
+  // whoever needs to know it; the sheet simply no longer marks it.
 
   // ---- text ------------------------------------------------------------
 

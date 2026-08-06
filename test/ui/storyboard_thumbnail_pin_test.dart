@@ -71,7 +71,7 @@ void main() {
         'it as the frame the panel asks for', (tester) async {
       var renderCount = 0;
       final store = StoryboardCutThumbnailStore(
-        render: (_, _) {
+        render: (_, _, _) {
           renderCount += 1;
           return tinyImage();
         },

@@ -53,7 +53,7 @@ void main() {
   testWidgets('renders lazily, once per signature', (tester) async {
     var renderCount = 0;
     final store = StoryboardCutThumbnailStore(
-      render: (_, _) {
+      render: (_, _, _) {
         renderCount += 1;
         return tinyImage();
       },
@@ -73,10 +73,47 @@ void main() {
     expect(renderCount, 1, reason: 'unchanged signature must not re-render');
   });
 
+  testWidgets('the SIZE is part of the key: the conte gets its own render '
+      'at sheet resolution, and the strip keeps its small one', (tester) async {
+    final widths = <int>[];
+    final store = StoryboardCutThumbnailStore(
+      render: (_, _, width) {
+        widths.add(width);
+        return tinyImage();
+      },
+    );
+    addTearDown(store.dispose);
+
+    await tester.runAsync(() async {
+      store.thumbnailFor(cut(), 0);
+      store.thumbnailFor(cut(), 0, tier: StoryboardThumbnailTier.sheet);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    });
+
+    expect(widths, [
+      StoryboardThumbnailTier.strip.width,
+      StoryboardThumbnailTier.sheet.width,
+    ]);
+    expect(
+      StoryboardThumbnailTier.sheet.width,
+      greaterThan(StoryboardThumbnailTier.strip.width * 4),
+      reason:
+          'the reported symptom was a quarter of the resolution the cell '
+          'needed',
+    );
+    // And each tier caches on its own: neither re-renders for the other.
+    await tester.runAsync(() async {
+      store.thumbnailFor(cut(), 0);
+      store.thumbnailFor(cut(), 0, tier: StoryboardThumbnailTier.sheet);
+      await Future<void>.delayed(const Duration(milliseconds: 20));
+    });
+    expect(widths, hasLength(2));
+  });
+
   testWidgets('layer visibility change re-renders', (tester) async {
     var renderCount = 0;
     final store = StoryboardCutThumbnailStore(
-      render: (_, _) {
+      render: (_, _, _) {
         renderCount += 1;
         return tinyImage();
       },
@@ -99,7 +136,7 @@ void main() {
     var renderCount = 0;
     final hub = EditorCacheInvalidationHub();
     final store = StoryboardCutThumbnailStore(
-      render: (_, _) {
+      render: (_, _, _) {
         renderCount += 1;
         return tinyImage();
       },
@@ -139,7 +176,7 @@ void main() {
   ) async {
     var renderCount = 0;
     final store = StoryboardCutThumbnailStore(
-      render: (_, _) async {
+      render: (_, _, _) async {
         renderCount += 1;
         return null;
       },
@@ -166,7 +203,7 @@ void main() {
     ) async {
       var renderCount = 0;
       final store = StoryboardCutThumbnailStore(
-        render: (_, _) {
+        render: (_, _, _) {
           renderCount += 1;
           return tinyImage();
         },
@@ -255,7 +292,7 @@ void main() {
     addTearDown(() => FlutterError.onError = previousHandler);
 
     final store = StoryboardCutThumbnailStore(
-      render: (_, _) async {
+      render: (_, _, _) async {
         renderCount += 1;
         if (failFirst) {
           failFirst = false;

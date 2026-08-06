@@ -46,7 +46,7 @@ void main() {
   ) => TimesheetDocumentPainter(
     document: document,
     layout: TimesheetDocumentLayout(document: document),
-    paintLayer: TimesheetPaintLayer.content,
+    layers: const {SheetPaintLayer.content},
     dragPreview: channel,
   );
 

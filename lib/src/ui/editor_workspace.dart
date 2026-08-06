@@ -1064,8 +1064,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// panel resolved which one it is (its own division, or the cut's pin
   /// when that falls inside it). Clamped here so a later trim can never
   /// break a request that was legal when it was made.
-  Future<ui.Image?> _renderStoryboardThumbnail(Cut cut, int frameIndex) {
-    const thumbnailWidth = 128;
+  Future<ui.Image?> _renderStoryboardThumbnail(
+    Cut cut,
+    int frameIndex,
+    int thumbnailWidth,
+  ) {
     final cameraSize = widget.session.cameraFrameSize;
     final height = math.max(
       1,

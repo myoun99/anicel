@@ -156,6 +156,10 @@ class _ContePdfPageWriter {
   static final PdfColor _rule = PdfColor.fromInt(0xFF404040);
   static final PdfColor _paper = PdfColor.fromInt(0xFFFFFFFF);
 
+  /// The tone inside a printed picture frame (the painter's `_pictureWell`
+  /// — the two renderers print the same sheet).
+  static final PdfColor _pictureWell = PdfColor.fromInt(0xFFEDEDED);
+
   /// The painter's line height (TextStyle height: 1.25).
   static const double _lineHeight = 1.25;
   static const double _pictureBorderWidth = 2.4;
@@ -184,14 +188,16 @@ class _ContePdfPageWriter {
       _paper,
     );
     _header();
+    // FORM first, then the values on top — the painter's strata, in the
+    // order paper is printed and then written on.
     _grid();
+    _pictureFrames();
     for (final band in page.cutBands) {
-      _cutBand(band);
+      _cutBandValues(band);
     }
     for (final cell in page.cells) {
       _cell(cell);
     }
-    _hole();
     _footer();
     _sheetInk(page);
   }
@@ -346,11 +352,28 @@ class _ContePdfPageWriter {
     }
   }
 
-  void _cutBand(ContePlacedCutBand band) {
-    _fillRect(band.cutRect, _paper);
-    _fillRect(band.timeRect, _paper);
-    _strokeRect(band.cutRect, 1.4, _ink);
-    _strokeRect(band.timeRect, 1.4, _ink);
+  /// The picture window of every row, printed by the FORM (the painter's
+  /// rule, mirrored): an empty frame still says where a panel goes.
+  void _pictureFrames() {
+    for (var row = 0; row < _metrics.rowsPerPage; row += 1) {
+      final frame = ui.Rect.fromLTRB(
+        _metrics.pictureLeft,
+        _metrics.rowTop(row),
+        _metrics.actionLeft,
+        _metrics.rowTop(row + 1),
+      );
+      _fillRect(frame.deflate(_pictureBorderWidth), _pictureWell);
+      _strokeRect(
+        frame.deflate(_pictureBorderWidth / 2),
+        _pictureBorderWidth,
+        _ink,
+      );
+    }
+  }
+
+  /// The cut number and its length, written into the boxes the grid
+  /// already printed — nothing is drawn over the form.
+  void _cutBandValues(ContePlacedCutBand band) {
     if (band.showsNumber) {
       _text(band.cutName, band.cutRect.deflate(3), 10, isBold: true);
     }
@@ -372,11 +395,6 @@ class _ContePdfPageWriter {
       if (image != null) {
         _picture(image, picture.deflate(_pictureBorderWidth));
       }
-      _strokeRect(
-        picture.deflate(_pictureBorderWidth / 2),
-        _pictureBorderWidth,
-        _ink,
-      );
       final labels = cell.source.cameraLabels;
       if (labels.isNotEmpty) {
         _text(labels.first, picture.deflate(5), 8, isBold: true);
@@ -393,7 +411,11 @@ class _ContePdfPageWriter {
       }
     }
     _text(cell.source.action, cell.actionRect.deflate(4), 9);
-    _text(contePrintedDialogueFor(source, cell), cell.dialogueRect.deflate(4), 9);
+    _text(
+      contePrintedDialogueFor(source, cell),
+      cell.dialogueRect.deflate(4),
+      9,
+    );
   }
 
   void _picture(PdfImage image, ui.Rect slot) {
@@ -410,20 +432,9 @@ class _ContePdfPageWriter {
     _g.drawImage(image, left, _y(top + height), width, height);
   }
 
-  void _hole() {
-    final from = _page.emptyRowsFrom;
-    if (from == null || from >= _metrics.rowsPerPage) {
-      return;
-    }
-    final hole = ui.Rect.fromLTRB(
-      _metrics.pictureLeft,
-      _metrics.rowTop(from),
-      _metrics.timeLeft,
-      _metrics.bodyBottom,
-    );
-    _line(hole.topLeft, hole.bottomRight, 1, _rule);
-    _line(hole.topRight, hole.bottomLeft, 1, _rule);
-  }
+  // The big X over a page break's empty rows is gone (user, 2026-08-06),
+  // here as on screen: the form is always fully printed, so a blank row
+  // needs nothing said about it.
 
   // ---- text ------------------------------------------------------------
 
@@ -500,9 +511,7 @@ class _ContePdfPageWriter {
     for (var index = 0; index < lines.length; index += 1) {
       final runs = _runsFor(lines[index], isBold: isBold);
       final lineTop = top + index * lineHeight;
-      var x = alignRight
-          ? slot.right - _runsWidth(runs, size)
-          : slot.left;
+      var x = alignRight ? slot.right - _runsWidth(runs, size) : slot.left;
       final baseline = _y(lineTop + ascent);
       for (final run in runs) {
         _g.drawString(run.font, size, run.text, x, baseline);

@@ -19,11 +19,37 @@ import '../services/playback/editor_cache_invalidation_hub.dart';
 /// no storyboard row still has a single panel and therefore a single
 /// picture, which is the old behaviour arriving as a special case of the
 /// new one.
-typedef StoryboardThumbnailKey = ({CutId cutId, int frameIndex});
+/// How big a panel's picture is asked for.
+///
+/// The axis that was missing (user, 2026-08-06: the conte's picture cells
+/// looked like a quarter of what they should — *"항상 풀퀄리티로 보고싶어"*).
+/// One store serves both panels ON PURPOSE — a cell and its strip block are
+/// one render, never two that must be kept in step — but they want
+/// different resolutions: the strip draws blocks a finger wide, the conte
+/// draws a printed frame that also exports. So the SIZE joins the key
+/// rather than the strip's number being raised for everyone.
+enum StoryboardThumbnailTier {
+  /// The timeline strip's blocks.
+  strip(128),
+
+  /// A printed sheet's picture cell — the width the conte PDF already
+  /// renders its cells at, so screen and export agree.
+  sheet(640);
+
+  const StoryboardThumbnailTier(this.width);
+
+  final int width;
+}
+
+typedef StoryboardThumbnailKey = ({
+  CutId cutId,
+  int frameIndex,
+  StoryboardThumbnailTier tier,
+});
 
 /// The build-time resolver the panel and the conte call.
 typedef StoryboardThumbnailResolver =
-    ui.Image? Function(Cut cut, int frameIndex);
+    ui.Image? Function(Cut cut, int frameIndex, {StoryboardThumbnailTier tier});
 
 /// Renders and caches the small composites the storyboard's panels show.
 ///
@@ -46,14 +72,15 @@ typedef StoryboardThumbnailResolver =
 /// several panels at once.
 class StoryboardCutThumbnailStore extends ChangeNotifier {
   StoryboardCutThumbnailStore({
-    required Future<ui.Image?> Function(Cut cut, int frameIndex) render,
+    required Future<ui.Image?> Function(Cut cut, int frameIndex, int width)
+    render,
     EditorCacheInvalidationHub? invalidationHub,
   }) : _render = render,
        _hub = invalidationHub {
     _hub?.addBrushFrameListener(_onBrushFrameInvalidated);
   }
 
-  final Future<ui.Image?> Function(Cut cut, int frameIndex) _render;
+  final Future<ui.Image?> Function(Cut cut, int frameIndex, int width) _render;
   final EditorCacheInvalidationHub? _hub;
 
   final Map<StoryboardThumbnailKey, ui.Image> _images = {};
@@ -65,8 +92,12 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
   /// The cached thumbnail for [cut] at [frameIndex]; kicks an async
   /// (re)render when the signature changed, returning the stale image
   /// meanwhile.
-  ui.Image? thumbnailFor(Cut cut, int frameIndex) {
-    final key = (cutId: cut.id, frameIndex: frameIndex);
+  ui.Image? thumbnailFor(
+    Cut cut,
+    int frameIndex, {
+    StoryboardThumbnailTier tier = StoryboardThumbnailTier.strip,
+  }) {
+    final key = (cutId: cut.id, frameIndex: frameIndex, tier: tier);
     final signature = _signatureFor(cut, frameIndex);
     if (_renderedSignatures[key] != signature && !_rendering.contains(key)) {
       _rendering.add(key);
@@ -77,7 +108,7 @@ class StoryboardCutThumbnailStore extends ChangeNotifier {
 
   void _startRender(Cut cut, StoryboardThumbnailKey key, String signature) {
     unawaited(
-      _render(cut, key.frameIndex)
+      _render(cut, key.frameIndex, key.tier.width)
           .then((image) {
             _rendering.remove(key);
             if (_disposed) {

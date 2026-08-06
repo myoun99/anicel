@@ -17,7 +17,7 @@ import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/storyboard_cut_blocks_painter.dart';
 import 'package:anicel/src/ui/storyboard_cut_thumbnail_store.dart'
-    show StoryboardThumbnailResolver;
+    show StoryboardThumbnailResolver, StoryboardThumbnailTier;
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'storyboard_cut_block_probe.dart';
 
@@ -288,7 +288,8 @@ void main() {
       await _pump(
         tester,
         storyboardLayer: _dividedStoryboardLayer('cut-1'),
-        thumbnailFor: (cut, frame) => null,
+        thumbnailFor: (cut, frame, {tier = StoryboardThumbnailTier.strip}) =>
+            null,
       );
       final block = requireCutBlock(tester, 'cut-1');
       final offsets = _paintedParagraphOffsets(tester);

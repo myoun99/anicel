@@ -57,13 +57,13 @@ Future<ui.Image> renderTimesheetPageImage({
   TimesheetDocumentPainter(
     document: document,
     layout: layout,
-    paintLayer: TimesheetPaintLayer.form,
+    layers: const {SheetPaintLayer.paper, SheetPaintLayer.form},
     notation: notation,
   ).paint(canvas, layout.documentSize);
   TimesheetDocumentPainter(
     document: document,
     layout: layout,
-    paintLayer: TimesheetPaintLayer.content,
+    layers: const {SheetPaintLayer.content},
     notation: notation,
   ).paint(canvas, layout.documentSize);
   final picture = recorder.endRecording();

@@ -8,11 +8,10 @@ import '../../models/brush_frame_key.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/envelope/cut_envelope_form.dart';
 import '../../models/envelope/cut_envelope_layout.dart';
-import '../../models/envelope/cut_envelope_paint_layer.dart';
 import '../../models/envelope/cut_envelope_source.dart';
+import '../../models/sheet_paint_layer.dart';
 
-export '../../models/envelope/cut_envelope_paint_layer.dart'
-    show EnvelopePaintLayer;
+export '../../models/sheet_paint_layer.dart' show SheetPaintLayer;
 
 /// Paints a cut envelope. The panel and every export share it, so what is
 /// on screen IS the page — the timesheet's rule.
@@ -37,7 +36,7 @@ class CutEnvelopePainter extends CustomPainter {
 
   /// Which strata to draw; null draws all four (the panel, and any export
   /// that wants one flat image).
-  final Set<EnvelopePaintLayer>? layers;
+  final Set<SheetPaintLayer>? layers;
 
   /// The panel's pan/zoom: document space IS paper space and this places
   /// it, exactly like the timesheet and conte painters. Null keeps the
@@ -60,7 +59,7 @@ class CutEnvelopePainter extends CustomPainter {
   /// small (or too far off screen) to mount a window.
   final Set<BrushFrameKey> liveInkKeys;
 
-  bool _draws(EnvelopePaintLayer layer) =>
+  bool _draws(SheetPaintLayer layer) =>
       layers == null || layers!.contains(layer);
 
   @override
@@ -82,7 +81,7 @@ class CutEnvelopePainter extends CustomPainter {
       );
       canvas.scale(scale, scale);
     }
-    if (_draws(EnvelopePaintLayer.paper)) {
+    if (_draws(SheetPaintLayer.paper)) {
       canvas.drawRect(
         Rect.fromLTWH(0, 0, layout.paperWidth, layout.paperHeight),
         Paint()..color = Color(layout.form.paperArgb),
@@ -90,13 +89,13 @@ class CutEnvelopePainter extends CustomPainter {
     }
 
     final ink = Color(layout.form.inkArgb);
-    if (_draws(EnvelopePaintLayer.form)) {
+    if (_draws(SheetPaintLayer.form)) {
       _paintForm(canvas, ink);
     }
-    if (_draws(EnvelopePaintLayer.content)) {
+    if (_draws(SheetPaintLayer.content)) {
       _paintContent(canvas);
     }
-    if (_draws(EnvelopePaintLayer.ink)) {
+    if (_draws(SheetPaintLayer.ink)) {
       _paintInk(canvas);
     }
     canvas.restore();

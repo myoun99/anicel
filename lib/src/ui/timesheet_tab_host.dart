@@ -534,7 +534,10 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                                 document: document,
                                 layout: layout,
                                 viewport: viewport,
-                                paintLayer: TimesheetPaintLayer.form,
+                                layers: const {
+                                  SheetPaintLayer.paper,
+                                  SheetPaintLayer.form,
+                                },
                                 // The sheet prints in the NOTATION
                                 // language (UI-R10 #7).
                                 notation: TimesheetNotation.of(
@@ -558,7 +561,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                                 document: document,
                                 layout: layout,
                                 viewport: viewport,
-                                paintLayer: TimesheetPaintLayer.content,
+                                layers: const {SheetPaintLayer.content},
                                 dragPreview: session.dragPreview,
                                 // Which cut the sheet is printing, so a
                                 // cut-length drag on it can be read off the

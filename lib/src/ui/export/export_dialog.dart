@@ -30,7 +30,7 @@ import '../../models/conte/conte_sheet_layout.dart';
 import '../../models/conte/conte_sheet_source.dart';
 import '../../models/envelope/cut_envelope_ink_keys.dart';
 import '../../models/envelope/cut_envelope_layout.dart';
-import '../../models/envelope/cut_envelope_paint_layer.dart';
+import '../../models/sheet_paint_layer.dart';
 import '../../models/envelope/cut_envelope_presets.dart';
 import '../../models/project.dart';
 import '../../services/brush_frame_store.dart';
@@ -584,7 +584,7 @@ class ExportDialogState extends State<ExportDialog> {
 
   /// One output file: the sheet, plus the stratum when the layers ship
   /// separately.
-  String _envelopeFileName(ExportEnvelopeTask task, EnvelopePaintLayer? layer) {
+  String _envelopeFileName(ExportEnvelopeTask task, SheetPaintLayer? layer) {
     final label = sanitizeExportFileComponent(task.owner.name);
     return layer == null
         ? 'CUT${label}_envelope.png'
@@ -593,7 +593,7 @@ class ExportDialogState extends State<ExportDialog> {
 
   /// Every (sheet, layer) pair the run writes, in order. A flat export
   /// carries a null layer — one file drawing all the enabled strata.
-  List<(ExportEnvelopeTask, EnvelopePaintLayer?)> _envelopeFilePlan() {
+  List<(ExportEnvelopeTask, SheetPaintLayer?)> _envelopeFilePlan() {
     final spec = _specs.envelope;
     final tasks = _envelopePlan();
     return [
@@ -637,9 +637,9 @@ class ExportDialogState extends State<ExportDialog> {
   /// One envelope image, with the ink composed and freed around it.
   Future<ui.Image> _renderEnvelope(
     ExportEnvelopeTask task, {
-    required Set<EnvelopePaintLayer> layers,
+    required Set<SheetPaintLayer> layers,
   }) async {
-    final wantsInk = layers.contains(EnvelopePaintLayer.ink);
+    final wantsInk = layers.contains(SheetPaintLayer.ink);
     final ink = wantsInk
         ? await _renderEnvelopeInk(task)
         : const <BrushFrameKey, ui.Image>{};
@@ -1016,7 +1016,7 @@ class ExportDialogState extends State<ExportDialog> {
               '${[for (final layer in spec.orderedLayers) layer.jsonValue].join('+')}',
           caption: 'CUT${task.owner.name}',
           render: () async {
-            final ink = layers.contains(EnvelopePaintLayer.ink)
+            final ink = layers.contains(SheetPaintLayer.ink)
                 ? await _renderEnvelopeInk(task)
                 : const <BrushFrameKey, ui.Image>{};
             try {
@@ -3462,16 +3462,16 @@ class ExportDialogState extends State<ExportDialog> {
             Wrap(
               spacing: 5,
               children: [
-                for (final layer in EnvelopePaintLayer.values)
+                for (final layer in SheetPaintLayer.values)
                   ExportChip(
                     key: ValueKey<String>(
                       'export-envelope-layer-${layer.jsonValue}',
                     ),
                     label: switch (layer) {
-                      EnvelopePaintLayer.paper => 'Paper',
-                      EnvelopePaintLayer.form => 'Form',
-                      EnvelopePaintLayer.content => 'Content',
-                      EnvelopePaintLayer.ink => 'Ink',
+                      SheetPaintLayer.paper => 'Paper',
+                      SheetPaintLayer.form => 'Form',
+                      SheetPaintLayer.content => 'Content',
+                      SheetPaintLayer.ink => 'Ink',
                     },
                     selected: spec.layers.contains(layer),
                     onTap: _isExporting
