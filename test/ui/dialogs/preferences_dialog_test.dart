@@ -92,7 +92,7 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(
-      find.byKey(const ValueKey<String>('settings-accent2-auto')),
+      find.byKey(const ValueKey<String>('settings-accent1-swatch')),
       findsOneWidget,
     );
 

@@ -237,6 +237,14 @@ class InputInspectorHost extends StatelessWidget {
   }
 }
 
+/// The inspector's SECOND highlight — touch rows and sidecar services, which
+/// must not read as the accent because the accent means stylus here.
+///
+/// A literal on purpose: this is a debug screen, and the app-wide second
+/// accent it used to borrow was deleted for having exactly one production
+/// consumer. A debug-only distinction does not earn a palette token.
+const Color _inspectorSecondInk = Color(0xFFD972A8);
+
 class _InspectorCard extends StatelessWidget {
   const _InspectorCard();
 
@@ -258,7 +266,7 @@ class _InspectorCard extends StatelessWidget {
       switch (kind) {
         PointerDeviceKind.stylus ||
         PointerDeviceKind.invertedStylus => AppColors.accent,
-        PointerDeviceKind.touch => AppColors.accent2,
+        PointerDeviceKind.touch => _inspectorSecondInk,
         _ => colorScheme.onSurfaceVariant,
       };
 
@@ -325,7 +333,7 @@ class _InspectorCard extends StatelessWidget {
                                     'input-inspector-wintab',
                                   ),
                                   style: rowStyle.copyWith(
-                                    color: AppColors.accent2,
+                                    color: _inspectorSecondInk,
                                   ),
                                 ),
                               ),
@@ -347,7 +355,7 @@ class _InspectorCard extends StatelessWidget {
                                     'input-inspector-rawpen',
                                   ),
                                   style: rowStyle.copyWith(
-                                    color: AppColors.accent2,
+                                    color: _inspectorSecondInk,
                                   ),
                                 ),
                               ),
@@ -368,7 +376,7 @@ class _InspectorCard extends StatelessWidget {
                                       'input-inspector-${service.label}',
                                     ),
                                     style: rowStyle.copyWith(
-                                      color: AppColors.accent2,
+                                      color: _inspectorSecondInk,
                                     ),
                                   ),
                                 ),
@@ -414,7 +422,7 @@ class _InspectorCard extends StatelessWidget {
                   Text(
                     'touch downs=${InputInspector.touchDownCount}',
                     key: const ValueKey<String>('input-inspector-touch-count'),
-                    style: rowStyle.copyWith(color: AppColors.accent2),
+                    style: rowStyle.copyWith(color: _inspectorSecondInk),
                   ),
                   for (final line in InputInspector.notes)
                     Text(

@@ -373,11 +373,6 @@ class AppStrings {
   String get accentTitle => _s('accentTitle');
   String get accent1Label => _s('accent1Label');
   String get accent1Help => _s('accent1Help');
-  String get accent2Label => _s('accent2Label');
-  String get accent2AutoLabel => _s('accent2AutoLabel');
-  String get accent2AutoHelp => _s('accent2AutoHelp');
-  String get accent2AutoHint => _s('accent2AutoHint');
-  String get accent2CustomHint => _s('accent2CustomHint');
 
   // --- Sheet info ---
   String get sheetInfoTitle => _s('sheetInfoTitle');
@@ -1045,12 +1040,6 @@ class AppStrings {
     'accentTitle': 'Accent colors',
     'accent1Label': 'Accent 1',
     'accent1Help': 'Selection, playhead, active toggles.',
-    'accent2Label': 'Accent 2',
-    'accent2AutoLabel': 'Accent 2 follows the complement',
-    'accent2AutoHelp':
-        'Repeat patterns and selected key diamonds use accent 2.',
-    'accent2AutoHint': 'Automatic: the complement of accent 1.',
-    'accent2CustomHint': 'Custom accent 2.',
     'sheetInfoTitle': 'Sheet info',
     'sheetFieldTitle': 'Title',
     'sheetFieldEpisode': 'Episode',
@@ -1698,11 +1687,6 @@ class AppStrings {
     'accentTitle': 'アクセントカラー',
     'accent1Label': 'アクセント1',
     'accent1Help': '選択・再生ヘッド・オンの状態に使われます。',
-    'accent2Label': 'アクセント2',
-    'accent2AutoLabel': 'アクセント2を補色に追従',
-    'accent2AutoHelp': 'リピート範囲と選択キーのひし形がアクセント2を使います。',
-    'accent2AutoHint': '自動：アクセント1の補色。',
-    'accent2CustomHint': 'アクセント2を個別指定。',
     'sheetInfoTitle': 'シート情報',
     'sheetFieldTitle': 'タイトル',
     'sheetFieldEpisode': '話数',
@@ -2386,11 +2370,6 @@ class AppStrings {
     'accentTitle': '강조 색상',
     'accent1Label': '강조색 1',
     'accent1Help': '선택·플레이헤드·켜진 토글에 쓰입니다.',
-    'accent2Label': '강조색 2',
-    'accent2AutoLabel': '강조색 2를 보색으로 자동',
-    'accent2AutoHelp': '반복 구간과 선택된 키 다이아몬드가 강조색 2를 씁니다.',
-    'accent2AutoHint': '자동: 강조색 1의 보색.',
-    'accent2CustomHint': '강조색 2 직접 지정.',
     'sheetInfoTitle': '시트 정보',
     'sheetFieldTitle': '제목',
     'sheetFieldEpisode': '화수',
@@ -3091,13 +3070,6 @@ class AppStrings {
     'accentTitle': "Couleurs d'accent",
     'accent1Label': 'Accent 1',
     'accent1Help': 'Sélection, tête de lecture, bascules actives.',
-    'accent2Label': 'Accent 2',
-    'accent2AutoLabel': "L'accent 2 suit la couleur complémentaire",
-    'accent2AutoHelp':
-        'Les motifs répétés et les losanges de clés sélectionnées utilisent '
-        "l'accent 2.",
-    'accent2AutoHint': "Automatique : le complément de l'accent 1.",
-    'accent2CustomHint': 'Accent 2 personnalisé.',
     'sheetInfoTitle': 'Infos de la feuille',
     'sheetFieldTitle': 'Titre',
     'sheetFieldEpisode': 'Épisode',
@@ -3772,11 +3744,6 @@ class AppStrings {
     'accentTitle': '强调色',
     'accent1Label': '强调色 1',
     'accent1Help': '用于选区、播放头和已启用的开关。',
-    'accent2Label': '强调色 2',
-    'accent2AutoLabel': '强调色 2 跟随补色',
-    'accent2AutoHelp': '重复区间与选中的关键帧菱形使用强调色 2。',
-    'accent2AutoHint': '自动：强调色 1 的补色。',
-    'accent2CustomHint': '自定义强调色 2。',
     'sheetInfoTitle': '摄影表信息',
     'sheetFieldTitle': '标题',
     'sheetFieldEpisode': '集数',

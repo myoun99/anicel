@@ -6,46 +6,39 @@ import 'package:anicel/src/services/persistence/app_accent_settings_store.dart';
 import 'package:anicel/src/ui/theme/app_accents.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
-/// UI-R22 #5: the two program accents — accent 2 defaults to accent 1's
-/// COMPLEMENT and both persist.
+/// UI-R22 #5: the program accent is customizable and persists.
+///
+/// There used to be a second accent here, the automatic complement of the
+/// first. It is gone: it had one production consumer and its second
+/// documented purpose was never wired, so the pair of tests that exercised
+/// the complement and its override are gone with it. What survives is the
+/// contract that still exists — one accent, persisted, read live — plus the
+/// forward compatibility promise that a stored accent2 from an older build
+/// cannot break the load.
 void main() {
   tearDown(() {
-    // The accents are app-global — every test restores the default.
+    // The accent is app-global — every test restores the default.
     AppColors.accentSettings.value = const AppAccentSettings();
   });
 
-  test('accent 2 follows the complement (teal → pink family) until '
-      'overridden; clearing returns to automatic', () {
-    const settings = AppAccentSettings();
-    expect(settings.accent2FollowsComplement, isTrue);
-    final autoHue = HSLColor.fromColor(settings.accent2).hue;
-    final baseHue = HSLColor.fromColor(settings.accent).hue;
-    expect(((autoHue - baseHue).abs() - 180.0).abs(), lessThan(0.5));
-
-    final custom = settings.copyWith(accent2: const Color(0xFFFF00FF));
-    expect(custom.accent2FollowsComplement, isFalse);
-    expect(custom.accent2, const Color(0xFFFF00FF));
-
-    final cleared = custom.copyWith(clearAccent2: true);
-    expect(cleared.accent2FollowsComplement, isTrue);
-
-    // Changing accent 1 moves the automatic accent 2 with it.
-    final moved = settings.copyWith(accent: const Color(0xFF2244CC));
-    expect(HSLColor.fromColor(moved.accent2).hue, isNot(closeTo(autoHue, 1.0)));
+  test('json round-trips', () {
+    const settings = AppAccentSettings(accent: Color(0xFF123456));
+    expect(settings.toJson(), {'accent': 0xFF123456});
+    expect(AppAccentSettings.fromJson(settings.toJson()), settings);
   });
 
-  test('json round-trips: automatic omits accent2, overrides persist', () {
-    const auto = AppAccentSettings(accent: Color(0xFF123456));
-    expect(auto.toJson().containsKey('accent2'), isFalse);
-    expect(AppAccentSettings.fromJson(auto.toJson()), auto);
+  test('a stored accent2 from an older build is ignored, not fatal', () {
+    final restored = AppAccentSettings.fromJson(const <String, dynamic>{
+      'accent': 0xFF123456,
+      'accent2': 0xFF654321,
+    });
+    expect(restored.accent, const Color(0xFF123456));
+    expect(restored.toJson().containsKey('accent2'), isFalse);
+  });
 
-    const custom = AppAccentSettings(
-      accent: Color(0xFF123456),
-      accent2: Color(0xFF654321),
-    );
-    final restored = AppAccentSettings.fromJson(custom.toJson());
-    expect(restored, custom);
-    expect(restored.accent2, const Color(0xFF654321));
+  test('a missing accent falls back to the default', () {
+    final restored = AppAccentSettings.fromJson(const <String, dynamic>{});
+    expect(restored.accent, AppAccentSettings.defaultAccent);
   });
 
   test('the store round-trips through its json file', () async {
@@ -56,10 +49,7 @@ void main() {
     );
     expect(await store.load(), isNull);
 
-    const settings = AppAccentSettings(
-      accent: Color(0xFF2244CC),
-      accent2: Color(0xFFCC8822),
-    );
+    const settings = AppAccentSettings(accent: Color(0xFF2244CC));
     await store.save(settings);
     expect(await store.load(), settings);
   });
@@ -70,9 +60,5 @@ void main() {
       accent: Color(0xFF2244CC),
     );
     expect(AppColors.accent, const Color(0xFF2244CC));
-    expect(
-      AppColors.accent2,
-      AppAccentSettings.complementOf(const Color(0xFF2244CC)),
-    );
   });
 }

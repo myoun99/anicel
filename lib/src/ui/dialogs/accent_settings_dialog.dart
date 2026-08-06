@@ -84,32 +84,6 @@ class AccentSettingsSection extends StatelessWidget {
               onChanged: (color) =>
                   session.setAccentSettings(settings.copyWith(accent: color)),
             ),
-            const SizedBox(height: 16),
-            CheckboxListTile(
-              key: const ValueKey<String>('settings-accent2-auto'),
-              contentPadding: EdgeInsets.zero,
-              dense: true,
-              controlAffinity: ListTileControlAffinity.leading,
-              title: Text(strings.accent2AutoLabel),
-              subtitle: Text(strings.accent2AutoHelp),
-              value: settings.accent2FollowsComplement,
-              onChanged: (auto) => session.setAccentSettings(
-                auto ?? true
-                    ? settings.copyWith(clearAccent2: true)
-                    : settings.copyWith(accent2: settings.accent2),
-              ),
-            ),
-            _AccentRow(
-              keyPrefix: 'settings-accent2',
-              label: strings.accent2Label,
-              help: settings.accent2FollowsComplement
-                  ? strings.accent2AutoHint
-                  : strings.accent2CustomHint,
-              value: settings.accent2,
-              enabled: !settings.accent2FollowsComplement,
-              onChanged: (color) =>
-                  session.setAccentSettings(settings.copyWith(accent2: color)),
-            ),
           ],
         );
       },
@@ -124,7 +98,6 @@ class _AccentRow extends StatelessWidget {
     required this.help,
     required this.value,
     required this.onChanged,
-    this.enabled = true,
   });
 
   final String keyPrefix;
@@ -132,68 +105,61 @@ class _AccentRow extends StatelessWidget {
   final String help;
   final Color value;
   final ValueChanged<Color> onChanged;
-  final bool enabled;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Opacity(
-      opacity: enabled ? 1 : 0.45,
-      child: IgnorePointer(
-        ignoring: !enabled,
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Row(
           children: [
-            Row(
-              children: [
-                Container(
-                  key: ValueKey<String>('$keyPrefix-swatch'),
-                  width: 22,
-                  height: 22,
-                  decoration: BoxDecoration(
-                    color: value,
-                    borderRadius: BorderRadius.circular(4),
-                    border: Border.all(color: colorScheme.outline),
-                  ),
-                ),
-                const SizedBox(width: 8),
-                Text(label, style: Theme.of(context).textTheme.titleSmall),
-              ],
+            Container(
+              key: ValueKey<String>('$keyPrefix-swatch'),
+              width: 22,
+              height: 22,
+              decoration: BoxDecoration(
+                color: value,
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: colorScheme.outline),
+              ),
             ),
-            const SizedBox(height: 4),
-            Text(help, style: Theme.of(context).textTheme.bodySmall),
-            const SizedBox(height: 8),
-            Wrap(
-              spacing: 6,
-              runSpacing: 6,
-              children: [
-                for (final preset in _presetAccents)
-                  InkWell(
-                    key: ValueKey<String>(
-                      '$keyPrefix-preset-${preset.toARGB32().toRadixString(16)}',
-                    ),
-                    onTap: () => onChanged(preset),
-                    borderRadius: BorderRadius.circular(4),
-                    child: Container(
-                      width: 24,
-                      height: 24,
-                      decoration: BoxDecoration(
-                        color: preset,
-                        borderRadius: BorderRadius.circular(4),
-                        border: Border.all(
-                          color: preset == value
-                              ? colorScheme.onSurface
-                              : colorScheme.outlineVariant,
-                          width: preset == value ? 2 : 1,
-                        ),
-                      ),
-                    ),
-                  ),
-              ],
-            ),
+            const SizedBox(width: 8),
+            Text(label, style: Theme.of(context).textTheme.titleSmall),
           ],
         ),
-      ),
+        const SizedBox(height: 4),
+        Text(help, style: Theme.of(context).textTheme.bodySmall),
+        const SizedBox(height: 8),
+        Wrap(
+          spacing: 6,
+          runSpacing: 6,
+          children: [
+            for (final preset in _presetAccents)
+              InkWell(
+                key: ValueKey<String>(
+                  '$keyPrefix-preset-${preset.toARGB32().toRadixString(16)}',
+                ),
+                onTap: () => onChanged(preset),
+                borderRadius: BorderRadius.circular(4),
+                child: Container(
+                  width: 24,
+                  height: 24,
+                  decoration: BoxDecoration(
+                    color: preset,
+                    borderRadius: BorderRadius.circular(4),
+                    border: Border.all(
+                      color: preset == value
+                          ? colorScheme.onSurface
+                          : colorScheme.outlineVariant,
+                      width: preset == value ? 2 : 1,
+                    ),
+                  ),
+                ),
+              ),
+          ],
+        ),
+      ],
     );
   }
 }

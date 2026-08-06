@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../../models/frame_id.dart';
@@ -382,19 +384,33 @@ void paintTimelineRunGlyph(
   );
 }
 
-/// The pattern span's wash + outline (UI-R19 #2, ACCENT 2 per UI-R22 #5).
+/// The pattern span's wash + outline (UI-R19 #2).
+///
+/// This used to be the app's only production use of a second accent hue,
+/// whose whole job was to read differently from a plain selection. The hue is
+/// gone, so the difference is carried by the EDGE instead: a repeat pattern
+/// wears a repeating outline. That is a better sign than a colour was — it
+/// says what the span is rather than merely that it is not a selection.
 void paintTimelineRunPatternSpan(Canvas canvas, Rect rect) {
   final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(6));
-  canvas
-    ..drawRRect(
-      rrect,
-      Paint()..color = AppColors.accent2.withValues(alpha: 0.10),
-    )
-    ..drawRRect(
-      rrect.deflate(1),
-      Paint()
-        ..color = AppColors.accent2.withValues(alpha: 0.85)
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2,
-    );
+  canvas.drawRRect(
+    rrect,
+    Paint()..color = AppColors.accent.withValues(alpha: 0.10),
+  );
+  final stroke = Paint()
+    ..color = AppColors.accent.withValues(alpha: 0.85)
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = 2;
+  final path = Path()..addRRect(rrect.deflate(1));
+  for (final metric in path.computeMetrics()) {
+    var start = 0.0;
+    while (start < metric.length) {
+      final end = math.min(start + _patternDashLength, metric.length);
+      canvas.drawPath(metric.extractPath(start, end), stroke);
+      start = end + _patternDashGap;
+    }
+  }
 }
+
+const double _patternDashLength = 5;
+const double _patternDashGap = 4;

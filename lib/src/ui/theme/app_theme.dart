@@ -30,13 +30,9 @@ abstract final class AppColors {
   static final ValueNotifier<AppAccentSettings> accentSettings =
       ValueNotifier<AppAccentSettings>(const AppAccentSettings());
 
-  /// Accent 1 — selection, playhead, active toggles (default teal;
+  /// The accent — selection, playhead, active toggles (default teal;
   /// customizable, UI-R22 #5).
   static Color get accent => accentSettings.value.accent;
-
-  /// Accent 2 — the SECONDARY highlight (repeat pattern spans, selected
-  /// union diamonds): the complement of accent 1 unless overridden.
-  static Color get accent2 => accentSettings.value.accent2;
 
   /// FILL 1 — below every chrome surface: the scaffold, a well cut into a
   /// panel, the ring that separates a floating panel from the artwork.
