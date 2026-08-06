@@ -1,3 +1,5 @@
+import 'dart:io';
+
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/ui/shortcuts/editor_action_registry.dart';
@@ -137,6 +139,9 @@ void main() {
     'menuBarHelp': (s) => s.menuBarHelp,
     'menuPlay': (s) => s.menuPlay,
     'menuPause': (s) => s.menuPause,
+    'menuAlphaPreview': (s) => s.menuAlphaPreview,
+    'topStripProject': (s) => s.topStripProject,
+    'topStripSettings': (s) => s.topStripSettings,
     'fileOpenTitle': (s) => s.fileOpenTitle,
     'fileSaveTitle': (s) => s.fileSaveTitle,
     'fileAppDocuments': (s) => s.fileAppDocuments,
@@ -194,6 +199,10 @@ void main() {
     'inputTabletStandardHelp': (s) => s.inputTabletStandardHelp,
     'inputTabletWintab': (s) => s.inputTabletWintab,
     'inputTabletWintabHelp': (s) => s.inputTabletWintabHelp,
+    'inputTabletAutoDemoted': (s) => s.inputTabletAutoDemoted,
+    'inputPenTail': (s) => s.inputPenTail,
+    'inputFlipHaptics': (s) => s.inputFlipHaptics,
+    'inputFlipHapticsHelp': (s) => s.inputFlipHapticsHelp,
     'dragActionFlip': (s) => s.dragActionFlip,
     'dragActionScreen': (s) => s.dragActionScreen,
     'dragActionBrushSize': (s) => s.dragActionBrushSize,
@@ -391,6 +400,33 @@ void main() {
     'brResetLibrary': (s) => s.brResetLibrary,
     'brExpand': (s) => s.brExpand,
     'brMeshWarp': (s) => s.brMeshWarp,
+    'brBrushTip': (s) => s.brBrushTip,
+    'brTipNone': (s) => s.brTipNone,
+    'brAddTipImage': (s) => s.brAddTipImage,
+    'brTipRotation': (s) => s.brTipRotation,
+    'brRotationFixed': (s) => s.brRotationFixed,
+    'brRotationDirection': (s) => s.brRotationDirection,
+    'brDualTip': (s) => s.brDualTip,
+    'brTexture': (s) => s.brTexture,
+    'brTextureDensity': (s) => s.brTextureDensity,
+    'brScatter': (s) => s.brScatter,
+    'brScatterCount': (s) => s.brScatterCount,
+    'brScatterBothAxes': (s) => s.brScatterBothAxes,
+    'brSizeJitter': (s) => s.brSizeJitter,
+    'brAngleJitter': (s) => s.brAngleJitter,
+    'brRoundnessJitter': (s) => s.brRoundnessJitter,
+    'brOpacityJitter': (s) => s.brOpacityJitter,
+    'brSpacingJitter': (s) => s.brSpacingJitter,
+    'brMixing': (s) => s.brMixing,
+    'brPaintAmount': (s) => s.brPaintAmount,
+    'brPaintDensity': (s) => s.brPaintDensity,
+    'brColorStretch': (s) => s.brColorStretch,
+    'brPreserveColours': (s) => s.brPreserveColours,
+    'brPreserveColoursHint': (s) => s.brPreserveColoursHint,
+    'brBlendLock': (s) => s.brBlendLock,
+    'brEditGroup': (s) => s.brEditGroup,
+    'brFolderName': (s) => s.brFolderName,
+    'brFolderIcon': (s) => s.brFolderIcon,
     'commonReset': (s) => s.commonReset,
     'commonFill': (s) => s.commonFill,
     'viewZoomIn': (s) => s.viewZoomIn,
@@ -506,6 +542,19 @@ void main() {
     'tlShowSeRows': (s) => s.tlShowSeRows,
     'tlShowCameraRows': (s) => s.tlShowCameraRows,
     'tlStoryboardLayer': (s) => s.tlStoryboardLayer,
+    'tlPush': (s) => s.tlPush,
+    'tlPull': (s) => s.tlPull,
+    'sbOneStoryboardRowPerCut': (s) => s.sbOneStoryboardRowPerCut,
+    'sbTallerRows': (s) => s.sbTallerRows,
+    'sbShorterRows': (s) => s.sbShorterRows,
+    'cnConte': (s) => s.cnConte,
+    'cnActionColumn': (s) => s.cnActionColumn,
+    'cnPreviousPage': (s) => s.cnPreviousPage,
+    'cnNextPage': (s) => s.cnNextPage,
+    'stagePaperSection': (s) => s.stagePaperSection,
+    'stagePasteboardSection': (s) => s.stagePasteboardSection,
+    'stageBackdropSection': (s) => s.stageBackdropSection,
+    'stageAlphaLabel': (s) => s.stageAlphaLabel,
     'setCommasTitle': (s) => s.setCommasTitle,
     'setCommasField': (s) => s.setCommasField,
     'projectFpsTitle': (s) => s.projectFpsTitle,
@@ -547,17 +596,33 @@ void main() {
   }
 
   test('the reader table covers every getter the class declares', () {
-    // Guards the guard: a string added without a line here would other-
-    // wise be silently unchecked.
+    // Guards the guard: a string added without a line above would otherwise
+    // be silently unchecked in the four non-English maps.
     //
-    // The number is HAND-KEPT and it does not currently reach the class:
-    // AppStrings declares 542 getters and this table reads 495 of them, so
-    // roughly fifty strings are unguarded and the count only notices that
-    // THIS file changed, not that app_strings.dart did. The shortcut half of
-    // this same file shows the fix — it iterates the registry instead of a
-    // hand list — and the equivalent here is to read the declarations out of
-    // the source. That is its own piece of work, tracked separately; five
-    // strings left with accent 2, so the number moves five.
-    expect(readers, hasLength(495));
+    // This used to be `expect(readers, hasLength(<n>))` — a hand-kept number,
+    // which meant it could only fail when THIS file changed, never when
+    // app_strings.dart gained a getter, which is the one case it exists for.
+    // It had drifted 47 getters behind. So it reads the declarations out of
+    // the source instead, the way the shortcut half of this file reads the
+    // registry: adding a getter and forgetting its line here is now what
+    // fails, rather than arithmetic.
+    final source = File('lib/src/ui/text/app_strings.dart').readAsStringSync();
+    final declared = RegExp(r'^  String get ([A-Za-z0-9_]+)', multiLine: true)
+        .allMatches(source)
+        .map((match) => match.group(1)!)
+        .toSet();
+    // If the scan ever returns nothing the assertions below pass vacuously,
+    // which would be the same silent hole in a new disguise.
+    expect(declared, hasLength(greaterThan(400)), reason: 'source scan failed');
+    expect(
+      declared.difference(readers.keys.toSet()),
+      isEmpty,
+      reason: 'declared in AppStrings but never read here',
+    );
+    expect(
+      readers.keys.toSet().difference(declared),
+      isEmpty,
+      reason: 'read here but no longer declared in AppStrings',
+    );
   });
 }
