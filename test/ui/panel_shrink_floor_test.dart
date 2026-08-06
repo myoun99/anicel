@@ -3,6 +3,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/envelope/cut_envelope_tab_host.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/panels/editor_dock_host.dart';
 import 'package:anicel/src/ui/panels/editor_panel_layout.dart';
@@ -375,6 +376,24 @@ void main() {
           reuse: session,
         );
         expect(tester.takeException(), isNull, reason: 'conte at $height');
+      }
+    });
+
+    testWidgets('the cut envelope, which declares no floor at all', (
+      tester,
+    ) async {
+      // It sits in the bottom dock beside the conte, so it is asked for
+      // the conte's floor too — and a page that only scales has to survive
+      // it without claiming a taller minimum for the whole dock.
+      EditorSessionManager? session;
+      for (final height in [ConteTabHost.minPanelHeight, ...heights]) {
+        session = await pumpAt(
+          tester,
+          (s) => CutEnvelopeTabHost(session: s),
+          height: height,
+          reuse: session,
+        );
+        expect(tester.takeException(), isNull, reason: 'envelope at $height');
       }
     });
   });

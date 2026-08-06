@@ -1,8 +1,10 @@
 import 'dart:ui' as ui;
 
+import 'package:flutter/foundation.dart' show setEquals;
 import 'package:flutter/material.dart';
 
 import '../../models/brush_frame_key.dart';
+import '../../models/canvas_viewport.dart';
 import '../../models/envelope/cut_envelope_form.dart';
 import '../../models/envelope/cut_envelope_layout.dart';
 import '../../models/envelope/cut_envelope_source.dart';
@@ -35,9 +37,15 @@ class CutEnvelopePainter extends CustomPainter {
     required this.layout,
     required this.source,
     this.layers,
+    this.viewport,
     this.imageFor,
     this.inkImageFor,
     this.inkKeyFor,
+    this.liveInkKeys = const {},
+    // The ink store: a landed stroke (or an async-composed display image)
+    // must repaint the sheet even though none of the compared fields
+    // changed.
+    super.repaint,
   });
 
   final CutEnvelopeLayout layout;
@@ -46,6 +54,12 @@ class CutEnvelopePainter extends CustomPainter {
   /// Which strata to draw; null draws all four (the panel, and any export
   /// that wants one flat image).
   final Set<EnvelopePaintLayer>? layers;
+
+  /// The panel's pan/zoom: document space IS paper space and this places
+  /// it, exactly like the timesheet and conte painters. Null keeps the
+  /// fit-to-size behaviour the exports use, where the canvas already IS
+  /// the paper.
+  final CanvasViewport? viewport;
 
   /// Resolves a media asset path to a decoded image (logo, 도장).
   final ui.Image? Function(String assetPath)? imageFor;
@@ -56,14 +70,31 @@ class CutEnvelopePainter extends CustomPainter {
   /// The ink key a box's strokes live under.
   final BrushFrameKey Function(String boxId)? inkKeyFor;
 
+  /// Keys a LIVE input window is already showing: the painter skips them so
+  /// translucent ink never composites twice. Everything else is drawn here
+  /// — which is the only reason ink is visible at all in the boxes too
+  /// small (or too far off screen) to mount a window.
+  final Set<BrushFrameKey> liveInkKeys;
+
   bool _draws(EnvelopePaintLayer layer) =>
       layers == null || layers!.contains(layer);
 
   @override
   void paint(Canvas canvas, Size size) {
+    final panelViewport = viewport;
+    canvas.save();
+    if (panelViewport != null) {
+      // The canvas shell: crisp vector redraw at any zoom, no raster cache
+      // — the timesheet painter's transform.
+      canvas.clipRect(Offset.zero & size);
+      canvas.translate(panelViewport.panX, panelViewport.panY);
+      canvas.scale(panelViewport.zoom, panelViewport.zoom);
+    }
     if (_draws(EnvelopePaintLayer.paper)) {
       canvas.drawRect(
-        Rect.fromLTWH(0, 0, size.width, size.height),
+        panelViewport == null
+            ? Rect.fromLTWH(0, 0, size.width, size.height)
+            : Rect.fromLTWH(0, 0, layout.paperWidth, layout.paperHeight),
         Paint()..color = Color(layout.form.paperArgb),
       );
     }
@@ -78,6 +109,7 @@ class CutEnvelopePainter extends CustomPainter {
     if (_draws(EnvelopePaintLayer.ink)) {
       _paintInk(canvas);
     }
+    canvas.restore();
   }
 
   void _paintForm(Canvas canvas, Color ink) {
@@ -150,31 +182,51 @@ class CutEnvelopePainter extends CustomPainter {
     }
   }
 
+  /// The handwriting, above everything the form prints (it was written on
+  /// the finished sheet — pen over paper).
+  ///
+  /// A box shows the TOP-LEFT slice of the shared ink surface, sized by
+  /// [CutEnvelopeLayout.inkSurfaceScale] rather than by the image, and
+  /// clipped to itself so a stroke can never bleed into the next cell.
   void _paintInk(Canvas canvas) {
     final keyFor = inkKeyFor;
     final imageFor = inkImageFor;
     if (keyFor == null || imageFor == null) {
       return;
     }
+    final surfaceScale = layout.inkSurfaceScale;
     for (final placed in layout.placedBoxes) {
       if (!placed.box.takesInk) {
         continue;
       }
-      final image = imageFor(keyFor(placed.box.id));
+      final key = keyFor(placed.box.id);
+      if (liveInkKeys.contains(key)) {
+        continue;
+      }
+      final image = imageFor(key);
       if (image == null) {
         continue;
       }
+      final boxRect = Rect.fromLTWH(
+        placed.x,
+        placed.y,
+        placed.width,
+        placed.height,
+      );
+      canvas.save();
+      canvas.clipRect(boxRect);
       canvas.drawImageRect(
         image,
         Rect.fromLTWH(
           0,
           0,
-          image.width.toDouble(),
-          image.height.toDouble(),
+          placed.width * surfaceScale,
+          placed.height * surfaceScale,
         ),
-        Rect.fromLTWH(placed.x, placed.y, placed.width, placed.height),
-        Paint()..filterQuality = FilterQuality.high,
+        boxRect,
+        Paint()..filterQuality = FilterQuality.medium,
       );
+      canvas.restore();
     }
   }
 
@@ -243,5 +295,10 @@ class CutEnvelopePainter extends CustomPainter {
       oldDelegate.layout.paperWidth != layout.paperWidth ||
       oldDelegate.layout.paperHeight != layout.paperHeight ||
       oldDelegate.source != source ||
-      oldDelegate.layers != layers;
+      oldDelegate.layers != layers ||
+      oldDelegate.viewport != viewport ||
+      // Mounting a window HIDES that box's baked ink here; unmounting shows
+      // it again. Miss this and a stroke stays doubled (or missing) until
+      // something else happens to repaint.
+      !setEquals(oldDelegate.liveInkKeys, liveInkKeys);
 }

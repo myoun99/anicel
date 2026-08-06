@@ -50,6 +50,9 @@ import 'sliced_value_listenable_builder.dart';
 import 'conte/conte_fonts.dart';
 import 'conte/conte_ink.dart';
 import 'conte/conte_tab_host.dart';
+import '../models/envelope/cut_envelope_presets.dart';
+import 'envelope/cut_envelope_ink.dart';
+import 'envelope/cut_envelope_tab_host.dart';
 import 'storyboard_cut_thumbnail_store.dart';
 import 'storyboard_panel.dart' show StoryboardPanel;
 import 'storyboard_playhead_mapping.dart';
@@ -179,6 +182,7 @@ class EditorWorkspace extends StatefulWidget {
   static const String timelineTabId = 'timeline';
   static const String storyboardTabId = 'storyboard';
   static const String conteTabId = 'conte';
+  static const String envelopeTabId = 'envelope';
   static const String timesheetTabId = 'timesheet';
   static const String mediaViewerTabId = 'media-viewer';
 
@@ -246,6 +250,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           EditorWorkspace.timelineTabId,
           EditorWorkspace.storyboardTabId,
           EditorWorkspace.conteTabId,
+          // The 컷봉투 joins its paper family: one sheet per cut (the 겸용
+          // siblings share it), read beside the conte it describes.
+          EditorWorkspace.envelopeTabId,
           // The media viewer (R4, §6-h) joins the paper-family tabs; it
           // fronts itself when the browser opens something into it.
           EditorWorkspace.mediaViewerTabId,
@@ -540,6 +547,19 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   final ValueNotifier<CanvasViewport?> _conteViewport = ValueNotifier(null);
   final ValueNotifier<bool> _conteInkEnabled = ValueNotifier(false);
 
+  /// Cut-envelope tab view state — the conte's pair, said of the 봉투.
+  /// Ink starts BLOCKED here too: the envelope is read (and printed)
+  /// before anybody writes on it.
+  final ValueNotifier<CanvasViewport?> _envelopeViewport = ValueNotifier(null);
+  final ValueNotifier<bool> _envelopeInkEnabled = ValueNotifier(false);
+
+  /// Which bundled 봉투 form the panel prints. Session-scoped for now: the
+  /// project-level choice arrives with the form editor, and until there is
+  /// a place to store one, remembering it here beats hard-coding it.
+  final ValueNotifier<String> _envelopeFormId = ValueNotifier(
+    CutEnvelopePresets.analogId,
+  );
+
   /// Media viewer state (R4, §6-h): what it looks at and its zoom/pan —
   /// owned here so both survive tab switches and re-docking.
   final ValueNotifier<MediaViewerRequest?> _mediaViewerRequest = ValueNotifier(
@@ -554,6 +574,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   late final ConteInkController _conteInk = ConteInkController(
     rowStore: widget.session.conteInkRowStore,
     pageStore: widget.session.conteInkPageStore,
+  );
+
+  late final CutEnvelopeInkController _envelopeInk = CutEnvelopeInkController(
+    store: widget.session.envelopeInkStore,
   );
 
   late final StoryboardCutThumbnailStore _storyboardThumbnails;
@@ -1011,6 +1035,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _conteViewport.dispose();
     _conteInkEnabled.dispose();
     _conteInk.dispose();
+    _envelopeViewport.dispose();
+    _envelopeInkEnabled.dispose();
+    _envelopeFormId.dispose();
+    _envelopeInk.dispose();
     _mediaViewerRequest.dispose();
     _mediaViewerViewport.dispose();
     _draggingTab.dispose();
@@ -1576,6 +1604,49 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             ),
           ),
         );
+      case EditorWorkspace.envelopeTabId:
+        return EditorPanelTab(
+          id: tabId,
+          label: 'Envelope',
+          icon: Icons.mail_outline,
+          buttonKey: const ValueKey<String>('timeline-mode-envelope-button'),
+          minContentWidth: EditorWorkspace._frameAxisMinContentWidth,
+          minContentHeight: _minContentHeightFor(tabId),
+          locked: locked,
+          keepAlive: true,
+          // _brushTool is deliberately NOT merged (R18 UI-3): only the ink
+          // overlay consumes it, through its own boundary builder.
+          builder: (context) => PanelAwareListenableBuilder(
+            listenable: Listenable.merge([
+              widget.session,
+              _envelopeViewport,
+              _envelopeInkEnabled,
+              _envelopeFormId,
+              _envelopeInk,
+              widget.session.languageSettings,
+            ]),
+            builder: (context) => CutEnvelopeTabHost(
+              session: widget.session,
+              formId: _envelopeFormId.value,
+              onFormIdChanged: (formId) {
+                _envelopeFormId.value = formId;
+              },
+              viewport: _envelopeViewport.value,
+              onViewportChanged: (viewport) {
+                _envelopeViewport.value = viewport;
+              },
+              inkController: _envelopeInk,
+              brushToolState: _brushTool,
+              inkEnabled: _envelopeInkEnabled.value,
+              onInkEnabledChanged: (enabled) {
+                _envelopeInkEnabled.value = enabled;
+              },
+              // imageFor stays unwired until the 작품 정보 round: nothing
+              // sets a logo or a 도장 path yet, so there is no image to
+              // resolve — and a resolver with no source is dead code.
+            ),
+          ),
+        );
       case EditorWorkspace.timesheetTabId:
         return EditorPanelTab(
           id: tabId,
@@ -1801,6 +1872,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     // have one conditional chrome row, the action field under a selected
     // cell, and that row is not flexible.
     EditorWorkspace.conteTabId => ConteTabHost.minPanelHeight,
+    // The envelope has no case here on purpose: a page that scales, with
+    // no chrome row under the shell, has nothing of its own to protect.
     _ => null,
   };
 

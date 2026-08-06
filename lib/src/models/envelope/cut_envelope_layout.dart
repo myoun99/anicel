@@ -1,5 +1,14 @@
 import 'cut_envelope_form.dart';
 
+/// Ink surface pixels across the FORM's whole width — the resolution every
+/// envelope's handwriting is stored at, whatever paper it prints on.
+///
+/// Generous on purpose: a box surface is a slice of this one, so the
+/// smallest cel cell of the analog preset (≈1/16 of the width) still gets
+/// ~260px to hold a hand-written number, and the tile-sparse store means
+/// the unused remainder costs nothing.
+const double envelopeInkSurfaceWidth = 4096;
+
 /// A box placed on paper: the form's fractions turned into paper units.
 class PlacedEnvelopeBox {
   const PlacedEnvelopeBox({
@@ -85,6 +94,16 @@ class CutEnvelopeLayout {
   /// The design width form text sizes are quoted against — the presets are
   /// authored at this width, so a 10pt label reads as 10pt there.
   static const double _designWidth = 660;
+
+  /// Ink surface pixels per PAPER unit.
+  ///
+  /// Handwriting is measured against the FORM, never the paper: the same
+  /// envelope is drawn on a real 봉투, on one cut's canvas and on another
+  /// cut's larger canvas, and a stroke has to sit in the same place on all
+  /// three. Since the form scales with the paper, dividing by [formWidth]
+  /// makes the surface coordinate of a point invariant — the paper size
+  /// cancels out.
+  double get inkSurfaceScale => envelopeInkSurfaceWidth / formWidth;
 
   PlacedEnvelopeBox place(EnvelopeBox box) => PlacedEnvelopeBox(
     box: box,
