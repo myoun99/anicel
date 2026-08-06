@@ -1,7 +1,10 @@
+import 'dart:async' show unawaited;
+import 'dart:ui' as ui show Image;
 import 'dart:ui' show Rect, Size;
 
 import 'package:flutter/foundation.dart';
 
+import '../../models/bitmap_surface.dart';
 import '../../models/brush_edit_session_state.dart';
 import '../../models/brush_frame_key.dart';
 import '../../models/brush_history_policy.dart';
@@ -18,6 +21,8 @@ import '../../services/brush_stroke_commit_data.dart';
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/commands/brush_stroke_history_command.dart';
 import '../../services/history_manager.dart';
+import '../canvas/bitmap_tile_image_cache.dart';
+import '../canvas/tiled_surface_compose.dart';
 
 /// Owns the envelope's ink: brush strokes on a cut envelope, kept in a
 /// store fully SEPARATE from the session's cel [BrushFrameStore] so sheet
@@ -34,29 +39,34 @@ class CutEnvelopeInkController extends ChangeNotifier {
   CutEnvelopeInkController({BrushFrameStore? store})
     : _store = store ?? BrushFrameStore();
 
-  /// Ink resolution multiplier over form space — the timesheet's 4×.
-  /// Affordable because the live-stroke rasterizer is tile-sparse: cost
-  /// scales with the ink drawn, never with the surface size.
-  static const int inkScale = 4;
-
   final BrushFrameStore _store;
   BrushFrameEditingCoordinator? _coordinator;
 
-  /// One box surface's size, at [inkScale]. Every box in the plane shares
-  /// one geometry (the coordinator's rule) and each box's window exposes
-  /// its own slice; the tile-sparse store makes the remainder free.
+  /// One box surface's size, in FORM space at [envelopeInkSurfaceWidth].
+  /// Every box in the plane shares one geometry (the coordinator's rule)
+  /// and each box's window exposes its own slice; the tile-sparse store
+  /// makes the remainder free.
   CanvasSize? get surfaceSize => _surfaceSize;
   CanvasSize? _surfaceSize;
 
-  /// Adopts the paper geometry. Geometry changes rebuild the ink session
-  /// from its durable commands with stroke coordinates preserved
-  /// (top-left anchored, like a canvas resize).
+  /// Adopts the FORM's geometry — deliberately not the paper's.
+  ///
+  /// The panel prints on the cut's canvas, the export may print on a real
+  /// 봉투, and the next cut's canvas is a different size again; keying the
+  /// surface to any of those would shift yesterday's handwriting every time
+  /// one changed. The form's aspect ratio is the one thing all of them
+  /// share, so that is what the ink is measured in.
+  ///
+  /// A geometry change (the user picks another preset) rebuilds the ink
+  /// session from its durable commands with stroke coordinates preserved
+  /// — top-left anchored, like a canvas resize.
   ///
   /// Never notifies: callers run this during build.
-  void syncGeometry({required double paperWidth, required double paperHeight}) {
+  void syncGeometry({required double aspectRatio}) {
+    final ratio = aspectRatio <= 0 ? 1.0 : aspectRatio;
     final size = CanvasSize(
-      width: (paperWidth * inkScale).ceil().clamp(1, 1 << 16),
-      height: (paperHeight * inkScale).ceil().clamp(1, 1 << 16),
+      width: envelopeInkSurfaceWidth.ceil(),
+      height: (envelopeInkSurfaceWidth / ratio).ceil().clamp(1, 1 << 16),
     );
     if (_coordinator == null || size != _surfaceSize) {
       _surfaceSize = size;
@@ -130,6 +140,77 @@ class CutEnvelopeInkController extends ChangeNotifier {
   /// Whether a box holds any ink (test/debug oracle — the baked raster is
   /// the content, so "count" collapses to has-content).
   bool hasInkFor(BrushFrameKey key) => _store.celHasRenderableContent(key);
+
+  /// The painter-side display image for a box, composed lazily from the
+  /// baked surface and invalidated by SURFACE IDENTITY: strokes, undo and
+  /// redo all replace the baked surface object, so staleness is structural
+  /// and needs no invalidation wiring (the conte's rule).
+  ///
+  /// This is what makes saved ink visible at all: only a handful of boxes
+  /// are ever MOUNTED as input windows ([mountedEnvelopeInkWindows]), so
+  /// without the painter drawing the rest, everything written in a cell
+  /// would vanish the moment that cell got small or scrolled away. A key
+  /// whose window IS live is skipped by the caller instead — the
+  /// interactive view already shows that surface.
+  ui.Image? displayImageFor(BrushFrameKey key) {
+    final surface = _store.bakedSurfaceOrNull(key);
+    if (surface == null) {
+      return null;
+    }
+    final cached = _display[key];
+    if (cached != null && identical(cached.$1, surface)) {
+      return cached.$2;
+    }
+    final image = composeTiledSurfaceImageSyncOrNull(
+      surface,
+      reuse: BitmapTileImageCache.instance,
+    );
+    if (image != null) {
+      cached?.$2.dispose();
+      _display[key] = (surface, image);
+      return image;
+    }
+    // Tile images not GPU-resident yet: compose async once and repaint via
+    // notify; the stale image holds meanwhile (the playback policy).
+    if (_composing.add(key)) {
+      unawaited(
+        composeTiledSurfaceImage(
+          surface,
+          reuse: BitmapTileImageCache.instance,
+        ).then((composed) {
+          _composing.remove(key);
+          if (composed == null) {
+            return;
+          }
+          // The panel can close while a compose is in flight — a notify
+          // then would throw, and the image would leak.
+          if (_disposed ||
+              !identical(_store.bakedSurfaceOrNull(key), surface)) {
+            composed.dispose();
+            return;
+          }
+          _display[key]?.$2.dispose();
+          _display[key] = (surface, composed);
+          notifyListeners();
+        }),
+      );
+    }
+    return cached?.$2;
+  }
+
+  final Map<BrushFrameKey, (BitmapSurface, ui.Image)> _display = {};
+  final Set<BrushFrameKey> _composing = {};
+  bool _disposed = false;
+
+  @override
+  void dispose() {
+    _disposed = true;
+    for (final entry in _display.values) {
+      entry.$2.dispose();
+    }
+    _display.clear();
+    super.dispose();
+  }
 }
 
 /// One box's ink window: where its strokes live and where they land.
@@ -138,6 +219,7 @@ class EnvelopeInkWindow {
     required this.boxId,
     required this.key,
     required this.documentRect,
+    required this.surfaceScale,
   });
 
   final String boxId;
@@ -145,6 +227,18 @@ class EnvelopeInkWindow {
 
   /// The box's rect in PAPER space.
   final Rect documentRect;
+
+  /// Ink surface pixels per paper unit ([CutEnvelopeLayout.inkSurfaceScale])
+  /// — the whole reason a stroke stays put when the paper changes size.
+  final double surfaceScale;
+
+  /// The box's slice of the shared surface, in surface pixels.
+  Rect get surfaceRect => Rect.fromLTWH(
+    0,
+    0,
+    documentRect.width * surfaceScale,
+    documentRect.height * surfaceScale,
+  );
 
   /// Surface pixel (0,0) maps to the box's TOP-LEFT, not the paper's.
   ///
@@ -154,7 +248,7 @@ class EnvelopeInkWindow {
   /// leave the marks behind whenever a preset shifted a cell.
   CanvasViewport inkViewport(CanvasViewport panelViewport) {
     return CanvasViewport(
-      zoom: panelViewport.zoom / CutEnvelopeInkController.inkScale,
+      zoom: panelViewport.zoom / surfaceScale,
       panX: panelViewport.panX + panelViewport.zoom * documentRect.left,
       panY: panelViewport.panY + panelViewport.zoom * documentRect.top,
     );
@@ -220,6 +314,7 @@ List<EnvelopeInkWindow> envelopeInkWindows(
   CutEnvelopeLayout layout,
   CutId ownerCutId,
 ) {
+  final surfaceScale = layout.inkSurfaceScale;
   return [
     for (final placed in layout.placedBoxes)
       if (placed.box.takesInk)
@@ -232,6 +327,7 @@ List<EnvelopeInkWindow> envelopeInkWindows(
             placed.width,
             placed.height,
           ),
+          surfaceScale: surfaceScale,
         ),
   ];
 }

@@ -79,9 +79,46 @@ void main() {
     final panel = CanvasViewport(zoom: 2, panX: 10, panY: 20);
     final ink = window.inkViewport(panel);
 
-    expect(ink.zoom, 2 / CutEnvelopeInkController.inkScale);
+    // Paper is 100 wide and the form fills it, so a surface pixel is
+    // 100/4096 of a paper unit.
+    expect(ink.zoom, 2 / (envelopeInkSurfaceWidth / 100));
     expect(ink.panX, 10 + 2 * 25, reason: 'box left is 25 in paper space');
     expect(ink.panY, 20 + 2 * 50);
+  });
+
+  test('ink is measured against the FORM, so a bigger paper does not move '
+      'a stroke', () {
+    const box = EnvelopeBox(
+      id: 'cell',
+      rect: EnvelopeRect(x: 0.25, y: 0.5, width: 0.5, height: 0.25),
+    );
+    const form = CutEnvelopeForm(
+      id: 'test',
+      name: 'Test',
+      aspectRatio: 1,
+      boxes: [box],
+    );
+    EnvelopeInkWindow windowOn(double paper) => envelopeInkWindows(
+      CutEnvelopeLayout.fit(form: form, paperWidth: paper, paperHeight: paper),
+      owner,
+    ).single;
+
+    final small = windowOn(100);
+    final large = windowOn(1920);
+
+    expect(
+      large.surfaceRect,
+      small.surfaceRect,
+      reason:
+          'the same box shows the same slice of the surface on the panel '
+          '(cut-sized paper) and in a real-envelope export',
+    );
+    // And a point 10% into the box lands on the same surface pixel either
+    // way: paper units cancel out.
+    expect(
+      large.documentRect.width * 0.1 * large.surfaceScale,
+      closeTo(small.documentRect.width * 0.1 * small.surfaceScale, 1e-9),
+    );
   });
 
   test('screenRect follows the panel transform', () {
@@ -214,7 +251,7 @@ void main() {
   });
 
   group('controller', () {
-    test('geometry must be synced before ink is touched', () {
+    test('geometry must be synced before ink is EDITED', () {
       final controller = CutEnvelopeInkController();
       addTearDown(controller.dispose);
 
@@ -224,28 +261,42 @@ void main() {
       );
     });
 
-    test('the surface covers the whole paper at ink scale', () {
+    test('the surface is the FORM at a fixed resolution — the paper size '
+        'never reaches it', () {
       final controller = CutEnvelopeInkController();
       addTearDown(controller.dispose);
 
-      controller.syncGeometry(paperWidth: 660, paperHeight: 497);
+      controller.syncGeometry(aspectRatio: 660 / 497);
 
-      expect(
-        controller.surfaceSize!.width,
-        660 * CutEnvelopeInkController.inkScale,
-      );
+      expect(controller.surfaceSize!.width, envelopeInkSurfaceWidth);
       expect(
         controller.surfaceSize!.height,
-        497 * CutEnvelopeInkController.inkScale,
+        (envelopeInkSurfaceWidth / (660 / 497)).ceil(),
       );
+
+      // The analog preset printed on a 4K cut is the same surface.
+      final before = controller.surfaceSize;
+      controller.syncGeometry(aspectRatio: 660 / 497);
+      expect(controller.surfaceSize, before);
     });
 
     test('an untouched box reports no ink', () {
       final controller = CutEnvelopeInkController();
       addTearDown(controller.dispose);
-      controller.syncGeometry(paperWidth: 100, paperHeight: 100);
+      controller.syncGeometry(aspectRatio: 1);
 
       expect(controller.hasInkFor(envelopeInkBoxKey(owner, 'cell')), isFalse);
+    });
+
+    test('a box with no strokes has no display image to draw', () {
+      final controller = CutEnvelopeInkController();
+      addTearDown(controller.dispose);
+      controller.syncGeometry(aspectRatio: 1);
+
+      expect(
+        controller.displayImageFor(envelopeInkBoxKey(owner, 'cell')),
+        isNull,
+      );
     });
   });
 }

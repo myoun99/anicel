@@ -41,6 +41,7 @@ import '../models/bitmap_surface.dart';
 import '../models/audio_clip.dart';
 import '../models/brush_frame_key.dart';
 import '../models/conte/conte_ink_keys.dart';
+import '../models/envelope/cut_envelope_ink_keys.dart';
 import '../models/camera_instruction.dart';
 import '../models/camera_pose.dart';
 import '../models/canvas_point.dart';
@@ -486,6 +487,12 @@ class EditorSessionManager extends ChangeNotifier {
   /// session boundary.
   final BrushFrameStore conteInkRowStore = BrushFrameStore();
   final BrushFrameStore conteInkPageStore = BrushFrameStore();
+
+  /// The cut envelope's ink store — SESSION-owned for the same reason: the
+  /// archive persists it, the workspace's controller owns the coordinator.
+  /// Its keys carry the OWNER cut's id, so an entry whose cut is gone is
+  /// pruned at LOAD exactly like a conte row's.
+  final BrushFrameStore envelopeInkStore = BrushFrameStore();
 
   /// Production sink for brush edit invalidations; playback caches and the
   /// prerender scheduler listen here.
@@ -12867,7 +12874,7 @@ class EditorSessionManager extends ChangeNotifier {
     await _anicelFileService.save(
       project: _repository.requireProject(),
       brushFrameStore: brushFrameStore,
-      auxCelStores: [conteInkRowStore, conteInkPageStore],
+      auxCelStores: [conteInkRowStore, conteInkPageStore, envelopeInkStore],
       filePath: path,
     );
   }
@@ -12887,7 +12894,7 @@ class EditorSessionManager extends ChangeNotifier {
     await _anicelFileService.save(
       project: _repository.requireProject(),
       brushFrameStore: brushFrameStore,
-      auxCelStores: [conteInkRowStore, conteInkPageStore],
+      auxCelStores: [conteInkRowStore, conteInkPageStore, envelopeInkStore],
       filePath: filePath,
     );
     _projectFilePath = filePath;
@@ -12932,10 +12939,24 @@ class EditorSessionManager extends ChangeNotifier {
     final mainCels = <BrushFrameKey, AnicelCelFileRef>{};
     final inkRowCels = <BrushFrameKey, AnicelCelFileRef>{};
     final inkPageCels = <BrushFrameKey, AnicelCelFileRef>{};
+    final envelopeCels = <BrushFrameKey, AnicelCelFileRef>{};
     Set<FrameId>? liveFrameIds;
+    Set<CutId>? liveCutIds;
     for (final entry in result.cels.entries) {
       final key = entry.key;
-      if (!isConteInkKey(key)) {
+      if (isEnvelopeInkKey(key)) {
+        // An envelope's ink is keyed by its OWNER cut: the sheet dies with
+        // the cut it describes. Which BOX a stroke sits in is never pruned
+        // — swapping the form preset back has to bring the writing back
+        // with it.
+        liveCutIds ??= {
+          for (final track in result.project.tracks)
+            for (final cut in track.cuts) cut.id,
+        };
+        if (liveCutIds.contains(key.cutId)) {
+          envelopeCels[key] = entry.value;
+        }
+      } else if (!isConteInkKey(key)) {
         mainCels[key] = entry.value;
       } else if (key.layerId == conteInkRowLayerId) {
         liveFrameIds ??= {
@@ -12954,6 +12975,7 @@ class EditorSessionManager extends ChangeNotifier {
     brushFrameStore.restoreFromFile(mainCels);
     conteInkRowStore.restoreFromFile(inkRowCels);
     conteInkPageStore.restoreFromFile(inkPageCels);
+    envelopeInkStore.restoreFromFile(envelopeCels);
     _historyManager.clear();
     _copiedFrame = null;
     _layerClipboard = null;

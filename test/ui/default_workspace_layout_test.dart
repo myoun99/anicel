@@ -4,6 +4,7 @@ import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
 import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
+import 'package:anicel/src/ui/envelope/cut_envelope_tab_host.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
@@ -78,6 +79,29 @@ void main() {
     expect(
       tester.getCenter(find.byType(TimelinePanel)).dy,
       greaterThan(tester.getCenter(find.byType(EditorCanvasArea)).dy),
+    );
+  });
+
+  testWidgets('the 컷봉투 ships as a bottom-strip tab beside the conte — '
+      'closed, like every other paper tab there', (tester) async {
+    await pumpWorkspace(tester);
+
+    expect(
+      find.byKey(const ValueKey<String>('timeline-mode-envelope-button')),
+      findsOneWidget,
+    );
+    expect(find.byType(CutEnvelopeTabHost), findsNothing);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-mode-envelope-button')),
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byType(CutEnvelopeTabHost), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('cut-envelope-page')),
+      findsOneWidget,
+      reason: 'really drawing the sheet, not just mounted',
     );
   });
 
