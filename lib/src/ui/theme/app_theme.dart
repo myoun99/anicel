@@ -97,6 +97,85 @@ abstract final class AppColors {
   static const Color danger = Color(0xFFC95C5C);
 }
 
+/// The app's one corner.
+///
+/// There is a single button in this app. Not a single button WIDGET — a
+/// single button SHAPE, worn by the tool buttons, the panel buttons, the
+/// project chips, the overflow, and the buttons inside the timeline alike.
+/// They differ in size and in nothing else.
+///
+/// The corner is a SUPERELLIPSE, and only the corner is. Drawing the whole
+/// rectangle as a superellipse bows the straight edges, which is wrong at
+/// any size and ridiculous at panel size; [RoundedSuperellipseBorder]
+/// rounds the four corners on a superellipse and leaves the sides flat, so
+/// a 1800px edge with a 20px radius shows no bow at all.
+///
+/// Two families, because they are answering different questions:
+///
+///  * A CONTROL's radius is a fixed fraction of its own size
+///    ([controlCornerRatio]), so the family reads as one shape at 42, 34
+///    and 32. Scaling a control without scaling its corner is what makes a
+///    small button look like a different button.
+///  * A CONTAINER's radius is absolute. A panel is not a big button, and a
+///    ratio would give a 350px-tall timeline a 98px corner.
+abstract final class AppShapes {
+  /// A control's corner as a fraction of its short axis.
+  static const double controlCornerRatio = 0.28;
+
+  /// The three control sizes: the rail/strip button, the dialog action and
+  /// chip, the dense inline control.
+  static const double controlLarge = 42;
+  static const double controlMedium = 34;
+  static const double controlSmall = 32;
+
+  /// The corner a control of [size] wears.
+  static double controlRadius(double size) => size * controlCornerRatio;
+
+  /// A window that the pointer summoned: dialogs, menus, popovers.
+  static const double windowRadius = 6;
+
+  /// A well cut into a surface: text fields, swatches, inline plates. The
+  /// smallest corner the app draws.
+  static const double wellRadius = 4;
+
+  /// A panel FLOATING over the artwork — the timeline, and whatever else
+  /// comes to rest on the canvas rather than beside it. Deliberately larger
+  /// than [windowRadius]: a floating panel has to read as a separate object
+  /// lying on the drawing, not as a region of chrome that happens to end.
+  static const double floatingPanelRadius = 14;
+
+  /// The shape of a control whose short axis is [size].
+  static RoundedSuperellipseBorder control(
+    double size, {
+    BorderSide side = BorderSide.none,
+  }) => RoundedSuperellipseBorder(
+    borderRadius: BorderRadius.all(Radius.circular(controlRadius(size))),
+    side: side,
+  );
+
+  /// The shape of a container with an absolute [radius] — one of
+  /// [windowRadius], [wellRadius] or [floatingPanelRadius].
+  static RoundedSuperellipseBorder container(
+    double radius, {
+    BorderSide side = BorderSide.none,
+  }) => RoundedSuperellipseBorder(
+    borderRadius: BorderRadius.all(Radius.circular(radius)),
+    side: side,
+  );
+
+  /// The clipper for [shape].
+  ///
+  /// Clipping a superellipse goes through [ShapeBorderClipper] and NOT
+  /// through `ClipRSuperellipse`: that widget's `hitTest` asks only
+  /// `outerRect.contains()`, so the four corners it visibly cut away still
+  /// swallow pointers — a floating panel drawn that way eats strokes in a
+  /// square of empty canvas at each corner. `ContinuousRectangleBorder` is
+  /// out for a different reason: it is not a superellipse at all, it is a
+  /// squircle-ish approximation that reads as a lozenge.
+  static ShapeBorderClipper clipper(RoundedSuperellipseBorder shape) =>
+      ShapeBorderClipper(shape: shape);
+}
+
 /// Every popup menu opens INSTANTLY (R4 #2): Material's default grow +
 /// staggered item fade read as entries appearing one by one — pass this to
 /// each `showMenu`/`PopupMenuButton` as `popUpAnimationStyle`.
@@ -108,8 +187,12 @@ const AnimationStyle instantMenuAnimation = AnimationStyle(
 /// The one outline every text input wears: hairline at rest, accent on
 /// focus, danger on error, 4px corners. Inline cell editors that must stay
 /// bare opt out at the call site with `filled: false` + [InputBorder.none].
+/// A field is the one control that cannot take [AppShapes]: Material wants
+/// an [InputBorder] here, and the superellipse borders are [OutlinedBorder]s.
+/// It still reads its radius from the same place, so the well corner moves
+/// once when it moves.
 OutlineInputBorder _fieldBorder(Color color) => OutlineInputBorder(
-  borderRadius: const BorderRadius.all(Radius.circular(4)),
+  borderRadius: const BorderRadius.all(Radius.circular(AppShapes.wellRadius)),
   borderSide: BorderSide(color: color),
 );
 
@@ -201,22 +284,18 @@ ThemeData buildAppTheme() {
       style: TextButton.styleFrom(
         foregroundColor: AppColors.text,
         disabledForegroundColor: AppColors.textDim.withValues(alpha: 0.5),
-        minimumSize: const Size(96, 34),
+        minimumSize: const Size(96, AppShapes.controlMedium),
         padding: const EdgeInsets.symmetric(horizontal: 16),
         textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.all(Radius.circular(6)),
-        ),
+        shape: AppShapes.control(AppShapes.controlMedium),
       ),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        minimumSize: const Size(96, 34),
+        minimumSize: const Size(96, AppShapes.controlMedium),
         padding: const EdgeInsets.symmetric(horizontal: 16),
         textStyle: const TextStyle(fontSize: 12, fontWeight: FontWeight.w500),
-        shape: const RoundedRectangleBorder(
-          borderRadius: BorderRadius.all(Radius.circular(6)),
-        ),
+        shape: AppShapes.control(AppShapes.controlMedium),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
     ),
@@ -229,9 +308,9 @@ ThemeData buildAppTheme() {
       surfaceTintColor: Colors.transparent,
       elevation: 0,
       barrierColor: Colors.black.withValues(alpha: 0.45),
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.all(Radius.circular(6)),
-        side: BorderSide(color: AppColors.hairline),
+      shape: AppShapes.container(
+        AppShapes.windowRadius,
+        side: const BorderSide(color: AppColors.hairline),
       ),
       insetPadding: const EdgeInsets.symmetric(horizontal: 32, vertical: 28),
       titleTextStyle: const TextStyle(
@@ -290,19 +369,38 @@ ThemeData buildAppTheme() {
     ),
     popupMenuTheme: PopupMenuThemeData(
       color: AppColors.surfaceHigh,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(6),
+      shape: AppShapes.container(
+        AppShapes.windowRadius,
         side: const BorderSide(color: AppColors.hairline),
       ),
       textStyle: const TextStyle(color: AppColors.text, fontSize: 12),
     ),
-    tooltipTheme: const TooltipThemeData(
-      waitDuration: Duration(milliseconds: 400),
-      decoration: BoxDecoration(
-        color: AppColors.surfaceHigh,
-        borderRadius: BorderRadius.all(Radius.circular(4)),
+    menuTheme: MenuThemeData(
+      style: MenuStyle(
+        backgroundColor: const WidgetStatePropertyAll<Color>(
+          AppColors.surfaceHigh,
+        ),
+        surfaceTintColor: const WidgetStatePropertyAll<Color>(
+          Colors.transparent,
+        ),
+        elevation: const WidgetStatePropertyAll<double>(0),
+        shape: WidgetStatePropertyAll<OutlinedBorder>(
+          AppShapes.container(
+            AppShapes.windowRadius,
+            side: const BorderSide(color: AppColors.hairline),
+          ),
+        ),
       ),
-      textStyle: TextStyle(color: AppColors.text, fontSize: 12),
+    ),
+    // A tooltip carries a SHAPE now rather than a BoxDecoration's radius,
+    // which is the only way a Material tooltip can wear a superellipse.
+    tooltipTheme: TooltipThemeData(
+      waitDuration: const Duration(milliseconds: 400),
+      decoration: ShapeDecoration(
+        color: AppColors.surfaceHigh,
+        shape: AppShapes.container(AppShapes.wellRadius),
+      ),
+      textStyle: const TextStyle(color: AppColors.text, fontSize: 12),
     ),
   );
 }
