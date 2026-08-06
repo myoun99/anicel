@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
+import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/envelope/cut_envelope_tab_host.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -566,7 +567,11 @@ void main() {
       expect(panel.height, greaterThanOrEqualTo(TimelinePanel.minPanelHeight));
       expect(
         panel.bottom,
-        group.bottom,
+        // The strip is the 문턱 now — it sits on the region's bottom inner
+        // edge, so "fills the dock" means "reaches the threshold", not
+        // "reaches the window". The law is the same one: no vertical
+        // scroller engaged, nothing overhanging.
+        group.bottom - EditorPanelTabs.stripHeight,
         reason:
             'the panel FILLS the dock instead of overhanging it — no '
             'vertical scroller engaged',
@@ -592,8 +597,13 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull, reason: 'nothing overflows');
 
-      final canvas = find.byKey(const ValueKey<String>('panel-tab-canvas'));
-      expect(canvas, findsOneWidget, reason: 'the canvas tab still exists');
+      // The floor has no tab of its own any more, so what "the canvas is
+      // still there" means is the drawing surface itself.
+      expect(
+        find.byType(EditorCanvasArea),
+        findsOneWidget,
+        reason: 'the canvas is still on screen',
+      );
 
       await tester.drag(
         find.byKey(const ValueKey<String>('dock-resize-bottom')),

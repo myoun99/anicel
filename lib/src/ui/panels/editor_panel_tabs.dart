@@ -84,6 +84,8 @@ class EditorPanelTabs extends StatefulWidget {
     required this.onTabSelected,
     this.compact = false,
     this.chromeless = false,
+    this.stripAtBottom = false,
+    this.trailing,
     this.groupId,
     this.onTabMoved,
     this.canAcceptTab,
@@ -114,6 +116,19 @@ class EditorPanelTabs extends StatefulWidget {
   /// Every other dock keeps its strip — a panel you switch between and
   /// rearrange still needs the tabs that say so.
   final bool chromeless;
+
+  /// Puts the strip on the panel's BOTTOM inner edge — the 문턱 of a panel
+  /// that floats over the canvas rather than sitting in a column.
+  ///
+  /// 기하는 캔버스 향한 변에, 정체성은 창틀 향한 변에 (유저 확정): the edge
+  /// facing the artwork carries the resize handle, and the edge facing the
+  /// window frame carries "which panel is this". Dock the region at the top
+  /// instead and both flip, from the same one law.
+  final bool stripAtBottom;
+
+  /// Controls pinned to the strip's far end — the collapse toggle, and
+  /// whatever else belongs to the REGION rather than to a tab.
+  final List<Widget>? trailing;
 
   /// This group's identity in the dock layout; tags outgoing drags.
   final String? groupId;
@@ -196,11 +211,9 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
       _builtTabIds.add(active.id);
     }
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (!widget.chromeless)
-          Container(
+    final strip = widget.chromeless
+        ? null
+        : Container(
             height: EditorPanelTabs.stripHeight,
             color: colorScheme.surfaceContainerLow,
             child: Stack(
@@ -231,9 +244,22 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
                     ],
                   ),
                 ),
+                if (widget.trailing != null)
+                  Align(
+                    alignment: AlignmentDirectional.centerEnd,
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: widget.trailing!,
+                    ),
+                  ),
               ],
             ),
-          ),
+          );
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        if (strip != null && !widget.stripAtBottom) strip,
         // The content area shares the selected tab's background so the tab
         // reads as part of the panel, not a floating chip above it. Built
         // keep-alive tabs stay in the stack offstage (state, scroll
@@ -289,6 +315,7 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
             ),
           ),
         ),
+        if (strip != null && widget.stripAtBottom) strip,
       ],
     );
   }

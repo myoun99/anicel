@@ -129,9 +129,9 @@ void main() {
     final session = workspace.session;
     expect(viewOf(tester).frameId, frameA);
 
-    final center = tester.getCenter(
-      mainCanvasView(),
-    );
+    // The canvas is the floor: its centre is under the timeline. Aim at
+    // the middle of what the artist can SEE.
+    final center = visibleCanvasPoint(tester);
     final gesture = await tester.startGesture(
       center,
       kind: PointerDeviceKind.stylus,
@@ -202,9 +202,9 @@ void main() {
     await tester.pumpAndSettle();
     expect(viewOf(tester).frameId, frameA);
 
-    final center = tester.getCenter(
-      mainCanvasView(),
-    );
+    // The canvas is the floor: its centre is under the timeline. Aim at
+    // the middle of what the artist can SEE.
+    final center = visibleCanvasPoint(tester);
     final gesture = await tester.startGesture(
       center,
       kind: PointerDeviceKind.stylus,

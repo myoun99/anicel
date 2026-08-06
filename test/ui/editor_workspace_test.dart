@@ -10,6 +10,7 @@ import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
+import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
 const _toolsTabKey = ValueKey<String>('panel-tab-tools');
@@ -234,51 +235,50 @@ void main() {
   });
 
   group('EditorWorkspace canvas panel', () {
-    testWidgets('the canvas is a locked tab in the center dock', (
+    testWidgets('the canvas is the FLOOR: no tab strip, and nothing can '
+        'drag it off', (tester) async {
+      await _pumpHome(tester);
+
+      expect(find.byType(EditorCanvasArea), findsOneWidget);
+      // The floor has no tab of its own. It cannot: the panels lie ON it,
+      // so a strip at its top-left corner would be under the left column.
+      expect(find.byKey(_canvasTabKey), findsNothing);
+      expect(find.byKey(const ValueKey<String>('panel-lock-canvas')),
+          findsNothing);
+      expect(find.byKey(const ValueKey<String>('panel-close-canvas')),
+          findsNothing);
+
+      // Which is the protection, not a hole in it — there is no grip to
+      // slip on, so the drawing surface cannot be dragged out from under
+      // the app by accident. The lock glyph existed to say this.
+      expect(find.byType(TimelinePanel), findsOneWidget);
+    });
+
+    testWidgets('the top strip switches what the app is lying on', (
       tester,
     ) async {
       await _pumpHome(tester);
 
-      expect(find.byKey(_canvasTabKey), findsOneWidget);
       expect(find.byType(EditorCanvasArea), findsOneWidget);
+      expect(find.byType(MediaViewerTabHost), findsNothing);
 
-      // Locked by default: the grip stays VISIBLE but inert (R12-⑨ —
-      // locking never reshapes the tab); dragging it does nothing.
-      expect(_tabGrip(find.byKey(_canvasTabKey)), findsOneWidget);
-      final gesture = await tester.startGesture(
-        tester.getCenter(_tabGrip(find.byKey(_canvasTabKey))),
+      await tester.tap(
+        find.byKey(const ValueKey<String>('top-strip-floor-media-viewer')),
       );
-      await tester.pump(const Duration(milliseconds: 20));
-      await gesture.moveTo(
-        tester.getCenter(find.byKey(_storyboardTabKey)) + const Offset(150, 0),
-      );
-      await tester.pump();
-      await gesture.up();
       await tester.pumpAndSettle();
+      expect(find.byType(MediaViewerTabHost), findsOneWidget);
+      expect(find.byType(EditorCanvasArea), findsNothing);
 
-      expect(find.byType(EditorCanvasArea), findsOneWidget);
+      // The timeline never moved — it is floating on the floor, not
+      // sharing a region with it.
       expect(find.byType(TimelinePanel), findsOneWidget);
-    });
 
-    testWidgets('unlocking the canvas lets it re-dock', (tester) async {
-      await _pumpHome(tester);
-
-      await tester.tap(find.byKey(const ValueKey<String>('panel-lock-canvas')));
-      await tester.pumpAndSettle();
-
-      await _dragTab(
-        tester,
-        find.byKey(_canvasTabKey),
-        () =>
-            tester.getCenter(find.byKey(_storyboardTabKey)) +
-            const Offset(150, 0),
+      await tester.tap(
+        find.byKey(const ValueKey<String>('top-strip-floor-canvas')),
       );
-
-      // The canvas now lives in the bottom dock as its active tab; the
-      // center dock is an empty region.
+      await tester.pumpAndSettle();
       expect(find.byType(EditorCanvasArea), findsOneWidget);
-      expect(find.byType(TimelinePanel), findsNothing);
-      expect(find.byKey(_canvasTabKey), findsOneWidget);
+      expect(find.byType(MediaViewerTabHost), findsNothing);
     });
   });
 
@@ -494,35 +494,50 @@ void main() {
         'reshapes the tab (R12-⑨)', (tester) async {
       await _pumpHome(tester);
 
-      // The canvas ships locked: the X is there…
-      final closeCanvas = find.byKey(
-        const ValueKey<String>('panel-close-canvas'),
+      // The canvas used to be this test's subject, and it cannot be any
+      // more — the floor has no strip at all now, which is a stronger
+      // statement than "locked" and is pinned by its own test. So the law
+      // is checked where a strip still exists: any tab, locked by hand.
+      final lockSheet = find.byKey(
+        const ValueKey<String>('panel-lock-timesheet'),
       );
-      expect(closeCanvas, findsOneWidget);
+      final closeSheet = find.byKey(
+        const ValueKey<String>('panel-close-timesheet'),
+      );
+
+      await tester.ensureVisible(lockSheet);
+      await tester.pumpAndSettle();
+      await tester.tap(lockSheet);
+      await tester.pumpAndSettle();
+
+      // Locked: the X is still there…
+      expect(closeSheet, findsOneWidget);
       // …and the grip too (visible, inert).
       expect(
-        find.byKey(const ValueKey<String>('panel-grip-canvas')),
+        find.byKey(const ValueKey<String>('panel-grip-timesheet')),
         findsOneWidget,
       );
 
       // Ahem-wide labels push the X past the strip's scroll clip in
       // tests — bring it into view before tapping.
-      await tester.ensureVisible(closeCanvas);
+      await tester.ensureVisible(closeSheet);
       await tester.pumpAndSettle();
 
       // Tapping the dead X does nothing (and doesn't select-toggle).
-      await tester.tap(closeCanvas);
+      await tester.tap(closeSheet);
       await tester.pumpAndSettle();
-      expect(find.byKey(_canvasTabKey), findsOneWidget);
+      expect(find.byKey(_timesheetTabKey), findsOneWidget);
 
       // Unlocking arms it: now the X closes the panel.
-      await tester.tap(find.byKey(const ValueKey<String>('panel-lock-canvas')));
+      await tester.ensureVisible(lockSheet);
       await tester.pumpAndSettle();
-      await tester.ensureVisible(closeCanvas);
+      await tester.tap(lockSheet);
       await tester.pumpAndSettle();
-      await tester.tap(closeCanvas);
+      await tester.ensureVisible(closeSheet);
       await tester.pumpAndSettle();
-      expect(find.byKey(_canvasTabKey), findsNothing);
+      await tester.tap(closeSheet);
+      await tester.pumpAndSettle();
+      expect(find.byKey(_timesheetTabKey), findsNothing);
     });
   });
 

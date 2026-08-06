@@ -20,6 +20,8 @@ import '../services/canvas_flood_fill.dart' show FloodFillOptions;
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
 import '../services/resample/resample_kernel.dart' show ResampleMode;
 import 'brush/brush_preset_library.dart';
+import 'brush/canvas_floor_insets.dart';
+import 'theme/app_theme.dart';
 import 'brush/brush_preset_panel.dart';
 import 'brush/brush_tip_library.dart';
 import 'brush/brush_tool_state.dart';
@@ -241,8 +243,17 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     EditorWorkspace.rightGroupId: [
       DockSection(tabs: [EditorWorkspace.timesheetTabId]),
     ],
+    // THE FLOOR (유저 확정): the bottom layer everything else is drawn on.
+    // The canvas and the media viewer are the two panels that can be it —
+    // they are both full-page surfaces you look AT rather than read beside
+    // the drawing — and the top strip's canvas/viewer pair is the switch
+    // between them. The viewer used to live down among the paper tabs,
+    // where opening a reference shrank the drawing to make room for it.
     EditorWorkspace.centerGroupId: [
-      DockSection(tabs: [EditorWorkspace.canvasTabId]),
+      DockSection(
+        tabs: [EditorWorkspace.canvasTabId, EditorWorkspace.mediaViewerTabId],
+        activeTabId: EditorWorkspace.canvasTabId,
+      ),
     ],
     EditorWorkspace.bottomGroupId: [
       DockSection(
@@ -253,14 +264,18 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           // The 컷봉투 joins its paper family: one sheet per cut (the 겸용
           // siblings share it), read beside the conte it describes.
           EditorWorkspace.envelopeTabId,
-          // The media viewer (R4, §6-h) joins the paper-family tabs; it
-          // fronts itself when the browser opens something into it.
-          EditorWorkspace.mediaViewerTabId,
         ],
         activeTabId: EditorWorkspace.timelineTabId,
       ),
     ],
   };
+
+  /// The panels that may lie on the floor, in the order the top strip's
+  /// switch offers them.
+  static const List<String> _floorTabIds = [
+    EditorWorkspace.canvasTabId,
+    EditorWorkspace.mediaViewerTabId,
+  ];
 
   /// Only narrow-fit panels may live in the slim edge docks.
   static const Set<String> _edgeDockTabIds = {EditorWorkspace.toolsTabId};
@@ -620,6 +635,16 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       toolRailOnRight: () =>
           _layout.sectionsIn(EditorWorkspace.toolRightGroupId).isNotEmpty,
       toolRailMover: _setToolRailOnRight,
+      floorTabId: _activeFloorTabId,
+      floorTabs: () => [
+        for (final tabId in _EditorWorkspaceState._floorTabIds)
+          (
+            tabId: tabId,
+            label: _tabFor(tabId).label,
+            icon: _tabFor(tabId).icon,
+          ),
+      ],
+      floorTabSelector: _selectFloorTab,
     );
     widget.layerNav?.bind(_stepDisplayedLayer);
     widget.flipHud?.bind(_flipHudSnapshot);
@@ -959,6 +984,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     }
     setState(() {
       _lockedTabIds = restored.lockedTabIds;
+      _bottomDockCollapsed = payload['bottomCollapsed'] == true;
       _layout.restore(docks: restored.docks, dockExtents: restored.dockExtents);
     });
     for (final entry in _railExtents.entries) {
@@ -994,6 +1020,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                 for (final entry in _railExtents.entries)
                   if (entry.value.value != null) entry.key: entry.value.value,
               },
+              // A NEW key rather than a new layout version: an older build
+              // reading this file simply does not see it and opens the
+              // region expanded, whereas bumping the version makes that
+              // build throw the whole arrangement away (there is no
+              // migration code, only a version check).
+              'bottomCollapsed': _bottomDockCollapsed,
             })
             .catchError((Object _) {}),
       );
@@ -1716,9 +1748,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     String dockId, {
     bool compact = false,
     bool chromeless = false,
+    bool stripAtBottom = false,
+    List<Widget>? trailing,
   }) {
     return EditorDockHost(
       chromeless: chromeless,
+      stripAtBottom: stripAtBottom,
+      trailing: trailing,
       layout: _layout,
       dockId: dockId,
       tabResolver: _tabFor,
@@ -1922,9 +1958,28 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     );
   }
 
-  Widget _buildBottomDock({required double availableExtent}) {
-    if (_layout.sectionsIn(EditorWorkspace.bottomGroupId).isEmpty) {
-      return _emptyDockZone(EditorWorkspace.bottomGroupId, Axis.horizontal);
+  /// The collapsed floating region: its 문턱 plus a brief line of whatever
+  /// is open (the timeline's ruler, the storyboard's first row).
+  ///
+  /// Collapsed is not CLOSED — 유저 확정. The region stays on screen, keeps
+  /// its threshold, and keeps taking drops; it just stops asking for a
+  /// third of the drawing.
+  static const double _collapsedBottomHeight = 70;
+
+  bool _bottomDockCollapsed = false;
+
+  /// How tall the bottom panel is drawn — read by the layout that positions
+  /// it AND by the cover the floor is told about, so the panel and the hole
+  /// it makes in the artwork can never disagree.
+  double _bottomDockHeight(double availableExtent) {
+    if (_bottomDockCollapsed) {
+      // Through the same ceiling as the open height: collapsed is smaller,
+      // but in a window short enough for 70px to crowd the drawing out it
+      // is still the window that decides.
+      return math.min(
+        _collapsedBottomHeight,
+        math.max(0.0, _bottomDockCeiling(availableExtent)),
+      );
     }
     // Clamped on the way OUT as well as on the drag: a workspace saved
     // before this floor existed, or one whose bottom dock gained a taller
@@ -1941,10 +1996,133 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     // the window cannot pay it, the dock yields and the sections share the
     // shortfall ([dockSectionExtents]) with the shell's scroller behind
     // them. The user can always drag their way back out.
-    return SizedBox(
-      height: math.min(wanted, _bottomDockCeiling(availableExtent)),
-      child: _buildDockHost(EditorWorkspace.bottomGroupId),
+    return math.min(wanted, _bottomDockCeiling(availableExtent));
+  }
+
+  /// The floating region over the canvas: the timeline and the paper panels
+  /// it switches between.
+  ///
+  /// It is a Stack child of this route and NOT an OverlayPortal — an
+  /// OverlayPortal's child draws under the next OverlayEntry, so one dialog
+  /// would bury the timeline and swallow its clicks. Being a plain child
+  /// means it takes pointers over its whole rectangle, which is why the
+  /// clip is not decoration: without it the four corners the silhouette cut
+  /// away would still eat strokes aimed at the canvas behind them.
+  Widget _buildBottomDock({required double availableExtent}) {
+    if (_layout.sectionsIn(EditorWorkspace.bottomGroupId).isEmpty) {
+      return _emptyDockZone(EditorWorkspace.bottomGroupId, Axis.horizontal);
+    }
+    return DecoratedBox(
+      // The ring the palette reserves for exactly this: a floating panel
+      // has to end somewhere, and it is lying on a colour the user picked,
+      // so no fill of ours can be relied on to contrast with it. Drawn
+      // OUTSIDE the clip, or the clip would eat its outer half.
+      position: DecorationPosition.foreground,
+      decoration: ShapeDecoration(
+        shape: _floatingBottomShape(
+          side: const BorderSide(color: AppColors.backdrop),
+        ),
+      ),
+      child: ClipPath(
+        key: const ValueKey<String>('floating-bottom-region'),
+        clipper: AppShapes.clipper(_floatingBottomShape()),
+        // The height is the layout's to hand out now (see
+        // [_bottomDockHeight]); the region just fills what it is given.
+        child: _buildDockHost(
+          EditorWorkspace.bottomGroupId,
+          // 이름 없이 아이콘만 (유저 확정) — the 문턱 says WHICH panel with
+          // a glyph and a tooltip. The tab's label is still its only
+          // accessibility name, so it moves into the tooltip rather than
+          // out of existence.
+          compact: true,
+          stripAtBottom: true,
+          trailing: [_bottomCollapseButton()],
+        ),
+      ),
     );
+  }
+
+  /// The silhouette of the floating region.
+  ///
+  /// A corner that lies ON the window's own edge is square: a rounded one
+  /// there would show the scaffold through the notch rather than the
+  /// artwork, which reads as a rendering fault rather than as a shape. So
+  /// the rule is about where the edges ARE, and it keeps holding when the
+  /// region gains its symmetric side inset.
+  RoundedSuperellipseBorder _floatingBottomShape({
+    BorderSide side = BorderSide.none,
+  }) {
+    const radius = Radius.circular(AppShapes.floatingPanelRadius);
+    return AppShapes.containerRadius(
+      const BorderRadius.vertical(top: radius, bottom: Radius.zero),
+      side: side,
+    );
+  }
+
+  Widget _bottomCollapseButton() {
+    return IconButton(
+      key: const ValueKey<String>('floating-bottom-collapse'),
+      tooltip: _bottomDockCollapsed
+          ? AppText.strings.panelExpandRegion
+          : AppText.strings.panelCollapseRegion,
+      iconSize: 16,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 28, height: 28),
+      style: IconButton.styleFrom(
+        tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+        shape: AppShapes.control(28),
+      ),
+      onPressed: () {
+        setState(() => _bottomDockCollapsed = !_bottomDockCollapsed);
+        _scheduleLayoutSave();
+      },
+      icon: Icon(
+        _bottomDockCollapsed
+            ? Icons.keyboard_arrow_up
+            : Icons.keyboard_arrow_down,
+      ),
+    );
+  }
+
+  /// Which panel is currently lying on the floor.
+  String? _activeFloorTabId() {
+    final sections = _layout.sectionsIn(EditorWorkspace.centerGroupId);
+    return sections.isEmpty ? null : sections.first.activeTabId;
+  }
+
+  /// The top strip's canvas/viewer switch: swap what the app is lying on.
+  ///
+  /// Selecting is the whole job when the panel is already down there, which
+  /// is the default arrangement. It is not the only arrangement — a panel
+  /// can be dragged anywhere, and a workspace saved before the floor existed
+  /// still has the viewer among the paper tabs — so a switch that only
+  /// selected would be a dead button for exactly the people whose layout
+  /// predates it. Fetching it back is what makes the switch mean the same
+  /// thing every time it is pressed.
+  void _selectFloorTab(String tabId) {
+    final sections = _layout.sectionsIn(EditorWorkspace.centerGroupId);
+    if (sections.isNotEmpty && sections.first.tabs.contains(tabId)) {
+      _mutatingLayout(() {
+        _layout.selectTab(EditorWorkspace.centerGroupId, 0, tabId);
+      });
+      return;
+    }
+    _mutatingLayout(() {
+      if (sections.isEmpty) {
+        _layout.moveTabToNewSection(
+          tabId: tabId,
+          toDockId: EditorWorkspace.centerGroupId,
+          atSectionIndex: 0,
+        );
+      } else {
+        _layout.moveTabToSection(
+          tabId: tabId,
+          toDockId: EditorWorkspace.centerGroupId,
+          toSectionIndex: 0,
+          insertIndex: sections.first.tabs.length,
+        );
+      }
+    });
   }
 
   /// The center dock hosts the canvas tab by default. Unlike the edge
@@ -1958,7 +2136,18 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         expandToFill: true,
       );
     }
-    return _buildDockHost(EditorWorkspace.centerGroupId);
+    // The floor has NO tab strip. Two reasons, and either alone would be
+    // enough: the strip would be under the panels floating on it (the left
+    // column starts at the floor's own top-left corner, so its first 30
+    // pixels are exactly where the tabs used to be), and the switch between
+    // the floor's panels has moved to the top strip, where it is reachable
+    // whatever is open.
+    //
+    // Losing the strip also takes the canvas's lock glyph and its X, and
+    // that is the protection rather than a hole in it: a surface with no
+    // grip cannot be dragged off the floor by a slip of the hand, which is
+    // what the default lock was there to prevent.
+    return _buildDockHost(EditorWorkspace.centerGroupId, chromeless: true);
   }
 
   /// OS drag-and-drop (§6-i, confirmed): wherever the drop lands, the
@@ -2007,121 +2196,183 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             .isNotEmpty;
         return Row(
           children: [
-            // The edge docks span the FULL workspace height; the bottom
-            // dock runs between them.
+            // The two tool strips are the only things that take space from
+            // the canvas. Everything else LIES ON IT.
             _buildEdgeDock(
               EditorWorkspace.toolLeftGroupId,
               EditorPanelDockSide.left,
             ),
             Expanded(
-              // The bottom dock's height is measured against THIS column,
-              // so it can be told what the window actually has to give.
               child: LayoutBuilder(
-                builder: (context, columnConstraints) => Column(
-                  children: [
-                    Expanded(
-                      child: LayoutBuilder(
-                        builder: (context, constraints) {
-                          // The side docks keep their saved extents but may
-                          // never squeeze the canvas out: scale both down
-                          // proportionally when the window can't fit them.
-                          const minCenterWidth = 120.0;
-                          var leftWidth = hasLeftDock
-                              ? _layout.dockExtent(
-                                  EditorWorkspace.leftGroupId,
-                                  fallback: EditorWorkspace.sideDockWidth,
-                                )
-                              : 0.0;
-                          var rightWidth = hasRightDock
-                              ? _layout.dockExtent(
-                                  EditorWorkspace.rightGroupId,
-                                  fallback: EditorWorkspace.sideDockWidth,
-                                )
-                              : 0.0;
-                          final splitters =
-                              (hasLeftDock ? DockEdgeSplitter.thickness : 0) +
-                              (hasRightDock ? DockEdgeSplitter.thickness : 0);
-                          final room =
-                              (constraints.maxWidth -
-                                      splitters -
-                                      minCenterWidth)
-                                  .clamp(0.0, double.infinity);
-                          final wanted = leftWidth + rightWidth;
-                          if (wanted > room && wanted > 0) {
-                            final scale = room / wanted;
-                            leftWidth *= scale;
-                            rightWidth *= scale;
-                          }
-                          return Row(
-                            children: [
-                              _buildSideDock(
-                                EditorWorkspace.leftGroupId,
-                                EditorPanelDockSide.left,
-                                width: leftWidth,
-                              ),
-                              if (hasLeftDock)
-                                DockEdgeSplitter(
-                                  key: const ValueKey<String>(
-                                    'dock-resize-left',
-                                  ),
-                                  axis: Axis.vertical,
-                                  onDragDelta: (delta) => _layout.resizeDock(
-                                    EditorWorkspace.leftGroupId,
-                                    delta,
-                                    fallback: EditorWorkspace.sideDockWidth,
-                                  ),
-                                ),
-                              Expanded(child: _buildCenterDock()),
-                              if (hasRightDock)
-                                DockEdgeSplitter(
-                                  key: const ValueKey<String>(
-                                    'dock-resize-right',
-                                  ),
-                                  axis: Axis.vertical,
-                                  onDragDelta: (delta) => _layout.resizeDock(
-                                    EditorWorkspace.rightGroupId,
-                                    -delta,
-                                    fallback: EditorWorkspace.sideDockWidth,
-                                  ),
-                                ),
-                              _buildSideDock(
-                                EditorWorkspace.rightGroupId,
-                                EditorPanelDockSide.right,
-                                width: rightWidth,
-                              ),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
-                    if (hasBottomDock)
-                      DockEdgeSplitter(
-                        key: const ValueKey<String>('dock-resize-bottom'),
-                        axis: Axis.horizontal,
-                        onDragDelta: (delta) => _layout.resizeDock(
-                          EditorWorkspace.bottomGroupId,
-                          -delta,
-                          fallback: EditorWorkspace.bottomPanelHeight,
-                          // The splitter stops where the panels stop
-                          // shrinking. Without this the drag runs on past
-                          // the floor and the tab shell's scroller — kept
-                          // only as a guard — starts cutting the bottom
-                          // rows off, which is the reported bug. Capped by
-                          // what the window has, so a tall floor in a short
-                          // window never leaves the splitter inert.
-                          minExtent: math.min(
-                            _verticalDockMinimumExtent(
-                              EditorWorkspace.bottomGroupId,
-                            ),
-                            _bottomDockCeiling(columnConstraints.maxHeight),
-                          ),
+                builder: (context, constraints) {
+                  // The side docks keep their saved extents but may never
+                  // squeeze the canvas out: scale both down proportionally
+                  // when the window can't fit them.
+                  const minCenterWidth = 120.0;
+                  var leftWidth = hasLeftDock
+                      ? _layout.dockExtent(
+                          EditorWorkspace.leftGroupId,
+                          fallback: EditorWorkspace.sideDockWidth,
+                        )
+                      : 0.0;
+                  var rightWidth = hasRightDock
+                      ? _layout.dockExtent(
+                          EditorWorkspace.rightGroupId,
+                          fallback: EditorWorkspace.sideDockWidth,
+                        )
+                      : 0.0;
+                  final splitters =
+                      (hasLeftDock ? DockEdgeSplitter.thickness : 0) +
+                      (hasRightDock ? DockEdgeSplitter.thickness : 0);
+                  final room = (constraints.maxWidth - splitters -
+                          minCenterWidth)
+                      .clamp(0.0, double.infinity);
+                  final wanted = leftWidth + rightWidth;
+                  if (wanted > room && wanted > 0) {
+                    final scale = room / wanted;
+                    leftWidth *= scale;
+                    rightWidth *= scale;
+                  }
+                  final bottomHeight = hasBottomDock
+                      ? _bottomDockHeight(constraints.maxHeight)
+                      : 0.0;
+                  // What the panels hide from the artwork. The floor reads
+                  // this and nothing else has to know it exists.
+                  final floorCover = EdgeInsets.only(
+                    left: hasLeftDock
+                        ? leftWidth + DockEdgeSplitter.thickness
+                        : 0,
+                    right: hasRightDock
+                        ? rightWidth + DockEdgeSplitter.thickness
+                        : 0,
+                    bottom: hasBottomDock
+                        ? bottomHeight + DockEdgeSplitter.thickness
+                        : 0,
+                  );
+                  // The side columns still stop at the bottom panel's top
+                  // edge, exactly as they did when they were siblings in a
+                  // Column. Running them past it is a separate rule with a
+                  // number that does not exist yet (bottomInset ≥ sideWidth).
+                  final columnBottom = hasBottomDock
+                      ? bottomHeight + DockEdgeSplitter.thickness
+                      : 0.0;
+
+                  return Stack(
+                    children: [
+                      // ★ THE FLOOR. Everything below this line is drawn on
+                      // top of the drawing.
+                      Positioned.fill(
+                        child: CanvasFloorInsets(
+                          insets: floorCover,
+                          child: _buildCenterDock(),
                         ),
                       ),
-                    _buildBottomDock(
-                      availableExtent: columnConstraints.maxHeight,
-                    ),
-                  ],
-                ),
+                      Positioned(
+                        left: 0,
+                        top: 0,
+                        bottom: columnBottom,
+                        width: hasLeftDock ? leftWidth : null,
+                        child: _buildSideDock(
+                          EditorWorkspace.leftGroupId,
+                          EditorPanelDockSide.left,
+                          width: leftWidth,
+                        ),
+                      ),
+                      if (hasLeftDock)
+                        Positioned(
+                          left: leftWidth,
+                          top: 0,
+                          bottom: columnBottom,
+                          width: DockEdgeSplitter.thickness,
+                          child: DockEdgeSplitter(
+                            key: const ValueKey<String>('dock-resize-left'),
+                            axis: Axis.vertical,
+                            onDragDelta: (delta) => _layout.resizeDock(
+                              EditorWorkspace.leftGroupId,
+                              delta,
+                              fallback: EditorWorkspace.sideDockWidth,
+                            ),
+                          ),
+                        ),
+                      Positioned(
+                        right: 0,
+                        top: 0,
+                        bottom: columnBottom,
+                        width: hasRightDock ? rightWidth : null,
+                        child: _buildSideDock(
+                          EditorWorkspace.rightGroupId,
+                          EditorPanelDockSide.right,
+                          width: rightWidth,
+                        ),
+                      ),
+                      if (hasRightDock)
+                        Positioned(
+                          right: rightWidth,
+                          top: 0,
+                          bottom: columnBottom,
+                          width: DockEdgeSplitter.thickness,
+                          child: DockEdgeSplitter(
+                            key: const ValueKey<String>('dock-resize-right'),
+                            axis: Axis.vertical,
+                            onDragDelta: (delta) => _layout.resizeDock(
+                              EditorWorkspace.rightGroupId,
+                              -delta,
+                              fallback: EditorWorkspace.sideDockWidth,
+                            ),
+                          ),
+                        ),
+                      if (hasBottomDock)
+                        Positioned(
+                          left: 0,
+                          right: 0,
+                          bottom: bottomHeight,
+                          height: DockEdgeSplitter.thickness,
+                          child: DockEdgeSplitter(
+                            key: const ValueKey<String>('dock-resize-bottom'),
+                            axis: Axis.horizontal,
+                            onDragDelta: (delta) {
+                              // Dragging the handle of a collapsed region
+                              // means "give me it back" — otherwise the
+                              // grip is live, moves nothing, and the only
+                              // way out is a button somewhere else.
+                              if (_bottomDockCollapsed) {
+                                setState(() => _bottomDockCollapsed = false);
+                                _scheduleLayoutSave();
+                              }
+                              _layout.resizeDock(
+                                EditorWorkspace.bottomGroupId,
+                                -delta,
+                                fallback: EditorWorkspace.bottomPanelHeight,
+                                // The splitter stops where the panels stop
+                                // shrinking. Without this the drag runs on
+                                // past the floor and the tab shell's
+                                // scroller — kept only as a guard — starts
+                                // cutting the bottom rows off, which is the
+                                // reported bug. Capped by what the window
+                                // has, so a tall floor in a short window
+                                // never leaves the splitter inert.
+                                minExtent: math.min(
+                                  _verticalDockMinimumExtent(
+                                    EditorWorkspace.bottomGroupId,
+                                  ),
+                                  _bottomDockCeiling(constraints.maxHeight),
+                                ),
+                              );
+                            },
+                          ),
+                        ),
+                      Positioned(
+                        left: 0,
+                        right: 0,
+                        bottom: 0,
+                        height: hasBottomDock ? bottomHeight : null,
+                        child: _buildBottomDock(
+                          availableExtent: constraints.maxHeight,
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
             ),
             _buildEdgeDock(

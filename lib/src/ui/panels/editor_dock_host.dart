@@ -139,6 +139,8 @@ class EditorDockHost extends StatelessWidget {
     this.flash,
     this.compact = false,
     this.chromeless = false,
+    this.stripAtBottom = false,
+    this.trailing,
   });
 
   final EditorPanelLayoutModel layout;
@@ -171,6 +173,14 @@ class EditorDockHost extends StatelessWidget {
   /// by the fixed tool strip, which holds one panel forever.
   final bool chromeless;
 
+  /// Moves the strip to the panel's bottom inner edge (the 문턱 of a
+  /// floating region) — see [EditorPanelTabs.stripAtBottom].
+  final bool stripAtBottom;
+
+  /// Controls belonging to the REGION rather than to a tab (collapse), put
+  /// at the far end of the strip against the window frame.
+  final List<Widget>? trailing;
+
   @override
   Widget build(BuildContext context) {
     final sections = layout.sectionsIn(dockId);
@@ -200,10 +210,16 @@ class EditorDockHost extends StatelessWidget {
           canAcceptTab: canAcceptTab,
           onTabMovedToSection: onTabMovedToSection,
           onTabMovedToNewSection: onTabMovedToNewSection,
+          stripAtBottom: stripAtBottom,
           child: EditorPanelTabs(
             groupId: dockId,
             compact: compact,
             chromeless: chromeless,
+            stripAtBottom: stripAtBottom,
+            // The region's own controls belong to the LAST section, where
+            // the strip that carries them is the one against the window
+            // frame — the same edge the threshold is on.
+            trailing: i == sections.length - 1 ? trailing : null,
             tabs: resolved[i],
             activeTabId: sections[i].activeTabId,
             onTabSelected: (tabId) => onTabSelected(i, tabId),
@@ -262,12 +278,14 @@ class _SectionDropOverlay extends StatelessWidget {
     required this.canAcceptTab,
     required this.onTabMovedToSection,
     required this.onTabMovedToNewSection,
+    required this.stripAtBottom,
     required this.child,
   });
 
   final String dockId;
   final int sectionIndex;
   final int tabCount;
+  final bool stripAtBottom;
   final ValueListenable<EditorPanelTabDragData?> draggingTab;
   final bool Function(EditorPanelTabDragData data) canAcceptTab;
   final void Function(
@@ -292,12 +310,13 @@ class _SectionDropOverlay extends StatelessWidget {
             child,
             if (eligible)
               // The strip keeps its own precise per-tab targets; the
-              // overlay covers only the content region below it.
+              // overlay covers only the content region beside it — which
+              // side that is follows the strip.
               Positioned(
                 left: 0,
                 right: 0,
-                top: EditorPanelTabs.stripHeight,
-                bottom: 0,
+                top: stripAtBottom ? 0 : EditorPanelTabs.stripHeight,
+                bottom: stripAtBottom ? EditorPanelTabs.stripHeight : 0,
                 child: _DropBands(
                   dockId: dockId,
                   sectionIndex: sectionIndex,

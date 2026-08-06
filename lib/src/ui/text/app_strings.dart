@@ -537,6 +537,8 @@ class AppStrings {
   String get panelTimeline => _s('panelTimeline');
   String get panelTimesheet => _s('panelTimesheet');
   String get panelToolLibrary => _s('panelToolLibrary');
+  String get panelCollapseRegion => _s('panelCollapseRegion');
+  String get panelExpandRegion => _s('panelExpandRegion');
   String get panelToolSettings => _s('panelToolSettings');
   String get panelTools => _s('panelTools');
 
@@ -1105,6 +1107,8 @@ class AppStrings {
     'panelTimeline': 'Timeline',
     'panelTimesheet': 'Timesheet',
     'panelToolLibrary': 'Tool library',
+    'panelCollapseRegion': 'Collapse',
+    'panelExpandRegion': 'Expand',
     'panelToolSettings': 'Tool settings',
     'panelTools': 'Tools',
     'onionBefore': 'Before',
@@ -1792,6 +1796,8 @@ class AppStrings {
     'panelTimeline': 'タイムライン',
     'panelTimesheet': 'タイムシート',
     'panelToolLibrary': 'ツールライブラリ',
+    'panelCollapseRegion': '折りたたむ',
+    'panelExpandRegion': '広げる',
     'panelToolSettings': 'ツール設定',
     'panelTools': 'ツール',
     'onionBefore': '前',
@@ -2475,6 +2481,8 @@ class AppStrings {
     'panelTimeline': '타임라인',
     'panelTimesheet': '타임시트',
     'panelToolLibrary': '도구 라이브러리',
+    'panelCollapseRegion': '접기',
+    'panelExpandRegion': '펼치기',
     'panelToolSettings': '도구 설정',
     'panelTools': '도구',
     'onionBefore': '이전',
@@ -3183,6 +3191,8 @@ class AppStrings {
     'panelTimeline': 'Timeline',
     'panelTimesheet': 'Feuille de temps',
     'panelToolLibrary': "Bibliothèque d'outils",
+    'panelCollapseRegion': 'Réduire',
+    'panelExpandRegion': 'Développer',
     'panelToolSettings': "Réglages de l'outil",
     'panelTools': 'Outils',
     'onionBefore': 'Avant',
@@ -3847,6 +3857,8 @@ class AppStrings {
     'panelTimeline': '时间轴',
     'panelTimesheet': '摄影表',
     'panelToolLibrary': '工具库',
+    'panelCollapseRegion': '折叠',
+    'panelExpandRegion': '展开',
     'panelToolSettings': '工具设置',
     'panelTools': '工具',
     'onionBefore': '之前',

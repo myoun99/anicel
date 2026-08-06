@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'brush_tool_state.dart';
 import '../text/app_strings.dart';
+import '../theme/app_theme.dart';
 
 /// The Photoshop/Clip-Studio style tool switcher (brush ⇄ eraser): a
 /// dockable PANEL whose home is a slim vertical edge dock, so it lives on
@@ -189,7 +190,9 @@ class RailButton extends StatelessWidget {
         backgroundColor: selected
             ? colorScheme.surfaceContainerHigh
             : Colors.transparent,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(4)),
+        // 앱에 버튼은 한 종류 (유저 확정): this square is it, so it wears the
+        // app's one corner rather than a radius of its own.
+        shape: AppShapes.control(ToolsPanel.buttonExtent),
         // The 42px box IS the tap target (R9 #17) — M3's automatic 48px
         // inflation is what made the rail need 72.
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,

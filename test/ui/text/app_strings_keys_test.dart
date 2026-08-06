@@ -286,6 +286,8 @@ void main() {
     'panelTimeline': (s) => s.panelTimeline,
     'panelTimesheet': (s) => s.panelTimesheet,
     'panelToolLibrary': (s) => s.panelToolLibrary,
+    'panelCollapseRegion': (s) => s.panelCollapseRegion,
+    'panelExpandRegion': (s) => s.panelExpandRegion,
     'panelToolSettings': (s) => s.panelToolSettings,
     'panelTools': (s) => s.panelTools,
     'onionBefore': (s) => s.onionBefore,

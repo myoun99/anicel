@@ -163,6 +163,15 @@ abstract final class AppShapes {
     side: side,
   );
 
+  /// A container whose corners are not all the same — a region that floats
+  /// over the artwork on some edges and lies on the window's own edge on
+  /// others, where a rounded corner would show the scaffold through the
+  /// notch instead of the drawing.
+  static RoundedSuperellipseBorder containerRadius(
+    BorderRadius radius, {
+    BorderSide side = BorderSide.none,
+  }) => RoundedSuperellipseBorder(borderRadius: radius, side: side);
+
   /// The clipper for [shape].
   ///
   /// Clipping a superellipse goes through [ShapeBorderClipper] and NOT

@@ -458,6 +458,10 @@ class EditorTopStrip extends StatelessWidget {
           icon: Icons.settings_outlined,
           entriesBuilder: () => _settingsEntries(context),
         ),
+        const SizedBox(width: 6),
+        const _StripGroupRule(),
+        const SizedBox(width: 6),
+        _FloorSwitch(panelsMenu: panelsMenu),
         Expanded(
           child: Center(
             child: Text(
@@ -799,6 +803,48 @@ class _ColorButton extends StatelessWidget {
 /// A strip button that opens a popover — the same square the tool rail
 /// wears, because the strip IS the rail turned sideways (유저 확정: 상단
 /// 띠는 사이드 띠와 같은 디자인).
+/// The FLOOR switch (유저 확정): which panel the whole app is lying on.
+///
+/// Not a panel-visibility toggle — the canvas and the media viewer are both
+/// full-page surfaces you look AT, and only one of them can be the bottom
+/// layer, so this reads as a two-position switch rather than as two things
+/// you can open. Its label and icon come from each panel's own tab
+/// definition, so there is no second place for them to drift.
+class _FloorSwitch extends StatelessWidget {
+  const _FloorSwitch({required this.panelsMenu});
+
+  final WorkspacePanelsMenuController panelsMenu;
+
+  @override
+  Widget build(BuildContext context) {
+    return ListenableBuilder(
+      listenable: panelsMenu,
+      builder: (context, _) {
+        final tabs = panelsMenu.floorTabs;
+        if (tabs.isEmpty) {
+          // The workspace has not attached yet (first frame, or a test that
+          // mounts the strip alone).
+          return const SizedBox.shrink();
+        }
+        final active = panelsMenu.floorTabId;
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (final tab in tabs)
+              RailButton(
+                keyValue: 'top-strip-floor-${tab.tabId}',
+                tooltip: tab.label,
+                icon: tab.icon,
+                selected: tab.tabId == active,
+                onPressed: () => panelsMenu.selectFloorTab(tab.tabId),
+              ),
+          ],
+        );
+      },
+    );
+  }
+}
+
 class _StripPopoverButton extends StatelessWidget {
   const _StripPopoverButton({
     required this.keyValue,

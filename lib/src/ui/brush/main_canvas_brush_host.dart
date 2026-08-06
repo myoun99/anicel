@@ -24,6 +24,7 @@ import '../canvas/active_stroke_overlay.dart';
 import '../canvas/layer_pose_paint.dart';
 import '../input/app_input_settings.dart' show AppInput;
 import 'brush_canvas_panel.dart';
+import 'canvas_floor_insets.dart';
 import 'brush_editor_selection.dart';
 import 'canvas_selection_commands.dart';
 import 'canvas_view_commands.dart';
@@ -295,6 +296,11 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
   ) {
     return BrushCanvasPanel(
       key: const ValueKey<String>('main-canvas-brush-host'),
+      // Null unless this host is lying on the app's floor — which is a
+      // question about WHERE it is mounted, so the tree answers it. A host
+      // opened in a rail column or the bottom panel is simply not under the
+      // provider and keeps the arithmetic it has always had.
+      floorCover: CanvasFloorInsets.maybeOf(context),
       coordinator: hasEditableFrame ? coordinator : null,
       availableFrameKeys: _frameKeys,
       cacheInvalidationSink: _cacheInvalidationSink,

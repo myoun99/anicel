@@ -111,6 +111,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.contentOverride,
     this.fitFocusRect,
     this.visibleInsets = EdgeInsets.zero,
+    this.floorCover,
     this.autoFrame,
     this.contentStrokeActive,
     this.sampleColorAt,
@@ -248,6 +249,20 @@ class BrushCanvasPanel extends StatefulWidget {
   /// Zero — the default, and everything the app passes today — makes every
   /// framing verb reduce to the arithmetic it had before this existed.
   final EdgeInsets visibleInsets;
+
+  /// Non-null when this panel is the app's FLOOR: the canvas fills the whole
+  /// box, the panels floating on it cover these edges, and the shell's own
+  /// three chrome pieces float too rather than taking space out of the box.
+  ///
+  /// This is the cover from the PANELS only. The shell's chrome hides
+  /// artwork exactly the way a panel does, but only the panel knows how
+  /// thick its own chrome is, so it adds [floorChromeInsets] itself —
+  /// one number, stated in one place, instead of a caller reconstructing it.
+  final EdgeInsets? floorCover;
+
+  /// What the shell's own chrome hides once it floats.
+  static const EdgeInsets floorChromeInsets =
+      _CanvasEditorPanelShell.floatingChromeInsets;
 
   /// Playback-follow reframing: when the request's token changes between
   /// updates the panel reframes onto its rect (see
@@ -844,6 +859,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               actions: widget.statusStripActions,
               rightStripBar: _memoizedRightStripBar(),
               bottomBar: _memoizedBottomBar(),
+              // The chrome floats INSIDE what the panels left over.
+              floatingChromeCover: widget.floorCover,
               child: LayoutBuilder(
                 builder: (context, viewportConstraints) {
                   final viewportSize = Size(
@@ -1433,12 +1450,54 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     if (_editorViewportSize == size) {
       return;
     }
+    final previous = _editorViewportSize;
+    final insets = _framingInsets;
+    // Both windows measured with the SAME cover, so the delta below is the
+    // BOX's doing and nothing else. A cover that changed at the same time
+    // is deliberately not counted — see [_reanchorAfterBoxChange].
+    final before = previous == null ? null : canvasVisibleRect(previous, insets);
     _editorViewportSize = size;
+    final after = canvasVisibleRect(size, insets);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (mounted) {
-        setState(() {});
+      if (!mounted) {
+        return;
       }
+      if (before != null) {
+        _reanchorAfterBoxChange(before, after);
+      }
+      setState(() {});
     });
+  }
+
+  /// Keeps what you are looking at where you are looking when the BOX
+  /// changes size.
+  ///
+  /// Pan is a pure screen-space translation applied after zoom, rotation and
+  /// flip, so a window whose centre moved by a delta is answered by moving
+  /// pan by exactly that delta — nothing has to be unprojected.
+  ///
+  /// Only the FLOOR does this, and only for the box. Two deliberate limits:
+  ///
+  ///  * A docked panel has always let the artwork sit still against its
+  ///    top-left corner, and nothing is asking it to change. The floor is the
+  ///    one surface that grows by hundreds of pixels the moment a dock opens
+  ///    or the window resizes, which is where "the drawing walked into the
+  ///    corner" comes from.
+  ///  * A COVER change is left alone on purpose. When a panel opens over the
+  ///    canvas the artwork does not move on screen — only the window onto it
+  ///    shrinks — and sliding the picture out from under a panel the user
+  ///    just opened, or shifting it on every frame of a splitter drag, is a
+  ///    motion nobody asked for.
+  void _reanchorAfterBoxChange(Rect before, Rect after) {
+    if (widget.floorCover == null) {
+      return;
+    }
+    final dx = after.center.dx - before.center.dx;
+    final dy = after.center.dy - before.center.dy;
+    if (dx == 0 && dy == 0) {
+      return;
+    }
+    _setViewport(_viewport.translated(dx: dx, dy: dy));
   }
 
   void _setViewport(CanvasViewport viewport) {
@@ -1502,10 +1561,23 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         );
   }
 
+  /// What is hidden from the artwork, whoever is hiding it.
+  ///
+  /// Docked, that is only what the caller passed. On the FLOOR the shell's
+  /// own chrome lies on the canvas too, and a bar that covers artwork is a
+  /// cover — the same edge arithmetic, not a special case.
+  EdgeInsets get _framingInsets {
+    final cover = widget.floorCover;
+    if (cover == null) {
+      return widget.visibleInsets;
+    }
+    return cover + BrushCanvasPanel.floorChromeInsets;
+  }
+
   /// The window you LOOK THROUGH, in layout coordinates. Every verb that
   /// frames the artwork wants this one — see [canvasVisibleRect].
   Rect _resolvedVisibleRect() =>
-      canvasVisibleRect(_resolvedEditorViewportSize(), widget.visibleInsets);
+      canvasVisibleRect(_resolvedEditorViewportSize(), _framingInsets);
 
   void _resetView() {
     _setViewport(CanvasViewport());
@@ -1980,12 +2052,24 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// width IS that bar's hit lane.
   static const double rightStripWidth = AppScrollbarLane.medium;
 
+  /// What the shell's own chrome hides from the artwork when it FLOATS.
+  ///
+  /// Docked, these three pieces take their space out of the panel and the
+  /// canvas never sits under them. On the floor they lie on the canvas, so
+  /// a framing verb has to count them exactly like it counts the timeline.
+  static const EdgeInsets floatingChromeInsets = EdgeInsets.only(
+    top: statusStripHeight,
+    right: rightStripWidth,
+    bottom: _CanvasViewportBottomBar.height,
+  );
+
   const _CanvasEditorPanelShell({
     required this.title,
     required this.child,
     required this.bottomBar,
     required this.rightStripBar,
     this.actions = const <Widget>[],
+    this.floatingChromeCover,
   });
 
   final String title;
@@ -1998,8 +2082,160 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// the title text ellipsizes first when the panel narrows.
   final List<Widget> actions;
 
+  /// Non-null when this shell is the app's FLOOR.
+  ///
+  /// The canvas then fills the whole box — panels lie ON it, they do not
+  /// take space from it — and these three chrome pieces come off the box's
+  /// edges and float, pulled in by this much so they hug the part of the
+  /// floor you can still see. A bottom bar that stayed on the box's edge
+  /// would be under the always-open timeline, and it is the only home the
+  /// fit, 1:1, zoom, straighten and flip controls have.
+  final EdgeInsets? floatingChromeCover;
+
+  Widget _statusStrip(ColorScheme colorScheme) => ClipRect(
+    child: Container(
+      key: const ValueKey<String>('canvas-editor-panel-status-strip'),
+      alignment: Alignment.centerLeft,
+      padding: const EdgeInsets.symmetric(horizontal: 10),
+      decoration: BoxDecoration(
+        color: colorScheme.surfaceContainerHighest,
+        border: Border(bottom: BorderSide(color: colorScheme.outlineVariant)),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(
+                fontSize: 11,
+                color: colorScheme.onSurfaceVariant,
+              ),
+            ),
+          ),
+          ...actions,
+        ],
+      ),
+    ),
+  );
+
+  Widget _rightStrip(ColorScheme colorScheme) => Container(
+    key: const ValueKey<String>('canvas-editor-panel-right-strip'),
+    width: rightStripWidth,
+    alignment: Alignment.center,
+    // A lane is a GROOVE, not a panel: it carries no border, so with one
+    // chrome fill it would dissolve into the shell around it and the thumb
+    // would ride on nothing.
+    //
+    // But no fill can win here on its own: the stage beside it is the
+    // PASTEBOARD, a colour the user picks, and a user who picks this one
+    // erases the lane. So the stage side gets the hairline the status strip
+    // and the bottom bar already draw — the frame was three quarters drawn.
+    // foregroundDecoration, not decoration: Container asserts on color +
+    // decoration together, and a border there would inset the child and
+    // break the contract that this strip's width IS the bar's hit lane.
+    foregroundDecoration: BoxDecoration(
+      border: Border(left: BorderSide(color: colorScheme.outlineVariant)),
+    ),
+    color: colorScheme.surfaceContainerLowest,
+    child: rightStripBar,
+  );
+
+  Widget _bottomBarFrame(ColorScheme colorScheme) => DecoratedBox(
+    key: const ValueKey<String>('canvas-editor-panel-bottom-bar'),
+    decoration: BoxDecoration(
+      color: colorScheme.surfaceContainerHighest,
+      border: Border(top: BorderSide(color: colorScheme.outlineVariant)),
+    ),
+    child: bottomBar,
+  );
+
+  /// The floor: canvas everywhere, chrome floating over its visible part.
+  Widget _buildFloor(BuildContext context, EdgeInsets cover) {
+    final colorScheme = Theme.of(context).colorScheme;
+    return Stack(
+      key: const ValueKey<String>('canvas-editor-panel-shell'),
+      children: [
+        // Nothing is meant to show through — the canvas paints its own
+        // backdrop over the whole box — but the floor is the one surface
+        // with no panel behind it, so it states its own floor colour rather
+        // than borrowing whatever the route happens to be sitting on.
+        Positioned.fill(
+          child: ColoredBox(color: colorScheme.surfaceContainerLowest),
+        ),
+        Positioned.fill(
+          child: KeyedSubtree(
+            key: const ValueKey<String>('canvas-editor-panel-content'),
+            child: child,
+          ),
+        ),
+        Positioned(
+          left: cover.left,
+          top: cover.top,
+          right: cover.right,
+          bottom: cover.bottom,
+          child: LayoutBuilder(
+            builder: (context, constraints) {
+              // Same yielding as the docked path: a window too short for
+              // both bars gives up the status line before the view
+              // controls, and the two share what is left rather than
+              // overflowing. Reachable when the user drags the timeline
+              // down to the ceiling in an already-short window.
+              final room = constraints.maxHeight.clamp(0.0, double.infinity);
+              final bottom = _CanvasViewportBottomBar.height
+                  .clamp(0.0, room)
+                  .toDouble();
+              final status = statusStripHeight
+                  .clamp(0.0, room - bottom)
+                  .toDouble();
+              return Column(
+                children: [
+                  SizedBox(height: status, child: _statusStrip(colorScheme)),
+                  // The hole in the middle of the chrome. An empty SizedBox
+                  // answers no hit test, so a stroke aimed between the bars
+                  // reaches the canvas underneath instead of dying here.
+                  const Expanded(
+                    child: Row(
+                      children: [
+                        Expanded(child: SizedBox.expand()),
+                        SizedBox(width: rightStripWidth),
+                      ],
+                    ),
+                  ),
+                  SizedBox(
+                    height: bottom,
+                    child: ClipRect(
+                      child: OverflowBox(
+                        alignment: Alignment.topCenter,
+                        minHeight: _CanvasViewportBottomBar.height,
+                        maxHeight: _CanvasViewportBottomBar.height,
+                        child: _bottomBarFrame(colorScheme),
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
+          ),
+        ),
+        // The vertical lane rides beside the hole, full height between the
+        // two bars, so its travel matches what you can see.
+        Positioned(
+          top: cover.top + statusStripHeight,
+          right: cover.right,
+          bottom: cover.bottom + _CanvasViewportBottomBar.height,
+          child: _rightStrip(colorScheme),
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    final cover = floatingChromeCover;
+    if (cover != null) {
+      return _buildFloor(context, cover);
+    }
     final colorScheme = Theme.of(context).colorScheme;
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -2032,39 +2268,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              SizedBox(
-                height: statusHeight,
-                child: ClipRect(
-                  child: Container(
-                    key: const ValueKey<String>(
-                      'canvas-editor-panel-status-strip',
-                    ),
-                    alignment: Alignment.centerLeft,
-                    padding: const EdgeInsets.symmetric(horizontal: 10),
-                    decoration: BoxDecoration(
-                      color: colorScheme.surfaceContainerHighest,
-                      border: Border(
-                        bottom: BorderSide(color: colorScheme.outlineVariant),
-                      ),
-                    ),
-                    child: Row(
-                      children: [
-                        Expanded(
-                          child: Text(
-                            title,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 11,
-                              color: colorScheme.onSurfaceVariant,
-                            ),
-                          ),
-                        ),
-                        ...actions,
-                      ],
-                    ),
-                  ),
-                ),
-              ),
+              SizedBox(height: statusHeight, child: _statusStrip(colorScheme)),
               SizedBox(
                 height: contentHeight,
                 child: Row(
@@ -2082,33 +2286,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                         child: child,
                       ),
                     ),
-                    Container(
-                      key: const ValueKey<String>(
-                        'canvas-editor-panel-right-strip',
-                      ),
-                      width: rightStripWidth,
-                      alignment: Alignment.center,
-                      // A lane is a GROOVE, not a panel: it carries no border,
-                      // so with one chrome fill it would dissolve into the
-                      // shell around it and the thumb would ride on nothing.
-                      //
-                      // But no fill can win here on its own: the stage beside
-                      // it is the PASTEBOARD, a colour the user picks, and a
-                      // user who picks this one erases the lane. So the stage
-                      // side gets the hairline the status strip and the bottom
-                      // bar already draw — the frame was three quarters drawn.
-                      // foregroundDecoration, not decoration: Container
-                      // asserts on color + decoration together, and a border
-                      // there would inset the child and break the contract
-                      // that this strip's width IS the bar's hit lane.
-                      foregroundDecoration: BoxDecoration(
-                        border: Border(
-                          left: BorderSide(color: colorScheme.outlineVariant),
-                        ),
-                      ),
-                      color: colorScheme.surfaceContainerLowest,
-                      child: rightStripBar,
-                    ),
+                    _rightStrip(colorScheme),
                   ],
                 ),
               ),
@@ -2123,20 +2301,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                         maxWidth: bottomConstraints.maxWidth,
                         minHeight: _CanvasViewportBottomBar.height,
                         maxHeight: _CanvasViewportBottomBar.height,
-                        child: DecoratedBox(
-                          key: const ValueKey<String>(
-                            'canvas-editor-panel-bottom-bar',
-                          ),
-                          decoration: BoxDecoration(
-                            color: colorScheme.surfaceContainerHighest,
-                            border: Border(
-                              top: BorderSide(
-                                color: colorScheme.outlineVariant,
-                              ),
-                            ),
-                          ),
-                          child: bottomBar,
-                        ),
+                        child: _bottomBarFrame(colorScheme),
                       );
                     },
                   ),

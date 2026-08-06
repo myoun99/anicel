@@ -1,9 +1,14 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 
 /// One entry of the AppBar's Panels menu.
 typedef WorkspacePanelEntry = ({String tabId, String label, bool visible});
+
+/// One choice of the top strip's FLOOR switch. Label and icon come from the
+/// panel's own tab definition rather than from a second set of strings, so
+/// the switch and the panel can never disagree about what a thing is called.
+typedef WorkspaceFloorTab = ({String tabId, String label, IconData icon});
 
 /// Bridges the AppBar's Panels menu and the workspace: the workspace
 /// attaches its live panel catalog + a visibility toggler; the menu widget
@@ -40,6 +45,23 @@ class WorkspacePanelsMenuController extends ChangeNotifier {
   bool Function()? _toolRailOnRight;
   void Function(bool onRight)? _toolRailMover;
 
+  /// Which panel is lying on the FLOOR — the bottom layer the artwork or a
+  /// media page is drawn on, under everything else the shell floats.
+  ///
+  /// The top strip's canvas/viewer pair is a switch for exactly this, and it
+  /// lives above the workspace in the tree, so it asks through the same
+  /// bridge the Panels menu already uses rather than growing a second one.
+  String? get floorTabId => _floorTabId?.call();
+
+  /// The panels that may lie on the floor, in strip order.
+  List<WorkspaceFloorTab> get floorTabs => _floorTabs?.call() ?? const [];
+
+  void selectFloorTab(String tabId) => _floorTabSelector?.call(tabId);
+
+  String? Function()? _floorTabId;
+  List<WorkspaceFloorTab> Function()? _floorTabs;
+  void Function(String tabId)? _floorTabSelector;
+
   /// Called by the workspace; [relay] (the layout model) drives menu
   /// refreshes.
   void attach({
@@ -49,6 +71,9 @@ class WorkspacePanelsMenuController extends ChangeNotifier {
     void Function()? layoutReset,
     bool Function()? toolRailOnRight,
     void Function(bool onRight)? toolRailMover,
+    String? Function()? floorTabId,
+    List<WorkspaceFloorTab> Function()? floorTabs,
+    void Function(String tabId)? floorTabSelector,
   }) {
     _relay?.removeListener(notifyListeners);
     _entriesProvider = entriesProvider;
@@ -56,6 +81,9 @@ class WorkspacePanelsMenuController extends ChangeNotifier {
     _layoutReset = layoutReset;
     _toolRailOnRight = toolRailOnRight;
     _toolRailMover = toolRailMover;
+    _floorTabId = floorTabId;
+    _floorTabs = floorTabs;
+    _floorTabSelector = floorTabSelector;
     _relay = relay..addListener(notifyListeners);
     // Attach runs inside the workspace's initState — mid-build. The menu
     // strip sits ABOVE the workspace in the tree and is already built, so
@@ -76,5 +104,8 @@ class WorkspacePanelsMenuController extends ChangeNotifier {
     _layoutReset = null;
     _toolRailOnRight = null;
     _toolRailMover = null;
+    _floorTabId = null;
+    _floorTabs = null;
+    _floorTabSelector = null;
   }
 }
