@@ -23,6 +23,7 @@ class PropertyKey<T> {
   const PropertyKey(
     this.value, {
     this.interpolation = PropertyKeyInterpolation.linear,
+    this.name,
   });
 
   final T value;
@@ -30,18 +31,43 @@ class PropertyKey<T> {
   /// Interpolation of the segment LEAVING this key.
   final PropertyKeyInterpolation interpolation;
 
+  /// The key's NAME, and with it a link: keys sharing a name inside one
+  /// naming space hold the same value, exactly the way frame names mean
+  /// "the same drawing" (user 2026-07-30). Null is the ordinary unnamed
+  /// key — duplicates are free and nothing is shared.
+  ///
+  /// Lives on the key rather than in a registry because the link is
+  /// DERIVED from the name; there is no identity to keep somewhere else.
+  final String? name;
+
+  PropertyKey<T> copyWith({
+    T? value,
+    PropertyKeyInterpolation? interpolation,
+    String? Function()? name,
+  }) {
+    return PropertyKey(
+      value ?? this.value,
+      interpolation: interpolation ?? this.interpolation,
+      // A closure so a key can be UNnamed (the plain-nullable convention
+      // cannot say "clear it").
+      name: name == null ? this.name : name(),
+    );
+  }
+
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is PropertyKey<T> &&
           other.value == value &&
-          other.interpolation == interpolation;
+          other.interpolation == interpolation &&
+          other.name == name;
 
   @override
-  int get hashCode => Object.hash(value, interpolation);
+  int get hashCode => Object.hash(value, interpolation, name);
 
   @override
-  String toString() => 'PropertyKey($value, $interpolation)';
+  String toString() =>
+      'PropertyKey($value, $interpolation${name == null ? '' : ', $name'})';
 }
 
 /// A single animated property, keyed independently of every other property
@@ -74,10 +100,56 @@ class PropertyTrack<T> {
     return PropertyTrack(
       keys: {
         ...keys,
-        frameIndex: PropertyKey(value, interpolation: interpolation),
+        frameIndex: PropertyKey(
+          value,
+          interpolation: interpolation,
+          // A name survives value edits: it is the key's identity, not
+          // part of what it holds.
+          name: keys[frameIndex]?.name,
+        ),
       },
     );
   }
+
+  /// [frameIndex]'s key with a new [name] (null clears it). A no-op when
+  /// no key sits there.
+  PropertyTrack<T> withKeyName(int frameIndex, String? name) {
+    final key = keys[frameIndex];
+    if (key == null) {
+      return this;
+    }
+    return PropertyTrack(
+      keys: {...keys, frameIndex: key.copyWith(name: () => name)},
+    );
+  }
+
+  /// Every key called [name] set to [value] — the link "same name, same
+  /// value" applied to this track.
+  ///
+  /// The write that starts a propagation runs this over its own track and
+  /// over every other track sharing the naming space, so a named key edited
+  /// in one place moves everywhere it appears.
+  PropertyTrack<T> withNamedValue(String name, T value) {
+    var changed = false;
+    final next = <int, PropertyKey<T>>{};
+    for (final entry in keys.entries) {
+      final key = entry.value;
+      if (key.name == name && key.value != value) {
+        next[entry.key] = key.copyWith(value: value);
+        changed = true;
+      } else {
+        next[entry.key] = key;
+      }
+    }
+    return changed ? PropertyTrack(keys: next) : this;
+  }
+
+  /// The names this track uses, in frame order — what a naming space asks
+  /// for when it checks whether a name is already taken.
+  Set<String> get keyNames => {
+    for (final key in keys.values)
+      if (key.name != null) key.name!,
+  };
 
   PropertyTrack<T> withoutKey(int frameIndex) {
     final next = Map<int, PropertyKey<T>>.of(keys)..remove(frameIndex);
@@ -127,6 +199,7 @@ class PropertyTrack<T> {
         'value': encodeValue(entry.value.value),
         if (entry.value.interpolation != PropertyKeyInterpolation.linear)
           'interpolation': entry.value.interpolation.toJson(),
+        if (entry.value.name != null) 'name': entry.value.name,
       },
   ];
 
@@ -146,6 +219,7 @@ class PropertyTrack<T> {
         interpolation: PropertyKeyInterpolation.fromJson(
           entry['interpolation'],
         ),
+        name: entry['name'] as String?,
       );
     }
     return PropertyTrack(keys: keys);

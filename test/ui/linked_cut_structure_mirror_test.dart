@@ -230,6 +230,67 @@ void main() {
     expect(counterpartIn(pair.source, row).transformEnabled, isTrue);
   });
 
+  test('a NAMED key carries its value across 겸용 cuts — the way a shape-only '
+      'mirror leaves open', () {
+    final radiusId = effectParametersOf(EffectKind.blur).first.id;
+    final pair = makeLinkedPair();
+    session.addEffectToActiveLayer(EffectKind.blur);
+    final row = session.activeLayer!;
+    final effectId = row.effects.single.id;
+
+    // Each cut authors its OWN key on the shared blur (values are lane
+    // content, so the shape mirror never carried them).
+    void putKey(CutId cutId, double value) {
+      session.selectCut(cutId);
+      final layer = counterpartIn(cutId, row);
+      final effect = layer.effects.single;
+      final parameter = effect.parameters[radiusId]!;
+      session.updateLayerEffects(layer.id, [
+        effect.withParameter(
+          radiusId,
+          EffectParameter(
+            value: parameter.value,
+            track: parameter.track.withKey(0, value),
+          ),
+        ),
+      ]);
+    }
+
+    void nameKey(CutId cutId) {
+      session.selectCut(cutId);
+      session.setEffectKeyName(
+        layerId: counterpartIn(cutId, row).id,
+        effectId: effectId,
+        parameterId: radiusId,
+        frameIndex: 0,
+        name: 'A',
+      );
+    }
+
+    putKey(pair.linked, 3);
+    putKey(pair.source, 5);
+    expect(
+      counterpartIn(
+        pair.source,
+        row,
+      ).effects.single.parameters[radiusId]!.track.keyAt(0)!.value,
+      5,
+      reason: 'values start out independent',
+    );
+
+    nameKey(pair.source);
+    nameKey(pair.linked);
+
+    expect(
+      counterpartIn(
+        pair.source,
+        row,
+      ).effects.single.parameters[radiusId]!.track.keyAt(0)!.value,
+      3,
+      reason: 'joining the name adopts the joining key\'s number',
+    );
+  });
+
   test('removing an effect removes it from the sibling too', () {
     final pair = makeLinkedPair();
     session.addEffectToActiveLayer(EffectKind.blur);

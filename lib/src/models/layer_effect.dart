@@ -477,6 +477,109 @@ List<ResolvedLayerEffect> resolveLayerEffectsAt({
 bool resolvedEffectsSpreadPixels(List<ResolvedLayerEffect> effects) =>
     effects.any((effect) => effect.kind.spreadsPixels);
 
+/// A NAMED key whose value moved in a chain edit — what the "same name,
+/// same value" link has to carry to every other use of that name.
+///
+/// The naming space is one PARAMETER of one effect: Blur A's radius and
+/// Blur B's radius are different properties, so a name means nothing
+/// across them. Linked rows share effect ids by construction, which is
+/// what lets the same space span 겸용 cuts.
+class NamedEffectKeyChange {
+  const NamedEffectKeyChange({
+    required this.effectId,
+    required this.parameterId,
+    required this.name,
+    required this.value,
+  });
+
+  final EffectId effectId;
+  final String parameterId;
+  final String name;
+  final double value;
+}
+
+/// The named keys whose VALUE differs between [before] and [after] — the
+/// propagation a chain write starts.
+List<NamedEffectKeyChange> namedEffectKeyChanges(
+  List<LayerEffect> before,
+  List<LayerEffect> after,
+) {
+  if (before.isEmpty || after.isEmpty) {
+    return const [];
+  }
+  final previous = {for (final effect in before) effect.id: effect};
+  final changes = <NamedEffectKeyChange>[];
+  for (final effect in after) {
+    final old = previous[effect.id];
+    if (old == null) {
+      continue;
+    }
+    for (final entry in effect.parameters.entries) {
+      final oldTrack = old.parameters[entry.key]?.track;
+      if (oldTrack == null) {
+        continue;
+      }
+      for (final key in entry.value.track.keys.entries) {
+        final name = key.value.name;
+        if (name == null) {
+          continue;
+        }
+        final oldKey = oldTrack.keys[key.key];
+        // A rename counts as a change even at the same value: joining a
+        // name means adopting THIS key's number everywhere that name
+        // appears, which is the "합칠까요?" the dialog confirms.
+        if (oldKey != null &&
+            oldKey.value == key.value.value &&
+            oldKey.name == name) {
+          continue;
+        }
+        changes.add(
+          NamedEffectKeyChange(
+            effectId: effect.id,
+            parameterId: entry.key,
+            name: name,
+            value: key.value.value,
+          ),
+        );
+      }
+    }
+  }
+  return changes;
+}
+
+/// [effects] with every key carrying a change's name — in that change's own
+/// parameter — set to its value. The other half of the link.
+List<LayerEffect> effectsWithNamedValues(
+  List<LayerEffect> effects,
+  List<NamedEffectKeyChange> changes,
+) {
+  if (changes.isEmpty || effects.isEmpty) {
+    return effects;
+  }
+  var result = effects;
+  for (final change in changes) {
+    final index = result.indexWhere((effect) => effect.id == change.effectId);
+    if (index == -1) {
+      continue;
+    }
+    final effect = result[index];
+    final parameter = effect.parameters[change.parameterId];
+    if (parameter == null) {
+      continue;
+    }
+    final track = parameter.track.withNamedValue(change.name, change.value);
+    if (track == parameter.track) {
+      continue;
+    }
+    result = [...result]
+      ..[index] = effect.withParameter(
+        change.parameterId,
+        EffectParameter(value: parameter.value, track: track),
+      );
+  }
+  return result;
+}
+
 /// [shape]'s chain STRUCTURE — which effects, in what order, each on or
 /// off — laid over [onto]'s own parameter values and keyframe tracks.
 ///

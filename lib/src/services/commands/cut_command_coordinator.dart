@@ -1229,6 +1229,11 @@ class CutCommandCoordinator {
       cutId: cutId,
       layerId: layerId,
     );
+    // "Same name, same value": a named key moved by this write drags every
+    // other key of that name along, here and in the siblings. That is how
+    // a value crosses cuts at all now that chains mirror only their shape.
+    final namedChanges = namedEffectKeyChanges(layer.effects, effects);
+    final authored = effectsWithNamedValues(effects, namedChanges);
     return <Command>[
       for (final target in targets)
         ...() {
@@ -1238,10 +1243,14 @@ class CutCommandCoordinator {
           ).effects;
           final isSource = target.cutId == cutId && target.layerId == layerId;
           // The source takes the write as authored; a sibling takes only
-          // the shape unless its kind mirrors values too.
+          // the shape unless its kind mirrors values too — plus whatever
+          // the named links carry.
           final next = isSource || mirrorsValuesToo
-              ? effects
-              : effectChainWithSharedShape(effects, onto: current);
+              ? authored
+              : effectsWithNamedValues(
+                  effectChainWithSharedShape(authored, onto: current),
+                  namedChanges,
+                );
           return listEquals(current, next)
               ? const <Command>[]
               : <Command>[
