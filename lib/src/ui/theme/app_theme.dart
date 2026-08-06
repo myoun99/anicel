@@ -275,6 +275,13 @@ ThemeData buildAppTheme() {
       ),
     ),
     iconTheme: const IconThemeData(color: AppColors.text, size: 20),
+    // THE line that makes "one button shape" true rather than aspirational.
+    // Without a shape here every IconButton in the app falls through to M3's
+    // default StadiumBorder — a PILL, which is further from the app's corner
+    // than the plain rounding it replaced — and there are 71 of them across
+    // 32 files, including every button in the timeline. One line reaches all
+    // of them; the alternative is 32 files of hand-application, which is
+    // exactly how the shape ended up living in 12 places.
     iconButtonTheme: IconButtonThemeData(
       style: IconButton.styleFrom(
         foregroundColor: AppColors.text,
@@ -282,6 +289,7 @@ ThemeData buildAppTheme() {
         iconSize: 20,
         padding: const EdgeInsets.all(6),
         minimumSize: const Size(32, 32),
+        shape: AppShapes.control(AppShapes.controlSmall),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
       ),
     ),

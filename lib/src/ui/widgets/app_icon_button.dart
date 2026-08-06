@@ -73,6 +73,10 @@ class AppIconButton extends StatelessWidget {
         maximumSize: Size(size.maxWidth, size.height),
         padding: EdgeInsets.zero,
         iconSize: size.iconSize,
+        // Its own height, not the theme's default box: a bar button and a
+        // strip button are different sizes, and the app's corner is a RATIO
+        // of the short axis, so each has to ask for its own.
+        shape: AppShapes.control(size.height),
         tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         foregroundColor: isSelected ? AppColors.accent : null,
       ),

@@ -672,19 +672,19 @@ class _PanelTabButtonState extends State<_PanelTabButton> {
           : SystemMouseCursors.grab,
       onEnter: (_) => setState(() => _gripHovered = true),
       onExit: (_) => setState(() => _gripHovered = false),
+      // The ZONE is the paint. It used to hold a 2x14 rounded bar, which is
+      // a drag-handle GLYPH by another name — the very thing this round
+      // deleted everywhere else. A grip is a region of the button that
+      // lights up, not a mark drawn on it, so the whole 8px lights up and
+      // it runs the button's full height instead of floating in its middle.
+      // The height is EXPLICIT: a ColoredBox with no child collapses to zero
+      // under the Row's loose cross-axis constraint, and a zero-height zone
+      // is not a lift zone — it takes the drag with it.
       child: SizedBox(
         key: widget.gripKey,
         width: _PanelTabButton.gripExtent,
-        child: Center(
-          child: Container(
-            width: 2,
-            height: 14,
-            decoration: BoxDecoration(
-              color: _gripColor,
-              borderRadius: BorderRadius.circular(1),
-            ),
-          ),
-        ),
+        height: EditorPanelTabs.stripHeight,
+        child: ColoredBox(color: _gripColor),
       ),
     );
     final data = widget.dragData;
