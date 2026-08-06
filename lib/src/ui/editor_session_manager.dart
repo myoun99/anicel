@@ -2436,6 +2436,54 @@ class EditorSessionManager extends ChangeNotifier {
     ], description: 'Add ${kind.label}');
   }
 
+  /// Names (or un-names, with null) one effect-parameter KEY.
+  ///
+  /// A name is a link: every key called this, in this same parameter, holds
+  /// one value — the frame-name rule said of keyframes (user 2026-07-30).
+  /// Joining an existing name adopts THIS key's number everywhere it
+  /// appears, and because linked rows share effect ids, that reaches the
+  /// 겸용 siblings whose chains otherwise only share their shape.
+  void setEffectKeyName({
+    required LayerId layerId,
+    required EffectId effectId,
+    required String parameterId,
+    required int frameIndex,
+    required String? name,
+  }) {
+    final cutId = _editingSession.activeCutId;
+    if (cutId == null) {
+      return;
+    }
+    final layers = cutById(cutId)?.layers ?? const <Layer>[];
+    final layerIndex = layers.indexWhere((row) => row.id == layerId);
+    if (layerIndex == -1) {
+      return;
+    }
+    final layer = layers[layerIndex];
+    final index = layer.effects.indexWhere((effect) => effect.id == effectId);
+    if (index == -1) {
+      return;
+    }
+    final effect = layer.effects[index];
+    final parameter = effect.parameters[parameterId];
+    if (parameter == null || parameter.track.keyAt(frameIndex) == null) {
+      return;
+    }
+    final next = [...layer.effects]
+      ..[index] = effect.withParameter(
+        parameterId,
+        EffectParameter(
+          value: parameter.value,
+          track: parameter.track.withKeyName(frameIndex, name),
+        ),
+      );
+    updateLayerEffects(
+      layerId,
+      next,
+      description: name == null ? 'Unname key' : 'Name key',
+    );
+  }
+
   /// Removes one effect from the active row (its keys go with it; one undo
   /// brings both back).
   void removeEffectFromActiveLayer(EffectId effectId) {
