@@ -74,6 +74,17 @@ abstract final class AppColors {
   /// be both "this text is secondary" and "your hand is here".
   static const Color gripHover = Color(0xFF7C8184);
 
+  /// LINE — the one line that must read on chrome AND on near-white sheet
+  /// paper in the same stroke: the 1-second beat, drawn straight across
+  /// exposed blocks and empty rows alike.
+  ///
+  /// It used to borrow the secondary INK, and when that ink was raised for
+  /// legibility on dark chrome the beat came along for the ride and lost the
+  /// paper — 3.19:1 to 2.08:1. A colour cannot be both "this text is
+  /// secondary" and "the strongest line on the sheet", so it is its own line
+  /// now, held at the mid-tone that survives both substrates.
+  static const Color beatLine = Color(0xFF7C8184);
+
   /// INK — primary text and icons.
   static const Color text = Color(0xFFB4B8BB);
 

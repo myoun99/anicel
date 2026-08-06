@@ -6,7 +6,8 @@ import '../../models/frame_id.dart';
 import '../../models/layer.dart';
 import '../../models/layer_id.dart';
 import '../../models/timeline_repeat.dart';
-import '../theme/app_theme.dart' show AppColors;
+import 'timeline_cell_style.dart'
+    show timelineDrawingInkColor, timelineLaneInkColor;
 import 'timeline_frame_coordinate_policy.dart';
 import 'timeline_glyph_cache.dart';
 
@@ -384,21 +385,33 @@ void paintTimelineRunGlyph(
   );
 }
 
-/// The pattern span's wash + outline (UI-R19 #2).
+/// The pattern span's outline (UI-R19 #2).
 ///
 /// This used to be the app's only production use of a second accent hue,
 /// whose whole job was to read differently from a plain selection. The hue is
-/// gone, so the difference is carried by the EDGE instead: a repeat pattern
-/// wears a repeating outline. That is a better sign than a colour was — it
-/// says what the span is rather than merely that it is not a selection.
-void paintTimelineRunPatternSpan(Canvas canvas, Rect rect) {
+/// gone — and it must NOT be replaced by the accent, because the accent is
+/// what "selected" means: a frame-range selection on this very row is accent
+/// at 0.18 behind a 2px solid accent border, so an accent span would be
+/// impersonating the thing it exists to differ from.
+///
+/// A pattern span is a MARK ON PAPER, so it wears the paper's own ink, the
+/// way the block-edge grips beside it already do — [surface] is the
+/// brightness of what it sits on, not the theme's. And it is DASHED, because
+/// a repeat pattern should say what it is rather than merely that it is not
+/// a selection. It now differs from a selection in ink and in edge, where it
+/// used to differ in hue and nothing.
+void paintTimelineRunPatternSpan(
+  Canvas canvas,
+  Rect rect, {
+  Brightness surface = Brightness.light,
+}) {
+  final ink = surface == Brightness.dark
+      ? timelineLaneInkColor
+      : timelineDrawingInkColor;
   final rrect = RRect.fromRectAndRadius(rect, const Radius.circular(6));
-  canvas.drawRRect(
-    rrect,
-    Paint()..color = AppColors.accent.withValues(alpha: 0.10),
-  );
+  canvas.drawRRect(rrect, Paint()..color = ink.withValues(alpha: 0.06));
   final stroke = Paint()
-    ..color = AppColors.accent.withValues(alpha: 0.85)
+    ..color = ink.withValues(alpha: 0.85)
     ..style = PaintingStyle.stroke
     ..strokeWidth = 2;
   final path = Path()..addRRect(rrect.deflate(1));

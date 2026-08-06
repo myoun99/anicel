@@ -34,7 +34,7 @@ import 'timeline_cell_style.dart';
   }
   if (frameIndex % 6 == 0) {
     return framesPerSecond > 0 && frameIndex % framesPerSecond == 0
-        ? (color: colorScheme.onSurfaceVariant, strokeWidth: 1.5)
+        ? (color: AppColors.beatLine, strokeWidth: 1.5)
         : (color: colorScheme.outline, strokeWidth: 1.0);
   }
   final cadence = timelineGridLineEveryFrames(frameCellExtent);
@@ -184,7 +184,7 @@ class TimelineBeatLinesPainter extends CustomPainter {
       ..color = colorScheme.outline
       ..strokeWidth = 1;
     final secondPaint = Paint()
-      ..color = colorScheme.onSurfaceVariant
+      ..color = AppColors.beatLine
       ..strokeWidth = 1.5;
     // 6f is the sheet convention regardless of fps.
     const beatPeriod = 6;

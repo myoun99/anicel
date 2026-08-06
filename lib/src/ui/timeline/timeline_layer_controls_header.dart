@@ -292,7 +292,10 @@ class TimelineLayerControlsHeader extends StatelessWidget {
       width: isVertical ? crossExtent : railExtent,
       height: isVertical ? railExtent : crossExtent,
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerHighest,
+        // A PLATE on the rail, not a chrome surface: the rows below carry the
+        // same border ink, so with one chrome fill the legend became a layer
+        // row byte for byte and the eye lost the top of the rail.
+        color: AppColors.washUp,
         border: Border.all(color: colorScheme.outlineVariant),
       ),
       // The legend is laid out WHOLE, always. Cutting it to a short panel

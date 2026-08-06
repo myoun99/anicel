@@ -3119,7 +3119,7 @@ class _StoryboardLaneLabel extends StatelessWidget {
       height: height,
       padding: const EdgeInsets.only(right: 8),
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
+        color: AppColors.washDown,
         // Side/bottom borders only (UI-R10 #20), like the timeline rail.
         border: Border(
           left: BorderSide(color: colorScheme.outlineVariant),

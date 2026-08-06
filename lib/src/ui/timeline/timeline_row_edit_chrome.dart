@@ -441,7 +441,7 @@ class TimelineRowEditChromePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final model = this.model;
     for (final span in model.patternSpans) {
-      paintTimelineRunPatternSpan(canvas, span);
+      paintTimelineRunPatternSpan(canvas, span, surface: gripSurface);
     }
     final glyphSize = timelineRunClusterGlyphSize(frameCellExtent);
     for (final target in model.targets) {

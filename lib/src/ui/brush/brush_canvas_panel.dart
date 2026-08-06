@@ -2067,6 +2067,21 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                       // A lane is a GROOVE, not a panel: it carries no border,
                       // so with one chrome fill it would dissolve into the
                       // shell around it and the thumb would ride on nothing.
+                      //
+                      // But no fill can win here on its own: the stage beside
+                      // it is the PASTEBOARD, a colour the user picks, and a
+                      // user who picks this one erases the lane. So the stage
+                      // side gets the hairline the status strip and the bottom
+                      // bar already draw — the frame was three quarters drawn.
+                      // foregroundDecoration, not decoration: Container
+                      // asserts on color + decoration together, and a border
+                      // there would inset the child and break the contract
+                      // that this strip's width IS the bar's hit lane.
+                      foregroundDecoration: BoxDecoration(
+                        border: Border(
+                          left: BorderSide(color: colorScheme.outlineVariant),
+                        ),
+                      ),
                       color: colorScheme.surfaceContainerLowest,
                       child: rightStripBar,
                     ),

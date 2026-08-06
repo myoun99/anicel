@@ -261,6 +261,18 @@ class TimelineFrameRulerPainter extends CustomPainter {
       Offset(size.width, size.height - 0.5),
       linePaint..color = colorScheme.outlineVariant,
     );
+
+    // And the strip's TOP edge, drawn the same way. The ruler is the grid's
+    // first row, and the command bar above it is now the SAME chrome fill,
+    // so the seam between the panel's toolbar and its content has to be a
+    // line — without it the row of frame numbers reads as the bottom half of
+    // the toolbar. It lands collinear with the legend header's own top
+    // border beside it, so the grid keeps one continuous top edge.
+    canvas.drawLine(
+      const Offset(0, 0.5),
+      Offset(size.width, 0.5),
+      linePaint..color = colorScheme.outlineVariant,
+    );
   }
 
   // Labels come from the shared laid-out-TextPainter cache (UI-R16):

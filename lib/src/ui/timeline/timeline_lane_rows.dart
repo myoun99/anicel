@@ -394,7 +394,10 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
                 widget.metrics.sectionLabelGutterWidth),
         height: widget.height ?? widget.metrics.layerRowHeight,
         decoration: BoxDecoration(
-          color: colorScheme.surfaceContainerLow,
+          // A lane row is a PLATE belonging to the layer above it, not one of
+          // the three chrome surfaces — the same reading its frame-side half
+          // already takes.
+          color: AppColors.washDown,
           border: Border.all(color: colorScheme.outlineVariant, width: 0.5),
         ),
         child: InkWell(
@@ -592,7 +595,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           // 8 → 2: a 28px column cannot spend 16 of it on side padding.
           : const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
       decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
+        color: AppColors.washDown,
         border: Border.all(color: colorScheme.outlineVariant, width: 0.5),
       ),
       alignment: widget.axis == Axis.horizontal

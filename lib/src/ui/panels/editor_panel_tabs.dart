@@ -549,7 +549,11 @@ class _PanelTabDragFeedback extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     return Material(
       elevation: 4,
-      color: colorScheme.surfaceContainerHighest,
+      // The tab in flight wears the same fill the tab wears when it is
+      // switched on: a drag avatar is the one surface the pointer is
+      // literally carrying, and on a dark UI its drop shadow is nearly
+      // nothing, so the fill has to do the lifting.
+      color: colorScheme.surfaceContainerHigh,
       borderRadius: BorderRadius.circular(4),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),

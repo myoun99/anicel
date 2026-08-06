@@ -596,7 +596,11 @@ class LayerRailScrollbar extends StatelessWidget {
       // under the rail and stops at the splitter.
       width: horizontal ? windowExtent : laneExtent,
       height: horizontal ? laneExtent : windowExtent,
-      decoration: BoxDecoration(color: colorScheme.surfaceContainerHighest),
+      // No hairline anywhere on this lane — the fill alone separates it from
+      // the rail rows, which are the panel surface, so it has to be the level
+      // BELOW them: a lane is a groove, not a panel. Its two siblings, the
+      // frame-axis rails, say the same thing.
+      decoration: BoxDecoration(color: colorScheme.surfaceContainerLowest),
       child: ValueListenableBuilder<double>(
         valueListenable: rail.offset,
         builder: (context, value, _) => AppScrollbar(
