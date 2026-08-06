@@ -239,11 +239,16 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
   Widget build(BuildContext context) {
     final coordinator = _coordinator;
     final hasEditableFrame = _frameKeys.isNotEmpty && coordinator != null;
-    // No editable frame: keep the panel (and its paper) visible, just
-    // without brush input — drawing needs a selected frame.
+    // The blank canvas is for having NO COORDINATOR — a project where
+    // nothing has been drawn yet, so the panel has no editing stack to
+    // show. It is deliberately NOT the answer to "the playhead is on an
+    // empty frame": that used to swap the whole interactive canvas for a
+    // blank box on every flip that crossed a block, mounting and
+    // unmounting the editing view per step. The frame's emptiness travels
+    // as `celEditable` now, and the view stands down in place.
     final contentOverride =
         widget.contentOverride ??
-        (hasEditableFrame ? null : _blankCanvasContent);
+        (coordinator == null ? _blankCanvasContent : null);
 
     final onDrawRefused = widget.onDrawRefused;
     // R26 #35: without an editable cel a paint press does nothing at all
@@ -301,7 +306,8 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       // opened in a rail column or the bottom panel is simply not under the
       // provider and keeps the arithmetic it has always had.
       floorCover: CanvasFloorInsets.maybeOf(context),
-      coordinator: hasEditableFrame ? coordinator : null,
+      coordinator: coordinator,
+      celEditable: hasEditableFrame,
       availableFrameKeys: _frameKeys,
       cacheInvalidationSink: _cacheInvalidationSink,
       canvasSize: widget.canvasSize,

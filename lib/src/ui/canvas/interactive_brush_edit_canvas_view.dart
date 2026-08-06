@@ -126,8 +126,25 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.selectionRegion,
     this.overlayModel,
     this.paintsContent = true,
+    this.editable = true,
     CanvasViewport? viewport,
   }) : viewport = viewport ?? CanvasViewport();
+
+  /// Whether the cel under the playhead can be drawn on at all.
+  ///
+  /// False = the playhead stands on an EMPTY frame. The view stays mounted
+  /// and simply stands down: it takes no pointers (so the shell's refusal
+  /// notice sees the press, exactly as it did when this widget was not
+  /// built) and paints nothing.
+  ///
+  /// ★ It is a FLAG rather than an absent widget because mounting is the
+  /// expensive part. Swapping this whole subtree for a blank box whenever
+  /// the playhead crossed "no cel ↔ cel" cost a full mount + unmount per
+  /// flip step — measured at ~35-40% of the crossing's excess, on top of
+  /// the panel remount #861 removed. The sibling rule is already written
+  /// above [key]: a frame flip must reset this view IN PLACE, never
+  /// rebuild it.
+  final bool editable;
 
   final BrushEditSessionState sessionState;
   final LayerId layerId;
@@ -390,6 +407,16 @@ class _InteractiveBrushEditCanvasViewState
 
   @override
   Widget build(BuildContext context) {
+    if (!widget.editable) {
+      // Standing down on an EMPTY frame. The State lives on — a flip back
+      // onto a cel resets this view in place instead of mounting it, which
+      // is the whole point of the flag — but nothing is BUILT: no
+      // listener, so the subtree leaves hit testing exactly as an absent
+      // widget did and the shell's "no frame here" notice still sees the
+      // press; and no canvas, so the cel the playhead has LEFT is not
+      // painted (the session state still points at it).
+      return const SizedBox.expand();
+    }
     final canvasSize =
         widget.sessionState.canvasState.currentSurface.canvasSize;
     return LayoutBuilder(

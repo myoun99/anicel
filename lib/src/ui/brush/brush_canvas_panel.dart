@@ -96,6 +96,7 @@ class BrushCanvasPanel extends StatefulWidget {
   const BrushCanvasPanel({
     super.key,
     required this.coordinator,
+    this.celEditable = true,
     required this.availableFrameKeys,
     required this.cacheInvalidationSink,
     this.canvasSize = BrushCanvasDefaults.canvasSize,
@@ -146,9 +147,28 @@ class BrushCanvasPanel extends StatefulWidget {
          'Without a coordinator the panel needs a content override.',
        );
 
-  /// Null only when [contentOverride] supplies the viewport content (e.g.
-  /// the blank-canvas placeholder without an editable frame).
+  /// Null only when [contentOverride] supplies the viewport content — the
+  /// project has no editing coordinator AT ALL yet (nothing has ever been
+  /// drawn). Standing on an empty FRAME is a different fact: see
+  /// [celEditable].
   final BrushFrameEditingCoordinator? coordinator;
+
+  /// Whether the frame under the playhead can be drawn on.
+  ///
+  /// Split from [coordinator] deliberately. The two used to be one — the
+  /// host handed over a null coordinator on an empty frame — which meant
+  /// the interactive canvas was BUILT AND DESTROYED every time a flip
+  /// crossed "no cel ↔ cel". Every pixel verb still refuses on an empty
+  /// frame; it asks [_editableCoordinator] instead of this field, so the
+  /// guards read exactly as they did.
+  final bool celEditable;
+
+  /// The coordinator for the verbs that EDIT PIXELS — null whenever this
+  /// frame cannot be drawn on, which is the condition every one of those
+  /// verbs was already written against. Only the interactive view itself
+  /// reads [coordinator] directly, because it stays mounted either way.
+  BrushFrameEditingCoordinator? get _editableCoordinator =>
+      celEditable ? coordinator : null;
 
   final List<BrushFrameKey> availableFrameKeys;
   final CacheInvalidationSink cacheInvalidationSink;
@@ -968,11 +988,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                           child: underlayBuilder(
                                             context,
                                             _viewport,
-                                            widget.coordinator == null
+                                            widget._editableCoordinator == null
                                                 ? null
                                                 : widget
                                                       ._activeSurfacePainterFor(
-                                                        widget.coordinator!,
+                                                        widget._editableCoordinator!,
                                                       ),
                                           ),
                                         ),
@@ -1438,6 +1458,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // wrap the layer being drawn on. The view keeps the input.
       overlayModel: widget.activeStrokeOverlayModel,
       paintsContent: widget.activeStrokeOverlayModel == null,
+      // An empty frame stands the view DOWN rather than unmounting it —
+      // the mount was the expensive half of a flip that crosses a block.
+      editable: widget.celEditable,
     );
     // The draw-through wrap: display AND hit testing share one screen
     // matrix, so the active layer draws posed and pointers inverse-map to
@@ -1695,7 +1718,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// inside the selection layer.
   ({int left, int top, int rightExclusive, int bottomExclusive})?
   _activeCelContentBounds() {
-    final coordinator = widget.coordinator;
+    final coordinator = widget._editableCoordinator;
     if (coordinator == null) {
       return null;
     }
@@ -1740,7 +1763,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     int right,
     int bottom,
   ) {
-    final coordinator = widget.coordinator;
+    final coordinator = widget._editableCoordinator;
     if (coordinator == null) {
       return const <TileCoord>{};
     }
@@ -1788,7 +1811,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// are deliberately absent: see [BitmapTileImageCache.seedScope].
   ({int liftToken, BrushDab stampDab, Map<TileCoord, BitmapTile> wholeTiles})?
   _handleSelectionLift(CanvasSelectionRegion region) {
-    final coordinator = widget.coordinator;
+    final coordinator = widget._editableCoordinator;
     if (coordinator == null) {
       return null;
     }
@@ -1878,7 +1901,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// entry — a surface-snapshot command whose undo target is the exact
   /// pre-lift picture (R19 P3b).
   void _handleLiftConfirmed(int liftToken, BrushDab stampDab) {
-    final coordinator = widget.coordinator;
+    final coordinator = widget._editableCoordinator;
     final preLift = _liftAnchors.remove(liftToken);
     if (coordinator == null) {
       return;
@@ -1919,7 +1942,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// REVERT of a session (R17-①): the pre-lift surface snapshot restores
   /// the picture byte-exactly; nothing lands in history.
   void _handleLiftReverted(int liftToken) {
-    final coordinator = widget.coordinator;
+    final coordinator = widget._editableCoordinator;
     final preLift = _liftAnchors.remove(liftToken);
     if (coordinator == null || preLift == null) {
       return;
@@ -1944,7 +1967,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// is the post-erase state throughout the session, so landing is a
   /// plain stamp commit.
   void _handleLiftLanded(int liftToken, BrushDab stampDab) {
-    final coordinator = widget.coordinator;
+    final coordinator = widget._editableCoordinator;
     _liftAnchors.remove(liftToken);
     if (coordinator == null) {
       return;
@@ -1991,10 +2014,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       final rasterized = rasterizeStrokeForClipping(
         dabs: data.sourceDabs,
         canvasSize: widget.canvasSize,
-        tileSize: widget.coordinator == null
+        tileSize: widget._editableCoordinator == null
             ? BitmapSurface(canvasSize: widget.canvasSize).tileSize
-            : widget.coordinator!
-                  .currentSurfaceOf(widget.coordinator!.activeFrameKey)
+            : widget._editableCoordinator!
+                  .currentSurfaceOf(widget._editableCoordinator!.activeFrameKey)
                   .tileSize,
       );
       if (rasterized == null) {
@@ -2022,7 +2045,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   void _commitSourceStroke(BrushStrokeCommitData rawStrokeData) {
     // Only reachable from the interactive canvas, which requires the
     // coordinator to exist.
-    final coordinator = widget.coordinator!;
+    final coordinator = widget._editableCoordinator!;
     final strokeData = _clipStrokeToSelection(rawStrokeData);
     if (strokeData == null) {
       // Entirely outside the selection: nothing lands, nothing undoes.
