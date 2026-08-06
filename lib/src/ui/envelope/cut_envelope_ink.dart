@@ -1,4 +1,4 @@
-import 'dart:ui' show Rect;
+import 'dart:ui' show Rect, Size;
 
 import 'package:flutter/foundation.dart';
 
@@ -170,6 +170,43 @@ class EnvelopeInkWindow {
       panelViewport.zoom * documentRect.height,
     );
   }
+}
+
+/// The windows worth MOUNTING right now.
+///
+/// The analog preset has 86 inking boxes — eight times a conte page — and
+/// every mounted window costs a brush session even though only one can
+/// take a stroke at a time. So a window is mounted only when it is both on
+/// screen and big enough to draw in, the same gate the timeline uses to
+/// hide sparse elements below a zoom tier.
+///
+/// Zoomed out, that leaves nothing mounted, which is correct: a cell a few
+/// pixels across is not one anybody is writing in. Zoomed in, it leaves
+/// the handful actually in view.
+List<EnvelopeInkWindow> mountedEnvelopeInkWindows(
+  List<EnvelopeInkWindow> windows,
+  CanvasViewport viewport,
+  Size screenSize, {
+  double minScreenExtent = 24,
+}) {
+  final screen = Rect.fromLTWH(0, 0, screenSize.width, screenSize.height);
+  return [
+    for (final window in windows)
+      if (_mountable(window, viewport, screen, minScreenExtent)) window,
+  ];
+}
+
+bool _mountable(
+  EnvelopeInkWindow window,
+  CanvasViewport viewport,
+  Rect screen,
+  double minScreenExtent,
+) {
+  final rect = window.screenRect(viewport);
+  if (rect.width < minScreenExtent || rect.height < minScreenExtent) {
+    return false;
+  }
+  return rect.overlaps(screen);
 }
 
 /// The envelope's ink windows, bottom-of-stack first.
