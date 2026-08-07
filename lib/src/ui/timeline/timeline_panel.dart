@@ -23,6 +23,7 @@ import 'property_lane_model.dart';
 import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
 import 'timeline_cel_content_source.dart';
 import 'timeline_cell_exposure_state.dart';
+import 'timeline_current_row.dart';
 import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_frame_rows_scroll_body.dart' show TimelineRowMemoAux;
@@ -79,6 +80,7 @@ class TimelinePanel extends StatefulWidget {
     this.commaDrag,
     this.rangeHooks,
     this.laneRange,
+    this.currentRowHooks,
     this.runEdit,
     this.isFrameCached,
     required this.orientation,
@@ -244,6 +246,11 @@ class TimelinePanel extends StatefulWidget {
   /// The LANE selection domain's gesture bundle (UI-R23 #3 part 2),
   /// shared by both orientations; null keeps lane bands display-only.
   final TimelineLaneRangeCallbacks? laneRange;
+
+  /// Which row the frame-axis verbs act on, and the label press that moves
+  /// it (R10 #19's rail half) — one bundle for both orientations, so the
+  /// sheet cannot end up with a different answer than the rail.
+  final TimelineCurrentRowHooks? currentRowHooks;
 
   /// The run-edge [+]/[↻] handle hooks (UI-R8), both orientations; null
   /// hides the handles.
@@ -522,6 +529,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     commaDrag: widget.commaDrag,
                     rangeHooks: widget.rangeHooks,
                     laneRange: widget.laneRange,
+                    currentRowHooks: widget.currentRowHooks,
                     runEdit: widget.runEdit,
                     isFrameCached: widget.isFrameCached,
                     metrics: horizontalMetrics,
@@ -597,6 +605,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     commaDrag: widget.commaDrag,
                     rangeHooks: widget.rangeHooks,
                     laneRange: widget.laneRange,
+                    currentRowHooks: widget.currentRowHooks,
                     runEdit: widget.runEdit,
                     isFrameCached: widget.isFrameCached,
                     metrics: xsheetMetrics,

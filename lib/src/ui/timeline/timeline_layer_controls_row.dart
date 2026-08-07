@@ -186,7 +186,9 @@ class TimelineLayerControlsRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final activeColor = colorScheme.secondaryContainer.withValues(alpha: 0.55);
+    // Shared with the property lanes' own "you are standing here" wash
+    // ([railSelectedRowColor]) so the two cannot drift apart.
+    final activeColor = railSelectedRowColor(colorScheme);
     // CONSTANT 1px side/bottom borders (UI-R10 #20). Selection speaks
     // through the BACKGROUND alone now (UI-R18 #5) — the accent border
     // doubled the signal for nothing.
@@ -383,7 +385,8 @@ class TimelineLayerControlsRow extends StatelessWidget {
                                 ? colorScheme.primary
                                 : colorScheme.outline.withValues(alpha: 0.45),
                           ),
-                          onPressed: () => onToggleLayerFillReference!(layer.id),
+                          onPressed: () =>
+                              onToggleLayerFillReference!(layer.id),
                         ),
                       )
                     : null,

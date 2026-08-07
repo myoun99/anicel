@@ -37,6 +37,7 @@ import 'timeline/effect_lane_policy.dart';
 import 'timeline/property_lane_model.dart';
 import 'timeline/timeline_lane_provider.dart';
 import 'timeline/timeline_cel_content_source.dart';
+import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_cut_end_handle.dart';
 import 'timeline/timeline_frame_rows_scroll_body.dart' show TimelineRowMemoAux;
 import 'timeline/se_audio_lane.dart';
@@ -256,6 +257,15 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     // the verb row to the layer, so this must come after it.
     _session.selectRow(LaneRowAddress(layerId, laneId));
     _session.selectFrameIndex(frameIndex);
+  }
+
+  /// The LABEL half of the same rule: pressing a lane's name stands on it,
+  /// exactly as the layer row's name selects its layer. No seek — a label
+  /// names a ROW, and the frame stays where it was.
+  void _standOnLaneRow(LayerId layerId, String laneId) {
+    _session.clearLaneRangeSelection();
+    _session.selectLayer(layerId);
+    _session.selectRow(LaneRowAddress(layerId, laneId));
   }
 
   /// lane row under the pointer — member lanes only; headers and
@@ -1143,6 +1153,12 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                   _session.updateLaneRangeMoveDrag(frameDelta: frameDelta),
               onMoveEnd: _session.endLaneRangeMoveDrag,
               onMoveCancel: _session.cancelLaneRangeMoveDrag,
+            ),
+            // R10 #19's rail half: the row you are standing on is DRAWN,
+            // and a lane's label is a place you can stand.
+            currentRowHooks: TimelineCurrentRowHooks(
+              currentRow: _session.currentRowListenable,
+              onStandOnLane: _standOnLaneRow,
             ),
             // The TVP run-edge cluster (UI-R9 #10): [+] drags new one-frame
             // drawings onto a run; the property tag sets the edge's

@@ -797,6 +797,9 @@ class EditorSessionManager extends ChangeNotifier {
       trackSeLayers: () => activeTrack.seLayers,
     );
     editingFrameCursor.value = _timelineController.currentFrameIndex;
+    // A cut switch re-seats the active layer, which is what the drawn row
+    // falls back to when nothing is engaged.
+    _publishCurrentRow();
   }
 
   int _clampedFrameIndex(int frameIndex) {
@@ -871,22 +874,24 @@ class EditorSessionManager extends ChangeNotifier {
   /// coming back to the timeline lands on the lane you left open instead
   /// of dropping to the layer row.
   ///
-  /// QUIET: nothing on screen draws [currentRow] — every reader asks at
-  /// command time — so a claim moves what the next verb acts on without
-  /// notifying. It has to be quiet: the claim fires on pointer-DOWN, and
-  /// a ruler drag's whole contract is that it stays silent per move and
-  /// commits once on release.
+  /// A claim never NOTIFIES the session. It fires on pointer-DOWN, and a
+  /// ruler drag's whole contract is that it stays silent per move and
+  /// commits once on release. What the rails DRAW rides
+  /// [currentRowListenable] instead, so the row that moved repaints its
+  /// own small cells and nothing else.
   void claimTimelineRow() {
     final layerId = activeLayerId;
     final next =
         _timelineRow ?? (layerId == null ? null : LayerRowAddress(layerId));
     if (next != null) {
       _verbRow = next;
+      _publishCurrentRow();
     }
   }
 
   void claimStoryboardRow() {
     _verbRow = selectedRow;
+    _publishCurrentRow();
   }
 
   /// Defaults to the active layer's row, not the track's: with nothing
@@ -901,6 +906,33 @@ class EditorSessionManager extends ChangeNotifier {
     return layerId == null
         ? TrackRowAddress(selectedTrackId)
         : LayerRowAddress(layerId);
+  }
+
+  /// [currentRow] as a LISTENABLE — R10 #19's other half. The row you are
+  /// standing on is DRAWN now (the active layer's row, an fx header, a
+  /// property lane), and the rails have to learn it moved WITHOUT a
+  /// session notify: the claim that moves it fires on pointer-down, inside
+  /// gestures whose whole contract is silence until release.
+  ///
+  /// A [ValueNotifier] only notifies on a real change, so pressing again
+  /// in the row you are already standing on costs nothing — which is the
+  /// common case, and the reason this can be published eagerly.
+  final ValueNotifier<TimelineRowAddress?> currentRowListenable =
+      ValueNotifier<TimelineRowAddress?>(null);
+
+  /// Re-publishes [currentRow]. Idempotent and cheap: call it after
+  /// anything that could move the answer rather than reasoning about which
+  /// writer was the one that did.
+  ///
+  /// Stands down while the answer would need a TRACK it cannot have (no
+  /// row engaged, no active layer, and a project that may hold no tracks
+  /// yet) — there is nothing to light in that state, and asking would
+  /// throw.
+  void _publishCurrentRow() {
+    if (_disposed || (_verbRow == null && activeLayerId == null)) {
+      return;
+    }
+    currentRowListenable.value = currentRow;
   }
 
   /// THE selected row of the STORYBOARD's rail — exactly ONE, whichever row
@@ -966,6 +998,10 @@ class EditorSessionManager extends ChangeNotifier {
       case TrackRowAddress(:final trackId):
         selectTrackCutAtPlayhead(trackId);
     }
+    // Every arm can move the drawn row, and the track arm does it through
+    // a path of its own — publishing once here beats three call sites that
+    // must each remember.
+    _publishCurrentRow();
   }
 
   /// Makes a V row THE selected row and nothing else — no cut promotion, no
@@ -993,6 +1029,7 @@ class EditorSessionManager extends ChangeNotifier {
     // Picking a rail row is also engaging it, so the verb follows (R10
     // #13). The reverse does not hold — see [_verbRow].
     _verbRow = row;
+    _publishCurrentRow();
     return selectedRow != before;
   }
 
@@ -1364,6 +1401,7 @@ class EditorSessionManager extends ChangeNotifier {
     brushFrameStore.celContentRevision.removeListener(_bumpCelTintRevision);
     brushInputActive.removeListener(_bumpCelTintRevision);
     celTintRevision.dispose();
+    currentRowListenable.dispose();
     cacheInvalidationHub.removeBrushFrameListener(_onBrushFrameInvalidated);
     playback.globalFrameIndexListenable.removeListener(_followPlaybackCut);
     _historyManager.removeListener(_markProjectDirty);
@@ -3761,6 +3799,10 @@ class EditorSessionManager extends ChangeNotifier {
     // question: which row of the FILM is lit.
     _verbRow = LayerRowAddress(layerId);
     _timelineRow = _verbRow;
+    // The drawn row rides its own notifier, so leaving a property lane for
+    // its layer row repaints the rail even when nothing else changed —
+    // "already active is free" stays true for the session notify.
+    _publishCurrentRow();
     if (changed) {
       notifyListeners();
     }

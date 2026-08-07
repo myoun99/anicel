@@ -26,6 +26,18 @@ import '../text/vertical_writing_text.dart';
 /// retired); the legend header's sections cell sits over the same slot.
 const double layerSectionLabelSlotWidth = 36;
 
+/// The wash a rail row wears while it is THE row the frame-axis verbs act
+/// on — the active layer's row, and (R10 #19's other half) the fx header
+/// or property lane you are standing on.
+///
+/// ONE value, because they are one statement: "this is what the verbs act
+/// on". Two rows can wear it at once and that is the AE picture — the
+/// layer is selected AND a property inside it is — so the more specific
+/// lit row is the subject. Colour only, never weight (user rule): the
+/// text must not reflow when a row is picked.
+Color railSelectedRowColor(ColorScheme colorScheme) =>
+    colorScheme.secondaryContainer.withValues(alpha: 0.55);
+
 /// The rows' reserved leading SECTION slot (UI-R7 #2): a transparent
 /// spacer — the section ZONE (tint, hairlines, upright label, tap) is
 /// painted by [SectionBandZone] overlaying the whole section run, so

@@ -29,6 +29,10 @@ import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
 import 'package:anicel/src/ui/storyboard_cut_fade_policy.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show railSelectedRowColor;
+import 'package:anicel/src/ui/timeline/timeline_current_row.dart';
 
 /// One second at half amplitude → 24 frames at 24 fps.
 final _peaks = AudioPeaks(
@@ -102,6 +106,7 @@ Future<void> _pumpPanel(
   ValueChanged<Track>? onToggleTrackFx,
   double Function(Track track)? trackOpacityOf,
   void Function(Track track, double opacity)? onTrackOpacityChangeEnd,
+  TimelineCurrentRowHooks? currentRowHooks,
 }) async {
   final expandedAudio = <String>{};
   final expandedTransform = <String>{};
@@ -138,6 +143,7 @@ Future<void> _pumpPanel(
             }),
             trackLaneEditFor: trackLaneEditFor,
             layerLaneEdit: layerLaneEdit,
+            currentRowHooks: currentRowHooks,
             poseDisplaySize: const CanvasSize(width: 640, height: 360),
             onSetCutFade: onSetCutFade,
             onToggleLayerVisibility: onToggleLayerVisibility,
@@ -182,6 +188,61 @@ Future<void> _expandVTransform(WidgetTester tester) async {
 }
 
 void main() {
+  testWidgets('a V lane label stands on its row and wears the wash — the '
+      'rail half of R10 #19, on the third surface', (tester) async {
+    const laneRow = LaneRowAddress(
+      LayerId('v-track:lane-track'),
+      'transform-group',
+    );
+    final currentRow = ValueNotifier<TimelineRowAddress?>(null);
+    addTearDown(currentRow.dispose);
+    final stood = <TimelineRowAddress>[];
+
+    await _pumpPanel(
+      tester,
+      project: _project(),
+      currentRowHooks: TimelineCurrentRowHooks(
+        currentRow: currentRow,
+        onStandOnLane: (layerId, laneId) =>
+            stood.add(LaneRowAddress(layerId, laneId)),
+      ),
+    );
+    await _expandVTransform(tester);
+
+    final header = find.byKey(
+      const ValueKey<String>(
+        'storyboard-lane-label-v-track:lane-track-transform-group',
+      ),
+    );
+    BoxDecoration plate() =>
+        tester.widget<Container>(header).decoration! as BoxDecoration;
+    expect(plate().color, AppColors.washDown);
+
+    await tester.tap(
+      find.descendant(of: header, matching: find.text('Transform')),
+      warnIfMissed: false,
+    );
+    await tester.pumpAndSettle();
+
+    expect(stood, [laneRow], reason: 'the storyboard threads the same bundle');
+    // The press left the group OPEN: the chevron owns the twirl here too.
+    expect(
+      find.byKey(
+        const ValueKey<String>('storyboard-track-lane-row-0-position'),
+      ),
+      findsOneWidget,
+    );
+
+    currentRow.value = laneRow;
+    await tester.pumpAndSettle();
+    expect(
+      plate().color,
+      railSelectedRowColor(
+        Theme.of(tester.element(header)).colorScheme,
+      ),
+    );
+  });
+
   testWidgets('a GAP (no active cut) keeps the SE rail controls up '
       '(UI-R10 #12): track-owned rows never depend on a cut', (
     tester,

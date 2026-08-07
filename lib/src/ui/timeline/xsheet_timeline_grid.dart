@@ -31,6 +31,7 @@ import 'timeline_exposure_comma_drag_policy.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/timeline_row_address.dart';
 import 'timeline_row_cross_offset.dart';
+import 'timeline_current_row.dart';
 import 'timeline_edge_auto_pan.dart';
 import 'timeline_row_span_resolver.dart' show resolveBlockMoveTargetLayer;
 import 'timeline_frame_range_gesture.dart';
@@ -119,6 +120,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.commaDrag,
     this.rangeHooks,
     this.laneRange,
+    this.currentRowHooks,
     this.runEdit,
     this.isFrameCached,
     this.metrics = defaultMetrics,
@@ -272,6 +274,10 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// The LANE selection domain's gesture bundle (UI-R23 #3 part 2); null
   /// keeps the lane bands display-only.
   final TimelineLaneRangeCallbacks? laneRange;
+
+  /// Which row the frame-axis verbs act on, and the label press that moves
+  /// it (R10 #19's rail half); null leaves lane headers inert and unwashed.
+  final TimelineCurrentRowHooks? currentRowHooks;
 
   /// The run-edge [+]/[↻] handle hooks (UI-R8); null hides the handles.
   final TimelineRunEditCallbacks? runEdit;
@@ -815,6 +821,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
           laneEdit: widget.laneEdit,
           onToggleLaneGroup: widget.onToggleLaneGroup,
           onToggleLaneGroupEnabled: widget.onToggleLaneGroupEnabled,
+          currentRowHooks: widget.currentRowHooks,
         ),
       ),
     );
@@ -1776,7 +1783,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                                         : ValueListenableBuilder<
                                                                             TimelineDragPreview?
                                                                           >(
-                                                                            valueListenable: widget.dragPreview!,
+                                                                            valueListenable:
+                                                                                widget.dragPreview!,
                                                                             builder:
                                                                                 (
                                                                                   context,
