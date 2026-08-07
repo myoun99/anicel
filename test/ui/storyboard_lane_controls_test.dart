@@ -32,6 +32,12 @@ import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show railSelectedRowColor;
+import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
+    show
+        LayerRowDragState,
+        LayerRowDragSubject,
+        LayerRowSubject,
+        TimelineRowDragHooks;
 import 'package:anicel/src/ui/timeline/timeline_current_row.dart';
 
 /// One second at half amplitude → 24 frames at 24 fps.
@@ -107,6 +113,7 @@ Future<void> _pumpPanel(
   double Function(Track track)? trackOpacityOf,
   void Function(Track track, double opacity)? onTrackOpacityChangeEnd,
   TimelineCurrentRowHooks? currentRowHooks,
+  TimelineRowDragHooks? rowDragHooks,
 }) async {
   final expandedAudio = <String>{};
   final expandedTransform = <String>{};
@@ -144,6 +151,7 @@ Future<void> _pumpPanel(
             trackLaneEditFor: trackLaneEditFor,
             layerLaneEdit: layerLaneEdit,
             currentRowHooks: currentRowHooks,
+            rowDragHooks: rowDragHooks,
             poseDisplaySize: const CanvasSize(width: 640, height: 360),
             onSetCutFade: onSetCutFade,
             onToggleLayerVisibility: onToggleLayerVisibility,
@@ -237,16 +245,68 @@ void main() {
     await tester.pumpAndSettle();
     expect(
       plate().color,
-      railSelectedRowColor(
-        Theme.of(tester.element(header)).colorScheme,
+      railSelectedRowColor(Theme.of(tester.element(header)).colorScheme),
+    );
+  });
+
+  testWidgets('an S row takes the row-order drag — the third surface, and '
+      'the track list is what it re-orders', (tester) async {
+    final begun = <LayerRowDragSubject>[];
+    final updates = <({List<String> rows, int slot})>[];
+    final drag = ValueNotifier<LayerRowDragState?>(null);
+    addTearDown(drag.dispose);
+
+    await _pumpPanel(
+      tester,
+      project: _project(
+        seLayers: [
+          _seLayer(),
+          Layer(
+            id: const LayerId('lane-se2'),
+            name: 'S2',
+            kind: LayerKind.se,
+            frames: const [],
+          ),
+        ],
       ),
+      onToggleLayerVisibility: (_) {},
+      rowDragHooks: TimelineRowDragHooks(
+        drag: drag,
+        onBegin: begun.add,
+        onUpdate: (rows, slot) => updates.add((
+          rows: [for (final row in rows) row.id.value],
+          slot: slot,
+        )),
+        onEffectUpdate: (_, _, _) {},
+        onEnd: () {},
+        onCancel: () {},
+      ),
+    );
+
+    // The rail lists slots TOP-DOWN, so 'lane-se2' (the higher slot) is the
+    // first display row and downward is toward 'lane-se'.
+    await tester.drag(
+      find.byKey(
+        const ValueKey<String>('storyboard-layer-visibility-lane-se2'),
+      ),
+      const Offset(0, 30),
+    );
+    await tester.pumpAndSettle();
+
+    expect(begun, [const LayerRowSubject(LayerId('lane-se2'))]);
+    expect(updates.last.rows, [
+      'lane-se2',
+      'lane-se',
+    ], reason: 'the display list is the track list reversed');
+    expect(
+      updates.last.slot,
+      2,
+      reason: 'one step down clears the row own gap and lands past S1',
     );
   });
 
   testWidgets('a GAP (no active cut) keeps the SE rail controls up '
-      '(UI-R10 #12): track-owned rows never depend on a cut', (
-    tester,
-  ) async {
+      '(UI-R10 #12): track-owned rows never depend on a cut', (tester) async {
     await _pumpPanel(
       tester,
       project: _project(),
@@ -255,9 +315,7 @@ void main() {
     );
 
     expect(
-      find.byKey(
-        const ValueKey<String>('storyboard-layer-visibility-lane-se'),
-      ),
+      find.byKey(const ValueKey<String>('storyboard-layer-visibility-lane-se')),
       findsOneWidget,
       reason: 'the SE eye survives the no-cut state',
     );
@@ -301,7 +359,9 @@ void main() {
       findsNothing,
     );
     expect(
-      find.byKey(const ValueKey<String>('storyboard-track-lane-row-0-position')),
+      find.byKey(
+        const ValueKey<String>('storyboard-track-lane-row-0-position'),
+      ),
       findsNothing,
     );
 
@@ -330,7 +390,9 @@ void main() {
     }
     expect(
       find.byKey(
-        const ValueKey<String>('storyboard-lane-label-v-track:lane-track-opacity'),
+        const ValueKey<String>(
+          'storyboard-lane-label-v-track:lane-track-opacity',
+        ),
       ),
       findsOneWidget,
     );
@@ -456,8 +518,6 @@ void main() {
         onToggleKeyAt: (_, lane, frame) =>
             toggles.add((track.id.value, lane.laneId, frame)),
         onMoveKey: (_, _, _, _) {},
-
-
       ),
     );
     await _expandVTransform(tester);
@@ -506,8 +566,6 @@ void main() {
         onToggleKeyAt: (layer, lane, frame) =>
             toggles.add((layer.id.value, lane.laneId, frame)),
         onMoveKey: (_, _, _, _) {},
-
-
       ),
     );
 
@@ -692,10 +750,14 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey<String>('cut-fade-target-white')),
-        findsNothing);
-    expect(find.byKey(const ValueKey<String>('cut-fade-target-black')),
-        findsNothing);
+    expect(
+      find.byKey(const ValueKey<String>('cut-fade-target-white')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('cut-fade-target-black')),
+      findsNothing,
+    );
   });
 
   group('timeline-parity S rows (R4-⑨ 완벽통일)', () {
@@ -753,19 +815,17 @@ void main() {
           )
           .dx;
       final rowCentreY = tester
-          .getCenter(find.byKey(const ValueKey<String>('storyboard-se-row-0-1')))
+          .getCenter(
+            find.byKey(const ValueKey<String>('storyboard-se-row-0-1')),
+          )
           .dy;
 
       // Frame 2: inside the row's written block.
-      await tester.tapAt(
-        Offset(rowLeft + 2.5 * pixelsPerFrame, rowCentreY),
-      );
+      await tester.tapAt(Offset(rowLeft + 2.5 * pixelsPerFrame, rowCentreY));
       await tester.pumpAndSettle();
       // Frame 6: past the writing, where the old per-BLOCK tap zones had
       // nothing to answer with.
-      await tester.tapAt(
-        Offset(rowLeft + 6.5 * pixelsPerFrame, rowCentreY),
-      );
+      await tester.tapAt(Offset(rowLeft + 6.5 * pixelsPerFrame, rowCentreY));
       await tester.pumpAndSettle();
 
       expect(presses, [
@@ -870,7 +930,8 @@ void main() {
       expect(
         find.byKey(const ValueKey<String>('storyboard-cut-fx-lane-cut')),
         findsNothing,
-        reason: 'R10 R3 retired the per-cut axis — the track switch is the '
+        reason:
+            'R10 R3 retired the per-cut axis — the track switch is the '
             'film\'s only fx switch',
       );
 

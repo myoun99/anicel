@@ -19,6 +19,7 @@ import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnailResolver;
 import 'storyboard_panel.dart';
 import 'timeline/layer_rail_window.dart' show LayerRailExtent;
 import 'timeline/property_lane_model.dart' show PropertyLaneEditCallbacks;
+import 'timeline/layer_row_drag.dart' show TimelineRowDragHooks;
 import 'timeline/se_layer_mixer.dart';
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_layer_controls_header.dart' show LayerLegendCallbacks;
@@ -708,6 +709,16 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     currentRow: _session.currentRowListenable,
                     onStandOnLane: (layerId, laneId) =>
                         _session.selectRow(LaneRowAddress(layerId, laneId)),
+                  ),
+                  // The S rows take the rail's row-order drag; the V rows
+                  // are tracks and keep their order.
+                  rowDragHooks: TimelineRowDragHooks(
+                    drag: _session.layerRowDrag,
+                    onBegin: _session.beginLayerRowDrag,
+                    onUpdate: _session.updateLayerRowDrag,
+                    onEffectUpdate: _session.updateEffectRowDrag,
+                    onEnd: _session.endLayerRowDrag,
+                    onCancel: _session.cancelLayerRowDrag,
                   ),
                   layerLaneEdit: _layerLaneEdit,
                   activeCutFrameCursor: _activeCutFrameCursor,

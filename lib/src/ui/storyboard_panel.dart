@@ -41,6 +41,9 @@ import 'timeline/timeline_row_span_resolver.dart'
 import 'timeline/se_audio_lane.dart' show SeAudioLaneFrameRow;
 import 'timeline/timeline_lane_rows.dart'
     show TimelineLaneControlsRow, TimelineLaneFrameRow;
+import 'timeline/layer_drop_policy.dart' show slotForSteps;
+import 'timeline/layer_row_drag.dart'
+    show LayerRowDragTarget, LayerRowSubject, TimelineRowDragHooks;
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_ruler_cursor_overlay.dart';
 import 'timeline/transform_lane_policy.dart'
@@ -365,6 +368,7 @@ class StoryboardPanel extends StatefulWidget {
     this.trackLaneEditFor,
     this.laneRange,
     this.currentRowHooks,
+    this.rowDragHooks,
     this.layerLaneEdit,
     this.activeCutFrameCursor,
     this.onSelectFrameIndex,
@@ -641,6 +645,11 @@ class StoryboardPanel extends StatefulWidget {
   /// it (R10 #19's rail half) — the same bundle the timeline's rail takes,
   /// because a property row here is a property row there.
   final TimelineCurrentRowHooks? currentRowHooks;
+
+  /// The row-order drag, for the S rows. The V rows are TRACKS and their
+  /// order is the film's compositing order — a different decision, and not
+  /// this round's (user, 2026-08-07).
+  final TimelineRowDragHooks? rowDragHooks;
 
   /// Lane edit hooks for the S rows' Transform lanes — the timeline's
   /// layer-transform lane editing on the ACTIVE cut's slot layers. Null =
@@ -1203,6 +1212,46 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   };
 
   Widget _seLabelRow(Track track, int slot) {
+    final trackLayer = _trackSeAt(track, slot);
+    return _draggableSeRow(track, slot, trackLayer, _seLabel(track, slot));
+  }
+
+  /// The S row, made draggable — the rail's row-order drag, on the third
+  /// surface.
+  ///
+  /// Only the track holding the ACTIVE CUT offers it: the session commits
+  /// an S move against the selected track's list, and another track's rows
+  /// would write to the wrong one. An empty slot has nothing to move.
+  ///
+  /// ⚠️The travel is counted in `_seRowHeight`, which is the pitch only
+  /// while no S row between here and there is twirled open. With one open
+  /// the drag simply moves at a different rate — the CARET still shows the
+  /// slot it will land on, so the screen never lies about the outcome.
+  Widget _draggableSeRow(Track track, int slot, Layer? trackLayer, Widget row) {
+    final hooks = widget.rowDragHooks;
+    if (hooks == null || trackLayer == null || _activeCutOf(track) == null) {
+      return row;
+    }
+    // The rail lists the slots top-down, which is the track's list
+    // reversed; `modelInsertionForSlot` infers that from the two lists.
+    final displayRows = track.seLayers.reversed.toList();
+    final displayIndex = _seSlotCount(track) - 1 - slot;
+    return LayerRowDragTarget(
+      subject: LayerRowSubject(trackLayer.id),
+      slotBefore: displayIndex,
+      rowExtent: _seRowHeight,
+      axis: Axis.horizontal,
+      hooks: hooks,
+      isLastRow: displayIndex == displayRows.length - 1,
+      onCrossed: (steps) => hooks.onUpdate(
+        displayRows,
+        slotForSteps(displayIndex, steps, displayRows.length),
+      ),
+      child: row,
+    );
+  }
+
+  Widget _seLabel(Track track, int slot) {
     final trackLayer = _trackSeAt(track, slot);
     return _StoryboardSeLabel(
       track: track,

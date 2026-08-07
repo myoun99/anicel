@@ -613,6 +613,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     rangeHooks: widget.rangeHooks,
                     laneRange: widget.laneRange,
                     currentRowHooks: widget.currentRowHooks,
+                    rowDragHooks: widget.rowDragHooks,
                     runEdit: widget.runEdit,
                     isFrameCached: widget.isFrameCached,
                     metrics: xsheetMetrics,

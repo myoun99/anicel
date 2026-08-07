@@ -31,6 +31,10 @@ import 'timeline_exposure_comma_drag_policy.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/timeline_row_address.dart';
 import 'timeline_row_cross_offset.dart';
+import 'effect_lane_policy.dart' show parseEffectLaneId;
+import 'layer_drop_policy.dart'
+    show effectHeaderRowsOf, effectStepsBetween, slotForSteps;
+import 'layer_row_drag.dart';
 import 'timeline_current_row.dart';
 import 'timeline_edge_auto_pan.dart';
 import 'timeline_row_span_resolver.dart' show resolveBlockMoveTargetLayer;
@@ -121,6 +125,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.rangeHooks,
     this.laneRange,
     this.currentRowHooks,
+    this.rowDragHooks,
     this.runEdit,
     this.isFrameCached,
     this.metrics = defaultMetrics,
@@ -278,6 +283,11 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// Which row the frame-axis verbs act on, and the label press that moves
   /// it (R10 #19's rail half); null leaves lane headers inert and unwashed.
   final TimelineCurrentRowHooks? currentRowHooks;
+
+  /// The row-order drag. The sheet's columns ARE the rail's rows stood up,
+  /// so the same handle rule applies along its own axis: grabbing a column
+  /// header moves that layer, an fx header re-orders that chain.
+  final TimelineRowDragHooks? rowDragHooks;
 
   /// The run-edge [+]/[↻] handle hooks (UI-R8); null hides the handles.
   final TimelineRunEditCallbacks? runEdit;
@@ -796,6 +806,72 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
   /// gate for the same reason the horizontal rail has it: the blue value
   /// column must follow a key move per step, not sit on the committed
   /// track until the pointer lifts.
+  /// The display entries of the pass in flight, for the drag's row → slot
+  /// conversion (see [effectHeaderRowsOf]).
+  List<TimelineDisplayRow> _dragRows = const [];
+
+  /// One column header, made draggable along the sheet's own axis. A layer
+  /// header moves the layer; an fx group header re-orders that layer's
+  /// chain; every other lane header passes through untouched (members do
+  /// not move — the user's rule).
+  ///
+  /// The sheet lists the stack RAW where the rail reverses it, and the
+  /// chain the other way round from the rail — neither is stated here.
+  /// Both are inferred by the policy from the lists themselves.
+  Widget _draggableHeader(TimelineDisplayRow entry, Widget child) {
+    final hooks = widget.rowDragHooks;
+    if (hooks == null) {
+      return child;
+    }
+    final lane = entry.lane;
+    if (lane == null) {
+      return LayerRowDragTarget(
+        subject: LayerRowSubject(entry.layer.id),
+        slotBefore: entry.layerIndex,
+        rowExtent: _metrics.layerRowHeight,
+        axis: Axis.vertical,
+        hooks: hooks,
+        isLastRow: entry.layerIndex == widget.layers.length - 1,
+        onCrossed: (steps) => hooks.onUpdate(
+          widget.layers,
+          slotForSteps(entry.layerIndex, steps, widget.layers.length),
+        ),
+        child: child,
+      );
+    }
+    if (!lane.isGroupHeader) {
+      return child;
+    }
+    final parsed = parseEffectLaneId(lane.laneId);
+    if (parsed == null || parsed.parameterId != null) {
+      return child;
+    }
+    final headers = effectHeaderRowsOf(_dragRows, entry.layer.id);
+    final slot = headers.indexWhere((h) => h.effectId == parsed.effectId);
+    if (slot < 0) {
+      return child;
+    }
+    final myRowIndex = headers[slot].rowIndex;
+    return LayerRowDragTarget(
+      subject: EffectRowSubject(entry.layer.id, parsed.effectId),
+      slotBefore: slot,
+      rowExtent: _metrics.layerRowHeight,
+      axis: Axis.vertical,
+      hooks: hooks,
+      isLastRow: slot == headers.length - 1,
+      onCrossed: (steps) => hooks.onEffectUpdate(
+        entry.layer.id,
+        [for (final header in headers) header.effectId],
+        slotForSteps(
+          slot,
+          effectStepsBetween(headers, myRowIndex, steps),
+          headers.length,
+        ),
+      ),
+      child: child,
+    );
+  }
+
   Widget _laneHeader(TimelineDisplayRow entry) {
     return ValueListenableBuilder<int>(
       valueListenable: widget.frameCursor,
@@ -1045,6 +1121,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                 // the layer means applied later" reads the same in both.
                 lanesPrecedeLayer: true,
               );
+              // The row drag counts COLUMNS and lands on slots; only this
+              // list knows how many columns sit between two fx headers.
+              _dragRows = entries;
               final rangeHooks = widget.rangeHooks;
               _rangeMoveResolver
                 ..rows = entries
@@ -1493,113 +1572,116 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                               entries.length;
                                                           index += 1
                                                         )
-                                                          entries[index].isLane
-                                                              ? _laneHeader(
-                                                                  entries[index],
-                                                                )
-                                                              : _LayerHeader(
-                                                                  headerExtent:
-                                                                      _naturalHeaderExtent,
-                                                                  onToggleLayerOnionSkin:
-                                                                      widget
-                                                                          .onToggleLayerOnionSkin,
-                                                                  onionSkinEnabled:
-                                                                      widget.layerOnionSkinEnabledOf?.call(
-                                                                        entries[index]
-                                                                            .layer
-                                                                            .id,
-                                                                      ) ??
-                                                                      false,
-                                                                  onLayerBlendModeSelected:
-                                                                      widget
-                                                                          .onLayerBlendModeSelected,
-                                                                  blendLanguage:
-                                                                      widget
-                                                                          .blendLanguage,
-                                                                  wearsBaseComposite: attachRowWearsBaseComposite(
-                                                                    entries[index]
-                                                                        .layer,
-                                                                    widget
-                                                                        .layers,
-                                                                  ),
-                                                                  layer:
+                                                          _draggableHeader(
+                                                            entries[index],
+                                                            entries[index]
+                                                                    .isLane
+                                                                ? _laneHeader(
+                                                                    entries[index],
+                                                                  )
+                                                                : _LayerHeader(
+                                                                    headerExtent:
+                                                                        _naturalHeaderExtent,
+                                                                    onToggleLayerOnionSkin:
+                                                                        widget
+                                                                            .onToggleLayerOnionSkin,
+                                                                    onionSkinEnabled:
+                                                                        widget.layerOnionSkinEnabledOf?.call(
+                                                                          entries[index]
+                                                                              .layer
+                                                                              .id,
+                                                                        ) ??
+                                                                        false,
+                                                                    onLayerBlendModeSelected:
+                                                                        widget
+                                                                            .onLayerBlendModeSelected,
+                                                                    blendLanguage:
+                                                                        widget
+                                                                            .blendLanguage,
+                                                                    wearsBaseComposite: attachRowWearsBaseComposite(
                                                                       entries[index]
                                                                           .layer,
-                                                                  active:
-                                                                      entries[index]
-                                                                          .layer
-                                                                          .id ==
                                                                       widget
-                                                                          .activeLayerId,
-                                                                  metrics:
-                                                                      _metrics,
-                                                                  onSelectLayer:
-                                                                      widget
-                                                                          .onSelectLayer,
-                                                                  onToggleLayerVisibility:
-                                                                      widget
-                                                                          .onToggleLayerVisibility,
-                                                                  onLayerOpacityChanged:
-                                                                      widget
-                                                                          .onLayerOpacityChanged,
-                                                                  onLayerOpacityChangeEnd:
-                                                                      widget
-                                                                          .onLayerOpacityChangeEnd,
-                                                                  opacityDragPreview:
-                                                                      widget
-                                                                          .opacityDragPreview,
-                                                                  onToggleLayerTimesheet:
-                                                                      widget
-                                                                          .onToggleLayerTimesheet,
-                                                                  fxState:
-                                                                      widget.layerFxStateOf?.call(
-                                                                        entries[index]
-                                                                            .layer
-                                                                            .id,
-                                                                      ) ??
-                                                                      LayerFxState
-                                                                          .on,
-                                                                  onToggleLayerFx:
-                                                                      widget
-                                                                          .onToggleLayerFx,
-                                                                  onLayerMarkSelected:
-                                                                      widget
-                                                                          .onLayerMarkSelected,
-                                                                  onToggleLayerFillReference:
-                                                                      widget
-                                                                          .onToggleLayerFillReference,
-                                                                  onOpenLayerMixer:
-                                                                      widget
-                                                                          .onOpenLayerMixer,
-                                                                  attachArrowPlacement: widget
-                                                                      .attachArrowPlacementOf
-                                                                      ?.call(
-                                                                        entries[index]
-                                                                            .layer
-                                                                            .id,
-                                                                      ),
-                                                                  isLayerSoloed:
-                                                                      widget.isLayerSoloed?.call(
-                                                                        entries[index]
-                                                                            .layer
-                                                                            .id,
-                                                                      ) ??
-                                                                      false,
-                                                                  hasLanes: _lanesFor(
-                                                                    entries[index]
+                                                                          .layers,
+                                                                    ),
+                                                                    layer: entries[index]
                                                                         .layer,
-                                                                  ).isNotEmpty,
-                                                                  lanesExpanded: widget
-                                                                      .expandedLaneLayerIds
-                                                                      .contains(
+                                                                    active:
                                                                         entries[index]
                                                                             .layer
-                                                                            .id,
-                                                                      ),
-                                                                  onToggleLanes:
-                                                                      widget
-                                                                          .onToggleLayerLanes,
-                                                                ),
+                                                                            .id ==
+                                                                        widget
+                                                                            .activeLayerId,
+                                                                    metrics:
+                                                                        _metrics,
+                                                                    onSelectLayer:
+                                                                        widget
+                                                                            .onSelectLayer,
+                                                                    onToggleLayerVisibility:
+                                                                        widget
+                                                                            .onToggleLayerVisibility,
+                                                                    onLayerOpacityChanged:
+                                                                        widget
+                                                                            .onLayerOpacityChanged,
+                                                                    onLayerOpacityChangeEnd:
+                                                                        widget
+                                                                            .onLayerOpacityChangeEnd,
+                                                                    opacityDragPreview:
+                                                                        widget
+                                                                            .opacityDragPreview,
+                                                                    onToggleLayerTimesheet:
+                                                                        widget
+                                                                            .onToggleLayerTimesheet,
+                                                                    fxState:
+                                                                        widget.layerFxStateOf?.call(
+                                                                          entries[index]
+                                                                              .layer
+                                                                              .id,
+                                                                        ) ??
+                                                                        LayerFxState
+                                                                            .on,
+                                                                    onToggleLayerFx:
+                                                                        widget
+                                                                            .onToggleLayerFx,
+                                                                    onLayerMarkSelected:
+                                                                        widget
+                                                                            .onLayerMarkSelected,
+                                                                    onToggleLayerFillReference:
+                                                                        widget
+                                                                            .onToggleLayerFillReference,
+                                                                    onOpenLayerMixer:
+                                                                        widget
+                                                                            .onOpenLayerMixer,
+                                                                    attachArrowPlacement: widget
+                                                                        .attachArrowPlacementOf
+                                                                        ?.call(
+                                                                          entries[index]
+                                                                              .layer
+                                                                              .id,
+                                                                        ),
+                                                                    isLayerSoloed:
+                                                                        widget.isLayerSoloed?.call(
+                                                                          entries[index]
+                                                                              .layer
+                                                                              .id,
+                                                                        ) ??
+                                                                        false,
+                                                                    hasLanes: _lanesFor(
+                                                                      entries[index]
+                                                                          .layer,
+                                                                    ).isNotEmpty,
+                                                                    lanesExpanded: widget
+                                                                        .expandedLaneLayerIds
+                                                                        .contains(
+                                                                          entries[index]
+                                                                              .layer
+                                                                              .id,
+                                                                        ),
+                                                                    onToggleLanes:
+                                                                        widget
+                                                                            .onToggleLayerLanes,
+                                                                  ),
+                                                          ),
                                                       ],
                                                     ),
                                                   ],
