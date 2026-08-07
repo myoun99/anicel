@@ -21,6 +21,7 @@ library;
 
 import '../../models/attached_layer_resolve.dart';
 import '../../models/layer.dart';
+import '../../models/layer_effect.dart' show EffectId;
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
@@ -201,6 +202,60 @@ LayerDropPlan? resolveLayerDrop({
     folderIds: folderIds,
     joinedFolderId: joinedFolderId,
   );
+}
+
+/// One layer's effect chain after a header drag, in MODEL order — or null
+/// when the landing is where it started.
+///
+/// [displayEffects] is the chain as the SURFACE lists it. The rail runs it
+/// in model order (effects downward from the layer, Transform last) and the
+/// sheet runs it reversed, and which one this is comes from COMPARING the
+/// two lists rather than from a flag — the same rule the row drop follows,
+/// for the same reason.
+///
+/// The Transform group is not in either list: it is not a chain member, it
+/// is where the chain ends, so nothing can be dropped past it.
+List<EffectId>? resolveEffectDrop({
+  required List<EffectId> modelEffects,
+  required List<EffectId> displayEffects,
+  required EffectId movingId,
+  required int slot,
+}) {
+  if (displayEffects.length != modelEffects.length) {
+    return null;
+  }
+  final bool reversed;
+  if (_sameOrder(displayEffects, modelEffects)) {
+    reversed = false;
+  } else if (_sameOrder(displayEffects, modelEffects.reversed.toList())) {
+    reversed = true;
+  } else {
+    // An arrangement neither way round: refuse rather than guess which
+    // half of it the slot was counted in.
+    return null;
+  }
+  final from = displayEffects.indexOf(movingId);
+  if (from < 0 || slot < 0 || slot > displayEffects.length) {
+    return null;
+  }
+  if (slot >= from && slot <= from + 1) {
+    return null; // Where it already is.
+  }
+  final next = [...displayEffects]..removeAt(from);
+  next.insert(slot > from ? slot - 1 : slot, movingId);
+  return reversed ? next.reversed.toList() : next;
+}
+
+bool _sameOrder(List<EffectId> a, List<EffectId> b) {
+  if (a.length != b.length) {
+    return false;
+  }
+  for (var index = 0; index < a.length; index += 1) {
+    if (a[index] != b[index]) {
+      return false;
+    }
+  }
+  return true;
 }
 
 /// The SE rows' plan: a flat permutation of the track's list. They carry no

@@ -170,9 +170,15 @@ import 'timeline/layer_drop_policy.dart'
         LayerDropPlan,
         layerDragRun,
         modelInsertionForSlot,
+        resolveEffectDrop,
         resolveLayerDrop,
         resolveTrackSeDrop;
-import 'timeline/layer_row_drag.dart' show LayerRowDragState;
+import 'timeline/layer_row_drag.dart'
+    show
+        EffectRowSubject,
+        LayerRowDragState,
+        LayerRowDragSubject,
+        LayerRowSubject;
 import 'timeline/property_lane_model.dart' show folderAggregateRuns;
 import 'timeline/layer_label_controls.dart' show layerKindShowsBlendControl;
 import 'timeline/layer_timeline_display_adapter.dart'
@@ -3952,14 +3958,51 @@ class EditorSessionManager extends ChangeNotifier {
   /// the drawn `legal` and the committed plan cannot disagree.
   LayerDropPlan? _rowDragPlan;
   List<LayerId>? _rowDragSeOrder;
+  List<EffectId>? _rowDragEffectOrder;
 
-  void beginLayerRowDrag(LayerId layerId) {
+  void beginLayerRowDrag(LayerRowDragSubject subject) {
     _rowDragPlan = null;
     _rowDragSeOrder = null;
+    _rowDragEffectOrder = null;
     layerRowDrag.value = LayerRowDragState(
-      movingId: layerId,
+      subject: subject,
       caretSlot: -1,
       legal: false,
+    );
+  }
+
+  /// The caret moved within one layer's effect CHAIN.
+  ///
+  /// The chain's order is shared STRUCTURE, so the commit goes through the
+  /// coordinator's `updateLayerEffects` — which mirrors the shape across
+  /// the 겸용 link group. Building an `UpdateLayerEffectsCommand` here
+  /// would drop that mirror silently, which is the trap that command's own
+  /// doc names.
+  void updateEffectRowDrag(
+    LayerId layerId,
+    List<EffectId> displayEffects,
+    int slot,
+  ) {
+    final state = layerRowDrag.value;
+    if (state == null) {
+      return;
+    }
+    final subject = state.subject;
+    final layer = _layerById(layerId);
+    if (subject is! EffectRowSubject || layer == null) {
+      return;
+    }
+    final order = resolveEffectDrop(
+      modelEffects: [for (final effect in layer.effects) effect.id],
+      displayEffects: displayEffects,
+      movingId: subject.effectId,
+      slot: slot,
+    );
+    _rowDragEffectOrder = order;
+    layerRowDrag.value = LayerRowDragState(
+      subject: subject,
+      caretSlot: slot,
+      legal: order != null,
     );
   }
 
@@ -3968,19 +4011,20 @@ class EditorSessionManager extends ChangeNotifier {
   /// this verb knowing which way that rail runs.
   void updateLayerRowDrag(List<Layer> displayLayers, int slot) {
     final state = layerRowDrag.value;
-    if (state == null) {
+    final subject = state?.subject;
+    if (state == null || subject is! LayerRowSubject) {
       return;
     }
-    if (isTrackSeLayerId(state.movingId)) {
+    if (isTrackSeLayerId(subject.layerId)) {
       final order = resolveTrackSeDrop(
         seLayers: activeTrack.seLayers,
         displayRows: displayLayers,
-        movingId: state.movingId,
+        movingId: subject.layerId,
         slot: slot,
       );
       _rowDragSeOrder = order;
       layerRowDrag.value = LayerRowDragState(
-        movingId: state.movingId,
+        subject: subject,
         caretSlot: slot,
         legal: order != null,
       );
@@ -3999,15 +4043,15 @@ class EditorSessionManager extends ChangeNotifier {
         ? null
         : resolveLayerDrop(
             stack: cut.layers,
-            movingId: state.movingId,
+            movingId: subject.layerId,
             insertAt: insertAt,
           );
     _rowDragPlan = plan;
     layerRowDrag.value = LayerRowDragState(
-      movingId: state.movingId,
+      subject: subject,
       caretSlot: slot,
       legal: plan != null,
-      joinLabel: _rowDropJoinLabel(cut.layers, state.movingId, plan),
+      joinLabel: _rowDropJoinLabel(cut.layers, subject.layerId, plan),
     );
   }
 
@@ -4041,8 +4085,30 @@ class EditorSessionManager extends ChangeNotifier {
     final state = layerRowDrag.value;
     final plan = _rowDragPlan;
     final seOrder = _rowDragSeOrder;
+    final effectOrder = _rowDragEffectOrder;
+    final subject = state?.subject;
     cancelLayerRowDrag();
-    if (state == null) {
+    if (subject == null) {
+      return;
+    }
+    final cut = activeCutOrNull;
+    if (subject is EffectRowSubject) {
+      final layer = _layerById(subject.layerId);
+      if (effectOrder == null || cut == null || layer == null) {
+        return;
+      }
+      final byId = {for (final effect in layer.effects) effect.id: effect};
+      _cutCommandCoordinator.updateLayerEffects(
+        cutId: cut.id,
+        layerId: subject.layerId,
+        effects: [for (final id in effectOrder) byId[id]!],
+        description: 'Reorder effects',
+      );
+      _refreshAfterCutCommand(preferredActiveLayerId: subject.layerId);
+      notifyListeners();
+      return;
+    }
+    if (subject is! LayerRowSubject) {
       return;
     }
     if (seOrder != null) {
@@ -4053,11 +4119,10 @@ class EditorSessionManager extends ChangeNotifier {
       notifyListeners();
       return;
     }
-    final cut = activeCutOrNull;
     if (plan == null || cut == null) {
       return;
     }
-    final run = layerDragRun(cut.layers, state.movingId);
+    final run = layerDragRun(cut.layers, subject.layerId);
     if (run == null) {
       return;
     }
@@ -4071,13 +4136,14 @@ class EditorSessionManager extends ChangeNotifier {
       },
       description: 'Move layer',
     );
-    _refreshAfterCutCommand(preferredActiveLayerId: state.movingId);
+    _refreshAfterCutCommand(preferredActiveLayerId: subject.layerId);
     notifyListeners();
   }
 
   void cancelLayerRowDrag() {
     _rowDragPlan = null;
     _rowDragSeOrder = null;
+    _rowDragEffectOrder = null;
     layerRowDrag.value = null;
   }
 

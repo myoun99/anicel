@@ -1168,6 +1168,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               drag: _session.layerRowDrag,
               onBegin: _session.beginLayerRowDrag,
               onUpdate: _session.updateLayerRowDrag,
+              onEffectUpdate: _session.updateEffectRowDrag,
               onEnd: _session.endLayerRowDrag,
               onCancel: _session.cancelLayerRowDrag,
             ),

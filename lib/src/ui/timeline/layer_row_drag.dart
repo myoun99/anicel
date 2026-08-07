@@ -16,23 +16,77 @@ import 'package:flutter/gestures.dart' show DragStartBehavior;
 import 'package:flutter/material.dart';
 
 import '../../models/layer.dart';
+import '../../models/layer_effect.dart' show EffectId;
 import '../../models/layer_id.dart';
 import '../input/app_input_settings.dart' show AppInput;
 import '../input/eager_pan_gesture_recognizer.dart';
 import '../theme/app_theme.dart' show AppShapes;
 
+/// WHAT a row drag is moving. Two kinds share the gesture, the caret and
+/// the device policy; what differs is the list they are re-ordering, and
+/// that difference belongs here rather than in two copies of the widget.
+sealed class LayerRowDragSubject {
+  const LayerRowDragSubject();
+
+  /// Whether a caret raised for [other] belongs on rows of THIS subject's
+  /// kind — one layer stack for layer rows, one layer's chain for effects
+  /// (a Blur dragged on layer A must raise no caret on layer B).
+  bool sharesLaneWith(LayerRowDragSubject other);
+}
+
+/// A rail ROW: the layer stack's own order.
+final class LayerRowSubject extends LayerRowDragSubject {
+  const LayerRowSubject(this.layerId);
+
+  final LayerId layerId;
+
+  @override
+  bool sharesLaneWith(LayerRowDragSubject other) => other is LayerRowSubject;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is LayerRowSubject && other.layerId == layerId;
+
+  @override
+  int get hashCode => Object.hash(LayerRowSubject, layerId);
+}
+
+/// An fx GROUP HEADER: one layer's effect chain. The Transform group is
+/// never a subject — it is not a chain member, it is where the chain ends.
+final class EffectRowSubject extends LayerRowDragSubject {
+  const EffectRowSubject(this.layerId, this.effectId);
+
+  final LayerId layerId;
+  final EffectId effectId;
+
+  @override
+  bool sharesLaneWith(LayerRowDragSubject other) =>
+      other is EffectRowSubject && other.layerId == layerId;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is EffectRowSubject &&
+          other.layerId == layerId &&
+          other.effectId == effectId;
+
+  @override
+  int get hashCode => Object.hash(EffectRowSubject, layerId, effectId);
+}
+
 /// A row drag in flight, as the rails draw it.
 class LayerRowDragState {
   const LayerRowDragState({
-    required this.movingId,
+    required this.subject,
     required this.caretSlot,
     required this.legal,
     this.joinLabel,
   });
 
-  /// The row the pointer holds (whatever else travels with it is the
-  /// policy's business, not the caret's).
-  final LayerId movingId;
+  /// What the pointer holds (whatever else travels with it is the policy's
+  /// business, not the caret's).
+  final LayerRowDragSubject subject;
 
   /// Where the caret sits, as a gap in the surface's LAYER row list: 0 is
   /// before the first, `length` after the last.
@@ -57,18 +111,26 @@ class TimelineRowDragHooks {
     required this.drag,
     required this.onBegin,
     required this.onUpdate,
+    required this.onEffectUpdate,
     required this.onEnd,
     required this.onCancel,
   });
 
   final ValueListenable<LayerRowDragState?> drag;
 
-  final void Function(LayerId layerId) onBegin;
+  final void Function(LayerRowDragSubject subject) onBegin;
 
-  /// The caret moved. [displayLayers] is the list the SURFACE renders, so
-  /// the session can map the slot onto the model without guessing which way
-  /// this rail runs.
+  /// The caret moved to a slot of the LAYER row list. [displayLayers] is
+  /// the list the SURFACE renders, so the session can map the slot onto the
+  /// model without guessing which way this rail runs.
   final void Function(List<Layer> displayLayers, int slot) onUpdate;
+
+  /// The caret moved within one layer's effect CHAIN. [displayEffects] is
+  /// that chain in the order this surface renders it — the rail lists it
+  /// one way and the sheet the other, and the session infers which from
+  /// the list rather than being told.
+  final void Function(LayerId layerId, List<EffectId> displayEffects, int slot)
+  onEffectUpdate;
 
   final VoidCallback onEnd;
   final VoidCallback onCancel;
@@ -91,17 +153,18 @@ const double layerRowCaretThickness = 2;
 class LayerRowDragTarget extends StatelessWidget {
   const LayerRowDragTarget({
     super.key,
-    required this.layerId,
+    required this.subject,
     required this.slotBefore,
     required this.rowExtent,
-    required this.displayLayers,
     required this.axis,
     required this.hooks,
+    required this.onCrossed,
     required this.child,
     this.isLastRow = false,
   });
 
-  final LayerId layerId;
+  /// What this row would move if it were grabbed.
+  final LayerRowDragSubject subject;
 
   /// The caret slot on this row's LEADING edge; the trailing edge is
   /// [slotBefore] + 1. Stated as a slot rather than an index because a
@@ -113,13 +176,18 @@ class LayerRowDragTarget extends StatelessWidget {
   /// assumed pitch.
   final double rowExtent;
 
-  /// The layer rows the surface is rendering, in ITS order.
-  final List<Layer> displayLayers;
-
   /// The rail's own direction.
   final Axis axis;
 
   final TimelineRowDragHooks? hooks;
+
+  /// Reports the pointer's travel in ROWS. The surface turns that into a
+  /// slot and tells the session — because the surface is what knows how its
+  /// rows map onto the list being re-ordered. A layer row is one row per
+  /// slot; an fx header may have its members twirled open between it and
+  /// the next header, so counting rows here and slots there is the only
+  /// arrangement that stays honest on both.
+  final void Function(int crossedRows) onCrossed;
 
   /// Whether this is the last row of the rail — only it can show the
   /// trailing caret, or two adjacent rows would both draw the same gap.
@@ -134,12 +202,12 @@ class LayerRowDragTarget extends StatelessWidget {
       return child;
     }
     return _LayerRowDragBody(
-      layerId: layerId,
+      subject: subject,
       slotBefore: slotBefore,
       rowExtent: rowExtent,
-      displayLayers: displayLayers,
       axis: axis,
       hooks: hooks,
+      onCrossed: onCrossed,
       isLastRow: isLastRow,
       child: child,
     );
@@ -148,22 +216,22 @@ class LayerRowDragTarget extends StatelessWidget {
 
 class _LayerRowDragBody extends StatefulWidget {
   const _LayerRowDragBody({
-    required this.layerId,
+    required this.subject,
     required this.slotBefore,
     required this.rowExtent,
-    required this.displayLayers,
     required this.axis,
     required this.hooks,
+    required this.onCrossed,
     required this.isLastRow,
     required this.child,
   });
 
-  final LayerId layerId;
+  final LayerRowDragSubject subject;
   final int slotBefore;
   final double rowExtent;
-  final List<Layer> displayLayers;
   final Axis axis;
   final TimelineRowDragHooks hooks;
+  final void Function(int crossedRows) onCrossed;
   final bool isLastRow;
   final Widget child;
 
@@ -176,8 +244,8 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
 
   void _begin() {
     _travelled = 0;
-    widget.hooks.onBegin(widget.layerId);
-    widget.hooks.onUpdate(widget.displayLayers, widget.slotBefore);
+    widget.hooks.onBegin(widget.subject);
+    widget.onCrossed(0);
   }
 
   void _update(Offset delta) {
@@ -185,15 +253,18 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     if (widget.rowExtent <= 0) {
       return;
     }
-    // Rows CROSSED, rounded: the caret snaps to the boundary the pointer is
-    // nearest, which is what makes a one-row move need only half a row of
-    // travel.
-    final crossed = (_travelled / widget.rowExtent).round();
-    final slot = (widget.slotBefore + crossed).clamp(
-      0,
-      widget.displayLayers.length,
-    );
-    widget.hooks.onUpdate(widget.displayLayers, slot);
+    // STEPS, not a raw row count, and symmetric in both directions.
+    //
+    // A row sits between two gaps and BOTH of them are where it already is,
+    // so "one row of travel" is not one step: measured as `index +
+    // crossed`, dragging DOWN by a row lands on the gap directly under the
+    // row and moves nothing, while dragging up by the same distance moves
+    // one. Half a row commits a step either way now, and the surface adds
+    // the row's own gap back on the down side.
+    final travelled = _travelled / widget.rowExtent;
+    final magnitude = travelled.abs();
+    final steps = magnitude < 0.5 ? 0 : (magnitude + 0.5).floor();
+    widget.onCrossed(travelled.isNegative ? -steps : steps);
   }
 
   @override
@@ -202,14 +273,22 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     return ValueListenableBuilder<LayerRowDragState?>(
       valueListenable: widget.hooks.drag,
       builder: (context, drag, child) {
-        final showing = drag != null && drag.legal ? drag : null;
+        // A caret belongs on rows of the dragged subject's OWN kind: a Blur
+        // travelling on layer A raises nothing on layer B's chain, and
+        // nothing on the layer stack either.
+        final showing =
+            drag != null &&
+                drag.legal &&
+                widget.subject.sharesLaneWith(drag.subject)
+            ? drag
+            : null;
         final leading =
             showing != null && showing.caretSlot == widget.slotBefore;
         final trailing =
             showing != null &&
             widget.isLastRow &&
             showing.caretSlot == widget.slotBefore + 1;
-        final lifted = drag?.movingId == widget.layerId;
+        final lifted = drag?.subject == widget.subject;
         return Stack(
           clipBehavior: Clip.none,
           children: [
@@ -307,7 +386,11 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
           );
     return Positioned(
       key: ValueKey<String>(
-        'timeline-row-caret-${atStart ? 'before' : 'after'}-${widget.layerId}',
+        'timeline-row-caret-${atStart ? 'before' : 'after'}-'
+        '${switch (widget.subject) {
+          LayerRowSubject(:final layerId) => layerId.value,
+          EffectRowSubject(:final effectId) => effectId.value,
+        }}',
       ),
       left: horizontal ? 0 : (atStart ? -layerRowCaretThickness / 2 : null),
       right: horizontal ? 0 : (atStart ? null : -layerRowCaretThickness / 2),
