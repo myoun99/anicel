@@ -2210,6 +2210,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// and lets you drag back, not that it maps the whole pasteboard.
   static const double _capsuleTrackFraction = 0.34;
   static const double _capsuleTrackMin = 80;
+
   static const double _capsuleTrackMax = 260;
 
   double _capsuleTrack(double edge) {
@@ -2275,7 +2276,12 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                   // 좌우반전 gets pressed dozens of times an hour.
                   Positioned(
                     left: _capsuleMargin,
-                    top: _capsuleMargin,
+                    // One lane below the very top: the horizontal panbar owns
+                    // the edge itself now, centred on the panel and not
+                    // moving for anyone, so the cluster — the thing you
+                    // reach for rather than read — takes the row under it.
+                    // They can then never share a pixel at any width.
+                    top: _capsuleMargin * 2 + AppScrollbarLane.medium,
                     right: _capsuleMargin,
                     child: Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -2310,38 +2316,13 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                         // viewportForScroll is the only code path that walks
                         // a runaway pan back — and the only readout of where
                         // you are on the pasteboard.
-                        Expanded(
-                          child: LayoutBuilder(
-                            builder: (context, edge) => Align(
-                              alignment: Alignment.topCenter,
-                              child: _capsule(
-                                colorScheme,
-                                keyValue: 'canvas-panbar-horizontal',
-                                height: AppScrollbarLane.medium,
-                                width: _capsuleTrack(edge.maxWidth),
-                                child:
-                                    horizontalStripBar ??
-                                    const SizedBox.shrink(),
-                              ),
-                            ),
-                          ),
-                        ),
+                        // The horizontal panbar used to live here, as the
+                        // Expanded AFTER the pill — so it centred in
+                        // whatever the pill left over and jumped every time
+                        // the pill shed a control. It is a sibling of this
+                        // whole layer now; the pill keeps the space.
+                        const Spacer(),
                       ],
-                    ),
-                  ),
-                  Positioned(
-                    right: _capsuleMargin,
-                    top: 0,
-                    bottom: 0,
-                    child: Align(
-                      alignment: Alignment.centerRight,
-                      child: _capsule(
-                        colorScheme,
-                        keyValue: 'canvas-panbar-vertical',
-                        width: rightStripWidth,
-                        height: _capsuleTrack(window.height),
-                        child: rightStripBar,
-                      ),
                     ),
                   ),
                   // The readout goes to the opposite corner from the
@@ -2364,6 +2345,52 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                 ],
               );
             },
+          ),
+        ),
+        // THE PANBARS SIT ON THE PANEL, NOT ON THE LEFTOVER.
+        //
+        // They used to live inside the cover-inset layer above, so raising
+        // the timeline walked the vertical one up by half the region's
+        // height and the horizontal one shifted every time the pill shed a
+        // control. The user overruled that: the scrollbars are furniture,
+        // and furniture does not move because a drawer opened. Centre of
+        // the panel's right edge, centre of its top edge, always — which on
+        // a full-bleed floor is the centre of the program.
+        //
+        // The pill and the status readout stay INSIDE the cover: those you
+        // reach for, so they still dodge whatever is open.
+        Positioned(
+          right: _capsuleMargin,
+          top: 0,
+          bottom: 0,
+          child: LayoutBuilder(
+            builder: (context, panel) => Align(
+              alignment: Alignment.centerRight,
+              child: _capsule(
+                colorScheme,
+                keyValue: 'canvas-panbar-vertical',
+                width: rightStripWidth,
+                height: _capsuleTrack(panel.maxHeight),
+                child: rightStripBar,
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          left: _capsuleMargin,
+          right: _capsuleMargin,
+          top: _capsuleMargin,
+          child: LayoutBuilder(
+            builder: (context, panel) => Align(
+              alignment: Alignment.topCenter,
+              child: _capsule(
+                colorScheme,
+                keyValue: 'canvas-panbar-horizontal',
+                height: AppScrollbarLane.medium,
+                width: _capsuleTrack(panel.maxWidth),
+                child: horizontalStripBar ?? const SizedBox.shrink(),
+              ),
+            ),
           ),
         ),
       ],

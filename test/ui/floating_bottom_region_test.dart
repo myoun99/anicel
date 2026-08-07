@@ -345,8 +345,8 @@ void main() {
     Finder vBar() =>
         find.byKey(const ValueKey<String>('canvas-panbar-vertical'));
 
-    testWidgets('the controls are pinned inside the visible canvas, and the '
-        'panel pushes them in rather than covering them', (tester) async {
+    testWidgets('the panbars centre on the PANEL and the reachable controls '
+        'dodge what is open', (tester) async {
       await pumpApp(tester);
 
       final timeline = tester.getRect(region());
@@ -354,26 +354,27 @@ void main() {
       final status = tester.getRect(
         find.byKey(const ValueKey<String>('canvas-status-capsule')),
       );
+      final canvas = tester.getRect(mainCanvasPanelShell());
 
-      // 유저 확정: the cluster is nailed to the floor's top-left corner —
-      // never onto the timeline, whose top edge moves on every resize and
-      // every threshold switch.
+      // 유저 확정 (08-07, overruling the earlier rule): a scrollbar is
+      // FURNITURE. It does not move because a drawer opened. Both panbars
+      // centre on the panel's own edges — which on a full-bleed floor is
+      // the centre of the program — however tall the timeline is.
+      expect(tester.getRect(vBar()).center.dy, closeTo(canvas.center.dy, 1.0));
+      expect(tester.getRect(hBar()).center.dx, closeTo(canvas.center.dx, 1.0));
+
+      // The two you REACH FOR still dodge: the cluster is nailed to the
+      // floor's top-left corner and the readout stays clear of the region.
       expect(pillRect.top, lessThan(timeline.top));
-      expect(pillRect.left, lessThan(tester.getRect(hBar()).left));
-      // …and the readout sits clear of the timeline too.
       expect(status.bottom, lessThanOrEqualTo(timeline.top + 0.5));
-      expect(tester.getRect(vBar()).right, lessThan(timeline.right));
 
       // None of them is a band: together they cover a small fraction of the
       // width they ride, which is the whole difference from the strips they
       // replaced.
-      final canvas = tester.getRect(mainCanvasPanelShell());
       expect(tester.getRect(hBar()).width, lessThan(canvas.width * 0.5));
       expect(status.width, lessThan(canvas.width * 0.5));
 
-      // They share the top edge, so they must not share PIXELS. Laid out
-      // as two independent Aligns in a Stack, a wide cluster and a centred
-      // panbar overlap and the bar draws over the zoom readout.
+      // They share the top edge, so they must not share PIXELS.
       expect(
         pillRect.overlaps(tester.getRect(hBar())),
         isFalse,
