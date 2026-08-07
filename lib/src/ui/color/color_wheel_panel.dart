@@ -63,14 +63,22 @@ class _ColorWheelPanelState extends State<ColorWheelPanel> {
     // R10 R5: the wheel, and only the wheel. The swatch pair, the swap
     // button and the hex readout that used to share this panel all left —
     // the pair and the swap to the TOOL RAIL (where a hand rests), the hex
-    // to the window's status bar (where every tab can read it). What is
-    // left needs no adaptive strip: a square, centred, as big as it fits.
+    // to the panel's status bar (where every colour panel reads it). What
+    // is left needs no adaptive strip: a square, as big as it fits.
+    //
+    // TOP-aligned, not centred (유저, R2 #8). Every other panel in the app
+    // fills from the top; a wheel that floated in the middle of a tall
+    // panel was the one thing that did not, and it moved whenever the
+    // panel was resized.
     return Padding(
       padding: const EdgeInsets.all(12),
       child: LayoutBuilder(
         builder: (context, constraints) {
           final square = math.min(constraints.maxWidth, constraints.maxHeight);
-          return Center(child: _wheel(math.max(0, square).toDouble()));
+          return Align(
+            alignment: Alignment.topCenter,
+            child: _wheel(math.max(0, square).toDouble()),
+          );
         },
       ),
     );

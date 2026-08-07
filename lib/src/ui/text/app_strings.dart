@@ -532,7 +532,9 @@ class AppStrings {
 
   // --- Workspace panel names ---
   String get panelCanvas => _s('panelCanvas');
-  String get panelColor => _s('panelColor');
+  String get panelColorWheel => _s('panelColorWheel');
+  String get panelColorRgb => _s('panelColorRgb');
+  String get panelColorPalette => _s('panelColorPalette');
   String get panelMedia => _s('panelMedia');
   String get panelMediaViewer => _s('panelMediaViewer');
   String get panelOnionSkin => _s('panelOnionSkin');
@@ -1107,7 +1109,9 @@ class AppStrings {
         'No PDF renderer in this build — PDF pages cannot be shown.',
     'panelMediaViewer': 'Viewer',
     'panelCanvas': 'Canvas',
-    'panelColor': 'Color',
+    'panelColorWheel': 'Colour wheel',
+    'panelColorRgb': 'RGB',
+    'panelColorPalette': 'Palette',
     'panelMedia': 'Media',
     'panelOnionSkin': 'Onion skin',
     'panelStoryboard': 'Storyboard',
@@ -1802,7 +1806,9 @@ class AppStrings {
     'mediaViewerNoPdfRenderer': 'このビルドにはPDFレンダラーがありません — PDFページを表示できません。',
     'panelMediaViewer': 'ビューア',
     'panelCanvas': 'カンバス',
-    'panelColor': 'カラー',
+    'panelColorWheel': 'カラーホイール',
+    'panelColorRgb': 'RGB',
+    'panelColorPalette': 'パレット',
     'panelMedia': 'メディア',
     'panelOnionSkin': 'オニオンスキン',
     'panelStoryboard': '絵コンテ',
@@ -2493,7 +2499,9 @@ class AppStrings {
     'mediaViewerNoPdfRenderer': '이 빌드에는 PDF 렌더러가 없습니다 — PDF 페이지를 표시할 수 없습니다.',
     'panelMediaViewer': '뷰어',
     'panelCanvas': '캔버스',
-    'panelColor': '색',
+    'panelColorWheel': '컬러 휠',
+    'panelColorRgb': 'RGB',
+    'panelColorPalette': '팔레트',
     'panelMedia': '미디어',
     'panelOnionSkin': '어니언 스킨',
     'panelStoryboard': '콘티',
@@ -3209,7 +3217,9 @@ class AppStrings {
     'mediaStillLinked':
         "Encore lié sur des lignes SE — retirez d'abord ses sons.",
     'panelCanvas': 'Canevas',
-    'panelColor': 'Couleur',
+    'panelColorWheel': 'Roue chromatique',
+    'panelColorRgb': 'RVB',
+    'panelColorPalette': 'Palette',
     'panelMedia': 'Médias',
     'panelOnionSkin': "Pelure d'oignon",
     'panelStoryboard': 'Storyboard',
@@ -3881,7 +3891,9 @@ class AppStrings {
     'mediaViewerNoPdfRenderer': '此版本没有 PDF 渲染器 — 无法显示 PDF 页面。',
     'panelMediaViewer': '查看器',
     'panelCanvas': '画布',
-    'panelColor': '颜色',
+    'panelColorWheel': '色轮',
+    'panelColorRgb': 'RGB',
+    'panelColorPalette': '色板',
     'panelMedia': '媒体',
     'panelOnionSkin': '洋葱皮',
     'panelStoryboard': '分镜',

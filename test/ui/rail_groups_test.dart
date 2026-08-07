@@ -4,7 +4,11 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
 import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
 import 'package:anicel/src/ui/brush/tools_panel.dart';
+import 'package:anicel/src/ui/color/color_slot_pair.dart';
+import 'package:anicel/src/ui/color/color_status_bar.dart';
+import 'package:anicel/src/ui/color/color_wheel_panel.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
+import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/media/media_browser_panel.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
@@ -129,6 +133,103 @@ void main() {
         find.byKey(const ValueKey<String>('rail-grip-tool-brush-button')),
         findsNothing,
       );
+    });
+  });
+
+  group('the colour group', () {
+    Color swatchColor(WidgetTester tester, String key) {
+      final container = tester.widget<Container>(
+        find.byKey(ValueKey<String>(key)),
+      );
+      return (container.decoration! as BoxDecoration).color!;
+    }
+
+    testWidgets('its BUTTON is the dual swatch — the two colours you paint '
+        'with are readable without opening anything', (tester) async {
+      await pumpApp(tester);
+
+      expect(
+        find.byKey(const ValueKey<String>('tool-color-button')),
+        findsOneWidget,
+      );
+      expect(swatchColor(tester, 'tool-color-foreground-swatch'), isNotNull);
+      // …and it is exactly the rail's button cell.
+      expect(ColorSlotPair.extent, ToolsPanel.buttonExtent);
+    });
+
+    testWidgets('there is NO swap glyph — the back slot already is one', (
+      tester,
+    ) async {
+      // 유저 확정, 두 번: a separate swap button says the same verb the pair
+      // already says by being a pair. This guards the glyph from growing
+      // back where the swatch now lives.
+      await pumpApp(tester);
+
+      expect(
+        find.byKey(const ValueKey<String>('tool-color-swap-button')),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey<String>('tool-color-button')),
+          matching: find.byIcon(Icons.swap_horiz),
+        ),
+        findsNothing,
+      );
+    });
+
+    testWidgets('tapping the background slot swaps', (tester) async {
+      await pumpApp(tester);
+
+      final before = swatchColor(tester, 'tool-color-foreground-swatch');
+      final behind = swatchColor(tester, 'tool-color-background-swatch');
+      expect(before, isNot(behind));
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('tool-color-background-swatch')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(swatchColor(tester, 'tool-color-foreground-swatch'), behind);
+      expect(swatchColor(tester, 'tool-color-background-swatch'), before);
+    });
+
+    testWidgets('the wheel, the RGB bars and the palette are three PANELS '
+        'of the group, not tabs inside one', (tester) async {
+      // A strip inside a strip asked "which panel" and "how am I picking"
+      // in the same place twice (유저, R2 #8).
+      await pumpApp(tester);
+      await tester.tap(groupButton(EditorWorkspace.rightGroupId));
+      await tester.pumpAndSettle();
+
+      for (final id in ['color-wheel', 'color-rgb', 'color-palette']) {
+        expect(
+          find.byKey(ValueKey<String>('panel-tab-$id')),
+          findsOneWidget,
+          reason: '$id is a tab of the rail group',
+        );
+      }
+      // The group's strip is the ONLY strip in it: no second row of icons
+      // belonging to the thing inside.
+      expect(
+        find.descendant(
+          of: find
+              .ancestor(
+                of: find.byKey(
+                  const ValueKey<String>('panel-tab-color-wheel'),
+                ),
+                matching: find.byType(EditorPanelTabs),
+              )
+              .first,
+          matching: find.byType(EditorPanelTabs),
+        ),
+        findsNothing,
+      );
+      // Every colour panel carries the same reading underneath.
+      expect(find.byType(ColorStatusBar), findsOneWidget);
+      await tester.tap(find.byKey(const ValueKey<String>('panel-tab-color-rgb')));
+      await tester.pumpAndSettle();
+      expect(find.byType(ColorStatusBar), findsOneWidget);
     });
   });
 
@@ -417,8 +518,7 @@ void main() {
       // time, because the button that opens it IS the pair.
       final swatch = find.byKey(const ValueKey<String>('tool-color-button'));
       expect(swatch, findsOneWidget);
-      expect(find.byKey(const ValueKey<String>('color-picker-panel')),
-          findsNothing);
+      expect(find.byType(ColorWheelPanel), findsNothing);
 
       final strip = tester.getRect(
         find.byKey(const ValueKey<String>('editor-panel-dock-tool-right')),
@@ -428,13 +528,13 @@ void main() {
       await tester.tap(swatch);
       await tester.pumpAndSettle();
 
-      final panel = find.byKey(const ValueKey<String>('color-picker-panel'));
+      final panel = find.byType(ColorWheelPanel);
       expect(panel, findsOneWidget);
       // SIDEWAYS: beside the strip, not hanging off it downward the way the
       // strip popup did.
       expect(tester.getRect(panel).right, lessThanOrEqualTo(strip.left + 0.5));
       expect(
-        find.byKey(const ValueKey<String>('color-window-tab-wheel')),
+        find.byKey(const ValueKey<String>('panel-tab-color-wheel')),
         findsOneWidget,
       );
     });

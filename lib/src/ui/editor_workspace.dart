@@ -22,7 +22,7 @@ import '../services/resample/resample_kernel.dart' show ResampleMode;
 import '../services/color_palette_file_service.dart' show ColorPaletteState;
 import 'brush/brush_preset_library.dart';
 import 'brush/canvas_floor_insets.dart';
-import 'color/color_button_window.dart' show ColorPickerPanel;
+import 'color/color_panels.dart' show ColorPickerKind, ColorPickerPanel;
 import 'color/color_slot_pair.dart';
 import 'theme/app_theme.dart';
 import 'brush/brush_preset_panel.dart';
@@ -226,7 +226,12 @@ class EditorWorkspace extends StatefulWidget {
   static const String canvasTabId = 'canvas';
   static const String brushesTabId = 'brushes';
   static const String brushSettingsTabId = 'brush-settings';
+  /// The three colour PANELS. They were the three tabs of one colour panel
+  /// until R2 #8 — a strip inside a strip, asking "which panel" and "how am
+  /// I picking" in the same place twice.
   static const String colorWheelTabId = 'color-wheel';
+  static const String colorRgbTabId = 'color-rgb';
+  static const String colorPaletteTabId = 'color-palette';
   static const String onionSkinTabId = 'onion-skin';
   static const String cameraTabId = 'camera';
   static const String mediaTabId = 'media';
@@ -301,8 +306,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     ),
     // 오른쪽: 컬러(맨 위) (유저 확정). The picker is the top group of the
     // sub-strip, and its button is the swatch itself.
+    // The colour group: three ways of picking, three tabs of ONE group,
+    // and the group's own strip is the only strip.
     EditorWorkspace.rightGroupId: DockGroup(
-      tabs: [EditorWorkspace.colorWheelTabId],
+      tabs: [
+        EditorWorkspace.colorWheelTabId,
+        EditorWorkspace.colorRgbTabId,
+        EditorWorkspace.colorPaletteTabId,
+      ],
     ),
     EditorWorkspace.railGroupId(right: true, slot: 2): DockGroup(
       tabs: [EditorWorkspace.timesheetTabId],
@@ -1355,6 +1366,49 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _scheduleLayoutSave();
   }
 
+  /// One of the three colour panels. They differ by their picker and by
+  /// nothing else — same live colour, same palette, same status bar — so
+  /// they are built from one place rather than three that could drift.
+  EditorPanelTab _colorTab(
+    String tabId, {
+    required ColorPickerKind kind,
+    required String label,
+    required IconData icon,
+    required bool locked,
+  }) {
+    return EditorPanelTab(
+      id: tabId,
+      label: label,
+      icon: icon,
+      locked: locked,
+      builder: (context) {
+        final palette = widget.colorPalette;
+        final onPaletteChanged = widget.onColorPaletteChanged;
+        if (palette == null || onPaletteChanged == null) {
+          return const SizedBox.shrink();
+        }
+        return SlicedValueListenableBuilder<BrushToolState, int>(
+          valueListenable: _brushTool,
+          slice: (state) => state.color,
+          builder: (context, toolState) =>
+              ValueListenableBuilder<ColorPaletteState>(
+                valueListenable: palette,
+                builder: (context, paletteState, _) => ColorPickerPanel(
+                  kind: kind,
+                  color: toolState.color,
+                  palette: paletteState,
+                  onColorChanged: (color) =>
+                      _brushTool.value = _brushTool.value.copyWith(
+                        color: color,
+                      ),
+                  onPaletteChanged: onPaletteChanged,
+                ),
+              ),
+        );
+      },
+    );
+  }
+
   EditorPanelTab _tabFor(String tabId) {
     final locked = _lockedTabIds.contains(tabId);
     switch (tabId) {
@@ -1382,34 +1436,28 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               ),
         );
       case EditorWorkspace.colorWheelTabId:
-        return EditorPanelTab(
-          id: tabId,
-          label: AppText.strings.panelColor,
+        return _colorTab(
+          tabId,
+          kind: ColorPickerKind.wheel,
+          label: AppText.strings.panelColorWheel,
           icon: Icons.palette_outlined,
           locked: locked,
-          builder: (context) {
-            final palette = widget.colorPalette;
-            final onPaletteChanged = widget.onColorPaletteChanged;
-            if (palette == null || onPaletteChanged == null) {
-              return const SizedBox.shrink();
-            }
-            return SlicedValueListenableBuilder<BrushToolState, int>(
-              valueListenable: _brushTool,
-              slice: (state) => state.color,
-              builder: (context, toolState) =>
-                  ValueListenableBuilder<ColorPaletteState>(
-                    valueListenable: palette,
-                    builder: (context, paletteState, _) => ColorPickerPanel(
-                      color: toolState.color,
-                      palette: paletteState,
-                      onColorChanged: (color) => _brushTool.value = _brushTool
-                          .value
-                          .copyWith(color: color),
-                      onPaletteChanged: onPaletteChanged,
-                    ),
-                  ),
-            );
-          },
+        );
+      case EditorWorkspace.colorRgbTabId:
+        return _colorTab(
+          tabId,
+          kind: ColorPickerKind.rgb,
+          label: AppText.strings.panelColorRgb,
+          icon: Icons.tune,
+          locked: locked,
+        );
+      case EditorWorkspace.colorPaletteTabId:
+        return _colorTab(
+          tabId,
+          kind: ColorPickerKind.palette,
+          label: AppText.strings.panelColorPalette,
+          icon: Icons.grid_view_outlined,
+          locked: locked,
         );
       case EditorWorkspace.canvasTabId:
         return EditorPanelTab(

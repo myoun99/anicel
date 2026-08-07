@@ -36,8 +36,8 @@ void main() {
     expect(preserved.toBrushSettings(), isA<BrushSettings>());
   });
 
-  /// R9 #14: there is no Color TAB any more — the wheel and the palette
-  /// are the two tabs of the 「컬러 버튼창」, opened from the tool rail's
+  /// The colour GROUP: the wheel, the RGB bars and the palette are three
+  /// panels of it (R2 #8), opened from the sub-strip button that IS the
   /// selected-colour swatch.
   Future<void> openColorWindow(WidgetTester tester, {bool palette = true}) async {
     final button = find.byKey(const ValueKey<String>('tool-color-button'));
@@ -47,14 +47,14 @@ void main() {
     await tester.pumpAndSettle();
     if (palette) {
       await tester.tap(
-        find.byKey(const ValueKey<String>('color-window-tab-palette')),
+        find.byKey(const ValueKey<String>('panel-tab-color-palette')),
       );
       await tester.pumpAndSettle();
     }
   }
 
-  testWidgets('R9 #14: the Color TAB is gone — the tool rail\'s swatch '
-      'opens the window instead', (tester) async {
+  testWidgets('the swatch button opens the colour GROUP, and its panels are '
+      'the group\'s own tabs', (tester) async {
     await _pumpWorkspace(tester);
 
     expect(
@@ -65,11 +65,15 @@ void main() {
 
     await openColorWindow(tester, palette: false);
     expect(
-      find.byKey(const ValueKey<String>('color-window-tab-wheel')),
+      find.byKey(const ValueKey<String>('panel-tab-color-wheel')),
       findsOneWidget,
     );
     expect(
-      find.byKey(const ValueKey<String>('color-window-tab-palette')),
+      find.byKey(const ValueKey<String>('panel-tab-color-rgb')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('panel-tab-color-palette')),
       findsOneWidget,
     );
     expect(find.byKey(const ValueKey<String>('color-wheel')), findsOneWidget);
@@ -93,14 +97,14 @@ void main() {
     expect(toolOf(), CanvasTool.brush); // panel intact
     // The wheel hex label follows the picked color.
     await tester.tap(
-      find.byKey(const ValueKey<String>('color-window-tab-wheel')),
+      find.byKey(const ValueKey<String>('panel-tab-color-wheel')),
     );
     await tester.pumpAndSettle();
     expect(find.text('#E53935'), findsOneWidget);
 
     // + pins the current (red) color as a new swatch.
     await tester.tap(
-      find.byKey(const ValueKey<String>('color-window-tab-palette')),
+      find.byKey(const ValueKey<String>('panel-tab-color-palette')),
     );
     await tester.pumpAndSettle();
     final addButton = find.byKey(const ValueKey<String>('palette-add-button'));
@@ -135,7 +139,7 @@ void main() {
       reason: 'a captured toolState written back would revert the switch',
     );
     await tester.tap(
-      find.byKey(const ValueKey<String>('color-window-tab-wheel')),
+      find.byKey(const ValueKey<String>('panel-tab-color-wheel')),
     );
     await tester.pumpAndSettle();
     expect(find.text('#E53935'), findsOneWidget);
