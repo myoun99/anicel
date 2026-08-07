@@ -66,13 +66,20 @@ class _EditorPanelDockState extends State<EditorPanelDock> {
       padding: children == null
           ? EdgeInsets.zero
           : const EdgeInsets.fromLTRB(8, 8, 0, 8),
-      decoration: BoxDecoration(
-        color: colorScheme.surfaceContainerLow,
-        border: Border(
-          left: isLeft ? BorderSide.none : borderSide,
-          right: isLeft ? borderSide : BorderSide.none,
-        ),
-      ),
+      // A rail's panel column is a CARRIER, not a surface. When it filled
+      // itself and drew an edge, the groups inside it read as tiles in a
+      // bordered box — which is what the old palette dock was. The groups
+      // are rounded floating objects now, so what lies between and behind
+      // them has to be the workspace itself.
+      decoration: children == null
+          ? BoxDecoration(
+              color: colorScheme.surfaceContainerLow,
+              border: Border(
+                left: isLeft ? BorderSide.none : borderSide,
+                right: isLeft ? borderSide : BorderSide.none,
+              ),
+            )
+          : null,
       child: children == null
           ? widget.child!
           : PanelScrollbar(

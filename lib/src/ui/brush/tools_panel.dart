@@ -146,7 +146,7 @@ class ToolsPanel extends StatelessWidget {
 /// Public because the rail is no longer only tools — undo, redo and the
 /// onion toggle are handed in by the host and have to be the SAME button,
 /// or the column stops reading as one grid.
-class RailButton extends StatelessWidget {
+class RailButton extends StatefulWidget {
   const RailButton({
     super.key,
     required this.keyValue,
@@ -154,6 +154,8 @@ class RailButton extends StatelessWidget {
     required this.icon,
     required this.selected,
     required this.onPressed,
+    this.gripEnabled = false,
+    this.gripDragging = false,
   });
 
   final String keyValue;
@@ -165,9 +167,92 @@ class RailButton extends StatelessWidget {
   /// redo are not, and they wear this same square.
   final VoidCallback? onPressed;
 
+  /// Whether this square can be LIFTED. A grip promises that; a tool button
+  /// has nothing to lift, so it does not grow one.
+  final bool gripEnabled;
+
+  /// Raised by the owner while this button is actually being dragged.
+  final bool gripDragging;
+
+  /// The grip's own extent, inside the button's silhouette.
+  static const double gripExtent = 8;
+
+  @override
+  State<RailButton> createState() => _RailButtonState();
+}
+
+class _RailButtonState extends State<RailButton> {
+  bool _buttonHovered = false;
+  bool _gripHovered = false;
+
+  /// The one ladder, the same four rungs every grip in the app climbs.
+  Color get _gripColor {
+    if (!widget.gripEnabled) {
+      return Colors.transparent;
+    }
+    if (widget.gripDragging) {
+      return AppColors.accent;
+    }
+    if (_gripHovered) {
+      return AppColors.gripHover;
+    }
+    if (_buttonHovered) {
+      return AppColors.hairlineStrong;
+    }
+    return Colors.transparent;
+  }
+
   @override
   Widget build(BuildContext context) {
+    final button = _buildButton(context);
+    if (!widget.gripEnabled) {
+      return button;
+    }
+    // The rail runs DOWN, so its leading edge is the TOP one — the rail's
+    // left edge is the window's, which is a bad thing to have to grab.
+    // Clipped to the button's own silhouette so the zone's outer corners
+    // follow the curve, and laid over it so it costs no layout.
+    return MouseRegion(
+      onEnter: (_) => setState(() => _buttonHovered = true),
+      onExit: (_) => setState(() => _buttonHovered = false),
+      child: ClipPath(
+        clipper: AppShapes.clipper(
+          AppShapes.control(ToolsPanel.buttonExtent),
+        ),
+        child: Stack(
+          children: [
+            button,
+            Positioned(
+              left: 0,
+              right: 0,
+              top: 0,
+              height: RailButton.gripExtent,
+              child: MouseRegion(
+                cursor: SystemMouseCursors.grab,
+                onEnter: (_) => setState(() => _gripHovered = true),
+                onExit: (_) => setState(() => _gripHovered = false),
+                child: IgnorePointer(
+                  ignoring: false,
+                  child: ColoredBox(
+                    key: ValueKey<String>('rail-grip-${widget.keyValue}'),
+                    color: _gripColor,
+                  ),
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildButton(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final keyValue = widget.keyValue;
+    final tooltip = widget.tooltip;
+    final icon = widget.icon;
+    final selected = widget.selected;
+    final onPressed = widget.onPressed;
     return IconButton(
       key: ValueKey<String>(keyValue),
       tooltip: tooltip,

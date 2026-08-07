@@ -2203,6 +2203,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   ///
   /// [width] is the extent AFTER the workspace clamped both rails to what
   /// the window can actually spare.
+  /// The pasteboard a rail leaves BETWEEN two open groups.
+  ///
+  /// It is what makes them read as two floating objects rather than one
+  /// column cut in half — the same job the margin around the bottom region
+  /// does. It is not a splitter: a rail's one splitter is its inner edge,
+  /// and the groups divide the height they are given by their floors.
+  static const double _railGroupGap = 8;
+
   Widget _buildRailColumn(
     EditorPanelDockSide side, {
     required double width,
@@ -2229,6 +2237,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       // what this is.
       child: LayoutBuilder(
         builder: (context, constraints) {
+          final colorScheme = Theme.of(context).colorScheme;
           final extents = constraints.hasBoundedHeight
               ? dockSectionExtents(
                   weights: [for (final _ in open) 1.0],
@@ -2236,19 +2245,36 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                     for (final id in open) _verticalDockMinimumExtent(id),
                   ],
                   totalExtent: constraints.maxHeight,
-                  gap: 0,
+                  gap: _railGroupGap,
                 )
               : null;
+          // Each open group is its OWN floating object: the app's corner,
+          // clipped so the corner is real rather than painted, and a gap of
+          // pasteboard between it and its neighbour. They used to be tiles
+          // butted together inside one bordered column, which is the same
+          // thing the old palette dock was — a rail is not a container of
+          // panels, it is a place panels float beside.
+          Widget group(int i) => ClipPath(
+            clipper: AppShapes.clipper(
+              AppShapes.container(AppShapes.floatingPanelRadius),
+            ),
+            child: DecoratedBox(
+              decoration: ShapeDecoration(
+                color: colorScheme.surface,
+                shape: AppShapes.container(AppShapes.floatingPanelRadius),
+              ),
+              child: _buildDockHost(open[i]),
+            ),
+          );
           return Column(
             children: [
-              for (var i = 0; i < open.length; i += 1)
+              for (var i = 0; i < open.length; i += 1) ...[
+                if (i > 0) const SizedBox(height: _railGroupGap),
                 if (extents == null)
-                  Expanded(child: _buildDockHost(open[i]))
+                  Expanded(child: group(i))
                 else
-                  SizedBox(
-                    height: extents[i],
-                    child: _buildDockHost(open[i]),
-                  ),
+                  SizedBox(height: extents[i], child: group(i)),
+              ],
             ],
           );
         },
@@ -3001,6 +3027,11 @@ class _RailGroupButton extends StatelessWidget {
             icon: tabs.isEmpty ? Icons.add : tabs.first.icon,
             selected: open,
             onPressed: onPressed,
+            // A grip promises a lift, so only a group that HOLDS something
+            // grows one. What it lifts is the panel the button is showing —
+            // the same payload a tab drag carries, so it lands wherever a
+            // tab can land and nothing new had to be invented to receive it.
+            gripEnabled: tabs.isNotEmpty,
           )
         : Tooltip(
             message: tooltip,
