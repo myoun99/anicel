@@ -431,6 +431,7 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
           : null,
       onTabDragChanged: widget.onTabDragChanged,
       onPressed: () => widget.onTabSelected(tab.id),
+      stripAtBottom: widget.stripAtBottom,
     );
     if (!_dragEnabled) {
       return button;
@@ -612,6 +613,7 @@ class _PanelTabButton extends StatefulWidget {
     required this.locked,
     required this.gripKey,
     required this.onPressed,
+    required this.stripAtBottom,
     this.dragData,
     this.onTabDragChanged,
   });
@@ -622,6 +624,12 @@ class _PanelTabButton extends StatefulWidget {
   final bool locked;
   final Key gripKey;
   final VoidCallback onPressed;
+
+  /// Which side of the panel this tab's strip is on — the tab has to know,
+  /// because BOTH of its facing-dependent marks were drawn as if the strip
+  /// were always on top: the accent rule along the seam the panel wants
+  /// invisible, and the square corners on the edge that should be rounded.
+  final bool stripAtBottom;
 
   /// What this tab carries when lifted; null for locked tabs and
   /// non-draggable groups, which keep the zone's footprint and never arm.
@@ -727,16 +735,43 @@ class _PanelTabButtonState extends State<_PanelTabButton> {
           onTap: widget.onPressed,
           child: Container(
             padding: const EdgeInsets.only(right: 8),
-            decoration: BoxDecoration(
-              // The selected tab wears the one level reserved for "switched
-              // on"; everything else is the panel's own chrome fill.
+            // THE SELECTED TAB IS THE PANEL'S FOOT, not a chip lying on the
+            // sill. It wears the body's own fill and rounds only the corners
+            // AWAY from the body, so the seam between them disappears and
+            // the panel reads as one shape that grows out of its buttons —
+            // which is what the sill was for. Its neighbours are bare, so
+            // the fill still says which one is on, alongside the accent
+            // glyph and a 2px rule on the edge facing the WINDOW rather
+            // than along the seam the panel wants invisible.
+            decoration: ShapeDecoration(
               color: widget.selected
-                  ? colorScheme.surfaceContainerHigh
+                  ? colorScheme.surface
                   : Colors.transparent,
+              shape: AppShapes.containerRadius(
+                widget.stripAtBottom
+                    ? const BorderRadius.vertical(
+                        bottom: Radius.circular(AppShapes.wellRadius),
+                      )
+                    : const BorderRadius.vertical(
+                        top: Radius.circular(AppShapes.wellRadius),
+                      ),
+              ),
+            ),
+            // FOREGROUND, so the rule costs no width. A ShapeDecoration's
+            // own side is drawn on all four edges and insets the child by
+            // its width, which made every tab 4px wider than the extent the
+            // strip's compaction arithmetic is built on.
+            foregroundDecoration: BoxDecoration(
               border: Border(
                 top: BorderSide(
                   width: 2,
-                  color: widget.selected
+                  color: widget.selected && !widget.stripAtBottom
+                      ? colorScheme.primary
+                      : Colors.transparent,
+                ),
+                bottom: BorderSide(
+                  width: 2,
+                  color: widget.selected && widget.stripAtBottom
                       ? colorScheme.primary
                       : Colors.transparent,
                 ),
@@ -809,18 +844,43 @@ class _TabOverflowButton extends StatelessWidget {
           ),
       ],
       onSelected: onTabSelected,
+      // When the OPEN panel is one of the hidden ones, this button says so.
+      // A compressed strip used to show `+2` and nothing else — no tab lit
+      // anywhere — so the only way to learn what was on screen was to open
+      // the popover and look. It speaks for the active tab instead.
+      //
+      // Deliberately WITHOUT moving anything: pulling the active tab back
+      // into view would make the visible set depend on the selection, and
+      // tabs that jump under the pointer when you pick one are the thing
+      // "selection must not rearrange the buttons" exists to prevent.
       child: SizedBox(
         width: EditorPanelTabs._tabExtent,
         child: Center(
-          child: Text(
-            '+${hidden.length}',
-            style: TextStyle(
-              fontSize: 11,
-              color: colorScheme.onSurfaceVariant,
-            ),
-          ),
+          child: _activeHidden == null
+              ? Text(
+                  '+${hidden.length}',
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: colorScheme.onSurfaceVariant,
+                  ),
+                )
+              : Icon(
+                  _activeHidden!.icon,
+                  size: 16,
+                  color: colorScheme.primary,
+                ),
         ),
       ),
     );
+  }
+
+  /// The hidden tab that is currently OPEN, if the overflow swallowed it.
+  EditorPanelTab? get _activeHidden {
+    for (final tab in hidden) {
+      if (tab.id == activeTabId) {
+        return tab;
+      }
+    }
+    return null;
   }
 }
