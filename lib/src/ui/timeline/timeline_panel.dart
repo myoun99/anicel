@@ -23,6 +23,7 @@ import 'property_lane_model.dart';
 import 'se_audio_lane.dart' show TimelineAudioLaneCallbacks;
 import 'timeline_cel_content_source.dart';
 import 'timeline_cell_exposure_state.dart';
+import 'layer_row_drag.dart' show TimelineRowDragHooks;
 import 'timeline_current_row.dart';
 import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
@@ -81,6 +82,7 @@ class TimelinePanel extends StatefulWidget {
     this.rangeHooks,
     this.laneRange,
     this.currentRowHooks,
+    this.rowDragHooks,
     this.runEdit,
     this.isFrameCached,
     required this.orientation,
@@ -251,6 +253,10 @@ class TimelinePanel extends StatefulWidget {
   /// it (R10 #19's rail half) — one bundle for both orientations, so the
   /// sheet cannot end up with a different answer than the rail.
   final TimelineCurrentRowHooks? currentRowHooks;
+
+  /// The row-order drag (P2b). The horizontal rail takes it today; the
+  /// sheet's stood-up headers are the same widget and follow.
+  final TimelineRowDragHooks? rowDragHooks;
 
   /// The run-edge [+]/[↻] handle hooks (UI-R8), both orientations; null
   /// hides the handles.
@@ -530,6 +536,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     rangeHooks: widget.rangeHooks,
                     laneRange: widget.laneRange,
                     currentRowHooks: widget.currentRowHooks,
+                    rowDragHooks: widget.rowDragHooks,
                     runEdit: widget.runEdit,
                     isFrameCached: widget.isFrameCached,
                     metrics: horizontalMetrics,

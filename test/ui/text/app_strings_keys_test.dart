@@ -536,6 +536,8 @@ void main() {
     'tlRemoveEffectTemplate': (s) => s.tlRemoveEffectTemplate,
     'tlMoveLayerUp': (s) => s.tlMoveLayerUp,
     'tlMoveLayerDown': (s) => s.tlMoveLayerDown,
+    'tlDropIntoFolderTemplate': (s) => s.tlDropIntoFolderTemplate,
+    'tlDropOutOfFolder': (s) => s.tlDropOutOfFolder,
     'tlCopyFrame': (s) => s.tlCopyFrame,
     'tlPasteLinkedFrame': (s) => s.tlPasteLinkedFrame,
     'tlDeleteCell': (s) => s.tlDeleteCell,
@@ -616,10 +618,10 @@ void main() {
     // registry: adding a getter and forgetting its line here is now what
     // fails, rather than arithmetic.
     final source = File('lib/src/ui/text/app_strings.dart').readAsStringSync();
-    final declared = RegExp(r'^  String get ([A-Za-z0-9_]+)', multiLine: true)
-        .allMatches(source)
-        .map((match) => match.group(1)!)
-        .toSet();
+    final declared = RegExp(
+      r'^  String get ([A-Za-z0-9_]+)',
+      multiLine: true,
+    ).allMatches(source).map((match) => match.group(1)!).toSet();
     // If the scan ever returns nothing the assertions below pass vacuously,
     // which would be the same silent hole in a new disguise.
     expect(declared, hasLength(greaterThan(400)), reason: 'source scan failed');

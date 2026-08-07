@@ -166,7 +166,13 @@ import 'brush/brush_canvas_panel.dart';
 import 'brush/brush_editor_selection.dart';
 import 'timeline/instruction_span_editing.dart';
 import 'timeline/layer_drop_policy.dart'
-    show LayerDropPlan, layerDragRun, resolveLayerDrop;
+    show
+        LayerDropPlan,
+        layerDragRun,
+        modelInsertionForSlot,
+        resolveLayerDrop,
+        resolveTrackSeDrop;
+import 'timeline/layer_row_drag.dart' show LayerRowDragState;
 import 'timeline/property_lane_model.dart' show folderAggregateRuns;
 import 'timeline/layer_label_controls.dart' show layerKindShowsBlendControl;
 import 'timeline/layer_timeline_display_adapter.dart'
@@ -3925,6 +3931,154 @@ class EditorSessionManager extends ChangeNotifier {
     );
     _refreshAfterCutCommand(preferredActiveLayerId: layerId);
     notifyListeners();
+  }
+
+  // --- The row-order DRAG ------------------------------------------------
+  //
+  // The step verb above and this drag are the same move: both resolve
+  // through [resolveLayerDrop], so what a step refuses a drop refuses too.
+  // What the drag adds is a caret — and the caret has to SAY when a drop
+  // does something structural, because a folder joined in silence is a
+  // change nobody asked for.
+
+  /// The row drag in flight, as the rails draw it. A notifier rather than a
+  /// session notify: a drag moves per pointer step, and the only things
+  /// that change are the caret and the lifted row's opacity.
+  final ValueNotifier<LayerRowDragState?> layerRowDrag =
+      ValueNotifier<LayerRowDragState?>(null);
+
+  /// What releasing would commit. Held beside the drawn state so the
+  /// release does not have to resolve the landing a second time — and so
+  /// the drawn `legal` and the committed plan cannot disagree.
+  LayerDropPlan? _rowDragPlan;
+  List<LayerId>? _rowDragSeOrder;
+
+  void beginLayerRowDrag(LayerId layerId) {
+    _rowDragPlan = null;
+    _rowDragSeOrder = null;
+    layerRowDrag.value = LayerRowDragState(
+      movingId: layerId,
+      caretSlot: -1,
+      legal: false,
+    );
+  }
+
+  /// The caret moved to [slot] of [displayLayers] — the list the SURFACE
+  /// renders, which is what lets the model insertion be resolved without
+  /// this verb knowing which way that rail runs.
+  void updateLayerRowDrag(List<Layer> displayLayers, int slot) {
+    final state = layerRowDrag.value;
+    if (state == null) {
+      return;
+    }
+    if (isTrackSeLayerId(state.movingId)) {
+      final order = resolveTrackSeDrop(
+        seLayers: activeTrack.seLayers,
+        displayRows: displayLayers,
+        movingId: state.movingId,
+        slot: slot,
+      );
+      _rowDragSeOrder = order;
+      layerRowDrag.value = LayerRowDragState(
+        movingId: state.movingId,
+        caretSlot: slot,
+        legal: order != null,
+      );
+      return;
+    }
+    final cut = activeCutOrNull;
+    if (cut == null) {
+      return;
+    }
+    final insertAt = modelInsertionForSlot(
+      stack: cut.layers,
+      displayRows: displayLayers,
+      slot: slot,
+    );
+    final plan = insertAt == null
+        ? null
+        : resolveLayerDrop(
+            stack: cut.layers,
+            movingId: state.movingId,
+            insertAt: insertAt,
+          );
+    _rowDragPlan = plan;
+    layerRowDrag.value = LayerRowDragState(
+      movingId: state.movingId,
+      caretSlot: slot,
+      legal: plan != null,
+      joinLabel: _rowDropJoinLabel(cut.layers, state.movingId, plan),
+    );
+  }
+
+  /// The folder a drop would put the row INTO, named — or null when the
+  /// drop only re-orders. Membership is the part of a drop that outlives
+  /// the gesture, so it is the part the caret spells out.
+  String? _rowDropJoinLabel(
+    List<Layer> stack,
+    LayerId movingId,
+    LayerDropPlan? plan,
+  ) {
+    if (plan == null || !plan.folderIds.containsKey(movingId)) {
+      return null;
+    }
+    final joined = plan.joinedFolderId;
+    if (joined == null) {
+      return AppText.strings.tlDropOutOfFolder;
+    }
+    for (final layer in stack) {
+      if (layer.id == joined) {
+        return AppText.strings.tlDropIntoFolderTemplate.replaceAll(
+          '{name}',
+          layer.name,
+        );
+      }
+    }
+    return null;
+  }
+
+  void endLayerRowDrag() {
+    final state = layerRowDrag.value;
+    final plan = _rowDragPlan;
+    final seOrder = _rowDragSeOrder;
+    cancelLayerRowDrag();
+    if (state == null) {
+      return;
+    }
+    if (seOrder != null) {
+      _cutCommandCoordinator.setTrackSeOrder(
+        trackId: selectedTrackId,
+        order: seOrder,
+      );
+      notifyListeners();
+      return;
+    }
+    final cut = activeCutOrNull;
+    if (plan == null || cut == null) {
+      return;
+    }
+    final run = layerDragRun(cut.layers, state.movingId);
+    if (run == null) {
+      return;
+    }
+    _cutCommandCoordinator.setLayerPlacement(
+      cutId: cut.id,
+      order: plan.order,
+      folderIds: plan.folderIds,
+      movedIds: {
+        for (final layer in cut.layers.sublist(run.start, run.endExclusive))
+          layer.id,
+      },
+      description: 'Move layer',
+    );
+    _refreshAfterCutCommand(preferredActiveLayerId: state.movingId);
+    notifyListeners();
+  }
+
+  void cancelLayerRowDrag() {
+    _rowDragPlan = null;
+    _rowDragSeOrder = null;
+    layerRowDrag.value = null;
   }
 
   bool get canGroupActiveLayerIntoFolder =>
