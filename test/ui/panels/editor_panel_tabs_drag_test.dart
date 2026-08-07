@@ -157,6 +157,33 @@ void main() {
     expect(bandOf('b'), isNot(Colors.transparent));
   });
 
+  testWidgets('a tab fills the strip: the selected fill reaches the panel '
+      'body and the glyph is centred', (tester) async {
+    // The band moved into a Stack over the tab, and a Stack's default LOOSE
+    // fit handed the tab's body loosened constraints — so it shrank to its
+    // 16px glyph at the top of a 30px strip. The selected tab's fill stopped
+    // reaching the body it is supposed to merge into (a 14px seam of strip
+    // colour appeared under it) and every glyph rode 7px high.
+    final model = _twoGroups();
+    await tester.pumpWidget(_Harness(model: model));
+
+    final tab = tester.getRect(_tab('a'));
+    expect(tab.height, EditorPanelTabs.stripHeight);
+
+    final body = tester.getRect(
+      find.descendant(of: _tab('a'), matching: find.byType(Container)).first,
+    );
+    expect(
+      body.height,
+      closeTo(tab.height, 0.5),
+      reason: 'the fill runs the strip, so the seam to the body closes',
+    );
+    final icon = tester.getRect(
+      find.descendant(of: _tab('a'), matching: find.byType(Icon)).first,
+    );
+    expect(icon.center.dy, closeTo(tab.center.dy, 0.5));
+  });
+
   testWidgets('dropping on a tab\'s right half inserts after it', (
     tester,
   ) async {

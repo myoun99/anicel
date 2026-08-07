@@ -277,6 +277,64 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('Fit stays INSIDE the pill at every width the shed passes '
+      'through — no band where it is clipped away', (tester) async {
+    // The shedding ladder budgets the host's leading controls at every
+    // threshold but one: `bare`, the gate on the leading controls
+    // themselves, compared the raw width. That left a band — measured at
+    // 206..250px — where the pill kept all of a paper panel's controls and
+    // pushed Fit out past its own ClipPath: invisible and unhittable, in
+    // exactly the narrow panel the code promises it to. It blinked back in
+    // below 206, so the button flickered as a rail was dragged.
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final leading = <Widget>[
+      for (var i = 0; i < 7; i += 1)
+        SizedBox(key: ValueKey<String>('probe-leading-$i'), width: 26),
+    ];
+
+    for (final width in [160.0, 190.0, 206.0, 215.0, 230.0, 250.0, 300.0]) {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: width,
+              height: 360,
+              child: BrushCanvasPanel(
+                coordinator: BrushCanvasFixture.createCoordinator(
+                  frameKeys: frameKeys,
+                ),
+                availableFrameKeys: frameKeys,
+                cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+                floorCover: EdgeInsets.zero,
+                allowViewRotation: false,
+                bottomBarLeading: leading,
+                bottomBarLeadingToken: width,
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      final pill = tester.getRect(
+        find.byKey(const ValueKey<String>('canvas-view-pill')),
+      );
+      final fit = tester.getRect(
+        find.byKey(const ValueKey<String>('canvas-viewport-fit')),
+      );
+      expect(
+        fit.right,
+        lessThanOrEqualTo(pill.right + 0.5),
+        reason: 'Fit clipped off the pill at $width',
+      );
+      expect(
+        tester.takeException(),
+        isNull,
+        reason: 'the pill overflowed at $width',
+      );
+    }
+  });
+
   testWidgets('the pill NEVER stands down — a panel too narrow for the zoom '
       'cluster still has Fit', (tester) async {
     // It used to disappear below 190px, on the reading that a capsule

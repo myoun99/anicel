@@ -69,7 +69,13 @@ class EditorPanelLayoutModel extends ChangeNotifier {
   final Map<String, double> _dockExtents;
 
   static const double _minDockExtent = 160;
-  static const double _maxDockExtent = 640;
+
+  /// The default ceiling — a guard against an absurd WIDTH, which is the
+  /// axis this model was written for. A caller that knows a truer ceiling
+  /// says so and overrides it in either direction: a rail panel's HEIGHT
+  /// is bounded by the rail, which on a tall window is more than this and
+  /// on a short one is much less.
+  static const double maxDockExtent = 640;
 
   Iterable<String> get dockIds => _docks.keys;
 
@@ -91,8 +97,7 @@ class EditorPanelLayoutModel extends ChangeNotifier {
     double? minExtent,
     double? maxExtent,
   }) {
-    final ceiling = math
-        .min(_maxDockExtent, maxExtent ?? _maxDockExtent)
+    final ceiling = (maxExtent ?? maxDockExtent).clamp(0.0, double.infinity)
         .toDouble();
     final floor = math
         .max(_minDockExtent, minExtent ?? 0)

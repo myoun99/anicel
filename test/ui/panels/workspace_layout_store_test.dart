@@ -263,6 +263,31 @@ void main() {
       );
     });
 
+    test('an extent that is not a DOCK still comes back when the caller '
+        'names it', () {
+      // A rail's shared WIDTH is stored under a key of its own because it
+      // belongs to the rail rather than to any group on it. The filter only
+      // ever knew about dock ids, so it threw that key away on every single
+      // restore: the side panels reopened at the default width every launch
+      // and the drag that widened them looked like it had never been saved.
+      final restored = restoreWorkspaceLayout(
+        payload: {
+          'layout': {
+            'docks': {
+              'left': [
+                {'tabs': ['brushes']},
+              ],
+            },
+            'extents': {'rail-L': 320.0, 'left': 360.0, 'junk': 200.0},
+          },
+        },
+        defaults: _defaults(),
+        extraExtentKeys: const {'rail-L', 'rail-R'},
+      );
+
+      expect(restored!.dockExtents, {'rail-L': 320.0, 'left': 360.0});
+    });
+
     test('a good extent still comes back', () {
       final restored = restoreWorkspaceLayout(
         payload: {

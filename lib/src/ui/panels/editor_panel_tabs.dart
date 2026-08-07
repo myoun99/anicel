@@ -782,7 +782,16 @@ class _PanelTabButtonState extends State<_PanelTabButton> {
           // corners cut it, so it reads as the tab's own edge.
           child: ClipPath(
             clipper: AppShapes.clipper(_shape()),
+            // PASSTHROUGH, not the default loose fit. A loose Stack hands
+            // its non-positioned child the incoming constraints LOOSENED,
+            // so the tab's body shrank to its 16px glyph and sat at the top
+            // of a 30px strip: the selected fill stopped reaching the panel
+            // body it is supposed to merge into, and every glyph rode 7px
+            // high. Passthrough keeps the strip's tight height and the
+            // loose width, which is exactly what a tab wants — as tall as
+            // the strip, as wide as what it holds.
             child: Stack(
+              fit: StackFit.passthrough,
               children: [
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 8),

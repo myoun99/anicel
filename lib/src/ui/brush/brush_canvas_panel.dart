@@ -761,6 +761,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     Size viewportSize,
     CanvasSize canvasSize,
     bool rotation,
+    int paper,
+    int pasteboard,
     Object? leading,
   })?
   _shellBarsToken;
@@ -774,6 +776,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       viewportSize: _resolvedEditorViewportSize(),
       canvasSize: widget.canvasSize,
       rotation: widget.allowViewRotation,
+      // The two swatches the pill CARRIES. They were missing, so the pill
+      // went on painting yesterday's paper colour until an unrelated pan or
+      // resize happened to invalidate the memo — and tapping the swatch
+      // opened the picker seeded with the stale value. The rule for this
+      // token is the same in both directions: everything these bars SHOW is
+      // in it, and nothing they do not.
+      paper: widget.paperColor,
+      pasteboard: widget.pasteboardColor,
       leading: widget.bottomBarLeadingToken,
       // ⛔ The panel TITLE is deliberately absent — and now unreachable, so
       // it cannot come back by accident (R2 #12 took the readout off every
@@ -2196,6 +2206,62 @@ class _CanvasEditorPanelShell extends StatelessWidget {
             child: child,
           ),
         ),
+        // THE PANBARS ARE FURNITURE — but furniture in a room, not in the
+        // wall.
+        //
+        // They first lived inside the cover-inset layer, so raising the
+        // timeline walked the vertical one halfway up the panel; the user
+        // overruled that (scrollbars do not move because a drawer opened).
+        // Then they sat on the raw panel, and an open side panel covered
+        // them outright. Both readings were half of one: the position ALONG
+        // the edge is fixed at the panel's centre and never moves, and the
+        // distance FROM the edge yields to whatever is covering it. So the
+        // vertical bar stays at the middle of the panel's height and steps
+        // in when a rail opens; the horizontal one stays at the middle of
+        // its width and steps down when the region docks on top.
+        //
+        // ★They are laid UNDER the pill on purpose. On a panel short enough
+        // for the vertical bar's middle to reach the pill's row they do
+        // overlap, and one of them has to lose the pointer there. It is the
+        // BAR: a 260px-long target giving up 28px of its length keeps every
+        // pixel of it that matters, while the pill giving up its last
+        // control loses a button outright. Reserving the lane instead was
+        // measured and rejected — 22px is enough to make the timesheet shed
+        // its own page cluster at the default rail width.
+        Positioned(
+          right: cover.right + _capsuleMargin,
+          top: 0,
+          bottom: 0,
+          child: LayoutBuilder(
+            builder: (context, panel) => Align(
+              alignment: Alignment.centerRight,
+              child: _capsule(
+                colorScheme,
+                keyValue: 'canvas-panbar-vertical',
+                width: rightStripWidth,
+                height: _capsuleTrack(panel.maxHeight),
+                child: rightStripBar,
+              ),
+            ),
+          ),
+        ),
+        Positioned(
+          left: _capsuleMargin,
+          right: _capsuleMargin,
+          top: cover.top + _capsuleMargin,
+          child: LayoutBuilder(
+            builder: (context, panel) => Align(
+              alignment: Alignment.topCenter,
+              child: _capsule(
+                colorScheme,
+                keyValue: 'canvas-panbar-horizontal',
+                height: AppScrollbarLane.medium,
+                width: _capsuleTrack(panel.maxWidth),
+                child: horizontalStripBar,
+              ),
+            ),
+          ),
+        ),
         Positioned(
           left: cover.left,
           top: cover.top,
@@ -2260,53 +2326,6 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                 ],
               );
             },
-          ),
-        ),
-        // THE PANBARS ARE FURNITURE — but furniture in a room, not in the
-        // wall.
-        //
-        // They first lived inside the cover-inset layer, so raising the
-        // timeline walked the vertical one halfway up the panel; the user
-        // overruled that (scrollbars do not move because a drawer opened).
-        // Then they sat on the raw panel, and an open side panel covered
-        // them outright. Both readings were half of one: the position ALONG
-        // the edge is fixed at the panel's centre and never moves, and the
-        // distance FROM the edge yields to whatever is covering it. So the
-        // vertical bar stays at the middle of the panel's height and steps
-        // in when a rail opens; the horizontal one stays at the middle of
-        // its width and steps down when the region docks on top.
-        Positioned(
-          right: cover.right + _capsuleMargin,
-          top: 0,
-          bottom: 0,
-          child: LayoutBuilder(
-            builder: (context, panel) => Align(
-              alignment: Alignment.centerRight,
-              child: _capsule(
-                colorScheme,
-                keyValue: 'canvas-panbar-vertical',
-                width: rightStripWidth,
-                height: _capsuleTrack(panel.maxHeight),
-                child: rightStripBar,
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          left: _capsuleMargin,
-          right: _capsuleMargin,
-          top: cover.top + _capsuleMargin,
-          child: LayoutBuilder(
-            builder: (context, panel) => Align(
-              alignment: Alignment.topCenter,
-              child: _capsule(
-                colorScheme,
-                keyValue: 'canvas-panbar-horizontal',
-                height: AppScrollbarLane.medium,
-                width: _capsuleTrack(panel.maxWidth),
-                child: horizontalStripBar,
-              ),
-            ),
           ),
         ),
       ],
@@ -2428,6 +2447,22 @@ class _CanvasViewportBottomBar extends StatelessWidget {
   /// it budgets generously on purpose — over-budgeting only makes the bar
   /// scroll a little sooner, while under-budgeting OVERFLOWS.
   static const double _leadingControlBudget = 44;
+
+  /// What Fit plus the pill's own padding and one divider costs — the
+  /// floor under which even the host's controls have to go, so that the
+  /// one control the pill may never drop always has room. Measured: 26 for
+  /// the button, 13 for the divider, 8 for the pill's ends, and slack.
+  static const double _essentialBudget = 60;
+
+  /// The LEAST a host control can cost — the shared icon button's own
+  /// minimum. [_leadingControlBudget] is its opposite and both are right,
+  /// because the two decisions want opposite errors: deciding what the
+  /// pill can AFFORD, budget high and shed a little early; deciding
+  /// whether the host's own controls have to GO, budget low, because
+  /// dropping the page navigation from a rail that could have held it is
+  /// the worse mistake. Using the generous number for both took the
+  /// timesheet's whole cluster away at its default width.
+  static const double _leadingControlFloor = 26;
 
   /// Below this the pill drops the paper/pasteboard swatches. They are the
   /// least urgent thing it carries — a colour you set once per project,
@@ -2700,7 +2735,16 @@ class _CanvasViewportBottomBar extends StatelessWidget {
           // Last of all the host's controls go too — but Fit never does.
           // With the docked bar gone this is its only home, and a panel
           // narrow enough to lose it is exactly the panel that needs it.
-          final bare = room < pillMinWidth;
+          //
+          // ⚠️This threshold has to budget `owed` like the others. It did
+          // not, and that left a band — measured at 206..250px of rail —
+          // where the pill kept all seven of the timesheet's controls and
+          // then pushed Fit out past the capsule's own clip: invisible and
+          // unhittable, in the one panel width the comment above promises
+          // it to. Below 206 `bare` finally tripped and it came back, so
+          // the button blinked out and in as the rail was dragged.
+          final bare =
+              room < leading.length * _leadingControlFloor + _essentialBudget;
           return Row(
             mainAxisSize: MainAxisSize.min,
             children: [

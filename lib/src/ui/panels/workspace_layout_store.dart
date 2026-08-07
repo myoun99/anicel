@@ -114,6 +114,7 @@ Map<String, double> restoreRailExtents(Map<String, Object?> payload) {
 RestoredWorkspaceLayout? restoreWorkspaceLayout({
   required Map<String, Object?> payload,
   required Map<String, DockGroup?> defaults,
+  Set<String> extraExtentKeys = const <String>{},
 }) {
   final layoutJson = payload['layout'];
   if (layoutJson is! Map) {
@@ -197,11 +198,20 @@ RestoredWorkspaceLayout? restoreWorkspaceLayout({
           : DockGroup(tabs: entry.value, activeTabId: activeByDock[entry.key]),
   };
 
+  // ⚠️Not every saved extent names a DOCK. A rail's shared width is stored
+  // under a key of its own ('rail-L' / 'rail-R') because it belongs to the
+  // rail rather than to any one group on it — and this filter, which only
+  // ever knew about dock ids, threw it away on every single restore. The
+  // side panels came back at the default width every launch and the drag
+  // that widened them looked like it had never been saved. The caller names
+  // the keys that are extents but not docks; everything else is still junk.
   final extentsJson = layoutJson['extents'];
   final dockExtents = <String, double>{
     if (extentsJson is Map)
       for (final entry in extentsJson.entries)
-        if (entry.key is String && docks.containsKey(entry.key))
+        if (entry.key is String &&
+            (docks.containsKey(entry.key) ||
+                extraExtentKeys.contains(entry.key)))
           entry.key as String: ?restoredSplitterValue(entry.value),
   };
 

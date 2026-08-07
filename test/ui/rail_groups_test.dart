@@ -328,6 +328,83 @@ void main() {
       expect(grownMedia.width, closeTo(grownLibrary.width, 0.5));
     });
 
+    testWidgets('the height grip banks nothing: dragging back moves the edge '
+        'by exactly what the cursor moved', (tester) async {
+      // The same defect this round fixed for the floating region, missed on
+      // the grip it added: with no ceiling the stored height climbed past
+      // what the rail could ever show, and the drag back spent that surplus
+      // before the edge moved at all. Measured before: 60px of return
+      // travel moved the edge 9px.
+      await pumpApp(tester);
+      final grip = find.byKey(
+        const ValueKey<String>('dock-resize-rail-L1-height'),
+      );
+
+      await tester.drag(grip, const Offset(0, 600));
+      await tester.pumpAndSettle();
+      final atCeiling = tester.getRect(grip).top;
+
+      await tester.drag(grip, const Offset(0, -60));
+      await tester.pumpAndSettle();
+      expect(atCeiling - tester.getRect(grip).top, closeTo(60, 0.5));
+    });
+
+    testWidgets('where the pill and the vertical scrollbar overlap, the PILL '
+        'takes the pointer', (tester) async {
+      // The bar centres on the panel's whole height, so on a SHORT panel its
+      // middle reaches the pill's row. It used to be stacked AFTER the
+      // controls and took the pointer aimed at the pill's last control. One
+      // of them has to lose it there, and it is the bar: 28px out of a long
+      // target, against a whole button. (Reserving the lane instead was
+      // measured and rejected — 22px is enough to make the timesheet shed
+      // its own page cluster at the default rail width.)
+      await pumpApp(tester);
+      await tester.drag(
+        find.byKey(const ValueKey<String>('dock-resize-rail-R2-height')),
+        const Offset(0, -400),
+      );
+      await tester.pumpAndSettle();
+
+      final rail = find.byKey(
+        const ValueKey<String>('editor-panel-dock-right'),
+      );
+      final pill = find.descendant(
+        of: rail,
+        matching: find.byKey(const ValueKey<String>('canvas-view-pill')),
+      );
+      final bar = find.descendant(
+        of: rail,
+        matching: find.byKey(const ValueKey<String>('canvas-panbar-vertical')),
+      );
+      expect(
+        tester.getRect(pill).overlaps(tester.getRect(bar)),
+        isTrue,
+        reason: 'the fixture must actually reach the overlapping case',
+      );
+
+      // A hit at the pill's right end lands in the PILL, not the bar.
+      final probe = Offset(
+        tester.getRect(pill).right - 3,
+        tester.getRect(pill).center.dy,
+      );
+      final hit = tester.hitTestOnBinding(probe);
+      final pillBox = tester.renderObject(pill);
+      final barBox = tester.renderObject(bar);
+      final order = hit.path.map((e) => e.target).toList();
+      expect(
+        order.indexWhere((t) => identical(t, pillBox)),
+        isNonNegative,
+        reason: 'the pointer reaches the pill where the two overlap',
+      );
+      final pillAt = order.indexWhere((t) => identical(t, pillBox));
+      final barAt = order.indexWhere((t) => identical(t, barBox));
+      expect(
+        barAt < 0 || pillAt < barAt,
+        isTrue,
+        reason: 'and reaches it FIRST — the bar is the one that yields',
+      );
+    });
+
     testWidgets('the rail scrolls only when the saved heights overflow it', (
       tester,
     ) async {

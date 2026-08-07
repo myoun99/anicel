@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
@@ -21,6 +22,39 @@ import 'package:anicel/src/ui/home_page.dart';
 /// was rebuilt on every single flip step. Do not read the fixture's
 /// narrowness as the defect's.
 void main() {
+  testWidgets('…but a colour the pill SHOWS does rebuild it', (tester) async {
+    // The other half of the same rule. The token was trimmed to what the
+    // bars actually display — and the two surface swatches the pill carries
+    // were never in it, so the pill went on painting yesterday's paper
+    // colour until an unrelated pan or resize happened to invalidate the
+    // memo. Tapping the stale swatch even reopened the picker seeded with
+    // the old value.
+    await tester.binding.setSurfaceSize(const Size(1600, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(const MaterialApp(home: HomePage()));
+    await tester.pumpAndSettle();
+
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+    final swatch = find.descendant(
+      of: find.byKey(const ValueKey<String>('main-canvas-brush-host')),
+      matching: find.byKey(const ValueKey<String>('canvas-paper-color-button')),
+    );
+    expect(swatch, findsOneWidget, reason: 'the pill is wide enough here');
+    final before = tester.widget(swatch);
+
+    session.setProjectBackground(const ProjectBackground.color(0xFF123456));
+    await tester.pumpAndSettle();
+
+    expect(
+      identical(tester.widget(swatch), before),
+      isFalse,
+      reason: 'the pill shows this colour, so the memo may not serve it stale',
+    );
+    session.prerenderScheduler.cancel();
+  });
+
   testWidgets('a flip that changes the frame label keeps the view bars', (
     tester,
   ) async {

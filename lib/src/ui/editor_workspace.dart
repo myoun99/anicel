@@ -1129,6 +1129,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     final restored = restoreWorkspaceLayout(
       payload: payload,
       defaults: _defaultDocks(),
+      // The two rail WIDTHS are extents that are not docks — they belong to
+      // the rail, which every group on it shares. Unnamed here they were
+      // dropped on every restore, so a widened rail was narrow again at the
+      // next launch.
+      extraExtentKeys: {
+        EditorWorkspace.railWidthKey(right: false),
+        EditorWorkspace.railWidthKey(right: true),
+      },
     );
     if (restored == null || !mounted) {
       return;
@@ -2383,6 +2391,16 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                         delta,
                         fallback: EditorWorkspace.railGroupHeight,
                         minExtent: _verticalDockMinimumExtent(railId),
+                        // The RAIL is the ceiling, not the model's default
+                        // 640: that number guards a width, and a panel's
+                        // height here can legitimately be more than it on a
+                        // tall window and must be less than it on a short
+                        // one. Without this the grip banked height the rail
+                        // could never show and then dragged dead on the way
+                        // back — measured: 60px of return travel moved the
+                        // edge 9px. It is the same defect this round already
+                        // fixed for the floating region.
+                        maxExtent: railExtent.isFinite ? railExtent : null,
                       ),
                     ),
                   ),
@@ -3094,8 +3112,18 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                                                     constraints.maxHeight,
                                                   ),
                                                 ),
-                                                maxExtent: _bottomDockCeiling(
-                                                  constraints.maxHeight,
+                                                // The model's own 640 still
+                                                // applies here — the region
+                                                // has always had it, and
+                                                // lifting it is a separate
+                                                // decision from fixing the
+                                                // banking.
+                                                maxExtent: math.min(
+                                                  EditorPanelLayoutModel
+                                                      .maxDockExtent,
+                                                  _bottomDockCeiling(
+                                                    constraints.maxHeight,
+                                                  ),
                                                 ),
                                               );
                                             },
