@@ -728,6 +728,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             : WorkspaceLayoutStore());
     unawaited(_restoreLayout());
     _layout.addListener(_scheduleLayoutSave);
+    // Sizes no longer come through the model's own notifier, but they are
+    // still persisted — the save has to hear them separately or a resized
+    // dock would come back at its old width.
+    _layout.extentRevision.addListener(_scheduleLayoutSave);
     for (final extent in _railExtents.values) {
       extent.addListener(_scheduleLayoutSave);
     }
@@ -1218,6 +1222,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     widget.panelsMenu?.detach();
     _layoutSaveTimer?.cancel();
     _layout.removeListener(_scheduleLayoutSave);
+    _layout.extentRevision.removeListener(_scheduleLayoutSave);
     for (final extent in _railExtents.values) {
       extent
         ..removeListener(_scheduleLayoutSave)
@@ -2136,7 +2141,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     }
     final holdsColor = _layout
         .sectionsIn(railId)
-        .any((section) => section.tabs.contains(EditorWorkspace.colorWheelTabId));
+        .any(
+          (section) => section.tabs.contains(EditorWorkspace.colorWheelTabId),
+        );
     if (!holdsColor) {
       return null;
     }
@@ -2211,10 +2218,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// and the groups divide the height they are given by their floors.
   static const double _railGroupGap = 8;
 
-  Widget _buildRailColumn(
-    EditorPanelDockSide side, {
-    required double width,
-  }) {
+  Widget _buildRailColumn(EditorPanelDockSide side, {required double width}) {
     final right = side == EditorPanelDockSide.right;
     final open = _openRailGroups(right: right);
     if (open.isEmpty) {
@@ -2466,7 +2470,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       // OUTSIDE the clip, or the clip would eat its outer half.
       position: DecorationPosition.foreground,
       decoration: ShapeDecoration(
-        shape: _floatingBottomShape(inset: inset, onTop: onTop,
+        shape: _floatingBottomShape(
+          inset: inset,
+          onTop: onTop,
           side: const BorderSide(color: AppColors.backdrop),
         ),
       ),
@@ -2559,9 +2565,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       height: math.max(0, height - EditorPanelTabs.stripHeight),
       width: DockEdgeSplitter.thickness,
       child: DockEdgeSplitter(
-        key: ValueKey<String>(
-          'bottom-inset-${right ? 'right' : 'left'}',
-        ),
+        key: ValueKey<String>('bottom-inset-${right ? 'right' : 'left'}'),
         axis: Axis.vertical,
         tooltip: AppText.strings.panelRegionWidth,
         onDoubleTap: () {
@@ -2713,6 +2717,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       // level and not deeper because the floor is read by the dock
       // splitter and the section layout, both of which are built here.
       // (Zoom stays out on purpose — that one is per-drag.)
+      // The EXTENTS are deliberately absent from this merge. This builder
+      // wraps the whole workspace — both rails, the full-bleed canvas, the
+      // floating region — so listening to a splitter here rebuilt the canvas
+      // panel once per drag frame, which is what made dragging a divider
+      // feel heavy. Sizes ride `_layout.extentRevision` and are read inside
+      // the two builders that actually consume them.
       listenable: Listenable.merge([_layout, _timelineOrientation]),
       builder: (context, _) {
         // A rail is THERE when any of its groups is open; which groups
@@ -2732,241 +2742,266 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             ),
             Expanded(
               child: LayoutBuilder(
-                builder: (context, constraints) {
-                  // The side docks keep their saved extents but may never
-                  // squeeze the canvas out: scale both down proportionally
-                  // when the window can't fit them.
-                  const minCenterWidth = 120.0;
-                  var leftWidth = hasLeftDock
-                      ? _layout.dockExtent(
-                          EditorWorkspace.railWidthKey(right: false),
-                          fallback: EditorWorkspace.sideDockWidth,
-                        )
-                      : 0.0;
-                  var rightWidth = hasRightDock
-                      ? _layout.dockExtent(
-                          EditorWorkspace.railWidthKey(right: true),
-                          fallback: EditorWorkspace.sideDockWidth,
-                        )
-                      : 0.0;
-                  final splitters =
-                      (hasLeftDock ? DockEdgeSplitter.thickness : 0) +
-                      (hasRightDock ? DockEdgeSplitter.thickness : 0);
-                  final room = (constraints.maxWidth - splitters -
-                          minCenterWidth)
-                      .clamp(0.0, double.infinity);
-                  final wanted = leftWidth + rightWidth;
-                  if (wanted > room && wanted > 0) {
-                    final scale = room / wanted;
-                    leftWidth *= scale;
-                    rightWidth *= scale;
-                  }
-                  final bottomHeight = hasBottomDock
-                      ? _bottomDockHeight(constraints.maxHeight)
-                      : 0.0;
-                  // Symmetric, and clamped against the WINDOW: the region
-                  // may narrow until it is a panel rather than a bar, and
-                  // no further.
-                  final bottomInset = _bottomInset
-                      .clamp(
-                        0.0,
-                        math.max(
-                          0.0,
-                          (constraints.maxWidth - _minBottomRegionWidth) / 2,
-                        ),
-                      )
-                      .toDouble();
-                  final leftRailSpan = hasLeftDock
-                      ? leftWidth + DockEdgeSplitter.thickness
-                      : 0.0;
-                  final rightRailSpan = hasRightDock
-                      ? rightWidth + DockEdgeSplitter.thickness
-                      : 0.0;
-                  // Which edge the region is on. Everything below reads
-                  // this and nothing anywhere else has to.
-                  final onTop = _regionOnTop;
-                  final regionSpan = hasBottomDock
-                      ? bottomHeight + DockEdgeSplitter.thickness
-                      : 0.0;
-                  // What the panels hide from the artwork. The floor reads
-                  // this and nothing else has to know it exists.
-                  final floorCover = EdgeInsets.only(
-                    left: leftRailSpan,
-                    right: rightRailSpan,
-                    top: onTop ? regionSpan : 0,
-                    bottom: onTop ? 0 : regionSpan,
-                  );
-                  // ★ Whether each column runs past the floating region or
-                  // stops on its edge — one comparison per side, because the
-                  // two rails can be different widths and the answer is
-                  // about whether THIS one has room.
-                  double columnStop(double railSpan) =>
-                      hasBottomDock &&
-                          !_railPassesBottom(
-                            bottomInset: bottomInset,
-                            railWidth: railSpan,
-                          )
-                      ? regionSpan
-                      : 0.0;
-                  final leftStop = columnStop(leftRailSpan);
-                  final rightStop = columnStop(rightRailSpan);
+                builder: (context, constraints) =>
+                    // EVERY read of an extent lives below this line. It is the
+                    // narrowest wrapper that still sees them all, so a splitter
+                    // drag rebuilds the rails, the region and the floor's cover
+                    // — and stops there, instead of taking the whole workspace
+                    // and the canvas panel with it once per frame.
+                    ValueListenableBuilder<int>(
+                      valueListenable: _layout.extentRevision,
+                      builder: (context, _, _) {
+                        // The side docks keep their saved extents but may never
+                        // squeeze the canvas out: scale both down proportionally
+                        // when the window can't fit them.
+                        const minCenterWidth = 120.0;
+                        var leftWidth = hasLeftDock
+                            ? _layout.dockExtent(
+                                EditorWorkspace.railWidthKey(right: false),
+                                fallback: EditorWorkspace.sideDockWidth,
+                              )
+                            : 0.0;
+                        var rightWidth = hasRightDock
+                            ? _layout.dockExtent(
+                                EditorWorkspace.railWidthKey(right: true),
+                                fallback: EditorWorkspace.sideDockWidth,
+                              )
+                            : 0.0;
+                        final splitters =
+                            (hasLeftDock ? DockEdgeSplitter.thickness : 0) +
+                            (hasRightDock ? DockEdgeSplitter.thickness : 0);
+                        final room =
+                            (constraints.maxWidth - splitters - minCenterWidth)
+                                .clamp(0.0, double.infinity);
+                        final wanted = leftWidth + rightWidth;
+                        if (wanted > room && wanted > 0) {
+                          final scale = room / wanted;
+                          leftWidth *= scale;
+                          rightWidth *= scale;
+                        }
+                        final bottomHeight = hasBottomDock
+                            ? _bottomDockHeight(constraints.maxHeight)
+                            : 0.0;
+                        // Symmetric, and clamped against the WINDOW: the region
+                        // may narrow until it is a panel rather than a bar, and
+                        // no further.
+                        final bottomInset = _bottomInset
+                            .clamp(
+                              0.0,
+                              math.max(
+                                0.0,
+                                (constraints.maxWidth - _minBottomRegionWidth) /
+                                    2,
+                              ),
+                            )
+                            .toDouble();
+                        final leftRailSpan = hasLeftDock
+                            ? leftWidth + DockEdgeSplitter.thickness
+                            : 0.0;
+                        final rightRailSpan = hasRightDock
+                            ? rightWidth + DockEdgeSplitter.thickness
+                            : 0.0;
+                        // Which edge the region is on. Everything below reads
+                        // this and nothing anywhere else has to.
+                        final onTop = _regionOnTop;
+                        final regionSpan = hasBottomDock
+                            ? bottomHeight + DockEdgeSplitter.thickness
+                            : 0.0;
+                        // What the panels hide from the artwork. The floor reads
+                        // this and nothing else has to know it exists.
+                        final floorCover = EdgeInsets.only(
+                          left: leftRailSpan,
+                          right: rightRailSpan,
+                          top: onTop ? regionSpan : 0,
+                          bottom: onTop ? 0 : regionSpan,
+                        );
+                        // ★ Whether each column runs past the floating region or
+                        // stops on its edge — one comparison per side, because the
+                        // two rails can be different widths and the answer is
+                        // about whether THIS one has room.
+                        double columnStop(double railSpan) =>
+                            hasBottomDock &&
+                                !_railPassesBottom(
+                                  bottomInset: bottomInset,
+                                  railWidth: railSpan,
+                                )
+                            ? regionSpan
+                            : 0.0;
+                        final leftStop = columnStop(leftRailSpan);
+                        final rightStop = columnStop(rightRailSpan);
 
-                  return Stack(
-                    children: [
-                      // ★ THE FLOOR. Everything below this line is drawn on
-                      // top of the drawing.
-                      Positioned.fill(
-                        child: CanvasFloorInsets(
-                          insets: floorCover,
-                          child: _buildCenterDock(),
-                        ),
-                      ),
-                      Positioned(
-                        left: 0,
-                        top: onTop ? leftStop : 0,
-                        bottom: onTop ? 0 : leftStop,
-                        width: hasLeftDock ? leftWidth : null,
-                        child: _buildRailColumn(
-                          EditorPanelDockSide.left,
-                          width: leftWidth,
-                        ),
-                      ),
-                      if (hasLeftDock)
-                        Positioned(
-                          left: leftWidth,
-                          top: onTop ? leftStop : 0,
-                          bottom: onTop ? 0 : leftStop,
-                          width: DockEdgeSplitter.thickness,
-                          // ONE splitter per rail, on its inner edge: every
-                          // group on the rail shares this width.
-                          child: DockEdgeSplitter(
-                            key: const ValueKey<String>('dock-resize-left'),
-                            axis: Axis.vertical,
-                            onDragDelta: (delta) => _layout.resizeDock(
-                              EditorWorkspace.railWidthKey(right: false),
-                              delta,
-                              fallback: EditorWorkspace.sideDockWidth,
+                        return Stack(
+                          children: [
+                            // ★ THE FLOOR. Everything below this line is drawn on
+                            // top of the drawing.
+                            Positioned.fill(
+                              child: CanvasFloorInsets(
+                                insets: floorCover,
+                                child: _buildCenterDock(),
+                              ),
                             ),
-                          ),
-                        ),
-                      Positioned(
-                        right: 0,
-                        top: onTop ? rightStop : 0,
-                        bottom: onTop ? 0 : rightStop,
-                        width: hasRightDock ? rightWidth : null,
-                        child: _buildRailColumn(
-                          EditorPanelDockSide.right,
-                          width: rightWidth,
-                        ),
-                      ),
-                      if (hasRightDock)
-                        Positioned(
-                          right: rightWidth,
-                          top: onTop ? rightStop : 0,
-                          bottom: onTop ? 0 : rightStop,
-                          width: DockEdgeSplitter.thickness,
-                          child: DockEdgeSplitter(
-                            key: const ValueKey<String>('dock-resize-right'),
-                            axis: Axis.vertical,
-                            onDragDelta: (delta) => _layout.resizeDock(
-                              EditorWorkspace.railWidthKey(right: true),
-                              -delta,
-                              fallback: EditorWorkspace.sideDockWidth,
+                            Positioned(
+                              left: 0,
+                              top: onTop ? leftStop : 0,
+                              bottom: onTop ? 0 : leftStop,
+                              width: hasLeftDock ? leftWidth : null,
+                              child: _buildRailColumn(
+                                EditorPanelDockSide.left,
+                                width: leftWidth,
+                              ),
                             ),
-                          ),
-                        ),
-                      if (hasBottomDock)
-                        Positioned(
-                          left: bottomInset,
-                          right: bottomInset,
-                          // 기하는 캔버스 향한 변에: the resize handle rides
-                          // whichever edge faces the artwork, which flips
-                          // with the region and needs no rule of its own.
-                          top: onTop ? bottomHeight : null,
-                          bottom: onTop ? null : bottomHeight,
-                          height: DockEdgeSplitter.thickness,
-                          child: DockEdgeSplitter(
-                            key: const ValueKey<String>('dock-resize-bottom'),
-                            axis: Axis.horizontal,
-                            onDragDelta: (delta) {
-                              // Dragging the handle of a collapsed region
-                              // means "give me it back" — otherwise the
-                              // grip is live, moves nothing, and the only
-                              // way out is a button somewhere else.
-                              if (_bottomDockCollapsed) {
-                                setState(() => _bottomDockCollapsed = false);
-                                _scheduleLayoutSave();
-                              }
-                              _layout.resizeDock(
-                                EditorWorkspace.bottomGroupId,
-                                // Toward the artwork GROWS the region, on
-                                // either edge: down when it is on top, up
-                                // when it is on the bottom.
-                                onTop ? delta : -delta,
-                                fallback: EditorWorkspace.bottomPanelHeight,
-                                // The splitter stops where the panels stop
-                                // shrinking. Without this the drag runs on
-                                // past the floor and the tab shell's
-                                // scroller — kept only as a guard — starts
-                                // cutting the bottom rows off, which is the
-                                // reported bug. Capped by what the window
-                                // has, so a tall floor in a short window
-                                // never leaves the splitter inert.
-                                minExtent: math.min(
-                                  _verticalDockMinimumExtent(
-                                    EditorWorkspace.bottomGroupId,
+                            if (hasLeftDock)
+                              Positioned(
+                                left: leftWidth,
+                                top: onTop ? leftStop : 0,
+                                bottom: onTop ? 0 : leftStop,
+                                width: DockEdgeSplitter.thickness,
+                                // ONE splitter per rail, on its inner edge: every
+                                // group on the rail shares this width.
+                                child: DockEdgeSplitter(
+                                  key: const ValueKey<String>(
+                                    'dock-resize-left',
                                   ),
-                                  _bottomDockCeiling(constraints.maxHeight),
+                                  axis: Axis.vertical,
+                                  onDragDelta: (delta) => _layout.resizeDock(
+                                    EditorWorkspace.railWidthKey(right: false),
+                                    delta,
+                                    fallback: EditorWorkspace.sideDockWidth,
+                                  ),
                                 ),
-                              );
-                            },
-                          ),
-                        ),
-                      Positioned(
-                        left: bottomInset,
-                        right: bottomInset,
-                        top: onTop ? 0 : null,
-                        bottom: onTop ? null : 0,
-                        height: hasBottomDock ? bottomHeight : null,
-                        child: _buildBottomDock(
-                          availableExtent: constraints.maxHeight,
-                          inset: bottomInset > 0,
-                          onTop: onTop,
-                        ),
-                      ),
-                      // The region's side grips. TWO of them and ONE number
-                      // — pulling either edge in pulls the other in by the
-                      // same amount, because the region stays centred on the
-                      // window. Outside the clip on purpose: the silhouette
-                      // is rounded, and a grip that followed the curve would
-                      // be a 14px-wide target with a corner bitten out.
-                      if (hasBottomDock) ...[
-                        _bottomInsetGrip(
-                          right: false,
-                          inset: bottomInset,
-                          height: bottomHeight,
-                          onTop: onTop,
-                          railSpan: leftRailSpan,
-                          maxInset: math.max(
-                            0.0,
-                            (constraints.maxWidth - _minBottomRegionWidth) / 2,
-                          ),
-                        ),
-                        _bottomInsetGrip(
-                          right: true,
-                          inset: bottomInset,
-                          height: bottomHeight,
-                          onTop: onTop,
-                          railSpan: rightRailSpan,
-                          maxInset: math.max(
-                            0.0,
-                            (constraints.maxWidth - _minBottomRegionWidth) / 2,
-                          ),
-                        ),
-                      ],
-                    ],
-                  );
-                },
+                              ),
+                            Positioned(
+                              right: 0,
+                              top: onTop ? rightStop : 0,
+                              bottom: onTop ? 0 : rightStop,
+                              width: hasRightDock ? rightWidth : null,
+                              child: _buildRailColumn(
+                                EditorPanelDockSide.right,
+                                width: rightWidth,
+                              ),
+                            ),
+                            if (hasRightDock)
+                              Positioned(
+                                right: rightWidth,
+                                top: onTop ? rightStop : 0,
+                                bottom: onTop ? 0 : rightStop,
+                                width: DockEdgeSplitter.thickness,
+                                child: DockEdgeSplitter(
+                                  key: const ValueKey<String>(
+                                    'dock-resize-right',
+                                  ),
+                                  axis: Axis.vertical,
+                                  onDragDelta: (delta) => _layout.resizeDock(
+                                    EditorWorkspace.railWidthKey(right: true),
+                                    -delta,
+                                    fallback: EditorWorkspace.sideDockWidth,
+                                  ),
+                                ),
+                              ),
+                            if (hasBottomDock)
+                              Positioned(
+                                left: bottomInset,
+                                right: bottomInset,
+                                // 기하는 캔버스 향한 변에: the resize handle rides
+                                // whichever edge faces the artwork, which flips
+                                // with the region and needs no rule of its own.
+                                top: onTop ? bottomHeight : null,
+                                bottom: onTop ? null : bottomHeight,
+                                height: DockEdgeSplitter.thickness,
+                                child: DockEdgeSplitter(
+                                  key: const ValueKey<String>(
+                                    'dock-resize-bottom',
+                                  ),
+                                  axis: Axis.horizontal,
+                                  onDragDelta: (delta) {
+                                    // Dragging the handle of a collapsed region
+                                    // means "give me it back" — otherwise the
+                                    // grip is live, moves nothing, and the only
+                                    // way out is a button somewhere else.
+                                    if (_bottomDockCollapsed) {
+                                      setState(
+                                        () => _bottomDockCollapsed = false,
+                                      );
+                                      _scheduleLayoutSave();
+                                    }
+                                    _layout.resizeDock(
+                                      EditorWorkspace.bottomGroupId,
+                                      // Toward the artwork GROWS the region, on
+                                      // either edge: down when it is on top, up
+                                      // when it is on the bottom.
+                                      onTop ? delta : -delta,
+                                      fallback:
+                                          EditorWorkspace.bottomPanelHeight,
+                                      // The splitter stops where the panels stop
+                                      // shrinking. Without this the drag runs on
+                                      // past the floor and the tab shell's
+                                      // scroller — kept only as a guard — starts
+                                      // cutting the bottom rows off, which is the
+                                      // reported bug. Capped by what the window
+                                      // has, so a tall floor in a short window
+                                      // never leaves the splitter inert.
+                                      minExtent: math.min(
+                                        _verticalDockMinimumExtent(
+                                          EditorWorkspace.bottomGroupId,
+                                        ),
+                                        _bottomDockCeiling(
+                                          constraints.maxHeight,
+                                        ),
+                                      ),
+                                    );
+                                  },
+                                ),
+                              ),
+                            Positioned(
+                              left: bottomInset,
+                              right: bottomInset,
+                              top: onTop ? 0 : null,
+                              bottom: onTop ? null : 0,
+                              height: hasBottomDock ? bottomHeight : null,
+                              child: _buildBottomDock(
+                                availableExtent: constraints.maxHeight,
+                                inset: bottomInset > 0,
+                                onTop: onTop,
+                              ),
+                            ),
+                            // The region's side grips. TWO of them and ONE number
+                            // — pulling either edge in pulls the other in by the
+                            // same amount, because the region stays centred on the
+                            // window. Outside the clip on purpose: the silhouette
+                            // is rounded, and a grip that followed the curve would
+                            // be a 14px-wide target with a corner bitten out.
+                            if (hasBottomDock) ...[
+                              _bottomInsetGrip(
+                                right: false,
+                                inset: bottomInset,
+                                height: bottomHeight,
+                                onTop: onTop,
+                                railSpan: leftRailSpan,
+                                maxInset: math.max(
+                                  0.0,
+                                  (constraints.maxWidth -
+                                          _minBottomRegionWidth) /
+                                      2,
+                                ),
+                              ),
+                              _bottomInsetGrip(
+                                right: true,
+                                inset: bottomInset,
+                                height: bottomHeight,
+                                onTop: onTop,
+                                railSpan: rightRailSpan,
+                                maxInset: math.max(
+                                  0.0,
+                                  (constraints.maxWidth -
+                                          _minBottomRegionWidth) /
+                                      2,
+                                ),
+                              ),
+                            ],
+                          ],
+                        );
+                      },
+                    ),
               ),
             ),
             _buildEdgeDock(
@@ -3037,7 +3072,9 @@ class _RailGroupButton extends StatelessWidget {
             message: tooltip,
             child: Material(
               key: ValueKey<String>('rail-group-$railId'),
-              color: open ? colorScheme.surfaceContainerHigh : Colors.transparent,
+              color: open
+                  ? colorScheme.surfaceContainerHigh
+                  : Colors.transparent,
               clipBehavior: Clip.antiAlias,
               shape: AppShapes.control(ToolsPanel.buttonExtent),
               child: InkWell(

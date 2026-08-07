@@ -48,6 +48,25 @@ class EditorPanelLayoutModel extends ChangeNotifier {
        },
        _dockExtents = Map.of(dockExtents);
 
+  /// A SEPARATE, finer signal for "a dock changed size".
+  ///
+  /// The whole workspace — both rails, the full-bleed canvas, the floating
+  /// region — is built inside one listener on this model, so a splitter
+  /// firing [notifyListeners] on every drag frame rebuilt the canvas panel
+  /// once per frame. That is the lag: dragging a divider was repainting the
+  /// drawing surface.
+  ///
+  /// A resize does not change WHAT is docked, only how wide it is, so it
+  /// rides its own notifier and only the widgets that actually read an
+  /// extent listen to it.
+  final ValueNotifier<int> extentRevision = ValueNotifier<int>(0);
+
+  @override
+  void dispose() {
+    extentRevision.dispose();
+    super.dispose();
+  }
+
   final Map<String, List<DockSection>> _docks;
 
   /// Resizable dock extents (side dock widths, bottom dock height) in
@@ -93,7 +112,10 @@ class EditorPanelLayoutModel extends ChangeNotifier {
       return;
     }
     _dockExtents[dockId] = next;
-    notifyListeners();
+    // NOT notifyListeners: see [extentRevision]. A width is not a change of
+    // arrangement, and paying for a full workspace rebuild per drag frame is
+    // what made the splitter feel heavy.
+    extentRevision.value += 1;
   }
 
   /// Shifts extent between two adjacent sections of a dock via a splitter
