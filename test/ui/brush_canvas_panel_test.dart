@@ -277,6 +277,54 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
+  testWidgets('the pill NEVER stands down — a panel too narrow for the zoom '
+      'cluster still has Fit', (tester) async {
+    // It used to disappear below 190px, on the reading that a capsule
+    // around an empty row says nothing. With the docked bar gone (R2 #13)
+    // the row is never empty, and the panel narrow enough to have lost the
+    // pill is the one that needed it most — Fit is the only control here
+    // with no gesture that replaces it.
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    final coordinator = BrushCanvasFixture.createCoordinator(
+      frameKeys: frameKeys,
+      canvasSize: const CanvasSize(width: 300, height: 300),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 150,
+            height: 360,
+            child: BrushCanvasPanel(
+              coordinator: coordinator,
+              availableFrameKeys: frameKeys,
+              cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+              floorCover: EdgeInsets.zero,
+              canvasSize: const CanvasSize(width: 300, height: 300),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey<String>('canvas-view-pill')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('canvas-viewport-fit')),
+      findsOneWidget,
+    );
+    // …and everything that does not fit has left rather than overflowed.
+    expect(
+      find.byKey(const ValueKey<String>('canvas-viewport-zoom-label')),
+      findsNothing,
+    );
+    expect(tester.takeException(), isNull);
+  });
+
   testWidgets('keeps inner drawing canvas at Cut canvas size', (tester) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(

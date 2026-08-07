@@ -2233,24 +2233,28 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                       // BOUNDED on purpose: an unbounded pill would offer
                       // itself everything, keep every control and overflow.
                       // The shedding is the whole reason it is measured.
-                      child: window.width >=
-                              _CanvasViewportBottomBar.pillMinWidth +
-                                  2 * _capsuleMargin
-                          ? ConstrainedBox(
-                              constraints: BoxConstraints(
-                                maxWidth: math.max(
-                                  0.0,
-                                  window.width - 2 * _capsuleMargin,
-                                ),
-                              ),
-                              child: _capsule(
-                                colorScheme,
-                                keyValue: 'canvas-view-pill',
-                                height: _CanvasViewportBottomBar.height,
-                                child: bottomBar,
-                              ),
-                            )
-                          : const SizedBox.shrink(),
+                      //
+                      // There is no floor under which the pill disappears.
+                      // There used to be — below 190px it stood down, on
+                      // the reading that a capsule around an empty row says
+                      // nothing. With the docked bar gone the row is never
+                      // empty: Fit is in it at every width, and the panel
+                      // narrow enough to have lost the pill is the one that
+                      // needed it most.
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(
+                          maxWidth: math.max(
+                            0.0,
+                            window.width - 2 * _capsuleMargin,
+                          ),
+                        ),
+                        child: _capsule(
+                          colorScheme,
+                          keyValue: 'canvas-view-pill',
+                          height: _CanvasViewportBottomBar.height,
+                          child: bottomBar,
+                        ),
+                      ),
                     ),
                   ),
                 ],
@@ -2431,10 +2435,10 @@ class _CanvasViewportBottomBar extends StatelessWidget {
   /// still in the project settings.
   static const double _pillColorMinWidth = 470;
 
-  /// Below this the pill stands down entirely: fit, 1:1, the two zoom steps
-  /// and the readout are the last things it would drop, and they do not fit
-  /// either. The shell reads it too — a capsule around an empty row would
-  /// be a small ringed box sitting on the artwork saying nothing.
+  /// Below this the pill drops the zoom readout and the two zoom steps,
+  /// and below it MINUS the host's own controls it drops those too. It
+  /// never drops Fit, and it never stands down: the docked bar that used
+  /// to be the alternative is gone.
   static const double pillMinWidth = 190;
 
   const _CanvasViewportBottomBar({
