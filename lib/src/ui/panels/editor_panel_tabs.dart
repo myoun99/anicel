@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
@@ -192,6 +193,23 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
   final Map<String, ValueNotifier<bool>> _tabVisibility =
       <String, ValueNotifier<bool>>{};
 
+  /// Whether the pointer is anywhere on this PANEL.
+  ///
+  /// 유저, R3 #9: 패널에 호버하면 기본색. The band that lifts a panel used to
+  /// appear only once the pointer was on the tab itself, which is a handle
+  /// you cannot find without already knowing where it is. Hovering the panel
+  /// is the moment to say "there is a handle, and it is here".
+  ///
+  /// A notifier and not `setState`: the strip holds the panel's whole
+  /// content, and repainting a 2px band is not a reason to rebuild it.
+  final ValueNotifier<bool> _panelHovered = ValueNotifier<bool>(false);
+
+  @override
+  void dispose() {
+    _panelHovered.dispose();
+    super.dispose();
+  }
+
   bool get _dragEnabled => widget.groupId != null && widget.onTabMoved != null;
 
   bool _willAccept(EditorPanelTabDragData data) =>
@@ -288,79 +306,84 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
             ),
           );
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        if (strip != null && !widget.stripAtBottom) strip,
-        // The content area shares the selected tab's background so the tab
-        // reads as part of the panel, not a floating chip above it. Built
-        // keep-alive tabs stay in the stack offstage (state, scroll
-        // positions and caches survive the switch).
-        Expanded(
-          // A panel's content may not paint outside the panel.
-          //
-          // It always could: the content box is a Stack, which does not
-          // clip, and a host that lays out a little taller than the room it
-          // was given simply spilled past the bottom. That was invisible
-          // while the strip was on TOP — the spill went off the region's
-          // bottom edge, which was the window's bottom edge. With the strip
-          // on the bottom inner edge the spill goes UNDER the 문턱, where it
-          // is still hit-testable but permanently covered: a long-press
-          // aimed at the sheet's last row switched the panel instead.
-          child: ClipRect(
-            child: ColoredBox(
-              color: colorScheme.surface,
-              child: Stack(
-                fit: StackFit.expand,
-                children: [
-                  for (final tab in tabs)
-                    if (tab.id == active.id || _builtTabIds.contains(tab.id))
-                      Offstage(
-                        key: ValueKey<String>('panel-content-${tab.id}'),
-                        offstage: tab.id != active.id,
-                        child: TickerMode(
-                          enabled: tab.id == active.id,
-                          child: PanelVisibilityScope(
-                            visible: _visibilityFor(
-                              tab.id,
-                              visible: tab.id == active.id,
+    return MouseRegion(
+      opaque: false,
+      onEnter: (_) => _panelHovered.value = true,
+      onExit: (_) => _panelHovered.value = false,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          if (strip != null && !widget.stripAtBottom) strip,
+          // The content area shares the selected tab's background so the tab
+          // reads as part of the panel, not a floating chip above it. Built
+          // keep-alive tabs stay in the stack offstage (state, scroll
+          // positions and caches survive the switch).
+          Expanded(
+            // A panel's content may not paint outside the panel.
+            //
+            // It always could: the content box is a Stack, which does not
+            // clip, and a host that lays out a little taller than the room it
+            // was given simply spilled past the bottom. That was invisible
+            // while the strip was on TOP — the spill went off the region's
+            // bottom edge, which was the window's bottom edge. With the strip
+            // on the bottom inner edge the spill goes UNDER the 문턱, where it
+            // is still hit-testable but permanently covered: a long-press
+            // aimed at the sheet's last row switched the panel instead.
+            child: ClipRect(
+              child: ColoredBox(
+                color: colorScheme.surface,
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    for (final tab in tabs)
+                      if (tab.id == active.id || _builtTabIds.contains(tab.id))
+                        Offstage(
+                          key: ValueKey<String>('panel-content-${tab.id}'),
+                          offstage: tab.id != active.id,
+                          child: TickerMode(
+                            enabled: tab.id == active.id,
+                            child: PanelVisibilityScope(
+                              visible: _visibilityFor(
+                                tab.id,
+                                visible: tab.id == active.id,
+                              ),
+                              child: tab.keepAlive
+                                  ? (_contentCache[tab.id] ??= _buildTabContent(
+                                      tab,
+                                    ))
+                                  : _buildTabContent(tab),
                             ),
-                            child: tab.keepAlive
-                                ? (_contentCache[tab.id] ??= _buildTabContent(
-                                    tab,
-                                  ))
-                                : _buildTabContent(tab),
+                          ),
+                        ),
+                    // The reveal blink (UI-R17 #5): fires when the flash
+                    // channel names a tab this group hosts.
+                    if (widget.flash != null)
+                      Positioned.fill(
+                        child: IgnorePointer(
+                          child: ValueListenableBuilder<PanelFlashRequest?>(
+                            valueListenable: widget.flash!.requests,
+                            builder: (context, request, _) {
+                              if (request == null ||
+                                  !tabs.any((tab) => tab.id == request.tabId)) {
+                                return const SizedBox.shrink();
+                              }
+                              return PanelFlashOverlay(
+                                key: ValueKey<String>(
+                                  'panel-flash-${request.tabId}-${request.seq}',
+                                ),
+                              );
+                            },
                           ),
                         ),
                       ),
-                  // The reveal blink (UI-R17 #5): fires when the flash
-                  // channel names a tab this group hosts.
-                  if (widget.flash != null)
-                    Positioned.fill(
-                      child: IgnorePointer(
-                        child: ValueListenableBuilder<PanelFlashRequest?>(
-                          valueListenable: widget.flash!.requests,
-                          builder: (context, request, _) {
-                            if (request == null ||
-                                !tabs.any((tab) => tab.id == request.tabId)) {
-                              return const SizedBox.shrink();
-                            }
-                            return PanelFlashOverlay(
-                              key: ValueKey<String>(
-                                'panel-flash-${request.tabId}-${request.seq}',
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    ),
-                ],
+                  ],
+                ),
               ),
             ),
           ),
-        ),
-        if (strip != null && widget.stripAtBottom) strip,
-      ],
+          if (strip != null && widget.stripAtBottom) strip,
+        ],
+      ),
     );
   }
 
@@ -426,6 +449,7 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
       selected: selected,
       locked: tab.locked,
       gripKey: ValueKey<String>('panel-grip-${tab.id}'),
+      panelHovered: _panelHovered,
       dragData: _dragEnabled && !tab.locked
           ? EditorPanelTabDragData(tabId: tab.id, fromGroupId: widget.groupId!)
           : null,
@@ -444,7 +468,6 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
       child: button,
     );
   }
-
 }
 
 /// Drop target around one tab button: highlights the insertion edge that
@@ -588,7 +611,6 @@ class _PanelTabDragFeedback extends StatelessWidget {
   }
 }
 
-
 /// One tab: an icon, and an 8px strip of its leading edge that lifts it.
 ///
 /// 패널 이름 글자는 어디에도 안 띄운다 (유저 확정). The name lives in the
@@ -620,6 +642,7 @@ class _PanelTabButton extends StatefulWidget {
     required this.selected,
     required this.locked,
     required this.gripKey,
+    required this.panelHovered,
     required this.onPressed,
     required this.stripAtBottom,
     this.dragData,
@@ -631,6 +654,10 @@ class _PanelTabButton extends StatefulWidget {
   final bool selected;
   final bool locked;
   final Key gripKey;
+
+  /// Whether the pointer is anywhere on the PANEL this tab belongs to —
+  /// the first rung of the band's ladder (유저, R3 #9).
+  final ValueListenable<bool> panelHovered;
   final VoidCallback onPressed;
 
   /// Which side of the panel this tab's strip is on — the tab has to know,
@@ -659,35 +686,40 @@ class _PanelTabButton extends StatefulWidget {
 }
 
 class _PanelTabButtonState extends State<_PanelTabButton> {
-  bool _buttonHovered = false;
   bool _gripHovered = false;
   bool _dragging = false;
 
   bool get _armed => widget.dragData != null;
 
-  /// Thick when there is something to grab, thin when it is only telling
-  /// you which panel is open.
+  /// Thick when there is something to grab, thin when it is only offering
+  /// itself.
   double get _bandExtent => _armed && (_dragging || _gripHovered)
       ? _PanelTabButton.bandReach
       : _PanelTabButton.bandRest;
 
-  /// The app's one grip ladder, with the ACTIVE rung folded in: invisible
-  /// until something is worth saying, the tab's own accent when it is the
-  /// open one, brighter under the pointer, accent while it lifts.
-  Color _bandColor(ColorScheme colorScheme) {
-    if (_armed && _dragging) {
+  /// The app's one grip ladder, and NOTHING ELSE (유저, R3 #9).
+  ///
+  /// ⛔The ACTIVE rung is gone. The band used to turn accent for the open
+  /// tab, which meant the tab you were most likely to want to drag was the
+  /// one tab whose band could never say "you may drag me" — the two signals
+  /// were sharing one surface and the louder one always won. Which panel is
+  /// open is still said twice over without it: the selected tab wears the
+  /// body's own fill and its glyph is accent.
+  ///
+  /// Three rungs, on the three things a hand does: the panel is under the
+  /// pointer (기본색) → the band itself is (호버색) → it is being dragged
+  /// (클릭색).
+  Color _bandColor(bool panelHovered) {
+    if (!_armed) {
+      return Colors.transparent;
+    }
+    if (_dragging) {
       return AppColors.accent;
     }
-    if (_armed && _gripHovered) {
+    if (_gripHovered) {
       return AppColors.gripHover;
     }
-    if (widget.selected) {
-      return colorScheme.primary;
-    }
-    if (_armed && _buttonHovered) {
-      return AppColors.hairlineStrong;
-    }
-    return Colors.transparent;
+    return panelHovered ? AppColors.hairlineStrong : Colors.transparent;
   }
 
   /// The tab's silhouette: rounded on the edge AWAY from the panel body,
@@ -723,9 +755,12 @@ class _PanelTabButtonState extends State<_PanelTabButton> {
           alignment: widget.stripAtBottom
               ? Alignment.bottomCenter
               : Alignment.topCenter,
-          child: SizedBox(
-            height: _bandExtent,
-            child: ColoredBox(color: _bandColor(colorScheme)),
+          child: ValueListenableBuilder<bool>(
+            valueListenable: widget.panelHovered,
+            builder: (context, panelHovered, _) => SizedBox(
+              height: _bandExtent,
+              child: ColoredBox(color: _bandColor(panelHovered)),
+            ),
           ),
         ),
       ),
@@ -740,10 +775,7 @@ class _PanelTabButtonState extends State<_PanelTabButton> {
         dragAnchorStrategy: pointerDragAnchorStrategy,
         feedback: FractionalTranslation(
           translation: const Offset(-0.5, -0.5),
-          child: _PanelTabDragFeedback(
-            label: widget.label,
-            icon: widget.icon,
-          ),
+          child: _PanelTabDragFeedback(label: widget.label, icon: widget.icon),
         ),
         onDragStarted: () {
           setState(() => _dragging = true);
@@ -763,64 +795,63 @@ class _PanelTabButtonState extends State<_PanelTabButton> {
       // Manual trigger: hover tooltips still work, but no long-press
       // recognizer competes with drag lifts.
       triggerMode: TooltipTriggerMode.manual,
-      child: MouseRegion(
-        onEnter: (_) => setState(() => _buttonHovered = true),
-        onExit: (_) => setState(() => _buttonHovered = false),
-        child: InkWell(
-          onTap: widget.onPressed,
-          // THE SELECTED TAB IS THE PANEL'S FOOT, not a chip lying on the
-          // sill. It wears the body's own fill and rounds only the corners
-          // AWAY from the body, so the seam between them disappears and the
-          // panel reads as one shape that grows out of its buttons — which
-          // is what the sill was for. Its neighbours are bare, so the fill
-          // still says which one is on, alongside the accent glyph and the
-          // band on the edge facing the WINDOW rather than along the seam
-          // the panel wants invisible.
-          //
-          // The band is CLIPPED to that shape, the way every other grip in
-          // the app is clipped to the panel it belongs to: the tab's rounded
-          // corners cut it, so it reads as the tab's own edge.
-          child: ClipPath(
-            clipper: AppShapes.clipper(_shape()),
-            // PASSTHROUGH, not the default loose fit. A loose Stack hands
-            // its non-positioned child the incoming constraints LOOSENED,
-            // so the tab's body shrank to its 16px glyph and sat at the top
-            // of a 30px strip: the selected fill stopped reaching the panel
-            // body it is supposed to merge into, and every glyph rode 7px
-            // high. Passthrough keeps the strip's tight height and the
-            // loose width, which is exactly what a tab wants — as tall as
-            // the strip, as wide as what it holds.
-            child: Stack(
-              fit: StackFit.passthrough,
-              children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
-                  decoration: ShapeDecoration(
-                    color: widget.selected
-                        ? colorScheme.surface
-                        : Colors.transparent,
-                    shape: _shape(),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Icon(widget.icon, size: 16, color: foreground),
-                      if (widget.locked) ...[
-                        const SizedBox(width: 3),
-                        Icon(Icons.lock, size: 9, color: colorScheme.primary),
-                      ],
+      // ⛔No MouseRegion of its own any more: the band's first rung is the
+      // PANEL being hovered, not this button, and the InkWell already
+      // paints its own hover for the button itself.
+      child: InkWell(
+        onTap: widget.onPressed,
+        // THE SELECTED TAB IS THE PANEL'S FOOT, not a chip lying on the
+        // sill. It wears the body's own fill and rounds only the corners
+        // AWAY from the body, so the seam between them disappears and the
+        // panel reads as one shape that grows out of its buttons — which
+        // is what the sill was for. Its neighbours are bare, so the fill
+        // still says which one is on, alongside the accent glyph and the
+        // band on the edge facing the WINDOW rather than along the seam
+        // the panel wants invisible.
+        //
+        // The band is CLIPPED to that shape, the way every other grip in
+        // the app is clipped to the panel it belongs to: the tab's rounded
+        // corners cut it, so it reads as the tab's own edge.
+        child: ClipPath(
+          clipper: AppShapes.clipper(_shape()),
+          // PASSTHROUGH, not the default loose fit. A loose Stack hands
+          // its non-positioned child the incoming constraints LOOSENED,
+          // so the tab's body shrank to its 16px glyph and sat at the top
+          // of a 30px strip: the selected fill stopped reaching the panel
+          // body it is supposed to merge into, and every glyph rode 7px
+          // high. Passthrough keeps the strip's tight height and the
+          // loose width, which is exactly what a tab wants — as tall as
+          // the strip, as wide as what it holds.
+          child: Stack(
+            fit: StackFit.passthrough,
+            children: [
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8),
+                decoration: ShapeDecoration(
+                  color: widget.selected
+                      ? colorScheme.surface
+                      : Colors.transparent,
+                  shape: _shape(),
+                ),
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(widget.icon, size: 16, color: foreground),
+                    if (widget.locked) ...[
+                      const SizedBox(width: 3),
+                      Icon(Icons.lock, size: 9, color: colorScheme.primary),
                     ],
-                  ),
+                  ],
                 ),
-                Positioned(
-                  left: 0,
-                  right: 0,
-                  top: widget.stripAtBottom ? null : 0,
-                  bottom: widget.stripAtBottom ? 0 : null,
-                  child: grip,
-                ),
-              ],
-            ),
+              ),
+              Positioned(
+                left: 0,
+                right: 0,
+                top: widget.stripAtBottom ? null : 0,
+                bottom: widget.stripAtBottom ? 0 : null,
+                child: grip,
+              ),
+            ],
           ),
         ),
       ),
@@ -897,11 +928,7 @@ class _TabOverflowButton extends StatelessWidget {
                     color: colorScheme.onSurfaceVariant,
                   ),
                 )
-              : Icon(
-                  _activeHidden!.icon,
-                  size: 16,
-                  color: colorScheme.primary,
-                ),
+              : Icon(_activeHidden!.icon, size: 16, color: colorScheme.primary),
         ),
       ),
     );

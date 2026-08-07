@@ -310,7 +310,8 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       // question about WHERE it is mounted, so the tree answers it. A host
       // opened in a rail column or the bottom panel is simply not under the
       // provider, and nothing lies on it.
-      floorCover: CanvasFloorInsets.maybeOf(context) ?? EdgeInsets.zero,
+      floorCover: CanvasFloorInsets.maybeOf(context)?.insets ?? EdgeInsets.zero,
+      floorRailBand: CanvasFloorInsets.maybeOf(context)?.rightRailBand,
       coordinator: coordinator,
       celEditable: hasEditableFrame,
       availableFrameKeys: _frameKeys,

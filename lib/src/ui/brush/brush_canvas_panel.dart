@@ -32,7 +32,7 @@ import '../canvas/selection_ants_painter.dart';
 import '../canvas/canvas_viewport_gesture_layer.dart';
 import '../canvas/flip_hud_controller.dart';
 import '../canvas/flip_hud_overlay.dart';
-import 'canvas_floor_insets.dart' show CanvasPillSide;
+import 'canvas_floor_insets.dart';
 import '../../models/project.dart'
     show defaultProjectBackdropArgb, defaultProjectPasteboardMargin;
 import '../../models/project_background.dart';
@@ -114,6 +114,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.contentOverride,
     this.fitFocusRect,
     this.floorCover = EdgeInsets.zero,
+    this.floorRailBand,
     this.autoFrame,
     this.contentStrokeActive,
     this.sampleColorAt,
@@ -274,6 +275,16 @@ class BrushCanvasPanel extends StatefulWidget {
   /// not spending a strip of the screen on chrome that is idle most of the
   /// time.
   final EdgeInsets floorCover;
+
+  /// WHERE the rail on this panel's right edge actually is, vertically —
+  /// null when nothing is open there.
+  ///
+  /// [floorCover] says how much of the edge is unusable, which is the right
+  /// question for FRAMING and the wrong one for the one control that lives
+  /// on that edge: a short rail panel covers a band, and a scrollbar that
+  /// steps aside for a panel nowhere near it reads as floating (유저, R3
+  /// #5).
+  final CanvasFloorBand? floorRailBand;
 
   /// Playback-follow reframing: when the request's token changes between
   /// updates the panel reframes onto its rect (see
@@ -910,9 +921,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               bottomBar: _memoizedBottomBar(),
               // The capsules float INSIDE what the panels left over.
               cover: widget.floorCover,
-              // A fact about the WINDOW, not about this panel: every canvas
-              // surface reads the same answer from the same place.
-              pillOnRight: CanvasPillSide.of(context),
+              railBand: widget.floorRailBand,
               strokeActive: _strokeActive || _selectionDragActive,
               contentStrokeActive: widget.contentStrokeActive,
               child: LayoutBuilder(
@@ -2120,7 +2129,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
     required this.rightStripBar,
     required this.horizontalStripBar,
     required this.cover,
-    required this.pillOnRight,
+    this.railBand,
     this.strokeActive = false,
     this.contentStrokeActive,
   });
@@ -2150,13 +2159,9 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   /// nothing is covering.
   final EdgeInsets cover;
 
-  /// Which top corner the pill takes: the one AWAY from the tool strip.
-  ///
-  /// 유저, R2 #14 — the strip is where the hand already is, so the controls
-  /// go to the far corner rather than under it. It follows the strip's own
-  /// left/right setting, which means the left-handed choice moves this too
-  /// and neither has a rule of its own.
-  final bool pillOnRight;
+  /// The vertical band the rail on the right edge occupies — see
+  /// [BrushCanvasPanel.floorRailBand].
+  final CanvasFloorBand? railBand;
 
   /// How far a floating capsule sits in from the window's edge.
   static const double _capsuleMargin = 8;
@@ -2209,57 +2214,75 @@ class _CanvasEditorPanelShell extends StatelessWidget {
         // THE PANBARS ARE FURNITURE — but furniture in a room, not in the
         // wall.
         //
-        // They first lived inside the cover-inset layer, so raising the
-        // timeline walked the vertical one halfway up the panel; the user
-        // overruled that (scrollbars do not move because a drawer opened).
-        // Then they sat on the raw panel, and an open side panel covered
-        // them outright. Both readings were half of one: the position ALONG
-        // the edge is fixed at the panel's centre and never moves, and the
-        // distance FROM the edge yields to whatever is covering it. So the
-        // vertical bar stays at the middle of the panel's height and steps
-        // in when a rail opens; the horizontal one stays at the middle of
-        // its width and steps down when the region docks on top.
+        // 🆕유저, R3 #5·#6, and it is the third pass over this: the bars now
+        // CENTRE ON WHAT YOU CAN SEE. Both are placed inside the visible
+        // rectangle rather than the panel's — the vertical one at the middle
+        // of the visible HEIGHT (so docking the region at the bottom walks
+        // it up, which is what "하단패널이 열린거에 따라 중앙계산" asked back),
+        // the horizontal one at the middle of the visible WIDTH, on the
+        // BOTTOM edge (패널열리면 위치바뀌는거 허용).
         //
-        // ★They are laid UNDER the pill on purpose. On a panel short enough
-        // for the vertical bar's middle to reach the pill's row they do
-        // overlap, and one of them has to lose the pointer there. It is the
-        // BAR: a 260px-long target giving up 28px of its length keeps every
-        // pixel of it that matters, while the pill giving up its last
-        // control loses a button outright. Reserving the lane instead was
-        // measured and rejected — 22px is enough to make the timesheet shed
-        // its own page cluster at the default rail width.
-        Positioned(
-          right: cover.right + _capsuleMargin,
-          top: 0,
-          bottom: 0,
+        // ★And the vertical bar only steps IN from the edge when the rail is
+        // actually beside it. A rail panel is as tall as it was left at, so
+        // a short one covers a band, not an edge: stepping in for the whole
+        // edge left the bar hanging in the middle of nothing.
+        Positioned.fill(
           child: LayoutBuilder(
-            builder: (context, panel) => Align(
-              alignment: Alignment.centerRight,
-              child: _capsule(
-                colorScheme,
-                keyValue: 'canvas-panbar-vertical',
-                width: rightStripWidth,
-                height: _capsuleTrack(panel.maxHeight),
-                child: rightStripBar,
-              ),
-            ),
-          ),
-        ),
-        Positioned(
-          left: _capsuleMargin,
-          right: _capsuleMargin,
-          top: cover.top + _capsuleMargin,
-          child: LayoutBuilder(
-            builder: (context, panel) => Align(
-              alignment: Alignment.topCenter,
-              child: _capsule(
-                colorScheme,
-                keyValue: 'canvas-panbar-horizontal',
-                height: AppScrollbarLane.medium,
-                width: _capsuleTrack(panel.maxWidth),
-                child: horizontalStripBar,
-              ),
-            ),
+            builder: (context, panel) {
+              final insets = cover;
+              final visibleTop = insets.top;
+              final visibleBottom = math.max(
+                visibleTop,
+                panel.maxHeight - insets.bottom,
+              );
+              final track = _capsuleTrack(visibleBottom - visibleTop);
+              final centre = (visibleTop + visibleBottom) / 2;
+              final barTop = centre - track / 2;
+              final intrudes = canvasFloorBandIntrudes(
+                railBand,
+                top: barTop,
+                bottom: barTop + track,
+              );
+              final edge = intrudes
+                  ? insets.right + _capsuleMargin
+                  : _capsuleMargin;
+              return Stack(
+                children: [
+                  Positioned(
+                    right: edge,
+                    top: barTop,
+                    height: track,
+                    child: _capsule(
+                      colorScheme,
+                      keyValue: 'canvas-panbar-vertical',
+                      width: rightStripWidth,
+                      height: track,
+                      child: rightStripBar,
+                    ),
+                  ),
+                  Positioned(
+                    left: insets.left + _capsuleMargin,
+                    right: insets.right + _capsuleMargin,
+                    bottom: insets.bottom + _capsuleMargin,
+                    child: Align(
+                      alignment: Alignment.bottomCenter,
+                      child: _capsule(
+                        colorScheme,
+                        keyValue: 'canvas-panbar-horizontal',
+                        height: AppScrollbarLane.medium,
+                        width: _capsuleTrack(
+                          math.max(
+                            0.0,
+                            panel.maxWidth - insets.horizontal,
+                          ),
+                        ),
+                        child: horizontalStripBar,
+                      ),
+                    ),
+                  ),
+                ],
+              );
+            },
           ),
         ),
         Positioned(
@@ -2277,25 +2300,26 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                 strokeActive: strokeActive,
                 contentStrokeActive: contentStrokeActive,
                 children: [
-                  // THE PILL, in the corner AWAY from the tool strip (R2
-                  // #14) — the strip is where the hand already is.
+                  // THE PILL, at the TOP CENTRE (유저, R3 #6).
                   //
-                  // A corner, and NOT the timeline's edge: that panel's top
-                  // edge moves on every resize and every threshold switch,
-                  // and 좌우반전 gets pressed dozens of times an hour.
+                  // ⛔It used to take the top corner away from the tool strip
+                  // (R2 #14), which needed a rule about which hand the strip
+                  // was under and an InheritedWidget to publish the answer.
+                  // Centred, there is no side to choose, and the pill is the
+                  // same distance from either hand.
+                  //
+                  // It sits ON the top edge now rather than one lane below
+                  // it: the horizontal panbar used to own that edge and has
+                  // moved to the bottom, so the row it was making way for is
+                  // gone. Still NOT the timeline's edge, for the old reason
+                  // — that edge moves on every resize and every threshold
+                  // switch, and 좌우반전 gets pressed dozens of times an hour.
                   Positioned(
                     left: _capsuleMargin,
-                    // One lane below the very top: the horizontal panbar owns
-                    // the edge itself, centred on the panel and not moving
-                    // for anyone, so the pill — the thing you reach for
-                    // rather than read — takes the row under it. They can
-                    // then never share a pixel at any width.
-                    top: _capsuleMargin * 2 + AppScrollbarLane.medium,
+                    top: _capsuleMargin,
                     right: _capsuleMargin,
                     child: Align(
-                      alignment: pillOnRight
-                          ? Alignment.topRight
-                          : Alignment.topLeft,
+                      alignment: Alignment.topCenter,
                       // BOUNDED on purpose: an unbounded pill would offer
                       // itself everything, keep every control and overflow.
                       // The shedding is the whole reason it is measured.
