@@ -399,55 +399,15 @@ void main() {
     });
   });
 
-  group('a rail divides its height so no GROUP lands under its floor', () {
-    // The first round guarded only the dock's outer splitter and split the
-    // rest by WEIGHT, which knows nothing about what a panel needs — so a
-    // starved group fell back into the shell's scroller and had its bottom
-    // rows cut off. Measured then: 13.5px of overhang at 350, 78px at the
-    // splitter's own stop, 151.5px at the weight limit.
-    List<double> extentsFor(
-      List<double> weights,
-      List<double> floors,
-      double h,
-    ) => stackedGroupExtents(weights: weights, floors: floors, totalExtent: h);
+  group('a dock is one group', () {
+    // ⛔The water-filling that used to divide a rail between whatever was
+    // open went with R2 #7: a rail panel keeps its OWN saved height and the
+    // rail scrolls when they will not all fit, so there is no share to
+    // compute. What that arithmetic protected — a panel never laid out
+    // under its floor — is now `_railGroupHeight`'s floor, and it is
+    // asserted where the user can see it (rail_groups_test).
 
-    test('two groups, equal weights: the taller floor is paid first', () {
-      final extents = extentsFor([1, 1], [186, 30], 350);
-      expect(extents[0], greaterThanOrEqualTo(186));
-      expect(extents[1], greaterThanOrEqualTo(30));
-      expect(extents[0] + extents[1], closeTo(345, 0.001));
-    });
-
-    test('a low weight cannot starve a group below its floor', () {
-      final extents = extentsFor([0.2, 1.8], [186, 30], 350);
-      expect(
-        extents[0],
-        greaterThanOrEqualTo(186),
-        reason: 'a weight of 0.2 used to buy 34.5px and 151px of overhang',
-      );
-      expect(extents[0] + extents[1], closeTo(345, 0.001));
-    });
-
-    test('when every floor is already paid the split is EXACTLY the '
-        'proportional one it always was — the floors change nothing', () {
-      final extents = extentsFor([1, 3], [30, 30], 430);
-      expect(extents[0], closeTo(425 * 0.25, 0.001));
-      expect(extents[1], closeTo(425 * 0.75, 0.001));
-    });
-
-    test('a rail too small for every floor shares the shortfall instead of '
-        'starving whoever is last', () {
-      final extents = extentsFor([1, 1], [200, 100], 155);
-      expect(extents[0], closeTo(100, 0.001));
-      expect(extents[1], closeTo(50, 0.001));
-      expect(extents[0], greaterThan(extents[1]));
-    });
-
-    test('one group takes everything', () {
-      expect(extentsFor([1], [186], 350), [350]);
-    });
-
-    testWidgets('a DOCK, meanwhile, is one group and cannot be split', (
+    testWidgets('a DOCK is one group and cannot be split', (
       tester,
     ) async {
       // The stack is gone from the host, not merely unreachable: a layout
