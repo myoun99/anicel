@@ -17,13 +17,12 @@ const defaultProjectCameraSize = CanvasSize(width: 1920, height: 1080);
 /// on, replacing the per-cut FO/WO wash the transparency model retired.
 const defaultProjectBackdropArgb = 0xFF000000;
 
-/// The default PASTEBOARD (R28 #9, reversed 2026-07-29): darker than the
-/// historical editor grey, so the paper is the brightest thing on screen.
+/// The default PASTEBOARD: black, the same as the backdrop (유저, R3 #4).
 ///
 /// It must stay in step with `AppWorkspaceColors.defaultPasteboardArgb` — a
 /// project omits this key when it matches the default, so the two constants
 /// disagreeing would make a saved project change colour on the way back in.
-const defaultProjectPasteboardArgb = 0xFF17191B;
+const defaultProjectPasteboardArgb = 0xFF000000;
 
 /// How far past each canvas edge the pasteboard SHOWS, in canvas widths and
 /// heights. The default matches the DRAWING bound (`PasteboardBounds`, two
@@ -76,11 +75,13 @@ class Project {
        mediaAssets = immutableMediaAssetList(mediaAssets),
        trailingFrames = trailingFrames < 0 ? 0 : trailingFrames,
        linkRegistry = linkRegistry ?? LayerLinkRegistry.empty,
-       audioSampleRate =
-           audioSampleRate < 1 ? defaultProjectAudioSampleRate : audioSampleRate,
+       audioSampleRate = audioSampleRate < 1
+           ? defaultProjectAudioSampleRate
+           : audioSampleRate,
        audioSpeedNumerator = audioSpeedNumerator < 1 ? 1 : audioSpeedNumerator,
-       audioSpeedDenominator =
-           audioSpeedDenominator < 1 ? 1 : audioSpeedDenominator;
+       audioSpeedDenominator = audioSpeedDenominator < 1
+           ? 1
+           : audioSpeedDenominator;
 
   final ProjectId id;
   final String name;

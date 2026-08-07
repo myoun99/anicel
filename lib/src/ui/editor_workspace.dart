@@ -227,6 +227,7 @@ class EditorWorkspace extends StatefulWidget {
   static const String canvasTabId = 'canvas';
   static const String brushesTabId = 'brushes';
   static const String brushSettingsTabId = 'brush-settings';
+
   /// The three colour PANELS. They were the three tabs of one colour panel
   /// until R2 #8 — a strip inside a strip, asking "which panel" and "how am
   /// I picking" in the same place twice.
@@ -335,10 +336,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     // the paper sheets moved to the sub-strip, where a tall narrow column
     // suits a page better than a wide short one.
     EditorWorkspace.bottomGroupId: DockGroup(
-      tabs: [
-        EditorWorkspace.timelineTabId,
-        EditorWorkspace.storyboardTabId,
-      ],
+      tabs: [EditorWorkspace.timelineTabId, EditorWorkspace.storyboardTabId],
       activeTabId: EditorWorkspace.timelineTabId,
     ),
   };
@@ -361,13 +359,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// panels in it has no button and cannot be opened.
   Set<String> _openRails = _defaultOpenRails();
 
+  /// ⚠️ONE group open per rail. The tool library and the tool settings are
+  /// the pair a stroke alternates between and it is tempting to open both,
+  /// but two saved heights plus their gap need 648px of rail and a 1000px
+  /// window has 589 — so the default would arrive already scrolling, which
+  /// is the one thing 「넘칠 때만 스크롤」 exists to avoid. The second button
+  /// is one press away and opens at the height it was left at.
   static Set<String> _defaultOpenRails() => {
-    // The tool library and the tool settings are the pair a stroke
-    // alternates between, so both open — they are two buttons now rather
-    // than two tabs of one, and only opening one of them would hide the
-    // other behind a click that used to cost nothing.
     EditorWorkspace.leftGroupId,
-    EditorWorkspace.railGroupId(right: false, slot: 2),
     EditorWorkspace.railGroupId(right: true, slot: 2),
   };
 
@@ -1406,6 +1405,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       label: label,
       icon: icon,
       locked: locked,
+      // The RGB bars are a FIXED stack — three rows, nothing that can give —
+      // so the panel states what they cost and a group shorter than that
+      // scrolls rather than clipping the blue channel off the bottom. The
+      // wheel and the palette both shrink on their own and say nothing.
+      minContentHeight: kind == ColorPickerKind.rgb
+          ? ColorPickerPanel.rgbContentExtent
+          : null,
       builder: (context) {
         final palette = widget.colorPalette;
         final onPaletteChanged = widget.onColorPaletteChanged;
@@ -1422,10 +1428,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                   kind: kind,
                   color: toolState.color,
                   palette: paletteState,
-                  onColorChanged: (color) =>
-                      _brushTool.value = _brushTool.value.copyWith(
-                        color: color,
-                      ),
+                  onColorChanged: (color) => _brushTool.value = _brushTool.value
+                      .copyWith(color: color),
                   onPaletteChanged: onPaletteChanged,
                 ),
               ),
@@ -2530,9 +2534,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           // to the scroll arena before the panel tabs see them, so it may
           // not scroll a moment sooner than it has to.
           if (!railExtent.isFinite || content <= railExtent) {
-            return inGap(
-              Align(alignment: Alignment.topCenter, child: column),
-            );
+            return inGap(Align(alignment: Alignment.topCenter, child: column));
           }
           final controller = _railScrollControllers[right]!;
           return Stack(
@@ -2721,12 +2723,23 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   static const double _defaultBottomRegionWidthFraction = 2 / 3;
 
   /// The inset in force for a window this wide.
-  double _bottomInsetFor(double windowWidth) =>
-      _bottomInsetOverride.value ??
-      math.max(
-        0.0,
-        windowWidth * (1 - _defaultBottomRegionWidthFraction) / 2,
-      );
+  double _bottomInsetFor(double windowWidth) {
+    final chosen = _bottomInsetOverride.value;
+    if (chosen != null) {
+      return chosen;
+    }
+    final wanted = windowWidth * (1 - _defaultBottomRegionWidthFraction) / 2;
+    // …but the DEFAULT never squeezes the region below what its panels lay
+    // out at. Under that width the timeline renders at its own minimum
+    // inside a sideways scroller — which is a fine answer to a window
+    // somebody made small, and a terrible one to arrive at by itself. Drag
+    // the edge in past here and you get it; the app does not choose it.
+    final floor = math.min(
+      windowWidth,
+      EditorWorkspace._frameAxisMinContentWidth,
+    );
+    return math.max(0.0, math.min(wanted, (windowWidth - floor) / 2));
+  }
 
   /// Which edge the floating region is docked to.
   ///
@@ -2944,9 +2957,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         onDragDelta: (delta) {
           // Pulling the LEFT edge right and the RIGHT edge left both grow
           // the inset, which is what "symmetric" means from the hand's side.
-          final raw = ((_bottomInsetDragRaw ?? inset) + (right ? -delta : delta))
-              .clamp(0.0, maxInset)
-              .toDouble();
+          final raw =
+              ((_bottomInsetDragRaw ?? inset) + (right ? -delta : delta))
+                  .clamp(0.0, maxInset)
+                  .toDouble();
           _bottomInsetDragRaw = raw;
           _bottomInsetOverride.value = _detented(raw, railSpan);
           _scheduleLayoutSave();
@@ -3177,16 +3191,18 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                         // Symmetric, and clamped against the WINDOW: the region
                         // may narrow until it is a panel rather than a bar, and
                         // no further.
-                        final bottomInset = _bottomInsetFor(constraints.maxWidth)
-                            .clamp(
-                              0.0,
-                              math.max(
-                                0.0,
-                                (constraints.maxWidth - _minBottomRegionWidth) /
-                                    2,
-                              ),
-                            )
-                            .toDouble();
+                        final bottomInset =
+                            _bottomInsetFor(constraints.maxWidth)
+                                .clamp(
+                                  0.0,
+                                  math.max(
+                                    0.0,
+                                    (constraints.maxWidth -
+                                            _minBottomRegionWidth) /
+                                        2,
+                                  ),
+                                )
+                                .toDouble();
                         final leftRailSpan = hasLeftDock
                             ? leftWidth + _railGroupGap
                             : 0.0;

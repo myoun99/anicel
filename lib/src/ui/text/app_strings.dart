@@ -727,6 +727,7 @@ class AppStrings {
   String get viewDragDoubleTap => _s('viewDragDoubleTap');
   String get viewCanvasColor => _s('viewCanvasColor');
   String get viewPasteboardColor => _s('viewPasteboardColor');
+  String get viewBackdropColor => _s('viewBackdropColor');
 
   // --- The layer-controls header (column toggles, solo, section fold) ---
   String get tlSections => _s('tlSections');
@@ -1284,6 +1285,7 @@ class AppStrings {
     'viewDragDoubleTap': 'Drag / double-tap',
     'viewCanvasColor': 'Canvas color',
     'viewPasteboardColor': 'Pasteboard color',
+    'viewBackdropColor': 'Backdrop color',
     'tlSections': 'Sections',
     'tlFoldSection': 'Fold section',
     'tlHideSectionLayers': 'Hide section layers',
@@ -1982,6 +1984,7 @@ class AppStrings {
     'viewDragDoubleTap': 'ドラッグ / ダブルタップ',
     'viewCanvasColor': 'カンバスの色',
     'viewPasteboardColor': 'ペーストボードの色',
+    'viewBackdropColor': '背景の色',
     'tlSections': 'セクション',
     'tlFoldSection': 'セクションを折りたたむ',
     'tlHideSectionLayers': 'セクションのレイヤーを隠す',
@@ -2675,6 +2678,7 @@ class AppStrings {
     'viewDragDoubleTap': '드래그 / 더블탭',
     'viewCanvasColor': '캔버스 색',
     'viewPasteboardColor': '페이스트보드 색',
+    'viewBackdropColor': '배경 색',
     'tlSections': '섹션',
     'tlFoldSection': '섹션 접기',
     'tlHideSectionLayers': '섹션 레이어 숨기기',
@@ -3402,6 +3406,7 @@ class AppStrings {
     'viewDragDoubleTap': 'Glisser / double-tap',
     'viewCanvasColor': 'Couleur du canevas',
     'viewPasteboardColor': 'Couleur du fond',
+    'viewBackdropColor': 'Couleur de l\'arrière-plan',
     'tlSections': 'Sections',
     'tlFoldSection': 'Replier la section',
     'tlHideSectionLayers': 'Masquer les calques de la section',
@@ -4071,6 +4076,7 @@ class AppStrings {
     'viewDragDoubleTap': '拖动 / 双击',
     'viewCanvasColor': '画布颜色',
     'viewPasteboardColor': '底板颜色',
+    'viewBackdropColor': '背景颜色',
     'tlSections': '区段',
     'tlFoldSection': '折叠区段',
     'tlHideSectionLayers': '隐藏区段图层',

@@ -20,6 +20,14 @@ class ColorRgbPanel extends StatelessWidget {
   final int color;
   final ValueChanged<int> onColorChanged;
 
+  /// What the three bars and the two gaps between them cost.
+  ///
+  /// Stated so the panel that hosts this one can promise it the room — the
+  /// bars are a fixed stack and there is nothing here that can shrink.
+  static const double contentHeight = 3 * _barHeight + 2 * _barGap;
+  static const double _barHeight = 24;
+  static const double _barGap = 8;
+
   @override
   Widget build(BuildContext context) {
     final channels = colorChannels(color);
@@ -28,11 +36,17 @@ class ColorRgbPanel extends StatelessWidget {
       String label,
       String keySuffix,
       int value,
-      int Function(int) withValue,
-    ) {
+      int Function(int) withValue, {
+      bool last = false,
+    }) {
       return Padding(
-        padding: const EdgeInsets.only(bottom: 8),
+        // 🐛BETWEEN the bars, not under the last one. The trailing 8px was
+        // padding the panel's own bottom padding, and the stack overflowed
+        // its box by 7 at the colour group's default height — 8px of dead
+        // space below the clip.
+        padding: EdgeInsets.only(bottom: last ? 0 : _barGap),
         child: FieldSlider(
+          height: _barHeight,
           key: ValueKey<String>('color-rgb-$keySuffix'),
           min: 0,
           max: 255,
@@ -69,6 +83,7 @@ class ColorRgbPanel extends StatelessWidget {
           'b',
           channels.b,
           (v) => colorFromChannels(r: channels.r, g: channels.g, b: v),
+          last: true,
         ),
       ],
     );

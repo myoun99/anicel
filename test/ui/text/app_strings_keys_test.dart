@@ -449,6 +449,7 @@ void main() {
     'viewDragDoubleTap': (s) => s.viewDragDoubleTap,
     'viewCanvasColor': (s) => s.viewCanvasColor,
     'viewPasteboardColor': (s) => s.viewPasteboardColor,
+    'viewBackdropColor': (s) => s.viewBackdropColor,
     'tlSections': (s) => s.tlSections,
     'tlFoldSection': (s) => s.tlFoldSection,
     'tlHideSectionLayers': (s) => s.tlHideSectionLayers,

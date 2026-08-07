@@ -26,7 +26,10 @@ import '../helpers/panel_finders.dart';
 /// it is, and every verb that frames the artwork must aim at what is left
 /// visible rather than at the box.
 void main() {
-  Future<void> pumpApp(WidgetTester tester, {Size size = const Size(1600, 1000)}) async {
+  Future<void> pumpApp(
+    WidgetTester tester, {
+    Size size = const Size(1600, 1000),
+  }) async {
     await tester.binding.setSurfaceSize(size);
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(
@@ -93,10 +96,7 @@ void main() {
       // silhouette but keeps hit-testing the full rectangle, which would
       // leave a dead square of canvas at each corner.
       expect(takenByRegion(timeline.topLeft + const Offset(2, 2)), isFalse);
-      expect(
-        takenByRegion(timeline.topRight + const Offset(-2, 2)),
-        isFalse,
-      );
+      expect(takenByRegion(timeline.topRight + const Offset(-2, 2)), isFalse);
     });
   });
 
@@ -175,9 +175,7 @@ void main() {
         tester
             .widget<ColoredBox>(
               find.descendant(
-                of: find.byKey(
-                  const ValueKey<String>('panel-grip-timeline'),
-                ),
+                of: find.byKey(const ValueKey<String>('panel-grip-timeline')),
                 matching: find.byType(ColoredBox),
               ),
             )
@@ -351,23 +349,29 @@ void main() {
     Finder hBar() => onFloor('canvas-panbar-horizontal');
     Finder vBar() => onFloor('canvas-panbar-vertical');
 
-    testWidgets('the panbars centre on the PANEL and the reachable controls '
-        'dodge what is open', (tester) async {
+    testWidgets('the panbars centre on WHAT YOU CAN SEE', (tester) async {
       await pumpApp(tester);
 
       final timeline = tester.getRect(region());
       final pillRect = tester.getRect(pill());
       final canvas = tester.getRect(mainCanvasPanelShell());
+      final panel = tester.widget<BrushCanvasPanel>(mainCanvasPanelShell());
+      final visible = canvasVisibleRect(
+        canvas.size,
+        panel.floorCover,
+      ).shift(canvas.topLeft);
 
-      // 유저 확정 (08-07, overruling the earlier rule): a scrollbar is
-      // FURNITURE. It does not move because a drawer opened. Both panbars
-      // centre on the panel's own edges — which on a full-bleed floor is
-      // the centre of the program — however tall the timeline is.
-      expect(tester.getRect(vBar()).center.dy, closeTo(canvas.center.dy, 1.0));
-      expect(tester.getRect(hBar()).center.dx, closeTo(canvas.center.dx, 1.0));
+      // 유저, R3 #5·#6 — the third pass over this. Pinned to the panel they
+      // hid under the timeline; pinned to the panel's centre they sat in
+      // the middle of a rectangle a third of which is covered. They centre
+      // on the VISIBLE rectangle: the vertical one walks up as the region
+      // grows, the horizontal one rides its BOTTOM edge.
+      expect(tester.getRect(vBar()).center.dy, closeTo(visible.center.dy, 1.0));
+      expect(tester.getRect(hBar()).center.dx, closeTo(visible.center.dx, 1.0));
+      expect(tester.getRect(hBar()).bottom, lessThanOrEqualTo(timeline.top));
 
-      // The one you REACH FOR still dodges: the pill is nailed to a top
-      // corner, clear of the region.
+      // 알약은 상단중앙 (유저, R3 #6) — and clear of the region.
+      expect(pillRect.center.dx, closeTo(visible.center.dx, 1.0));
       expect(pillRect.top, lessThan(timeline.top));
 
       // It is not a band: it covers a small fraction of the width it rides,
@@ -375,21 +379,16 @@ void main() {
       expect(tester.getRect(hBar()).width, lessThan(canvas.width * 0.5));
       expect(pillRect.width, lessThan(canvas.width * 0.5));
 
-      // They share the top edge, so they must not share PIXELS.
-      expect(
-        pillRect.overlaps(tester.getRect(hBar())),
-        isFalse,
-        reason: 'the cluster and the panbar divide the top edge',
-      );
+      // Opposite edges now, so they cannot share a pixel at any width.
+      expect(pillRect.overlaps(tester.getRect(hBar())), isFalse);
     });
 
     testWidgets('widening a rail pushes the pill in instead of hiding it '
         'under the panel', (tester) async {
-      // The pill takes the corner AWAY from the tool strip (R2 #14), which
-      // with the strip on the left is the RIGHT one — so the rail that
-      // pushes it is the right rail.
+      // The pill is centred on what you can SEE, so widening the right
+      // rail walks it left.
       await pumpApp(tester);
-      final before = tester.getRect(pill()).right;
+      final before = tester.getRect(pill()).center.dx;
 
       await tester.drag(
         find.byKey(const ValueKey<String>('dock-resize-rail-R2')),
@@ -397,40 +396,39 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(tester.getRect(pill()).right, lessThan(before));
+      expect(tester.getRect(pill()).center.dx, lessThan(before));
     });
 
-    testWidgets('the pill takes the corner AWAY from the tool strip, and '
-        'moves when the strip does', (tester) async {
-      // 유저, R2 #14: the strip is where the hand already is. It follows
-      // the strip's own left/right setting, so the left-handed choice
-      // moves this too and neither has a rule of its own.
+    testWidgets('the vertical panbar steps aside only for a rail that is '
+        'actually beside it', (tester) async {
+      // 유저, R3 #5: a rail panel is as tall as it was left at, so a short
+      // one covers a BAND and not an edge. Stepping in for the whole edge
+      // left the bar hanging in the middle of nothing.
       await pumpApp(tester);
+      // At its saved height the panel DOES reach the bar's row, so it is
+      // stepped in to begin with.
+      final dodged = tester.getRect(vBar()).right;
 
-      final canvas = tester.getRect(mainCanvasPanelShell());
+      // Pull the panel up above the bar and the bar takes the edge back.
+      await tester.drag(
+        find.byKey(const ValueKey<String>('dock-resize-rail-R2-height')),
+        const Offset(0, -400),
+      );
+      await tester.pumpAndSettle();
+      final atEdge = tester.getRect(vBar()).right;
       expect(
-        tester.getRect(pill()).center.dx,
-        greaterThan(canvas.center.dx),
-        reason: 'strip on the left ⇒ pill on the right',
+        atEdge,
+        greaterThan(dodged),
+        reason: 'nothing is beside it any more, so it stops standing aside',
       );
 
-      await tester.tap(
-        find.byKey(const ValueKey<String>('top-strip-settings-button')),
+      // And grow it back down and the bar yields again.
+      await tester.drag(
+        find.byKey(const ValueKey<String>('dock-resize-rail-R2-height')),
+        const Offset(0, 400),
       );
       await tester.pumpAndSettle();
-      final row = find.byKey(
-        const ValueKey<String>('menu-window-tool-rail-right'),
-      );
-      await tester.ensureVisible(row);
-      await tester.pumpAndSettle();
-      await tester.tap(row);
-      await tester.pumpAndSettle();
-
-      expect(
-        tester.getRect(pill()).center.dx,
-        lessThan(tester.getRect(mainCanvasPanelShell()).center.dx),
-        reason: 'strip on the right ⇒ pill on the left',
-      );
+      expect(tester.getRect(vBar()).right, lessThan(atEdge));
     });
 
     testWidgets('EVERY canvas panel gets a pill, and only the floor gets '
@@ -461,9 +459,7 @@ void main() {
       expect(
         find.descendant(
           of: timesheetPanel(),
-          matching: find.byKey(
-            const ValueKey<String>('canvas-viewport-flip'),
-          ),
+          matching: find.byKey(const ValueKey<String>('canvas-viewport-flip')),
         ),
         findsNothing,
       );

@@ -39,7 +39,10 @@ void main() {
   /// The colour GROUP: the wheel, the RGB bars and the palette are three
   /// panels of it (R2 #8), opened from the sub-strip button that IS the
   /// selected-colour swatch.
-  Future<void> openColorWindow(WidgetTester tester, {bool palette = true}) async {
+  Future<void> openColorWindow(
+    WidgetTester tester, {
+    bool palette = true,
+  }) async {
     final button = find.byKey(const ValueKey<String>('tool-color-button'));
     await tester.ensureVisible(button);
     await tester.pumpAndSettle();
@@ -156,7 +159,8 @@ void main() {
     expect(
       railWidth,
       lessThanOrEqualTo(ToolsPanel.dockWidth),
-      reason: 'the column must fit the rail it was narrowed to, buttons and '
+      reason:
+          'the column must fit the rail it was narrowed to, buttons and '
           'colour swatch included',
     );
     expect(
@@ -169,6 +173,10 @@ void main() {
   testWidgets('the Stabilizer slider lives in Brush Settings', (tester) async {
     await _pumpWorkspace(tester);
 
+    // The tool settings are their own sub-strip button now (유저, R3 #10),
+    // under the library's, and they ship closed.
+    await tester.tap(find.byKey(const ValueKey<String>('rail-group-rail-L2')));
+    await tester.pumpAndSettle();
     final tab = find.byKey(const ValueKey<String>('panel-tab-brush-settings'));
     await tester.ensureVisible(tab);
     await tester.pumpAndSettle();

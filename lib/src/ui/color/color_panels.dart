@@ -44,6 +44,16 @@ class ColorPickerPanel extends StatelessWidget {
   final ValueChanged<int> onColorChanged;
   final ValueChanged<ColorPaletteState> onPaletteChanged;
 
+  /// What the RGB panel costs in a group: its three bars, the padding
+  /// around them, and the status bar every kind shares.
+  ///
+  /// Published so the dock that hands out heights can honour it — the bars
+  /// are the one picker with nothing that can shrink.
+  static const double rgbContentExtent =
+      ColorRgbPanel.contentHeight + _pickerPadding + ColorStatusBar.height;
+
+  static const double _pickerPadding = 8 + 10;
+
   @override
   Widget build(BuildContext context) {
     return Column(
