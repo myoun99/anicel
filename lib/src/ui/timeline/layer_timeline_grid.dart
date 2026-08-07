@@ -17,6 +17,7 @@ import '../../models/timeline_row_address.dart';
 import 'timeline_row_cross_offset.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import 'timeline_row_span_resolver.dart' show resolveSelectionSpanHead;
+import 'timeline_current_row.dart';
 import 'timeline_edge_auto_pan.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_ruler_cursor_overlay.dart';
@@ -105,6 +106,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.commaDrag,
     this.rangeHooks,
     this.laneRange,
+    this.currentRowHooks,
     this.runEdit,
     this.isFrameCached,
     this.metrics = TimelineGridMetrics.defaults,
@@ -287,6 +289,10 @@ class LayerTimelineGrid extends StatefulWidget {
   /// The LANE selection domain's gesture bundle (UI-R23 #3 part 2); null
   /// keeps the lane bands display-only.
   final TimelineLaneRangeCallbacks? laneRange;
+
+  /// Which row the frame-axis verbs act on, and the label press that moves
+  /// it (R10 #19's rail half); null leaves lane labels inert and unwashed.
+  final TimelineCurrentRowHooks? currentRowHooks;
 
   /// The run-edge [+]/[↻] handle hooks (UI-R8); null hides the handles.
   final TimelineRunEditCallbacks? runEdit;
@@ -1103,6 +1109,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
             laneEdit: widget.laneEdit,
             onToggleLaneGroup: widget.onToggleLaneGroup,
             onToggleLaneGroupEnabled: widget.onToggleLaneGroupEnabled,
+            currentRowHooks: widget.currentRowHooks,
             leadingInset: layerSectionLabelSlotWidth,
           ),
         ),

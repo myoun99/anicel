@@ -20,6 +20,7 @@ import 'storyboard_panel.dart';
 import 'timeline/layer_rail_window.dart' show LayerRailExtent;
 import 'timeline/property_lane_model.dart' show PropertyLaneEditCallbacks;
 import 'timeline/se_layer_mixer.dart';
+import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_layer_controls_header.dart' show LayerLegendCallbacks;
 import 'timeline/timeline_exposure_comma_drag_policy.dart'
     show TimelineCommaDragCallbacks;
@@ -698,6 +699,15 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                         .updateLaneRangeMoveDrag(frameDelta: frameDelta),
                     onMoveEnd: _session.endLaneRangeMoveDrag,
                     onMoveCancel: _session.cancelLaneRangeMoveDrag,
+                  ),
+                  // R10 #19's rail half. Standing is not seeking, so a
+                  // label press moves the SUBJECT and leaves the playhead
+                  // (and the active cut) exactly where they were — the
+                  // band's press is the one that lands on a frame.
+                  currentRowHooks: TimelineCurrentRowHooks(
+                    currentRow: _session.currentRowListenable,
+                    onStandOnLane: (layerId, laneId) =>
+                        _session.selectRow(LaneRowAddress(layerId, laneId)),
                   ),
                   layerLaneEdit: _layerLaneEdit,
                   activeCutFrameCursor: _activeCutFrameCursor,

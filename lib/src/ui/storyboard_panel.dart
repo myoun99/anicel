@@ -41,6 +41,7 @@ import 'timeline/timeline_row_span_resolver.dart'
 import 'timeline/se_audio_lane.dart' show SeAudioLaneFrameRow;
 import 'timeline/timeline_lane_rows.dart'
     show TimelineLaneControlsRow, TimelineLaneFrameRow;
+import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_ruler_cursor_overlay.dart';
 import 'timeline/transform_lane_policy.dart'
     show
@@ -363,6 +364,7 @@ class StoryboardPanel extends StatefulWidget {
     this.onToggleTransformGroup,
     this.trackLaneEditFor,
     this.laneRange,
+    this.currentRowHooks,
     this.layerLaneEdit,
     this.activeCutFrameCursor,
     this.onSelectFrameIndex,
@@ -634,6 +636,11 @@ class StoryboardPanel extends StatefulWidget {
   /// timeline's machinery; the session routes the carrier id onto the
   /// track). Null = no lane selection here.
   final TimelineLaneRangeCallbacks? laneRange;
+
+  /// Which row the frame-axis verbs act on, and the label press that moves
+  /// it (R10 #19's rail half) — the same bundle the timeline's rail takes,
+  /// because a property row here is a property row there.
+  final TimelineCurrentRowHooks? currentRowHooks;
 
   /// Lane edit hooks for the S rows' Transform lanes — the timeline's
   /// layer-transform lane editing on the ACTIVE cut's slot layers. Null =
@@ -1134,6 +1141,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           : (_, _) => onToggleGroup(groupKey),
       keyPrefix: 'storyboard',
       leadingInset: layerSectionLabelSlotWidth,
+      currentRowHooks: widget.currentRowHooks,
     );
 
     // Cut-owned rows speak the ACTIVE cut's local frames; the V track's

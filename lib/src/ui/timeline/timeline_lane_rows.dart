@@ -6,9 +6,12 @@ import '../input/eager_pan_gesture_recognizer.dart';
 
 import '../../models/layer.dart';
 import '../../models/timeline_frame_range.dart' show TimelineLaneSelection;
+import '../../models/timeline_row_address.dart';
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart' show AppColors;
-import 'layer_label_controls.dart' show LayerSectionBandCell, fxGlyph;
+import 'layer_label_controls.dart'
+    show LayerSectionBandCell, fxGlyph, railSelectedRowColor;
+import 'timeline_current_row.dart';
 import 'layer_rail_columns.dart' show layerRailTwirlIcon;
 import 'property_lane_model.dart';
 import 'transform_lane_policy.dart' show laneSelectionCoversBandRow;
@@ -71,6 +74,7 @@ class TimelineLaneControlsRow extends StatefulWidget {
     this.height,
     this.minContentExtent,
     this.leadingInset = 0,
+    this.currentRowHooks,
   });
 
   final Layer layer;
@@ -85,8 +89,9 @@ class TimelineLaneControlsRow extends StatefulWidget {
   final ValueChanged<int>? onSelectFrame;
   final PropertyLaneEditCallbacks? laneEdit;
 
-  /// Group headers: tapping the header twirls its member lanes open/closed
-  /// (AE group collapse); null leaves the header inert.
+  /// Group headers: tapping the CHEVRON twirls its member lanes open/closed
+  /// (AE group collapse); null leaves the chevron inert. The rest of the
+  /// header stands on the row — see [currentRowHooks].
   final void Function(Layer layer, PropertyLaneRow lane)? onToggleLaneGroup;
 
   /// The group header's own ON/OFF switch (R6: AE's per-effect eyeball).
@@ -110,6 +115,11 @@ class TimelineLaneControlsRow extends StatefulWidget {
   /// [height] is less — the cell then CLIPS rather than overflowing, the
   /// same degradation the x-sheet's layer header takes (R10 R6).
   final double? minContentExtent;
+
+  /// Which row the verbs act on, and how to make it THIS one by pressing
+  /// the label (R10 #19's rail half). Null leaves the label inert and
+  /// unwashed, which is what a passive host wants.
+  final TimelineCurrentRowHooks? currentRowHooks;
 
   @override
   State<TimelineLaneControlsRow> createState() =>
@@ -375,16 +385,52 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     );
   }
 
+  /// Pressing anywhere on the label stands on this lane. OPAQUE so the
+  /// padding and the gaps stand too; the navigator buttons, the group
+  /// twirl and the value editor sit DEEPER and keep winning the arena,
+  /// which is what makes one press surface over the whole cell safe.
+  Widget _standable(Widget cell) {
+    final stand = widget.currentRowHooks?.onStandOnLane;
+    if (stand == null) {
+      return cell;
+    }
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onTap: () => stand(layer.id, lane.laneId),
+      child: cell,
+    );
+  }
+
+  /// The cell SUBSCRIBES to the current row rather than being rebuilt from
+  /// above with it: the claim that moves the row fires on pointer-down
+  /// inside gestures that must not notify, and only two rows change
+  /// appearance when it moves.
   @override
   Widget build(BuildContext context) {
+    final hooks = widget.currentRowHooks;
+    if (hooks == null) {
+      return _buildCell(context, null);
+    }
+    return ValueListenableBuilder<TimelineRowAddress?>(
+      valueListenable: hooks.currentRow,
+      builder: (context, currentRow, _) => _buildCell(context, currentRow),
+    );
+  }
+
+  Widget _buildCell(BuildContext context, TimelineRowAddress? currentRow) {
     final colorScheme = Theme.of(context).colorScheme;
+    // The lane's PLATE: the shared "you are standing here" wash while this
+    // row is the verbs' subject, the ordinary lane plate otherwise.
+    final plate = currentRowIsLane(currentRow, layer.id, lane.laneId)
+        ? railSelectedRowColor(colorScheme)
+        : AppColors.washDown;
     if (lane.isGroupHeader) {
-      // AE group header ('Transform'): a structural label one indent LEFT
-      // of its member lanes, no navigator/value. Tapping the header
-      // twirls the group's member lanes open/closed (default collapsed);
-      // the chevron mirrors the state.
+      // AE group header ('Transform', an effect): a structural label one
+      // indent LEFT of its member lanes, no navigator/value. The chevron
+      // twirls the group open/closed (default collapsed); pressing the
+      // header itself stands on it.
       final onToggleGroup = widget.onToggleLaneGroup;
-      return Container(
+      final headerCell = Container(
         key: ValueKey<String>(
           '$_keyPrefix-lane-label-${layer.id}-${lane.laneId}',
         ),
@@ -397,98 +443,105 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           // A lane row is a PLATE belonging to the layer above it, not one of
           // the three chrome surfaces — the same reading its frame-side half
           // already takes.
-          color: AppColors.washDown,
+          color: plate,
           border: Border.all(color: colorScheme.outlineVariant, width: 0.5),
         ),
-        child: InkWell(
-          key: ValueKey<String>(
-            '$_keyPrefix-lane-group-toggle-${layer.id}-${lane.laneId}',
-          ),
-          onTap: onToggleGroup == null
-              ? null
-              : () => onToggleGroup(layer, lane),
-          child: Padding(
-            padding: widget.axis == Axis.horizontal
-                ? const EdgeInsets.only(right: 8)
-                : const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
-            // R10 R6: stood up on the sheet, like every other header.
-            child: Flex(
-              direction: widget.axis,
-              mainAxisAlignment: widget.axis == Axis.horizontal
-                  ? MainAxisAlignment.start
-                  : MainAxisAlignment.center,
-              children: [
-                if (widget.axis == Axis.horizontal &&
-                    widget.leadingInset > 0) ...[
-                  // The rows' section band continues through lane rows
-                  // (UI-R6 #5).
-                  const LayerSectionBandCell(),
-                  const SizedBox(width: 10),
-                ],
-                Icon(
+        // The TWIRL is the chevron's, not the whole header's (R10 #19's
+        // rail half). A header is a row you stand on and — next round —
+        // grab to reorder the chain; a label that toggles instead would
+        // have to be excluded from both, and that exclusion is exactly the
+        // kind of surface-local rule this rail keeps paying for.
+        child: Padding(
+          padding: widget.axis == Axis.horizontal
+              ? const EdgeInsets.only(right: 8)
+              : const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
+          // R10 R6: stood up on the sheet, like every other header.
+          child: Flex(
+            direction: widget.axis,
+            mainAxisAlignment: widget.axis == Axis.horizontal
+                ? MainAxisAlignment.start
+                : MainAxisAlignment.center,
+            children: [
+              if (widget.axis == Axis.horizontal &&
+                  widget.leadingInset > 0) ...[
+                // The rows' section band continues through lane rows
+                // (UI-R6 #5).
+                const LayerSectionBandCell(),
+                const SizedBox(width: 10),
+              ],
+              InkWell(
+                key: ValueKey<String>(
+                  '$_keyPrefix-lane-group-toggle-${layer.id}-${lane.laneId}',
+                ),
+                onTap: onToggleGroup == null
+                    ? null
+                    : () => onToggleGroup(layer, lane),
+                customBorder: const CircleBorder(), // R26 #28
+                child: Icon(
                   layerRailTwirlIcon(expanded: lane.groupExpanded),
                   size: 16,
                 ),
-                Flexible(
-                  child: widget.axis == Axis.horizontal
-                      ? Text(
-                          lane.label,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: colorScheme.onSurface,
-                          ),
-                        )
-                      : VerticalWritingText(
-                          text: lane.label,
-                          style: TextStyle(
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                            color: colorScheme.onSurface,
-                          ),
+              ),
+              Flexible(
+                child: widget.axis == Axis.horizontal
+                    ? Text(
+                        lane.label,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: colorScheme.onSurface,
                         ),
+                      )
+                    : VerticalWritingText(
+                        text: lane.label,
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                          color: colorScheme.onSurface,
+                        ),
+                      ),
+              ),
+              // R6: the group's own switch, for the headers that have one
+              // (each effect). The shared `fx` glyph, so restyling fx
+              // still happens in exactly one place.
+              if (lane.groupEnabled != null) ...[
+                // Along the ROW's axis: a width-only box contributes
+                // nothing to a vertical Flex, so on the sheet the switch
+                // sat flush against the label.
+                SizedBox(
+                  width: widget.axis == Axis.horizontal ? 4 : null,
+                  height: widget.axis == Axis.horizontal ? null : 4,
                 ),
-                // R6: the group's own switch, for the headers that have one
-                // (each effect). The shared `fx` glyph, so restyling fx
-                // still happens in exactly one place.
-                if (lane.groupEnabled != null) ...[
-                  // Along the ROW's axis: a width-only box contributes
-                  // nothing to a vertical Flex, so on the sheet the switch
-                  // sat flush against the label.
-                  SizedBox(
-                    width: widget.axis == Axis.horizontal ? 4 : null,
-                    height: widget.axis == Axis.horizontal ? null : 4,
+                IconButton(
+                  key: ValueKey<String>(
+                    '$_keyPrefix-lane-group-fx-${layer.id}-${lane.laneId}',
                   ),
-                  IconButton(
-                    key: ValueKey<String>(
-                      '$_keyPrefix-lane-group-fx-${layer.id}-${lane.laneId}',
-                    ),
-                    padding: EdgeInsets.zero,
-                    visualDensity: VisualDensity.compact,
-                    constraints: const BoxConstraints(
-                      minWidth: 22,
-                      minHeight: 22,
-                    ),
-                    iconSize: 16,
-                    tooltip: lane.groupEnabled!
-                        ? 'Bypass ${lane.label}'
-                        : 'Apply ${lane.label}',
-                    onPressed: widget.onToggleLaneGroupEnabled == null
-                        ? null
-                        : () => widget.onToggleLaneGroupEnabled!(layer, lane),
-                    icon: fxGlyph(
-                      context: context,
-                      active: lane.groupEnabled!,
-                      fontSize: 11,
-                    ),
+                  padding: EdgeInsets.zero,
+                  visualDensity: VisualDensity.compact,
+                  constraints: const BoxConstraints(
+                    minWidth: 22,
+                    minHeight: 22,
                   ),
-                ],
+                  iconSize: 16,
+                  tooltip: lane.groupEnabled!
+                      ? 'Bypass ${lane.label}'
+                      : 'Apply ${lane.label}',
+                  onPressed: widget.onToggleLaneGroupEnabled == null
+                      ? null
+                      : () => widget.onToggleLaneGroupEnabled!(layer, lane),
+                  icon: fxGlyph(
+                    context: context,
+                    active: lane.groupEnabled!,
+                    fontSize: 11,
+                  ),
+                ),
               ],
-            ),
+            ],
           ),
         ),
       );
+      return _standable(headerCell);
     }
     final valueLabel = lane.valueLabel?.call(widget.currentFrameIndex);
     final labelStyle = TextStyle(
@@ -577,7 +630,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
       );
     }
 
-    return Container(
+    final memberCell = Container(
       key: ValueKey<String>(
         '$_keyPrefix-lane-label-${layer.id}-${lane.laneId}',
       ),
@@ -595,7 +648,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           // 8 → 2: a 28px column cannot spend 16 of it on side padding.
           : const EdgeInsets.symmetric(horizontal: 2, vertical: 4),
       decoration: BoxDecoration(
-        color: AppColors.washDown,
+        color: plate,
         border: Border.all(color: colorScheme.outlineVariant, width: 0.5),
       ),
       alignment: widget.axis == Axis.horizontal
@@ -613,6 +666,7 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
             )
           : _clipToContent(content),
     );
+    return _standable(memberCell);
   }
 
   /// Below the host's stated content extent the cell SCALES instead of
