@@ -2436,11 +2436,6 @@ class _CanvasViewportBottomBar extends StatelessWidget {
   /// the essentials stay reachable (rotation is still on R/Shift+R/H).
   static const double _wideLayoutMinWidth = 360;
 
-  /// Below this width even the essentials + zoom cluster can't share a row
-  /// with a usable Expanded scrollbar, so the bar becomes horizontally
-  /// scrollable instead of overflowing (slim edge docks land here).
-  static const double _scrollFallbackWidth = 200;
-
   /// What one host control in [leading] adds to that threshold: the widest
   /// control in the shared vocabulary (a [DragValueLabel] readout) plus
   /// breathing room. The bar cannot measure widgets it did not build, so

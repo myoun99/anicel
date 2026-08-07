@@ -308,9 +308,6 @@ class _ConteTabHostState extends State<ConteTabHost> {
 
   @override
   Widget build(BuildContext context) {
-    final strings = AppStrings.of(
-      _session.languageSettings.value.programLanguage,
-    );
     final (source, pages) = _resolveSheet();
     final pageCount = pages.length;
     // The page INDEX is clamped everywhere it is read (readout included):

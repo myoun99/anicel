@@ -3,7 +3,6 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
-import '../widgets/dock_edge_splitter.dart';
 import 'editor_panel_layout.dart';
 import 'editor_panel_tabs.dart';
 import 'panel_flash.dart';

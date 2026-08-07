@@ -288,8 +288,8 @@ void main() {
       // And the FLOOR is told the cover moved with it, so Fit still frames
       // the artwork where it can be seen.
       final panel = tester.widget<BrushCanvasPanel>(mainCanvasPanelShell());
-      expect(panel.floorCover!.top, greaterThan(0));
-      expect(panel.floorCover!.bottom, 0);
+      expect(panel.floorCover.top, greaterThan(0));
+      expect(panel.floorCover.bottom, 0);
     });
   });
 
@@ -308,7 +308,7 @@ void main() {
       // What it was told and what is actually there agree. Two numbers that
       // can drift apart is the whole failure mode this guards.
       expect(
-        box.bottom - cover!.bottom,
+        box.bottom - cover.bottom,
         lessThanOrEqualTo(timeline.top + 0.5),
         reason: 'the window stops at or above the timeline, never under it',
       );
@@ -328,7 +328,7 @@ void main() {
 
       final panel = tester.widget<BrushCanvasPanel>(mainCanvasPanelShell());
       final box = tester.getRect(mainCanvasPanelShell());
-      final window = canvasVisibleRect(box.size, panel.floorCover!);
+      final window = canvasVisibleRect(box.size, panel.floorCover);
       final timeline = tester.getRect(region());
 
       // The window Fit aimed at is entirely above the timeline. A Fit

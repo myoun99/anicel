@@ -58,11 +58,6 @@ Offset visibleCanvasPoint(WidgetTester tester, {Offset offset = Offset.zero}) {
   final shellFinder = mainCanvasPanelShell();
   final panel = tester.widget<BrushCanvasPanel>(shellFinder);
   final cover = panel.floorCover;
-  if (cover == null) {
-    // Not the floor: nothing lies on it, so the view's own centre is
-    // already a point you can put a pen on.
-    return tester.getCenter(mainCanvasView()) + offset;
-  }
   final shell = tester.getRect(shellFinder);
   final visible = canvasVisibleRect(shell.size, cover);
   return visible.center + shell.topLeft + offset;

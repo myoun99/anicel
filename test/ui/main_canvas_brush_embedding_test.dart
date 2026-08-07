@@ -532,48 +532,6 @@ void main() {
   });
 }
 
-Project _projectWithMarkedFrame({String? name}) {
-  return Project(
-    id: const ProjectId('marked-project'),
-    name: 'Marked Project',
-    createdAt: DateTime.utc(2026),
-    tracks: [
-      Track(
-        id: const TrackId('marked-track'),
-        name: 'Track 1',
-        cuts: [
-          Cut(
-            id: const CutId('marked-cut'),
-            name: 'Marked Cut',
-            duration: defaultCutDuration,
-            canvasSize: defaultCutCanvasSize,
-            layers: [
-              Layer(
-                id: const LayerId('marked-layer'),
-                name: 'Marked Layer',
-                frames: [
-                  Frame(
-                    id: const FrameId('marked-frame'),
-                    name: name,
-                    duration: 1,
-                    strokes: const [],
-                  ),
-                ],
-                timeline: {
-                  0: TimelineExposure.drawing(
-                    const FrameId('marked-frame'),
-                    length: 1,
-                  ),
-                },
-              ),
-            ],
-          ),
-        ],
-      ),
-    ],
-  );
-}
-
 Project _projectWithActiveFrame() {
   return Project(
     id: const ProjectId('editor-project'),
