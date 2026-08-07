@@ -420,10 +420,14 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   Widget _buildCell(BuildContext context, TimelineRowAddress? currentRow) {
     final colorScheme = Theme.of(context).colorScheme;
     // The lane's PLATE: the shared "you are standing here" wash while this
-    // row is the verbs' subject, the ordinary lane plate otherwise.
-    final plate = currentRowIsLane(currentRow, layer.id, lane.laneId)
-        ? railSelectedRowColor(colorScheme)
-        : AppColors.washDown;
+    // row is the verbs' subject — or while you are standing INSIDE the
+    // group it leads, so the rail reads as the chain it is (layer ▸ Blur ▸
+    // Radius all lit, user 2026-08-07).
+    final lit =
+        currentRowIsLane(currentRow, layer.id, lane.laneId) ||
+        (lane.isGroupHeader &&
+            currentRowIsInsideGroup(currentRow, layer.id, lane.laneId));
+    final plate = lit ? railSelectedRowColor(colorScheme) : AppColors.washDown;
     if (lane.isGroupHeader) {
       // AE group header ('Transform', an effect): a structural label one
       // indent LEFT of its member lanes, no navigator/value. The chevron

@@ -2044,6 +2044,9 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                               playheadWidth:
                                                                   totalFrameContentWidth,
                                                               playhead: TimelineCursorLayer(
+                                                                currentRow: widget
+                                                                    .currentRowHooks
+                                                                    ?.currentRow,
                                                                 frameCursor: widget
                                                                     .frameCursor,
                                                                 dragPreview: widget
