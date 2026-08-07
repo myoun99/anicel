@@ -5,6 +5,7 @@ import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_effect.dart' show EffectKind;
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
@@ -123,6 +124,67 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(_order(session), ['a', 'b', 'c']);
+  });
+
+  testWidgets('dragging DOWN moves it down — a row sits between two gaps '
+      'that are both where it already is', (tester) async {
+    await _pump(tester);
+    final session = _sessionOf(tester);
+    expect(_order(session), ['a', 'b', 'c']);
+
+    // 'c' is the TOP row of the rail; downward is toward 'b'.
+    final row = _railRow('c');
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    await tester.drag(row, const Offset(0, 28));
+    await tester.pumpAndSettle();
+
+    expect(_order(session), ['a', 'c', 'b']);
+  });
+
+  testWidgets('dragging an fx HEADER re-orders that layer\'s chain', (
+    tester,
+  ) async {
+    await _pump(tester);
+    final session = _sessionOf(tester);
+    session.selectLayer(const LayerId('b'));
+    session.addEffectToActiveLayer(EffectKind.values.first);
+    session.addEffectToActiveLayer(EffectKind.values[1]);
+    await tester.pumpAndSettle();
+
+    List<EffectKind> chain() => [
+      for (final effect
+          in session.requireActiveCut.layers
+              .firstWhere((layer) => layer.id == const LayerId('b'))
+              .effects)
+        effect.kind,
+    ];
+    final before = chain();
+    expect(before.length, 2);
+
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-lane-toggle-b')),
+    );
+    await tester.pumpAndSettle();
+
+    final firstId = session.requireActiveCut.layers
+        .firstWhere((layer) => layer.id == const LayerId('b'))
+        .effects
+        .first
+        .id;
+    final header = find.byKey(
+      ValueKey<String>('timeline-lane-label-b-fx-group:${firstId.value}'),
+    );
+    await tester.ensureVisible(header);
+    await tester.pumpAndSettle();
+    await tester.drag(header, const Offset(0, 28));
+    await tester.pumpAndSettle();
+
+    expect(
+      chain(),
+      before.reversed.toList(),
+      reason: 'the first effect went past the second',
+    );
   });
 
   testWidgets('the drag is one undo', (tester) async {
