@@ -388,7 +388,7 @@ void main() {
       final before = tester.getRect(pill()).left;
 
       await tester.drag(
-        find.byKey(const ValueKey<String>('dock-resize-left')),
+        find.byKey(const ValueKey<String>('dock-resize-rail-L1')),
         const Offset(120, 0),
       );
       await tester.pumpAndSettle();

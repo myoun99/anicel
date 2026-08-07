@@ -43,7 +43,7 @@ Future<void> _pumpHome(WidgetTester tester) async {
   // stay below the dock's max-width clamp — the splitter test measures
   // relative shrink from here).
   await tester.drag(
-    find.byKey(const ValueKey<String>('dock-resize-left')),
+    find.byKey(const ValueKey<String>('dock-resize-rail-L1')),
     const Offset(370, 0),
   );
   await tester.pumpAndSettle();
@@ -365,7 +365,7 @@ void main() {
     testWidgets('the dock edge splitter resizes the left dock', (tester) async {
       await _pumpHome(tester);
 
-      final splitter = find.byKey(const ValueKey<String>('dock-resize-left'));
+      final splitter = find.byKey(const ValueKey<String>('dock-resize-rail-L1'));
       final dock = find.byKey(const ValueKey<String>('editor-panel-dock-left'));
       final beforeWidth = tester.getSize(dock).width;
 

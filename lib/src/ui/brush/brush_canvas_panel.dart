@@ -2369,20 +2369,21 @@ class _CanvasEditorPanelShell extends StatelessWidget {
             },
           ),
         ),
-        // THE PANBARS SIT ON THE PANEL, NOT ON THE LEFTOVER.
+        // THE PANBARS ARE FURNITURE — but furniture in a room, not in the
+        // wall.
         //
-        // They used to live inside the cover-inset layer above, so raising
-        // the timeline walked the vertical one up by half the region's
-        // height and the horizontal one shifted every time the pill shed a
-        // control. The user overruled that: the scrollbars are furniture,
-        // and furniture does not move because a drawer opened. Centre of
-        // the panel's right edge, centre of its top edge, always — which on
-        // a full-bleed floor is the centre of the program.
-        //
-        // The pill and the status readout stay INSIDE the cover: those you
-        // reach for, so they still dodge whatever is open.
+        // They first lived inside the cover-inset layer, so raising the
+        // timeline walked the vertical one halfway up the panel; the user
+        // overruled that (scrollbars do not move because a drawer opened).
+        // Then they sat on the raw panel, and an open side panel covered
+        // them outright. Both readings were half of one: the position ALONG
+        // the edge is fixed at the panel's centre and never moves, and the
+        // distance FROM the edge yields to whatever is covering it. So the
+        // vertical bar stays at the middle of the panel's height and steps
+        // in when a rail opens; the horizontal one stays at the middle of
+        // its width and steps down when the region docks on top.
         Positioned(
-          right: _capsuleMargin,
+          right: cover.right + _capsuleMargin,
           top: 0,
           bottom: 0,
           child: LayoutBuilder(
@@ -2401,7 +2402,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
         Positioned(
           left: _capsuleMargin,
           right: _capsuleMargin,
-          top: _capsuleMargin,
+          top: cover.top + _capsuleMargin,
           child: LayoutBuilder(
             builder: (context, panel) => Align(
               alignment: Alignment.topCenter,

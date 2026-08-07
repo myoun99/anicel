@@ -559,6 +559,7 @@ void main() {
     'cnNextPage': (s) => s.cnNextPage,
     'stagePaperSection': (s) => s.stagePaperSection,
     'stagePasteboardSection': (s) => s.stagePasteboardSection,
+    'stagePasteboardExtent': (s) => s.stagePasteboardExtent,
     'stageBackdropSection': (s) => s.stageBackdropSection,
     'stageAlphaLabel': (s) => s.stageAlphaLabel,
     'setCommasTitle': (s) => s.setCommasTitle,

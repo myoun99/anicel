@@ -162,9 +162,11 @@ void main() {
       expect(find.byType(TimesheetTabHost), findsOneWidget);
     });
 
-    testWidgets('two groups open at once divide the rail, and share ONE '
-        'width', (tester) async {
+    testWidgets('a second group FLOATS below the first — it does not resize '
+        'it — and they share ONE width', (tester) async {
       await pumpApp(tester);
+
+      final beforeLibrary = tester.getRect(find.byType(BrushPresetPanel));
 
       // Move the media browser into a second LEFT group by dragging its tab
       // onto that rail's empty slot, then check both columns coexist.
@@ -195,8 +197,16 @@ void main() {
       final media = tester.getRect(find.byType(MediaBrowserPanel));
       expect(
         media.top,
-        greaterThanOrEqualTo(library.top),
-        reason: 'the new group stacks below, it does not replace',
+        greaterThan(library.bottom),
+        reason: 'the new group floats below, with pasteboard between them',
+      );
+      // ★A group KEEPS ITS HEIGHT (유저 확정). The rail used to divide its
+      // height between whatever was open, so opening a second panel
+      // resized the first — a column's behaviour, not a floating panel's.
+      expect(
+        library.height,
+        closeTo(beforeLibrary.height, 0.5),
+        reason: 'opening a neighbour must not resize this panel',
       );
       // 레일당 폭 하나: the two groups are exactly as wide as each other.
       expect(media.width, closeTo(library.width, 0.5));
@@ -204,7 +214,7 @@ void main() {
       // And widening the rail widens BOTH, because there is one splitter
       // and one number behind it.
       await tester.drag(
-        find.byKey(const ValueKey<String>('dock-resize-left')),
+        find.byKey(const ValueKey<String>('dock-resize-rail-L1')),
         const Offset(60, 0),
       );
       await tester.pumpAndSettle();
@@ -212,6 +222,69 @@ void main() {
       final grownMedia = tester.getRect(find.byType(MediaBrowserPanel));
       expect(grownLibrary.width, greaterThan(library.width));
       expect(grownMedia.width, closeTo(grownLibrary.width, 0.5));
+    });
+
+    testWidgets('a rail panel FLOATS on the canvas: a gap from the strip, a '
+        'gap above it, and it ends where its own height ends', (tester) async {
+      await pumpApp(tester);
+
+      final strip = tester.getRect(
+        find.byKey(const ValueKey<String>('editor-panel-dock-tool-left')),
+      );
+      final rail = tester.getRect(
+        find.byKey(const ValueKey<String>('editor-panel-dock-left')),
+      );
+
+      expect(
+        rail.left,
+        greaterThan(strip.right),
+        reason: 'pasteboard between the strip and the panel beside it',
+      );
+      expect(rail.top, greaterThan(strip.top));
+      // It is a panel, not a column: it stops at its own saved height, well
+      // short of the rail's own box. The width grip spans exactly the panel
+      // it belongs to, so it measures the panel.
+      final group = tester.getRect(
+        find.byKey(const ValueKey<String>('dock-resize-rail-L1')),
+      );
+      expect(group.height, closeTo(EditorWorkspace.railGroupHeight, 0.5));
+      expect(
+        group.bottom,
+        lessThan(rail.bottom - 100),
+        reason: 'the panel does not swell to fill the rail',
+      );
+    });
+
+    testWidgets('the canvas scrollbar keeps its place along the edge and '
+        'steps IN when a rail opens', (tester) async {
+      // Both halves matter. The bar used to ride the cover inset, so
+      // raising the timeline walked it halfway up the panel (유저: furniture
+      // does not move because a drawer opened). Then it sat on the raw
+      // panel — and an open side panel covered it outright.
+      await pumpApp(tester);
+
+      Rect panbar() => tester.getRect(
+        find.byKey(const ValueKey<String>('canvas-panbar-vertical')),
+      );
+      final rail = tester.getRect(
+        find.byKey(const ValueKey<String>('editor-panel-dock-right')),
+      );
+      final opened = panbar();
+      expect(
+        opened.right,
+        lessThanOrEqualTo(rail.left),
+        reason: 'the bar is beside the panel, not under it',
+      );
+
+      // Close the rail: the bar takes the width back, and its centre along
+      // the edge has not moved.
+      await tester.tap(
+        groupButton(EditorWorkspace.railGroupId(right: true, slot: 2)),
+      );
+      await tester.pumpAndSettle();
+      final closed = panbar();
+      expect(closed.right, greaterThan(opened.right));
+      expect(closed.center.dy, closeTo(opened.center.dy, 0.5));
     });
 
     testWidgets('reopening a panel into a CLOSED group opens the group — a '

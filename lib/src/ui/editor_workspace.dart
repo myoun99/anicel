@@ -192,10 +192,22 @@ class EditorWorkspace extends StatefulWidget {
 
   /// 레일당 폭 하나 (유저 확정): every group on a rail shares one width, so
   /// widening one widens them all and the rail reads as a column rather
-  /// than as a stack of differently-sized boxes. One splitter per rail,
-  /// on its inner edge.
+  /// than as a stack of differently-sized boxes.
+  ///
+  /// ⚠️Shared VALUE, not a shared splitter. Every group wears its own
+  /// width grip on its own inner edge — a panel that floats has to be
+  /// grabbable at its own edge — and they all write here, so pulling any
+  /// of them moves all of them (유저, R2 #11).
   static String railWidthKey({required bool right}) =>
       right ? 'rail-R' : 'rail-L';
+
+  /// What one rail group opens to before anyone drags it.
+  ///
+  /// A group keeps its own HEIGHT (유저 확정, R2 #7): opening a button
+  /// raises a panel of the size that button was left at, not a column that
+  /// swells to fill the rail. Stored under the group's own dock id — the
+  /// width lives under [railWidthKey], so the two never collide.
+  static const double railGroupHeight = 320;
 
   /// The first slot of each rail, which is where a panel with nowhere else
   /// to go lands. Named separately because the whole app already calls
@@ -2200,13 +2212,30 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   ///
   /// [width] is the extent AFTER the workspace clamped both rails to what
   /// the window can actually spare.
-  /// The pasteboard a rail leaves BETWEEN two open groups.
+  /// The pasteboard a rail leaves between two open groups, above the first
+  /// one, and between the strip and all of them.
   ///
-  /// It is what makes them read as two floating objects rather than one
-  /// column cut in half — the same job the margin around the bottom region
-  /// does. It is not a splitter: a rail's one splitter is its inner edge,
-  /// and the groups divide the height they are given by their floors.
+  /// It is what makes them read as floating objects rather than one column
+  /// cut into pieces — the same job the margin around the bottom region
+  /// does, and the reason a side panel is now the same KIND of thing as
+  /// the timeline instead of a slab bolted to the strip (유저, R2 #7).
   static const double _railGroupGap = 8;
+
+  /// One rail group's height: what it was left at, floored by what its
+  /// panels need and capped by the rail.
+  ///
+  /// ⚠️Not a share of the rail. The rail used to divide its height between
+  /// whatever was open, so opening a second group resized the first —
+  /// which is a column's behaviour, not a floating panel's. 유저 확정: the
+  /// saved height is FIXED, and a rail that cannot fit them all scrolls.
+  double _railGroupHeight(String railId, double railExtent) {
+    final floor = _verticalDockMinimumExtent(railId);
+    final wanted = math.max(
+      floor,
+      _layout.dockExtent(railId, fallback: EditorWorkspace.railGroupHeight),
+    );
+    return railExtent.isFinite ? math.min(wanted, railExtent) : wanted;
+  }
 
   Widget _buildRailColumn(EditorPanelDockSide side, {required double width}) {
     final right = side == EditorPanelDockSide.right;
@@ -2223,31 +2252,30 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         keyId: right ? 'right' : 'left',
       );
     }
-    return EditorPanelDock.filled(
-      side: side,
+    // NO fill and NO border. A rail is not a container of panels, it is a
+    // place panels float beside; anything painted here puts them back in a
+    // box and undoes every rounded corner inside it.
+    return SizedBox(
+      key: ValueKey<String>('editor-panel-dock-${right ? 'right' : 'left'}'),
       width: width,
-      // The dock KEY still names the side rather than the slot: every
-      // consumer of "the left dock" means the column, and the column is
-      // what this is.
       child: LayoutBuilder(
         builder: (context, constraints) {
           final colorScheme = Theme.of(context).colorScheme;
-          final extents = constraints.hasBoundedHeight
-              ? stackedGroupExtents(
-                  weights: [for (final _ in open) 1.0],
-                  floors: [
-                    for (final id in open) _verticalDockMinimumExtent(id),
-                  ],
-                  totalExtent: constraints.maxHeight,
-                  gap: _railGroupGap,
-                )
-              : null;
+          final railExtent = constraints.hasBoundedHeight
+              ? constraints.maxHeight
+              : double.infinity;
+          final heights = [
+            for (final id in open) _railGroupHeight(id, railExtent),
+          ];
+          var content = 0.0;
+          for (final height in heights) {
+            content += height + _railGroupGap;
+          }
+          content -= _railGroupGap;
+
           // Each open group is its OWN floating object: the app's corner,
           // clipped so the corner is real rather than painted, and a gap of
-          // pasteboard between it and its neighbour. They used to be tiles
-          // butted together inside one bordered column, which is the same
-          // thing the old palette dock was — a rail is not a container of
-          // panels, it is a place panels float beside.
+          // pasteboard between it and its neighbour.
           Widget group(int i) => ClipPath(
             clipper: AppShapes.clipper(
               AppShapes.container(AppShapes.floatingPanelRadius),
@@ -2260,16 +2288,76 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               child: _buildDockHost(open[i]),
             ),
           );
-          return Column(
-            children: [
-              for (var i = 0; i < open.length; i += 1) ...[
-                if (i > 0) const SizedBox(height: _railGroupGap),
-                if (extents == null)
-                  Expanded(child: group(i))
-                else
-                  SizedBox(height: extents[i], child: group(i)),
-              ],
-            ],
+
+          final children = <Widget>[];
+          var y = 0.0;
+          for (var i = 0; i < open.length; i += 1) {
+            final railId = open[i];
+            final height = heights[i];
+            children.add(
+              Positioned(left: 0, right: 0, top: y, height: height, child: group(i)),
+            );
+            // The WIDTH grip, on this panel's own inner edge — the edge
+            // facing the artwork. Every group has one and they all write
+            // the rail's single width, so the rail stays one column wide
+            // however many panels are on it.
+            children.add(
+              Positioned(
+                top: y,
+                height: height,
+                left: right ? 0 : null,
+                right: right ? null : 0,
+                width: DockEdgeSplitter.thickness,
+                child: DockEdgeSplitter(
+                  key: ValueKey<String>('dock-resize-$railId'),
+                  axis: Axis.vertical,
+                  onDragDelta: (delta) => _layout.resizeDock(
+                    EditorWorkspace.railWidthKey(right: right),
+                    right ? -delta : delta,
+                    fallback: EditorWorkspace.sideDockWidth,
+                  ),
+                ),
+              ),
+            );
+            // The HEIGHT grip, on this panel's bottom edge. It costs no
+            // layout — it rides the seam rather than opening one — so the
+            // gap between two panels stays a gap.
+            children.add(
+              Positioned(
+                left: 0,
+                right: 0,
+                top: y + height - DockEdgeSplitter.thickness / 2,
+                height: DockEdgeSplitter.thickness,
+                child: DockEdgeSplitter(
+                  key: ValueKey<String>('dock-resize-$railId-height'),
+                  axis: Axis.horizontal,
+                  onDragDelta: (delta) => _layout.resizeDock(
+                    railId,
+                    delta,
+                    fallback: EditorWorkspace.railGroupHeight,
+                    minExtent: _verticalDockMinimumExtent(railId),
+                  ),
+                ),
+              ),
+            );
+            y += height + _railGroupGap;
+          }
+
+          final column = SizedBox(
+            height: content,
+            child: Stack(clipBehavior: Clip.none, children: children),
+          );
+          // 넘칠 때만 (유저 확정). A rail that scrolls hands vertical drags
+          // to the scroll arena before the panel tabs see them, so it may
+          // not scroll a moment sooner than it has to.
+          if (!railExtent.isFinite || content <= railExtent) {
+            return Align(alignment: Alignment.topCenter, child: column);
+          }
+          return SingleChildScrollView(
+            key: ValueKey<String>(
+              'rail-scroll-${right ? 'right' : 'left'}',
+            ),
+            child: column,
           );
         },
       ),
@@ -2740,11 +2828,15 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                                 fallback: EditorWorkspace.sideDockWidth,
                               )
                             : 0.0;
-                        final splitters =
-                            (hasLeftDock ? DockEdgeSplitter.thickness : 0) +
-                            (hasRightDock ? DockEdgeSplitter.thickness : 0);
+                        // The gap between the strip and the panel floating
+                        // beside it. It is what a rail costs the canvas
+                        // beyond the panel itself; the width grips are
+                        // overlays and cost nothing.
+                        final gaps =
+                            (hasLeftDock ? _railGroupGap : 0) +
+                            (hasRightDock ? _railGroupGap : 0);
                         final room =
-                            (constraints.maxWidth - splitters - minCenterWidth)
+                            (constraints.maxWidth - gaps - minCenterWidth)
                                 .clamp(0.0, double.infinity);
                         final wanted = leftWidth + rightWidth;
                         if (wanted > room && wanted > 0) {
@@ -2769,10 +2861,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                             )
                             .toDouble();
                         final leftRailSpan = hasLeftDock
-                            ? leftWidth + DockEdgeSplitter.thickness
+                            ? leftWidth + _railGroupGap
                             : 0.0;
                         final rightRailSpan = hasRightDock
-                            ? rightWidth + DockEdgeSplitter.thickness
+                            ? rightWidth + _railGroupGap
                             : 0.0;
                         // Which edge the region is on. Everything below reads
                         // this and nothing anywhere else has to.
@@ -2813,9 +2905,16 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                                 child: _buildCenterDock(),
                               ),
                             ),
+                            // ★ The rails FLOAT. A gap of pasteboard between
+                            // the strip and the panel, another above the
+                            // first panel, and each panel its own rounded
+                            // object — the same kind of thing the timeline
+                            // is, rather than a slab bolted to the strip.
+                            // Their width grips ride their own inner edges
+                            // inside the column.
                             Positioned(
-                              left: 0,
-                              top: onTop ? leftStop : 0,
+                              left: hasLeftDock ? _railGroupGap : 0,
+                              top: (onTop ? leftStop : 0) + _railGroupGap,
                               bottom: onTop ? 0 : leftStop,
                               width: hasLeftDock ? leftWidth : null,
                               child: _buildRailColumn(
@@ -2823,29 +2922,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                                 width: leftWidth,
                               ),
                             ),
-                            if (hasLeftDock)
-                              Positioned(
-                                left: leftWidth,
-                                top: onTop ? leftStop : 0,
-                                bottom: onTop ? 0 : leftStop,
-                                width: DockEdgeSplitter.thickness,
-                                // ONE splitter per rail, on its inner edge: every
-                                // group on the rail shares this width.
-                                child: DockEdgeSplitter(
-                                  key: const ValueKey<String>(
-                                    'dock-resize-left',
-                                  ),
-                                  axis: Axis.vertical,
-                                  onDragDelta: (delta) => _layout.resizeDock(
-                                    EditorWorkspace.railWidthKey(right: false),
-                                    delta,
-                                    fallback: EditorWorkspace.sideDockWidth,
-                                  ),
-                                ),
-                              ),
                             Positioned(
-                              right: 0,
-                              top: onTop ? rightStop : 0,
+                              right: hasRightDock ? _railGroupGap : 0,
+                              top: (onTop ? rightStop : 0) + _railGroupGap,
                               bottom: onTop ? 0 : rightStop,
                               width: hasRightDock ? rightWidth : null,
                               child: _buildRailColumn(
@@ -2853,24 +2932,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                                 width: rightWidth,
                               ),
                             ),
-                            if (hasRightDock)
-                              Positioned(
-                                right: rightWidth,
-                                top: onTop ? rightStop : 0,
-                                bottom: onTop ? 0 : rightStop,
-                                width: DockEdgeSplitter.thickness,
-                                child: DockEdgeSplitter(
-                                  key: const ValueKey<String>(
-                                    'dock-resize-right',
-                                  ),
-                                  axis: Axis.vertical,
-                                  onDragDelta: (delta) => _layout.resizeDock(
-                                    EditorWorkspace.railWidthKey(right: true),
-                                    -delta,
-                                    fallback: EditorWorkspace.sideDockWidth,
-                                  ),
-                                ),
-                              ),
                             if (hasBottomDock)
                               Positioned(
                                 left: bottomInset,
