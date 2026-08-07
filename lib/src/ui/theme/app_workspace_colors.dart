@@ -13,13 +13,17 @@ class AppWorkspaceColors {
 
   /// The backdrop the stage floats on.
   ///
-  /// Darker than the historical editor grey, and deliberately darker than the
-  /// panel surface: the paper is the brightest thing on screen and everything
-  /// around it should get out of its way. It also puts a floating panel a
-  /// step ABOVE its surround instead of below it. Still just a default — the
-  /// pasteboard, the backdrop and the paper stay three colours the user picks
-  /// for themselves.
-  static const int defaultPasteboardArgb = 0xFF17191B;
+  /// BLACK, the same as the backdrop it lies on (유저, R3 #4). It was a very
+  /// dark grey, one step above the backdrop, on the reading that the two
+  /// planes should be distinguishable at rest — but the user wants them to
+  /// read as one dark field out of the box and to be told apart by choice
+  /// rather than by default. Still just a default: the pasteboard, the
+  /// backdrop and the paper stay three colours the user picks.
+  ///
+  /// ⚠️Must stay in step with `defaultProjectPasteboardArgb`. A project omits
+  /// this key when it matches the default, so the two disagreeing would make
+  /// a saved project change colour on the way back in.
+  static const int defaultPasteboardArgb = 0xFF000000;
 
   final int pasteboardArgb;
 
@@ -30,8 +34,7 @@ class AppWorkspaceColors {
 
   factory AppWorkspaceColors.fromJson(Map<String, dynamic> json) =>
       AppWorkspaceColors(
-        pasteboardArgb:
-            json['pasteboardArgb'] as int? ?? defaultPasteboardArgb,
+        pasteboardArgb: json['pasteboardArgb'] as int? ?? defaultPasteboardArgb,
       );
 
   @override

@@ -148,6 +148,11 @@ void main() {
     testWidgets('toggles the pin and reflects it in the item icon', (
       tester,
     ) async {
+      // A window the default arrangement fits in: the floating region opens
+      // at 2/3 of the width now, and the storyboard toolbar compresses far
+      // enough at the 800px test default to shed the Cut menu.
+      await tester.binding.setSurfaceSize(const Size(1600, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
       await tester.pumpWidget(
         MaterialApp(home: HomePage(initialProject: createDefaultProject())),
       );

@@ -69,7 +69,6 @@ class EditorCanvasArea extends StatefulWidget {
 
   final EditorSessionManager session;
 
-
   /// PEN-7b: the shell's action funnel — the flip touch slot fires the
   /// same registry ids as the arrow keys.
   final void Function(String actionId)? onInvokeAction;
@@ -541,6 +540,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                   .pasteboardMargin,
               onPasteboardColorChanged: session.setPasteboardColor,
               backdropArgb: session.repository.requireProject().backdropArgb,
+              onBackdropColorChanged: session.setProjectBackdrop,
               onEyedropperPick: (color) => widget.onBrushToolStateChanged?.call(
                 widget.brushToolState.value.copyWith(color: color),
               ),

@@ -55,7 +55,10 @@ Project _project() => Project(
 );
 
 Future<void> _openStoryboard(WidgetTester tester) async {
-  await tester.binding.setSurfaceSize(const Size(900, 700));
+  // A window the default arrangement fits in: the floating region opens at
+  // 2/3 of the width now, so a 900px window leaves the storyboard strip
+  // narrower than the frame-axis panels lay out at.
+  await tester.binding.setSurfaceSize(const Size(1600, 900));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(home: HomePage(initialProject: _project())),

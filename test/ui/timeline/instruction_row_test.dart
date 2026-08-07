@@ -165,22 +165,14 @@ void main() {
 
     // Double-tap on the EMPTY cell creates a default-vocabulary event
     // DIRECTLY — no dialog (UI-R25 #2, 조작 통일화).
-    await _doubleTapCell(
-      tester,
-      'inst-cam',
-      4,
-    );
+    await _doubleTapCell(tester, 'inst-cam', 4);
     expect(find.text('Add instruction'), findsNothing);
     var event = _camLayer(repository).instructions[4]!;
     expect(event.length, 1, reason: 'new instances are one frame long');
 
     // The SECOND double-tap (covered now) opens the editor: swap it to
     // PAN with endpoint values — editing stays the dialog's job.
-    await _doubleTapCell(
-      tester,
-      'inst-cam',
-      4,
-    );
+    await _doubleTapCell(tester, 'inst-cam', 4);
     expect(find.text('Edit instruction'), findsOneWidget);
     await tester.tap(
       find.byKey(const ValueKey<String>('instruction-def-dropdown')),
@@ -238,11 +230,7 @@ void main() {
     expect(find.text('メモリPAN'), findsOneWidget);
     expect(find.text('PAN'), findsNothing);
 
-    await _doubleTapCell(
-      tester,
-      'inst-cam',
-      2,
-    );
+    await _doubleTapCell(tester, 'inst-cam', 2);
     await tester.enterText(
       find.byKey(const ValueKey<String>('instruction-text-field')),
       '早いPAN',
@@ -267,11 +255,7 @@ void main() {
     );
 
     // Edit the B value on the covering cell (not the start).
-    await _doubleTapCell(
-      tester,
-      'inst-cam',
-      5,
-    );
+    await _doubleTapCell(tester, 'inst-cam', 5);
     expect(find.text('Edit instruction'), findsOneWidget);
     await tester.enterText(
       find.byKey(const ValueKey<String>('instruction-value-b-field')),
@@ -287,11 +271,7 @@ void main() {
     expect(event.length, 6, reason: 'length stays grip-owned');
 
     // Delete via the same dialog.
-    await _doubleTapCell(
-      tester,
-      'inst-cam',
-      2,
-    );
+    await _doubleTapCell(tester, 'inst-cam', 2);
     await tester.tap(
       find.byKey(const ValueKey<String>('instance-edit-delete-button')),
     );
@@ -302,6 +282,13 @@ void main() {
   testWidgets('end grip resizes an instruction span with one undo', (
     tester,
   ) async {
+    // A window the default arrangement fits in. The floating region opens
+    // at 2/3 of the width now, so at the 800px test default the strip is
+    // narrow enough that this block's end grip lands under the panel's own
+    // right edge and the drag never reaches it. The test is about the grip,
+    // not about how much of it a small window shows.
+    await tester.binding.setSurfaceSize(const Size(1600, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     late ProjectRepository repository;
     await _pumpHome(
       tester,
@@ -345,16 +332,8 @@ void main() {
     // First double-tap CREATES the default event silently (UI-R25 #2);
     // the second (covered cell) opens the editor the vocabulary button
     // lives in.
-    await _doubleTapCell(
-      tester,
-      'inst-cam',
-      0,
-    );
-    await _doubleTapCell(
-      tester,
-      'inst-cam',
-      0,
-    );
+    await _doubleTapCell(tester, 'inst-cam', 0);
+    await _doubleTapCell(tester, 'inst-cam', 0);
     await tester.ensureVisible(
       find.byKey(const ValueKey<String>('instruction-edit-set-button')),
     );

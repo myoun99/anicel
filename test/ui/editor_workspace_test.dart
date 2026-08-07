@@ -1,4 +1,4 @@
-﻿import 'package:flutter/material.dart';
+import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
@@ -6,6 +6,7 @@ import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
 import 'package:anicel/src/ui/brush/tools_panel.dart';
 import 'package:anicel/src/ui/media/media_browser_panel.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/models/timesheet_info.dart';
 import 'package:anicel/src/services/project_repository.dart';
@@ -17,7 +18,6 @@ import 'package:anicel/src/ui/timesheet_tab_host.dart';
 const _toolsTabKey = ValueKey<String>('panel-tab-tools');
 const _canvasTabKey = ValueKey<String>('panel-tab-canvas');
 const _brushesTabKey = ValueKey<String>('panel-tab-brushes');
-const _brushSettingsTabKey = ValueKey<String>('panel-tab-brush-settings');
 const _mediaTabKey = ValueKey<String>('panel-tab-media');
 const _timelineTabKey = ValueKey<String>('timeline-mode-timeline-button');
 const _storyboardTabKey = ValueKey<String>('timeline-mode-storyboard-button');
@@ -45,6 +45,35 @@ Future<void> _pumpHome(WidgetTester tester) async {
   await tester.drag(
     find.byKey(const ValueKey<String>('dock-resize-rail-L1')),
     const Offset(370, 0),
+  );
+  await tester.pumpAndSettle();
+}
+
+/// The MEDIA browser has its own sub-strip button now and ships CLOSED
+/// (유저, R3 #10) — it used to be a tab of the left rail's one group. Tests
+/// about tab mechanics still want its tab, so they open its group first.
+Future<void> _openMedia(WidgetTester tester) async {
+  await tester.tap(
+    find.byKey(
+      ValueKey<String>(
+        'rail-group-${EditorWorkspace.railGroupId(right: true, slot: 3)}',
+      ),
+    ),
+  );
+  await tester.pumpAndSettle();
+}
+
+/// Empties the RIGHT rail. Four groups live there now (colour, the paper
+/// sheets, media, onion) and only the SHEETS ship open — so closing that
+/// one button empties the column, and a collapsed-rail behaviour needs the
+/// whole column rather than one panel hidden.
+Future<void> _closeRightRail(WidgetTester tester) async {
+  await tester.tap(
+    find.byKey(
+      ValueKey<String>(
+        'rail-group-${EditorWorkspace.railGroupId(right: true, slot: 2)}',
+      ),
+    ),
   );
   await tester.pumpAndSettle();
 }
@@ -212,14 +241,14 @@ void main() {
       tester,
     ) async {
       await _pumpHome(tester);
-      await _closeTimesheet(tester);
+      await _closeRightRail(tester);
 
       // Lift a palette tab by its grip: the tool edge rails stay hidden
       // (ineligible), while the normal right dock's rail IS revealed.
-      await tester.ensureVisible(find.byKey(_mediaTabKey));
+      await tester.ensureVisible(find.byKey(_brushesTabKey));
       await tester.pumpAndSettle();
       final gesture = await tester.startGesture(
-        tester.getCenter(_tabGrip(find.byKey(_mediaTabKey))),
+        tester.getCenter(_tabGrip(find.byKey(_brushesTabKey))),
       );
       await tester.pump(const Duration(milliseconds: 20));
       await gesture.moveBy(const Offset(0, 30));
@@ -234,27 +263,56 @@ void main() {
   });
 
   group('EditorWorkspace left dock tabs', () {
-    testWidgets('the group is ONE strip: every panel a tab, one of them open', (
-      tester,
-    ) async {
+    testWidgets('one panel per BUTTON — the library and the settings are two '
+        'of them, not two tabs of one', (tester) async {
+      // 유저, R3 #10. They were the same button until this round, which
+      // meant reaching the settings mid-stroke cost a tab switch that also
+      // put the library away.
       await _pumpHome(tester);
 
       expect(find.byKey(_brushesTabKey), findsOneWidget);
-      expect(find.byKey(_brushSettingsTabKey), findsOneWidget);
-      expect(find.byKey(_mediaTabKey), findsOneWidget);
-
-      // A rail button's group is ONE section, so exactly one panel is
-      // built. Tool Settings used to own a second section below the
-      // library, which is what made this group render as the old left
-      // palette dock — two strips with a splitter between them, the very
-      // thing the rails replaced.
       expect(find.byType(BrushPresetPanel), findsOneWidget);
+
+      // The settings have their own slot under it, and it ships closed.
+      final settingsGroup = EditorWorkspace.railGroupId(right: false, slot: 2);
+      expect(
+        find.byKey(ValueKey<String>('rail-group-$settingsGroup')),
+        findsOneWidget,
+      );
       expect(find.byType(BrushSettingsPanel), findsNothing);
-      expect(find.byType(MediaBrowserPanel), findsNothing);
+      // …and the media browser is not on this rail at all any more.
+      expect(find.byKey(_mediaTabKey), findsNothing);
+
+      await tester.tap(
+        find.byKey(ValueKey<String>('rail-group-$settingsGroup')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(BrushSettingsPanel), findsOneWidget);
+      expect(
+        find.byType(BrushPresetPanel),
+        findsOneWidget,
+        reason: 'opening one does not put the other away',
+      );
     });
 
     testWidgets('switching tabs swaps the visible panel', (tester) async {
       await _pumpHome(tester);
+      await _openMedia(tester);
+
+      await tester.ensureVisible(find.byKey(_mediaTabKey));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(_mediaTabKey));
+      await tester.pumpAndSettle();
+      expect(find.byType(MediaBrowserPanel), findsOneWidget);
+
+      // Drag the library's tab into the media group and the strip switches
+      // between them the way one group's strip always has.
+      await _dragTab(
+        tester,
+        find.byKey(_brushesTabKey),
+        () => tester.getCenter(find.byKey(_mediaTabKey)) + const Offset(60, 0),
+      );
+      expect(find.byType(BrushPresetPanel), findsOneWidget);
 
       await tester.ensureVisible(find.byKey(_mediaTabKey));
       await tester.pumpAndSettle();
@@ -262,14 +320,6 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(MediaBrowserPanel), findsOneWidget);
       expect(find.byType(BrushPresetPanel), findsNothing);
-      expect(find.byType(BrushSettingsPanel), findsNothing);
-
-      await tester.ensureVisible(find.byKey(_brushesTabKey));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(_brushesTabKey));
-      await tester.pumpAndSettle();
-      expect(find.byType(BrushPresetPanel), findsOneWidget);
-      expect(find.byType(MediaBrowserPanel), findsNothing);
     });
   });
 
@@ -282,10 +332,14 @@ void main() {
       // The floor has no tab of its own. It cannot: the panels lie ON it,
       // so a strip at its top-left corner would be under the left column.
       expect(find.byKey(_canvasTabKey), findsNothing);
-      expect(find.byKey(const ValueKey<String>('panel-lock-canvas')),
-          findsNothing);
-      expect(find.byKey(const ValueKey<String>('panel-close-canvas')),
-          findsNothing);
+      expect(
+        find.byKey(const ValueKey<String>('panel-lock-canvas')),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('panel-close-canvas')),
+        findsNothing,
+      );
 
       // Which is the protection, not a hole in it — there is no grip to
       // slip on, so the drawing surface cannot be dragged out from under
@@ -326,6 +380,7 @@ void main() {
       tester,
     ) async {
       await _pumpHome(tester);
+      await _openMedia(tester);
 
       // Drop on the bottom strip's tail (right of the storyboard tab).
       await _dragTab(
@@ -348,24 +403,24 @@ void main() {
       expect(find.byType(TimelinePanel), findsOneWidget);
       expect(find.byType(MediaBrowserPanel), findsNothing);
 
-      // Drag the media tab back to the left strip (tail after Settings).
+      // Drag the media tab back to the left strip (tail after the library).
       await _dragTab(
         tester,
         find.byKey(_mediaTabKey),
         () =>
-            tester.getCenter(find.byKey(_brushSettingsTabKey)) +
-            const Offset(60, 0),
+            tester.getCenter(find.byKey(_brushesTabKey)) + const Offset(60, 0),
       );
 
       expect(find.byType(MediaBrowserPanel), findsOneWidget);
       expect(find.byType(TimelinePanel), findsOneWidget);
     });
 
-
     testWidgets('the dock edge splitter resizes the left dock', (tester) async {
       await _pumpHome(tester);
 
-      final splitter = find.byKey(const ValueKey<String>('dock-resize-rail-L1'));
+      final splitter = find.byKey(
+        const ValueKey<String>('dock-resize-rail-L1'),
+      );
       final dock = find.byKey(const ValueKey<String>('editor-panel-dock-left'));
       final beforeWidth = tester.getSize(dock).width;
 
@@ -401,29 +456,29 @@ void main() {
       tester,
     ) async {
       await _pumpHome(tester);
-      await _closeTimesheet(tester);
+      await _closeRightRail(tester);
       expect(find.byKey(_rightDropRailKey), findsNothing);
 
-      // Lift the media tab by its grip: the collapsed right dock shows
-      // its rail.
-      await tester.ensureVisible(find.byKey(_mediaTabKey));
+      // Lift the tool library's tab by its grip: the collapsed right rail
+      // shows its rail.
+      await tester.ensureVisible(find.byKey(_brushesTabKey));
       await tester.pumpAndSettle();
       final gesture = await tester.startGesture(
-        tester.getCenter(_tabGrip(find.byKey(_mediaTabKey))),
+        tester.getCenter(_tabGrip(find.byKey(_brushesTabKey))),
       );
       await tester.pump(const Duration(milliseconds: 20));
-      await gesture.moveBy(const Offset(0, 30));
+      await gesture.moveBy(const Offset(30, 0));
       await tester.pump();
       expect(find.byKey(_rightDropRailKey), findsOneWidget);
 
-      // Dropping there docks the media panel on the right.
+      // Dropping there docks the library on the right.
       await gesture.moveTo(tester.getCenter(find.byKey(_rightDropRailKey)));
       await tester.pump();
       await gesture.up();
       await tester.pumpAndSettle();
 
       expect(find.byKey(_rightDropRailKey), findsNothing);
-      expect(find.byType(MediaBrowserPanel), findsOneWidget);
+      expect(find.byType(BrushPresetPanel), findsOneWidget);
       expect(
         find.byKey(const ValueKey<String>('editor-panel-dock-right')),
         findsOneWidget,
@@ -432,9 +487,17 @@ void main() {
 
     testWidgets('left strip tabs can be drag-reordered', (tester) async {
       await _pumpHome(tester);
+      await _openMedia(tester);
+      // Put them in one group first — reordering is a thing a strip does,
+      // and one panel per button means a strip has to be built to have one.
+      await _dragTab(
+        tester,
+        find.byKey(_mediaTabKey),
+        () =>
+            tester.getCenter(find.byKey(_brushesTabKey)) + const Offset(60, 0),
+      );
 
-      // Drop Brushes on the right half of the Media tab: order becomes
-      // Settings, Media, Brushes.
+      // Drop Brushes on the right half of the Media tab: the order flips.
       await tester.ensureVisible(find.byKey(_mediaTabKey));
       await tester.pumpAndSettle();
       await _dragTab(
@@ -450,8 +513,10 @@ void main() {
         tester.getCenter(find.byKey(_brushesTabKey)).dx,
         greaterThan(tester.getCenter(find.byKey(_mediaTabKey)).dx),
       );
-      // Selection is untouched by reordering.
-      expect(find.byType(BrushPresetPanel), findsOneWidget);
+      // Selection is untouched by reordering — the media browser was the
+      // group's open panel before the drag and still is.
+      expect(find.byType(MediaBrowserPanel), findsOneWidget);
+      expect(find.byType(BrushPresetPanel), findsNothing);
     });
   });
 
@@ -462,7 +527,7 @@ void main() {
 
       // 패널 프레임 최소화 (유저 확정): no name, no lock, no X. The label is
       // the tooltip, which was always the tab's only accessibility name.
-      for (final id in ['brushes', 'media', 'timesheet']) {
+      for (final id in ['brushes', 'timesheet', 'conte']) {
         expect(find.byKey(ValueKey<String>('panel-close-$id')), findsNothing);
         expect(find.byKey(ValueKey<String>('panel-lock-$id')), findsNothing);
         expect(
@@ -626,13 +691,14 @@ void main() {
       // The zoom BUTTONS are gone from a non-floor host (뷰 컨트롤은 바닥에만),
       // so the viewport is read and driven through the panbar the host does
       // still carry — which is the thing whose survival this test is about.
-      CanvasViewportVerticalScrollbar panbar() =>
-          tester.widgetList<CanvasViewportVerticalScrollbar>(
+      CanvasViewportVerticalScrollbar panbar() => tester
+          .widgetList<CanvasViewportVerticalScrollbar>(
             find.descendant(
               of: find.byType(TimesheetTabHost),
               matching: find.byType(CanvasViewportVerticalScrollbar),
             ),
-          ).first;
+          )
+          .first;
 
       expect(panbar().viewport.zoom, 1.0);
       panbar().onViewportChanged(panbar().viewport.copyWith(zoom: 1.75));

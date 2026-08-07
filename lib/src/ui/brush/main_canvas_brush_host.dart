@@ -65,6 +65,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.pasteboardMargin = defaultProjectPasteboardMargin,
     this.onPasteboardColorChanged,
     this.backdropArgb = defaultProjectBackdropArgb,
+    this.onBackdropColorChanged,
     this.onTemporaryToolHold,
     this.onTemporaryToolRelease,
     this.onInvokeAction,
@@ -153,6 +154,7 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// The BACKDROP behind the pasteboard (R3b) — project data, like the
   /// two colors above it in the stage.
   final int backdropArgb;
+  final ValueChanged<int>? onBackdropColorChanged;
 
   /// PEN-7a mapped-hold pass-through (canvas right/wheel mappings).
   final void Function(CanvasTool tool)? onTemporaryToolHold;
@@ -335,6 +337,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       pasteboardMargin: widget.pasteboardMargin,
       onPasteboardColorChanged: widget.onPasteboardColorChanged,
       backdropArgb: widget.backdropArgb,
+      onBackdropColorChanged: widget.onBackdropColorChanged,
       onTemporaryToolHold: widget.onTemporaryToolHold,
       onTemporaryToolRelease: widget.onTemporaryToolRelease,
       onInvokeAction: widget.onInvokeAction,

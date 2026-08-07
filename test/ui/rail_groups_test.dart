@@ -11,7 +11,6 @@ import 'package:anicel/src/ui/color/color_wheel_panel.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
 import 'package:anicel/src/ui/home_page.dart';
-import 'package:anicel/src/ui/media/media_browser_panel.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
 
@@ -81,10 +80,17 @@ void main() {
 
       expect(groupButton(EditorWorkspace.leftGroupId), findsOneWidget);
       expect(groupButton(EditorWorkspace.rightGroupId), findsOneWidget);
+      // The tool settings hold the left rail's second slot (유저, R3 #10),
+      // so that one is a button too — and it is a button whether or not its
+      // group is open.
+      expect(
+        groupButton(EditorWorkspace.railGroupId(right: false, slot: 2)),
+        findsOneWidget,
+      );
       // An empty slot is not a button you can press — it appears only as a
       // drop target, and only while something is in flight.
       expect(
-        groupButton(EditorWorkspace.railGroupId(right: false, slot: 2)),
+        groupButton(EditorWorkspace.railGroupId(right: false, slot: 3)),
         findsNothing,
       );
     });
@@ -113,7 +119,11 @@ void main() {
       expect(rightButton.top - leftStrip.top, lessThan(16));
       expect(
         leftButton.top - tools.bottom,
-        lessThan(24),
+        // The rule between the tools and the panel buttons costs 17 of this
+        // (유저, R3 #15) — 8 above, the hairline, 8 below — and the button
+        // column's own top padding the rest. "Immediately" means one seam,
+        // not no gap.
+        lessThan(32),
         reason: 'the group buttons follow the tools immediately',
       );
       expect(leftButton.bottom, lessThan(leftStrip.bottom - 100));
@@ -128,7 +138,9 @@ void main() {
 
       expect(
         find.byKey(
-          ValueKey<String>('rail-grip-rail-group-${EditorWorkspace.leftGroupId}'),
+          ValueKey<String>(
+            'rail-grip-rail-group-${EditorWorkspace.leftGroupId}',
+          ),
         ),
         findsNothing,
       );
@@ -218,9 +230,7 @@ void main() {
         find.descendant(
           of: find
               .ancestor(
-                of: find.byKey(
-                  const ValueKey<String>('panel-tab-color-wheel'),
-                ),
+                of: find.byKey(const ValueKey<String>('panel-tab-color-wheel')),
                 matching: find.byType(EditorPanelTabs),
               )
               .first,
@@ -230,7 +240,9 @@ void main() {
       );
       // Every colour panel carries the same reading underneath.
       expect(find.byType(ColorStatusBar), findsOneWidget);
-      await tester.tap(find.byKey(const ValueKey<String>('panel-tab-color-rgb')));
+      await tester.tap(
+        find.byKey(const ValueKey<String>('panel-tab-color-rgb')),
+      );
       await tester.pumpAndSettle();
       expect(find.byType(ColorStatusBar), findsOneWidget);
     });
@@ -244,7 +256,9 @@ void main() {
       expect(find.byType(TimesheetTabHost), findsOneWidget);
       final sheetGroup = EditorWorkspace.railGroupId(right: true, slot: 2);
       final railWidth = tester
-          .getRect(find.byKey(const ValueKey<String>('editor-panel-dock-right')))
+          .getRect(
+            find.byKey(const ValueKey<String>('editor-panel-dock-right')),
+          )
           .width;
       expect(railWidth, greaterThan(0));
 
@@ -272,33 +286,18 @@ void main() {
 
       final beforeLibrary = tester.getRect(find.byType(BrushPresetPanel));
 
-      // Move the media browser into a second LEFT group by dragging its tab
-      // onto that rail's empty slot, then check both columns coexist.
-      final mediaTab = find.byKey(const ValueKey<String>('panel-tab-media'));
-      await tester.ensureVisible(mediaTab);
-      await tester.pumpAndSettle();
-      final gesture = await tester.startGesture(
-        tester.getCenter(
-          find.byKey(const ValueKey<String>('panel-grip-media')),
-        ),
+      // The tool SETTINGS are the left rail's second group now (유저, R3
+      // #10) — one button under the library's, closed until pressed.
+      await tester.tap(
+        groupButton(EditorWorkspace.railGroupId(right: false, slot: 2)),
       );
-      await tester.pump(const Duration(milliseconds: 20));
-      await gesture.moveBy(const Offset(0, 30));
-      await tester.pump();
-      final slot = groupButton(
-        EditorWorkspace.railGroupId(right: false, slot: 2),
-      );
-      expect(slot, findsOneWidget, reason: 'the empty slot offers itself');
-      await gesture.moveTo(tester.getCenter(slot));
-      await tester.pump();
-      await gesture.up();
       await tester.pumpAndSettle();
 
       // Both groups are open and both are on screen.
       expect(find.byType(BrushPresetPanel), findsOneWidget);
-      expect(find.byType(MediaBrowserPanel), findsOneWidget);
+      expect(find.byType(BrushSettingsPanel), findsOneWidget);
       final library = tester.getRect(find.byType(BrushPresetPanel));
-      final media = tester.getRect(find.byType(MediaBrowserPanel));
+      final media = tester.getRect(find.byType(BrushSettingsPanel));
       expect(
         media.top,
         greaterThan(library.bottom),
@@ -323,7 +322,7 @@ void main() {
       );
       await tester.pumpAndSettle();
       final grownLibrary = tester.getRect(find.byType(BrushPresetPanel));
-      final grownMedia = tester.getRect(find.byType(MediaBrowserPanel));
+      final grownMedia = tester.getRect(find.byType(BrushSettingsPanel));
       expect(grownLibrary.width, greaterThan(library.width));
       expect(grownMedia.width, closeTo(grownLibrary.width, 0.5));
     });
@@ -417,32 +416,31 @@ void main() {
           find.byKey(const ValueKey<String>('rail-scroll-left'));
       expect(railScroll(), findsNothing, reason: 'one group fits');
 
-      // Put a second group on the left rail.
-      final mediaTab = find.byKey(const ValueKey<String>('panel-tab-media'));
-      await tester.ensureVisible(mediaTab);
-      await tester.pumpAndSettle();
-      final gesture = await tester.startGesture(
-        tester.getCenter(
-          find.byKey(const ValueKey<String>('panel-grip-media')),
-        ),
+      // Open the left rail's second group (the tool settings).
+      await tester.tap(
+        groupButton(EditorWorkspace.railGroupId(right: false, slot: 2)),
       );
-      await tester.pump(const Duration(milliseconds: 20));
-      await gesture.moveBy(const Offset(0, 30));
-      await tester.pump();
-      await gesture.moveTo(
-        tester.getCenter(
-          groupButton(EditorWorkspace.railGroupId(right: false, slot: 2)),
-        ),
-      );
-      await tester.pump();
-      await gesture.up();
       await tester.pumpAndSettle();
 
       // Two 320px panels and a gap need 648; the rail has ~589.
       expect(railScroll(), findsOneWidget);
       // …and both panels are still there to be scrolled to.
       expect(find.byType(BrushPresetPanel), findsOneWidget);
-      expect(find.byType(MediaBrowserPanel), findsOneWidget);
+      expect(find.byType(BrushSettingsPanel), findsOneWidget);
+      // The bar rides the gap between the strip and the panels (유저, R3
+      // #12), not the panels' far edge.
+      final thumb = tester.getRect(
+        find.byKey(const ValueKey<String>('rail-scroll-thumb-left')),
+      );
+      final panel = tester.getRect(
+        find
+            .ancestor(
+              of: find.byType(BrushPresetPanel),
+              matching: find.byType(ClipPath),
+            )
+            .first,
+      );
+      expect(thumb.right, lessThanOrEqualTo(panel.left));
     });
 
     testWidgets('a rail panel FLOATS on the canvas: a gap from the strip, a '
@@ -456,8 +454,19 @@ void main() {
         find.byKey(const ValueKey<String>('editor-panel-dock-left')),
       );
 
+      // The rail's BOX starts at the strip now — the gap between them is
+      // inside it, because that gap is where the rail's own scrollbar rides
+      // (유저, R3 #12). What has to float is the PANEL.
+      final panel = tester.getRect(
+        find
+            .ancestor(
+              of: find.byType(BrushPresetPanel),
+              matching: find.byType(ClipPath),
+            )
+            .first,
+      );
       expect(
-        rail.left,
+        panel.left,
         greaterThan(strip.right),
         reason: 'pasteboard between the strip and the panel beside it',
       );
@@ -519,7 +528,9 @@ void main() {
       Rect panbar() => tester.getRect(
         find.descendant(
           of: inMainCanvas(find.byType(BrushCanvasPanel)),
-          matching: find.byKey(const ValueKey<String>('canvas-panbar-vertical')),
+          matching: find.byKey(
+            const ValueKey<String>('canvas-panbar-vertical'),
+          ),
         ),
       );
       final rail = tester.getRect(
@@ -547,16 +558,21 @@ void main() {
         'panel is never placed out of sight', (tester) async {
       await pumpApp(tester);
 
-      // Close the sheet's panel. The tab has no X any more — 패널 프레임
-      // 최소화 took it — so the settings list IS the switch, in both
-      // directions.
+      // The tool SETTINGS are the case: their group is the left rail's
+      // second slot, holds only them, and ships CLOSED (유저, R3 #10) — so
+      // "reopen a panel whose group is not open" is the default state
+      // rather than something the test has to build.
+      expect(find.byType(BrushSettingsPanel), findsNothing);
+
+      // The tab has no X any more — 패널 프레임 최소화 took it — so the
+      // settings list IS the switch, in both directions.
       Future<void> togglePanel() async {
         await tester.tap(
           find.byKey(const ValueKey<String>('top-strip-settings-button')),
         );
         await tester.pumpAndSettle();
         final entry = find.byKey(
-          const ValueKey<String>('panels-menu-item-timesheet'),
+          const ValueKey<String>('panels-menu-item-brush-settings'),
         );
         await tester.ensureVisible(entry);
         await tester.pumpAndSettle();
@@ -564,25 +580,13 @@ void main() {
         await tester.pumpAndSettle();
       }
 
+      // Hide it, then ask for it back. Its home group is still closed.
       await togglePanel();
-      expect(find.byType(TimesheetTabHost), findsNothing);
-
-      // Reopen it from the Settings popover's panel list. Its home is that
-      // right group, which now holds nothing and is therefore not open.
-      await tester.tap(
-        find.byKey(const ValueKey<String>('top-strip-settings-button')),
-      );
-      await tester.pumpAndSettle();
-      final entry = find.byKey(
-        const ValueKey<String>('panels-menu-item-timesheet'),
-      );
-      await tester.ensureVisible(entry);
-      await tester.pumpAndSettle();
-      await tester.tap(entry);
-      await tester.pumpAndSettle();
+      expect(find.byType(BrushSettingsPanel), findsNothing);
+      await togglePanel();
 
       expect(
-        find.byType(TimesheetTabHost),
+        find.byType(BrushSettingsPanel),
         findsOneWidget,
         reason: 'reopening put it somewhere the user can see',
       );

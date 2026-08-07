@@ -192,10 +192,7 @@ void main() {
       }
       await _ensureRowVisible(tester, _celLayerId);
       // The cel row is PAINTED (UI-R9 #12b): the X reads off the painter.
-      expect(
-        timelineCellModel(tester, 'se-cel', 0).glyph,
-        'X',
-      );
+      expect(timelineCellModel(tester, 'se-cel', 0).glyph, 'X');
     },
   );
 
@@ -296,6 +293,11 @@ void main() {
 
   testWidgets('double-tap on an empty SE cell creates a ONE-frame labeled '
       'entry in one undo (the grips own the length)', (tester) async {
+    // A window the default arrangement fits in — the floating region opens
+    // at 2/3 of the width, and this test zooms the axis out and then works
+    // near the far end of it.
+    await tester.binding.setSurfaceSize(const Size(1600, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     late ProjectRepository repository;
     await _pumpHome(
       tester,
@@ -315,11 +317,7 @@ void main() {
 
     // Double-tap on the EMPTY cell creates the default entry DIRECTLY —
     // no dialog (UI-R25 #2, 조작 통일화).
-    await _doubleTapCell(
-      tester,
-      'se-voice',
-      4,
-    );
+    await _doubleTapCell(tester, 'se-voice', 4);
     expect(find.text('New SE'), findsNothing, reason: 'creation is silent');
     var layer = _seLayer(repository);
     expect(layer.timeline[4]!.length, 1, reason: 'one frame, like cels');
@@ -327,11 +325,7 @@ void main() {
 
     // The SECOND double-tap (now a covered cell) opens the edit dialog —
     // labeling stays the dialog's job.
-    await _doubleTapCell(
-      tester,
-      'se-voice',
-      4,
-    );
+    await _doubleTapCell(tester, 'se-voice', 4);
     await tester.enterText(
       find.byKey(const ValueKey<String>('se-dialogue-field')),
       '와아!',
@@ -392,11 +386,7 @@ void main() {
 
     // Edit the second entry to the SAME text as the first: SE rows allow
     // duplicate dialogue (no link-conflict flow).
-    await _doubleTapCell(
-      tester,
-      'se-voice',
-      6,
-    );
+    await _doubleTapCell(tester, 'se-voice', 6);
     expect(find.text('Edit SE'), findsOneWidget);
     await tester.enterText(
       find.byKey(const ValueKey<String>('se-dialogue-field')),

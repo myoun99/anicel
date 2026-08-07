@@ -1,3 +1,4 @@
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/panels/editor_panel_layout.dart';
@@ -125,12 +126,13 @@ Offset _tabHalf(WidgetTester tester, String id, {required bool right}) {
 }
 
 void main() {
-  testWidgets('the ACTIVE rule and the lift zone are ONE band, on the '
-      'window-facing edge', (tester) async {
-    // They used to be two marks on two edges — an accent rule saying "this
-    // panel is open" and a separate zone on the leading edge saying "you
-    // may drag me". 유저, R2 #9: one band, and its THICKNESS is which of the
-    // two things it is saying.
+  testWidgets('the band is the GRIP ladder and nothing else: invisible '
+      'until the panel is under the pointer', (tester) async {
+    // 유저, R3 #9. The band carried two jobs — "this panel is open" and "you
+    // may drag me" — and the first always won, so the tab you were most
+    // likely to want to drag was the one tab whose band could never offer
+    // itself. It is the handle now, on three rungs: the PANEL is hovered
+    // (기본색) → the band itself is (호버색) → it is being dragged (클릭색).
     final model = _twoGroups();
     await tester.pumpWidget(_Harness(model: model));
 
@@ -147,14 +149,23 @@ void main() {
     expect(band.width, closeTo(tab.width, 0.5));
     expect(band.top, closeTo(tab.top, 0.5));
 
-    // The open tab wears the accent; its neighbours wear nothing.
-    expect(bandOf('a'), isNot(Colors.transparent));
+    // At rest NEITHER band says anything — not even the open one.
+    expect(bandOf('a'), Colors.transparent);
     expect(bandOf('b'), Colors.transparent);
 
-    await tester.tap(_tab('b'));
+    // A pointer anywhere on the panel raises every band it can lift.
+    final pointer = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await pointer.addPointer(location: Offset.zero);
+    await pointer.moveTo(tester.getCenter(find.byType(EditorPanelTabs).first));
+    await tester.pumpAndSettle();
+    expect(bandOf('a'), isNot(Colors.transparent));
+    expect(bandOf('b'), isNot(Colors.transparent));
+
+    // And when the hand leaves they go quiet again — which tab is OPEN is
+    // said by the tab's own fill, not by the band.
+    await pointer.removePointer();
     await tester.pumpAndSettle();
     expect(bandOf('a'), Colors.transparent);
-    expect(bandOf('b'), isNot(Colors.transparent));
   });
 
   testWidgets('a tab fills the strip: the selected fill reaches the panel '

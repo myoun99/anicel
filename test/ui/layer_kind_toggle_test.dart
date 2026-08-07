@@ -118,9 +118,7 @@ Project _projectWithLayer({
                     ],
                   ),
                 ],
-                timeline: {
-                  0: TimelineExposure.drawing(_frameId, length: 1),
-                },
+                timeline: {0: TimelineExposure.drawing(_frameId, length: 1)},
               ),
             ],
           ),
@@ -244,6 +242,11 @@ void main() {
   // like animation, so the kind collapsed into it. Picture rows are the
   // IMAGE kind now, created through Add Layer — never by conversion.
   testWidgets('the art toggle is gone from the Layer flyout', (tester) async {
+    // The floating region opens at 2/3 of the window now, so at the 800px
+    // test default the timeline toolbar compresses far enough to shed the
+    // Layer flyout's own button.
+    await tester.binding.setSurfaceSize(const Size(1600, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await _pumpHome(tester);
 
     // Flyout items only exist while the popup is open — open it, then
@@ -351,6 +354,4 @@ void main() {
     final track = repository.requireProject().tracks.single;
     expect(track.seLayers.map((layer) => layer.name), ['S1', 'S3', 'S2']);
   });
-
-
 }

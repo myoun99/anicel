@@ -46,8 +46,10 @@ void main() {
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
     await tester.pumpAndSettle();
 
-    // Open the Onion Skin tab in the left dock (Ahem-wide tab labels can
-    // push it out of the strip's viewport in tests).
+    // The onion settings have their OWN sub-strip button now (유저, R3 #10)
+    // and ship closed — open the group, then its tab.
+    await tester.tap(find.byKey(const ValueKey<String>('rail-group-rail-R4')));
+    await tester.pumpAndSettle();
     final tab = find.byKey(const ValueKey<String>('panel-tab-onion-skin'));
     await tester.ensureVisible(tab);
     await tester.pumpAndSettle();

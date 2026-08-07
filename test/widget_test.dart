@@ -781,10 +781,7 @@ void main() {
     // R10 R6: a frame ROW is a frame CELL turned on its side, so the sheet
     // reads the slider 1:1 instead of scaling it by an old 36/24 ratio —
     // one slider position now means one frame extent on both surfaces.
-    expect(
-      xsheetFrameRowGlobalRect(tester, 0).height,
-      timelineFrameCellWidth,
-    );
+    expect(xsheetFrameRowGlobalRect(tester, 0).height, timelineFrameCellWidth);
 
     tester
         .widget<FieldSlider>(
@@ -891,8 +888,6 @@ void main() {
 
     _expectCellText('default-layer-1', 0, '○');
   });
-
-
 
   testWidgets('dragging Cut 2 before Cut 1 keeps Cut 2 active', (
     WidgetTester tester,
@@ -1711,6 +1706,12 @@ Line 8''';
   testWidgets('switches between existing sample cuts', (
     WidgetTester tester,
   ) async {
+    // Two cuts have to be REACHABLE on the storyboard strip at once. The
+    // floating region opens at 2/3 of the window now, so at the 800px test
+    // default the second cut's block starts past the strip's right edge and
+    // there is nothing on screen to tap.
+    await tester.binding.setSurfaceSize(const Size(1600, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const AnicelApp());
     await _createSecondCut(tester);
     await _switchToCut(tester, 'default-cut-1');
@@ -1746,6 +1747,10 @@ Line 8''';
   testWidgets('StoryboardPanel cut selection syncs active cut surfaces', (
     WidgetTester tester,
   ) async {
+    // Same reason as 'switches between existing sample cuts': the second
+    // cut's block has to be on screen to be tapped.
+    await tester.binding.setSurfaceSize(const Size(1600, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const AnicelApp());
     await _createSecondCut(tester);
     await _switchToCut(tester, 'default-cut-1');
@@ -1762,9 +1767,10 @@ Line 8''';
     // the right edge is drawn partly outside the panel's clip and its
     // geometric centre lands on whatever is beyond it.
     await tester.tapAt(
-      cutBlockScreenRect(tester, 'cut-1')
-          .intersect(tester.getRect(find.byType(StoryboardPanel)))
-          .center,
+      cutBlockScreenRect(
+        tester,
+        'cut-1',
+      ).intersect(tester.getRect(find.byType(StoryboardPanel))).center,
     );
     await tester.pumpAndSettle();
 
