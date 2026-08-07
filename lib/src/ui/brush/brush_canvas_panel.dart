@@ -760,7 +760,6 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     Size viewportSize,
     CanvasSize canvasSize,
     bool rotation,
-    String title,
     Object? leading,
     bool floor,
   })?
@@ -777,9 +776,21 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       viewportSize: _resolvedEditorViewportSize(),
       canvasSize: widget.canvasSize,
       rotation: widget.allowViewRotation,
-      title: widget.selectionLabels.title,
       leading: widget.bottomBarLeadingToken,
       floor: _isFloor,
+      // ⛔ The panel TITLE is deliberately absent. None of these bars show
+      // it — they are scrollbars and view buttons — but it used to sit in
+      // this token, and it reads
+      // "Project: … · Cut: … · Layer: … · Frame: <label>". So every step
+      // that changed the frame label threw the memo away and rebuilt the
+      // whole bar: 13 icon buttons with their tooltips, overlay portals,
+      // ink and gesture detectors. Measured at 391 widget rebuilds a step,
+      // against 24 for the panel's own spine.
+      //
+      // ⚠️ The dev fixture UNDERSTATES it. Two unnamed cels share a frame
+      // label, so it only bit when the playhead crossed "no cel ↔ cel";
+      // in a real cut every cel is named, and the label — so the bar —
+      // changed on EVERY flip step.
     );
     // A leading list without a token can't be memoized (see
     // [bottomBarLeadingToken]) — rebuild rather than serve a stale bar.
