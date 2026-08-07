@@ -9,7 +9,8 @@ import '../../models/brush_history_policy.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
-import '../../models/project.dart' show defaultProjectBackdropArgb;
+import '../../models/project.dart'
+    show defaultProjectBackdropArgb, defaultProjectPasteboardMargin;
 import '../../models/project_background.dart';
 import '../canvas/flip_hud_controller.dart';
 import '../theme/app_workspace_colors.dart';
@@ -62,6 +63,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.paperColor = ProjectBackground.defaultPaperArgb,
     this.onPaperColorChanged,
     this.pasteboardColor = AppWorkspaceColors.defaultPasteboardArgb,
+    this.pasteboardMargin = defaultProjectPasteboardMargin,
     this.onPasteboardColorChanged,
     this.backdropArgb = defaultProjectBackdropArgb,
     this.onTemporaryToolHold,
@@ -143,6 +145,10 @@ class MainCanvasBrushHost extends StatefulWidget {
   final int paperColor;
   final ValueChanged<int>? onPaperColorChanged;
   final int pasteboardColor;
+
+  /// How far past the canvas the pasteboard SHOWS, in canvas widths and
+  /// heights ([Project.pasteboardMargin]).
+  final double pasteboardMargin;
   final ValueChanged<int>? onPasteboardColorChanged;
 
   /// The BACKDROP behind the pasteboard (R3b) — project data, like the
@@ -327,6 +333,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       paperColor: widget.paperColor,
       onPaperColorChanged: widget.onPaperColorChanged,
       pasteboardColor: widget.pasteboardColor,
+      pasteboardMargin: widget.pasteboardMargin,
       onPasteboardColorChanged: widget.onPasteboardColorChanged,
       backdropArgb: widget.backdropArgb,
       onTemporaryToolHold: widget.onTemporaryToolHold,

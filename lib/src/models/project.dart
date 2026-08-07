@@ -25,6 +25,21 @@ const defaultProjectBackdropArgb = 0xFF000000;
 /// disagreeing would make a saved project change colour on the way back in.
 const defaultProjectPasteboardArgb = 0xFF17191B;
 
+/// How far past each canvas edge the pasteboard SHOWS, in canvas widths and
+/// heights. The default matches the DRAWING bound (`PasteboardBounds`, two
+/// canvas sizes out on every side), so out of the box the pasteboard is
+/// exactly the area you can put ink on and the backdrop is exactly the area
+/// you cannot.
+///
+/// ⚠️A SHOWING number, not the drawing bound itself. They answer different
+/// questions — the bound is where strokes, fills and drops are allowed to
+/// land, and moving it changes what a file can hold; this one only decides
+/// where one colour stops and the next begins. The user asked for the three
+/// stage colours to be three PLACES, and at the drawing bound the backdrop
+/// only appears below about 20% zoom, so the showing number has to be
+/// theirs to set.
+const defaultProjectPasteboardMargin = 2.0;
+
 /// The default audio rate (EXPORT-AUDIO ③): 48 kHz is the film/video
 /// production standard (44.1k is the CD/music one) and what the conform
 /// pipeline has targeted since 2B.
@@ -41,6 +56,7 @@ class Project {
     this.background = ProjectBackground.defaultBackground,
     int backdropArgb = defaultProjectBackdropArgb,
     this.pasteboardArgb = defaultProjectPasteboardArgb,
+    double pasteboardMargin = defaultProjectPasteboardMargin,
     this.timesheetInfo = TimesheetInfo.empty,
     CameraInstructionSet? cameraInstructions,
     List<MediaAsset> mediaAssets = const [],
@@ -51,6 +67,9 @@ class Project {
     int audioSpeedDenominator = 1,
     ExportProjectOverrides? exportOverrides,
   }) : backdropArgb = 0xFF000000 | backdropArgb,
+       pasteboardMargin = pasteboardMargin.isFinite && pasteboardMargin >= 0
+           ? pasteboardMargin
+           : defaultProjectPasteboardMargin,
        tracks = List.unmodifiable(tracks),
        exportOverrides = exportOverrides ?? ExportProjectOverrides.empty,
        cameraInstructions = cameraInstructions ?? CameraInstructionSet.standard,
@@ -103,6 +122,11 @@ class Project {
   /// project (R28 #9 reversed by the user, 2026-07-29 — the app-level
   /// value demoted to a new-project default).
   final int pasteboardArgb;
+
+  /// How far past each canvas edge the pasteboard SHOWS, in canvas widths
+  /// and heights — see [defaultProjectPasteboardMargin] for why this is a
+  /// separate number from the drawing bound.
+  final double pasteboardMargin;
 
   /// Sheet-header text (title/episode/artist) the timesheet document reads.
   final TimesheetInfo timesheetInfo;
@@ -158,6 +182,7 @@ class Project {
     ProjectBackground? background,
     int? backdropArgb,
     int? pasteboardArgb,
+    double? pasteboardMargin,
     TimesheetInfo? timesheetInfo,
     CameraInstructionSet? cameraInstructions,
     List<MediaAsset>? mediaAssets,
@@ -178,6 +203,7 @@ class Project {
       background: background ?? this.background,
       backdropArgb: backdropArgb ?? this.backdropArgb,
       pasteboardArgb: pasteboardArgb ?? this.pasteboardArgb,
+      pasteboardMargin: pasteboardMargin ?? this.pasteboardMargin,
       timesheetInfo: timesheetInfo ?? this.timesheetInfo,
       cameraInstructions: cameraInstructions ?? this.cameraInstructions,
       mediaAssets: mediaAssets ?? this.mediaAssets,
@@ -209,6 +235,8 @@ class Project {
       'backdropArgb': backdropArgb,
     if (pasteboardArgb != defaultProjectPasteboardArgb)
       'pasteboardArgb': pasteboardArgb,
+    if (pasteboardMargin != defaultProjectPasteboardMargin)
+      'pasteboardMargin': pasteboardMargin,
     'timesheetInfo': timesheetInfo.toJson(),
     'cameraInstructions': cameraInstructions.toJson(),
     'mediaAssets': mediaAssets.map((asset) => asset.toJson()).toList(),
@@ -256,6 +284,9 @@ class Project {
           : ProjectBackground.fromJson(
               json['background'] as Map<String, dynamic>,
             ),
+      pasteboardMargin:
+          (json['pasteboardMargin'] as num?)?.toDouble() ??
+          defaultProjectPasteboardMargin,
       backdropArgb:
           (json['backdropArgb'] as int?) ?? defaultProjectBackdropArgb,
       pasteboardArgb:

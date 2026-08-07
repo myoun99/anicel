@@ -311,6 +311,7 @@ class AppStrings {
   String get backgroundHelp => _s('backgroundHelp');
   String get stagePaperSection => _s('stagePaperSection');
   String get stagePasteboardSection => _s('stagePasteboardSection');
+  String get stagePasteboardExtent => _s('stagePasteboardExtent');
   String get stageBackdropSection => _s('stageBackdropSection');
   String get stageAlphaLabel => _s('stageAlphaLabel');
   String get menuAlphaPreview => _s('menuAlphaPreview');
@@ -969,9 +970,11 @@ class AppStrings {
         'The stage is four planes: backdrop, pasteboard, paper, pictures. '
         'Paper and pasteboard carry alpha — thinning them reveals the '
         'planes behind, on screen and in exports alike. The backdrop is '
-        'opaque: it is what fades reveal and what empty frames print.',
+        'opaque: it is what fades reveal, what empty frames print, and '
+        'what lies beyond the pasteboard on screen.',
     'stagePaperSection': 'Paper',
     'stagePasteboardSection': 'Pasteboard',
+    'stagePasteboardExtent': 'Shown out to (× canvas)',
     'stageBackdropSection': 'Backdrop',
     'stageAlphaLabel': 'Alpha',
     'menuAlphaPreview': 'Alpha preview',
@@ -1623,6 +1626,7 @@ class AppStrings {
     'backgroundCustom': 'カスタム',
     'stagePaperSection': '紙',
     'stagePasteboardSection': 'ペーストボード',
+    'stagePasteboardExtent': '表示範囲（キャンバス倍）',
     'stageBackdropSection': '背景',
     'stageAlphaLabel': '不透明度',
     'menuAlphaPreview': 'アルファプレビュー',
@@ -2315,6 +2319,7 @@ class AppStrings {
     'backgroundCustom': '사용자 지정',
     'stagePaperSection': '종이',
     'stagePasteboardSection': '페이스트보드',
+    'stagePasteboardExtent': '표시 범위 (캔버스 배수)',
     'stageBackdropSection': '배경',
     'stageAlphaLabel': '불투명도',
     'menuAlphaPreview': '알파 미리보기',
@@ -3015,6 +3020,7 @@ class AppStrings {
     'backgroundCustom': 'Personnalisé',
     'stagePaperSection': 'Papier',
     'stagePasteboardSection': 'Table de montage',
+    'stagePasteboardExtent': 'Affichée jusqu\'à (× canevas)',
     'stageBackdropSection': 'Fond',
     'stageAlphaLabel': 'Alpha',
     'menuAlphaPreview': 'Aperçu alpha',
@@ -3715,6 +3721,7 @@ class AppStrings {
     'backgroundCustom': '自定义',
     'stagePaperSection': '纸',
     'stagePasteboardSection': '粘贴板',
+    'stagePasteboardExtent': '显示范围（画布倍数）',
     'stageBackdropSection': '背景',
     'stageAlphaLabel': '不透明度',
     'menuAlphaPreview': '透明度预览',

@@ -28,6 +28,11 @@ class _ProjectBackgroundDialogState extends State<ProjectBackgroundDialog> {
   late double _paperAlpha;
   late final TextEditingController _pasteboardHexController;
   late double _pasteboardAlpha;
+
+  /// Where the pasteboard stops and the backdrop begins, in canvas widths
+  /// and heights past each edge. It is what makes the three planes three
+  /// PLACES rather than three layers of one wash.
+  late double _pasteboardMargin;
   late final TextEditingController _backdropHexController;
 
   @override
@@ -52,6 +57,7 @@ class _ProjectBackgroundDialogState extends State<ProjectBackgroundDialog> {
       text: _rgbText(project.pasteboardArgb),
     );
     _pasteboardAlpha = (project.pasteboardArgb >>> 24).toDouble();
+    _pasteboardMargin = project.pasteboardMargin;
     _backdropHexController = TextEditingController(
       text: _rgbText(project.backdropArgb),
     );
@@ -108,6 +114,9 @@ class _ProjectBackgroundDialogState extends State<ProjectBackgroundDialog> {
     final pasteboard = (_pasteboardAlpha.round() << 24) | pasteboardRgb;
     if (pasteboard != project.pasteboardArgb) {
       session.setPasteboardColor(pasteboard);
+    }
+    if (_pasteboardMargin != project.pasteboardMargin) {
+      session.setProjectPasteboardMargin(_pasteboardMargin);
     }
     final backdrop = 0xFF000000 | backdropRgb;
     if (backdrop != project.backdropArgb) {
@@ -286,6 +295,36 @@ class _ProjectBackgroundDialogState extends State<ProjectBackgroundDialog> {
               value: _pasteboardAlpha,
               onChanged: (next) => _pasteboardAlpha = next,
               key: const ValueKey<String>('background-pasteboard-alpha'),
+            ),
+            // WHERE the pasteboard stops. The drawing bound (two canvas
+            // sizes out, `PasteboardBounds`) is a separate promise about
+            // where ink may land and is not up for editing here; this only
+            // says where one colour ends and the next begins.
+            Row(
+              children: [
+                Text(
+                  strings.stagePasteboardExtent,
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                Expanded(
+                  child: Slider(
+                    key: const ValueKey<String>('background-pasteboard-extent'),
+                    value: _pasteboardMargin.clamp(0.0, 2.0),
+                    max: 2,
+                    divisions: 40,
+                    onChanged: (next) =>
+                        setState(() => _pasteboardMargin = next),
+                  ),
+                ),
+                SizedBox(
+                  width: 38,
+                  child: Text(
+                    '×${(1 + 2 * _pasteboardMargin).toStringAsFixed(1)}',
+                    textAlign: TextAlign.right,
+                    style: Theme.of(context).textTheme.bodySmall,
+                  ),
+                ),
+              ],
             ),
             _sectionHeader(strings.stageBackdropSection),
             _hexField(

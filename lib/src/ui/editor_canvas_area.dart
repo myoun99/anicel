@@ -534,6 +534,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               pasteboardColor: session.repository
                   .requireProject()
                   .pasteboardArgb,
+              pasteboardMargin: session.repository
+                  .requireProject()
+                  .pasteboardMargin,
               onPasteboardColorChanged: session.setPasteboardColor,
               backdropArgb: session.repository.requireProject().backdropArgb,
               onEyedropperPick: (color) => widget.onBrushToolStateChanged?.call(

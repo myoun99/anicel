@@ -980,6 +980,20 @@ class CutCommandCoordinator {
     );
   }
 
+  /// How far past the canvas the pasteboard SHOWS, in canvas widths and
+  /// heights. One undo step; no-op when unchanged.
+  void setProjectPasteboardMargin(double margin) {
+    if (repository.requireProject().pasteboardMargin == margin) {
+      return;
+    }
+    historyManager.execute(
+      UpdateProjectStageColorsCommand(
+        repository: repository,
+        pasteboardMargin: margin,
+      ),
+    );
+  }
+
   void setLayerTimesheet({
     required CutId cutId,
     required LayerId layerId,

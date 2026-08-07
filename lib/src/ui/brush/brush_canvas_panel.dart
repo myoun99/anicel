@@ -32,7 +32,8 @@ import '../canvas/selection_ants_painter.dart';
 import '../canvas/canvas_viewport_gesture_layer.dart';
 import '../canvas/flip_hud_controller.dart';
 import '../canvas/flip_hud_overlay.dart';
-import '../../models/project.dart' show defaultProjectBackdropArgb;
+import '../../models/project.dart'
+    show defaultProjectBackdropArgb, defaultProjectPasteboardMargin;
 import '../../models/project_background.dart';
 import '../canvas/paper_background.dart'
     show AlphaCheckerboardPainter, alphaPreviewEnabled;
@@ -119,6 +120,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.paperColor = ProjectBackground.defaultPaperArgb,
     this.onPaperColorChanged,
     this.pasteboardColor = AppWorkspaceColors.defaultPasteboardArgb,
+    this.pasteboardMargin = defaultProjectPasteboardMargin,
     this.onPasteboardColorChanged,
     this.backdropArgb = defaultProjectBackdropArgb,
     this.onTemporaryToolHold,
@@ -303,8 +305,13 @@ class BrushCanvasPanel extends StatefulWidget {
   final int pasteboardColor;
   final ValueChanged<int>? onPasteboardColorChanged;
 
+  /// How far past each canvas edge the pasteboard SHOWS, in canvas widths
+  /// and heights ([Project.pasteboardMargin]).
+  final double pasteboardMargin;
+
   /// The BACKDROP behind the pasteboard (R3b): the stage's opaque floor,
-  /// or the alpha checkerboard while the preview toggle is on.
+  /// or the alpha checkerboard while the preview toggle is on. It is what
+  /// lies BEYOND the pasteboard now, not merely under it.
   final int backdropArgb;
 
   /// A committed eyedropper pick (switches back to the painting tool).
@@ -959,15 +966,19 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                       // frames, camera overlay) may paint outside the panel.
                       child: ClipRect(
                         // The stage's outer planes (R3b): the BACKDROP
-                        // fills the panel and the PASTEBOARD rides on it,
-                        // RGBA and project data now (R28 #9 reversed) —
-                        // thinning it reveals the floor, on screen exactly
-                        // as in an export. The alpha-preview toggle swaps
-                        // BOTH for the checkerboard: an alpha export
-                        // excludes them, so the preview must too.
-                        child: _StageBackdrop(
+                        // fills the panel and the PASTEBOARD lies on it
+                        // where the pasteboard actually is, RGBA and
+                        // project data (R28 #9 reversed) — thinning it
+                        // reveals the floor, on screen exactly as in an
+                        // export. The alpha-preview toggle swaps BOTH for
+                        // the checkerboard: an alpha export excludes them,
+                        // so the preview must too.
+                        child: _StagePlanes(
                           backdropArgb: widget.backdropArgb,
                           pasteboardArgb: widget.pasteboardColor,
+                          pasteboardMargin: widget.pasteboardMargin,
+                          canvasSize: widget.canvasSize,
+                          viewport: _viewport,
                           // R27 #17: a passive census of where the pointer
                           // is — button-held moves included — so a cursor
                           // that arms mid-gesture knows where to appear.
@@ -3104,15 +3115,34 @@ class _ToolCursorIcon extends StatelessWidget {
 /// them, so the preview must too; only the paper's own alpha stays real).
 /// Subscribed here so every BrushCanvasPanel shell (canvas, timesheet,
 /// conte) follows the toggle without leaning on an ancestor rebuild.
-class _StageBackdrop extends StatelessWidget {
-  const _StageBackdrop({
+///
+/// ★THE PASTEBOARD IS A PLACE, NOT A WASH (유저, R2 #3). Both planes used
+/// to fill the whole panel, one over the other — which is a stack for
+/// ALPHA and says nothing about where either one is. An opaque pasteboard
+/// therefore covered the backdrop everywhere and forever: the user had
+/// three colours in the settings and could only ever see two of them, and
+/// changing the pasteboard repainted what they meant by "the background".
+/// The pasteboard is now drawn only where the pasteboard IS, and the
+/// backdrop is what lies beyond it.
+class _StagePlanes extends StatelessWidget {
+  const _StagePlanes({
     required this.backdropArgb,
     required this.pasteboardArgb,
+    required this.pasteboardMargin,
+    required this.canvasSize,
+    required this.viewport,
     required this.child,
   });
 
   final int backdropArgb;
   final int pasteboardArgb;
+
+  /// How far past each canvas edge the pasteboard SHOWS, in canvas widths
+  /// and heights. Its own number rather than the drawing bound's, because
+  /// the two answer different questions — see [Project.pasteboardMargin].
+  final double pasteboardMargin;
+  final CanvasSize canvasSize;
+  final CanvasViewport viewport;
   final Widget child;
 
   @override
@@ -3121,10 +3151,73 @@ class _StageBackdrop extends StatelessWidget {
       valueListenable: alphaPreviewEnabled,
       builder: (context, preview, _) => preview
           ? CustomPaint(painter: const AlphaCheckerboardPainter(), child: child)
-          : ColoredBox(
-              color: Color(backdropArgb),
-              child: ColoredBox(color: Color(pasteboardArgb), child: child),
+          : CustomPaint(
+              painter: _StagePlanesPainter(
+                backdrop: Color(backdropArgb),
+                pasteboard: Color(pasteboardArgb),
+                margin: pasteboardMargin,
+                canvasSize: canvasSize,
+                viewport: viewport,
+              ),
+              child: child,
             ),
     );
   }
+}
+
+/// Fills with the backdrop, then lays the pasteboard over the region it
+/// occupies — a canvas-space rectangle, so it rides zoom, pan, rotation
+/// and both flips like everything else on the stage.
+class _StagePlanesPainter extends CustomPainter {
+  const _StagePlanesPainter({
+    required this.backdrop,
+    required this.pasteboard,
+    required this.margin,
+    required this.canvasSize,
+    required this.viewport,
+  });
+
+  final Color backdrop;
+  final Color pasteboard;
+  final double margin;
+  final CanvasSize canvasSize;
+  final CanvasViewport viewport;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final box = Offset.zero & size;
+    canvas.drawRect(box, Paint()..color = backdrop);
+    if (pasteboard.a <= 0 || margin < 0) {
+      return;
+    }
+    final width = canvasSize.width.toDouble();
+    final height = canvasSize.height.toDouble();
+    final left = -margin * width;
+    final top = -margin * height;
+    final right = width + margin * width;
+    final bottom = height + margin * height;
+    // The four corners through the view transform, as a PATH: under
+    // rotation the pasteboard is a quad, and a Rect would silently square
+    // it back up.
+    Offset at(double x, double y) {
+      final point = viewport.canvasToViewport(CanvasPoint(x: x, y: y));
+      return Offset(point.x, point.y);
+    }
+
+    final path = Path()
+      ..moveTo(at(left, top).dx, at(left, top).dy)
+      ..lineTo(at(right, top).dx, at(right, top).dy)
+      ..lineTo(at(right, bottom).dx, at(right, bottom).dy)
+      ..lineTo(at(left, bottom).dx, at(left, bottom).dy)
+      ..close();
+    canvas.drawPath(path, Paint()..color = pasteboard);
+  }
+
+  @override
+  bool shouldRepaint(covariant _StagePlanesPainter oldDelegate) =>
+      oldDelegate.backdrop != backdrop ||
+      oldDelegate.pasteboard != pasteboard ||
+      oldDelegate.margin != margin ||
+      oldDelegate.canvasSize != canvasSize ||
+      oldDelegate.viewport != viewport;
 }

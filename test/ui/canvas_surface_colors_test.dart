@@ -1,5 +1,10 @@
+import 'dart:typed_data';
+import 'dart:ui' show ImageByteFormat;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
@@ -23,6 +28,77 @@ void main() {
       ProjectBackground.fromJson(const {}).argb,
       0xFFFFFFFF,
       reason: 'the JSON fallback reads the same constant',
+    );
+  });
+
+  testWidgets('R2 #3: the three stage colours are three PLACES — the '
+      'pasteboard stops, and the backdrop is what lies beyond it', (
+    tester,
+  ) async {
+    // Both planes used to fill the whole panel, one over the other. That
+    // is a stack for ALPHA and says nothing about WHERE either one is, so
+    // an opaque pasteboard hid the backdrop everywhere and forever: three
+    // colours in the settings, two of them ever visible, and changing the
+    // pasteboard repainted what the user meant by "the background".
+    await tester.binding.setSurfaceSize(const Size(900, 600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    const backdrop = 0xFF102030;
+    const pasteboard = 0xFF00A0FF;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: RepaintBoundary(
+            key: const ValueKey<String>('stage-capture'),
+            child: BrushCanvasPanel(
+              coordinator: BrushCanvasFixture.createCoordinator(
+                frameKeys: frameKeys,
+              ),
+              availableFrameKeys: frameKeys,
+              cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+              canvasSize: BrushCanvasFixture.canvasSize,
+              floorCover: EdgeInsets.zero,
+              backdropArgb: backdrop,
+              pasteboardColor: pasteboard,
+              // A quarter of a canvas out on every side, and zoomed out —
+              // so the panel shows the apron AND what lies beyond it,
+              // which is the whole point of the number.
+              pasteboardMargin: 0.25,
+              viewport: CanvasViewport(zoom: 0.05, panX: 450, panY: 300),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final boundary = tester.renderObject<RenderRepaintBoundary>(
+      find.byKey(const ValueKey<String>('stage-capture')),
+    );
+    final image = boundary.toImageSync();
+    late Uint8List bytes;
+    await tester.runAsync(() async {
+      final data = await image.toByteData(format: ImageByteFormat.rawRgba);
+      bytes = data!.buffer.asUint8List();
+    });
+    image.dispose();
+    int rgbAt(int x, int y) {
+      final i = (y * 900 + x) * 4;
+      return (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
+    }
+
+    // The corners of a 900×600 panel at 5% zoom are far outside a
+    // quarter-canvas apron — that is the BACKDROP, and it used to be
+    // unreachable because the pasteboard was painted over the whole box.
+    expect(rgbAt(2, 2), backdrop & 0xFFFFFF, reason: 'top-left corner');
+    expect(rgbAt(897, 597), backdrop & 0xFFFFFF, reason: 'bottom-right');
+    // Just outside the paper, still inside the apron: the PASTEBOARD.
+    expect(
+      rgbAt(450 - 12, 300 - 12),
+      pasteboard & 0xFFFFFF,
+      reason: 'the apron around the paper',
     );
   });
 

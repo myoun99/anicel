@@ -380,6 +380,14 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// How far past the canvas the pasteboard SHOWS, in canvas widths and
+  /// heights — where the pasteboard stops and the backdrop begins. One undo
+  /// step; no-op when unchanged.
+  void setProjectPasteboardMargin(double margin) {
+    _cutCommandCoordinator.setProjectPasteboardMargin(margin);
+    notifyListeners();
+  }
+
   // --- Input settings (UI-R22 #6) -------------------------------------------
 
   /// Injectable persistence; null (tests) keeps the in-memory defaults.
