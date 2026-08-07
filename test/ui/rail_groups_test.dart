@@ -255,6 +255,36 @@ void main() {
       );
     });
 
+    testWidgets('a panel\'s grips lie ON its own edges, inside its clip — '
+        'so the lit edge follows the silhouette', (tester) async {
+      // A 5px band cannot carry a 14px corner by itself; being inside the
+      // panel's ClipPath is what makes the hover read as the panel's edge
+      // lighting up rather than as a bar parked beside it (유저, R2 #11).
+      await pumpApp(tester);
+
+      final panel = tester.getRect(
+        find
+            .ancestor(
+              of: find.byType(BrushPresetPanel),
+              matching: find.byType(ClipPath),
+            )
+            .first,
+      );
+      final width = tester.getRect(
+        find.byKey(const ValueKey<String>('dock-resize-rail-L1')),
+      );
+      final height = tester.getRect(
+        find.byKey(const ValueKey<String>('dock-resize-rail-L1-height')),
+      );
+
+      // The width grip is the panel's inner edge; the height grip is its
+      // bottom edge. Both inside, neither beside.
+      expect(width.right, closeTo(panel.right, 0.5));
+      expect(width.left, greaterThanOrEqualTo(panel.left));
+      expect(height.bottom, closeTo(panel.bottom, 0.5));
+      expect(height.top, greaterThanOrEqualTo(panel.top));
+    });
+
     testWidgets('the canvas scrollbar keeps its place along the edge and '
         'steps IN when a rail opens', (tester) async {
       // Both halves matter. The bar used to ride the cover inset, so

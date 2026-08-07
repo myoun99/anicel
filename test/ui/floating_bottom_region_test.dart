@@ -124,11 +124,13 @@ void main() {
         reason: 'the threshold is against the window frame',
       );
       // The resize handle is on the OTHER edge — the one facing the
-      // artwork. Same law, read from the opposite side.
+      // artwork. Same law, read from the opposite side. It lies ON that
+      // edge, inside the region's own clip, so hovering it lights the
+      // panel's edge and the corners follow the silhouette (R2 #11).
       final splitter = tester.getRect(
         find.byKey(const ValueKey<String>('dock-resize-bottom')),
       );
-      expect(splitter.bottom, lessThanOrEqualTo(timeline.top + 0.5));
+      expect(splitter.top, closeTo(timeline.top, 0.5));
     });
 
     testWidgets('the side grips stop at it — the leading tab keeps its lift '
@@ -252,7 +254,7 @@ void main() {
       // TOP edge, facing the artwork), 정체성은 창틀 향한 변에 (the 문턱 is
       // on the bottom, against the frame).
       final low = regionRect();
-      expect(handle().bottom, lessThanOrEqualTo(low.top + 0.5));
+      expect(handle().top, closeTo(low.top, 0.5));
       expect(threshold().bottom, closeTo(low.bottom, 0.5));
       final canvas = tester.getRect(mainCanvasPanelShell());
       expect(low.bottom, closeTo(canvas.bottom, 0.5));
@@ -273,8 +275,8 @@ void main() {
       final high = regionRect();
       expect(high.top, closeTo(canvas.top, 0.5));
       expect(
-        handle().top,
-        greaterThanOrEqualTo(high.bottom - 0.5),
+        handle().bottom,
+        closeTo(high.bottom, 0.5),
         reason: 'the handle followed the artwork-facing edge',
       );
       expect(

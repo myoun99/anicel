@@ -10,16 +10,25 @@ import '../theme/app_theme.dart';
 /// host. [onDragDelta] receives the raw pointer delta along the splitter's
 /// axis; the owner applies the sign for which side grows.
 ///
-/// THE SPLITTER IS THE LINE. It keeps [thickness] as its HIT extent — a 1px
-/// target is not a target — but it paints nothing at rest and one hairline
-/// when the pointer is on it, climbing the same four-state ladder every grip
-/// in the app climbs (invisible -> hairlineStrong -> gripHover -> accent).
+/// THE SPLITTER IS THE PANEL'S OWN EDGE, LIT. It paints nothing at rest and
+/// fills its whole [thickness] when the pointer arrives, climbing the same
+/// four-state ladder every grip in the app climbs (invisible ->
+/// hairlineStrong -> gripHover -> accent).
+///
+/// ★It does NOT round itself. It is laid inside the panel's own ClipPath,
+/// so the panel's silhouette cuts the band's outer corners and the lit edge
+/// follows the curve exactly — which a shape of its own could never do,
+/// because a 5px-wide band cannot carry a 14px corner (유저, R2 #11: 패널의
+/// 옆부분을 형태그대로 색만 바꾸는 느낌). Whoever positions one is therefore
+/// responsible for putting it inside the clip.
 ///
 /// It used to paint an opaque [ColorScheme.surfaceContainerLow] band the
-/// whole time. That band is what covered the floating region's rounded
-/// corners and drew two grey bars down its sides, which is why the region
-/// read as square no matter how good its silhouette was: the shape was
-/// right and something opaque was parked on top of it.
+/// whole time, OUTSIDE the clip. That band is what covered the floating
+/// region's rounded corners and drew two grey bars down its sides, which is
+/// why the region read as square no matter how good its silhouette was: the
+/// shape was right and something opaque was parked on top of it. The
+/// hairline that replaced it was the other half of the mistake — a line is
+/// not an edge.
 class DockEdgeSplitter extends StatefulWidget {
   const DockEdgeSplitter({
     super.key,
@@ -40,11 +49,8 @@ class DockEdgeSplitter extends StatefulWidget {
 
   final String? tooltip;
 
-  /// The HIT extent. The painted extent is [lineExtent].
+  /// The hit extent, and the band's extent: they are the same thing now.
   static const double thickness = 5;
-
-  /// What is actually drawn, and only while the pointer is here.
-  static const double lineExtent = 1;
 
   @override
   State<DockEdgeSplitter> createState() => _DockEdgeSplitterState();
@@ -98,18 +104,7 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
         child: SizedBox(
           width: vertical ? DockEdgeSplitter.thickness : null,
           height: vertical ? null : DockEdgeSplitter.thickness,
-          child: Align(
-            alignment: Alignment.center,
-            child: ColoredBox(
-              color: _lineColor,
-              child: SizedBox(
-                width: vertical ? DockEdgeSplitter.lineExtent : double.infinity,
-                height: vertical
-                    ? double.infinity
-                    : DockEdgeSplitter.lineExtent,
-              ),
-            ),
-          ),
+          child: ColoredBox(color: _lineColor),
         ),
       ),
     );
