@@ -34,6 +34,8 @@ class DockEdgeSplitter extends StatefulWidget {
     super.key,
     required this.axis,
     required this.onDragDelta,
+    this.onDragStart,
+    this.onDragEnd,
     this.onDoubleTap,
     this.tooltip,
   });
@@ -42,6 +44,14 @@ class DockEdgeSplitter extends StatefulWidget {
   /// [Axis.horizontal] separates stacked ones (drag up-down).
   final Axis axis;
   final ValueChanged<double> onDragDelta;
+
+  /// The drag's BOUNDARIES, for owners that accumulate across it.
+  ///
+  /// [onDragDelta] alone cannot tell "a new drag" from "another frame of
+  /// the same one", and an owner that snaps its result to a detent has to
+  /// keep the un-snapped total somewhere or the snap eats the travel.
+  final VoidCallback? onDragStart;
+  final VoidCallback? onDragEnd;
 
   /// Double-click action, when the owner has a meaningful "back to the
   /// natural size" (the rails do; the docks do not).
@@ -75,6 +85,11 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
       return;
     }
     setState(() => _dragging = value);
+    if (value) {
+      widget.onDragStart?.call();
+    } else {
+      widget.onDragEnd?.call();
+    }
   }
 
   @override

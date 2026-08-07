@@ -1,5 +1,8 @@
 import 'package:flutter/widgets.dart';
 
+/// One rail column's vertical extent, in the floor's own coordinates.
+typedef CanvasFloorBand = ({double top, double bottom});
+
 /// How much of the canvas FLOOR is covered by the panels floating on it.
 ///
 /// The canvas is the app's bottom layer now: it fills everything but the top
@@ -28,54 +31,47 @@ class CanvasFloorInsets extends InheritedWidget {
   const CanvasFloorInsets({
     super.key,
     required this.insets,
+    this.leftRailBand,
+    this.rightRailBand,
     required super.child,
   });
 
   /// The edges of the floor covered by panels floating over it.
+  ///
+  /// A band that is only half covered still costs the whole edge here,
+  /// because framing cannot put half a picture behind a panel.
   final EdgeInsets insets;
+
+  /// WHERE the side columns actually are, vertically.
+  ///
+  /// A rail panel keeps the height it was left at, so an open rail covers a
+  /// band rather than an edge. Something deciding whether the rail is in the
+  /// way of one small floating control has to ask about the band: stepping
+  /// aside for the whole edge is what made the vertical scrollbar drift
+  /// inward beside a short panel that was nowhere near it (유저, R3 #5).
+  final CanvasFloorBand? leftRailBand;
+  final CanvasFloorBand? rightRailBand;
 
   /// The cover for the floor [context] sits on, or null when it is not the
   /// floor at all.
-  static EdgeInsets? maybeOf(BuildContext context) => context
-      .dependOnInheritedWidgetOfExactType<CanvasFloorInsets>()
-      ?.insets;
+  static CanvasFloorInsets? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<CanvasFloorInsets>();
 
   @override
   bool updateShouldNotify(CanvasFloorInsets oldWidget) =>
-      oldWidget.insets != insets;
+      oldWidget.insets != insets ||
+      oldWidget.leftRailBand != leftRailBand ||
+      oldWidget.rightRailBand != rightRailBand;
 }
 
-/// Which top corner a canvas panel's view pill takes: the one AWAY from the
-/// tool strip (유저, R2 #14).
-///
-/// The strip is where the hand already is, so the controls go to the far
-/// corner rather than under it — and it follows the strip's own left/right
-/// setting, which means the left-handed choice moves this too and neither
-/// has a rule of its own.
-///
-/// Inherited rather than threaded: EVERY canvas panel wants it (the floor,
-/// the timesheet, the conte, the envelope, the media viewer), the answer is
-/// the same for all of them, and it is a fact about the window rather than
-/// about any one panel. Threading it would have been five widgets' worth of
-/// pass-through parameters that could drift apart.
-class CanvasPillSide extends InheritedWidget {
-  const CanvasPillSide({
-    super.key,
-    required this.onRight,
-    required super.child,
-  });
+/// Whether [band] overlaps the vertical range [top]..[bottom].
+bool canvasFloorBandIntrudes(
+  CanvasFloorBand? band, {
+  required double top,
+  required double bottom,
+}) => band != null && band.bottom > top && band.top < bottom;
 
-  final bool onRight;
-
-  /// The app's default tool strip is on the LEFT, so its opposite corner —
-  /// and this widget's default — is the right one. A panel mounted with no
-  /// workspace above it gets the same answer the app gives, rather than a
-  /// second arrangement that only exists in isolation.
-  static bool of(BuildContext context) =>
-      context.dependOnInheritedWidgetOfExactType<CanvasPillSide>()?.onRight ??
-      true;
-
-  @override
-  bool updateShouldNotify(CanvasPillSide oldWidget) =>
-      oldWidget.onRight != onRight;
-}
+// ⛔`CanvasPillSide` is gone (유저, R3 #6). It answered "which top CORNER
+// does the pill take", and the answer is now neither: 알약은 상단중앙. A
+// centred pill needs no rule about which hand the strip is under, so the
+// InheritedWidget that carried the answer had nothing left to say.

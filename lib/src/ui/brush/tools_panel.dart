@@ -50,6 +50,24 @@ class ToolsPanel extends StatelessWidget {
   /// with the panel's own padding.
   static const double buttonExtent = 42;
 
+  /// The rule a strip puts between two clusters of buttons.
+  ///
+  /// Public because the strip has THREE clusters, not two: history, the
+  /// tools, and — below this panel entirely — the buttons that open panel
+  /// groups. The seam the workspace draws under the tools has to be the
+  /// same line as the one drawn under history, or the strip reads as one
+  /// divided list plus something else stuck on the end (유저, R3 #15).
+  static Widget groupDivider(BuildContext context) => Padding(
+    padding: const EdgeInsets.symmetric(vertical: 8),
+    child: Divider(
+      height: 1,
+      thickness: 1,
+      indent: 2,
+      endIndent: 2,
+      color: Theme.of(context).colorScheme.outlineVariant,
+    ),
+  );
+
   @override
   Widget build(BuildContext context) {
     // Left-aligned like a PS tool column: docked into a wide dock the
@@ -65,15 +83,7 @@ class ToolsPanel extends StatelessWidget {
         children: [
           if (historyControls != null) ...[
             historyControls!,
-            const SizedBox(height: 8),
-            Divider(
-              height: 1,
-              thickness: 1,
-              indent: 2,
-              endIndent: 2,
-              color: Theme.of(context).colorScheme.outlineVariant,
-            ),
-            const SizedBox(height: 8),
+            groupDivider(context),
           ],
           RailButton(
             keyValue: 'tool-brush-button',

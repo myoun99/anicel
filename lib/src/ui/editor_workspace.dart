@@ -50,6 +50,7 @@ import 'panels/panel_visibility_scope.dart';
 import 'panels/editor_panel_tabs.dart';
 import 'panels/workspace_layout_store.dart';
 import 'panels/workspace_panels_menu.dart';
+import 'widgets/app_scrollbar.dart';
 import 'keyed_keep_alive_stack.dart';
 import 'sliced_value_listenable_builder.dart';
 import 'conte/conte_fonts.dart';
@@ -257,12 +258,15 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// The factory-default arrangement (also the validation baseline when a
   /// saved layout is restored: it names every known tab and its home dock).
   ///
-  /// R26 #31 — the user's working arrangement: the TIMESHEET takes the
-  /// right vertical dock (a B4 sheet wants height, not a bottom strip),
-  /// the Tool Library keeps the top of the wide left dock and the Tool
-  /// SETTINGS get their own section under it (the two panels a stroke
-  /// alternates between, both open at once), and the frame-axis panels
-  /// keep the bottom.
+  /// 🆕유저 확정 (R3 #10) — ONE PANEL PER BUTTON except where the panels
+  /// are the same thing seen differently. The tool strip carries the tool
+  /// LIBRARY and, under it, the tool SETTINGS: two buttons, both open, the
+  /// two panels a stroke alternates between. The sub-strip carries the
+  /// colour swatch, then the three PAPER surfaces of one cut (타임시트 ·
+  /// 콘티 · 컷봉투) as one button, then the media browser, then the onion
+  /// settings. The floating region keeps the two TIME axes — the timeline
+  /// and the storyboard — because those are what a wide bottom strip is
+  /// shaped for.
   ///
   /// The sheet being VISIBLE by default is what makes this change cost a
   /// test round: it mounts its own ink views and cells, so any finder that
@@ -276,33 +280,19 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     EditorWorkspace.toolRightGroupId: null,
     // The rest of the rail pool: declared empty so the ids exist for a
     // restore, and so dragging a panel onto an empty slot has somewhere to
-    // put it. Slot 1 of each rail is spelled out below.
-    for (var slot = 2; slot <= EditorWorkspace.railSlots; slot += 1)
-      EditorWorkspace.railGroupId(right: false, slot: slot): null,
+    // put it. The filled slots are spelled out below.
     for (var slot = 3; slot <= EditorWorkspace.railSlots; slot += 1)
+      EditorWorkspace.railGroupId(right: false, slot: slot): null,
+    for (var slot = 5; slot <= EditorWorkspace.railSlots; slot += 1)
       EditorWorkspace.railGroupId(right: true, slot: slot): null,
+    // 도구띠: 툴라이브러리 버튼, 그 밑에 툴설정 버튼 (유저 확정, R3 #10).
+    // They used to be two tabs of one group, which made them one button
+    // and hid one behind the other.
     EditorWorkspace.leftGroupId: DockGroup(
-      tabs: [
-        EditorWorkspace.brushesTabId,
-        // The Color TAB retired (R9 #14): the wheel and the palette are
-        // the two tabs of the 「컬러 버튼창」 now, opened from the TOP
-        // STRIP's selected-colour swatch — the control the user actually
-        // reaches for, in the place they reach for it.
-        // The camera PANEL retired (R11-⑤): the canvas overlay handles
-        // pose editing, the timeline camera row its eye/opacity, and the
-        // AE clipboard copy moved to the Cut menu.
-        EditorWorkspace.mediaTabId,
-        // Trailing so the long-standing tab positions (and every test
-        // tapping them) stay put; the strip scrolls to reach it.
-        EditorWorkspace.onionSkinTabId,
-        // Tool settings is a TAB here, not a panel stacked under the
-        // others: a dock is one group and one icon strip. It used to be a
-        // second section, which is why the left rail rendered as two
-        // stacked panels with two strips and a splitter between them —
-        // pixel for pixel the old left palette dock the rails replaced.
-        EditorWorkspace.brushSettingsTabId,
-      ],
-      activeTabId: EditorWorkspace.brushesTabId,
+      tabs: [EditorWorkspace.brushesTabId],
+    ),
+    EditorWorkspace.railGroupId(right: false, slot: 2): DockGroup(
+      tabs: [EditorWorkspace.brushSettingsTabId],
     ),
     // 오른쪽: 컬러(맨 위) (유저 확정). The picker is the top group of the
     // sub-strip, and its button is the swatch itself.
@@ -315,8 +305,21 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         EditorWorkspace.colorPaletteTabId,
       ],
     ),
+    // 타임시트+콘티+컷봉투 한 버튼 — the three sheets that describe the same
+    // cut, read beside the drawing.
     EditorWorkspace.railGroupId(right: true, slot: 2): DockGroup(
-      tabs: [EditorWorkspace.timesheetTabId],
+      tabs: [
+        EditorWorkspace.timesheetTabId,
+        EditorWorkspace.conteTabId,
+        EditorWorkspace.envelopeTabId,
+      ],
+    ),
+    // 해당버튼 밑에 미디어브라우저, 미디어브라우저밑에 어니언스킨.
+    EditorWorkspace.railGroupId(right: true, slot: 3): DockGroup(
+      tabs: [EditorWorkspace.mediaTabId],
+    ),
+    EditorWorkspace.railGroupId(right: true, slot: 4): DockGroup(
+      tabs: [EditorWorkspace.onionSkinTabId],
     ),
     // THE FLOOR (유저 확정): the bottom layer everything else is drawn on.
     // The canvas and the media viewer are the two panels that can be it —
@@ -328,14 +331,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       tabs: [EditorWorkspace.canvasTabId, EditorWorkspace.mediaViewerTabId],
       activeTabId: EditorWorkspace.canvasTabId,
     ),
+    // The floating region keeps the TIME axes only (유저 확정, R3 #10):
+    // the paper sheets moved to the sub-strip, where a tall narrow column
+    // suits a page better than a wide short one.
     EditorWorkspace.bottomGroupId: DockGroup(
       tabs: [
         EditorWorkspace.timelineTabId,
         EditorWorkspace.storyboardTabId,
-        EditorWorkspace.conteTabId,
-        // The 컷봉투 joins its paper family: one sheet per cut (the 겸용
-        // siblings share it), read beside the conte it describes.
-        EditorWorkspace.envelopeTabId,
       ],
       activeTabId: EditorWorkspace.timelineTabId,
     ),
@@ -360,7 +362,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   Set<String> _openRails = _defaultOpenRails();
 
   static Set<String> _defaultOpenRails() => {
+    // The tool library and the tool settings are the pair a stroke
+    // alternates between, so both open — they are two buttons now rather
+    // than two tabs of one, and only opening one of them would hide the
+    // other behind a click that used to cost nothing.
     EditorWorkspace.leftGroupId,
+    EditorWorkspace.railGroupId(right: false, slot: 2),
     EditorWorkspace.railGroupId(right: true, slot: 2),
   };
 
@@ -1040,8 +1047,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       _openRails = _defaultOpenRails();
       _bottomDockCollapsed = false;
       _regionOnTop = false;
-      _bottomInset = 0;
     });
+    // Back to "nobody has said", which is the 2/3 default — not to 0,
+    // which is now an arrangement rather than the absence of one.
+    _bottomInsetOverride.value = null;
     _mutatingLayout(() {
       _layout.restore(docks: _defaultDocks());
     });
@@ -1148,7 +1157,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       _regionOnTop = payload['regionOnTop'] == true;
       final savedInset = payload['bottomInset'];
       if (savedInset is num && savedInset.isFinite && savedInset >= 0) {
-        _bottomInset = savedInset.toDouble();
+        _bottomInsetOverride.value = savedInset.toDouble();
       }
       if (openRails is List) {
         // Filtered against the POOL, not taken on trust: a file written by
@@ -1203,7 +1212,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               // the version makes that build throw the whole arrangement
               // away (there is no migration code, only a version check).
               'bottomCollapsed': _bottomDockCollapsed,
-              'bottomInset': _bottomInset,
+              // ABSENT while the default is in force, the same rule the
+              // rail extents follow: writing today's resolved pixels would
+              // pin tomorrow's window to this one's width.
+              if (_bottomInsetOverride.value != null)
+                'bottomInset': _bottomInsetOverride.value,
               'openRails': _openRails.toList(),
               'regionOnTop': _regionOnTop,
             })
@@ -1238,6 +1251,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _hiddenTimelineSections.dispose();
     _collapsedAttachBaseIds.dispose();
     _timelineRowFilter.dispose();
+    _bottomInsetOverride.dispose();
+    for (final controller in _railScrollControllers.values) {
+      controller.dispose();
+    }
     _panelFlash.dispose();
     _timesheetContinuous.dispose();
     _timesheetPage.dispose();
@@ -1499,7 +1516,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         return EditorPanelTab(
           id: tabId,
           label: AppText.strings.panelToolLibrary,
-          icon: Icons.brush_outlined,
+          // ⛔NOT the brush glyph (유저, R3 #7). The tool strip's own brush
+          // button already wears it two rows above, so the rail read as
+          // having the brush twice — and this panel is not the brush, it is
+          // the SET you pick one out of.
+          icon: Icons.widgets_outlined,
           locked: locked,
           // Sliced (R18 UI-1) + per-tool keep-alive (R18 UI-4): the
           // library follows the active tool and that tool's remembered
@@ -1727,7 +1748,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           // The legacy mode-toggle keys stay on the tab buttons so every
           // existing flow (and test helper) keeps working.
           buttonKey: const ValueKey<String>('timeline-mode-timeline-button'),
-          minContentWidth: EditorWorkspace._frameAxisMinContentWidth,
+          minContentWidth: _minContentWidthFor(tabId),
           minContentHeight: _minContentHeightFor(tabId),
           locked: locked,
           // The heavy frame-axis panels keep their subtree offstage
@@ -1797,7 +1818,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           label: 'Storyboard',
           icon: Icons.movie_outlined,
           buttonKey: const ValueKey<String>('timeline-mode-storyboard-button'),
-          minContentWidth: EditorWorkspace._frameAxisMinContentWidth,
+          minContentWidth: _minContentWidthFor(tabId),
           minContentHeight: _minContentHeightFor(tabId),
           locked: locked,
           keepAlive: true,
@@ -1848,7 +1869,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           label: 'Conte',
           icon: Icons.grid_on_outlined,
           buttonKey: const ValueKey<String>('timeline-mode-conte-button'),
-          minContentWidth: EditorWorkspace._frameAxisMinContentWidth,
+          minContentWidth: _minContentWidthFor(tabId),
           minContentHeight: _minContentHeightFor(tabId),
           locked: locked,
           keepAlive: true,
@@ -1893,7 +1914,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           label: 'Envelope',
           icon: Icons.mail_outline,
           buttonKey: const ValueKey<String>('timeline-mode-envelope-button'),
-          minContentWidth: EditorWorkspace._frameAxisMinContentWidth,
+          minContentWidth: _minContentWidthFor(tabId),
           minContentHeight: _minContentHeightFor(tabId),
           locked: locked,
           keepAlive: true,
@@ -2131,11 +2152,24 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                     _tabFor(_layout.tabsIn(dockId).first).builder(context),
               ),
             ),
+          // 도구툴그룹밑에도 (유저, R3 #15). The tool column already ends its
+          // history cluster with one of these; the panel buttons under it
+          // are a third kind of thing and were the only seam on the strip
+          // with nothing marking it.
+          if (hasTools && (groups.isNotEmpty || emptySlot != null))
+            _stripDivider(context),
           _buildRailButtons(right: right, groups: groups, emptySlot: emptySlot),
         ],
       ),
     );
   }
+
+  /// The rule between the tool column and the panel buttons under it,
+  /// indented to the same left edge the buttons on both sides of it use.
+  Widget _stripDivider(BuildContext context) => Padding(
+    padding: const EdgeInsets.only(left: 3),
+    child: ToolsPanel.groupDivider(context),
+  );
 
   /// The rail's group buttons.
   ///
@@ -2268,6 +2302,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   ///
   /// [width] is the extent AFTER the workspace clamped both rails to what
   /// the window can actually spare.
+  /// One scroller per rail, keyed by which rail it is. They exist whether
+  /// or not the rail is currently overflowing — attaching is the scroll
+  /// view's business, and the bar reads dimensions off the position.
+  final Map<bool, ScrollController> _railScrollControllers = {
+    false: ScrollController(),
+    true: ScrollController(),
+  };
+
   /// The pasteboard a rail leaves between two open groups, above the first
   /// one, and between the strip and all of them.
   ///
@@ -2293,7 +2335,49 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     return railExtent.isFinite ? math.min(wanted, railExtent) : wanted;
   }
 
-  Widget _buildRailColumn(EditorPanelDockSide side, {required double width}) {
+  /// The panel HOSTS of one rail, built once per workspace build and handed
+  /// to [_buildRailColumn] rather than built inside it.
+  ///
+  /// ★A host does not depend on any extent — only on WHAT is docked — so
+  /// building it inside the extent builder made every splitter frame
+  /// rebuild every open panel on both rails. Hoisting it means the element
+  /// tree sees the identical widget instance and skips the subtree
+  /// wholesale, exactly the way the floor rides through as a `child:`.
+  Map<String, Widget> _railHosts({required bool right}) => {
+    for (final id in _openRailGroups(right: right)) id: _buildDockHost(id),
+  };
+
+  /// The VERTICAL band one rail's column actually occupies, in the floor's
+  /// own coordinates — or null when that rail has nothing open.
+  ///
+  /// A rail panel keeps the height it was left at, so an open rail covers a
+  /// band and not a whole edge. Anything deciding whether it is IN THE WAY
+  /// has to compare against this rather than against the width alone.
+  ({double top, double bottom})? _railBand({
+    required bool right,
+    required double stop,
+    required bool onTop,
+    required double height,
+  }) {
+    final open = _openRailGroups(right: right);
+    if (open.isEmpty) {
+      return null;
+    }
+    final top = (onTop ? stop : 0) + _railGroupGap;
+    final available = math.max(0.0, height - top - (onTop ? 0 : stop));
+    var content = 0.0;
+    for (final id in open) {
+      content += _railGroupHeight(id, available) + _railGroupGap;
+    }
+    content -= _railGroupGap;
+    return (top: top, bottom: top + math.min(content, available));
+  }
+
+  Widget _buildRailColumn(
+    EditorPanelDockSide side, {
+    required double width,
+    required Map<String, Widget> hosts,
+  }) {
     final right = side == EditorPanelDockSide.right;
     final open = _openRailGroups(right: right);
     if (open.isEmpty) {
@@ -2311,9 +2395,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     // NO fill and NO border. A rail is not a container of panels, it is a
     // place panels float beside; anything painted here puts them back in a
     // box and undoes every rounded corner inside it.
+    //
+    // The box spans the GAP as well as the panels: that strip of pasteboard
+    // between the strip and the panels is where the rail's own scrollbar
+    // rides (유저, R3 #12), so it has to be inside something that knows
+    // whether the rail is scrolling.
     return SizedBox(
       key: ValueKey<String>('editor-panel-dock-${right ? 'right' : 'left'}'),
-      width: width,
+      width: width + _railGroupGap,
       child: LayoutBuilder(
         builder: (context, constraints) {
           final colorScheme = Theme.of(context).colorScheme;
@@ -2353,7 +2442,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                           AppShapes.floatingPanelRadius,
                         ),
                       ),
-                      child: _buildDockHost(railId),
+                      child: hosts[railId] ?? const SizedBox.shrink(),
                     ),
                   ),
                   // The WIDTH grip, on this panel's inner edge — the edge
@@ -2428,17 +2517,68 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             height: content,
             child: Stack(clipBehavior: Clip.none, children: children),
           );
+          // The panels themselves keep their own width; the gap beside them
+          // is the rail's, and belongs to the strip side.
+          Widget inGap(Widget child) => Padding(
+            padding: EdgeInsets.only(
+              left: right ? 0 : _railGroupGap,
+              right: right ? _railGroupGap : 0,
+            ),
+            child: child,
+          );
           // 넘칠 때만 (유저 확정). A rail that scrolls hands vertical drags
           // to the scroll arena before the panel tabs see them, so it may
           // not scroll a moment sooner than it has to.
           if (!railExtent.isFinite || content <= railExtent) {
-            return Align(alignment: Alignment.topCenter, child: column);
+            return inGap(
+              Align(alignment: Alignment.topCenter, child: column),
+            );
           }
-          return SingleChildScrollView(
-            key: ValueKey<String>(
-              'rail-scroll-${right ? 'right' : 'left'}',
-            ),
-            child: column,
+          final controller = _railScrollControllers[right]!;
+          return Stack(
+            children: [
+              Positioned.fill(
+                // ⛔NOT the Material scrollbar. The framework's desktop
+                // behaviour puts one on every vertical scrollable, and that
+                // one fades out and FATTENS under the pointer — both of
+                // which the app's own bar was written not to do (유저: 어떤
+                // 레일이든 눌렀다고 크기가 바뀌지 않는다).
+                child: inGap(
+                  ScrollConfiguration(
+                    behavior: ScrollConfiguration.of(
+                      context,
+                    ).copyWith(scrollbars: false),
+                    child: SingleChildScrollView(
+                      key: ValueKey<String>(
+                        'rail-scroll-${right ? 'right' : 'left'}',
+                      ),
+                      controller: controller,
+                      child: column,
+                    ),
+                  ),
+                ),
+              ),
+              // 띠랑 패널 사이공간에 (유저, R3 #12). The bar rides the gap
+              // between the strip and the panels rather than the panels'
+              // far edge, where it lay on whatever the panel had there and
+              // pointed away from the strip it belongs to. The lane IS the
+              // gap — narrower than the app's other lanes, and it can be,
+              // because nothing else is within reach of it to mis-hit.
+              Positioned(
+                left: right ? null : 0,
+                right: right ? 0 : null,
+                top: 0,
+                bottom: 0,
+                width: _railGroupGap,
+                child: AppControllerScrollbar(
+                  controller: controller,
+                  axis: Axis.vertical,
+                  thumbKey: ValueKey<String>(
+                    'rail-scroll-thumb-${right ? 'right' : 'left'}',
+                  ),
+                ),
+              ),
+            ],
           );
         },
       ),
@@ -2461,6 +2601,22 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// dock. The shell's scroller is left as the guard for what neither can
   /// reach: an unbounded parent, or a dock too small to pay every section's
   /// floor at once.
+  /// The WIDTH a frame-axis panel insists on, or null for one that has no
+  /// opinion.
+  ///
+  /// 🐛유저, R3 #11: the conte and the envelope had one, and they should
+  /// not. A panel narrower than its minimum renders at the minimum inside a
+  /// horizontal scroller, so in a 260px rail the page laid out 640 wide and
+  /// everything pinned to its right edge went off the end — the vertical
+  /// panbar vanished outright and the horizontal one lost its tail. That is
+  /// correct for a sheet made of COLUMNS, where scrolling sideways is what
+  /// helps; it is wrong for a page that scales, which has no column to
+  /// protect and a Fit button to answer with instead.
+  double? _minContentWidthFor(String tabId) => switch (tabId) {
+    EditorWorkspace.conteTabId || EditorWorkspace.envelopeTabId => null,
+    _ => EditorWorkspace._frameAxisMinContentWidth,
+  };
+
   double? _minContentHeightFor(String tabId) => switch (tabId) {
     // NOT one number for this tab: the x-sheet is the timeline toggled on
     // its side, and standing the rail up spends the panel's HEIGHT on what
@@ -2529,13 +2685,48 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   bool _bottomDockCollapsed = false;
 
-  /// How far the floating region is pulled in from BOTH side edges.
+  /// How far the floating region is pulled in from BOTH side edges, once
+  /// somebody has SAID how far. Null means nobody has, and the default
+  /// below answers instead.
   ///
   /// One number, not two: 아래 패널은 좌우 대칭 축소 (유저 확정). And the
   /// centre it stays on is the WINDOW's, never the visible canvas's —
   /// otherwise opening a rail column would slide the timeline sideways
   /// under the hand that opened it.
-  double _bottomInset = 0;
+  /// A NOTIFIER and not a field: this is a size, and sizes ride the thin
+  /// signal ([EditorPanelLayoutModel.extentRevision] is the other one) so a
+  /// drag frame relays the workspace out without rebuilding the canvas and
+  /// every open panel. Behind `setState` this grip was the last one still
+  /// paying for a full rebuild per frame.
+  final ValueNotifier<double?> _bottomInsetOverride = ValueNotifier<double?>(
+    null,
+  );
+
+  /// The UN-detented value a side drag is accumulating.
+  ///
+  /// 🐛Without it the detent ate the drag: every frame added its few pixels
+  /// to the SNAPPED value, landed back inside the detent window and snapped
+  /// again, so once the edge touched the rail's width a slow drag could
+  /// never leave it — "커서가 움직이는것보다 적게 움직임". The magnet is
+  /// supposed to hold the RESULT, not to swallow the travel.
+  double? _bottomInsetDragRaw;
+
+  /// 하단 패널은 화면의 2/3정도 (유저 확정, R3 #10).
+  ///
+  /// A FRACTION rather than a stored pixel count, because the default has
+  /// to mean the same thing on every window: a saved 300px inset is a
+  /// third of a 1800px window and the whole of a 640px one. The moment the
+  /// user drags an edge the answer becomes theirs ([_bottomInsetOverride])
+  /// and stops following the window.
+  static const double _defaultBottomRegionWidthFraction = 2 / 3;
+
+  /// The inset in force for a window this wide.
+  double _bottomInsetFor(double windowWidth) =>
+      _bottomInsetOverride.value ??
+      math.max(
+        0.0,
+        windowWidth * (1 - _defaultBottomRegionWidthFraction) / 2,
+      );
 
   /// Which edge the floating region is docked to.
   ///
@@ -2608,13 +2799,35 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// means it takes pointers over its whole rectangle, which is why the
   /// clip is not decoration: without it the four corners the silhouette cut
   /// away would still eat strokes aimed at the canvas behind them.
+  /// The floating region's PANELS — the heavy part, and the part that does
+  /// not depend on a single extent.
+  ///
+  /// Built above the extent builder and handed in, so pulling the region's
+  /// edge re-lays the timeline out without rebuilding it (see the note where
+  /// it is built).
+  Widget _buildBottomDockContent({required bool onTop}) => _buildDockHost(
+    EditorWorkspace.bottomGroupId,
+    // 이름 없이 아이콘만 (유저 확정) — the 문턱 says WHICH panel with a
+    // glyph and a tooltip. The tab's label is still its only accessibility
+    // name, so the names move into the tooltip rather than out of
+    // existence.
+    compact: true,
+    // 정체성은 창틀 향한 변에: the 문턱 rides the edge against the window
+    // frame, which is the far side from the artwork — so it flips with the
+    // region out of the same law that moved the resize handle.
+    stripAtBottom: !onTop,
+    trailing: [_bottomCollapseButton(onTop: onTop)],
+  );
+
   Widget _buildBottomDock({
     required double availableExtent,
+    required Widget? content,
     bool inset = false,
     bool onTop = false,
     List<Widget> grips = const [],
   }) {
-    if (_layout.tabsIn(EditorWorkspace.bottomGroupId).isEmpty) {
+    if (content == null ||
+        _layout.tabsIn(EditorWorkspace.bottomGroupId).isEmpty) {
       return _emptyDockZone(EditorWorkspace.bottomGroupId, Axis.horizontal);
     }
     return DecoratedBox(
@@ -2644,22 +2857,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         // grip read as the panel's own edge.
         child: Stack(
           children: [
-            Positioned.fill(
-              child: _buildDockHost(
-                EditorWorkspace.bottomGroupId,
-                // 이름 없이 아이콘만 (유저 확정) — the 문턱 says WHICH panel
-                // with a glyph and a tooltip. The tab's label is still its
-                // only accessibility name, so it moves into the tooltip
-                // rather than out of existence.
-                compact: true,
-                // 정체성은 창틀 향한 변에: the 문턱 rides the edge against
-                // the window frame, which is the far side from the artwork
-                // — so it flips with the region out of the same law that
-                // moved the resize handle.
-                stripAtBottom: !onTop,
-                trailing: [_bottomCollapseButton(onTop: onTop)],
-              ),
-            ),
+            Positioned.fill(child: content),
             ...grips,
           ],
         ),
@@ -2735,15 +2933,22 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         key: ValueKey<String>('bottom-inset-${right ? 'right' : 'left'}'),
         axis: Axis.vertical,
         tooltip: AppText.strings.panelRegionWidth,
+        // Back to the DEFAULT width, not to zero: the natural size of this
+        // region is now 「화면의 2/3」 rather than "the whole window".
         onDoubleTap: () {
-          setState(() => _bottomInset = 0);
+          _bottomInsetOverride.value = null;
           _scheduleLayoutSave();
         },
+        onDragStart: () => _bottomInsetDragRaw = inset,
+        onDragEnd: () => _bottomInsetDragRaw = null,
         onDragDelta: (delta) {
           // Pulling the LEFT edge right and the RIGHT edge left both grow
           // the inset, which is what "symmetric" means from the hand's side.
-          final next = (inset + (right ? -delta : delta)).clamp(0.0, maxInset);
-          setState(() => _bottomInset = _detented(next, railSpan));
+          final raw = ((_bottomInsetDragRaw ?? inset) + (right ? -delta : delta))
+              .clamp(0.0, maxInset)
+              .toDouble();
+          _bottomInsetDragRaw = raw;
+          _bottomInsetOverride.value = _detented(raw, railSpan);
           _scheduleLayoutSave();
         },
       ),
@@ -2888,15 +3093,18 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         final hasBottomDock = _layout
             .tabsIn(EditorWorkspace.bottomGroupId)
             .isNotEmpty;
-        // 유저 R2 #14: every canvas panel puts its pill in the corner AWAY
-        // from the tool strip — the strip is where the hand already is.
-        // Published once here because it is a fact about the WINDOW, and
-        // every canvas surface in it wants the same answer.
-        return CanvasPillSide(
-          onRight: _layout
-              .tabsIn(EditorWorkspace.toolLeftGroupId)
-              .isNotEmpty,
-          child: Row(
+        // ★EVERY HEAVY SUBTREE IS BUILT HERE, above the extent builder, and
+        // merely REFERENCED inside it. An element whose new widget is the
+        // identical instance is reused without rebuilding, so a splitter
+        // drag re-lays these out and never rebuilds them — the same
+        // mechanism the floor's `child:` uses, applied to the two things
+        // that were still paying full price per drag frame.
+        final leftRailHosts = _railHosts(right: false);
+        final rightRailHosts = _railHosts(right: true);
+        final bottomContent = hasBottomDock
+            ? _buildBottomDockContent(onTop: _regionOnTop)
+            : null;
+        return Row(
           children: [
             // The two tool strips are the only things that take space from
             // the canvas. Everything else LIES ON IT.
@@ -2918,10 +3126,19 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                     // took. It does not depend on any extent — the cover it
                     // needs reaches it through an InheritedWidget, which
                     // notifies without rebuilding anything between.
-                    ValueListenableBuilder<int>(
-                      valueListenable: _layout.extentRevision,
+                    ListenableBuilder(
+                      // The region's own INSET rides here too. It used to be
+                      // a plain field behind setState, so pulling the
+                      // floating region's side in rebuilt the entire
+                      // workspace — canvas included — once per drag frame,
+                      // which is why that grip stayed heavy after the
+                      // splitter one was fixed.
+                      listenable: Listenable.merge([
+                        _layout.extentRevision,
+                        _bottomInsetOverride,
+                      ]),
                       child: _buildCenterDock(),
-                      builder: (context, _, floor) {
+                      builder: (context, floor) {
                         // The side docks keep their saved extents but may never
                         // squeeze the canvas out: scale both down proportionally
                         // when the window can't fit them.
@@ -2960,7 +3177,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                         // Symmetric, and clamped against the WINDOW: the region
                         // may narrow until it is a panel rather than a bar, and
                         // no further.
-                        final bottomInset = _bottomInset
+                        final bottomInset = _bottomInsetFor(constraints.maxWidth)
                             .clamp(
                               0.0,
                               math.max(
@@ -3012,6 +3229,24 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                             Positioned.fill(
                               child: CanvasFloorInsets(
                                 insets: floorCover,
+                                // WHERE each column actually is, not just how
+                                // wide it is. A rail panel is as tall as it was
+                                // left at, so a short one covers a band and not
+                                // an edge — and the scrollbar that stepped
+                                // aside for the whole edge read as floating for
+                                // no reason (유저, R3 #5).
+                                leftRailBand: _railBand(
+                                  right: false,
+                                  stop: leftStop,
+                                  onTop: onTop,
+                                  height: constraints.maxHeight,
+                                ),
+                                rightRailBand: _railBand(
+                                  right: true,
+                                  stop: rightStop,
+                                  onTop: onTop,
+                                  height: constraints.maxHeight,
+                                ),
                                 child: floor!,
                               ),
                             ),
@@ -3023,23 +3258,31 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                             // Their width grips ride their own inner edges
                             // inside the column.
                             Positioned(
-                              left: hasLeftDock ? _railGroupGap : 0,
+                              left: 0,
                               top: (onTop ? leftStop : 0) + _railGroupGap,
                               bottom: onTop ? 0 : leftStop,
-                              width: hasLeftDock ? leftWidth : null,
+                              // The gap is INSIDE the column's box now: the
+                              // rail's own scrollbar rides it.
+                              width: hasLeftDock
+                                  ? leftWidth + _railGroupGap
+                                  : null,
                               child: _buildRailColumn(
                                 EditorPanelDockSide.left,
                                 width: leftWidth,
+                                hosts: leftRailHosts,
                               ),
                             ),
                             Positioned(
-                              right: hasRightDock ? _railGroupGap : 0,
+                              right: 0,
                               top: (onTop ? rightStop : 0) + _railGroupGap,
                               bottom: onTop ? 0 : rightStop,
-                              width: hasRightDock ? rightWidth : null,
+                              width: hasRightDock
+                                  ? rightWidth + _railGroupGap
+                                  : null,
                               child: _buildRailColumn(
                                 EditorPanelDockSide.right,
                                 width: rightWidth,
+                                hosts: rightRailHosts,
                               ),
                             ),
                             Positioned(
@@ -3050,6 +3293,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                               height: hasBottomDock ? bottomHeight : null,
                               child: _buildBottomDock(
                                 availableExtent: constraints.maxHeight,
+                                content: bottomContent,
                                 inset: bottomInset > 0,
                                 onTop: onTop,
                                 // Every grip the region has, laid on its own
@@ -3172,7 +3416,6 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               EditorPanelDockSide.right,
             ),
           ],
-          ),
         );
       },
     );
