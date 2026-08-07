@@ -187,6 +187,28 @@ void main() {
     );
   });
 
+  testWidgets('the X-sheet drags its COLUMNS the same way, along its own '
+      'axis', (tester) async {
+    await _pump(tester);
+    final session = _sessionOf(tester);
+    await tester.tap(
+      find.byKey(const ValueKey<String>('timeline-orientation-toggle-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(_order(session), ['a', 'b', 'c']);
+
+    // The sheet lists the stack RAW, so 'a' is the LEFTMOST column and
+    // rightward is toward 'b'. One column width commits one step.
+    final header = find.byKey(const ValueKey<String>('xsheet-layer-header-a'));
+    await tester.ensureVisible(header);
+    await tester.pumpAndSettle();
+    final width = tester.getSize(header).width;
+    await tester.drag(header, Offset(width, 0));
+    await tester.pumpAndSettle();
+
+    expect(_order(session), ['b', 'a', 'c']);
+  });
+
   testWidgets('the drag is one undo', (tester) async {
     await _pump(tester);
     final session = _sessionOf(tester);

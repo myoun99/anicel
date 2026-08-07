@@ -25,6 +25,8 @@ import '../../models/layer_effect.dart' show EffectId;
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import 'effect_lane_policy.dart' show parseEffectLaneId;
+import 'property_lane_model.dart' show TimelineDisplayRow;
 import 'timeline_section_policy.dart';
 
 /// A legal landing: the cut's new stack order, and the rows whose folder
@@ -202,6 +204,65 @@ LayerDropPlan? resolveLayerDrop({
     folderIds: folderIds,
     joinedFolderId: joinedFolderId,
   );
+}
+
+/// The gap [steps] away from the item at [index].
+///
+/// An item occupies the gaps [index] and `index + 1` and NEITHER is a move,
+/// so a step down has to clear the second one. That asymmetry is the whole
+/// reason this is a named function: stated inline as `index + steps` it
+/// reads correct and silently refuses every downward drag.
+int slotForSteps(int index, int steps, int count) {
+  final slot = steps > 0 ? index + 1 + steps : index + steps;
+  return slot.clamp(0, count);
+}
+
+/// The rail rows that are fx GROUP headers of [layerId], in display order,
+/// with the row index each sits at.
+///
+/// The chain's slots are counted in THESE while the pointer's travel is
+/// counted in rail rows, and the two differ exactly when a chain is twirled
+/// open — which is when someone is most likely to be re-ordering it.
+List<({int rowIndex, EffectId effectId})> effectHeaderRowsOf(
+  List<TimelineDisplayRow> rows,
+  LayerId layerId,
+) {
+  final headers = <({int rowIndex, EffectId effectId})>[];
+  for (var index = 0; index < rows.length; index += 1) {
+    final row = rows[index];
+    final lane = row.lane;
+    if (lane == null || !lane.isGroupHeader || row.layer.id != layerId) {
+      continue;
+    }
+    final parsed = parseEffectLaneId(lane.laneId);
+    if (parsed != null && parsed.parameterId == null) {
+      headers.add((rowIndex: index, effectId: parsed.effectId));
+    }
+  }
+  return headers;
+}
+
+/// How many HEADERS a travel of [rowSteps] rail rows from [fromRowIndex]
+/// passes.
+int effectStepsBetween(
+  List<({int rowIndex, EffectId effectId})> headers,
+  int fromRowIndex,
+  int rowSteps,
+) {
+  final targetRow = fromRowIndex + rowSteps;
+  var steps = 0;
+  for (final header in headers) {
+    if (rowSteps > 0 &&
+        header.rowIndex > fromRowIndex &&
+        header.rowIndex <= targetRow) {
+      steps += 1;
+    } else if (rowSteps < 0 &&
+        header.rowIndex < fromRowIndex &&
+        header.rowIndex >= targetRow) {
+      steps -= 1;
+    }
+  }
+  return steps;
 }
 
 /// One layer's effect chain after a header drag, in MODEL order — or null

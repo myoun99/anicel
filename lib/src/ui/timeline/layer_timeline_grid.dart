@@ -17,8 +17,9 @@ import '../../models/timeline_row_address.dart';
 import 'timeline_row_cross_offset.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import 'timeline_row_span_resolver.dart' show resolveSelectionSpanHead;
-import '../../models/layer_effect.dart' show EffectId;
 import 'effect_lane_policy.dart' show parseEffectLaneId;
+import 'layer_drop_policy.dart'
+    show effectHeaderRowsOf, effectStepsBetween, slotForSteps;
 import 'layer_row_drag.dart';
 import 'timeline_current_row.dart';
 import 'timeline_edge_auto_pan.dart';
@@ -1013,40 +1014,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
           ? (_) {}
           : (steps) => hooks.onUpdate(
               widget.layers,
-              _slotForSteps(row.layerIndex, steps, widget.layers.length),
+              slotForSteps(row.layerIndex, steps, widget.layers.length),
             ),
       child: child,
     );
-  }
-
-  /// The gap [steps] away from the item at [index].
-  ///
-  /// An item occupies the gaps [index] and [index + 1] and neither is a
-  /// move, so a step DOWN has to clear the second one — which is the whole
-  /// asymmetry between the two directions.
-  static int _slotForSteps(int index, int steps, int count) {
-    final slot = steps > 0 ? index + 1 + steps : index + steps;
-    return slot.clamp(0, count);
-  }
-
-  /// The rail rows that are fx GROUP headers of [layerId], in display
-  /// order. The chain's slots are counted in THESE, while the pointer's
-  /// travel is counted in rail rows — a header's members may sit between
-  /// two headers, and only this list knows it.
-  List<({int rowIndex, EffectId effectId})> _effectHeaderRows(LayerId layerId) {
-    final headers = <({int rowIndex, EffectId effectId})>[];
-    for (var index = 0; index < _dragRows.length; index += 1) {
-      final row = _dragRows[index];
-      final lane = row.lane;
-      if (lane == null || !lane.isGroupHeader || row.layer.id != layerId) {
-        continue;
-      }
-      final parsed = parseEffectLaneId(lane.laneId);
-      if (parsed != null && parsed.parameterId == null) {
-        headers.add((rowIndex: index, effectId: parsed.effectId));
-      }
-    }
-    return headers;
   }
 
   /// An fx header, made draggable: grabbing it re-orders the layer's effect
@@ -1062,7 +1033,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     if (parsed == null || parsed.parameterId != null) {
       return child;
     }
-    final headers = _effectHeaderRows(row.layer.id);
+    final headers = effectHeaderRowsOf(_dragRows, row.layer.id);
     final slot = headers.indexWhere((h) => h.effectId == parsed.effectId);
     if (slot < 0) {
       return child;
@@ -1076,30 +1047,15 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       axis: Axis.horizontal,
       hooks: hooks,
       isLastRow: slot == headers.length - 1,
-      onCrossed: (steps) {
-        // The pointer counts RAIL ROWS; the chain counts HEADERS. They
-        // differ exactly when a chain is twirled open — which is when a
-        // user is most likely to be re-ordering it — so the rows crossed
-        // are converted into headers passed before becoming a gap.
-        final targetRow = myRowIndex + steps;
-        var headerSteps = 0;
-        for (final header in headers) {
-          if (steps > 0 &&
-              header.rowIndex > myRowIndex &&
-              header.rowIndex <= targetRow) {
-            headerSteps += 1;
-          } else if (steps < 0 &&
-              header.rowIndex < myRowIndex &&
-              header.rowIndex >= targetRow) {
-            headerSteps -= 1;
-          }
-        }
-        hooks.onEffectUpdate(
-          row.layer.id,
-          displayEffects,
-          _slotForSteps(slot, headerSteps, headers.length),
-        );
-      },
+      onCrossed: (steps) => hooks.onEffectUpdate(
+        row.layer.id,
+        displayEffects,
+        slotForSteps(
+          slot,
+          effectStepsBetween(headers, myRowIndex, steps),
+          headers.length,
+        ),
+      ),
       child: child,
     );
   }
