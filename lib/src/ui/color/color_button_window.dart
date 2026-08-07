@@ -5,6 +5,8 @@ import '../widgets/anchored_popup.dart';
 import '../panels/editor_panel_tabs.dart';
 import 'color_palette_strip.dart';
 import 'color_slot_pair.dart';
+import '../brush/tools_panel.dart' show ToolsPanel;
+import '../theme/app_theme.dart';
 import 'color_rgb_panel.dart';
 import 'color_status_bar.dart';
 import 'color_wheel_panel.dart';
@@ -102,10 +104,10 @@ class _SelectedColorButtonState extends State<SelectedColorButton> {
         child: Material(
           color: Colors.transparent,
           clipBehavior: Clip.antiAlias,
-          borderRadius: BorderRadius.circular(4),
+          shape: AppShapes.control(ToolsPanel.buttonExtent),
           child: InkWell(
             key: const ValueKey<String>('tool-color-button'),
-            borderRadius: BorderRadius.circular(4),
+            customBorder: AppShapes.control(ToolsPanel.buttonExtent),
             // Tap again to close: with no barrier to swallow the gesture,
             // the anchor is the window's switch.
             onTap: _window.toggle,
@@ -178,7 +180,7 @@ class _ColorButtonWindowState extends State<ColorButtonWindow> {
     return Material(
       elevation: 8,
       color: colorScheme.surfaceContainerHigh,
-      borderRadius: BorderRadius.circular(6),
+      shape: AppShapes.container(AppShapes.windowRadius),
       clipBehavior: Clip.antiAlias,
       // The shared popup positions by width alone (height only decides
       // above/below), so the window states its own — the wheel needs a

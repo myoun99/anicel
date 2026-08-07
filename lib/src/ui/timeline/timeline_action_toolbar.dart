@@ -15,6 +15,7 @@ import 'timeline_shift_buttons.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/split_icon_button.dart';
 import 'timeline_section_policy.dart';
+import '../theme/app_theme.dart';
 import '../text/app_strings.dart';
 import '../dialogs/app_prompt_dialog.dart';
 
@@ -618,10 +619,14 @@ class TimelineActionToolbar extends StatelessWidget {
   Widget build(BuildContext context) {
     return DecoratedBox(
       key: const ValueKey<String>('timeline-action-toolbar'),
-      decoration: BoxDecoration(
+      decoration: ShapeDecoration(
         color: Theme.of(context).colorScheme.surface,
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-        borderRadius: BorderRadius.circular(6),
+        shape: AppShapes.container(
+          AppShapes.windowRadius,
+          side: BorderSide(
+            color: Theme.of(context).colorScheme.outlineVariant,
+          ),
+        ),
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),

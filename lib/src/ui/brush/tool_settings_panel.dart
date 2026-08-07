@@ -12,6 +12,7 @@ import '../widgets/field_slider.dart';
 import 'brush_settings_panel.dart';
 import 'brush_tool_state.dart';
 import 'canvas_selection_commands.dart';
+import '../theme/app_theme.dart';
 import '../text/app_strings.dart';
 
 /// The TOOL SETTINGS panel (R11-④, CSP's tool property palette): detailed
@@ -251,9 +252,7 @@ class _SelectionModeRow extends StatelessWidget {
                 backgroundColor: candidate == mode
                     ? colorScheme.surfaceContainerHigh
                     : Colors.transparent,
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(4),
-                ),
+                shape: AppShapes.control(AppShapes.controlSmall),
               ),
             ),
           ),
