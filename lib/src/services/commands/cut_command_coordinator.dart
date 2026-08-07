@@ -38,7 +38,13 @@ import 'create_cut_command.dart';
 import 'create_folder_command.dart';
 import 'create_linked_cut_command.dart';
 import 'dissolve_folder_command.dart';
-import 'link_mirror.dart' show linkMirrorTargets;
+import 'link_mirror.dart'
+    show
+        linkCounterpartIn,
+        linkMirrorTargets,
+        linkedCutSiblings,
+        mirroredOrderAfterMove;
+import 'set_layer_placement_command.dart';
 import 'delete_cut_command.dart';
 import 'delete_layer_command.dart';
 import 'duplicate_cut_command.dart';
@@ -511,10 +517,7 @@ class CutCommandCoordinator {
         .sublist(startIndex, endIndex)
         .any(
           (member) =>
-              project.linkRegistry.groupOf(
-                cutId: cutId,
-                layerId: member.id,
-              ) !=
+              project.linkRegistry.groupOf(cutId: cutId, layerId: member.id) !=
               null,
         );
     if (!anyLinked) {
@@ -773,10 +776,10 @@ class CutCommandCoordinator {
       if (organizer != null &&
           attachOrganizerBaseOf(organizer, cut.layers) != null &&
           cut.layers.directMembersOf(organizer.id).length == 1 &&
-          repository
-                  .requireProject()
-                  .linkRegistry
-                  .groupOf(cutId: cutId, layerId: organizer.id) ==
+          repository.requireProject().linkRegistry.groupOf(
+                cutId: cutId,
+                layerId: organizer.id,
+              ) ==
               null) {
         historyManager.execute(
           CompositeCommand(
@@ -1206,6 +1209,114 @@ class CutCommandCoordinator {
     );
   }
 
+  /// Moves rows within a cut's stack and re-parents the ones the move
+  /// changed — one undo step across the whole 겸용 link group.
+  ///
+  /// ORDER is shared structure, like a row's existence and kind: a row
+  /// moved in one use site moves in all of them, or the two stacks drift
+  /// and the NEXT insertion lands somewhere nobody chose.
+  /// [mirroredOrderAfterMove] RESTATES the move for each sibling rather
+  /// than copying the permutation — a sibling holds rows this cut does not.
+  ///
+  /// [movedIds] names the rows that TRAVELLED (the whole run, not just the
+  /// row the pointer held); the mirror needs it to tell a moved row from
+  /// one the move merely flowed around.
+  void setLayerPlacement({
+    required CutId cutId,
+    required List<LayerId> order,
+    Map<LayerId, LayerId?> folderIds = const {},
+    Set<LayerId> movedIds = const {},
+    String description = 'Move layers',
+  }) {
+    final project = repository.requireProject();
+    final commands = <Command>[
+      SetLayerPlacementCommand(
+        repository: repository,
+        cutId: cutId,
+        order: order,
+        folderIds: folderIds,
+        description: description,
+      ),
+    ];
+    for (final siblingId in linkedCutSiblings(project, cutId: cutId)) {
+      final sibling = requireCut(project, siblingId);
+      final mirroredOrder = mirroredOrderAfterMove(
+        project,
+        cutId: cutId,
+        sourceOrder: order,
+        movedIds: movedIds,
+        sibling: sibling,
+      );
+      if (mirroredOrder == null) {
+        continue;
+      }
+      final mirroredFolderIds = <LayerId, LayerId?>{};
+      var translatable = true;
+      for (final entry in folderIds.entries) {
+        final row = linkCounterpartIn(
+          project,
+          cutId: cutId,
+          layerId: entry.key,
+          targetCutId: siblingId,
+        );
+        if (row == null) {
+          continue;
+        }
+        final folder = entry.value;
+        if (folder == null) {
+          mirroredFolderIds[row] = null;
+          continue;
+        }
+        final mirrorFolder = linkCounterpartIn(
+          project,
+          cutId: cutId,
+          layerId: folder,
+          targetCutId: siblingId,
+        );
+        if (mirrorFolder == null) {
+          // The folder this row joined has no counterpart there — the
+          // structures have diverged, and folder_mirror's rule is to stand
+          // down rather than guess.
+          translatable = false;
+          break;
+        }
+        mirroredFolderIds[row] = mirrorFolder;
+      }
+      if (!translatable) {
+        continue;
+      }
+      commands.add(
+        SetLayerPlacementCommand(
+          repository: repository,
+          cutId: siblingId,
+          order: mirroredOrder,
+          folderIds: mirroredFolderIds,
+          description: description,
+        ),
+      );
+    }
+    historyManager.execute(
+      commands.length == 1
+          ? commands.single
+          : CompositeCommand(description: description, commands: commands),
+    );
+  }
+
+  /// Resequences a track's SE rows. They live on the TRACK, so no cut and
+  /// no mirror is involved — the order is the whole placement.
+  void setTrackSeOrder({
+    required TrackId trackId,
+    required List<LayerId> order,
+  }) {
+    historyManager.execute(
+      SetTrackSeOrderCommand(
+        repository: repository,
+        trackId: trackId,
+        order: order,
+      ),
+    );
+  }
+
   /// The commands one effect-chain write needs — INCLUDING the 겸용컷 link
   /// mirror ("액션란은 다 공유", user 2026-07-30), which is exactly what a
   /// caller that builds its own `UpdateLayerEffectsCommand` would drop.
@@ -1506,7 +1617,6 @@ class CutCommandCoordinator {
     );
   }
 
-
   Cut _requireCut(CutId cutId) {
     return requireCut(repository.requireProject(), cutId);
   }
@@ -1520,4 +1630,3 @@ class CutCommandCoordinator {
     throw StateError('Track not found: $trackId');
   }
 }
-

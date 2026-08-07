@@ -318,6 +318,27 @@ class TimelineActionToolbar extends StatelessWidget {
         enabled: session.hasLayerClipboard,
         onSelected: session.pasteLayerFromClipboard,
       ),
+      // The row-order verbs: a STEP is the drag's twin — both resolve
+      // through the same drop policy, so a step and a drop can never
+      // disagree about what is legal, and a step INTO a folder is the same
+      // move as a step over it. UP means toward the top of the stack, which
+      // reads as up on the rail and leftward on the sheet.
+      PanelFlyoutItem(
+        keyValue: 'timeline-move-layer-up-button',
+        label: AppText.strings.tlMoveLayerUp,
+        icon: Icons.arrow_upward,
+        enabled:
+            active != null && session.canMoveLayerInStack(active.id, up: true),
+        onSelected: () => session.moveLayerInStack(active!.id, up: true),
+      ),
+      PanelFlyoutItem(
+        keyValue: 'timeline-move-layer-down-button',
+        label: AppText.strings.tlMoveLayerDown,
+        icon: Icons.arrow_downward,
+        enabled:
+            active != null && session.canMoveLayerInStack(active.id, up: false),
+        onSelected: () => session.moveLayerInStack(active!.id, up: false),
+      ),
       PanelFlyoutItem(
         keyValue: 'import-audio-button',
         label: AppText.strings.tlImportAudio,
@@ -623,9 +644,7 @@ class TimelineActionToolbar extends StatelessWidget {
         color: Theme.of(context).colorScheme.surface,
         shape: AppShapes.container(
           AppShapes.windowRadius,
-          side: BorderSide(
-            color: Theme.of(context).colorScheme.outlineVariant,
-          ),
+          side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
         ),
       ),
       child: Padding(
@@ -751,10 +770,9 @@ class TimelineActionToolbar extends StatelessWidget {
                             tooltip: AppText.strings.tlSetCommaTemplate
                                 .replaceAll('{n}', '$comma'),
                             onPressed: session.canSetCommaForSelectionOrCurrent
-                                ? () =>
-                                      session.setCommaForSelectionOrCurrent(
-                                        comma,
-                                      )
+                                ? () => session.setCommaForSelectionOrCurrent(
+                                    comma,
+                                  )
                                 : null,
                           ),
                         Builder(

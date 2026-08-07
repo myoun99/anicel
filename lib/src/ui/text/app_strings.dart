@@ -463,6 +463,8 @@ class AppStrings {
   String get tlEffects => _s('tlEffects');
   String get tlAddEffectTemplate => _s('tlAddEffectTemplate');
   String get tlRemoveEffectTemplate => _s('tlRemoveEffectTemplate');
+  String get tlMoveLayerUp => _s('tlMoveLayerUp');
+  String get tlMoveLayerDown => _s('tlMoveLayerDown');
   String get tlCopyFrame => _s('tlCopyFrame');
   String get tlPasteLinkedFrame => _s('tlPasteLinkedFrame');
   String get tlDeleteCell => _s('tlDeleteCell');
@@ -1361,6 +1363,8 @@ class AppStrings {
     'tlEffects': 'Effects',
     'tlAddEffectTemplate': 'Add {name}',
     'tlRemoveEffectTemplate': 'Remove {name}',
+    'tlMoveLayerUp': 'Move up one',
+    'tlMoveLayerDown': 'Move down one',
     'tlCopyFrame': 'Copy frame',
     'tlPasteLinkedFrame': 'Paste linked frame',
     'tlDeleteCell': 'Delete',
@@ -2051,6 +2055,8 @@ class AppStrings {
     'tlEffects': 'エフェクト',
     'tlAddEffectTemplate': '{name}を追加',
     'tlRemoveEffectTemplate': '{name}を削除',
+    'tlMoveLayerUp': 'ひとつ上へ',
+    'tlMoveLayerDown': 'ひとつ下へ',
     'tlCopyFrame': 'フレームをコピー',
     'tlPasteLinkedFrame': 'リンクフレームを貼り付け',
     'tlDeleteCell': '削除',
@@ -2737,6 +2743,8 @@ class AppStrings {
     'tlEffects': '이펙트',
     'tlAddEffectTemplate': '{name} 추가',
     'tlRemoveEffectTemplate': '{name} 제거',
+    'tlMoveLayerUp': '위로 한 칸',
+    'tlMoveLayerDown': '아래로 한 칸',
     'tlCopyFrame': '프레임 복사',
     'tlPasteLinkedFrame': '링크 프레임 붙여넣기',
     'tlDeleteCell': '삭제',
@@ -3458,6 +3466,8 @@ class AppStrings {
     'tlEffects': 'Effets',
     'tlAddEffectTemplate': 'Ajouter {name}',
     'tlRemoveEffectTemplate': 'Supprimer {name}',
+    'tlMoveLayerUp': "Monter d'un cran",
+    'tlMoveLayerDown': "Descendre d'un cran",
     'tlCopyFrame': "Copier l'image",
     'tlPasteLinkedFrame': "Coller l'image liée",
     'tlDeleteCell': 'Supprimer',
@@ -4117,6 +4127,8 @@ class AppStrings {
     'tlEffects': '效果',
     'tlAddEffectTemplate': '添加{name}',
     'tlRemoveEffectTemplate': '删除{name}',
+    'tlMoveLayerUp': '上移一层',
+    'tlMoveLayerDown': '下移一层',
     'tlCopyFrame': '复制帧',
     'tlPasteLinkedFrame': '粘贴链接帧',
     'tlDeleteCell': '删除',

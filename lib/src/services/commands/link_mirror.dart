@@ -88,6 +88,69 @@ LayerId? linkCounterpartIn(
   return null;
 }
 
+/// [sibling]'s own order after the same MOVE that produced [sourceOrder] —
+/// or null when the sibling shares none of the moved rows.
+///
+/// Stack ORDER is shared structure, like existence and kind, so a row moved
+/// in one use site moves in all of them. It cannot be copied verbatim: a
+/// sibling holds rows the source does not (its own SE/CAM fixtures,
+/// unlinked rows), so the move is restated the way [mirroredInsertionIndex]
+/// states an insertion — **directly above the nearest LINKED neighbour
+/// below the landing**, skipping rows the sibling does not share rather
+/// than counting them.
+List<LayerId>? mirroredOrderAfterMove(
+  Project project, {
+  required CutId cutId,
+  required List<LayerId> sourceOrder,
+  required Set<LayerId> movedIds,
+  required Cut sibling,
+}) {
+  LayerId? counterpart(LayerId layerId) => linkCounterpartIn(
+    project,
+    cutId: cutId,
+    layerId: layerId,
+    targetCutId: sibling.id,
+  );
+
+  var landing = -1;
+  final carried = <LayerId>[];
+  for (var index = 0; index < sourceOrder.length; index += 1) {
+    if (!movedIds.contains(sourceOrder[index])) {
+      continue;
+    }
+    if (landing < 0) {
+      landing = index;
+    }
+    final mirror = counterpart(sourceOrder[index]);
+    if (mirror != null) {
+      carried.add(mirror);
+    }
+  }
+  if (carried.isEmpty) {
+    return null;
+  }
+  final carriedSet = carried.toSet();
+  final rest = [
+    for (final layer in sibling.layers)
+      if (!carriedSet.contains(layer.id)) layer.id,
+  ];
+
+  var insertAt = 0;
+  for (var index = landing - 1; index >= 0; index -= 1) {
+    final id = sourceOrder[index];
+    if (movedIds.contains(id)) {
+      continue;
+    }
+    final mirror = counterpart(id);
+    final at = mirror == null ? -1 : rest.indexOf(mirror);
+    if (at >= 0) {
+      insertAt = at + 1;
+      break;
+    }
+  }
+  return [...rest.sublist(0, insertAt), ...carried, ...rest.sublist(insertAt)];
+}
+
 /// Where a layer inserted at [sourceIndex] of [source] must sit in
 /// [sibling]'s own list.
 ///
