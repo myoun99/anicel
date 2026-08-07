@@ -252,76 +252,70 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// looks for a canvas widget app-wide now matches twice. The fix is
   /// always to scope the finder to its panel — never to hide the sheet
   /// again.
-  static Map<String, List<DockSection>> _defaultDocks() => {
-    EditorWorkspace.toolLeftGroupId: [
-      DockSection(tabs: [EditorWorkspace.toolsTabId]),
-    ],
-    EditorWorkspace.toolRightGroupId: <DockSection>[],
+  static Map<String, DockGroup?> _defaultDocks() => {
+    EditorWorkspace.toolLeftGroupId: DockGroup(
+      tabs: [EditorWorkspace.toolsTabId],
+    ),
+    EditorWorkspace.toolRightGroupId: null,
     // The rest of the rail pool: declared empty so the ids exist for a
     // restore, and so dragging a panel onto an empty slot has somewhere to
     // put it. Slot 1 of each rail is spelled out below.
     for (var slot = 2; slot <= EditorWorkspace.railSlots; slot += 1)
-      EditorWorkspace.railGroupId(right: false, slot: slot): <DockSection>[],
+      EditorWorkspace.railGroupId(right: false, slot: slot): null,
     for (var slot = 3; slot <= EditorWorkspace.railSlots; slot += 1)
-      EditorWorkspace.railGroupId(right: true, slot: slot): <DockSection>[],
-    EditorWorkspace.leftGroupId: [
-      DockSection(
-        tabs: [
-          EditorWorkspace.brushesTabId,
-          // The Color TAB retired (R9 #14): the wheel and the palette are
-          // the two tabs of the 「컬러 버튼창」 now, opened from the TOP
-          // STRIP's selected-colour swatch — the control the user actually
-          // reaches for, in the place they reach for it.
-          // The camera PANEL retired (R11-⑤): the canvas overlay handles
-          // pose editing, the timeline camera row its eye/opacity, and the
-          // AE clipboard copy moved to the Cut menu.
-          EditorWorkspace.mediaTabId,
-          // Trailing so the long-standing tab positions (and every test
-          // tapping them) stay put; the strip scrolls to reach it.
-          EditorWorkspace.onionSkinTabId,
-          // ONE section, so the group is ONE icon strip. Tool settings used
-          // to be a second section here, which is why the left rail's group
-          // rendered as two stacked panels with two strips and a splitter
-          // between them — pixel for pixel the old left palette dock the
-          // rails were supposed to replace.
-          EditorWorkspace.brushSettingsTabId,
-        ],
-        activeTabId: EditorWorkspace.brushesTabId,
-      ),
-    ],
+      EditorWorkspace.railGroupId(right: true, slot: slot): null,
+    EditorWorkspace.leftGroupId: DockGroup(
+      tabs: [
+        EditorWorkspace.brushesTabId,
+        // The Color TAB retired (R9 #14): the wheel and the palette are
+        // the two tabs of the 「컬러 버튼창」 now, opened from the TOP
+        // STRIP's selected-colour swatch — the control the user actually
+        // reaches for, in the place they reach for it.
+        // The camera PANEL retired (R11-⑤): the canvas overlay handles
+        // pose editing, the timeline camera row its eye/opacity, and the
+        // AE clipboard copy moved to the Cut menu.
+        EditorWorkspace.mediaTabId,
+        // Trailing so the long-standing tab positions (and every test
+        // tapping them) stay put; the strip scrolls to reach it.
+        EditorWorkspace.onionSkinTabId,
+        // Tool settings is a TAB here, not a panel stacked under the
+        // others: a dock is one group and one icon strip. It used to be a
+        // second section, which is why the left rail rendered as two
+        // stacked panels with two strips and a splitter between them —
+        // pixel for pixel the old left palette dock the rails replaced.
+        EditorWorkspace.brushSettingsTabId,
+      ],
+      activeTabId: EditorWorkspace.brushesTabId,
+    ),
     // 오른쪽: 컬러(맨 위) (유저 확정). The picker is the top group of the
     // sub-strip, and its button is the swatch itself.
-    EditorWorkspace.rightGroupId: [
-      DockSection(tabs: [EditorWorkspace.colorWheelTabId]),
-    ],
-    EditorWorkspace.railGroupId(right: true, slot: 2): [
-      DockSection(tabs: [EditorWorkspace.timesheetTabId]),
-    ],
+    EditorWorkspace.rightGroupId: DockGroup(
+      tabs: [EditorWorkspace.colorWheelTabId],
+    ),
+    EditorWorkspace.railGroupId(right: true, slot: 2): DockGroup(
+      tabs: [EditorWorkspace.timesheetTabId],
+    ),
     // THE FLOOR (유저 확정): the bottom layer everything else is drawn on.
     // The canvas and the media viewer are the two panels that can be it —
     // they are both full-page surfaces you look AT rather than read beside
     // the drawing — and the top strip's canvas/viewer pair is the switch
     // between them. The viewer used to live down among the paper tabs,
     // where opening a reference shrank the drawing to make room for it.
-    EditorWorkspace.centerGroupId: [
-      DockSection(
-        tabs: [EditorWorkspace.canvasTabId, EditorWorkspace.mediaViewerTabId],
-        activeTabId: EditorWorkspace.canvasTabId,
-      ),
-    ],
-    EditorWorkspace.bottomGroupId: [
-      DockSection(
-        tabs: [
-          EditorWorkspace.timelineTabId,
-          EditorWorkspace.storyboardTabId,
-          EditorWorkspace.conteTabId,
-          // The 컷봉투 joins its paper family: one sheet per cut (the 겸용
-          // siblings share it), read beside the conte it describes.
-          EditorWorkspace.envelopeTabId,
-        ],
-        activeTabId: EditorWorkspace.timelineTabId,
-      ),
-    ],
+    EditorWorkspace.centerGroupId: DockGroup(
+      tabs: [EditorWorkspace.canvasTabId, EditorWorkspace.mediaViewerTabId],
+      activeTabId: EditorWorkspace.canvasTabId,
+    ),
+    EditorWorkspace.bottomGroupId: DockGroup(
+      tabs: [
+        EditorWorkspace.timelineTabId,
+        EditorWorkspace.storyboardTabId,
+        EditorWorkspace.conteTabId,
+        // The 컷봉투 joins its paper family: one sheet per cut (the 겸용
+        // siblings share it), read beside the conte it describes.
+        EditorWorkspace.envelopeTabId,
+      ],
+      activeTabId: EditorWorkspace.timelineTabId,
+    ),
   };
 
   /// The panels that may lie on the floor, in the order the top strip's
@@ -354,7 +348,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// The slots of one rail that HOLD something — the buttons that exist.
   List<String> _railGroups({required bool right}) => [
     for (final id in _railSlotIds(right: right))
-      if (_layout.sectionsIn(id).isNotEmpty) id,
+      if (_layout.tabsIn(id).isNotEmpty) id,
   ];
 
   /// The open groups of one rail, in rail order — the column, top to
@@ -368,7 +362,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// where a panel dropped on the rail's "new group" target lands.
   String? _emptyRailSlot({required bool right}) {
     for (final id in _railSlotIds(right: right)) {
-      if (_layout.sectionsIn(id).isEmpty) {
+      if (_layout.tabsIn(id).isEmpty) {
         return id;
       }
     }
@@ -741,7 +735,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       relay: _layout,
       layoutReset: _resetWorkspaceLayout,
       toolRailOnRight: () =>
-          _layout.sectionsIn(EditorWorkspace.toolRightGroupId).isNotEmpty,
+          _layout.tabsIn(EditorWorkspace.toolRightGroupId).isNotEmpty,
       toolRailMover: _setToolRailOnRight,
       floorTabId: _activeFloorTabId,
       floorTabs: () => [
@@ -1017,22 +1011,19 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   /// Every known panel in default-dock order, with its live visibility.
   List<WorkspacePanelEntry> _panelMenuEntries() => [
-    for (final sections in _defaultDocks().values)
-      for (final section in sections)
-        for (final tabId in section.tabs)
-          (
-            tabId: tabId,
-            label: _tabFor(tabId).label,
-            visible: _layout.locateTab(tabId) != null,
-          ),
+    for (final group in _defaultDocks().values)
+      for (final tabId in group?.tabs ?? const <String>[])
+        (
+          tabId: tabId,
+          label: _tabFor(tabId).label,
+          visible: _layout.locateTab(tabId) != null,
+        ),
   ];
 
   String _defaultDockOf(String tabId) {
     for (final entry in _defaultDocks().entries) {
-      for (final section in entry.value) {
-        if (section.tabs.contains(tabId)) {
-          return entry.key;
-        }
+      if (entry.value?.tabs.contains(tabId) ?? false) {
+        return entry.key;
       }
     }
     return EditorWorkspace.leftGroupId;
@@ -1083,7 +1074,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     // plays where nobody can see it.
     _ensureRailOpen(location.dockId);
     _mutatingLayout(() {
-      _layout.selectTab(location.dockId, location.sectionIndex, tabId);
+      _layout.selectTab(location.dockId, tabId);
     });
     _panelFlash.flash(tabId);
   }
@@ -1935,23 +1926,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       draggingTab: _draggingTab,
       compact: compact,
       canAcceptTab: (data) => _canDockAccept(dockId, data),
-      onTabSelected: (sectionIndex, tabId) => _mutatingLayout(() {
-        _layout.selectTab(dockId, sectionIndex, tabId);
+      onTabSelected: (tabId) => _mutatingLayout(() {
+        _layout.selectTab(dockId, tabId);
       }),
-      onTabMovedToSection: (data, sectionIndex, insertIndex) =>
-          _mutatingLayout(() {
-            _layout.moveTabToSection(
-              tabId: data.tabId,
-              toDockId: dockId,
-              toSectionIndex: sectionIndex,
-              insertIndex: insertIndex,
-            );
-          }),
-      onTabMovedToNewSection: (data, atSectionIndex) => _mutatingLayout(() {
-        _layout.moveTabToNewSection(
+      onTabMoved: (data, insertIndex) => _mutatingLayout(() {
+        _layout.moveTab(
           tabId: data.tabId,
           toDockId: dockId,
-          atSectionIndex: atSectionIndex,
+          insertIndex: insertIndex,
         );
       }),
       onTabDragChanged: (data) => _draggingTab.value = data,
@@ -1963,11 +1945,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   void _dropIntoEmptyDock(String dockId, EditorPanelTabDragData data) {
     _mutatingLayout(() {
-      _layout.moveTabToNewSection(
-        tabId: data.tabId,
-        toDockId: dockId,
-        atSectionIndex: 0,
-      );
+      _layout.moveTab(tabId: data.tabId, toDockId: dockId, insertIndex: 0);
     });
     _ensureRailOpen(dockId);
   }
@@ -2016,16 +1994,16 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     final to = onRight
         ? EditorWorkspace.toolRightGroupId
         : EditorWorkspace.toolLeftGroupId;
-    final sections = _layout.sectionsIn(from);
-    if (sections.isEmpty) {
+    final tabs = _layout.tabsIn(from);
+    if (tabs.isEmpty) {
       return; // Already on the requested edge.
     }
     _mutatingLayout(() {
-      for (final tabId in [for (final section in sections) ...section.tabs]) {
-        _layout.moveTabToNewSection(
+      for (final tabId in tabs) {
+        _layout.moveTab(
           tabId: tabId,
           toDockId: to,
-          atSectionIndex: _layout.sectionsIn(to).length,
+          insertIndex: _layout.tabsIn(to).length,
         );
       }
     });
@@ -2040,7 +2018,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// closes that group's column beside the strip.
   Widget _buildEdgeDock(String dockId, EditorPanelDockSide side) {
     final right = side == EditorPanelDockSide.right;
-    final hasTools = _layout.sectionsIn(dockId).isNotEmpty;
+    final hasTools = _layout.tabsIn(dockId).isNotEmpty;
     final groups = _railGroups(right: right);
     final emptySlot = _emptyRailSlot(right: right);
     if (!hasTools && groups.isEmpty && emptySlot == null) {
@@ -2093,8 +2071,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                   railId: railId,
                   open: _openRails.contains(railId),
                   tabs: [
-                    for (final section in _layout.sectionsIn(railId))
-                      for (final tabId in section.tabs) _tabFor(tabId),
+                    for (final tabId in _layout.tabsIn(railId)) _tabFor(tabId),
                   ],
                   // The COLOUR group's button is the swatch itself. The
                   // strip's swatch was the one place the two colours you
@@ -2140,10 +2117,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       return null;
     }
     final holdsColor = _layout
-        .sectionsIn(railId)
-        .any(
-          (section) => section.tabs.contains(EditorWorkspace.colorWheelTabId),
-        );
+        .tabsIn(railId)
+        .contains(EditorWorkspace.colorWheelTabId);
     if (!holdsColor) {
       return null;
     }
@@ -2176,22 +2151,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// A panel dropped on a rail button JOINS that group and opens it —
   /// dropping something out of sight would be a silent move.
   void _dropIntoRailGroup(String railId, EditorPanelTabDragData data) {
-    final sections = _layout.sectionsIn(railId);
+    final tabs = _layout.tabsIn(railId);
     _mutatingLayout(() {
-      if (sections.isEmpty) {
-        _layout.moveTabToNewSection(
-          tabId: data.tabId,
-          toDockId: railId,
-          atSectionIndex: 0,
-        );
-      } else {
-        _layout.moveTabToSection(
-          tabId: data.tabId,
-          toDockId: railId,
-          toSectionIndex: 0,
-          insertIndex: sections.first.tabs.length,
-        );
-      }
+      _layout.moveTab(
+        tabId: data.tabId,
+        toDockId: railId,
+        insertIndex: tabs.length,
+      );
     });
     setState(() => _openRails.add(railId));
     _scheduleLayoutSave();
@@ -2243,7 +2209,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         builder: (context, constraints) {
           final colorScheme = Theme.of(context).colorScheme;
           final extents = constraints.hasBoundedHeight
-              ? dockSectionExtents(
+              ? stackedGroupExtents(
                   weights: [for (final _ in open) 1.0],
                   floors: [
                     for (final id in open) _verticalDockMinimumExtent(id),
@@ -2324,22 +2290,16 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _ => null,
   };
 
-  /// What a dock stacked along the VERTICAL axis needs before its panels
-  /// start losing rows: every section's floor, plus the splitters between
-  /// them. Same helper the dock host divides by, so the number the
-  /// splitter stops on is the number the layout will actually honour.
+  /// What a dock laid out along the VERTICAL axis needs before its panels
+  /// start losing rows: its strip plus the tallest floor among its tabs.
+  /// Same helper the rail divides by, so the number the splitter stops on
+  /// is the number the layout will actually honour.
   double _verticalDockMinimumExtent(String dockId) {
-    final sections = _layout.sectionsIn(dockId);
-    if (sections.isEmpty) {
+    final tabs = _layout.tabsIn(dockId);
+    if (tabs.isEmpty) {
       return 0;
     }
-    var total = (sections.length - 1) * DockEdgeSplitter.thickness;
-    for (final section in sections) {
-      total += dockSectionFloorExtent([
-        for (final tabId in section.tabs) _tabFor(tabId),
-      ]);
-    }
-    return total;
+    return panelGroupFloorExtent([for (final tabId in tabs) _tabFor(tabId)]);
   }
 
   /// The canvas keeps at least this much of the workspace's height, the
@@ -2460,7 +2420,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     bool inset = false,
     bool onTop = false,
   }) {
-    if (_layout.sectionsIn(EditorWorkspace.bottomGroupId).isEmpty) {
+    if (_layout.tabsIn(EditorWorkspace.bottomGroupId).isEmpty) {
       return _emptyDockZone(EditorWorkspace.bottomGroupId, Axis.horizontal);
     }
     return DecoratedBox(
@@ -2619,10 +2579,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   }
 
   /// Which panel is currently lying on the floor.
-  String? _activeFloorTabId() {
-    final sections = _layout.sectionsIn(EditorWorkspace.centerGroupId);
-    return sections.isEmpty ? null : sections.first.activeTabId;
-  }
+  String? _activeFloorTabId() =>
+      _layout.activeTabIn(EditorWorkspace.centerGroupId);
 
   /// The top strip's canvas/viewer switch: swap what the app is lying on.
   ///
@@ -2634,28 +2592,19 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// predates it. Fetching it back is what makes the switch mean the same
   /// thing every time it is pressed.
   void _selectFloorTab(String tabId) {
-    final sections = _layout.sectionsIn(EditorWorkspace.centerGroupId);
-    if (sections.isNotEmpty && sections.first.tabs.contains(tabId)) {
+    final tabs = _layout.tabsIn(EditorWorkspace.centerGroupId);
+    if (tabs.contains(tabId)) {
       _mutatingLayout(() {
-        _layout.selectTab(EditorWorkspace.centerGroupId, 0, tabId);
+        _layout.selectTab(EditorWorkspace.centerGroupId, tabId);
       });
       return;
     }
     _mutatingLayout(() {
-      if (sections.isEmpty) {
-        _layout.moveTabToNewSection(
-          tabId: tabId,
-          toDockId: EditorWorkspace.centerGroupId,
-          atSectionIndex: 0,
-        );
-      } else {
-        _layout.moveTabToSection(
-          tabId: tabId,
-          toDockId: EditorWorkspace.centerGroupId,
-          toSectionIndex: 0,
-          insertIndex: sections.first.tabs.length,
-        );
-      }
+      _layout.moveTab(
+        tabId: tabId,
+        toDockId: EditorWorkspace.centerGroupId,
+        insertIndex: tabs.length,
+      );
     });
   }
 
@@ -2663,7 +2612,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// docks it always occupies its region — when emptied it stays a
   /// full-size drop surface.
   Widget _buildCenterDock() {
-    if (_layout.sectionsIn(EditorWorkspace.centerGroupId).isEmpty) {
+    if (_layout.tabsIn(EditorWorkspace.centerGroupId).isEmpty) {
       return _emptyDockZone(
         EditorWorkspace.centerGroupId,
         Axis.vertical,
@@ -2730,7 +2679,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         final hasLeftDock = _openRailGroups(right: false).isNotEmpty;
         final hasRightDock = _openRailGroups(right: true).isNotEmpty;
         final hasBottomDock = _layout
-            .sectionsIn(EditorWorkspace.bottomGroupId)
+            .tabsIn(EditorWorkspace.bottomGroupId)
             .isNotEmpty;
         return Row(
           children: [

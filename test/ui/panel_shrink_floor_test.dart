@@ -399,27 +399,26 @@ void main() {
     });
   });
 
-  group('a dock divides its height so no SECTION lands under its floor', () {
-    // The first round guarded only the dock's outer splitter, and the dock
-    // host still split by WEIGHT — so one tab drag made a second section
-    // and starved the timeline back into the shell's scroller at the
-    // untouched default height. Measured then: 13.5px of overhang at 350,
-    // 78px at the splitter's own stop, 151.5px with the section splitter
-    // pushed to its weight limit.
+  group('a rail divides its height so no GROUP lands under its floor', () {
+    // The first round guarded only the dock's outer splitter and split the
+    // rest by WEIGHT, which knows nothing about what a panel needs — so a
+    // starved group fell back into the shell's scroller and had its bottom
+    // rows cut off. Measured then: 13.5px of overhang at 350, 78px at the
+    // splitter's own stop, 151.5px at the weight limit.
     List<double> extentsFor(
       List<double> weights,
       List<double> floors,
       double h,
-    ) => dockSectionExtents(weights: weights, floors: floors, totalExtent: h);
+    ) => stackedGroupExtents(weights: weights, floors: floors, totalExtent: h);
 
-    test('two sections, equal weights: the taller floor is paid first', () {
+    test('two groups, equal weights: the taller floor is paid first', () {
       final extents = extentsFor([1, 1], [186, 30], 350);
       expect(extents[0], greaterThanOrEqualTo(186));
       expect(extents[1], greaterThanOrEqualTo(30));
       expect(extents[0] + extents[1], closeTo(345, 0.001));
     });
 
-    test('the section splitter cannot starve a section below its floor', () {
+    test('a low weight cannot starve a group below its floor', () {
       final extents = extentsFor([0.2, 1.8], [186, 30], 350);
       expect(
         extents[0],
@@ -436,7 +435,7 @@ void main() {
       expect(extents[1], closeTo(425 * 0.75, 0.001));
     });
 
-    test('a dock too small for every floor shares the shortfall instead of '
+    test('a rail too small for every floor shares the shortfall instead of '
         'starving whoever is last', () {
       final extents = extentsFor([1, 1], [200, 100], 155);
       expect(extents[0], closeTo(100, 0.001));
@@ -444,13 +443,15 @@ void main() {
       expect(extents[0], greaterThan(extents[1]));
     });
 
-    test('one section takes everything', () {
+    test('one group takes everything', () {
       expect(extentsFor([1], [186], 350), [350]);
     });
 
-    testWidgets('and the real dock host lays them out that way', (
+    testWidgets('a DOCK, meanwhile, is one group and cannot be split', (
       tester,
     ) async {
+      // The stack is gone from the host, not merely unreachable: a layout
+      // that still described one used to render it, splitter and all.
       EditorPanelTab tabFor(String id) => EditorPanelTab(
         id: id,
         label: id,
@@ -465,10 +466,7 @@ void main() {
 
       final layout = EditorPanelLayoutModel(
         docks: {
-          'bottom': [
-            DockSection(tabs: ['tall'], weight: 0.2),
-            DockSection(tabs: ['short'], weight: 1.8),
-          ],
+          'bottom': DockGroup(tabs: ['tall', 'short']),
         },
       );
       await tester.pumpWidget(
@@ -486,9 +484,8 @@ void main() {
                   tabResolver: tabFor,
                   draggingTab: ValueNotifier<EditorPanelTabDragData?>(null),
                   canAcceptTab: (_) => false,
-                  onTabSelected: (_, _) {},
-                  onTabMovedToSection: (_, _, _) {},
-                  onTabMovedToNewSection: (_, _) {},
+                  onTabSelected: (_) {},
+                  onTabMoved: (_, _) {},
                   onTabDragChanged: (_) {},
                 ),
               ),
@@ -499,26 +496,16 @@ void main() {
       await tester.pumpAndSettle();
       expect(tester.takeException(), isNull);
 
+      // One strip, both panels as TABS of it, and no divider anywhere.
+      expect(find.byType(EditorPanelTabs), findsOneWidget);
+      expect(find.byType(DockEdgeSplitter), findsNothing);
+
+      final group = tester.getRect(find.byType(EditorPanelTabs));
+      expect(group.height, closeTo(350, 0.001));
       final body = tester.getRect(
         find.byKey(const ValueKey<String>('body-tall')),
       );
-      final group = tester.getRect(
-        find
-            .ancestor(
-              of: find.byKey(const ValueKey<String>('body-tall')),
-              matching: find.byType(EditorPanelTabs),
-            )
-            .first,
-      );
-      expect(
-        body.bottom,
-        lessThanOrEqualTo(group.bottom),
-        reason: 'the starved section used to overhang its group by 151.5px',
-      );
-      expect(
-        group.height - EditorPanelTabs.stripHeight,
-        greaterThanOrEqualTo(156),
-      );
+      expect(body.bottom, lessThanOrEqualTo(group.bottom));
     });
   });
 
@@ -619,9 +606,7 @@ void main() {
         'the maximum', () {
       final model = EditorPanelLayoutModel(
         docks: {
-          'bottom': [
-            DockSection(tabs: ['a']),
-          ],
+          'bottom': DockGroup(tabs: ['a']),
         },
       );
       model.resizeDock('bottom', -1000, fallback: 350, minExtent: 186);
@@ -640,9 +625,7 @@ void main() {
         'so the first drag frame does not jump', () {
       final model = EditorPanelLayoutModel(
         docks: {
-          'bottom': [
-            DockSection(tabs: ['a']),
-          ],
+          'bottom': DockGroup(tabs: ['a']),
         },
         dockExtents: {'bottom': 160},
       );

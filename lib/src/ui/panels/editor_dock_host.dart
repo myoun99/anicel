@@ -10,13 +10,13 @@ import 'panel_flash.dart';
 
 export '../widgets/dock_edge_splitter.dart' show DockEdgeSplitter;
 
-/// What one section costs before its panels start losing rows: its tab
+/// What one panel group costs before its panels start losing rows: its tab
 /// strip plus the tallest floor among the tabs it hosts.
 ///
-/// The tallest among ALL of them, not the active one — a section that
+/// The tallest among ALL of them, not the active one — a group that
 /// shrinks while the conte is up and clips the moment you switch back to
 /// the timeline is the same bug wearing a different hat.
-double dockSectionFloorExtent(Iterable<EditorPanelTab> tabs) {
+double panelGroupFloorExtent(Iterable<EditorPanelTab> tabs) {
   var floor = 0.0;
   for (final tab in tabs) {
     floor = math.max(floor, tab.minContentHeight ?? 0);
@@ -24,24 +24,18 @@ double dockSectionFloorExtent(Iterable<EditorPanelTab> tabs) {
   return EditorPanelTabs.stripHeight + floor;
 }
 
-/// How a dock's stacking axis is divided between its sections.
+/// How a stacking axis is divided between the panel groups on it.
 ///
-/// Sections used to be plain `Expanded(flex: weight)`, which is
-/// proportional and knows nothing about what a section NEEDS. That is only
+/// The share used to be plain `Expanded(flex: weight)`, which is
+/// proportional and knows nothing about what a group NEEDS. That is only
 /// correct while the weights happen to be proportional to the floors, and
-/// they never are: a new section always arrives at weight 1
-/// ([EditorPanelLayoutModel.moveTabToNewSection]) whatever it holds. One
-/// tab drag was enough to starve the timeline back into the tab shell's
-/// scroller and cut its bottom rows off — the report this whole round
-/// exists to close, reached through the other door.
+/// they never are.
 ///
-/// So: every section gets its floor first, and only the SURPLUS is shared
-/// by weight. The splitter still moves size between neighbours; it just
-/// cannot move a panel below what it needs. When the dock cannot pay even
-/// the floors, they are scaled down together rather than starving whoever
-/// happens to be last — and the shell's scroller is back to being the
-/// guard for exactly that case.
-List<double> dockSectionExtents({
+/// So: every group gets its floor first, and only the SURPLUS is shared by
+/// weight. When the stack cannot pay even the floors, they are scaled down
+/// together rather than starving whoever happens to be last — and the
+/// shell's scroller is back to being the guard for exactly that case.
+List<double> stackedGroupExtents({
   required List<double> weights,
   required List<double> floors,
   required double totalExtent,
@@ -52,9 +46,8 @@ List<double> dockSectionExtents({
   if (count == 0) {
     return const [];
   }
-  // [gap] is what sits BETWEEN two of these — a splitter inside a dock, and
-  // nothing at all between the groups stacked on a rail, whose one splitter
-  // is the rail's own inner edge.
+  // [gap] is what sits BETWEEN two of these — the pasteboard a rail leaves
+  // between two floating groups.
   final flexSpace = math.max(0.0, totalExtent - (count - 1) * gap);
   var floorSum = 0.0;
   for (final floor in floors) {
@@ -116,13 +109,16 @@ List<double> dockSectionExtents({
   return extents;
 }
 
-/// Renders one dock of an [EditorPanelLayoutModel]: its sections stacked
-/// vertically (panel below panel) with draggable splitters between them,
-/// plus the Photoshop/AE-style drop feedback while a tab is in flight —
-/// each eligible section shows a faint zone hint, and hovering lights up
-/// the exact REGION the panel would occupy (top/bottom half = stack a new
-/// section there, middle = join the section as a tab). The overlays float
-/// above the content, so nothing shifts during a drag.
+/// Renders one dock of an [EditorPanelLayoutModel]: ONE tab group, and
+/// nothing else.
+///
+/// It used to render a STACK of groups with draggable splitters between
+/// them, and Photoshop/AE-style drop bands that made more of them. The
+/// bands went first; this is the rest of the same removal. A dock is what
+/// one rail button opens, and one button opens one panel group — a dock
+/// that could be cut in half was the old free-form dock tree still
+/// standing behind the new vocabulary, quietly rebuilding itself out of
+/// any workspace file that remembered one.
 class EditorDockHost extends StatelessWidget {
   const EditorDockHost({
     super.key,
@@ -132,8 +128,7 @@ class EditorDockHost extends StatelessWidget {
     required this.draggingTab,
     required this.canAcceptTab,
     required this.onTabSelected,
-    required this.onTabMovedToSection,
-    required this.onTabMovedToNewSection,
+    required this.onTabMoved,
     required this.onTabDragChanged,
     this.onToggleLock,
     this.onCloseTab,
@@ -152,21 +147,14 @@ class EditorDockHost extends StatelessWidget {
   final ValueListenable<EditorPanelTabDragData?> draggingTab;
 
   final bool Function(EditorPanelTabDragData data) canAcceptTab;
-  final void Function(int sectionIndex, String tabId) onTabSelected;
-  final void Function(
-    EditorPanelTabDragData data,
-    int sectionIndex,
-    int insertIndex,
-  )
-  onTabMovedToSection;
-  final void Function(EditorPanelTabDragData data, int atSectionIndex)
-  onTabMovedToNewSection;
+  final ValueChanged<String> onTabSelected;
+  final void Function(EditorPanelTabDragData data, int insertIndex) onTabMoved;
   final ValueChanged<EditorPanelTabDragData?> onTabDragChanged;
   final ValueChanged<String>? onToggleLock;
   final ValueChanged<String>? onCloseTab;
 
-  /// The workspace's reveal-flash channel (UI-R17 #5), threaded to every
-  /// section's panel shell.
+  /// The workspace's reveal-flash channel (UI-R17 #5), threaded to the
+  /// panel shell.
   final PanelFlashController? flash;
   final bool compact;
 
@@ -184,84 +172,34 @@ class EditorDockHost extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final sections = layout.sectionsIn(dockId);
-    final resolved = [
-      for (final section in sections)
-        [for (final id in section.tabs) tabResolver(id)],
-    ];
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final totalExtent = constraints.maxHeight;
-        // Unbounded hosts cannot be given pixel heights; they keep the
-        // proportional layout, which is what they always had.
-        final extents = constraints.hasBoundedHeight
-            ? dockSectionExtents(
-                weights: [for (final section in sections) section.weight],
-                floors: [
-                  for (final tabs in resolved) dockSectionFloorExtent(tabs),
-                ],
-                totalExtent: totalExtent,
-              )
-            : null;
-        // NO DROP OVERLAY. Dropping a panel above or below another one used
-        // to split a dock into stacked sections — the free-form dock tree
-        // this app is leaving behind. A panel goes where its BUTTON is now:
-        // onto a rail button to join that group, onto a rail's empty space
-        // to make one, onto the floating region's sill to join it. Those
-        // three are the whole vocabulary, and none of them is a band drawn
-        // over a panel's body.
-        Widget section(int i) => Builder(
-          builder: (context) => EditorPanelTabs(
-            groupId: dockId,
-            compact: compact,
-            chromeless: chromeless,
-            stripAtBottom: stripAtBottom,
-            // The region's own controls belong to the LAST section, where
-            // the strip that carries them is the one against the window
-            // frame — the same edge the threshold is on.
-            trailing: i == sections.length - 1 ? trailing : null,
-            tabs: resolved[i],
-            activeTabId: sections[i].activeTabId,
-            onTabSelected: (tabId) => onTabSelected(i, tabId),
-            canAcceptTab: canAcceptTab,
-            onTabMoved: (data, insertIndex) =>
-                onTabMovedToSection(data, i, insertIndex),
-            onTabDragChanged: onTabDragChanged,
-            onToggleLock: onToggleLock,
-            onCloseTab: onCloseTab,
-            flash: flash,
-          ),
-        );
-        return Column(
-          children: [
-            for (var i = 0; i < sections.length; i += 1) ...[
-              if (i > 0)
-                // The section divider and the dock's edge grip were the
-                // same widget twice; the shared splitter is the survivor.
-                DockEdgeSplitter(
-                  key: ValueKey<String>('dock-splitter-$dockId-$i'),
-                  axis: Axis.horizontal,
-                  onDragDelta: (delta) => layout.resizeSections(
-                    dockId,
-                    i - 1,
-                    delta: delta,
-                    totalExtent: totalExtent,
-                  ),
-                ),
-              if (extents == null)
-                Expanded(
-                  flex: (sections[i].weight * 1000).round(),
-                  child: section(i),
-                )
-              else
-                SizedBox(height: extents[i], child: section(i)),
-            ],
-          ],
-        );
-      },
+    final tabIds = layout.tabsIn(dockId);
+    final activeTabId = layout.activeTabIn(dockId);
+    if (tabIds.isEmpty || activeTabId == null) {
+      return const SizedBox.shrink();
+    }
+    // NO DROP OVERLAY, and no stack to drop into. A panel goes where its
+    // BUTTON is: onto a rail button to join that group, onto a rail's empty
+    // space to make one, onto the floating region's sill to join it. Those
+    // three are the whole vocabulary.
+    return EditorPanelTabs(
+      groupId: dockId,
+      compact: compact,
+      chromeless: chromeless,
+      stripAtBottom: stripAtBottom,
+      trailing: trailing,
+      tabs: [for (final id in tabIds) tabResolver(id)],
+      activeTabId: activeTabId,
+      onTabSelected: onTabSelected,
+      canAcceptTab: canAcceptTab,
+      onTabMoved: onTabMoved,
+      onTabDragChanged: onTabDragChanged,
+      onToggleLock: onToggleLock,
+      onCloseTab: onCloseTab,
+      flash: flash,
     );
   }
 }
+
 class EditorDockDropZone extends StatelessWidget {
   const EditorDockDropZone({
     super.key,

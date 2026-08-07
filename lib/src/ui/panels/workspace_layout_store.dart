@@ -5,7 +5,7 @@ import '../../services/persistence/app_support_path.dart';
 import 'editor_panel_layout.dart';
 
 /// Loads and saves the dockable-panel workspace layout (which tab lives in
-/// which dock/section, section weights, dock extents, drag locks).
+/// which dock, dock extents, drag locks).
 ///
 /// Like the brush preset library this is editor/app state, not project
 /// data: it lives in an app-support JSON file. A missing or corrupt file
@@ -54,7 +54,7 @@ class WorkspaceLayoutStore {
 
 /// A sanitized restored workspace layout.
 typedef RestoredWorkspaceLayout = ({
-  Map<String, List<DockSection>> docks,
+  Map<String, DockGroup?> docks,
   Map<String, double> dockExtents,
   Map<String, double> railExtents,
   Set<String> lockedTabIds,
@@ -102,11 +102,18 @@ Map<String, double> restoreRailExtents(Map<String, Object?> payload) {
 /// Rebuilds a dock layout from a saved payload, validated against the
 /// CURRENT panel set given by [defaults]: unknown tab ids are dropped,
 /// duplicates keep their first occurrence, and known tabs missing from the
-/// saved layout return to their default dock (as a trailing section).
-/// Returns null when the payload has no usable layout.
+/// saved layout rejoin their default dock's group. Returns null when the
+/// payload has no usable layout.
+///
+/// ⚠️A dock's tabs are read as a FLAT list however the file spells them.
+/// Layouts saved while docks could be split into stacked sections have a
+/// list of sections per dock; every one of them folds into the dock's one
+/// group, in file order. That is not a migration so much as the shape of
+/// the answer now — there is nowhere else for a second section to go, and
+/// dropping it would silently close panels the user had open.
 RestoredWorkspaceLayout? restoreWorkspaceLayout({
   required Map<String, Object?> payload,
-  required Map<String, List<DockSection>> defaults,
+  required Map<String, DockGroup?> defaults,
 }) {
   final layoutJson = payload['layout'];
   if (layoutJson is! Map) {
@@ -118,28 +125,31 @@ RestoredWorkspaceLayout? restoreWorkspaceLayout({
   }
 
   final knownTabs = <String>{
-    for (final sections in defaults.values)
-      for (final section in sections) ...section.tabs,
+    for (final group in defaults.values) ...?group?.tabs,
   };
 
   final seen = <String>{};
-  final docks = <String, List<DockSection>>{
-    for (final dockId in defaults.keys) dockId: <DockSection>[],
+  final tabsByDock = <String, List<String>>{
+    for (final dockId in defaults.keys) dockId: <String>[],
   };
+  final activeByDock = <String, String>{};
   for (final entry in docksJson.entries) {
     final dockId = entry.key;
-    if (dockId is! String || !docks.containsKey(dockId)) {
+    if (dockId is! String || !tabsByDock.containsKey(dockId)) {
       continue;
     }
-    final sectionsJson = entry.value;
-    if (sectionsJson is! List) {
-      continue;
-    }
-    for (final sectionJson in sectionsJson) {
-      if (sectionJson is! Map) {
+    // One group per dock, written as a map; a list is a layout from when a
+    // dock could be split, and every section in it joins the same strip.
+    final groupsJson = switch (entry.value) {
+      final List list => list,
+      final Map map => [map],
+      _ => const [],
+    };
+    for (final groupJson in groupsJson) {
+      if (groupJson is! Map) {
         continue;
       }
-      final tabsJson = sectionJson['tabs'];
+      final tabsJson = groupJson['tabs'];
       if (tabsJson is! List) {
         continue;
       }
@@ -150,33 +160,19 @@ RestoredWorkspaceLayout? restoreWorkspaceLayout({
       if (tabs.isEmpty) {
         continue;
       }
-      final active = sectionJson['active'];
-      final weight = sectionJson['weight'];
-      docks[dockId]!.add(
-        DockSection(
-          tabs: tabs,
-          activeTabId: active is String && tabs.contains(active)
-              ? active
-              : null,
-          // Through the same door as the extents, though nothing reachable
-          // changes: [DockSection] already refuses a weight at or below its
-          // own floor. Uniform because a weight IS a splitter position —
-          // the next reader should not have to work out which of three
-          // restorers checks what.
-          weight: restoredSplitterValue(weight) ?? 1,
-        ),
-      );
+      tabsByDock[dockId]!.addAll(tabs);
+      // The FIRST section's active tab wins: it is the one the user was
+      // looking at in the strip that survives as the group's strip.
+      final active = groupJson['active'];
+      if (active is String && tabs.contains(active)) {
+        activeByDock.putIfAbsent(dockId, () => active);
+      }
     }
   }
 
   // Panels the user CLOSED stay closed; anything else missing from the
-  // save (panels added by an app update) returns to its default dock —
-  // JOINING the restored section that already holds a default-section
-  // sibling when one survived (an update-added tab slips into the
-  // existing strip invisibly, matching fresh-install defaults), and only
-  // getting a trailing section of its own when none did. A trailing
-  // section is a visible SPLIT of the dock — the wrong migration for a
-  // tab whose siblings are all still there.
+  // save (panels added by an app update) rejoins its default dock's group,
+  // so an update-added tab slips into the existing strip invisibly.
   final hiddenJson = payload['hiddenTabs'];
   final hiddenTabs = <String>{
     if (hiddenJson is List)
@@ -184,30 +180,22 @@ RestoredWorkspaceLayout? restoreWorkspaceLayout({
         if (tab is String) tab,
   };
   for (final entry in defaults.entries) {
-    for (final section in entry.value) {
-      final missing = [
-        for (final tab in section.tabs)
-          if (!hiddenTabs.contains(tab) && seen.add(tab)) tab,
-      ];
-      if (missing.isEmpty) {
-        continue;
-      }
-      final sections = docks[entry.key]!;
-      final siblingIndex = sections.indexWhere(
-        (restored) => restored.tabs.any(section.tabs.contains),
-      );
-      if (siblingIndex >= 0) {
-        final sibling = sections[siblingIndex];
-        sections[siblingIndex] = DockSection(
-          tabs: [...sibling.tabs, ...missing],
-          activeTabId: sibling.activeTabId,
-          weight: sibling.weight,
-        );
-      } else {
-        sections.add(DockSection(tabs: missing));
-      }
+    final group = entry.value;
+    if (group == null) {
+      continue;
     }
+    tabsByDock[entry.key]!.addAll([
+      for (final tab in group.tabs)
+        if (!hiddenTabs.contains(tab) && seen.add(tab)) tab,
+    ]);
   }
+
+  final docks = <String, DockGroup?>{
+    for (final entry in tabsByDock.entries)
+      entry.key: entry.value.isEmpty
+          ? null
+          : DockGroup(tabs: entry.value, activeTabId: activeByDock[entry.key]),
+  };
 
   final extentsJson = layoutJson['extents'];
   final dockExtents = <String, double>{
