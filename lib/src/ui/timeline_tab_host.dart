@@ -36,6 +36,7 @@ import 'timeline/effect_lane_editing.dart';
 import 'timeline/effect_lane_policy.dart';
 import 'timeline/property_lane_model.dart';
 import 'timeline/timeline_lane_provider.dart';
+import 'timeline/layer_row_drag.dart' show TimelineRowDragHooks;
 import 'timeline/timeline_cel_content_source.dart';
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_cut_end_handle.dart';
@@ -1159,6 +1160,16 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             currentRowHooks: TimelineCurrentRowHooks(
               currentRow: _session.currentRowListenable,
               onStandOnLane: _standOnLaneRow,
+            ),
+            // P2b: the rail row IS the handle. Pen and mouse move it; a
+            // finger scrolls, because the rail scrolls along the very axis
+            // this drag runs.
+            rowDragHooks: TimelineRowDragHooks(
+              drag: _session.layerRowDrag,
+              onBegin: _session.beginLayerRowDrag,
+              onUpdate: _session.updateLayerRowDrag,
+              onEnd: _session.endLayerRowDrag,
+              onCancel: _session.cancelLayerRowDrag,
             ),
             // The TVP run-edge cluster (UI-R9 #10): [+] drags new one-frame
             // drawings onto a run; the property tag sets the edge's

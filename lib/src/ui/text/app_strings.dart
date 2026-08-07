@@ -466,6 +466,8 @@ class AppStrings {
   String get tlRemoveEffectTemplate => _s('tlRemoveEffectTemplate');
   String get tlMoveLayerUp => _s('tlMoveLayerUp');
   String get tlMoveLayerDown => _s('tlMoveLayerDown');
+  String get tlDropIntoFolderTemplate => _s('tlDropIntoFolderTemplate');
+  String get tlDropOutOfFolder => _s('tlDropOutOfFolder');
   String get tlCopyFrame => _s('tlCopyFrame');
   String get tlPasteLinkedFrame => _s('tlPasteLinkedFrame');
   String get tlDeleteCell => _s('tlDeleteCell');
@@ -1372,6 +1374,8 @@ class AppStrings {
     'tlRemoveEffectTemplate': 'Remove {name}',
     'tlMoveLayerUp': 'Move up one',
     'tlMoveLayerDown': 'Move down one',
+    'tlDropIntoFolderTemplate': 'into {name}',
+    'tlDropOutOfFolder': 'out of the folder',
     'tlCopyFrame': 'Copy frame',
     'tlPasteLinkedFrame': 'Paste linked frame',
     'tlDeleteCell': 'Delete',
@@ -2067,6 +2071,8 @@ class AppStrings {
     'tlRemoveEffectTemplate': '{name}を削除',
     'tlMoveLayerUp': 'ひとつ上へ',
     'tlMoveLayerDown': 'ひとつ下へ',
+    'tlDropIntoFolderTemplate': '{name} の中へ',
+    'tlDropOutOfFolder': 'フォルダの外へ',
     'tlCopyFrame': 'フレームをコピー',
     'tlPasteLinkedFrame': 'リンクフレームを貼り付け',
     'tlDeleteCell': '削除',
@@ -2758,6 +2764,8 @@ class AppStrings {
     'tlRemoveEffectTemplate': '{name} 제거',
     'tlMoveLayerUp': '위로 한 칸',
     'tlMoveLayerDown': '아래로 한 칸',
+    'tlDropIntoFolderTemplate': '{name} 안으로',
+    'tlDropOutOfFolder': '폴더 밖으로',
     'tlCopyFrame': '프레임 복사',
     'tlPasteLinkedFrame': '링크 프레임 붙여넣기',
     'tlDeleteCell': '삭제',
@@ -3484,6 +3492,8 @@ class AppStrings {
     'tlRemoveEffectTemplate': 'Supprimer {name}',
     'tlMoveLayerUp': "Monter d'un cran",
     'tlMoveLayerDown': "Descendre d'un cran",
+    'tlDropIntoFolderTemplate': 'dans {name}',
+    'tlDropOutOfFolder': 'hors du dossier',
     'tlCopyFrame': "Copier l'image",
     'tlPasteLinkedFrame': "Coller l'image liée",
     'tlDeleteCell': 'Supprimer',
@@ -4148,6 +4158,8 @@ class AppStrings {
     'tlRemoveEffectTemplate': '删除{name}',
     'tlMoveLayerUp': '上移一层',
     'tlMoveLayerDown': '下移一层',
+    'tlDropIntoFolderTemplate': '移入 {name}',
+    'tlDropOutOfFolder': '移出文件夹',
     'tlCopyFrame': '复制帧',
     'tlPasteLinkedFrame': '粘贴链接帧',
     'tlDeleteCell': '删除',

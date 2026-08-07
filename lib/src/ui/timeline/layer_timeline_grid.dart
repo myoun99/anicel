@@ -17,6 +17,7 @@ import '../../models/timeline_row_address.dart';
 import 'timeline_row_cross_offset.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
 import 'timeline_row_span_resolver.dart' show resolveSelectionSpanHead;
+import 'layer_row_drag.dart';
 import 'timeline_current_row.dart';
 import 'timeline_edge_auto_pan.dart';
 import 'timeline_frame_range_gesture.dart';
@@ -107,6 +108,7 @@ class LayerTimelineGrid extends StatefulWidget {
     this.rangeHooks,
     this.laneRange,
     this.currentRowHooks,
+    this.rowDragHooks,
     this.runEdit,
     this.isFrameCached,
     this.metrics = TimelineGridMetrics.defaults,
@@ -293,6 +295,10 @@ class LayerTimelineGrid extends StatefulWidget {
   /// Which row the frame-axis verbs act on, and the label press that moves
   /// it (R10 #19's rail half); null leaves lane labels inert and unwashed.
   final TimelineCurrentRowHooks? currentRowHooks;
+
+  /// The row-order drag: grabbing a rail row moves it. Null leaves the rows
+  /// undraggable, which is what a passive host wants.
+  final TimelineRowDragHooks? rowDragHooks;
 
   /// The run-edge [+]/[↻] handle hooks (UI-R8); null hides the handles.
   final TimelineRunEditCallbacks? runEdit;
@@ -974,11 +980,32 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     );
     final cached = _railRowMemo[row.layer.id];
     if (cached != null && _railRowInputsMatch(cached.inputs, inputs)) {
-      return cached.row;
+      return _draggable(row, cached.row);
     }
     final built = _railRow(row);
     _railRowMemo[row.layer.id] = (inputs: inputs, row: built);
-    return built;
+    return _draggable(row, built);
+  }
+
+  /// The row, made draggable. The wrapper is built fresh every pass and the
+  /// memoized row travels through it untouched — the drag state lives in a
+  /// notifier the wrapper subscribes to, so a caret moving does not
+  /// invalidate one cached row.
+  ///
+  /// [TimelineDisplayRow.layerIndex] is the slot: it is this row's place in
+  /// the DISPLAY layer list, which is exactly what a caret between layer
+  /// rows counts in.
+  Widget _draggable(TimelineDisplayRow row, Widget child) {
+    return LayerRowDragTarget(
+      layerId: row.layer.id,
+      slotBefore: row.layerIndex,
+      rowExtent: _metrics.layerRowHeight,
+      displayLayers: widget.layers,
+      axis: Axis.horizontal,
+      hooks: widget.rowDragHooks,
+      isLastRow: row.layerIndex == widget.layers.length - 1,
+      child: child,
+    );
   }
 
   bool _railRowInputsMatch(_RailRowMemoInputs a, _RailRowMemoInputs b) {
