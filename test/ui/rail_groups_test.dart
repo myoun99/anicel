@@ -328,6 +328,46 @@ void main() {
       expect(grownMedia.width, closeTo(grownLibrary.width, 0.5));
     });
 
+    testWidgets('the rail scrolls only when the saved heights overflow it', (
+      tester,
+    ) async {
+      // 유저 확정: the heights are FIXED and the rail scrolls when they will
+      // not all fit — and not a moment sooner, because a scrolling rail
+      // hands vertical drags to the scroll arena before the panel tabs see
+      // them (the reason 띠는 스크롤하지 않는다 in the first place).
+      await pumpApp(tester);
+      Finder railScroll() =>
+          find.byKey(const ValueKey<String>('rail-scroll-left'));
+      expect(railScroll(), findsNothing, reason: 'one group fits');
+
+      // Put a second group on the left rail.
+      final mediaTab = find.byKey(const ValueKey<String>('panel-tab-media'));
+      await tester.ensureVisible(mediaTab);
+      await tester.pumpAndSettle();
+      final gesture = await tester.startGesture(
+        tester.getCenter(
+          find.byKey(const ValueKey<String>('panel-grip-media')),
+        ),
+      );
+      await tester.pump(const Duration(milliseconds: 20));
+      await gesture.moveBy(const Offset(0, 30));
+      await tester.pump();
+      await gesture.moveTo(
+        tester.getCenter(
+          groupButton(EditorWorkspace.railGroupId(right: false, slot: 2)),
+        ),
+      );
+      await tester.pump();
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      // Two 320px panels and a gap need 648; the rail has ~589.
+      expect(railScroll(), findsOneWidget);
+      // …and both panels are still there to be scrolled to.
+      expect(find.byType(BrushPresetPanel), findsOneWidget);
+      expect(find.byType(MediaBrowserPanel), findsOneWidget);
+    });
+
     testWidgets('a rail panel FLOATS on the canvas: a gap from the strip, a '
         'gap above it, and it ends where its own height ends', (tester) async {
       await pumpApp(tester);
