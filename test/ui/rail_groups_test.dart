@@ -81,6 +81,55 @@ void main() {
         findsNothing,
       );
     });
+
+    testWidgets('both strips fill from the TOP — the tool column does not '
+        'push its group buttons to the far end', (tester) async {
+      await pumpApp(tester);
+
+      final leftStrip = tester.getRect(
+        find.byKey(const ValueKey<String>('editor-panel-dock-tool-left')),
+      );
+      final tools = tester.getRect(
+        find.byKey(const ValueKey<String>('tools-panel')),
+      );
+      final leftButton = tester.getRect(
+        groupButton(EditorWorkspace.leftGroupId),
+      );
+      final rightButton = tester.getRect(
+        groupButton(EditorWorkspace.rightGroupId),
+      );
+
+      // The sub-strip has always started at the top; the tool strip's
+      // buttons used to sit ~460px lower, because the tool column was
+      // handed the strip's whole spare height and the buttons took what
+      // was left at the bottom.
+      expect(rightButton.top - leftStrip.top, lessThan(16));
+      expect(
+        leftButton.top - tools.bottom,
+        lessThan(24),
+        reason: 'the group buttons follow the tools immediately',
+      );
+      expect(leftButton.bottom, lessThan(leftStrip.bottom - 100));
+    });
+
+    testWidgets('a strip button has NO grip — the panel it opens carries the '
+        'only one', (tester) async {
+      // R1 gave every strip button an 8px lift zone. Nothing was wired to
+      // it: it painted, it took the grab cursor, and dragging it moved
+      // nothing. 유저 정정 — the button is a switch, the tab is the handle.
+      await pumpApp(tester);
+
+      expect(
+        find.byKey(
+          ValueKey<String>('rail-grip-rail-group-${EditorWorkspace.leftGroupId}'),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('rail-grip-tool-brush-button')),
+        findsNothing,
+      );
+    });
   });
 
   group('open and closed', () {

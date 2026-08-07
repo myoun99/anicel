@@ -334,7 +334,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// because the rail is not a tab bar: opening a second group stacks it
   /// under the first and they divide the rail's height. A group with no
   /// panels in it has no button and cannot be opened.
-  Set<String> _openRails = {
+  Set<String> _openRails = _defaultOpenRails();
+
+  static Set<String> _defaultOpenRails() => {
     EditorWorkspace.leftGroupId,
     EditorWorkspace.railGroupId(right: true, slot: 2),
   };
@@ -995,15 +997,28 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     }
   }
 
-  /// Window > Reset Workspace Layout: back to the factory docks, extents
-  /// and locks (the debounced save persists the reset like any edit).
+  /// 워크스페이스 초기화: EVERYTHING the workspace remembers, back to the
+  /// factory arrangement (the debounced save persists the reset like any
+  /// other edit).
+  ///
+  /// It used to reset the docks, the extents and the locks — which is most
+  /// of a layout but not a layout. Which rail groups were OPEN, which edge
+  /// the strips were on, how far the floating region was inset, whether it
+  /// was collapsed and which edge it sat on all survived the reset, so the
+  /// button could not get someone out of an arrangement they disliked.
+  /// Every field the save writes is reset here; that is the rule, and it is
+  /// why the two lists are worth reading side by side.
   void _resetWorkspaceLayout() {
-    setState(() {
-      _lockedTabIds = {EditorWorkspace.canvasTabId};
-    });
     for (final extent in _railExtents.values) {
       extent.reset();
     }
+    setState(() {
+      _lockedTabIds = {EditorWorkspace.canvasTabId};
+      _openRails = _defaultOpenRails();
+      _bottomDockCollapsed = false;
+      _regionOnTop = false;
+      _bottomInset = 0;
+    });
     _mutatingLayout(() {
       _layout.restore(docks: _defaultDocks());
     });
@@ -2035,9 +2050,18 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
+          // The tool column is rendered as CONTENT, not through a dock host.
+          // A host fills whatever it is handed — that is right for a panel
+          // and wrong for a strip, and it is why the group buttons under the
+          // tools sat at the far end of the tool strip while the sub-strip's
+          // sat at the top. Both strips read from the top down now, which is
+          // the only way they read as one family.
           if (hasTools)
             Flexible(
-              child: _buildDockHost(dockId, compact: true, chromeless: true),
+              child: Builder(
+                builder: (context) =>
+                    _tabFor(_layout.tabsIn(dockId).first).builder(context),
+              ),
             ),
           _buildRailButtons(right: right, groups: groups, emptySlot: emptySlot),
         ],
@@ -3011,11 +3035,6 @@ class _RailGroupButton extends StatelessWidget {
             icon: tabs.isEmpty ? Icons.add : tabs.first.icon,
             selected: open,
             onPressed: onPressed,
-            // A grip promises a lift, so only a group that HOLDS something
-            // grows one. What it lifts is the panel the button is showing —
-            // the same payload a tab drag carries, so it lands wherever a
-            // tab can land and nothing new had to be invented to receive it.
-            gripEnabled: tabs.isNotEmpty,
           )
         : Tooltip(
             message: tooltip,

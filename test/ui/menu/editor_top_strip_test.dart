@@ -126,6 +126,53 @@ void main() {
     );
   });
 
+  testWidgets('Settings: Reset Workspace Layout restores EVERY remembered '
+      'thing, not only the docks', (tester) async {
+    // It used to reset the docks, the extents and the locks — most of a
+    // layout, but not a layout. Which groups were open, which edge the
+    // region was on and whether it was collapsed all survived, so the
+    // button could not get anyone out of an arrangement they disliked.
+    await tester.binding.setSurfaceSize(const Size(1600, 1000));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await pumpHome(tester);
+
+    final leftGroup = find.byKey(const ValueKey<String>('rail-group-rail-L1'));
+    expect(
+      find.byKey(const ValueKey<String>('panel-tab-brushes')),
+      findsOneWidget,
+    );
+
+    // Close a rail group, and put the floating region on the other edge.
+    await tester.tap(leftGroup);
+    await tester.pumpAndSettle();
+    expect(
+      find.byKey(const ValueKey<String>('panel-tab-brushes')),
+      findsNothing,
+    );
+    await openStrip(tester, 'top-strip-settings-button');
+    await tapEntry(tester, 'menu-window-region-on-top');
+    final movedTimeline = tester.getRect(
+      find.byKey(const ValueKey<String>('floating-bottom-region')),
+    );
+
+    await openStrip(tester, 'top-strip-settings-button');
+    await tapEntry(tester, 'menu-window-reset-layout');
+
+    expect(
+      find.byKey(const ValueKey<String>('panel-tab-brushes')),
+      findsOneWidget,
+      reason: 'the closed group is open again',
+    );
+    final resetTimeline = tester.getRect(
+      find.byKey(const ValueKey<String>('floating-bottom-region')),
+    );
+    expect(
+      resetTimeline.top,
+      greaterThan(movedTimeline.top),
+      reason: 'the region is back on the bottom edge',
+    );
+  });
+
   testWidgets('Settings: About opens the framework about dialog', (
     tester,
   ) async {
