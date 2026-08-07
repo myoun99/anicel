@@ -138,54 +138,31 @@ void main() {
     expect(layerIds, contains('default-layer-2'));
   });
 
-  testWidgets(
-    'canvas title uses source labels and timeline frame display label',
-    (tester) async {
-      await tester.pumpWidget(
-        MaterialApp(home: HomePage(initialProject: _projectWithActiveFrame())),
-      );
-      await tester.pumpAndSettle();
-
-      expect(
-        find.text(
-          'Project: Editor Project · Cut: Editor Cut · Layer: Editor Layer · Frame: Source Frame',
-        ),
-        findsOneWidget,
-      );
-    },
-  );
-
-  testWidgets('named drawing start title shows the frame name', (tester) async {
+  testWidgets('R2 #12: NO canvas title on screen — the project name and the '
+      'layer readout are off every canvas panel', (tester) async {
+    // 유저: "이거 그냥 없애자. 캔버스패널 공통적으로. 필요하면 지금처럼
+    // 알약으로 등장시킬거야." The labels are still COMPUTED (the session
+    // keeps them, and null_active_cut_test still pins the gap case) — what
+    // is gone is the strip that spent a row of every canvas panel on them.
     await tester.pumpWidget(
-      MaterialApp(
-        home: HomePage(
-          initialProject: _projectWithMarkedFrame(name: 'Named Material'),
-        ),
-      ),
+      MaterialApp(home: HomePage(initialProject: _projectWithActiveFrame())),
     );
     await tester.pumpAndSettle();
 
     expect(
       find.text(
-        'Project: Marked Project · Cut: Marked Cut · Layer: Marked Layer · Frame: Named Material',
+        'Project: Editor Project · Cut: Editor Cut · Layer: Editor Layer · Frame: Source Frame',
       ),
-      findsOneWidget,
+      findsNothing,
     );
-  });
-
-  testWidgets('unnamed drawing start title shows the drawing marker', (
-    tester,
-  ) async {
-    await tester.pumpWidget(
-      MaterialApp(home: HomePage(initialProject: _projectWithMarkedFrame())),
-    );
-    await tester.pumpAndSettle();
-
+    expect(find.textContaining('Project: '), findsNothing);
     expect(
-      find.text(
-        'Project: Marked Project · Cut: Marked Cut · Layer: Marked Layer · Frame: ○',
-      ),
-      findsOneWidget,
+      find.byKey(const ValueKey<String>('canvas-editor-panel-status-strip')),
+      findsNothing,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('canvas-status-capsule')),
+      findsNothing,
     );
   });
 

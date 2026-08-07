@@ -2870,7 +2870,15 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         final hasBottomDock = _layout
             .tabsIn(EditorWorkspace.bottomGroupId)
             .isNotEmpty;
-        return Row(
+        // 유저 R2 #14: every canvas panel puts its pill in the corner AWAY
+        // from the tool strip — the strip is where the hand already is.
+        // Published once here because it is a fact about the WINDOW, and
+        // every canvas surface in it wants the same answer.
+        return CanvasPillSide(
+          onRight: _layout
+              .tabsIn(EditorWorkspace.toolLeftGroupId)
+              .isNotEmpty,
+          child: Row(
           children: [
             // The two tool strips are the only things that take space from
             // the canvas. Everything else LIES ON IT.
@@ -3136,6 +3144,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               EditorPanelDockSide.right,
             ),
           ],
+          ),
         );
       },
     );

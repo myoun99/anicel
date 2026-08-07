@@ -1588,13 +1588,20 @@ void main() {
 
       expect(settledInk, greaterThan(0));
       // ⚠️ CHARACTERIZED, NOT SATISFIED. The confirm frame of a wide move
-      // is still missing about 37% of the landing. It was 55% before the
+      // is still missing about 42% of the landing. It was 55% before the
       // base stopped lying and 44% before the move stopped rebuilding the
       // float; what is left is the hold's own coverage, not either of
       // those. This bound catches it getting worse.
+      //
+      // It moved 37% → 42% when R2 #13 took the panel's frame away: the
+      // viewport gained the status strip's 20px, the bottom bar's 28 and
+      // the right strip's 14, so more of a WIDE picture is on screen and
+      // more of its tiles are pending on the one frame this measures. The
+      // hold's coverage did not change; the window it is measured through
+      // did.
       expect(
         delta.hole,
-        lessThan((settledInk * 0.4).round()),
+        lessThan((settledInk * 0.45).round()),
         reason:
             '${delta.hole} of $settledInk absent on the confirm frame '
             '(ghost ${delta.ghost})',

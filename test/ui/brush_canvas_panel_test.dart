@@ -168,9 +168,16 @@ void main() {
         find.byKey(const ValueKey<String>('canvas-editor-panel-shell')),
         findsOneWidget,
       );
+      // R2 #12: no status strip, docked or floating. The project name and
+      // the layer readout are gone from every canvas panel — the user asked
+      // for the space back and will ask for a pill if they want them.
       expect(
         find.byKey(const ValueKey<String>('canvas-editor-panel-status-strip')),
-        findsOneWidget,
+        findsNothing,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('canvas-status-capsule')),
+        findsNothing,
       );
       expect(
         find.byKey(const ValueKey<String>('canvas-editor-panel-content')),
@@ -692,10 +699,6 @@ void main() {
     await tester.pump();
 
     expect(tester.takeException(), isNull);
-    expect(
-      find.byKey(const ValueKey<String>('canvas-editor-panel-status-strip')),
-      findsOneWidget,
-    );
     expect(
       find.byKey(const ValueKey<String>('canvas-editor-panel-content')),
       findsOneWidget,

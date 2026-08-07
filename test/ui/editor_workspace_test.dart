@@ -535,12 +535,14 @@ void main() {
       // app's floor carries its two panbars and nothing else — Fit and the
       // zoom cluster belong to the surface the app is lying on, and the
       // sheet is a page you read beside the drawing.
+      // R2 #13: it has a pill of its own now, Fit and all — a page you
+      // read is a page you zoom.
       expect(
         find.descendant(
           of: find.byType(TimesheetTabHost),
           matching: find.byKey(const ValueKey<String>('canvas-viewport-fit')),
         ),
-        findsNothing,
+        findsOneWidget,
       );
       expect(
         find.descendant(

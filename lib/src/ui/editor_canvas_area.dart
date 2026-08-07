@@ -69,6 +69,7 @@ class EditorCanvasArea extends StatefulWidget {
 
   final EditorSessionManager session;
 
+
   /// PEN-7b: the shell's action funnel — the flip touch slot fires the
   /// same registry ids as the arrow keys.
   final void Function(String actionId)? onInvokeAction;
@@ -487,7 +488,8 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               onViewportChanged: (viewport) {
                 setState(() => _canvasViewport = viewport);
               },
-              selectionLabels: session.canvasSelectionLabels,
+              // 유저 R2 #14: the pill takes the corner AWAY from the tool
+              // strip — the strip is where the hand already is.
               brushToolState: toolState,
               fitFocusRect: fitFocusRect,
               viewCommands: widget.canvasViewCommands,

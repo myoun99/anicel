@@ -198,25 +198,34 @@ void main() {
         ])
           key: tester.getCenter(find.byKey(key)).dx,
       };
-      final panbarX = tester
-          .getCenter(
-            find.byKey(
-              const ValueKey<String>('canvas-viewport-horizontal-scrollbar'),
-            ),
-          )
+      // R2 #13: the panbar is its own capsule on the top edge now, so what
+      // the cluster is left of is FIT — the head of the view controls it
+      // shares the pill with.
+      final fitX = tester
+          .getCenter(find.byKey(const ValueKey<String>('canvas-viewport-fit')))
           .dx;
 
       expect(xs[_dataModeKey]!, lessThan(xs[_pageModeKey]!));
       expect(xs[_pageModeKey]!, lessThan(xs[_prevKey]!));
       expect(xs[_prevKey]!, lessThan(xs[_pageLabelKey]!));
       expect(xs[_pageLabelKey]!, lessThan(xs[_nextKey]!));
-      expect(xs[_nextKey]!, lessThan(panbarX));
+      expect(xs[_nextKey]!, lessThan(fitX));
 
-      // The status strip gave these two up (R26 #41) — they live in the
-      // bottom bar now, and the ink/info commands stayed behind.
+      // The status strip is gone entirely (R2 #13) and its commands came
+      // with the page cluster into the one pill.
       expect(
         find.byKey(const ValueKey<String>('timesheet-ink-toggle-button')),
         findsOneWidget,
+      );
+      expect(
+        tester
+            .getCenter(
+              find.byKey(
+                const ValueKey<String>('timesheet-ink-toggle-button'),
+              ),
+            )
+            .dx,
+        lessThan(xs[_dataModeKey]!),
       );
     });
 

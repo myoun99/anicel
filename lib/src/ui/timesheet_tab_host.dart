@@ -260,7 +260,12 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
   /// the bottom bar with the page navigation (R26 #41), and what stayed
   /// wears the app's standard icon button (R26 #42) instead of the
   /// hand-rolled InkWell this strip used to grow its own.
-  List<Widget> _statusStripActions() {
+  /// The sheet's own commands, at the head of the panel's pill.
+  ///
+  /// They lived in a status strip across the top of the panel until R2 #13
+  /// took the strip (and the frame, and the bottom bar) away. A panel has
+  /// one pill now and everything it offers is in it.
+  List<Widget> _panelActions() {
     return [
       if (widget.onInkEnabledChanged != null)
         AppIconButton(
@@ -400,18 +405,18 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
             canvasSize: const CanvasSize(width: 780, height: 1080),
             viewport: widget.viewport,
             onViewportChanged: widget.onViewportChanged,
-            selectionLabels: CanvasEditorSelectionLabels(
-              projectLabel: session.repository.requireProject().name,
-              cutLabel: '—',
-              layerLabel: widget.continuous
-                  ? strings.continuousLabel
-                  : strings.pageLabel,
-              frameLabel: '-',
-            ),
             allowViewRotation: false,
-            statusStripActions: _statusStripActions(),
-            bottomBarLeading: _bottomBarLeading(null),
-            bottomBarLeadingToken: (widget.continuous, _dataSheet, 0, 0),
+            bottomBarLeading: [
+              ..._panelActions(),
+              ..._bottomBarLeading(null),
+            ],
+            bottomBarLeadingToken: (
+              widget.continuous,
+              _dataSheet,
+              widget.inkEnabled,
+              0,
+              0,
+            ),
             contentOverride: (context, viewport) => Container(
               key: const ValueKey<String>('timesheet-empty-no-cut'),
               color: colorScheme.surfaceContainerHighest,
@@ -488,22 +493,14 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                     ),
                     viewport: widget.viewport,
                     onViewportChanged: widget.onViewportChanged,
-                    selectionLabels: CanvasEditorSelectionLabels(
-                      projectLabel: document.title,
-                      cutLabel: document.cutName,
-                      // The position label (UI-R10 #19): the page in page
-                      // view, the continuous marker otherwise — never a
-                      // redundant 'Timesheet'.
-                      layerLabel: widget.continuous
-                          ? strings.continuousLabel
-                          : '${strings.pageLabel} ${visiblePage + 1}',
-                      frameLabel: '${playheadFrame + 1}',
-                    ),
-                    statusStripActions: _statusStripActions(),
-                    bottomBarLeading: _bottomBarLeading(layout),
+                    bottomBarLeading: [
+                      ..._panelActions(),
+                      ..._bottomBarLeading(layout),
+                    ],
                     bottomBarLeadingToken: (
                       widget.continuous,
                       _dataSheet,
+                      widget.inkEnabled,
                       visiblePage,
                       document.pages.length,
                     ),

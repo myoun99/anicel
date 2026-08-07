@@ -50,7 +50,6 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.historyManager,
     this.viewport,
     this.onViewportChanged,
-    this.selectionLabels = const CanvasEditorSelectionLabels(),
     this.brushToolState = BrushToolState.defaults,
     this.viewportOverlayBuilder,
     this.viewportUnderlayBuilder,
@@ -101,7 +100,7 @@ class MainCanvasBrushHost extends StatefulWidget {
   final HistoryManager? historyManager;
   final CanvasViewport? viewport;
   final ValueChanged<CanvasViewport>? onViewportChanged;
-  final CanvasEditorSelectionLabels selectionLabels;
+
   final BrushToolState brushToolState;
 
   /// Forwarded to [BrushCanvasPanel]: stacked over the canvas inside the
@@ -307,11 +306,11 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
   ) {
     return BrushCanvasPanel(
       key: const ValueKey<String>('main-canvas-brush-host'),
-      // Null unless this host is lying on the app's floor — which is a
+      // Zero unless this host is lying on the app's floor — which is a
       // question about WHERE it is mounted, so the tree answers it. A host
       // opened in a rail column or the bottom panel is simply not under the
-      // provider and keeps the arithmetic it has always had.
-      floorCover: CanvasFloorInsets.maybeOf(context),
+      // provider, and nothing lies on it.
+      floorCover: CanvasFloorInsets.maybeOf(context) ?? EdgeInsets.zero,
       coordinator: coordinator,
       celEditable: hasEditableFrame,
       availableFrameKeys: _frameKeys,
@@ -320,7 +319,6 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       historyManager: widget.historyManager,
       viewport: widget.viewport,
       onViewportChanged: widget.onViewportChanged,
-      selectionLabels: widget.selectionLabels,
       brushToolState: widget.brushToolState,
       viewportOverlayBuilder: widget.viewportOverlayBuilder,
       viewportUnderlayBuilder: widget.viewportUnderlayBuilder,

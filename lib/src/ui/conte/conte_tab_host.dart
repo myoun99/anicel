@@ -243,7 +243,9 @@ class _ConteTabHostState extends State<ConteTabHost> {
     }
   }
 
-  List<Widget> _statusStripActions() {
+  /// The conte's own commands, at the head of the panel's pill (R2 #13 —
+  /// the status strip they lived in is gone with the rest of the frame).
+  List<Widget> _panelActions() {
     return [
       if (widget.onInkEnabledChanged != null && widget.inkController != null)
         AppIconButton(
@@ -346,18 +348,13 @@ class _ConteTabHostState extends State<ConteTabHost> {
             ),
       viewport: widget.viewport,
       onViewportChanged: widget.onViewportChanged,
-      selectionLabels: CanvasEditorSelectionLabels(
-        projectLabel: _session.repository.requireProject().name,
-        cutLabel: 'Conte',
-        layerLabel:
-            '${strings.pageLabel} ${pageCount == 0 ? 0 : pageIndex + 1}',
-        frameLabel: '-',
-      ),
       // The paper never rotates (the timesheet's rule).
       allowViewRotation: false,
-      statusStripActions: _statusStripActions(),
-      bottomBarLeading: _bottomBarLeading(pageIndex, pageCount),
-      bottomBarLeadingToken: (pageIndex, pageCount),
+      bottomBarLeading: [
+        ..._panelActions(),
+        ..._bottomBarLeading(pageIndex, pageCount),
+      ],
+      bottomBarLeadingToken: (pageIndex, pageCount, widget.inkEnabled),
       fitFocusRect: metrics == null
           ? null
           : Rect.fromLTWH(0, 0, metrics.pageWidth, metrics.pageHeight),

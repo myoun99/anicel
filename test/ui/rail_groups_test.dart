@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
 import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
 import 'package:anicel/src/ui/brush/tools_panel.dart';
@@ -13,6 +14,8 @@ import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/media/media_browser_panel.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timesheet_tab_host.dart';
+
+import '../helpers/panel_finders.dart';
 
 /// A rail button is a GROUP of panels, and the rail is a column of them.
 ///
@@ -394,8 +397,13 @@ void main() {
       // panel — and an open side panel covered it outright.
       await pumpApp(tester);
 
+      // The FLOOR's bar. Every canvas panel wears one now (R2 #13), so an
+      // app-wide finder matches the timesheet's too.
       Rect panbar() => tester.getRect(
-        find.byKey(const ValueKey<String>('canvas-panbar-vertical')),
+        find.descendant(
+          of: inMainCanvas(find.byType(BrushCanvasPanel)),
+          matching: find.byKey(const ValueKey<String>('canvas-panbar-vertical')),
+        ),
       );
       final rail = tester.getRect(
         find.byKey(const ValueKey<String>('editor-panel-dock-right')),

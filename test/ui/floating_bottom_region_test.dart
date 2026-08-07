@@ -341,11 +341,15 @@ void main() {
   });
 
   group('the floor wears capsules, not bands', () {
-    Finder pill() => find.byKey(const ValueKey<String>('canvas-view-pill'));
-    Finder hBar() =>
-        find.byKey(const ValueKey<String>('canvas-panbar-horizontal'));
-    Finder vBar() =>
-        find.byKey(const ValueKey<String>('canvas-panbar-vertical'));
+    // SCOPED to the floor. Every canvas panel wears these now (R2 #13), so
+    // an app-wide finder matches the timesheet's too.
+    Finder onFloor(String key) => find.descendant(
+      of: mainCanvasPanelShell(),
+      matching: find.byKey(ValueKey<String>(key)),
+    );
+    Finder pill() => onFloor('canvas-view-pill');
+    Finder hBar() => onFloor('canvas-panbar-horizontal');
+    Finder vBar() => onFloor('canvas-panbar-vertical');
 
     testWidgets('the panbars centre on the PANEL and the reachable controls '
         'dodge what is open', (tester) async {
@@ -353,9 +357,6 @@ void main() {
 
       final timeline = tester.getRect(region());
       final pillRect = tester.getRect(pill());
-      final status = tester.getRect(
-        find.byKey(const ValueKey<String>('canvas-status-capsule')),
-      );
       final canvas = tester.getRect(mainCanvasPanelShell());
 
       // 유저 확정 (08-07, overruling the earlier rule): a scrollbar is
@@ -365,16 +366,14 @@ void main() {
       expect(tester.getRect(vBar()).center.dy, closeTo(canvas.center.dy, 1.0));
       expect(tester.getRect(hBar()).center.dx, closeTo(canvas.center.dx, 1.0));
 
-      // The two you REACH FOR still dodge: the cluster is nailed to the
-      // floor's top-left corner and the readout stays clear of the region.
+      // The one you REACH FOR still dodges: the pill is nailed to a top
+      // corner, clear of the region.
       expect(pillRect.top, lessThan(timeline.top));
-      expect(status.bottom, lessThanOrEqualTo(timeline.top + 0.5));
 
-      // None of them is a band: together they cover a small fraction of the
-      // width they ride, which is the whole difference from the strips they
-      // replaced.
+      // It is not a band: it covers a small fraction of the width it rides,
+      // which is the whole difference from the strips it replaced.
       expect(tester.getRect(hBar()).width, lessThan(canvas.width * 0.5));
-      expect(status.width, lessThan(canvas.width * 0.5));
+      expect(pillRect.width, lessThan(canvas.width * 0.5));
 
       // They share the top edge, so they must not share PIXELS.
       expect(
@@ -384,24 +383,67 @@ void main() {
       );
     });
 
-    testWidgets('opening the left column pushes the cluster right instead of '
-        'hiding it under the panel', (tester) async {
+    testWidgets('widening a rail pushes the pill in instead of hiding it '
+        'under the panel', (tester) async {
+      // The pill takes the corner AWAY from the tool strip (R2 #14), which
+      // with the strip on the left is the RIGHT one — so the rail that
+      // pushes it is the right rail.
       await pumpApp(tester);
-      final before = tester.getRect(pill()).left;
+      final before = tester.getRect(pill()).right;
 
       await tester.drag(
-        find.byKey(const ValueKey<String>('dock-resize-rail-L1')),
-        const Offset(120, 0),
+        find.byKey(const ValueKey<String>('dock-resize-rail-R2')),
+        const Offset(-120, 0),
       );
       await tester.pumpAndSettle();
 
-      expect(tester.getRect(pill()).left, greaterThan(before));
+      expect(tester.getRect(pill()).right, lessThan(before));
     });
 
-    testWidgets('the view cluster lives on the FLOOR only', (tester) async {
+    testWidgets('the pill takes the corner AWAY from the tool strip, and '
+        'moves when the strip does', (tester) async {
+      // 유저, R2 #14: the strip is where the hand already is. It follows
+      // the strip's own left/right setting, so the left-handed choice
+      // moves this too and neither has a rule of its own.
       await pumpApp(tester);
 
-      // Fit belongs to the surface the app is lying on…
+      final canvas = tester.getRect(mainCanvasPanelShell());
+      expect(
+        tester.getRect(pill()).center.dx,
+        greaterThan(canvas.center.dx),
+        reason: 'strip on the left ⇒ pill on the right',
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('top-strip-settings-button')),
+      );
+      await tester.pumpAndSettle();
+      final row = find.byKey(
+        const ValueKey<String>('menu-window-tool-rail-right'),
+      );
+      await tester.ensureVisible(row);
+      await tester.pumpAndSettle();
+      await tester.tap(row);
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.getRect(pill()).center.dx,
+        lessThan(tester.getRect(mainCanvasPanelShell()).center.dx),
+        reason: 'strip on the right ⇒ pill on the left',
+      );
+    });
+
+    testWidgets('EVERY canvas panel gets a pill, and only the floor gets '
+        'rotate and flip', (tester) async {
+      // ⚠️「뷰 컨트롤은 바닥에만」 is PARTLY REPEALED (유저, R2 #13). The law
+      // gave the floor every view control and the paper panels two
+      // scrollbars, on the reading that a timesheet is a page you read
+      // beside the drawing. In the hand a page you read is a page you
+      // zoom, so Fit and the zoom steps come back everywhere. Rotate and
+      // flip do not: a sheet with a form printed on it has no reason to be
+      // turned over.
+      await pumpApp(tester);
+
       expect(
         find.descendant(
           of: mainCanvasPanelShell(),
@@ -409,20 +451,18 @@ void main() {
         ),
         findsOneWidget,
       );
-      // …and to nothing else. The timesheet in the right dock is a canvas
-      // host too, and it gets its two panbars and no view controls.
       expect(
         find.descendant(
           of: timesheetPanel(),
           matching: find.byKey(const ValueKey<String>('canvas-viewport-fit')),
         ),
-        findsNothing,
+        findsOneWidget,
       );
       expect(
         find.descendant(
           of: timesheetPanel(),
           matching: find.byKey(
-            const ValueKey<String>('canvas-viewport-zoom-in'),
+            const ValueKey<String>('canvas-viewport-flip'),
           ),
         ),
         findsNothing,

@@ -117,14 +117,14 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      // The reference control — Fit — is not here any more: 법 뷰 컨트롤은
-      // 바닥에만, and the sheet is a page you read beside the drawing, not
-      // the surface the app lies on. What this test is about survives
-      // whole: the sheet's OWN controls are the shared widget, and the
-      // reference wears it too (pinned in the floor's own tests).
+      // The reference control — Fit — is back on the sheet (R2 #13: a page
+      // you read is a page you zoom), and it wears the shared widget…
       expect(
-        find.byKey(const ValueKey<String>('canvas-viewport-fit')),
-        findsNothing,
+        find.ancestor(
+          of: find.byKey(const ValueKey<String>('canvas-viewport-fit')),
+          matching: find.byType(AppIconButton),
+        ),
+        findsOneWidget,
       );
       // …the sheet-mode controls that joined the bar (R26 #41)…
       expect(

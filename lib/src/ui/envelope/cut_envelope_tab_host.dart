@@ -140,15 +140,9 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
       canvasSize: paper,
       viewport: widget.viewport,
       onViewportChanged: widget.onViewportChanged,
-      selectionLabels: CanvasEditorSelectionLabels(
-        projectLabel: session.repository.requireProject().name,
-        cutLabel: 'Envelope',
-        layerLabel: form.name,
-        frameLabel: '-',
-      ),
       // The paper never rotates (the timesheet's rule).
       allowViewRotation: false,
-      statusStripActions: _statusStripActions(),
+      bottomBarLeading: _panelActions(),
       fitFocusRect: Rect.fromLTWH(
         0,
         0,
@@ -215,7 +209,9 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
     );
   }
 
-  List<Widget> _statusStripActions() {
+  /// The envelope's own commands, at the head of the panel's pill (R2 #13
+  /// — the status strip they lived in is gone with the rest of the frame).
+  List<Widget> _panelActions() {
     final onChanged = widget.onInkEnabledChanged;
     final onFormChanged = widget.onFormIdChanged;
     return [

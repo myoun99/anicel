@@ -44,3 +44,38 @@ class CanvasFloorInsets extends InheritedWidget {
   bool updateShouldNotify(CanvasFloorInsets oldWidget) =>
       oldWidget.insets != insets;
 }
+
+/// Which top corner a canvas panel's view pill takes: the one AWAY from the
+/// tool strip (유저, R2 #14).
+///
+/// The strip is where the hand already is, so the controls go to the far
+/// corner rather than under it — and it follows the strip's own left/right
+/// setting, which means the left-handed choice moves this too and neither
+/// has a rule of its own.
+///
+/// Inherited rather than threaded: EVERY canvas panel wants it (the floor,
+/// the timesheet, the conte, the envelope, the media viewer), the answer is
+/// the same for all of them, and it is a fact about the window rather than
+/// about any one panel. Threading it would have been five widgets' worth of
+/// pass-through parameters that could drift apart.
+class CanvasPillSide extends InheritedWidget {
+  const CanvasPillSide({
+    super.key,
+    required this.onRight,
+    required super.child,
+  });
+
+  final bool onRight;
+
+  /// The app's default tool strip is on the LEFT, so its opposite corner —
+  /// and this widget's default — is the right one. A panel mounted with no
+  /// workspace above it gets the same answer the app gives, rather than a
+  /// second arrangement that only exists in isolation.
+  static bool of(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<CanvasPillSide>()?.onRight ??
+      true;
+
+  @override
+  bool updateShouldNotify(CanvasPillSide oldWidget) =>
+      oldWidget.onRight != onRight;
+}

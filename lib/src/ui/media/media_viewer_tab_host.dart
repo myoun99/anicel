@@ -434,12 +434,6 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
       ),
       viewport: widget.viewport,
       onViewportChanged: widget.onViewportChanged,
-      selectionLabels: CanvasEditorSelectionLabels(
-        projectLabel: widget.session.repository.requireProject().name,
-        cutLabel: 'Media',
-        layerLabel: request?.displayName ?? '—',
-        frameLabel: pageCount > 1 ? '${pageIndex + 1}/$pageCount' : '-',
-      ),
       // Paper rule: the viewer never rotates the view.
       allowViewRotation: false,
       // Read-only host: a brush-tip cursor over undrawable content is a
@@ -455,7 +449,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
               rect: Rect.fromLTWH(0, 0, docSize.width, docSize.height),
             )
           : null,
-      statusStripActions: [
+      bottomBarLeading: [
         AppIconButton(
           keyValue: 'media-viewer-open-file-button',
           tooltip: strings.mediaViewerOpenFile,
@@ -463,8 +457,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
           size: AppIconButtonSize.strip,
           onPressed: _pickLooseFile,
         ),
+        ..._bottomBarLeading(pageIndex, pageCount),
       ],
-      bottomBarLeading: _bottomBarLeading(pageIndex, pageCount),
       bottomBarLeadingToken: (pageIndex, pageCount),
       fitFocusRect: message == null
           ? Rect.fromLTWH(0, 0, docSize.width, docSize.height)
