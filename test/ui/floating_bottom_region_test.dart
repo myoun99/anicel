@@ -163,15 +163,24 @@ void main() {
       await tester.pump(const Duration(milliseconds: 20));
       await gesture.moveBy(const Offset(30, 0));
       await tester.pump();
+      // The oracle used to be `dock-drop-join-`, a band painted over a
+      // panel's body — the free-form docking that is gone, and the rails'
+      // own drop zones only mount when a rail is EMPTY, so neither can say
+      // whether a lift happened. The grip itself can: it goes accent the
+      // moment it is actually dragging something, which is the contract
+      // this test is really about.
       expect(
-        find.byWidgetPredicate(
-          (widget) =>
-              widget.key is ValueKey<String> &&
-              (widget.key! as ValueKey<String>).value.startsWith(
-                'dock-drop-join-',
+        tester
+            .widget<ColoredBox>(
+              find.descendant(
+                of: find.byKey(
+                  const ValueKey<String>('panel-grip-timeline'),
+                ),
+                matching: find.byType(ColoredBox),
               ),
-        ),
-        findsWidgets,
+            )
+            .color,
+        AppColors.accent,
         reason: 'the tab lifted',
       );
       await gesture.up();

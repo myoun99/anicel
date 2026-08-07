@@ -234,19 +234,22 @@ void main() {
   });
 
   group('EditorWorkspace left dock tabs', () {
-    testWidgets('shows the palette tabs with Brushes active, Tool Settings '
-        'stacked underneath (R26 #31)', (tester) async {
+    testWidgets('the group is ONE strip: every panel a tab, one of them open', (
+      tester,
+    ) async {
       await _pumpHome(tester);
 
       expect(find.byKey(_brushesTabKey), findsOneWidget);
       expect(find.byKey(_brushSettingsTabKey), findsOneWidget);
       expect(find.byKey(_mediaTabKey), findsOneWidget);
 
-      // Only the active tab of each SECTION is built — and Tool Settings
-      // now owns its own section below the library, so both are open at
-      // once (the pair a stroke alternates between).
+      // A rail button's group is ONE section, so exactly one panel is
+      // built. Tool Settings used to own a second section below the
+      // library, which is what made this group render as the old left
+      // palette dock — two strips with a splitter between them, the very
+      // thing the rails replaced.
       expect(find.byType(BrushPresetPanel), findsOneWidget);
-      expect(find.byType(BrushSettingsPanel), findsOneWidget);
+      expect(find.byType(BrushSettingsPanel), findsNothing);
       expect(find.byType(MediaBrowserPanel), findsNothing);
     });
 
@@ -259,8 +262,7 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(MediaBrowserPanel), findsOneWidget);
       expect(find.byType(BrushPresetPanel), findsNothing);
-      // The section BELOW is untouched by its neighbour's tab switch.
-      expect(find.byType(BrushSettingsPanel), findsOneWidget);
+      expect(find.byType(BrushSettingsPanel), findsNothing);
 
       await tester.ensureVisible(find.byKey(_brushesTabKey));
       await tester.pumpAndSettle();
@@ -359,51 +361,6 @@ void main() {
       expect(find.byType(TimelinePanel), findsOneWidget);
     });
 
-    testWidgets('dropping on the BELOW zone stacks a second panel', (
-      tester,
-    ) async {
-      await _pumpHome(tester);
-
-      // Lift the media tab; the overlay drop zones appear while it is in
-      // flight. Drop on the left section's lower band.
-      await _dragTab(
-        tester,
-        find.byKey(_mediaTabKey),
-        () => tester.getCenter(
-          find.byKey(const ValueKey<String>('dock-drop-below-rail-L1-0')),
-        ),
-      );
-
-      // Panel below panel: Brushes AND Camera visible at once, separated
-      // by a draggable section splitter.
-      expect(find.byType(BrushPresetPanel), findsOneWidget);
-      expect(find.byType(MediaBrowserPanel), findsOneWidget);
-      expect(
-        find.byKey(const ValueKey<String>('dock-splitter-rail-L1-1')),
-        findsOneWidget,
-      );
-    });
-
-    testWidgets('the section splitter resizes stacked panels', (tester) async {
-      await _pumpHome(tester);
-      await _dragTab(
-        tester,
-        find.byKey(_mediaTabKey),
-        () => tester.getCenter(
-          find.byKey(const ValueKey<String>('dock-drop-below-rail-L1-0')),
-        ),
-      );
-
-      final splitter = find.byKey(
-        const ValueKey<String>('dock-splitter-rail-L1-1'),
-      );
-      final beforeY = tester.getCenter(splitter).dy;
-
-      await tester.drag(splitter, const Offset(0, -40));
-      await tester.pumpAndSettle();
-
-      expect(tester.getCenter(splitter).dy, lessThan(beforeY - 20));
-    });
 
     testWidgets('the dock edge splitter resizes the left dock', (tester) async {
       await _pumpHome(tester);

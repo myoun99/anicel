@@ -279,10 +279,15 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           // Trailing so the long-standing tab positions (and every test
           // tapping them) stay put; the strip scrolls to reach it.
           EditorWorkspace.onionSkinTabId,
+          // ONE section, so the group is ONE icon strip. Tool settings used
+          // to be a second section here, which is why the left rail's group
+          // rendered as two stacked panels with two strips and a splitter
+          // between them — pixel for pixel the old left palette dock the
+          // rails were supposed to replace.
+          EditorWorkspace.brushSettingsTabId,
         ],
         activeTabId: EditorWorkspace.brushesTabId,
       ),
-      DockSection(tabs: [EditorWorkspace.brushSettingsTabId]),
     ],
     // 오른쪽: 컬러(맨 위) (유저 확정). The picker is the top group of the
     // sub-strip, and its button is the swatch itself.

@@ -287,18 +287,17 @@ void main() {
       );
     });
 
-    testWidgets('a group keeps its own stacked sections', (tester) async {
+    testWidgets('a group is ONE section however many panels it holds', (
+      tester,
+    ) async {
       await pumpApp(tester);
 
-      // The factory left group is two sections — the library over the
-      // settings — and opening the group opens both (R26 #31: the two
-      // panels a stroke alternates between).
+      // A group is a rail BUTTON's set of panels, switched by one icon
+      // strip. It cannot be a stack: the drop that split a dock into
+      // sections is gone, and reopening a panel joins the strip instead of
+      // minting a second one.
       expect(find.byType(BrushPresetPanel), findsOneWidget);
-      expect(find.byType(BrushSettingsPanel), findsOneWidget);
-      expect(
-        tester.getCenter(find.byType(BrushPresetPanel)).dy,
-        lessThan(tester.getCenter(find.byType(BrushSettingsPanel)).dy),
-      );
+      expect(find.byType(BrushSettingsPanel), findsNothing);
     });
   });
 }

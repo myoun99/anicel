@@ -274,14 +274,29 @@ class EditorPanelLayoutModel extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Re-opens a hidden panel as a trailing section of [dockId]; no-op when
-  /// the tab is already placed or the dock is unknown.
+  /// Re-opens a hidden panel INTO [dockId]'s one section; no-op when the tab
+  /// is already placed or the dock is unknown.
+  ///
+  /// It used to append a NEW section, which is how a group quietly grew a
+  /// second tab strip and a splitter — the old free-form dock tree, rebuilt
+  /// one panel-menu click at a time. Now that a dock is a rail BUTTON's
+  /// group, one dock is one section: reopening joins the strip that is
+  /// already there, and a section is created only when the group is empty.
   void addTab(String tabId, {required String toDockId}) {
     final sections = _docks[toDockId];
     if (sections == null || locateTab(tabId) != null) {
       return;
     }
-    sections.add(DockSection(tabs: [tabId]));
+    if (sections.isEmpty) {
+      sections.add(DockSection(tabs: [tabId]));
+    } else {
+      final first = sections.first;
+      sections[0] = DockSection(
+        tabs: [...first.tabs, tabId],
+        activeTabId: first.activeTabId,
+        weight: first.weight,
+      );
+    }
     notifyListeners();
   }
 

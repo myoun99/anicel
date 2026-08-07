@@ -203,16 +203,15 @@ class EditorDockHost extends StatelessWidget {
                 totalExtent: totalExtent,
               )
             : null;
-        Widget section(int i) => _SectionDropOverlay(
-          dockId: dockId,
-          sectionIndex: i,
-          tabCount: sections[i].tabs.length,
-          draggingTab: draggingTab,
-          canAcceptTab: canAcceptTab,
-          onTabMovedToSection: onTabMovedToSection,
-          onTabMovedToNewSection: onTabMovedToNewSection,
-          stripAtBottom: stripAtBottom,
-          child: EditorPanelTabs(
+        // NO DROP OVERLAY. Dropping a panel above or below another one used
+        // to split a dock into stacked sections — the free-form dock tree
+        // this app is leaving behind. A panel goes where its BUTTON is now:
+        // onto a rail button to join that group, onto a rail's empty space
+        // to make one, onto the floating region's sill to join it. Those
+        // three are the whole vocabulary, and none of them is a band drawn
+        // over a panel's body.
+        Widget section(int i) => Builder(
+          builder: (context) => EditorPanelTabs(
             groupId: dockId,
             compact: compact,
             chromeless: chromeless,
@@ -263,189 +262,6 @@ class EditorDockHost extends StatelessWidget {
     );
   }
 }
-
-/// Which drop region of a section the pointer is over.
-enum _DropRegion { above, join, below }
-
-/// Floats the drop zones over a section while an eligible tab is in
-/// flight: a faint outline hints the section takes drops; hovering lights
-/// the target region up brightly (PS/AE style).
-class _SectionDropOverlay extends StatelessWidget {
-  const _SectionDropOverlay({
-    required this.dockId,
-    required this.sectionIndex,
-    required this.tabCount,
-    required this.draggingTab,
-    required this.canAcceptTab,
-    required this.onTabMovedToSection,
-    required this.onTabMovedToNewSection,
-    required this.stripAtBottom,
-    required this.child,
-  });
-
-  final String dockId;
-  final int sectionIndex;
-  final int tabCount;
-  final bool stripAtBottom;
-  final ValueListenable<EditorPanelTabDragData?> draggingTab;
-  final bool Function(EditorPanelTabDragData data) canAcceptTab;
-  final void Function(
-    EditorPanelTabDragData data,
-    int sectionIndex,
-    int insertIndex,
-  )
-  onTabMovedToSection;
-  final void Function(EditorPanelTabDragData data, int atSectionIndex)
-  onTabMovedToNewSection;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return ValueListenableBuilder<EditorPanelTabDragData?>(
-      valueListenable: draggingTab,
-      builder: (context, dragging, _) {
-        final eligible = dragging != null && canAcceptTab(dragging);
-        return Stack(
-          fit: StackFit.expand,
-          children: [
-            child,
-            if (eligible)
-              // The strip keeps its own precise per-tab targets; the
-              // overlay covers only the content region beside it — which
-              // side that is follows the strip.
-              Positioned(
-                left: 0,
-                right: 0,
-                top: stripAtBottom ? 0 : EditorPanelTabs.stripHeight,
-                bottom: stripAtBottom ? EditorPanelTabs.stripHeight : 0,
-                child: _DropBands(
-                  dockId: dockId,
-                  sectionIndex: sectionIndex,
-                  onDropped: (data, region) => switch (region) {
-                    _DropRegion.above => onTabMovedToNewSection(
-                      data,
-                      sectionIndex,
-                    ),
-                    _DropRegion.join => onTabMovedToSection(
-                      data,
-                      sectionIndex,
-                      tabCount,
-                    ),
-                    _DropRegion.below => onTabMovedToNewSection(
-                      data,
-                      sectionIndex + 1,
-                    ),
-                  },
-                ),
-              ),
-          ],
-        );
-      },
-    );
-  }
-}
-
-class _DropBands extends StatefulWidget {
-  const _DropBands({
-    required this.dockId,
-    required this.sectionIndex,
-    required this.onDropped,
-  });
-
-  final String dockId;
-  final int sectionIndex;
-  final void Function(EditorPanelTabDragData data, _DropRegion region)
-  onDropped;
-
-  @override
-  State<_DropBands> createState() => _DropBandsState();
-}
-
-class _DropBandsState extends State<_DropBands> {
-  _DropRegion? _hovered;
-
-  void _setHovered(_DropRegion? region) {
-    if (region != _hovered) {
-      setState(() => _hovered = region);
-    }
-  }
-
-  Widget _band(_DropRegion region, String keySuffix) {
-    return DragTarget<EditorPanelTabDragData>(
-      onWillAcceptWithDetails: (details) {
-        _setHovered(region);
-        return true;
-      },
-      onLeave: (_) => _setHovered(null),
-      onAcceptWithDetails: (details) {
-        _setHovered(null);
-        widget.onDropped(details.data, region);
-      },
-      builder: (context, candidateData, rejectedData) => SizedBox.expand(
-        key: ValueKey<String>(
-          'dock-drop-$keySuffix-${widget.dockId}-${widget.sectionIndex}',
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Stack(
-      fit: StackFit.expand,
-      children: [
-        // Faint hint: this section accepts the tab in flight.
-        IgnorePointer(
-          child: Container(
-            margin: const EdgeInsets.all(3),
-            decoration: BoxDecoration(
-              color: colorScheme.primary.withValues(alpha: 0.05),
-              border: Border.all(
-                color: colorScheme.primary.withValues(alpha: 0.45),
-              ),
-              borderRadius: BorderRadius.circular(4),
-            ),
-          ),
-        ),
-        // The bright region preview under the pointer.
-        if (_hovered != null)
-          Align(
-            alignment: _hovered == _DropRegion.below
-                ? Alignment.bottomCenter
-                : Alignment.topCenter,
-            child: FractionallySizedBox(
-              heightFactor: _hovered == _DropRegion.join ? 1 : 0.5,
-              widthFactor: 1,
-              child: IgnorePointer(
-                child: Container(
-                  margin: const EdgeInsets.all(2),
-                  decoration: BoxDecoration(
-                    color: colorScheme.primary.withValues(alpha: 0.25),
-                    border: Border.all(color: colorScheme.primary, width: 1.5),
-                    borderRadius: BorderRadius.circular(4),
-                  ),
-                ),
-              ),
-            ),
-          ),
-        Column(
-          children: [
-            Expanded(child: _band(_DropRegion.above, 'above')),
-            Expanded(flex: 2, child: _band(_DropRegion.join, 'join')),
-            Expanded(child: _band(_DropRegion.below, 'below')),
-          ],
-        ),
-      ],
-    );
-  }
-}
-
-/// A collapsed (empty) dock: invisible until an ELIGIBLE tab is in flight,
-/// then a slim glowing rail appears; dropping a tab there re-populates the
-/// dock. With [expandToFill] the dock keeps its region instead (the center
-/// dock must not collapse the whole workspace middle) and the drop surface
-/// covers it all.
 class EditorDockDropZone extends StatelessWidget {
   const EditorDockDropZone({
     super.key,

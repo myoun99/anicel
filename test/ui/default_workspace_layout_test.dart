@@ -52,21 +52,20 @@ void main() {
     );
   });
 
-  testWidgets('the left dock stacks Tool Library OVER Tool Settings — both '
-      'open at once', (tester) async {
+  testWidgets('the left rail group is ONE strip, not a stack of two', (
+    tester,
+  ) async {
     await pumpWorkspace(tester);
 
+    // Tool Library and Tool Settings are TABS OF ONE GROUP now. They used to
+    // be two sections stacked in one dock, which is exactly what made the
+    // left rail render as the old palette dock the rails replaced.
     expect(find.byType(BrushPresetPanel), findsOneWidget);
-    expect(find.byType(BrushSettingsPanel), findsOneWidget);
+    expect(find.byType(BrushSettingsPanel), findsNothing);
     expect(
-      tester.getCenter(find.byType(BrushPresetPanel)).dy,
-      lessThan(tester.getCenter(find.byType(BrushSettingsPanel)).dy),
-      reason: 'the library is the TOP section',
-    );
-    // Both live in the wide left dock, left of the canvas.
-    expect(
-      tester.getCenter(find.byType(BrushSettingsPanel)).dx,
+      tester.getCenter(find.byType(BrushPresetPanel)).dx,
       lessThan(tester.getCenter(find.byType(EditorCanvasArea)).dx),
+      reason: 'the group opens beside its rail, left of the canvas',
     );
   });
 
