@@ -532,6 +532,8 @@ void main() {
     'tlEffects': (s) => s.tlEffects,
     'tlAddEffectTemplate': (s) => s.tlAddEffectTemplate,
     'tlRemoveEffectTemplate': (s) => s.tlRemoveEffectTemplate,
+    'tlMoveLayerUp': (s) => s.tlMoveLayerUp,
+    'tlMoveLayerDown': (s) => s.tlMoveLayerDown,
     'tlCopyFrame': (s) => s.tlCopyFrame,
     'tlPasteLinkedFrame': (s) => s.tlPasteLinkedFrame,
     'tlDeleteCell': (s) => s.tlDeleteCell,

@@ -165,6 +165,8 @@ import 'audio/audio_conform_store.dart';
 import 'brush/brush_canvas_panel.dart';
 import 'brush/brush_editor_selection.dart';
 import 'timeline/instruction_span_editing.dart';
+import 'timeline/layer_drop_policy.dart'
+    show LayerDropPlan, layerDragRun, resolveLayerDrop;
 import 'timeline/property_lane_model.dart' show folderAggregateRuns;
 import 'timeline/layer_label_controls.dart' show layerKindShowsBlendControl;
 import 'timeline/layer_timeline_display_adapter.dart'
@@ -3829,6 +3831,93 @@ class EditorSessionManager extends ChangeNotifier {
   // mark, delete — rides the layer API above; the nine folder-shaped
   // methods that used to live here are gone. What is left is the two
   // structural verbs (make one, take one apart) and the twirl.
+
+  /// One STEP's landing for [layerId], or null when the row has nowhere
+  /// legal to go that way.
+  ///
+  /// A step is past the neighbouring ROW, and that is what makes stepping
+  /// INTO a folder the same move as stepping over it: the row above a run
+  /// is either a folder's first member (you go in) or the folder row
+  /// itself, whose subtree has just ended (you go over).
+  LayerDropPlan? _layerStepPlan(LayerId layerId, {required bool up}) {
+    final cut = activeCutOrNull;
+    if (cut == null) {
+      return null;
+    }
+    final run = layerDragRun(cut.layers, layerId);
+    if (run == null) {
+      return null;
+    }
+    final insertAt = up ? run.endExclusive + 1 : run.start - 1;
+    if (insertAt < 0 || insertAt > cut.layers.length) {
+      return null;
+    }
+    return resolveLayerDrop(
+      stack: cut.layers,
+      movingId: layerId,
+      insertAt: insertAt,
+    );
+  }
+
+  /// Whether [layerId] can step one place along the stack ([up] = toward
+  /// the top).
+  bool canMoveLayerInStack(LayerId layerId, {required bool up}) {
+    if (isTrackSeLayerId(layerId)) {
+      final rows = activeTrack.seLayers;
+      final from = rows.indexWhere((row) => row.id == layerId);
+      final to = from + (up ? 1 : -1);
+      return from >= 0 && to >= 0 && to < rows.length;
+    }
+    return _layerStepPlan(layerId, up: up) != null;
+  }
+
+  /// Moves a row one place along the STACK, carrying whatever travels with
+  /// it — a folder's subtree, an attach base's whole group.
+  ///
+  /// [up] means toward the TOP of the stack. That reads as up on the rail
+  /// and leftward on the sheet; the display adapters own that translation
+  /// and this verb never learns it.
+  ///
+  /// It resolves through the same [resolveLayerDrop] a dropped row will, so
+  /// a step and a drop can never disagree about what is legal — and the
+  /// coordinator mirrors the move across the 겸용 link group, because stack
+  /// order is shared structure.
+  void moveLayerInStack(LayerId layerId, {required bool up}) {
+    if (isTrackSeLayerId(layerId)) {
+      final rows = activeTrack.seLayers;
+      final from = rows.indexWhere((row) => row.id == layerId);
+      final to = from + (up ? 1 : -1);
+      if (from < 0 || to < 0 || to >= rows.length) {
+        return;
+      }
+      final order = [for (final row in rows) row.id];
+      order.insert(to, order.removeAt(from));
+      _cutCommandCoordinator.setTrackSeOrder(
+        trackId: selectedTrackId,
+        order: order,
+      );
+      notifyListeners();
+      return;
+    }
+    final cut = activeCutOrNull;
+    final plan = _layerStepPlan(layerId, up: up);
+    if (cut == null || plan == null) {
+      return;
+    }
+    final run = layerDragRun(cut.layers, layerId)!;
+    _cutCommandCoordinator.setLayerPlacement(
+      cutId: cut.id,
+      order: plan.order,
+      folderIds: plan.folderIds,
+      movedIds: {
+        for (final layer in cut.layers.sublist(run.start, run.endExclusive))
+          layer.id,
+      },
+      description: 'Move layer',
+    );
+    _refreshAfterCutCommand(preferredActiveLayerId: layerId);
+    notifyListeners();
+  }
 
   bool get canGroupActiveLayerIntoFolder =>
       activeLayer != null && activeLayer!.kind == LayerKind.animation;

@@ -415,10 +415,7 @@ class ProjectRepository {
             if (track.id == trackId)
               (() {
                 found = true;
-                return track.copyWith(
-                  opacity: opacity,
-                  fxEnabled: fxEnabled,
-                );
+                return track.copyWith(opacity: opacity, fxEnabled: fxEnabled);
               })()
             else
               track,
@@ -513,6 +510,76 @@ class ProjectRepository {
               .where((layer) => layer.id != layerId)
               .toList(growable: false),
         );
+      });
+      if (next == null) {
+        throw StateError('Track not found: $trackId');
+      }
+      return next;
+    });
+  }
+
+  /// Resequences a cut's layers to exactly [order] and re-parents the rows
+  /// named in [folderIds] — THE row-placement mutation.
+  ///
+  /// Order and membership move TOGETHER because one drag moves both: a row
+  /// dropped between two of a folder's members lands there AND joins it,
+  /// and splitting that into two writes would let an undo stop halfway,
+  /// with the row sitting inside a folder it does not belong to.
+  ///
+  /// [order] must be a permutation of the cut's layer ids — a partial or
+  /// foreign list is a programming error, not a silent drop (the cut-order
+  /// rule, [setCutOrder]). A layer absent from [folderIds] keeps the
+  /// membership it had.
+  void setLayerPlacement({
+    required CutId cutId,
+    required List<LayerId> order,
+    Map<LayerId, LayerId?> folderIds = const {},
+  }) {
+    updateProject((project) {
+      final next = updateCutAnywhere(project, cutId, (cut) {
+        final byId = {for (final layer in cut.layers) layer.id: layer};
+        if (order.length != cut.layers.length ||
+            order.toSet().length != order.length ||
+            !order.every(byId.containsKey)) {
+          throw StateError(
+            'Layer order for cut $cutId must be a permutation of its layers.',
+          );
+        }
+        return cut.copyWith(
+          layers: [
+            for (final id in order)
+              if (folderIds.containsKey(id))
+                byId[id]!.copyWith(folderId: folderIds[id])
+              else
+                byId[id]!,
+          ],
+        );
+      });
+      if (next == null) {
+        throw StateError('Cut not found: $cutId');
+      }
+      return next;
+    });
+  }
+
+  /// Resequences [trackId]'s SE rows to exactly [order] — the S-rows'
+  /// counterpart of [setLayerPlacement]. They carry no folder membership
+  /// (the track owns them flat), so order is the whole placement.
+  void setTrackSeOrder({
+    required TrackId trackId,
+    required List<LayerId> order,
+  }) {
+    updateProject((project) {
+      final next = updateTrackById(project, trackId, (track) {
+        final byId = {for (final layer in track.seLayers) layer.id: layer};
+        if (order.length != track.seLayers.length ||
+            order.toSet().length != order.length ||
+            !order.every(byId.containsKey)) {
+          throw StateError(
+            'SE order for track $trackId must be a permutation of its rows.',
+          );
+        }
+        return track.copyWith(seLayers: [for (final id in order) byId[id]!]);
       });
       if (next == null) {
         throw StateError('Track not found: $trackId');
