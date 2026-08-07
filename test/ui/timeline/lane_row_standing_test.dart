@@ -182,6 +182,61 @@ void main() {
       expect(_plateOf(tester, _laneLabel('scale')), washed);
     });
 
+    testWidgets('the group header lights while you stand INSIDE it', (
+      tester,
+    ) async {
+      await _pump(tester);
+      await _openLanes(tester);
+      final washed = railSelectedRowColor(
+        Theme.of(tester.element(find.byType(EditorWorkspace))).colorScheme,
+      );
+      expect(
+        _plateOf(tester, _laneLabel('transform-group')),
+        AppColors.washDown,
+      );
+
+      await _pressLaneName(tester, 'position', 'Position');
+
+      // The chain reads as a chain: the property AND the group that holds
+      // it, in the same wash — which of them you are on is answered on the
+      // frame side (user, 2026-08-07: "심플하게 가고싶어").
+      expect(_plateOf(tester, _laneLabel('position')), washed);
+      expect(_plateOf(tester, _laneLabel('transform-group')), washed);
+
+      // A lane of the SAME group lights its header too; leaving for the
+      // header itself keeps it lit and drops the member.
+      await _pressLaneName(tester, 'transform-group', 'Transform');
+      expect(_plateOf(tester, _laneLabel('transform-group')), washed);
+      expect(_plateOf(tester, _laneLabel('position')), AppColors.washDown);
+    });
+
+    testWidgets('the frame side marks the LANE, and the layer row gives its '
+        'ring up — there is one standing place', (tester) async {
+      await _pump(tester);
+      await _openLanes(tester);
+      const cellRing = ValueKey<String>('timeline-selected-cell');
+      const laneMark = ValueKey<String>('timeline-lane-standing-cell');
+
+      // Standing on the layer row: the ring is on the cells.
+      expect(find.byKey(cellRing), findsOneWidget);
+      expect(find.byKey(laneMark), findsNothing);
+
+      await _pressLaneName(tester, 'position', 'Position');
+
+      // It MOVED — it did not multiply. The layer is still what you draw
+      // on; it is no longer where you are standing.
+      expect(find.byKey(laneMark), findsOneWidget);
+      expect(find.byKey(cellRing), findsNothing);
+
+      // And back: pressing the layer's own row takes it home.
+      await tester.tap(
+        find.byKey(const ValueKey<String>('timeline-layer-row-$_cameraId')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byKey(cellRing), findsOneWidget);
+      expect(find.byKey(laneMark), findsNothing);
+    });
+
     testWidgets('a group header stands without twirling; the chevron is what '
         'twirls', (tester) async {
       await _pump(tester);

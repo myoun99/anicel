@@ -8,6 +8,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_frame_range.dart';
 import '../../models/timeline_repeat.dart';
+import '../../models/timeline_row_address.dart';
 import 'property_lane_model.dart';
 import 'selected_exposure_display_range_policy.dart';
 import 'timeline_cell_exposure_state.dart';
@@ -37,6 +38,7 @@ class TimelineCursorLayer extends StatelessWidget {
     required this.frameCursor,
     required this.rows,
     required this.activeLayerId,
+    this.currentRow,
     required this.frameStartIndex,
     required this.frameEndIndexExclusive,
     required this.leadingFrameSpacerWidth,
@@ -77,6 +79,16 @@ class TimelineCursorLayer extends StatelessWidget {
   /// layer's cross-axis position.
   final List<TimelineDisplayRow> rows;
   final LayerId? activeLayerId;
+
+  /// The row you are STANDING on. There is exactly one, and the selection
+  /// visuals go with it — when it is a property lane the layer's row gives
+  /// the mark up, even though that layer is still what you draw on (user,
+  /// 2026-08-07: "그림은 그릴 수 있을지라도 서있는건 하나").
+  ///
+  /// Null, or a lane whose row is not on screen, falls back to the active
+  /// layer's row: showing nothing at all would read as broken rather than
+  /// as elsewhere.
+  final ValueListenable<TimelineRowAddress?>? currentRow;
   final int frameStartIndex;
   final int frameEndIndexExclusive;
   final double leadingFrameSpacerWidth;
@@ -134,6 +146,7 @@ class TimelineCursorLayer extends StatelessWidget {
         ?dragPreview,
         ?frameRangeSelection,
         ?laneRangeSelection,
+        ?currentRow,
         ?windowBucket,
       ]),
       builder: (context, _) {
@@ -295,27 +308,89 @@ class TimelineCursorLayer extends StatelessWidget {
           }
         }
 
-        // The selection visuals follow the ACTIVE layer's row. The exposure
+        // STANDING ON A LANE takes the selection visual off the layer row
+        // and puts it here — one standing place, not two. Standing IS a
+        // one-frame span as far as the verbs are concerned
+        // (`_laneVerbRange`), so it is drawn as one: the range band, a
+        // single cell wide. No new visual language, and the screen finally
+        // says what the model already said.
+        final standing = currentRow?.value;
+        int? standingLaneIndex;
+        if (standing is LaneRowAddress && laneRange == null) {
+          for (var index = 0; index < rows.length; index += 1) {
+            final lane = rows[index].lane;
+            if (lane != null &&
+                rows[index].layer.id == standing.layerId &&
+                lane.laneId == standing.laneId) {
+              standingLaneIndex = index;
+              break;
+            }
+          }
+        }
+        if (standingLaneIndex != null && cursorVisible) {
+          final spanStart = frameVisibleX(
+            frameIndex: frame,
+            frameStartIndex: frameStartIndex,
+            frameCellWidth: metrics.frameCellWidth,
+            leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+          );
+          final spanEnd = frameVisibleX(
+            frameIndex: frame + 1,
+            frameStartIndex: frameStartIndex,
+            frameCellWidth: metrics.frameCellWidth,
+            leadingFrameSpacerWidth: leadingFrameSpacerWidth,
+          );
+          final rowOffset = standingLaneIndex * metrics.layerRowHeight;
+          final mark = Semantics(
+            key: const ValueKey<String>('timeline-lane-standing-cell'),
+            label: 'selected cell',
+            container: true,
+            child: DecoratedBox(
+              decoration: timelineRangeSelectionBandDecoration,
+            ),
+          );
+          children.add(
+            horizontal
+                ? Positioned(
+                    left: spanStart,
+                    top: rowOffset,
+                    width: spanEnd - spanStart,
+                    height: metrics.layerRowHeight,
+                    child: mark,
+                  )
+                : Positioned(
+                    top: spanStart,
+                    left: rowOffset,
+                    height: spanEnd - spanStart,
+                    width: metrics.layerRowHeight,
+                    child: mark,
+                  ),
+          );
+        }
+
+        // Otherwise the visuals follow the ACTIVE layer's row. The exposure
         // outline stays even while the cursor itself is scrolled out of the
         // window (its block may still intersect); only the cell ring needs
         // the cursor on screen.
         int? activeRowIndex;
         Layer? activeLayer;
-        for (var index = 0; index < rows.length; index += 1) {
-          final row = rows[index];
-          // R28 #12 used to need a FOLDER clause here: the header row
-          // carried its first member as a REPRESENTATIVE layer, so this
-          // search found the folder's row index first and the block
-          // outline drew one row too high. A folder row answers to its own
-          // id now, so only lanes (which share their layer's id) are
-          // skipped.
-          if (row.isLane) {
-            continue;
-          }
-          if (row.layer.id == activeLayerId) {
-            activeRowIndex = index;
-            activeLayer = row.layer;
-            break;
+        if (standingLaneIndex == null) {
+          for (var index = 0; index < rows.length; index += 1) {
+            final row = rows[index];
+            // R28 #12 used to need a FOLDER clause here: the header row
+            // carried its first member as a REPRESENTATIVE layer, so this
+            // search found the folder's row index first and the block
+            // outline drew one row too high. A folder row answers to its own
+            // id now, so only lanes (which share their layer's id) are
+            // skipped.
+            if (row.isLane) {
+              continue;
+            }
+            if (row.layer.id == activeLayerId) {
+              activeRowIndex = index;
+              activeLayer = row.layer;
+              break;
+            }
           }
         }
         if (activeLayer != null && activeRowIndex != null) {

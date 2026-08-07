@@ -1712,6 +1712,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                                 child: TimelineCursorLayer(
                                                                   axis: Axis
                                                                       .vertical,
+                                                                  currentRow: widget
+                                                                      .currentRowHooks
+                                                                      ?.currentRow,
                                                                   selectedSemanticsKey:
                                                                       const ValueKey<
                                                                         String
