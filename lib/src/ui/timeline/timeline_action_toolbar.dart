@@ -680,27 +680,44 @@ class TimelineActionToolbar extends StatelessWidget {
                 key: const ValueKey<String>('timeline-toolbar-frame-group'),
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  _iconButton(
-                    key: const ValueKey<String>('new-frame-button'),
-                    tooltip: AppText.strings.tlAdd,
-                    icon: Icons.add_box_outlined,
-                    onPressed: _canCreateInstance ? onCreateInstance : null,
-                  ),
-                  _iconButton(
-                    key: const ValueKey<String>('blank-exposure-button'),
-                    tooltip: AppText.strings.tlBlankX,
-                    icon: Icons.close,
-                    onPressed: session.canCutExposureAtCurrentFrame
-                        ? session.cutExposureAtCurrentFrame
-                        : null,
-                  ),
-                  _iconButton(
-                    key: const ValueKey<String>('toggle-mark-button'),
-                    tooltip: AppText.strings.tlMark,
-                    icon: Icons.circle,
-                    onPressed: session.canToggleMarkAtCurrentFrame
-                        ? session.toggleMarkAtCurrentFrame
-                        : null,
+                  // Cached on the three predicates THESE buttons read, for
+                  // the reason spelled out at the comma group below.
+                  _StaticCommandGroup(
+                    rebuildKey: (
+                      _canCreateInstance,
+                      session.canCutExposureAtCurrentFrame,
+                      session.canToggleMarkAtCurrentFrame,
+                      session.languageSettings.value,
+                    ),
+                    builder: (context) => Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        _iconButton(
+                          key: const ValueKey<String>('new-frame-button'),
+                          tooltip: AppText.strings.tlAdd,
+                          icon: Icons.add_box_outlined,
+                          onPressed: _canCreateInstance
+                              ? onCreateInstance
+                              : null,
+                        ),
+                        _iconButton(
+                          key: const ValueKey<String>('blank-exposure-button'),
+                          tooltip: AppText.strings.tlBlankX,
+                          icon: Icons.close,
+                          onPressed: session.canCutExposureAtCurrentFrame
+                              ? session.cutExposureAtCurrentFrame
+                              : null,
+                        ),
+                        _iconButton(
+                          key: const ValueKey<String>('toggle-mark-button'),
+                          tooltip: AppText.strings.tlMark,
+                          icon: Icons.circle,
+                          onPressed: session.canToggleMarkAtCurrentFrame
+                              ? session.toggleMarkAtCurrentFrame
+                              : null,
+                        ),
+                      ],
+                    ),
                   ),
                   // Design D: the rigid shove a drag used to do, aimed.
                   // Scope = the live selection's rows, or the current row
@@ -711,26 +728,49 @@ class TimelineActionToolbar extends StatelessWidget {
                   // Comma set (UI-R17 #7, TVP-style): the current block —
                   // or the whole selection, packed — takes the pressed
                   // exposure outright; N asks for a count. Shortcuts 1-5.
-                  for (var comma = 1; comma <= 4; comma += 1)
-                    _commaButton(
-                      key: ValueKey<String>('set-comma-$comma-button'),
-                      label: '$comma',
-                      tooltip: AppText.strings.tlSetCommaTemplate.replaceAll(
-                        '{n}',
-                        '$comma',
-                      ),
-                      onPressed: session.canSetCommaForSelectionOrCurrent
-                          ? () => session.setCommaForSelectionOrCurrent(comma)
-                          : null,
+                  //
+                  // Cached on THEIR OWN predicate. Five buttons that all
+                  // read one boolean sat in the same rebuild as the icon
+                  // buttons beside them, so a flip step that changed only
+                  // this one rebuilt every button in the row — and one
+                  // that changed only an icon button's rebuilt all five of
+                  // these. Measured: crossing "no cel ↔ cel" changed 5 of
+                  // the toolbar's 10 buttons and rebuilt all 10.
+                  _StaticCommandGroup(
+                    rebuildKey: (
+                      session.canSetCommaForSelectionOrCurrent,
+                      session.languageSettings.value,
                     ),
-                  Builder(
-                    builder: (context) => _commaButton(
-                      key: const ValueKey<String>('set-comma-n-button'),
-                      label: 'N',
-                      tooltip: AppText.strings.tlSetCommasN,
-                      onPressed: session.canSetCommaForSelectionOrCurrent
-                          ? () => showTimelineCommaCountDialog(context, session)
-                          : null,
+                    builder: (context) => Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        for (var comma = 1; comma <= 4; comma += 1)
+                          _commaButton(
+                            key: ValueKey<String>('set-comma-$comma-button'),
+                            label: '$comma',
+                            tooltip: AppText.strings.tlSetCommaTemplate
+                                .replaceAll('{n}', '$comma'),
+                            onPressed: session.canSetCommaForSelectionOrCurrent
+                                ? () =>
+                                      session.setCommaForSelectionOrCurrent(
+                                        comma,
+                                      )
+                                : null,
+                          ),
+                        Builder(
+                          builder: (context) => _commaButton(
+                            key: const ValueKey<String>('set-comma-n-button'),
+                            label: 'N',
+                            tooltip: AppText.strings.tlSetCommasN,
+                            onPressed: session.canSetCommaForSelectionOrCurrent
+                                ? () => showTimelineCommaCountDialog(
+                                    context,
+                                    session,
+                                  )
+                                : null,
+                          ),
+                        ),
+                      ],
                     ),
                   ),
                   const SizedBox(width: 4),
@@ -741,24 +781,44 @@ class TimelineActionToolbar extends StatelessWidget {
                     entriesBuilder: _frameEntries,
                   ),
                   const SizedBox(width: 4),
-                  // R26 #32: the PROJECT frame rate — the axis everything
-                  // timed reads. One rate per project, never per cut.
-                  PanelFlyoutButton(
-                    key: const ValueKey<String>('timeline-fps-menu-button'),
-                    label: session.projectFrameRate.label,
-                    tooltip: AppText.strings.projectFpsTitle,
-                    entriesBuilder: () => _fpsEntries(context),
-                  ),
-                  const SizedBox(width: 4),
-                  // EXPORT-AUDIO ③: the PROJECT audio rate — what every
-                  // sound conforms to and the mixer runs at.
-                  PanelFlyoutButton(
-                    key: const ValueKey<String>(
-                      'timeline-samplerate-menu-button',
+                  // The two PROJECT-axis dropdowns print project values and
+                  // nothing about the playhead, so they are cached on those
+                  // — a flip step must not rebuild them at all.
+                  _StaticCommandGroup(
+                    rebuildKey: (
+                      session.projectFrameRate,
+                      session.projectAudioSampleRate,
+                      session.languageSettings.value,
                     ),
-                    label: audioSampleRateLabel(session.projectAudioSampleRate),
-                    tooltip: AppText.strings.tlProjectAudioRate,
-                    entriesBuilder: _audioSampleRateEntries,
+                    builder: (context) => Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        // R26 #32: the PROJECT frame rate — the axis
+                        // everything timed reads. One rate per project,
+                        // never per cut.
+                        PanelFlyoutButton(
+                          key: const ValueKey<String>(
+                            'timeline-fps-menu-button',
+                          ),
+                          label: session.projectFrameRate.label,
+                          tooltip: AppText.strings.projectFpsTitle,
+                          entriesBuilder: () => _fpsEntries(context),
+                        ),
+                        const SizedBox(width: 4),
+                        // EXPORT-AUDIO ③: the PROJECT audio rate — what
+                        // every sound conforms to and the mixer runs at.
+                        PanelFlyoutButton(
+                          key: const ValueKey<String>(
+                            'timeline-samplerate-menu-button',
+                          ),
+                          label: audioSampleRateLabel(
+                            session.projectAudioSampleRate,
+                          ),
+                          tooltip: AppText.strings.tlProjectAudioRate,
+                          entriesBuilder: _audioSampleRateEntries,
+                        ),
+                      ],
+                    ),
                   ),
                 ],
               ),
