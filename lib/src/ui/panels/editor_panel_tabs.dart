@@ -162,9 +162,9 @@ class EditorPanelTabs extends StatefulWidget {
 
   static const double stripHeight = 30;
 
-  /// What one tab costs across the strip: the 8px lift zone, a 16px glyph
-  /// and its trailing breath. Stated rather than measured because the strip
-  /// has to decide how many fit BEFORE laying them out.
+  /// What one tab costs across the strip: a 16px glyph with 8px of breath
+  /// on each side. Stated rather than measured because the strip has to
+  /// decide how many fit BEFORE laying them out.
   static const double _tabExtent = 32;
 
   @override
@@ -601,9 +601,17 @@ class _PanelTabDragFeedback extends StatelessWidget {
 ///
 /// ⛔The GRIP glyph is gone, not the grip. Three dots said "you may drag
 /// me" at the cost of being the widest thing on a button that is otherwise
-/// one icon. The 8px zone is the same promise in the same place, invisible
-/// at rest: the ONLY surface that lifts a tab, so selection never waits on
-/// a drag arena and a stray drag cannot tear a tab off mid-click (R10-⑩).
+/// one icon. A zone is the same promise in the same place, invisible at
+/// rest: the ONLY surface that lifts a tab, so selection never waits on a
+/// drag arena and a stray drag cannot tear a tab off mid-click (R10-⑩).
+///
+/// ★AND THE ZONE IS THE ACTIVE RULE (유저, R2 #9). The tab used to carry
+/// two marks on two different edges — a 2px accent rule on the window-facing
+/// edge saying "this one is open", and a separate lift zone on the leading
+/// edge saying "you may drag me". They are one band now, on the edge the
+/// rule was already on, and its THICKNESS is what says which thing it is
+/// saying: 2px for a state you read, 6px for a handle you can reach. The
+/// colour ladder underneath is the app's one grip ladder, unchanged.
 class _PanelTabButton extends StatefulWidget {
   const _PanelTabButton({
     super.key,
@@ -636,8 +644,15 @@ class _PanelTabButton extends StatefulWidget {
   final EditorPanelTabDragData? dragData;
   final ValueChanged<EditorPanelTabDragData?>? onTabDragChanged;
 
-  /// The lift zone's width — a stylus-friendly sliver of the leading edge.
+  /// The lift zone's extent along the tab's window-facing edge — the band
+  /// is thinner than this, but the TARGET may not move under the pointer
+  /// just because the band grew.
   static const double gripExtent = 8;
+
+  /// What the band is when it is saying a STATE, and when it is offering a
+  /// HANDLE.
+  static const double bandRest = 2;
+  static const double bandReach = 6;
 
   @override
   State<_PanelTabButton> createState() => _PanelTabButtonState();
@@ -648,24 +663,44 @@ class _PanelTabButtonState extends State<_PanelTabButton> {
   bool _gripHovered = false;
   bool _dragging = false;
 
-  /// The four states, on the ladder the app's scrollbar thumb already
-  /// climbs: invisible until the pointer is on the BUTTON, brighter on the
-  /// zone itself, accent while it is actually lifting something.
-  Color get _gripColor {
-    if (widget.dragData == null) {
-      return Colors.transparent;
-    }
-    if (_dragging) {
+  bool get _armed => widget.dragData != null;
+
+  /// Thick when there is something to grab, thin when it is only telling
+  /// you which panel is open.
+  double get _bandExtent => _armed && (_dragging || _gripHovered)
+      ? _PanelTabButton.bandReach
+      : _PanelTabButton.bandRest;
+
+  /// The app's one grip ladder, with the ACTIVE rung folded in: invisible
+  /// until something is worth saying, the tab's own accent when it is the
+  /// open one, brighter under the pointer, accent while it lifts.
+  Color _bandColor(ColorScheme colorScheme) {
+    if (_armed && _dragging) {
       return AppColors.accent;
     }
-    if (_gripHovered) {
+    if (_armed && _gripHovered) {
       return AppColors.gripHover;
     }
-    if (_buttonHovered) {
+    if (widget.selected) {
+      return colorScheme.primary;
+    }
+    if (_armed && _buttonHovered) {
       return AppColors.hairlineStrong;
     }
     return Colors.transparent;
   }
+
+  /// The tab's silhouette: rounded on the edge AWAY from the panel body,
+  /// square where it meets it.
+  RoundedSuperellipseBorder _shape() => AppShapes.containerRadius(
+    widget.stripAtBottom
+        ? const BorderRadius.vertical(
+            bottom: Radius.circular(AppShapes.wellRadius),
+          )
+        : const BorderRadius.vertical(
+            top: Radius.circular(AppShapes.wellRadius),
+          ),
+  );
 
   @override
   Widget build(BuildContext context) {
@@ -675,24 +710,24 @@ class _PanelTabButtonState extends State<_PanelTabButton> {
         : colorScheme.onSurfaceVariant;
 
     Widget grip = MouseRegion(
-      cursor: widget.dragData == null
-          ? SystemMouseCursors.basic
-          : SystemMouseCursors.grab,
+      cursor: _armed ? SystemMouseCursors.grab : SystemMouseCursors.basic,
       onEnter: (_) => setState(() => _gripHovered = true),
       onExit: (_) => setState(() => _gripHovered = false),
-      // The ZONE is the paint. It used to hold a 2x14 rounded bar, which is
-      // a drag-handle GLYPH by another name — the very thing this round
-      // deleted everywhere else. A grip is a region of the button that
-      // lights up, not a mark drawn on it, so the whole 8px lights up and
-      // it runs the button's full height instead of floating in its middle.
-      // The height is EXPLICIT: a ColoredBox with no child collapses to zero
-      // under the Row's loose cross-axis constraint, and a zero-height zone
-      // is not a lift zone — it takes the drag with it.
       child: SizedBox(
         key: widget.gripKey,
-        width: _PanelTabButton.gripExtent,
-        height: EditorPanelTabs.stripHeight,
-        child: ColoredBox(color: _gripColor),
+        height: _PanelTabButton.gripExtent,
+        // The TARGET is a constant 8px of the edge; the band inside it
+        // grows toward the frame, so a pointer resting on the grip never
+        // finds the thing it is over moving out from under it.
+        child: Align(
+          alignment: widget.stripAtBottom
+              ? Alignment.bottomCenter
+              : Alignment.topCenter,
+          child: SizedBox(
+            height: _bandExtent,
+            child: ColoredBox(color: _bandColor(colorScheme)),
+          ),
+        ),
       ),
     );
     final data = widget.dragData;
@@ -733,59 +768,48 @@ class _PanelTabButtonState extends State<_PanelTabButton> {
         onExit: (_) => setState(() => _buttonHovered = false),
         child: InkWell(
           onTap: widget.onPressed,
-          child: Container(
-            padding: const EdgeInsets.only(right: 8),
-            // THE SELECTED TAB IS THE PANEL'S FOOT, not a chip lying on the
-            // sill. It wears the body's own fill and rounds only the corners
-            // AWAY from the body, so the seam between them disappears and
-            // the panel reads as one shape that grows out of its buttons —
-            // which is what the sill was for. Its neighbours are bare, so
-            // the fill still says which one is on, alongside the accent
-            // glyph and a 2px rule on the edge facing the WINDOW rather
-            // than along the seam the panel wants invisible.
-            decoration: ShapeDecoration(
-              color: widget.selected
-                  ? colorScheme.surface
-                  : Colors.transparent,
-              shape: AppShapes.containerRadius(
-                widget.stripAtBottom
-                    ? const BorderRadius.vertical(
-                        bottom: Radius.circular(AppShapes.wellRadius),
-                      )
-                    : const BorderRadius.vertical(
-                        top: Radius.circular(AppShapes.wellRadius),
-                      ),
-              ),
-            ),
-            // FOREGROUND, so the rule costs no width. A ShapeDecoration's
-            // own side is drawn on all four edges and insets the child by
-            // its width, which made every tab 4px wider than the extent the
-            // strip's compaction arithmetic is built on.
-            foregroundDecoration: BoxDecoration(
-              border: Border(
-                top: BorderSide(
-                  width: 2,
-                  color: widget.selected && !widget.stripAtBottom
-                      ? colorScheme.primary
-                      : Colors.transparent,
-                ),
-                bottom: BorderSide(
-                  width: 2,
-                  color: widget.selected && widget.stripAtBottom
-                      ? colorScheme.primary
-                      : Colors.transparent,
-                ),
-              ),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
+          // THE SELECTED TAB IS THE PANEL'S FOOT, not a chip lying on the
+          // sill. It wears the body's own fill and rounds only the corners
+          // AWAY from the body, so the seam between them disappears and the
+          // panel reads as one shape that grows out of its buttons — which
+          // is what the sill was for. Its neighbours are bare, so the fill
+          // still says which one is on, alongside the accent glyph and the
+          // band on the edge facing the WINDOW rather than along the seam
+          // the panel wants invisible.
+          //
+          // The band is CLIPPED to that shape, the way every other grip in
+          // the app is clipped to the panel it belongs to: the tab's rounded
+          // corners cut it, so it reads as the tab's own edge.
+          child: ClipPath(
+            clipper: AppShapes.clipper(_shape()),
+            child: Stack(
               children: [
-                grip,
-                Icon(widget.icon, size: 16, color: foreground),
-                if (widget.locked) ...[
-                  const SizedBox(width: 3),
-                  Icon(Icons.lock, size: 9, color: colorScheme.primary),
-                ],
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  decoration: ShapeDecoration(
+                    color: widget.selected
+                        ? colorScheme.surface
+                        : Colors.transparent,
+                    shape: _shape(),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(widget.icon, size: 16, color: foreground),
+                      if (widget.locked) ...[
+                        const SizedBox(width: 3),
+                        Icon(Icons.lock, size: 9, color: colorScheme.primary),
+                      ],
+                    ],
+                  ),
+                ),
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  top: widget.stripAtBottom ? null : 0,
+                  bottom: widget.stripAtBottom ? 0 : null,
+                  child: grip,
+                ),
               ],
             ),
           ),

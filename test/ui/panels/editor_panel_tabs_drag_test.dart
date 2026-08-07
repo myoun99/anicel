@@ -125,6 +125,38 @@ Offset _tabHalf(WidgetTester tester, String id, {required bool right}) {
 }
 
 void main() {
+  testWidgets('the ACTIVE rule and the lift zone are ONE band, on the '
+      'window-facing edge', (tester) async {
+    // They used to be two marks on two edges — an accent rule saying "this
+    // panel is open" and a separate zone on the leading edge saying "you
+    // may drag me". 유저, R2 #9: one band, and its THICKNESS is which of the
+    // two things it is saying.
+    final model = _twoGroups();
+    await tester.pumpWidget(_Harness(model: model));
+
+    Color bandOf(String id) => tester
+        .widget<ColoredBox>(
+          find.descendant(of: _grip(id), matching: find.byType(ColoredBox)),
+        )
+        .color;
+
+    // One band per tab, spanning the tab and lying on its top edge (the
+    // strip is above the body here).
+    final tab = tester.getRect(_tab('a'));
+    final band = tester.getRect(_grip('a'));
+    expect(band.width, closeTo(tab.width, 0.5));
+    expect(band.top, closeTo(tab.top, 0.5));
+
+    // The open tab wears the accent; its neighbours wear nothing.
+    expect(bandOf('a'), isNot(Colors.transparent));
+    expect(bandOf('b'), Colors.transparent);
+
+    await tester.tap(_tab('b'));
+    await tester.pumpAndSettle();
+    expect(bandOf('a'), Colors.transparent);
+    expect(bandOf('b'), isNot(Colors.transparent));
+  });
+
   testWidgets('dropping on a tab\'s right half inserts after it', (
     tester,
   ) async {
