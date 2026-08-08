@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart'
 import 'package:flutter/material.dart';
 
 import '../input/app_input_settings.dart' show AppInput;
+import '../theme/app_theme.dart' show AppColors;
 import '../../models/camera_pose.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
@@ -138,7 +139,22 @@ class CameraFrameOverlay extends StatefulWidget {
     this.onPoseCommitted,
   });
 
-  static const Color outlineColor = Color(0xFF40C4FF);
+  /// The app's accent, like every other thing on screen that says "this is
+  /// the one you are working on" (user, 2026-08-08). It was a hardcoded
+  /// cyan — the one piece of chrome with a colour of its own, and it went
+  /// on being cyan when the user changed the accent.
+  ///
+  /// LIVE, not const: the accent is a setting ([AppColors.accent]).
+  static Color get outlineColor => AppColors.accent;
+
+  /// The frame's stroke. A HAIRLINE: this outline sits over artwork all day
+  /// and its job is to say where the frame is, not to be seen (user:
+  /// '더 얇고 세련되게, 최대한 심플하게').
+  static const double outlineWidth = 1;
+
+  /// Half the centre cross's arm. Small enough to read as a pivot mark
+  /// rather than as a second piece of geometry.
+  static const double centerCrossArm = 4;
 
   /// Screen-space pointer slack around a handle before the drag falls back
   /// to moving the camera.
@@ -453,36 +469,38 @@ class CameraFramePainter extends CustomPainter {
       );
     }
 
-    canvas.drawPath(
-      framePath,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
-        ..color = outlineColor,
-    );
-
-    // Small center cross so the pivot reads at a glance.
-    final center = cameraCenterInViewport(pose: pose, viewport: viewport);
-    final crossPaint = Paint()
-      ..strokeWidth = 1
+    // ONE hairline, and that is the whole silhouette (user, 2026-08-08).
+    // It used to be a 2px cyan box — heavy over artwork, and the only
+    // chrome in the app wearing a colour of its own.
+    final line = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = CameraFrameOverlay.outlineWidth
       ..color = outlineColor;
+    canvas.drawPath(framePath, line);
+
+    // A small cross on the pivot — the second and last mark.
+    const arm = CameraFrameOverlay.centerCrossArm;
+    final center = cameraCenterInViewport(pose: pose, viewport: viewport);
     canvas.drawLine(
-      center - const Offset(6, 0),
-      center + const Offset(6, 0),
-      crossPaint,
+      center - const Offset(arm, 0),
+      center + const Offset(arm, 0),
+      line,
     );
     canvas.drawLine(
-      center - const Offset(0, 6),
-      center + const Offset(0, 6),
-      crossPaint,
+      center - const Offset(0, arm),
+      center + const Offset(0, arm),
+      line,
     );
 
     if (showHandles) {
-      final fill = Paint()..color = outlineColor;
+      // The grips come down with the frame: filled 8px squares and a 2px
+      // lever read as a different weight of drawing beside a hairline.
+      // OUTLINED squares, so a corner reads as a place to grab rather than
+      // as a blob sitting on the artwork.
       for (final corner in corners) {
         canvas.drawRect(
-          Rect.fromCenter(center: corner, width: 8, height: 8),
-          fill,
+          Rect.fromCenter(center: corner, width: 6, height: 6),
+          line,
         );
       }
 
@@ -495,14 +513,10 @@ class CameraFramePainter extends CustomPainter {
         cameraFrameSize: cameraFrameSize,
         viewport: viewport,
       );
-      canvas.drawLine(
-        topMid,
-        knob,
-        Paint()
-          ..strokeWidth = 2
-          ..color = outlineColor,
-      );
-      canvas.drawCircle(knob, 4.5, fill);
+      canvas.drawLine(topMid, knob, line);
+      // The knob stays FILLED: it is the one handle that is not on a
+      // corner, so the frame's own geometry does not point at it.
+      canvas.drawCircle(knob, 3.5, Paint()..color = outlineColor);
     }
   }
 
