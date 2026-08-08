@@ -1500,6 +1500,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           icon: Icons.image_outlined,
           locked: locked,
           keepAlive: true,
+          // The one panel that opts out of the static bake. It is full
+          // of repaint boundaries by design (the artwork, the cursor
+          // deck, the ants each own one), and its live-stroke path must
+          // never be asked for a full-surface copy. It also does not
+          // need it: with every panel closed, a canvas full of artwork
+          // measured 2.5 ms hovering and 4.9 ms mid-stroke.
+          staticRaster: false,
           builder: (context) => EditorCanvasArea(
             key: _canvasAreaKey,
             onInvokeAction: widget.onInvokeAction,
