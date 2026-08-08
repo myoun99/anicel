@@ -2338,9 +2338,22 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                       child: rightStripBar,
                     ),
                   ),
+                  // 🆕유저 (R4): 가로스크롤바나 알약은 그냥 양옆에서
+                  // 펼치든말든 중앙에. The two axes are NOT the same
+                  // question, and the answer differs by axis rather than
+                  // by widget:
+                  //
+                  //  * ALONG the edge it rides, the bar holds the window's
+                  //    centre. A side panel opening is not a reason for
+                  //    the thing you read to walk sideways — that is the
+                  //    「읽는 것은 안 움직인다」 rule, and the earlier pass
+                  //    over-applied "centre on what you can see" to it.
+                  //  * ACROSS that edge it still yields, because there it
+                  //    is not a matter of taste: a bar on the bottom edge
+                  //    with the region docked below would be UNDER it.
                   Positioned(
-                    left: insets.left + _capsuleMargin,
-                    right: insets.right + _capsuleMargin,
+                    left: _capsuleMargin,
+                    right: _capsuleMargin,
                     bottom: insets.bottom + _capsuleMargin,
                     child: Align(
                       alignment: Alignment.bottomCenter,
@@ -2348,9 +2361,7 @@ class _CanvasEditorPanelShell extends StatelessWidget {
                         colorScheme,
                         keyValue: 'canvas-panbar-horizontal',
                         height: AppScrollbarLane.medium,
-                        width: _capsuleTrack(
-                          math.max(0.0, panel.maxWidth - insets.horizontal),
-                        ),
+                        width: _capsuleTrack(panel.maxWidth),
                         child: horizontalStripBar,
                       ),
                     ),
@@ -2361,9 +2372,13 @@ class _CanvasEditorPanelShell extends StatelessWidget {
           ),
         ),
         Positioned(
-          left: cover.left,
+          // The pill answers the same way the horizontal bar does (유저,
+          // R4): it holds the window's centre across the axis it sits on,
+          // and yields only on the axis that would bury it — the region
+          // docked on TOP is above it, a rail beside it is not.
+          left: 0,
           top: cover.top,
-          right: cover.right,
+          right: 0,
           bottom: cover.bottom,
           child: LayoutBuilder(
             builder: (context, constraints) {
