@@ -211,164 +211,161 @@ class _InstructionDefDialogState extends State<_InstructionDefDialog> {
       titleIcon: Icons.edit_outlined,
       onClose: () => Navigator.of(context).pop(),
       width: 400,
-      // The BODY scrolls itself, so the window must not scroll it again —
-      // two scrollers on one axis, and now two bars on the same right edge
-      // twelve pixels apart. It was always the wrong nesting; the app-wide
-      // scrollbar is only what made it visible.
-      scrollBody: false,
+      // ⛔The body does NOT bring its own scroller — see the timesheet info
+      // dialog for why: `AppWindow` scrolls it already, and the padding it
+      // puts OUTSIDE that scroller is where the bar's lane belongs. A
+      // scroller in here would put the lane across the fields instead.
       body: SizedBox(
         width: 340,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              AppWindowField(
-                label: strings.instructionDefNameLabel,
-                emphasized: true,
-                child: TextField(
-                  key: const ValueKey<String>('instruction-def-name-field'),
-                  controller: _nameController,
-                  autofocus: true,
-                ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            AppWindowField(
+              label: strings.instructionDefNameLabel,
+              emphasized: true,
+              child: TextField(
+                key: const ValueKey<String>('instruction-def-name-field'),
+                controller: _nameController,
+                autofocus: true,
               ),
-              const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Icon',
-                  style: Theme.of(context).textTheme.labelSmall,
-                ),
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Icon',
+                style: Theme.of(context).textTheme.labelSmall,
               ),
-              const SizedBox(height: 4),
-              Wrap(
-                spacing: 4,
-                runSpacing: 4,
-                children: [
-                  for (final entry in instructionIconPalette.entries)
-                    InkWell(
-                      key: ValueKey<String>('instruction-icon-${entry.key}'),
-                      onTap: () => setState(() => _iconKey = entry.key),
-                      child: Container(
-                        width: 32,
-                        height: 32,
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: _iconKey == entry.key
-                                ? colorScheme.secondary
-                                : colorScheme.outlineVariant,
-                            width: _iconKey == entry.key ? 2 : 1,
-                          ),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Icon(entry.value, size: 18),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Color',
-                  style: Theme.of(context).textTheme.labelSmall,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Wrap(
-                spacing: 4,
-                runSpacing: 4,
-                children: [
-                  // Default = no tint: the chip uses the row text color.
+            ),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              children: [
+                for (final entry in instructionIconPalette.entries)
                   InkWell(
-                    key: const ValueKey<String>('instruction-color-default'),
-                    onTap: () => setState(() => _colorValue = null),
+                    key: ValueKey<String>('instruction-icon-${entry.key}'),
+                    onTap: () => setState(() => _iconKey = entry.key),
+                    child: Container(
+                      width: 32,
+                      height: 32,
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: _iconKey == entry.key
+                              ? colorScheme.secondary
+                              : colorScheme.outlineVariant,
+                          width: _iconKey == entry.key ? 2 : 1,
+                        ),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Icon(entry.value, size: 18),
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Color',
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              children: [
+                // Default = no tint: the chip uses the row text color.
+                InkWell(
+                  key: const ValueKey<String>('instruction-color-default'),
+                  onTap: () => setState(() => _colorValue = null),
+                  child: Container(
+                    width: 28,
+                    height: 28,
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: _colorValue == null
+                            ? colorScheme.secondary
+                            : colorScheme.outlineVariant,
+                        width: _colorValue == null ? 2 : 1,
+                      ),
+                      borderRadius: BorderRadius.circular(14),
+                    ),
+                    child: Icon(
+                      Icons.format_color_reset_outlined,
+                      size: 14,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+                for (final color in instructionColorPalette)
+                  InkWell(
+                    key: ValueKey<String>(
+                      'instruction-color-${color.toRadixString(16)}',
+                    ),
+                    onTap: () => setState(() => _colorValue = color),
                     child: Container(
                       width: 28,
                       height: 28,
                       decoration: BoxDecoration(
+                        color: Color(color),
                         border: Border.all(
-                          color: _colorValue == null
+                          color: _colorValue == color
                               ? colorScheme.secondary
                               : colorScheme.outlineVariant,
-                          width: _colorValue == null ? 2 : 1,
+                          width: _colorValue == color ? 2 : 1,
                         ),
                         borderRadius: BorderRadius.circular(14),
                       ),
-                      child: Icon(
-                        Icons.format_color_reset_outlined,
-                        size: 14,
-                        color: colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 12),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                'Mark',
+                style: Theme.of(context).textTheme.labelSmall,
+              ),
+            ),
+            const SizedBox(height: 4),
+            // How this term's spans draw on rows and the printed sheet:
+            // straight duration line, FI/FO fade wedge or O.L bowtie.
+            Wrap(
+              spacing: 4,
+              runSpacing: 4,
+              children: [
+                for (final entry in _markLabels.entries)
+                  InkWell(
+                    key: ValueKey<String>(
+                      'instruction-mark-${entry.key.jsonValue}',
+                    ),
+                    onTap: () => setState(() => _markType = entry.key),
+                    child: Container(
+                      height: 28,
+                      padding: const EdgeInsets.symmetric(horizontal: 8),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: _markType == entry.key
+                              ? colorScheme.secondary
+                              : colorScheme.outlineVariant,
+                          width: _markType == entry.key ? 2 : 1,
+                        ),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: Center(
+                        child: Text(
+                          entry.value,
+                          style: const TextStyle(fontSize: 11),
+                        ),
                       ),
                     ),
                   ),
-                  for (final color in instructionColorPalette)
-                    InkWell(
-                      key: ValueKey<String>(
-                        'instruction-color-${color.toRadixString(16)}',
-                      ),
-                      onTap: () => setState(() => _colorValue = color),
-                      child: Container(
-                        width: 28,
-                        height: 28,
-                        decoration: BoxDecoration(
-                          color: Color(color),
-                          border: Border.all(
-                            color: _colorValue == color
-                                ? colorScheme.secondary
-                                : colorScheme.outlineVariant,
-                            width: _colorValue == color ? 2 : 1,
-                          ),
-                          borderRadius: BorderRadius.circular(14),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Mark',
-                  style: Theme.of(context).textTheme.labelSmall,
-                ),
-              ),
-              const SizedBox(height: 4),
-              // How this term's spans draw on rows and the printed sheet:
-              // straight duration line, FI/FO fade wedge or O.L bowtie.
-              Wrap(
-                spacing: 4,
-                runSpacing: 4,
-                children: [
-                  for (final entry in _markLabels.entries)
-                    InkWell(
-                      key: ValueKey<String>(
-                        'instruction-mark-${entry.key.jsonValue}',
-                      ),
-                      onTap: () => setState(() => _markType = entry.key),
-                      child: Container(
-                        height: 28,
-                        padding: const EdgeInsets.symmetric(horizontal: 8),
-                        decoration: BoxDecoration(
-                          border: Border.all(
-                            color: _markType == entry.key
-                                ? colorScheme.secondary
-                                : colorScheme.outlineVariant,
-                            width: _markType == entry.key ? 2 : 1,
-                          ),
-                          borderRadius: BorderRadius.circular(6),
-                        ),
-                        child: Center(
-                          child: Text(
-                            entry.value,
-                            style: const TextStyle(fontSize: 11),
-                          ),
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ],
-          ),
+              ],
+            ),
+          ],
         ),
       ),
       actions: [

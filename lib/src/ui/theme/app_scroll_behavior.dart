@@ -50,6 +50,32 @@ class AppScrollBehavior extends MaterialScrollBehavior {
     Widget child,
     ScrollableDetails details,
   ) {
+    // ⛔DESKTOP ONLY, and not for symmetry with Flutter — for a reason that
+    // makes the alternative impossible. On the mobile platforms a vertical
+    // scroll view with no controller of its own inherits the ROUTE's
+    // `PrimaryScrollController` (`PrimaryScrollController.shouldInherit`),
+    // so every such view on a page shares ONE controller. A bar that reads
+    // that controller cannot tell which of them it is over — and reading
+    // `position` at all throws once two are attached. The guard inside
+    // [PanelScrollbar] keeps that from taking the frame down, but the
+    // honest consequence is that the bar would simply never appear there,
+    // and a rule that silently does not apply is worse than one that says
+    // where it applies. Touch also has no pointer to hover and drags the
+    // content directly, which is why Flutter bars nothing there either.
+    //
+    // 🔜Barring mobile properly means reading the metrics off each
+    // scrollable's own `ScrollMetricsNotification` instead of off a
+    // controller. That is a real change and it is not this round's.
+    switch (getPlatform(context)) {
+      case TargetPlatform.linux:
+      case TargetPlatform.macOS:
+      case TargetPlatform.windows:
+        break;
+      case TargetPlatform.android:
+      case TargetPlatform.iOS:
+      case TargetPlatform.fuchsia:
+        return child;
+    }
     final controller = details.controller;
     if (controller == null) {
       // Not reachable from a real `Scrollable` — it always passes its
