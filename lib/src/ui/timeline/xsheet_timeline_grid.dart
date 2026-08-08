@@ -88,6 +88,7 @@ class XSheetTimelineGrid extends StatefulWidget {
     required this.activeLayerId,
     required this.frameCursor,
     this.frameCachedSignal,
+    this.revealSelectionTick,
     required this.frameCount,
     required this.exposureStateForLayer,
     this.frameNameForLayer,
@@ -177,6 +178,9 @@ class XSheetTimelineGrid extends StatefulWidget {
 
   /// Repaints the frame rail's cached-range green strip as frames warm.
   final Listenable? frameCachedSignal;
+
+  /// R5: the session's "bring the selection back into view" tick.
+  final ValueListenable<int>? revealSelectionTick;
 
   /// Playback frame count of the active cut (the visible range extends to
   /// the shared minimum, exactly like the horizontal timeline).
@@ -546,11 +550,68 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
     _layerScrollController = PenFriendlyScrollController();
     _frameScrollController.addListener(_handleFrameScroll);
     _frameWindowBucket.addListener(_handleFrameWindowBucket);
+    widget.revealSelectionTick?.addListener(_handleRevealSelection);
+  }
+
+  /// R5: the same reveal the rail does, asked of THIS surface's axes — the
+  /// frame runs down here and the columns run across, so one tick lands on
+  /// two different controllers without either side knowing the other's.
+  void _handleRevealSelection() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _revealSelection();
+      }
+    });
+  }
+
+  void _revealSelection() {
+    final cell = _metrics.frameCellWidth;
+    if (_frameScrollController.hasClients && cell > 0) {
+      final position = _frameScrollController.position;
+      final target = revealScrollOffset(
+        offset: position.pixels,
+        viewport: position.viewportDimension,
+        start: widget.frameCursor.value * cell,
+        extent: cell,
+        margin: cell,
+      ).clamp(position.minScrollExtent, position.maxScrollExtent);
+      if (target != position.pixels) {
+        _frameScrollController.jumpTo(target);
+      }
+    }
+    final columnWidth = _metrics.layerRowHeight;
+    final activeId = widget.activeLayerId;
+    if (!_layerScrollController.hasClients ||
+        activeId == null ||
+        columnWidth <= 0) {
+      return;
+    }
+    final at = _dragRows.indexWhere(
+      (row) => !row.isLane && row.layer.id == activeId,
+    );
+    if (at < 0) {
+      return;
+    }
+    final position = _layerScrollController.position;
+    final target = revealScrollOffset(
+      offset: position.pixels,
+      viewport: position.viewportDimension,
+      start: at * columnWidth,
+      extent: columnWidth,
+      margin: columnWidth,
+    ).clamp(position.minScrollExtent, position.maxScrollExtent);
+    if (target != position.pixels) {
+      _layerScrollController.jumpTo(target);
+    }
   }
 
   @override
   void didUpdateWidget(covariant XSheetTimelineGrid oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.revealSelectionTick != widget.revealSelectionTick) {
+      oldWidget.revealSelectionTick?.removeListener(_handleRevealSelection);
+      widget.revealSelectionTick?.addListener(_handleRevealSelection);
+    }
     // Zoom-around-playhead (transposed): the playhead ROW stays put on
     // screen through zoom when visible; otherwise the top-edge frame
     // anchors. Same policy as the horizontal timeline (Axis rule).
@@ -571,6 +632,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
 
   @override
   void dispose() {
+    widget.revealSelectionTick?.removeListener(_handleRevealSelection);
     _watchedFramePosition?.isScrollingNotifier.removeListener(
       _handleFrameScrollActivity,
     );

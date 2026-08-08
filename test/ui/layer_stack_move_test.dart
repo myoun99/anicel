@@ -4,16 +4,34 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
+    show LayerRowSubject;
 
-/// Moving a row along the stack — the drag's twin, and the first consumer
-/// of the drop policy. What is pinned here is the part a widget test cannot
-/// see: that the run travels whole, that membership follows the landing,
-/// that the move reaches the 겸용 siblings, and that one step is one undo.
+/// Moving a row along the stack, driven through the DRAG — the only way a
+/// user can do it since R5 #5 retired the step verbs.
+///
+/// What is pinned here is the part the widget test cannot see: that a run
+/// travels whole, that the move reaches the 겸용 siblings, that one drag is
+/// one undo, and that a refused landing commits nothing. Where the landing
+/// LANDS is `layer_drop_policy_test`'s; how the pointer names it is
+/// `layer_row_drag_test`'s. This is the commit path between them.
 
 EditorSessionManager _session() {
   final session = EditorSessionManager(initialProject: createDefaultProject());
   addTearDown(session.dispose);
   return session;
+}
+
+/// One whole drag, landing [id] at model index [insertAt].
+///
+/// The display list handed over is the MODEL order, which is a surface the
+/// x-sheet really renders — and with the two lists identical the slot IS
+/// the model insertion index, so these tests state landings in the terms
+/// the stack itself uses rather than in a rail's reversed ones.
+void _dragTo(EditorSessionManager session, LayerId id, int insertAt) {
+  session.beginLayerRowDrag(LayerRowSubject(id));
+  session.updateLayerRowDrag(session.layers, insertAt);
+  session.endLayerRowDrag();
 }
 
 List<String> _drawingIds(EditorSessionManager session) => [
@@ -25,158 +43,110 @@ List<String> _drawingIds(EditorSessionManager session) => [
 Layer _layerOf(EditorSessionManager session, LayerId id) =>
     session.requireActiveCut.layers.firstWhere((layer) => layer.id == id);
 
+int _indexOf(EditorSessionManager session, LayerId id) =>
+    session.requireActiveCut.layers.indexWhere((layer) => layer.id == id);
+
 void main() {
-  group('a row steps along the stack', () {
-    test('up and down rewrite the order, and one step is one undo', () {
-      final session = _session();
-      session.addLayerOfKind(LayerKind.animation);
-      session.addLayerOfKind(LayerKind.animation);
-      final before = _drawingIds(session);
-      expect(before.length, greaterThanOrEqualTo(3));
+  test('one drag is one undo', () {
+    final session = _session();
+    session.addLayerOfKind(LayerKind.animation);
+    session.addLayerOfKind(LayerKind.animation);
+    final before = _drawingIds(session);
+    expect(before.length, greaterThanOrEqualTo(3));
 
-      final bottom = LayerId(before.first);
-      session.moveLayerInStack(bottom, up: true);
-      expect(_drawingIds(session)[1], before.first);
-      expect(_drawingIds(session).first, before[1]);
+    final bottom = LayerId(before.first);
+    _dragTo(session, bottom, _indexOf(session, LayerId(before[1])) + 1);
+    expect(_drawingIds(session), isNot(before));
+    expect(_drawingIds(session)[0], before[1]);
+    expect(_drawingIds(session)[1], before.first);
 
-      session.undo();
-      expect(_drawingIds(session), before, reason: 'one step is one undo');
-    });
-
-    test('the ends of the stack refuse', () {
-      final session = _session();
-      session.addLayerOfKind(LayerKind.animation);
-      final ids = _drawingIds(session);
-      expect(
-        session.canMoveLayerInStack(LayerId(ids.first), up: false),
-        isFalse,
-        reason: 'nothing below the bottom row',
-      );
-    });
-
-    test('a drawing row cannot step into the camera section', () {
-      final session = _session();
-      final drawing = session.requireActiveCut.layers
-          .lastWhere((layer) => layer.kind == LayerKind.animation)
-          .id;
-      // Stepping up from the top drawing row would land among the SE or
-      // camera rows, which the display would spring back.
-      var steps = 0;
-      while (session.canMoveLayerInStack(drawing, up: true) && steps < 20) {
-        session.moveLayerInStack(drawing, up: true);
-        steps += 1;
-      }
-      final layers = session.requireActiveCut.layers;
-      final index = layers.indexWhere((layer) => layer.id == drawing);
-      expect(
-        layers
-            .sublist(index + 1)
-            .every((layer) => layer.kind != LayerKind.animation),
-        isTrue,
-        reason: 'it climbed to the top of its own section and stopped',
-      );
-      expect(session.canMoveLayerInStack(drawing, up: true), isFalse);
-    });
+    session.undo();
+    expect(_drawingIds(session), before, reason: 'one drag is one undo');
   });
 
-  group('membership follows the landing', () {
-    test('stepping into a folder joins it; stepping out leaves it', () {
-      final session = _session();
-      session.addLayerOfKind(LayerKind.animation);
-      session.addLayerOfKind(LayerKind.animation);
-      final drawing = [
-        for (final layer in session.requireActiveCut.layers)
-          if (layer.kind == LayerKind.animation) layer.id,
-      ];
-      // The TOP drawing row becomes a folder's member; the one below it is
-      // the traveller.
-      session.selectLayer(drawing.last);
-      session.groupActiveLayerIntoFolder();
-      final folder = session.requireActiveCut.layers
-          .firstWhere((layer) => layer.kind == LayerKind.folder)
-          .id;
-      final traveller = drawing[drawing.length - 2];
-      expect(_layerOf(session, traveller).folderId, isNull);
+  test('a refused landing commits nothing — a drawing row cannot cross into '
+      'the camera section', () {
+    final session = _session();
+    final drawing = session.requireActiveCut.layers
+        .lastWhere((layer) => layer.kind == LayerKind.animation)
+        .id;
+    final before = [
+      for (final layer in session.requireActiveCut.layers) layer.id.value,
+    ];
 
-      // Up: the row above it is the folder's first MEMBER, so stepping past
-      // that member lands inside the folder.
-      session.moveLayerInStack(traveller, up: true);
-      expect(_layerOf(session, traveller).folderId, folder);
+    // The very top of the stack is past every section boundary above the
+    // drawing rows; the display re-buckets by kind, so a landing there
+    // would spring straight back.
+    _dragTo(session, drawing, session.layers.length);
 
-      // Up again: past the folder ROW, whose subtree ends there.
-      session.moveLayerInStack(traveller, up: true);
-      expect(_layerOf(session, traveller).folderId, isNull);
-
-      // And back in.
-      session.moveLayerInStack(traveller, up: false);
-      expect(_layerOf(session, traveller).folderId, folder);
-    });
-
-    test('a folder travels whole', () {
-      final session = _session();
-      session.addLayerOfKind(LayerKind.animation);
-      final member = session.requireActiveCut.layers
-          .lastWhere((layer) => layer.kind == LayerKind.animation)
-          .id;
-      session.selectLayer(member);
-      session.groupActiveLayerIntoFolder();
-      final folder = session.requireActiveCut.layers
-          .firstWhere((layer) => layer.kind == LayerKind.folder)
-          .id;
-
-      session.moveLayerInStack(folder, up: false);
-      final layers = session.requireActiveCut.layers;
-      final folderIndex = layers.indexWhere((layer) => layer.id == folder);
-      final memberIndex = layers.indexWhere((layer) => layer.id == member);
-      expect(
-        memberIndex,
-        folderIndex - 1,
-        reason: 'the member came with it, still directly below the folder',
-      );
-      expect(_layerOf(session, member).folderId, folder);
-    });
+    expect([
+      for (final layer in session.requireActiveCut.layers) layer.id.value,
+    ], before);
   });
 
-  group('order is shared structure', () {
-    test('a move reaches the 겸용 sibling cut', () {
-      final session = _session();
-      session.addLayerOfKind(LayerKind.animation);
-      final sourceCutId = session.requireActiveCut.id;
-      final sourceOrder = _drawingIds(session);
-      session.createLinkedCutFromActiveCut();
-      final linkedCutId = session.requireActiveCut.id;
-      expect(linkedCutId, isNot(sourceCutId));
-      final linkedOrderBefore = _drawingIds(session);
+  test('a folder travels whole, and its members stay directly below it', () {
+    final session = _session();
+    session.addLayerOfKind(LayerKind.animation);
+    final member = session.requireActiveCut.layers
+        .lastWhere((layer) => layer.kind == LayerKind.animation)
+        .id;
+    session.selectLayer(member);
+    session.groupActiveLayerIntoFolder();
+    final folder = session.requireActiveCut.layers
+        .firstWhere((layer) => layer.kind == LayerKind.folder)
+        .id;
 
-      // Back to the source cut, and move its bottom drawing row up.
-      session.selectCut(sourceCutId);
-      session.moveLayerInStack(LayerId(sourceOrder.first), up: true);
-      final sourceAfter = _drawingIds(session);
-      expect(sourceAfter, isNot(sourceOrder));
+    _dragTo(session, folder, 0);
 
-      session.selectCut(linkedCutId);
-      final linkedAfter = _drawingIds(session);
-      expect(
-        linkedAfter,
-        isNot(linkedOrderBefore),
-        reason: 'the sibling stack moved with it — order is structure',
-      );
-      // The two stacks still read the same shape, row for row.
-      expect(linkedAfter.length, sourceAfter.length);
-    });
+    final folderIndex = _indexOf(session, folder);
+    expect(
+      _indexOf(session, member),
+      folderIndex - 1,
+      reason: 'the member came with it, still directly below the folder',
+    );
+    expect(_layerOf(session, member).folderId, folder);
   });
 
-  group('SE rows are the track\'s own list', () {
-    test('a step rewrites the track order', () {
-      final session = _session();
-      final rows = [for (final row in session.activeTrack.seLayers) row.id];
-      expect(rows.length, greaterThanOrEqualTo(2));
+  test('a move reaches the 겸용 sibling cut — order is shared structure', () {
+    final session = _session();
+    session.addLayerOfKind(LayerKind.animation);
+    final sourceCutId = session.requireActiveCut.id;
+    final sourceOrder = _drawingIds(session);
+    session.createLinkedCutFromActiveCut();
+    final linkedCutId = session.requireActiveCut.id;
+    expect(linkedCutId, isNot(sourceCutId));
+    final linkedOrderBefore = _drawingIds(session);
 
-      session.moveLayerInStack(rows.first, up: true);
-      expect(
-        [for (final row in session.activeTrack.seLayers) row.id],
-        [rows[1], rows.first, ...rows.skip(2)],
-      );
-    });
+    session.selectCut(sourceCutId);
+    final bottom = LayerId(sourceOrder.first);
+    _dragTo(session, bottom, _indexOf(session, LayerId(sourceOrder[1])) + 1);
+    final sourceAfter = _drawingIds(session);
+    expect(sourceAfter, isNot(sourceOrder));
+
+    session.selectCut(linkedCutId);
+    final linkedAfter = _drawingIds(session);
+    expect(
+      linkedAfter,
+      isNot(linkedOrderBefore),
+      reason: 'the sibling stack moved with it — order is structure',
+    );
+    expect(linkedAfter.length, sourceAfter.length);
+  });
+
+  test('SE rows re-order the TRACK\'s own list', () {
+    final session = _session();
+    final rows = [for (final row in session.activeTrack.seLayers) row.id];
+    expect(rows.length, greaterThanOrEqualTo(2));
+
+    // The SE arm reads the track's list as both the model and the display,
+    // so slot 2 is "after the second row".
+    session.beginLayerRowDrag(LayerRowSubject(rows.first));
+    session.updateLayerRowDrag(session.activeTrack.seLayers, 2);
+    session.endLayerRowDrag();
+
+    expect(
+      [for (final row in session.activeTrack.seLayers) row.id],
+      [rows[1], rows.first, ...rows.skip(2)],
+    );
   });
 }

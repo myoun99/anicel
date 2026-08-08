@@ -8,15 +8,27 @@ import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
+    show LayerRowSubject;
 
-/// P3's MENU door: mounting onto the row next door (what the drag cannot
-/// reach — a base with no attach rows has no inside), and 어태치 해제, which
+/// P3's MENU door: mounting onto the row next door, and 어태치 해제, which
 /// has to leave the group's run and the 공정 folder behind it.
 
 EditorSessionManager _session() =>
     EditorSessionManager(initialProject: createDefaultProject());
 
 List<Layer> _rows(EditorSessionManager s) => s.requireActiveCut.layers;
+
+/// One whole drag, landing [id] at model index [insertAt].
+///
+/// R5 #5 retired the step verbs, so the drag is how a row moves at all now.
+/// Handing the MODEL order over as the display list makes the slot the
+/// model insertion index, which is the term these tests already use.
+void _dragTo(EditorSessionManager s, LayerId id, int insertAt) {
+  s.beginLayerRowDrag(LayerRowSubject(id));
+  s.updateLayerRowDrag(s.layers, insertAt);
+  s.endLayerRowDrag();
+}
 
 Layer _row(EditorSessionManager s, LayerId id) =>
     _rows(s).firstWhere((layer) => layer.id == id);
@@ -174,8 +186,8 @@ void main() {
     expect(before.attachedMode, AttachedMode.synced);
     expect(before.baseFrameLinks, hasLength(1));
 
-    // One step down takes it past the base's picture.
-    s.moveLayerInStack(attachId, up: false);
+    // Dragging it below the base takes it past the base's picture.
+    _dragTo(s, attachId, _rows(s).indexWhere((row) => row.id == base.id));
 
     final rows = _rows(s);
     expect(
@@ -196,8 +208,8 @@ void main() {
     expect(_row(s, attachId).attachedPlacement, AttachedPlacement.above);
   });
 
-  test('a step that lands inside a group mounts, exactly like the drop — one '
-      'policy, two verbs', () {
+  test('a DROP that lands inside a group mounts — one policy, one verb '
+      'now', () {
     final s = _session();
     final base = s.activeLayer!;
     s.addAttachedLayer(AttachedPlacement.above);
@@ -206,8 +218,7 @@ void main() {
     // Stack: base, attach, loose. One step DOWN puts it between them.
     expect(_animationOrder(s).last, loose.value);
 
-    expect(s.canMoveLayerInStack(loose, up: false), isTrue);
-    s.moveLayerInStack(loose, up: false);
+    _dragTo(s, loose, _rows(s).indexWhere((row) => row.id == base.id) + 1);
 
     expect(_row(s, loose).attachedToLayerId, base.id);
     expect(_row(s, loose).attachedMode, AttachedMode.synced);

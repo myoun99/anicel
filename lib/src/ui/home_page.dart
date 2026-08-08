@@ -330,9 +330,15 @@ class _HomePageState extends State<HomePage> {
       case EditorActionIds.framePrevious:
         // PEN-7c: the one-frame step (Ctrl+arrows / comma) — always a
         // frame flip, never a nudge.
+        //
+        // R5: and the rails bring it back into view. These are the moves
+        // that happen WITHOUT a pointer, so they are the ones that could
+        // walk the selection off screen (user, 2026-08-09).
         _session.selectPreviousFrame();
+        _session.revealSelection();
       case EditorActionIds.frameNext:
         _session.selectNextFrame();
+        _session.revealSelection();
       case EditorActionIds.drawingPrevious:
         // A live selection claims the PLAIN arrow keys as nudges (PS
         // arbitration — the arbitration follows the KEYS, which walk
@@ -344,6 +350,7 @@ class _HomePageState extends State<HomePage> {
           }
         } else {
           _session.selectPreviousDrawing();
+          _session.revealSelection();
         }
       case EditorActionIds.drawingNext:
         if (_canvasSelectionCommands.hasSelection) {
@@ -352,6 +359,7 @@ class _HomePageState extends State<HomePage> {
           }
         } else {
           _session.selectNextDrawing();
+          _session.revealSelection();
         }
       case EditorActionIds.playbackToggle:
         final playback = _session.playback;
@@ -434,6 +442,7 @@ class _HomePageState extends State<HomePage> {
           }
         } else {
           _timelineLayerNav.step(-1);
+          _session.revealSelection();
         }
       case EditorActionIds.selectionNudgeDown:
         if (_canvasSelectionCommands.hasSelection) {
@@ -442,6 +451,7 @@ class _HomePageState extends State<HomePage> {
           }
         } else {
           _timelineLayerNav.step(1);
+          _session.revealSelection();
         }
       case EditorActionIds.selectionFreeTransform:
         // R26 #17: Ctrl+T is not its own transform mode — it SWITCHES to

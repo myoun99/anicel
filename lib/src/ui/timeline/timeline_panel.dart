@@ -50,6 +50,7 @@ class TimelinePanel extends StatefulWidget {
     required this.activeLayerId,
     required this.frameCursor,
     this.frameCachedSignal,
+    this.revealSelectionTick,
     required this.playbackFrameCount,
     required this.exposureStateForLayer,
     this.frameNameForLayer,
@@ -156,6 +157,10 @@ class TimelinePanel extends StatefulWidget {
 
   /// Repaints the rulers' cached-range green strip as frames warm.
   final Listenable? frameCachedSignal;
+
+  /// R5: the session's "bring the selection back into view" tick, handed
+  /// to whichever grid this panel is showing.
+  final ValueListenable<int>? revealSelectionTick;
 
   final int playbackFrameCount;
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
@@ -474,6 +479,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     dragPreview: widget.dragPreview,
                     frameCursor: widget.frameCursor,
                     frameCachedSignal: widget.frameCachedSignal,
+                    revealSelectionTick: widget.revealSelectionTick,
                     playbackFrameCount: widget.playbackFrameCount,
                     exposureStateForLayer: widget.exposureStateForLayer,
                     frameNameForLayer: widget.frameNameForLayer,
@@ -548,6 +554,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     dragPreview: widget.dragPreview,
                     frameCursor: widget.frameCursor,
                     frameCachedSignal: widget.frameCachedSignal,
+                    revealSelectionTick: widget.revealSelectionTick,
                     frameCount: widget.playbackFrameCount,
                     exposureStateForLayer: widget.exposureStateForLayer,
                     frameNameForLayer: widget.frameNameForLayer,

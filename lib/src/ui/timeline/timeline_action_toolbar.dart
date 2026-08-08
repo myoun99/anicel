@@ -133,7 +133,6 @@ class TimelineActionToolbar extends StatelessWidget {
     required this.onDeleteLayer,
     required this.onEditInstance,
     required this.onCreateInstance,
-    this.onImportAudio,
     this.hiddenSections = const {},
     this.onToggleSection,
   });
@@ -154,10 +153,6 @@ class TimelineActionToolbar extends StatelessWidget {
   /// Kind-dispatched creation: new frame / camera key / SE entry /
   /// instruction event.
   final VoidCallback onCreateInstance;
-
-  /// Opens the audio file picker for the active SE layer (host-provided —
-  /// it needs the platform dialog).
-  final VoidCallback? onImportAudio;
 
   /// Sections hidden from the grids; the Layer ▾ show/hide items and the
   /// rail's fold chevrons both flip this.

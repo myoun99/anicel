@@ -641,6 +641,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onCancel: _session.cancelMovieEndDrag,
                   ),
                   playheadFrame: _playheadGlobalFrame,
+                  revealSelectionTick: _session.revealSelectionTick,
                   frameCachedSignal: _frameCachedSignal,
                   onSeekGlobalFrame: (frame) =>
                       seekStoryboardGlobalFrame(_session, frame),

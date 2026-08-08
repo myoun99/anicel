@@ -72,6 +72,7 @@ class LayerTimelineGrid extends StatefulWidget {
     required this.activeLayerId,
     required this.frameCursor,
     this.frameCachedSignal,
+    this.revealSelectionTick,
     required this.playbackFrameCount,
     required this.exposureStateForLayer,
     this.frameNameForLayer,
@@ -183,6 +184,11 @@ class LayerTimelineGrid extends StatefulWidget {
   /// Repaints the ruler's cached-range green strip as frames warm; never
   /// rebuilds anything else.
   final Listenable? frameCachedSignal;
+
+  /// R5: the session's "bring the selection back into view" tick. Null
+  /// leaves the grid scrolling only where the user put it, which is what a
+  /// passive host wants.
+  final ValueListenable<int>? revealSelectionTick;
 
   final int playbackFrameCount;
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
@@ -544,11 +550,27 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     _verticalScrollController = PenFriendlyScrollController();
     _horizontalScrollController.addListener(_handleHorizontalScroll);
     _verticalScrollController.addListener(_handleVerticalScroll);
+    widget.revealSelectionTick?.addListener(_handleRevealSelection);
+  }
+
+  /// The reveal runs AFTER the frame the selection moved in: the rows this
+  /// pass built are what the row index counts in, and on a row step they
+  /// have not been rebuilt yet when the tick arrives.
+  void _handleRevealSelection() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        _revealSelection();
+      }
+    });
   }
 
   @override
   void didUpdateWidget(covariant LayerTimelineGrid oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.revealSelectionTick != widget.revealSelectionTick) {
+      oldWidget.revealSelectionTick?.removeListener(_handleRevealSelection);
+      widget.revealSelectionTick?.addListener(_handleRevealSelection);
+    }
     // Zoom-around-playhead: the playhead stays put on screen through zoom
     // when visible; otherwise the leading-edge frame anchors.
     final oldCell = oldWidget.metrics.frameCellWidth;
@@ -569,6 +591,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
 
   @override
   void dispose() {
+    widget.revealSelectionTick?.removeListener(_handleRevealSelection);
     _watchedHorizontalPosition?.isScrollingNotifier.removeListener(
       _handleHorizontalScrollActivity,
     );
@@ -865,6 +888,78 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
 
   void _resetRulerScrubTracking() {
     _lastRulerScrubbedFrameIndex = null;
+  }
+
+  /// Brings the SELECTION back into view on both axes (R5, user
+  /// 2026-08-09): the frame under the cursor along the frame axis, the row
+  /// it stands on along the rail.
+  ///
+  /// Answered here rather than sent here, because "where is the selection"
+  /// is a question about THIS surface's geometry — the sheet asks it of the
+  /// other axis and the storyboard of a global one, off the same tick.
+  ///
+  /// One row/cell of margin, so a walk keeps a neighbour in sight and reads
+  /// as a walk rather than as a jump to the edge.
+  void _revealSelection() {
+    final cell = _metrics.frameCellWidth;
+    if (_horizontalScrollController.hasClients && cell > 0) {
+      final position = _horizontalScrollController.position;
+      final target = revealScrollOffset(
+        offset: position.pixels,
+        viewport: position.viewportDimension,
+        start: widget.frameCursor.value * cell,
+        extent: cell,
+        margin: cell,
+      ).clamp(position.minScrollExtent, position.maxScrollExtent);
+      if (target != position.pixels) {
+        _horizontalScrollController.jumpTo(target);
+      }
+    }
+    final rowHeight = _metrics.layerRowHeight;
+    final rowIndex = _selectedRowIndex();
+    if (!_verticalScrollController.hasClients ||
+        rowIndex == null ||
+        rowHeight <= 0) {
+      return;
+    }
+    final position = _verticalScrollController.position;
+    final target = revealScrollOffset(
+      offset: position.pixels,
+      viewport: position.viewportDimension,
+      start: rowIndex * rowHeight,
+      extent: rowHeight,
+      margin: rowHeight,
+    ).clamp(position.minScrollExtent, position.maxScrollExtent);
+    if (target != position.pixels) {
+      _verticalScrollController.jumpTo(target);
+    }
+  }
+
+  /// Which DISPLAY row the selection sits on — the row the current-row
+  /// address names, and the active layer's row when it names none.
+  int? _selectedRowIndex() {
+    final rows = _dragRows;
+    if (rows.isEmpty) {
+      return null;
+    }
+    final current = widget.currentRowHooks?.currentRow.value;
+    if (current is LaneRowAddress) {
+      final at = rows.indexWhere(
+        (row) => row.layer.id == current.layerId &&
+            row.lane?.laneId == current.laneId,
+      );
+      if (at >= 0) {
+        return at;
+      }
+    }
+    final activeId = widget.activeLayerId;
+    if (activeId == null) {
+      return null;
+    }
+    final at = rows.indexWhere(
+      (row) => !row.isLane && row.layer.id == activeId,
+    );
+    return at < 0 ? null : at;
   }
 
   List<PropertyLaneRow> _lanesFor(Layer layer) =>

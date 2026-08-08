@@ -1490,6 +1490,7 @@ class EditorSessionManager extends ChangeNotifier {
     brushInputActive.removeListener(_bumpCelTintRevision);
     celTintRevision.dispose();
     currentRowListenable.dispose();
+    revealSelectionTick.dispose();
     cacheInvalidationHub.removeBrushFrameListener(_onBrushFrameInvalidated);
     playback.globalFrameIndexListenable.removeListener(_followPlaybackCut);
     _historyManager.removeListener(_markProjectDirty);
@@ -4162,118 +4163,50 @@ class EditorSessionManager extends ChangeNotifier {
   // methods that used to live here are gone. What is left is the two
   // structural verbs (make one, take one apart) and the twirl.
 
-  /// One STEP's landing for [layerId], or null when the row has nowhere
-  /// legal to go that way.
-  ///
-  /// A step is past the neighbouring ROW, and that is what makes stepping
-  /// INTO a folder the same move as stepping over it: the row above a run
-  /// is either a folder's first member (you go in) or the folder row
-  /// itself, whose subtree has just ended (you go over).
-  LayerDropPlan? _layerStepPlan(LayerId layerId, {required bool up}) {
-    final cut = activeCutOrNull;
-    if (cut == null) {
-      return null;
-    }
-    final run = layerDragRun(cut.layers, layerId);
-    if (run == null) {
-      return null;
-    }
-    final insertAt = up ? run.endExclusive + 1 : run.start - 1;
-    if (insertAt < 0 || insertAt > cut.layers.length) {
-      return null;
-    }
-    return resolveLayerDrop(
-      stack: cut.layers,
-      movingId: layerId,
-      insertAt: insertAt,
-    );
-  }
-
-  /// Whether [layerId] can step one place along the stack ([up] = toward
-  /// the top).
-  ///
-  /// R5 #5: NO UI ENTRANCE any more — the menu entries went and no shortcut
-  /// replaced them (user: "단축회로로도 남기지마 일단"). The pair stays
-  /// because the STEP is what `layer_stack_move_test` drives to pin the
-  /// commit path the DRAG also lands on: that a run travels whole, that
-  /// folder membership follows the landing, that the move reaches the
-  /// 겸용 siblings, and that one step is one undo. Deleting them would
-  /// delete that coverage and leave the drag as the only witness to its own
-  /// correctness. Flagged for the user — say the word and both go.
-  bool canMoveLayerInStack(LayerId layerId, {required bool up}) {
-    if (isTrackSeLayerId(layerId)) {
-      final rows = activeTrack.seLayers;
-      final from = rows.indexWhere((row) => row.id == layerId);
-      final to = from + (up ? 1 : -1);
-      return from >= 0 && to >= 0 && to < rows.length;
-    }
-    return _layerStepPlan(layerId, up: up) != null;
-  }
-
-  /// Moves a row one place along the STACK, carrying whatever travels with
-  /// it — a folder's subtree, an attach base's whole group.
-  ///
-  /// [up] means toward the TOP of the stack. That reads as up on the rail
-  /// and leftward on the sheet; the display adapters own that translation
-  /// and this verb never learns it.
-  ///
-  /// It resolves through the same [resolveLayerDrop] a dropped row will, so
-  /// a step and a drop can never disagree about what is legal — and the
-  /// coordinator mirrors the move across the 겸용 link group, because stack
-  /// order is shared structure.
-  void moveLayerInStack(LayerId layerId, {required bool up}) {
-    if (isTrackSeLayerId(layerId)) {
-      final rows = activeTrack.seLayers;
-      final from = rows.indexWhere((row) => row.id == layerId);
-      final to = from + (up ? 1 : -1);
-      if (from < 0 || to < 0 || to >= rows.length) {
-        return;
-      }
-      final order = [for (final row in rows) row.id];
-      order.insert(to, order.removeAt(from));
-      _cutCommandCoordinator.setTrackSeOrder(
-        trackId: selectedTrackId,
-        order: order,
-      );
-      notifyListeners();
-      return;
-    }
-    final cut = activeCutOrNull;
-    final plan = _layerStepPlan(layerId, up: up);
-    if (cut == null || plan == null) {
-      return;
-    }
-    final run = layerDragRun(cut.layers, layerId)!;
-    _cutCommandCoordinator.setLayerPlacement(
-      cutId: cut.id,
-      order: plan.order,
-      folderIds: plan.folderIds,
-      movedIds: {
-        for (final layer in cut.layers.sublist(run.start, run.endExclusive))
-          layer.id,
-      },
-      // A step lands where a drop would, so it makes and breaks the same
-      // attach relationships — the two verbs share one policy on purpose.
-      attach: plan.attach,
-      description: 'Move layer',
-    );
-    _refreshAfterCutCommand(preferredActiveLayerId: layerId);
-    notifyListeners();
-  }
-
   // --- The row-order DRAG ------------------------------------------------
   //
-  // The step verb above and this drag are the same move: both resolve
-  // through [resolveLayerDrop], so what a step refuses a drop refuses too.
-  // What the drag adds is a caret — and the caret has to SAY when a drop
-  // does something structural, because a folder joined in silence is a
-  // change nobody asked for.
+  // R5 #5: the STEP verbs that used to sit here are gone — menu entries,
+  // session methods and all, with no shortcut left behind (user: "삭제해.
+  // 단축키로도 남기지마 일단"). The drag is the whole answer now.
+  //
+  // What the step could reach and a caret cannot — the inside of an EMPTY
+  // folder — is R5 #15's drop-ON-a-row instead, which is a better answer
+  // anyway: it says the intent out loud rather than arriving there by
+  // counting rows.
+  //
+  // The commit path they shared did not go with them. `layer_stack_move_test`
+  // drives it through the drag now: a run travelling whole, the 겸용
+  // mirroring, one drag one undo, a refused landing committing nothing.
+  //
+  // The caret has to SAY when a drop does something structural, because a
+  // folder joined in silence is a change nobody asked for.
 
   /// The row drag in flight, as the rails draw it. A notifier rather than a
   /// session notify: a drag moves per pointer step, and the only things
   /// that change are the caret and the lifted row's opacity.
   final ValueNotifier<LayerRowDragState?> layerRowDrag =
       ValueNotifier<LayerRowDragState?>(null);
+
+  /// A tick the rails watch to bring the SELECTION back into view (user,
+  /// 2026-08-09: walking rows and frames with the arrow keys kept selecting
+  /// things that were off screen).
+  ///
+  /// A tick rather than a value, and a notifier rather than a session
+  /// notify: what to reveal is already readable — the current row and the
+  /// current frame — so the only thing that has to travel is "now". Every
+  /// surface answers it in its own geometry, which is the only way one
+  /// signal can serve a rail that runs down, a sheet that runs across, and
+  /// a storyboard on a global axis.
+  ///
+  /// ⚠️Deliberately NOT fired by every selection change. A cell tap already
+  /// puts the thing under your finger, and the playhead moves every frame
+  /// of playback — revealing on those would yank the view out from under
+  /// the hand that put it there. It fires where the selection moves without
+  /// the pointer: the arrow keys.
+  final ValueNotifier<int> revealSelectionTick = ValueNotifier<int>(0);
+
+  /// Asks the rails to scroll whatever is selected back into view.
+  void revealSelection() => revealSelectionTick.value += 1;
 
   /// What releasing would commit. Held beside the drawn state so the
   /// release does not have to resolve the landing a second time — and so
