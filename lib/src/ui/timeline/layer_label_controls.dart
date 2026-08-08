@@ -68,16 +68,16 @@ class LayerSectionBandCell extends StatelessWidget {
 /// pre-R5 gutter bracket verbatim (UI-R7 #2, user: '저번이랑 똑같이'),
 /// now INSIDE the rows: tinted fill, bottom hairline landing on the run's
 /// last row boundary, right hairline as the band/rail divider, the paper
-/// sheet's upright glyph label centered across the run. [flyoutEntries]
-/// makes the zone tappable (the timeline's section flyout); null keeps it
-/// display-only (the storyboard).
+/// sheet's upright glyph label centered across the run.
+///
+/// DISPLAY-ONLY on every surface. It used to open a flyout (fold / add
+/// layer here / solo / section-wide eye) on the timeline alone, which the
+/// user retired outright: the legend's sections cell already shows and
+/// hides SE and CAM, and nothing else in that menu was wanted. The x-sheet
+/// band never had the flyout, so deleting it is also what finally makes
+/// the two surfaces agree.
 class SectionBandZone extends StatelessWidget {
-  const SectionBandZone({
-    super.key,
-    required this.label,
-    this.extent,
-    this.flyoutEntries,
-  });
+  const SectionBandZone({super.key, required this.label, this.extent});
 
   final String label;
 
@@ -85,53 +85,39 @@ class SectionBandZone extends StatelessWidget {
   /// per-group Positioned.fill mounting).
   final double? extent;
 
-  final List<PanelFlyoutEntry> Function()? flyoutEntries;
-
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Builder(
-      builder: (anchorContext) {
-        final content = Container(
-          width: layerSectionLabelSlotWidth,
-          height: extent,
-          decoration: BoxDecoration(
-            // The band is a PLATE grouping a run of rows, not a chrome
-            // surface — one chrome fill would have left it reading by its two
-            // hairlines alone.
-            color: AppColors.washDown,
-            // One shared table (R3 #5/#6): the bottom hairline sits on the
-            // run's last row boundary, the right hairline is the band/rail
-            // divider — no enclosing box.
-            border: Border(
-              bottom: BorderSide(color: colorScheme.outlineVariant),
-              right: BorderSide(color: colorScheme.outlineVariant),
+    return Container(
+      width: layerSectionLabelSlotWidth,
+      height: extent,
+      decoration: BoxDecoration(
+        // The band is a PLATE grouping a run of rows, not a chrome
+        // surface — one chrome fill would have left it reading by its two
+        // hairlines alone.
+        color: AppColors.washDown,
+        // One shared table (R3 #5/#6): the bottom hairline sits on the
+        // run's last row boundary, the right hairline is the band/rail
+        // divider — no enclosing box.
+        border: Border(
+          bottom: BorderSide(color: colorScheme.outlineVariant),
+          right: BorderSide(color: colorScheme.outlineVariant),
+        ),
+      ),
+      child: Center(
+        child: ClipRect(
+          child: VerticalWritingText(
+            text: label,
+            style: TextStyle(
+              fontSize: 9,
+              letterSpacing: 1.2,
+              fontWeight: FontWeight.bold,
+              height: 1.15,
+              color: colorScheme.onSurfaceVariant,
             ),
           ),
-          child: Center(
-            child: ClipRect(
-              child: VerticalWritingText(
-                text: label,
-                style: TextStyle(
-                  fontSize: 9,
-                  letterSpacing: 1.2,
-                  fontWeight: FontWeight.bold,
-                  height: 1.15,
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              ),
-            ),
-          ),
-        );
-        final entries = flyoutEntries;
-        if (entries == null) {
-          return content;
-        }
-        return InkWell(
-          onTap: () => showPanelFlyout(anchorContext, entries: entries()),
-          child: content,
-        );
-      },
+        ),
+      ),
     );
   }
 }

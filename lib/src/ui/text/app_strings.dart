@@ -738,10 +738,6 @@ class AppStrings {
 
   // --- The layer-controls header (column toggles, solo, section fold) ---
   String get tlSections => _s('tlSections');
-  String get tlFoldSection => _s('tlFoldSection');
-  String get tlHideSectionLayers => _s('tlHideSectionLayers');
-  String get tlShowSectionLayers => _s('tlShowSectionLayers');
-  String get tlOnlyThisSection => _s('tlOnlyThisSection');
   String get tlAllDisplayedLayers => _s('tlAllDisplayedLayers');
   String get tlShowAll => _s('tlShowAll');
   String get tlHideAll => _s('tlHideAll');
@@ -767,7 +763,6 @@ class AppStrings {
   String get tlColFillReference => _s('tlColFillReference');
   String get tlColTimesheet => _s('tlColTimesheet');
   String get tlOpenOnionPanel => _s('tlOpenOnionPanel');
-  String get tlAddLayerHere => _s('tlAddLayerHere');
   String get tlLayerMark => _s('tlLayerMark');
   String get tlRepeat => _s('tlRepeat');
   String get tlRepeatSelection => _s('tlRepeatSelection');
@@ -1295,10 +1290,6 @@ class AppStrings {
     'viewPasteboardColor': 'Pasteboard color',
     'viewBackdropColor': 'Backdrop color',
     'tlSections': 'Sections',
-    'tlFoldSection': 'Fold section',
-    'tlHideSectionLayers': 'Hide section layers',
-    'tlShowSectionLayers': 'Show section layers',
-    'tlOnlyThisSection': 'Only this section',
     'tlAllDisplayedLayers': 'All displayed layers',
     'tlShowAll': 'Show all',
     'tlHideAll': 'Hide all',
@@ -1324,7 +1315,6 @@ class AppStrings {
     'tlColFillReference': 'Fill reference column',
     'tlColTimesheet': 'Timesheet column',
     'tlOpenOnionPanel': 'Open onion skin panel',
-    'tlAddLayerHere': 'Add layer here',
     'tlLayerMark': 'Layer mark',
     'tlRepeat': 'Repeat',
     'tlRepeatSelection': 'Repeat selection',
@@ -2001,10 +1991,6 @@ class AppStrings {
     'viewPasteboardColor': 'ペーストボードの色',
     'viewBackdropColor': '背景の色',
     'tlSections': 'セクション',
-    'tlFoldSection': 'セクションを折りたたむ',
-    'tlHideSectionLayers': 'セクションのレイヤーを隠す',
-    'tlShowSectionLayers': 'セクションのレイヤーを表示',
-    'tlOnlyThisSection': 'このセクションだけ',
     'tlAllDisplayedLayers': '表示中の全レイヤー',
     'tlShowAll': 'すべて表示',
     'tlHideAll': 'すべて隠す',
@@ -2030,7 +2016,6 @@ class AppStrings {
     'tlColFillReference': '塗り参照列',
     'tlColTimesheet': 'タイムシート列',
     'tlOpenOnionPanel': 'オニオンスキンパネルを開く',
-    'tlAddLayerHere': 'ここにレイヤーを追加',
     'tlLayerMark': 'レイヤーマーク',
     'tlRepeat': 'リピート',
     'tlRepeatSelection': '選択範囲をリピート',
@@ -2702,10 +2687,6 @@ class AppStrings {
     'viewPasteboardColor': '페이스트보드 색',
     'viewBackdropColor': '배경 색',
     'tlSections': '섹션',
-    'tlFoldSection': '섹션 접기',
-    'tlHideSectionLayers': '섹션 레이어 숨기기',
-    'tlShowSectionLayers': '섹션 레이어 표시',
-    'tlOnlyThisSection': '이 섹션만',
     'tlAllDisplayedLayers': '표시 중인 모든 레이어',
     'tlShowAll': '모두 표시',
     'tlHideAll': '모두 숨기기',
@@ -2731,7 +2712,6 @@ class AppStrings {
     'tlColFillReference': '채색 참조 열',
     'tlColTimesheet': '타임시트 열',
     'tlOpenOnionPanel': '어니언 스킨 패널 열기',
-    'tlAddLayerHere': '여기에 레이어 추가',
     'tlLayerMark': '레이어 마크',
     'tlRepeat': '반복',
     'tlRepeatSelection': '선택 영역 반복',
@@ -3437,10 +3417,6 @@ class AppStrings {
     'viewPasteboardColor': 'Couleur du fond',
     'viewBackdropColor': 'Couleur de l\'arrière-plan',
     'tlSections': 'Sections',
-    'tlFoldSection': 'Replier la section',
-    'tlHideSectionLayers': 'Masquer les calques de la section',
-    'tlShowSectionLayers': 'Afficher les calques de la section',
-    'tlOnlyThisSection': 'Cette section uniquement',
     'tlAllDisplayedLayers': 'Tous les calques affichés',
     'tlShowAll': 'Tout afficher',
     'tlHideAll': 'Tout masquer',
@@ -3466,7 +3442,6 @@ class AppStrings {
     'tlColFillReference': 'Colonne référence de remplissage',
     'tlColTimesheet': 'Colonne feuille de temps',
     'tlOpenOnionPanel': "Ouvrir le panneau pelure d'oignon",
-    'tlAddLayerHere': 'Ajouter un calque ici',
     'tlLayerMark': 'Repère de calque',
     'tlRepeat': 'Répéter',
     'tlRepeatSelection': 'Répéter la sélection',
@@ -4114,10 +4089,6 @@ class AppStrings {
     'viewPasteboardColor': '底板颜色',
     'viewBackdropColor': '背景颜色',
     'tlSections': '区段',
-    'tlFoldSection': '折叠区段',
-    'tlHideSectionLayers': '隐藏区段图层',
-    'tlShowSectionLayers': '显示区段图层',
-    'tlOnlyThisSection': '仅此区段',
     'tlAllDisplayedLayers': '所有显示的图层',
     'tlShowAll': '全部显示',
     'tlHideAll': '全部隐藏',
@@ -4143,7 +4114,6 @@ class AppStrings {
     'tlColFillReference': '填充参考列',
     'tlColTimesheet': '摄影表列',
     'tlOpenOnionPanel': '打开洋葱皮面板',
-    'tlAddLayerHere': '在此添加图层',
     'tlLayerMark': '图层标记',
     'tlRepeat': '重复',
     'tlRepeatSelection': '重复所选',

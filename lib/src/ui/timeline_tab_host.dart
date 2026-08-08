@@ -50,8 +50,6 @@ import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart';
 import 'timeline/timeline_layer_controls_header.dart' show LayerLegendCallbacks;
 import 'timeline/timeline_row_filter.dart';
-import 'timeline/timeline_section_bracket_rail.dart'
-    show TimelineSectionRailCallbacks;
 import 'timeline/timeline_section_policy.dart';
 import 'timeline/transform_lane_editing.dart';
 import 'timeline/transform_lane_policy.dart';
@@ -221,25 +219,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   /// track, every other kind its own layer track (applied at composite
   /// time; SE transforms move the canvas dialogue, instruction transforms
   /// are authored state for parity). SE layers append their audio lane.
-  /// Folds every OTHER hideable section (the bracket flyout's 'only this
-  /// section'); the target unfolds if it was hidden.
-  void _soloSection(TimelineSection section) {
-    final onToggle = widget.onToggleSection;
-    if (onToggle == null) {
-      return;
-    }
-    for (final other in TimelineSection.values) {
-      if (!timelineSectionHideable(other)) {
-        continue;
-      }
-      final shouldHide = other != section;
-      final isHidden = widget.hiddenSections.contains(other);
-      if (shouldHide != isHidden) {
-        onToggle(other);
-      }
-    }
-  }
-
   /// R26 #3: maps a lane select-drag's cross-row delta onto the layer's
   /// DISPLAYED lane list (the same one the grids render) and returns the
   /// A plain tap on a property band: STAND there (R10).
@@ -1286,15 +1265,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               // R27 #6: the blend column's bulk pick, same displayed set.
               onSetBlendModeForDisplayed: _session.setBlendModeForLayers,
             ),
-            sectionRail: widget.onToggleSection == null
-                ? null
-                : TimelineSectionRailCallbacks(
-                    onToggleSection: widget.onToggleSection!,
-                    onAddLayerOfKind: _session.addLayerOfKind,
-                    onSetSectionLayersVisibility:
-                        _session.setSectionLayersVisibility,
-                    onSoloSection: _soloSection,
-                  ),
             lanesForLayer: _lanesForLayer,
             laneEdit: _laneEdit,
             // A group header's twirl (AE collapse) — Transform or one of the

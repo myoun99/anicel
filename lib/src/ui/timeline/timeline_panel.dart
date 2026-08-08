@@ -34,7 +34,6 @@ import 'timeline_grid_metrics.dart';
 import 'timeline_run_end_handles.dart';
 import 'timeline_layer_controls_header.dart' show LayerLegendCallbacks;
 import 'timeline_row_filter.dart';
-import 'timeline_section_bracket_rail.dart' show TimelineSectionRailCallbacks;
 import 'timeline_view_cluster.dart';
 import 'timeline_orientation.dart';
 import 'timeline_section_policy.dart';
@@ -104,7 +103,6 @@ class TimelinePanel extends StatefulWidget {
     this.hiddenSections = const {},
     this.onToggleSection,
     this.legend,
-    this.sectionRail,
     this.rowFilter = TimelineRowFilter.none,
     this.onSetRowFilter,
     this.collapsedAttachBaseIds = const {},
@@ -380,14 +378,11 @@ class TimelinePanel extends StatefulWidget {
   /// the gutter/header toggle. Shared by both orientations.
   final Set<TimelineSection> hiddenSections;
 
-  /// Folds/unfolds a hideable section (legend corner + bracket chevrons).
+  /// Folds/unfolds a hideable section (the legend corner's sections cell).
   final ValueChanged<TimelineSection>? onToggleSection;
 
   /// The rail legend's bulk commands (horizontal timeline only).
   final LayerLegendCallbacks? legend;
-
-  /// The section brackets' flyout commands (horizontal timeline only).
-  final TimelineSectionRailCallbacks? sectionRail;
 
   /// The rail's row filter and its editor (R2); shared by both orientations.
   final TimelineRowFilter rowFilter;
@@ -549,7 +544,6 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     hiddenSections: widget.hiddenSections,
                     onToggleSection: widget.onToggleSection,
                     legend: widget.legend,
-                    sectionRail: widget.sectionRail,
                     rowFilter: widget.rowFilter,
                     onSetRowFilter: widget.onSetRowFilter,
                     collapsedAttachBaseIds: widget.collapsedAttachBaseIds,

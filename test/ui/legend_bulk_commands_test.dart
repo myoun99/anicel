@@ -4,7 +4,6 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_display_adapter.dart';
-import 'package:anicel/src/ui/timeline/timeline_section_policy.dart';
 
 /// The rail legend's bulk commands (R-toolbar round): project-state sweeps
 /// (sheet/mark/fill-ref) land as ONE undo entry; the view-ish sweeps
@@ -278,16 +277,6 @@ void main() {
     }
     s.setAllSeLayersMuted(false);
     expect(s.layers.every((layer) => !layer.muted), isTrue);
-  });
-
-  test('section visibility sweep hides one section only', () {
-    final s = session();
-    s.setSectionLayersVisibility(TimelineSection.se, false);
-    for (final layer in s.layers) {
-      final inSe =
-          timelineSectionForLayerKind(layer.kind) == TimelineSection.se;
-      expect(layer.isVisible, !inSe);
-    }
   });
 
   test('resetAllLayersOpacity restores 1.0 for non-camera layers', () {
