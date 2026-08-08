@@ -9,6 +9,8 @@ import 'package:flutter/services.dart'
 import 'src/services/input/pen_sidecars.dart';
 import 'src/services/pdf/pdf_render_service.dart';
 import 'src/services/persistence/app_documents.dart' show AppStorage;
+import 'src/ui/debug/frame_stats.dart';
+import 'src/ui/debug/frame_stats_readout.dart';
 import 'src/ui/debug/measurement_mode.dart';
 import 'src/ui/home_page.dart';
 import 'src/ui/input/app_input_settings.dart' show AppInput;
@@ -64,6 +66,12 @@ void main() {
   // instead of probing mid-flow. Absence is a reported state, not an
   // error.
   unawaited(PdfRenderService.ensureAvailable());
+  // Settings ▸ Frame Stats. HERE and not inside the `ListenableBuilder`
+  // below: that builder re-runs on every accent change, and registering
+  // a timings callback there would stack a duplicate each time. The
+  // recorder is inert until the switch is on — it costs one bool per
+  // frame batch.
+  FrameStats.install();
   runApp(const AnicelApp());
 }
 
@@ -95,6 +103,11 @@ class AnicelApp extends StatelessWidget {
         // had no bar of their own live exactly there.
         scrollBehavior: const AppScrollBehavior(),
         showPerformanceOverlay: MeasurementMode.frameTimingOverlay.value,
+        // Above every route and below the Navigator: the measurement
+        // readouts have to outrank dialogs and popovers, which are the
+        // Navigator's children.
+        builder: (context, child) =>
+            MeasurementReadoutHost(child: child ?? const SizedBox.shrink()),
         home: const HomePage(),
       ),
     );
