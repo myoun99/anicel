@@ -219,9 +219,122 @@ void main() {
       );
     });
 
-    test('a plain row may not join an attach ORGANIZER folder', () {
-      // [연출] holds nothing but one base's attach rows; letting a stranger
-      // in would silently stop it being an organizer.
+    test('a row that cannot join a group may not land INSIDE one either — '
+        'the group is unsplittable', () {
+      final stack = [
+        _row('under'),
+        _row('base'),
+        _row('over', attachedTo: 'base'),
+        _row('F', kind: LayerKind.folder),
+        _row('se', kind: LayerKind.se),
+      ];
+      expect(folderStructureProblem(stack), isNull, reason: 'fixture is sound');
+      // A FOLDER cannot be somebody's attach row, so the slot between the
+      // base and its attach row refuses it rather than cutting the run.
+      expect(
+        resolveLayerDrop(
+          stack: stack,
+          movingId: const LayerId('F'),
+          insertAt: 2,
+        ),
+        isNull,
+      );
+      // Its outer edges stay open: "next to the group" is always reachable.
+      expect(
+        resolveLayerDrop(
+          stack: stack,
+          movingId: const LayerId('F'),
+          insertAt: 3,
+        ),
+        isNotNull,
+      );
+      expect(
+        resolveLayerDrop(
+          stack: stack,
+          movingId: const LayerId('F'),
+          insertAt: 1,
+        ),
+        isNotNull,
+      );
+    });
+  });
+
+  // ---------------------------------------------------------------------
+  // P3: the drop MAKES and BREAKS attach relationships.
+  // ---------------------------------------------------------------------
+
+  group('a drop strictly INSIDE a group mounts', () {
+    List<Layer> groupStack() => [
+      _row('bottom'),
+      _row('base'),
+      _row('over', attachedTo: 'base'),
+      _row('top'),
+    ];
+
+    test('above the base when the slot is above it', () {
+      final plan = resolveLayerDrop(
+        stack: groupStack(),
+        movingId: const LayerId('top'),
+        insertAt: 2, // between base and over
+      )!;
+      expect(plan.attach.mount, (
+        layerId: const LayerId('top'),
+        baseId: const LayerId('base'),
+        placement: AttachedPlacement.above,
+      ));
+      expect(plan.attach.detachIds, isEmpty);
+      expect(_ids(plan.order), ['bottom', 'base', 'top', 'over']);
+    });
+
+    test('below the base when the slot is below it', () {
+      final stack = [
+        _row('bottom'),
+        _row('under', attachedTo: 'base', placement: AttachedPlacement.below),
+        _row('base'),
+        _row('top'),
+      ];
+      final plan = resolveLayerDrop(
+        stack: stack,
+        movingId: const LayerId('top'),
+        insertAt: 2, // between under and base
+      )!;
+      expect(plan.attach.mount?.placement, AttachedPlacement.below);
+    });
+
+    test('NOT at the group\'s outer edges — passing above or below a group '
+        'commits nothing', () {
+      for (final slot in [1, 3]) {
+        final plan = resolveLayerDrop(
+          stack: groupStack(),
+          movingId: const LayerId('top'),
+          insertAt: slot,
+        );
+        expect(
+          plan?.attach.mount,
+          isNull,
+          reason: 'slot $slot touches the group but is not inside it',
+        );
+      }
+    });
+
+    test('and a bare drawing row is not a group at all — the ordinary '
+        're-order over another layer stays ordinary', () {
+      final stack = [_row('a'), _row('b'), _row('c')];
+      for (var slot = 0; slot <= 3; slot += 1) {
+        expect(
+          resolveLayerDrop(
+            stack: stack,
+            movingId: const LayerId('c'),
+            insertAt: slot,
+          )?.attach.mount,
+          isNull,
+          reason: 'slot $slot',
+        );
+      }
+    });
+
+    test('landing among a 공정 ORGANIZER\'s members mounts on THAT group\'s '
+        'base and joins the folder', () {
       final stack = [
         _row('base'),
         _row('a1', attachedTo: 'base', folderId: 'ORG'),
@@ -229,33 +342,229 @@ void main() {
         _row('loose'),
       ];
       expect(folderStructureProblem(stack), isNull, reason: 'fixture is sound');
-      expect(
-        resolveLayerDrop(
-          stack: stack,
-          movingId: const LayerId('loose'),
-          insertAt: 2,
-        ),
-        isNull,
-      );
+      final plan = resolveLayerDrop(
+        stack: stack,
+        movingId: const LayerId('loose'),
+        insertAt: 2,
+      )!;
+      expect(plan.attach.mount?.baseId, const LayerId('base'));
+      expect(plan.folderIds, {const LayerId('loose'): const LayerId('ORG')});
     });
+  });
 
-    test('an attach row may leave its group — the group is the caller\'s '
-        'business, and the structure validator lets this through', () {
-      // Documents the boundary this policy does NOT enforce: detaching is
-      // P3's verb, so the ORDER policy only refuses what the structure
-      // rules refuse. The gesture layer keeps attach rows in their group
-      // until that verb exists.
+  group('leaving a group detaches', () {
+    test('an attach row dragged clear of its group', () {
       final stack = [
         _row('base'),
         _row('over', attachedTo: 'base'),
-        _row('other'),
+        _row('one'),
+        _row('two'),
       ];
       final plan = resolveLayerDrop(
         stack: stack,
         movingId: const LayerId('over'),
+        insertAt: 4,
+      )!;
+      expect(plan.attach.detachIds, {const LayerId('over')});
+      expect(plan.attach.mount, isNull);
+    });
+
+    test('but re-ordering INSIDE the group does not — either direction, and '
+        'crossing the base flips the side instead', () {
+      final stack = [
+        _row('base'),
+        _row('a1', attachedTo: 'base'),
+        _row('a2', attachedTo: 'base'),
+        _row('top'),
+      ];
+      // The topmost attach row nudged one place up: still the group's.
+      final up = resolveLayerDrop(
+        stack: stack,
+        movingId: const LayerId('a1'),
         insertAt: 3,
-      );
-      expect(plan, isNotNull);
+      )!;
+      expect(up.attach.detachIds, isEmpty);
+      expect(_ids(up.order), ['base', 'a2', 'a1', 'top']);
+      // And one place down, past the base: attached still, other side.
+      final down = resolveLayerDrop(
+        stack: stack,
+        movingId: const LayerId('a1'),
+        insertAt: 0,
+      )!;
+      expect(down.attach.detachIds, isEmpty);
+      expect(_ids(down.order), ['a1', 'base', 'a2', 'top']);
+    });
+
+    test('a LONE attach row can cross its base and stay attached — the base '
+        'still reads as a base while its only rider is in the air', () {
+      final stack = [_row('base'), _row('over', attachedTo: 'base')];
+      final plan = resolveLayerDrop(
+        stack: stack,
+        movingId: const LayerId('over'),
+        insertAt: 0,
+      )!;
+      expect(plan.attach.detachIds, isEmpty);
+      expect(_ids(plan.order), ['over', 'base']);
+    });
+
+    test('an ORGANIZER folder carried out of the group detaches its MEMBERS, '
+        'and carried within it does not', () {
+      final stack = [
+        _row('base'),
+        _row('a1', attachedTo: 'base', folderId: 'ORG'),
+        _row('ORG', kind: LayerKind.folder),
+        _row('one'),
+        _row('two'),
+      ];
+      final out = resolveLayerDrop(
+        stack: stack,
+        movingId: const LayerId('ORG'),
+        insertAt: 5,
+      )!;
+      expect(out.attach.detachIds, {const LayerId('a1')});
+      final within = resolveLayerDrop(
+        stack: stack,
+        movingId: const LayerId('ORG'),
+        insertAt: 0,
+      )!;
+      expect(within.attach.detachIds, isEmpty);
+      expect(_ids(within.order), ['a1', 'ORG', 'base', 'one', 'two']);
+    });
+
+    test('a BASE dragged away carries its group, so nothing detaches', () {
+      final stack = [
+        _row('base'),
+        _row('over', attachedTo: 'base'),
+        _row('one'),
+      ];
+      final plan = resolveLayerDrop(
+        stack: stack,
+        movingId: const LayerId('base'),
+        insertAt: 3,
+      )!;
+      expect(plan.attach.detachIds, isEmpty);
+      expect(_ids(plan.order), ['one', 'base', 'over']);
+    });
+  });
+
+  group('every slot at once', () {
+    // A group with a rider on each side, and an ordinary row on each side of
+    // it. Sweeping EVERY slot is the only way to see the answer table whole:
+    // the P2b defect was an asymmetry that showed up in one direction only,
+    // and hand-picked slots are how it survived.
+    List<Layer> stack() => [
+      _row('x'),
+      _row('u', attachedTo: 'base', placement: AttachedPlacement.below),
+      _row('base'),
+      _row('o', attachedTo: 'base'),
+      _row('y'),
+    ];
+
+    /// One letter per slot: `A`/`B` mount above/below, `a`/`b` a side change
+    /// on a row that stays, `D` detach, `.` a plain move, `X` refused.
+    String sweep(String movingId) {
+      final out = StringBuffer();
+      for (var slot = 0; slot <= stack().length; slot += 1) {
+        final plan = resolveLayerDrop(
+          stack: stack(),
+          movingId: LayerId(movingId),
+          insertAt: slot,
+        );
+        if (plan == null) {
+          out.write('X');
+          continue;
+        }
+        final mount = plan.attach.mount;
+        final side = plan.attach.sideChange;
+        if (mount != null) {
+          out.write(mount.placement == AttachedPlacement.above ? 'A' : 'B');
+        } else if (plan.attach.detachIds.isNotEmpty) {
+          out.write('D');
+        } else if (side != null) {
+          out.write(side.placement == AttachedPlacement.above ? 'a' : 'b');
+        } else {
+          out.write('.');
+        }
+      }
+      return out.toString();
+    }
+
+    test('a plain row mounts only in the two INNER slots', () {
+      // slots:      0    1    2    3    4    5
+      // rows:     x    u    base o    y
+      expect(sweep('y'), '..BA..');
+      expect(sweep('x'), '..BA..');
+    });
+
+    test('an attach row stays while it touches the group, and says which '
+        'side it is on', () {
+      // 'o' rides ABOVE. The group's run starts at 'u', so slot 1 is the
+      // group's bottom EDGE — an attach row keeps its base there and simply
+      // changes sides; only slots 0 and 5 are clear of the group.
+      expect(sweep('o'), 'Dbb..D');
+      // 'u' rides BELOW and its own gaps are slots 1/2 — crossing the base
+      // makes it an above row.
+      expect(sweep('u'), 'D..aaD');
+    });
+
+    test('a row that cannot ride anything is refused in the inner slots, '
+        'never silently split', () {
+      final withFolder = [...stack(), _row('F', kind: LayerKind.folder)];
+      final answers = [
+        for (var slot = 0; slot <= withFolder.length; slot += 1)
+          resolveLayerDrop(
+            stack: withFolder,
+            movingId: const LayerId('F'),
+            insertAt: slot,
+          ) == null
+              ? 'X'
+              : '.',
+      ].join();
+      expect(answers, '..XX...');
+    });
+  });
+
+  group('the MENU detach\'s landing', () {
+    test('is nothing when the row is already the outermost on its side', () {
+      final stack = [
+        _row('base'),
+        _row('a1', attachedTo: 'base'),
+        _row('a2', attachedTo: 'base'),
+      ];
+      expect(detachLandingIndex(stack, const LayerId('a2')), isNull);
+      // a1 is buried INSIDE the run: leaving it there would cut the group.
+      expect(detachLandingIndex(stack, const LayerId('a1')), 3);
+    });
+
+    test('is the group\'s edge on the row\'s own side', () {
+      final stack = [
+        _row('under', attachedTo: 'base', placement: AttachedPlacement.below),
+        _row('base'),
+        _row('a1', attachedTo: 'base'),
+      ];
+      expect(detachLandingIndex(stack, const LayerId('under')), isNull);
+      final buried = [
+        _row('u2', attachedTo: 'base', placement: AttachedPlacement.below),
+        _row('u1', attachedTo: 'base', placement: AttachedPlacement.below),
+        _row('base'),
+      ];
+      expect(detachLandingIndex(buried, const LayerId('u1')), 0);
+    });
+
+    test('always moves a row out of a 공정 ORGANIZER, even the outermost one '
+        '— the folder\'s purity is the second reason to step', () {
+      final stack = [
+        _row('base'),
+        _row('a1', attachedTo: 'base', folderId: 'ORG'),
+        _row('ORG', kind: LayerKind.folder),
+      ];
+      expect(detachLandingIndex(stack, const LayerId('a1')), 3);
+    });
+
+    test('is nothing for a row that rides nothing, or whose base is gone', () {
+      final stack = [_row('a'), _row('b', attachedTo: 'gone')];
+      expect(detachLandingIndex(stack, const LayerId('a')), isNull);
+      expect(detachLandingIndex(stack, const LayerId('b')), isNull);
     });
   });
 

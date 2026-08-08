@@ -1,7 +1,9 @@
 import '../../controllers/default_cut_helpers.dart';
 import '../../controllers/editing_session_state.dart';
 import '../../core/collection_equality.dart';
+import '../../models/attached_layer_mount.dart';
 import '../../models/attached_layer_resolve.dart';
+import '../../models/attached_mode.dart';
 import '../../models/audio_clip.dart';
 import '../../models/camera_instruction.dart';
 import '../../models/camera_pose.dart';
@@ -44,6 +46,7 @@ import 'link_mirror.dart'
         linkMirrorTargets,
         linkedCutSiblings,
         mirroredOrderAfterMove;
+import 'set_layer_attachment_command.dart';
 import 'set_layer_placement_command.dart';
 import 'delete_cut_command.dart';
 import 'delete_layer_command.dart';
@@ -1240,6 +1243,42 @@ class CutCommandCoordinator {
     required List<LayerId> order,
     Map<LayerId, LayerId?> folderIds = const {},
     Set<LayerId> movedIds = const {},
+    LayerAttachDrop attach = const LayerAttachDrop(),
+    String description = 'Move layers',
+  }) {
+    final commands = [
+      ...layerPlacementCommands(
+        cutId: cutId,
+        order: order,
+        folderIds: folderIds,
+        movedIds: movedIds,
+        description: description,
+      ),
+      // The attach change rides in the SAME undo step: it was one gesture,
+      // and a move that half-happened would leave a row inside a group it
+      // does not belong to.
+      ...layerAttachmentCommands(
+        cutId: cutId,
+        attach: attach,
+        description: description,
+      ),
+    ];
+    historyManager.execute(
+      commands.length == 1
+          ? commands.single
+          : CompositeCommand(description: description, commands: commands),
+    );
+  }
+
+  /// The commands one row-placement write needs, INCLUDING the 겸용 link
+  /// mirror. Exposed for the same reason [layerEffectsCommands] is: a drag
+  /// commits the move and the attach change it made as one undo step, and it
+  /// must not lose the mirror to get them.
+  List<Command> layerPlacementCommands({
+    required CutId cutId,
+    required List<LayerId> order,
+    Map<LayerId, LayerId?> folderIds = const {},
+    Set<LayerId> movedIds = const {},
     String description = 'Move layers',
   }) {
     final project = repository.requireProject();
@@ -1309,11 +1348,250 @@ class CutCommandCoordinator {
         ),
       );
     }
+    return commands;
+  }
+
+  /// 어태치 장착·분리 as one undo step across the whole 겸용 link group.
+  ///
+  /// The RELATION and its MODE are structure, so they are one answer for the
+  /// group. Everything derived from a timeline is not: the SYNCED links and
+  /// the detach BAKE are computed per cut against THAT cut's base, because
+  /// 겸용 cuts share the cel bank and re-expose it each their own way — one
+  /// cut's baked timing dressed onto another is somebody else's rhythm.
+  ///
+  /// The MODE is decided by scanning every use at once (user 2026-08-07):
+  ///
+  /// > SYNCED only when the row's exposure shape matches the base's in EVERY
+  /// > use; one cut disagreeing makes the whole mount FREE.
+  ///
+  /// That single line is what makes "an empty row mounts FREE" a consequence
+  /// rather than a special case, and it errs only toward keeping work: a cut
+  /// where the row has real timing of its own never has it replaced.
+  List<Command> layerAttachmentCommands({
+    required CutId cutId,
+    required LayerAttachDrop attach,
+    String description = 'Attach layer',
+  }) {
+    if (attach.isEmpty) {
+      return const [];
+    }
+    final project = repository.requireProject();
+    final commands = <Command>[];
+
+    for (final layerId in attach.detachIds) {
+      for (final use in _linkedRowUses(project, cutId: cutId, rowId: layerId)) {
+        final cut = requireCut(project, use.cutId);
+        final row = requireLayer(
+          project,
+          cutId: use.cutId,
+          layerId: use.rowId,
+        );
+        if (row.attachedToLayerId == null) {
+          continue;
+        }
+        commands.add(
+          SetLayerAttachmentCommand(
+            repository: repository,
+            layerId: use.rowId,
+            attachment: LayerAttachment.of(
+              detachedLayer(
+                attached: row,
+                // The counterpart's OWN base in its OWN cut — the pointer
+                // is per-cut even though the relation is shared.
+                base: attachedBaseOf(row, cut.layers),
+                cutFrameCount: cut.duration,
+              ),
+            ),
+            description: description,
+          ),
+        );
+      }
+    }
+
+    final sideChange = attach.sideChange;
+    if (sideChange != null) {
+      // Same base, other side. Everything derived from the timing stays as
+      // it is — this is a direction, not a re-mount.
+      for (final use in _linkedRowUses(
+        project,
+        cutId: cutId,
+        rowId: sideChange.layerId,
+      )) {
+        final row = requireLayer(
+          project,
+          cutId: use.cutId,
+          layerId: use.rowId,
+        );
+        if (row.attachedToLayerId == null ||
+            row.attachedPlacement == sideChange.placement) {
+          continue;
+        }
+        commands.add(
+          SetLayerAttachmentCommand(
+            repository: repository,
+            layerId: use.rowId,
+            attachment: LayerAttachment(
+              attachedToLayerId: row.attachedToLayerId,
+              placement: sideChange.placement,
+              mode: row.attachedMode,
+              timeline: row.timeline,
+              baseFrameLinks: row.baseFrameLinks,
+              runBehaviors: row.runBehaviors,
+            ),
+            description: description,
+          ),
+        );
+      }
+    }
+
+    final mount = attach.mount;
+    if (mount == null) {
+      return commands;
+    }
+    final uses = _mountUses(
+      project,
+      cutId: cutId,
+      rowId: mount.layerId,
+      baseId: mount.baseId,
+    );
+    final mode = _mountMode(uses);
+    for (final use in uses) {
+      commands.add(
+        SetLayerAttachmentCommand(
+          repository: repository,
+          layerId: use.rowId,
+          attachment: attachmentForMount(
+            standaloneRow: use.standalone,
+            base: use.base,
+            placement: mount.placement,
+            mode: mode,
+          ),
+          description: description,
+        ),
+      );
+    }
+    return commands;
+  }
+
+  /// The MODE a mount of [layerId] onto [baseId] would take — the same scan
+  /// the commit makes, so the caret can say which one is coming BEFORE the
+  /// release (a synced mount replaces the row's timing; silence there would
+  /// be the drop doing something structural unannounced).
+  AttachedMode mountModeFor({
+    required CutId cutId,
+    required LayerId layerId,
+    required LayerId baseId,
+  }) {
+    return _mountMode(
+      _mountUses(
+        repository.requireProject(),
+        cutId: cutId,
+        rowId: layerId,
+        baseId: baseId,
+      ),
+    );
+  }
+
+  /// Every use of the relation being made: the cut asked plus each 겸용
+  /// sibling where BOTH rows have counterparts, with the row in its
+  /// STANDALONE form (what a mount measures — see [attachmentForMount]).
+  List<({LayerId rowId, Layer standalone, Layer base})> _mountUses(
+    Project project, {
+    required CutId cutId,
+    required LayerId rowId,
+    required LayerId baseId,
+  }) {
+    final uses = <({LayerId rowId, Layer standalone, Layer base})>[];
+    for (final use in _linkedRowUses(project, cutId: cutId, rowId: rowId)) {
+      final useBaseId = use.cutId == cutId
+          ? baseId
+          : linkCounterpartIn(
+              project,
+              cutId: cutId,
+              layerId: baseId,
+              targetCutId: use.cutId,
+            );
+      if (useBaseId == null) {
+        // The base does not reach that cut, so the relation cannot exist
+        // there at all — not a use, and not a vote on the mode either.
+        continue;
+      }
+      final cut = requireCut(project, use.cutId);
+      final base = cut.layers.byId(useBaseId);
+      final row = cut.layers.byId(use.rowId);
+      if (base == null || row == null) {
+        continue;
+      }
+      uses.add((
+        rowId: use.rowId,
+        standalone: detachedLayer(
+          attached: row,
+          base: attachedBaseOf(row, cut.layers),
+          cutFrameCount: cut.duration,
+        ),
+        base: base,
+      ));
+    }
+    return uses;
+  }
+
+  AttachedMode _mountMode(
+    List<({LayerId rowId, Layer standalone, Layer base})> uses,
+  ) {
+    final agreed =
+        uses.isNotEmpty &&
+        uses.every(
+          (use) =>
+              attachedLinksForMount(row: use.standalone, base: use.base) !=
+              null,
+        );
+    return agreed ? AttachedMode.synced : AttachedMode.free;
+  }
+
+  /// Commits an attach change on its own — the Layer menu's 장착·해제, where
+  /// no row moves. Empty input is a no-op rather than an empty undo entry.
+  void setLayerAttachment({
+    required CutId cutId,
+    required LayerAttachDrop attach,
+    String description = 'Attach layer',
+  }) {
+    final commands = layerAttachmentCommands(
+      cutId: cutId,
+      attach: attach,
+      description: description,
+    );
+    if (commands.isEmpty) {
+      return;
+    }
     historyManager.execute(
       commands.length == 1
           ? commands.single
           : CompositeCommand(description: description, commands: commands),
     );
+  }
+
+  /// Every (cut, row) the same shared row reaches: this cut, plus the 겸용
+  /// siblings holding a counterpart.
+  List<({CutId cutId, LayerId rowId})> _linkedRowUses(
+    Project project, {
+    required CutId cutId,
+    required LayerId rowId,
+  }) {
+    final uses = <({CutId cutId, LayerId rowId})>[
+      (cutId: cutId, rowId: rowId),
+    ];
+    for (final siblingId in linkedCutSiblings(project, cutId: cutId)) {
+      final counterpart = linkCounterpartIn(
+        project,
+        cutId: cutId,
+        layerId: rowId,
+        targetCutId: siblingId,
+      );
+      if (counterpart != null) {
+        uses.add((cutId: siblingId, rowId: counterpart));
+      }
+    }
+    return uses;
   }
 
   /// Resequences a track's SE rows. They live on the TRACK, so no cut and

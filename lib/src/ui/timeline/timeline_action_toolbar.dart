@@ -339,6 +339,31 @@ class TimelineActionToolbar extends StatelessWidget {
             active != null && session.canMoveLayerInStack(active.id, up: false),
         onSelected: () => session.moveLayerInStack(active!.id, up: false),
       ),
+      // 장착·분리 (P3). The DRAG makes an attach by dropping a row strictly
+      // inside a group; these cover what it cannot reach — a base with no
+      // attach rows yet has no inside — and the release, which must not be a
+      // one-way door (user 2026-08-07).
+      PanelFlyoutItem(
+        keyValue: 'timeline-attach-to-layer-above-button',
+        label: AppText.strings.tlAttachToLayerAbove,
+        icon: Icons.vertical_align_top,
+        enabled: session.attachNeighbourForActiveLayer(above: true) != null,
+        onSelected: () => session.attachActiveLayerToNeighbour(above: true),
+      ),
+      PanelFlyoutItem(
+        keyValue: 'timeline-attach-to-layer-below-button',
+        label: AppText.strings.tlAttachToLayerBelow,
+        icon: Icons.vertical_align_bottom,
+        enabled: session.attachNeighbourForActiveLayer(above: false) != null,
+        onSelected: () => session.attachActiveLayerToNeighbour(above: false),
+      ),
+      PanelFlyoutItem(
+        keyValue: 'timeline-detach-layer-button',
+        label: AppText.strings.tlDetachLayer,
+        icon: Icons.link_off,
+        enabled: session.canDetachActiveLayer,
+        onSelected: session.detachActiveLayer,
+      ),
       PanelFlyoutItem(
         keyValue: 'import-audio-button',
         label: AppText.strings.tlImportAudio,

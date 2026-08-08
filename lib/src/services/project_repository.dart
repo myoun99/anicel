@@ -1,3 +1,4 @@
+import '../models/attached_layer_mount.dart' show LayerAttachment;
 import '../models/attached_layer_resolve.dart'
     show cutWithReconciledAttachedMirrors;
 import '../models/audio_clip.dart';
@@ -591,6 +592,20 @@ class ProjectRepository {
       }
       return next;
     });
+  }
+
+  /// Writes a row's ATTACH relationship — the pointer, the side, the timing
+  /// mode, and the three fields that follow from them (its own timeline, the
+  /// cell links, the run-edge behaviours).
+  ///
+  /// All six move together because a half-applied attachment is not a state
+  /// the model has: a SYNCED row with a stored timeline, or a detached row
+  /// still holding links, would each be read two ways at once.
+  void setLayerAttachment({
+    required LayerId layerId,
+    required LayerAttachment attachment,
+  }) {
+    updateLayer(layerId: layerId, update: attachment.applyTo);
   }
 
   /// Moves a layer into (or out of, with null) a folder row.

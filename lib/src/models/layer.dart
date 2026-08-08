@@ -228,7 +228,7 @@ class Layer {
     TransformTrack? transformTrack,
     bool? transformEnabled,
     List<LayerEffect>? effects,
-    LayerId? attachedToLayerId,
+    Object? attachedToLayerId = copyWithSentinel,
     AttachedPlacement? attachedPlacement,
     AttachedMode? attachedMode,
     Map<FrameId, FrameId>? baseFrameLinks,
@@ -259,9 +259,12 @@ class Layer {
       transformTrack: transformTrack ?? this.transformTrack,
       transformEnabled: transformEnabled ?? this.transformEnabled,
       effects: effects ?? this.effects,
-      // Detaching is not expressible here (attach rows are created and
-      // deleted whole); copyWith only carries the linkage along.
-      attachedToLayerId: attachedToLayerId ?? this.attachedToLayerId,
+      // Sentinel: DETACHING (P3) clears the linkage — an attach row can
+      // become an ordinary drawing row again, so null must be expressible.
+      // It used to be a plain `??`, which silently meant "keep".
+      attachedToLayerId: identical(attachedToLayerId, copyWithSentinel)
+          ? this.attachedToLayerId
+          : attachedToLayerId as LayerId?,
       attachedPlacement: attachedPlacement ?? this.attachedPlacement,
       attachedMode: attachedMode ?? this.attachedMode,
       baseFrameLinks: baseFrameLinks ?? this.baseFrameLinks,
