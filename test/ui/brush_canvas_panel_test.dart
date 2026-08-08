@@ -141,6 +141,75 @@ void main() {
     );
   });
 
+  testWidgets('유저 R4 #4·#5: the pill and BOTH panbars sit the same distance '
+      'from the edge they ride, at a floor width and at a rail width', (
+    tester,
+  ) async {
+    // 그 패딩거리 다 통일되있는거맞나? 상단에 알약은 거리 짧은데 가로스크롤바는
+    // 더 떨어진 느낌이거든?
+    //
+    // They come off ONE constant, so the answer is yes — and this is the
+    // test that says so, because "they read off the same number" is not the
+    // same claim as "they land in the same place". Each of the three is
+    // positioned against a different edge through a different Stack, and two
+    // of them are additionally offset by the floor's cover.
+    //
+    // The rail width is here for 유저 R4 #4 (타임시트나 콘티 패널의 알약이
+    // 패널탭과의 거리가 너무 먼 것 같다): the sheet panels mount this exact
+    // shell, so if their pill really sat lower it would have to be the shell
+    // measuring differently at 260px. It does not — the gap is the same
+    // number at both widths, and what changes is only how large that number
+    // reads beside a 30px tab strip instead of a 48px one.
+    const margin = 6.0;
+
+    Future<Rect> gapsAt(Size size, String key) async {
+      await tester.binding.setSurfaceSize(size);
+      final frameKeys = BrushCanvasFixture.createFrameKeys();
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: BrushCanvasPanel(
+              coordinator: BrushCanvasFixture.createCoordinator(
+                frameKeys: frameKeys,
+              ),
+              availableFrameKeys: frameKeys,
+              cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+              floorCover: EdgeInsets.zero,
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      return tester.getRect(find.byKey(ValueKey<String>(key)));
+    }
+
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    for (final size in const [Size(1400, 900), Size(260, 700)]) {
+      final panel = size;
+      final pill = await gapsAt(size, 'canvas-view-pill');
+      expect(
+        pill.top,
+        closeTo(margin, 0.5),
+        reason: 'the pill hangs off the TOP edge at ${size.width}px',
+      );
+
+      final hBar = await gapsAt(size, 'canvas-panbar-horizontal');
+      expect(
+        panel.height - hBar.bottom,
+        closeTo(margin, 0.5),
+        reason: 'the horizontal bar rides the BOTTOM edge at ${size.width}px',
+      );
+
+      final vBar = await gapsAt(size, 'canvas-panbar-vertical');
+      expect(
+        panel.width - vBar.right,
+        closeTo(margin, 0.5),
+        reason: 'the vertical bar rides the RIGHT edge at ${size.width}px',
+      );
+    }
+  });
+
   testWidgets(
     'renders compact canvas editor panel shell and viewport controls',
     (tester) async {

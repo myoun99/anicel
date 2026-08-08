@@ -120,10 +120,10 @@ class BrushCanvasPanel extends StatefulWidget {
     this.sampleColorAt,
     this.paperColor = ProjectBackground.defaultPaperArgb,
     this.onPaperColorChanged,
-    this.pasteboardColor = AppWorkspaceColors.defaultPasteboardArgb,
-    this.pasteboardMargin = defaultProjectPasteboardMargin,
+    this.pasteboardColor,
+    this.pasteboardMargin,
     this.onPasteboardColorChanged,
-    this.backdropArgb = defaultProjectBackdropArgb,
+    this.backdropArgb,
     this.onBackdropColorChanged,
     this.onTemporaryToolHold,
     this.onTemporaryToolRelease,
@@ -303,22 +303,34 @@ class BrushCanvasPanel extends StatefulWidget {
   final int? Function(CanvasPoint point)? sampleColorAt;
 
   /// R28 #9: the surface colors and their commit handlers. The paper is
-  /// the PROJECT's (it goes out in exports); the pasteboard is app state
-  /// (the working environment around the stage). Null handlers hide the
-  /// respective swatch.
+  /// the PROJECT's (it goes out in exports); the pasteboard is the working
+  /// environment around the stage. Null handlers hide the respective
+  /// swatch.
+  ///
+  /// The paper stays a parameter because it belongs to the CUT on screen —
+  /// a sheet panel and the drawing floor may legitimately differ. The two
+  /// below describe the ROOM instead, and there is only one room.
   final int paperColor;
   final ValueChanged<int>? onPaperColorChanged;
-  final int pasteboardColor;
+
+  /// null = take it from [CanvasStageColors], which is what every panel
+  /// inside the workspace does (유저, R4 #2). Pass a value only to mount
+  /// this panel outside the shell — the dev fixtures and most tests.
+  ///
+  /// ⚠️It used to be a non-null parameter with a constant default, and the
+  /// default is exactly what four of the five hosts silently got.
+  final int? pasteboardColor;
   final ValueChanged<int>? onPasteboardColorChanged;
 
   /// How far past each canvas edge the pasteboard SHOWS, in canvas widths
-  /// and heights ([Project.pasteboardMargin]).
-  final double pasteboardMargin;
+  /// and heights ([Project.pasteboardMargin]). null = from the scope.
+  final double? pasteboardMargin;
 
   /// The BACKDROP behind the pasteboard (R3b): the stage's opaque floor,
   /// or the alpha checkerboard while the preview toggle is on. It is what
-  /// lies BEYOND the pasteboard now, not merely under it.
-  final int backdropArgb;
+  /// lies BEYOND the pasteboard now, not merely under it. null = from the
+  /// scope.
+  final int? backdropArgb;
 
   /// 캔버스 색 바꾸는곳 제일오른쪽에 배경색 바꾸는 버튼도 (유저, R3 #4). The
   /// pill carried the paper and the pasteboard and stopped there, which
@@ -438,6 +450,33 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     duration: const Duration(milliseconds: 600),
   );
 
+  /// The stage's outer surfaces, RESOLVED: this panel's own parameters when
+  /// it was given them, otherwise the shell's [CanvasStageColors].
+  ///
+  /// Resolved into fields rather than read at each use, because the reads
+  /// happen inside memo builders called from `build` and one of them
+  /// (`didUpdateWidget`) runs outside it — a scope lookup wants a lifecycle
+  /// hook, not an arbitrary call site.
+  late int _stageBackdropArgb;
+  late int _stagePasteboardArgb;
+  late double _stagePasteboardMargin;
+
+  void _readStageColors() {
+    final scope = CanvasStageColors.maybeOf(context);
+    _stageBackdropArgb =
+        widget.backdropArgb ??
+        scope?.backdropArgb ??
+        defaultProjectBackdropArgb;
+    _stagePasteboardArgb =
+        widget.pasteboardColor ??
+        scope?.pasteboardArgb ??
+        AppWorkspaceColors.defaultPasteboardArgb;
+    _stagePasteboardMargin =
+        widget.pasteboardMargin ??
+        scope?.pasteboardMargin ??
+        defaultProjectPasteboardMargin;
+  }
+
   @override
   void initState() {
     super.initState();
@@ -447,6 +486,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     widget.selectionCommands?.addListener(_handleSelectionChannelChanged);
     _bindSelectionHistoryRecorder();
     _syncIdleAnts();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _readStageColors();
   }
 
   /// One undoable selection step (R11-⑧) — the layer's marquee commits and
@@ -694,6 +739,13 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   @override
   void didUpdateWidget(covariant BrushCanvasPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
+    // A host that passes its own colours can change them without the scope
+    // moving; `didChangeDependencies` alone would never hear that.
+    if (oldWidget.backdropArgb != widget.backdropArgb ||
+        oldWidget.pasteboardColor != widget.pasteboardColor ||
+        oldWidget.pasteboardMargin != widget.pasteboardMargin) {
+      _readStageColors();
+    }
     if (!identical(oldWidget.viewCommands, widget.viewCommands)) {
       oldWidget.viewCommands?.unbind();
       _bindViewCommands();
@@ -844,8 +896,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // token is the same in both directions: everything the pill SHOWS is
       // in it, and nothing it does not.
       paper: widget.paperColor,
-      pasteboard: widget.pasteboardColor,
-      backdrop: widget.backdropArgb,
+      pasteboard: _stagePasteboardArgb,
+      backdrop: _stageBackdropArgb,
       leading: widget.bottomBarLeadingToken,
       // ⛔ The panel TITLE is deliberately absent — and now unreachable, so
       // it cannot come back by accident (R2 #12 took the readout off every
@@ -894,9 +946,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       canvasSize: widget.canvasSize,
       paperColor: widget.paperColor,
       onPaperColorChanged: widget.onPaperColorChanged,
-      pasteboardColor: widget.pasteboardColor,
+      pasteboardColor: _stagePasteboardArgb,
       onPasteboardColorChanged: widget.onPasteboardColorChanged,
-      backdropColor: widget.backdropArgb,
+      backdropColor: _stageBackdropArgb,
       onBackdropColorChanged: widget.onBackdropColorChanged,
       onViewportChanged: _setViewportDuringPanbarDrag,
       onViewportChangeEnd: _syncViewportParent,
@@ -1032,9 +1084,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                         // the checkerboard: an alpha export excludes them,
                         // so the preview must too.
                         child: _StagePlanes(
-                          backdropArgb: widget.backdropArgb,
-                          pasteboardArgb: widget.pasteboardColor,
-                          pasteboardMargin: widget.pasteboardMargin,
+                          backdropArgb: _stageBackdropArgb,
+                          pasteboardArgb: _stagePasteboardArgb,
+                          pasteboardMargin: _stagePasteboardMargin,
                           canvasSize: widget.canvasSize,
                           viewport: _viewport,
                           // R27 #17: a passive census of where the pointer
@@ -2242,7 +2294,15 @@ class _CanvasEditorPanelShell extends StatelessWidget {
   final CanvasFloorBand? railBand;
 
   /// How far a floating capsule sits in from the window's edge.
-  static const double _capsuleMargin = 8;
+  ///
+  /// ONE number for the pill and both panbars (유저, R4 #5: 그 패딩거리 다
+  /// 통일되있는거 맞나? 통일하고, 지금보다 좀 더 가깝게). It already was one
+  /// number — the three land within half a pixel of each other at every
+  /// panel width, which is what `brush_canvas_panel_test` now pins — so the
+  /// horizontal bar reading as further out was the capsule around it being
+  /// 14px tall against the pill's 52, not the gap. The gap itself moved
+  /// 8 → 6.
+  static const double _capsuleMargin = 6;
 
   /// What a scrollbar capsule spans, as a share of the edge it rides —
   /// clamped, because the point of a capsule is that it says where you are

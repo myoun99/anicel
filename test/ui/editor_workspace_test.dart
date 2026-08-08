@@ -243,8 +243,9 @@ void main() {
       await _pumpHome(tester);
       await _closeRightRail(tester);
 
-      // Lift a palette tab by its grip: the tool edge rails stay hidden
-      // (ineligible), while the normal right dock's rail IS revealed.
+      // Lift a palette tab by its grip: the TOOL edge rail stays hidden,
+      // because a 48px strip of buttons cannot hold a panel and saying so
+      // with a band would be an offer that fails on release.
       await tester.ensureVisible(find.byKey(_brushesTabKey));
       await tester.pumpAndSettle();
       final gesture = await tester.startGesture(
@@ -255,7 +256,10 @@ void main() {
       await tester.pump();
 
       expect(find.byKey(_toolRightRailKey), findsNothing);
-      expect(find.byKey(_rightDropRailKey), findsOneWidget);
+      // ⛔And neither does the closed panel rail beside it (유저, R4 #7) —
+      // eligible or not, no side rail draws a band any more. Where the panel
+      // CAN go is covered by the strip-button test above.
+      expect(find.byKey(_rightDropRailKey), findsNothing);
 
       await gesture.up();
       await tester.pumpAndSettle();
@@ -452,15 +456,21 @@ void main() {
       expect(tester.takeException(), isNull);
     });
 
-    testWidgets('an empty right dock reveals a drop rail during a drag', (
-      tester,
-    ) async {
+    testWidgets('a CLOSED side rail raises NO band — the strip button is the '
+        'door, and it is the only one', (tester) async {
+      // 유저, R4 #7. A tall drop band used to appear beside a closed rail
+      // whenever a tab lifted, and it did exactly what the rail's own strip
+      // button already does. Two doors onto one room, one of them a third of
+      // the window tall.
+      //
+      // ⛔This is a CONTRACT CHANGE, not a regression: the old shape of this
+      // test (lift → band appears → drop on band) asserted the door that was
+      // removed. What has to stay true is that the panel can still get
+      // there, which is what the second half checks.
       await _pumpHome(tester);
       await _closeRightRail(tester);
       expect(find.byKey(_rightDropRailKey), findsNothing);
 
-      // Lift the tool library's tab by its grip: the collapsed right rail
-      // shows its rail.
       await tester.ensureVisible(find.byKey(_brushesTabKey));
       await tester.pumpAndSettle();
       final gesture = await tester.startGesture(
@@ -469,15 +479,24 @@ void main() {
       await tester.pump(const Duration(milliseconds: 20));
       await gesture.moveBy(const Offset(30, 0));
       await tester.pump();
-      expect(find.byKey(_rightDropRailKey), findsOneWidget);
+      expect(
+        find.byKey(_rightDropRailKey),
+        findsNothing,
+        reason: 'lifting a tab must not open a band beside the closed rail',
+      );
 
-      // Dropping there docks the library on the right.
-      await gesture.moveTo(tester.getCenter(find.byKey(_rightDropRailKey)));
+      // The button is still a target, and dropping on it both docks the
+      // panel AND opens the group — 「두는 것은 여는 것」.
+      final railButton = find.byKey(
+        ValueKey<String>(
+          'rail-group-${EditorWorkspace.railGroupId(right: true, slot: 2)}',
+        ),
+      );
+      await gesture.moveTo(tester.getCenter(railButton));
       await tester.pump();
       await gesture.up();
       await tester.pumpAndSettle();
 
-      expect(find.byKey(_rightDropRailKey), findsNothing);
       expect(find.byType(BrushPresetPanel), findsOneWidget);
       expect(
         find.byKey(const ValueKey<String>('editor-panel-dock-right')),

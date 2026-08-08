@@ -1,5 +1,9 @@
+import 'dart:typed_data';
+import 'dart:ui' show ImageByteFormat;
+
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/ui/panels/editor_panel_layout.dart';
 import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
@@ -149,6 +153,21 @@ void main() {
     expect(band.width, closeTo(tab.width, 0.5));
     expect(band.top, closeTo(tab.top, 0.5));
 
+    // ★THE BAND ITSELF, not the 8px zone that holds it.
+    //
+    // The zone's rect above says nothing about what is drawn inside it, and
+    // that gap hid the band completely: `Align` hands its child LOOSE
+    // constraints, and a `ColoredBox` with no child takes
+    // `constraints.smallest` — so a band given only a HEIGHT laid out 0px
+    // wide. Coloured, painted, on the right edge, and invisible (유저, R4 #6:
+    // 띠를 드래그해서 이동은 가능한데 그 띠 ui가 없어). The same trap
+    // collapsed a grip's height in R1a; a `ColoredBox` must be told BOTH.
+    final painted = tester.getRect(
+      find.descendant(of: _grip('a'), matching: find.byType(ColoredBox)),
+    );
+    expect(painted.width, closeTo(tab.width, 0.5));
+    expect(painted.height, greaterThan(0));
+
     // At rest NEITHER band says anything — not even the open one.
     expect(bandOf('a'), Colors.transparent);
     expect(bandOf('b'), Colors.transparent);
@@ -166,6 +185,85 @@ void main() {
     await pointer.removePointer();
     await tester.pumpAndSettle();
     expect(bandOf('a'), Colors.transparent);
+  });
+
+  testWidgets('유저 R4 #1: a seam separates the tab strip from the body, and '
+      'the OPEN tab cuts its own gap in it', (tester) async {
+    // 패널 아이콘쪽 영역 밑에 가로선 둬서 탭이랑 내용 구분할 수 있게 하자.
+    //
+    // The strip fill and the body fill are the same colour, so before this
+    // line there was nothing at all between them. The line has to stop under
+    // the open tab, though, or it would cut through the one seam the panel
+    // spends a contract keeping invisible (「선택 탭은 패널의 발」) — so it is
+    // painted UNDER the tabs and the selected tab's opaque fill erases it.
+    //
+    // ⚠️Pixels, not widget geometry: "there is a `ColoredBox` in the tree" is
+    // exactly what a 0px-wide band would also have satisfied two tests up.
+    final model = _twoGroups();
+    await tester.pumpWidget(
+      RepaintBoundary(
+        key: const ValueKey<String>('seam-capture'),
+        child: _Harness(model: model),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final seam = tester.getRect(
+      find.byKey(const ValueKey<String>('panel-strip-seam')).first,
+    );
+    final strip = tester.getRect(find.byType(EditorPanelTabs).first);
+    expect(seam.height, 1, reason: 'a hairline, not a band');
+    expect(
+      seam.bottom,
+      closeTo(strip.top + EditorPanelTabs.stripHeight, 0.5),
+      reason: 'it lies ON the boundary the strip shares with the body',
+    );
+
+    final boundary = tester.renderObject<RenderRepaintBoundary>(
+      find.byKey(const ValueKey<String>('seam-capture')),
+    );
+    final image = boundary.toImageSync();
+    late Uint8List bytes;
+    late int rowStride;
+    await tester.runAsync(() async {
+      final data = await image.toByteData(format: ImageByteFormat.rawRgba);
+      bytes = data!.buffer.asUint8List();
+      rowStride = image.width;
+    });
+    image.dispose();
+    int rgbAt(double x, double y) {
+      final i = (y.round() * rowStride + x.round()) * 4;
+      return (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
+    }
+
+    // 'a' is the open tab in group one; 'b' is not.
+    //
+    // ⚠️Sample the seam's OWN row. `seam.top + 0.5` rounds to the row below
+    // it, which is the body — and the body is what a missing line looks
+    // like, so the test would have passed for the wrong reason on one of
+    // the three probes and failed on the others.
+    final seamY = seam.top;
+    final scheme = Theme.of(
+      tester.element(find.byType(EditorPanelTabs).first),
+    ).colorScheme;
+    final line = scheme.outlineVariant.toARGB32() & 0xFFFFFF;
+    final body = scheme.surface.toARGB32() & 0xFFFFFF;
+
+    expect(
+      rgbAt(tester.getCenter(_tab('a')).dx, seamY),
+      body,
+      reason: 'the OPEN tab reaches the body — no line across its foot',
+    );
+    expect(
+      rgbAt(tester.getCenter(_tab('b')).dx, seamY),
+      line,
+      reason: 'a closed tab sits ON the strip, so the seam runs under it',
+    );
+    expect(
+      rgbAt(strip.right - 4, seamY),
+      line,
+      reason: 'and across the empty tail of the strip',
+    );
   });
 
   testWidgets('a tab fills the strip: the selected fill reaches the panel '

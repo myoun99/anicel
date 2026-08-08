@@ -13,17 +13,20 @@ class AppWorkspaceColors {
 
   /// The backdrop the stage floats on.
   ///
-  /// BLACK, the same as the backdrop it lies on (유저, R3 #4). It was a very
-  /// dark grey, one step above the backdrop, on the reading that the two
-  /// planes should be distinguishable at rest — but the user wants them to
-  /// read as one dark field out of the box and to be told apart by choice
-  /// rather than by default. Still just a default: the pasteboard, the
-  /// backdrop and the paper stay three colours the user picks.
+  /// The same colour as the backdrop it lies on (유저, R3 #4) — the two
+  /// planes read as one dark field out of the box and are told apart by
+  /// choice rather than by default. Still just a default: the pasteboard,
+  /// the backdrop and the paper stay three colours the user picks.
+  ///
+  /// It was pure black until R4 #2. Black made the shared field invisible to
+  /// draw on: ink put down outside the paper vanished into it. It is
+  /// `AppColors.backdrop` now — the floor the chrome itself sits on, darker
+  /// than any panel and light enough to show a black stroke.
   ///
   /// ⚠️Must stay in step with `defaultProjectPasteboardArgb`. A project omits
   /// this key when it matches the default, so the two disagreeing would make
   /// a saved project change colour on the way back in.
-  static const int defaultPasteboardArgb = 0xFF000000;
+  static const int defaultPasteboardArgb = 0xFF141517;
 
   final int pasteboardArgb;
 

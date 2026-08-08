@@ -13,16 +13,32 @@ import 'track.dart';
 
 const defaultProjectCameraSize = CanvasSize(width: 1920, height: 1080);
 
-/// The default BACKDROP (R3b): black — the filmic floor a fade-out lands
-/// on, replacing the per-cut FO/WO wash the transparency model retired.
-const defaultProjectBackdropArgb = 0xFF000000;
+/// The default BACKDROP: the app's own floor colour — one step darker than
+/// chrome, and NOT pure black (유저, R4 #2).
+///
+/// It is the filmic ground a fade-out lands on (R3b), which is why it was
+/// black. Black turned out to cost more than it bought: with the pasteboard
+/// held equal to it (below), ink laid down outside the paper was invisible —
+/// "완전블랙이면 페이스트보드에 그려도 안보여서". Lifting both to the value
+/// the chrome already sits on keeps the two planes one field, keeps them
+/// clearly darker than the app around them, and lets a black line show.
+///
+/// ⚠️This colour REACHES THE EXPORT: `export_frame_renderer` paints it under
+/// every non-alpha frame and a fade thins the frame down to it. A project
+/// that wants a true-black fade sets its backdrop back to `0xFF000000` in the
+/// project background window — the default is the editor's opinion, not a
+/// constraint on the film.
+///
+/// ⚠️Must stay in step with `AppColors.backdrop`, which is the same colour
+/// stated in the UI layer (the models layer may not import the theme).
+const defaultProjectBackdropArgb = 0xFF141517;
 
-/// The default PASTEBOARD: black, the same as the backdrop (유저, R3 #4).
+/// The default PASTEBOARD: the same as the backdrop (유저, R3 #4, held).
 ///
 /// It must stay in step with `AppWorkspaceColors.defaultPasteboardArgb` — a
 /// project omits this key when it matches the default, so the two constants
 /// disagreeing would make a saved project change colour on the way back in.
-const defaultProjectPasteboardArgb = 0xFF000000;
+const defaultProjectPasteboardArgb = 0xFF141517;
 
 /// How far past each canvas edge the pasteboard SHOWS, in canvas widths and
 /// heights. The default matches the DRAWING bound (`PasteboardBounds`, two

@@ -548,8 +548,22 @@ class _HomePageState extends State<HomePage> {
                             // strip and the rail never looked like one app.
                             Material(
                               color: colorScheme.surface,
-                              child: SizedBox(
+                              child: Container(
                                 height: 48,
+                                // The seam the tool rail already had and this
+                                // strip did not (유저, R4 #1: 상단띠랑 캔버스
+                                // 사이엔 없거든? 상단띠에도 아래에 추가).
+                                // Same `outlineVariant` and the same idiom as
+                                // `EditorPanelDock` — the border is drawn
+                                // INSIDE the strip's own 48px, so the canvas
+                                // below does not move to make room for it.
+                                decoration: BoxDecoration(
+                                  border: Border(
+                                    bottom: BorderSide(
+                                      color: colorScheme.outlineVariant,
+                                    ),
+                                  ),
+                                ),
                                 // Re-reads per notify: the panels bridge
                                 // drives the visibility checks, the session
                                 // the project name and the export gate.

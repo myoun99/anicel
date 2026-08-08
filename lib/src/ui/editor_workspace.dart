@@ -11,6 +11,11 @@ import '../models/brush_preset.dart';
 import '../models/brush_preset_id.dart';
 import '../models/canvas_size.dart';
 import '../models/cut.dart';
+import '../models/project.dart'
+    show
+        defaultProjectBackdropArgb,
+        defaultProjectPasteboardArgb,
+        defaultProjectPasteboardMargin;
 import '../models/layer_id.dart';
 import '../models/media_asset.dart' show MediaAsset;
 import '../services/brush_preset_file_service.dart';
@@ -2077,11 +2082,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     String dockId,
     Axis axis, {
     bool expandToFill = false,
-    String? keyId,
   }) {
     return EditorDockDropZone(
       dockId: dockId,
-      keyId: keyId,
       axis: axis,
       draggingTab: _draggingTab,
       canAcceptTab: (data) => _canDockAccept(dockId, data),
@@ -2385,16 +2388,21 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     final right = side == EditorPanelDockSide.right;
     final open = _openRailGroups(right: right);
     if (open.isEmpty) {
-      return _emptyDockZone(
-        _emptyRailSlot(right: right) ??
-            (right
-                ? EditorWorkspace.rightGroupId
-                : EditorWorkspace.leftGroupId),
-        Axis.vertical,
-        // The RAIL is what the user is aiming at; which of its slots takes
-        // the panel is bookkeeping.
-        keyId: right ? 'right' : 'left',
-      );
+      // ⛔NO drop zone beside a closed rail (유저, R4 #7: 사이드에는 어차피
+      // 띠에 버튼으로 추가하는거랑 똑같은 기능이니까 필요없다).
+      //
+      // A tall band appeared here whenever a tab lifted, and it offered
+      // nothing the strip did not: `_buildRailButtons` already puts a drop
+      // target on every group button AND raises one for the rail's first
+      // empty slot for exactly as long as something is in flight. So the
+      // band was a second door onto the same room, drawn across a third of
+      // the window.
+      //
+      // The BOTTOM dock keeps its zone (`_buildBottomDock`) and so does an
+      // emptied floor (`_buildCenterDock`) — those two have no strip button
+      // standing in for them, so removing their band would leave a panel
+      // dropped there with no way back.
+      return const SizedBox.shrink();
     }
     // NO fill and NO border. A rail is not a container of panels, it is a
     // place panels float beside; anything painted here puts them back in a
@@ -3080,7 +3088,31 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   Widget build(BuildContext context) {
     return DropTarget(
       onDragDone: _onOsFilesDropped,
-      child: _buildWorkspace(context),
+      // THE STAGE'S OUTER SURFACES, SAID ONCE (유저, R4 #2). Every canvas
+      // panel in the app is somewhere under here — the drawing floor, the
+      // timesheet, the conte, the cut envelope, the media viewer — so this
+      // is the one place the room's colours have to be right.
+      //
+      // ★The workspace rides through as a `child:`. The listenable is the
+      // session, which notifies constantly, and the only thing that must
+      // rebuild on it is this one wrapper: `updateShouldNotify` keeps the
+      // panels still until a colour actually moves, and the identical child
+      // instance means the tree below is never rebuilt at all.
+      child: ListenableBuilder(
+        listenable: widget.session,
+        builder: (context, child) {
+          final project = widget.session.repository.currentProject;
+          return CanvasStageColors(
+            backdropArgb: project?.backdropArgb ?? defaultProjectBackdropArgb,
+            pasteboardArgb:
+                project?.pasteboardArgb ?? defaultProjectPasteboardArgb,
+            pasteboardMargin:
+                project?.pasteboardMargin ?? defaultProjectPasteboardMargin,
+            child: child!,
+          );
+        },
+        child: _buildWorkspace(context),
+      ),
     );
   }
 

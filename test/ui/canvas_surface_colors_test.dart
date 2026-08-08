@@ -8,6 +8,7 @@ import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
+import 'package:anicel/src/ui/brush/canvas_floor_insets.dart';
 import 'package:anicel/src/ui/theme/app_workspace_colors.dart';
 import 'package:anicel/src/ui/widgets/color_swatch_button.dart';
 
@@ -99,6 +100,130 @@ void main() {
       rgbAt(450 - 12, 300 - 12),
       pasteboard & 0xFFFFFF,
       reason: 'the apron around the paper',
+    );
+  });
+
+  testWidgets('유저 R4 #2: a canvas panel given NO stage colours takes the '
+      'shell\'s, so every canvas-based panel sits in the same room', (
+    tester,
+  ) async {
+    // The drawing floor dug the project's colours out of the session and
+    // passed them down; the timesheet, the conte, the cut envelope and the
+    // media viewer construct `BrushCanvasPanel` without them and so sat on
+    // the CONSTANT DEFAULT — four canvas panels on hard black while the
+    // floor followed the project. Nothing about that was visible in a test,
+    // because every colour test passed the colours in explicitly.
+    //
+    // ⚠️This test passes NONE, which is the whole point: it is the only
+    // shape that can tell the scope apart from a default. Rip
+    // `CanvasStageColors` back out of the panel and these pixels fall back
+    // to #141517 and go red.
+    await tester.binding.setSurfaceSize(const Size(900, 600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    const backdrop = 0xFF102030;
+    const pasteboard = 0xFF00A0FF;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CanvasStageColors(
+            backdropArgb: backdrop,
+            pasteboardArgb: pasteboard,
+            pasteboardMargin: 0.25,
+            child: RepaintBoundary(
+              key: const ValueKey<String>('scoped-stage-capture'),
+              child: BrushCanvasPanel(
+                coordinator: BrushCanvasFixture.createCoordinator(
+                  frameKeys: frameKeys,
+                ),
+                availableFrameKeys: frameKeys,
+                cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+                canvasSize: BrushCanvasFixture.canvasSize,
+                floorCover: EdgeInsets.zero,
+                viewport: CanvasViewport(zoom: 0.05, panX: 450, panY: 300),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final boundary = tester.renderObject<RenderRepaintBoundary>(
+      find.byKey(const ValueKey<String>('scoped-stage-capture')),
+    );
+    final image = boundary.toImageSync();
+    late Uint8List bytes;
+    await tester.runAsync(() async {
+      final data = await image.toByteData(format: ImageByteFormat.rawRgba);
+      bytes = data!.buffer.asUint8List();
+    });
+    image.dispose();
+    int rgbAt(int x, int y) {
+      final i = (y * 900 + x) * 4;
+      return (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2];
+    }
+
+    expect(rgbAt(2, 2), backdrop & 0xFFFFFF, reason: 'backdrop from the scope');
+    expect(
+      rgbAt(450 - 12, 300 - 12),
+      pasteboard & 0xFFFFFF,
+      reason: 'pasteboard AND its margin from the scope',
+    );
+  });
+
+  testWidgets('유저 R4 #2: a panel\'s own colours still win over the shell — '
+      'the fixtures and the dev harness mount outside it', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(900, 600));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final frameKeys = BrushCanvasFixture.createFrameKeys();
+    const scoped = 0xFF102030;
+    const own = 0xFF902010;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CanvasStageColors(
+            backdropArgb: scoped,
+            pasteboardArgb: scoped,
+            pasteboardMargin: 0.25,
+            child: RepaintBoundary(
+              key: const ValueKey<String>('override-stage-capture'),
+              child: BrushCanvasPanel(
+                coordinator: BrushCanvasFixture.createCoordinator(
+                  frameKeys: frameKeys,
+                ),
+                availableFrameKeys: frameKeys,
+                cacheInvalidationSink: BrushEditCacheInvalidationSink(),
+                canvasSize: BrushCanvasFixture.canvasSize,
+                floorCover: EdgeInsets.zero,
+                backdropArgb: own,
+                viewport: CanvasViewport(zoom: 0.05, panX: 450, panY: 300),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final boundary = tester.renderObject<RenderRepaintBoundary>(
+      find.byKey(const ValueKey<String>('override-stage-capture')),
+    );
+    final image = boundary.toImageSync();
+    late Uint8List bytes;
+    await tester.runAsync(() async {
+      final data = await image.toByteData(format: ImageByteFormat.rawRgba);
+      bytes = data!.buffer.asUint8List();
+    });
+    image.dispose();
+    final i = (2 * 900 + 2) * 4;
+    expect(
+      (bytes[i] << 16) | (bytes[i + 1] << 8) | bytes[i + 2],
+      own & 0xFFFFFF,
     );
   });
 

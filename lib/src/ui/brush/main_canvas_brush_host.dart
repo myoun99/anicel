@@ -9,11 +9,8 @@ import '../../models/brush_history_policy.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
-import '../../models/project.dart'
-    show defaultProjectBackdropArgb, defaultProjectPasteboardMargin;
 import '../../models/project_background.dart';
 import '../canvas/flip_hud_controller.dart';
-import '../theme/app_workspace_colors.dart';
 import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
@@ -61,10 +58,10 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.sampleColorAt,
     this.paperColor = ProjectBackground.defaultPaperArgb,
     this.onPaperColorChanged,
-    this.pasteboardColor = AppWorkspaceColors.defaultPasteboardArgb,
-    this.pasteboardMargin = defaultProjectPasteboardMargin,
+    this.pasteboardColor,
+    this.pasteboardMargin,
     this.onPasteboardColorChanged,
-    this.backdropArgb = defaultProjectBackdropArgb,
+    this.backdropArgb,
     this.onBackdropColorChanged,
     this.onTemporaryToolHold,
     this.onTemporaryToolRelease,
@@ -140,20 +137,23 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// and pick handlers, and the P6 fill dab builder.
   final int? Function(CanvasPoint point)? sampleColorAt;
 
-  /// R28 #9 pass-through: the canvas paper (project) and the pasteboard
-  /// (app setting), with their commit handlers.
+  /// R28 #9 pass-through: the canvas paper (project) and the pasteboard,
+  /// with their commit handlers.
   final int paperColor;
   final ValueChanged<int>? onPaperColorChanged;
-  final int pasteboardColor;
+
+  /// null = from [CanvasStageColors], the shell's one answer for every
+  /// canvas panel (유저, R4 #2). Same contract as on [BrushCanvasPanel];
+  /// this host only carries it through.
+  final int? pasteboardColor;
 
   /// How far past the canvas the pasteboard SHOWS, in canvas widths and
-  /// heights ([Project.pasteboardMargin]).
-  final double pasteboardMargin;
+  /// heights ([Project.pasteboardMargin]). null = from the scope.
+  final double? pasteboardMargin;
   final ValueChanged<int>? onPasteboardColorChanged;
 
-  /// The BACKDROP behind the pasteboard (R3b) — project data, like the
-  /// two colors above it in the stage.
-  final int backdropArgb;
+  /// The BACKDROP behind the pasteboard (R3b). null = from the scope.
+  final int? backdropArgb;
   final ValueChanged<int>? onBackdropColorChanged;
 
   /// PEN-7a mapped-hold pass-through (canvas right/wheel mappings).
