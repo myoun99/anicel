@@ -57,6 +57,7 @@ import 'canvas_viewport_pan_metrics.dart';
 import 'canvas_visible_rect.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/app_scrollbar.dart';
+import '../widgets/superellipse_clip.dart';
 import '../widgets/drag_value_label.dart';
 import '../text/app_strings.dart';
 
@@ -2823,8 +2824,8 @@ class _CanvasEditorPanelShell extends StatelessWidget {
           side: const BorderSide(color: AppColors.backdrop),
         ),
       ),
-      child: ClipPath(
-        clipper: AppShapes.clipper(shape),
+      child: SuperellipseClip(
+        shape: shape,
         child: SizedBox(width: width, height: height, child: child),
       ),
     );

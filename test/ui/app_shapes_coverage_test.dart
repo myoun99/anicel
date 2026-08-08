@@ -74,6 +74,24 @@ void main() {
     // radius scale that never reaches the flat run — a lozenge, not a
     // squircle. ClipRSuperellipse hit-tests its outerRect only, so its four
     // corners would eat the canvas pointers underneath a floating panel.
+    //
+    // ⚠️THE BAN IS ON THE WIDGET, AND ONLY BECAUSE OF HIT TESTING. Two
+    // names that merely start the same way are not it and are allowed:
+    //
+    //  * `pushClipRSuperellipse` — the PaintingContext op. It paints; it
+    //    does not hit-test anything.
+    //  * `ClipRSuperellipseLayer` — the layer that op pushes.
+    //
+    // `SuperellipseClip` is built on both, and it hit-tests with
+    // `RSuperellipse.contains`, which is exact — so a pointer in a cut
+    // corner misses, which is the entire thing this ban protects. It
+    // exists because the alternative, `ClipPath`, allocates a fresh
+    // `Path` per paint (`clipPath.shift(offset)`) and so misses the
+    // engine's clip-mask cache on every frame, at every clip site.
+    //
+    // Stripping the two allowed names FIRST keeps the guard's teeth: a
+    // bare `ClipRSuperellipse(...)` or a `RenderClipRSuperellipse` still
+    // lands in `found`.
     final found = <String>[];
     for (final file in Directory('lib').listSync(recursive: true)) {
       if (file is! File || !file.path.endsWith('.dart')) {
@@ -85,8 +103,11 @@ void main() {
         if (line.trimLeft().startsWith('///')) {
           continue;
         }
-        if (line.contains('ContinuousRectangleBorder') ||
-            line.contains('ClipRSuperellipse')) {
+        final probe = line
+            .replaceAll('pushClipRSuperellipse', '')
+            .replaceAll('ClipRSuperellipseLayer', '');
+        if (probe.contains('ContinuousRectangleBorder') ||
+            probe.contains('ClipRSuperellipse')) {
           found.add('${file.path}:${i + 1}');
         }
       }

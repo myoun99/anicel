@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 import '../widgets/static_raster.dart';
+import '../widgets/superellipse_clip.dart';
 import 'panel_flash.dart';
 import 'panel_visibility_scope.dart';
 
@@ -885,8 +886,8 @@ class _PanelTabButtonState extends State<_PanelTabButton> {
         // The band is CLIPPED to that shape, the way every other grip in
         // the app is clipped to the panel it belongs to: the tab's rounded
         // corners cut it, so it reads as the tab's own edge.
-        child: ClipPath(
-          clipper: AppShapes.clipper(_shape()),
+        child: SuperellipseClip(
+          shape: _shape(),
           // PASSTHROUGH, not the default loose fit. A loose Stack hands
           // its non-positioned child the incoming constraints LOOSENED,
           // so the tab's body shrank to its 16px glyph and sat at the top

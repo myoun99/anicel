@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/ui/widgets/superellipse_clip.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
@@ -74,7 +75,7 @@ void main() {
     final capsule = tester.widget<DecoratedBox>(
       find.byKey(const ValueKey<String>('canvas-view-pill')),
     );
-    final clip = capsule.child! as ClipPath;
+    final clip = capsule.child! as SuperellipseClip;
     return (clip.child! as SizedBox).child;
   }
 
