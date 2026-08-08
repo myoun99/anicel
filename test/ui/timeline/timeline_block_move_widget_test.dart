@@ -1128,7 +1128,7 @@ void main() {
     expect(selectedFrames, hasLength(1), reason: 'a drag never selects');
   });
 
-  group('R10: a key inside the selection belongs to the SELECTION', () {
+  group('a key marker is a DRAWING; the band owns every gesture', () {
     /// The grid, with one lane carrying keys at 2 and 5 and whatever lane
     /// selection [selection] holds.
     Future<
@@ -1174,9 +1174,10 @@ void main() {
               ],
               laneEdit: PropertyLaneEditCallbacks(
                 onToggleKeyAt: (_, _, _) {},
+                // Never reached here: this lane HAS a band, and a band is
+                // what moves keys now. Logged anyway, so the test can say
+                // the marker did not quietly keep its own drag.
                 onMoveKey: (_, _, from, to) => keyMoves.add((from, to)),
-
-
               ),
               laneRange: TimelineLaneRangeCallbacks(
                 selection: selection,
@@ -1258,19 +1259,13 @@ void main() {
         reason: 'the union moves as one — the diamond is part of it',
       );
       expect(
-        log.keyMoves,
-        isEmpty,
-        reason: 'the single-key drag must not have taken the pointer; that '
-            'is the bug — every diamond of a union moved alone',
-      );
-      expect(
         log.selectUpdates,
         isEmpty,
         reason: 'and it is a MOVE, not a fresh selection anchored on the key',
       );
     });
 
-    testWidgets('a diamond OUTSIDE the span still drags its own key', (
+    testWidgets('a diamond OUTSIDE the span SELECTS, like any other cell', (
       tester,
     ) async {
       final log = await pumpLane(
@@ -1293,15 +1288,27 @@ void main() {
       await gesture.up();
       await tester.pump();
 
-      expect(log.keyMoves, [(5, 7)]);
+      // 2026-08-08: this used to move key 5 to key 7 on the spot. The
+      // marker had a drag of its own, so a lane obeyed a different rule
+      // than a frame block depending on whether you grabbed a diamond.
+      expect(
+        log.selectUpdates,
+        contains(5),
+        reason: 'outside the selection, a drag selects — the block rule',
+      );
       expect(
         log.moveUpdates,
         isEmpty,
-        reason: 'an unselected key is its own subject',
+        reason: 'nothing moves until the thing under the pointer is selected',
+      );
+      expect(
+        log.keyMoves,
+        isEmpty,
+        reason: 'and the marker kept no drag of its own',
       );
     });
 
-    testWidgets('with NO selection at all every diamond drags itself', (
+    testWidgets('with NO selection at all a diamond drag selects too', (
       tester,
     ) async {
       final log = await pumpLane(tester, null);
@@ -1315,8 +1322,9 @@ void main() {
       await gesture.up();
       await tester.pump();
 
-      expect(log.keyMoves, [(2, 3)]);
+      expect(log.selectUpdates, contains(2));
       expect(log.moveUpdates, isEmpty);
+      expect(log.keyMoves, isEmpty);
     });
   });
 

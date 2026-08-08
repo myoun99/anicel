@@ -855,18 +855,28 @@ class TimelineLaneFrameRow extends StatelessWidget {
   final double leadingFrameSpacerWidth;
   final double trailingFrameSpacerWidth;
   final TimelineGridMetrics metrics;
+
+  /// Reaches the key markers for ONE thing: re-timing a key on a lane that
+  /// has no [laneRange] to do it through. See [_LaneKeyMarker.onMoveBy].
   final PropertyLaneEditCallbacks? laneEdit;
 
   /// The LANE-scoped selection domain (UI-R23 #3 part 2, superseding the
-  /// R22-C owner-layer fallback): a pan on the band selects THIS (layer,
-  /// lane); a pan inside the selection moves its keys. The key markers
-  /// keep pointer priority (they sit above the gesture layer), so marker
-  /// drags stay marker drags. Null keeps the band display-only (group
-  /// headers, storyboard lanes).
+  /// R22-C owner-layer fallback), and since 2026-08-08 the only thing on
+  /// this band that answers a pointer wherever it exists: a tap stands
+  /// here, a pan outside the selection selects, a pan inside it moves the
+  /// selected keys.
+  ///
+  /// That is the frame BLOCK's rule, which is the point — the key markers
+  /// used to sit above this layer with a drag of their own and move a
+  /// single key the instant you pulled one, so the same axis had two
+  /// grammars depending on whether you happened to grab a diamond.
+  ///
+  /// Null keeps the band display-only (storyboard lanes) or leaves the
+  /// markers as the only subject (camera lanes, whose atomic keyframes
+  /// have no per-lane span to select).
   final TimelineLaneRangeCallbacks? laneRange;
 
-  /// Frame-axis direction; the marker/menu behavior is shared, only the
-  /// band's composition transposes.
+  /// Frame-axis direction; only the band's composition transposes.
   final Axis axis;
 
   /// Key namespace ('timeline' | 'xsheet').
@@ -916,9 +926,6 @@ class TimelineLaneFrameRow extends StatelessWidget {
               key: ValueKey<String>(
                 '$keyPrefix-lane-key-${layer.id}-${lane.laneId}-$frame',
               ),
-              layer: layer,
-              lane: lane,
-              frame: frame,
               hold: lane.holdOutFrames.contains(frame),
               markerSize: markerSize,
               frameCellExtent: cellExtent,
@@ -931,19 +938,20 @@ class TimelineLaneFrameRow extends StatelessWidget {
                   selection != null &&
                   selectionCoversRow(selection) &&
                   selection.contains(frame),
-              // Group headers show the KEY UNION (UI-R20 #13) —
-              // display-only: a union diamond has no single lane to
-              // edit, so its markers never take drags.
-              laneEdit: lane.isGroupHeader ? null : laneEdit,
-              // A tap on the diamond says what a tap on the band says:
-              // stand HERE (R10 R3). The marker's hit box is nearly the
-              // whole cell, so without this the one frame you cannot put
-              // the playhead on by pressing is the one with a key —
-              // exactly the frame Frame ▾ Delete needs as its subject
-              // now that the marker's own menu is gone.
-              onTapAt: laneRange == null
+              // The band's select-then-move is the rule EVERYWHERE the band
+              // exists (user, 2026-08-08). It does not exist on a camera
+              // lane — atomic keyframes have no per-lane span to select —
+              // and there this marker is the only subject a re-time could
+              // have, so it keeps a drag. A group header's union diamond
+              // never does: it has no single lane to write to.
+              onMoveBy: laneRange != null || lane.isGroupHeader
                   ? null
-                  : () => laneRange!.onTapAt(layer.id, lane.laneId, frame),
+                  : (delta) => laneEdit?.onMoveKey(
+                      layer,
+                      lane,
+                      frame,
+                      frame + delta,
+                    ),
             ),
           ),
     ];
@@ -1027,39 +1035,46 @@ class TimelineLaneFrameRow extends StatelessWidget {
   }
 }
 
-/// One draggable key marker.
+/// One key marker. A DRAWING, and nothing else.
+///
+/// One key marker — a DRAWING, unless it is the only subject there is.
+///
+/// It used to own a drag that moved its own key the instant you pulled it,
+/// which is not how anything else on this axis behaves: a frame block is
+/// SELECTED first and the next drag moves the selection. The band beneath
+/// has implemented exactly that rule the whole time — press outside the
+/// selection to select, press inside it to move — so the fix was to stop
+/// competing with it (user, 2026-08-08).
+///
+/// [onMoveBy] is the ONE exception, and the parent decides it: a CAMERA
+/// lane has no selection domain (its keyframes are atomic — one key holds
+/// every property, so a per-lane span would be a lie) and therefore no
+/// band gesture either. There, this marker is the only subject a re-time
+/// could have, and taking its drag away would leave a camera key nothing
+/// can move. Null everywhere else, which is everywhere the band exists.
 class _LaneKeyMarker extends StatefulWidget {
   const _LaneKeyMarker({
     super.key,
-    required this.layer,
-    required this.lane,
-    required this.frame,
     required this.hold,
     required this.markerSize,
     required this.frameCellExtent,
     required this.axis,
-    required this.laneEdit,
-    this.onTapAt,
+    this.onMoveBy,
     this.selected = false,
   });
 
-  final Layer layer;
-  final PropertyLaneRow lane;
-  final int frame;
   final bool hold;
   final double markerSize;
   final double frameCellExtent;
   final Axis axis;
-  final PropertyLaneEditCallbacks? laneEdit;
 
-  /// A press that does not become a drag stands on this lane at this
-  /// frame — the band's own [TimelineLaneRangeCallbacks.onTapAt], reached
-  /// through the diamond that covers it.
-  final VoidCallback? onTapAt;
+  /// Commits a frame-snapped re-time of this key. Null makes the marker
+  /// pointer-transparent, so the band beneath answers everything.
+  final ValueChanged<int>? onMoveBy;
 
-  /// Inside the live frame-range selection (UI-R22 #5): the marker rings
-  /// in ACCENT 2 so selected keys — union diamonds included — read at a
-  /// glance.
+  /// Inside the live lane selection (UI-R23 #4): the marker rings in the
+  /// accent so selected keys — union diamonds included — read at a glance,
+  /// and so it is visible which keys the next drag will carry.
   final bool selected;
 
   @override
@@ -1070,11 +1085,7 @@ class _LaneKeyMarkerState extends State<_LaneKeyMarker> {
   double _dragDelta = 0;
   bool _dragging = false;
 
-  int get _frameDelta {
-    final delta = (_dragDelta / widget.frameCellExtent).round();
-    // Keys never move before frame 0.
-    return delta.clamp(-widget.frame, 1 << 20);
-  }
+  int get _frameDelta => (_dragDelta / widget.frameCellExtent).round();
 
   void _startDrag() => setState(() => _dragging = true);
 
@@ -1093,12 +1104,7 @@ class _LaneKeyMarkerState extends State<_LaneKeyMarker> {
       _dragDelta = 0;
     });
     if (delta != 0) {
-      widget.laneEdit?.onMoveKey(
-        widget.layer,
-        widget.lane,
-        widget.frame,
-        widget.frame + delta,
-      );
+      widget.onMoveBy?.call(delta);
     }
   }
 
@@ -1113,29 +1119,16 @@ class _LaneKeyMarkerState extends State<_LaneKeyMarker> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final horizontal = widget.axis == Axis.horizontal;
-    // R10: a diamond INSIDE the live selection stands down. The band's
-    // gesture layer sits under the markers and decides move-vs-select from
-    // `laneSelectionCoversBandRow(...) && selection.contains(frame)`, which
-    // is the very predicate that put the accent ring on this marker — so
-    // where the ring says "this key is part of the span", the span is what
-    // a drag must grab. An opaque marker with its own drag took the pointer
-    // first and the row's range move never saw it: pressing any diamond of
-    // a union and dragging moved that ONE key. Not a #20 regression; the
-    // marker has had priority far longer than the band selection has
-    // existed.
-    final yieldsToRangeMove = widget.selected;
-    final editable = widget.laneEdit != null && !yieldsToRangeMove;
     // EVERY key diamond fills WHITE like the frame blocks (UI-R24 #9 —
     // union headers, member lanes, camera lanes alike); selection speaks
     // through the accent silhouette alone.
-    final fillColor = _dragging
-        ? timelineDrawingStartColor.withValues(alpha: 0.6)
-        : timelineDrawingStartColor;
     final shape = Container(
       width: widget.markerSize,
       height: widget.markerSize,
       decoration: BoxDecoration(
-        color: fillColor,
+        color: _dragging
+            ? timelineDrawingStartColor.withValues(alpha: 0.6)
+            : timelineDrawingStartColor,
         // Selected keys ring in ACCENT 1 (UI-R23 #4) — a thin silhouette
         // stroke, color only (the selection rule); accent 2 stays on the
         // repeat wash/outline.
@@ -1146,49 +1139,43 @@ class _LaneKeyMarkerState extends State<_LaneKeyMarker> {
       ),
     );
     // AE convention: linear keys read as diamonds, hold keys as squares.
-    final marker = widget.hold
-        ? shape
-        : Transform.rotate(angle: 0.785398, child: shape);
-
     final content = Transform.translate(
       // Snap the ghost per frame while dragging (AE feel).
       offset: horizontal
           ? Offset(_dragging ? _frameDelta * widget.frameCellExtent : 0, 0)
           : Offset(0, _dragging ? _frameDelta * widget.frameCellExtent : 0),
-      child: Center(child: marker),
+      child: Center(
+        child: widget.hold
+            ? shape
+            : Transform.rotate(angle: 0.785398, child: shape),
+      ),
     );
 
-    // Standing down (R10) means standing down WHOLLY (R10 R3). The marker
-    // used to stay in the hit result as `translucent` so its context menu
-    // could still open on a selected key; with the menu demolished there
-    // is nothing left for it to answer. The child had to be ignored on top
-    // of that, because `RenderDecoratedBox.hitTestSelf` answers TRUE
-    // anywhere inside its decoration — the drawn diamond is a hit target
-    // in its own right, so the Stack stopped at it and the band beneath
-    // never saw the pointer.
-    if (yieldsToRangeMove) {
+    // WHOLLY transparent when the band owns the gesture. Translucent is not
+    // enough: `RenderDecoratedBox.hitTestSelf` answers TRUE anywhere inside
+    // its decoration, so the drawn diamond is a hit target in its own right
+    // and the Stack would stop at it with the band never seeing the
+    // pointer.
+    if (widget.onMoveBy == null) {
       return IgnorePointer(child: content);
     }
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: widget.onTapAt,
       // Drag from the DOWN position (R10) — the rule the block edge grips
       // took in the same round. This marker accumulates deltas and rounds
       // them, so discarding the ~18px the recognizer spends on the arena
       // parks the key that far behind the finger for the whole drag.
       dragStartBehavior: DragStartBehavior.down,
       // The key drags along the frame axis of the owning grid.
-      onHorizontalDragStart: editable && horizontal
-          ? (_) => _startDrag()
-          : null,
-      onHorizontalDragUpdate: editable && horizontal ? _updateDrag : null,
-      onHorizontalDragEnd: editable && horizontal ? (_) => _endDrag() : null,
-      onHorizontalDragCancel: editable && horizontal ? _cancelDrag : null,
-      onVerticalDragStart: editable && !horizontal ? (_) => _startDrag() : null,
-      onVerticalDragUpdate: editable && !horizontal ? _updateDrag : null,
-      onVerticalDragEnd: editable && !horizontal ? (_) => _endDrag() : null,
-      onVerticalDragCancel: editable && !horizontal ? _cancelDrag : null,
+      onHorizontalDragStart: horizontal ? (_) => _startDrag() : null,
+      onHorizontalDragUpdate: horizontal ? _updateDrag : null,
+      onHorizontalDragEnd: horizontal ? (_) => _endDrag() : null,
+      onHorizontalDragCancel: horizontal ? _cancelDrag : null,
+      onVerticalDragStart: horizontal ? null : (_) => _startDrag(),
+      onVerticalDragUpdate: horizontal ? null : _updateDrag,
+      onVerticalDragEnd: horizontal ? null : (_) => _endDrag(),
+      onVerticalDragCancel: horizontal ? null : _cancelDrag,
       child: content,
     );
   }
