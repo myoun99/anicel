@@ -457,16 +457,12 @@ class AppStrings {
   String get tlDuplicateLayer => _s('tlDuplicateLayer');
   String get tlLinkDuplicateLayer => _s('tlLinkDuplicateLayer');
   String get tlUnlinkLayer => _s('tlUnlinkLayer');
-  String get tlGroupIntoFolder => _s('tlGroupIntoFolder');
   String get tlRenameLayer => _s('tlRenameLayer');
   String get tlCopyLayer => _s('tlCopyLayer');
   String get tlDeleteLayer => _s('tlDeleteLayer');
-  String get tlImportAudio => _s('tlImportAudio');
   String get tlEffects => _s('tlEffects');
   String get tlAddEffectTemplate => _s('tlAddEffectTemplate');
   String get tlRemoveEffectTemplate => _s('tlRemoveEffectTemplate');
-  String get tlMoveLayerUp => _s('tlMoveLayerUp');
-  String get tlMoveLayerDown => _s('tlMoveLayerDown');
   String get tlDropIntoFolderTemplate => _s('tlDropIntoFolderTemplate');
   String get tlDropOutOfFolder => _s('tlDropOutOfFolder');
   String get tlDropAttachSyncedTemplate => _s('tlDropAttachSyncedTemplate');
@@ -1366,16 +1362,12 @@ class AppStrings {
     'tlDuplicateLayer': 'Duplicate layer',
     'tlLinkDuplicateLayer': 'Link duplicate layer',
     'tlUnlinkLayer': 'Unlink layer',
-    'tlGroupIntoFolder': 'Group into folder',
     'tlRenameLayer': 'Rename layer…',
     'tlCopyLayer': 'Copy layer',
     'tlDeleteLayer': 'Delete layer',
-    'tlImportAudio': 'Import audio…',
     'tlEffects': 'Effects',
     'tlAddEffectTemplate': 'Add {name}',
     'tlRemoveEffectTemplate': 'Remove {name}',
-    'tlMoveLayerUp': 'Move up one',
-    'tlMoveLayerDown': 'Move down one',
     'tlDropIntoFolderTemplate': 'into {name}',
     'tlDropOutOfFolder': 'out of the folder',
     'tlDropAttachSyncedTemplate': 'attach to {name} (synced)',
@@ -2067,16 +2059,12 @@ class AppStrings {
     'tlDuplicateLayer': 'レイヤーを複製',
     'tlLinkDuplicateLayer': 'リンクして複製',
     'tlUnlinkLayer': 'リンクを解除',
-    'tlGroupIntoFolder': 'フォルダにまとめる',
     'tlRenameLayer': 'レイヤー名を変更…',
     'tlCopyLayer': 'レイヤーをコピー',
     'tlDeleteLayer': 'レイヤーを削除',
-    'tlImportAudio': '音声を読み込み…',
     'tlEffects': 'エフェクト',
     'tlAddEffectTemplate': '{name}を追加',
     'tlRemoveEffectTemplate': '{name}を削除',
-    'tlMoveLayerUp': 'ひとつ上へ',
-    'tlMoveLayerDown': 'ひとつ下へ',
     'tlDropIntoFolderTemplate': '{name} の中へ',
     'tlDropOutOfFolder': 'フォルダの外へ',
     'tlDropAttachSyncedTemplate': '{name} に付属（同期）',
@@ -2764,16 +2752,12 @@ class AppStrings {
     'tlDuplicateLayer': '레이어 복제',
     'tlLinkDuplicateLayer': '링크해서 복제',
     'tlUnlinkLayer': '링크 해제',
-    'tlGroupIntoFolder': '폴더로 묶기',
     'tlRenameLayer': '레이어 이름 변경…',
     'tlCopyLayer': '레이어 복사',
     'tlDeleteLayer': '레이어 삭제',
-    'tlImportAudio': '오디오 불러오기…',
     'tlEffects': '이펙트',
     'tlAddEffectTemplate': '{name} 추가',
     'tlRemoveEffectTemplate': '{name} 제거',
-    'tlMoveLayerUp': '위로 한 칸',
-    'tlMoveLayerDown': '아래로 한 칸',
     'tlDropIntoFolderTemplate': '{name} 안으로',
     'tlDropOutOfFolder': '폴더 밖으로',
     'tlDropAttachSyncedTemplate': '{name}에 장착 (동기)',
@@ -3496,16 +3480,12 @@ class AppStrings {
     'tlDuplicateLayer': 'Dupliquer le calque',
     'tlLinkDuplicateLayer': 'Dupliquer en liant',
     'tlUnlinkLayer': 'Délier le calque',
-    'tlGroupIntoFolder': 'Grouper dans un dossier',
     'tlRenameLayer': 'Renommer le calque…',
     'tlCopyLayer': 'Copier le calque',
     'tlDeleteLayer': 'Supprimer le calque',
-    'tlImportAudio': "Importer de l'audio…",
     'tlEffects': 'Effets',
     'tlAddEffectTemplate': 'Ajouter {name}',
     'tlRemoveEffectTemplate': 'Supprimer {name}',
-    'tlMoveLayerUp': "Monter d'un cran",
-    'tlMoveLayerDown': "Descendre d'un cran",
     'tlDropIntoFolderTemplate': 'dans {name}',
     'tlDropOutOfFolder': 'hors du dossier',
     'tlDropAttachSyncedTemplate': 'attacher à {name} (synchronisé)',
@@ -4166,16 +4146,12 @@ class AppStrings {
     'tlDuplicateLayer': '复制图层',
     'tlLinkDuplicateLayer': '链接复制图层',
     'tlUnlinkLayer': '取消图层链接',
-    'tlGroupIntoFolder': '编组到文件夹',
     'tlRenameLayer': '重命名图层…',
     'tlCopyLayer': '复制图层',
     'tlDeleteLayer': '删除图层',
-    'tlImportAudio': '导入音频…',
     'tlEffects': '效果',
     'tlAddEffectTemplate': '添加{name}',
     'tlRemoveEffectTemplate': '删除{name}',
-    'tlMoveLayerUp': '上移一层',
-    'tlMoveLayerDown': '下移一层',
     'tlDropIntoFolderTemplate': '移入 {name}',
     'tlDropOutOfFolder': '移出文件夹',
     'tlDropAttachSyncedTemplate': '附属到 {name}（同步）',

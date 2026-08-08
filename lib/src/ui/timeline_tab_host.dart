@@ -1,6 +1,5 @@
 import 'dart:async' show unawaited;
 
-import 'package:file_selector/file_selector.dart';
 import 'package:flutter/foundation.dart' show ValueListenable, setEquals;
 import 'package:flutter/material.dart';
 
@@ -701,30 +700,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     _session.updateCameraInstructionSet(edited);
   }
 
-  /// Imports a sound file onto the active SE layer at the playhead.
-  Future<void> _importAudio() async {
-    if (!_session.canImportAudioToActiveLayer) {
-      return;
-    }
-    final picker = widget.audioFilePicker ?? _pickAudioFile;
-    final path = await picker();
-    if (!mounted || path == null) {
-      return;
-    }
-    _session.addAudioClipToActiveSeLayer(path);
-  }
-
-  static Future<String?> _pickAudioFile() async {
-    final file = await openFile(
-      acceptedTypeGroups: const [
-        XTypeGroup(
-          label: 'Audio',
-          extensions: ['mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg'],
-        ),
-      ],
-    );
-    return file?.path;
-  }
+  // R5 #5: the file-picker import went with the Layer ▾ entry that opened
+  // it. The media browser is the entrance now — it links an asset onto a
+  // frame block, which is the shape this work actually has, and
+  // `addAudioClipToActiveSeLayer` is still what lands the sound.
 
   Future<void> _renameSelectedFrame() async {
     if (_session.selectedFrame == null ||
@@ -927,6 +906,7 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             dragPreview: _session.dragPreview,
             frameCursor: _frameCursor,
             frameCachedSignal: _frameCachedSignal,
+            revealSelectionTick: _session.revealSelectionTick,
             isFrameCached: _session.isPlaybackFrameCached,
             playbackFrameCount: _session.activeCutPlaybackFrameCount,
             exposureStateForLayer: _session.exposureStateForLayer,
@@ -1357,7 +1337,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         onDeleteLayer: _deleteActiveLayer,
         onEditInstance: _editActiveInstance,
         onCreateInstance: _createActiveInstance,
-        onImportAudio: _importAudio,
         hiddenSections: widget.hiddenSections,
         onToggleSection: widget.onToggleSection,
       ),

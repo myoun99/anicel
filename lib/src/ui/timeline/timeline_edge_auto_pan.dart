@@ -19,6 +19,41 @@ import 'dart:math' as math;
 /// playhead runs away under a stationary pen. Zeroing only below 48px, as
 /// the first fix did, was a cliff rather than an answer: it left every
 /// viewport a user can actually produce on the wrong side of it.
+/// The scroll offset that brings `[start, start + extent)` inside a
+/// [viewport]-long window currently at [offset], or [offset] unchanged when
+/// it is already there.
+///
+/// R5 (user, 2026-08-09): the arrow keys walk rows and frames, and the walk
+/// used to leave the viewport behind — you kept selecting things you could
+/// not see. NEAREST-EDGE reveal, like every list in every editor: it moves
+/// the least it can, so a step that only just goes off screen brings the
+/// view along by one step instead of re-centring and losing your place.
+///
+/// [margin] keeps a sliver of the neighbour visible past the revealed item,
+/// which is what makes a walk read as a walk rather than as a series of
+/// jumps to the very edge. A margin the viewport cannot afford stands down
+/// instead of fighting itself.
+double revealScrollOffset({
+  required double offset,
+  required double viewport,
+  required double start,
+  required double extent,
+  double margin = 0,
+}) {
+  if (viewport <= 0) {
+    return offset;
+  }
+  final pad = math.min(margin, math.max(0.0, (viewport - extent) / 2));
+  if (start - pad < offset) {
+    return start - pad;
+  }
+  final end = start + extent + pad;
+  if (end > offset + viewport) {
+    return end - viewport;
+  }
+  return offset;
+}
+
 double edgeAutoPanDelta(double pos, double extent, {double edge = 24.0}) {
   if (extent <= 0) {
     return 0;

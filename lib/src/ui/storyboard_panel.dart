@@ -358,6 +358,7 @@ class StoryboardPanel extends StatefulWidget {
     this.railExtent,
     this.projectFrameRate = ProjectFrameRate.fps24,
     this.playheadFrame,
+    this.revealSelectionTick,
     this.frameCachedSignal,
     this.onSeekGlobalFrame,
     this.onScrubGlobalFrame,
@@ -583,6 +584,9 @@ class StoryboardPanel extends StatefulWidget {
   /// subscribe, so scrub moves and playback ticks never rebuild the
   /// panel's strips/blocks/rails. Null (or a null value) hides the line.
   final ValueListenable<int?>? playheadFrame;
+
+  /// R5: the session's "bring the selection back into view" tick.
+  final ValueListenable<int>? revealSelectionTick;
 
   /// Repaints the ruler's cached-range (green) bar as the prerender cache
   /// fills; null leaves the bar static per build.
@@ -835,11 +839,46 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   void initState() {
     super.initState();
     _horizontalController.addListener(_handleHorizontalScroll);
+    widget.revealSelectionTick?.addListener(_handleRevealSelection);
+  }
+
+  /// R5: the same "bring the selection back into view" tick the timeline
+  /// answers, in THIS surface's terms — the strips run on the GLOBAL frame
+  /// axis, so the playhead frame is what the reveal aims at.
+  ///
+  /// After the frame, because the row list this pass built is what any
+  /// row-side reveal would count in.
+  void _handleRevealSelection() {
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_horizontalController.hasClients) {
+        return;
+      }
+      final frame = widget.playheadFrame?.value;
+      final cell = widget.pixelsPerFrame;
+      if (frame == null || cell <= 0) {
+        return;
+      }
+      final position = _horizontalController.position;
+      final target = revealScrollOffset(
+        offset: position.pixels,
+        viewport: position.viewportDimension,
+        start: frame * cell,
+        extent: cell,
+        margin: cell,
+      ).clamp(position.minScrollExtent, position.maxScrollExtent);
+      if (target != position.pixels) {
+        _horizontalController.jumpTo(target);
+      }
+    });
   }
 
   @override
   void didUpdateWidget(covariant StoryboardPanel oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (oldWidget.revealSelectionTick != widget.revealSelectionTick) {
+      oldWidget.revealSelectionTick?.removeListener(_handleRevealSelection);
+      widget.revealSelectionTick?.addListener(_handleRevealSelection);
+    }
     // Zoom-around-playhead: the playhead stays put on screen through zoom
     // when visible; otherwise (or with no playhead) the leading-edge frame
     // anchors. Shared policy with the timeline grids.
@@ -952,6 +991,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
 
   @override
   void dispose() {
+    widget.revealSelectionTick?.removeListener(_handleRevealSelection);
     _horizontalController.removeListener(_handleHorizontalScroll);
     _watchedHorizontalPosition?.isScrollingNotifier.removeListener(
       _handleHorizontalScrollActivity,
