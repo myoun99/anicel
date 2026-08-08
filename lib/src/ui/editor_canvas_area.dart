@@ -530,17 +530,17 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               // in exports, so they undo with everything else — the
               // pasteboard's app-state era (R28 #9) survives only as the
               // new-project default.
+              //
+              // ⛔The floor no longer READS them here. It used to, and being
+              // the only host that did is exactly how the timesheet, conte,
+              // envelope and viewer ended up on hard black: `CanvasStageColors`
+              // says it once for all of them (유저, R4 #2). The COMMIT
+              // handlers stay — this is still where the pill's swatches are
+              // wired, and writing is not the same question as reading.
               paperColor: session.projectBackground.argb,
               onPaperColorChanged: (argb) =>
                   session.setProjectBackground(ProjectBackground.color(argb)),
-              pasteboardColor: session.repository
-                  .requireProject()
-                  .pasteboardArgb,
-              pasteboardMargin: session.repository
-                  .requireProject()
-                  .pasteboardMargin,
               onPasteboardColorChanged: session.setPasteboardColor,
-              backdropArgb: session.repository.requireProject().backdropArgb,
               onBackdropColorChanged: session.setProjectBackdrop,
               onEyedropperPick: (color) => widget.onBrushToolStateChanged?.call(
                 widget.brushToolState.value.copyWith(color: color),

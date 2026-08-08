@@ -64,6 +64,54 @@ class CanvasFloorInsets extends InheritedWidget {
       oldWidget.rightRailBand != rightRailBand;
 }
 
+/// The stage's outer two surfaces, published ONCE for every canvas panel in
+/// the app.
+///
+/// 유저, R4 #2: 캔버스 베이스 패널들 배경색 통일하고싶어. 캔버스패널에서
+/// 배경색 정하잖아. 그거 그대로 따라가게. 즉 바꾸면 바뀌게.
+///
+/// ⛔Deliberately NOT a parameter threaded to each host. It effectively was:
+/// the drawing floor dug the values out of the session and passed them down,
+/// and the timesheet, the conte, the cut envelope and the media viewer each
+/// quietly took `BrushCanvasPanel`'s constant defaults instead — four canvas
+/// panels sitting on hard black while the floor followed the project, and a
+/// fifth would have joined them. The same lesson `CanvasPillSide` was built
+/// on: when five widgets need one fact about WHERE THEY ARE, the shell says
+/// it once rather than five constructors remembering to ask.
+///
+/// The paper is not here. It belongs to the CUT being shown, so a sheet panel
+/// and the drawing floor legitimately disagree about it; these two are the
+/// room the work is being done in, and there is only one room.
+class CanvasStageColors extends InheritedWidget {
+  const CanvasStageColors({
+    super.key,
+    required this.backdropArgb,
+    required this.pasteboardArgb,
+    required this.pasteboardMargin,
+    required super.child,
+  });
+
+  /// The floor everything lies on, beyond where the pasteboard stops.
+  final int backdropArgb;
+
+  /// The working surface around the stage — RGBA, so thinning it reveals the
+  /// backdrop.
+  final int pasteboardArgb;
+
+  /// How far past each canvas edge the pasteboard SHOWS, in canvas widths
+  /// and heights.
+  final double pasteboardMargin;
+
+  static CanvasStageColors? maybeOf(BuildContext context) =>
+      context.dependOnInheritedWidgetOfExactType<CanvasStageColors>();
+
+  @override
+  bool updateShouldNotify(CanvasStageColors oldWidget) =>
+      oldWidget.backdropArgb != backdropArgb ||
+      oldWidget.pasteboardArgb != pasteboardArgb ||
+      oldWidget.pasteboardMargin != pasteboardMargin;
+}
+
 /// Whether [band] overlaps the vertical range [top]..[bottom].
 bool canvasFloorBandIntrudes(
   CanvasFloorBand? band, {

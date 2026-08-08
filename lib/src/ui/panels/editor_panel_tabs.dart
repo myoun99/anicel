@@ -253,6 +253,36 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
                           widget.onTabMoved!(data, tabs.length),
                     ),
                   ),
+                // THE SEAM between the tab strip and the panel body (유저,
+                // R4 #1: 패널 아이콘쪽 영역 밑에 가로선 둬서 탭이랑 내용
+                // 구분할 수 있게). The strip and the body are the SAME fill —
+                // `surfaceContainerLow` and `surface` both resolve to
+                // #1E2022 — so with nothing drawn between them the tabs
+                // float in an unbroken field and the panel has no top.
+                //
+                // ★Painted UNDER the tabs on purpose. The selected tab's
+                // fill is opaque and runs the strip's full height, so it
+                // cuts its own gap in this line: the strip is separated from
+                // the body, and the OPEN tab still grows out of it as one
+                // shape — the 「선택 탭은 패널의 발」 contract, which a line
+                // drawn over the top would have broken. One widget keeps
+                // both promises and there is no arithmetic to get wrong.
+                //
+                // The colour is the app's one line: the same
+                // `outlineVariant` the edge docks draw their vertical seam
+                // with and that `ToolsPanel.groupDivider` uses between the
+                // rail's clusters.
+                Positioned(
+                  key: const ValueKey<String>('panel-strip-seam'),
+                  left: 0,
+                  right: 0,
+                  top: widget.stripAtBottom ? 0 : null,
+                  bottom: widget.stripAtBottom ? null : 0,
+                  height: 1,
+                  // Tight on both axes from the `Positioned`, so this leaf
+                  // has a size — unlike the band above, which had to be told.
+                  child: ColoredBox(color: colorScheme.outlineVariant),
+                ),
                 // ★띠는 스크롤하지 않는다 (유저 확정). It used to be a
                 // horizontal scroller, and the reason to stop is not taste
                 // but GESTURE: inside a scrollable, a drag goes to the
@@ -758,6 +788,17 @@ class _PanelTabButtonState extends State<_PanelTabButton> {
           child: ValueListenableBuilder<bool>(
             valueListenable: widget.panelHovered,
             builder: (context, panelHovered, _) => SizedBox(
+              // BOTH axes, not just the height. `Align` hands its child
+              // LOOSE constraints, and a `ColoredBox` with no child takes
+              // `constraints.smallest` — so a band told only how THICK to be
+              // laid out 0px wide. It was coloured correctly, on the right
+              // edge, climbing the right ladder, and invisible: the whole
+              // handle simply did not exist on screen (유저, R4 #6).
+              //
+              // ⚠️Third time this trap has bitten: R1a collapsed a grip's
+              // HEIGHT the same way. A `ColoredBox` is a leaf — it never has
+              // a size of its own to fall back on.
+              width: double.infinity,
               height: _bandExtent,
               child: ColoredBox(color: _bandColor(panelHovered)),
             ),

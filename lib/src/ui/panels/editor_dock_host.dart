@@ -123,16 +123,15 @@ class EditorDockDropZone extends StatelessWidget {
     required this.canAcceptTab,
     required this.onDropped,
     this.expandToFill = false,
-    this.keyId,
   });
 
+  /// ⛔No `keyId` any more. It existed so a SIDE RAIL's zone could name the
+  /// rail rather than whichever of its group slots happened to be free, and
+  /// side rails no longer draw a zone at all (유저, R4 #7) — the two that
+  /// still do, the bottom dock and an emptied floor, are their own dock and
+  /// have nothing to rename.
   final String dockId;
 
-  /// Names the rail in the test key when the dock it drops INTO is an
-  /// implementation detail — a rail's empty zone targets whichever of its
-  /// group slots happens to be free, but it is still "the left rail" to
-  /// everyone looking at it.
-  final String? keyId;
   final Axis axis;
   final ValueListenable<EditorPanelTabDragData?> draggingTab;
   final bool Function(EditorPanelTabDragData data) canAcceptTab;
@@ -158,9 +157,7 @@ class EditorDockDropZone extends StatelessWidget {
           builder: (context, candidateData, rejectedData) {
             final hovered = candidateData.isNotEmpty;
             return Container(
-              key: ValueKey<String>(
-                'editor-dock-drop-rail-${keyId ?? dockId}',
-              ),
+              key: ValueKey<String>('editor-dock-drop-rail-$dockId'),
               width: expandToFill
                   ? null
                   : (axis == Axis.vertical ? thickness : null),
