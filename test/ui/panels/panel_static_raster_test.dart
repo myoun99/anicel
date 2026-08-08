@@ -48,16 +48,24 @@ void main() {
       reason: 'the funnel must reach the panels that ship open',
     );
     expect(
-      labels.every((l) => l.startsWith('panel:')),
-      isTrue,
-      reason: 'every wrapper is named for the tab it wraps',
-    );
-    expect(
       labels.contains('panel:canvas'),
       isFalse,
       reason:
           'the canvas opts out: it owns its own boundaries, and its '
           'live-stroke path must never be asked for a full-surface copy',
+    );
+    // A panel with live content inside it places its own wrappers at the
+    // right seams instead of taking the funnel's one, which would have
+    // to swallow the live part too.
+    expect(
+      labels,
+      containsAll(<String>['timesheet-form', 'timesheet-content']),
+      reason: 'the sheet bakes its two strata separately',
+    );
+    expect(
+      labels.contains('panel:timesheet'),
+      isFalse,
+      reason: 'and therefore opts out of the funnel wrapper',
     );
   });
 
