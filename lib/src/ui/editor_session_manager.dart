@@ -12859,6 +12859,56 @@ class EditorSessionManager extends ChangeNotifier {
   /// SE rows: the selected entry's speaker/effect name (the accent box).
   String? get selectedFrameSeName => selectedFrame?.seName;
 
+  /// The sounds the SELECTED SE instance carries, each with the index it
+  /// sits at in its layer's clip list (R5 #19 — the instance editor shows
+  /// what a block is linked to, and lets you take it off).
+  ///
+  /// The index travels with the clip because [removeAudioClipAt] addresses
+  /// by position: a clip has no id of its own, and looking it up again
+  /// afterwards would search a list that just changed.
+  List<({AudioClip clip, int index})> get selectedSeAudioClips {
+    final layer = activeLayer;
+    final frame = selectedFrame;
+    if (layer == null || frame == null) {
+      return const [];
+    }
+    return [
+      for (var index = 0; index < layer.audioClips.length; index += 1)
+        if (layer.audioClips[index].frameId == frame.id)
+          (clip: layer.audioClips[index], index: index),
+    ];
+  }
+
+  /// Takes the sounds at [clipIndexes] off the ACTIVE layer in one step —
+  /// the instance editor's unlink, which can drop several at once and must
+  /// be one undo with them.
+  ///
+  /// Descending removal: every index is into the list as it stands NOW, and
+  /// removing a low one would shift the rest.
+  void unlinkAudioClipsFromActiveLayer(Iterable<int> clipIndexes) {
+    final layer = activeLayer;
+    if (layer == null) {
+      return;
+    }
+    final ordered = clipIndexes.toList()..sort((a, b) => b.compareTo(a));
+    final next = [...layer.audioClips];
+    for (final index in ordered) {
+      if (index >= 0 && index < next.length) {
+        next.removeAt(index);
+      }
+    }
+    if (next.length == layer.audioClips.length) {
+      return;
+    }
+    _cutCommandCoordinator.updateLayerAudioClips(
+      cutId: requireActiveCut.id,
+      layerId: layer.id,
+      audioClips: next,
+      description: 'Unlink audio',
+    );
+    notifyListeners();
+  }
+
   /// Applies a rename to the currently selected frame.
   ///
   /// Returns `null` when the rename was applied (or was not possible). When the

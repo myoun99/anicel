@@ -207,6 +207,9 @@ class AppStrings {
   String get seInstanceEditTitle => _s('seInstanceEditTitle');
   String get seNameLabel => _s('seNameLabel');
   String get seDialogueLabel => _s('seDialogueLabel');
+  String get seLinkedAudioLabel => _s('seLinkedAudioLabel');
+  String get seLinkedAudioNone => _s('seLinkedAudioNone');
+  String get seUnlinkAudio => _s('seUnlinkAudio');
 
   /// '{frame}' is replaced with the 1-based frame number.
   String get cameraKeyTitleTemplate => _s('cameraKeyTitleTemplate');
@@ -887,6 +890,9 @@ class AppStrings {
     'seInstanceEditTitle': 'Edit SE',
     'seNameLabel': 'Name (speaker — blank hides the box)',
     'seDialogueLabel': 'Dialogue',
+    'seLinkedAudioLabel': 'Linked audio',
+    'seLinkedAudioNone': 'None',
+    'seUnlinkAudio': 'Unlink',
     'cameraKeyTitleTemplate': 'Camera keys — frame {frame}',
     'cameraKeyLinear': 'Linear',
     'cameraKeyHold': 'Hold',
@@ -1503,6 +1509,9 @@ class AppStrings {
     'seInstanceEditTitle': 'SEの編集',
     'seNameLabel': '名前（話者 — 空欄でボックス非表示）',
     'seDialogueLabel': 'セリフ',
+    'seLinkedAudioLabel': 'リンクされた音声',
+    'seLinkedAudioNone': 'なし',
+    'seUnlinkAudio': 'リンクを解除',
     'cameraKeyTitleTemplate': 'カメラキー — {frame}フレーム目',
     'cameraKeyLinear': 'リニア',
     'cameraKeyHold': 'ホールド',
@@ -2199,6 +2208,9 @@ class AppStrings {
     'seInstanceEditTitle': 'SE 편집',
     'seNameLabel': '이름 (화자 — 비우면 박스 숨김)',
     'seDialogueLabel': '대사',
+    'seLinkedAudioLabel': '링크된 오디오',
+    'seLinkedAudioNone': '없음',
+    'seUnlinkAudio': '링크 해제',
     'cameraKeyTitleTemplate': '카메라 키 — {frame}프레임',
     'cameraKeyLinear': '리니어',
     'cameraKeyHold': '홀드',
@@ -2896,6 +2908,9 @@ class AppStrings {
     'seInstanceEditTitle': 'Modifier le SE',
     'seNameLabel': 'Nom (locuteur — vide masque le cadre)',
     'seDialogueLabel': 'Dialogue',
+    'seLinkedAudioLabel': 'Audio lié',
+    'seLinkedAudioNone': 'Aucun',
+    'seUnlinkAudio': 'Dissocier',
     'cameraKeyTitleTemplate': 'Clés caméra — image {frame}',
     'cameraKeyLinear': 'Linéaire',
     'cameraKeyHold': 'Maintien',
@@ -3619,6 +3634,9 @@ class AppStrings {
     'seInstanceEditTitle': '编辑 SE',
     'seNameLabel': '名称（说话者 — 留空则隐藏名条）',
     'seDialogueLabel': '台词',
+    'seLinkedAudioLabel': '已链接音频',
+    'seLinkedAudioNone': '无',
+    'seUnlinkAudio': '解除链接',
     'cameraKeyTitleTemplate': '摄影表关键帧 — 第 {frame} 帧',
     'cameraKeyLinear': '线性',
     'cameraKeyHold': '保持',

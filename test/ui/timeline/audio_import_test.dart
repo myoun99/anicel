@@ -21,6 +21,8 @@ import 'package:anicel/src/ui/media/media_asset_drag_data.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 
+import '../flyout_test_helpers.dart';
+
 const _seLayerId = LayerId('audio-se');
 const _celLayerId = LayerId('audio-cel');
 
@@ -507,5 +509,87 @@ void main() {
     expect(session.removeMediaAsset(foot), isTrue);
     expect(session.mediaAssets, isEmpty);
     await tester.pumpAndSettle();
+  });
+
+  // R5 #19: the instance editor answers "what sound is on this block?" —
+  // and lets you take it off there, where you are already looking.
+  group('the SE instance editor shows what the block carries', () {
+    Future<EditorSessionManager> withLinkedSound(WidgetTester tester) async {
+      final session = _session();
+      await _pumpHost(tester, session);
+      session.selectLayer(_seLayerId);
+      session.selectFrameIndex(2);
+      await tester.pumpAndSettle();
+      session.addAudioClipToActiveSeLayer(r'C:\sound\door-slam.wav');
+      await tester.pumpAndSettle();
+      await tapCommandButton(
+        tester,
+        const ValueKey<String>('rename-frame-button'),
+      );
+      return session;
+    }
+
+    List<AudioClip> clipsOf(EditorSessionManager session) => session.layers
+        .firstWhere((layer) => layer.id == _seLayerId)
+        .audioClips;
+
+    testWidgets('names the sound and unlinks it on OK', (tester) async {
+      final session = await withLinkedSound(tester);
+      // The FILE NAME, not the path.
+      expect(find.text('door-slam.wav'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('se-linked-audio-none')),
+        findsNothing,
+      );
+
+      await tester.tap(find.byKey(const ValueKey<String>('se-unlink-audio-0')));
+      await tester.pumpAndSettle();
+      // Struck off in the dialog — but NOT yet in the project: unlinking is
+      // a decision made here and applied on OK.
+      expect(find.text('door-slam.wav'), findsNothing);
+      expect(clipsOf(session), hasLength(1));
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('instance-edit-ok-button')),
+      );
+      await tester.pumpAndSettle();
+      expect(clipsOf(session), isEmpty);
+
+      // One undo puts the sound back: the unlink is a command, not a purge.
+      session.undo();
+      expect(clipsOf(session).single.filePath, r'C:\sound\door-slam.wav');
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('Cancel keeps the sound', (tester) async {
+      final session = await withLinkedSound(tester);
+      await tester.tap(find.byKey(const ValueKey<String>('se-unlink-audio-0')));
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('instance-edit-cancel-button')),
+      );
+      await tester.pumpAndSettle();
+      expect(clipsOf(session), hasLength(1));
+    });
+
+    testWidgets('a block with NO sound says so, rather than showing nothing '
+        '— "none" is the answer to the question', (tester) async {
+      final session = _session();
+      await _pumpHost(tester, session);
+      session.selectLayer(_seLayerId);
+      session.selectFrameIndex(2);
+      await tester.pumpAndSettle();
+      session.createSeEntryAtCurrentFrame(name: 'S', lengthFrames: 1);
+      await tester.pumpAndSettle();
+
+      await tapCommandButton(
+        tester,
+        const ValueKey<String>('rename-frame-button'),
+      );
+      expect(
+        find.byKey(const ValueKey<String>('se-linked-audio-none')),
+        findsOneWidget,
+      );
+    });
   });
 }
