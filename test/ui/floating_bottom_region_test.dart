@@ -349,8 +349,17 @@ void main() {
     Finder hBar() => onFloor('canvas-panbar-horizontal');
     Finder vBar() => onFloor('canvas-panbar-vertical');
 
-    testWidgets('the panbars centre on WHAT YOU CAN SEE', (tester) async {
+    testWidgets('each piece of chrome yields on the axis that would BURY '
+        'it, and holds the centre on the other', (tester) async {
       await pumpApp(tester);
+      // ★The default opens ONE rail per side at the same width, so the two
+      // centres coincide and every assertion below would hold either way.
+      // Widen one side until they cannot.
+      await tester.drag(
+        find.byKey(const ValueKey<String>('dock-resize-rail-R2')),
+        const Offset(-120, 0),
+      );
+      await tester.pumpAndSettle();
 
       final timeline = tester.getRect(region());
       final pillRect = tester.getRect(pill());
@@ -360,18 +369,28 @@ void main() {
         canvas.size,
         panel.floorCover,
       ).shift(canvas.topLeft);
+      expect(
+        visible.center.dx,
+        isNot(closeTo(canvas.center.dx, 1.0)),
+        reason: 'the fixture must be able to tell the two answers apart',
+      );
 
-      // 유저, R3 #5·#6 — the third pass over this. Pinned to the panel they
-      // hid under the timeline; pinned to the panel's centre they sat in
-      // the middle of a rectangle a third of which is covered. They centre
-      // on the VISIBLE rectangle: the vertical one walks up as the region
-      // grows, the horizontal one rides its BOTTOM edge.
-      expect(tester.getRect(vBar()).center.dy, closeTo(visible.center.dy, 1.0));
-      expect(tester.getRect(hBar()).center.dx, closeTo(visible.center.dx, 1.0));
+      // 유저, R4 — the fourth pass, and the rule finally splits by AXIS
+      // rather than by widget. ALONG the edge a piece of chrome rides it
+      // holds the WINDOW's centre: a drawer opening is not a reason for
+      // the thing you read to walk sideways. ACROSS that edge it yields,
+      // because there it is not taste — a bar on the bottom edge with the
+      // region docked below it would simply be under it.
+      expect(tester.getRect(hBar()).center.dx, closeTo(canvas.center.dx, 1.0));
       expect(tester.getRect(hBar()).bottom, lessThanOrEqualTo(timeline.top));
 
-      // 알약은 상단중앙 (유저, R3 #6) — and clear of the region.
-      expect(pillRect.center.dx, closeTo(visible.center.dx, 1.0));
+      // The vertical bar is the same rule seen sideways: it holds its
+      // edge, and walks UP the edge as the region takes the bottom.
+      expect(tester.getRect(vBar()).center.dy, closeTo(visible.center.dy, 1.0));
+
+      // 알약은 상단중앙 (유저, R3 #6) — of the WINDOW — and clear of the
+      // region.
+      expect(pillRect.center.dx, closeTo(canvas.center.dx, 1.0));
       expect(pillRect.top, lessThan(timeline.top));
 
       // It is not a band: it covers a small fraction of the width it rides,
@@ -383,10 +402,12 @@ void main() {
       expect(pillRect.overlaps(tester.getRect(hBar())), isFalse);
     });
 
-    testWidgets('widening a rail pushes the pill in instead of hiding it '
-        'under the panel', (tester) async {
-      // The pill is centred on what you can SEE, so widening the right
-      // rail walks it left.
+    testWidgets('widening a rail does NOT walk the pill sideways', (
+      tester,
+    ) async {
+      // ⛔The opposite of what an earlier pass asserted. 유저, R4: 양옆에서
+      // 펼치든말든 중앙에 — a drawer opening is not a reason for the
+      // controls to move under the hand that opened it.
       await pumpApp(tester);
       final before = tester.getRect(pill()).center.dx;
 
@@ -396,7 +417,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      expect(tester.getRect(pill()).center.dx, lessThan(before));
+      expect(tester.getRect(pill()).center.dx, closeTo(before, 0.5));
     });
 
     testWidgets('the vertical panbar steps aside only for a rail that is '
