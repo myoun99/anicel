@@ -42,8 +42,14 @@ List<PropertyLaneRow> timelineLanesForLayer({
 
   /// The track a layer's transform lanes edit: the camera rides the cut's
   /// camera track, every other kind its own layer track.
+  ///
+  /// The camera's goes through [EditorSessionManager.activeCutCameraTrack]
+  /// rather than the cut directly, so a lane-move drag in flight previews
+  /// here. Every other row gets that for free — the row's preview gate
+  /// hands this function a previewed LAYER — but a camera row's lanes are
+  /// not built from its Layer at all.
   TransformTrack laneTrackOf(Layer target) => target.kind == LayerKind.camera
-      ? session.requireActiveCut.camera.track
+      ? (session.activeCutCameraTrack ?? session.requireActiveCut.camera.track)
       : target.transformTrack;
 
   /// AE group collapse: the Transform group header always shows; its member

@@ -2101,17 +2101,42 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       // The fx chain's strips, row for row with its labels — the rail and
       // the strips share no scaffolding, so the two lists are built from the
       // SAME lane list to keep them in lockstep.
-      for (final lane in _trackEffectLanes(track))
-        _StoryboardLaneStripRow(
-          rowKey:
-              'storyboard-track-lane-row-$trackIndex-${lane.laneId}',
-          carrier: carrier,
-          lane: lane,
-          width: width,
-          timelineScale: scale,
-          laneEdit: laneEdit,
-          laneRange: widget.laneRange,
-        ),
+      //
+      // A key-move drag previews on the scoped channel, like the transform
+      // strips above. Nothing previewed here before 2026-08-08 because
+      // nothing could MOVE here: the lane-move path looked at a track's
+      // transform and never at its effects, so the drag answered "nothing
+      // to move" and refused in silence.
+      ValueListenableBuilder(
+        valueListenable:
+            widget.dragPreview ??
+            const AlwaysStoppedAnimation<TimelineDragPreview?>(null),
+        builder: (context, preview, _) {
+          final previewEffects = preview is BlockMoveDragPreview
+              ? preview.previewTrackEffects
+              : null;
+          final previewed = previewEffects?[track.id];
+          final lanes = previewed == null
+              ? _trackEffectLanes(track)
+              : _trackEffectLanes(track.copyWith(effects: previewed));
+          return Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              for (final lane in lanes)
+                _StoryboardLaneStripRow(
+                  rowKey:
+                      'storyboard-track-lane-row-$trackIndex-${lane.laneId}',
+                  carrier: carrier,
+                  lane: lane,
+                  width: width,
+                  timelineScale: scale,
+                  laneEdit: laneEdit,
+                  laneRange: widget.laneRange,
+                ),
+            ],
+          );
+        },
+      ),
     ];
   }
 
@@ -3923,7 +3948,6 @@ class _StoryboardLaneStripRow extends StatelessWidget {
           leadingFrameSpacerWidth: 0,
           trailingFrameSpacerWidth: 0,
           metrics: metrics,
-          laneEdit: laneEdit,
           laneRange: laneRange,
           keyPrefix: 'storyboard',
         ),

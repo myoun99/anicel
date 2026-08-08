@@ -22,10 +22,7 @@ import 'storyboard_panel.dart';
 import 'timeline/layer_rail_window.dart' show LayerRailExtent;
 import '../models/layer_effect.dart' show LayerEffect;
 import 'timeline/effect_lane_editing.dart'
-    show
-        effectsWithLaneKeyMoved,
-        effectsWithLaneKeyToggled,
-        effectsWithLaneValueEdited;
+    show effectsWithLaneKeyToggled, effectsWithLaneValueEdited;
 import 'timeline/effect_lane_policy.dart' show laneIsEffectLane;
 import 'timeline/property_lane_model.dart' show PropertyLaneEditCallbacks;
 import 'timeline/layer_row_drag.dart' show TimelineRowDragHooks;
@@ -282,31 +279,6 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
           description,
         );
       },
-      onMoveKey: (_, lane, fromFrame, toFrame) {
-        final description =
-            'Move ${lane.label} keyframe to frame ${toFrame + 1}';
-        if (laneIsEffectLane(lane)) {
-          commitEffects(
-            effectsWithLaneKeyMoved(
-              track.effects,
-              laneId: lane.laneId,
-              fromFrame: fromFrame,
-              toFrame: toFrame,
-            ),
-            description,
-          );
-          return;
-        }
-        commit(
-          transformTrackWithLaneKeyMoved(
-            transform,
-            laneId: lane.laneId,
-            fromFrame: fromFrame,
-            toFrame: toFrame,
-          ),
-          description,
-        );
-      },
       onSetValue: (_, lane, frameIndex, input) {
         final description = 'Set ${lane.label} at frame ${frameIndex + 1}';
         if (laneIsEffectLane(lane)) {
@@ -385,16 +357,6 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
         resolvedOpacity: _session.layerOpacityAtFrame(layer, frameIndex),
       ),
       '${lane.label} keyframe at frame ${frameIndex + 1}',
-    ),
-    onMoveKey: (layer, lane, fromFrame, toFrame) => _commitLayerLaneEdit(
-      layer.id,
-      transformTrackWithLaneKeyMoved(
-        layer.transformTrack,
-        laneId: lane.laneId,
-        fromFrame: fromFrame,
-        toFrame: toFrame,
-      ),
-      'Move ${lane.label} keyframe to frame ${toFrame + 1}',
     ),
     onSetValue: (layer, lane, frameIndex, input) => _commitLayerLaneEdit(
       layer.id,

@@ -395,32 +395,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         '${lane.label} keyframe at frame ${frameIndex + 1}',
       );
     },
-    onMoveKey: (layer, lane, fromFrame, toFrame) {
-      final description = 'Move ${lane.label} keyframe to frame ${toFrame + 1}';
-      if (laneIsEffectLane(lane)) {
-        _commitEffectLaneEdit(
-          layer,
-          effectsWithLaneKeyMoved(
-            layer.effects,
-            laneId: lane.laneId,
-            fromFrame: fromFrame,
-            toFrame: toFrame,
-          ),
-          description,
-        );
-        return;
-      }
-      _commitLaneEdit(
-        layer,
-        transformTrackWithLaneKeyMoved(
-          _laneTrackOf(layer),
-          laneId: lane.laneId,
-          fromFrame: fromFrame,
-          toFrame: toFrame,
-        ),
-        description,
-      );
-    },
     onSetValue: (layer, lane, frameIndex, input) {
       // The SE audio lane's value field edits the playhead span's offset
       // trim instead of a transform property (one undo via the session).

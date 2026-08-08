@@ -289,22 +289,17 @@ void main() {
       expect(edited.single.parameterOf('blurX').track.keyAt(5)!.value, 9);
     });
 
-    test('move, remove and hold behave like the transform lanes', () {
+    test('remove and hold behave like the transform lanes', () {
+      // The single-key MOVE left with the key marker's private drag
+      // (2026-08-08). Re-timing is `effectsWithLaneSpanKeysShifted` now —
+      // select the span, move the span.
       final laneId = effectLaneId(const EffectId('e1'), 'blurX');
       var effects = effectsWithLaneKeyToggled(
         [blur(x: 6)],
         laneId: laneId,
-        frameIndex: 2,
+        frameIndex: 9,
       )!;
-      effects = effectsWithLaneKeyMoved(
-        effects,
-        laneId: laneId,
-        fromFrame: 2,
-        toFrame: 9,
-      )!;
-      final track = effects.single.parameterOf('blurX').track;
-      expect(track.keyAt(2), isNull);
-      expect(track.keyAt(9)!.value, 6);
+      expect(effects.single.parameterOf('blurX').track.keyAt(9)!.value, 6);
 
       effects = effectsWithLaneHoldToggled(
         effects,

@@ -517,7 +517,6 @@ void main() {
       trackLaneEditFor: (track) => PropertyLaneEditCallbacks(
         onToggleKeyAt: (_, lane, frame) =>
             toggles.add((track.id.value, lane.laneId, frame)),
-        onMoveKey: (_, _, _, _) {},
       ),
     );
     await _expandVTransform(tester);
@@ -565,7 +564,6 @@ void main() {
       layerLaneEdit: PropertyLaneEditCallbacks(
         onToggleKeyAt: (layer, lane, frame) =>
             toggles.add((layer.id.value, lane.laneId, frame)),
-        onMoveKey: (_, _, _, _) {},
       ),
     );
 

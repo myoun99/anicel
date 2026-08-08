@@ -449,11 +449,15 @@ class _TimelineFrameRowsScrollBodyState
             leadingFrameSpacerWidth: widget.leadingFrameSpacerWidth,
             trailingFrameSpacerWidth: widget.trailingFrameSpacerWidth,
             metrics: widget.metrics,
-            laneEdit: widget.laneEdit,
-            // The LANE selection domain (UI-R23 #3 part 2) — layer
-            // transform lanes only; the camera's atomic keyframes stand
-            // down in v1.
-            laneRange: layer.kind == LayerKind.camera ? null : widget.laneRange,
+            // The LANE selection domain (UI-R23 #3 part 2) — EVERY row's
+            // lanes now, camera included. It stood down there until
+            // 2026-08-08 on the reading that the camera's keyframes are
+            // atomic; they are not (a camera row's lanes edit
+            // `cut.camera.track`, a per-property TransformTrack like any
+            // other). What was actually missing was the move path's
+            // camera arm, which is why wiring this earlier would have
+            // written keys into the camera layer's own unused track.
+            laneRange: widget.laneRange,
           );
   }
 
