@@ -602,4 +602,132 @@ void main() {
       );
     });
   });
+
+  // R5 #15. A caret lives BETWEEN rows, and two intents have no gap to
+  // live in: the inside of a folder with no members, and the first rider
+  // on a base with no group. Both are "put the thing ON the thing", and
+  // what the target IS decides which answer you get.
+  group('dropping ON a row', () {
+    Layer folder(String id, {String? parent}) =>
+        createFolderLayer(id: LayerId(id), name: id).copyWith(
+          folderId: parent == null ? null : LayerId(parent),
+        );
+
+    test('an EMPTY folder can be filled — the case a gap cannot reach', () {
+      final stack = [_row('a'), _row('b'), folder('f')];
+      final plan = resolveLayerDropOnRow(
+        stack: stack,
+        movingId: const LayerId('a'),
+        targetId: const LayerId('f'),
+      );
+
+      expect(plan, isNotNull);
+      expect(plan!.joinedFolderId, const LayerId('f'));
+      expect(plan.folderIds, {const LayerId('a'): const LayerId('f')});
+      // The folder invariant survives: members first, folder directly above.
+      expect(_ids(plan.order), ['b', 'a', 'f']);
+    });
+
+    test('a folder with members takes the new row at the TOP of them', () {
+      final stack = [
+        _row('a'),
+        _row('m', folderId: 'f'),
+        folder('f'),
+        _row('z'),
+      ];
+      final plan = resolveLayerDropOnRow(
+        stack: stack,
+        movingId: const LayerId('z'),
+        targetId: const LayerId('f'),
+      );
+
+      expect(plan, isNotNull);
+      expect(_ids(plan!.order), ['a', 'm', 'z', 'f']);
+      expect(plan.folderIds, {const LayerId('z'): const LayerId('f')});
+    });
+
+    test('a folder dropped on ITS OWN member is refused — that is a cycle, '
+        'and the run carries the member anyway', () {
+      final stack = [_row('m', folderId: 'f'), folder('f'), _row('z')];
+      expect(
+        resolveLayerDropOnRow(
+          stack: stack,
+          movingId: const LayerId('f'),
+          targetId: const LayerId('m'),
+        ),
+        isNull,
+      );
+      expect(
+        resolveLayerDropOnRow(
+          stack: stack,
+          movingId: const LayerId('f'),
+          targetId: const LayerId('f'),
+        ),
+        isNull,
+      );
+    });
+
+    test('a DRAWING row takes the dropped row as its first rider, above it',
+        () {
+      final stack = [_row('base'), _row('rider')];
+      final plan = resolveLayerDropOnRow(
+        stack: stack,
+        movingId: const LayerId('rider'),
+        targetId: const LayerId('base'),
+      );
+
+      expect(plan, isNotNull);
+      expect(plan!.attach.mount?.layerId, const LayerId('rider'));
+      expect(plan.attach.mount?.baseId, const LayerId('base'));
+      expect(plan.attach.mount?.placement, AttachedPlacement.above);
+      expect(_ids(plan.order), ['base', 'rider']);
+    });
+
+    test('the mount rules still apply — a row that carries riders of its own '
+        'cannot become one', () {
+      final stack = [
+        _row('base'),
+        _row('carrier'),
+        _row('its-rider', attachedTo: 'carrier'),
+      ];
+      expect(
+        resolveLayerDropOnRow(
+          stack: stack,
+          movingId: const LayerId('carrier'),
+          targetId: const LayerId('base'),
+        ),
+        isNull,
+        reason: 'attach does not nest, and the group is unsplittable',
+      );
+    });
+
+    test('a folder cannot be mounted on a drawing row', () {
+      final stack = [_row('base'), _row('m', folderId: 'f'), folder('f')];
+      expect(
+        resolveLayerDropOnRow(
+          stack: stack,
+          movingId: const LayerId('f'),
+          targetId: const LayerId('base'),
+        ),
+        isNull,
+      );
+    });
+
+    test('a nested EMPTY folder is reachable too', () {
+      final stack = [
+        _row('a'),
+        folder('inner', parent: 'outer'),
+        folder('outer'),
+      ];
+      final plan = resolveLayerDropOnRow(
+        stack: stack,
+        movingId: const LayerId('a'),
+        targetId: const LayerId('inner'),
+      );
+
+      expect(plan, isNotNull);
+      expect(plan!.folderIds, {const LayerId('a'): const LayerId('inner')});
+      expect(_ids(plan.order), ['a', 'inner', 'outer']);
+    });
+  });
 }

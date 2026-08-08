@@ -91,6 +91,7 @@ Future<EditorSessionManager> _pumpPanel(
               drag: session.layerRowDrag,
               onBegin: session.beginLayerRowDrag,
               onUpdate: session.updateLayerRowDrag,
+              onRowTarget: session.updateLayerRowDropOnRow,
               onEffectUpdate: session.updateEffectRowDrag,
               onEnd: session.endLayerRowDrag,
               onCancel: session.cancelLayerRowDrag,

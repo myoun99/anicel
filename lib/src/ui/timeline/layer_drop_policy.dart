@@ -145,10 +145,69 @@ int? modelInsertionForSlot({
 /// Refused: a slot inside the run's own span (a no-op), a landing in
 /// another SECTION (the display re-buckets by kind, so it would spring
 /// back), and anything [folderStructureProblem] rejects.
+/// R5 #15: the plan for dropping [movingId] ON the row [targetId] rather
+/// than in a gap between rows.
+///
+/// A caret lives between rows, and there are two intents it cannot express.
+/// The inside of an EMPTY folder is one — with no members, "inside it" and
+/// "outside, below it" are the same gap, which is why #14's empty folder
+/// arrived with no door. The first attach rider on a base is the other: a
+/// base with no riders has no inside either.
+///
+/// Both are the same gesture — you put the thing ON the thing — and the two
+/// answers come from what the target IS: a folder swallows, a drawing row
+/// takes a rider. Everything after that is [resolveLayerDrop]'s, so the two
+/// paths cannot disagree about what is legal.
+LayerDropPlan? resolveLayerDropOnRow({
+  required List<Layer> stack,
+  required LayerId movingId,
+  required LayerId targetId,
+}) {
+  if (movingId == targetId) {
+    return null;
+  }
+  final targetIndex = stack.indexWhere((layer) => layer.id == targetId);
+  final run = layerDragRun(stack, movingId);
+  if (targetIndex < 0 || run == null) {
+    return null;
+  }
+  // Onto something the run carries — a folder onto one of its own members —
+  // is a no-op, and would be a cycle if it were not.
+  if (targetIndex >= run.start && targetIndex < run.endExclusive) {
+    return null;
+  }
+  final target = stack[targetIndex];
+  if (layerKindGroupsLayers(target.kind)) {
+    // The TOP of the folder's members, which is the gap directly under the
+    // folder row (the folder invariant puts the row above its members).
+    return resolveLayerDrop(
+      stack: stack,
+      movingId: movingId,
+      insertAt: targetIndex,
+      forceJoinFolderId: targetId,
+    );
+  }
+  return resolveLayerDrop(
+    stack: stack,
+    movingId: movingId,
+    insertAt: targetIndex + 1,
+    forceMountBaseId: targetId,
+  );
+}
+
 LayerDropPlan? resolveLayerDrop({
   required List<Layer> stack,
   required LayerId movingId,
   required int insertAt,
+
+  /// R5 #15: the folder the run joins, overriding the gap's own answer.
+  /// Only [resolveLayerDropOnRow] passes it — it is how "inside this
+  /// folder" gets said at all when the folder has no members to sit among.
+  LayerId? forceJoinFolderId,
+
+  /// R5 #15: the base the run mounts on, for the same reason — a base with
+  /// no riders yet has no inside for a caret to land in.
+  LayerId? forceMountBaseId,
 }) {
   final run = layerDragRun(stack, movingId);
   if (run == null || insertAt < 0 || insertAt > stack.length) {
@@ -190,7 +249,7 @@ LayerDropPlan? resolveLayerDrop({
   // with no members, "inside it" and "outside, below it" are the SAME
   // slot. Landing in one takes an explicit intent — the caret hovering the
   // folder ROW — which is the drag's business, not the order's.
-  final joinedFolderId = below?.folderId;
+  final joinedFolderId = forceJoinFolderId ?? below?.folderId;
   final carriedIds = {for (final layer in carried) layer.id};
   final folderIds = <LayerId, LayerId?>{
     for (final layer in carried)
@@ -226,8 +285,18 @@ LayerDropPlan? resolveLayerDrop({
     }
   }
 
+  // R5 #15: dropping ON a drawing row names the base outright. It reads the
+  // same as landing inside an existing group — the checks below are the
+  // ones that matter — but it reaches the case a gap cannot: a base whose
+  // group is still empty.
+  final target = insideGroup ??
+      (forceMountBaseId == null
+          ? null
+          : (baseId: forceMountBaseId, placement: AttachedPlacement.above));
+
   ({LayerId layerId, LayerId baseId, AttachedPlacement placement})? mount;
-  if (insideGroup != null) {
+  if (target != null) {
+    final insideGroup = target;
     final base = stack.firstWhere((layer) => layer.id == insideGroup.baseId);
     final single = run.endExclusive - run.start == 1;
     // No nesting: a row that carries attaches of its own is a base, and a

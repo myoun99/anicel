@@ -848,10 +848,22 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
         axis: Axis.vertical,
         hooks: hooks,
         isLastRow: entry.layerIndex == widget.layers.length - 1,
-        onCrossed: (steps) => hooks.onUpdate(
-          widget.layers,
-          slotForSteps(entry.layerIndex, steps, widget.layers.length),
-        ),
+        // R5 #15: the sheet's columns take the ON-COLUMN drop the way the
+        // rail's rows do — the band is measured along whichever axis this
+        // surface runs, so the transposition costs nothing.
+        onCrossed: (steps, onRow) {
+          final slot = slotForSteps(
+            entry.layerIndex,
+            steps,
+            widget.layers.length,
+          );
+          final target = onRow == null ? null : entry.layerIndex + onRow;
+          if (target != null && target >= 0 && target < widget.layers.length) {
+            hooks.onRowTarget(widget.layers, slot, widget.layers[target].id);
+            return;
+          }
+          hooks.onUpdate(widget.layers, slot);
+        },
         child: child,
       );
     }
@@ -875,7 +887,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
       axis: Axis.vertical,
       hooks: hooks,
       isLastRow: slot == headers.length - 1,
-      onCrossed: (steps) => hooks.onEffectUpdate(
+      onCrossed: (steps, _) => hooks.onEffectUpdate(
         entry.layer.id,
         [for (final header in headers) header.effectId],
         slotForSteps(
