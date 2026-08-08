@@ -77,6 +77,45 @@ abstract final class MeasurementMode {
     startWithUnpaintedTiles,
   );
 
+  /// The frame clock in NUMBERS (Settings ▸ Frame Stats): raster, UI and
+  /// end-to-end latency as p50/p95, plus the engine's raster-cache
+  /// counts. See [FrameStats].
+  ///
+  /// The fourth switch, and the one that answers what the graphs above
+  /// cannot. Three reasons it exists next to them rather than instead of
+  /// them:
+  ///
+  ///  * **Percentiles.** The overlay reports max and avg. An average
+  ///    over a rolling window reads the same for a flat cost and a
+  ///    RISING one, which is the exact shape of "it gets worse as I
+  ///    keep working"; a max is a single frame.
+  ///  * **Latency.** `FrameTiming.totalSpan` is the whole pipeline for
+  ///    one frame, and Flutter pipelines — build and raster can both sit
+  ///    inside budget while the end-to-end span runs long, which is what
+  ///    "smooth but the pen feels behind" is made of. The overlay has no
+  ///    line for it.
+  ///  * **Retained raster.** `layerCacheCount`/`pictureCacheCount` are
+  ///    the only way from Dart to see whether a repaint boundary bought
+  ///    anything on the GPU. A boundary stops re-RECORDING; only the
+  ///    cache stops re-RASTERIZING.
+  ///
+  /// ⚠️Prefer this one when the two disagree. The overlay is two
+  /// full-width bar graphs redrawn every frame INSIDE the scene whose
+  /// raster time it reports — it is part of its own measurement. This
+  /// is six lines of text at 4 Hz behind a repaint boundary.
+  static final ValueNotifier<bool> frameStats = ValueNotifier<bool>(
+    startWithFrameStats,
+  );
+
+  /// Seeds [frameStats]:
+  ///
+  /// ```
+  /// flutter run --dart-define=QA_FRAME_STATS=true
+  /// ```
+  static const bool startWithFrameStats = bool.fromEnvironment(
+    'QA_FRAME_STATS',
+  );
+
   /// Seeds [showUnpaintedTiles], same shape as the overlay's define:
   ///
   /// ```
@@ -104,5 +143,6 @@ abstract final class MeasurementMode {
   static void reset() {
     frameTimingOverlay.value = startWithFrameTimingOverlay;
     showUnpaintedTiles.value = startWithUnpaintedTiles;
+    frameStats.value = startWithFrameStats;
   }
 }

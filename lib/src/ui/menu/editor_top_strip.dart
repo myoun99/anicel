@@ -400,7 +400,23 @@ class EditorTopStrip extends StatelessWidget {
             !MeasurementMode.frameTimingOverlay.value;
       },
     ),
-    // The third: where the canvas painter had NO picture for a
+    // The same clock in numbers, and the one to believe when the two
+    // disagree: percentiles instead of max/avg, END-TO-END LATENCY,
+    // which the graphs have no line for, and the engine's raster-cache
+    // counts, which are the only way from Dart to ask whether a repaint
+    // boundary bought anything on the GPU. It is also six lines of text
+    // at 4 Hz, where the graphs are two full-width bars redrawn every
+    // frame inside the scene whose raster time they report.
+    _item(
+      id: 'edit-frame-stats',
+      label: 'Frame Stats',
+      icon: Icons.query_stats_outlined,
+      checked: MeasurementMode.frameStats.value,
+      onPressed: () {
+        MeasurementMode.frameStats.value = !MeasurementMode.frameStats.value;
+      },
+    ),
+    // And the marker for where the canvas painter had NO picture for a
     // coordinate it was asked to draw. The whole stale-tile family is
     // that one event, and it is invisible because the painter's answer
     // to "I have nothing here" is to draw nothing — so every instance
