@@ -48,27 +48,45 @@ class PanelScrollbar extends StatefulWidget {
 class _PanelScrollbarState extends State<PanelScrollbar> {
   bool _metricsRefreshScheduled = false;
 
+  /// The controller's position, or null when it is attached to anything
+  /// other than exactly ONE view.
+  ///
+  /// 🚨`ScrollController.position` asserts `_positions.length == 1` and
+  /// then returns `_positions.single`, so it fails on TWO as well as on
+  /// zero — and `hasClients` only rules out zero. That stopped being a
+  /// theoretical hazard the moment this bar became something the app hands
+  /// out automatically: on the mobile platforms every controller-less
+  /// vertical scroll view inherits the ROUTE's `PrimaryScrollController`
+  /// (`PrimaryScrollController.shouldInherit`), so two open panels are
+  /// enough to give one controller two positions and take the frame down.
+  ///
+  /// Null means the bar has nothing it can honestly say — it cannot know
+  /// which of several viewports it is over — so it stands down. That is
+  /// also the right answer before the first attach, and the metrics
+  /// notification below brings us back.
+  ScrollPosition? get _position {
+    final positions = widget.controller.positions;
+    return positions.length == 1 ? positions.first : null;
+  }
+
   Axis get _axis {
     final stated = widget.axis;
     if (stated != null) {
       return stated;
     }
-    if (widget.controller.hasClients) {
-      return axisDirectionToAxis(widget.controller.position.axisDirection);
-    }
-    return Axis.vertical;
+    final position = _position;
+    return position == null
+        ? Axis.vertical
+        : axisDirectionToAxis(position.axisDirection);
   }
 
   /// Whether there is anything to scroll — the bar's entire visibility
-  /// rule. Before the controller attaches this is false, which is the
-  /// right answer: a bar cannot be over content that has not been laid
-  /// out, and the metrics notification below brings us back.
+  /// rule.
   bool get _overflows {
-    if (!widget.controller.hasClients) {
-      return false;
-    }
-    final position = widget.controller.position;
-    return position.hasContentDimensions && position.maxScrollExtent > 0;
+    final position = _position;
+    return position != null &&
+        position.hasContentDimensions &&
+        position.maxScrollExtent > 0;
   }
 
   @override
@@ -108,18 +126,16 @@ class _PanelScrollbarState extends State<PanelScrollbar> {
         fit: StackFit.passthrough,
         clipBehavior: Clip.none,
         children: [
-          // ⛔The child gets NO automatic bar. Whoever built this one is
-          // the bar for that scrollable, and without this the three
-          // explicit callers below carried two — theirs and the one
-          // `AppScrollBehavior` builds. The config lands INSIDE this
-          // widget's child, which is where the scrollable is, and it does
-          // not reach this widget's own bar.
-          ScrollConfiguration(
-            behavior: ScrollConfiguration.of(
-              context,
-            ).copyWith(scrollbars: false),
-            child: widget.child,
-          ),
+          // ⛔NO `ScrollConfiguration(scrollbars: false)` here. The obvious
+          // way to stop an explicit caller being doubled by
+          // `AppScrollBehavior` is to switch bars off for the child — and
+          // it is wrong, because the child is the whole scroll CONTENT and
+          // the config is inherited: every scrollable NESTED inside would
+          // lose its bar too. The media browser's asset list went silent
+          // the moment its panel was narrow enough to need the horizontal
+          // escape valve above it. Nothing is doubled because nothing calls
+          // this by hand any more — the behaviour is the only caller.
+          widget.child,
           if (_overflows)
             Positioned(
               left: vertical ? null : 0,

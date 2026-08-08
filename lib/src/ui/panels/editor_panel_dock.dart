@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 
-import 'panel_scrollbar.dart';
-
 /// Which screen edge the dock is attached to; the hairline border sits on
 /// the edge facing the canvas.
 enum EditorPanelDockSide { left, right }
@@ -80,16 +78,18 @@ class _EditorPanelDockState extends State<EditorPanelDock> {
               ),
             )
           : null,
+      // ⛔No PanelScrollbar by hand. `AppScrollBehavior` gives every
+      // scrollable in the app the same one, so placing it here would be
+      // two — and the obvious cure (switching bars off for the child) is
+      // worse, because the child is the whole content and the config is
+      // inherited: the panels INSIDE this list would go silent.
       child: children == null
           ? widget.child!
-          : PanelScrollbar(
+          : ListView.separated(
               controller: _scrollController,
-              child: ListView.separated(
-                controller: _scrollController,
-                itemCount: children.length,
-                separatorBuilder: (_, _) => const SizedBox(height: 8),
-                itemBuilder: (context, index) => children[index],
-              ),
+              itemCount: children.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 8),
+              itemBuilder: (context, index) => children[index],
             ),
     );
   }

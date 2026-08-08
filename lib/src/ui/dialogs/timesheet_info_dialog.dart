@@ -92,116 +92,113 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
       titleIcon: Icons.description_outlined,
       onClose: () => Navigator.of(context).pop(),
       width: 420,
-      // Same as the instruction editor: this body owns its scroller, so the
-      // window may not wrap it in a second one.
-      scrollBody: false,
+      // ⛔The body does NOT bring its own scroller. `AppWindow` already
+      // scrolls it, and it applies the body padding OUTSIDE that scroller —
+      // so the window's bar lands on 12px of dead padding, while a bar
+      // belonging to a scroller in HERE would lie across the right edge of
+      // every field and swallow the taps that focus them.
       body: SizedBox(
         width: 360,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              AppWindowField(
-                label: strings.sheetFieldTitle,
-                emphasized: true,
-                child: TextField(
-                  key: const ValueKey<String>('timesheet-info-title-field'),
-                  controller: _titleController,
-                  autofocus: true,
-                  decoration: InputDecoration(
-                    hintText: strings.sheetTitleHint,
-                  ),
-                ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            AppWindowField(
+              label: strings.sheetFieldTitle,
+              emphasized: true,
+              child: TextField(
+                key: const ValueKey<String>('timesheet-info-title-field'),
+                controller: _titleController,
+                autofocus: true,
+                decoration: InputDecoration(hintText: strings.sheetTitleHint),
               ),
-              const SizedBox(height: 12),
-              AppWindowField(
-                label: strings.sheetFieldEpisode,
-                child: TextField(
-                  key: const ValueKey<String>('timesheet-info-episode-field'),
-                  controller: _episodeController,
-                ),
+            ),
+            const SizedBox(height: 12),
+            AppWindowField(
+              label: strings.sheetFieldEpisode,
+              child: TextField(
+                key: const ValueKey<String>('timesheet-info-episode-field'),
+                controller: _episodeController,
               ),
-              const SizedBox(height: 12),
-              AppWindowField(
-                label: strings.sheetFieldScene,
-                child: TextField(
-                  key: const ValueKey<String>('timesheet-info-scene-field'),
-                  controller: _sceneController,
-                ),
+            ),
+            const SizedBox(height: 12),
+            AppWindowField(
+              label: strings.sheetFieldScene,
+              child: TextField(
+                key: const ValueKey<String>('timesheet-info-scene-field'),
+                controller: _sceneController,
               ),
-              const SizedBox(height: 12),
-              AppWindowField(
-                label: strings.sheetArtist,
-                child: TextField(
-                  key: const ValueKey<String>('timesheet-info-artist-field'),
-                  controller: _artistController,
-                  onSubmitted: (_) => _submit(),
-                ),
+            ),
+            const SizedBox(height: 12),
+            AppWindowField(
+              label: strings.sheetArtist,
+              child: TextField(
+                key: const ValueKey<String>('timesheet-info-artist-field'),
+                controller: _artistController,
+                onSubmitted: (_) => _submit(),
               ),
-              const SizedBox(height: 16),
-              Text(
-                strings.sheetVisibleBoxes,
-                style: Theme.of(context).textTheme.labelMedium,
-              ),
-              const SizedBox(height: 8),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: [
-                  for (final field in TimesheetHeaderField.values)
-                    FilterChip(
-                      key: ValueKey<String>(
-                        'timesheet-info-visible-${field.name}',
-                      ),
-                      label: Text(_fieldLabel(field)),
-                      selected: !_hiddenFields.contains(field),
-                      onSelected: (visible) => setState(() {
-                        if (visible) {
-                          _hiddenFields.remove(field);
-                        } else {
-                          _hiddenFields.add(field);
-                        }
-                      }),
+            ),
+            const SizedBox(height: 16),
+            Text(
+              strings.sheetVisibleBoxes,
+              style: Theme.of(context).textTheme.labelMedium,
+            ),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 6,
+              runSpacing: 6,
+              children: [
+                for (final field in TimesheetHeaderField.values)
+                  FilterChip(
+                    key: ValueKey<String>(
+                      'timesheet-info-visible-${field.name}',
                     ),
-                ],
-              ),
-              const SizedBox(height: 16),
-              Text(
-                strings.sheetNotation,
-                style: Theme.of(context).textTheme.labelMedium,
-              ),
-              SwitchListTile(
-                key: const ValueKey<String>('timesheet-info-exposure-bar'),
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                title: Text(strings.sheetExposureBar),
-                subtitle: Text(strings.sheetExposureBarHelp),
-                value: _exposureBarEnabled,
-                onChanged: (value) =>
-                    setState(() => _exposureBarEnabled = value),
-              ),
-              if (_exposureBarEnabled)
-                AppWindowField(
-                  label: strings.sheetExposureBarN,
-                  child: TextField(
-                    key: const ValueKey<String>(
-                      'timesheet-info-exposure-bar-threshold',
-                    ),
-                    controller: _exposureBarThresholdController,
-                    keyboardType: TextInputType.number,
+                    label: Text(_fieldLabel(field)),
+                    selected: !_hiddenFields.contains(field),
+                    onSelected: (visible) => setState(() {
+                      if (visible) {
+                        _hiddenFields.remove(field);
+                      } else {
+                        _hiddenFields.add(field);
+                      }
+                    }),
                   ),
+              ],
+            ),
+            const SizedBox(height: 16),
+            Text(
+              strings.sheetNotation,
+              style: Theme.of(context).textTheme.labelMedium,
+            ),
+            SwitchListTile(
+              key: const ValueKey<String>('timesheet-info-exposure-bar'),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: Text(strings.sheetExposureBar),
+              subtitle: Text(strings.sheetExposureBarHelp),
+              value: _exposureBarEnabled,
+              onChanged: (value) => setState(() => _exposureBarEnabled = value),
+            ),
+            if (_exposureBarEnabled)
+              AppWindowField(
+                label: strings.sheetExposureBarN,
+                child: TextField(
+                  key: const ValueKey<String>(
+                    'timesheet-info-exposure-bar-threshold',
+                  ),
+                  controller: _exposureBarThresholdController,
+                  keyboardType: TextInputType.number,
                 ),
-              SwitchListTile(
-                key: const ValueKey<String>('timesheet-info-se-empty-fill'),
-                contentPadding: EdgeInsets.zero,
-                dense: true,
-                title: Text(strings.sheetSeEmptyFill),
-                value: _seEmptyFill,
-                onChanged: (value) => setState(() => _seEmptyFill = value),
               ),
-            ],
-          ),
+            SwitchListTile(
+              key: const ValueKey<String>('timesheet-info-se-empty-fill'),
+              contentPadding: EdgeInsets.zero,
+              dense: true,
+              title: Text(strings.sheetSeEmptyFill),
+              value: _seEmptyFill,
+              onChanged: (value) => setState(() => _seEmptyFill = value),
+            ),
+          ],
         ),
       ),
       actions: [

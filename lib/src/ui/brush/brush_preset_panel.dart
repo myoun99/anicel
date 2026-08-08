@@ -10,7 +10,6 @@ import '../../models/brush_preset_id.dart';
 import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/app_prompt_dialog.dart';
 import '../panels/editor_panel_frame.dart';
-import '../panels/panel_scrollbar.dart';
 import '../theme/app_theme.dart' show instantMenuAnimation;
 import '../widgets/app_window.dart';
 import '../widgets/instant_tap_region.dart';
@@ -667,90 +666,87 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
       // over the tabs and only while they overflow, so the rail no longer
       // pays a lane's width for a bar that is usually not there.
       width: _railShowName ? _BrushGroupTab.namedWidth : _BrushGroupTab.extent,
-      child: PanelScrollbar(
-        controller: _railController,
-        child: ReorderableListView.builder(
-          key: const ValueKey<String>('brush-preset-tab-rail'),
-          scrollController: _railController,
-          buildDefaultDragHandles: false,
-          itemCount: tabs.length,
-          onReorderStart: (_) => setState(() => _railDragging = true),
-          onReorderEnd: (_) => setState(() => _railDragging = false),
-          onReorderItem: _handleTabReorder,
-          itemBuilder: (context, index) {
-            final group = tabs[index];
-            final tab = _BrushGroupTab(
-              keyValue: 'brush-preset-tab-${group?.id.value ?? 'root'}',
-              label: group?.name ?? _rootSectionLabel,
-              icon: group?.icon,
-              showIcon: _railShowIcon,
-              showName: _railShowName,
-              showTooltip: !_railDragging,
-              onEdit: group == null || widget.onGroupEdited == null
-                  ? null
-                  : () => _editGroup(group),
-              // The tab wears its group's first brush, so a chalk group
-              // looks chalky and no one has to pick an icon.
-              preview: _firstPresetIn(group?.id),
-              selected: group?.id == open,
-              onTap: () => _openTab(group?.id),
-              onRename: group == null || widget.onGroupEdited == null
-                  ? null
-                  : () => _editGroup(group),
-              onDelete: group == null || widget.onGroupDeleted == null
-                  ? null
-                  : () => _deleteGroup(group),
-            );
-            return KeyedSubtree(
-              key: ValueKey<String>(
-                'brush-preset-tab-entry-${group?.id.value ?? 'root'}',
-              ),
-              // The root section is not a group and always sorts last, so
-              // only real tabs drag.
-              child: reorderable && group != null
-                  ? ReorderableDragStartListener(index: index, child: tab)
-                  : tab,
-            );
-          },
-        ),
+      // The bar comes from `AppScrollBehavior` now — same widget, same
+      // rules — so asking for one here would only be a second.
+      child: ReorderableListView.builder(
+        key: const ValueKey<String>('brush-preset-tab-rail'),
+        scrollController: _railController,
+        buildDefaultDragHandles: false,
+        itemCount: tabs.length,
+        onReorderStart: (_) => setState(() => _railDragging = true),
+        onReorderEnd: (_) => setState(() => _railDragging = false),
+        onReorderItem: _handleTabReorder,
+        itemBuilder: (context, index) {
+          final group = tabs[index];
+          final tab = _BrushGroupTab(
+            keyValue: 'brush-preset-tab-${group?.id.value ?? 'root'}',
+            label: group?.name ?? _rootSectionLabel,
+            icon: group?.icon,
+            showIcon: _railShowIcon,
+            showName: _railShowName,
+            showTooltip: !_railDragging,
+            onEdit: group == null || widget.onGroupEdited == null
+                ? null
+                : () => _editGroup(group),
+            // The tab wears its group's first brush, so a chalk group
+            // looks chalky and no one has to pick an icon.
+            preview: _firstPresetIn(group?.id),
+            selected: group?.id == open,
+            onTap: () => _openTab(group?.id),
+            onRename: group == null || widget.onGroupEdited == null
+                ? null
+                : () => _editGroup(group),
+            onDelete: group == null || widget.onGroupDeleted == null
+                ? null
+                : () => _deleteGroup(group),
+          );
+          return KeyedSubtree(
+            key: ValueKey<String>(
+              'brush-preset-tab-entry-${group?.id.value ?? 'root'}',
+            ),
+            // The root section is not a group and always sorts last, so
+            // only real tabs drag.
+            child: reorderable && group != null
+                ? ReorderableDragStartListener(index: index, child: tab)
+                : tab,
+          );
+        },
       ),
     );
   }
 
   /// The open tab's brushes.
   Widget _buildList(List<BrushPreset> visible, bool reorderable) {
-    return PanelScrollbar(
-      controller: _scrollController,
-      child: ReorderableListView.builder(
-        key: const ValueKey<String>('brush-preset-list'),
-        scrollController: _scrollController,
-        buildDefaultDragHandles: false,
-        itemCount: visible.length,
-        onReorderStart: (_) => _dragging = true,
-        onReorderEnd: (_) {
-          _dragging = false;
-          _cancelSpring();
-        },
-        onReorderItem: (oldIndex, newIndex) =>
-            _handleReorder(visible, oldIndex, newIndex),
-        itemBuilder: (context, index) {
-          final preset = visible[index];
-          final row = _BrushPresetRow(
-            preset: preset,
-            selected: preset.id == widget.selectedPresetId,
-            onApplied: widget.onPresetApplied,
-            showTipIcon: _showTipIcon,
-            showStrokePreview: _showStrokePreview,
-            showName: _showName,
-          );
-          return KeyedSubtree(
-            key: ValueKey<String>('brush-preset-entry-${preset.id.value}'),
-            child: reorderable
-                ? ReorderableDragStartListener(index: index, child: row)
-                : row,
-          );
-        },
-      ),
+    // Same as the rail above: the app's behaviour is the only bar.
+    return ReorderableListView.builder(
+      key: const ValueKey<String>('brush-preset-list'),
+      scrollController: _scrollController,
+      buildDefaultDragHandles: false,
+      itemCount: visible.length,
+      onReorderStart: (_) => _dragging = true,
+      onReorderEnd: (_) {
+        _dragging = false;
+        _cancelSpring();
+      },
+      onReorderItem: (oldIndex, newIndex) =>
+          _handleReorder(visible, oldIndex, newIndex),
+      itemBuilder: (context, index) {
+        final preset = visible[index];
+        final row = _BrushPresetRow(
+          preset: preset,
+          selected: preset.id == widget.selectedPresetId,
+          onApplied: widget.onPresetApplied,
+          showTipIcon: _showTipIcon,
+          showStrokePreview: _showStrokePreview,
+          showName: _showName,
+        );
+        return KeyedSubtree(
+          key: ValueKey<String>('brush-preset-entry-${preset.id.value}'),
+          child: reorderable
+              ? ReorderableDragStartListener(index: index, child: row)
+              : row,
+        );
+      },
     );
   }
 

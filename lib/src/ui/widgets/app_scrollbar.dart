@@ -348,9 +348,20 @@ class AppControllerScrollbar extends StatefulWidget {
 class _AppControllerScrollbarState extends State<AppControllerScrollbar> {
   bool _attachRetryUsed = false;
 
-  bool get _hasDimensions =>
-      widget.controller.hasClients &&
-      widget.controller.position.hasContentDimensions;
+  /// The controller's position, or null when it is attached to anything
+  /// other than exactly one view.
+  ///
+  /// 🚨`ScrollController.position` ASSERTS on both zero and TWO — and
+  /// `hasClients` only rules out zero. Two scroll views sharing one
+  /// controller (synchronised panes) would have thrown, which stopped
+  /// mattering the moment this bar became something the app hands out
+  /// automatically rather than something a caller chose.
+  ScrollPosition? get _position {
+    final positions = widget.controller.positions;
+    return positions.length == 1 ? positions.first : null;
+  }
+
+  bool get _hasDimensions => _position?.hasContentDimensions ?? false;
 
   @override
   Widget build(BuildContext context) {
@@ -373,8 +384,8 @@ class _AppControllerScrollbarState extends State<AppControllerScrollbar> {
         var viewportExtent = widget.fallbackViewportExtent ?? 0.0;
         var contentExtent = widget.fallbackContentExtent ?? 0.0;
         var offset = 0.0;
-        if (_hasDimensions) {
-          final position = widget.controller.position;
+        final position = _position;
+        if (_hasDimensions && position != null) {
           viewportExtent = position.viewportDimension;
           contentExtent = position.viewportDimension + position.maxScrollExtent;
           offset = position.pixels;
@@ -395,11 +406,12 @@ class _AppControllerScrollbarState extends State<AppControllerScrollbar> {
   }
 
   void _jumpTo(double offset) {
-    if (!_hasDimensions) {
+    final position = _position;
+    if (position == null || !_hasDimensions) {
       return;
     }
     widget.controller.jumpTo(
-      offset.clamp(0.0, widget.controller.position.maxScrollExtent).toDouble(),
+      offset.clamp(0.0, position.maxScrollExtent).toDouble(),
     );
   }
 }
