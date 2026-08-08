@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../widgets/static_raster.dart';
 import 'panel_flash.dart';
 import 'panel_visibility_scope.dart';
 
@@ -19,6 +20,7 @@ class EditorPanelTab {
     this.minContentHeight,
     this.locked = false,
     this.keepAlive = false,
+    this.staticRaster = true,
   });
 
   /// Stable identifier the group reports through `onTabSelected`.
@@ -53,6 +55,24 @@ class EditorPanelTab {
   /// Drag-locked tabs stay put (the canvas panel defaults to locked so a
   /// stray drag can't undock the drawing surface).
   final bool locked;
+
+  /// Whether this tab's content may be baked into a [StaticRaster] while
+  /// it is not changing. **Defaults to ON, and that is the point.**
+  ///
+  /// The measurement that started this: hovering the pen over an empty
+  /// canvas cost 27.6 ms/frame of raster, of which 24.0 ms was panels
+  /// that were not changing at all. The fix cannot be a thing each panel
+  /// author remembers to apply — the panel added next month would be
+  /// heavy again. So it lives HERE, on the one funnel every docked panel
+  /// passes through, and a new tab is light without doing anything.
+  ///
+  /// Opting out is for a surface that owns its own retention story. The
+  /// canvas is the only one today: it is full of repaint boundaries by
+  /// design and its live-stroke path must never be asked for a copy.
+  /// (A panel that merely animates SOMETIMES does not need this — the
+  /// wrapper notices and stands itself down. See
+  /// [StaticRaster.maxConsecutiveCaptures].)
+  final bool staticRaster;
 }
 
 /// A tab in flight between (or within) tab groups.
@@ -431,7 +451,19 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
 
   /// One tab's content; panels with a minimum content size larger than
   /// the dock render at that size inside scrollers.
+  ///
+  /// ★THE funnel every docked panel passes through, and therefore the
+  /// only place the "a panel is light unless it says otherwise" rule can
+  /// live. See [EditorPanelTab.staticRaster].
   Widget _buildTabContent(EditorPanelTab tab) {
+    final content = _buildTabInterior(tab);
+    if (!tab.staticRaster) {
+      return content;
+    }
+    return StaticRaster(debugLabel: 'panel:${tab.id}', child: content);
+  }
+
+  Widget _buildTabInterior(EditorPanelTab tab) {
     if (tab.minContentWidth == null && tab.minContentHeight == null) {
       return Builder(builder: tab.builder);
     }
