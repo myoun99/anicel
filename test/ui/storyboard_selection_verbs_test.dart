@@ -299,13 +299,16 @@ void main() {
       );
 
       session.beginTrackRangeMoveDrag(_seLayerId);
-      // +7 drives [2,5) level with [9,12)'s midpoint: the two swap places,
-      // each carrying the lead-in it owns, so the row's total span holds.
+      // +7 drives [2,5) level with [9,12)'s midpoint: the two TRADE PLACES
+      // (R5 #13). The leading gaps belong to the POSITIONS, so each sound
+      // lands exactly where the other was and the row's span holds. They
+      // used to carry their own lead-in across, which put the second sound
+      // on frame 4 — a place neither of them had been.
       session.updateFrameRangeMoveDrag(frameDelta: 7);
       session.endFrameRangeMoveDrag();
 
-      expect(seLayerOf(session).timeline.keys, [4, 9]);
-      expect(seLayerOf(session).timeline[4]!.frameId, const FrameId('se-two'));
+      expect(seLayerOf(session).timeline.keys, [2, 9]);
+      expect(seLayerOf(session).timeline[2]!.frameId, const FrameId('se-two'));
       expect(seLayerOf(session).timeline[9]!.frameId, const FrameId('se-one'));
     });
 

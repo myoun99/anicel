@@ -151,12 +151,31 @@ BlockRunMoveLayout planBlockRunMove({
     final moving = [for (var i = runStart; i <= runEnd; i += 1) i];
     final others = [for (final other in rest) other.index];
     final order = <int>[...others.take(rank), ...moving, ...others.skip(rank)];
-    // Every gap travels with the block that owns it: the sequence changed
-    // and the timing did not, so the total span is preserved exactly.
+    // THE GAPS STAY WITH THE POSITION, not with the block that arrived
+    // carrying one (R5 #13).
+    //
+    // They used to travel: `[for (final index in order) slots[index]...]`
+    // reads each block's OWN leading gap in the new sequence. The total
+    // span survives that either way — a permutation moves the same numbers
+    // around — but the PLACES do not, and places are what a reorder is
+    // for. A row whose first block sits at frame 19 with eighteen empty
+    // frames ahead of it, and a second block glued to its end, has gaps
+    // 18 and 0; swapping the two carried the 0 to the front and the block
+    // landed on frame 1, with the emptiness pushed between them. Nothing
+    // was lost and nothing was where the user put it.
+    //
+    // Reading the gaps by POSITION makes a swap a swap: each block takes
+    // over the leading space of the slot it moved into, so the two trade
+    // places and everything outside the run holds still. On a row with no
+    // gaps (blocks packed end to end) the two rules agree exactly, which
+    // is why this only ever showed itself at the head of a sparse row.
     return BlockRunMoveLayout(
       slots: slots,
       order: order,
-      leadingGaps: [for (final index in order) slots[index].leadingGap],
+      leadingGaps: [
+        for (var position = 0; position < order.length; position += 1)
+          slots[position].leadingGap,
+      ],
     );
   }
 

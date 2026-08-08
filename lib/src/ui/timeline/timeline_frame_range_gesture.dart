@@ -231,6 +231,10 @@ class _TimelineFrameRangeGestureLayerState
   int _lastFrames = 0;
   int _lastRows = 0;
 
+  /// Whether this press already dropped the range on its DOWN (R5 #12), so
+  /// the release below does not say the same thing a second time.
+  bool _clearedOnDown = false;
+
   int _frameAt(Offset localPosition) {
     final main = widget.axis == Axis.horizontal
         ? localPosition.dx
@@ -356,10 +360,45 @@ class _TimelineFrameRangeGestureLayerState
           if (InputInspector.visible.value) {
             InputInspector.note('tl IN=${event.kind.name}');
           }
+          // R5 #12: a press OUTSIDE the selection drops it HERE, on the
+          // down, not on the release.
+          //
+          // The tap-up clear alone made the same row feel slower than any
+          // other row: pressing a different row drops the range through
+          // the layer select, which is a pointer-DOWN path, while pressing
+          // elsewhere in the same row had to wait for the tap to win an
+          // arena it shares with the pan — and a press that drifts a few
+          // pixels never becomes a tap at all, so the range simply stayed.
+          //
+          // Inside the selection is left alone: that press may be the
+          // start of a MOVE, and a tap that turns out to be only a tap
+          // still clears on the release below.
+          //
+          // DEVICE-GATED to the edit set — the same one the pan below
+          // takes. A finger that owns the scroll must not drop a selection
+          // by starting to scroll over it; its TAP still clears, on the
+          // release, exactly as before (UI-R23 feedback #2's rule, which
+          // an ungated down would have walked straight back through).
+          _clearedOnDown =
+              AppInput.timelineEditPanDevices.contains(event.kind) &&
+              !widget.callbacks.isInSelection(
+                widget.row,
+                _frameAt(event.localPosition),
+              );
+          if (_clearedOnDown) {
+            widget.callbacks.onTapClear(widget.row);
+          }
         },
         child: GestureDetector(
           behavior: HitTestBehavior.translucent,
-          onTapUp: (_) => widget.callbacks.onTapClear(widget.row),
+          // The release still clears for everything the down could not
+          // decide: a press inside the selection that turned out to be a
+          // tap, and the devices the down stands down for.
+          onTapUp: (_) {
+            if (!_clearedOnDown) {
+              widget.callbacks.onTapClear(widget.row);
+            }
+          },
           child: RawGestureDetector(
             // Translucent: the cells' pointer-down select keeps firing;
             // only the pan recognizer competes in the arena. Touch joins
