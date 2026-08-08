@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/ui/widgets/superellipse_clip.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_preset_panel.dart';
 import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
@@ -436,7 +437,7 @@ void main() {
         find
             .ancestor(
               of: find.byType(BrushPresetPanel),
-              matching: find.byType(ClipPath),
+              matching: find.byType(SuperellipseClip),
             )
             .first,
       );
@@ -461,7 +462,7 @@ void main() {
         find
             .ancestor(
               of: find.byType(BrushPresetPanel),
-              matching: find.byType(ClipPath),
+              matching: find.byType(SuperellipseClip),
             )
             .first,
       );
@@ -488,7 +489,7 @@ void main() {
     testWidgets('a panel\'s grips lie ON its own edges, inside its clip — '
         'so the lit edge follows the silhouette', (tester) async {
       // A 5px band cannot carry a 14px corner by itself; being inside the
-      // panel's ClipPath is what makes the hover read as the panel's edge
+      // panel's clip is what makes the hover read as the panel's edge
       // lighting up rather than as a bar parked beside it (유저, R2 #11).
       await pumpApp(tester);
 
@@ -496,7 +497,7 @@ void main() {
         find
             .ancestor(
               of: find.byType(BrushPresetPanel),
-              matching: find.byType(ClipPath),
+              matching: find.byType(SuperellipseClip),
             )
             .first,
       );

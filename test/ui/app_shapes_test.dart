@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/ui/widgets/superellipse_clip.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 
 void main() {
@@ -48,13 +49,19 @@ void main() {
       // The extreme corner is cut away — that is the whole point of having
       // a corner at all.
       expect(path.contains(strip.topLeft), isFalse);
-      expect(path.contains(strip.bottomRight - const Offset(0.5, 0.5)), isFalse);
+      expect(
+        path.contains(strip.bottomRight - const Offset(0.5, 0.5)),
+        isFalse,
+      );
     });
 
     test('a container corner is absolute, not a fraction', () {
       // A panel is not a big button. Were the container family a ratio, the
       // floating timeline at 350px tall would wear a 98px corner.
-      expect(AppShapes.floatingPanelRadius, greaterThan(AppShapes.windowRadius));
+      expect(
+        AppShapes.floatingPanelRadius,
+        greaterThan(AppShapes.windowRadius),
+      );
       expect(AppShapes.windowRadius, greaterThan(AppShapes.wellRadius));
       expect(
         AppShapes.floatingPanelRadius,
@@ -93,10 +100,8 @@ void main() {
                   ),
                   // The "floating panel".
                   Positioned.fill(
-                    child: ClipPath(
-                      clipper: AppShapes.clipper(
-                        AppShapes.container(radius),
-                      ),
+                    child: SuperellipseClip(
+                      shape: AppShapes.container(radius),
                       child: GestureDetector(
                         behavior: HitTestBehavior.opaque,
                         onTap: () => hits.add('panel'),
@@ -110,7 +115,7 @@ void main() {
         ),
       );
 
-      final panel = tester.getRect(find.byType(ClipPath));
+      final panel = tester.getRect(find.byType(SuperellipseClip));
 
       await tester.tapAt(panel.center);
       expect(hits, ['panel'], reason: 'the body of the panel takes its taps');
@@ -119,11 +124,9 @@ void main() {
       // Two pixels in from the extreme corner: outside the superellipse, so
       // the tap belongs to whatever the panel is lying on.
       await tester.tapAt(panel.topLeft + const Offset(2, 2));
-      expect(
-        hits,
-        ['below'],
-        reason: 'the cut-away corner must fall through to the canvas',
-      );
+      expect(hits, [
+        'below',
+      ], reason: 'the cut-away corner must fall through to the canvas');
 
       hits.clear();
       await tester.tapAt(panel.bottomRight - const Offset(2, 2));

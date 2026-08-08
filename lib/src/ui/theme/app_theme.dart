@@ -172,17 +172,25 @@ abstract final class AppShapes {
     BorderSide side = BorderSide.none,
   }) => RoundedSuperellipseBorder(borderRadius: radius, side: side);
 
-  /// The clipper for [shape].
+  /// ⛔There is no clipper here any more — clip with `SuperellipseClip`.
   ///
-  /// Clipping a superellipse goes through [ShapeBorderClipper] and NOT
-  /// through `ClipRSuperellipse`: that widget's `hitTest` asks only
-  /// `outerRect.contains()`, so the four corners it visibly cut away still
-  /// swallow pointers — a floating panel drawn that way eats strokes in a
-  /// square of empty canvas at each corner. `ContinuousRectangleBorder` is
-  /// out for a different reason: it is not a superellipse at all, it is a
-  /// squircle-ish approximation that reads as a lozenge.
-  static ShapeBorderClipper clipper(RoundedSuperellipseBorder shape) =>
-      ShapeBorderClipper(shape: shape);
+  /// It used to be `ShapeBorderClipper` inside a `ClipPath`, chosen over
+  /// `ClipRSuperellipse` because that widget's `hitTest` asks only
+  /// `outerRect.contains()`, so the four corners it visibly cuts away
+  /// still swallow pointers — a floating panel drawn that way eats
+  /// strokes in a square of empty canvas at each corner. That reasoning
+  /// is intact and `SuperellipseClip` keeps it, by asking
+  /// `RSuperellipse.contains`, which is exact.
+  ///
+  /// What it does NOT keep is the `Path`: `pushClipPath` shifts the path
+  /// by the paint offset, allocating a fresh `Path` — and therefore a
+  /// fresh generation id, and therefore a clip-mask cache miss — on every
+  /// single paint, at every clip site, forever. The engine's superellipse
+  /// op takes a value instead.
+  ///
+  /// (`ContinuousRectangleBorder` remains out for its own reason: it is
+  /// not a superellipse at all, it is a squircle-ish approximation that
+  /// reads as a lozenge.)
 }
 
 /// Every popup menu opens INSTANTLY (R4 #2): Material's default grow +

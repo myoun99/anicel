@@ -57,6 +57,7 @@ import 'panels/workspace_layout_store.dart';
 import 'panels/workspace_panels_menu.dart';
 import 'widgets/app_scrollbar.dart';
 import 'widgets/static_raster.dart';
+import 'widgets/superellipse_clip.dart';
 import 'keyed_keep_alive_stack.dart';
 import 'sliced_value_listenable_builder.dart';
 import 'conte/conte_fonts.dart';
@@ -2482,10 +2483,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           // cannot carry a 14px corner by itself (유저, R2 #11).
           Widget group(int i) {
             final railId = open[i];
-            return ClipPath(
-              clipper: AppShapes.clipper(
-                AppShapes.container(AppShapes.floatingPanelRadius),
-              ),
+            return SuperellipseClip(
+              shape: AppShapes.container(AppShapes.floatingPanelRadius),
               child: Stack(
                 children: [
                   Positioned.fill(
@@ -2915,11 +2914,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           side: const BorderSide(color: AppColors.backdrop),
         ),
       ),
-      child: ClipPath(
+      child: SuperellipseClip(
         key: const ValueKey<String>('floating-bottom-region'),
-        clipper: AppShapes.clipper(
-          _floatingBottomShape(inset: inset, onTop: onTop),
-        ),
+        shape: _floatingBottomShape(inset: inset, onTop: onTop),
         // The height is the layout's to hand out now (see
         // [_bottomDockHeight]); the region just fills what it is given.
         //
