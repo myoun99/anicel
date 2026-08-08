@@ -290,6 +290,62 @@ void main() {
       expect(selectedFrameIndex, 2);
     });
   });
+
+  // R5 #12. Dropping the range on the RELEASE made the same row feel
+  // slower than every other row — pressing a DIFFERENT row drops it
+  // through the layer select, which is a pointer-DOWN path — and a press
+  // that drifted a few pixels never became a tap at all, so it stayed.
+  group('a press drops the range on the down', () {
+    Future<(List<TimelineRowAddress>, TestGesture)> press(
+      WidgetTester tester, {
+      required bool inSelection,
+    }) async {
+      final cleared = <TimelineRowAddress>[];
+      await tester.pumpWidget(
+        _body(
+          layers: [_layer('a')],
+          rangeGesture: TimelineRangeGestureCallbacks(
+            isInSelection: (_, _) => inSelection,
+            onSelectUpdate: (_, _, _, _) {},
+            onTapClear: cleared.add,
+            onMoveBegin: (_, _) => false,
+            onMoveUpdate: (_, _) {},
+            onMoveEnd: () {},
+            onMoveCancel: () {},
+          ),
+        ),
+      );
+      final box = tester.getRect(
+        _stableKeyFinder('timeline-range-gesture-slot-a'),
+      );
+      final pointer = await tester.startGesture(
+        box.center,
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pump();
+      return (cleared, pointer);
+    }
+
+    testWidgets('outside the selection: cleared before the finger lifts', (
+      tester,
+    ) async {
+      final (cleared, pointer) = await press(tester, inSelection: false);
+      expect(cleared, isNotEmpty);
+      await pointer.up();
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('inside it: left alone, because that press may be a MOVE', (
+      tester,
+    ) async {
+      final (cleared, pointer) = await press(tester, inSelection: true);
+      expect(cleared, isEmpty);
+      // A press that turns out to be only a tap still clears on release.
+      await pointer.up();
+      await tester.pumpAndSettle();
+      expect(cleared, isNotEmpty);
+    });
+  });
 }
 
 Finder get _bodyFinder =>

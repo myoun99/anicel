@@ -103,11 +103,13 @@ void main() {
       expect(plan.sourceAfter.timeline.length, 2);
     });
 
-    test('reaching past the neighbour\'s midpoint REORDERS instead, and '
-        'every gap travels with the block that owns it', () {
+    test('reaching past the neighbour\'s midpoint REORDERS instead, and the '
+        'two blocks TRADE PLACES (R5 #13)', () {
       // a[0,2) b[3,5) c[6,8). Dragging a three right puts its own midpoint
-      // level with b's, so a lands after b. b keeps the one-frame lead-in
-      // it owns — now measured from frame 0 — and c never moves.
+      // level with b's, so a lands where b was — and b lands where a was.
+      // The leading gaps belong to the POSITIONS, so the pair swaps and c
+      // never moves. (They used to travel with their block, which put b at
+      // 1: neither where a had been nor where b had been.)
       final layer = layerWith(
         'a',
         {
@@ -128,7 +130,7 @@ void main() {
       expect(plan, isNotNull);
       final timeline = plan!.sourceAfter.timeline;
       expect(plan.destinationStartIndex, 3);
-      expect(timeline[1]!.frameId, const FrameId('a-f2'));
+      expect(timeline[0]!.frameId, const FrameId('a-f2'));
       expect(timeline[3]!.frameId, const FrameId('a-f1'));
       expect(timeline[6]!.frameId, const FrameId('a-f3'));
       expect(timeline.length, 3);
@@ -136,7 +138,7 @@ void main() {
 
     test('a far drag is a reorder, not a landing in the space beyond', () {
       // Rightward: a dragged well past b does not park in the empty space
-      // out there — it becomes the SECOND block, keeping its own lead-in.
+      // out there — it takes b's place, and b takes a's.
       final rightward = layerWith(
         'a',
         {
@@ -152,14 +154,16 @@ void main() {
         frameDelta: 8,
       );
       expect(right, isNotNull);
-      // b carries its three-frame lead-in to the front; a follows flush.
+      // A clean exchange: a moves to 5 where b was, b to 0 where a was.
       expect(right!.destinationStartIndex, 5);
-      expect(right.sourceAfter.timeline[3]!.frameId, const FrameId('a-f2'));
+      expect(right.sourceAfter.timeline[0]!.frameId, const FrameId('a-f2'));
       expect(right.sourceAfter.timeline[5]!.frameId, const FrameId('a-f1'));
       expect(right.sourceAfter.timeline.length, 2);
 
-      // Leftward reads the same way: b becomes the FIRST block with its own
-      // two-frame lead-in, and a follows with the four it owns.
+      // Leftward reads the same way, which is the case the user hit: with
+      // eighteen empty frames ahead of the pair, carrying the gaps along
+      // dropped the dragged block onto the head of the row instead of into
+      // its neighbour's place.
       final leftward = layerWith(
         'a',
         {
@@ -175,10 +179,46 @@ void main() {
         frameDelta: -7,
       );
       expect(left, isNotNull);
-      expect(left!.destinationStartIndex, 2);
-      expect(left.sourceAfter.timeline[2]!.frameId, const FrameId('a-f2'));
+      expect(left!.destinationStartIndex, 4);
+      expect(left.sourceAfter.timeline[4]!.frameId, const FrameId('a-f2'));
       expect(left.sourceAfter.timeline[8]!.frameId, const FrameId('a-f1'));
       expect(left.sourceAfter.timeline.length, 2);
+    });
+
+    test('R5 #13: the user\'s row — an empty head in front of the pair no '
+        'longer swallows the block being dragged', () {
+      // Two blocks at the far end of a row that is empty in front of them,
+      // which is where the old rule showed itself: the second block's own
+      // leading gap is 0, so carrying it to the front parked the block on
+      // frame 0 and pushed the eighteen empty frames BETWEEN the two.
+      final layer = layerWith(
+        'a',
+        {
+          18: const TimelineExposure.drawing(FrameId('a-f1'), length: 3),
+          21: const TimelineExposure.drawing(FrameId('a-f2'), length: 3),
+        },
+        frameIds: ['a-f1', 'a-f2'],
+      );
+
+      final plan = planDrawingBlockMove(
+        source: layer,
+        target: layer,
+        blockStartIndex: 21,
+        // Past its neighbour's midpoint, which is what asks for a reorder;
+        // -3 alone lands exactly ON it and the rule keeps the order.
+        frameDelta: -4,
+      );
+
+      expect(plan, isNotNull);
+      final timeline = plan!.sourceAfter.timeline;
+      expect(plan.destinationStartIndex, 18);
+      expect(timeline[18]!.frameId, const FrameId('a-f2'));
+      expect(timeline[21]!.frameId, const FrameId('a-f1'));
+      expect(
+        timeline.length,
+        2,
+        reason: 'the pair trades places and the empty head stays a head',
+      );
     });
 
     test('a row with no gaps has no free space, so every move is a reorder '

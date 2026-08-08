@@ -10,6 +10,8 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
+import 'package:anicel/src/models/timeline_frame_range.dart'
+    show TimelineFrameRangeSelection;
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -254,6 +256,28 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(cellRing), findsOneWidget);
       expect(find.byKey(laneMark), findsNothing);
+    });
+
+    testWidgets('R5 #12: standing on a property drops the CELL range — even '
+        'on the layer it was drawn on', (tester) async {
+      await _pump(tester);
+      await _openLanes(tester);
+      final session = _sessionOf(tester);
+      session.selectLayer(_cameraLayerId);
+      session.frameRangeSelection.value = const TimelineFrameRangeSelection(
+        layerId: _cameraLayerId,
+        startIndex: 1,
+        endIndexExclusive: 4,
+      );
+      await tester.pumpAndSettle();
+
+      await _pressLaneName(tester, 'position', 'Position');
+      expect(
+        session.frameRangeSelection.value,
+        isNull,
+        reason: 'the layer-select path keeps a range whose LAYER has not '
+            'changed, and the row it belongs to had changed anyway',
+      );
     });
 
     testWidgets('R5 #20: the value readouts share ONE right edge, whatever '
