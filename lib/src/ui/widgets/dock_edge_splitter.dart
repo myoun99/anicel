@@ -8,7 +8,25 @@ import '../theme/app_theme.dart';
 /// splitter: the layer rails use it too (the rail-window round), which is
 /// why it lives beside the other shared widgets instead of inside the dock
 /// host. [onDragDelta] receives the raw pointer delta along the splitter's
-/// axis; the owner applies the sign for which side grows.
+/// axis; the owner applies the sign for which side grows and REPORTS BACK
+/// how much of it actually moved the edge.
+///
+/// ★THE SPLITTER HOLDS THE TRAVEL ITS OWNER COULD NOT USE (유저, R4 #13:
+/// 왼쪽 끝까지 이동하고 돌아갈 때, 커서가 스플리터까지 오고 나서 오른쪽으로
+/// 가야 이동되는 게 맞는데 지금은 바로 오른쪽으로 이동해버려서 어긋난다).
+///
+/// Every owner clamps. Push an edge past its floor and the surplus was
+/// simply dropped, so the return trip began at the first pixel back and the
+/// edge ran out ahead of the hand for the rest of the drag. The cure is not
+/// per-owner memory — it was tried that way, and only the ONE owner that
+/// remembered got it (R3 #2's detent fix, which is this same defect wearing
+/// a magnet instead of a wall). Unusable travel is a fact about the DRAG,
+/// so the drag keeps it: what the owner refuses accumulates here and must
+/// be paid back before the edge moves again.
+///
+/// The contract is therefore: **return the delta you actually applied.**
+/// An owner that returns the delta it was handed opts out and behaves as
+/// this widget always did.
 ///
 /// THE SPLITTER IS THE PANEL'S OWN EDGE, LIT. It paints nothing at rest and
 /// fills its whole [thickness] when the pointer arrives, climbing the same
@@ -43,7 +61,13 @@ class DockEdgeSplitter extends StatefulWidget {
   /// [Axis.vertical] separates side-by-side areas (drag left-right);
   /// [Axis.horizontal] separates stacked ones (drag up-down).
   final Axis axis;
-  final ValueChanged<double> onDragDelta;
+
+  /// Applies one frame of travel and returns HOW MUCH OF IT WAS USED.
+  ///
+  /// Returning less than it was given (because a floor, a ceiling or a
+  /// detent got in the way) parks the difference in the drag, where the
+  /// next frame in the opposite direction has to spend it first.
+  final double Function(double delta) onDragDelta;
 
   /// The drag's BOUNDARIES, for owners that accumulate across it.
   ///
@@ -70,6 +94,21 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
   bool _hovered = false;
   bool _dragging = false;
 
+  /// Travel the owner could not use, in pointer pixels, signed.
+  ///
+  /// It is the distance the hand has run past the edge — so it is also
+  /// exactly the distance the hand must come back before the edge is
+  /// entitled to move, which is what makes the return trip line up.
+  double _owed = 0;
+
+  void _applyDelta(double delta) {
+    final wanted = _owed + delta;
+    // A debt of the SAME sign as the new travel is the hand going further
+    // out; it is not repaid by going further out.
+    final used = widget.onDragDelta(wanted);
+    _owed = wanted - used;
+  }
+
   Color get _lineColor {
     if (_dragging) {
       return AppColors.accent;
@@ -85,6 +124,10 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
       return;
     }
     setState(() => _dragging = value);
+    // The debt belongs to ONE drag. Carrying it into the next one would
+    // make a fresh grab start dead — the hand would have to pay off travel
+    // it never made.
+    _owed = 0;
     if (value) {
       widget.onDragStart?.call();
     } else {
@@ -108,14 +151,14 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
         onHorizontalDragEnd: vertical ? (_) => _setDragging(false) : null,
         onHorizontalDragCancel: vertical ? () => _setDragging(false) : null,
         onHorizontalDragUpdate: vertical
-            ? (details) => widget.onDragDelta(details.delta.dx)
+            ? (details) => _applyDelta(details.delta.dx)
             : null,
         onVerticalDragStart: vertical ? null : (_) => _setDragging(true),
         onVerticalDragEnd: vertical ? null : (_) => _setDragging(false),
         onVerticalDragCancel: vertical ? null : () => _setDragging(false),
         onVerticalDragUpdate: vertical
             ? null
-            : (details) => widget.onDragDelta(details.delta.dy),
+            : (details) => _applyDelta(details.delta.dy),
         child: SizedBox(
           width: vertical ? DockEdgeSplitter.thickness : null,
           height: vertical ? null : DockEdgeSplitter.thickness,

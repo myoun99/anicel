@@ -106,7 +106,13 @@ class LayerRailExtent extends ValueNotifier<double?> {
   }
 
   /// Applies one splitter drag frame; positive [delta] grows the rail.
-  void resizeBy(
+  ///
+  /// Returns the part of [delta] the rail actually took. The rest is travel
+  /// spent pushing against the floor or the ceiling, and [DockEdgeSplitter]
+  /// holds it so the hand has to come back to the edge before the edge
+  /// moves (유저, R4 #13: 커서가 스플리터까지 가고 나서 오른쪽으로 가야
+  /// 이동되는 게 맞는데 지금은 바로 오른쪽으로 이동해버린다).
+  double resizeBy(
     double delta, {
     required double naturalExtent,
     double? availableExtent,
@@ -124,6 +130,7 @@ class LayerRailExtent extends ValueNotifier<double?> {
       floor = math.min(floor, ceiling);
     }
     final next = (current + delta).clamp(floor, ceiling).toDouble();
+    final used = next - current;
     if (next != value) {
       value = next;
       // A wider window has less room to be pushed into: without this the
@@ -135,6 +142,7 @@ class LayerRailExtent extends ValueNotifier<double?> {
         availableExtent: availableExtent,
       );
     }
+    return used;
   }
 
   /// Pushes the window to [next], clamped to what the rail can give.
