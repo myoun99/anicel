@@ -114,9 +114,15 @@ void main() {
     final throughNested = <String>[];
     for (final entry in _byLabel(tester).entries) {
       if (entry.value.debugNestedBoundary) {
-        throughNested.add(entry.key);
+        throughNested.add(
+          '${entry.key}\n      ${entry.value.debugNestedBoundaryPath}',
+        );
       } else if (entry.value.captureCount > 0) {
-        baked.add(entry.key);
+        final size = entry.value.size;
+        baked.add(
+          '${entry.key} '
+          '(${size.width.round()}x${size.height.round()})',
+        );
       }
     }
     baked.sort();

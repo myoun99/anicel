@@ -180,6 +180,16 @@ class RenderStaticRaster extends RenderProxyBox {
   bool get debugNestedBoundary => _nestedBoundary;
   bool _nestedBoundary = false;
 
+  /// WHICH boundary stood the bake down, and where it sits.
+  ///
+  /// Without this the failure is a bare "paints through" and finding the
+  /// cause means grepping a panel's whole subtree for `RepaintBoundary`
+  /// — and the ones that bite are usually not written by hand at all
+  /// (`ListView`/`ReorderableListView` wrap every item in one by
+  /// default). Naming the render object turns a search into a reading.
+  String? get debugNestedBoundaryPath => _nestedBoundaryPath;
+  String? _nestedBoundaryPath;
+
   /// True when the surface has been changing every frame and the
   /// wrapper has stood itself down.
   bool get debugStoodDown => _streak >= _maxConsecutiveCaptures;
@@ -329,32 +339,47 @@ class RenderStaticRaster extends RenderProxyBox {
   }
 
   bool _childHasRepaintBoundary() {
+    _nestedBoundaryPath = null;
     final start = child;
     if (start == null) {
       return false;
     }
     if (start.isRepaintBoundary) {
+      _nestedBoundaryPath = start.runtimeType.toString();
       return true;
     }
-    var found = false;
+    final trail = <RenderObject>[];
+    RenderObject? found;
     void walk(RenderObject node) {
-      if (found) {
+      if (found != null) {
         return;
       }
       node.visitChildren((RenderObject descendant) {
-        if (found) {
+        if (found != null) {
           return;
         }
         if (descendant.isRepaintBoundary) {
-          found = true;
+          found = descendant;
           return;
         }
+        trail.add(descendant);
         walk(descendant);
+        if (found == null) {
+          trail.removeLast();
+        }
       });
     }
 
     walk(start);
-    return found;
+    if (found == null) {
+      return false;
+    }
+    _nestedBoundaryPath = <String>[
+      start.runtimeType.toString(),
+      for (final node in trail) node.runtimeType.toString(),
+      found.runtimeType.toString(),
+    ].join(' > ');
+    return true;
   }
 
   @override

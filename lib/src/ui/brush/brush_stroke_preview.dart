@@ -87,46 +87,59 @@ class _BrushStrokePreviewState extends State<BrushStrokePreview> {
   @override
   Widget build(BuildContext context) {
     final devicePixelRatio = MediaQuery.devicePixelRatioOf(context);
-    return RepaintBoundary(
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final width = constraints.maxWidth.isFinite
-              ? constraints.maxWidth.floor()
-              : 160;
-          final height = constraints.maxHeight.isFinite
-              ? constraints.maxHeight.floor()
-              : 28;
-          if (width <= 0 || height <= 0) {
-            return const SizedBox.shrink();
-          }
-          // Raster at physical resolution so hidpi rows stay crisp.
-          final rasterWidth = (width * devicePixelRatio).round();
-          final rasterHeight = (height * devicePixelRatio).round();
-          _resolve(rasterWidth, rasterHeight);
-          final image = _image;
-          if (image == null ||
-              _imageSettings != widget.settings ||
-              _imageWidth != rasterWidth ||
-              _imageHeight != rasterHeight) {
-            // The sample pops in when its raster lands; the box holds the
-            // row's layout meanwhile.
-            return SizedBox(width: width.toDouble(), height: height.toDouble());
-          }
-          return ColorFiltered(
-            colorFilter: ColorFilter.mode(
-              Theme.of(context).colorScheme.onSurface,
-              BlendMode.srcIn,
-            ),
-            child: RawImage(
-              image: image,
-              width: width.toDouble(),
-              height: height.toDouble(),
-              fit: BoxFit.fill,
-              filterQuality: FilterQuality.low,
-            ),
-          );
-        },
-      ),
+    // ⛔No `RepaintBoundary` here either, for the same reason as
+    // [BrushTipPreview]: the row is isolated by the panel-level bake,
+    // and a boundary inside a bake forces the bake to paint through.
+    // The row is static between preset edits anyway — the raster it
+    // shows is cached in `BrushStrokePreviewCache`.
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final width = constraints.maxWidth.isFinite
+            ? constraints.maxWidth.floor()
+            : 160;
+        final height = constraints.maxHeight.isFinite
+            ? constraints.maxHeight.floor()
+            : 28;
+        if (width <= 0 || height <= 0) {
+          return const SizedBox.shrink();
+        }
+        // Raster at physical resolution so hidpi rows stay crisp.
+        final rasterWidth = (width * devicePixelRatio).round();
+        final rasterHeight = (height * devicePixelRatio).round();
+        _resolve(rasterWidth, rasterHeight);
+        final image = _image;
+        if (image == null ||
+            _imageSettings != widget.settings ||
+            _imageWidth != rasterWidth ||
+            _imageHeight != rasterHeight) {
+          // The sample pops in when its raster lands; the box holds the
+          // row's layout meanwhile.
+          return SizedBox(width: width.toDouble(), height: height.toDouble());
+        }
+        // ⛔NOT `ColorFiltered`, which is the same tint at a wildly
+        // different price. That widget is a `ColorFilterLayer`, and
+        // `pushColorFilter` has no `needsCompositing` gate the way the
+        // clips do — so it is a GUARANTEED offscreen bind and resolve,
+        // once per row, on every frame the app produces. The preset
+        // list measured 7.4 ms/frame with four rows visible while
+        // nothing on screen was changing; that is 1.85 ms a row, which
+        // is render-target-switch money, not drawing money.
+        //
+        // `RawImage`'s own colour is the identical `ColorFilter.mode`
+        // (rendering/image.dart) set on the `drawImageRect` paint, and
+        // allocates no layer at all. The premultiplied-white contract
+        // the raster is built under (see BrushStrokePreviewCache) is
+        // what makes srcIn mean the same thing either way.
+        return RawImage(
+          image: image,
+          width: width.toDouble(),
+          height: height.toDouble(),
+          fit: BoxFit.fill,
+          filterQuality: FilterQuality.low,
+          color: Theme.of(context).colorScheme.onSurface,
+          colorBlendMode: BlendMode.srcIn,
+        );
+      },
     );
   }
 }
