@@ -2602,10 +2602,35 @@ class _CanvasEditorPanelShell extends StatelessWidget {
         Positioned.fill(
           child: ColoredBox(color: colorScheme.surfaceContainerLowest),
         ),
+        // ★THE CANVAS IS ITS OWN LAYER, and the shell's furniture is
+        // another. This is where a cursor move's repaint stops.
+        //
+        // The deck round put the artwork behind a boundary so the cursor
+        // could not re-record IT, and that held — but paint still climbed
+        // out of the viewport once per move and re-recorded the floor, the
+        // two panbar capsules and the pill. A boundary INSIDE the viewport
+        // (between the ClipRect and the deck) was tried first and appeared
+        // to do nothing, so it was removed and the remainder written off as
+        // unexplained.
+        //
+        // 🚨It appeared to do nothing because the metric saturates: a
+        // counting painter rises at most once per frame no matter how many
+        // descendants dirtied, so with two sources above it, muting one
+        // changes nothing that can be seen. Bisecting with a second
+        // boundary OUTSIDE the panel located the real stopping point —
+        // here, one level above everything the viewport owns. With this,
+        // the inner one is genuinely redundant and stays gone.
+        //
+        // What it costs: the canvas composites into its own layer. That is
+        // what it is FOR — the shell above and the artwork below now change
+        // independently, which is the honest description of their
+        // relationship.
         Positioned.fill(
-          child: KeyedSubtree(
-            key: const ValueKey<String>('canvas-editor-panel-content'),
-            child: child,
+          child: RepaintBoundary(
+            child: KeyedSubtree(
+              key: const ValueKey<String>('canvas-editor-panel-content'),
+              child: child,
+            ),
           ),
         ),
         // THE PANBARS ARE FURNITURE — but furniture in a room, not in the

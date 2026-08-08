@@ -157,25 +157,25 @@ void main() {
         reason: 'a cursor move must not re-record the artwork',
       );
 
-      // ⚠️AND WHAT IS STILL TRUE, written down rather than asserted away:
-      // paint DOES still escalate above the viewport, once per move. The
-      // chrome painter here stands in for the shell floor and the floating
-      // capsules, and it re-records.
+      // AND THE SHELL ABOVE IT. This used to climb once per move and the
+      // first attempt to stop it — a boundary around the viewport, between
+      // the ClipRect and the deck — changed the count NOT AT ALL, so it was
+      // removed and the remainder written down as unexplained.
       //
-      // A `RepaintBoundary` around the whole viewport was written to stop
-      // exactly that and then removed, because the count was IDENTICAL with
-      // and without it (measured: 3 → 11 either way). The mechanism is not
-      // understood; what is understood is that the expensive half — the
-      // layer stack, the paper, the ghosts, the group buffers — is now
-      // behind a boundary and does not move at all.
+      // 🚨The measurement was the thing at fault, not the boundary. This
+      // counter rises AT MOST ONCE PER FRAME however many descendants
+      // dirtied, so with two independent sources above the artwork, muting
+      // one is invisible: 8 either way. Bisecting with a SECOND boundary
+      // outside the panel found where it actually stops — the shell's
+      // content slot, one level above everything the viewport owns.
       //
-      // This is deliberately a `greaterThanOrEqualTo` and not a silence: it
-      // documents the remainder without pretending it is zero, and it will
-      // stop being a lie the day someone finds it.
+      // ⚠️The lesson is the counter's, not the tree's: a saturating metric
+      // cannot measure a partial fix. It can only ever say "still nonzero".
       expect(
         chromePaints[0],
-        greaterThanOrEqualTo(chromeBefore),
-        reason: 'the chrome above the viewport still re-records per move',
+        chromeBefore,
+        reason: 'nor may it escalate into the shell — the floor, the '
+            'panbar capsules and the pill all live above this',
       );
 
       // ALIVE — and the cursor still followed, so "it stopped moving" is
