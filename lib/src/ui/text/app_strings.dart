@@ -468,6 +468,12 @@ class AppStrings {
   String get tlMoveLayerDown => _s('tlMoveLayerDown');
   String get tlDropIntoFolderTemplate => _s('tlDropIntoFolderTemplate');
   String get tlDropOutOfFolder => _s('tlDropOutOfFolder');
+  String get tlDropAttachSyncedTemplate => _s('tlDropAttachSyncedTemplate');
+  String get tlDropAttachFreeTemplate => _s('tlDropAttachFreeTemplate');
+  String get tlDropDetachAttach => _s('tlDropDetachAttach');
+  String get tlAttachToLayerAbove => _s('tlAttachToLayerAbove');
+  String get tlAttachToLayerBelow => _s('tlAttachToLayerBelow');
+  String get tlDetachLayer => _s('tlDetachLayer');
   String get tlCopyFrame => _s('tlCopyFrame');
   String get tlPasteLinkedFrame => _s('tlPasteLinkedFrame');
   String get tlDeleteCell => _s('tlDeleteCell');
@@ -1378,6 +1384,12 @@ class AppStrings {
     'tlMoveLayerDown': 'Move down one',
     'tlDropIntoFolderTemplate': 'into {name}',
     'tlDropOutOfFolder': 'out of the folder',
+    'tlDropAttachSyncedTemplate': 'attach to {name} (synced)',
+    'tlDropAttachFreeTemplate': 'attach to {name} (free)',
+    'tlDropDetachAttach': 'detach',
+    'tlAttachToLayerAbove': 'Attach to the layer above',
+    'tlAttachToLayerBelow': 'Attach to the layer below',
+    'tlDetachLayer': 'Detach from base',
     'tlCopyFrame': 'Copy frame',
     'tlPasteLinkedFrame': 'Paste linked frame',
     'tlDeleteCell': 'Delete',
@@ -2076,6 +2088,12 @@ class AppStrings {
     'tlMoveLayerDown': 'ひとつ下へ',
     'tlDropIntoFolderTemplate': '{name} の中へ',
     'tlDropOutOfFolder': 'フォルダの外へ',
+    'tlDropAttachSyncedTemplate': '{name} に付属（同期）',
+    'tlDropAttachFreeTemplate': '{name} に付属（フリー）',
+    'tlDropDetachAttach': '付属を解除',
+    'tlAttachToLayerAbove': '上のレイヤーに付属させる',
+    'tlAttachToLayerBelow': '下のレイヤーに付属させる',
+    'tlDetachLayer': '付属を解除',
     'tlCopyFrame': 'フレームをコピー',
     'tlPasteLinkedFrame': 'リンクフレームを貼り付け',
     'tlDeleteCell': '削除',
@@ -2770,6 +2788,12 @@ class AppStrings {
     'tlMoveLayerDown': '아래로 한 칸',
     'tlDropIntoFolderTemplate': '{name} 안으로',
     'tlDropOutOfFolder': '폴더 밖으로',
+    'tlDropAttachSyncedTemplate': '{name}에 장착 (동기)',
+    'tlDropAttachFreeTemplate': '{name}에 장착 (프리)',
+    'tlDropDetachAttach': '어태치 해제',
+    'tlAttachToLayerAbove': '위 레이어에 장착',
+    'tlAttachToLayerBelow': '아래 레이어에 장착',
+    'tlDetachLayer': '어태치 해제',
     'tlCopyFrame': '프레임 복사',
     'tlPasteLinkedFrame': '링크 프레임 붙여넣기',
     'tlDeleteCell': '삭제',
@@ -3499,6 +3523,12 @@ class AppStrings {
     'tlMoveLayerDown': "Descendre d'un cran",
     'tlDropIntoFolderTemplate': 'dans {name}',
     'tlDropOutOfFolder': 'hors du dossier',
+    'tlDropAttachSyncedTemplate': 'attacher à {name} (synchronisé)',
+    'tlDropAttachFreeTemplate': 'attacher à {name} (libre)',
+    'tlDropDetachAttach': 'détacher',
+    'tlAttachToLayerAbove': 'Attacher au calque du dessus',
+    'tlAttachToLayerBelow': 'Attacher au calque du dessous',
+    'tlDetachLayer': 'Détacher de la base',
     'tlCopyFrame': "Copier l'image",
     'tlPasteLinkedFrame': "Coller l'image liée",
     'tlDeleteCell': 'Supprimer',
@@ -4166,6 +4196,12 @@ class AppStrings {
     'tlMoveLayerDown': '下移一层',
     'tlDropIntoFolderTemplate': '移入 {name}',
     'tlDropOutOfFolder': '移出文件夹',
+    'tlDropAttachSyncedTemplate': '附属到 {name}（同步）',
+    'tlDropAttachFreeTemplate': '附属到 {name}（自由）',
+    'tlDropDetachAttach': '解除附属',
+    'tlAttachToLayerAbove': '附属到上方图层',
+    'tlAttachToLayerBelow': '附属到下方图层',
+    'tlDetachLayer': '解除附属',
     'tlCopyFrame': '复制帧',
     'tlPasteLinkedFrame': '粘贴链接帧',
     'tlDeleteCell': '删除',

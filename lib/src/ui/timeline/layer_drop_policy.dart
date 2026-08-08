@@ -17,9 +17,15 @@
 ///   A drop that would split a folder's run, mix an attach organizer with
 ///   ordinary rows, or make a cycle is refused by the same rule that refuses
 ///   it everywhere else, so this file invents no rule of its own.
+/// * **What it ATTACHES and DETACHES** (P3). A slot strictly inside an
+///   attach group means "ride this base"; leaving the group means "stop
+///   riding it". See [_slotInsideGroup] for why those two tests are not the
+///   same interval.
 library;
 
+import '../../models/attached_layer_mount.dart';
 import '../../models/attached_layer_resolve.dart';
+import '../../models/attached_placement.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart' show EffectId;
 import '../../models/layer_folder.dart';
@@ -36,6 +42,7 @@ class LayerDropPlan {
     required this.order,
     required this.folderIds,
     required this.joinedFolderId,
+    this.attach = const LayerAttachDrop(),
   });
 
   /// The cut's layers, bottom → top, after the move.
@@ -48,6 +55,11 @@ class LayerDropPlan {
   /// The folder the run lands INSIDE, for the caret's label ("이 폴더 안으로")
   /// — null at top level.
   final LayerId? joinedFolderId;
+
+  /// The attach relationships this landing makes and breaks — the part of a
+  /// drop that changes what a row IS rather than where it sits, and the part
+  /// the caret has to say out loud before the release.
+  final LayerAttachDrop attach;
 }
 
 /// The contiguous stack slice a drag on [movingId] carries.
@@ -188,14 +200,100 @@ LayerDropPlan? resolveLayerDrop({
         if (layer.folderId != joinedFolderId) layer.id: joinedFolderId,
   };
 
+  // ATTACH (P3): the run's OWN group first — a row already inside one keeps
+  // its base while the landing still touches the group, which is what makes
+  // re-ordering within a group an ordinary move. An ORGANIZER folder answers
+  // its base here too, so a 공정 folder can be repositioned inside its group.
+  final runGroupBase =
+      moving.attachedToLayerId ?? attachOrganizerBaseOf(moving, stack);
+  final keepsOwnGroup =
+      runGroupBase != null &&
+      _slotTouchesGroup(rest, restInsertAt, runGroupBase);
+  // Then the group the slot is strictly INSIDE, which can only be another
+  // one (a slot touching this run's own group answered above).
+  final insideGroup = keepsOwnGroup
+      ? null
+      : _slotInsideGroup(rest, restInsertAt, ownBase: runGroupBase);
+
+  // Staying in the group still has a DIRECTION: crossing the base's picture
+  // turns an above row into a below one (the same rule an organizer folder
+  // reads off the stack). Nothing else about the attachment moves.
+  ({LayerId layerId, AttachedPlacement placement})? sideChange;
+  if (keepsOwnGroup && moving.attachedToLayerId == runGroupBase) {
+    final side = _slotSideOfBase(rest, restInsertAt, runGroupBase);
+    if (side != null && side != moving.attachedPlacement) {
+      sideChange = (layerId: moving.id, placement: side);
+    }
+  }
+
+  ({LayerId layerId, LayerId baseId, AttachedPlacement placement})? mount;
+  if (insideGroup != null) {
+    final base = stack.firstWhere((layer) => layer.id == insideGroup.baseId);
+    final single = run.endExclusive - run.start == 1;
+    // No nesting: a row that carries attaches of its own is a base, and a
+    // base inside another group would make the relation chain.
+    final carriesAttaches = stack.any(
+      (other) => other.attachedToLayerId == moving.id,
+    );
+    if (!single ||
+        carriesAttaches ||
+        !canMountLayerOnBase(row: moving, base: base)) {
+      // The slice cannot join this group, and letting it land there anyway
+      // would split a group that is unsplittable (R26 #36). The edges of the
+      // group are still open, so "next to it" stays reachable.
+      return null;
+    }
+    mount = (
+      layerId: moving.id,
+      baseId: insideGroup.baseId,
+      placement: insideGroup.placement,
+    );
+  }
+
+  // DETACH is the same question asked of every attach row that TRAVELS: its
+  // base did not come along, and the landing no longer touches its group
+  // (user 2026-08-07: dragging an attach row out detaches it rather than
+  // refusing the drag). One rule covers the row the pointer held and the
+  // rows carried inside an organizer folder.
+  final detachIds = <LayerId>{
+    for (final layer in carried)
+      if (layer.attachedToLayerId != null &&
+          !carriedIds.contains(layer.attachedToLayerId) &&
+          mount?.layerId != layer.id &&
+          !_slotTouchesGroup(rest, restInsertAt, layer.attachedToLayerId!))
+        layer.id,
+  };
+
+  final attach = LayerAttachDrop(
+    mount: mount,
+    sideChange: sideChange,
+    detachIds: detachIds,
+  );
+  Layer settled(Layer layer) {
+    var next = folderIds.containsKey(layer.id)
+        ? layer.copyWith(folderId: folderIds[layer.id])
+        : layer;
+    if (mount != null && layer.id == mount.layerId) {
+      next = next.copyWith(
+        attachedToLayerId: mount.baseId,
+        attachedPlacement: mount.placement,
+      );
+    } else if (sideChange != null && layer.id == sideChange.layerId) {
+      next = next.copyWith(attachedPlacement: sideChange.placement);
+    } else if (detachIds.contains(layer.id)) {
+      next = next.copyWith(attachedToLayerId: null);
+    }
+    return next;
+  }
+
   final placed = [
     ...rest.sublist(0, restInsertAt),
-    for (final layer in carried)
-      folderIds.containsKey(layer.id)
-          ? layer.copyWith(folderId: folderIds[layer.id])
-          : layer,
+    for (final layer in carried) settled(layer),
     ...rest.sublist(restInsertAt),
   ];
+  // Validated WITH the attach change applied: dropping a plain row among a
+  // 공정 organizer's members is legal precisely because it becomes one of
+  // that base's attach rows, and the validator has to see that to agree.
   if (folderStructureProblem(placed) != null) {
     return null;
   }
@@ -203,7 +301,144 @@ LayerDropPlan? resolveLayerDrop({
     order: [for (final layer in placed) layer.id],
     folderIds: folderIds,
     joinedFolderId: joinedFolderId,
+    attach: attach,
   );
+}
+
+/// Where a row has to LAND for a MENU detach — the placement half of "어태치
+/// 해제", or null when clearing the pointer is the whole edit.
+///
+/// A detached row left INSIDE its old group's run would cut that run in two:
+/// the group span is derived by CONTIGUITY, so every attach row past the
+/// detached one would silently fall out of its own group (its `addAttach`
+/// insertions, its unlink slice, its drag run all read the shorter span).
+/// The row therefore steps just past the group's outer edge on the side it
+/// was already on — the shortest move that keeps the run whole.
+///
+/// The 공정 ORGANIZER folder is the second reason to move: its identity is
+/// "nothing but one base's attach rows", so a detached row left inside one
+/// makes the folder quietly stop being an organizer, bringing back the fx
+/// lanes and the arrow it exists to suppress.
+///
+/// Null when neither applies — the outermost row on its side, in no
+/// organizer. Then nothing has to move, and nothing does.
+int? detachLandingIndex(List<Layer> stack, LayerId layerId) {
+  final index = stack.indexWhere((layer) => layer.id == layerId);
+  if (index < 0) {
+    return null;
+  }
+  final baseId = stack[index].attachedToLayerId;
+  final baseIndex = baseId == null
+      ? -1
+      : stack.indexWhere((layer) => layer.id == baseId);
+  if (baseId == null || baseIndex < 0) {
+    return null; // Not attached, or a dangling link: no group to step out of.
+  }
+  final organizer = stack.folderById(stack[index].folderId);
+  final inOrganizer =
+      organizer != null && attachOrganizerBaseOf(organizer, stack) == baseId;
+  if (index > baseIndex) {
+    final groupEnd = attachedGroupEndIndex(baseId, stack);
+    return !inOrganizer && index == groupEnd - 1 ? null : groupEnd;
+  }
+  final groupStart = attachedGroupStartIndex(baseId, stack);
+  return !inOrganizer && index == groupStart ? null : groupStart;
+}
+
+/// The attach group [row] belongs to, named by its base — what a slot's
+/// neighbours answer with.
+///
+/// [ownBase] is the base of the row being DRAGGED: while its only attach row
+/// is off the list, the base row would otherwise stop reading as a base and
+/// a lone attach row could not be moved from above its base to below it.
+LayerId? _groupBaseOfRow(List<Layer> stack, Layer row, {LayerId? ownBase}) {
+  final attached = row.attachedToLayerId;
+  if (attached != null) {
+    return attached;
+  }
+  final organizer = attachOrganizerBaseOf(row, stack);
+  if (organizer != null) {
+    return organizer;
+  }
+  if (row.id == ownBase ||
+      stack.any((other) => other.attachedToLayerId == row.id)) {
+    return row.id;
+  }
+  return null;
+}
+
+/// The group the slot at [insertAt] sits STRICTLY INSIDE — both neighbours
+/// in the same group — with the side of the base it lands on.
+///
+/// Strictly inside is what MAKES an attach, and the strictness is the whole
+/// safety of it: the slots at a group's two outer edges stay ordinary moves,
+/// so a row can always be placed next to a group without joining it, and
+/// passing above or below one commits nothing. The price is that a base with
+/// no attach rows yet has no inner slot at all — mounting the FIRST one is
+/// the Layer menu's job ("위/아래 레이어에 장착"), the same way an empty
+/// folder cannot be entered by stepping.
+({LayerId baseId, AttachedPlacement placement})? _slotInsideGroup(
+  List<Layer> rest,
+  int insertAt, {
+  LayerId? ownBase,
+}) {
+  if (insertAt <= 0 || insertAt >= rest.length) {
+    return null;
+  }
+  final below = _groupBaseOfRow(rest, rest[insertAt - 1], ownBase: ownBase);
+  final above = _groupBaseOfRow(rest, rest[insertAt], ownBase: ownBase);
+  if (below == null || below != above) {
+    return null;
+  }
+  final baseIndex = rest.indexWhere((layer) => layer.id == below);
+  if (baseIndex < 0) {
+    return null;
+  }
+  // Above or below the BASE's picture, read off the stack the way an
+  // organizer folder's arrow already reads it.
+  return (
+    baseId: below,
+    placement: insertAt > baseIndex
+        ? AttachedPlacement.above
+        : AttachedPlacement.below,
+  );
+}
+
+/// Which side of [baseId]'s picture the slot at [insertAt] lands on, or null
+/// when that base is not in [rest] to be measured against.
+AttachedPlacement? _slotSideOfBase(
+  List<Layer> rest,
+  int insertAt,
+  LayerId baseId,
+) {
+  final baseIndex = rest.indexWhere((layer) => layer.id == baseId);
+  if (baseIndex < 0) {
+    return null;
+  }
+  return insertAt > baseIndex
+      ? AttachedPlacement.above
+      : AttachedPlacement.below;
+}
+
+/// Whether the slot at [insertAt] still TOUCHES [baseId]'s group — inside it
+/// or at either edge.
+///
+/// The closed interval, where [_slotInsideGroup] is open, and for one
+/// reason: a row that is already in the group keeps its membership at the
+/// edges (dragging the topmost attach row one place up is a re-order, not a
+/// detach), while a row from outside has to be put clearly INSIDE before it
+/// joins.
+bool _slotTouchesGroup(List<Layer> rest, int insertAt, LayerId baseId) {
+  final below = insertAt > 0
+      ? _groupBaseOfRow(rest, rest[insertAt - 1], ownBase: baseId)
+      : null;
+  if (below == baseId) {
+    return true;
+  }
+  final above = insertAt < rest.length
+      ? _groupBaseOfRow(rest, rest[insertAt], ownBase: baseId)
+      : null;
+  return above == baseId;
 }
 
 /// The gap [steps] away from the item at [index].

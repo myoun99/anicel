@@ -34,6 +34,7 @@ import '../controllers/active_cut_helpers.dart';
 import '../controllers/editing_session_state.dart';
 import '../controllers/layer_controller.dart';
 import '../controllers/timeline_controller.dart';
+import '../models/attached_layer_mount.dart';
 import '../models/attached_layer_resolve.dart';
 import '../models/attached_mode.dart';
 import '../models/attached_placement.dart';
@@ -168,6 +169,7 @@ import 'timeline/instruction_span_editing.dart';
 import 'timeline/layer_drop_policy.dart'
     show
         LayerDropPlan,
+        detachLandingIndex,
         layerDragRun,
         modelInsertionForSlot,
         resolveEffectDrop,
@@ -3783,6 +3785,137 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  // --- 장착·분리 by MENU (P3) --------------------------------------------
+  //
+  // The drag makes an attach by dropping a row strictly INSIDE a group, and
+  // that leaves one thing it cannot do: a base with no attach rows yet has no
+  // inside. These two verbs are that door — "the row next to me" is an
+  // unambiguous target, so no picker is needed — and they land on the same
+  // policy and the same command the drag uses.
+
+  /// The base the active row could mount onto by menu: its immediate stack
+  /// neighbour, [above] naming which side. Null when that row cannot be a
+  /// base, when the active row cannot ride one, or when the structure would
+  /// not survive it.
+  ///
+  /// Immediate neighbour ONLY, and that is what keeps the group contiguous
+  /// without moving anything: the row is already touching the base.
+  Layer? attachNeighbourForActiveLayer({required bool above}) {
+    final cut = activeCutOrNull;
+    final row = activeLayer;
+    if (cut == null || row == null) {
+      return null;
+    }
+    final index = cut.layers.indexWhere((layer) => layer.id == row.id);
+    final at = index + (above ? 1 : -1);
+    if (index < 0 || at < 0 || at >= cut.layers.length) {
+      return null;
+    }
+    final base = cut.layers[at];
+    if (!canMountLayerOnBase(row: row, base: base) ||
+        cut.layers.any((other) => other.attachedToLayerId == row.id)) {
+      return null; // No nesting: a row with attaches of its own is a base.
+    }
+    if (row.attachedToLayerId == base.id) {
+      // Already riding this one — the entry would promise something new and
+      // do nothing but re-decide the mode.
+      return null;
+    }
+    // The validator answers whether the result is a legal structure (a folder
+    // boundary between the two, an organizer that would stop being pure)
+    // instead of this verb keeping a second list of rules.
+    final placement = above
+        ? AttachedPlacement.below
+        : AttachedPlacement.above;
+    final proposed = [
+      for (final layer in cut.layers)
+        if (layer.id == row.id)
+          layer.copyWith(
+            attachedToLayerId: base.id,
+            attachedPlacement: placement,
+          )
+        else
+          layer,
+    ];
+    return folderStructureProblem(proposed) == null ? base : null;
+  }
+
+  /// Mounts the active row on the neighbour [attachNeighbourForActiveLayer]
+  /// names. The MODE (synced/free) is the coordinator's answer across every
+  /// 겸용 use — never this verb's.
+  void attachActiveLayerToNeighbour({required bool above}) {
+    final cut = activeCutOrNull;
+    final row = activeLayer;
+    final base = attachNeighbourForActiveLayer(above: above);
+    if (cut == null || row == null || base == null) {
+      return;
+    }
+    _cutCommandCoordinator.setLayerAttachment(
+      cutId: cut.id,
+      attach: LayerAttachDrop(
+        mount: (
+          layerId: row.id,
+          baseId: base.id,
+          placement: above
+              ? AttachedPlacement.below
+              : AttachedPlacement.above,
+        ),
+      ),
+      description: 'Attach layer',
+    );
+    _refreshAfterCutCommand(preferredActiveLayerId: row.id);
+    notifyListeners();
+  }
+
+  bool get canDetachActiveLayer =>
+      activeLayer != null && isAttachedLayer(activeLayer!);
+
+  /// 어태치 해제: the active row stops riding its base.
+  ///
+  /// The row also STEPS OUT of the group when it has to
+  /// ([detachLandingIndex]) — a detached row left inside the run would cut
+  /// the group in two. The move and the detach are one undo step: the menu
+  /// named one intent.
+  void detachActiveLayer() {
+    final cut = activeCutOrNull;
+    final row = activeLayer;
+    if (cut == null || row == null || !isAttachedLayer(row)) {
+      return;
+    }
+    final attach = LayerAttachDrop(detachIds: {row.id});
+    final landing = detachLandingIndex(cut.layers, row.id);
+    final plan = landing == null
+        ? null
+        : resolveLayerDrop(
+            stack: cut.layers,
+            movingId: row.id,
+            insertAt: landing,
+          );
+    if (plan == null) {
+      _cutCommandCoordinator.setLayerAttachment(
+        cutId: cut.id,
+        attach: attach,
+        description: 'Detach layer',
+      );
+    } else {
+      // The MENU says the row is leaving; the drop policy supplies the
+      // geometry (order + membership) for the landing. Its own edge rule —
+      // where a DRAG keeps the attachment — is deliberately overridden here,
+      // because a drag's own travel is what says "still in the group" and a
+      // menu item has no travel.
+      _cutCommandCoordinator.setLayerPlacement(
+        cutId: cut.id,
+        order: plan.order,
+        folderIds: plan.folderIds,
+        movedIds: {row.id},
+        attach: attach,
+        description: 'Detach layer',
+      );
+    }
+    _refreshAfterCutCommand(preferredActiveLayerId: row.id);
+    notifyListeners();
+  }
+
   /// Selects the CUT's row — the active layer, which is the drawing target
   /// and what the timeline's rail highlights. It does not touch the
   /// storyboard rail's own [selectedRow]: the two row selections are
@@ -3933,6 +4066,9 @@ class EditorSessionManager extends ChangeNotifier {
         for (final layer in cut.layers.sublist(run.start, run.endExclusive))
           layer.id,
       },
+      // A step lands where a drop would, so it makes and breaks the same
+      // attach relationships — the two verbs share one policy on purpose.
+      attach: plan.attach,
       description: 'Move layer',
     );
     _refreshAfterCutCommand(preferredActiveLayerId: layerId);
@@ -4051,34 +4187,59 @@ class EditorSessionManager extends ChangeNotifier {
       subject: subject,
       caretSlot: slot,
       legal: plan != null,
-      joinLabel: _rowDropJoinLabel(cut.layers, subject.layerId, plan),
+      joinLabel: _rowDropLabel(cut.id, cut.layers, subject.layerId, plan),
     );
   }
 
-  /// The folder a drop would put the row INTO, named — or null when the
-  /// drop only re-orders. Membership is the part of a drop that outlives
-  /// the gesture, so it is the part the caret spells out.
-  String? _rowDropJoinLabel(
+  /// What the drop would DO beyond re-ordering, named — or null when it only
+  /// re-orders. The parts of a drop that outlive the gesture are the parts
+  /// the caret spells out, and it says them in order of how much they change:
+  /// becoming an attach row, ceasing to be one, then folder membership.
+  String? _rowDropLabel(
+    CutId cutId,
     List<Layer> stack,
     LayerId movingId,
     LayerDropPlan? plan,
   ) {
-    if (plan == null || !plan.folderIds.containsKey(movingId)) {
+    if (plan == null) {
+      return null;
+    }
+    final mount = plan.attach.mount;
+    if (mount != null) {
+      final base = stack.byId(mount.baseId);
+      final mode = _cutCommandCoordinator.mountModeFor(
+        cutId: cutId,
+        layerId: mount.layerId,
+        baseId: mount.baseId,
+      );
+      // SYNCED and FREE are different promises about the row's timing, so
+      // the caret names which one rather than just "attach".
+      final template = mode == AttachedMode.synced
+          ? AppText.strings.tlDropAttachSyncedTemplate
+          : AppText.strings.tlDropAttachFreeTemplate;
+      return base == null
+          ? null
+          : template.replaceAll('{name}', base.name);
+    }
+    // A folder carried out of a group detaches its MEMBERS, not the row the
+    // pointer holds, so the question is whether anything detaches at all.
+    if (plan.attach.detachIds.isNotEmpty) {
+      return AppText.strings.tlDropDetachAttach;
+    }
+    if (!plan.folderIds.containsKey(movingId)) {
       return null;
     }
     final joined = plan.joinedFolderId;
     if (joined == null) {
       return AppText.strings.tlDropOutOfFolder;
     }
-    for (final layer in stack) {
-      if (layer.id == joined) {
-        return AppText.strings.tlDropIntoFolderTemplate.replaceAll(
-          '{name}',
-          layer.name,
-        );
-      }
-    }
-    return null;
+    final folder = stack.byId(joined);
+    return folder == null
+        ? null
+        : AppText.strings.tlDropIntoFolderTemplate.replaceAll(
+            '{name}',
+            folder.name,
+          );
   }
 
   void endLayerRowDrag() {
@@ -4134,6 +4295,9 @@ class EditorSessionManager extends ChangeNotifier {
         for (final layer in cut.layers.sublist(run.start, run.endExclusive))
           layer.id,
       },
+      // What the caret promised: the move AND the attach change it named,
+      // as one undo step because it was one gesture.
+      attach: plan.attach,
       description: 'Move layer',
     );
     _refreshAfterCutCommand(preferredActiveLayerId: subject.layerId);

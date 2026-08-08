@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/attached_mode.dart';
+import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_camera.dart';
@@ -15,6 +17,7 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/text/app_strings.dart';
 
 /// The row-order drag, driven as a real gesture: the rail row IS the
 /// handle, the caret says where the row would land, and the release commits
@@ -55,19 +58,66 @@ Project _project() {
   );
 }
 
+/// The same stack with an attach GROUP in the middle: `over` rides `base`,
+/// so the slot between them is the group's INSIDE.
+Project _groupProject() {
+  return Project(
+    id: const ProjectId('drag-project'),
+    name: 'Drag Project',
+    createdAt: DateTime.utc(2026, 8, 8),
+    tracks: [
+      Track(
+        id: const TrackId('drag-track'),
+        name: 'Video Track',
+        cuts: [
+          Cut(
+            id: const CutId('drag-cut'),
+            name: 'Drag Cut',
+            duration: 12,
+            canvasSize: const CanvasSize(width: 1280, height: 720),
+            camera: CutCamera.empty(),
+            layers: [
+              Layer(id: const LayerId('a'), name: 'A', frames: const []),
+              Layer(id: const LayerId('base'), name: 'B', frames: const []),
+              Layer(
+                id: const LayerId('over'),
+                name: 'B+1',
+                frames: const [],
+                attachedToLayerId: const LayerId('base'),
+              ),
+              Layer(id: const LayerId('c'), name: 'C', frames: const []),
+              Layer(
+                id: const LayerId('cam'),
+                name: 'Camera',
+                kind: LayerKind.camera,
+                frames: const [],
+              ),
+            ],
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
 EditorSessionManager _sessionOf(WidgetTester tester) =>
     tester.widget<EditorWorkspace>(find.byType(EditorWorkspace)).session;
+
+Layer _layerOf(EditorSessionManager session, String id) => session
+    .requireActiveCut
+    .layers
+    .firstWhere((layer) => layer.id == LayerId(id));
 
 List<String> _order(EditorSessionManager session) => [
   for (final layer in session.requireActiveCut.layers)
     if (layer.kind == LayerKind.animation) layer.id.value,
 ];
 
-Future<void> _pump(WidgetTester tester) async {
+Future<void> _pump(WidgetTester tester, {Project? project}) async {
   await tester.binding.setSurfaceSize(const Size(1280, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
-    MaterialApp(home: HomePage(initialProject: _project())),
+    MaterialApp(home: HomePage(initialProject: project ?? _project())),
   );
   await tester.pumpAndSettle();
   await tester.drag(
@@ -207,6 +257,77 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(_order(session), ['b', 'a', 'c']);
+  });
+
+  testWidgets('dropping a row INSIDE an attach group mounts it, and the '
+      'caret says so before the release', (tester) async {
+    await _pump(tester, project: _groupProject());
+    final session = _sessionOf(tester);
+    expect(_layerOf(session, 'c').attachedToLayerId, isNull);
+
+    // The rail runs top-down C, B+1, B, A — one row of downward travel puts
+    // C's caret between B and B+1, which is the group's inside.
+    final row = _railRow('c');
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    final gesture = await tester.startGesture(tester.getCenter(row));
+    await tester.pump(const Duration(milliseconds: 16));
+    await gesture.moveBy(const Offset(0, 28));
+    await tester.pump();
+
+    // Both rows are empty, so the two shapes agree: this will be SYNCED, and
+    // the caret is where the promise is made.
+    expect(
+      find.text(
+        AppText.strings.tlDropAttachSyncedTemplate.replaceAll('{name}', 'B'),
+      ),
+      findsOneWidget,
+    );
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    final mounted = _layerOf(session, 'c');
+    expect(mounted.attachedToLayerId, const LayerId('base'));
+    expect(mounted.attachedPlacement, AttachedPlacement.above);
+    expect(mounted.attachedMode, AttachedMode.synced);
+
+    session.undo();
+    await tester.pumpAndSettle();
+    expect(_layerOf(session, 'c').attachedToLayerId, isNull);
+  });
+
+  testWidgets('dragging an attach row clear of its group detaches it', (
+    tester,
+  ) async {
+    await _pump(tester, project: _groupProject());
+    final session = _sessionOf(tester);
+
+    // One row of upward travel takes B+1 past C — clear of the group, and
+    // still inside the drawing section (the camera row is the next boundary,
+    // and no drawing row may cross it).
+    final row = _railRow('over');
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    final gesture = await tester.startGesture(tester.getCenter(row));
+    await tester.pump(const Duration(milliseconds: 16));
+    await gesture.moveBy(const Offset(0, -28));
+    await tester.pump();
+    expect(find.text(AppText.strings.tlDropDetachAttach), findsOneWidget);
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(_order(session), ['a', 'base', 'c', 'over']);
+    expect(_layerOf(session, 'over').attachedToLayerId, isNull);
+
+    session.undo();
+    await tester.pumpAndSettle();
+    expect(_order(session), ['a', 'base', 'over', 'c']);
+    expect(
+      _layerOf(session, 'over').attachedToLayerId,
+      const LayerId('base'),
+      reason: 'one gesture, one undo — the move and the detach together',
+    );
   });
 
   testWidgets('the drag is one undo', (tester) async {
