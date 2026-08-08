@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
+import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
@@ -649,6 +650,146 @@ void main() {
         layerRailLeadingCells(axis: Axis.vertical, includeSectionSlot: false),
         hasLength(layerRailLeadingCells(axis: Axis.vertical).length - 1),
       );
+    });
+  });
+
+  // R5 #17. The accent OUTLINE on the selected column outlived its twin:
+  // the rail rows dropped theirs in UI-R18 #5 ("selection speaks through
+  // the background alone") and the sheet kept drawing one, at a louder
+  // fill besides. Two ways of saying one thing is the whole shape of this
+  // round.
+  testWidgets('the selected column reads by BACKGROUND alone, at the rail\'s '
+      'own wash', (tester) async {
+    await tester.pumpWidget(_grid());
+    await tester.pumpAndSettle();
+    final scheme = Theme.of(
+      tester.element(find.byType(Scaffold).first),
+    ).colorScheme;
+
+    BoxDecoration decoOf(String id) =>
+        tester
+                .widget<Container>(
+                  find
+                      .descendant(
+                        of: find.byKey(
+                          ValueKey<String>('xsheet-layer-header-$id'),
+                        ),
+                        matching: find.byType(Container),
+                      )
+                      .first,
+                )
+                .decoration!
+            as BoxDecoration;
+
+    final active = decoOf('layer-1');
+    final resting = decoOf('layer-2');
+
+    expect(
+      active.color,
+      Color.alphaBlend(
+        railSelectedRowColor(scheme),
+        scheme.surfaceContainerHighest,
+      ),
+      reason: 'the same wash the rail rows wear, resolved against this '
+          'surface so the column stays opaque',
+    );
+    expect(resting.color, scheme.surfaceContainerHighest);
+    expect(
+      active.border,
+      resting.border,
+      reason: 'the borders are CONSTANT — the selected column no longer '
+          'draws an accent one',
+    );
+    expect((active.border! as Border).right.color, scheme.outlineVariant);
+  });
+
+  // R5 #2. The sheet already HID what the fold sets say — it reads them
+  // through the same `buildTimelineDisplayRows` the rail does — but it
+  // carried no control to say it with, so a folder could only be folded
+  // from the other panel. A column that shows a fold has to offer it.
+  group('the fold twirl reaches the sheet', () {
+    Widget gridWithFolder({
+      required ValueChanged<LayerId> onToggleCollapsed,
+      bool collapsed = false,
+    }) {
+      final cursor = ValueNotifier<int>(0);
+      final folder = createFolderLayer(
+        id: const LayerId('f'),
+        name: 'F',
+      ).copyWith(collapsed: collapsed);
+      final member = _layer(
+        'member',
+        'A',
+      ).copyWith(folderId: const LayerId('f'));
+      return MaterialApp(
+        home: Scaffold(
+          body: SizedBox(
+            width: 900,
+            height: 900,
+            child: XSheetTimelineGrid(
+              layers: [folder, member],
+              activeLayerId: const LayerId('member'),
+              frameCursor: cursor,
+              frameCount: 8,
+              exposureStateForLayer: (_, _) =>
+                  TimelineCellExposureState.uncovered,
+              onSelectLayer: (_) {},
+              onSelectFrame: (_) {},
+              onAddLayer: () {},
+              onToggleLayerVisibility: (_) {},
+              onLayerOpacityChanged: (_, _) {},
+              onToggleLayerTimesheet: (_) {},
+              onLayerMarkSelected: (_, _) {},
+              onToggleLayerCollapsed: onToggleCollapsed,
+            ),
+          ),
+        ),
+      );
+    }
+
+    testWidgets('a folder column carries it and commits; a plain column '
+        'does not', (tester) async {
+      final folded = <LayerId>[];
+      await tester.pumpWidget(gridWithFolder(onToggleCollapsed: folded.add));
+
+      expect(
+        find.byKey(const ValueKey<String>('xsheet-folder-twirl-f')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const ValueKey<String>('xsheet-folder-twirl-member')),
+        findsNothing,
+        reason: 'only a row that holds other rows has a fold',
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey<String>('xsheet-folder-twirl-f')),
+      );
+      await tester.pump();
+      expect(folded, [const LayerId('f')]);
+    });
+
+    testWidgets('the glyph reads the fold, through the shared twirl table', (
+      tester,
+    ) async {
+      Future<IconData> glyph({required bool collapsed}) async {
+        await tester.pumpWidget(
+          gridWithFolder(onToggleCollapsed: (_) {}, collapsed: collapsed),
+        );
+        return tester
+            .widget<Icon>(
+              find.descendant(
+                of: find.byKey(
+                  const ValueKey<String>('xsheet-folder-twirl-f'),
+                ),
+                matching: find.byType(Icon),
+              ),
+            )
+            .icon!;
+      }
+
+      expect(await glyph(collapsed: false), layerRailTwirlIcon(expanded: true));
+      expect(await glyph(collapsed: true), layerRailTwirlIcon(expanded: false));
     });
   });
 }

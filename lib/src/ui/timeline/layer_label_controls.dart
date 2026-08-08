@@ -170,6 +170,18 @@ const double layerOpacitySlotWidth = 42;
 /// slot, immediately right of the opacity bar, per the user's placement.
 const double layerBlendSlotWidth = 58;
 
+/// A property lane's VALUE readout — a real column, like every other slot
+/// on this rail (R5 #20).
+///
+/// It used to be an `Expanded` beside a `Flexible` label, which is not a
+/// column at all: two flex children of weight 1 split the leftover in half,
+/// so the value's right edge sat at the middle of whatever the label did
+/// not use — and what the label uses is its NAME. `Anchor Point` and
+/// `Position` therefore parked their numbers at different x on adjacent
+/// rows. The alignment was never the problem; there was nothing to align
+/// to.
+const double layerLaneValueSlotWidth = 80;
+
 /// The per-layer onion-skin toggle column (UI-R17 #5, TVPaint style).
 const double layerOnionSlotWidth = 22;
 const double layerControlChipGap = 4;
@@ -635,6 +647,31 @@ class LayerAttachArrowCell extends StatelessWidget {
               ),
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+/// The FOLDER-NESTING arrow (R5 #18): the ↳ a row inside a folder draws in
+/// the last of its indent cells, saying it hangs off the folder above it.
+///
+/// The same glyph as [LayerAttachArrowCell]'s down-side, deliberately —
+/// both answer "what is this row attached to", one for a folder and one for
+/// a base, and they never appear on the same row.
+class LayerNestingArrowCell extends StatelessWidget {
+  const LayerNestingArrowCell({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    return Center(
+      child: ExcludeSemantics(
+        child: Icon(
+          Icons.subdirectory_arrow_right,
+          size: 14,
+          color: Theme.of(
+            context,
+          ).colorScheme.onSurfaceVariant.withValues(alpha: 0.55),
         ),
       ),
     );

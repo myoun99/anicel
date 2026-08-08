@@ -182,6 +182,7 @@ import 'timeline/layer_row_drag.dart'
         LayerRowDragSubject,
         LayerRowSubject;
 import 'timeline/property_lane_model.dart' show folderAggregateRuns;
+import 'timeline/timeline_current_row.dart' show currentRowIsInsideGroup;
 import 'timeline/layer_label_controls.dart' show layerKindShowsBlendControl;
 import 'timeline/layer_timeline_display_adapter.dart'
     show horizontalLayerDisplayOrder;
@@ -960,6 +961,36 @@ class EditorSessionManager extends ChangeNotifier {
     currentRowListenable.value = currentRow;
   }
 
+  /// THE FOLD LAW (R5 #11): what disappears never keeps the selection.
+  /// Folding something you are standing INSIDE hands the standing row to
+  /// whatever swallowed it.
+  ///
+  /// Two folds already obeyed this, each in its own place and its own
+  /// words — a folder taking the selection off a member
+  /// ([toggleLayerCollapsed], R27 #24) and an attach base taking it off an
+  /// attach row (the workspace's group fold, UI-R24 #4). The fx twirl and
+  /// the lane-GROUP twirl did not, so closing a Transform group left you
+  /// standing on a row that was no longer on screen, and the canvas went on
+  /// refusing strokes for a lane nobody could see. Four folds, one rule,
+  /// one place.
+  ///
+  /// [laneId] null means the whole twirl-down is closing (every lane of the
+  /// layer goes), so the LAYER's own row is what swallows it. A non-null
+  /// [laneId] is a GROUP header closing, and it swallows its members alone
+  /// — the header itself stays on screen and is where you land.
+  void handOffCurrentRowOnFold(LayerId layerId, {String? laneId}) {
+    final row = currentRow;
+    if (laneId == null) {
+      if (row is LaneRowAddress && row.layerId == layerId) {
+        selectLayer(layerId);
+      }
+      return;
+    }
+    if (currentRowIsInsideGroup(row, layerId, laneId)) {
+      selectRow(LaneRowAddress(layerId, laneId));
+    }
+  }
+
   /// THE selected row of the STORYBOARD's rail — exactly ONE, whichever row
   /// was picked, the way the timeline has exactly one selected layer row.
   ///
@@ -1237,7 +1268,22 @@ class EditorSessionManager extends ChangeNotifier {
   /// Layer INSTANCE, and a folder's own instance does not move when a
   /// member is edited. Same union ⇒ the same clone back, so nothing
   /// re-records; a changed union ⇒ a new instance, so everything does.
-  final Map<LayerId, ({List<({int start, int endExclusive})> runs, Layer band})>
+  ///
+  /// R5 #2: the key is the union AND the folder itself. The union alone was
+  /// a cache key for the BAND, and the band is what this was written for —
+  /// but the clone the rails render is the whole ROW, so every folder field
+  /// that is not an exposure rode a key that could not see it change.
+  /// Collapsing a folder, renaming it, picking a blend, flipping its eye:
+  /// none of those move a member's exposure, so `listEquals` said "same"
+  /// and handed back the clone from BEFORE the edit, forever. The rail row
+  /// memo then compared that stale clone's fields and skipped its rebuild,
+  /// which is why the twirl and the blend chip read as dead controls.
+  /// A cache that stands in for a value must key on everything that value
+  /// carries, not on the part it was built to summarise.
+  final Map<
+    LayerId,
+    ({List<({int start, int endExclusive})> runs, Layer source, Layer band})
+  >
   _folderBandCache = {};
 
   /// The stack the cache was filled from — a different stack identity means
@@ -1261,11 +1307,17 @@ class EditorSessionManager extends ChangeNotifier {
       _folderBandMembers[layer.id] = members;
       final runs = folderAggregateRuns(members);
       final cached = _folderBandCache[layer.id];
-      if (cached != null && listEquals(cached.runs, runs)) {
+      // The FOLDER's own instance is half the key: the repository hands back
+      // the same instance while nothing about the folder changed, and a new
+      // one the moment anything did.
+      if (cached != null &&
+          identical(cached.source, layer) &&
+          listEquals(cached.runs, runs)) {
         continue;
       }
       _folderBandCache[layer.id] = (
         runs: runs,
+        source: layer,
         band: layer.copyWith(
           timeline: {
             for (final run in runs)
