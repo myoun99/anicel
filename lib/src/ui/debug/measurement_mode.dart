@@ -16,10 +16,20 @@ import 'package:flutter/foundation.dart';
 /// that is not there, which has already cost one round.
 abstract final class MeasurementMode {
   /// Flutter's frame-timing overlay (Settings ▸ Frame Timing Overlay): two
-  /// graphs over the app, the UI thread (build/layout/paint — the Dart
-  /// work) above the RASTER thread (turning the recorded picture into
-  /// pixels). Each bar is a frame; the line across them is the display's
+  /// graphs over the app. Each bar is a frame; the line across them is the
   /// frame budget, so bars crossing it are the jank.
+  ///
+  /// 🚨WHICH GRAPH IS WHICH — this comment had it BACKWARDS, and getting it
+  /// backwards means reading GPU jank as Dart jank and fixing the wrong
+  /// thread:
+  ///
+  ///  * TOP    = the RASTER thread. Replaying the recorded picture into
+  ///             pixels: uploads, shaders, `saveLayer` offscreens.
+  ///  * BOTTOM = the UI thread. Dart — build, layout and paint, where
+  ///             "paint" RECORDS commands and touches no pixel at all.
+  ///
+  /// ⚠️Each graph is LABELLED on screen. Read the label, not the position —
+  /// this file has already been wrong about the position once.
   ///
   /// Read it while DOING the thing — Flutter renders on demand, so an
   /// idle app sitting at 0fps is not a finding. What it is for: the three
