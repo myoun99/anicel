@@ -706,9 +706,24 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // R10: a lane band is a place you can STAND. The
                     // storyboard's strips run on the GLOBAL axis, so the
                     // frame the tap reports is a global one.
+                    //
+                    // R5 #9: and it STANDS there. This used to seek and
+                    // stop, so pressing a member's frame cell lit nothing
+                    // here while the same press on the timeline moved the
+                    // subject — the rail label was the only half of
+                    // "stand" this panel had.
+                    //
+                    // ⛔`selectLayer` is deliberately absent, unlike the
+                    // timeline's twin: a V row's lanes hang off a SYNTHETIC
+                    // carrier id (the track's transform substrate), and
+                    // handing that to the layer selection would name a
+                    // layer that does not exist. The label press next door
+                    // has always taken this shape for the same reason;
+                    // what the BAND adds over it is the seek.
                     onTapAt: (layerId, laneId, globalFrame) {
                       _session.clearLaneRangeSelection();
                       _session.selectGlobalFrame(globalFrame);
+                      _session.selectRow(LaneRowAddress(layerId, laneId));
                     },
                     onMoveBegin: _session.beginLaneRangeMoveDrag,
                     onMoveUpdate: (frameDelta) => _session
