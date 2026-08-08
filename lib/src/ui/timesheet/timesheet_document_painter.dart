@@ -1301,9 +1301,12 @@ class TimesheetDocumentPainter extends CustomPainter {
     const fontSize = 9.0;
     const lineHeight = 1.15;
     const naturalCellExtent = fontSize * lineHeight;
-    // The right HALF of the column, inside its wall: the mark owns the
-    // centre line and the writing may never cross back over it.
-    final room = columnWidth / 2 - instructionLabelInset;
+    // The right HALF of the column, inside its wall AND clear of the
+    // centre line: the mark owns that line and the writing may never come
+    // back over it. Both insets count — a CAM group past two columns
+    // halves its column to 18px, and with only the wall subtracted the
+    // clamped glyph landed exactly on the bar.
+    final room = columnWidth / 2 - 2 * instructionLabelInset;
     if (room <= 0) {
       return;
     }

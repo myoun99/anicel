@@ -337,6 +337,12 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   /// [label] split into the lines it stacks as: each comma-separated
   /// component, with the comma itself on a line between them so the pair
   /// still reads as a pair. Uncommaed values are one line, unchanged.
+  ///
+  /// Capped at [_laneValueMaxLines], which is what the slot is sized for.
+  /// Nothing this rail formats reaches it — a coordinate pair is the
+  /// longest at three — but a slot sized by a constant and filled by a
+  /// stranger's string should say what happens when the two disagree, and
+  /// "overflow the column" is not the answer.
   static List<String> _valueLines(String label) {
     if (!label.contains(',')) {
       return [label];
@@ -351,7 +357,12 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
         lines.add(trimmed);
       }
     }
-    return lines.isEmpty ? [label] : lines;
+    if (lines.isEmpty) {
+      return [label];
+    }
+    return lines.length <= _laneValueMaxLines
+        ? lines
+        : lines.sublist(0, _laneValueMaxLines);
   }
 
   /// AE's blue value column: the property's value at the playhead; tap to
@@ -894,6 +905,9 @@ class TimelineLaneFrameRow extends StatelessWidget {
     final markerSize = (crossExtent * 0.32).clamp(6.0, 11.0).toDouble();
     final hitSize = (markerSize + 8).clamp(14.0, crossExtent).toDouble();
     final horizontal = axis == Axis.horizontal;
+    // Hoisted so the marker's re-time closure can be written without a
+    // null check: a widget FIELD never promotes, however it was tested.
+    final laneEdit = this.laneEdit;
 
     // R26 #3: the header row washes when the selection spans its WHOLE
     // member group — the SAME predicate the gesture uses to decide
@@ -944,14 +958,11 @@ class TimelineLaneFrameRow extends StatelessWidget {
               // and there this marker is the only subject a re-time could
               // have, so it keeps a drag. A group header's union diamond
               // never does: it has no single lane to write to.
-              onMoveBy: laneRange != null || lane.isGroupHeader
+              onMoveBy:
+                  laneRange != null || lane.isGroupHeader || laneEdit == null
                   ? null
-                  : (delta) => laneEdit?.onMoveKey(
-                      layer,
-                      lane,
-                      frame,
-                      frame + delta,
-                    ),
+                  : (delta) =>
+                        laneEdit.onMoveKey(layer, lane, frame, frame + delta),
             ),
           ),
     ];

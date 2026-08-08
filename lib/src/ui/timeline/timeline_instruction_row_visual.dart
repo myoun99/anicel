@@ -16,10 +16,11 @@ import 'timeline_frame_span_layout.dart';
 /// overlay adds the mark — ONE unadorned continuous line for bar terms
 /// (no end ticks, never broken for text) or a light-gray filled wedge for
 /// the dedicated FI/FO/O.L marks (R4, user sketch) — with the A/B
-/// instance names dead-centered in the start/end cells (frame-name style)
-/// and the instruction name overlaid on the SPAN's true center. Shared by
-/// both orientations (Axis policy); the printed sheet mirrors this
-/// verbatim.
+/// instance names dead-centered in the start/end cells (frame-name style,
+/// and nothing is drawn under them) and the instruction NAME centred on
+/// the span along the frame axis but stepped OFF the mark across it.
+/// Shared by both orientations (Axis policy); the printed sheet mirrors
+/// this verbatim.
 
 /// How far the instruction NAME sits from the wall it aligns to — the top
 /// of the row on the timeline, the right of the column on the sheet and in
