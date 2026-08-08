@@ -80,10 +80,14 @@ class TimelineCursorLayer extends StatelessWidget {
   final List<TimelineDisplayRow> rows;
   final LayerId? activeLayerId;
 
-  /// The row you are STANDING on. There is exactly one, and the selection
+  /// The row you are STANDING on. There is exactly one, and the standing
   /// visuals go with it — when it is a property lane the layer's row gives
-  /// the mark up, even though that layer is still what you draw on (user,
-  /// 2026-08-07: "그림은 그릴 수 있을지라도 서있는건 하나").
+  /// its ring up.
+  ///
+  /// 2026-08-07 settled that as "그림은 그릴 수 있을지라도 서있는건 하나";
+  /// 2026-08-08 dropped the first half. A lane takes no strokes at all now,
+  /// so the row you stand on and the row you draw on are the same row again
+  /// — see `MainCanvasBrushHost.rowAcceptsStrokes`.
   ///
   /// Null, or a lane whose row is not on screen, falls back to the active
   /// layer's row: showing nothing at all would read as broken rather than
@@ -308,12 +312,14 @@ class TimelineCursorLayer extends StatelessWidget {
           }
         }
 
-        // STANDING ON A LANE takes the selection visual off the layer row
-        // and puts it here — one standing place, not two. Standing IS a
-        // one-frame span as far as the verbs are concerned
-        // (`_laneVerbRange`), so it is drawn as one: the range band, a
-        // single cell wide. No new visual language, and the screen finally
-        // says what the model already said.
+        // STANDING ON A LANE takes the standing visual off the layer row
+        // and puts it here — one standing place, not two.
+        //
+        // The RING, the same one the layer row wears (user, 2026-08-08:
+        // 진짜로 서 있게). It used to draw the range-selection BAND, which
+        // is what gave the game away: a filled 2px band where the layer
+        // row's is a hollow 3px ring reads as "a one-cell selection
+        // happens to be here" — and that is exactly what it was.
         final standing = currentRow?.value;
         int? standingLaneIndex;
         if (standing is LaneRowAddress && laneRange == null) {
@@ -345,9 +351,7 @@ class TimelineCursorLayer extends StatelessWidget {
             key: const ValueKey<String>('timeline-lane-standing-cell'),
             label: 'selected cell',
             container: true,
-            child: DecoratedBox(
-              decoration: timelineRangeSelectionBandDecoration,
-            ),
+            child: DecoratedBox(decoration: timelineStandingCellDecoration),
           );
           children.add(
             horizontal
@@ -433,15 +437,7 @@ class TimelineCursorLayer extends StatelessWidget {
             container: true,
             child: onBlock
                 ? const SizedBox.expand()
-                : DecoratedBox(
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: timelineSelectedFrameBorderColor,
-                        width: 3,
-                      ),
-                      borderRadius: const BorderRadius.all(Radius.circular(4)),
-                    ),
-                  ),
+                : DecoratedBox(decoration: timelineStandingCellDecoration),
           );
 
           final rowStack = Stack(

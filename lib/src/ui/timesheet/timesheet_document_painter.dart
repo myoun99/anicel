@@ -10,8 +10,12 @@ import '../../models/sheet_paint_layer.dart';
 import '../../models/timesheet_document.dart';
 import '../../models/timesheet_info.dart';
 import '../text/dialogue_fit_layout.dart';
+import '../text/vertical_writing.dart'
+    show verticalTextCells, verticalTextSpanCount;
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
+import '../timeline/timeline_instruction_row_visual.dart'
+    show instructionLabelInset;
 import '../timeline/timeline_cut_end_handle.dart'
     show timelineCutEndPreviewFrameCount;
 import '../timeline/timeline_drag_preview.dart';
@@ -1260,30 +1264,79 @@ class TimesheetDocumentPainter extends CustomPainter {
       );
     }
     if (offset == (spanLength - 1) ~/ 2 && (cell.label ?? '').isNotEmpty) {
-      // The writing sits on the SPAN's true center, HORIZONTAL (R5-⑤ —
-      // the vertical glyph stack retired), overlaid on the mark and
-      // spilling over neighbouring columns freely like handwriting.
-      final spanTop = cellTop - offset * rowHeight;
-      final painter = TextPainter(
-        text: TextSpan(
-          text: cell.label!,
-          style: const TextStyle(
-            color: _ink,
-            fontSize: 9,
-            fontWeight: FontWeight.bold,
-          ),
-        ),
-        textDirection: TextDirection.ltr,
-        maxLines: 1,
-      )..layout();
-      painter.paint(
+      _paintInstructionLabel(
         canvas,
-        Offset(
-          centerX - painter.width / 2,
-          spanTop + spanLength * rowHeight / 2 - painter.height / 2,
-        ),
+        cell.label!,
+        columnLeft: columnLeft,
+        columnWidth: columnWidth,
+        spanTop: cellTop - offset * rowHeight,
+        spanLength: spanLength,
       );
     }
+  }
+
+  /// The instruction's NAME, written DOWN the column beside its mark — the
+  /// x-sheet's treatment, in print (user, 2026-08-08).
+  ///
+  /// Two things were wrong with the horizontal line it replaces. It was
+  /// centred on `centerX`, which is where the duration bar is drawn, so
+  /// the two were printed through each other. And it ran ACROSS, so
+  /// `FOLLOW PAN` reached well past a 36px CAM column into whatever was
+  /// beside it.
+  ///
+  /// It hangs off the column's RIGHT wall now, one glyph wide, centred on
+  /// the span along the frame axis. Long names SPILL past their span
+  /// rather than pack: the sheet's usual squeeze would put ten letters in
+  /// a three-row span at 2.4pt, which is the very failure sideways Latin
+  /// was invented to avoid. Writing that runs past its span is what a hand
+  /// does on paper anyway.
+  void _paintInstructionLabel(
+    Canvas canvas,
+    String label, {
+    required double columnLeft,
+    required double columnWidth,
+    required double spanTop,
+    required int spanLength,
+  }) {
+    const fontSize = 9.0;
+    const lineHeight = 1.15;
+    const naturalCellExtent = fontSize * lineHeight;
+    // The right HALF of the column, inside its wall AND clear of the
+    // centre line: the mark owns that line and the writing may never come
+    // back over it. Both insets count — a CAM group past two columns
+    // halves its column to 18px, and with only the wall subtracted the
+    // clamped glyph landed exactly on the bar.
+    final room = columnWidth / 2 - 2 * instructionLabelInset;
+    if (room <= 0) {
+      return;
+    }
+    final glyphWidth = math.min(fontSize, room);
+    final cellCount = verticalTextSpanCount(
+      verticalTextCells(label, latinForm: VerticalLatinForm.upright),
+    );
+    // The extent the column ACTUALLY needs, handed in as the span: with
+    // supply equal to demand the shrink rule is a no-op, which is how
+    // "spill, never pack" is stated to a painter that only knows how to
+    // pack.
+    final needed = cellCount * naturalCellExtent;
+    paintVerticalText(
+      canvas,
+      label,
+      style: const TextStyle(
+        color: _ink,
+        fontSize: fontSize,
+        fontWeight: FontWeight.bold,
+      ),
+      centerX:
+          columnLeft + columnWidth - instructionLabelInset - glyphWidth / 2,
+      top: spanTop + spanLength * TimesheetDocumentLayout.rowHeight / 2 -
+          needed / 2,
+      mainExtent: needed,
+      naturalCellExtent: naturalCellExtent,
+      cellPadding: fontSize * (lineHeight - 1),
+      maxCellWidth: glyphWidth,
+      latinForm: VerticalLatinForm.upright,
+    );
   }
 
   /// The solid triangle capping a NAMELESS bar endpoint (R7-①, real-sheet

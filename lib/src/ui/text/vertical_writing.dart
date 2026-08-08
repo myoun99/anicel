@@ -64,6 +64,23 @@ enum VerticalGlyphForm {
   sideways,
 }
 
+/// What a run of LATIN letters does in a vertical column.
+///
+/// The user named the two readings (2026-08-08). 「가로표기세로쓰기」 is
+/// [upright] — each glyph keeps the orientation it was drawn in and only
+/// the ORDER runs downward; 「세로표기세로쓰기」 is [sideways], where the
+/// glyphs themselves turn and you have to tilt your head to read them.
+///
+/// [sideways] stays the DEFAULT, and that is not inertia. It is the
+/// Japanese typesetting standard, it is what the printed timesheet, the SE
+/// dialogue and the conte are set in, and it is measurably SHORTER: one
+/// cell per letter costs `Multiply` 8 cells against 5 and `Color Dodge` 11
+/// against 7. Surfaces opt IN to [upright] where reading at a glance beats
+/// length — the rail's own labels — and the blend-mode chip does not,
+/// because the user's rule was "keep it if standing it up makes it longer"
+/// and standing Latin up always does.
+enum VerticalLatinForm { sideways, upright }
+
 /// Characters that ROTATE 90°.
 ///
 /// Long vowels and dashes first (the original timesheet set, kept whole),
@@ -335,9 +352,15 @@ VerticalTextCell? _sidewaysRunWithin(VerticalTextCell cell, int capacityCells) {
 /// horizontal cell; everything else is one character per cell. Iterates
 /// grapheme clusters, so a combining voiced mark rides its base character
 /// instead of claiming a cell of its own.
+///
+/// [latinForm] decides what a WORD of Latin letters does; see
+/// [VerticalLatinForm]. Under [VerticalLatinForm.upright] the run branch
+/// simply does not run, and every letter falls through to the one-glyph-
+/// per-cell default — the same path kana and Hangul already take.
 List<VerticalTextCell> verticalTextCells(
   String text, {
   int tateChuYokoDigits = verticalTateChuYokoDigits,
+  VerticalLatinForm latinForm = VerticalLatinForm.sideways,
 }) {
   if (text.isEmpty) {
     return const [];
@@ -350,7 +373,7 @@ List<VerticalTextCell> verticalTextCells(
     // A WORD of Latin letters turns sideways as one line. Internal single
     // spaces stay inside the run, so `Pass Through` is one turned phrase
     // rather than two words with a stacked blank between them.
-    if (_isLatinLetter(glyph)) {
+    if (latinForm == VerticalLatinForm.sideways && _isLatinLetter(glyph)) {
       var end = index;
       var lastLetter = index;
       while (end < glyphs.length) {

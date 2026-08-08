@@ -35,18 +35,31 @@ const double _laneLabelFloor = 2 * timelineFrameCellWidth;
 /// their leading gaps.
 const double _laneNavigatorExtent = 3 * 20 + 4;
 
-/// 20 → 28 → 76 (rail-window round): the value used to SHRINK into
-/// whatever was left, so any budget "worked" and nobody had to ask what
-/// the readout actually costs. It reads DOWN the column now, so the slot
-/// has to be sized in CELLS.
+/// The stood-up value readout's type, and the most LINES any lane makes of
+/// it. Three: a comma-separated pair stacks as `1170` / `,` / `827` (user,
+/// 2026-08-08), and nothing this rail formats has two commas in it.
+const double _laneValueFontSize = 11;
+const int _laneValueMaxLines = 3;
+
+/// WHOLE pixels, and each line gets a box of exactly this. A paragraph's
+/// height rounds UP to an integer, so reserving `fontSize * lineHeight`
+/// under-reserves by the rounding — 11×1.15 is 12.65 and lays out at 13,
+/// which overflowed a three-line column by the 1.05px nobody budgeted.
+/// A fixed box makes the arithmetic here the arithmetic that happens.
+const double _laneValueLineExtent = 13;
+
+/// 20 → 28 → 76 → three lines (user, 2026-08-08).
 ///
-/// Six of them, at the 11pt/1.15 the value is drawn with. Two would have
-/// held a percentage and nothing else: `0.0, 0.0` is eight cells, so a
-/// Position lane would have read `0…` — worse than the shrunken text it
-/// replaced. Six shows `0.0, …`, which at least names the first component,
-/// and the column has the height to spare (its heading floor is 48 and a
-/// stood-up header block is ~320).
-const double _laneValueExtent = 76;
+/// The value used to SHRINK into whatever was left, so any budget "worked"
+/// and nobody had to ask what the readout actually costs. Then it read
+/// DOWN the column one glyph per cell, and the slot had to hold SIX of
+/// them — `0.0, 0.0` is eight cells, so anything smaller left a Position
+/// lane reading `0…`.
+///
+/// Stacked as whole numbers it costs three LINES instead of six cells, and
+/// the 36px that frees goes back to the lane's name — which is what the
+/// column is for.
+const double _laneValueExtent = _laneValueMaxLines * _laneValueLineExtent;
 
 /// The label cell of one property lane: an AE-style property name, the
 /// keyframe navigator (◀ previous key · ◆ toggle key at the playhead · ▶
@@ -286,6 +299,72 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     );
   }
 
+  /// The stood-up readout: whole NUMBERS on their own lines, written
+  /// across (user, 2026-08-08 — `1170` / `,` / `827`, and `100%` on one
+  /// line the way it already was).
+  ///
+  /// It used to go through the vertical-writing table like every other
+  /// label on the sheet, which set `1170, 827` as `1 1 7 0 , ␣ 827` — seven
+  /// cells, because a four-digit run is past the 縦中横 limit and falls
+  /// apart into single glyphs. A number is not prose; it wants to be read
+  /// as one token, and the only thing vertical about it is which token
+  /// comes next.
+  ///
+  /// Lines SHRINK to fit rather than ellipsise, which is this cell's
+  /// exception to the rail-window rule: a truncated coordinate is a wrong
+  /// coordinate, and the user allowed the smaller type here by name.
+  Widget _stackedValue(String label, ColorScheme colorScheme) {
+    final style = TextStyle(
+      fontSize: _laneValueFontSize,
+      color: colorScheme.primary,
+    );
+    final lines = _valueLines(label);
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.start,
+      children: [
+        for (final line in lines)
+          SizedBox(
+            height: _laneValueLineExtent,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(line, maxLines: 1, softWrap: false, style: style),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// [label] split into the lines it stacks as: each comma-separated
+  /// component, with the comma itself on a line between them so the pair
+  /// still reads as a pair. Uncommaed values are one line, unchanged.
+  ///
+  /// Capped at [_laneValueMaxLines], which is what the slot is sized for.
+  /// Nothing this rail formats reaches it — a coordinate pair is the
+  /// longest at three — but a slot sized by a constant and filled by a
+  /// stranger's string should say what happens when the two disagree, and
+  /// "overflow the column" is not the answer.
+  static List<String> _valueLines(String label) {
+    if (!label.contains(',')) {
+      return [label];
+    }
+    final lines = <String>[];
+    for (final component in label.split(',')) {
+      if (lines.isNotEmpty) {
+        lines.add(',');
+      }
+      final trimmed = component.trim();
+      if (trimmed.isNotEmpty) {
+        lines.add(trimmed);
+      }
+    }
+    if (lines.isEmpty) {
+      return [label];
+    }
+    return lines.length <= _laneValueMaxLines
+        ? lines
+        : lines.sublist(0, _laneValueMaxLines);
+  }
+
   /// AE's blue value column: the property's value at the playhead; tap to
   /// type (Enter commits and keys the value there), drag to scrub.
   Widget _valueCell(ColorScheme colorScheme, String valueLabel) {
@@ -362,24 +441,19 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           onTap: laneEdit?.onSetValue == null
               ? null
               : () => _startValueEdit(valueLabel),
-          // AE's blue value. It used to SHRINK to whatever the column gave
-          // it; the rail-window round retired shrink-to-fit everywhere on
-          // screen, so on the sheet the value reads DOWN its column like
-          // every other label there — with three-digit 縦中横 so `100%`
-          // costs two cells rather than four.
+          // AE's blue value.
           child: widget.axis == Axis.horizontal
               ? Text(
                   _scrubPreview ?? valueLabel,
                   maxLines: 1,
                   softWrap: false,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 11, color: colorScheme.primary),
+                  style: TextStyle(
+                    fontSize: _laneValueFontSize,
+                    color: colorScheme.primary,
+                  ),
                 )
-              : VerticalWritingText(
-                  text: _scrubPreview ?? valueLabel,
-                  tateChuYokoDigits: 3,
-                  style: TextStyle(fontSize: 11, color: colorScheme.primary),
-                ),
+              : _stackedValue(_scrubPreview ?? valueLabel, colorScheme),
         ),
       ),
     );
@@ -462,9 +536,11 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           // R10 R6: stood up on the sheet, like every other header.
           child: Flex(
             direction: widget.axis,
-            mainAxisAlignment: widget.axis == Axis.horizontal
-                ? MainAxisAlignment.start
-                : MainAxisAlignment.center,
+            // START on BOTH axes (user, 2026-08-08): the sheet's headers
+            // used to center their contents while the rail's began at the
+            // leading edge, so the twirl and the name sat at a different
+            // place on each surface for no reason either of them has.
+            mainAxisAlignment: MainAxisAlignment.start,
             children: [
               if (widget.axis == Axis.horizontal &&
                   widget.leadingInset > 0) ...[
@@ -499,6 +575,10 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
                       )
                     : VerticalWritingText(
                         text: lane.label,
+                        // 'Transform', 'Gaussian Blur' — property names a
+                        // person reads, so they stand up (user, 2026-08-08).
+                        latinForm: VerticalLatinForm.upright,
+                        mainAlignment: 0,
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
@@ -554,10 +634,17 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     );
     // A lane's name reads down its column on the sheet, through the shared
     // vertical-writing table — 'Position' will not fit across 28px, and
-    // ellipsis would have left one glyph and a dot.
+    // ellipsis would have left one glyph and a dot. The letters STAND UP
+    // in it (user, 2026-08-08) and the column starts at the column's top,
+    // which is the rail's `centerLeft` transposed.
     final label = widget.axis == Axis.horizontal
         ? Text(lane.label, overflow: TextOverflow.ellipsis, style: labelStyle)
-        : VerticalWritingText(text: lane.label, style: labelStyle);
+        : VerticalWritingText(
+            text: lane.label,
+            latinForm: VerticalLatinForm.upright,
+            mainAlignment: 0,
+            style: labelStyle,
+          );
 
     final Widget content;
     if (widget.axis == Axis.horizontal) {
@@ -611,14 +698,19 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
                       gap +
                       _laneNavigatorExtent +
                       (showsValue ? gap + _laneValueExtent : 0);
+          // THE RAIL ROW'S ORDER, TRANSPOSED (user, 2026-08-08): navigator,
+          // then the name, then the value at the far end. The sheet used to
+          // lead with the name and put the navigator after it, so the same
+          // three controls read in two different orders depending on which
+          // way the panel was turned.
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(child: label),
               if (showsNavigator) ...[
-                const SizedBox(height: gap),
                 _navigator(colorScheme),
+                const SizedBox(height: gap),
               ],
+              Expanded(child: label),
               if (showsValue) ...[
                 const SizedBox(height: gap),
                 // A fixed slot, so a long readout ellipsises inside it
@@ -655,9 +747,13 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
         color: plate,
         border: Border.all(color: colorScheme.outlineVariant, width: 0.5),
       ),
+      // The rail's `centerLeft` transposed: the START of the main axis,
+      // centered across it. The sheet centered on BOTH axes, which is what
+      // made its lane names float in the middle of a column whose rail
+      // twin begins at the leading edge.
       alignment: widget.axis == Axis.horizontal
           ? Alignment.centerLeft
-          : Alignment.center,
+          : Alignment.topCenter,
       child: widget.axis == Axis.horizontal && widget.leadingInset > 0
           ? Row(
               children: [
@@ -770,18 +866,28 @@ class TimelineLaneFrameRow extends StatelessWidget {
   final double leadingFrameSpacerWidth;
   final double trailingFrameSpacerWidth;
   final TimelineGridMetrics metrics;
+
+  /// Reaches the key markers for ONE thing: re-timing a key on a lane that
+  /// has no [laneRange] to do it through. See [_LaneKeyMarker.onMoveBy].
   final PropertyLaneEditCallbacks? laneEdit;
 
   /// The LANE-scoped selection domain (UI-R23 #3 part 2, superseding the
-  /// R22-C owner-layer fallback): a pan on the band selects THIS (layer,
-  /// lane); a pan inside the selection moves its keys. The key markers
-  /// keep pointer priority (they sit above the gesture layer), so marker
-  /// drags stay marker drags. Null keeps the band display-only (group
-  /// headers, storyboard lanes).
+  /// R22-C owner-layer fallback), and since 2026-08-08 the only thing on
+  /// this band that answers a pointer wherever it exists: a tap stands
+  /// here, a pan outside the selection selects, a pan inside it moves the
+  /// selected keys.
+  ///
+  /// That is the frame BLOCK's rule, which is the point — the key markers
+  /// used to sit above this layer with a drag of their own and move a
+  /// single key the instant you pulled one, so the same axis had two
+  /// grammars depending on whether you happened to grab a diamond.
+  ///
+  /// Null keeps the band display-only (storyboard lanes) or leaves the
+  /// markers as the only subject (camera lanes, whose atomic keyframes
+  /// have no per-lane span to select).
   final TimelineLaneRangeCallbacks? laneRange;
 
-  /// Frame-axis direction; the marker/menu behavior is shared, only the
-  /// band's composition transposes.
+  /// Frame-axis direction; only the band's composition transposes.
   final Axis axis;
 
   /// Key namespace ('timeline' | 'xsheet').
@@ -799,6 +905,9 @@ class TimelineLaneFrameRow extends StatelessWidget {
     final markerSize = (crossExtent * 0.32).clamp(6.0, 11.0).toDouble();
     final hitSize = (markerSize + 8).clamp(14.0, crossExtent).toDouble();
     final horizontal = axis == Axis.horizontal;
+    // Hoisted so the marker's re-time closure can be written without a
+    // null check: a widget FIELD never promotes, however it was tested.
+    final laneEdit = this.laneEdit;
 
     // R26 #3: the header row washes when the selection spans its WHOLE
     // member group — the SAME predicate the gesture uses to decide
@@ -831,9 +940,6 @@ class TimelineLaneFrameRow extends StatelessWidget {
               key: ValueKey<String>(
                 '$keyPrefix-lane-key-${layer.id}-${lane.laneId}-$frame',
               ),
-              layer: layer,
-              lane: lane,
-              frame: frame,
               hold: lane.holdOutFrames.contains(frame),
               markerSize: markerSize,
               frameCellExtent: cellExtent,
@@ -846,19 +952,17 @@ class TimelineLaneFrameRow extends StatelessWidget {
                   selection != null &&
                   selectionCoversRow(selection) &&
                   selection.contains(frame),
-              // Group headers show the KEY UNION (UI-R20 #13) —
-              // display-only: a union diamond has no single lane to
-              // edit, so its markers never take drags.
-              laneEdit: lane.isGroupHeader ? null : laneEdit,
-              // A tap on the diamond says what a tap on the band says:
-              // stand HERE (R10 R3). The marker's hit box is nearly the
-              // whole cell, so without this the one frame you cannot put
-              // the playhead on by pressing is the one with a key —
-              // exactly the frame Frame ▾ Delete needs as its subject
-              // now that the marker's own menu is gone.
-              onTapAt: laneRange == null
+              // The band's select-then-move is the rule EVERYWHERE the band
+              // exists (user, 2026-08-08). It does not exist on a camera
+              // lane — atomic keyframes have no per-lane span to select —
+              // and there this marker is the only subject a re-time could
+              // have, so it keeps a drag. A group header's union diamond
+              // never does: it has no single lane to write to.
+              onMoveBy:
+                  laneRange != null || lane.isGroupHeader || laneEdit == null
                   ? null
-                  : () => laneRange!.onTapAt(layer.id, lane.laneId, frame),
+                  : (delta) =>
+                        laneEdit.onMoveKey(layer, lane, frame, frame + delta),
             ),
           ),
     ];
@@ -942,39 +1046,46 @@ class TimelineLaneFrameRow extends StatelessWidget {
   }
 }
 
-/// One draggable key marker.
+/// One key marker. A DRAWING, and nothing else.
+///
+/// One key marker — a DRAWING, unless it is the only subject there is.
+///
+/// It used to own a drag that moved its own key the instant you pulled it,
+/// which is not how anything else on this axis behaves: a frame block is
+/// SELECTED first and the next drag moves the selection. The band beneath
+/// has implemented exactly that rule the whole time — press outside the
+/// selection to select, press inside it to move — so the fix was to stop
+/// competing with it (user, 2026-08-08).
+///
+/// [onMoveBy] is the ONE exception, and the parent decides it: a CAMERA
+/// lane has no selection domain (its keyframes are atomic — one key holds
+/// every property, so a per-lane span would be a lie) and therefore no
+/// band gesture either. There, this marker is the only subject a re-time
+/// could have, and taking its drag away would leave a camera key nothing
+/// can move. Null everywhere else, which is everywhere the band exists.
 class _LaneKeyMarker extends StatefulWidget {
   const _LaneKeyMarker({
     super.key,
-    required this.layer,
-    required this.lane,
-    required this.frame,
     required this.hold,
     required this.markerSize,
     required this.frameCellExtent,
     required this.axis,
-    required this.laneEdit,
-    this.onTapAt,
+    this.onMoveBy,
     this.selected = false,
   });
 
-  final Layer layer;
-  final PropertyLaneRow lane;
-  final int frame;
   final bool hold;
   final double markerSize;
   final double frameCellExtent;
   final Axis axis;
-  final PropertyLaneEditCallbacks? laneEdit;
 
-  /// A press that does not become a drag stands on this lane at this
-  /// frame — the band's own [TimelineLaneRangeCallbacks.onTapAt], reached
-  /// through the diamond that covers it.
-  final VoidCallback? onTapAt;
+  /// Commits a frame-snapped re-time of this key. Null makes the marker
+  /// pointer-transparent, so the band beneath answers everything.
+  final ValueChanged<int>? onMoveBy;
 
-  /// Inside the live frame-range selection (UI-R22 #5): the marker rings
-  /// in ACCENT 2 so selected keys — union diamonds included — read at a
-  /// glance.
+  /// Inside the live lane selection (UI-R23 #4): the marker rings in the
+  /// accent so selected keys — union diamonds included — read at a glance,
+  /// and so it is visible which keys the next drag will carry.
   final bool selected;
 
   @override
@@ -985,11 +1096,7 @@ class _LaneKeyMarkerState extends State<_LaneKeyMarker> {
   double _dragDelta = 0;
   bool _dragging = false;
 
-  int get _frameDelta {
-    final delta = (_dragDelta / widget.frameCellExtent).round();
-    // Keys never move before frame 0.
-    return delta.clamp(-widget.frame, 1 << 20);
-  }
+  int get _frameDelta => (_dragDelta / widget.frameCellExtent).round();
 
   void _startDrag() => setState(() => _dragging = true);
 
@@ -1008,12 +1115,7 @@ class _LaneKeyMarkerState extends State<_LaneKeyMarker> {
       _dragDelta = 0;
     });
     if (delta != 0) {
-      widget.laneEdit?.onMoveKey(
-        widget.layer,
-        widget.lane,
-        widget.frame,
-        widget.frame + delta,
-      );
+      widget.onMoveBy?.call(delta);
     }
   }
 
@@ -1028,29 +1130,16 @@ class _LaneKeyMarkerState extends State<_LaneKeyMarker> {
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final horizontal = widget.axis == Axis.horizontal;
-    // R10: a diamond INSIDE the live selection stands down. The band's
-    // gesture layer sits under the markers and decides move-vs-select from
-    // `laneSelectionCoversBandRow(...) && selection.contains(frame)`, which
-    // is the very predicate that put the accent ring on this marker — so
-    // where the ring says "this key is part of the span", the span is what
-    // a drag must grab. An opaque marker with its own drag took the pointer
-    // first and the row's range move never saw it: pressing any diamond of
-    // a union and dragging moved that ONE key. Not a #20 regression; the
-    // marker has had priority far longer than the band selection has
-    // existed.
-    final yieldsToRangeMove = widget.selected;
-    final editable = widget.laneEdit != null && !yieldsToRangeMove;
     // EVERY key diamond fills WHITE like the frame blocks (UI-R24 #9 —
     // union headers, member lanes, camera lanes alike); selection speaks
     // through the accent silhouette alone.
-    final fillColor = _dragging
-        ? timelineDrawingStartColor.withValues(alpha: 0.6)
-        : timelineDrawingStartColor;
     final shape = Container(
       width: widget.markerSize,
       height: widget.markerSize,
       decoration: BoxDecoration(
-        color: fillColor,
+        color: _dragging
+            ? timelineDrawingStartColor.withValues(alpha: 0.6)
+            : timelineDrawingStartColor,
         // Selected keys ring in ACCENT 1 (UI-R23 #4) — a thin silhouette
         // stroke, color only (the selection rule); accent 2 stays on the
         // repeat wash/outline.
@@ -1061,49 +1150,43 @@ class _LaneKeyMarkerState extends State<_LaneKeyMarker> {
       ),
     );
     // AE convention: linear keys read as diamonds, hold keys as squares.
-    final marker = widget.hold
-        ? shape
-        : Transform.rotate(angle: 0.785398, child: shape);
-
     final content = Transform.translate(
       // Snap the ghost per frame while dragging (AE feel).
       offset: horizontal
           ? Offset(_dragging ? _frameDelta * widget.frameCellExtent : 0, 0)
           : Offset(0, _dragging ? _frameDelta * widget.frameCellExtent : 0),
-      child: Center(child: marker),
+      child: Center(
+        child: widget.hold
+            ? shape
+            : Transform.rotate(angle: 0.785398, child: shape),
+      ),
     );
 
-    // Standing down (R10) means standing down WHOLLY (R10 R3). The marker
-    // used to stay in the hit result as `translucent` so its context menu
-    // could still open on a selected key; with the menu demolished there
-    // is nothing left for it to answer. The child had to be ignored on top
-    // of that, because `RenderDecoratedBox.hitTestSelf` answers TRUE
-    // anywhere inside its decoration — the drawn diamond is a hit target
-    // in its own right, so the Stack stopped at it and the band beneath
-    // never saw the pointer.
-    if (yieldsToRangeMove) {
+    // WHOLLY transparent when the band owns the gesture. Translucent is not
+    // enough: `RenderDecoratedBox.hitTestSelf` answers TRUE anywhere inside
+    // its decoration, so the drawn diamond is a hit target in its own right
+    // and the Stack would stop at it with the band never seeing the
+    // pointer.
+    if (widget.onMoveBy == null) {
       return IgnorePointer(child: content);
     }
 
     return GestureDetector(
       behavior: HitTestBehavior.opaque,
-      onTap: widget.onTapAt,
       // Drag from the DOWN position (R10) — the rule the block edge grips
       // took in the same round. This marker accumulates deltas and rounds
       // them, so discarding the ~18px the recognizer spends on the arena
       // parks the key that far behind the finger for the whole drag.
       dragStartBehavior: DragStartBehavior.down,
       // The key drags along the frame axis of the owning grid.
-      onHorizontalDragStart: editable && horizontal
-          ? (_) => _startDrag()
-          : null,
-      onHorizontalDragUpdate: editable && horizontal ? _updateDrag : null,
-      onHorizontalDragEnd: editable && horizontal ? (_) => _endDrag() : null,
-      onHorizontalDragCancel: editable && horizontal ? _cancelDrag : null,
-      onVerticalDragStart: editable && !horizontal ? (_) => _startDrag() : null,
-      onVerticalDragUpdate: editable && !horizontal ? _updateDrag : null,
-      onVerticalDragEnd: editable && !horizontal ? (_) => _endDrag() : null,
-      onVerticalDragCancel: editable && !horizontal ? _cancelDrag : null,
+      onHorizontalDragStart: horizontal ? (_) => _startDrag() : null,
+      onHorizontalDragUpdate: horizontal ? _updateDrag : null,
+      onHorizontalDragEnd: horizontal ? (_) => _endDrag() : null,
+      onHorizontalDragCancel: horizontal ? _cancelDrag : null,
+      onVerticalDragStart: horizontal ? null : (_) => _startDrag(),
+      onVerticalDragUpdate: horizontal ? null : _updateDrag,
+      onVerticalDragEnd: horizontal ? null : (_) => _endDrag(),
+      onVerticalDragCancel: horizontal ? null : _cancelDrag,
       child: content,
     );
   }

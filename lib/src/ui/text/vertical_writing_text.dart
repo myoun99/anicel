@@ -4,6 +4,11 @@ import 'package:flutter/widgets.dart';
 
 import 'vertical_writing.dart';
 
+// Hosts pick a Latin form when they mount the widget, so the choice has to
+// travel with the renderer they already import — the table itself stays a
+// pure library nobody else needs to reach.
+export 'vertical_writing.dart' show VerticalLatinForm;
+
 /// The ONE renderer for Japanese vertical writing — [paintVerticalText] for
 /// canvases and [VerticalWritingText] for the widget tree, both reading the
 /// table in `vertical_writing.dart`.
@@ -55,9 +60,14 @@ double paintVerticalText(
   double? maxCellWidth,
   double mainAlignment = 0,
   int tateChuYokoDigits = verticalTateChuYokoDigits,
+  VerticalLatinForm latinForm = VerticalLatinForm.sideways,
   VerticalTextOverflow overflow = VerticalTextOverflow.pack,
 }) {
-  var cells = verticalTextCells(text, tateChuYokoDigits: tateChuYokoDigits);
+  var cells = verticalTextCells(
+    text,
+    tateChuYokoDigits: tateChuYokoDigits,
+    latinForm: latinForm,
+  );
   if (cells.isEmpty) {
     return 0;
   }
@@ -227,6 +237,8 @@ class VerticalWritingText extends StatelessWidget {
     this.lineHeight = 1.15,
     this.minFontSize = 1,
     this.tateChuYokoDigits = verticalTateChuYokoDigits,
+    this.latinForm = VerticalLatinForm.sideways,
+    this.mainAlignment = 0.5,
     this.overflow = VerticalTextOverflow.ellipsis,
   });
 
@@ -242,6 +254,18 @@ class VerticalWritingText extends StatelessWidget {
   final double minFontSize;
 
   final int tateChuYokoDigits;
+
+  /// Whether Latin words lie down or stand up; see [VerticalLatinForm].
+  final VerticalLatinForm latinForm;
+
+  /// Where the packed column sits inside the host's extent — 0 starts at
+  /// the top, 0.5 centers it, 1 ends at the bottom.
+  ///
+  /// The default centers, which is what every caller got when this was a
+  /// hardcoded 0.5. The x-sheet's rail labels pass 0: the horizontal rail
+  /// starts its names at the row's leading edge, and "the same alignment,
+  /// transposed" is the whole rule the two surfaces are supposed to share.
+  final double mainAlignment;
 
   /// What a column too long for its host does. Ellipsis by default (the
   /// rail-window round's rule everywhere on screen); the print timesheet
@@ -261,7 +285,11 @@ class VerticalWritingText extends StatelessWidget {
     final resolved = merged.copyWith(fontSize: fontSize);
     // SLOTS, not cells: a sideways word owns several of them.
     final cellCount = verticalTextSpanCount(
-      verticalTextCells(text, tateChuYokoDigits: tateChuYokoDigits),
+      verticalTextCells(
+        text,
+        tateChuYokoDigits: tateChuYokoDigits,
+        latinForm: latinForm,
+      ),
     );
 
     return Semantics(
@@ -279,7 +307,8 @@ class VerticalWritingText extends StatelessWidget {
           // the 16px name box's FittedBox went width-limited at 16/18 and
           // shrank every label ~11%.
           size: Size(
-            fontSize * (1 + 2 * _maxShiftEm(text, tateChuYokoDigits)),
+            fontSize *
+                (1 + 2 * _maxShiftEm(text, tateChuYokoDigits, latinForm)),
             cellCount * fontSize * lineHeight,
           ),
           painter: _VerticalWritingPainter(
@@ -288,6 +317,8 @@ class VerticalWritingText extends StatelessWidget {
             lineHeight: lineHeight,
             minFontSize: minFontSize,
             tateChuYokoDigits: tateChuYokoDigits,
+            latinForm: latinForm,
+            mainAlignment: mainAlignment,
             overflow: overflow,
           ),
         ),
@@ -298,11 +329,16 @@ class VerticalWritingText extends StatelessWidget {
 
 /// The largest corner shift anything in [text] takes, as an em fraction —
 /// zero for text with no shifted glyph, which is most of it.
-double _maxShiftEm(String text, int tateChuYokoDigits) {
+double _maxShiftEm(
+  String text,
+  int tateChuYokoDigits,
+  VerticalLatinForm latinForm,
+) {
   var most = 0.0;
   for (final cell in verticalTextCells(
     text,
     tateChuYokoDigits: tateChuYokoDigits,
+    latinForm: latinForm,
   )) {
     if (cell.shiftEm > most) {
       most = cell.shiftEm;
@@ -318,6 +354,8 @@ class _VerticalWritingPainter extends CustomPainter {
     required this.lineHeight,
     required this.minFontSize,
     required this.tateChuYokoDigits,
+    required this.latinForm,
+    required this.mainAlignment,
     required this.overflow,
   });
 
@@ -328,6 +366,8 @@ class _VerticalWritingPainter extends CustomPainter {
   final double lineHeight;
   final double minFontSize;
   final int tateChuYokoDigits;
+  final VerticalLatinForm latinForm;
+  final double mainAlignment;
   final VerticalTextOverflow overflow;
 
   @override
@@ -346,9 +386,10 @@ class _VerticalWritingPainter extends CustomPainter {
       // as cells pack it gives the leading back first.
       cellPadding: fontSize * (lineHeight - 1),
       maxCellWidth: size.width,
-      mainAlignment: 0.5,
+      mainAlignment: mainAlignment,
       minFontSize: minFontSize,
       tateChuYokoDigits: tateChuYokoDigits,
+      latinForm: latinForm,
       overflow: overflow,
     );
   }
@@ -360,6 +401,8 @@ class _VerticalWritingPainter extends CustomPainter {
         lineHeight != oldDelegate.lineHeight ||
         minFontSize != oldDelegate.minFontSize ||
         tateChuYokoDigits != oldDelegate.tateChuYokoDigits ||
+        latinForm != oldDelegate.latinForm ||
+        mainAlignment != oldDelegate.mainAlignment ||
         overflow != oldDelegate.overflow;
   }
 }

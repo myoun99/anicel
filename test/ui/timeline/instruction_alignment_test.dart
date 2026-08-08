@@ -7,13 +7,19 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/timeline/layer_timeline_grid.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
+import 'package:anicel/src/ui/timeline/timeline_instruction_row_visual.dart'
+    show instructionLabelInset;
 import 'package:anicel/src/ui/timeline/xsheet_timeline_grid.dart';
 
 import 'timeline_cell_probe.dart';
 
-/// R5-⑤ geometry pin: the instruction endpoints (A/B) sit DEAD CENTER in
-/// their cells — both axes — and the instruction name sits on the span's
-/// true center, exactly like the printed sheet.
+/// R5-⑤ geometry pin, revised 2026-08-08: the instruction endpoints (A/B)
+/// still sit DEAD CENTER in their cells — both axes, and nothing is drawn
+/// under them — but the NAME no longer does.
+///
+/// The mark keeps the cross-axis centre (every bar, wedge and bowtie is
+/// drawn about it) and the name steps OFF it: UP on the timeline, RIGHT on
+/// the sheet. Centred, the two were printed through each other.
 void main() {
   final camLayer = Layer(
     id: const LayerId('cam-1'),
@@ -84,15 +90,27 @@ void main() {
       find.text('ㄴ'),
       timelineCellCenter(tester, 'cam-1', 6),
     );
-    // Span covers cells 2..6 — its center is cell 4's center.
-    expectCentered(
-      tester,
-      find.text('PAN'),
-      timelineCellCenter(tester, 'cam-1', 4),
+
+    // The NAME: on the span's centre along the FRAME axis, and off the
+    // mark across it. Span covers cells 2..6, so its centre is cell 4's.
+    final span = tester.getRect(
+      find.byKey(const ValueKey<String>('timeline-instruction-cam-1-2')),
+    );
+    final name = tester.getRect(find.text('PAN'));
+    expect(name.center.dx, closeTo(span.center.dx, 1.0));
+    expect(
+      name.top,
+      closeTo(span.top + instructionLabelInset, 1.0),
+      reason: 'the name hangs from the top of the row',
+    );
+    expect(
+      name.center.dy,
+      lessThan(span.center.dy),
+      reason: 'the duration bar owns the cross-axis centre, not the name',
     );
   });
 
-  testWidgets('X-sheet: the same dead-center rule (Axis policy)', (
+  testWidgets('X-sheet: the same rule, transposed (Axis policy)', (
     tester,
   ) async {
     final cursor = ValueNotifier<int>(0);
@@ -135,10 +153,23 @@ void main() {
       written('ㄴ'),
       timelineCellCenter(tester, 'cam-1', 6, prefix: 'xsheet'),
     );
-    expectCentered(
-      tester,
-      written('PAN'),
-      timelineCellCenter(tester, 'cam-1', 4, prefix: 'xsheet'),
+
+    // Transposed: the frame axis runs DOWN, so the name centres on the
+    // span vertically and hangs off the column's RIGHT wall.
+    final span = tester.getRect(
+      find.byKey(const ValueKey<String>('xsheet-instruction-cam-1-2')),
+    );
+    final name = tester.getRect(written('PAN'));
+    expect(name.center.dy, closeTo(span.center.dy, 1.0));
+    expect(
+      name.right,
+      closeTo(span.right - instructionLabelInset, 1.0),
+      reason: 'the name hangs off the right wall of the column',
+    );
+    expect(
+      name.left,
+      greaterThan(span.center.dx),
+      reason: 'it never crosses back over the bar, which owns the centre',
     );
   });
 

@@ -50,8 +50,6 @@ import 'timeline/timeline_orientation.dart';
 import 'timeline/timeline_panel.dart';
 import 'timeline/timeline_layer_controls_header.dart' show LayerLegendCallbacks;
 import 'timeline/timeline_row_filter.dart';
-import 'timeline/timeline_section_bracket_rail.dart'
-    show TimelineSectionRailCallbacks;
 import 'timeline/timeline_section_policy.dart';
 import 'timeline/transform_lane_editing.dart';
 import 'timeline/transform_lane_policy.dart';
@@ -221,25 +219,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   /// track, every other kind its own layer track (applied at composite
   /// time; SE transforms move the canvas dialogue, instruction transforms
   /// are authored state for parity). SE layers append their audio lane.
-  /// Folds every OTHER hideable section (the bracket flyout's 'only this
-  /// section'); the target unfolds if it was hidden.
-  void _soloSection(TimelineSection section) {
-    final onToggle = widget.onToggleSection;
-    if (onToggle == null) {
-      return;
-    }
-    for (final other in TimelineSection.values) {
-      if (!timelineSectionHideable(other)) {
-        continue;
-      }
-      final shouldHide = other != section;
-      final isHidden = widget.hiddenSections.contains(other);
-      if (shouldHide != isHidden) {
-        onToggle(other);
-      }
-    }
-  }
-
   /// R26 #3: maps a lane select-drag's cross-row delta onto the layer's
   /// DISPLAYED lane list (the same one the grids render) and returns the
   /// A plain tap on a property band: STAND there (R10).
@@ -247,9 +226,13 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   /// The user's rule when this was settled: wherever frame cells exist the
   /// playhead can be put, with no exceptions — and a lane band was the one
   /// place with visible cells that refused it, because the seek lived on
-  /// the cell WIDGET and a band paints its cells. Standing on a lane also
-  /// takes its owner as the active layer, which is what keeps drawing
-  /// available while a property is the verb's subject.
+  /// the cell WIDGET and a band paints its cells.
+  ///
+  /// It still takes the lane's owner as the ACTIVE layer, but that no
+  /// longer means you can draw (2026-08-08). Standing on a property is
+  /// standing on a property; the canvas refuses strokes until you step
+  /// back onto a row that is a surface. The active layer is what you
+  /// return TO — pressing the layer's own row is one tap away.
   void _standOnLane(LayerId layerId, String laneId, int frameIndex) {
     _session.clearLaneRangeSelection();
     _session.selectLayer(layerId);
@@ -1286,15 +1269,6 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               // R27 #6: the blend column's bulk pick, same displayed set.
               onSetBlendModeForDisplayed: _session.setBlendModeForLayers,
             ),
-            sectionRail: widget.onToggleSection == null
-                ? null
-                : TimelineSectionRailCallbacks(
-                    onToggleSection: widget.onToggleSection!,
-                    onAddLayerOfKind: _session.addLayerOfKind,
-                    onSetSectionLayersVisibility:
-                        _session.setSectionLayersVisibility,
-                    onSoloSection: _soloSection,
-                  ),
             lanesForLayer: _lanesForLayer,
             laneEdit: _laneEdit,
             // A group header's twirl (AE collapse) — Transform or one of the

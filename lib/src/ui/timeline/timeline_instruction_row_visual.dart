@@ -16,10 +16,16 @@ import 'timeline_frame_span_layout.dart';
 /// overlay adds the mark — ONE unadorned continuous line for bar terms
 /// (no end ticks, never broken for text) or a light-gray filled wedge for
 /// the dedicated FI/FO/O.L marks (R4, user sketch) — with the A/B
-/// instance names dead-centered in the start/end cells (frame-name style)
-/// and the instruction name overlaid on the SPAN's true center. Shared by
-/// both orientations (Axis policy); the printed sheet mirrors this
-/// verbatim.
+/// instance names dead-centered in the start/end cells (frame-name style,
+/// and nothing is drawn under them) and the instruction NAME centred on
+/// the span along the frame axis but stepped OFF the mark across it.
+/// Shared by both orientations (Axis policy); the printed sheet mirrors
+/// this verbatim.
+
+/// How far the instruction NAME sits from the wall it aligns to — the top
+/// of the row on the timeline, the right of the column on the sheet and in
+/// print. Shared so the three surfaces cannot drift apart by a pixel.
+const double instructionLabelInset = 1;
 
 /// Paper-cell adapter: instruction events have no timeline entries, so
 /// this maps a frame index onto the shared cell exposure states (span
@@ -182,9 +188,6 @@ class _InstructionSpan extends StatelessWidget {
     );
   }
 
-  /// Instruction writing reads HORIZONTALLY in both orientations (R6-①c:
-  /// the X-sheet glyph stack retired — frame names already read
-  /// horizontally there, and the printed sheet writes these across too).
   /// Instruction writing follows the surface: across the row on the
   /// timeline, DOWN the column on the sheet.
   ///
@@ -193,10 +196,18 @@ class _InstructionSpan extends StatelessWidget {
   /// then let it paint straight over the neighbouring layer's cells. A
   /// name written down its own column cannot reach the neighbour at all,
   /// which is the fix at the root rather than a clip on top.
+  ///
+  /// Down the column its LETTERS stand up (user, 2026-08-08): writing
+  /// beside a duration bar is read at a glance, and the printed sheet is
+  /// set the same way for the same reason.
   Widget _writing(String text, TextStyle style) {
     return axis == Axis.horizontal
         ? Text(text, maxLines: 1, softWrap: false, style: style)
-        : VerticalWritingText(text: text, style: style);
+        : VerticalWritingText(
+            text: text,
+            latinForm: VerticalLatinForm.upright,
+            style: style,
+          );
   }
 
   @override
@@ -256,9 +267,16 @@ class _InstructionSpan extends StatelessWidget {
               cellIndex: event.length - 1,
               child: ExcludeSemantics(child: _writing(valueB, valueStyle)),
             ),
-          // The name overlays the SPAN's true center, written over the
-          // line/wedge (R4: the cell-snap anchor is retired — labels sit
-          // dead center like handwriting on the sheet).
+          // The name sits on the SPAN's centre along the FRAME axis and
+          // steps OFF the mark across it (user, 2026-08-08): up on the
+          // timeline, right on the sheet.
+          //
+          // Both used to be dead centre — which is exactly where the mark
+          // is, since [_InstructionMarkPainter] draws every bar, wedge and
+          // bowtie about `crossCenter`. So a duration line and the word
+          // naming it were drawn through each other. The MARK keeps the
+          // centre and the writing is what moves, because only one of the
+          // two can say where the middle of the span is.
           if (name.isNotEmpty)
             Positioned.fill(
               child: OverflowBox(
@@ -270,7 +288,19 @@ class _InstructionSpan extends StatelessWidget {
                 minHeight: 0,
                 maxWidth: axis == Axis.horizontal ? double.infinity : null,
                 maxHeight: axis == Axis.horizontal ? null : double.infinity,
-                child: ExcludeSemantics(child: _writing(name, nameStyle)),
+                alignment: axis == Axis.horizontal
+                    ? Alignment.topCenter
+                    : Alignment.centerRight,
+                child: ExcludeSemantics(
+                  // A hair off the wall, so the glyphs never sit on the
+                  // cell border they have just moved next to.
+                  child: Padding(
+                    padding: axis == Axis.horizontal
+                        ? const EdgeInsets.only(top: instructionLabelInset)
+                        : const EdgeInsets.only(right: instructionLabelInset),
+                    child: _writing(name, nameStyle),
+                  ),
+                ),
               ),
             ),
         ],

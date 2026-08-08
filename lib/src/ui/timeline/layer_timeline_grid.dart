@@ -60,7 +60,6 @@ import 'timeline_layer_controls_row.dart';
 import 'timeline_row_filter.dart';
 import 'timeline_section_policy.dart';
 import 'timeline_section_runs.dart';
-import 'timeline_section_bracket_rail.dart';
 import 'timeline_vertical_scrollbar_rail.dart';
 import 'timeline_visible_range.dart';
 
@@ -124,7 +123,6 @@ class LayerTimelineGrid extends StatefulWidget {
     this.hiddenSections = const {},
     this.onToggleSection,
     this.legend,
-    this.sectionRail,
     this.rowFilter = TimelineRowFilter.none,
     this.onSetRowFilter,
     this.collapsedAttachBaseIds = const {},
@@ -333,14 +331,11 @@ class LayerTimelineGrid extends StatefulWidget {
   /// Sections hidden from the grid entirely (toolbar visibility toggles).
   final Set<TimelineSection> hiddenSections;
 
-  /// Folds/unfolds a hideable section (legend corner + bracket chevrons).
+  /// Folds/unfolds a hideable section (the legend corner's sections cell).
   final ValueChanged<TimelineSection>? onToggleSection;
 
   /// The rail legend's bulk commands; null renders a display-only legend.
   final LayerLegendCallbacks? legend;
-
-  /// The section brackets' flyout commands; null keeps them display-only.
-  final TimelineSectionRailCallbacks? sectionRail;
 
   /// The rail's row FILTER (R2): hides layer rows failing its predicate;
   /// the active layer is exempt.
@@ -1260,12 +1255,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
             child: SectionBandZone(
               label: timelineSectionLabel(run.section),
               extent: timelineSectionRunExtent(run, windowRows, _metrics),
-              flyoutEntries: widget.sectionRail == null
-                  ? null
-                  : () => timelineSectionFlyoutEntries(
-                      run.section,
-                      widget.sectionRail!,
-                    ),
             ),
           ),
       ],

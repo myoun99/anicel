@@ -33,6 +33,19 @@ BoxDecoration get timelineRangeSelectionBandDecoration => BoxDecoration(
   borderRadius: const BorderRadius.all(Radius.circular(6)),
 );
 
+/// The ring on the cell you are STANDING on, wherever that is: a layer's
+/// row, an fx header, a property lane.
+///
+/// ONE decoration, because standing is ONE thing (user, 2026-08-08). A
+/// lane used to borrow [timelineRangeSelectionBandDecoration] for this —
+/// filled, 2px, 6px corners against this unfilled 3px 4px one — so
+/// standing on a property read as a one-cell SELECTION rather than as
+/// standing, and you could see the difference in the stroke weight.
+BoxDecoration get timelineStandingCellDecoration => BoxDecoration(
+  border: Border.all(color: timelineSelectedFrameBorderColor, width: 3),
+  borderRadius: const BorderRadius.all(Radius.circular(4)),
+);
+
 /// Ink for glyphs (frame names, marks) sitting on the near-white drawing
 /// blocks; the usual light on-surface text would vanish there.
 const Color timelineDrawingInkColor = Color(0xFF26282B);

@@ -23,8 +23,20 @@ import '../text/vertical_writing_text.dart';
 /// 24/26/86 so the full set still fits the 312 rail.
 /// Leading slot every rail row reserves for the INLINE section tag
 /// (ACTION/SE/CAM on the section's first row — UI-R5, the bracket gutter
-/// retired); the legend header's sections cell sits over the same slot.
-const double layerSectionLabelSlotWidth = 36;
+/// retired); the legend header's sections cell sits over the same slot,
+/// and the x-sheet spends the same number as the HEIGHT of its section
+/// strip.
+///
+/// 36 → 16 (user, 2026-08-08: 'compact, just the letters plus a hair').
+/// MEASURED, not chosen: standing the letters up ([VerticalLatinForm]) puts
+/// the glyph column at one em — 9px at the band's 9pt — and the widest
+/// thing that ever sits here otherwise is the legend's 13px sections icon.
+/// 16 clears both and leaves 3.5px of air; 36 left thirteen.
+///
+/// Every rail row's name starts this much earlier as a result: the slot is
+/// the first term of [layerRailLeadingWidth], which is the whole point of
+/// the number living here rather than in each surface.
+const double layerSectionLabelSlotWidth = 16;
 
 /// The wash a rail row wears while it is THE row the frame-axis verbs act
 /// on — the active layer's row, and (R10 #19's other half) the fx header
@@ -68,16 +80,16 @@ class LayerSectionBandCell extends StatelessWidget {
 /// pre-R5 gutter bracket verbatim (UI-R7 #2, user: '저번이랑 똑같이'),
 /// now INSIDE the rows: tinted fill, bottom hairline landing on the run's
 /// last row boundary, right hairline as the band/rail divider, the paper
-/// sheet's upright glyph label centered across the run. [flyoutEntries]
-/// makes the zone tappable (the timeline's section flyout); null keeps it
-/// display-only (the storyboard).
+/// sheet's upright glyph label centered across the run.
+///
+/// DISPLAY-ONLY on every surface. It used to open a flyout (fold / add
+/// layer here / solo / section-wide eye) on the timeline alone, which the
+/// user retired outright: the legend's sections cell already shows and
+/// hides SE and CAM, and nothing else in that menu was wanted. The x-sheet
+/// band never had the flyout, so deleting it is also what finally makes
+/// the two surfaces agree.
 class SectionBandZone extends StatelessWidget {
-  const SectionBandZone({
-    super.key,
-    required this.label,
-    this.extent,
-    this.flyoutEntries,
-  });
+  const SectionBandZone({super.key, required this.label, this.extent});
 
   final String label;
 
@@ -85,36 +97,49 @@ class SectionBandZone extends StatelessWidget {
   /// per-group Positioned.fill mounting).
   final double? extent;
 
-  final List<PanelFlyoutEntry> Function()? flyoutEntries;
-
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Builder(
-      builder: (anchorContext) {
-        final content = Container(
-          width: layerSectionLabelSlotWidth,
-          height: extent,
-          decoration: BoxDecoration(
-            // The band is a PLATE grouping a run of rows, not a chrome
-            // surface — one chrome fill would have left it reading by its two
-            // hairlines alone.
-            color: AppColors.washDown,
-            // One shared table (R3 #5/#6): the bottom hairline sits on the
-            // run's last row boundary, the right hairline is the band/rail
-            // divider — no enclosing box.
-            border: Border(
-              bottom: BorderSide(color: colorScheme.outlineVariant),
-              right: BorderSide(color: colorScheme.outlineVariant),
-            ),
-          ),
+    return Container(
+      width: layerSectionLabelSlotWidth,
+      height: extent,
+      decoration: BoxDecoration(
+        // The band is a PLATE grouping a run of rows, not a chrome
+        // surface — one chrome fill would have left it reading by its two
+        // hairlines alone.
+        color: AppColors.washDown,
+        // One shared table (R3 #5/#6): the bottom hairline sits on the
+        // run's last row boundary, the right hairline is the band/rail
+        // divider — no enclosing box.
+        border: Border(
+          bottom: BorderSide(color: colorScheme.outlineVariant),
+          right: BorderSide(color: colorScheme.outlineVariant),
+        ),
+      ),
+      // The band names its own region. It used to get a node for free from
+      // the flyout's InkWell — an ACTION is a tap target, so the tree gave
+      // it a boundary — and taking the tap away took the heading's
+      // semantics with it. A label is a label whether or not you can press
+      // it, so the boundary is stated here now.
+      child: Semantics(
+        container: true,
+        label: label,
+        child: ExcludeSemantics(
           child: Center(
             child: ClipRect(
               child: VerticalWritingText(
                 text: label,
+                // ACTION / SE / CAM stand UP (user, 2026-08-08). Lying down
+                // is the Japanese standard and it is what the printed sheet
+                // keeps, but this band is a three-letter tag you glance at,
+                // and glancing at it meant tilting your head.
+                latinForm: VerticalLatinForm.upright,
                 style: TextStyle(
                   fontSize: 9,
-                  letterSpacing: 1.2,
+                  // Dropped with the turn: letter spacing is a HORIZONTAL
+                  // notion and the renderer zeroes it anyway (the leading
+                  // comes from the cell extent), so carrying it here only
+                  // said something untrue about the label.
                   fontWeight: FontWeight.bold,
                   height: 1.15,
                   color: colorScheme.onSurfaceVariant,
@@ -122,16 +147,8 @@ class SectionBandZone extends StatelessWidget {
               ),
             ),
           ),
-        );
-        final entries = flyoutEntries;
-        if (entries == null) {
-          return content;
-        }
-        return InkWell(
-          onTap: () => showPanelFlyout(anchorContext, entries: entries()),
-          child: content,
-        );
-      },
+        ),
+      ),
     );
   }
 }

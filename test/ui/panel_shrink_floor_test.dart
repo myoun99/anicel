@@ -13,6 +13,7 @@ import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
 import 'package:anicel/src/ui/timeline/layer_rail_window.dart';
+import 'package:anicel/src/ui/timeline/timeline_command_bar.dart';
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline/timeline_panel.dart';
@@ -103,7 +104,7 @@ void main() {
       tester.getRect(find.byKey(ValueKey<String>(key)).first);
 
   group('the chrome each floor is built from is what the panels draw', () {
-    testWidgets('the timeline command bar is TimelinePanel.commandBarHeight', (
+    testWidgets('the timeline command bar is TimelineCommandBar.height', (
       tester,
     ) async {
       await pumpAt(tester, timeline, height: 600);
@@ -112,7 +113,7 @@ void main() {
       final grid = rectOf(tester, 'timeline-scrollbar-area');
       expect(
         grid.top - host.top,
-        TimelinePanel.commandBarHeight,
+        TimelineCommandBar.height,
         reason: 'the floor reserves this much for the command bar',
       );
       expect(
@@ -133,8 +134,9 @@ void main() {
       final panel = rectOf(tester, 'storyboard-panel');
       expect(
         panel.top - host.top,
-        StoryboardTabHost.commandBarHeight,
-        reason: 'the floor reserves this much for the command bar',
+        TimelineCommandBar.height,
+        reason: 'the floor reserves this much for the command bar — the '
+            'SAME number the timeline reserves, since 2026-08-08',
       );
       // The band above the body: panel top to where the scrollbar rail
       // (which spans exactly the body) begins.

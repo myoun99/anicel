@@ -4882,18 +4882,6 @@ class EditorSessionManager extends ChangeNotifier {
     _setLayerFxSwitches(layers, enabled: !bypassed);
   }
 
-  /// Shows/hides every layer belonging to [section] (the section bracket's
-  /// flyout) — visibility semantics like [setAllLayersVisibility].
-  void setSectionLayersVisibility(TimelineSection section, bool visible) {
-    for (final layer in layers) {
-      if (timelineSectionForLayerKind(layer.kind) == section &&
-          layer.isVisible != visible) {
-        _layerController.toggleLayerVisibility(layer.id);
-      }
-    }
-    notifyListeners();
-  }
-
   /// The project's instruction vocabulary (FI/FO/PAN …, user-editable).
   CameraInstructionSet get cameraInstructionSet =>
       _repository.requireProject().cameraInstructions;

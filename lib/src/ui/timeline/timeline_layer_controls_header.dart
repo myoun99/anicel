@@ -466,6 +466,12 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                         ? VerticalWritingText(
                             key: const ValueKey<String>('legend-layer'),
                             text: 'LAYER',
+                            // Stands up with the names it heads (user,
+                            // 2026-08-08): a heading lying down over a
+                            // column of upright names reads as a different
+                            // kind of label than the thing it labels.
+                            latinForm: VerticalLatinForm.upright,
+                            mainAlignment: 0,
                             style: TextStyle(
                               fontSize: 9,
                               fontWeight: FontWeight.w600,
