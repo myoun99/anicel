@@ -34,19 +34,31 @@ int? surfacePixelRgba(BitmapSurface surface, int x, int y) {
     return null;
   }
   final tileSize = surface.tileSize;
-  final tile = surface.tiles[TileCoord(
-    x: floorDiv(x, tileSize),
-    y: floorDiv(y, tileSize),
-  )];
+  // 🚀`tileAt`, not `tiles[...]`, and `readPixels`, not `pixels` — this
+  // reads FOUR BYTES and used to make two whole copies to get them
+  // (유저, R4 #3: 스포이드 커서).
+  //
+  // `BitmapSurface.tiles` is `Map.unmodifiable(_tiles)`, so the subscript
+  // rebuilt the entire tile map; `BitmapTile.pixels` is
+  // `Uint8List.fromList(_view)`, so the read memcpy'd a whole 256 KiB tile.
+  // Both, per contributing layer, per POINTER EVENT — and Flutter delivers
+  // every queued event, so a 200Hz pen bills this a dozen-odd times a
+  // frame. `bitmap_tile.dart`'s own doc already says hot paths use
+  // `readPixels`; this was one and did not.
+  final tile = surface.tileAt(
+    TileCoord(x: floorDiv(x, tileSize), y: floorDiv(y, tileSize)),
+  );
   if (tile == null) {
     return 0;
   }
   final index = ((y % tileSize) * tileSize + (x % tileSize)) * 4;
-  final pixels = tile.pixels;
-  return (pixels[index] << 24) |
-      (pixels[index + 1] << 16) |
-      (pixels[index + 2] << 8) |
-      pixels[index + 3];
+  return tile.readPixels(
+    (_, pixels) =>
+        (pixels[index] << 24) |
+        (pixels[index + 1] << 16) |
+        (pixels[index + 2] << 8) |
+        pixels[index + 3],
+  );
 }
 
 /// An ADJUSTMENT row's colour matrix as the eyedropper should apply it, or
