@@ -222,6 +222,99 @@ void main() {
     expect(render.debugStoodDown, isFalse);
   });
 
+  testWidgets('the nested-boundary report is about THIS frame', (tester) async {
+    // The diagnostic is the only thing that tells anyone a panel quietly
+    // stopped being free, and the enforcement test branches on it. It
+    // used to be written only on the path that reached the guard, so a
+    // surface that stood itself down reported `false` no matter what was
+    // inside it — the detector going blind exactly when a panel is at
+    // its most expensive.
+    // The shape has to have BOTH: an inner boundary, and something
+    // outside it that dirties us every frame. (Dirt from under the inner
+    // boundary stops there and never reaches us — which is the whole
+    // reason the guard exists — so a nested boundary alone can never
+    // stand a surface down.)
+    final counter = <int>[0];
+    final repaint = ValueNotifier<int>(0);
+    addTearDown(repaint.dispose);
+
+    Widget tree({required bool withInnerBoundary}) => _host(
+      StaticRaster(
+        debugLabel: 'test',
+        maxConsecutiveCaptures: 2,
+        child: Column(
+          children: <Widget>[
+            Expanded(
+              child: withInnerBoundary
+                  ? const RepaintBoundary(
+                      child: ColoredBox(color: Color(0xFF111111)),
+                    )
+                  : const ColoredBox(color: Color(0xFF111111)),
+            ),
+            Expanded(
+              child: CustomPaint(
+                painter: _CountingPainter(counter: counter, repaint: repaint),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    await tester.pumpWidget(tree(withInnerBoundary: true));
+    final render = tester.renderObject<RenderStaticRaster>(
+      find.byType(StaticRaster),
+    );
+    expect(render.debugNestedBoundary, isTrue);
+
+    // Dirty the SIBLING every frame until the surface stands down.
+    for (var i = 0; i < 5; i += 1) {
+      repaint.value += 1;
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(render.debugStoodDown, isTrue);
+    expect(render.debugNestedBoundary, isTrue);
+
+    // Now take the inner boundary away while it is STILL stood down. If
+    // the guard ran after the stand-down check, this frame would return
+    // before reaching it and the flag would still read `true` — a
+    // diagnostic describing a tree that no longer exists.
+    await tester.pumpWidget(tree(withInnerBoundary: false));
+    repaint.value += 1;
+    await tester.pump(const Duration(milliseconds: 16));
+
+    expect(render.debugStoodDown, isTrue, reason: 'still alive every frame');
+    expect(
+      render.debugNestedBoundary,
+      isFalse,
+      reason:
+          'the report has to describe the tree as it is now, not as it was '
+          'the last time one particular branch happened to run',
+    );
+  });
+
+  testWidgets('a zero-size box still paints its child through', (tester) async {
+    // Every other bail-out paints through; this one used to return
+    // without painting, so a child that draws outside a zero box
+    // vanished for a layout pass.
+    final counter = <int>[0];
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Center(
+          child: SizedBox(
+            width: 0,
+            height: 0,
+            child: StaticRaster(
+              debugLabel: 'test',
+              child: CustomPaint(painter: _CountingPainter(counter: counter)),
+            ),
+          ),
+        ),
+      ),
+    );
+    expect(counter[0], greaterThan(0));
+  });
+
   testWidgets('disabled is byte-for-byte pass-through', (tester) async {
     final counter = <int>[0];
     final parentRepaint = ValueNotifier<int>(0);

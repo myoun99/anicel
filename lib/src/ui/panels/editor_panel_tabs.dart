@@ -456,17 +456,51 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
   /// ★THE funnel every docked panel passes through, and therefore the
   /// only place the "a panel is light unless it says otherwise" rule can
   /// live. See [EditorPanelTab.staticRaster].
-  Widget _buildTabContent(EditorPanelTab tab) {
-    final content = _buildTabInterior(tab);
+  Widget _buildTabContent(EditorPanelTab tab) => _buildTabInterior(tab);
+
+  /// Wraps [child] in the panel bake unless the tab opted out.
+  ///
+  /// ⚠️Called at each of the interior's leaves rather than once around
+  /// the outside, and that placement is not cosmetic. The overflow
+  /// branches below put the panel inside a `SingleChildScrollView`, and a
+  /// viewport IS a repaint boundary — so a bake around the outside would
+  /// find one, stand down, and the panel would silently go back to
+  /// paying full raster price. It would do that only when the dock is
+  /// narrow enough to overflow, which means the cost would appear and
+  /// disappear as the user drags a splitter, and no test that pumps a
+  /// single window size would ever see it.
+  Widget _bake(EditorPanelTab tab, Widget child) {
     if (!tab.staticRaster) {
-      return content;
+      return child;
     }
-    return StaticRaster(debugLabel: 'panel:${tab.id}', child: content);
+    // A keep-alive tab stays MOUNTED offstage, and `Offstage` keeps the
+    // render object attached — so nothing would ever release its baked
+    // image. Seven tabs ship keep-alive; that is seven full-panel RGBA
+    // surfaces held for panels nobody is looking at.
+    //
+    // The visibility feed is already here for the same reason (heavy
+    // hosts stand down offstage), and `enabled` drops the image in its
+    // setter rather than waiting for a paint that will never come while
+    // hidden. `child` is captured OUTSIDE the builder, so a tab switch
+    // rebuilds one widget and not the panel.
+    final visible = _tabVisibility[tab.id];
+    StaticRaster bake(bool enabled) => StaticRaster(
+      debugLabel: 'panel:${tab.id}',
+      enabled: enabled,
+      child: child,
+    );
+    if (visible == null) {
+      return bake(true);
+    }
+    return ValueListenableBuilder<bool>(
+      valueListenable: visible,
+      builder: (context, isVisible, _) => bake(isVisible),
+    );
   }
 
   Widget _buildTabInterior(EditorPanelTab tab) {
     if (tab.minContentWidth == null && tab.minContentHeight == null) {
-      return Builder(builder: tab.builder);
+      return _bake(tab, Builder(builder: tab.builder));
     }
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -476,12 +510,12 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
           constraints.maxHeight,
         );
         if (width <= constraints.maxWidth && height <= constraints.maxHeight) {
-          return Builder(builder: tab.builder);
+          return _bake(tab, Builder(builder: tab.builder));
         }
         Widget content = SizedBox(
           width: width,
           height: height,
-          child: Builder(builder: tab.builder),
+          child: _bake(tab, Builder(builder: tab.builder)),
         );
         if (height > constraints.maxHeight) {
           content = SingleChildScrollView(child: content);
