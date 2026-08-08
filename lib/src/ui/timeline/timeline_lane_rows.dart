@@ -35,18 +35,31 @@ const double _laneLabelFloor = 2 * timelineFrameCellWidth;
 /// their leading gaps.
 const double _laneNavigatorExtent = 3 * 20 + 4;
 
-/// 20 → 28 → 76 (rail-window round): the value used to SHRINK into
-/// whatever was left, so any budget "worked" and nobody had to ask what
-/// the readout actually costs. It reads DOWN the column now, so the slot
-/// has to be sized in CELLS.
+/// The stood-up value readout's type, and the most LINES any lane makes of
+/// it. Three: a comma-separated pair stacks as `1170` / `,` / `827` (user,
+/// 2026-08-08), and nothing this rail formats has two commas in it.
+const double _laneValueFontSize = 11;
+const int _laneValueMaxLines = 3;
+
+/// WHOLE pixels, and each line gets a box of exactly this. A paragraph's
+/// height rounds UP to an integer, so reserving `fontSize * lineHeight`
+/// under-reserves by the rounding — 11×1.15 is 12.65 and lays out at 13,
+/// which overflowed a three-line column by the 1.05px nobody budgeted.
+/// A fixed box makes the arithmetic here the arithmetic that happens.
+const double _laneValueLineExtent = 13;
+
+/// 20 → 28 → 76 → three lines (user, 2026-08-08).
 ///
-/// Six of them, at the 11pt/1.15 the value is drawn with. Two would have
-/// held a percentage and nothing else: `0.0, 0.0` is eight cells, so a
-/// Position lane would have read `0…` — worse than the shrunken text it
-/// replaced. Six shows `0.0, …`, which at least names the first component,
-/// and the column has the height to spare (its heading floor is 48 and a
-/// stood-up header block is ~320).
-const double _laneValueExtent = 76;
+/// The value used to SHRINK into whatever was left, so any budget "worked"
+/// and nobody had to ask what the readout actually costs. Then it read
+/// DOWN the column one glyph per cell, and the slot had to hold SIX of
+/// them — `0.0, 0.0` is eight cells, so anything smaller left a Position
+/// lane reading `0…`.
+///
+/// Stacked as whole numbers it costs three LINES instead of six cells, and
+/// the 36px that frees goes back to the lane's name — which is what the
+/// column is for.
+const double _laneValueExtent = _laneValueMaxLines * _laneValueLineExtent;
 
 /// The label cell of one property lane: an AE-style property name, the
 /// keyframe navigator (◀ previous key · ◆ toggle key at the playhead · ▶
@@ -286,6 +299,61 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     );
   }
 
+  /// The stood-up readout: whole NUMBERS on their own lines, written
+  /// across (user, 2026-08-08 — `1170` / `,` / `827`, and `100%` on one
+  /// line the way it already was).
+  ///
+  /// It used to go through the vertical-writing table like every other
+  /// label on the sheet, which set `1170, 827` as `1 1 7 0 , ␣ 827` — seven
+  /// cells, because a four-digit run is past the 縦中横 limit and falls
+  /// apart into single glyphs. A number is not prose; it wants to be read
+  /// as one token, and the only thing vertical about it is which token
+  /// comes next.
+  ///
+  /// Lines SHRINK to fit rather than ellipsise, which is this cell's
+  /// exception to the rail-window rule: a truncated coordinate is a wrong
+  /// coordinate, and the user allowed the smaller type here by name.
+  Widget _stackedValue(String label, ColorScheme colorScheme) {
+    final style = TextStyle(
+      fontSize: _laneValueFontSize,
+      color: colorScheme.primary,
+    );
+    final lines = _valueLines(label);
+    return Column(
+      mainAxisAlignment: MainAxisAlignment.start,
+      children: [
+        for (final line in lines)
+          SizedBox(
+            height: _laneValueLineExtent,
+            child: FittedBox(
+              fit: BoxFit.scaleDown,
+              child: Text(line, maxLines: 1, softWrap: false, style: style),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// [label] split into the lines it stacks as: each comma-separated
+  /// component, with the comma itself on a line between them so the pair
+  /// still reads as a pair. Uncommaed values are one line, unchanged.
+  static List<String> _valueLines(String label) {
+    if (!label.contains(',')) {
+      return [label];
+    }
+    final lines = <String>[];
+    for (final component in label.split(',')) {
+      if (lines.isNotEmpty) {
+        lines.add(',');
+      }
+      final trimmed = component.trim();
+      if (trimmed.isNotEmpty) {
+        lines.add(trimmed);
+      }
+    }
+    return lines.isEmpty ? [label] : lines;
+  }
+
   /// AE's blue value column: the property's value at the playhead; tap to
   /// type (Enter commits and keys the value there), drag to scrub.
   Widget _valueCell(ColorScheme colorScheme, String valueLabel) {
@@ -362,24 +430,19 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           onTap: laneEdit?.onSetValue == null
               ? null
               : () => _startValueEdit(valueLabel),
-          // AE's blue value. It used to SHRINK to whatever the column gave
-          // it; the rail-window round retired shrink-to-fit everywhere on
-          // screen, so on the sheet the value reads DOWN its column like
-          // every other label there — with three-digit 縦中横 so `100%`
-          // costs two cells rather than four.
+          // AE's blue value.
           child: widget.axis == Axis.horizontal
               ? Text(
                   _scrubPreview ?? valueLabel,
                   maxLines: 1,
                   softWrap: false,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: 11, color: colorScheme.primary),
+                  style: TextStyle(
+                    fontSize: _laneValueFontSize,
+                    color: colorScheme.primary,
+                  ),
                 )
-              : VerticalWritingText(
-                  text: _scrubPreview ?? valueLabel,
-                  tateChuYokoDigits: 3,
-                  style: TextStyle(fontSize: 11, color: colorScheme.primary),
-                ),
+              : _stackedValue(_scrubPreview ?? valueLabel, colorScheme),
         ),
       ),
     );

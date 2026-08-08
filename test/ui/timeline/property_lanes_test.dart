@@ -20,7 +20,6 @@ import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/home_page.dart';
-import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
     show timelineDrawingStartColor;
@@ -1430,16 +1429,22 @@ void main() {
       );
       await expand(tester);
 
-      // The readout reads DOWN its column since the rail-window round (it
-      // used to be horizontal text shrunk to fit), so it is the shared
-      // vertical writer that carries the string.
-      final valueText = find.descendant(
-        of: find.byKey(
-          const ValueKey<String>('xsheet-lane-value-lane-cam-layer-scale'),
-        ),
-        matching: find.byType(VerticalWritingText),
-      );
-      expect(tester.widget<VerticalWritingText>(valueText).text, '150%');
+      // The readout is stacked LINES of horizontal text (user, 2026-08-08).
+      // It used to go through the vertical writer with the rest of the
+      // sheet's labels, which spelled a number out one glyph per cell.
+      List<String> valueLines() => tester
+          .widgetList<Text>(
+            find.descendant(
+              of: find.byKey(
+                const ValueKey<String>('xsheet-lane-value-lane-cam-layer-scale'),
+              ),
+              matching: find.byType(Text),
+            ),
+          )
+          .map((text) => text.data ?? '')
+          .toList();
+
+      expect(valueLines(), ['150%']);
 
       // Typing keys the value at the playhead (Enter commits).
       await tester.tap(
@@ -1458,7 +1463,7 @@ void main() {
       );
       await tester.testTextInput.receiveAction(TextInputAction.done);
       await tester.pumpAndSettle();
-      expect(tester.widget<VerticalWritingText>(valueText).text, '200%');
+      expect(valueLines(), ['200%']);
 
       // Scrubbing: +40px horizontally = +20% at the 0.5%/px rate — the
       // drag-axis mapping is the LANE's, identical in both orientations.
@@ -1469,8 +1474,39 @@ void main() {
         const Offset(40, 0),
       );
       await tester.pumpAndSettle();
-      expect(tester.widget<VerticalWritingText>(valueText).text, '220%');
+      expect(valueLines(), ['220%']);
       expect(laneKey('scale', 0), findsOneWidget);
+    });
+
+    testWidgets('a coordinate pair stacks as number, comma, number', (
+      tester,
+    ) async {
+      await pumpXSheet(
+        tester,
+        _project(camera: CutCamera(keyframes: {0: _pose(100), 4: _pose(80)})),
+      );
+      await expand(tester);
+
+      // The whole point of the change (user, 2026-08-08): `1170, 827` is
+      // three READABLE tokens down the column, not seven glyph cells —
+      // a four-digit run is past the 縦中横 limit and the vertical writer
+      // used to fall back to one digit per cell.
+      expect(
+        tester
+            .widgetList<Text>(
+              find.descendant(
+                of: find.byKey(
+                  const ValueKey<String>(
+                    'xsheet-lane-value-lane-cam-layer-position',
+                  ),
+                ),
+                matching: find.byType(Text),
+              ),
+            )
+            .map((text) => text.data ?? '')
+            .toList(),
+        hasLength(3),
+      );
     });
 
     testWidgets('prev/next navigator jumps the playhead between keys', (
