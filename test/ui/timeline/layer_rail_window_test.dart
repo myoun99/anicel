@@ -239,7 +239,7 @@ void main() {
   });
 
   group('LayerRailSplitter', () {
-    testWidgets('dragging resizes, double-clicking restores natural', (
+    testWidgets('dragging resizes, and that is all the grip does now', (
       tester,
     ) async {
       final rail = LayerRailExtent();
@@ -274,12 +274,17 @@ void main() {
       expect(rail.windowExtent(434), lessThan(434));
       expect(rail.windowExtent(434), greaterThan(layerRailMinimumWindowExtent));
 
+      // R5 #5: the double-click reset and the tooltip are retired (user).
+      // A double press leaves the window exactly where the drag put it —
+      // the reset still exists on the extent itself, for the workspace's
+      // Reset Layout, and nothing on the grip reaches it any more.
+      final resized = rail.windowExtent(434);
       await tester.tap(find.byType(LayerRailSplitter));
       await tester.pump(const Duration(milliseconds: 50));
       await tester.tap(find.byType(LayerRailSplitter));
       await tester.pumpAndSettle();
-      expect(rail.value, isNull);
-      expect(rail.windowExtent(434), 434);
+      expect(rail.windowExtent(434), resized);
+      expect(find.byType(Tooltip), findsNothing);
     });
   });
 

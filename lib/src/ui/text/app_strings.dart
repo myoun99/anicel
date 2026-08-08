@@ -417,6 +417,7 @@ class AppStrings {
   String get tlKindImage => _s('tlKindImage');
   String get tlKindText => _s('tlKindText');
   String get tlKindAdjustment => _s('tlKindAdjustment');
+  String get tlKindFolder => _s('tlKindFolder');
   String get tlKindSe => _s('tlKindSe');
 
   // --- The text cel editor (R5) ---
@@ -1326,6 +1327,7 @@ class AppStrings {
     'tlKindImage': 'Image',
     'tlKindText': 'Text',
     'tlKindAdjustment': 'Adjustment',
+    'tlKindFolder': 'Folder',
     'tlKindSe': 'SE',
     'tlKindInstruction': 'Instruction',
     'textCelNewTitle': 'New Text',
@@ -2027,6 +2029,7 @@ class AppStrings {
     'tlKindImage': '画像',
     'tlKindText': 'テキスト',
     'tlKindAdjustment': '調整レイヤー',
+    'tlKindFolder': 'フォルダー',
     'tlKindSe': 'SE',
     'textCelNewTitle': '新規テキスト',
     'textCelEditTitle': 'テキストを編集',
@@ -2723,6 +2726,7 @@ class AppStrings {
     'tlKindImage': '이미지',
     'tlKindText': '텍스트',
     'tlKindAdjustment': '조정 레이어',
+    'tlKindFolder': '폴더',
     'tlKindSe': 'SE',
     'textCelNewTitle': '새 텍스트',
     'textCelEditTitle': '텍스트 편집',
@@ -3453,6 +3457,7 @@ class AppStrings {
     'tlKindImage': 'Image',
     'tlKindText': 'Texte',
     'tlKindAdjustment': 'Calque de réglage',
+    'tlKindFolder': 'Dossier',
     'tlKindSe': 'SE',
     'tlKindInstruction': 'Indication',
     'textCelNewTitle': 'Nouveau texte',
@@ -4125,6 +4130,7 @@ class AppStrings {
     'tlKindImage': '图像',
     'tlKindText': '文本',
     'tlKindAdjustment': '调整图层',
+    'tlKindFolder': '文件夹',
     'tlKindSe': 'SE',
     'textCelNewTitle': '新建文本',
     'textCelEditTitle': '编辑文本',

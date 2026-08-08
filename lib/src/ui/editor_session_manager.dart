@@ -125,6 +125,8 @@ import '../models/drawing_block_move.dart';
 import '../models/multi_row_range_move.dart';
 import '../services/command.dart';
 import '../services/commands/cut_command_coordinator.dart';
+import '../services/commands/cut_command_input_planner.dart'
+    show nextFolderName;
 import '../services/commands/rekey_brush_frames_command.dart';
 import '../services/commands/update_layer_transform_enabled_command.dart';
 import '../services/commands/relink_media_asset_command.dart';
@@ -3814,11 +3816,21 @@ class EditorSessionManager extends ChangeNotifier {
             name: nextAdjustmentLayerName(cut.layers),
           ),
         );
-      case LayerKind.camera:
-      // Folders are MADE, not added: 폴더 생성 wraps existing rows
-      // ([groupActiveLayerIntoFolder]). Add Layer with a folder row active
-      // adds a drawing cel, like it does with the camera active.
       case LayerKind.folder:
+        // R5 #14: a folder is ADDED now, and it is born EMPTY.
+        //
+        // It used to be MADE by wrapping the active row, and Add Layer with
+        // a folder selected quietly added a drawing cel instead. The user
+        // asked for the file-manager shape every other app they work in
+        // has: make the container, then put things in it by dropping them
+        // on it. The drop is this round's other half; without it an empty
+        // folder would be a room with no door, because a caret between
+        // rows cannot address the inside of a folder that has none (the
+        // "in" and the "below" are the same slot).
+        _addRowAboveActive(
+          (cut) => createFolderLayer(id: layerId, name: nextFolderName(cut)),
+        );
+      case LayerKind.camera:
         _layerController.addLayerWithDefaults(layerId: layerId);
     }
     notifyListeners();
@@ -4178,6 +4190,15 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// Whether [layerId] can step one place along the stack ([up] = toward
   /// the top).
+  ///
+  /// R5 #5: NO UI ENTRANCE any more — the menu entries went and no shortcut
+  /// replaced them (user: "단축회로로도 남기지마 일단"). The pair stays
+  /// because the STEP is what `layer_stack_move_test` drives to pin the
+  /// commit path the DRAG also lands on: that a run travels whole, that
+  /// folder membership follows the landing, that the move reaches the
+  /// 겸용 siblings, and that one step is one undo. Deleting them would
+  /// delete that coverage and leave the drag as the only witness to its own
+  /// correctness. Flagged for the user — say the word and both go.
   bool canMoveLayerInStack(LayerId layerId, {required bool up}) {
     if (isTrackSeLayerId(layerId)) {
       final rows = activeTrack.seLayers;

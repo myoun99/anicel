@@ -13,12 +13,16 @@ const Map<String, String> flyoutOwnerByItemKey = {
   'copy-layer-button': 'timeline-layer-menu-button',
   'paste-layer-button': 'timeline-layer-menu-button',
   'delete-layer-button': 'timeline-layer-menu-button',
-  'import-audio-button': 'timeline-layer-menu-button',
   'toggle-storyboard-layer-button': 'timeline-layer-menu-button',
-  'toggle-se-section-button': 'timeline-layer-menu-button',
-  'toggle-camera-section-button': 'timeline-layer-menu-button',
-  'timeline-group-attach-into-folder-button': 'timeline-layer-menu-button',
   'timeline-rasterize-layer-button': 'timeline-layer-menu-button',
+  // R5 #5/#14: import audio, the two SECTION switches and both
+  // folder-making commands left the Layer menu. Sections keep their own
+  // door — the legend's sections cell, which is where they always also
+  // lived and the only one left.
+  'legend-section-se': 'legend-sections',
+  'legend-section-camera': 'legend-sections',
+  // R5 #6: the effect chain has a button of its own now.
+  'add-effect-blur': 'timeline-effects-button',
   'timeline-se-name-tag-button': 'timeline-layer-menu-button',
   'rename-frame-button': 'timeline-frame-menu-button',
   'copy-frame-button': 'timeline-frame-menu-button',

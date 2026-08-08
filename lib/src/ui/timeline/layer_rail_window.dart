@@ -475,8 +475,10 @@ class _RenderRailWindowBox extends RenderShiftedBox {
 
 /// The grip between a rail window and the frame cells.
 ///
-/// Dragging toward the cells widens the window; double-clicking restores
-/// the rail's natural size.
+/// Dragging toward the cells widens the window. R5 #5: it used to carry a
+/// tooltip and a double-click reset, and the user retired both — a grip
+/// that says what a grip is for is noise, and a reset nobody was told
+/// about is a control nobody uses.
 class LayerRailSplitter extends StatelessWidget {
   const LayerRailSplitter({
     super.key,
@@ -498,13 +500,11 @@ class LayerRailSplitter extends StatelessWidget {
   Widget build(BuildContext context) {
     return DockEdgeSplitter(
       axis: axis == Axis.horizontal ? Axis.vertical : Axis.horizontal,
-      tooltip: 'Drag to resize the layer rail (double-click to reset)',
       onDragDelta: (delta) => extent.resizeBy(
         delta,
         naturalExtent: naturalExtent,
         availableExtent: availableExtent,
       ),
-      onDoubleTap: extent.reset,
     );
   }
 }
