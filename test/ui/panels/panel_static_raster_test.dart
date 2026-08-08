@@ -113,13 +113,18 @@ void main() {
     // old one) is costing its full raster price on every frame the app
     // produces. The failure message names the render object responsible.
     // Fix it, or add it below WITH a reason.
+    // Every entry here is an OUTER wrapper standing down for an inner one
+    // that does the actual baking, except where noted. That is the design
+    // working: a viewport is a repaint boundary, so a surface that scrolls
+    // can only be baked from inside, and the outer wrapper then correctly
+    // refuses rather than freeze it.
     const knownToPaintThrough = <String, String>{
-      'panel:brushes':
-          'the outer wrapper yielding to the inner one in EditorPanelBody — '
-          'the design working, not a defect',
+      'panel:brushes': 'yields to body:Brushes inside EditorPanelBody',
+      'edge-dock:tool-left': 'yields to tool-column inside the tool scroller',
       'panel:timeline':
-          'not addressed yet: measured at 1.7 ms, and the most genuinely '
-          'live panel in the app. Blocked by its own scroll viewport.',
+          'partly addressed: timeline-command-bar bakes inside. The grid '
+          'below it is the most genuinely live surface in the app and is '
+          'left alone deliberately — measured at 1.7 ms for the whole panel.',
     };
 
     await _pumpWorkspace(tester);

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'brush_tool_state.dart';
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart';
+import '../widgets/static_raster.dart';
 
 /// The Photoshop/Clip-Studio style tool switcher (brush ⇄ eraser): a
 /// dockable PANEL whose home is a slim vertical edge dock, so it lives on
@@ -77,74 +78,83 @@ class ToolsPanel extends StatelessWidget {
     // it scrolls instead of overflowing.
     return SingleChildScrollView(
       padding: const EdgeInsets.only(left: 3, top: 6, bottom: 6),
-      child: Column(
-        key: const ValueKey<String>('tools-panel'),
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          if (historyControls != null) ...[
-            historyControls!,
-            groupDivider(context),
-          ],
-          RailButton(
-            keyValue: 'tool-brush-button',
-            tooltip: AppText.strings.toolBrushTip,
-            icon: Icons.brush_outlined,
-            selected: tool == CanvasTool.brush,
-            onPressed: () => onToolChanged(CanvasTool.brush),
-          ),
-          const SizedBox(height: 4),
-          RailButton(
-            keyValue: 'tool-eraser-button',
-            tooltip: AppText.strings.toolEraserTip,
-            // No dedicated eraser glyph in this icon set; the "magic
-            // eraser" wand reads closest.
-            icon: Icons.auto_fix_normal,
-            selected: tool == CanvasTool.eraser,
-            onPressed: () => onToolChanged(CanvasTool.eraser),
-          ),
-          const SizedBox(height: 4),
-          RailButton(
-            keyValue: 'tool-eyedropper-button',
-            tooltip: AppText.strings.toolEyedropperTip,
-            icon: Icons.colorize_outlined,
-            selected: tool == CanvasTool.eyedropper,
-            onPressed: () => onToolChanged(CanvasTool.eyedropper),
-          ),
-          const SizedBox(height: 4),
-          RailButton(
-            keyValue: 'tool-fill-button',
-            tooltip: AppText.strings.toolFillTip,
-            icon: Icons.format_color_fill_outlined,
-            selected: tool == CanvasTool.fill,
-            onPressed: () => onToolChanged(CanvasTool.fill),
-          ),
-          const SizedBox(height: 4),
-          // R17-U: ONE selection tool — the rectangle/lasso variant is a
-          // tool SETTING, not a separate toolbar entry (유저 채택 설계).
-          RailButton(
-            keyValue: 'tool-select-button',
-            tooltip: AppText.strings.toolSelectTip,
-            icon: Icons.highlight_alt_outlined,
-            selected: tool == CanvasTool.selectRect || tool == CanvasTool.lasso,
-            onPressed: () => onToolChanged(
-              tool == CanvasTool.selectRect || tool == CanvasTool.lasso
-                  ? tool
-                  : selectionVariant,
+      // Baked inside the scroller, because a viewport is itself a repaint
+      // boundary and the edge dock outside it can never reach past one.
+      // This column is in the FLOOR — it is on screen with every panel
+      // closed, and it was being re-executed on the GPU for a pointer
+      // that never came near it.
+      child: StaticRaster(
+        debugLabel: 'tool-column',
+        child: Column(
+          key: const ValueKey<String>('tools-panel'),
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            if (historyControls != null) ...[
+              historyControls!,
+              groupDivider(context),
+            ],
+            RailButton(
+              keyValue: 'tool-brush-button',
+              tooltip: AppText.strings.toolBrushTip,
+              icon: Icons.brush_outlined,
+              selected: tool == CanvasTool.brush,
+              onPressed: () => onToolChanged(CanvasTool.brush),
             ),
-          ),
-          const SizedBox(height: 4),
-          RailButton(
-            keyValue: 'tool-move-button',
-            tooltip: AppText.strings.toolMoveTip,
-            icon: Icons.open_with,
-            selected: tool == CanvasTool.move,
-            onPressed: () => onToolChanged(CanvasTool.move),
-          ),
-          // 유저 확정 (rail-and-strip): 「컬러 스와치는 레일에서 빠진다」 —
-          // the top strip's colour button IS the swatch, so keeping one here
-          // would be two places to read the same colour. The rail is
-          // history + onion + the six tools, and that is all.
-        ],
+            const SizedBox(height: 4),
+            RailButton(
+              keyValue: 'tool-eraser-button',
+              tooltip: AppText.strings.toolEraserTip,
+              // No dedicated eraser glyph in this icon set; the "magic
+              // eraser" wand reads closest.
+              icon: Icons.auto_fix_normal,
+              selected: tool == CanvasTool.eraser,
+              onPressed: () => onToolChanged(CanvasTool.eraser),
+            ),
+            const SizedBox(height: 4),
+            RailButton(
+              keyValue: 'tool-eyedropper-button',
+              tooltip: AppText.strings.toolEyedropperTip,
+              icon: Icons.colorize_outlined,
+              selected: tool == CanvasTool.eyedropper,
+              onPressed: () => onToolChanged(CanvasTool.eyedropper),
+            ),
+            const SizedBox(height: 4),
+            RailButton(
+              keyValue: 'tool-fill-button',
+              tooltip: AppText.strings.toolFillTip,
+              icon: Icons.format_color_fill_outlined,
+              selected: tool == CanvasTool.fill,
+              onPressed: () => onToolChanged(CanvasTool.fill),
+            ),
+            const SizedBox(height: 4),
+            // R17-U: ONE selection tool — the rectangle/lasso variant is a
+            // tool SETTING, not a separate toolbar entry (유저 채택 설계).
+            RailButton(
+              keyValue: 'tool-select-button',
+              tooltip: AppText.strings.toolSelectTip,
+              icon: Icons.highlight_alt_outlined,
+              selected:
+                  tool == CanvasTool.selectRect || tool == CanvasTool.lasso,
+              onPressed: () => onToolChanged(
+                tool == CanvasTool.selectRect || tool == CanvasTool.lasso
+                    ? tool
+                    : selectionVariant,
+              ),
+            ),
+            const SizedBox(height: 4),
+            RailButton(
+              keyValue: 'tool-move-button',
+              tooltip: AppText.strings.toolMoveTip,
+              icon: Icons.open_with,
+              selected: tool == CanvasTool.move,
+              onPressed: () => onToolChanged(CanvasTool.move),
+            ),
+            // 유저 확정 (rail-and-strip): 「컬러 스와치는 레일에서 빠진다」 —
+            // the top strip's colour button IS the swatch, so keeping one here
+            // would be two places to read the same colour. The rail is
+            // history + onion + the six tools, and that is all.
+          ],
+        ),
       ),
     );
   }

@@ -56,6 +56,7 @@ import 'panels/editor_panel_tabs.dart';
 import 'panels/workspace_layout_store.dart';
 import 'panels/workspace_panels_menu.dart';
 import 'widgets/app_scrollbar.dart';
+import 'widgets/static_raster.dart';
 import 'keyed_keep_alive_stack.dart';
 import 'sliced_value_listenable_builder.dart';
 import 'conte/conte_fonts.dart';
@@ -2169,30 +2170,45 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       // name, no lock, no X, no grip. It holds what it holds, and a header
       // over a column of buttons is a title for something that needs no
       // title. Every other dock keeps its strip.
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // The tool column is rendered as CONTENT, not through a dock host.
-          // A host fills whatever it is handed — that is right for a panel
-          // and wrong for a strip, and it is why the group buttons under the
-          // tools sat at the far end of the tool strip while the sub-strip's
-          // sat at the top. Both strips read from the top down now, which is
-          // the only way they read as one family.
-          if (hasTools)
-            Flexible(
-              child: Builder(
-                builder: (context) =>
-                    _tabFor(_layout.tabsIn(dockId).first).builder(context),
+      //
+      // Baked, and this one is in the FLOOR: the two strips are the only
+      // chrome that survives every rung of the ladder, including "every
+      // panel closed" — which measured 2.5–3.6 ms/frame with nothing on
+      // screen but them, the top strip and an empty canvas. Dozens of
+      // icon buttons and swatches, re-executed on the GPU for a pointer
+      // that moved over the canvas. Hover and selection dirty it, and
+      // that is exactly when it should re-bake.
+      child: StaticRaster(
+        debugLabel: 'edge-dock:$dockId',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // The tool column is rendered as CONTENT, not through a dock host.
+            // A host fills whatever it is handed — that is right for a panel
+            // and wrong for a strip, and it is why the group buttons under the
+            // tools sat at the far end of the tool strip while the sub-strip's
+            // sat at the top. Both strips read from the top down now, which is
+            // the only way they read as one family.
+            if (hasTools)
+              Flexible(
+                child: Builder(
+                  builder: (context) =>
+                      _tabFor(_layout.tabsIn(dockId).first).builder(context),
+                ),
               ),
+            // 도구툴그룹밑에도 (유저, R3 #15). The tool column already ends its
+            // history cluster with one of these; the panel buttons under it
+            // are a third kind of thing and were the only seam on the strip
+            // with nothing marking it.
+            if (hasTools && (groups.isNotEmpty || emptySlot != null))
+              _stripDivider(context),
+            _buildRailButtons(
+              right: right,
+              groups: groups,
+              emptySlot: emptySlot,
             ),
-          // 도구툴그룹밑에도 (유저, R3 #15). The tool column already ends its
-          // history cluster with one of these; the panel buttons under it
-          // are a third kind of thing and were the only seam on the strip
-          // with nothing marking it.
-          if (hasTools && (groups.isNotEmpty || emptySlot != null))
-            _stripDivider(context),
-          _buildRailButtons(right: right, groups: groups, emptySlot: emptySlot),
-        ],
+          ],
+        ),
       ),
     );
   }
