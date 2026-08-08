@@ -525,7 +525,7 @@ class _HomePageState extends State<HomePage> {
                         _invokeAction(actionId);
                       }
                     },
-                    // The pen program's diagnosis overlay (Edit ▸ Input
+                    // The pen program's diagnosis overlay (Settings ▸ Input
                     // Inspector) — inert until toggled, observes raw events
                     // only (never a gesture-arena participant).
                     // R26 #35/#13: the shared cursor-notice surface wraps

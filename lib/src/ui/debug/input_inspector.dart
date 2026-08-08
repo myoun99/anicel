@@ -22,7 +22,7 @@ import '../theme/app_theme.dart' show AppColors;
 /// platform, for any tablet brand — so it is both our development probe
 /// and the remote-diagnosis channel for user reports.
 abstract final class InputInspector {
-  /// Whether the overlay is shown (Edit ▸ Input Inspector). Static like
+  /// Whether the overlay is shown (Settings ▸ Input Inspector). Static like
   /// the other app-level input state ([AppColors.accentSettings] idiom);
   /// tests flip it and MUST tearDown-reset via [reset].
   static final ValueNotifier<bool> visible = ValueNotifier<bool>(false);

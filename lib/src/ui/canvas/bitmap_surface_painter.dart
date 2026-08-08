@@ -41,7 +41,7 @@ class BitmapSurfacePainter extends CustomPainter {
          repaint: Listenable.merge([
            tileImageCache ?? BitmapTileImageCache.instance,
            ?overlayModel,
-           // So toggling Edit ▸ Show Unpainted Tiles repaints instead of
+           // So toggling Settings ▸ Show Unpainted Tiles repaints instead of
            // waiting for the next edit — a diagnosis switch that needs a
            // gesture before it takes effect is one nobody trusts.
            MeasurementMode.showUnpaintedTiles,
@@ -487,7 +487,7 @@ class BitmapSurfacePainter extends CustomPainter {
     }
   }
 
-  /// Fills [tile]'s rect with magenta when Edit ▸ Show Unpainted Tiles is
+  /// Fills [tile]'s rect with magenta when Settings ▸ Show Unpainted Tiles is
   /// on, so a coordinate the painter could not draw stops being silent.
   ///
   /// Inert otherwise: one bool read per undrawable coordinate, and those

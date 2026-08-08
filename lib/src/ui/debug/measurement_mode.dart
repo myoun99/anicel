@@ -3,12 +3,19 @@ import 'package:flutter/foundation.dart';
 /// The app's MEASUREMENT switches — the diagnosis overlays, in one place.
 ///
 /// This is the second of them. The first is the pen program's
-/// `InputInspector` (Edit ▸ Input Inspector), and they answer different
+/// `InputInspector` (Settings ▸ Input Inspector), and they answer different
 /// questions about the same session: the inspector says what the platform
 /// DELIVERED, this says what the app did with the frame it had. Both are
-/// static [ValueNotifier]s toggled from Edit, both inert until asked for.
+/// static [ValueNotifier]s toggled from the top strip's SETTINGS popover,
+/// both inert until asked for.
+///
+/// ⚠️These used to say "Edit ▸", and the Edit menu has not existed since
+/// the seven-menu bar was replaced by the top strip — every command it
+/// carried moved to the surface that shows its result. A stale path in a
+/// doc comment is worse than none: it sent a reader looking for a menu
+/// that is not there, which has already cost one round.
 abstract final class MeasurementMode {
-  /// Flutter's frame-timing overlay (Edit ▸ Frame Timing Overlay): two
+  /// Flutter's frame-timing overlay (Settings ▸ Frame Timing Overlay): two
   /// graphs over the app, the UI thread (build/layout/paint — the Dart
   /// work) above the RASTER thread (turning the recorded picture into
   /// pixels). Each bar is a frame; the line across them is the display's
@@ -38,7 +45,7 @@ abstract final class MeasurementMode {
   );
 
   /// Paints MAGENTA wherever the canvas painter had no picture for a
-  /// coordinate it was asked to draw (Edit ▸ Show Unpainted Tiles).
+  /// coordinate it was asked to draw (Settings ▸ Show Unpainted Tiles).
   ///
   /// The third switch, and the one this app should have had first. Every
   /// artifact in the stale-tile family — a stroke's last tiles missing at
