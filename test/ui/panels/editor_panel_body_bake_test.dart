@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/ui/panels/editor_panel_body.dart';
+import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
 import 'package:anicel/src/ui/panels/editor_panel_frame.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
 
@@ -120,6 +121,59 @@ void main() {
           'scrolling is a layer move, not a repaint',
     );
     expect(counter[0], 1);
+  });
+
+  testWidgets('a tab that overflows its dock keeps baking', (tester) async {
+    // The cost CLIFF this guards: `EditorPanelTabs` puts a panel whose
+    // minimum size exceeds the dock inside a `SingleChildScrollView`, and
+    // a viewport is a repaint boundary. A bake around the outside would
+    // therefore stand down — but only once the dock is narrow enough to
+    // overflow, so the panel would bake in a wide window, silently pay
+    // full raster price in a narrow one, and no test that pumps a single
+    // window size would ever notice.
+    final counter = <int>[0];
+    Widget tabsAt(double width) => MaterialApp(
+      home: Scaffold(
+        body: SizedBox(
+          width: width,
+          height: 300,
+          child: EditorPanelTabs(
+            tabs: <EditorPanelTab>[
+              EditorPanelTab(
+                id: 'probe',
+                label: 'Probe',
+                icon: Icons.circle,
+                minContentWidth: 400,
+                builder: (context) =>
+                    CustomPaint(painter: _CountingPainter(counter)),
+              ),
+            ],
+            activeTabId: 'probe',
+            onTabSelected: (_) {},
+          ),
+        ),
+      ),
+    );
+
+    for (final width in <double>[600, 200]) {
+      await tester.pumpWidget(tabsAt(width));
+      await tester.pump();
+      final render = tester.renderObject<RenderStaticRaster>(
+        find.byType(StaticRaster),
+      );
+      expect(
+        render.debugNestedBoundary,
+        isFalse,
+        reason:
+            'at width $width the bake must sit inside the overflow '
+            'scroller, not around it: ${render.debugNestedBoundaryPath}',
+      );
+      expect(
+        render.captureCount,
+        greaterThan(0),
+        reason: 'at width $width the panel must actually bake',
+      );
+    }
   });
 
   testWidgets('a framed panel names its bake after the panel', (tester) async {

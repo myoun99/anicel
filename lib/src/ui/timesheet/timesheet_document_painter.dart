@@ -383,7 +383,22 @@ class TimesheetDocumentPainter extends CustomPainter {
     this.layers,
     this.dragPreview,
     this.cutId,
-  }) : super(repaint: dragPreview);
+  }) : accent = AppColors.accent,
+       super(repaint: dragPreview);
+
+  /// The accent at the moment this painter was BUILT.
+  ///
+  /// The sheet tints its SE name boxes with the live accent
+  /// (`AppColors.accent` is a notifier-backed getter), and reading a live
+  /// value inside `paint` while `shouldRepaint` does not compare it is
+  /// how a picture goes stale: the colour is baked into the recorded
+  /// `Paint` at record time, the retained layer is reused, and changing
+  /// the accent leaves the old tint on the sheet.
+  ///
+  /// Capturing it here turns it into ordinary painter state that
+  /// `shouldRepaint` can see. (This predates the panel-bake round — a
+  /// plain `RepaintBoundary` froze it exactly the same way.)
+  final Color accent;
 
   final TimesheetDocument document;
   final TimesheetDocumentLayout layout;
@@ -1511,7 +1526,7 @@ class TimesheetDocumentPainter extends CustomPainter {
       // width — the old 1px inset read as a mismatched overlay).
       canvas.drawRect(
         Rect.fromLTWH(columnLeft, cellTop + 2, columnWidth, nameBoxHeight),
-        Paint()..color = AppColors.accent.withValues(alpha: 0.3),
+        Paint()..color = accent.withValues(alpha: 0.3),
       );
       _text(
         canvas,
@@ -1697,6 +1712,13 @@ class TimesheetDocumentPainter extends CustomPainter {
         oldDelegate.viewport != viewport ||
         !identical(oldDelegate.notation, notation) ||
         !setEquals(oldDelegate.layers, layers) ||
+        // Everything `paint` reads has to be compared here or the sheet
+        // keeps printing the old value. `accent` tints the SE name boxes
+        // and `cutId` decides which cut's end line is data — the latter
+        // was masked only because `document` identity happens to change
+        // with the active cut, which is a coincidence and not a contract.
+        oldDelegate.accent != accent ||
+        oldDelegate.cutId != cutId ||
         !identical(oldDelegate.dragPreview, dragPreview);
   }
 }

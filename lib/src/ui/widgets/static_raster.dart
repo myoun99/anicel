@@ -62,6 +62,22 @@ import 'package:flutter/widgets.dart';
 ///
 /// Cheap by construction: the walk only runs on the frames where we were
 /// going to repaint the whole subtree anyway.
+///
+/// ## 🚨 The second invariant: a baked subtree may not paint outside its
+/// own box
+///
+/// Baking captures `Offset.zero & size` and blits it back into
+/// `offset & size`, so it is a hard clip. Painting through is NOT — a
+/// `RenderProxyBox` clips nothing. So a child that draws past its own
+/// bounds (an overflowing label, an elevation shadow, a `CustomPainter`
+/// reaching outside its box, a negative `Positioned`) looks DIFFERENT
+/// baked than unbaked, and will appear and disappear as the surface
+/// stands itself down and comes back.
+///
+/// That is not a freeze, but it is a difference a person would report as
+/// one. The install sites that sit inside a `ClipRect` already agree
+/// either way; the ones that do not are relying on their content
+/// staying inside its box.
 class StaticRaster extends SingleChildRenderObjectWidget {
   const StaticRaster({
     super.key,
@@ -235,8 +251,21 @@ class RenderStaticRaster extends RenderProxyBox {
 
   @override
   void paint(PaintingContext context, Offset offset) {
+    // The guard runs FIRST, whatever else is true, so [debugNestedBoundary]
+    // describes this frame and not some earlier one. It is the only thing
+    // that tells anyone a panel quietly stopped being free, and a
+    // diagnostic that is right on some paths and stale on others is worse
+    // than none — the enforcement test reads it to decide whether a panel
+    // needs a reason on the allowlist.
+    _nestedBoundary = _childHasRepaintBoundary();
+
     if (size.isEmpty) {
       _dropRaster();
+      // Paint through rather than return. A zero-size box normally paints
+      // nothing, but a child is free to paint outside its box, and
+      // vanishing for a layout pass is a worse default than doing what
+      // the unbaked tree would have done.
+      super.paint(context, offset);
       return;
     }
     if (!_enabled || !StaticRaster.globallyEnabled.value) {
@@ -254,7 +283,6 @@ class RenderStaticRaster extends RenderProxyBox {
       return;
     }
 
-    _nestedBoundary = _childHasRepaintBoundary();
     if (_nestedBoundary) {
       _dropRaster();
       super.paint(context, offset);
@@ -264,8 +292,9 @@ class RenderStaticRaster extends RenderProxyBox {
     _dropRaster();
     final captured = _captureChild();
     if (captured == null) {
-      // A platform view in the subtree cannot be rasterized. The repo
-      // has none today, but "none today" is not a contract.
+      // Either a platform view the engine cannot rasterize, or a capture
+      // the engine refused. Painting through is always available and
+      // always correct — see [_captureChild].
       super.paint(context, offset);
       return;
     }
@@ -292,25 +321,60 @@ class RenderStaticRaster extends RenderProxyBox {
     );
   }
 
-  /// Paints the child into a detached layer and takes its picture. The
-  /// routine is the SDK's (`SnapshotWidget._paintAndDetachToImage`) —
-  /// this is not the place to invent one.
+  /// Paints the child into a detached layer and takes its picture, or
+  /// returns null if the engine will not give us one. The routine is the
+  /// SDK's (`SnapshotWidget._paintAndDetachToImage`) — this is not the
+  /// place to invent one.
+  ///
+  /// 🚨A THROW HERE WOULD BLANK THE PANEL, so it cannot be allowed out.
+  /// `PaintingContext.repaintCompositedChild` clears `_needsPaint`
+  /// BEFORE calling `paint`, and its `catch` reports the exception
+  /// without re-dirtying anything — while `_dropRaster()` has already
+  /// thrown the previous image away and the layer has already had its
+  /// children removed. The result would be an empty, CLEAN layer: a
+  /// blank panel that stays blank until something inside it happens to
+  /// dirty itself. `toImageSync` can throw for reasons that are none of
+  /// our business (a lost GPU context, an allocation the driver
+  /// refuses), and the size that provoked it will still be there next
+  /// frame, so it would throw again.
+  ///
+  /// Painting through is always available and always correct, so a
+  /// failed capture costs the optimisation and nothing else.
   ui.Image? _captureChild() {
     final offsetLayer = OffsetLayer();
-    final context = PaintingContext(offsetLayer, Offset.zero & size);
-    super.paint(context, Offset.zero);
-    // ignore: invalid_use_of_protected_member
-    context.stopRecordingIfNeeded();
-    if (!offsetLayer.supportsRasterization()) {
-      offsetLayer.dispose();
+    try {
+      final context = PaintingContext(offsetLayer, Offset.zero & size);
+      super.paint(context, Offset.zero);
+      // ignore: invalid_use_of_protected_member
+      context.stopRecordingIfNeeded();
+      if (!offsetLayer.supportsRasterization()) {
+        return null;
+      }
+      return offsetLayer.toImageSync(
+        Offset.zero & size,
+        pixelRatio: _devicePixelRatio,
+      );
+    } catch (error, stack) {
+      // Reported, not swallowed silently: a capture that keeps failing
+      // is a real condition someone should see, and the panel keeps
+      // working meanwhile.
+      FlutterError.reportError(
+        FlutterErrorDetails(
+          exception: error,
+          stack: stack,
+          library: 'anicel',
+          context: ErrorDescription(
+            'baking StaticRaster($debugLabel) at $size — painting through',
+          ),
+        ),
+      );
       return null;
+    } finally {
+      // `finally`, because the early return above used to leak this
+      // layer on every unrasterizable subtree and a throw would have
+      // leaked it too.
+      offsetLayer.dispose();
     }
-    final image = offsetLayer.toImageSync(
-      Offset.zero & size,
-      pixelRatio: _devicePixelRatio,
-    );
-    offsetLayer.dispose();
-    return image;
   }
 
   /// Bumps [_streak] when this capture lands on the frame after the last
