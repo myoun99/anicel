@@ -101,14 +101,50 @@ void main() {
     }
   });
 
+  testWidgets('a panel pays full price only if it is on the list, with a why', (
+    tester,
+  ) async {
+    // The enforcement, not a readout. A panel that quietly stopped
+    // baking looks exactly like one that never did, so "we will notice"
+    // is not a plan — the only way to keep the rule is to make being
+    // wrong impossible to do silently.
+    //
+    // Landing here means a new panel (or a new `RepaintBoundary` in an
+    // old one) is costing its full raster price on every frame the app
+    // produces. The failure message names the render object responsible.
+    // Fix it, or add it below WITH a reason.
+    const knownToPaintThrough = <String, String>{
+      'panel:brushes':
+          'the outer wrapper yielding to the inner one in EditorPanelBody — '
+          'the design working, not a defect',
+      'panel:timeline':
+          'not addressed yet: measured at 1.7 ms, and the most genuinely '
+          'live panel in the app. Blocked by its own scroll viewport.',
+    };
+
+    await _pumpWorkspace(tester);
+    for (final entry in _byLabel(tester).entries) {
+      if (!entry.value.debugNestedBoundary) {
+        continue;
+      }
+      expect(
+        knownToPaintThrough,
+        contains(entry.key),
+        reason:
+            '${entry.key} pays its full raster price every frame.\n'
+            'Blocked by: ${entry.value.debugNestedBoundaryPath}\n'
+            'Remove that boundary, move the bake inside it (a viewport is '
+            'itself a boundary — see EditorPanelBody), or add this panel to '
+            'knownToPaintThrough with a reason.',
+      );
+    }
+  });
+
   testWidgets('REPORT: which panels actually bake, and which pay full price', (
     tester,
   ) async {
-    // Not an assertion about a number — a standing readout. A panel in
-    // the "paints through" list is one where someone added a
-    // RepaintBoundary inside, and it is costing its full raster price on
-    // every frame the app produces. Read this when the ladder stops
-    // improving.
+    // The readable form of the same facts, for when the ladder stops
+    // improving and someone needs to see where the money went.
     await _pumpWorkspace(tester);
     final baked = <String>[];
     final throughNested = <String>[];
