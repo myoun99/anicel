@@ -31,6 +31,8 @@ import 'timeline_frame_rows_scroll_body.dart' show TimelineRowMemoAux;
 import 'timeline_exposure_comma_drag_policy.dart';
 import 'timeline_frame_range_gesture.dart';
 import 'timeline_grid_metrics.dart';
+import '../widgets/app_icon_button.dart';
+import 'timeline_command_bar.dart';
 import 'timeline_run_end_handles.dart';
 import 'timeline_layer_controls_header.dart' show LayerLegendCallbacks;
 import 'timeline_row_filter.dart';
@@ -281,20 +283,6 @@ class TimelinePanel extends StatefulWidget {
   // CSP/TVPaint-density default.
   static const double defaultPixelsPerFrame = 24;
 
-  /// The ONE command-bar row's height, padding included.
-  ///
-  /// MEASURED, not chosen: the row sizes itself from the tallest control in
-  /// it, and under [buildAppTheme] that is the orientation toggle's plain
-  /// Material `IconButton` (the one control here that is not an
-  /// `AppIconButton`) at 46, plus the row's 4+4 padding.
-  ///
-  /// ⚠️ Measure it under the SHIPPED theme. The first round of this change
-  /// measured 56 against a bare `MaterialApp`, where the same button gets
-  /// Material's 48px `minimumSize` instead of the app theme's compact 32 —
-  /// a number the user never sees. `panel_shrink_floor_test.dart` pins this
-  /// against the real panel WITH `buildAppTheme()`.
-  static const double commandBarHeight = 54;
-
   /// The shortest this panel is laid out at — the floor the dock splitter
   /// stops on and the tab shell's minimum content height.
   ///
@@ -308,7 +296,7 @@ class TimelinePanel extends StatefulWidget {
   /// command bar, the grid's frame ruler, and the pinned bottom scrollbar
   /// row. That bottom row is what the user watched disappear.
   static const double minPanelHeight =
-      commandBarHeight +
+      TimelineCommandBar.height +
       timelineFrameRulerExtent +
       2 * timelineLayerRowHeight +
       timelineBottomScrollbarRailHeight;
@@ -334,7 +322,7 @@ class TimelinePanel extends StatefulWidget {
   /// splitter, and the frame area's own two-cell reserve — two cells at the
   /// default zoom, which is how [layerRailFrameReserveExtent] states it.
   static const double minSheetPanelHeight =
-      commandBarHeight +
+      TimelineCommandBar.height +
       timelineBottomScrollbarRailHeight +
       layerRailMinimumWindowExtent +
       LayerRailSplitter.thickness +
@@ -448,38 +436,32 @@ class _TimelinePanelState extends State<TimelinePanel> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // ONE command-bar row (R-toolbar round): the host's transport +
+          // ONE command-bar row (R-toolbar round), and now literally the
+          // same widget the storyboard mounts: the host's transport +
           // action toolbar on the left, the shared view cluster pinned
-          // right. The old separate top row is gone.
-          Padding(
-            padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
-            child: Row(
-              children: [
-                if (showToolbar)
-                  Expanded(child: widget.timelineActionToolbar!)
-                else
-                  const Spacer(),
-                const SizedBox(width: 8),
-                TimelineViewCluster(
-                  frameCursor: widget.frameCursor,
-                  projectFrameRate: widget.projectFrameRate,
-                  showSeconds: widget.showSeconds,
-                  pixelsPerFrame: widget.pixelsPerFrame,
-                  onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
-                  trailing: [
-                    IconButton(
-                      key: const ValueKey<String>(
-                        'timeline-orientation-toggle-button',
-                      ),
-                      tooltip:
-                          widget.orientation == TimelineOrientation.horizontal
-                          ? 'Show X-sheet'
-                          : 'Show timeline',
-                      onPressed: () =>
-                          widget.onOrientationChanged(nextOrientation),
-                      icon: const Icon(Icons.swap_horiz),
-                    ),
-                  ],
+          // right.
+          TimelineCommandBar(
+            leading: showToolbar ? widget.timelineActionToolbar : null,
+            cluster: TimelineViewCluster(
+              frameCursor: widget.frameCursor,
+              projectFrameRate: widget.projectFrameRate,
+              showSeconds: widget.showSeconds,
+              pixelsPerFrame: widget.pixelsPerFrame,
+              onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
+              trailing: [
+                // R26 #42's standard button, like every other control on
+                // this bar. It was the last plain Material `IconButton`
+                // here — a 24px glyph in 8px of padding, which made the
+                // timeline's bar 18px taller than the storyboard's and
+                // then got written down as the bar's measured height.
+                AppIconButton(
+                  keyValue: 'timeline-orientation-toggle-button',
+                  tooltip: widget.orientation == TimelineOrientation.horizontal
+                      ? 'Show X-sheet'
+                      : 'Show timeline',
+                  onPressed: () =>
+                      widget.onOrientationChanged(nextOrientation),
+                  icon: const Icon(Icons.swap_horiz),
                 ),
               ],
             ),

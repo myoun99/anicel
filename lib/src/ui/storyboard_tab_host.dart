@@ -40,6 +40,7 @@ import 'text/app_strings.dart';
 import 'timeline/timeline_frame_range_gesture.dart'
     show TimelineLaneRangeCallbacks;
 import 'timeline/timeline_shift_buttons.dart';
+import 'timeline/timeline_command_bar.dart';
 import 'timeline/timeline_view_cluster.dart';
 import 'track_fx_command_group.dart';
 import 'timeline/transform_lane_editing.dart';
@@ -65,26 +66,15 @@ class StoryboardTabHost extends StatefulWidget {
     this.cameraViewEnabled,
   });
 
-  /// The ONE command-bar row's height, padding included.
-  ///
-  /// MEASURED, not chosen: the row sizes itself from the tallest control in
-  /// it, and it is NOT the timeline's number even though it mounts the same
-  /// [TimelineViewCluster] — the timeline's bar also carries a plain
-  /// Material `IconButton` (the orientation toggle) that opts out of the
-  /// app theme's compact icon sizing, and this bar has no equivalent.
-  ///
-  /// ⚠️ Measure it under the SHIPPED theme ([buildAppTheme]). The first
-  /// round of this change measured 48 against a bare `MaterialApp`, where
-  /// Material's 48px `minimumSize` applies instead of the app theme's
-  /// compact 32 — 12px the user never spends.
-  /// `panel_shrink_floor_test.dart` pins this against the real host.
-  static const double commandBarHeight = 36;
-
   /// The shortest this tab is laid out at — the dock splitter's floor and
   /// the tab shell's minimum content height. See
   /// [StoryboardPanel.minPanelHeight] for the two-row rule.
+  ///
+  /// The bar's own height is [TimelineCommandBar.height], which the
+  /// timeline reads too. The two used to measure themselves separately and
+  /// come back 18px apart.
   static const double minPanelHeight =
-      commandBarHeight + StoryboardPanel.minPanelHeight;
+      TimelineCommandBar.height + StoryboardPanel.minPanelHeight;
 
   final EditorSessionManager session;
   final double pixelsPerFrame;
@@ -429,15 +419,11 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     _session.updateLayerTransformTrack(layerId, next, description: description);
   }
 
-  /// ONE command-bar row (timeline parity): transport + cut group left,
-  /// the shared view cluster pinned right.
+  /// ONE command-bar row — the timeline's own widget now, not a parallel
+  /// copy of it: transport + cut group left, the shared view cluster right.
   Widget _commandBar(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(8, 4, 8, 4),
-      child: Row(
-        children: [
-          Expanded(
-            child: UnbarredScrollable(
+    return TimelineCommandBar(
+      leading: UnbarredScrollable(
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
@@ -495,20 +481,16 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                 ],
               ),
             ),
-            ),
-          ),
-          const SizedBox(width: 8),
-          TimelineViewCluster(
-            frameCursor: _session.editingFrameCursor,
-            // Global · cut-local pair (UI-R9 #6) — the channel already
-            // follows scrubs, gap parking and playback ticks.
-            globalFrame: _playheadGlobalFrame,
-            projectFrameRate: _session.projectFrameRate,
-            showSeconds: widget.showSeconds,
-            pixelsPerFrame: widget.pixelsPerFrame,
-            onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
-          ),
-        ],
+      ),
+      cluster: TimelineViewCluster(
+        frameCursor: _session.editingFrameCursor,
+        // Global · cut-local pair (UI-R9 #6) — the channel already
+        // follows scrubs, gap parking and playback ticks.
+        globalFrame: _playheadGlobalFrame,
+        projectFrameRate: _session.projectFrameRate,
+        showSeconds: widget.showSeconds,
+        pixelsPerFrame: widget.pixelsPerFrame,
+        onPixelsPerFrameChanged: widget.onPixelsPerFrameChanged,
       ),
     );
   }
