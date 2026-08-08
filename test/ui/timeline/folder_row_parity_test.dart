@@ -1,11 +1,16 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_folder.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show LayerNestingArrowCell;
+import 'package:anicel/src/ui/timeline/layer_rail_columns.dart'
+    show layerRailNestingSlotWidth;
 import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 
@@ -33,11 +38,15 @@ void main() {
     ValueChanged<LayerId>? onToggleFx,
     ValueChanged<LayerId>? onToggleFold,
     ValueChanged<LayerId>? onToggleLanes,
+    int depth = 0,
+    AttachedPlacement? attachArrow,
   }) => MaterialApp(
     home: Scaffold(
       body: TimelineLayerControlsRow(
         layer: value,
         active: active,
+        depth: depth,
+        attachArrowPlacement: attachArrow,
         metrics: TimelineGridMetrics.defaults,
         onSelectLayer: onSelect ?? (_) {},
         onToggleLayerVisibility: (_) {},
@@ -233,5 +242,100 @@ void main() {
       s.activeCutOrNull!.layers.folderById(folderId)!.blendMode,
       LayerBlendMode.multiply,
     );
+  });
+
+  // R5 #18. Nesting is a COUNT OF COLUMNS now, not an amount of blank.
+  group('folder nesting spends whole cells', () {
+    double nameLeft(WidgetTester tester) => tester
+        .getRect(find.byKey(const ValueKey<String>('timeline-layer-name-f')))
+        .left;
+
+    testWidgets('one blank cell per level, and exactly one arrow however '
+        'deep', (tester) async {
+      await tester.pumpWidget(host(folder()));
+      final flat = nameLeft(tester);
+      expect(find.byType(LayerNestingArrowCell), findsNothing);
+
+      await tester.pumpWidget(host(folder(), depth: 1));
+      expect(find.byType(LayerNestingArrowCell), findsOneWidget);
+      expect(
+        nameLeft(tester) - flat,
+        moreOrLessEquals(2 * layerRailNestingSlotWidth, epsilon: 0.5),
+        reason: 'one blank cell plus the arrow cell',
+      );
+
+      await tester.pumpWidget(host(folder(), depth: 2));
+      expect(
+        find.byType(LayerNestingArrowCell),
+        findsOneWidget,
+        reason: 'depth is counted in blanks; the arrow says it once',
+      );
+      expect(
+        nameLeft(tester) - flat,
+        moreOrLessEquals(3 * layerRailNestingSlotWidth, epsilon: 0.5),
+      );
+    });
+
+    testWidgets('a row that already carries an ATTACH arrow keeps the cell '
+        'and gives up the glyph', (tester) async {
+      await tester.pumpWidget(host(folder(), depth: 1));
+      final nested = nameLeft(tester);
+
+      await tester.pumpWidget(
+        host(folder(), depth: 1, attachArrow: AttachedPlacement.below),
+      );
+      expect(
+        find.byType(LayerNestingArrowCell),
+        findsNothing,
+        reason: 'two arrows a column apart would answer one question twice',
+      );
+      expect(
+        nameLeft(tester),
+        moreOrLessEquals(nested, epsilon: 0.5),
+        reason: 'the CELL stays reserved, so the name does not start early',
+      );
+    });
+  });
+
+  // R5 #2. The test above asks the REPOSITORY and passes; the rails do not
+  // render the repository's folder, they render its band clone — so every
+  // test that stopped at the repo was blind to a whole row's worth of dead
+  // controls. These ask the display the same questions.
+  test('R5 #2: the folder BAND clone follows the folder itself, not only '
+      'its members\' exposures', () {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+    s.createDrawingAtCurrentFrame();
+    s.groupActiveLayerIntoFolder();
+    final folderId = s.activeCutOrNull!.layers.folderLayers.single.id;
+
+    // Exactly the read the rail hosts do (`_displayLayers`).
+    Layer band() => s.folderBandLayerFor(
+      s.layers.firstWhere((layer) => layer.id == folderId),
+    );
+
+    expect(band().collapsed, isFalse);
+    s.toggleLayerCollapsed(folderId);
+    expect(
+      band().collapsed,
+      isTrue,
+      reason: 'folding moves no member exposure, so a union-only cache key '
+          'handed back the pre-fold clone and the twirl read as dead',
+    );
+
+    expect(band().blendMode, LayerBlendMode.passThrough);
+    s.setLayerBlendMode(folderId, LayerBlendMode.multiply);
+    expect(band().blendMode, LayerBlendMode.multiply);
+
+    s.renameLayer(folderId, 'Renamed');
+    expect(band().name, 'Renamed');
+
+    s.toggleLayerVisibility(folderId);
+    expect(band().isVisible, isFalse);
+
+    // …and the identity the cache exists for still holds: no edit, same
+    // instance, so nothing downstream re-records for free.
+    final resting = band();
+    expect(identical(band(), resting), isTrue);
   });
 }

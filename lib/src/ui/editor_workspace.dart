@@ -75,7 +75,7 @@ import 'canvas/flip_hud_model.dart';
 import 'timeline/layer_timeline_display_adapter.dart'
     show horizontalLayerDisplayOrder;
 import 'timeline/property_lane_model.dart'
-    show TimelineDisplayRow, buildTimelineDisplayRows;
+    show TimelineDisplayRow, buildTimelineDisplayRows, parseLaneGroupKey;
 import 'timeline/timeline_se_row_visual.dart' show layerKindUsesSeSheetCells;
 import 'timeline/timeline_lane_provider.dart';
 import 'timeline/timeline_layer_nav.dart';
@@ -597,7 +597,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   void _toggleLayerLanes(LayerId layerId) {
     final next = Set<LayerId>.of(_expandedLaneLayerIds.value);
-    if (!next.remove(layerId)) {
+    // `remove` answering true is the CLOSING half: every lane of this row
+    // is about to leave the screen, so the fold law hands the standing row
+    // to the layer itself (R5 #11).
+    if (next.remove(layerId)) {
+      widget.session.handOffCurrentRowOnFold(layerId);
+    } else {
       next.add(layerId);
     }
     _expandedLaneLayerIds.value = next;
@@ -613,7 +618,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
 
   void _toggleLaneGroup(String groupKey) {
     final next = Set<String>.of(_expandedLaneGroupKeys.value);
-    if (!next.remove(groupKey)) {
+    if (next.remove(groupKey)) {
+      // Closing: only this group's MEMBERS go, so the header is what
+      // swallows them and where the standing row lands (R5 #11).
+      final row = parseLaneGroupKey(groupKey);
+      if (row != null) {
+        widget.session.handOffCurrentRowOnFold(row.layerId, laneId: row.laneId);
+      }
+    } else {
       next.add(groupKey);
     }
     _expandedLaneGroupKeys.value = next;

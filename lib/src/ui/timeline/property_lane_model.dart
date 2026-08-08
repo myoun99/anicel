@@ -75,6 +75,23 @@ class PropertyLaneRow {
 String laneGroupKey(LayerId layerId, String laneId) =>
     '${layerId.value}|$laneId';
 
+/// [laneGroupKey] read back, for the callers that hold a key and need the
+/// row it names — the fold law asks "what am I closing" and the view state
+/// only remembers the string.
+///
+/// The FIRST separator splits it: a lane id never carries one (they are
+/// `fx:<id>:<param>` or plain names), while a layer id is opaque and could.
+({LayerId layerId, String laneId})? parseLaneGroupKey(String key) {
+  final separator = key.indexOf('|');
+  if (separator <= 0 || separator == key.length - 1) {
+    return null;
+  }
+  return (
+    layerId: LayerId(key.substring(0, separator)),
+    laneId: key.substring(separator + 1),
+  );
+}
+
 /// One display row of the timeline grids: a layer row or one of its
 /// expanded property lanes. Both orientations build their rows from this
 /// shared policy (Axis rule: never fork per orientation).

@@ -290,15 +290,40 @@ void main() {
       final aboveBase = [base, member, folder];
       expect(attachArrowPlacement(folder, aboveBase), AttachedPlacement.above);
 
-      // BELOW the base ⇒ down-arrow, even though the member inside still
-      // carries `above` — the group attaches as a group.
+      // BELOW the base ⇒ down-arrow.
       final belowBase = [member, folder, base];
       expect(attachArrowPlacement(folder, belowBase), AttachedPlacement.below);
+    });
+
+    test('R5 #16: a member inside an organizer points at its FOLDER, not at '
+        'the group\'s base', () {
+      final folder = createFolderLayer(id: const LayerId('f'), name: 'BOOK');
+      final member = attached.copyWith(folderId: const LayerId('f'));
+
+      // The case the user hit. The folder sits ABOVE the base, so the
+      // folder's own arrow is up — but the member sits UNDER the folder,
+      // and copying the folder's answer drew it pointing up and away from
+      // the row it actually hangs off.
+      final aboveBase = [base, member, folder];
+      expect(attachArrowPlacement(folder, aboveBase), AttachedPlacement.above);
       expect(
-        attachArrowPlacement(member, belowBase),
+        attachArrowPlacement(member, aboveBase),
         AttachedPlacement.below,
-        reason: 'a member inside an organizer reads the FOLDER, not itself',
+        reason: 'the member is below the folder, whatever side of the base '
+            'the folder is on',
       );
+
+      // Positional, not a constant: put the folder under its member and the
+      // member's arrow turns over with it.
+      final folderUnder = [base, folder, member];
+      expect(
+        attachArrowPlacement(member, folderUnder),
+        AttachedPlacement.above,
+      );
+
+      // And the member's own `attachedPlacement` (which says `above`) never
+      // enters the answer while it is inside an organizer.
+      expect(member.attachedPlacement, AttachedPlacement.above);
     });
 
     test('a dangling base answers null rather than reading as `below` — '

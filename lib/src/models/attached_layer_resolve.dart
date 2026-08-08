@@ -352,10 +352,13 @@ bool attachRowWearsBaseComposite(Layer layer, List<Layer> layers) {
 /// slot).
 ///
 /// Two rules, one answer:
-/// - An attach ROW inside a 공정 organizer folder reads the FOLDER's
-///   direction, not its own [Layer.attachedPlacement]. The group attaches
-///   as a group, so one arrow per group is what the eye is meant to read;
-///   a member disagreeing with its folder would be noise.
+/// - An attach ROW inside a 공정 organizer folder points at its FOLDER, by
+///   STACK ORDER against it — not at the group's base, and not through its
+///   own [Layer.attachedPlacement]. R5 #16: it used to COPY the folder's
+///   answer, so a folder sitting above the base drew ↗ on rows that sit
+///   below the folder, and the arrow pointed away from the only thing it
+///   is next to. An arrow says what this row hangs off; inside a folder
+///   that is the folder.
 /// - The FOLDER's own direction comes from STACK ORDER against its base:
 ///   above the base is [AttachedPlacement.above], below is `below`. A
 ///   folder never carries `attachedPlacement` — reading it would silently
@@ -378,10 +381,14 @@ AttachedPlacement? attachArrowPlacement(Layer layer, List<Layer> layers) {
     return null;
   }
   final folder = layers.folderById(layer.folderId);
-  if (folder != null) {
-    final ownerPlacement = _organizerFolderPlacement(folder, layers);
-    if (ownerPlacement != null) {
-      return ownerPlacement;
+  if (folder != null && _organizerFolderPlacement(folder, layers) != null) {
+    // Inside an organizer: measured against the FOLDER, one level in from
+    // the folder's own measurement against the base. Positional, not a
+    // constant — the day a folder sits under its members the arrows turn
+    // over with it, which is the only way this stays true of the picture.
+    final own = _stackPlacement(layers, subject: layer.id, anchor: folder.id);
+    if (own != null) {
+      return own;
     }
   }
   return layer.attachedPlacement;
@@ -394,14 +401,24 @@ AttachedPlacement? _organizerFolderPlacement(Layer layer, List<Layer> layers) {
   if (baseId == null) {
     return null;
   }
-  final folderIndex = layers.indexWhere((other) => other.id == layer.id);
-  final baseIndex = layers.indexWhere((other) => other.id == baseId);
-  // A dangling base (deleted out from under the group is a supported
-  // state) answers -1, which must not read as "below".
-  if (folderIndex < 0 || baseIndex < 0) {
+  return _stackPlacement(layers, subject: layer.id, anchor: baseId);
+}
+
+/// Which side of [anchor] [subject] sits on in the model stack, or null
+/// when either is missing — a dangling anchor (deleting a base out from
+/// under its group is a supported state) answers -1, which must not read
+/// as "below".
+AttachedPlacement? _stackPlacement(
+  List<Layer> layers, {
+  required LayerId subject,
+  required LayerId anchor,
+}) {
+  final subjectIndex = layers.indexWhere((other) => other.id == subject);
+  final anchorIndex = layers.indexWhere((other) => other.id == anchor);
+  if (subjectIndex < 0 || anchorIndex < 0) {
     return null;
   }
-  return folderIndex > baseIndex
+  return subjectIndex > anchorIndex
       ? AttachedPlacement.above
       : AttachedPlacement.below;
 }

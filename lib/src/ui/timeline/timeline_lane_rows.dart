@@ -10,7 +10,11 @@ import '../../models/timeline_row_address.dart';
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart' show AppColors;
 import 'layer_label_controls.dart'
-    show LayerSectionBandCell, fxGlyph, railSelectedRowColor;
+    show
+        LayerSectionBandCell,
+        fxGlyph,
+        layerLaneValueSlotWidth,
+        railSelectedRowColor;
 import 'timeline_current_row.dart';
 import 'layer_rail_columns.dart' show layerRailTwirlIcon;
 import 'property_lane_model.dart';
@@ -654,19 +658,34 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
             _navigator(colorScheme),
             const SizedBox(width: 6),
           ],
-          Flexible(child: label),
+          // The NAME takes the leftover and ellipsises; the VALUE is a
+          // fixed column at the end (R5 #20). Two flex children of equal
+          // weight is what put the numbers at a different x on every row —
+          // each was right-aligned inside HALF of whatever its name left
+          // over, and names are not the same length.
+          Expanded(child: label),
           const SizedBox(width: 4),
-          if (valueLabel != null)
-            Expanded(
-              child: _editingValue
-                  ? _valueCell(colorScheme, valueLabel)
-                  : Align(
+          SizedBox(
+            width: layerLaneValueSlotWidth,
+            // Reserved even with nothing to show, so the column survives
+            // the rows that carry no readout (the Excel-grid rule the
+            // control slots already follow).
+            child: valueLabel == null
+                ? null
+                : _editingValue
+                ? _valueCell(colorScheme, valueLabel)
+                : Align(
+                    alignment: Alignment.centerRight,
+                    // A truncated coordinate is a WRONG coordinate — the
+                    // sheet's stood-up readout already made that call, and
+                    // a fixed column is where it starts to matter here too.
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
                       alignment: Alignment.centerRight,
                       child: _valueCell(colorScheme, valueLabel),
                     ),
-            )
-          else
-            const Spacer(),
+                  ),
+          ),
         ],
       );
     } else {

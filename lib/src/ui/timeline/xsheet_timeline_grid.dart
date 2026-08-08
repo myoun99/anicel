@@ -138,6 +138,8 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.hiddenSections = const {},
     this.rowFilter = TimelineRowFilter.none,
     this.collapsedAttachBaseIds = const {},
+    this.onToggleLayerCollapsed,
+    this.onToggleAttachGroup,
     this.seSpillInLayerIds = const {},
     this.seClipMarkerTooltip,
     this.dragPreview,
@@ -328,6 +330,15 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// columns drop — the shared view state; the fold toggle lives on the
   /// horizontal rail.
   final Set<LayerId> collapsedAttachBaseIds;
+
+  /// The GROUP-FOLD twirl's two commits — a folder folding its members, an
+  /// attach base folding its rows. R5 #2: the sheet already HID what those
+  /// sets say (it reads [collapsedAttachBaseIds] and `subtreeCollapsed`
+  /// like the rail does), but it carried no control to say it with, so a
+  /// folder could only be folded from the other panel. One skeleton, one
+  /// row vocabulary — a column that shows a fold has to offer it.
+  final ValueChanged<LayerId>? onToggleLayerCollapsed;
+  final ValueChanged<LayerId>? onToggleAttachGroup;
 
   /// TRANSPOSED metrics: frameCellWidth = frame row height, layerRowHeight
   /// = layer column width, layerControlsWidth = frame-number rail width.
@@ -795,6 +806,11 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
 
   List<PropertyLaneRow> _lanesFor(Layer layer) =>
       widget.lanesForLayer?.call(layer) ?? const [];
+
+  /// Whether [layer] carries attach rows — the base column's fold twirl
+  /// shows only then, exactly as the rail's does.
+  bool _hasAttachGroup(Layer layer) =>
+      widget.layers.any((other) => other.attachedToLayerId == layer.id);
 
   /// One column wrapped in its repaint boundary + drag-preview gate: an
   /// edge-drag step re-runs the builder with the preview layer substituted
@@ -1678,6 +1694,35 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                                     onToggleLanes:
                                                                         widget
                                                                             .onToggleLayerLanes,
+                                                                    // One fold
+                                                                    // twirl, the
+                                                                    // rail's rule
+                                                                    // verbatim.
+                                                                    hasGroupFold:
+                                                                        entries[index]
+                                                                            .isFolder ||
+                                                                        _hasAttachGroup(
+                                                                          entries[index]
+                                                                              .layer,
+                                                                        ),
+                                                                    groupFoldExpanded:
+                                                                        entries[index]
+                                                                            .isFolder
+                                                                        ? !entries[index]
+                                                                              .layer
+                                                                              .collapsed
+                                                                        : !widget
+                                                                              .collapsedAttachBaseIds
+                                                                              .contains(
+                                                                                entries[index].layer.id,
+                                                                              ),
+                                                                    onToggleGroupFold:
+                                                                        entries[index]
+                                                                            .isFolder
+                                                                        ? widget
+                                                                              .onToggleLayerCollapsed
+                                                                        : widget
+                                                                              .onToggleAttachGroup,
                                                                   ),
                                                           ),
                                                       ],
@@ -2390,8 +2435,20 @@ class _LayerHeader extends StatelessWidget {
     this.onionSkinEnabled = false,
     this.onLayerBlendModeSelected,
     this.blendLanguage = AppLanguage.en,
+    this.hasGroupFold = false,
+    this.groupFoldExpanded = true,
+    this.onToggleGroupFold,
     required this.headerExtent,
   });
+
+  /// The GROUP-FOLD twirl, transposed (R5 #2): the rail puts it right of
+  /// the name, so the stood-up column puts it BELOW the name — one control
+  /// in one place on both surfaces. Null [onToggleGroupFold] hides it, and
+  /// the slot is not reserved: only rows that hold other rows have one, on
+  /// either axis.
+  final bool hasGroupFold;
+  final bool groupFoldExpanded;
+  final ValueChanged<LayerId>? onToggleGroupFold;
 
   final TimelineGridMetrics metrics;
 
@@ -2469,31 +2526,33 @@ class _LayerHeader extends StatelessWidget {
         // No padding: a 28px column has none to give, and the shared slot
         // skeleton already carries the row's gaps.
         decoration: BoxDecoration(
+          // R5 #17: the SAME wash the rail rows wear, resolved against this
+          // surface's own resting colour so the column stays opaque (the
+          // rail lays its translucent wash over `surface`; the sheet's
+          // headers sit on `surfaceContainerHighest`). One value, one
+          // saturation — the sheet used to paint `secondaryContainer` at
+          // full strength and read a shade louder than the rail for the
+          // same state.
           color: active
-              ? colorScheme.secondaryContainer
+              ? Color.alphaBlend(
+                  railSelectedRowColor(colorScheme),
+                  colorScheme.surfaceContainerHighest,
+                )
               : colorScheme.surfaceContainerHighest,
           // CONSTANT 1px borders, right/top/bottom only (UI-R10 #20):
-          // side-by-side headers kept doubling their shared seam and the
-          // active column's 2px accent shifted its content — selection
-          // reads by COLOR alone (app-wide selection language). The left
-          // line is the neighbor's right (the frame rail closes the
-          // first column).
+          // side-by-side headers kept doubling their shared seam. The left
+          // line is the neighbor's right (the frame rail closes the first
+          // column).
+          //
+          // R5 #17: and they are constant in COLOUR too now. The accent
+          // outline the active column drew was retired from the timeline
+          // rows long ago (UI-R18 #5 — selection speaks through the
+          // background alone) and survived here alone, which is the whole
+          // shape of this round: one statement, said twice, in two ways.
           border: Border(
-            right: BorderSide(
-              color: active
-                  ? colorScheme.secondary
-                  : colorScheme.outlineVariant,
-            ),
-            top: BorderSide(
-              color: active
-                  ? colorScheme.secondary
-                  : colorScheme.outlineVariant,
-            ),
-            bottom: BorderSide(
-              color: active
-                  ? colorScheme.secondary
-                  : colorScheme.outlineVariant,
-            ),
+            right: BorderSide(color: colorScheme.outlineVariant),
+            top: BorderSide(color: colorScheme.outlineVariant),
+            bottom: BorderSide(color: colorScheme.outlineVariant),
           ),
         ),
         child: Semantics(
@@ -2597,6 +2656,27 @@ class _LayerHeader extends StatelessWidget {
                   ),
                 ),
               ),
+              // The fold twirl, transposed: the rail's "right of the name"
+              // is the column's "below the name" (R5 #2). Same key grammar
+              // as the rail so a folder and an attach base read alike here
+              // too.
+              if (hasGroupFold && onToggleGroupFold != null)
+                InkWell(
+                  key: ValueKey<String>(
+                    layerKindGroupsLayers(layer.kind)
+                        ? 'xsheet-folder-twirl-${layer.id}'
+                        : 'xsheet-attach-twirl-${layer.id}',
+                  ),
+                  onTap: () => onToggleGroupFold!(layer.id),
+                  customBorder: const CircleBorder(), // R26 #28
+                  child: SizedBox(
+                    height: layerLaneToggleSlotWidth,
+                    child: Icon(
+                      layerRailTwirlIcon(expanded: groupFoldExpanded),
+                      size: 16,
+                    ),
+                  ),
+                ),
               ...layerRailTrailingCells(
                 axis: Axis.vertical,
                 hasOnionColumn: onToggleLayerOnionSkin != null,

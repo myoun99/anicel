@@ -232,7 +232,12 @@ class TimelineLayerControlsRow extends StatelessWidget {
               // widths come from ONE place, so the storyboard's rows and
               // the legend header cannot drift from these again.
               ...layerRailLeadingCells(
-                indent: depth * 12.0,
+                depth: depth,
+                // A row that already carries an attach arrow in the sheet
+                // slot keeps its nesting CELL and gives up the glyph: two
+                // arrows a column apart would each answer "what is this
+                // attached to" with a different noun (R5 #18).
+                nestingArrow: attachArrowPlacement == null,
                 laneToggle: hasLanes && onToggleLanes != null
                     ? InkWell(
                         key: ValueKey<String>(

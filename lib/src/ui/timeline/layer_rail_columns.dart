@@ -25,9 +25,20 @@ import 'layer_label_controls.dart';
 /// rule) so the legend's column icons sit over their columns.
 
 /// The gap between the reserved section band and the first control slot.
-/// Folder rows add their indent here, so the indent moves the WHOLE row's
-/// leading cluster and never desynchronises one slot from the rest.
 const double layerRailSectionGap = 8;
+
+/// ONE CELL of folder nesting (R5 #18). A row inside a folder spends one of
+/// these per level of depth and then draws a single ↳ in one more, so the
+/// leading cluster reads as a COUNT of columns rather than as an amount of
+/// blank: `␣ ↳ …` one deep, `␣ ␣ ↳ …` two deep.
+///
+/// It used to be `depth * 12` added to [layerRailSectionGap] — a number
+/// that matched no column, so a nested row's controls sat three quarters of
+/// a cell out of step with every unnested one and the eye read that as
+/// misalignment rather than as nesting (user, 2026-08-09: "그냥 1칸만
+/// 띄도록"). The value is the twirl slot's, because that is the column the
+/// indent pushes.
+const double layerRailNestingSlotWidth = layerLaneToggleSlotWidth;
 
 /// The TYPE BUTTON's slot (UI-R24 #7) — the row's KIND icon, on every row
 /// kind including attach rows (R10 R3 moved their placement arrow to the
@@ -82,8 +93,18 @@ Widget layerRailSlot(Axis axis, double extent, [Widget? child]) {
 IconData layerRailTwirlIcon({required bool expanded}) =>
     expanded ? Icons.arrow_drop_down : Icons.arrow_right;
 
+/// [depth] is the folder nesting level: it spends [depth] blank cells and
+/// then ONE more holding the ↳, so the row's whole leading cluster shifts
+/// by whole columns.
+///
+/// [nestingArrow] false keeps that last cell RESERVED but empty — the rows
+/// that already carry an attach arrow in the sheet slot, where a second
+/// arrow one column over would say two different things at once (R5 #18,
+/// user-approved). Dropping the cell instead would start their name a
+/// column early, which is the drift this file exists to prevent.
 List<Widget> layerRailLeadingCells({
-  double indent = 0,
+  int depth = 0,
+  bool nestingArrow = true,
   Axis axis = Axis.horizontal,
   bool includeSectionSlot = true,
   Widget? sectionBand,
@@ -106,7 +127,17 @@ List<Widget> layerRailLeadingCells({
       sectionBand == null
           ? LayerSectionBandCell(axis: axis)
           : layerRailSlot(axis, layerSectionLabelSlotWidth, sectionBand),
-    layerRailSlot(axis, layerRailSectionGap + indent),
+    layerRailSlot(axis, layerRailSectionGap),
+    // The nesting run: one blank cell per level, then the ↳ that says this
+    // row hangs off the folder above it.
+    for (var level = 0; level < depth; level += 1)
+      layerRailSlot(axis, layerRailNestingSlotWidth),
+    if (depth > 0)
+      layerRailSlot(
+        axis,
+        layerRailNestingSlotWidth,
+        nestingArrow ? const LayerNestingArrowCell() : null,
+      ),
     layerRailSlot(axis, layerLaneToggleSlotWidth, laneToggle),
     layerRailSlot(axis, layerTimesheetSlotWidth, timesheet),
     layerRailSlot(axis, layerControlChipGap),

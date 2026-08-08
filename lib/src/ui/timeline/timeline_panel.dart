@@ -602,6 +602,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     hiddenSections: widget.hiddenSections,
                     rowFilter: widget.rowFilter,
                     collapsedAttachBaseIds: widget.collapsedAttachBaseIds,
+                    onToggleLayerCollapsed: widget.onToggleLayerCollapsed,
+                    onToggleAttachGroup: widget.onToggleAttachGroup,
                     cutEndDrag: widget.cutEndDrag,
                   ),
           ),

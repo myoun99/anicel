@@ -256,6 +256,158 @@ void main() {
       expect(find.byKey(laneMark), findsNothing);
     });
 
+    testWidgets('R5 #20: the value readouts share ONE right edge, whatever '
+        'their names are', (tester) async {
+      await _pump(tester);
+      // The DRAWING row: an ordinary layer transform, so every lane of the
+      // group is really there to line up.
+      await _openLanes(tester, layerId: _drawId);
+
+      for (final laneId in ['anchor-point', 'position']) {
+        await tester.ensureVisible(
+          find.byKey(ValueKey<String>('timeline-lane-label-$_drawId-$laneId')),
+        );
+        await tester.pumpAndSettle();
+      }
+
+      double valueRight(String laneId) => tester
+          .getRect(
+            find.byKey(
+              ValueKey<String>('timeline-lane-value-$_drawId-$laneId'),
+            ),
+          )
+          .right;
+      double cellRight(String laneId) => tester
+          .getRect(
+            find.byKey(
+              ValueKey<String>('timeline-lane-label-$_drawId-$laneId'),
+            ),
+          )
+          .right;
+
+      // `Anchor Point` is a longer name than `Position`, and that is the
+      // whole point: the readouts used to be right-aligned inside HALF of
+      // what each name left over, so a longer name moved its number left.
+      expect(
+        valueRight('anchor-point'),
+        moreOrLessEquals(valueRight('position'), epsilon: 0.5),
+      );
+      // …and the edge they share is the row's own, not some midpoint.
+      expect(
+        valueRight('position'),
+        moreOrLessEquals(cellRight('position') - 8, epsilon: 0.5),
+      );
+    });
+
+    testWidgets('R5 #11 — THE FOLD LAW: closing something you stand inside '
+        'hands the row to whatever swallowed it', (tester) async {
+      await _pump(tester);
+      await _openLanes(tester);
+      await _pressLaneName(tester, 'position', 'Position');
+      final session = _sessionOf(tester);
+      expect(
+        session.currentRow,
+        isA<LaneRowAddress>()
+            .having((row) => row.layerId, 'layerId', _cameraLayerId)
+            .having((row) => row.laneId, 'laneId', 'position'),
+      );
+
+      // The GROUP closes: its members leave, the header does not — so the
+      // header is what you land on.
+      await tester.tap(
+        find.byKey(
+          const ValueKey<String>(
+            'timeline-lane-group-toggle-$_cameraId-transform-group',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        session.currentRow,
+        isA<LaneRowAddress>()
+            .having((row) => row.layerId, 'layerId', _cameraLayerId)
+            .having((row) => row.laneId, 'laneId', 'transform-group'),
+        reason: 'standing on a row that is no longer drawn is what made the '
+            'canvas refuse strokes for a lane nobody could see',
+      );
+
+      // The whole TWIRL-DOWN closes: every lane goes, so the layer takes it.
+      await tester.tap(
+        find.byKey(const ValueKey<String>('timeline-lane-toggle-$_cameraId')),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        session.currentRow,
+        isA<LayerRowAddress>().having(
+          (row) => row.layerId,
+          'layerId',
+          _cameraLayerId,
+        ),
+      );
+    });
+
+    testWidgets('R5 #11: folding a group you are NOT inside leaves the '
+        'standing row alone', (tester) async {
+      await _pump(tester);
+      await _openLanes(tester);
+      final session = _sessionOf(tester);
+      await tester.tap(
+        find.byKey(const ValueKey<String>('timeline-layer-row-$_drawId')),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(
+          const ValueKey<String>(
+            'timeline-lane-group-toggle-$_cameraId-transform-group',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      expect(
+        session.currentRow,
+        isA<LayerRowAddress>().having(
+          (row) => row.layerId,
+          'layerId',
+          _drawLayerId,
+        ),
+      );
+    });
+
+    testWidgets('R5 #4: selecting a SPAN on the lane leaves the standing '
+        'mark where it is — the band and the ring answer different '
+        'questions', (tester) async {
+      await _pump(tester);
+      await _openLanes(tester);
+      const cellRing = ValueKey<String>('timeline-selected-cell');
+      const laneMark = ValueKey<String>('timeline-lane-standing-cell');
+
+      await _pressLaneName(tester, 'position', 'Position');
+      expect(find.byKey(laneMark), findsOneWidget);
+
+      final session = _sessionOf(tester);
+      session.updateLaneRangeSelectionDrag(
+        layerId: _cameraLayerId,
+        laneId: 'position',
+        anchorIndex: 1,
+        headIndex: 4,
+      );
+      await tester.pumpAndSettle();
+      expect(session.laneRangeSelection.value, isNotNull);
+
+      expect(
+        find.byKey(laneMark),
+        findsOneWidget,
+        reason: 'a live span used to switch the lane mark off entirely',
+      );
+      expect(
+        find.byKey(cellRing),
+        findsNothing,
+        reason: 'and the fallback then put standing back on the LAYER row, '
+            'which is a row the model does not have you on',
+      );
+    });
+
     testWidgets('a group header stands without twirling; the chevron is what '
         'twirls', (tester) async {
       await _pump(tester);

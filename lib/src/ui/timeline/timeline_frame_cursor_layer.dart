@@ -320,9 +320,19 @@ class TimelineCursorLayer extends StatelessWidget {
         // is what gave the game away: a filled 2px band where the layer
         // row's is a hollow 3px ring reads as "a one-cell selection
         // happens to be here" — and that is exactly what it was.
+        //
+        // R5 #4: a live lane SELECTION used to switch this off, and the
+        // block below then fell back to the ACTIVE LAYER's row — so
+        // dragging a span on a member lane moved the standing mark off the
+        // lane and onto the layer, which reads as "you are on the layer
+        // now" while the model has you exactly where you were (the canvas
+        // still refuses strokes, which is how the user caught it). They are
+        // two different statements: the BAND says what is selected, the
+        // RING says where you stand, and selecting something has never been
+        // a reason to stop standing anywhere.
         final standing = currentRow?.value;
         int? standingLaneIndex;
-        if (standing is LaneRowAddress && laneRange == null) {
+        if (standing is LaneRowAddress) {
           for (var index = 0; index < rows.length; index += 1) {
             final lane = rows[index].lane;
             if (lane != null &&
