@@ -273,6 +273,7 @@ void main() {
       rowDragHooks: TimelineRowDragHooks(
         drag: drag,
         onBegin: begun.add,
+        onRowTarget: (_, _, _) {},
         onUpdate: (rows, slot) => updates.add((
           rows: [for (final row in rows) row.id.value],
           slot: slot,

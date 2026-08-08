@@ -8,6 +8,7 @@ import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart' show EffectKind;
+import 'package:anicel/src/models/layer_folder.dart' show createFolderLayer;
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
@@ -130,6 +131,38 @@ Future<void> _pump(WidgetTester tester, {Project? project}) async {
 Finder _railRow(String id) =>
     find.byKey(ValueKey<String>('timeline-layer-row-$id'));
 
+/// A stack with an EMPTY folder on top — the case R5 #14 created and R5 #15
+/// exists to reach: a folder with no members has no gap that means "inside
+/// it", so a caret can never put anything there.
+Project _emptyFolderProject() {
+  return Project(
+    id: const ProjectId('folder-drop-project'),
+    name: 'Folder Drop',
+    createdAt: DateTime.utc(2026, 8, 9),
+    tracks: [
+      Track(
+        id: const TrackId('drag-track'),
+        name: 'Video Track',
+        cuts: [
+          Cut(
+            id: const CutId('drag-cut'),
+            name: 'Drag Cut',
+            duration: 12,
+            canvasSize: const CanvasSize(width: 1280, height: 720),
+            camera: CutCamera.empty(),
+            layers: [
+              Layer(id: const LayerId('a'), name: 'A', frames: const []),
+              Layer(id: const LayerId('b'), name: 'B', frames: const []),
+              Layer(id: const LayerId('c'), name: 'C', frames: const []),
+              createFolderLayer(id: const LayerId('f'), name: 'F'),
+            ],
+          ),
+        ],
+      ),
+    ],
+  );
+}
+
 void main() {
   testWidgets('dragging a rail row up moves it up the stack', (tester) async {
     await _pump(tester);
@@ -137,11 +170,13 @@ void main() {
     expect(_order(session), ['a', 'b', 'c']);
 
     // The rail renders the stack reversed, so the row for 'a' sits at the
-    // BOTTOM. One row height upward puts it past 'b'.
+    // BOTTOM. HALF a row height upward puts the pointer on the boundary
+    // above it, which is the gap 'a' would land in — R5 #15 gave a row's
+    // MIDDLE to the structural drop, so repositioning aims between rows.
     final row = _railRow('a');
     await tester.ensureVisible(row);
     await tester.pumpAndSettle();
-    await tester.drag(row, const Offset(0, -28));
+    await tester.drag(row, const Offset(0, -21));
     await tester.pumpAndSettle();
 
     expect(_order(session), ['b', 'a', 'c']);
@@ -157,7 +192,7 @@ void main() {
 
     final gesture = await tester.startGesture(tester.getCenter(row));
     await tester.pump(const Duration(milliseconds: 16));
-    await gesture.moveBy(const Offset(0, -28));
+    await gesture.moveBy(const Offset(0, -21));
     await tester.pump();
 
     expect(
@@ -167,7 +202,7 @@ void main() {
     );
 
     // Back to where it started: no move, so no caret and no command.
-    await gesture.moveBy(const Offset(0, 28));
+    await gesture.moveBy(const Offset(0, 21));
     await tester.pump();
     expect(find.byType(EditorWorkspace), findsOneWidget);
     await gesture.up();
@@ -182,11 +217,12 @@ void main() {
     final session = _sessionOf(tester);
     expect(_order(session), ['a', 'b', 'c']);
 
-    // 'c' is the TOP row of the rail; downward is toward 'b'.
+    // 'c' is the TOP row of the rail; half a row downward is the boundary
+    // under it, which is the gap toward 'b'.
     final row = _railRow('c');
     await tester.ensureVisible(row);
     await tester.pumpAndSettle();
-    await tester.drag(row, const Offset(0, 28));
+    await tester.drag(row, const Offset(0, 21));
     await tester.pumpAndSettle();
 
     expect(_order(session), ['a', 'c', 'b']);
@@ -297,21 +333,103 @@ void main() {
     expect(_layerOf(session, 'c').attachedToLayerId, isNull);
   });
 
+  testWidgets('R5 #15: dropping a row ON an EMPTY folder puts it inside — '
+      'the landing a caret has no gap for', (tester) async {
+    await _pump(tester, project: _emptyFolderProject());
+    final session = _sessionOf(tester);
+    expect(_layerOf(session, 'a').folderId, isNull);
+
+    // The rail renders the stack reversed: F, C, B, A top-down. Three rows
+    // of upward travel from A's centre lands the POINTER in the middle of
+    // F's row — which is the on-row band, not the gaps either side of it.
+    final row = _railRow('a');
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    final gesture = await tester.startGesture(tester.getCenter(row));
+    await tester.pump(const Duration(milliseconds: 16));
+    await gesture.moveBy(const Offset(0, -28 * 3));
+    await tester.pump();
+
+    // The row that would swallow it lights up — no caret, because a line
+    // between two rows cannot mean "inside one of them".
+    // The highlight belongs to the row doing the swallowing, so it is keyed
+    // by the FOLDER — and no caret is drawn anywhere while it shows.
+    expect(
+      find.byKey(const ValueKey<String>('timeline-row-swallow-f')),
+      findsOneWidget,
+    );
+    expect(
+      find.byWidgetPredicate(
+        (widget) =>
+            widget.key is ValueKey<String> &&
+            (widget.key! as ValueKey<String>).value.startsWith(
+              'timeline-row-caret-',
+            ),
+      ),
+      findsNothing,
+    );
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    expect(_layerOf(session, 'a').folderId, const LayerId('f'));
+
+    session.undo();
+    await tester.pumpAndSettle();
+    expect(_layerOf(session, 'a').folderId, isNull);
+  });
+
+  testWidgets('R5 #15: dropping a row ON a drawing row makes it that row\'s '
+      'FIRST rider — the other landing a gap cannot reach', (tester) async {
+    await _pump(tester);
+    final session = _sessionOf(tester);
+    expect(_layerOf(session, 'a').attachedToLayerId, isNull);
+
+    // Rail top-down: Camera, C, B, A. A full row of upward travel lands the
+    // pointer in the middle of B's row, and a row's middle is the
+    // structural drop. B carries no riders, so there is no inside for a
+    // caret to aim at — this is the only way to make the first one.
+    final row = _railRow('a');
+    await tester.ensureVisible(row);
+    await tester.pumpAndSettle();
+    final gesture = await tester.startGesture(tester.getCenter(row));
+    await tester.pump(const Duration(milliseconds: 16));
+    await gesture.moveBy(const Offset(0, -28));
+    await tester.pump();
+
+    expect(
+      find.byKey(const ValueKey<String>('timeline-row-swallow-b')),
+      findsOneWidget,
+    );
+
+    await gesture.up();
+    await tester.pumpAndSettle();
+
+    final mounted = _layerOf(session, 'a');
+    expect(mounted.attachedToLayerId, const LayerId('b'));
+    expect(mounted.attachedPlacement, AttachedPlacement.above);
+
+    session.undo();
+    await tester.pumpAndSettle();
+    expect(_layerOf(session, 'a').attachedToLayerId, isNull);
+  });
+
   testWidgets('dragging an attach row clear of its group detaches it', (
     tester,
   ) async {
     await _pump(tester, project: _groupProject());
     final session = _sessionOf(tester);
 
-    // One row of upward travel takes B+1 past C — clear of the group, and
-    // still inside the drawing section (the camera row is the next boundary,
-    // and no drawing row may cross it).
+    // Upward travel takes B+1 past C — clear of the group, and still inside
+    // the drawing section (the camera row is the next boundary, and no
+    // drawing row may cross it). Aimed at the BOUNDARY: a row's middle is
+    // the structural drop now (R5 #15), and detaching is a move.
     final row = _railRow('over');
     await tester.ensureVisible(row);
     await tester.pumpAndSettle();
     final gesture = await tester.startGesture(tester.getCenter(row));
     await tester.pump(const Duration(milliseconds: 16));
-    await gesture.moveBy(const Offset(0, -28));
+    await gesture.moveBy(const Offset(0, -21));
     await tester.pump();
     expect(find.text(AppText.strings.tlDropDetachAttach), findsOneWidget);
     await gesture.up();
@@ -336,7 +454,7 @@ void main() {
     final row = _railRow('a');
     await tester.ensureVisible(row);
     await tester.pumpAndSettle();
-    await tester.drag(row, const Offset(0, -28));
+    await tester.drag(row, const Offset(0, -21));
     await tester.pumpAndSettle();
     expect(_order(session), ['b', 'a', 'c']);
 

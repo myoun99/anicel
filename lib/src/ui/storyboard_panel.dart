@@ -1128,7 +1128,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
             axis: Axis.horizontal,
             hooks: hooks,
             isLastRow: slot == displayEffects.length - 1,
-            onCrossed: (steps) => hooks.onEffectUpdate(
+            onCrossed: (steps, _) => hooks.onEffectUpdate(
               carrierId,
               displayEffects,
               slotForSteps(
@@ -1351,7 +1351,10 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       axis: Axis.horizontal,
       hooks: hooks,
       isLastRow: displayIndex == displayRows.length - 1,
-      onCrossed: (steps) => hooks.onUpdate(
+      // The S rows are a flat SE list — no row here holds another, so there
+      // is nothing for an on-row drop to mean and the caret stays the only
+      // answer (R5 #15).
+      onCrossed: (steps, _) => hooks.onUpdate(
         displayRows,
         slotForSteps(displayIndex, steps, displayRows.length),
       ),

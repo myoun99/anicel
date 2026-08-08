@@ -21,6 +21,7 @@ import '../../models/layer_id.dart';
 import '../input/app_input_settings.dart' show AppInput;
 import '../input/eager_pan_gesture_recognizer.dart';
 import '../theme/app_theme.dart' show AppShapes;
+import 'timeline_edge_auto_pan.dart' show edgeAutoPanDelta;
 
 /// WHAT a row drag is moving. Two kinds share the gesture, the caret and
 /// the device policy; what differs is the list they are re-ordering, and
@@ -82,6 +83,7 @@ class LayerRowDragState {
     required this.caretSlot,
     required this.legal,
     this.joinLabel,
+    this.onRowTarget,
   });
 
   /// What the pointer holds (whatever else travels with it is the policy's
@@ -102,6 +104,12 @@ class LayerRowDragState {
   /// A structural change has to be visible before the release, not
   /// discovered after it.
   final String? joinLabel;
+
+  /// R5 #15: the row the pointer is ON, when it is over a row's middle
+  /// rather than near a boundary. Non-null replaces the caret entirely —
+  /// the drop is "into this row" and the row lights instead, because a line
+  /// between two rows cannot mean "inside one of them".
+  final LayerId? onRowTarget;
 }
 
 /// What a rail needs to run a row drag. Null anywhere leaves the rows
@@ -111,6 +119,7 @@ class TimelineRowDragHooks {
     required this.drag,
     required this.onBegin,
     required this.onUpdate,
+    required this.onRowTarget,
     required this.onEffectUpdate,
     required this.onEnd,
     required this.onCancel,
@@ -124,6 +133,17 @@ class TimelineRowDragHooks {
   /// the list the SURFACE renders, so the session can map the slot onto the
   /// model without guessing which way this rail runs.
   final void Function(List<Layer> displayLayers, int slot) onUpdate;
+
+  /// R5 #15: the pointer is ON [targetId] rather than between rows — the
+  /// intent a caret has no gap to express (an empty folder's inside).
+  ///
+  /// [slot] travels with it as the FALLBACK, and it has to: a row whose
+  /// middle means nothing (an ordinary drawing row cannot swallow anything)
+  /// must still re-order, and only the model knows which rows those are.
+  /// Sending both keeps that judgement in one place instead of teaching
+  /// every rail what a folder is.
+  final void Function(List<Layer> displayLayers, int slot, LayerId targetId)
+  onRowTarget;
 
   /// The caret moved within one layer's effect CHAIN. [displayEffects] is
   /// that chain in the order this surface renders it — the rail lists it
@@ -187,7 +207,13 @@ class LayerRowDragTarget extends StatelessWidget {
   /// slot; an fx header may have its members twirled open between it and
   /// the next header, so counting rows here and slots there is the only
   /// arrangement that stays honest on both.
-  final void Function(int crossedRows) onCrossed;
+  ///
+  /// [onRow] (R5 #15) is the row the pointer is INSIDE — its offset in rows
+  /// from this one — when it sits in a row's middle band rather than near a
+  /// boundary. Null means the pointer is near a boundary, which is a gap
+  /// and therefore a caret. The two travel together so a surface cannot
+  /// draw one answer and commit the other.
+  final void Function(int crossedRows, int? onRow) onCrossed;
 
   /// Whether this is the last row of the rail — only it can show the
   /// trailing caret, or two adjacent rows would both draw the same gap.
@@ -231,7 +257,7 @@ class _LayerRowDragBody extends StatefulWidget {
   final double rowExtent;
   final Axis axis;
   final TimelineRowDragHooks hooks;
-  final void Function(int crossedRows) onCrossed;
+  final void Function(int crossedRows, int? onRow) onCrossed;
   final bool isLastRow;
   final Widget child;
 
@@ -242,14 +268,80 @@ class _LayerRowDragBody extends StatefulWidget {
 class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
   double _travelled = 0;
 
-  void _begin() {
+  /// Where inside this row the press landed, as a fraction of its extent.
+  ///
+  /// R5 #15 needs it: travel alone says how far the pointer went, not where
+  /// it IS, and "inside a row's middle" is a question about where it is.
+  /// Grabbing a row near its bottom edge and moving half a row lands the
+  /// pointer in the NEXT row, which travel-from-the-grab cannot tell you.
+  double _grabFraction = 0.5;
+
+  void _begin(Offset localPosition) {
     _travelled = 0;
+    final extent = widget.rowExtent;
+    final main = widget.axis == Axis.horizontal
+        ? localPosition.dy
+        : localPosition.dx;
+    _grabFraction = extent > 0 ? (main / extent).clamp(0.0, 1.0) : 0.5;
     widget.hooks.onBegin(widget.subject);
-    widget.onCrossed(0);
+    widget.onCrossed(0, null);
   }
 
-  void _update(Offset delta) {
+  /// The row the pointer sits in and how far through it, measured from this
+  /// row's leading edge.
+  int? _rowUnderPointer(double travelled) {
+    final at = _grabFraction + travelled;
+    final row = at.floor();
+    final within = at - row;
+    // The middle band is the ON-ROW one; the quarters at each end belong to
+    // the boundaries, so a caret stays reachable everywhere without aiming.
+    return within >= 0.3 && within <= 0.7 ? row : null;
+  }
+
+  /// Scrolls the rail when the pointer reaches its edge, and folds what it
+  /// scrolled back into the travel (user, 2026-08-09: the caret used to
+  /// walk off the visible rows and land on a layer nobody could see).
+  ///
+  /// The content moving under a stationary pointer is the same thing as the
+  /// pointer moving over stationary content — so the applied delta has to
+  /// join [_travelled], or the caret would freeze the moment the rail began
+  /// to scroll under it.
+  ///
+  /// Per POINTER MOVE, no timer: the ruler drag's edge pan is built the same
+  /// way, and one convention beats two. Holding still at the edge therefore
+  /// holds still; it is the reaching that scrolls.
+  double _autoPanEdge(Offset globalPosition) {
+    final scrollable = Scrollable.maybeOf(context);
+    final viewport = scrollable?.context.findRenderObject();
+    if (scrollable == null || viewport is! RenderBox || !viewport.hasSize) {
+      return 0;
+    }
+    final local = viewport.globalToLocal(globalPosition);
+    final horizontal = widget.axis == Axis.horizontal;
+    final delta = edgeAutoPanDelta(
+      horizontal ? local.dy : local.dx,
+      horizontal ? viewport.size.height : viewport.size.width,
+    );
+    if (delta == 0) {
+      return 0;
+    }
+    final position = scrollable.position;
+    final target = (position.pixels + delta).clamp(
+      position.minScrollExtent,
+      position.maxScrollExtent,
+    );
+    final applied = target - position.pixels;
+    if (applied == 0) {
+      return 0;
+    }
+    position.jumpTo(target);
+    return applied;
+  }
+
+  void _update(DragUpdateDetails details) {
+    final delta = details.delta;
     _travelled += widget.axis == Axis.horizontal ? delta.dy : delta.dx;
+    _travelled += _autoPanEdge(details.globalPosition);
     if (widget.rowExtent <= 0) {
       return;
     }
@@ -264,7 +356,10 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     final travelled = _travelled / widget.rowExtent;
     final magnitude = travelled.abs();
     final steps = magnitude < 0.5 ? 0 : (magnitude + 0.5).floor();
-    widget.onCrossed(travelled.isNegative ? -steps : steps);
+    widget.onCrossed(
+      travelled.isNegative ? -steps : steps,
+      _rowUnderPointer(travelled),
+    );
   }
 
   @override
@@ -282,10 +377,17 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
                 widget.subject.sharesLaneWith(drag.subject)
             ? drag
             : null;
-        final leading =
-            showing != null && showing.caretSlot == widget.slotBefore;
-        final trailing =
+        // R5 #15: an ON-ROW drop has no caret — the row itself is the
+        // landing, so the row lights and the gaps stay quiet.
+        final onRow =
             showing != null &&
+            showing.onRowTarget != null &&
+            widget.subject == LayerRowSubject(showing.onRowTarget!);
+        final caretShowing = showing != null && showing.onRowTarget == null;
+        final leading =
+            caretShowing && showing.caretSlot == widget.slotBefore;
+        final trailing =
+            caretShowing &&
             widget.isLastRow &&
             showing.caretSlot == widget.slotBefore + 1;
         final lifted = drag?.subject == widget.subject;
@@ -295,6 +397,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
             // The lifted row fades: the caret says where it is going, and
             // the row saying "not here any more" is the other half.
             Opacity(opacity: lifted ? 0.45 : 1, child: child),
+            if (onRow) _swallowHighlight(colorScheme, showing.joinLabel),
             if (leading)
               _caret(colorScheme, atStart: true, label: showing.joinLabel),
             if (trailing)
@@ -325,14 +428,76 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
                   context,
                 );
                 recognizer.dragStartBehavior = DragStartBehavior.down;
-                recognizer.onStart = (_) => _begin();
-                recognizer.onUpdate = (details) => _update(details.delta);
+                recognizer.onStart = (details) =>
+                    _begin(details.localPosition);
+                recognizer.onUpdate = _update;
                 recognizer.onEnd = (_) => widget.hooks.onEnd();
                 recognizer.onCancel = widget.hooks.onCancel;
               },
             ),
       },
       child: child,
+    );
+  }
+
+  /// The row that would SWALLOW the drop: an outline around the whole row
+  /// rather than a line beside it (R5 #15).
+  ///
+  /// A caret answers "between which two", and this drop's answer is "inside
+  /// this one" — so the shape has to change with the meaning, or a release
+  /// over a folder would look exactly like a release under it. The label
+  /// rides along for the same reason it rides the caret: what the drop does
+  /// beyond moving has to be readable BEFORE the release.
+  Widget _swallowHighlight(ColorScheme colorScheme, String? label) {
+    return Positioned.fill(
+      key: ValueKey<String>(
+        'timeline-row-swallow-'
+        '${switch (widget.subject) {
+          LayerRowSubject(:final layerId) => layerId.value,
+          EffectRowSubject(:final effectId) => effectId.value,
+        }}',
+      ),
+      child: IgnorePointer(
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: colorScheme.primary.withValues(alpha: 0.16),
+            border: Border.all(
+              color: colorScheme.primary,
+              width: layerRowCaretThickness,
+            ),
+          ),
+          child: label == null
+              ? null
+              : Align(
+                  alignment: widget.axis == Axis.horizontal
+                      ? Alignment.centerRight
+                      : Alignment.bottomCenter,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: DecoratedBox(
+                      decoration: ShapeDecoration(
+                        color: colorScheme.primary,
+                        shape: AppShapes.control(14),
+                      ),
+                      child: Padding(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 4,
+                          vertical: 1,
+                        ),
+                        child: Text(
+                          label,
+                          style: TextStyle(
+                            fontSize: 10,
+                            height: 1.1,
+                            color: colorScheme.onPrimary,
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+        ),
+      ),
     );
   }
 

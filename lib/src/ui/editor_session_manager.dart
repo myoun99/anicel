@@ -176,6 +176,7 @@ import 'timeline/layer_drop_policy.dart'
         modelInsertionForSlot,
         resolveEffectDrop,
         resolveLayerDrop,
+        resolveLayerDropOnRow,
         resolveTrackSeDrop;
 import 'timeline/layer_row_drag.dart'
     show
@@ -4375,6 +4376,66 @@ class EditorSessionManager extends ChangeNotifier {
       subject: subject,
       caretSlot: slot,
       legal: plan != null,
+      joinLabel: _rowDropLabel(cut.id, cut.layers, subject.layerId, plan),
+    );
+  }
+
+  /// R5 #15: the pointer is ON [targetId] rather than between rows.
+  ///
+  /// The intent a caret cannot carry: a folder with no members has no gap
+  /// that means "inside it", and a base with no riders has none either.
+  /// Everything past the intent is [resolveLayerDropOnRow]'s, which hands
+  /// the ordinary resolver the same stack — so an on-row landing and a gap
+  /// landing cannot disagree about what is legal.
+  void updateLayerRowDropOnRow(
+    List<Layer> displayLayers,
+    int slot,
+    LayerId targetId,
+  ) {
+    final state = layerRowDrag.value;
+    final subject = state?.subject;
+    final cut = activeCutOrNull;
+    // Track-owned SE rows re-order a flat list of their own and hold
+    // nothing, so they have no inside to drop into.
+    if (state == null ||
+        subject is! LayerRowSubject ||
+        cut == null ||
+        isTrackSeLayerId(subject.layerId)) {
+      updateLayerRowDrag(displayLayers, slot);
+      return;
+    }
+    // THE RULE (user, 2026-08-09): ON a row is a STRUCTURAL drop — into the
+    // folder, or onto the base as its rider. BETWEEN rows is a move. That a
+    // full row of travel therefore stops being "nudge it past its
+    // neighbour" is not a collision, it is the point: the gap is where
+    // repositioning lives, and the gap is half a row away.
+    //
+    // The two read cleanly against the arithmetic already here — travelling
+    // a whole number of rows preserves where in a row you grabbed, so a
+    // FULL row lands dead centre of the next one (structural) and a HALF
+    // row lands on the boundary (the caret, one step). The "half a row is
+    // one step" rule this drag has always used is the same sentence read
+    // from the other end.
+    final plan = resolveLayerDropOnRow(
+      stack: cut.layers,
+      movingId: subject.layerId,
+      targetId: targetId,
+    );
+    if (plan == null) {
+      // Nothing there can swallow it — an SE row, a camera row, a base that
+      // already carries riders, a folder dropped on a drawing row. The gap
+      // under the pointer is still a perfectly good landing, so the caret
+      // comes back rather than the drag going dead.
+      updateLayerRowDrag(displayLayers, slot);
+      return;
+    }
+    _rowDragPlan = plan;
+    _rowDragSeOrder = null;
+    layerRowDrag.value = LayerRowDragState(
+      subject: subject,
+      caretSlot: -1,
+      legal: true,
+      onRowTarget: targetId,
       joinLabel: _rowDropLabel(cut.id, cut.layers, subject.layerId, plan),
     );
   }

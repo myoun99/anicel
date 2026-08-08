@@ -1006,11 +1006,30 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       hooks: hooks,
       isLastRow: row.layerIndex == widget.layers.length - 1,
       onCrossed: hooks == null
-          ? (_) {}
-          : (steps) => hooks.onUpdate(
-              widget.layers,
-              slotForSteps(row.layerIndex, steps, widget.layers.length),
-            ),
+          ? (_, _) {}
+          : (steps, onRow) {
+              // R5 #15: ON a row wins over the gap beside it — that is the
+              // whole point of the middle band. The row it names is read
+              // from the DISPLAY list, so which way this rail runs stays
+              // the surface's business as it already is for slots.
+              final slot = slotForSteps(
+                row.layerIndex,
+                steps,
+                widget.layers.length,
+              );
+              final target = onRow == null ? null : row.layerIndex + onRow;
+              if (target != null &&
+                  target >= 0 &&
+                  target < widget.layers.length) {
+                hooks.onRowTarget(
+                  widget.layers,
+                  slot,
+                  widget.layers[target].id,
+                );
+                return;
+              }
+              hooks.onUpdate(widget.layers, slot);
+            },
       child: child,
     );
   }
@@ -1042,7 +1061,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
       axis: Axis.horizontal,
       hooks: hooks,
       isLastRow: slot == headers.length - 1,
-      onCrossed: (steps) => hooks.onEffectUpdate(
+      // An fx chain has no "inside a row" to drop into — an effect holds
+      // nothing — so the on-row band is ignored here and the caret stays
+      // the only answer (R5 #15).
+      onCrossed: (steps, _) => hooks.onEffectUpdate(
         row.layer.id,
         displayEffects,
         slotForSteps(
