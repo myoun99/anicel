@@ -21,11 +21,21 @@ class BrushTipPreview extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final color = Theme.of(context).colorScheme.onSurface;
-    return RepaintBoundary(
-      child: CustomPaint(
-        painter: _BrushTipPreviewPainter(settings: settings, color: color),
-        size: Size.infinite,
-      ),
+    // ⛔No `RepaintBoundary`. It looks free and is not, twice over: a
+    // boundary is a composited layer of its own, AND it sets
+    // `needsCompositing`, which is the only reason the host row's
+    // `Container(clipBehavior: Clip.antiAlias)` promotes to a real clip
+    // LAYER (`PaintingContext.pushClipPath` gates on exactly that). Two
+    // layers per row, per frame, to isolate a painter that redraws only
+    // when its preset does.
+    //
+    // What isolates this now is the panel-level bake — see
+    // [StaticRaster], installed on the tab funnel. A boundary INSIDE a
+    // bake would be worse than useless: the bake has to paint through
+    // whenever it finds one, or the boundary would freeze.
+    return CustomPaint(
+      painter: _BrushTipPreviewPainter(settings: settings, color: color),
+      size: Size.infinite,
     );
   }
 }

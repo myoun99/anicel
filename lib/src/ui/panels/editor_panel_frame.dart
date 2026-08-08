@@ -38,6 +38,7 @@ class EditorPanelFrame extends StatelessWidget {
           ? EditorPanelBody(
               padding: bodyPadding,
               scrollable: bodyScrolls,
+              debugLabel: 'body:$title',
               child: child,
             )
           : LayoutBuilder(
@@ -54,6 +55,7 @@ class EditorPanelFrame extends StatelessWidget {
                 final body = EditorPanelBody(
                   padding: bodyPadding,
                   scrollable: bodyScrolls,
+                  debugLabel: 'body:$title',
                   child: child,
                 );
 
