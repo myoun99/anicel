@@ -15,6 +15,7 @@ import 'widgets/app_icon_button.dart';
 import 'widgets/drag_value_label.dart';
 import 'timesheet/timesheet_document_painter.dart';
 import 'timesheet/timesheet_header_edit_layer.dart';
+import 'widgets/static_raster.dart';
 import 'timesheet/timesheet_notation.dart';
 import 'timesheet/timesheet_ink_controller.dart';
 import 'timesheet/timesheet_ink_layer.dart';
@@ -521,8 +522,25 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                         // grid, labels) below, the CONTENT (cell texts,
                         // values) above — timeline drags re-print just
                         // the content stratum through the drag channel.
+                        //
+                        // Each stratum is baked rather than merely
+                        // boundaried. This panel measured 13.1 ms/frame
+                        // of raster — 47% of the whole app's — while
+                        // sitting perfectly still, because a boundary
+                        // stops the UI thread re-RECORDING and does
+                        // nothing about the GPU re-EXECUTING. The form
+                        // alone is ~334 lines and ~111 text paragraphs
+                        // of B4 sheet at every frame the app happens to
+                        // produce.
+                        //
+                        // Two wrappers and not one, deliberately: the
+                        // split above is what keeps a content-only
+                        // change off the form, and merging them would
+                        // hand the drag channel a re-record of the
+                        // whole grid.
                         Positioned.fill(
-                          child: RepaintBoundary(
+                          child: StaticRaster(
+                            debugLabel: 'timesheet-form',
                             child: CustomPaint(
                               key: const ValueKey<String>(
                                 'timesheet-form-paint',
@@ -549,7 +567,8 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
                           ),
                         ),
                         Positioned.fill(
-                          child: RepaintBoundary(
+                          child: StaticRaster(
+                            debugLabel: 'timesheet-content',
                             child: CustomPaint(
                               key: const ValueKey<String>(
                                 'timesheet-document-paint',

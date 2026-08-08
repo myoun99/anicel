@@ -1973,6 +1973,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           label: 'Timesheet',
           icon: Icons.table_chart_outlined,
           locked: locked,
+          // Manages its own seams: the sheet's two strata are baked
+          // separately so a content change never re-records the grid,
+          // and the playhead and ink windows sit ABOVE both bakes so
+          // they stay live. A wrapper around the whole tab would have
+          // to include the playhead, and would then stand itself down
+          // for the whole of playback.
+          staticRaster: false,
           keepAlive: true,
           builder: (context) => PanelAwareListenableBuilder(
             // _brushTool is deliberately NOT merged here (R18 UI-3): the
