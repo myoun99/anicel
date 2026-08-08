@@ -28,13 +28,21 @@ enum _BrushPresetMenuAction {
   toggleRailIcon,
   toggleRailName,
   newGroup,
+  renameGroup,
+  deleteGroup,
   rename,
   delete,
   reset,
 }
 
-/// The per-group header menu.
-enum _BrushGroupMenuAction { rename, delete }
+// ⛔The per-tab ⋯ menu is gone (유저, R4 #10: 그 시스템 삭제. 그냥 심플하게
+// 그룹 버튼 하나만. 대신 그 패널의 ⋯쪽 설정에 기존 기능인 현재 브러시그룹
+// 삭제/리네임 추가). Its verbs live in the panel's own options menu now and
+// act on the OPEN group — see `_menuItems`.
+//
+// ⚠️It was NOT the cause of R4 #11. Dropping it was tried as a fix first and
+// measured: the rail still went red. The crash is a live tooltip being
+// re-parented, and it is fixed separately in `_dismissTooltipsOnPress`.
 
 /// Label for the root section holding presets that belong to no group.
 const String _rootSectionLabel = 'Default';
@@ -168,7 +176,36 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   /// "a _RenderLayoutBuilder was mutated in performLayout" — which takes the
   /// whole rail red. Dropping the tooltips for the duration of a drag leaves
   /// nothing in the item that reaches for the overlay.
+  ///
+  /// 🚨유저, R4 #11: 브러시그룹을 드래그로 옮기면 2번째 버튼부터 끝까지
+  /// 빨간 에러 뜨고 콘솔에 무한 에러.
+  ///
+  /// ★This flag was only ever HALF the guard, and the missing half is
+  /// [_dismissTooltips]. It stops a tooltip from being BORN during a drag;
+  /// it does nothing about one that was ALREADY UP when the drag started —
+  /// which is the common case, because the hand that drags a tab has been
+  /// resting on it. That live overlay entry is what gets re-parented
+  /// mid-layout. Measured, not reasoned: dropping the ⋯ menu did not fix
+  /// it, and neither did keeping the tooltip widget mounted; only having no
+  /// LIVE tooltip at drag start did.
   bool _railDragging = false;
+
+  /// Wraps a reorderable item so PRESSING it takes any open tooltip down.
+  ///
+  /// ⚠️Pointer DOWN, not `onReorderStart`. Measured: dismissing from
+  /// `onReorderStart` only changes which form of the assert fires — by then
+  /// the list is already inside the machinery that re-parents items, and
+  /// removing an overlay entry there is itself the illegal mutation. Pointer
+  /// down is a plain gesture callback with no layout in flight, and it is
+  /// also simply when a tooltip should go: the hand has stopped hovering and
+  /// started doing.
+  ///
+  /// A `Listener` consumes nothing, so the drag recogniser underneath is
+  /// untouched.
+  Widget _dismissTooltipsOnPress(Widget child) => Listener(
+    onPointerDown: (_) => Tooltip.dismissAllToolTips(),
+    child: child,
+  );
   BrushGroupId? _springTarget;
   bool _springTargetIsRoot = false;
   Timer? _springTimer;
@@ -213,6 +250,24 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
   /// in it. A library whose brushes are all filed shows no leftovers tab.
   bool get _hasRootTab =>
       widget.presets.any((preset) => _ownerGroupId(preset) == null);
+
+  /// The group the rail is standing in, or null for the ROOT section.
+  ///
+  /// The panel's group verbs act on this — the tab you are looking at is the
+  /// group you mean (유저, R4 #10). Root is not a group, so they stand down
+  /// there rather than pretending.
+  BrushGroup? get _openGroup {
+    final id = _openGroupId;
+    if (id == null) {
+      return null;
+    }
+    for (final group in widget.groups) {
+      if (group.id == id) {
+        return group;
+      }
+    }
+    return null;
+  }
 
   /// The rail's tabs, in order: the groups as the library lists them, then
   /// the root section last — folders first, loose items after, the way a
@@ -264,6 +319,16 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
         setState(() => _railShowName = !_railShowName);
       case _BrushPresetMenuAction.newGroup:
         _createGroup();
+      case _BrushPresetMenuAction.renameGroup:
+        final group = _openGroup;
+        if (group != null) {
+          _editGroup(group);
+        }
+      case _BrushPresetMenuAction.deleteGroup:
+        final group = _openGroup;
+        if (group != null) {
+          _deleteGroup(group);
+        }
       case _BrushPresetMenuAction.rename:
         _renameSelectedPreset();
       case _BrushPresetMenuAction.delete:
@@ -577,6 +642,28 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
           height: 34,
           child: Text(AppText.strings.brNewGroup),
         ),
+      // The OPEN group's own two verbs (유저, R4 #10). They used to live on
+      // a ⋯ in the corner of every 26px tab, which meant every tab carried a
+      // second, smaller button whose whole job was to be missed.
+      //
+      // Disabled on the root section, which is not a group and has no name
+      // to change and nothing to delete.
+      if (widget.onGroupEdited != null)
+        PopupMenuItem<_BrushPresetMenuAction>(
+          key: const ValueKey<String>('brush-preset-menu-rename-group'),
+          value: _BrushPresetMenuAction.renameGroup,
+          height: 34,
+          enabled: _openGroup != null,
+          child: Text(AppText.strings.brRenameGroup),
+        ),
+      if (widget.onGroupDeleted != null)
+        PopupMenuItem<_BrushPresetMenuAction>(
+          key: const ValueKey<String>('brush-preset-menu-delete-group'),
+          value: _BrushPresetMenuAction.deleteGroup,
+          height: 34,
+          enabled: _openGroup != null,
+          child: Text(AppText.strings.brDeleteGroup),
+        ),
       if (widget.onPresetRenamed != null)
         PopupMenuItem<_BrushPresetMenuAction>(
           key: const ValueKey<String>('brush-preset-menu-rename'),
@@ -693,12 +780,6 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
             preview: _firstPresetIn(group?.id),
             selected: group?.id == open,
             onTap: () => _openTab(group?.id),
-            onRename: group == null || widget.onGroupEdited == null
-                ? null
-                : () => _editGroup(group),
-            onDelete: group == null || widget.onGroupDeleted == null
-                ? null
-                : () => _deleteGroup(group),
           );
           return KeyedSubtree(
             key: ValueKey<String>(
@@ -707,7 +788,9 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
             // The root section is not a group and always sorts last, so
             // only real tabs drag.
             child: reorderable && group != null
-                ? ReorderableDragStartListener(index: index, child: tab)
+                ? _dismissTooltipsOnPress(
+                    ReorderableDragStartListener(index: index, child: tab),
+                  )
                 : tab,
           );
         },
@@ -742,8 +825,12 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
         );
         return KeyedSubtree(
           key: ValueKey<String>('brush-preset-entry-${preset.id.value}'),
+          // The rows carry tooltips too, and a row drag re-parents them
+          // exactly the same way (유저, R4 #11 — same defect, other list).
           child: reorderable
-              ? ReorderableDragStartListener(index: index, child: row)
+              ? _dismissTooltipsOnPress(
+                  ReorderableDragStartListener(index: index, child: row),
+                )
               : row,
         );
       },
@@ -874,8 +961,6 @@ class _BrushGroupTab extends StatelessWidget {
     this.showName = false,
     this.showTooltip = true,
     this.onEdit,
-    this.onRename,
-    this.onDelete,
   });
 
   /// Height of one tab. Fixed, because the rail turns a pointer offset into
@@ -927,13 +1012,10 @@ class _BrushGroupTab extends StatelessWidget {
   /// group switch behind the double-tap window, so picking a group took
   /// ~300ms to show — see [InstantTapRegion].
   final VoidCallback? onEdit;
-  final VoidCallback? onRename;
-  final VoidCallback? onDelete;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final hasMenu = onRename != null || onDelete != null;
     final body = Material(
       color: selected ? colorScheme.surfaceContainerHigh : Colors.transparent,
       borderRadius: BorderRadius.circular(4),
@@ -997,49 +1079,9 @@ class _BrushGroupTab extends StatelessWidget {
     final face = showTooltip
         ? Tooltip(message: label, child: instant)
         : instant;
-    return SizedBox(
-      height: extent,
-      child: hasMenu
-          ? _TabContextMenu(
-              keyValue: keyValue,
-              onRename: onRename,
-              onDelete: onDelete,
-              child: face,
-            )
-          : face,
-    );
+    return SizedBox(height: extent, child: face);
   }
 }
-
-/// Wraps a tab so a long press (or a right-click) opens the group's menu —
-/// the rail has no room for a visible ⋯ on every tab.
-class _TabContextMenu extends StatelessWidget {
-  const _TabContextMenu({
-    required this.keyValue,
-    required this.onRename,
-    required this.onDelete,
-    required this.child,
-  });
-
-  final String keyValue;
-  final VoidCallback? onRename;
-  final VoidCallback? onDelete;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    return _LegacyGroupMenuHost(
-      keyValue: keyValue,
-      onRename: onRename,
-      onDelete: onDelete,
-      child: child,
-    );
-  }
-}
-
-/// Side of the ⋯ corner on a rail tab. Small enough that the rest of a
-/// 26px tab still belongs to the tab.
-const double _menuTapExtent = 12;
 
 /// Picks a group's face from the fixed catalogue.
 ///
@@ -1115,83 +1157,6 @@ class _GroupIconPicker extends StatelessWidget {
             ),
         ],
       ),
-    );
-  }
-}
-
-/// Holds the popup itself, kept apart so the tab stays a plain widget.
-class _LegacyGroupMenuHost extends StatelessWidget {
-  const _LegacyGroupMenuHost({
-    required this.keyValue,
-    required this.onRename,
-    required this.onDelete,
-    required this.child,
-  });
-
-  final String keyValue;
-  final VoidCallback? onRename;
-  final VoidCallback? onDelete;
-  final Widget child;
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Stack(
-      children: [
-        Positioned.fill(child: child),
-        // A bare PopupMenuButton keeps an IconButton's 48px minimum tap
-        // target, which on a 26px rail swallowed the whole tab: every click
-        // meant to open a group opened its menu instead. The box below is
-        // the corner it is allowed to have.
-        Positioned(
-          right: 0,
-          bottom: 0,
-          width: _menuTapExtent,
-          height: _menuTapExtent,
-          child: PopupMenuButton<_BrushGroupMenuAction>(
-            key: ValueKey<String>('$keyValue-menu'),
-            tooltip: AppText.strings.brGroupOptions,
-            popUpAnimationStyle: instantMenuAnimation,
-            icon: Icon(
-              Icons.more_horiz,
-              size: 10,
-              color: colorScheme.onSurfaceVariant,
-            ),
-            padding: EdgeInsets.zero,
-            iconSize: 10,
-            style: const ButtonStyle(
-              visualDensity: VisualDensity.compact,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-              minimumSize: WidgetStatePropertyAll<Size>(Size.zero),
-              padding: WidgetStatePropertyAll<EdgeInsets>(EdgeInsets.zero),
-            ),
-            onSelected: (action) {
-              switch (action) {
-                case _BrushGroupMenuAction.rename:
-                  onRename!();
-                case _BrushGroupMenuAction.delete:
-                  onDelete!();
-              }
-            },
-            itemBuilder: (context) => [
-              if (onRename != null)
-                PopupMenuItem<_BrushGroupMenuAction>(
-                  key: ValueKey<String>('brush-preset-group-menu-rename'),
-                  value: _BrushGroupMenuAction.rename,
-                  height: 34,
-                  child: Text(AppText.strings.brRenameGroup),
-                ),
-              if (onDelete != null)
-                PopupMenuItem<_BrushGroupMenuAction>(
-                  key: ValueKey<String>('brush-preset-group-menu-delete'),
-                  value: _BrushGroupMenuAction.delete,
-                  height: 34,
-                  child: Text(AppText.strings.brDeleteGroup),
-                ),
-            ],
-          ),
-        ),
-      ],
     );
   }
 }

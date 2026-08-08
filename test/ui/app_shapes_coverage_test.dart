@@ -96,7 +96,10 @@ void main() {
 }
 
 /// The debt the app's corner arrived to. Only ever goes down.
-const int _knownOffenders = 84;
+/// 84 at R1e. **81** since R4 #8 folded the anchored popup's three
+/// hand-rolled `Material(borderRadius: circular(6))` surfaces into one
+/// `AppShapes.container(AppShapes.windowRadius)` inside the shell itself.
+const int _knownOffenders = 81;
 
 final RegExp _offending = RegExp(
   r'BorderRadius\.circular|RoundedRectangleBorder|ClipRRect',

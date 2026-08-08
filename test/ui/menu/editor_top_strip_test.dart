@@ -320,22 +320,32 @@ void main() {
       findsOneWidget,
     );
 
-    // While pinned, picking a mode edits the PIN rather than the hand
-    // setting — the button still follows.
+    // ⛔CONTRACT CHANGE (유저, R4 #12: 잠궜는데 바꿀 수 있으면 잠금이
+    // 아니잖아). While pinned the button REFUSES TO OPEN. It used to open
+    // and edit the pin, which made the padlock a label rather than a lock —
+    // the same control both fixed the brush to a mode and changed which
+    // mode it was fixed to.
+    await openStrip(tester, 'brush-tool-blend-menu-button');
+    expect(
+      find.byKey(const ValueKey<String>('brush-tool-blend-screen')),
+      findsNothing,
+      reason: 'a locked blend has no menu to pick from',
+    );
+    expect(
+      find.descendant(of: button, matching: find.text('Color')),
+      findsOneWidget,
+    );
+
+    // Unlocking gives it back, and the hand setting underneath was never
+    // touched by any of this.
+    await tester.tap(lock);
+    await tester.pumpAndSettle();
     await openStrip(tester, 'brush-tool-blend-menu-button');
     await tapEntry(tester, 'brush-tool-blend-screen');
     expect(
       find.descendant(of: button, matching: find.text('Screen')),
       findsOneWidget,
-    );
-
-    // Releasing drops back to the hand setting, which was never touched.
-    await tester.tap(lock);
-    await tester.pumpAndSettle();
-    expect(
-      find.descendant(of: button, matching: find.text('Color')),
-      findsOneWidget,
-      reason: 'the pin edited itself, not the hand setting underneath',
+      reason: 'unlock, choose, lock again — the lock is one tap away',
     );
   });
 

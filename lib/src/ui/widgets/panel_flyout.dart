@@ -190,7 +190,15 @@ class PanelFlyoutButton extends StatelessWidget {
     this.padding = const EdgeInsets.fromLTRB(8, 4, 5, 4),
     this.expand = false,
     this.axis = Axis.horizontal,
+    this.enabled = true,
   });
+
+  /// False = the button says what it holds and refuses to open.
+  ///
+  /// 유저, R4 #12: 잠궜는데 바꿀 수 있으면 잠금이 아니잖아. A control behind a
+  /// lock has to LOOK shut, not merely be labelled shut — so the ink and the
+  /// caret dim together and the tap stops resolving.
+  final bool enabled;
 
   /// Which way the button READS. Vertical writes its label down the
   /// button through the shared vertical-writing table — the x-sheet's
@@ -221,9 +229,10 @@ class PanelFlyoutButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final vertical = axis == Axis.vertical;
+    final ink = labelColor ?? AppColors.text;
     final labelStyle = TextStyle(
       fontSize: fontSize,
-      color: labelColor ?? AppColors.text,
+      color: enabled ? ink : ink.withValues(alpha: 0.4),
       fontWeight: fontWeight,
     );
     final Widget text = vertical
@@ -240,10 +249,19 @@ class PanelFlyoutButton extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(4),
-        onTap: () => showPanelFlyout(context, entries: entriesBuilder()),
+        // Null, not a no-op: an `InkWell` with a null callback stops
+        // splashing and stops taking hover, so the button reads shut to the
+        // hand as well as to the eye.
+        onTap: enabled
+            ? () => showPanelFlyout(context, entries: entriesBuilder())
+            : null,
         child: DecoratedBox(
           decoration: BoxDecoration(
-            border: Border.all(color: AppColors.hairline),
+            border: Border.all(
+              color: enabled
+                  ? AppColors.hairline
+                  : AppColors.hairline.withValues(alpha: 0.5),
+            ),
             borderRadius: BorderRadius.circular(4),
           ),
           child: Padding(
@@ -259,10 +277,12 @@ class PanelFlyoutButton extends StatelessWidget {
                     width: vertical ? null : 2,
                     height: vertical ? 2 : null,
                   ),
-                  const Icon(
+                  Icon(
                     Icons.arrow_drop_down,
                     size: 16,
-                    color: AppColors.textDim,
+                    color: enabled
+                        ? AppColors.textDim
+                        : AppColors.textDim.withValues(alpha: 0.4),
                   ),
                 ],
               ],

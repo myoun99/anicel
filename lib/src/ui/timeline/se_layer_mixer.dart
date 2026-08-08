@@ -92,107 +92,98 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
     final gain = _gainDrag ?? layer.audioGain.clamp(0.0, 2.0);
     final pan = _panDrag ?? layer.audioPan.clamp(-1.0, 1.0);
 
-    return Material(
+    // ⛔No `Material` of its own — the anchored popup carries the window
+    // now (R4 #8).
+    return Padding(
       key: const ValueKey<String>('se-layer-mixer'),
-      color: AppColors.surfaceHigh,
-      borderRadius: BorderRadius.circular(6),
-      elevation: 6,
-      child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Text(
-              layer.name.isEmpty ? strings.layerAudioTitle : layer.name,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
-            ),
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                Expanded(
-                  child: _MixToggle(
-                    keyValue: 'se-mixer-mute',
-                    label: strings.audioMute,
-                    icon: layer.muted ? Icons.volume_off : Icons.volume_up,
-                    on: layer.muted,
-                    onPressed: () =>
-                        widget.session.toggleLayerMuted(widget.layerId),
-                  ),
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Text(
+            layer.name.isEmpty ? strings.layerAudioTitle : layer.name,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 8),
+          Row(
+            children: [
+              Expanded(
+                child: _MixToggle(
+                  keyValue: 'se-mixer-mute',
+                  label: strings.audioMute,
+                  icon: layer.muted ? Icons.volume_off : Icons.volume_up,
+                  on: layer.muted,
+                  onPressed: () =>
+                      widget.session.toggleLayerMuted(widget.layerId),
                 ),
-                const SizedBox(width: 6),
-                Expanded(
-                  child: _MixToggle(
-                    keyValue: 'se-mixer-solo',
-                    label: strings.audioSolo,
-                    icon: Icons.headphones,
-                    on: soloed,
-                    onPressed: () =>
-                        widget.session.toggleLayerSolo(widget.layerId),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            FieldSlider(
-              key: const ValueKey<String>('se-mixer-gain'),
-              min: 0,
-              max: 2,
-              value: gain,
-              label: strings.audioGainLabel,
-              // The bar reads percent, so the numeric field must TYPE
-              // percent: without this a typed 80 means 80× and clamps to
-              // the 2.0 ceiling — 200% from a keystroke that asked for 80.
-              valueText: _gainText(gain),
-              valueTextBuilder: _gainText,
-              onChanged: (value) => setState(() => _gainDrag = value),
-              onChangeEnd: (value) {
-                setState(() => _gainDrag = null);
-                widget.session.setLayerAudio(
-                  layerId: widget.layerId,
-                  gain: value,
-                );
-              },
-            ),
-            const SizedBox(height: 6),
-            FieldSlider(
-              key: const ValueKey<String>('se-mixer-pan'),
-              min: -1,
-              max: 1,
-              value: pan,
-              label: strings.audioPanLabel,
-              // A balance, not a quantity: the bar leaves CENTRE toward the
-              // side it is panned to, so hard left reads as "fully left"
-              // rather than as an empty fader.
-              fillOrigin: 0,
-              // Same unit contract as the fader: the label says L50/R50,
-              // so the field takes ±100.
-              valueText: _panText(pan),
-              valueTextBuilder: _panText,
-              onChanged: (value) => setState(() => _panDrag = value),
-              onChangeEnd: (value) {
-                setState(() => _panDrag = null);
-                widget.session.setLayerAudio(
-                  layerId: widget.layerId,
-                  pan: value,
-                );
-              },
-            ),
-            const SizedBox(height: 6),
-            // The one honest caveat this window owes the user: pan reaches
-            // the sound only on the device-mixer path. The platform-player
-            // fallback sets volume and drops pan entirely.
-            Text(
-              strings.layerAudioPanHelp,
-              style: TextStyle(
-                fontSize: 10,
-                color: AppColors.hairline,
               ),
-            ),
-          ],
-        ),
+              const SizedBox(width: 6),
+              Expanded(
+                child: _MixToggle(
+                  keyValue: 'se-mixer-solo',
+                  label: strings.audioSolo,
+                  icon: Icons.headphones,
+                  on: soloed,
+                  onPressed: () =>
+                      widget.session.toggleLayerSolo(widget.layerId),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          FieldSlider(
+            key: const ValueKey<String>('se-mixer-gain'),
+            min: 0,
+            max: 2,
+            value: gain,
+            label: strings.audioGainLabel,
+            // The bar reads percent, so the numeric field must TYPE
+            // percent: without this a typed 80 means 80× and clamps to
+            // the 2.0 ceiling — 200% from a keystroke that asked for 80.
+            valueText: _gainText(gain),
+            valueTextBuilder: _gainText,
+            onChanged: (value) => setState(() => _gainDrag = value),
+            onChangeEnd: (value) {
+              setState(() => _gainDrag = null);
+              widget.session.setLayerAudio(
+                layerId: widget.layerId,
+                gain: value,
+              );
+            },
+          ),
+          const SizedBox(height: 6),
+          FieldSlider(
+            key: const ValueKey<String>('se-mixer-pan'),
+            min: -1,
+            max: 1,
+            value: pan,
+            label: strings.audioPanLabel,
+            // A balance, not a quantity: the bar leaves CENTRE toward the
+            // side it is panned to, so hard left reads as "fully left"
+            // rather than as an empty fader.
+            fillOrigin: 0,
+            // Same unit contract as the fader: the label says L50/R50,
+            // so the field takes ±100.
+            valueText: _panText(pan),
+            valueTextBuilder: _panText,
+            onChanged: (value) => setState(() => _panDrag = value),
+            onChangeEnd: (value) {
+              setState(() => _panDrag = null);
+              widget.session.setLayerAudio(layerId: widget.layerId, pan: value);
+            },
+          ),
+          const SizedBox(height: 6),
+          // The one honest caveat this window owes the user: pan reaches
+          // the sound only on the device-mixer path. The platform-player
+          // fallback sets volume and drops pan entirely.
+          Text(
+            strings.layerAudioPanHelp,
+            style: TextStyle(fontSize: 10, color: AppColors.hairline),
+          ),
+        ],
       ),
     );
   }

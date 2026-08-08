@@ -1,4 +1,8 @@
+import 'dart:typed_data';
+import 'dart:ui' show ImageByteFormat;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
 import 'package:anicel/src/ui/widgets/pressure_curve_popup.dart';
@@ -39,6 +43,85 @@ void main() {
   }
 
   final graph = find.byKey(const ValueKey<String>('pressure-curve-graph'));
+
+  testWidgets('유저 R4 #9: pressure OFF wears an X, not a flat graph pinned '
+      'to the top of the box', (tester) async {
+    // 그게 아니라 해당 버튼에 그래프 말고 x 이렇게 둬서 필압 적용 안 되어
+    // 있다는 거 알기 쉽게.
+    //
+    // OFF drew `evaluate(t) ?? 1.0` — a line along the TOP EDGE and nothing
+    // anywhere else. Truthful and unreadable at 22×14, and identical to an
+    // identity curve someone had dragged flat.
+    //
+    // The discriminator is therefore INK BELOW THE TOP EDGE: the old
+    // drawing put none there at any width, and an X puts some in both
+    // bottom corners. Restore the flat line and this goes red.
+    Future<List<double>> inkRows(BrushPressureCurve? curve) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: RepaintBoundary(
+                key: const ValueKey<String>('mini-curve-capture'),
+                child: PressureCurveButton(
+                  keyValue: 'test-pressure-button',
+                  title: 'Size',
+                  curve: curve,
+                  onChanged: (_) {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final boundary = tester.renderObject<RenderRepaintBoundary>(
+        find.byKey(const ValueKey<String>('mini-curve-capture')),
+      );
+      final image = boundary.toImageSync();
+      late Uint8List bytes;
+      await tester.runAsync(() async {
+        final data = await image.toByteData(format: ImageByteFormat.rawRgba);
+        bytes = data!.buffer.asUint8List();
+      });
+      final width = image.width;
+      final height = image.height;
+      image.dispose();
+      // How much non-background ink each row carries, top row first.
+      final rows = <double>[];
+      for (var y = 0; y < height; y += 1) {
+        var ink = 0.0;
+        for (var x = 0; x < width; x += 1) {
+          ink += bytes[(y * width + x) * 4 + 3] / 255.0;
+        }
+        rows.add(ink);
+      }
+      return rows;
+    }
+
+    final off = await inkRows(null);
+    // The BOTTOM THIRD of the button. The border is on every row, so the
+    // claim is comparative: OFF must carry meaningfully more ink down there
+    // than a curve that genuinely sits along the top.
+    double bottomThird(List<double> rows) {
+      final start = (rows.length * 2 / 3).floor();
+      return rows.sublist(start).fold(0.0, (a, b) => a + b);
+    }
+
+    final flatTop = await inkRows(
+      BrushPressureCurve([
+        const BrushCurvePoint(0, 1),
+        const BrushCurvePoint(1, 1),
+      ]),
+    );
+    expect(
+      bottomThird(off),
+      greaterThan(bottomThird(flatTop) * 1.15),
+      reason:
+          'the X reaches both bottom corners; a top-pinned line never leaves '
+          'the top edge',
+    );
+  });
 
   testWidgets('the switch turns pressure on (identity) and off (null)', (
     tester,

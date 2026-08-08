@@ -126,46 +126,44 @@ class _ColorPickerBodyState extends State<_ColorPickerBody> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    return Material(
-      elevation: 8,
-      color: theme.colorScheme.surfaceContainerHigh,
-      borderRadius: BorderRadius.circular(6),
-      child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Expanded(
-                  child: Text(widget.title, style: theme.textTheme.labelMedium),
-                ),
-                // The live result, in the same round swatch vocabulary as
-                // the button that opened this.
-                Container(
-                  key: const ValueKey<String>('color-picker-preview'),
-                  width: 16,
-                  height: 16,
-                  decoration: BoxDecoration(
-                    color: _hsv.toColor(),
-                    shape: BoxShape.circle,
-                    border: Border.all(color: AppColors.hairline),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 8),
-            SizedBox(
-              height: 180,
-              child: ColorWheel(
-                key: const ValueKey<String>('color-picker-wheel'),
-                hsv: _hsv,
-                onChanged: _apply,
+    // ⛔No `Material` of its own (R4 #8). It drew elevation 8 where the two
+    // other anchored windows drew 6 — one window in three costumes, until a
+    // fourth arrived with none.
+    return Padding(
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(widget.title, style: theme.textTheme.labelMedium),
               ),
+              // The live result, in the same round swatch vocabulary as
+              // the button that opened this.
+              Container(
+                key: const ValueKey<String>('color-picker-preview'),
+                width: 16,
+                height: 16,
+                decoration: BoxDecoration(
+                  color: _hsv.toColor(),
+                  shape: BoxShape.circle,
+                  border: Border.all(color: AppColors.hairline),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          SizedBox(
+            height: 180,
+            child: ColorWheel(
+              key: const ValueKey<String>('color-picker-wheel'),
+              hsv: _hsv,
+              onChanged: _apply,
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
