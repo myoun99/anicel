@@ -90,7 +90,14 @@ class EditorPanelLayoutModel extends ChangeNotifier {
   /// shrinking, instead of dragging on past it and cutting the bottom off —
   /// the shrink-floor round's whole point. It never LOWERS the floor, and a
   /// dock too small for its own maximum keeps the maximum.
-  void resizeDock(
+  /// Returns the part of [delta] that actually moved the edge.
+  ///
+  /// The remainder is travel the hand made past a floor or a ceiling, and
+  /// [DockEdgeSplitter] keeps it so the return trip has to spend it before
+  /// the edge moves again (유저, R4 #13). Dropping it here is what made a
+  /// splitter that had been pushed to the wall run out ahead of the cursor
+  /// on the way back.
+  double resizeDock(
     String dockId,
     double delta, {
     required double fallback,
@@ -114,14 +121,20 @@ class EditorPanelLayoutModel extends ChangeNotifier {
     // "the splitter follows the cursor, but late and short".
     final current = dockExtent(dockId, fallback: fallback).clamp(floor, ceiling);
     final next = (current + delta).clamp(floor, ceiling).toDouble();
+    // What the edge MOVED, which is the honest answer to "how much of that
+    // did you use" even on the frame where the stored number does not
+    // change (a dock restored below a floor that did not exist when it was
+    // saved is drawn at the floor already).
+    final used = next - current;
     if (next == _dockExtents[dockId]) {
-      return;
+      return used;
     }
     _dockExtents[dockId] = next;
     // NOT notifyListeners: see [extentRevision]. A width is not a change of
     // arrangement, and paying for a full workspace rebuild per drag frame is
     // what made the splitter feel heavy.
     extentRevision.value += 1;
+    return used;
   }
 
   /// Sets a dock's extent outright (a restore, a reset, a detent).

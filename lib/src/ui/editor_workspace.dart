@@ -2470,11 +2470,20 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                     child: DockEdgeSplitter(
                       key: ValueKey<String>('dock-resize-$railId'),
                       axis: Axis.vertical,
-                      onDragDelta: (delta) => _layout.resizeDock(
-                        EditorWorkspace.railWidthKey(right: right),
-                        right ? -delta : delta,
-                        fallback: EditorWorkspace.sideDockWidth,
-                      ),
+                      onDragDelta: (delta) {
+                        // ⚠️The sign flip has to be UNDONE on the way back.
+                        // A right rail grows as the pointer moves LEFT, so
+                        // reporting the width's own delta would hand the
+                        // splitter a debt pointing the wrong way — and a
+                        // debt with the wrong sign is worse than none: it
+                        // would make the edge run ahead instead of behind.
+                        final used = _layout.resizeDock(
+                          EditorWorkspace.railWidthKey(right: right),
+                          right ? -delta : delta,
+                          fallback: EditorWorkspace.sideDockWidth,
+                        );
+                        return right ? -used : used;
+                      },
                     ),
                   ),
                   // The HEIGHT grip, on this panel's bottom edge. It costs
@@ -2965,13 +2974,19 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         onDragDelta: (delta) {
           // Pulling the LEFT edge right and the RIGHT edge left both grow
           // the inset, which is what "symmetric" means from the hand's side.
-          final raw =
-              ((_bottomInsetDragRaw ?? inset) + (right ? -delta : delta))
-                  .clamp(0.0, maxInset)
-                  .toDouble();
+          final before = _bottomInsetDragRaw ?? inset;
+          final raw = (before + (right ? -delta : delta))
+              .clamp(0.0, maxInset)
+              .toDouble();
           _bottomInsetDragRaw = raw;
           _bottomInsetOverride.value = _detented(raw, railSpan);
           _scheduleLayoutSave();
+          // The DETENT costs nothing — `_bottomInsetDragRaw` keeps the
+          // un-snapped total (R3 #2), so the magnet can be left. The WALLS
+          // at 0 and maxInset do cost, and that is what goes back to the
+          // splitter, converted out of inset units into pointer ones.
+          final movedInset = raw - before;
+          return right ? -movedInset : movedInset;
         },
       ),
     );
@@ -3378,7 +3393,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                                                 );
                                                 _scheduleLayoutSave();
                                               }
-                                              _layout.resizeDock(
+                                              // What the edge used, back in
+                                              // POINTER units — the sign flip
+                                              // below has to be undone or the
+                                              // splitter would bank the debt
+                                              // the wrong way round.
+                                              final used = _layout.resizeDock(
                                                 EditorWorkspace.bottomGroupId,
                                                 // Toward the artwork GROWS the
                                                 // region, on either edge: down
@@ -3418,6 +3438,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                                                   ),
                                                 ),
                                               );
+                                              return onTop ? used : -used;
                                             },
                                           ),
                                         ),
