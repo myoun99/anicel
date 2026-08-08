@@ -1,6 +1,8 @@
 import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
 
+import '../theme/app_scroll_behavior.dart';
+
 import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
 import '../../models/layer_effect.dart';
@@ -674,6 +676,7 @@ class TimelineActionToolbar extends StatelessWidget {
       ),
       child: Padding(
         padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+        child: UnbarredScrollable(
         child: SingleChildScrollView(
           scrollDirection: Axis.horizontal,
           child: Row(
@@ -875,6 +878,7 @@ class TimelineActionToolbar extends StatelessWidget {
               ),
             ],
           ),
+        ),
         ),
       ),
     );

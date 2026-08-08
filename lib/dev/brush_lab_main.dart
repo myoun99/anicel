@@ -32,6 +32,7 @@ import '../src/ui/canvas/brush_edit_canvas_view.dart';
 import '../src/ui/canvas/interactive_brush_edit_canvas_view.dart';
 import '../src/ui/editor_workspace.dart';
 import '../src/ui/home_page.dart';
+import '../src/ui/theme/app_scroll_behavior.dart';
 import '../src/ui/theme/app_theme.dart';
 
 void main() {
@@ -46,6 +47,9 @@ class _BrushLabApp extends StatelessWidget {
     return MaterialApp(
       title: 'Anicel Brush Lab',
       theme: buildAppTheme(),
+      // The lab is the same app with a driver on top — it gets the same
+      // scrollbars, or it stops being a place to judge them from.
+      scrollBehavior: const AppScrollBehavior(),
       home: const _BrushLabDriver(child: HomePage()),
     );
   }

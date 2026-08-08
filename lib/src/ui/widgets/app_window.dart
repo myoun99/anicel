@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_scroll_behavior.dart';
+
 import '../theme/app_theme.dart';
 
 /// One tab in an [AppWindow]'s strip. The window renders the strip; the
@@ -206,12 +208,14 @@ class AppWindow extends StatelessWidget {
       // Scrolls rather than overflows: a window may carry more tabs than
       // its width fits (Preferences has six, one of them long), and the
       // strip must never be the thing that decides the window's width.
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        child: Row(
-          children: [
-            for (var i = 0; i < tabs.length; i++) _tab(theme, tabs[i], i),
-          ],
+      child: UnbarredScrollable(
+        child: SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: [
+              for (var i = 0; i < tabs.length; i++) _tab(theme, tabs[i], i),
+            ],
+          ),
         ),
       ),
     );

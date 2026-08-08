@@ -356,19 +356,27 @@ ThemeData buildAppTheme() {
       hintStyle: const TextStyle(color: AppColors.textDim, fontSize: 13),
       errorStyle: const TextStyle(color: AppColors.danger, fontSize: 11),
     ),
-    // Stragglers only — every app surface uses AppScrollbar; this keeps a
-    // raw Flutter Scrollbar (if one ever appears) on the same S1 visuals:
-    // thin grey thumb, brighter on hover, accent while dragged, no track.
+    // ⛔NOT "stragglers only" — that comment was wrong for as long as it
+    // stood. `MaterialScrollBehavior.buildScrollbar` puts a framework
+    // Scrollbar on EVERY vertical scrollable on desktop, so this theme has
+    // been dressing some thirty real surfaces, not a hypothetical one.
+    //
+    // It keeps them on the same visuals as [AppScrollbar]: thin grey thumb,
+    // brighter under the pointer, accent while pressed, no track. 🐛And the
+    // THICKNESS is constant, which it was not: this property used to resolve
+    // 6 on hover/drag, so the app's own bars held still under the pointer
+    // while the framework's grew — the one divergence the user could see
+    // (유저: 호버중에 크기가 커지는데? 안커지도록). It came from here, not
+    // from Flutter's defaults.
+    //
+    // What this theme still governs after the scroll BEHAVIOUR takes over
+    // the rest: the dropdown and MenuAnchor menus. Both wrap themselves in
+    // `copyWith(scrollbars: false)` and build their own Scrollbar, so no
+    // ScrollBehavior can reach them and this is their only styling.
     scrollbarTheme: ScrollbarThemeData(
       thumbVisibility: const WidgetStatePropertyAll<bool>(true),
       trackVisibility: const WidgetStatePropertyAll<bool>(false),
-      thickness: WidgetStateProperty.resolveWith<double>(
-        (states) =>
-            states.contains(WidgetState.hovered) ||
-                states.contains(WidgetState.dragged)
-            ? 6
-            : 4,
-      ),
+      thickness: const WidgetStatePropertyAll<double>(4),
       radius: const Radius.circular(3),
       thumbColor: WidgetStateProperty.resolveWith<Color>((states) {
         if (states.contains(WidgetState.dragged)) {
