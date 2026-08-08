@@ -1334,18 +1334,22 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                           child: Stack(
                             key: const ValueKey<String>('canvas-cursor-deck'),
                             fit: StackFit.expand,
-                            // ★NO CLIP, and it is not a decoration.
-                            //
-                            // A `Stack` clips only WHEN a child overflows, so
-                            // its clip layer appears and disappears as the
-                            // cursor crosses the panel edge — and a change in
-                            // the LAYER TREE is a compositing-bits update,
-                            // which propagates past repaint boundaries by
-                            // design. Measured: with a clip, moving the
-                            // cursor near an edge re-recorded the chrome
-                            // ABOVE the panel even though (A) was doing its
-                            // job. Nothing can escape anyway; the `ClipRect`
+                            // NO CLIP: a `Stack` clips only WHEN a child
+                            // overflows, so its clip layer would come and go
+                            // as the cursor crosses the panel edge — a layer
+                            // the tree does not need, since the `ClipRect`
                             // one level up already owns that promise.
+                            //
+                            // ⚠️This used to carry a justification that was
+                            // simply FALSE: "a compositing-bits update
+                            // propagates past repaint boundaries by design".
+                            // It does not — `markNeedsCompositingBitsUpdate`
+                            // stops the moment `parent.isRepaintBoundary`
+                            // (rendering/object.dart:3206). The clip was
+                            // never the escalation path; the escalation was
+                            // ordinary `markNeedsPaint`, and it stops at the
+                            // shell boundary. Keeping the widget, dropping
+                            // the story.
                             clipBehavior: Clip.none,
                             children: [
                               RepaintBoundary(
