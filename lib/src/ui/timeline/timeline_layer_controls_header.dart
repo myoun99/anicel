@@ -698,15 +698,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                         : cell(
                             keyValue: 'legend-opacity',
                             tooltip: AppText.strings.tlColOpacity,
-                            child: Text(
-                              'OPAC',
-                              style: TextStyle(
-                                fontSize: 8.5,
-                                letterSpacing: 0.6,
-                                fontWeight: FontWeight.w600,
-                                color: colorScheme.onSurfaceVariant,
-                              ),
-                            ),
+                            child: _columnHeading('OPAC', colorScheme, axis),
                           ),
                     // R27 #6: the BLEND column header — one pick applies
                     // the mode to every displayed compositing row, the
@@ -747,15 +739,7 @@ class TimelineLayerControlsHeader extends StatelessWidget {
                                             ),
                                       ),
                                   ],
-                            child: Text(
-                              'BLND',
-                              style: TextStyle(
-                                fontSize: 8.5,
-                                letterSpacing: 0.6,
-                                fontWeight: FontWeight.w600,
-                                color: colorScheme.onSurfaceVariant,
-                              ),
-                            ),
+                            child: _columnHeading('BLND', colorScheme, axis),
                           ),
                   ),
                 ],
@@ -765,5 +749,37 @@ class TimelineLayerControlsHeader extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// A column's four-letter heading, written the way its rail runs.
+  ///
+  /// R5 #1: on the sheet these were the last two labels still lying down.
+  /// Every other piece of text in that column stands up — the row names,
+  /// the section band's ACTION/SE/CAM, the lane names — so OPAC and BLND
+  /// were the only place left where reading the sheet meant tilting your
+  /// head. The letters stand and the word runs down the column.
+  ///
+  /// `letterSpacing` goes with the turn: it is a HORIZONTAL notion and the
+  /// vertical renderer zeroes it anyway (the leading comes from the cell
+  /// extent), so carrying it across would only say something untrue.
+  static Widget _columnHeading(
+    String label,
+    ColorScheme colorScheme,
+    Axis axis,
+  ) {
+    final style = TextStyle(
+      fontSize: 8.5,
+      fontWeight: FontWeight.w600,
+      color: colorScheme.onSurfaceVariant,
+    );
+    return axis == Axis.horizontal
+        ? Text(label, style: style.copyWith(letterSpacing: 0.6))
+        : ClipRect(
+            child: VerticalWritingText(
+              text: label,
+              latinForm: VerticalLatinForm.upright,
+              style: style,
+            ),
+          );
   }
 }

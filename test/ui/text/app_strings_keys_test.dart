@@ -488,6 +488,7 @@ void main() {
     'tlKindImage': (s) => s.tlKindImage,
     'tlKindText': (s) => s.tlKindText,
     'tlKindAdjustment': (s) => s.tlKindAdjustment,
+    'tlKindFolder': (s) => s.tlKindFolder,
     'textCelNewTitle': (s) => s.textCelNewTitle,
     'textCelEditTitle': (s) => s.textCelEditTitle,
     'textCelTextLabel': (s) => s.textCelTextLabel,

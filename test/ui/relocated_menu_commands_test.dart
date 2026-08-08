@@ -29,7 +29,10 @@ void main() {
   ) async {
     await pumpHome(tester);
 
-    await expectInFlyout(tester, 'timeline-group-attach-into-folder-button');
+    // R5 #14: the two folder-making commands left. A folder is ADDED empty
+    // from the Add Layer menu now and filled by dropping rows on it, and
+    // an attach folder is made the same way — so neither has a Layer-menu
+    // entry to relocate any more.
     await expectInFlyout(tester, 'timeline-rasterize-layer-button');
     await expectInFlyout(tester, 'timeline-se-name-tag-button');
   });

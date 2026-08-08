@@ -247,6 +247,15 @@ class TimelineActionToolbar extends StatelessWidget {
         icon: Icons.tune,
         onSelected: () => session.addLayerOfKind(LayerKind.adjustment),
       ),
+      // R5 #14: a FOLDER is something you add, empty, and then fill by
+      // dropping rows on it — the file-manager shape, replacing "group the
+      // active layer into a folder".
+      PanelFlyoutItem(
+        keyValue: 'add-layer-kind-folder',
+        label: AppText.strings.tlKindFolder,
+        icon: Icons.create_new_folder_outlined,
+        onSelected: () => session.addLayerOfKind(LayerKind.folder),
+      ),
       // Attach layers (W5, UI-R20 #8 / UI-R21 #3): the same entrance the
       // Layer menu has — own cels riding the base's FX. FREE authors its
       // own timeline; SYNCED mirrors the base's exposures (ghost rows).
@@ -288,6 +297,42 @@ class TimelineActionToolbar extends StatelessWidget {
     ];
   }
 
+  /// The EFFECTS button's list (R5 #6): add one of each kind, and take away
+  /// the ones this row already carries.
+  ///
+  /// Adding one changes nothing until a value moves — the work happens in
+  /// the row's FX lanes, which is why this is a menu and not a control on
+  /// an already crowded row.
+  List<PanelFlyoutEntry> _effectEntries() {
+    final effects = session.activeLayer?.effects ?? const <LayerEffect>[];
+    return [
+      PanelFlyoutHeader(AppText.strings.tlEffects),
+      for (final kind in EffectKind.values)
+        PanelFlyoutItem(
+          keyValue: 'add-effect-${kind.jsonValue}',
+          label: AppText.strings.tlAddEffectTemplate.replaceAll(
+            '{name}',
+            kind.labelFor(AppText.language),
+          ),
+          icon: Icons.auto_fix_high_outlined,
+          enabled: session.canAddEffectToActiveLayer,
+          onSelected: () => session.addEffectToActiveLayer(kind),
+        ),
+      if (effects.isNotEmpty) const PanelFlyoutDivider(),
+      for (final effect in effects)
+        PanelFlyoutItem(
+          keyValue: 'remove-effect-${effect.id.value}',
+          label: AppText.strings.tlRemoveEffectTemplate.replaceAll(
+            '{name}',
+            effect.kind.labelFor(AppText.language),
+          ),
+          icon: Icons.remove_circle_outline,
+          danger: true,
+          onSelected: () => session.removeEffectFromActiveLayer(effect.id),
+        ),
+    ];
+  }
+
   List<PanelFlyoutEntry> _layerEntries(BuildContext context) {
     final active = session.activeLayer;
     return [
@@ -321,27 +366,11 @@ class TimelineActionToolbar extends StatelessWidget {
         enabled: session.hasLayerClipboard,
         onSelected: session.pasteLayerFromClipboard,
       ),
-      // The row-order verbs: a STEP is the drag's twin — both resolve
-      // through the same drop policy, so a step and a drop can never
-      // disagree about what is legal, and a step INTO a folder is the same
-      // move as a step over it. UP means toward the top of the stack, which
-      // reads as up on the rail and leftward on the sheet.
-      PanelFlyoutItem(
-        keyValue: 'timeline-move-layer-up-button',
-        label: AppText.strings.tlMoveLayerUp,
-        icon: Icons.arrow_upward,
-        enabled:
-            active != null && session.canMoveLayerInStack(active.id, up: true),
-        onSelected: () => session.moveLayerInStack(active!.id, up: true),
-      ),
-      PanelFlyoutItem(
-        keyValue: 'timeline-move-layer-down-button',
-        label: AppText.strings.tlMoveLayerDown,
-        icon: Icons.arrow_downward,
-        enabled:
-            active != null && session.canMoveLayerInStack(active.id, up: false),
-        onSelected: () => session.moveLayerInStack(active!.id, up: false),
-      ),
+      // R5 #5: the row-order STEP verbs are gone, session methods and all
+      // (user: "단축키로도 남기지마 일단"). The drag is the whole answer
+      // now; the one thing the step could reach that a drop cannot — the
+      // inside of an EMPTY folder — is the drop mode this round adds
+      // instead, where dropping ON a folder row puts the layer in it.
       // 장착·분리 (P3). The DRAG makes an attach by dropping a row strictly
       // inside a group; these cover what it cannot reach — a base with no
       // attach rows yet has no inside — and the release, which must not be a
@@ -367,66 +396,19 @@ class TimelineActionToolbar extends StatelessWidget {
         enabled: session.canDetachActiveLayer,
         onSelected: session.detachActiveLayer,
       ),
-      PanelFlyoutItem(
-        keyValue: 'import-audio-button',
-        label: AppText.strings.tlImportAudio,
-        icon: Icons.audio_file_outlined,
-        enabled: session.canImportAudioToActiveLayer && onImportAudio != null,
-        onSelected: onImportAudio,
-      ),
+      // R5 #5: IMPORT AUDIO left. The media browser is the one entrance —
+      // it links an audio asset onto a frame block, which is the shape the
+      // work actually has; this entry offered a second, thinner door.
       const PanelFlyoutDivider(),
-      // R6: the effect chain's entrance. Adding one changes nothing until a
-      // value moves — the work happens in the row's FX lanes, which is why
-      // the command lives next to the other layer verbs instead of growing
-      // another control on an already crowded row.
-      PanelFlyoutHeader(AppText.strings.tlEffects),
-      for (final kind in EffectKind.values)
-        PanelFlyoutItem(
-          keyValue: 'add-effect-${kind.jsonValue}',
-          label: AppText.strings.tlAddEffectTemplate.replaceAll(
-            '{name}',
-            kind.labelFor(AppText.language),
-          ),
-          icon: Icons.auto_fix_high_outlined,
-          enabled: session.canAddEffectToActiveLayer,
-          onSelected: () => session.addEffectToActiveLayer(kind),
-        ),
-      for (final effect in active?.effects ?? const <LayerEffect>[])
-        PanelFlyoutItem(
-          keyValue: 'remove-effect-${effect.id.value}',
-          label: AppText.strings.tlRemoveEffectTemplate.replaceAll(
-            '{name}',
-            effect.kind.labelFor(AppText.language),
-          ),
-          icon: Icons.remove_circle_outline,
-          danger: true,
-          onSelected: () => session.removeEffectFromActiveLayer(effect.id),
-        ),
-      const PanelFlyoutDivider(),
-      // R27 #21: the FOLDER and LINK commands reach the timeline. They
-      // only lived in the top menu bar, which is a long way from the rail
-      // where their result shows up.
-      PanelFlyoutItem(
-        keyValue: 'timeline-group-into-folder-button',
-        label: AppText.strings.tlGroupIntoFolder,
-        icon: Icons.create_new_folder_outlined,
-        enabled: session.canGroupActiveLayerIntoFolder,
-        onSelected: session.groupActiveLayerIntoFolder,
-      ),
-      // The rest of R27 #21's errand: these reached only the top menu bar,
-      // which is even further from the rail than the folder commands were.
-      // They borrow the MENU's wording by id rather than growing a second
-      // translation key for the same verb.
-      PanelFlyoutItem(
-        keyValue: 'timeline-group-attach-into-folder-button',
-        label: AppText.strings.menuLabel(
-          'layer-group-attach-into-folder',
-          'New attach folder',
-        ),
-        icon: Icons.folder_special_outlined,
-        enabled: session.canGroupActiveAttachIntoFolder,
-        onSelected: session.groupActiveAttachIntoFolder,
-      ),
+      // R5 #6: the EFFECT chain moved out to a button of its own — the
+      // effect list is going to be what that button shows, so it stopped
+      // being a tail on the layer menu.
+      //
+      // R5 #14: and the two FOLDER-making commands went with it. "Group
+      // into folder" wrapped the active layer; a folder is made EMPTY from
+      // the Add Layer menu now and filled by dropping rows on it, which is
+      // how every other app this user works in behaves. "New attach folder"
+      // goes for the same reason — the drag makes those too.
       PanelFlyoutItem(
         keyValue: 'timeline-rasterize-layer-button',
         label: AppText.strings.menuLabel('layer-rasterize', 'Rasterize layer'),
@@ -464,23 +446,10 @@ class TimelineActionToolbar extends StatelessWidget {
         checked: active?.kind == LayerKind.storyboard ? true : null,
         onSelected: session.toggleTargetLayerKind,
       ),
-      const PanelFlyoutDivider(),
-      PanelFlyoutItem(
-        keyValue: 'toggle-se-section-button',
-        label: AppText.strings.tlShowSeRows,
-        icon: Icons.music_note_outlined,
-        enabled: onToggleSection != null,
-        checked: !hiddenSections.contains(TimelineSection.se),
-        onSelected: () => onToggleSection?.call(TimelineSection.se),
-      ),
-      PanelFlyoutItem(
-        keyValue: 'toggle-camera-section-button',
-        label: AppText.strings.tlShowCameraRows,
-        icon: Icons.videocam_outlined,
-        enabled: onToggleSection != null,
-        checked: !hiddenSections.contains(TimelineSection.camera),
-        onSelected: () => onToggleSection?.call(TimelineSection.camera),
-      ),
+      // R5 #5: the SE and CAMERA section switches left. The legend's own
+      // sections cell has shown and hidden both since UI-R7, so this pair
+      // was a second door to one setting — and the one further from where
+      // the rows are.
       const PanelFlyoutDivider(),
       PanelFlyoutItem(
         keyValue: 'delete-layer-button',
@@ -729,6 +698,25 @@ class TimelineActionToolbar extends StatelessWidget {
                           label: AppText.strings.tlLayer,
                           tooltip: AppText.strings.tlLayerCommands,
                           entriesBuilder: () => _layerEntries(context),
+                        ),
+                        const SizedBox(width: 4),
+                        // R5 #6: EFFECTS get a button of their own. The
+                        // chain used to hang off the tail of the Layer
+                        // menu, and the effect LIST is what this button is
+                        // going to grow into — so it stopped being a tail.
+                        //
+                        // Safe inside the cached group for the R13-2
+                        // reason: the builder closes over the stable
+                        // session and reads the active layer's chain when
+                        // the flyout OPENS, so a reused button widget
+                        // cannot show a stale list.
+                        PanelFlyoutButton(
+                          key: const ValueKey<String>(
+                            'timeline-effects-button',
+                          ),
+                          label: AppText.strings.tlEffects,
+                          tooltip: AppText.strings.tlEffects,
+                          entriesBuilder: _effectEntries,
                         ),
                         // R27 #6: the layer BLEND dropdown left this toolbar for
                         // the layer LABEL's rightmost column (user placement) —

@@ -21,9 +21,6 @@ import 'package:anicel/src/ui/media/media_asset_drag_data.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
 import 'package:anicel/src/ui/timeline_tab_host.dart';
 
-import '../flyout_test_helpers.dart';
-
-const _importKey = ValueKey<String>('import-audio-button');
 const _seLayerId = LayerId('audio-se');
 const _celLayerId = LayerId('audio-cel');
 
@@ -96,41 +93,30 @@ Future<void> _pumpHost(
   await tester.pumpAndSettle();
 }
 
-// Menu-aware (R-toolbar round): import audio lives in the Layer ▾ flyout.
-Future<bool> _importEnabled(WidgetTester tester) =>
-    readCommandEnabled(tester, _importKey);
-
-Future<void> _tapImport(WidgetTester tester) =>
-    tapCommandButton(tester, _importKey);
-
+// R5 #5: the Layer ▾ entry is gone — the media browser is the entrance the
+// user kept, and it drops an asset onto a frame block. What the import
+// itself does is unchanged, so these drive the SESSION verb the removed
+// menu item called; the assertions below are the same ones it made.
 void main() {
   testWidgets('import audio is SE-only and places the clip at the playhead '
       'with one undo', (tester) async {
     final session = _session();
-    var picks = 0;
-    await _pumpHost(
-      tester,
-      session,
-      audioFilePicker: () async {
-        picks += 1;
-        return r'C:\sound\voice.wav';
-      },
-    );
+    await _pumpHost(tester, session);
 
-    // Animation layer active: disabled.
+    // Animation layer active: the row cannot take a sound.
     session.selectLayer(_celLayerId);
     await tester.pumpAndSettle();
-    expect(await _importEnabled(tester), isFalse);
+    expect(session.canImportAudioToActiveLayer, isFalse);
 
     // SE layer at frame 4: imports at the playhead.
     session.selectLayer(_seLayerId);
     session.selectFrameIndex(4);
     await tester.pumpAndSettle();
-    expect(await _importEnabled(tester), isTrue);
+    expect(session.canImportAudioToActiveLayer, isTrue);
 
-    await _tapImport(tester);
+    session.addAudioClipToActiveSeLayer(r'C:\sound\voice.wav');
+    await tester.pumpAndSettle();
 
-    expect(picks, 1);
     Layer seLayer() =>
         session.layers.firstWhere((layer) => layer.id == _seLayerId);
     expect(seLayer().audioClips.single.filePath, r'C:\sound\voice.wav');
@@ -156,19 +142,10 @@ void main() {
     await tester.pumpAndSettle();
   });
 
-  testWidgets('cancelling the picker changes nothing', (tester) async {
-    final session = _session();
-    await _pumpHost(tester, session, audioFilePicker: () async => null);
-
-    session.selectLayer(_seLayerId);
-    await tester.pumpAndSettle();
-    await _tapImport(tester);
-
-    expect(
-      session.layers.firstWhere((layer) => layer.id == _seLayerId).audioClips,
-      isEmpty,
-    );
-  });
+  // R5 #5: "cancelling the picker changes nothing" went with the menu item
+  // — it pinned the HOST's null-path guard on a path nothing reaches any
+  // more. The guard that survived is the row one, and the test above makes
+  // it: an animation row answers false to `canImportAudioToActiveLayer`.
 
   testWidgets('media pool flows: import-to-browse, link-to-block reuse, '
       'rename, relink, remove guard', (tester) async {

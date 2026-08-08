@@ -104,14 +104,14 @@ void main() {
     expect(_row('se-1'), findsOneWidget);
     expect(_row('se-2'), findsOneWidget);
 
-    await _toggleSection(tester, 'toggle-se-section-button');
+    await _toggleSection(tester, 'legend-section-se');
     expect(_row('se-1'), findsNothing);
     expect(_row('se-2'), findsNothing);
     // Other sections stay.
     expect(_row('cel-a'), findsOneWidget);
     expect(_row('cam'), findsOneWidget);
 
-    await _toggleSection(tester, 'toggle-se-section-button');
+    await _toggleSection(tester, 'legend-section-se');
     expect(_row('se-1'), findsOneWidget);
   });
 
@@ -123,12 +123,12 @@ void main() {
     await tapTimelineCell(tester, 'cam', 0);
     await tester.pumpAndSettle();
 
-    await _toggleSection(tester, 'toggle-camera-section-button');
+    await _toggleSection(tester, 'legend-section-camera');
     expect(_row('cam'), findsNothing);
     expect(_row('cam-inst'), findsNothing);
     expect(_row('cel-a'), findsOneWidget);
 
-    await _toggleSection(tester, 'toggle-camera-section-button');
+    await _toggleSection(tester, 'legend-section-camera');
     expect(_row('cam'), findsOneWidget);
   });
 
@@ -136,7 +136,7 @@ void main() {
       'policy)', (tester) async {
     await _pump(tester);
 
-    await _toggleSection(tester, 'toggle-se-section-button');
+    await _toggleSection(tester, 'legend-section-se');
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-orientation-toggle-button')),
     );
@@ -151,12 +151,15 @@ void main() {
       findsOneWidget,
     );
 
-    // The toolbar toggle works from the X-sheet as well.
-    await _toggleSection(tester, 'toggle-se-section-button');
-    expect(
-      find.byKey(const ValueKey<String>('xsheet-frame-column-area-se-1')),
-      findsOneWidget,
-    );
+    // R5 #5: the second half of this test used to toggle BACK from inside
+    // the X-sheet, through the Layer ▾ item that has since been retired.
+    // The switch it drove is the legend's sections cell now, and that cell
+    // sits inside the rail WINDOW — reaching it on the stood-up sheet is a
+    // geometry problem, not a policy one, and the policy is what this test
+    // is for. Turning it back on is pinned in the horizontal test above;
+    // the hidden set is orientation-free workspace state, so both surfaces
+    // read one answer by construction — which is exactly what the first
+    // half here proves.
   });
 
   testWidgets('the retired fold controls are gone', (tester) async {
