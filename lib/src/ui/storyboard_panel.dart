@@ -11,6 +11,7 @@ import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/layer.dart';
+import '../models/layer_effect.dart' show EffectId;
 import '../models/layer_id.dart';
 import '../models/layer_mark.dart';
 import '../models/project.dart';
@@ -41,9 +42,16 @@ import 'timeline/timeline_row_span_resolver.dart'
 import 'timeline/se_audio_lane.dart' show SeAudioLaneFrameRow;
 import 'timeline/timeline_lane_rows.dart'
     show TimelineLaneControlsRow, TimelineLaneFrameRow;
-import 'timeline/layer_drop_policy.dart' show slotForSteps;
+import 'timeline/effect_lane_policy.dart'
+    show effectPropertyLanes, parseEffectLaneId;
+import 'timeline/layer_drop_policy.dart'
+    show effectStepsBetween, slotForSteps;
 import 'timeline/layer_row_drag.dart'
-    show LayerRowDragTarget, LayerRowSubject, TimelineRowDragHooks;
+    show
+        EffectRowSubject,
+        LayerRowDragTarget,
+        LayerRowSubject,
+        TimelineRowDragHooks;
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_ruler_cursor_overlay.dart';
 import 'timeline/transform_lane_policy.dart'
@@ -389,6 +397,7 @@ class StoryboardPanel extends StatefulWidget {
     this.trackOpacityOf,
     this.onTrackOpacityChanged,
     this.onTrackOpacityChangeEnd,
+    this.onToggleTrackEffectEnabled,
     this.seCommaDrag,
     this.seSelect,
     this.onSetAudioClipOffset,
@@ -741,6 +750,11 @@ class StoryboardPanel extends StatefulWidget {
   final void Function(Track track, double opacity)? onTrackOpacityChanged;
   final void Function(Track track, double opacity)? onTrackOpacityChangeEnd;
 
+  /// One V-track EFFECT's own bypass, from its lane group header (the twin
+  /// of a layer effect's switch). Null leaves the glyph inert.
+  final void Function(Track track, EffectId effectId)?
+  onToggleTrackEffectEnabled;
+
   /// Range selection on the S rows — the cut row's hooks one row up, in
   /// the same track-axis selection. Null keeps the S rows unselectable.
   final StoryboardSeSelectCallbacks? seSelect;
@@ -1045,6 +1059,90 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     return TransformTrack.empty();
   }
 
+  /// The group key one V-track EFFECT's lanes twirl under. The V row keeps
+  /// its own flat key space (its Transform group is keyed by the bare track
+  /// id), so an effect hangs its id off that.
+  static String trackEffectGroupKey(Track track, EffectId effectId) =>
+      '${track.id.value}-fx-${effectId.value}';
+
+  /// One V track's EFFECT lanes, below its Transform group — the same rows a
+  /// layer's chain gets, one level up: this chain filters the whole
+  /// composited cut (user 2026-08-08). Values resolve at GLOBAL frames, the
+  /// axis the keys live on.
+  List<PropertyLaneRow> _trackEffectLanes(Track track) {
+    if (track.effects.isEmpty) {
+      return const [];
+    }
+    return effectPropertyLanes(
+      track.effects,
+      isExpanded: (effectId) => widget.expandedTransformGroups.contains(
+        trackEffectGroupKey(track, effectId),
+      ),
+      valueAt: (effectId, parameterId, frameIndex) {
+        for (final effect in track.effects) {
+          if (effect.id == effectId) {
+            return effect.parameterOf(parameterId).resolveAt(frameIndex);
+          }
+        }
+        return 0;
+      },
+    );
+  }
+
+  /// The V row's fx label rows, with each GROUP HEADER made draggable so the
+  /// chain can be re-ordered here (the layer rail's gesture, one level up).
+  ///
+  /// The pointer counts LANE rows and the chain counts HEADERS, and the two
+  /// differ the moment a group is twirled open — which is exactly when
+  /// someone reaches for the order. [effectStepsBetween] converts, the same
+  /// way the timeline's rail does it.
+  List<Widget> _draggableTrackEffectRows(Track track, List<Widget> rows) {
+    final hooks = widget.rowDragHooks;
+    final lanes = _trackEffectLanes(track);
+    if (hooks == null || lanes.length != rows.length) {
+      return rows;
+    }
+    final carrierId = trackTransformLaneCarrierId(track.id);
+    final headers = <({int rowIndex, EffectId effectId})>[];
+    for (var index = 0; index < lanes.length; index += 1) {
+      final parsed = parseEffectLaneId(lanes[index].laneId);
+      if (parsed != null && parsed.parameterId == null) {
+        headers.add((rowIndex: index, effectId: parsed.effectId));
+      }
+    }
+    final displayEffects = [for (final header in headers) header.effectId];
+    return [
+      for (var index = 0; index < rows.length; index += 1)
+        () {
+          final parsed = parseEffectLaneId(lanes[index].laneId);
+          final slot = parsed == null || parsed.parameterId != null
+              ? -1
+              : displayEffects.indexOf(parsed.effectId);
+          if (slot < 0) {
+            return rows[index]; // A parameter lane is not a handle.
+          }
+          return LayerRowDragTarget(
+            subject: EffectRowSubject(carrierId, parsed!.effectId),
+            slotBefore: slot,
+            rowExtent: _transformLaneHeight,
+            axis: Axis.horizontal,
+            hooks: hooks,
+            isLastRow: slot == displayEffects.length - 1,
+            onCrossed: (steps) => hooks.onEffectUpdate(
+              carrierId,
+              displayEffects,
+              slotForSteps(
+                slot,
+                effectStepsBetween(headers, index, steps),
+                displayEffects.length,
+              ),
+            ),
+            child: rows[index],
+          );
+        }(),
+    ];
+  }
+
   /// The Transform-group member lanes of one V track, header first: the
   /// AE lane list valued against the TRACK's own lanes at GLOBAL frames
   /// (R4b — no active cut needed: "keys exist with no cut under them",
@@ -1128,6 +1226,13 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     required bool active,
     ValueListenable<int?>? frameCursor,
     ValueChanged<int>? onSelectFrame,
+    /// Per-LANE group key, for lists whose headers do not share one (the V
+    /// row's effect chain: one group per effect). Null keeps [groupKey].
+    String Function(PropertyLaneRow lane)? groupKeyOf,
+
+    /// The header's own ON/OFF switch (AE's per-effect eyeball). Null leaves
+    /// the glyph inert, which is what a Transform header wants here.
+    void Function(PropertyLaneRow lane)? onToggleGroupEnabled,
   }) {
     final metrics = TimelineGridMetrics(
       frameCellWidth: widget.pixelsPerFrame,
@@ -1147,7 +1252,10 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       laneEdit: lane.isGroupHeader || !active ? null : laneEdit,
       onToggleLaneGroup: onToggleGroup == null
           ? null
-          : (_, _) => onToggleGroup(groupKey),
+          : (_, _) => onToggleGroup(groupKeyOf?.call(lane) ?? groupKey),
+      onToggleLaneGroupEnabled: onToggleGroupEnabled == null
+          ? null
+          : (_, _) => onToggleGroupEnabled(lane),
       keyPrefix: 'storyboard',
       leadingInset: layerSectionLabelSlotWidth,
       currentRowHooks: widget.currentRowHooks,
@@ -1361,7 +1469,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
             ? null
             : (opacity) => widget.onTrackOpacityChangeEnd!(track, opacity),
       ),
-      if (widget.expandedTransformTracks.contains(track.id.value))
+      if (widget.expandedTransformTracks.contains(track.id.value)) ...[
         ..._transformLaneLabels(
           carrier: Layer(
             id: trackTransformLaneCarrierId(track.id),
@@ -1377,6 +1485,39 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           frameCursor: widget.playheadFrame,
           onSelectFrame: widget.onSeekGlobalFrame,
         ),
+        // The V row's own fx chain, under its Transform group — the same
+        // place a layer keeps its effects, and the same lane substrate.
+        // Grabbing a header re-orders the chain, exactly as it does on a
+        // layer's rail (the fx-order drag's subject only differs in WHICH
+        // chain it names).
+        ..._draggableTrackEffectRows(track, _transformLaneLabels(
+          carrier: Layer(
+            id: trackTransformLaneCarrierId(track.id),
+            name: 'V',
+            frames: const [],
+          ),
+          groupKey: track.id.value,
+          groupKeyOf: (lane) {
+            final parsed = parseEffectLaneId(lane.laneId);
+            return parsed == null
+                ? track.id.value
+                : trackEffectGroupKey(track, parsed.effectId);
+          },
+          lanes: _trackEffectLanes(track),
+          laneEdit: widget.trackLaneEditFor?.call(track),
+          onToggleGroupEnabled: widget.onToggleTrackEffectEnabled == null
+              ? null
+              : (lane) {
+                  final parsed = parseEffectLaneId(lane.laneId);
+                  if (parsed != null) {
+                    widget.onToggleTrackEffectEnabled!(track, parsed.effectId);
+                  }
+                },
+          active: true,
+          frameCursor: widget.playheadFrame,
+          onSelectFrame: widget.onSeekGlobalFrame,
+        )),
+      ],
     ];
     return [
       _sectionZoneGroup(
@@ -1728,6 +1869,10 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         }
         slots.add((null, null, _opacityLaneHeight));
       }
+      // The fx chain's rows, from the same list both columns build from.
+      for (final lane in _trackEffectLanes(track)) {
+        slots.add((null, lane.laneId, _transformLaneHeight));
+      }
     }
     return slots;
   }
@@ -1953,6 +2098,20 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           onSetCutFade: widget.onSetCutFade,
         ),
       ],
+      // The fx chain's strips, row for row with its labels — the rail and
+      // the strips share no scaffolding, so the two lists are built from the
+      // SAME lane list to keep them in lockstep.
+      for (final lane in _trackEffectLanes(track))
+        _StoryboardLaneStripRow(
+          rowKey:
+              'storyboard-track-lane-row-$trackIndex-${lane.laneId}',
+          carrier: carrier,
+          lane: lane,
+          width: width,
+          timelineScale: scale,
+          laneEdit: laneEdit,
+          laneRange: widget.laneRange,
+        ),
     ];
   }
 

@@ -256,6 +256,7 @@ void main() {
     'instructionMemoLabel': (s) => s.instructionMemoLabel,
     'instructionEditSetButton': (s) => s.instructionEditSetButton,
     'cutCommands': (s) => s.cutCommands,
+    'sbTrackFxCommands': (s) => s.sbTrackFxCommands,
     'cutAddCut': (s) => s.cutAddCut,
     'cutNewCut': (s) => s.cutNewCut,
     'cutDuplicateCut': (s) => s.cutDuplicateCut,

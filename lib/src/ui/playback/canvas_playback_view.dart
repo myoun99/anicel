@@ -9,11 +9,13 @@ import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
+import '../../models/layer_effect.dart' show LayerEffect;
 import '../../models/playback_quality.dart';
 import '../../models/project.dart' show defaultProjectPasteboardArgb;
 import '../../models/project_background.dart';
 import '../../models/transform_track.dart';
 import '../../services/se_name_tag_plan.dart';
+import '../canvas/composite_effect_paint.dart' show CompositeEffectPaint;
 import '../storyboard_cut_fade_policy.dart';
 import 'canvas_playback_controller.dart';
 import 'cut_frame_composite_cache.dart';
@@ -47,6 +49,7 @@ class CanvasPlaybackView extends StatefulWidget {
     this.background = ProjectBackground.defaultBackground,
     this.pasteboardArgb = defaultProjectPasteboardArgb,
     this.transformTrackOf,
+    this.trackEffectsOf,
     this.trackGlobalFrameOf,
     this.trackStack,
   });
@@ -89,6 +92,10 @@ class CanvasPlaybackView extends StatefulWidget {
   /// The owning TRACK's transform lanes per cut (R4: pose + fade on the
   /// global axis). Null = no effects (tests, plain fixtures).
   final TransformTrack Function(CutId cutId)? transformTrackOf;
+
+  /// The owning TRACK's EFFECT chain per cut — the V row's fx over the whole
+  /// composited cut. Null = none (tests, plain fixtures).
+  final List<LayerEffect> Function(CutId cutId)? trackEffectsOf;
 
   /// The GLOBAL frame of a cut-local index on the cut's track — what the
   /// track lanes are keyed in. Null falls back to the local index (a
@@ -265,6 +272,16 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
                   : null,
               cutPose: cutPose,
               cutAnchorPoint: cutAnchorPoint,
+              // The V row's fx chain over the cut's picture, sampled on the
+              // GLOBAL axis its keys live on and bypassed by the same fx
+              // master as the pose and the fade.
+              cutEffects: inGap || cut == null || position == null
+                  ? CompositeEffectPaint.none
+                  : trackEffectPaintAt(
+                      widget.trackEffectsOf?.call(cut.id) ?? const [],
+                      trackFrame,
+                      enabled: cutFxEnabled,
+                    ),
               paperBackground: widget.background,
               paintPaper: !inGap,
               // The stage's apron rides the camera view (R3b): the camera

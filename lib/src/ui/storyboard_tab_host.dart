@@ -18,6 +18,13 @@ import 'storyboard_cut_fade_policy.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnailResolver;
 import 'storyboard_panel.dart';
 import 'timeline/layer_rail_window.dart' show LayerRailExtent;
+import '../models/layer_effect.dart' show LayerEffect;
+import 'timeline/effect_lane_editing.dart'
+    show
+        effectsWithLaneKeyMoved,
+        effectsWithLaneKeyToggled,
+        effectsWithLaneValueEdited;
+import 'timeline/effect_lane_policy.dart' show laneIsEffectLane;
 import 'timeline/property_lane_model.dart' show PropertyLaneEditCallbacks;
 import 'timeline/layer_row_drag.dart' show TimelineRowDragHooks;
 import 'timeline/se_layer_mixer.dart';
@@ -32,6 +39,7 @@ import 'timeline/timeline_frame_range_gesture.dart'
     show TimelineLaneRangeCallbacks;
 import 'timeline/timeline_shift_buttons.dart';
 import 'timeline/timeline_view_cluster.dart';
+import 'track_fx_command_group.dart';
 import 'timeline/transform_lane_editing.dart';
 import 'timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane, transformLaneDisplayOrder;
@@ -240,42 +248,97 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
       );
     }
 
+    // The V row's fx lanes ride the SAME bundle, dispatched by lane id — the
+    // layer path's arrangement (one callback set, two chains behind it), so
+    // a track effect keys exactly like a layer effect does.
+    void commitEffects(List<LayerEffect>? next, String description) {
+      if (next == null) {
+        return;
+      }
+      _session.updateTrackEffects(track.id, next, description: description);
+    }
+
     // The pose lives in DISPLAY space (the camera's output frame — what
     // playback and the MP4 bake apply it over), so resolved values freeze
     // against that space's identity.
     final displaySize = _session.cameraFrameSize;
     return PropertyLaneEditCallbacks(
-      onToggleKeyAt: (_, lane, frameIndex) => commit(
-        transformTrackWithLaneKeyToggled(
-          transform,
-          laneId: lane.laneId,
-          frameIndex: frameIndex,
-          resolvedPose: trackPoseAt(transform, frameIndex, displaySize),
-          resolvedAnchorPoint:
-              trackAnchorPointAt(transform, frameIndex) ??
-              CanvasPoint(x: displaySize.width / 2, y: displaySize.height / 2),
-          resolvedOpacity: trackFadeOpacityAt(transform, frameIndex),
-        ),
-        '${lane.label} keyframe at frame ${frameIndex + 1}',
-      ),
-      onMoveKey: (_, lane, fromFrame, toFrame) => commit(
-        transformTrackWithLaneKeyMoved(
-          transform,
-          laneId: lane.laneId,
-          fromFrame: fromFrame,
-          toFrame: toFrame,
-        ),
-        'Move ${lane.label} keyframe to frame ${toFrame + 1}',
-      ),
-      onSetValue: (_, lane, frameIndex, input) => commit(
-        transformTrackWithLaneValueEdited(
-          transform,
-          laneId: lane.laneId,
-          frameIndex: frameIndex,
-          input: input,
-        ),
-        'Set ${lane.label} at frame ${frameIndex + 1}',
-      ),
+      onToggleKeyAt: (_, lane, frameIndex) {
+        final description = '${lane.label} keyframe at frame ${frameIndex + 1}';
+        if (laneIsEffectLane(lane)) {
+          commitEffects(
+            effectsWithLaneKeyToggled(
+              track.effects,
+              laneId: lane.laneId,
+              frameIndex: frameIndex,
+            ),
+            description,
+          );
+          return;
+        }
+        commit(
+          transformTrackWithLaneKeyToggled(
+            transform,
+            laneId: lane.laneId,
+            frameIndex: frameIndex,
+            resolvedPose: trackPoseAt(transform, frameIndex, displaySize),
+            resolvedAnchorPoint:
+                trackAnchorPointAt(transform, frameIndex) ??
+                CanvasPoint(x: displaySize.width / 2, y: displaySize.height / 2),
+            resolvedOpacity: trackFadeOpacityAt(transform, frameIndex),
+          ),
+          description,
+        );
+      },
+      onMoveKey: (_, lane, fromFrame, toFrame) {
+        final description =
+            'Move ${lane.label} keyframe to frame ${toFrame + 1}';
+        if (laneIsEffectLane(lane)) {
+          commitEffects(
+            effectsWithLaneKeyMoved(
+              track.effects,
+              laneId: lane.laneId,
+              fromFrame: fromFrame,
+              toFrame: toFrame,
+            ),
+            description,
+          );
+          return;
+        }
+        commit(
+          transformTrackWithLaneKeyMoved(
+            transform,
+            laneId: lane.laneId,
+            fromFrame: fromFrame,
+            toFrame: toFrame,
+          ),
+          description,
+        );
+      },
+      onSetValue: (_, lane, frameIndex, input) {
+        final description = 'Set ${lane.label} at frame ${frameIndex + 1}';
+        if (laneIsEffectLane(lane)) {
+          commitEffects(
+            effectsWithLaneValueEdited(
+              track.effects,
+              laneId: lane.laneId,
+              frameIndex: frameIndex,
+              input: input,
+            ),
+            description,
+          );
+          return;
+        }
+        commit(
+          transformTrackWithLaneValueEdited(
+            transform,
+            laneId: lane.laneId,
+            frameIndex: frameIndex,
+            input: input,
+          ),
+          description,
+        );
+      },
     );
   }
 
@@ -403,6 +466,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   ),
                   const SizedBox(width: 8),
                   CutCommandGroup(session: _session),
+                  const SizedBox(width: 4),
+                  // The V row's fx (user 2026-08-08): a chain over the whole
+                  // composited cut, authored from this panel.
+                  TrackFxCommandGroup(session: _session),
                   const SizedBox(width: 4),
                   // THE push/pull pair, the timeline rail's own widget: the
                   // rail asks as ITSELF, so with nothing selected the shove
@@ -790,6 +857,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   // persisted model state, unlike the cut toggles above.
                   trackFxStateOf: (track) => _session.trackFxState(track.id),
                   onToggleTrackFx: (track) => _session.toggleTrackFx(track.id),
+                  // The V row's chain: one effect's own bypass, from its lane
+                  // group header.
+                  onToggleTrackEffectEnabled: (track, effectId) =>
+                      _session.toggleTrackEffectEnabled(track.id, effectId),
                   trackOpacityOf: (track) =>
                       _session.trackStaticOpacity(track.id),
                   onTrackOpacityChanged: (track, opacity) =>

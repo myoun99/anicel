@@ -191,6 +191,7 @@ import 'timeline/timeline_section_policy.dart';
 import 'timeline/effect_lane_editing.dart'
     show
         effectLaneKeyFrames,
+        effectsWithEnabledToggled,
         effectsWithLaneKeyRemoved,
         effectsWithLaneKeyToggled,
         effectsWithLaneSpanKeysShifted;
@@ -2195,6 +2196,12 @@ class EditorSessionManager extends ChangeNotifier {
   TransformTrack transformTrackForCut(CutId cutId) =>
       trackOwningCut(cutId)?.transformTrack ?? TransformTrack.empty();
 
+  /// [cutId]'s owning track's EFFECT chain — the V row's fx, which every
+  /// route that draws this cut filters its finished picture through. Empty
+  /// for an orphan, and empty is the zero-cost path.
+  List<LayerEffect> trackEffectsForCut(CutId cutId) =>
+      trackOwningCut(cutId)?.effects ?? const [];
+
   /// The GLOBAL frame of [cutId]'s local [frameIndex] on its track's axis
   /// — what the track-owned lanes are keyed in.
   int trackGlobalFrameOf(CutId cutId, int frameIndex) {
@@ -2870,14 +2877,111 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// The V row's fx switch: OFF while the track's flag is down, ON
   /// otherwise. It stays a [LayerFxState] because the button it drives is
-  /// the shared one — a track simply has no MIXED to report now that its
-  /// cuts carry no switch of their own.
+  /// the shared one.
+  ///
+  /// Still never MIXED, now that the row carries an effect chain as well:
+  /// unlike a layer's, this master is STORED state rather than a reading of
+  /// the switches beneath it, so it reports what it is. A bypassed effect
+  /// says so on its own lane header, where the eye already looks.
   LayerFxState trackFxState(TrackId trackId) {
     final track = _trackById(trackId);
     if (track == null) {
       return LayerFxState.on;
     }
     return track.fxEnabled ? LayerFxState.on : LayerFxState.off;
+  }
+
+  // --- The V row's EFFECT CHAIN (fx on the cut, not on one layer) --------
+  //
+  // A layer's chain filters that layer's picture; this one filters the whole
+  // composited cut under the playhead (user 2026-08-08). It is TRACK data on
+  // the GLOBAL axis, exactly like the pose and the fade beside it, so these
+  // verbs take a TrackId and no cut is ever in the loop.
+
+  /// Replaces [trackId]'s effect chain; one undo step.
+  void updateTrackEffects(
+    TrackId trackId,
+    List<LayerEffect> effects, {
+    String description = 'Edit track effects',
+  }) {
+    _cutCommandCoordinator.updateTrackEffects(
+      trackId: trackId,
+      effects: effects,
+      description: description,
+    );
+    _refreshAfterCutCommand();
+    notifyListeners();
+  }
+
+  /// Adds an effect to the V row's chain. Ids are minted the way a layer's
+  /// are (the lane address embeds them, so two adds in one session must not
+  /// collide) — off the TRACK id, since that is what carries the chain.
+  void addEffectToTrack(TrackId trackId, EffectKind kind) {
+    final track = _trackById(trackId);
+    if (track == null) {
+      return;
+    }
+    _effectSequence += 1;
+    updateTrackEffects(
+      trackId,
+      [
+        ...track.effects,
+        LayerEffect.defaults(
+          id: EffectId(
+            'fx-${trackId.value}-'
+            '${DateTime.now().microsecondsSinceEpoch}-$_effectSequence',
+          ),
+          kind: kind,
+        ),
+      ],
+      description: 'Add ${kind.label}',
+    );
+  }
+
+  void removeEffectFromTrack(TrackId trackId, EffectId effectId) {
+    final track = _trackById(trackId);
+    if (track == null) {
+      return;
+    }
+    final next = [
+      for (final effect in track.effects)
+        if (effect.id != effectId) effect,
+    ];
+    if (next.length == track.effects.length) {
+      return;
+    }
+    updateTrackEffects(trackId, next, description: 'Remove effect');
+  }
+
+  /// One effect's own bypass on the V row — the switch on its group header,
+  /// the twin of a layer effect's.
+  void toggleTrackEffectEnabled(TrackId trackId, EffectId effectId) {
+    final track = _trackById(trackId);
+    if (track == null) {
+      return;
+    }
+    final next = effectsWithEnabledToggled(track.effects, effectId);
+    if (next == null) {
+      return;
+    }
+    updateTrackEffects(trackId, next, description: 'Toggle effect');
+  }
+
+  /// A track effect parameter's resolved value at GLOBAL [frameIndex] — the
+  /// lane value column and the key-freeze source, through the same resolver
+  /// the composite samples with.
+  double trackEffectParameterAtFrame(
+    Track track,
+    EffectId effectId,
+    String parameterId,
+    int frameIndex,
+  ) {
+    for (final effect in track.effects) {
+      if (effect.id == effectId) {
+        return effect.parameterOf(parameterId).resolveAt(frameIndex);
+      }
+    }
+    return 0;
   }
 
   /// The V row's fx toggle, one undoable write.
@@ -4124,12 +4228,15 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     final subject = state.subject;
-    final layer = _layerById(layerId);
-    if (subject is! EffectRowSubject || layer == null) {
+    // The V row's chain rides the same drag through the carrier id (R4b) —
+    // the gesture, the caret and the arithmetic are the layer rail's; only
+    // the list being re-ordered differs.
+    final chain = _effectChainOf(layerId);
+    if (subject is! EffectRowSubject || chain == null) {
       return;
     }
     final order = resolveEffectDrop(
-      modelEffects: [for (final effect in layer.effects) effect.id],
+      modelEffects: [for (final effect in chain) effect.id],
       displayEffects: displayEffects,
       movingId: subject.effectId,
       slot: slot,
@@ -4254,15 +4361,30 @@ class EditorSessionManager extends ChangeNotifier {
     }
     final cut = activeCutOrNull;
     if (subject is EffectRowSubject) {
-      final layer = _layerById(subject.layerId);
-      if (effectOrder == null || cut == null || layer == null) {
+      final chain = _effectChainOf(subject.layerId);
+      if (effectOrder == null || chain == null) {
         return;
       }
-      final byId = {for (final effect in layer.effects) effect.id: effect};
+      final byId = {for (final effect in chain) effect.id: effect};
+      final reordered = [for (final id in effectOrder) byId[id]!];
+      final carrierTrackId = trackIdOfTransformLaneCarrier(subject.layerId);
+      if (carrierTrackId != null) {
+        // The V row's chain lives on the TRACK, so there is no cut and no
+        // 겸용 mirror in this commit.
+        updateTrackEffects(
+          carrierTrackId,
+          reordered,
+          description: 'Reorder effects',
+        );
+        return;
+      }
+      if (cut == null) {
+        return;
+      }
       _cutCommandCoordinator.updateLayerEffects(
         cutId: cut.id,
         layerId: subject.layerId,
-        effects: [for (final id in effectOrder) byId[id]!],
+        effects: reordered,
         description: 'Reorder effects',
       );
       _refreshAfterCutCommand(preferredActiveLayerId: subject.layerId);
@@ -4302,6 +4424,16 @@ class EditorSessionManager extends ChangeNotifier {
     );
     _refreshAfterCutCommand(preferredActiveLayerId: subject.layerId);
     notifyListeners();
+  }
+
+  /// The effect chain a lane/fx-header address names: a real layer's, or the
+  /// V TRACK's through the carrier id (R4b). Null when neither exists.
+  List<LayerEffect>? _effectChainOf(LayerId layerId) {
+    final trackId = trackIdOfTransformLaneCarrier(layerId);
+    if (trackId != null) {
+      return _trackById(trackId)?.effects;
+    }
+    return _layerById(layerId)?.effects;
   }
 
   void cancelLayerRowDrag() {
@@ -10205,10 +10337,11 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     // R6: effect lanes span within their own effect; every other lane id
-    // resolves against the transform order.
+    // resolves against the transform order. The chain may be a layer's or
+    // the V TRACK's — the carrier id says which.
     final span =
         effectLaneSpan(
-          _layerById(layerId)?.effects ?? const [],
+          _effectChainOf(layerId) ?? const [],
           laneId,
           headLaneId ?? laneId,
         ) ??

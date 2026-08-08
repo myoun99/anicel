@@ -2,9 +2,13 @@ import 'dart:math' as math;
 
 import '../models/canvas_point.dart';
 import '../models/canvas_size.dart';
+import '../models/layer_effect.dart'
+    show LayerEffect, resolveLayerEffectsAt;
 import '../models/property_track.dart';
 import '../models/transform_track.dart';
 import '../services/cut_frame_composite_plan.dart' show layerIdentityPose;
+import 'canvas/composite_effect_paint.dart'
+    show CompositeEffectPaint, resolveCompositeEffectPaint;
 
 /// The V track's effects as OPACITY/POSE KEYS on the TRACK's GLOBAL frame
 /// axis (R4 — "the transform is not the block's": cut trims and reorders
@@ -96,6 +100,32 @@ TransformPose trackPoseAt(
 /// The track pose's anchor at GLOBAL [frameIndex]; null = display center.
 CanvasPoint? trackAnchorPointAt(TransformTrack track, int frameIndex) =>
     resolveAnchorTrackAt(track.anchorPoint, frameIndex);
+
+/// The V track's EFFECT chain as paint state at GLOBAL [frameIndex] — the
+/// filter that lands on the whole composited cut, resolved the one way for
+/// every route that draws one (the editing track stack, playback, export).
+///
+/// [rasterScale] follows [resolveCompositeEffectPaint]'s contract: 1 wherever
+/// the cut is drawn into CANVAS space (a blur radius is canvas pixels and
+/// Skia maps the sigma through the CTM), and the raster ratio where a route
+/// draws pre-scaled pixels 1:1.
+///
+/// [enabled] is the V row's fx master ([Track.fxEnabled]): off bypasses the
+/// chain exactly as it bypasses the pose and the fade.
+CompositeEffectPaint trackEffectPaintAt(
+  List<LayerEffect> effects,
+  int frameIndex, {
+  bool enabled = true,
+  double rasterScale = 1,
+}) {
+  if (!enabled || effects.isEmpty) {
+    return CompositeEffectPaint.none;
+  }
+  return resolveCompositeEffectPaint(
+    resolveLayerEffectsAt(effects: effects, frameIndex: frameIndex),
+    rasterScale: rasterScale,
+  );
+}
 
 /// The composed frame's opacity at GLOBAL [frameIndex] (the fade), 1 when
 /// the opacity lane is unkeyed.

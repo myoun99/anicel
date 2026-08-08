@@ -405,6 +405,33 @@ class ProjectRepository {
     });
   }
 
+  /// The V track's EFFECT CHAIN — the V row's fx over the composited cut,
+  /// keyed on the global axis like its pose.
+  void updateTrackEffects({
+    required TrackId trackId,
+    required List<LayerEffect> effects,
+  }) {
+    updateProject((project) {
+      var found = false;
+      final next = project.copyWith(
+        tracks: [
+          for (final track in project.tracks)
+            if (track.id == trackId)
+              (() {
+                found = true;
+                return track.copyWith(effects: effects);
+              })()
+            else
+              track,
+        ],
+      );
+      if (!found) {
+        throw StateError('Track not found: $trackId');
+      }
+      return next;
+    });
+  }
+
   /// The V track's DISPLAY properties (R9 #21): its static opacity and its
   /// fx master. Both persist — R8's rule that an fx switch is model state,
   /// applied to the one row that still kept its switch in the session.

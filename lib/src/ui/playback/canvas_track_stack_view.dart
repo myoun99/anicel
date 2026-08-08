@@ -8,6 +8,7 @@ import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
+import '../../models/layer_effect.dart' show LayerEffect;
 import '../../models/playback_quality.dart';
 import '../../models/project.dart'
     show defaultProjectBackdropArgb, defaultProjectPasteboardArgb;
@@ -62,6 +63,7 @@ class CanvasTrackStackView extends StatefulWidget {
     this.pasteboardArgb = defaultProjectPasteboardArgb,
     this.showAlphaCheckerboard = false,
     this.transformTrackOf,
+    this.trackEffectsOf,
   });
 
   /// The parked global frame (the session's gap parking): moves per
@@ -122,6 +124,10 @@ class CanvasTrackStackView extends StatefulWidget {
   /// The owning TRACK's transform lanes per cut (R4: pose + fade on the
   /// global axis). Null = no effects (tests, plain fixtures).
   final TransformTrack Function(CutId cutId)? transformTrackOf;
+
+  /// The owning TRACK's EFFECT chain per cut — the V row's fx, filtering the
+  /// whole composited cut. Null = none (tests, plain fixtures).
+  final List<LayerEffect> Function(CutId cutId)? trackEffectsOf;
 
   @override
   State<CanvasTrackStackView> createState() => _CanvasTrackStackViewState();
@@ -318,6 +324,14 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
             cutAnchorPoint: poseActive
                 ? trackAnchorPointAt(transformTrack, globalFrame)
                 : null,
+            // The V row's chain, on the cut's picture. rasterScale stays 1:
+            // the composite is drawn up to CANVAS space here, whatever
+            // quality it was cached at, and a blur radius is canvas pixels.
+            cutEffects: trackEffectPaintAt(
+              widget.trackEffectsOf?.call(cut.id) ?? const [],
+              globalFrame,
+              enabled: cutFxEnabled,
+            ),
             paperBackground: widget.background,
             // The bottom covered track is the stage: letterbox, the
             // pasteboard apron, the paper. Its fade thins the WHOLE stage

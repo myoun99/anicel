@@ -246,13 +246,22 @@ class ExportFrameRenderer {
     // The V effects are TRACK data on the global axis now (R4).
     final transformTrack = session.transformTrackForCut(task.cut.id);
     final trackFrame = session.trackGlobalFrameOf(task.cut.id, task.frameIndex);
-    // R9 #21: the track's STATIC opacity is a compositing property, not a
-    // display aid — it goes in the output, exactly like a layer's.
+    // The V row's fx MASTER reaches the OUTPUT, like every fx switch since
+    // R8 ("a bypass that vanished on reload while a per-effect bypass
+    // survived" is exactly what R8 refused). It gates the pose, the animated
+    // fade and the effect chain — never the STATIC opacity, which is a
+    // compositing property and not an fx (R9 #21).
+    final trackFxEnabled = session.isCutFxEnabled(task.cut.id);
     final fade =
         session.trackStaticOpacityForCut(task.cut.id) *
-        trackFadeOpacityAt(transformTrack, trackFrame);
-    final poseActive = trackPoseIsActive(transformTrack);
-    if (fade >= 1 && !poseActive) {
+        (trackFxEnabled ? trackFadeOpacityAt(transformTrack, trackFrame) : 1.0);
+    final poseActive = trackFxEnabled && trackPoseIsActive(transformTrack);
+    final trackEffects = trackEffectPaintAt(
+      session.trackEffectsForCut(task.cut.id),
+      trackFrame,
+      enabled: trackFxEnabled,
+    );
+    if (fade >= 1 && !poseActive && trackEffects.isEmpty) {
       return image;
     }
     final recorder = ui.PictureRecorder();
@@ -292,7 +301,11 @@ class ExportFrameRenderer {
         anchorPoint: trackAnchorPointAt(transformTrack, trackFrame),
       );
     }
-    canvas.drawImage(image, ui.Offset.zero, ui.Paint());
+    final framePaint = ui.Paint();
+    // The chain filters the cut's finished picture, inside the pose and under
+    // the fade — the same order the screen draws it in.
+    trackEffects.applyTo(framePaint);
+    canvas.drawImage(image, ui.Offset.zero, framePaint);
     if (poseActive) {
       canvas.restore();
     }
@@ -381,12 +394,16 @@ class ExportFrameRenderer {
         );
         images.add(image);
         // Track effects at the frame's GLOBAL position (R4) — the stack's
-        // own axis.
+        // own axis — with the row's fx master gating them (R8's rule; the
+        // static opacity is not an fx and stays).
         final transformTrack = session.transformTrackForCut(cut.id);
+        final trackFxEnabled = session.isCutFxEnabled(cut.id);
         final fade =
             session.trackStaticOpacityForCut(cut.id) *
-            trackFadeOpacityAt(transformTrack, position.globalFrameIndex);
-        final poseActive = trackPoseIsActive(transformTrack);
+            (trackFxEnabled
+                ? trackFadeOpacityAt(transformTrack, position.globalFrameIndex)
+                : 1.0);
+        final poseActive = trackFxEnabled && trackPoseIsActive(transformTrack);
         PlaybackFramePainter(
           image: image,
           canvasSize: cut.canvasSize,
@@ -405,6 +422,11 @@ class ExportFrameRenderer {
           cutAnchorPoint: poseActive
               ? trackAnchorPointAt(transformTrack, position.globalFrameIndex)
               : null,
+          cutEffects: trackEffectPaintAt(
+            session.trackEffectsForCut(cut.id),
+            position.globalFrameIndex,
+            enabled: trackFxEnabled,
+          ),
           paperBackground: session.projectBackground,
           // The stage is the bottom covered track's: its pasteboard
           // apron, its paper — and its fade thins the whole unit (R3b:

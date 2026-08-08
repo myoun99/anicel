@@ -64,6 +64,7 @@ import 'update_camera_instruction_set_command.dart';
 import 'update_cut_camera_command.dart';
 import 'update_cut_note_command.dart';
 import 'update_track_display_command.dart';
+import 'update_track_effects_command.dart';
 import 'update_track_transform_command.dart';
 import 'update_cut_thumbnail_frame_command.dart';
 import 'update_layer_audio_clips_command.dart';
@@ -416,6 +417,36 @@ class CutCommandCoordinator {
         repository: repository,
         trackId: trackId,
         transformTrack: transformTrack,
+        description: description,
+      ),
+    );
+  }
+
+  /// Replaces the V track's EFFECT CHAIN; one undo step, no-op when
+  /// unchanged.
+  ///
+  /// No 겸용 mirror and no value merge, unlike [updateLayerEffects]: a track
+  /// is held once (there is no second use of it to keep in step), so the
+  /// chain — shape and numbers together — is simply the track's.
+  void updateTrackEffects({
+    required TrackId trackId,
+    required List<LayerEffect> effects,
+    String description = 'Edit track effects',
+  }) {
+    for (final track in repository.requireProject().tracks) {
+      if (track.id != trackId) {
+        continue;
+      }
+      if (listEquals(track.effects, effects)) {
+        return;
+      }
+      break;
+    }
+    historyManager.execute(
+      UpdateTrackEffectsCommand(
+        repository: repository,
+        trackId: trackId,
+        effects: effects,
         description: description,
       ),
     );
