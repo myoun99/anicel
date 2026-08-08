@@ -1,6 +1,8 @@
 import 'dart:typed_data';
 
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart' show LogicalKeyboardKey;
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_group.dart';
 import 'package:anicel/src/models/brush_group_icon.dart';
@@ -176,6 +178,20 @@ Finder _tab(String idValue) =>
 
 Finder _row(String idValue) =>
     find.byKey(ValueKey<String>('brush-preset-chip-$idValue'));
+
+/// Opens the panel's options menu and picks one of the OPEN GROUP's verbs.
+///
+/// 유저, R4 #10: they moved off the tab's ⋯ corner and into here, so every
+/// test that used to reach for `brush-preset-tab-<id>-menu` comes through
+/// this instead.
+Future<void> _openGroupMenu(WidgetTester tester, String label) async {
+  await tester.tap(
+    find.byKey(const ValueKey<String>('brush-preset-menu-button')),
+  );
+  await tester.pumpAndSettle();
+  await tester.tap(find.text(label));
+  await tester.pumpAndSettle();
+}
 
 void main() {
   testWidgets('renders icon, stroke preview, and name for every preset', (
@@ -454,24 +470,32 @@ void main() {
     expect(applied.single.id, const BrushPresetId('preset-marker'));
   });
 
-  testWidgets('the tab menu keeps to its corner', (tester) async {
-    // A bare PopupMenuButton carries an IconButton's 48px minimum tap
-    // target. On a 26px rail that covers the whole tab, so every click
-    // meant to open a group opens its menu instead.
+  testWidgets('유저 R4 #10: a rail tab is ONE button — no ⋯ in its corner', (
+    tester,
+  ) async {
+    // 그 시스템 삭제. 그냥 심플하게 그룹 버튼 하나만.
+    //
+    // ⛔CONTRACT CHANGE. The ⋯ used to hold rename/delete in a 12px corner
+    // of a 26px tab, sized down from a `PopupMenuButton`'s 48px minimum
+    // precisely so it would stop swallowing the tab it sat on — a control
+    // that needed a rule to keep it from eating its own host. The verbs are
+    // in the panel's options menu now, where they act on the open group.
     await _pumpPanel(
       tester,
       groups: const [BrushGroup(id: _ink, name: 'Ink')],
       presets: [_calligraphy().copyWith(groupId: _ink)],
       onGroupEdited: (_, _, _) {},
+      onGroupDeleted: (_) {},
     );
 
-    final menu = tester.getSize(
+    expect(
       find.byKey(const ValueKey<String>('brush-preset-tab-ink-menu')),
+      findsNothing,
     );
-    final tab = tester.getSize(_tab('ink'));
-
-    expect(menu.width, lessThan(tab.width));
-    expect(menu.height, lessThan(tab.height));
+    expect(
+      find.descendant(of: _tab('ink'), matching: find.byIcon(Icons.more_horiz)),
+      findsNothing,
+    );
   });
 
   testWidgets('rail tabs drop their tooltips while being dragged', (
@@ -513,6 +537,67 @@ void main() {
 
     await drag.up();
     await tester.pumpAndSettle();
+  });
+
+  testWidgets('🐛유저 R4 #11: reordering the rail WITH the group verbs wired '
+      'does not take the panel down', (tester) async {
+    // 브러시그룹을 드래그로 옮기면 가끔 버그나는데, 2번째 버튼부터 끝부분
+    // 영역까지 빨간 에러 뜨고 콘솔에 무한 에러 뜸.
+    //
+    // 🚨WHY THE EXISTING DRAG TEST NEVER SAW IT: the tooltip test above
+    // passes `onGroupsReordered` and nothing else, so `onRename`/`onDelete`
+    // are null, so `hasMenu` is false and `_LegacyGroupMenuHost` — the ⋯
+    // corner, whose `PopupMenuButton` carries a `tooltip:` and therefore an
+    // `OverlayPortal` of its own — IS NEVER MOUNTED. The fixture could not
+    // reach the defect. The real panel wires all three.
+    //
+    // ⚠️The tab's own tooltip is dropped for the duration of a drag
+    // (`showTooltip: !_railDragging`); the ⋯'s was not, and nothing in a
+    // dragging item may reach for the overlay.
+    const sketch = BrushGroupId('sketch');
+    await _pumpPanel(
+      tester,
+      groups: const [
+        BrushGroup(id: _ink, name: 'Ink'),
+        BrushGroup(id: _paint, name: 'Paint'),
+        BrushGroup(id: sketch, name: 'Sketch'),
+      ],
+      presets: [
+        _calligraphy().copyWith(groupId: _ink),
+        _sampled().copyWith(groupId: _paint),
+      ],
+      onGroupsReordered: (_) {},
+      onGroupEdited: (_, _, _) {},
+      onGroupDeleted: (_) {},
+    );
+
+    // HOVER FIRST. A `Tooltip`'s `OverlayPortal` only has an overlay child
+    // while the tooltip is actually up, and an entry that is not mounted
+    // cannot be re-parented into a half-laid-out theater. The hand that hits
+    // this bug has been resting on the tab it is about to drag.
+    final mouse = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await mouse.addPointer(location: Offset.zero);
+    addTearDown(mouse.removePointer);
+    await mouse.moveTo(tester.getCenter(_tab('paint')));
+    await tester.pump(const Duration(seconds: 2));
+
+    // The reported gesture: the SECOND group dragged below the third.
+    final drag = await tester.startGesture(tester.getCenter(_tab('paint')));
+    await tester.pump(const Duration(milliseconds: 100));
+    for (var i = 0; i < 4; i += 1) {
+      await drag.moveBy(const Offset(0, 14));
+      await tester.pump();
+    }
+    await drag.up();
+    await tester.pumpAndSettle();
+
+    expect(tester.takeException(), isNull);
+
+    // And the rail is still alive and still answering the pointer.
+    expect(_tab('paint'), findsOneWidget);
+    await tester.tap(_tab('sketch'));
+    await tester.pumpAndSettle();
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('a chosen icon replaces the first-brush face', (tester) async {
@@ -638,12 +723,8 @@ void main() {
       onGroupEdited: (id, name, _) => renames.add((id, name)),
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('brush-preset-tab-ink-menu')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Rename group'));
-    await tester.pumpAndSettle();
+    // 유저, R4 #10: the OPEN group's verbs live in the panel's own menu.
+    await _openGroupMenu(tester, 'Rename group');
 
     final field = find.byKey(
       const ValueKey<String>('brush-preset-group-rename-text-field'),
@@ -672,12 +753,7 @@ void main() {
       onGroupDeleted: deleted.add,
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('brush-preset-tab-ink-menu')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Delete group'));
-    await tester.pumpAndSettle();
+    await _openGroupMenu(tester, 'Delete group');
 
     // The count is what makes this safe to click: it says what goes away.
     expect(
@@ -694,12 +770,7 @@ void main() {
     await tester.pumpAndSettle();
     expect(deleted, isEmpty);
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('brush-preset-tab-ink-menu')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Delete group'));
-    await tester.pumpAndSettle();
+    await _openGroupMenu(tester, 'Delete group');
     await tester.tap(
       find.byKey(
         const ValueKey<String>('brush-preset-group-delete-confirm-button'),
@@ -719,18 +790,17 @@ void main() {
       onGroupDeleted: deleted.add,
     );
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('brush-preset-tab-ink-menu')),
-    );
-    await tester.pumpAndSettle();
-    await tester.tap(find.text('Delete group'));
-    await tester.pumpAndSettle();
+    await _openGroupMenu(tester, 'Delete group');
 
     expect(find.text('Delete the empty group "Ink"?'), findsOneWidget);
   });
 
-  testWidgets('the root section carries no group menu', (tester) async {
-    // "Default" is not an entity — it cannot be renamed or deleted.
+  testWidgets('the ROOT section has no group verbs — it is not a group', (
+    tester,
+  ) async {
+    // "Default" is not an entity: it cannot be renamed or deleted. That used
+    // to be said by withholding the tab's ⋯; it is said by the panel menu's
+    // two entries standing DOWN while root is the open tab.
     await _pumpPanel(
       tester,
       groups: const [BrushGroup(id: _ink, name: 'Ink')],
@@ -743,13 +813,44 @@ void main() {
     );
 
     expect(_tab('root'), findsOneWidget);
-    expect(
-      find.byKey(const ValueKey<String>('brush-preset-tab-root-menu')),
-      findsNothing,
+    await tester.tap(_tab('root'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('brush-preset-menu-button')),
     );
+    await tester.pumpAndSettle();
+    for (final key in const [
+      'brush-preset-menu-rename-group',
+      'brush-preset-menu-delete-group',
+    ]) {
+      expect(
+        tester
+            .widget<PopupMenuItem<Object?>>(find.byKey(ValueKey<String>(key)))
+            .enabled,
+        isFalse,
+        reason: '$key must stand down on the root section',
+      );
+    }
+    // And they come back the moment a real group is open. (Escape, not a
+    // tap on the disabled entry — a disabled entry swallows the tap and
+    // leaves the menu standing over everything behind it.)
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
+    await tester.tap(_tab('ink'));
+    await tester.pumpAndSettle();
+    await tester.tap(
+      find.byKey(const ValueKey<String>('brush-preset-menu-button')),
+    );
+    await tester.pumpAndSettle();
     expect(
-      find.byKey(const ValueKey<String>('brush-preset-tab-ink-menu')),
-      findsOneWidget,
+      tester
+          .widget<PopupMenuItem<Object?>>(
+            find.byKey(
+              const ValueKey<String>('brush-preset-menu-rename-group'),
+            ),
+          )
+          .enabled,
+      isTrue,
     );
   });
 

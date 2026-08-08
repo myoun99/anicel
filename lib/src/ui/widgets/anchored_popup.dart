@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart';
+
 /// Builds an anchored popup's content. [close] is how the content dismisses
 /// itself — a picker that closes on pick, a Done button. Both kinds of
 /// popup hand the SAME callback shape, so content does not know (or care)
@@ -7,6 +9,43 @@ import 'package:flutter/material.dart';
 /// pinned kind hides its overlay child.
 typedef AnchoredPopupBuilder =
     Widget Function(BuildContext context, VoidCallback close);
+
+/// THE WINDOW ITSELF — the surface, the corner, the lift off the canvas.
+///
+/// It lives here because the file already promised it did: "everything about
+/// how the window behaves ... lives here, so restyling it restyles every
+/// caller". Everything except what it LOOKS like, which each caller drew for
+/// itself — and drew differently (elevation 6 in two of them, 8 in a third)
+/// until one of them simply forgot.
+///
+/// 🐛유저, R4 #8: 브러시 팁 고르는 창이 듣도보도못한 투명한 창이 열린다.
+/// `BrushTipPickerRow` opened through this function correctly and returned a
+/// bare `Column`, so the picker rendered with NO BACKGROUND AT ALL — a grid
+/// of tip swatches floating over whatever was behind it. Nothing was wrong
+/// with the popup it asked for; the popup just never had a body of its own
+/// to give it. A caller cannot forget this now.
+class _AnchoredPopupSurface extends StatelessWidget {
+  const _AnchoredPopupSurface({required this.child});
+
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      // The one summoned surface (FILL 3): menus, tooltips and these are the
+      // same kind of thing — chrome the pointer called up, sitting above
+      // chrome that was already there.
+      color: AppColors.surfaceHigh,
+      // CLIPPED, not merely painted: a shape that only fills leaves its
+      // corners square to the pointer and to any child that paints to the
+      // edge (the colour picker's saturation field does exactly that).
+      clipBehavior: Clip.antiAlias,
+      shape: AppShapes.container(AppShapes.windowRadius),
+      elevation: 6,
+      child: child,
+    );
+  }
+}
 
 /// The ONE anchored sub-window (R28 #9), in two kinds.
 ///
@@ -72,8 +111,9 @@ Future<T?> showAnchoredPopup<T>(
             top: placement.top,
             width: width,
             child: Builder(
-              builder: (context) =>
-                  builder(context, () => Navigator.of(context).maybePop()),
+              builder: (context) => _AnchoredPopupSurface(
+                child: builder(context, () => Navigator.of(context).maybePop()),
+              ),
             ),
           ),
         ],
@@ -182,7 +222,11 @@ class _PinnedAnchoredPopupState extends State<PinnedAnchoredPopup> {
           left: placement.left,
           top: placement.top,
           width: widget.width,
-          child: widget.builder(overlayContext, widget.controller.hide),
+          // The same surface as the dismissing kind: they differ in what
+          // makes them go away and in nothing else.
+          child: _AnchoredPopupSurface(
+            child: widget.builder(overlayContext, widget.controller.hide),
+          ),
         );
       },
       child: widget.child,

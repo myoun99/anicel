@@ -7,6 +7,7 @@ import 'package:anicel/src/models/brush_tip_mask.dart';
 import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tip_picker.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart';
 
 BrushTipMask _mask(String id, {int value = 200}) => BrushTipMask(
   id: id,
@@ -56,6 +57,46 @@ void main() {
     expect(
       find.byKey(const ValueKey<String>('brush-tip-picker-tip')),
       findsNothing,
+    );
+  });
+
+  testWidgets('유저 R4 #8: the picker opens ON the app window — an anchored '
+      'popup carries its own surface so no caller can forget one', (
+    tester,
+  ) async {
+    // 듣도보도못한 투명한 창이 열리는데. It did: `BrushTipPickerRow` called
+    // `showAnchoredPopup` correctly and handed back a bare `Column`, and the
+    // shell — which owns placement, dismissal and one-frame appearance —
+    // did not own the BODY. So the tip grid rendered over whatever happened
+    // to be behind it. Three other callers each drew their own `Material`,
+    // two at elevation 6 and one at 8.
+    //
+    // ⚠️This asserts the SURFACE, not the widget tree: "there is a Material
+    // above the grid" is true of any `MaterialApp`. Colour + shape + lift
+    // together are what only the popup's own window has.
+    await pumpPanel(tester, tips: [_entry('tip-1', 'Mine')]);
+    final swatch = find.byKey(const ValueKey<String>('brush-tip-picker-tip'));
+    await tester.ensureVisible(swatch);
+    await tester.tap(swatch);
+    await tester.pumpAndSettle();
+
+    final surfaces = tester.widgetList<Material>(
+      find.ancestor(
+        of: find.byKey(const ValueKey<String>('brush-tip-picker-grid')),
+        matching: find.byType(Material),
+      ),
+    );
+    expect(
+      surfaces.any(
+        (m) =>
+            m.color == AppColors.surfaceHigh &&
+            m.elevation > 0 &&
+            m.shape is RoundedSuperellipseBorder,
+      ),
+      isTrue,
+      reason:
+          'the popup body must sit on the app window: FILL 3, the app corner '
+          'and a lift off what is behind it',
     );
   });
 

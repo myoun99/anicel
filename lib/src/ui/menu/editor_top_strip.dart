@@ -697,6 +697,17 @@ class _BlendModeControl extends StatelessWidget {
                 key: const ValueKey<String>('brush-tool-blend-menu-button'),
                 label: mode.labelFor(language),
                 tooltip: AppText.strings.brBlendMode,
+                // A LOCK THAT LOCKS (유저, R4 #12: 잠궜는데 바꿀 수 있으면
+                // 잠금이 아니잖아).
+                //
+                // ⛔The pin used to stay editable, and picking a mode while
+                // pinned rewrote the PIN — so the one control that says "this
+                // brush is fixed to Multiply" was also the control that
+                // changed which mode it was fixed to. Two verbs on one
+                // button, and the quieter one was the one the padlock had
+                // just promised. Unlock, choose, lock again; the lock is
+                // one tap away and it is right beside this.
+                enabled: pinned == null,
                 // `expand` is what makes the fixed box hold: the label
                 // becomes Flexible inside it, so it ellipsizes rather than
                 // overflowing the width the strip budgeted.
@@ -707,11 +718,10 @@ class _BlendModeControl extends StatelessWidget {
                       keyValue: 'brush-tool-blend-${candidate.name}',
                       label: candidate.labelFor(language),
                       checked: candidate == mode,
-                      // Editing a pinned brush edits its pin; the hand
-                      // setting is only touched when nothing is pinned.
-                      onSelected: () => brushTool.value = pinned == null
-                          ? state.copyWith(brushBlendMode: candidate)
-                          : state.copyWith(lockedBlendMode: candidate),
+                      onSelected: () =>
+                          brushTool.value = state.copyWith(
+                            brushBlendMode: candidate,
+                          ),
                     ),
                 ],
               ),

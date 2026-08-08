@@ -74,8 +74,20 @@ class PressureCurveButton extends StatelessWidget {
   }
 }
 
-/// The tiny in-button preview: the curve when pressure is on, a flat
-/// full-value line when off.
+/// The tiny in-button preview: the CURVE when pressure is on, and an X when
+/// it is off.
+///
+/// 유저, R4 #9: 필압 적용 안 했을 때의 ui, 지금 버튼이 상단정렬된 직선의
+/// 그래프가 그대로 보이는데, 그게 아니라 해당 버튼에 그래프 말고 x 이렇게 둬서
+/// 필압 적용 안 되어 있다는 거 알기 쉽게.
+///
+/// The OFF state used to draw `evaluate(t) ?? 1.0` — a flat line pinned to
+/// the top of the box, which is a perfectly truthful graph of "pressure has
+/// no effect" and reads at 22×14px as a graph you have not looked at
+/// closely. Worse, an identity curve that has been dragged flat draws the
+/// same picture and means the opposite thing. An X is not a graph at all,
+/// which is exactly the point: OFF is a different KIND of state, not a
+/// shape the curve can take.
 class _MiniCurvePainter extends CustomPainter {
   const _MiniCurvePainter({required this.curve, required this.color});
 
@@ -87,12 +99,29 @@ class _MiniCurvePainter extends CustomPainter {
     final paint = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2;
+      ..strokeWidth = 1.2
+      // Round ends so the X's four arms do not read as chipped at this size.
+      ..strokeCap = StrokeCap.round;
+    final shape = curve;
+    if (shape == null) {
+      // Inset, so the X is a mark inside the button rather than a cross
+      // that touches its border on all four sides.
+      const inset = 3.0;
+      final box = Rect.fromLTRB(
+        inset,
+        inset,
+        size.width - inset,
+        size.height - inset,
+      );
+      canvas.drawLine(box.topLeft, box.bottomRight, paint);
+      canvas.drawLine(box.topRight, box.bottomLeft, paint);
+      return;
+    }
     final path = Path();
     const steps = 12;
     for (var i = 0; i <= steps; i += 1) {
       final t = i / steps;
-      final value = curve?.evaluate(t) ?? 1.0;
+      final value = shape.evaluate(t);
       final x = t * size.width;
       final y = (1.0 - value) * size.height;
       if (i == 0) {
@@ -169,15 +198,11 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
     super.initState();
     final curve = widget.initialCurve;
     _enabled = curve != null;
-    _points = List.of(
-      (curve ?? BrushPressureCurve.identity()).points,
-    );
+    _points = List.of((curve ?? BrushPressureCurve.identity()).points);
   }
 
   void _commit() {
-    widget.onChanged(
-      _enabled ? BrushPressureCurve(List.of(_points)) : null,
-    );
+    widget.onChanged(_enabled ? BrushPressureCurve(List.of(_points)) : null);
   }
 
   void _setEnabled(bool value) {
@@ -200,77 +225,70 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
 
   @override
   Widget build(BuildContext context) {
-    return Material(
+    // ⛔No `Material` of its own. The surface, the corner and the lift are
+    // the anchored popup's now (R4 #8) — this window is where that shell was
+    // designed, and it was the last thing the shell did not own.
+    return Padding(
       key: const ValueKey<String>('pressure-curve-popup'),
-      color: AppColors.surfaceHigh,
-      borderRadius: BorderRadius.circular(6),
-      elevation: 6,
-      child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            Row(
-              children: [
-                Expanded(
+      padding: const EdgeInsets.all(10),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  '${widget.title} — Pen pressure',
+                  style: const TextStyle(fontSize: 11, color: AppColors.text),
+                ),
+              ),
+              SizedBox(
+                height: 24,
+                child: FittedBox(
+                  child: Switch(
+                    key: const ValueKey<String>('pressure-curve-enable-switch'),
+                    value: _enabled,
+                    onChanged: _setEnabled,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 6),
+          _buildGraph(),
+          const SizedBox(height: 4),
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  'Pressure →',
+                  style: TextStyle(fontSize: 9, color: AppColors.textDim),
+                ),
+              ),
+              InkWell(
+                key: const ValueKey<String>('pressure-curve-reset'),
+                onTap: _enabled ? _reset : null,
+                borderRadius: BorderRadius.circular(3),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 4,
+                    vertical: 2,
+                  ),
                   child: Text(
-                    '${widget.title} — Pen pressure',
-                    style: const TextStyle(
-                      fontSize: 11,
-                      color: AppColors.text,
+                    'Reset',
+                    style: TextStyle(
+                      fontSize: 10,
+                      color: _enabled
+                          ? AppColors.text
+                          : AppColors.textDim.withValues(alpha: 0.5),
                     ),
                   ),
                 ),
-                SizedBox(
-                  height: 24,
-                  child: FittedBox(
-                    child: Switch(
-                      key: const ValueKey<String>(
-                        'pressure-curve-enable-switch',
-                      ),
-                      value: _enabled,
-                      onChanged: _setEnabled,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            _buildGraph(),
-            const SizedBox(height: 4),
-            Row(
-              children: [
-                const Expanded(
-                  child: Text(
-                    'Pressure →',
-                    style: TextStyle(fontSize: 9, color: AppColors.textDim),
-                  ),
-                ),
-                InkWell(
-                  key: const ValueKey<String>('pressure-curve-reset'),
-                  onTap: _enabled ? _reset : null,
-                  borderRadius: BorderRadius.circular(3),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 4,
-                      vertical: 2,
-                    ),
-                    child: Text(
-                      'Reset',
-                      style: TextStyle(
-                        fontSize: 10,
-                        color: _enabled
-                            ? AppColors.text
-                            : AppColors.textDim.withValues(alpha: 0.5),
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ],
-        ),
+              ),
+            ],
+          ),
+        ],
       ),
     );
   }
