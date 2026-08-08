@@ -10350,16 +10350,96 @@ class EditorSessionManager extends ChangeNotifier {
   }
 
   /// The in-flight lane range move (UI-R23 #3 part 2): the drag-start
-  /// snapshots plus the last VALID shifted track (blocked steps HOLD it,
-  /// the #10 policy). Exactly one of [layer]/[track] is set — a layer's
-  /// lanes or the V TRACK's own lanes (R4b, the carrier route).
-  ({Layer? layer, Track? track, TimelineLaneSelection selection})?
-  _laneMoveBefore;
+  /// snapshot plus the last VALID shifted payload (blocked steps HOLD it,
+  /// the #10 policy).
+  ({_LaneMoveSubject subject, TimelineLaneSelection selection})? _laneMoveBefore;
   TransformTrack? _laneMoveShifted;
 
   /// The in-flight EFFECT-lane move's last valid chain (R6) — the effect
   /// counterpart of [_laneMoveShifted]; exactly one of the two is ever set.
   List<LayerEffect>? _laneMoveShiftedEffects;
+
+  /// WHAT a lane selection edits: where its keys live, how they go back,
+  /// and what a step in flight previews as.
+  ///
+  /// The move path used to name its subjects inline, in three methods that
+  /// each had to remember the whole list — and two subjects were missing
+  /// from all three. A CAMERA lane edits `cut.camera.track`, not the camera
+  /// layer's own (unused) transform track, so opening the band there would
+  /// have written keys where nothing reads them; that is why camera keys
+  /// were left with a private marker drag while every other lane moved by
+  /// selection. A V TRACK's EFFECT chain was simply never looked at, so an
+  /// fx key range on that row answered "nothing to move" and refused in
+  /// silence.
+  ///
+  /// One resolver instead, and the three steps stop knowing.
+  _LaneMoveSubject? _laneMoveSubjectFor(TimelineLaneSelection selection) {
+    // The V TRACK's own lanes (R4b, the carrier route).
+    final carrierTrackId = trackIdOfTransformLaneCarrier(selection.layerId);
+    if (carrierTrackId != null) {
+      final track = _trackById(carrierTrackId);
+      if (track == null) {
+        return null;
+      }
+      return _LaneMoveSubject(
+        transformTrack: track.transformTrack,
+        effects: track.effects,
+        commitTransform: (next) =>
+            updateTrackTransformTrack(track.id, next, description: _laneMoveWhy),
+        commitEffects: (next) =>
+            updateTrackEffects(track.id, next, description: _laneMoveWhy),
+        previewTransform: (next) => BlockMoveDragPreview(
+          previewLayers: const {},
+          previewTrackTransforms: {track.id: next},
+        ),
+        previewEffects: (next) => BlockMoveDragPreview(
+          previewLayers: const {},
+          previewTrackEffects: {track.id: next},
+        ),
+      );
+    }
+    final layer = _layerById(selection.layerId);
+    if (layer == null || isAttachedLayer(layer)) {
+      return null;
+    }
+    // A CAMERA row's transform lanes ride the CUT's camera track; its fx
+    // lanes are still its own. The two answers live in one subject because
+    // which one applies is the lane's question, not the row's.
+    final isCamera = layer.kind == LayerKind.camera;
+    final cameraTrack = isCamera ? activeCutOrNull?.camera.track : null;
+    if (isCamera && cameraTrack == null) {
+      return null;
+    }
+    return _LaneMoveSubject(
+      transformTrack: cameraTrack ?? layer.transformTrack,
+      effects: layer.effects,
+      commitTransform: isCamera
+          ? (next) => updateActiveCutCameraTrack(next, description: _laneMoveWhy)
+          : (next) =>
+                updateLayerTransformTrack(layer.id, next, description: _laneMoveWhy),
+      commitEffects: (next) =>
+          updateLayerEffects(layer.id, next, description: _laneMoveWhy),
+      previewTransform: isCamera
+          // The camera's lanes are built from the SESSION (the cut owns the
+          // track, not the row's layer), so its preview is a session field
+          // the lane provider reads — see [activeCutCameraTrack]. The
+          // marker layer is here only to trip the row's preview gate, the
+          // P3b-2 trick.
+          ? (next) => BlockMoveDragPreview(
+              previewLayers: const {},
+              cameraMarkerLayer: _layerById(layer.id),
+            )
+          : (next) => BlockMoveDragPreview(
+              previewLayers: {layer.id: layer.copyWith(transformTrack: next)},
+            ),
+      previewEffects: (next) => BlockMoveDragPreview(
+        previewLayers: {layer.id: layer.copyWith(effects: next)},
+      ),
+      onPreviewTransform: isCamera ? (next) => _cameraLaneTrackPreview = next : null,
+    );
+  }
+
+  static const String _laneMoveWhy = 'Move lane keys';
 
   /// Starts moving the current lane selection; false when there is none
   /// or it covers no keys on ANY spanned lane (nothing to move).
@@ -10368,55 +10448,38 @@ class EditorSessionManager extends ChangeNotifier {
     if (selection == null) {
       return false;
     }
-    final carrierTrackId = trackIdOfTransformLaneCarrier(selection.layerId);
-    if (carrierTrackId != null) {
-      final track = _trackById(carrierTrackId);
-      if (track == null) {
-        return false;
-      }
-      final keyed = _laneVerbTargets(selection.spanLaneIds).any(
-        (laneId) => transformLaneKeyFrames(
-          track.transformTrack,
-          laneId,
-        ).any(selection.contains),
-      );
-      if (!keyed) {
-        return false;
-      }
-      _laneMoveBefore = (layer: null, track: track, selection: selection);
-      _laneMoveShifted = null;
-      // Both in-flight slots clear together: a stale effect chain here
-      // would send the commit down the layer branch with layer == null.
-      _laneMoveShiftedEffects = null;
-
-      return true;
-    }
-    final layer = _layerById(selection.layerId);
-    if (layer == null || isAttachedLayer(layer)) {
+    final subject = _laneMoveSubjectFor(selection);
+    if (subject == null) {
       return false;
     }
     // R6: an EFFECT lane selection moves the effect chain's keys instead of
     // the transform track's — same rigid all-or-nothing group, same drag.
+    //
+    // ONE mode for the whole span, decided the same way
+    // [updateLaneRangeMoveDrag] decides it. Asking per lane would let this
+    // answer "there are keys" about a lane the step is not going to shift.
     final moveTargets = _laneVerbTargets(
       selection.spanLaneIds,
-      effects: layer.effects,
+      effects: subject.effects,
     );
     final isEffectSelection = moveTargets.any(
       (laneId) => parseEffectLaneId(laneId) != null,
     );
     final keyed = moveTargets.any(
       (laneId) => isEffectSelection
-          ? effectLaneKeyFrames(layer.effects, laneId).any(selection.contains)
+          ? effectLaneKeyFrames(subject.effects, laneId).any(selection.contains)
           : transformLaneKeyFrames(
-              layer.transformTrack,
+              subject.transformTrack,
               laneId,
             ).any(selection.contains),
     );
     if (!keyed) {
       return false;
     }
-    _laneMoveBefore = (layer: layer, track: null, selection: selection);
+    _laneMoveBefore = (subject: subject, selection: selection);
     _laneMoveShifted = null;
+    // Both in-flight slots clear together: a stale payload here would send
+    // the commit down the wrong branch.
     _laneMoveShiftedEffects = null;
 
     return true;
@@ -10434,20 +10497,20 @@ class EditorSessionManager extends ChangeNotifier {
     if (frameDelta == 0) {
       _laneMoveShifted = null;
       _laneMoveShiftedEffects = null;
+      _cameraLaneTrackPreview = null;
 
       dragPreview.value = null;
       laneRangeSelection.value = before.selection;
       return;
     }
-    final effectLayer = before.layer;
+    final subject = before.subject;
     final targets = _laneVerbTargets(
       before.selection.spanLaneIds,
-      effects: effectLayer?.effects ?? const [],
+      effects: subject.effects,
     );
-    if (effectLayer != null &&
-        targets.any((laneId) => parseEffectLaneId(laneId) != null)) {
+    if (targets.any((laneId) => parseEffectLaneId(laneId) != null)) {
       final shiftedEffects = effectsWithLaneSpanKeysShifted(
-        effectLayer.effects,
+        subject.effects,
         laneIds: targets,
         rangeStartIndex: before.selection.startIndex,
         rangeEndIndexExclusive: before.selection.endIndexExclusive,
@@ -10458,11 +10521,7 @@ class EditorSessionManager extends ChangeNotifier {
         return;
       }
       _laneMoveShiftedEffects = shiftedEffects;
-      dragPreview.value = BlockMoveDragPreview(
-        previewLayers: {
-          effectLayer.id: effectLayer.copyWith(effects: shiftedEffects),
-        },
-      );
+      dragPreview.value = subject.previewEffects(shiftedEffects);
       final effectStart = before.selection.startIndex + frameDelta;
       if (effectStart >= 0) {
         laneRangeSelection.value = TimelineLaneSelection(
@@ -10475,10 +10534,8 @@ class EditorSessionManager extends ChangeNotifier {
       }
       return;
     }
-    final sourceTrack =
-        before.layer?.transformTrack ?? before.track!.transformTrack;
     final shifted = transformTrackWithLaneSpanKeysShifted(
-      sourceTrack,
+      subject.transformTrack,
       laneIds: targets,
       rangeStartIndex: before.selection.startIndex,
       rangeEndIndexExclusive: before.selection.endIndexExclusive,
@@ -10489,16 +10546,11 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     _laneMoveShifted = shifted;
-
-    final layer = before.layer;
-    dragPreview.value = layer != null
-        ? BlockMoveDragPreview(
-            previewLayers: {layer.id: layer.copyWith(transformTrack: shifted)},
-          )
-        : BlockMoveDragPreview(
-            previewLayers: const {},
-            previewTrackTransforms: {before.track!.id: shifted},
-          );
+    // A subject whose lanes are not built from the row's own Layer (the
+    // camera's live on the CUT) parks its preview where the lane provider
+    // reads it; the channel below still fires, to trip the row's gate.
+    subject.onPreviewTransform?.call(shifted);
+    dragPreview.value = subject.previewTransform(shifted);
     final newStart = before.selection.startIndex + frameDelta;
     if (newStart >= 0) {
       laneRangeSelection.value = TimelineLaneSelection(
@@ -10521,14 +10573,11 @@ class EditorSessionManager extends ChangeNotifier {
     _laneMoveBefore = null;
     _laneMoveShifted = null;
     _laneMoveShiftedEffects = null;
+    _cameraLaneTrackPreview = null;
 
     dragPreview.value = null;
     if (before != null && shiftedEffects != null) {
-      updateLayerEffects(
-        before.layer!.id,
-        shiftedEffects,
-        description: 'Move lane keys',
-      );
+      before.subject.commitEffects(shiftedEffects);
       laneRangeSelection.value = landed;
       return;
     }
@@ -10538,20 +10587,7 @@ class EditorSessionManager extends ChangeNotifier {
       }
       return;
     }
-    final layer = before.layer;
-    if (layer != null) {
-      updateLayerTransformTrack(
-        layer.id,
-        shifted,
-        description: 'Move lane keys',
-      );
-    } else {
-      updateTrackTransformTrack(
-        before.track!.id,
-        shifted,
-        description: 'Move lane keys',
-      );
-    }
+    before.subject.commitTransform(shifted);
     laneRangeSelection.value = landed;
   }
 
@@ -10561,12 +10597,28 @@ class EditorSessionManager extends ChangeNotifier {
     _laneMoveBefore = null;
     _laneMoveShifted = null;
     _laneMoveShiftedEffects = null;
+    _cameraLaneTrackPreview = null;
 
     dragPreview.value = null;
     if (before != null) {
       laneRangeSelection.value = before.selection;
     }
   }
+
+  /// The CAMERA lane move's in-flight track (see [_LaneMoveSubject]).
+  ///
+  /// A camera row's transform lanes are built from the CUT, not from the
+  /// row's own Layer, so the preview cannot ride the layer channel the way
+  /// every other row's does — it is parked here and [activeCutCameraTrack]
+  /// hands it out. Exactly the shape [_cameraKeysDragPreview] already uses
+  /// for the camera ROW's block move (P3b-2).
+  TransformTrack? _cameraLaneTrackPreview;
+
+  /// The active cut's camera track — the in-flight lane-move preview while
+  /// one is running, the committed track otherwise. The lane provider reads
+  /// THIS, so a camera key follows the drag instead of jumping on release.
+  TransformTrack? get activeCutCameraTrack =>
+      _cameraLaneTrackPreview ?? activeCutOrNull?.camera.track;
 
   /// Whether [layerId] can take part in a RANGE selection (UI-R20 #2:
   /// cells are cells — EVERY layer row selects, camera and instruction
@@ -14198,4 +14250,40 @@ enum _CutEdgeDragVerb {
   /// rippling glued and the cut's length riding the row end (feedback
   /// #9; the edge unification retired the division verb this replaced).
   comma,
+}
+
+/// WHERE a lane-range move's keys live, how they go back, and what a step
+/// in flight looks like — resolved once from the selection so the drag's
+/// three steps stop naming their subjects inline.
+///
+/// See [EditorSessionManager._laneMoveSubjectFor] for why this exists: the
+/// two subjects the old inline lists forgot are exactly the two rows whose
+/// keys could not be moved by selection at all.
+class _LaneMoveSubject {
+  const _LaneMoveSubject({
+    required this.transformTrack,
+    required this.effects,
+    required this.commitTransform,
+    required this.commitEffects,
+    required this.previewTransform,
+    required this.previewEffects,
+    this.onPreviewTransform,
+  });
+
+  /// The transform lanes' keys, and the effect chain's. Which one a drag
+  /// reads is the LANE's question — an effect lane on a camera row moves
+  /// the layer's chain while its Position lane moves the cut's camera.
+  final TransformTrack transformTrack;
+  final List<LayerEffect> effects;
+
+  final void Function(TransformTrack next) commitTransform;
+  final void Function(List<LayerEffect> next) commitEffects;
+
+  final BlockMoveDragPreview Function(TransformTrack next) previewTransform;
+  final BlockMoveDragPreview Function(List<LayerEffect> next) previewEffects;
+
+  /// A side channel for subjects whose lanes are NOT built from the row's
+  /// own Layer, so the preview cannot travel in [previewTransform]'s
+  /// payload. Only the camera has one today.
+  final void Function(TransformTrack next)? onPreviewTransform;
 }

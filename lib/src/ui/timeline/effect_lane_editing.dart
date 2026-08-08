@@ -34,29 +34,10 @@ List<LayerEffect>? effectsWithLaneKeyToggled(
   });
 }
 
-/// Moves a lane's key to another frame, keeping its value and interpolation
-/// (an existing key at the target is overwritten — AE drop semantics).
-List<LayerEffect>? effectsWithLaneKeyMoved(
-  List<LayerEffect> effects, {
-  required String laneId,
-  required int fromFrame,
-  required int toFrame,
-}) {
-  if (toFrame < 0 || toFrame == fromFrame) {
-    return null;
-  }
-  return _editParameter(effects, laneId, (parameter, spec) {
-    final key = parameter.track.keyAt(fromFrame);
-    if (key == null) {
-      return null;
-    }
-    return parameter.copyWith(
-      track: parameter.track
-          .withoutKey(fromFrame)
-          .withKey(toFrame, key.value, interpolation: key.interpolation),
-    );
-  });
-}
+// 2026-08-08: `effectsWithLaneKeyMoved` went with the key marker's private
+// drag. Re-timing is [effectsWithLaneSpanKeysShifted] now — select the
+// span, move the span — and a dead single-key mover left lying here is an
+// invitation to wire the second grammar back.
 
 List<LayerEffect>? effectsWithLaneKeyRemoved(
   List<LayerEffect> effects, {

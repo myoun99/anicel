@@ -1135,7 +1135,7 @@ void main() {
       ({
         List<int> moveUpdates,
         List<int> selectUpdates,
-        List<(int, int)> keyMoves,
+
         ValueNotifier<TimelineLaneSelection?> selection,
       })
     >
@@ -1146,7 +1146,7 @@ void main() {
       addTearDown(selection.dispose);
       final moveUpdates = <int>[];
       final selectUpdates = <int>[];
-      final keyMoves = <(int, int)>[];
+
 
       await tester.pumpWidget(
         MaterialApp(
@@ -1172,13 +1172,7 @@ void main() {
                   keyedFrames: {2, 5},
                 ),
               ],
-              laneEdit: PropertyLaneEditCallbacks(
-                onToggleKeyAt: (_, _, _) {},
-                // Never reached here: this lane HAS a band, and a band is
-                // what moves keys now. Logged anyway, so the test can say
-                // the marker did not quietly keep its own drag.
-                onMoveKey: (_, _, from, to) => keyMoves.add((from, to)),
-              ),
+              laneEdit: PropertyLaneEditCallbacks(onToggleKeyAt: (_, _, _) {}),
               laneRange: TimelineLaneRangeCallbacks(
                 selection: selection,
                 onSelectUpdate: (_, _, anchor, _, _) =>
@@ -1200,7 +1194,7 @@ void main() {
       return (
         moveUpdates: moveUpdates,
         selectUpdates: selectUpdates,
-        keyMoves: keyMoves,
+
         selection: selection,
       );
     }
@@ -1301,11 +1295,6 @@ void main() {
         isEmpty,
         reason: 'nothing moves until the thing under the pointer is selected',
       );
-      expect(
-        log.keyMoves,
-        isEmpty,
-        reason: 'and the marker kept no drag of its own',
-      );
     });
 
     testWidgets('with NO selection at all a diamond drag selects too', (
@@ -1324,7 +1313,6 @@ void main() {
 
       expect(log.selectUpdates, contains(2));
       expect(log.moveUpdates, isEmpty);
-      expect(log.keyMoves, isEmpty);
     });
   });
 

@@ -67,42 +67,11 @@ TransformTrack? transformTrackWithLaneKeyToggled(
   return null;
 }
 
-/// Moves a lane's key to another frame, keeping its value and
-/// interpolation (an existing key at the target is overwritten — AE drop
-/// semantics).
-TransformTrack? transformTrackWithLaneKeyMoved(
-  TransformTrack track, {
-  required String laneId,
-  required int fromFrame,
-  required int toFrame,
-}) {
-  if (toFrame < 0 || toFrame == fromFrame) {
-    return null;
-  }
-  switch (laneId) {
-    case 'anchor-point':
-      return _moved(track.anchorPoint, fromFrame, toFrame, (next) {
-        return track.copyWith(anchorPoint: next);
-      });
-    case 'position':
-      return _moved(track.position, fromFrame, toFrame, (next) {
-        return track.copyWith(position: next);
-      });
-    case 'scale':
-      return _moved(track.scale, fromFrame, toFrame, (next) {
-        return track.copyWith(scale: next);
-      });
-    case 'rotation':
-      return _moved(track.rotation, fromFrame, toFrame, (next) {
-        return track.copyWith(rotation: next);
-      });
-    case 'opacity':
-      return _moved(track.opacity, fromFrame, toFrame, (next) {
-        return track.copyWith(opacity: next);
-      });
-  }
-  return null;
-}
+// 2026-08-08: `transformTrackWithLaneKeyMoved` (and its `_moved` helper)
+// went with the key marker's private drag. Re-timing is
+// [transformTrackWithLaneSpanKeysShifted] now — select the span, move the
+// span — and a dead single-key mover left lying here is an invitation to
+// wire the second grammar back.
 
 /// Removes a lane's key at [frameIndex].
 TransformTrack? transformTrackWithLaneKeyRemoved(
@@ -388,23 +357,6 @@ Set<int> transformLaneKeyFrames(TransformTrack track, String laneId) {
     'opacity' => track.opacity.keys.keys.toSet(),
     _ => const {},
   };
-}
-
-TransformTrack? _moved<T>(
-  PropertyTrack<T> lane,
-  int fromFrame,
-  int toFrame,
-  TransformTrack Function(PropertyTrack<T> next) rebuild,
-) {
-  final key = lane.keyAt(fromFrame);
-  if (key == null) {
-    return null;
-  }
-  return rebuild(
-    lane
-        .withoutKey(fromFrame)
-        .withKey(toFrame, key.value, interpolation: key.interpolation),
-  );
 }
 
 PropertyTrack<T>? _holdToggled<T>(PropertyTrack<T> lane, int frameIndex) {

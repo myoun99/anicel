@@ -980,12 +980,10 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
               leadingFrameSpacerWidth: plan.leadingFrameSpacerWidth,
               trailingFrameSpacerWidth: plan.trailingFrameSpacerWidth,
               metrics: _metrics,
-              laneEdit: widget.laneEdit,
-              // The LANE selection domain (UI-R23 #3 part 2) — layer
-              // transform lanes only in v1.
-              laneRange: layer.kind == LayerKind.camera
-                  ? null
-                  : widget.laneRange,
+              // The LANE selection domain (UI-R23 #3 part 2) — EVERY row's
+              // lanes now, camera included (2026-08-08; see the rail's
+              // twin for why it stood down and why the reason was wrong).
+              laneRange: widget.laneRange,
             );
     }
     // PRO-TIMELINE scrolling (UI-R15→R16, transposed): the cells column

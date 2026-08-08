@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/track_transform_lane_carrier.dart';
 import 'package:anicel/src/models/transform_track.dart';
@@ -241,5 +242,79 @@ void main() {
     expect(opacity.keyAt(secondStart)?.value, 0.0);
     expect(opacity.keyAt(secondStart + 3)?.value, 1.0);
     expect(opacity.keyAt(0), isNull, reason: 'first cut\'s window untouched');
+  });
+
+  testWidgets('a V-row FX key range selects and MOVES — the transform '
+      'lane\'s sibling, refused in silence until 2026-08-08', (tester) async {
+    final manager = await pumpHost(tester);
+    final trackId = manager.activeTrack.id;
+
+    // One effect on the V chain, with a key at global frame 2.
+    manager.updateTrackEffects(trackId, [
+      LayerEffect(
+        id: const EffectId('v-fx'),
+        kind: EffectKind.blur,
+        parameters: {
+          'blurX': EffectParameter(
+            value: 4,
+            track: PropertyTrack<double>(keys: {2: PropertyKey<double>(4)}),
+          ),
+          'blurY': EffectParameter(value: 4),
+        },
+      ),
+    ]);
+    await tester.pumpAndSettle();
+    await twirlOpenTransformLanes(tester, trackId.value);
+
+    // Twirl the EFFECT's own group so its parameter lane has a band.
+    await tester.tap(
+      find.byKey(
+        ValueKey<String>(
+          'storyboard-lane-group-toggle-'
+          '${trackTransformLaneCarrierId(trackId).value}-fx-group:v-fx',
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final row = find.byKey(
+      const ValueKey<String>('storyboard-track-lane-row-0-fx:v-fx:blurX'),
+    );
+    expect(row, findsOneWidget);
+    final rowTopLeft = tester.getTopLeft(row);
+    final rowCenterY = tester.getCenter(row).dy;
+
+    // Select frames 1..4 (12 px/frame), then drag INSIDE the span.
+    final select = await tester.startGesture(
+      Offset(rowTopLeft.dx + 1 * 12 + 6, rowCenterY),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    await select.moveBy(const Offset(36, 0));
+    await tester.pump();
+    await select.up();
+    await tester.pumpAndSettle();
+    expect(
+      manager.laneRangeSelection.value?.contains(2),
+      isTrue,
+      reason: 'the key sits in the span',
+    );
+
+    final move = await tester.startGesture(
+      Offset(rowTopLeft.dx + 3 * 12 + 6, rowCenterY),
+      kind: PointerDeviceKind.mouse,
+    );
+    await tester.pump();
+    await move.moveBy(const Offset(24, 0));
+    await tester.pump();
+    await move.up();
+    await tester.pumpAndSettle();
+
+    // The move path used to read a track's TRANSFORM and never its
+    // effects, so the drag found no keys, answered "nothing to move" and
+    // became another selection. The key stayed where it was.
+    final blurX = manager.activeTrack.effects.single.parameterOf('blurX');
+    expect(blurX.track.keys.containsKey(4), isTrue, reason: 'moved +2');
+    expect(blurX.track.keys.containsKey(2), isFalse);
   });
 }

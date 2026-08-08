@@ -1,4 +1,5 @@
-import 'package:flutter/gestures.dart' show kSecondaryButton;
+import 'package:flutter/gestures.dart'
+    show PointerDeviceKind, kSecondaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/audio_clip.dart';
@@ -831,52 +832,10 @@ void main() {
       );
     });
 
-    test('move keeps value + interpolation and overwrites the target', () {
-      final track = TransformTrack.empty().copyWith(
-        scale: PropertyTrack<double>()
-            .withKey(2, 1.5, interpolation: PropertyKeyInterpolation.hold)
-            .withKey(6, 3),
-      );
-
-      final moved = transformTrackWithLaneKeyMoved(
-        track,
-        laneId: 'scale',
-        fromFrame: 2,
-        toFrame: 6,
-      )!;
-
-      expect(moved.scale.keyAt(2), isNull);
-      expect(moved.scale.keyAt(6)!.value, 1.5);
-      expect(
-        moved.scale.keyAt(6)!.interpolation,
-        PropertyKeyInterpolation.hold,
-      );
-    });
-
-    test('move to a negative frame or same frame is a no-op', () {
-      final track = TransformTrack.empty().copyWith(
-        rotation: PropertyTrack<double>().withKey(3, 45),
-      );
-
-      expect(
-        transformTrackWithLaneKeyMoved(
-          track,
-          laneId: 'rotation',
-          fromFrame: 3,
-          toFrame: 3,
-        ),
-        isNull,
-      );
-      expect(
-        transformTrackWithLaneKeyMoved(
-          track,
-          laneId: 'rotation',
-          fromFrame: 3,
-          toFrame: -1,
-        ),
-        isNull,
-      );
-    });
+    // 2026-08-08: the single-key MOVE policy went out with the key
+    // marker's private drag — re-timing is the span shift below, which
+    // this group already covers ('lane-range shift … moves ONLY the named
+    // lane's keys in range').
 
     test('value edits parse AE units and preserve interpolation', () {
       final track = TransformTrack.empty().copyWith(
@@ -1010,24 +969,38 @@ void main() {
       expect(_laneKey('position', 0), findsNothing);
     });
 
-    testWidgets('dragging a marker moves the key (frame-snapped)', (
-      tester,
-    ) async {
+    testWidgets('a camera key is SELECTED and then moved, like every other '
+        'lane and like a frame block', (tester) async {
       await _pump(
         tester,
         _project(camera: CutCamera(keyframes: {0: _pose(0), 8: _pose(80)})),
       );
       await expand(tester);
 
-      // Default zoom = 24px per frame (slim round). R10: the pixels the
-      // drag spends winning the arena are travel, not overhead, so the
-      // TOTAL is what snaps — 48 = 2×24 = +2 frames.
-      await tester.drag(_laneKey('position', 8), const Offset(48, 0));
+      // 2026-08-08: this used to be a marker drag that re-timed the key on
+      // the spot — the camera row was the last place on this axis with a
+      // grammar of its own, because the lane-move path had no arm for the
+      // track its lanes actually edit (`cut.camera.track`).
+      //
+      // Default zoom = 24px per frame. The first drag SELECTS frame 8; the
+      // second, starting inside that selection, moves it +2.
+      final band = find.byKey(
+        const ValueKey<String>(
+          'timeline-lane-range-gesture-lane-cam-layer-position',
+        ),
+      );
+      final keyAt8 = tester.getCenter(_laneKey('position', 8));
+      await tester.dragFrom(keyAt8, const Offset(4, 0), kind: PointerDeviceKind.mouse);
+      await tester.pumpAndSettle();
+      expect(band, findsOneWidget, reason: 'the camera lane has a band now');
+
+      await tester.dragFrom(keyAt8, const Offset(48, 0), kind: PointerDeviceKind.mouse);
       await tester.pumpAndSettle();
 
       expect(_laneKey('position', 8), findsNothing);
       expect(_laneKey('position', 10), findsOneWidget);
-      // Other lanes keep their key at 8.
+      // Other lanes keep their key at 8 — the camera's lanes are per
+      // PROPERTY, whatever the row's cells summarise.
       expect(_laneKey('scale', 8), findsOneWidget);
     });
 
@@ -1361,7 +1334,7 @@ void main() {
       expect(laneKey('position', 0), findsOneWidget);
     });
 
-    testWidgets('markers drag VERTICALLY to move keys (frame-snapped)', (
+    testWidgets('select, then move — VERTICALLY, frame-snapped', (
       tester,
     ) async {
       await pumpXSheet(
@@ -1380,9 +1353,20 @@ void main() {
       // four rows and frame 4's marker sits on the clip edge, where a drag
       // cannot start. (The sheet is meant for a tall SIDE dock; the bottom
       // dock's own 640 ceiling is what bounds this.)
-      await tester.drag(
-        laneKey('position', 0),
-        Offset(0, XSheetTimelineGrid.defaultMetrics.frameCellWidth * 2),
+      final step = XSheetTimelineGrid.defaultMetrics.frameCellWidth;
+      final keyAt0 = tester.getCenter(laneKey('position', 0));
+      // 2026-08-08: two drags, not one. The first selects frame 0 — the
+      // marker has no drag of its own any more, on this row or any other.
+      await tester.dragFrom(
+        keyAt0,
+        const Offset(0, 4),
+        kind: PointerDeviceKind.mouse,
+      );
+      await tester.pumpAndSettle();
+      await tester.dragFrom(
+        keyAt0,
+        Offset(0, step * 2),
+        kind: PointerDeviceKind.mouse,
       );
       await tester.pumpAndSettle();
 

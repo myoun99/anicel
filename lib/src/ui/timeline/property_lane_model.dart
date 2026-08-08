@@ -124,7 +124,6 @@ class TimelineDisplayRow {
 class PropertyLaneEditCallbacks {
   const PropertyLaneEditCallbacks({
     required this.onToggleKeyAt,
-    required this.onMoveKey,
     this.onSetValue,
   });
 
@@ -133,15 +132,12 @@ class PropertyLaneEditCallbacks {
   final void Function(Layer layer, PropertyLaneRow lane, int frameIndex)
   onToggleKeyAt;
 
-  /// A key marker dragged to another frame.
-  final void Function(
-    Layer layer,
-    PropertyLaneRow lane,
-    int fromFrame,
-    int toFrame,
-  )
-  onMoveKey;
-
+  // 2026-08-08: `onMoveKey` left with the key marker's own drag. Re-timing
+  // a key is the lane SELECTION's move now — select the span, then drag it
+  // — which is the rule the frame blocks have always followed. The camera
+  // row was the last holdout, and only because the move path had no arm
+  // for the track its lanes actually edit.
+  //
   // R10 R3: `onRemoveKey` and `onToggleHold` left with the key marker's
   // context menu. Delete now lives on the Frame ▾ menu, which reaches a
   // lane row through `currentRow` (R10 #19); the hold toggle keeps its

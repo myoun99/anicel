@@ -7,6 +7,7 @@ import '../../models/cut.dart';
 import '../../models/cut_camera.dart';
 import '../../models/cut_id.dart';
 import '../../models/layer.dart';
+import '../../models/layer_effect.dart';
 import '../../models/layer_id.dart';
 import '../../models/project.dart';
 import '../../models/track_id.dart';
@@ -63,6 +64,7 @@ class BlockMoveDragPreview extends TimelineDragPreview {
   const BlockMoveDragPreview({
     required this.previewLayers,
     this.previewTrackTransforms,
+    this.previewTrackEffects,
     this.cameraCutId,
     this.cameraKeyframes,
     this.cameraMarkerLayer,
@@ -74,6 +76,13 @@ class BlockMoveDragPreview extends TimelineDragPreview {
   /// [Track.transformTrack] per track — the storyboard's continuous lane
   /// rows render this form while the drag rides the carrier route.
   final Map<TrackId, TransformTrack>? previewTrackTransforms;
+
+  /// The same, for a V-track's EFFECT chain. The V row's fx lanes could not
+  /// be key-moved at all before 2026-08-08 — the move path looked at a
+  /// track's transform and never at its effects, so the drag answered
+  /// "nothing to move" and refused in silence — so there was nothing to
+  /// preview either.
+  final Map<TrackId, List<LayerEffect>>? previewTrackEffects;
 
   /// KEY-RANGE moves (P3b-2): the previewed CAMERA keyframes for
   /// [cameraCutId] ride along when the selection spans the camera row.
@@ -89,6 +98,7 @@ class BlockMoveDragPreview extends TimelineDragPreview {
       other is BlockMoveDragPreview &&
       mapEquals(other.previewLayers, previewLayers) &&
       mapEquals(other.previewTrackTransforms, previewTrackTransforms) &&
+      _trackEffectsEqual(other.previewTrackEffects, previewTrackEffects) &&
       other.cameraCutId == cameraCutId &&
       mapEquals(other.cameraKeyframes, cameraKeyframes) &&
       identical(other.cameraMarkerLayer, cameraMarkerLayer);
@@ -105,6 +115,13 @@ class BlockMoveDragPreview extends TimelineDragPreview {
               (e) => Object.hash(e.key, e.value),
             ),
           ),
+    previewTrackEffects == null
+        ? null
+        : Object.hashAllUnordered(
+            previewTrackEffects!.entries.map(
+              (e) => Object.hash(e.key, Object.hashAll(e.value)),
+            ),
+          ),
     cameraCutId,
     cameraKeyframes == null
         ? null
@@ -113,6 +130,27 @@ class BlockMoveDragPreview extends TimelineDragPreview {
           ),
     identityHashCode(cameraMarkerLayer),
   );
+
+  /// `mapEquals` compares the LISTS by identity, which a rebuilt chain
+  /// never satisfies — the preview would then read as changed on every
+  /// step whose keys did not actually move.
+  static bool _trackEffectsEqual(
+    Map<TrackId, List<LayerEffect>>? a,
+    Map<TrackId, List<LayerEffect>>? b,
+  ) {
+    if (a == null || b == null) {
+      return a == b;
+    }
+    if (a.length != b.length) {
+      return false;
+    }
+    for (final entry in a.entries) {
+      if (!listEquals(entry.value, b[entry.key])) {
+        return false;
+      }
+    }
+    return true;
+  }
 }
 
 /// A storyboard cut edge drag in flight: the involved cuts' previewed
