@@ -70,6 +70,21 @@ class CompositeEffectPaint {
     }
     paint.imageFilter = imageFilter;
   }
+
+  // A VALUE, so a painter can ask "is this the same filter as last frame?"
+  // in `shouldRepaint` — the V row's cut chain is resolved fresh every build,
+  // and identity would call a static grade a change on every rebuild.
+  // dart:ui's filters carry value equality themselves.
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is CompositeEffectPaint &&
+          other.colorFilter == colorFilter &&
+          other.imageFilter == imageFilter &&
+          other.outsetPixels == outsetPixels;
+
+  @override
+  int get hashCode => Object.hash(colorFilter, imageFilter, outsetPixels);
 }
 
 /// The single folded matrix for a COLOUR-ONLY chain; null as soon as the

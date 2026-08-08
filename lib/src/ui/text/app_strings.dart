@@ -492,6 +492,7 @@ class AppStrings {
   /// The storyboard's V rows share ONE height; these step it.
   String get sbShorterRows => _s('sbShorterRows');
   String get sbTallerRows => _s('sbTallerRows');
+  String get sbTrackFxCommands => _s('sbTrackFxCommands');
 
   /// Refused: a cut holds at most one storyboard row.
   String get sbOneStoryboardRowPerCut => _s('sbOneStoryboardRowPerCut');
@@ -1092,6 +1093,7 @@ class AppStrings {
     'instructionMemoLabel': 'Memo (timesheet memo band)',
     'instructionEditSetButton': 'Edit instructions…',
     'cutCommands': 'Cut commands',
+    'sbTrackFxCommands': 'V track effects (over the whole cut)',
     'cutAddCut': 'Add cut',
     'cutNewCut': 'New cut',
     'cutDuplicateCut': 'Duplicate cut',
@@ -1799,6 +1801,7 @@ class AppStrings {
     'shortcutAction.timeline-push-blocks': '押し出し（コマを開ける）',
     'shortcutAction.timeline-pull-blocks': '詰め（コマを詰める）',
     'cutCommands': 'カット操作',
+    'sbTrackFxCommands': 'Vトラックのエフェクト（カット全体に）',
     'cutAddCut': 'カットを追加',
     'cutNewCut': 'カットを新規作成',
     'cutDuplicateCut': 'カットを複製',
@@ -2501,6 +2504,7 @@ class AppStrings {
     'shortcutAction.timeline-push-blocks': '밀기(칸 열기)',
     'shortcutAction.timeline-pull-blocks': '당기기(칸 닫기)',
     'cutCommands': '컷 명령',
+    'sbTrackFxCommands': 'V 트랙 이펙트 (컷 전체에)',
     'cutAddCut': '컷 추가',
     'cutNewCut': '새 컷',
     'cutDuplicateCut': '컷 복제',
@@ -3224,6 +3228,7 @@ class AppStrings {
     'shortcutAction.timeline-push-blocks': 'Pousser (ouvrir des images)',
     'shortcutAction.timeline-pull-blocks': 'Tirer (fermer des images)',
     'cutCommands': 'Commandes de plan',
+    'sbTrackFxCommands': 'Effets de la piste V (sur tout le plan)',
     'cutAddCut': 'Ajouter un plan',
     'cutNewCut': 'Nouveau plan',
     'cutDuplicateCut': 'Dupliquer le plan',
@@ -3913,6 +3918,7 @@ class AppStrings {
     'shortcutAction.timeline-push-blocks': '推出（空出帧）',
     'shortcutAction.timeline-pull-blocks': '拉回（收拢帧）',
     'cutCommands': '镜头命令',
+    'sbTrackFxCommands': 'V 轨道效果（作用于整个镜头）',
     'cutAddCut': '添加镜头',
     'cutNewCut': '新建镜头',
     'cutDuplicateCut': '复制镜头',

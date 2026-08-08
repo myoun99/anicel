@@ -10,6 +10,7 @@ import '../../models/canvas_viewport.dart';
 import '../../models/project_background.dart';
 import '../../models/transform_track.dart';
 import '../../services/se_name_tag_plan.dart';
+import '../canvas/composite_effect_paint.dart' show CompositeEffectPaint;
 import '../canvas/layer_pose_paint.dart';
 import '../canvas/paper_background.dart';
 import '../canvas/viewport_canvas_transform.dart';
@@ -38,6 +39,7 @@ class PlaybackFramePainter extends CustomPainter {
     this.cameraFrameSize,
     this.cutPose,
     this.cutAnchorPoint,
+    this.cutEffects = CompositeEffectPaint.none,
     this.fadeOpacity = 1,
     this.imageOpacity = 1,
     this.letterboxColor = const Color(0xFF15191C),
@@ -78,6 +80,14 @@ class PlaybackFramePainter extends CustomPainter {
 
   /// The cut pose's anchor; null = the display-space center.
   final CanvasPoint? cutAnchorPoint;
+
+  /// The V track's EFFECT chain, already sampled at this frame
+  /// ([trackEffectPaintAt]) — a layer's fx one level up, filtering the cut's
+  /// finished PICTURE. It lands on the composite draw for the same reason
+  /// [imageOpacity] does: the paper is the panel's stage, not part of the
+  /// cut's picture, so a grade on the V row must not tint the stage. None
+  /// costs nothing.
+  final CompositeEffectPaint cutEffects;
 
   /// The fade (the track's opacity lane): the cut's WHOLE contribution —
   /// stage and picture together — thins as one (R3b, "fade is
@@ -232,6 +242,11 @@ class PlaybackFramePainter extends CustomPainter {
     }
     final composite = image;
     if (composite != null && imageOpacity > 0) {
+      final imagePaint = Paint()
+        ..filterQuality = FilterQuality.low
+        ..color = Color.fromRGBO(0, 0, 0, imageOpacity.clamp(0.0, 1.0));
+      // The V row's chain filters the picture on its way onto the stage.
+      cutEffects.applyTo(imagePaint);
       canvas.drawImageRect(
         composite,
         Rect.fromLTWH(
@@ -242,9 +257,7 @@ class PlaybackFramePainter extends CustomPainter {
         ),
         // The dst upscale is what shows Half/Quarter caches at canvas size.
         canvasRect,
-        Paint()
-          ..filterQuality = FilterQuality.low
-          ..color = Color.fromRGBO(0, 0, 0, imageOpacity.clamp(0.0, 1.0)),
+        imagePaint,
       );
     }
     if (seNameTags.isNotEmpty) {
@@ -287,6 +300,7 @@ class PlaybackFramePainter extends CustomPainter {
       oldDelegate.cameraFrameSize != cameraFrameSize ||
       oldDelegate.cutPose != cutPose ||
       oldDelegate.cutAnchorPoint != cutAnchorPoint ||
+      oldDelegate.cutEffects != cutEffects ||
       oldDelegate.fadeOpacity != fadeOpacity ||
       oldDelegate.imageOpacity != imageOpacity ||
       oldDelegate.letterboxColor != letterboxColor ||
