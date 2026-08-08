@@ -16,15 +16,30 @@ import '../widgets/app_scrollbar.dart';
 /// mode of this widget: the timeline and the canvas own that shape in
 /// their own rail widgets, where the lane is part of the grid's geometry
 /// rather than something laid over content.
+///
+/// 🆕This is also what `AppScrollBehavior` hands every ordinary scrollable
+/// in the app, so it is the app's general scrollbar and not only the
+/// panels'. It stays here because that is where its three explicit callers
+/// are and moving it would be churn.
 class PanelScrollbar extends StatefulWidget {
   const PanelScrollbar({
     super.key,
     required this.controller,
     required this.child,
+    this.axis,
   });
 
   final ScrollController controller;
   final Widget child;
+
+  /// The axis, when the caller already knows it.
+  ///
+  /// Null means "read it off the controller once it attaches", which is
+  /// what the explicit callers do. The scroll BEHAVIOUR knows it up front
+  /// (`ScrollableDetails.direction`) and says so, which spares the first
+  /// frame a guess — and the guess was always vertical, so a horizontal
+  /// scroller flashed a bar down its right edge before correcting itself.
+  final Axis? axis;
 
   @override
   State<PanelScrollbar> createState() => _PanelScrollbarState();
@@ -34,6 +49,10 @@ class _PanelScrollbarState extends State<PanelScrollbar> {
   bool _metricsRefreshScheduled = false;
 
   Axis get _axis {
+    final stated = widget.axis;
+    if (stated != null) {
+      return stated;
+    }
     if (widget.controller.hasClients) {
       return axisDirectionToAxis(widget.controller.position.axisDirection);
     }
@@ -72,8 +91,35 @@ class _PanelScrollbarState extends State<PanelScrollbar> {
         return false;
       },
       child: Stack(
+        // ★PASSTHROUGH, not the default LOOSE fit — and this is load-bearing
+        // now that the behaviour wraps every scrollable in the app. A loose
+        // Stack hands its non-positioned child `constraints.loosen()`, and
+        // `SingleChildScrollView` SHRINK-WRAPS when its main axis is loose
+        // instead of filling: every scroll view whose content was shorter
+        // than its box would quietly collapse to its content's height,
+        // taking whatever was aligned or painted against its full size with
+        // it. Passthrough hands the constraints along untouched, so the
+        // wrapper is layout-invisible — which is the only thing a scrollbar
+        // is allowed to be.
+        //
+        // The clip goes with it. A scroll view already clips what needs
+        // clipping, so a second one here could only newly cut off something
+        // a caller deliberately let overflow.
+        fit: StackFit.passthrough,
+        clipBehavior: Clip.none,
         children: [
-          widget.child,
+          // ⛔The child gets NO automatic bar. Whoever built this one is
+          // the bar for that scrollable, and without this the three
+          // explicit callers below carried two — theirs and the one
+          // `AppScrollBehavior` builds. The config lands INSIDE this
+          // widget's child, which is where the scrollable is, and it does
+          // not reach this widget's own bar.
+          ScrollConfiguration(
+            behavior: ScrollConfiguration.of(
+              context,
+            ).copyWith(scrollbars: false),
+            child: widget.child,
+          ),
           if (_overflows)
             Positioned(
               left: vertical ? null : 0,

@@ -211,6 +211,11 @@ class _InstructionDefDialogState extends State<_InstructionDefDialog> {
       titleIcon: Icons.edit_outlined,
       onClose: () => Navigator.of(context).pop(),
       width: 400,
+      // The BODY scrolls itself, so the window must not scroll it again —
+      // two scrollers on one axis, and now two bars on the same right edge
+      // twelve pixels apart. It was always the wrong nesting; the app-wide
+      // scrollbar is only what made it visible.
+      scrollBody: false,
       body: SizedBox(
         width: 340,
         child: SingleChildScrollView(

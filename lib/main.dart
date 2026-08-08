@@ -12,6 +12,7 @@ import 'src/services/persistence/app_documents.dart' show AppStorage;
 import 'src/ui/debug/measurement_mode.dart';
 import 'src/ui/home_page.dart';
 import 'src/ui/input/app_input_settings.dart' show AppInput;
+import 'src/ui/theme/app_scroll_behavior.dart';
 import 'src/ui/theme/app_theme.dart';
 
 void main() {
@@ -87,6 +88,12 @@ class AnicelApp extends StatelessWidget {
       builder: (context, _) => MaterialApp(
         title: 'Anicel',
         theme: buildAppTheme(),
+        // ONE scrollbar in the app, and this is where it is installed.
+        // It has to be the App's and not a wrapper below it: dialogs,
+        // popup menus and dropdown routes are children of the Navigator's
+        // overlay rather than of [HomePage], and most of the surfaces that
+        // had no bar of their own live exactly there.
+        scrollBehavior: const AppScrollBehavior(),
         showPerformanceOverlay: MeasurementMode.frameTimingOverlay.value,
         home: const HomePage(),
       ),

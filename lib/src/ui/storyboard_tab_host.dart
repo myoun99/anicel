@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
+import 'theme/app_scroll_behavior.dart';
+
 import '../models/canvas_point.dart';
 import '../models/cut_id.dart';
 import '../models/layer_id.dart';
@@ -435,6 +437,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
       child: Row(
         children: [
           Expanded(
+            child: UnbarredScrollable(
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
@@ -491,6 +494,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   ),
                 ],
               ),
+            ),
             ),
           ),
           const SizedBox(width: 8),

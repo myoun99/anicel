@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../theme/app_scroll_behavior.dart';
+
 /// Slim toolbar strip atop a panel body hosting the panel's controls.
 /// The TAB names the panel — this bar never repeats the title.
 class EditorPanelHeader extends StatelessWidget {
@@ -24,10 +26,12 @@ class EditorPanelHeader extends StatelessWidget {
       // previews shrink panels to ~100px — a bare Row overflowed there).
       child: Align(
         alignment: Alignment.centerRight,
-        child: SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          reverse: true,
-          child: trailing,
+        child: UnbarredScrollable(
+          child: SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            reverse: true,
+            child: trailing,
+          ),
         ),
       ),
     );

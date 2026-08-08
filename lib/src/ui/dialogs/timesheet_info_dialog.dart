@@ -92,6 +92,9 @@ class _TimesheetInfoDialogState extends State<TimesheetInfoDialog> {
       titleIcon: Icons.description_outlined,
       onClose: () => Navigator.of(context).pop(),
       width: 420,
+      // Same as the instruction editor: this body owns its scroller, so the
+      // window may not wrap it in a second one.
+      scrollBody: false,
       body: SizedBox(
         width: 360,
         child: SingleChildScrollView(
