@@ -5,6 +5,7 @@ import '../text/app_strings.dart';
 import '../theme/app_theme.dart';
 import '../widgets/color_swatch_button.dart';
 import '../widgets/panel_flyout.dart';
+import '../widgets/static_raster.dart';
 
 /// The onion-skin dock panel: the light-table graph every 2D package
 /// speaks (TVPaint's light table, Krita's onion docker) — ONE strip
@@ -47,74 +48,82 @@ class OnionSkinPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
-        children: [
-          Row(
-            children: [
-              Flexible(
-                child: PanelFlyoutButton(
-                  key: const ValueKey<String>('onion-step-button'),
-                  label: _stepLabel(settings.step),
-                  tooltip: AppText.strings.onionPegCountHelp,
-                  expand: true,
-                  entriesBuilder: () => [
-                    for (final step in OnionSkinStep.values)
-                      PanelFlyoutItem(
-                        keyValue: 'onion-step-${step.name}',
-                        label: switch (step) {
-                          OnionSkinStep.blocks => 'Blocks (drawings)',
-                          OnionSkinStep.frames => 'Frames',
-                        },
-                        checked: settings.step == step,
-                        onSelected: () =>
-                            onChanged(settings.copyWith(step: step)),
-                      ),
-                  ],
+      // Baked INSIDE its own scroll view, like every other panel body: a
+      // viewport is itself a repaint boundary, so the tab-level wrapper
+      // can never reach past one. See [StaticRaster] and
+      // `EditorPanelBody`, which does the same thing for panels that use
+      // the shared body instead of rolling their own scroller.
+      child: StaticRaster(
+        debugLabel: 'body:onion',
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Row(
+              children: [
+                Flexible(
+                  child: PanelFlyoutButton(
+                    key: const ValueKey<String>('onion-step-button'),
+                    label: _stepLabel(settings.step),
+                    tooltip: AppText.strings.onionPegCountHelp,
+                    expand: true,
+                    entriesBuilder: () => [
+                      for (final step in OnionSkinStep.values)
+                        PanelFlyoutItem(
+                          keyValue: 'onion-step-${step.name}',
+                          label: switch (step) {
+                            OnionSkinStep.blocks => 'Blocks (drawings)',
+                            OnionSkinStep.frames => 'Frames',
+                          },
+                          checked: settings.step == step,
+                          onSelected: () =>
+                              onChanged(settings.copyWith(step: step)),
+                        ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 6),
-              Flexible(
-                child: PanelFlyoutButton(
-                  key: const ValueKey<String>('onion-mode-button'),
-                  label: _modeLabel(settings.mode),
-                  tooltip: AppText.strings.onionGhostColorHelp,
-                  expand: true,
-                  entriesBuilder: () => [
-                    for (final mode in OnionSkinMode.values)
-                      PanelFlyoutItem(
-                        keyValue: 'onion-mode-${mode.name}',
-                        label: _modeLabel(mode),
-                        checked: settings.mode == mode,
-                        onSelected: () =>
-                            onChanged(settings.copyWith(mode: mode)),
-                      ),
-                  ],
+                const SizedBox(width: 6),
+                Flexible(
+                  child: PanelFlyoutButton(
+                    key: const ValueKey<String>('onion-mode-button'),
+                    label: _modeLabel(settings.mode),
+                    tooltip: AppText.strings.onionGhostColorHelp,
+                    expand: true,
+                    entriesBuilder: () => [
+                      for (final mode in OnionSkinMode.values)
+                        PanelFlyoutItem(
+                          keyValue: 'onion-mode-${mode.name}',
+                          label: _modeLabel(mode),
+                          checked: settings.mode == mode,
+                          onSelected: () =>
+                              onChanged(settings.copyWith(mode: mode)),
+                        ),
+                    ],
+                  ),
                 ),
-              ),
-              const SizedBox(width: 8),
-              ColorSwatchButton(
-                keyValue: 'onion-tint-before',
-                title: AppText.strings.onionBefore,
-                tooltip: AppText.strings.onionBeforeTint,
-                color: settings.tintBefore,
-                onChanged: (color) =>
-                    onChanged(settings.copyWith(tintBefore: color)),
-              ),
-              const SizedBox(width: 6),
-              ColorSwatchButton(
-                keyValue: 'onion-tint-after',
-                title: AppText.strings.onionAfter,
-                tooltip: AppText.strings.onionAfterTint,
-                color: settings.tintAfter,
-                onChanged: (color) =>
-                    onChanged(settings.copyWith(tintAfter: color)),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          _OnionFalloffStrip(settings: settings, onChanged: onChanged),
-        ],
+                const SizedBox(width: 8),
+                ColorSwatchButton(
+                  keyValue: 'onion-tint-before',
+                  title: AppText.strings.onionBefore,
+                  tooltip: AppText.strings.onionBeforeTint,
+                  color: settings.tintBefore,
+                  onChanged: (color) =>
+                      onChanged(settings.copyWith(tintBefore: color)),
+                ),
+                const SizedBox(width: 6),
+                ColorSwatchButton(
+                  keyValue: 'onion-tint-after',
+                  title: AppText.strings.onionAfter,
+                  tooltip: AppText.strings.onionAfterTint,
+                  color: settings.tintAfter,
+                  onChanged: (color) =>
+                      onChanged(settings.copyWith(tintAfter: color)),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            _OnionFalloffStrip(settings: settings, onChanged: onChanged),
+          ],
+        ),
       ),
     );
   }
