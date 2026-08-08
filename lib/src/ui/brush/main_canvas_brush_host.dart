@@ -80,6 +80,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.onStrokeInputActiveChanged,
     this.onSelectionInteractionChanged,
     this.onDrawRefused,
+    this.rowAcceptsStrokes = true,
   });
 
   final BrushFrameKey? activeFrameKey;
@@ -200,6 +201,19 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// WHICH refusal applies, so it only reports the attempt.
   final VoidCallback? onDrawRefused;
 
+  /// Whether the row the frame-axis verbs are standing on takes strokes at
+  /// all (user, 2026-08-08).
+  ///
+  /// False while you are standing on a PROPERTY LANE. Standing there used
+  /// to leave drawing available on the layer underneath — "그림은 그릴 수
+  /// 있을지라도 서있는건 하나" — and the user retired that: a lane is a row
+  /// you can be ON, so being on it is not being on the layer, and a stroke
+  /// aimed at a property has nowhere to land.
+  ///
+  /// It joins the SAME gate an empty frame goes through, so every pixel
+  /// verb refuses for one reason and the shared cursor notice explains it.
+  final bool rowAcceptsStrokes;
+
   BrushFrameKey? get resolvedActiveFrameKey =>
       activeFrameKey ?? selection?.toBrushFrameKey();
 
@@ -245,7 +259,8 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
   @override
   Widget build(BuildContext context) {
     final coordinator = _coordinator;
-    final hasEditableFrame = _frameKeys.isNotEmpty && coordinator != null;
+    final hasEditableFrame =
+        widget.rowAcceptsStrokes && _frameKeys.isNotEmpty && coordinator != null;
     // The blank canvas is for having NO COORDINATOR — a project where
     // nothing has been drawn yet, so the panel has no editing stack to
     // show. It is deliberately NOT the answer to "the playhead is on an

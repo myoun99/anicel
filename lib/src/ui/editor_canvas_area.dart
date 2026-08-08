@@ -37,6 +37,8 @@ import 'text/se_name_tag_paint.dart';
 import 'timeline/layer_label_controls.dart';
 import '../models/layer.dart' show layerAcceptsBrushInput;
 import '../models/layer_kind.dart' show layerKindHasLayerTransform;
+import '../models/timeline_row_address.dart'
+    show LaneRowAddress, TimelineRowAddress;
 import 'widgets/cursor_notice.dart';
 import 'timeline/transform_lane_editing.dart';
 
@@ -351,6 +353,14 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final strings = AppStrings.of(
       session.languageSettings.value.programLanguage,
     );
+    // Standing on a PROPERTY LANE (user, 2026-08-08): the row you are on
+    // is not a drawing surface, whatever the layer under it could take.
+    // The layer-not-drawable wording is reused deliberately — the user
+    // asked for that notice, and it is the true one: this row does not
+    // accept strokes.
+    if (!_rowAcceptsStrokes(session.currentRowListenable.value)) {
+      return strings.noticeLayerNotDrawable;
+    }
     final activeLayer = session.activeLayer;
     // R27 #16: the question is whether THIS LAYER takes strokes, not
     // which section it sits in — the CAM section is no longer uniformly
@@ -361,6 +371,15 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         ? strings.noticeNoFrameHere
         : strings.noticeLayerNotDrawable;
   }
+
+  /// Whether the row the frame-axis verbs are on can take a stroke.
+  ///
+  /// A LANE cannot. Standing on a property used to keep drawing available
+  /// on the layer beneath, which is the fudge the user retired: you stand
+  /// in exactly one place, and if that place is `Blur ▸ Radius` then the
+  /// brush has nothing to write on.
+  static bool _rowAcceptsStrokes(TimelineRowAddress? row) =>
+      row is! LaneRowAddress;
 
   Widget _buildInteractiveCanvas(
     EditorSessionManager session, {
@@ -464,10 +483,25 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         // tweaks rebuild ONLY the host config — every session-derived
         // value above (layer stacks, poses, onion requests) is captured
         // and reused, and the host's element keeps all its state.
-        child: ValueListenableBuilder<BrushToolState>(
-          valueListenable: widget.brushToolState,
-          builder: (context, toolState, _) {
+        //
+        // The STANDING ROW rides the same boundary, SUBSCRIBED rather than
+        // read at build time: it is published without a session notify (the
+        // claim fires on pointer-down, inside gestures whose contract is
+        // silence until release), so a canvas that read it above would go
+        // on taking strokes after the user stepped onto a property lane.
+        // One merged listenable instead of a second nested builder — both
+        // only ever change the host's CONFIG.
+        child: ListenableBuilder(
+          listenable: Listenable.merge([
+            widget.brushToolState,
+            session.currentRowListenable,
+          ]),
+          builder: (context, _) {
+            final toolState = widget.brushToolState.value;
             return MainCanvasBrushHost(
+              rowAcceptsStrokes: _rowAcceptsStrokes(
+                session.currentRowListenable.value,
+              ),
               // MERGED canvas: we own the live-stroke overlay, so the
               // layer stack can paint the active layer inside the
               // composite tree and a folder's group buffer can enclose

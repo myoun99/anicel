@@ -18,9 +18,13 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart'
     show VerticalWritingText;
+import 'package:anicel/src/ui/brush/brush_canvas_panel.dart'
+    show BrushCanvasPanel;
 import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
 import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
     show railSelectedRowColor;
+import 'package:anicel/src/ui/timeline/timeline_cell_style.dart'
+    show timelineStandingCellDecoration;
 
 /// R10 #19's RAIL half: the row you are standing on is drawn, and a
 /// property lane's LABEL is a place you can stand.
@@ -35,7 +39,17 @@ import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
 /// (a `LayerId` cannot be interpolated into a const key).
 const _cameraId = 'lane-cam-layer';
 const _cameraLayerId = LayerId(_cameraId);
-const _drawLayerId = LayerId('lane-draw-layer');
+const _drawId = 'lane-draw-layer';
+const _drawLayerId = LayerId(_drawId);
+
+/// The standing RING itself, told apart from the plates and washes that
+/// also decorate boxes inside these keys: it is the one with a border.
+final _decoratedRing = find.byWidgetPredicate(
+  (widget) =>
+      widget is DecoratedBox &&
+      widget.decoration is BoxDecoration &&
+      (widget.decoration as BoxDecoration).border != null,
+);
 
 Project _project() {
   return Project(
@@ -89,13 +103,14 @@ Future<void> _pump(WidgetTester tester) async {
 Future<void> _openLanes(
   WidgetTester tester, {
   String keyPrefix = 'timeline',
+  String layerId = _cameraId,
 }) async {
   await tester.tap(
-    find.byKey(ValueKey<String>('$keyPrefix-lane-toggle-$_cameraId')),
+    find.byKey(ValueKey<String>('$keyPrefix-lane-toggle-$layerId')),
   );
   await tester.pumpAndSettle();
   final groupToggle = find.byKey(
-    ValueKey<String>('$keyPrefix-lane-group-toggle-$_cameraId-transform-group'),
+    ValueKey<String>('$keyPrefix-lane-group-toggle-$layerId-transform-group'),
   );
   await tester.ensureVisible(groupToggle);
   await tester.pumpAndSettle();
@@ -103,8 +118,11 @@ Future<void> _openLanes(
   await tester.pumpAndSettle();
 }
 
-Finder _laneLabel(String laneId, {String keyPrefix = 'timeline'}) =>
-    find.byKey(ValueKey<String>('$keyPrefix-lane-label-$_cameraId-$laneId'));
+Finder _laneLabel(
+  String laneId, {
+  String keyPrefix = 'timeline',
+  String layerId = _cameraId,
+}) => find.byKey(ValueKey<String>('$keyPrefix-lane-label-$layerId-$laneId'));
 
 /// The label's PLATE — what says "you are standing here".
 Color _plateOf(WidgetTester tester, Finder label) {
@@ -120,8 +138,9 @@ Future<void> _pressLaneName(
   String laneId,
   String name, {
   String keyPrefix = 'timeline',
+  String layerId = _cameraId,
 }) async {
-  final label = _laneLabel(laneId, keyPrefix: keyPrefix);
+  final label = _laneLabel(laneId, keyPrefix: keyPrefix, layerId: layerId);
   await tester.ensureVisible(label);
   await tester.pumpAndSettle();
   // The sheet stands its names up, so the name is a VerticalWritingText
@@ -295,6 +314,76 @@ void main() {
           Theme.of(tester.element(find.byType(EditorWorkspace))).colorScheme,
         ),
       );
+    });
+  });
+
+  group('standing on a lane is standing, not a selection that looks like it', () {
+    testWidgets('the lane mark and the layer row wear the SAME ring', (
+      tester,
+    ) async {
+      await _pump(tester);
+      await _openLanes(tester);
+
+      BoxDecoration ringUnder(ValueKey<String> key) => tester
+          .widget<DecoratedBox>(
+            find.descendant(of: find.byKey(key), matching: _decoratedRing),
+          )
+          .decoration as BoxDecoration;
+
+      final layerRing = ringUnder(
+        const ValueKey<String>('timeline-selected-cell'),
+      );
+      await _pressLaneName(tester, 'position', 'Position');
+      final laneRing = ringUnder(
+        const ValueKey<String>('timeline-lane-standing-cell'),
+      );
+
+      // The lane used to draw the range-selection BAND here — filled, 2px,
+      // 6px corners — which is how you could SEE that standing on a
+      // property was a one-cell selection wearing standing's name.
+      expect(laneRing, layerRing);
+      expect(laneRing, timelineStandingCellDecoration);
+    });
+
+    testWidgets('a lane takes no strokes; its layer does', (tester) async {
+      await _pump(tester);
+      final session = _sessionOf(tester);
+      // A cel to draw on, so "refused" cannot pass for "nothing here".
+      session.selectLayer(_drawLayerId);
+      session.createDrawingAtCurrentFrame();
+      await tester.pumpAndSettle();
+
+      // The MAIN canvas by key: other brush panels (the tip editor's, the
+      // envelope's) are mounted too and would make this ambiguous.
+      bool canvasTakesStrokes() => tester
+          .widget<BrushCanvasPanel>(
+            find.byKey(const ValueKey<String>('main-canvas-brush-host')),
+          )
+          .celEditable;
+
+      expect(
+        canvasTakesStrokes(),
+        isTrue,
+        reason: 'standing on the drawing row, on its cel',
+      );
+
+      await _openLanes(tester, layerId: _drawId);
+      await _pressLaneName(tester, 'position', 'Position', layerId: _drawId);
+
+      expect(session.currentRow, const LaneRowAddress(_drawLayerId, 'position'));
+      expect(
+        canvasTakesStrokes(),
+        isFalse,
+        reason: 'a property lane is a row you stand on, not a surface — the '
+            'old fudge kept the layer underneath drawable',
+      );
+
+      // And back: the layer row takes strokes again.
+      await tester.tap(
+        find.byKey(const ValueKey<String>('timeline-layer-row-$_drawId')),
+      );
+      await tester.pumpAndSettle();
+      expect(canvasTakesStrokes(), isTrue);
     });
   });
 

@@ -226,9 +226,13 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   /// The user's rule when this was settled: wherever frame cells exist the
   /// playhead can be put, with no exceptions — and a lane band was the one
   /// place with visible cells that refused it, because the seek lived on
-  /// the cell WIDGET and a band paints its cells. Standing on a lane also
-  /// takes its owner as the active layer, which is what keeps drawing
-  /// available while a property is the verb's subject.
+  /// the cell WIDGET and a band paints its cells.
+  ///
+  /// It still takes the lane's owner as the ACTIVE layer, but that no
+  /// longer means you can draw (2026-08-08). Standing on a property is
+  /// standing on a property; the canvas refuses strokes until you step
+  /// back onto a row that is a surface. The active layer is what you
+  /// return TO — pressing the layer's own row is one tap away.
   void _standOnLane(LayerId layerId, String laneId, int frameIndex) {
     _session.clearLaneRangeSelection();
     _session.selectLayer(layerId);
