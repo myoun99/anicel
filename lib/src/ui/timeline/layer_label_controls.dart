@@ -23,8 +23,20 @@ import '../text/vertical_writing_text.dart';
 /// 24/26/86 so the full set still fits the 312 rail.
 /// Leading slot every rail row reserves for the INLINE section tag
 /// (ACTION/SE/CAM on the section's first row — UI-R5, the bracket gutter
-/// retired); the legend header's sections cell sits over the same slot.
-const double layerSectionLabelSlotWidth = 36;
+/// retired); the legend header's sections cell sits over the same slot,
+/// and the x-sheet spends the same number as the HEIGHT of its section
+/// strip.
+///
+/// 36 → 16 (user, 2026-08-08: 'compact, just the letters plus a hair').
+/// MEASURED, not chosen: standing the letters up ([VerticalLatinForm]) puts
+/// the glyph column at one em — 9px at the band's 9pt — and the widest
+/// thing that ever sits here otherwise is the legend's 13px sections icon.
+/// 16 clears both and leaves 3.5px of air; 36 left thirteen.
+///
+/// Every rail row's name starts this much earlier as a result: the slot is
+/// the first term of [layerRailLeadingWidth], which is the whole point of
+/// the number living here rather than in each surface.
+const double layerSectionLabelSlotWidth = 16;
 
 /// The wash a rail row wears while it is THE row the frame-axis verbs act
 /// on — the active layer's row, and (R10 #19's other half) the fx header
@@ -104,16 +116,35 @@ class SectionBandZone extends StatelessWidget {
           right: BorderSide(color: colorScheme.outlineVariant),
         ),
       ),
-      child: Center(
-        child: ClipRect(
-          child: VerticalWritingText(
-            text: label,
-            style: TextStyle(
-              fontSize: 9,
-              letterSpacing: 1.2,
-              fontWeight: FontWeight.bold,
-              height: 1.15,
-              color: colorScheme.onSurfaceVariant,
+      // The band names its own region. It used to get a node for free from
+      // the flyout's InkWell — an ACTION is a tap target, so the tree gave
+      // it a boundary — and taking the tap away took the heading's
+      // semantics with it. A label is a label whether or not you can press
+      // it, so the boundary is stated here now.
+      child: Semantics(
+        container: true,
+        label: label,
+        child: ExcludeSemantics(
+          child: Center(
+            child: ClipRect(
+              child: VerticalWritingText(
+                text: label,
+                // ACTION / SE / CAM stand UP (user, 2026-08-08). Lying down
+                // is the Japanese standard and it is what the printed sheet
+                // keeps, but this band is a three-letter tag you glance at,
+                // and glancing at it meant tilting your head.
+                latinForm: VerticalLatinForm.upright,
+                style: TextStyle(
+                  fontSize: 9,
+                  // Dropped with the turn: letter spacing is a HORIZONTAL
+                  // notion and the renderer zeroes it anyway (the leading
+                  // comes from the cell extent), so carrying it here only
+                  // said something untrue about the label.
+                  fontWeight: FontWeight.bold,
+                  height: 1.15,
+                  color: colorScheme.onSurfaceVariant,
+                ),
+              ),
             ),
           ),
         ),

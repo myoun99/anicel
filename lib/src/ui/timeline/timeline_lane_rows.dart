@@ -462,9 +462,11 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
           // R10 R6: stood up on the sheet, like every other header.
           child: Flex(
             direction: widget.axis,
-            mainAxisAlignment: widget.axis == Axis.horizontal
-                ? MainAxisAlignment.start
-                : MainAxisAlignment.center,
+            // START on BOTH axes (user, 2026-08-08): the sheet's headers
+            // used to center their contents while the rail's began at the
+            // leading edge, so the twirl and the name sat at a different
+            // place on each surface for no reason either of them has.
+            mainAxisAlignment: MainAxisAlignment.start,
             children: [
               if (widget.axis == Axis.horizontal &&
                   widget.leadingInset > 0) ...[
@@ -499,6 +501,10 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
                       )
                     : VerticalWritingText(
                         text: lane.label,
+                        // 'Transform', 'Gaussian Blur' — property names a
+                        // person reads, so they stand up (user, 2026-08-08).
+                        latinForm: VerticalLatinForm.upright,
+                        mainAlignment: 0,
                         style: TextStyle(
                           fontSize: 12,
                           fontWeight: FontWeight.w600,
@@ -554,10 +560,17 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
     );
     // A lane's name reads down its column on the sheet, through the shared
     // vertical-writing table — 'Position' will not fit across 28px, and
-    // ellipsis would have left one glyph and a dot.
+    // ellipsis would have left one glyph and a dot. The letters STAND UP
+    // in it (user, 2026-08-08) and the column starts at the column's top,
+    // which is the rail's `centerLeft` transposed.
     final label = widget.axis == Axis.horizontal
         ? Text(lane.label, overflow: TextOverflow.ellipsis, style: labelStyle)
-        : VerticalWritingText(text: lane.label, style: labelStyle);
+        : VerticalWritingText(
+            text: lane.label,
+            latinForm: VerticalLatinForm.upright,
+            mainAlignment: 0,
+            style: labelStyle,
+          );
 
     final Widget content;
     if (widget.axis == Axis.horizontal) {
@@ -611,14 +624,19 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
                       gap +
                       _laneNavigatorExtent +
                       (showsValue ? gap + _laneValueExtent : 0);
+          // THE RAIL ROW'S ORDER, TRANSPOSED (user, 2026-08-08): navigator,
+          // then the name, then the value at the far end. The sheet used to
+          // lead with the name and put the navigator after it, so the same
+          // three controls read in two different orders depending on which
+          // way the panel was turned.
           return Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
-              Expanded(child: label),
               if (showsNavigator) ...[
-                const SizedBox(height: gap),
                 _navigator(colorScheme),
+                const SizedBox(height: gap),
               ],
+              Expanded(child: label),
               if (showsValue) ...[
                 const SizedBox(height: gap),
                 // A fixed slot, so a long readout ellipsises inside it
@@ -655,9 +673,13 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
         color: plate,
         border: Border.all(color: colorScheme.outlineVariant, width: 0.5),
       ),
+      // The rail's `centerLeft` transposed: the START of the main axis,
+      // centered across it. The sheet centered on BOTH axes, which is what
+      // made its lane names float in the middle of a column whose rail
+      // twin begins at the leading edge.
       alignment: widget.axis == Axis.horizontal
           ? Alignment.centerLeft
-          : Alignment.center,
+          : Alignment.topCenter,
       child: widget.axis == Axis.horizontal && widget.leadingInset > 0
           ? Row(
               children: [

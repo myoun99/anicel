@@ -2585,6 +2585,12 @@ class _LayerHeader extends StatelessWidget {
                   child: ClipRect(
                     child: VerticalWritingText(
                       text: layer.name,
+                      // A name you READ, so the letters stand up and the
+                      // column begins at the top — the rail's left-aligned
+                      // name, transposed (user, 2026-08-08). It used to lie
+                      // down AND float in the middle of its own column.
+                      latinForm: VerticalLatinForm.upright,
+                      mainAlignment: 0,
                       style: TextStyle(
                         fontSize: 11,
                         color: colorScheme.onSurface,
