@@ -221,21 +221,23 @@ class BrushCanvasPanel extends StatefulWidget {
 
   /// The active layer's painter for [viewportUnderlayBuilder] in merged
   /// mode — built here because the surface lives on the coordinator.
-  BitmapSurfacePainter? _activeSurfacePainterFor(
+  /// What the MERGED-mode stack painter draws the active layer with.
+  ///
+  /// ⛔Built by the STATE, not here, and memoized — see
+  /// `_BrushCanvasPanelState._activeSurfacePainter`. This used to mint a
+  /// fresh instance per call and `CanvasLayerStackView.shouldRepaint`
+  /// compares the field with `!identical(...)`, so the comparison could
+  /// never answer false and every rebuild of this panel re-composited the
+  /// whole stack.
+  ({BitmapSurface surface, BrushFrameKey key})? _activeSurfaceIdentityFor(
     BrushFrameEditingCoordinator coordinator,
   ) {
-    final overlay = activeStrokeOverlayModel;
-    if (overlay == null) {
+    if (activeStrokeOverlayModel == null) {
       return null;
     }
-    final activeKey = coordinator.activeFrameKey;
-    return BitmapSurfacePainter(
+    return (
       surface: coordinator.activeSessionState.canvasState.currentSurface,
-      overlayModel: overlay,
-      // The stack painter applies the viewport itself, so the surface
-      // painter draws in canvas space.
-      showTransparentBackground: false,
-      staleScope: (activeKey.layerId, activeKey.frameId),
+      key: coordinator.activeFrameKey,
     );
   }
 
@@ -460,6 +462,54 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   late int _stageBackdropArgb;
   late int _stagePasteboardArgb;
   late double _stagePasteboardMargin;
+
+  /// The MERGED-mode surface painter, kept ALIVE across rebuilds.
+  ///
+  /// 🐛It was rebuilt on every call, and `CanvasLayerStackView` gates the
+  /// entire stack composite on `!identical(oldDelegate.activeSurfacePainter,
+  /// activeSurfacePainter)`. A fresh instance every build makes that test
+  /// unconditionally true, so ANY rebuild of this panel — a pan frame, a
+  /// tool switch, an unrelated notify — redrew the paper, every layer, the
+  /// onion ghosts and a `saveLayer` per group buffer. Measured: ten
+  /// rebuilds, ten distinct painters.
+  ///
+  /// ⚠️Reuse is not merely cheaper, it is more correct: the painter passes
+  /// `repaint: Listenable.merge([...])` to `CustomPainter`, so a new one per
+  /// frame also churned a subscription per frame.
+  ///
+  /// The token is what the painter DRAWS — the surface it reads and the cel
+  /// it is scoped to. A commit swaps the surface and the memo falls.
+  BitmapSurfacePainter? _memoActiveSurfacePainter;
+  ({BitmapSurface surface, BrushFrameKey key})? _activeSurfacePainterToken;
+
+  BitmapSurfacePainter? _activeSurfacePainter() {
+    final coordinator = widget._editableCoordinator;
+    final overlay = widget.activeStrokeOverlayModel;
+    if (coordinator == null || overlay == null) {
+      _memoActiveSurfacePainter = null;
+      _activeSurfacePainterToken = null;
+      return null;
+    }
+    final token = widget._activeSurfaceIdentityFor(coordinator);
+    if (token == null) {
+      _memoActiveSurfacePainter = null;
+      _activeSurfacePainterToken = null;
+      return null;
+    }
+    if (_memoActiveSurfacePainter != null &&
+        token == _activeSurfacePainterToken) {
+      return _memoActiveSurfacePainter;
+    }
+    _activeSurfacePainterToken = token;
+    return _memoActiveSurfacePainter = BitmapSurfacePainter(
+      surface: token.surface,
+      overlayModel: overlay,
+      // The stack painter applies the viewport itself, so the surface
+      // painter draws in canvas space.
+      showTransparentBackground: false,
+      staleScope: (token.key.layerId, token.key.frameId),
+    );
+  }
 
   void _readStageColors() {
     final scope = CanvasStageColors.maybeOf(context);
@@ -993,7 +1043,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   ({CanvasViewport viewport, Size viewportSize, CanvasSize canvasSize})?
   _panbarsToken;
   ({
-    CanvasViewport viewport,
+    double zoom,
+    double rotationDegrees,
+    bool flipHorizontal,
+    bool flipVertical,
     CanvasSize canvasSize,
     bool rotation,
     int paper,
@@ -1014,7 +1067,28 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       canvasSize: widget.canvasSize,
     );
     final pillToken = (
-      viewport: _viewport,
+      // ⛔NOT the whole viewport. The pill reads exactly four things off it
+      // — the zoom it prints, the rotation it prints, and the two flip
+      // toggles it lights — and a PAN moves none of them. Carrying the
+      // whole object meant `_setViewport`'s per-`PointerMove` `setState`
+      // threw the pill away on every frame of every pan and rebuilt
+      // thirteen icon buttons with their tooltips, overlay portals, ink and
+      // gesture detectors (유저, R4 후속).
+      //
+      // ★This is the SAME defect the note below already records about the
+      // panel title, one field over: the cure had been applied to the field
+      // that got caught rather than to the rule. The rule is stated at the
+      // end of that note and it is the one to keep — everything the pill
+      // SHOWS is in this token, and nothing it does not.
+      //
+      // ⚠️So the bar can be handed a stale `viewport` object while the memo
+      // holds. That is safe only because the four fields below are the only
+      // ones it touches; adding a fifth read without adding it here brings
+      // back a stale readout.
+      zoom: _viewport.zoom,
+      rotationDegrees: _viewport.rotationDegrees,
+      flipHorizontal: _viewport.flipHorizontal,
+      flipVertical: _viewport.flipVertical,
       canvasSize: widget.canvasSize,
       rotation: widget.allowViewRotation,
       // The swatches the pill CARRIES. They were missing, so the pill
@@ -1362,10 +1436,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                       widget._editableCoordinator ==
                                                               null
                                                           ? null
-                                                          : widget._activeSurfacePainterFor(
-                                                              widget
-                                                                  ._editableCoordinator!,
-                                                            ),
+                                                          : _activeSurfacePainter(),
                                                     ),
                                                   ),
                                                 Positioned.fill(
