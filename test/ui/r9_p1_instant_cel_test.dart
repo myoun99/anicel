@@ -28,7 +28,7 @@ void main() {
       // This test DOCUMENTS the language fact rather than guarding the fix:
       // the tile path needs the native engine, which `flutter test` does
       // not load, so the fix itself is verified by measurement on device
-      // (Edit ▸ Frame Timing Overlay). What it does guard is the reasoning
+      // (Settings ▸ Frame Timing Overlay). What it does guard is the reasoning
       // — if Dart ever canonicalised tear-offs, `identical` would stop
       // being wrong and this test would tell us.
       final session = makeSession();

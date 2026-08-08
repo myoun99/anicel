@@ -79,7 +79,7 @@ class AnicelApp extends StatelessWidget {
       listenable: Listenable.merge([
         AppColors.accentSettings,
         AppInput.settings,
-        // Edit ▸ Frame Timing Overlay: a MaterialApp property, so the
+        // Settings ▸ Frame Timing Overlay: a MaterialApp property, so the
         // toggle has to reach this build — that is what makes it usable
         // on a tablet, where a --dart-define costs a rebuild and an
         // install.
