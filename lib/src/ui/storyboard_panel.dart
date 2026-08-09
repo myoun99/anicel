@@ -18,11 +18,7 @@ import '../models/project.dart';
 import '../models/project_frame_rate.dart';
 import '../models/se_audio_spans.dart';
 import '../models/timeline_coverage.dart'
-    show
-        TimelineBlockEdge,
-        TimelineDrawingBlock,
-        coveringDrawingBlockAt,
-        drawingBlocks;
+    show TimelineBlockEdge, coveringDrawingBlockAt, drawingBlocks;
 import '../models/track.dart';
 import '../models/track_id.dart';
 import '../models/track_transform_lane_carrier.dart';
@@ -2069,25 +2065,55 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// HAS blocks: an S row's sounds, read from the very list the row paints
   /// its spans from, so the outline and the block cannot disagree.
   ///
-  /// The V row is left out on purpose, and not for want of blocks: its cut
-  /// under the playhead is already the ACTIVE cut, and an active cut block
-  /// already draws its own 2px accent border ([StoryboardCutBlocksPainter]).
-  /// Outlining it again would put two 2px borders on one rectangle.
-  TimelineDrawingBlock? _standingBlockAt(
+  /// On the V row the blocks are CUTS, and the same sentence holds: the cut
+  /// the playhead is inside is the block you are standing on. The cut block
+  /// painter used to say this itself, in its own words — a 2px accent
+  /// border on the active cut — which is exactly the not-unified-with-the-
+  /// timeline shape this round exists to retire. That fork is gone; the
+  /// standing outline says it now, in the timeline's words, on every row.
+  ({int startIndex, int endIndexExclusive})? _standingBlockAt(
     Track track,
     TimelineRowAddress row,
     int frame,
   ) {
-    if (row is! LayerRowAddress) {
-      return null;
+    switch (row) {
+      case LayerRowAddress(:final layerId):
+        for (var slot = 0; slot < _seSlotCount(track); slot += 1) {
+          final layer = _seDisplayAt(track, slot);
+          if (layer != null && layer.id == layerId) {
+            final block = coveringDrawingBlockAt(layer.timeline, frame);
+            return block == null
+                ? null
+                : (
+                    startIndex: block.startIndex,
+                    endIndexExclusive: block.endIndexExclusive,
+                  );
+          }
+        }
+        return null;
+      case TrackRowAddress(:final trackId):
+        if (trackId != track.id) {
+          return null;
+        }
+        // The same walk [_cutAtPlayheadOn] takes, which is what decides
+        // which cut is active — so the outline and the active cut are one
+        // answer rather than two that agree by luck.
+        for (final entry in buildStoryboardTimelineLayout(widget.project)) {
+          if (entry.trackId == track.id &&
+              frame >= entry.startFrame &&
+              frame < entry.endFrame) {
+            return (
+              startIndex: entry.startFrame,
+              endIndexExclusive: entry.endFrame,
+            );
+          }
+        }
+        return null;
+      case LaneRowAddress():
+        // A lane holds keys, not blocks — the plain ring, as in the
+        // timeline.
+        return null;
     }
-    for (var slot = 0; slot < _seSlotCount(track); slot += 1) {
-      final layer = _seDisplayAt(track, slot);
-      if (layer != null && layer.id == row.layerId) {
-        return coveringDrawingBlockAt(layer.timeline, frame);
-      }
-    }
-    return null;
   }
 
   /// The band itself: [selection.spanRows] top to bottom — intervening

@@ -107,6 +107,46 @@ void main() {
     expect(ring.height, moreOrLessEquals(row.height), reason: reason);
   }
 
+  testWidgets('standing on the V row outlines the CUT the playhead is in — '
+      'the same sentence the S row and the timeline speak', (tester) async {
+    await pumpStoryboard(tester);
+    // Nothing picked yet: the rail rests on the V row.
+    final area = tester.getRect(
+      find.byKey(
+        const ValueKey<String>('storyboard-track-timeline-area-sb-track'),
+      ),
+    );
+    final cellWidth = playheadRect(tester).width;
+    final vRow = tester.getRect(
+      find.byKey(const ValueKey<String>('storyboard-track-row-sb-track')),
+    );
+
+    // Frame 0 is inside cut-1 (frames 0..8), so the block is the cut.
+    final outline = tester.getRect(
+      find.byKey(const ValueKey<String>('storyboard-standing-block')),
+    );
+    expect(outline.left, moreOrLessEquals(area.left));
+    expect(
+      outline.width,
+      moreOrLessEquals(8 * cellWidth),
+      reason: 'cut-1 runs 8 frames, and the outline is the CUT block',
+    );
+    expect(outline.top, moreOrLessEquals(vRow.top));
+    expect(outline.height, moreOrLessEquals(vRow.height));
+
+    // Step into the SECOND cut: the outline moves with the block, exactly
+    // as the S row's does.
+    await tester.tapAt(
+      Offset(area.left + 9.5 * cellWidth, vRow.top + vRow.height / 2),
+    );
+    await tester.pumpAndSettle();
+    final second = tester.getRect(
+      find.byKey(const ValueKey<String>('storyboard-standing-block')),
+    );
+    expect(second.left, moreOrLessEquals(area.left + 8 * cellWidth));
+    expect(second.width, moreOrLessEquals(6 * cellWidth));
+  });
+
   testWidgets('the V row you land on rings the cell the playhead crosses', (
     tester,
   ) async {
