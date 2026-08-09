@@ -1,6 +1,8 @@
 import 'layer.dart';
 import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
+import 'layer_effect.dart';
+import 'property_track.dart';
 import 'transform_track.dart';
 
 /// A cut-local DISPLAY window over a track-global SE layer.
@@ -71,10 +73,16 @@ class TrackSeWindow {
     return toGlobalFrame(localBlockStart);
   }
 
-  /// The read-only cut-local display clone. The transform track is
-  /// stripped: its keys are global and would render at wrong local
-  /// positions; SE transform lanes stand down for track SE layers until
-  /// the lane editing converts through the window too.
+  /// The cut-local display clone. The transform track and effect chain are
+  /// REBASED onto the local axis (R5 #8) rather than stripped: their keys
+  /// are global, so showing them raw would draw diamonds at wrong local
+  /// frames — but dropping them left the row with lanes nothing could
+  /// key, which is the bug the user reported.
+  ///
+  /// The trip back out is [globalTransformTrack] / [globalEffects]: an
+  /// edit arrives against THIS clone and must be converted before it
+  /// touches the track-owned original, or a cut-local frame lands on the
+  /// global axis.
   ///
   /// Open-ended on the right (SE globalization): keys at or beyond the
   /// cut end ride too, so the runway shows the neighbours' sounds. The
@@ -98,12 +106,83 @@ class TrackSeWindow {
     }
     return globalLayer.copyWith(
       timeline: local,
-      // The display clone carries NO FX: this row's lanes live on the
-      // track-owned original, and the lane-edit path refuses the clone —
-      // FX left on it would composite with diamonds nothing could edit.
-      transformTrack: TransformTrack.empty(),
-      effects: const [],
+      transformTrack: _rebasedTrack(globalLayer.transformTrack, toLocal: true),
+      effects: _rebasedEffects(globalLayer.effects, toLocal: true),
     );
+  }
+
+  /// [localTrack] — edited against [displayLayer] — put back on the global
+  /// axis, ready to commit onto the track-owned layer (R5 #8).
+  TransformTrack globalTransformTrack(TransformTrack localTrack) =>
+      _rebasedTrack(localTrack, toLocal: false);
+
+  /// The effect-chain twin of [globalTransformTrack].
+  List<LayerEffect> globalEffects(List<LayerEffect> localEffects) =>
+      _rebasedEffects(localEffects, toLocal: false);
+
+  /// Every key of [track] shifted by one cut start, in either direction.
+  ///
+  /// Keys landing BEFORE local 0 are dropped on the way in: they belong to
+  /// an earlier cut and have no row here to sit on. Nothing is dropped on
+  /// the way out — the caller only ever hands back what it was shown, so a
+  /// negative would mean the local axis itself was wrong.
+  TransformTrack _rebasedTrack(TransformTrack track, {required bool toLocal}) {
+    if (cutStartFrame == 0) {
+      return track;
+    }
+    PropertyTrack<T> shift<T>(PropertyTrack<T> lane) {
+      final moved = <int, PropertyKey<T>>{};
+      for (final entry in lane.keys.entries) {
+        final frame = toLocal
+            ? toLocalFrame(entry.key)
+            : toGlobalFrame(entry.key);
+        if (toLocal && frame < 0) {
+          continue;
+        }
+        moved[frame] = entry.value;
+      }
+      return PropertyTrack<T>(keys: moved);
+    }
+
+    return track.copyWith(
+      anchorPoint: shift(track.anchorPoint),
+      position: shift(track.position),
+      scale: shift(track.scale),
+      rotation: shift(track.rotation),
+      opacity: shift(track.opacity),
+    );
+  }
+
+  List<LayerEffect> _rebasedEffects(
+    List<LayerEffect> effects, {
+    required bool toLocal,
+  }) {
+    if (cutStartFrame == 0 || effects.isEmpty) {
+      return effects;
+    }
+    return [
+      for (final effect in effects)
+        effect.copyWith(
+          parameters: {
+            for (final entry in effect.parameters.entries)
+              entry.key: entry.value.copyWith(
+                track: () {
+                  final moved = <int, PropertyKey<double>>{};
+                  for (final key in entry.value.track.keys.entries) {
+                    final frame = toLocal
+                        ? toLocalFrame(key.key)
+                        : toGlobalFrame(key.key);
+                    if (toLocal && frame < 0) {
+                      continue;
+                    }
+                    moved[frame] = key.value;
+                  }
+                  return PropertyTrack<double>(keys: moved);
+                }(),
+              ),
+          },
+        ),
+    ];
   }
 }
 

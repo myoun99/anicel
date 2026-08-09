@@ -43,6 +43,9 @@ class SeNameTagDialog extends StatefulWidget {
 
 class _SeNameTagDialogState extends State<SeNameTagDialog> {
   late TextCelStyle _style = widget.storedTag?.style ?? SeNameTag.defaultStyle;
+  late TextCelStyle _lineStyle =
+      widget.storedTag?.lineStyle ?? SeNameTag.defaultLineStyle;
+  late bool _showLine = widget.storedTag?.showLine ?? true;
   late final Offset _seed =
       widget.storedTag?.position ?? widget.defaultPosition;
   late final TextEditingController _x = TextEditingController(
@@ -83,7 +86,12 @@ class _SeNameTagDialogState extends State<SeNameTagDialog> {
     final keepDefault = widget.storedTag?.position == null && position == _seed;
     Navigator.of(context).pop(
       SeNameTagDialogResult(
-        SeNameTag(position: keepDefault ? null : position, style: _style),
+        SeNameTag(
+          position: keepDefault ? null : position,
+          style: _style,
+          lineStyle: _lineStyle,
+          showLine: _showLine,
+        ),
       ),
     );
   }
@@ -203,6 +211,35 @@ class _SeNameTagDialogState extends State<SeNameTagDialog> {
             value: _style.bold,
             onChanged: (value) =>
                 setState(() => _style = _style.copyWith(bold: value)),
+          ),
+          const SizedBox(height: 6),
+          // R5 #7: the DIALOGUE run — its own ink, and its own on/off. It
+          // hangs to the box's right and never moves it.
+          ExportToggleRow(
+            widgetKey: const ValueKey<String>('se-name-tag-show-line-toggle'),
+            label: strings.seNameTagShowLineLabel,
+            value: _showLine,
+            onChanged: (value) => setState(() => _showLine = value),
+          ),
+          const SizedBox(height: 6),
+          ExportModuleRow(
+            label: strings.seNameTagLineInkLabel,
+            child: Wrap(
+              spacing: 6,
+              children: [
+                for (final ink in _inkSwatches)
+                  _Swatch(
+                    key: ValueKey<String>(
+                      'se-name-tag-line-ink-${ink.toRadixString(16)}',
+                    ),
+                    color: Color(ink),
+                    selected: _lineStyle.color == ink,
+                    onTap: () => setState(
+                      () => _lineStyle = _lineStyle.copyWith(color: ink),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ],
       ),

@@ -105,6 +105,8 @@ void main() {
     'seNameLabel': (s) => s.seNameLabel,
     'seDialogueLabel': (s) => s.seDialogueLabel,
     'tlResetGroup': (s) => s.tlResetGroup,
+    'seNameTagShowLineLabel': (s) => s.seNameTagShowLineLabel,
+    'seNameTagLineInkLabel': (s) => s.seNameTagLineInkLabel,
     'seLinkedAudioLabel': (s) => s.seLinkedAudioLabel,
     'seLinkedAudioNone': (s) => s.seLinkedAudioNone,
     'seUnlinkAudio': (s) => s.seUnlinkAudio,

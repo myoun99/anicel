@@ -91,6 +91,8 @@ import '../models/track_frame_range.dart';
 import '../models/track_id.dart';
 import '../models/track_se_window.dart';
 import '../models/track_transform_lane_carrier.dart';
+import '../services/bitmap_surface_geometry.dart'
+    show bitmapSurfaceContentBounds;
 import '../services/brush_frame_store.dart';
 import '../services/camera_pose_resolver.dart';
 import '../services/clipboard/layer_copy_payload.dart';
@@ -2384,6 +2386,39 @@ class EditorSessionManager extends ChangeNotifier {
       canvasSize: cut.canvasSize,
     );
   }
+
+  /// [layer]'s tight INK bounds at [frameIndex], in the layer's own
+  /// artwork coordinates — what the canvas transform box frames (R5 #10:
+  /// "레이어 그림의 바운드에 걸리는게 알기쉬울거같기도하고? 그렇게하자").
+  /// Null while the row shows nothing there, or the cel is blank.
+  ///
+  /// Memoized on the surface INSTANCE, and that is not an optimisation but
+  /// the condition of calling it at all: the scan reads every tile of the
+  /// cel, and the box is framed from `build`. `BitmapSurface` is immutable
+  /// with structural tile sharing, so identity is an exact key — a changed
+  /// cel is always a new instance. The selection layer's own box learned
+  /// this the hard way (`bitmap_surface_geometry.dart`'s note).
+  ({int left, int top, int rightExclusive, int bottomExclusive})?
+  layerContentBoundsAt(Layer layer, int frameIndex) {
+    final frame = resolveExposedFrameAt(layer, frameIndex);
+    if (frame == null) {
+      return null;
+    }
+    final surface = brushSurfaceForLayerFrame(layer, frame);
+    if (surface == null) {
+      return null;
+    }
+    if (identical(surface, _layerContentBoundsSurface)) {
+      return _layerContentBoundsCached;
+    }
+    _layerContentBoundsSurface = surface;
+    _layerContentBoundsCached = bitmapSurfaceContentBounds(surface);
+    return _layerContentBoundsCached;
+  }
+
+  BitmapSurface? _layerContentBoundsSurface;
+  ({int left, int top, int rightExclusive, int bottomExclusive})?
+  _layerContentBoundsCached;
 
   /// The resolved camera pose at the current playhead frame (keyframe,
   /// interpolation, or the default pose when the cut has no camera work).
@@ -8016,7 +8051,36 @@ class EditorSessionManager extends ChangeNotifier {
       updateActiveCutCameraTrack(track, description: description);
       return;
     }
-    updateLayerTransformTrack(layer.id, track, description: description);
+    // R5 #8: a track-owned SE row's lanes are read off a cut-LOCAL clone,
+    // so the edited track goes back through the window. The tab host's
+    // twin refused these outright; this path never checked at all, which
+    // would have planted local frames on the global axis.
+    updateLayerTransformTrack(
+      layer.id,
+      isTrackSeLayerId(layer.id)
+          ? trackSeWindow.globalTransformTrack(track)
+          : track,
+      description: description,
+    );
+  }
+
+  /// The lane path's EFFECT commit — the twin of [_commitLaneTransformTrack]
+  /// and, like it, the one place that converts a track-owned SE row's
+  /// cut-local chain back onto the global axis (R5 #8).
+  ///
+  /// A funnel rather than three call sites: Add, Delete and Reset all
+  /// commit chains read off the same clone, and the conversion is exactly
+  /// the kind of step that gets remembered in two of three places.
+  void _commitLaneEffects(
+    Layer layer,
+    List<LayerEffect> effects, {
+    required String description,
+  }) {
+    updateLayerEffects(
+      layer.id,
+      isTrackSeLayerId(layer.id) ? trackSeWindow.globalEffects(effects) : effects,
+      description: description,
+    );
   }
 
   /// The lanes a verb may act on for [layer]. The CAMERA row draws only
@@ -8081,7 +8145,7 @@ class EditorSessionManager extends ChangeNotifier {
         }
       }
       if (changed) {
-        updateLayerEffects(layer.id, effects, description: 'Delete keys');
+        _commitLaneEffects(layer, effects, description: 'Delete keys');
       }
       return changed;
     }
@@ -8150,7 +8214,7 @@ class EditorSessionManager extends ChangeNotifier {
       if (effects == null) {
         return false;
       }
-      updateLayerEffects(layer.id, effects, description: 'Reset group');
+      _commitLaneEffects(layer, effects, description: 'Reset group');
       return true;
     }
     if (headerLaneId != transformGroupHeaderLane.laneId) {
@@ -8229,7 +8293,7 @@ class EditorSessionManager extends ChangeNotifier {
         }
       }
       if (effectsChanged) {
-        updateLayerEffects(layer.id, effects, description: 'Create keys');
+        _commitLaneEffects(layer, effects, description: 'Create keys');
       }
       return;
     }

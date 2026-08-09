@@ -25,6 +25,7 @@ import 'canvas/flip_hud_controller.dart';
 import 'canvas/canvas_layer_stack_view.dart';
 import 'canvas/layer_pose_paint.dart';
 import 'canvas/layer_position_gizmo.dart';
+import 'canvas/layer_transform_box.dart';
 import 'editor_session_manager.dart';
 import 'canvas/paper_background.dart' show alphaPreviewEnabled;
 import 'playback/canvas_playback_controller.dart' show PlaybackScope;
@@ -516,6 +517,24 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 canvasManipulatorsForLane(
                   standing.laneId,
                 ).contains(CanvasManipulator.transformBox);
+            // The box frames the layer's INK, so a blank cel has no box —
+            // the crosshair still answers for Position there. Resolved
+            // only when something will use it: the scan is memoized on the
+            // surface, but asking at all costs a frame lookup.
+            final boundsRect = showPositionGizmo
+                ? session.layerContentBoundsAt(
+                    activeLayer,
+                    session.currentFrameIndex,
+                  )
+                : null;
+            final transformBoxBounds = boundsRect == null
+                ? null
+                : Rect.fromLTRB(
+                    boundsRect.left.toDouble(),
+                    boundsRect.top.toDouble(),
+                    boundsRect.rightExclusive.toDouble(),
+                    boundsRect.bottomExclusive.toDouble(),
+                  );
             final showAnchorGizmo =
                 canPoseActiveLayer &&
                 standing is LaneRowAddress &&
@@ -821,6 +840,52 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                                 onPoseCommitted:
                                     session.setCameraKeyframeAtCurrentFrame,
                               ),
+                            ),
+                          ),
+                        if (showPositionGizmo && transformBoxBounds != null)
+                          Positioned.fill(
+                            // R5 #10: the box frames the PICTURE, and its
+                            // corners scale while its rotate handle turns —
+                            // one member per handle. It rides the cut pose
+                            // like the crosshair inside it.
+                            child: _wrapInCutPose(
+                              LayerTransformBox(
+                                bounds: transformBoxBounds,
+                                pose: session.layerPoseAtFrame(
+                                  activeLayer,
+                                  session.currentFrameIndex,
+                                ),
+                                anchorPoint: session.layerAnchorPointAtFrame(
+                                  activeLayer,
+                                  session.currentFrameIndex,
+                                ),
+                                canvasSize: canvasSize,
+                                viewport: viewport,
+                                onScaleCommitted: (zoom) =>
+                                    session.updateLayerTransformTrack(
+                                      activeLayer.id,
+                                      transformTrackWithScaleDragged(
+                                        activeLayer.transformTrack,
+                                        frameIndex: session.currentFrameIndex,
+                                        zoom: zoom,
+                                      ),
+                                      description: 'Scale ${activeLayer.name}',
+                                    ),
+                                onRotationCommitted: (degrees) =>
+                                    session.updateLayerTransformTrack(
+                                      activeLayer.id,
+                                      transformTrackWithRotationDragged(
+                                        activeLayer.transformTrack,
+                                        frameIndex: session.currentFrameIndex,
+                                        rotationDegrees: degrees,
+                                      ),
+                                      description:
+                                          'Rotate ${activeLayer.name}',
+                                    ),
+                              ),
+                              sample: cutPoseSample,
+                              canvasSize: canvasSize,
+                              viewport: viewport,
                             ),
                           ),
                         if (showPositionGizmo)
