@@ -623,7 +623,17 @@ class RenderStaticRaster extends RenderProxyBox {
     // Logical global pixels, not device ones — `getTransformTo(null)`
     // stops at the root render object and the view's own ratio is applied
     // after it.
-    final Matrix4 toGlobal = getTransformTo(null);
+    //
+    // 🚨It throws when the root is not an ancestor of ours, and a throw
+    // out of `paint()` leaves a blank panel behind (see [_captureChild]).
+    // Not baking is always available and always correct, so a surface we
+    // cannot locate simply paints through.
+    final Matrix4 toGlobal;
+    try {
+      toGlobal = getTransformTo(null);
+    } catch (_) {
+      return null;
+    }
     final double? uniformScale = _uniformScaleOf(toGlobal);
     if (uniformScale == null) {
       return null;
