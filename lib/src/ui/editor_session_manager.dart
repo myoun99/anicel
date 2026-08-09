@@ -11,6 +11,7 @@ import '../controllers/default_cut_helpers.dart'
 import '../controllers/default_layer_helpers.dart';
 import '../models/import/cut_folder_parse.dart';
 import '../services/commands/import_media_command.dart';
+import '../services/commands/reorder_track_command.dart';
 import '../services/import/media_import_planner.dart';
 import '../services/import/raster_cel_import.dart';
 import '../services/input/wintab_pen_service.dart';
@@ -185,7 +186,8 @@ import 'timeline/layer_row_drag.dart'
         EffectRowSubject,
         LayerRowDragState,
         LayerRowDragSubject,
-        LayerRowSubject;
+        LayerRowSubject,
+        TrackRowSubject;
 import 'timeline/property_lane_model.dart' show folderAggregateRuns;
 import 'timeline/timeline_current_row.dart' show currentRowIsInsideGroup;
 import 'timeline/layer_label_controls.dart' show layerKindShowsBlendControl;
@@ -4276,12 +4278,40 @@ class EditorSessionManager extends ChangeNotifier {
     _rowDragPlan = null;
     _rowDragSeOrder = null;
     _rowDragEffectOrder = null;
+    _rowDragTrackSlot = null;
     layerRowDrag.value = LayerRowDragState(
       subject: subject,
       caretSlot: -1,
       legal: false,
     );
   }
+
+  /// R5 #9: the caret moved within the project's TRACK list.
+  ///
+  /// It is legal wherever it lands — tracks are a flat list with no
+  /// folders, no attach and no 겸용 mirror, so there is nothing a slot can
+  /// be refused for. That is why this holds a slot and not a plan.
+  void updateTrackRowDrag(int slot) {
+    final state = layerRowDrag.value;
+    if (state == null || state.subject is! TrackRowSubject) {
+      return;
+    }
+    final clamped = slot.clamp(
+      0,
+      _repository.requireProject().tracks.length,
+    );
+    _rowDragTrackSlot = clamped;
+    if (state.caretSlot == clamped && state.legal) {
+      return;
+    }
+    layerRowDrag.value = LayerRowDragState(
+      subject: state.subject,
+      caretSlot: clamped,
+      legal: true,
+    );
+  }
+
+  int? _rowDragTrackSlot;
 
   /// The caret moved within one layer's effect CHAIN.
   ///
@@ -4486,9 +4516,34 @@ class EditorSessionManager extends ChangeNotifier {
     final plan = _rowDragPlan;
     final seOrder = _rowDragSeOrder;
     final effectOrder = _rowDragEffectOrder;
+    final trackSlot = _rowDragTrackSlot;
     final subject = state?.subject;
     cancelLayerRowDrag();
     if (subject == null) {
+      return;
+    }
+    if (subject is TrackRowSubject) {
+      // R5 #9. The caret is a SLOT (between rows) and the model wants an
+      // INDEX: landing after yourself means one fewer position once you
+      // are lifted out, which is the off-by-one every reorder has.
+      final tracks = _repository.requireProject().tracks;
+      final from = tracks.indexWhere((track) => track.id == subject.trackId);
+      if (trackSlot == null || from < 0) {
+        return;
+      }
+      final to = trackSlot > from ? trackSlot - 1 : trackSlot;
+      if (to == from) {
+        return;
+      }
+      _historyManager.execute(
+        ReorderTrackCommand(
+          repository: _repository,
+          fromIndex: from,
+          toIndex: to,
+          trackName: tracks[from].name,
+        ),
+      );
+      notifyListeners();
       return;
     }
     final cut = activeCutOrNull;
@@ -4572,6 +4627,7 @@ class EditorSessionManager extends ChangeNotifier {
     _rowDragPlan = null;
     _rowDragSeOrder = null;
     _rowDragEffectOrder = null;
+    _rowDragTrackSlot = null;
     layerRowDrag.value = null;
   }
 

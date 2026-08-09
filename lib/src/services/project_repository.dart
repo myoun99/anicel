@@ -176,6 +176,29 @@ class ProjectRepository {
     });
   }
 
+  /// Moves the track at [fromIndex] so it sits at [toIndex] in the
+  /// project's list (R5 #9 — the storyboard's V-row drag).
+  ///
+  /// The list order IS the composite order: `CanvasTrackStackView` paints
+  /// the first covered track as the stage and the rest over it, so moving a
+  /// track up the storyboard moves its picture up the stack. That is the
+  /// user's decision (2026-08-09) and the reason this is a plain reorder
+  /// rather than a display-only field.
+  void reorderTrack({required int fromIndex, required int toIndex}) {
+    updateProject((project) {
+      final tracks = [...project.tracks];
+      if (fromIndex < 0 ||
+          fromIndex >= tracks.length ||
+          toIndex < 0 ||
+          toIndex >= tracks.length ||
+          fromIndex == toIndex) {
+        return project;
+      }
+      tracks.insert(toIndex, tracks.removeAt(fromIndex));
+      return project.copyWith(tracks: tracks);
+    });
+  }
+
   void replaceTrack(Track track) {
     updateProject((project) {
       final next = updateTrackById(project, track.id, (_) => track);

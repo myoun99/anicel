@@ -18,6 +18,7 @@ import 'package:flutter/material.dart';
 import '../../models/layer.dart';
 import '../../models/layer_effect.dart' show EffectId;
 import '../../models/layer_id.dart';
+import '../../models/track_id.dart';
 import '../input/app_input_settings.dart' show AppInput;
 import '../input/eager_pan_gesture_recognizer.dart';
 import '../theme/app_theme.dart' show AppShapes;
@@ -51,6 +52,32 @@ final class LayerRowSubject extends LayerRowDragSubject {
 
   @override
   int get hashCode => Object.hash(LayerRowSubject, layerId);
+}
+
+/// A storyboard V ROW: the project's track order (R5 #9).
+///
+/// Its own kind rather than a [LayerRowSubject] over a carrier layer,
+/// because the two must answer `sharesLaneWith` differently — a track
+/// dragged on the storyboard must raise no caret among the SE rows one row
+/// below it, and a carrier layer would have looked exactly like one.
+///
+/// The user's decision (2026-08-09): the track list IS the composite order,
+/// so this drag moves the picture, not only the row.
+final class TrackRowSubject extends LayerRowDragSubject {
+  const TrackRowSubject(this.trackId);
+
+  final TrackId trackId;
+
+  @override
+  bool sharesLaneWith(LayerRowDragSubject other) => other is TrackRowSubject;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is TrackRowSubject && other.trackId == trackId;
+
+  @override
+  int get hashCode => Object.hash(TrackRowSubject, trackId);
 }
 
 /// An fx GROUP HEADER: one layer's effect chain. The Transform group is
@@ -120,6 +147,7 @@ class TimelineRowDragHooks {
     required this.onBegin,
     required this.onUpdate,
     required this.onRowTarget,
+    this.onTrackUpdate,
     required this.onEffectUpdate,
     required this.onEnd,
     required this.onCancel,
@@ -144,6 +172,14 @@ class TimelineRowDragHooks {
   /// every rail what a folder is.
   final void Function(List<Layer> displayLayers, int slot, LayerId targetId)
   onRowTarget;
+
+  /// R5 #9: the caret moved to a slot of the TRACK list. No display list
+  /// travels with it — the storyboard renders tracks top-down in the
+  /// project's own order, so the slot needs no translation.
+  ///
+  /// Null on every hook set that has no tracks to re-order, which is every
+  /// surface except the storyboard.
+  final void Function(int slot)? onTrackUpdate;
 
   /// The caret moved within one layer's effect CHAIN. [displayEffects] is
   /// that chain in the order this surface renders it — the rail lists it
@@ -455,6 +491,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
         '${switch (widget.subject) {
           LayerRowSubject(:final layerId) => layerId.value,
           EffectRowSubject(:final effectId) => effectId.value,
+          TrackRowSubject(:final trackId) => trackId.value,
         }}',
       ),
       child: IgnorePointer(
@@ -555,6 +592,7 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
         '${switch (widget.subject) {
           LayerRowSubject(:final layerId) => layerId.value,
           EffectRowSubject(:final effectId) => effectId.value,
+          TrackRowSubject(:final trackId) => trackId.value,
         }}',
       ),
       left: horizontal ? 0 : (atStart ? -layerRowCaretThickness / 2 : null),

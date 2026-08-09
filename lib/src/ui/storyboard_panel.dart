@@ -51,7 +51,8 @@ import 'timeline/layer_row_drag.dart'
         EffectRowSubject,
         LayerRowDragTarget,
         LayerRowSubject,
-        TimelineRowDragHooks;
+        TimelineRowDragHooks,
+        TrackRowSubject;
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_ruler_cursor_overlay.dart';
 import 'timeline/transform_lane_policy.dart'
@@ -1384,10 +1385,17 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// an S move against the selected track's list, and another track's rows
   /// would write to the wrong one. An empty slot has nothing to move.
   ///
-  /// ⚠️The travel is counted in `_seRowHeight`, which is the pitch only
-  /// while no S row between here and there is twirled open. With one open
-  /// the drag simply moves at a different rate — the CARET still shows the
-  /// slot it will land on, so the screen never lies about the outcome.
+  /// The pitch is this row's OWN GROUP — the S row plus its lanes when
+  /// twirled open (R5 ③b-5). `_seRowHeight` alone was the pitch only while
+  /// nothing was open, and one open row made the drag count slots faster
+  /// than the pointer crossed rows. The caret still showed the truth, so
+  /// this was never a wrong commit — only a drag that moved at the wrong
+  /// rate under the hand.
+  ///
+  /// ⚠️Rows of DIFFERING heights still drift after the first step: the
+  /// shared drag widget takes one extent, not a list. The V rows have the
+  /// same limitation for the same reason, and one per-row extent list
+  /// would close both.
   Widget _draggableSeRow(Track track, int slot, Layer? trackLayer, Widget row) {
     final hooks = widget.rowDragHooks;
     if (hooks == null || trackLayer == null || _activeCutOf(track) == null) {
@@ -1400,7 +1408,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     return LayerRowDragTarget(
       subject: LayerRowSubject(trackLayer.id),
       slotBefore: displayIndex,
-      rowExtent: _seRowHeight,
+      rowExtent: _seRowGroupExtent(track, slot),
       axis: Axis.horizontal,
       hooks: hooks,
       isLastRow: displayIndex == displayRows.length - 1,
@@ -1448,6 +1456,81 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// ABOVE the V track row and ITS Transform group, slots counting UP from
   /// the bottom like the timeline's layer stack (S1 sits right above V,
   /// S2 above it); the section ZONE spans the whole group (UI-R7 #2).
+  /// How tall ONE S ROW stands on the rail: the row, plus its Audio lane
+  /// and Transform lanes when twirled open. The same construction
+  /// `_railRowsForTrack` lays out, read back as a number.
+  double _seRowGroupExtent(Track track, int slot) {
+    var extent = _seRowHeight;
+    if (widget.expandedSeAudioRows.contains(
+      StoryboardPanel.seRowKey(track, slot),
+    )) {
+      extent += _audioLaneHeight;
+      extent +=
+          _seTransformLanes(
+            track,
+            slot,
+            _activeCutOf(track),
+            _trackSeAt(track, slot),
+          ).length *
+          _transformLaneHeight;
+    }
+    return extent;
+  }
+
+  /// How tall one TRACK GROUP stands on the rail: its S rows, its V row,
+  /// and its transform lanes when twirled open.
+  ///
+  /// This — not [StoryboardPanel.trackLaneHeight] — is a V row's drag
+  /// pitch. Two V rows are separated by the whole group between them, so
+  /// counting in the V row's own 64px moved two tracks per group and the
+  /// widget test caught it immediately.
+  double _trackGroupExtent(Track track) {
+    var extent = widget.trackLaneHeight;
+    for (var slot = 0; slot < _seSlotCount(track); slot += 1) {
+      // Through the S row's own accounting, so an open S row is counted
+      // once and identically by both drags.
+      extent += _seRowGroupExtent(track, slot);
+    }
+    if (widget.expandedTransformTracks.contains(track.id.value)) {
+      extent += _trackTransformLanes(track).length * _transformLaneHeight;
+    }
+    return extent;
+  }
+
+  /// The V row, made draggable to re-order the project's TRACKS (R5 #9).
+  ///
+  /// The rail lists tracks in the project's own order (the caller walks
+  /// `project.tracks` forward), so the row index IS the slot before it and
+  /// nothing has to be reversed the way the S rows' list does.
+  ///
+  /// ⚠️ The pitch is THIS group's height, so tracks of differing heights
+  /// drift after the first step — the same limitation the S rows have when
+  /// their lanes are open, and the same fix (a per-row extent list on the
+  /// shared drag widget) would close both.
+  Widget _trackDraggable(Track track, int index, Widget child) {
+    final hooks = widget.rowDragHooks;
+    final trackCount = widget.project.tracks.length;
+    if (hooks == null || hooks.onTrackUpdate == null || trackCount < 2) {
+      // One track cannot be re-ordered, and a rail with no hooks is
+      // display-only — either way the row stays a plain label.
+      return child;
+    }
+    return LayerRowDragTarget(
+      subject: TrackRowSubject(track.id),
+      slotBefore: index,
+      rowExtent: _trackGroupExtent(track),
+      axis: Axis.horizontal,
+      hooks: hooks,
+      isLastRow: index == trackCount - 1,
+      // A track holds nothing, so its middle means nothing: the caret is
+      // the only answer and the on-row arm stays unused (the S rows'
+      // reasoning, one list up).
+      onCrossed: (steps, _) =>
+          hooks.onTrackUpdate!(slotForSteps(index, steps, trackCount)),
+      child: child,
+    );
+  }
+
   List<Widget> _railRowsForTrack(Track track, int index) {
     final activeCut = _activeCutOf(track);
     final topSlot = _seSlotCount(track) - 1;
@@ -1487,7 +1570,10 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       ],
     ];
     final vRows = <Widget>[
-      _StoryboardTrackLabel(
+      _trackDraggable(
+        track,
+        index,
+        _StoryboardTrackLabel(
         track: track,
         trackLabel: 'V${index + 1}',
         laneHeight: widget.trackLaneHeight,
@@ -1524,6 +1610,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         onTrackOpacityChangeEnd: widget.onTrackOpacityChangeEnd == null
             ? null
             : (opacity) => widget.onTrackOpacityChangeEnd!(track, opacity),
+        ),
       ),
       if (widget.expandedTransformTracks.contains(track.id.value)) ...[
         ..._transformLaneLabels(

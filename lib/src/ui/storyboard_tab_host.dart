@@ -748,6 +748,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onBegin: _session.beginLayerRowDrag,
                     onUpdate: _session.updateLayerRowDrag,
                     onRowTarget: _session.updateLayerRowDropOnRow,
+                    // R5 #9: the V row re-orders TRACKS, and the track list
+                    // is the composite order (user, 2026-08-09) — so this
+                    // is only offered where tracks are on screen.
+                    onTrackUpdate: _session.updateTrackRowDrag,
                     onEffectUpdate: _session.updateEffectRowDrag,
                     onEnd: _session.endLayerRowDrag,
                     onCancel: _session.cancelLayerRowDrag,
