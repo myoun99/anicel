@@ -416,6 +416,22 @@ class EditorTopStrip extends StatelessWidget {
         MeasurementMode.frameStats.value = !MeasurementMode.frameStats.value;
       },
     ),
+    // Krita ships `KisRepaintDebugger` in production and Blender tints
+    // every drawn region under `debug_value == 888`, both for the same
+    // reason this program keeps rediscovering: a panel paying full price
+    // looks exactly like a free one. The standing report says WHICH
+    // panels bake; this says WHEN, while you work. A surface that
+    // strobes as the pen moves is re-baking on your pointer.
+    _item(
+      id: 'edit-show-repaints',
+      label: 'Show Repaints',
+      icon: Icons.flare_outlined,
+      checked: MeasurementMode.showRepaints.value,
+      onPressed: () {
+        MeasurementMode.showRepaints.value =
+            !MeasurementMode.showRepaints.value;
+      },
+    ),
     // And the marker for where the canvas painter had NO picture for a
     // coordinate it was asked to draw. The whole stale-tile family is
     // that one event, and it is invisible because the painter's answer

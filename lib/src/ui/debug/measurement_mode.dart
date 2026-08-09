@@ -107,6 +107,35 @@ abstract final class MeasurementMode {
     startWithFrameStats,
   );
 
+  /// Tints a surface every time it is BAKED (Settings ▸ Show Repaints).
+  ///
+  /// The fifth switch, and the one two mature apps decided they could not
+  /// ship without: Krita carries `KisRepaintDebugger` in production and
+  /// paints it at the end of `paintGL`; Blender tints every drawn region
+  /// a random colour under `G.debug_value == 888`, commented "for
+  /// debugging unneeded area redraws and partial redraw".
+  ///
+  /// The reason is the one this program keeps rediscovering: **a panel
+  /// paying full price looks exactly like a free one.** The standing
+  /// report says which panels bake; this says WHEN, while you work. A
+  /// surface that flickers as you move the pen is re-baking on your
+  /// pointer, and no amount of reading finds that as fast as seeing it.
+  ///
+  /// The tint cycles per bake, so a surface baking every frame strobes
+  /// and one that baked once sits still.
+  static final ValueNotifier<bool> showRepaints = ValueNotifier<bool>(
+    startWithShowRepaints,
+  );
+
+  /// Seeds [showRepaints]:
+  ///
+  /// ```
+  /// flutter run --dart-define=QA_SHOW_REPAINTS=true
+  /// ```
+  static const bool startWithShowRepaints = bool.fromEnvironment(
+    'QA_SHOW_REPAINTS',
+  );
+
   /// Seeds [frameStats]:
   ///
   /// ```
@@ -144,5 +173,6 @@ abstract final class MeasurementMode {
     frameTimingOverlay.value = startWithFrameTimingOverlay;
     showUnpaintedTiles.value = startWithUnpaintedTiles;
     frameStats.value = startWithFrameStats;
+    showRepaints.value = startWithShowRepaints;
   }
 }

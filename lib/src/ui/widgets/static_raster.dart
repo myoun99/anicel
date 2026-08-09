@@ -5,6 +5,8 @@ import 'package:flutter/rendering.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
+import '../debug/measurement_mode.dart';
+
 /// Bakes its child into ONE image and blits that until the child actually
 /// changes.
 ///
@@ -109,6 +111,40 @@ class StaticRaster extends SingleChildRenderObjectWidget {
   /// suspicious rendering can be A/B'd against the same build.
   static final ValueNotifier<bool> globallyEnabled = ValueNotifier<bool>(true);
 
+  /// Every attached bake in the app.
+  ///
+  /// Qt documents the cost of this exact mechanism and warns about
+  /// exactly the way we use it — `layer.enabled` costs `width × height ×
+  /// 4` of GPU memory per layer, loses batching across the boundary, and
+  /// "a scene with many layered items may have performance problems".
+  /// We install bakes on two blanket funnels so a new panel gets one for
+  /// free, which is the right default and also the shape Qt warns about.
+  ///
+  /// A default you cannot see the price of is a default you will regret,
+  /// so the price is on screen: [censusBytes] and [censusCaptures] feed
+  /// the Frame Stats readout.
+  static final Set<RenderStaticRaster> census = <RenderStaticRaster>{};
+
+  /// Bytes currently held by all live bakes.
+  static int get censusBytes {
+    var total = 0;
+    for (final raster in census) {
+      total += raster.rasterBytes;
+    }
+    return total;
+  }
+
+  /// Bakes taken since the app started, across every surface. Differenced
+  /// over time this is the rate — the number that says a surface is
+  /// re-baking on the pointer rather than on a change.
+  static int get censusCaptures {
+    var total = 0;
+    for (final raster in census) {
+      total += raster.captureCount;
+    }
+    return total;
+  }
+
   @override
   RenderStaticRaster createRenderObject(BuildContext context) {
     return RenderStaticRaster(
@@ -120,7 +156,10 @@ class StaticRaster extends SingleChildRenderObjectWidget {
   }
 
   @override
-  void updateRenderObject(BuildContext context, RenderStaticRaster renderObject) {
+  void updateRenderObject(
+    BuildContext context,
+    RenderStaticRaster renderObject,
+  ) {
     renderObject
       ..debugLabel = debugLabel
       ..enabled = enabled
@@ -218,22 +257,38 @@ class RenderStaticRaster extends RenderProxyBox {
   int _streak = 0;
   Duration? _lastCaptureFrame;
 
+  /// What this surface's image costs, in bytes. Zero when it is painting
+  /// through.
+  int get rasterBytes {
+    final source = _rasterSourceSize;
+    return _raster == null || source == null
+        ? 0
+        : (source.width * source.height * 4).round();
+  }
+
   @override
   void attach(PipelineOwner owner) {
     super.attach(owner);
+    StaticRaster.census.add(this);
     StaticRaster.globallyEnabled.addListener(_onGloballyEnabledChanged);
+    MeasurementMode.showRepaints.addListener(_onGloballyEnabledChanged);
   }
 
   @override
   void detach() {
+    StaticRaster.census.remove(this);
     StaticRaster.globallyEnabled.removeListener(_onGloballyEnabledChanged);
+    MeasurementMode.showRepaints.removeListener(_onGloballyEnabledChanged);
     _dropRaster();
     super.detach();
   }
 
   @override
   void dispose() {
+    _clipLayer.layer = null;
+    StaticRaster.census.remove(this);
     StaticRaster.globallyEnabled.removeListener(_onGloballyEnabledChanged);
+    MeasurementMode.showRepaints.removeListener(_onGloballyEnabledChanged);
     _dropRaster();
     super.dispose();
   }
@@ -265,12 +320,12 @@ class RenderStaticRaster extends RenderProxyBox {
       // nothing, but a child is free to paint outside its box, and
       // vanishing for a layout pass is a worse default than doing what
       // the unbaked tree would have done.
-      super.paint(context, offset);
+      _paintThrough(context, offset);
       return;
     }
     if (!_enabled || !StaticRaster.globallyEnabled.value) {
       _dropRaster();
-      super.paint(context, offset);
+      _paintThrough(context, offset);
       return;
     }
 
@@ -279,13 +334,13 @@ class RenderStaticRaster extends RenderProxyBox {
     _noteCaptureFrame();
     if (_streak >= _maxConsecutiveCaptures) {
       _dropRaster();
-      super.paint(context, offset);
+      _paintThrough(context, offset);
       return;
     }
 
     if (_nestedBoundary) {
       _dropRaster();
-      super.paint(context, offset);
+      _paintThrough(context, offset);
       return;
     }
 
@@ -295,7 +350,7 @@ class RenderStaticRaster extends RenderProxyBox {
       // Either a platform view the engine cannot rasterize, or a capture
       // the engine refused. Painting through is always available and
       // always correct — see [_captureChild].
-      super.paint(context, offset);
+      _paintThrough(context, offset);
       return;
     }
     _raster = captured;
@@ -304,6 +359,36 @@ class RenderStaticRaster extends RenderProxyBox {
 
     _blit(context, offset);
   }
+
+  /// Paints the child WITHOUT baking — and clips it to the same box the
+  /// bake would have.
+  ///
+  /// That clip is the point. Baking captures `Offset.zero & size`, so it
+  /// is a hard clip; a proxy box painting through is not. A child that
+  /// draws past its own bounds therefore looked different baked than
+  /// not — and since a surface stands itself down the moment it starts
+  /// changing every frame, the difference appeared and disappeared while
+  /// someone worked. A parity test caught exactly that on the onion
+  /// panel: a horizontal band present when painting through and
+  /// transparent when baked.
+  ///
+  /// The fix is not to hunt down every widget that overflows by a
+  /// hairline. It is to make the two modes agree BY CONSTRUCTION, so
+  /// that switching between them can never change a pixel and the
+  /// invariant stops being something anyone has to know. Clipping is the
+  /// stricter of the two behaviours, and it is the one already in force
+  /// whenever the bake is active — which is nearly always.
+  void _paintThrough(PaintingContext context, Offset offset) {
+    _clipLayer.layer = context.pushClipRect(
+      needsCompositing,
+      offset,
+      Offset.zero & size,
+      super.paint,
+      oldLayer: _clipLayer.layer,
+    );
+  }
+
+  final LayerHandle<ClipRectLayer> _clipLayer = LayerHandle<ClipRectLayer>();
 
   void _blit(PaintingContext context, Offset offset) {
     final image = _raster!;
@@ -319,7 +404,24 @@ class RenderStaticRaster extends RenderProxyBox {
       offset & size,
       Paint()..filterQuality = FilterQuality.none,
     );
+    if (MeasurementMode.showRepaints.value) {
+      // Settings ▸ Show Repaints. The tint cycles per bake, so a surface
+      // re-baking every frame STROBES and one that baked once sits
+      // still. Borrowed from Krita's `KisRepaintDebugger` (shipped in
+      // production) and Blender's `G.debug_value == 888`.
+      context.canvas.drawRect(
+        offset & size,
+        Paint()..color = _repaintTints[captureCount % _repaintTints.length],
+      );
+    }
   }
+
+  static const List<Color> _repaintTints = <Color>[
+    Color(0x3300E5FF),
+    Color(0x33FF4081),
+    Color(0x33FFEA00),
+    Color(0x3300E676),
+  ];
 
   /// Paints the child into a detached layer and takes its picture, or
   /// returns null if the engine will not give us one. The routine is the
@@ -450,7 +552,9 @@ class RenderStaticRaster extends RenderProxyBox {
   void debugFillProperties(DiagnosticPropertiesBuilder properties) {
     super.debugFillProperties(properties);
     properties.add(StringProperty('label', debugLabel));
-    properties.add(FlagProperty('enabled', value: _enabled, ifFalse: 'disabled'));
+    properties.add(
+      FlagProperty('enabled', value: _enabled, ifFalse: 'disabled'),
+    );
     properties.add(IntProperty('captures', captureCount));
     properties.add(
       FlagProperty(

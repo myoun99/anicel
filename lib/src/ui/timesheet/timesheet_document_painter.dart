@@ -482,6 +482,49 @@ class TimesheetDocumentPainter extends CustomPainter {
   /// Below this zoom the per-cell texts stop painting (paper overview).
   static const double _textZoomThreshold = 0.35;
 
+  /// Turns the culling off, so a test can prove it changes no pixel.
+  ///
+  /// Culling may only ever remove work the clip would have thrown away,
+  /// so "same bytes with it on and off" is the whole contract and is
+  /// worth a real rendered comparison rather than an assertion about
+  /// row indices.
+  @visibleForTesting
+  static bool debugDisableCulling = false;
+
+  /// The document-space rectangle the panel can actually show, or null
+  /// when culling is off. Set once at the top of [paint], read by the
+  /// three row loops and the page/half skips.
+  Rect? _cull;
+
+  /// The rows of a half starting at [rowsTop] that [_cull] can reach.
+  ///
+  /// This is OpenToonz's move — it turns the damage rect into a CELL
+  /// INDEX RANGE (`xyRectToRange` → `r0..r1`) and iterates only those,
+  /// with no offscreen cache for the grid at all. That is the shape of
+  /// the finding that sent us here: a sheet grid is not expensive, and
+  /// ours only looked expensive because it was drawing a whole B4
+  /// document — ~334 lines and ~111 paragraphs — to fill a dock a few
+  /// hundred pixels tall.
+  ///
+  /// A row of slack each side, because a row's ink is allowed to reach a
+  /// little past its own band (text baselines, the SE dotted guide).
+  (int, int) _rowRange(double rowsTop, int rowCount) {
+    final cull = _cull;
+    if (cull == null) {
+      return (0, rowCount);
+    }
+    const height = TimesheetDocumentLayout.rowHeight;
+    final first = ((cull.top - rowsTop) / height).floor() - 1;
+    final last = ((cull.bottom - rowsTop) / height).ceil() + 1;
+    return (first.clamp(0, rowCount), last.clamp(0, rowCount));
+  }
+
+  /// Whether anything between [top] and [bottom] can be seen.
+  bool _bandVisible(double top, double bottom) {
+    final cull = _cull;
+    return cull == null || (bottom >= cull.top && top <= cull.bottom);
+  }
+
   @override
   void paint(Canvas canvas, Size size) {
     canvas.save();
@@ -491,6 +534,19 @@ class TimesheetDocumentPainter extends CustomPainter {
       canvas.translate(resolvedViewport.panX, resolvedViewport.panY);
       canvas.scale(resolvedViewport.zoom, resolvedViewport.zoom);
     }
+    // The clip above, carried back through the viewport transform into
+    // document space. Everything outside it is already invisible; the
+    // only question is whether we spend the ops finding that out.
+    _cull = debugDisableCulling || resolvedViewport == null
+        ? null
+        : (resolvedViewport.zoom <= 0
+              ? null
+              : Rect.fromLTWH(
+                  -resolvedViewport.panX / resolvedViewport.zoom,
+                  -resolvedViewport.panY / resolvedViewport.zoom,
+                  size.width / resolvedViewport.zoom,
+                  size.height / resolvedViewport.zoom,
+                ));
     final drawTexts = (resolvedViewport?.zoom ?? 1.0) >= _textZoomThreshold;
 
     if (layout.continuous) {
@@ -512,6 +568,12 @@ class TimesheetDocumentPainter extends CustomPainter {
       // document prints them all.
       for (final pageIndex in layout.visiblePageIndexes) {
         final page = document.pages[pageIndex];
+        // A whole page off screen costs nothing at all — this is where
+        // the stacked multi-page document stops being O(document).
+        final pageBounds = layout.pageRect(page.index);
+        if (!_bandVisible(pageBounds.top, pageBounds.bottom)) {
+          continue;
+        }
         _paintPaper(canvas, page.index);
         _paintHeaderBand(canvas, page.index, drawTexts: drawTexts);
         if (_drawContent) {
@@ -843,7 +905,8 @@ class TimesheetDocumentPainter extends CustomPainter {
       }
     }
     final numbersRight = left - 4;
-    for (var row = 0; row <= rowCount; row += 1) {
+    final (firstRow, lastRow) = _rowRange(rowsTop, rowCount);
+    for (var row = firstRow; row <= lastRow; row += 1) {
       final frame = startFrame + row;
       final y = rowsTop + row * TimesheetDocumentLayout.rowHeight;
       final Paint paint;
@@ -899,7 +962,7 @@ class TimesheetDocumentPainter extends CustomPainter {
     // second's LAST frame row (24, 48, …) the second index prints BOLD in
     // place of the frame number — the paper convention (A-1 form).
     if (drawTexts) {
-      for (var row = 0; row < rowCount; row += 1) {
+      for (var row = firstRow; row < lastRow; row += 1) {
         final frame = startFrame + row;
         final printed = layout.continuous
             ? frame + 1
@@ -961,7 +1024,8 @@ class TimesheetDocumentPainter extends CustomPainter {
       final columnLeft = left + layout.columnLeftInHalf(column);
       final columnWidth = layout.columnWidthFor(spec.kind);
       final centerX = columnLeft + columnWidth / 2;
-      for (var row = 0; row < rowCount; row += 1) {
+      final (firstRow, lastRow) = _rowRange(rowsTop, rowCount);
+      for (var row = firstRow; row < lastRow; row += 1) {
         final frame = startFrame + row;
         if (frame >= cells.length) {
           break;
