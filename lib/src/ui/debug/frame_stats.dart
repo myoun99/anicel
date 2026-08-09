@@ -173,7 +173,16 @@ abstract final class FrameStats {
   /// The bake counter at the previous publication, so the rate is a
   /// slope. −1 means "no previous reading", which reports 0 rather than
   /// a spike made of the whole session's history.
+  ///
+  /// 🚨 Paired with the frame timestamp it was read at, because a slope
+  /// needs BOTH ends of the same interval. The first version of this
+  /// divided a delta accumulated since the last publish (250 ms) by the
+  /// whole window's wall span (240 frames — seconds), which under-reports
+  /// by the ratio between them: more than 20x once the window is full.
+  /// An instrument that answers "0.0/s" whatever is happening is worse
+  /// than no instrument, because it gets believed.
   static int _lastCaptureTotal = -1;
+  static int? _lastCaptureVsync;
 
   static final List<FrameTiming> _window = <FrameTiming>[];
   static bool _installed = false;
@@ -255,6 +264,12 @@ abstract final class FrameStats {
   static void reset() {
     _window.clear();
     _lastPublishedVsync = null;
+    // The slope's previous reading has to go too. Leaving it behind
+    // makes the next publish subtract a total from another session (or
+    // another test) and report a rate that never happened — and because
+    // the counter only ever grows, the lie is always an overstatement.
+    _lastCaptureTotal = -1;
+    _lastCaptureVsync = null;
     latest.value = null;
   }
 
@@ -289,17 +304,22 @@ abstract final class FrameStats {
     // would blur a cache that is filling into one that is half full.
     final last = window.last;
 
-    // Bakes are a COUNTER, so the useful reading is its slope. Measured
-    // against the same frame-timestamp span the fps figure uses, so the
-    // two are directly comparable: bakes/s approaching fps means a
-    // surface is re-baking on the pointer instead of on a change.
+    // Bakes are a COUNTER, so the useful reading is its slope — the
+    // delta between two readings over the time between those same two
+    // readings. Both ends come from frame timestamps, the same epoch the
+    // fps figure uses, so bakes/s approaching fps still means a surface
+    // is re-baking on the pointer instead of on a change.
     final captures = StaticRaster.censusCaptures;
-    final sinceLast = captures - _lastCaptureTotal;
-    final elapsed = spanSeconds <= 0 ? 0.0 : spanSeconds;
-    final bakesPerSecond = elapsed <= 0 || _lastCaptureTotal < 0
-        ? 0.0
-        : sinceLast / elapsed;
+    final previousTotal = _lastCaptureTotal;
+    final previousVsync = _lastCaptureVsync;
     _lastCaptureTotal = captures;
+    _lastCaptureVsync = lastVsync;
+    final rateSeconds = previousVsync == null
+        ? 0.0
+        : (lastVsync - previousVsync) / Duration.microsecondsPerSecond;
+    final bakesPerSecond = previousTotal < 0 || rateSeconds <= 0
+        ? 0.0
+        : (captures - previousTotal) / rateSeconds;
 
     return FrameStatsSnapshot(
       frames: window.length,
