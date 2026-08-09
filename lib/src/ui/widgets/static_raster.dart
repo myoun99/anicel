@@ -6,6 +6,7 @@ import 'package:flutter/scheduler.dart';
 import 'package:flutter/widgets.dart';
 
 import '../debug/measurement_mode.dart';
+import '../debug/repaint_cause.dart';
 
 /// Bakes its child into ONE image and blits that until the child actually
 /// changes.
@@ -230,6 +231,9 @@ class RenderStaticRaster extends RenderProxyBox {
   ui.Image? _raster;
   Size? _rasterSourceSize;
 
+  /// Why the last capture attempt gave up, if it did. Diagnostics only.
+  String? debugCaptureRefusal;
+
   /// True when the last capture attempt found a repaint boundary in the
   /// subtree and gave up. Surfaced for diagnostics, not for logic.
   bool get debugNestedBoundary => _nestedBoundary;
@@ -253,6 +257,15 @@ class RenderStaticRaster extends RenderProxyBox {
   /// pointer moving elsewhere does not re-bake the panel.
   @visibleForTesting
   int captureCount = 0;
+
+  /// Bakes by what the app was doing at the time.
+  ///
+  /// The report says WHICH panels re-bake and HOW OFTEN; this says WHY,
+  /// as far as a correlational answer can. `pointer` appearing here at
+  /// all is the finding — it means a panel is being re-baked because the
+  /// mouse moved somewhere else entirely, which is the exact cost this
+  /// whole thing exists to remove and is invisible by every other means.
+  final Map<String, int> captureCauses = <String, int>{};
 
   int _streak = 0;
   Duration? _lastCaptureFrame;
@@ -356,6 +369,10 @@ class RenderStaticRaster extends RenderProxyBox {
     _raster = captured;
     _rasterSourceSize = size * _devicePixelRatio;
     captureCount += 1;
+    if (RepaintCause.collecting) {
+      final cause = RepaintCause.attribute();
+      captureCauses[cause] = (captureCauses[cause] ?? 0) + 1;
+    }
 
     _blit(context, offset);
   }
@@ -450,6 +467,7 @@ class RenderStaticRaster extends RenderProxyBox {
       // ignore: invalid_use_of_protected_member
       context.stopRecordingIfNeeded();
       if (!offsetLayer.supportsRasterization()) {
+        debugCaptureRefusal = 'unrasterizable subtree';
         return null;
       }
       return offsetLayer.toImageSync(
@@ -457,6 +475,7 @@ class RenderStaticRaster extends RenderProxyBox {
         pixelRatio: _devicePixelRatio,
       );
     } catch (error, stack) {
+      debugCaptureRefusal = 'threw: $error';
       // Reported, not swallowed silently: a capture that keeps failing
       // is a real condition someone should see, and the panel keeps
       // working meanwhile.

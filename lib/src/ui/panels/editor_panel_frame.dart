@@ -64,6 +64,21 @@ class EditorPanelFrame extends StatelessWidget {
                   children: [
                     SizedBox(
                       height: headerHeight,
+                      // The header is its own ZONE — a SIBLING of the
+                      // body, not a wrapper around it. Its controls and
+                      // the panel's content change for entirely
+                      // different reasons, so one bake over both means
+                      // pressing a button re-bakes the whole panel.
+                      // Siblings keep their own dirty bits, so the split
+                      // costs no bookkeeping and nothing can go stale.
+                      //
+                      // The zone itself lives INSIDE [EditorPanelHeader]
+                      // and not here: the header scrolls its controls
+                      // when a panel is squeezed, and a viewport is a
+                      // repaint boundary — so a bake wrapped around the
+                      // header finds one and pays full price. The
+                      // enforcement test caught exactly that, the first
+                      // time this was written from the outside.
                       child: EditorPanelHeader(trailing: trailing),
                     ),
                     if (hasBoundedHeight)

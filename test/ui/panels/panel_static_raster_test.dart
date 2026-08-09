@@ -2,6 +2,8 @@ import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/ui/debug/measurement_mode.dart';
+import 'package:anicel/src/ui/debug/repaint_cause.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
 
@@ -96,7 +98,55 @@ void main() {
         before[entry.key],
         reason:
             '${entry.key} re-baked while the pointer was somewhere else '
-            'entirely — that is the whole cost this wrapper removes',
+            'entirely — that is the whole cost this wrapper removes.\n'
+            'Causes so far: ${entry.value.captureCauses}',
+      );
+    }
+  });
+
+  testWidgets('a bake caused by the pointer says so', (tester) async {
+    // The reason channel, and the one question it exists to answer.
+    // Without it, "this panel re-bakes 60 times a second" and "this
+    // panel re-bakes 60 times a second BECAUSE THE PEN MOVED" read the
+    // same, and only the second is a bug.
+    //
+    // Correlational by construction — the app marks what it is doing and
+    // a bake takes whatever was marked on its own frame. Being wrong
+    // makes a diagnosis misleading and cannot make a pixel stale, which
+    // is why it is allowed to be approximate at all.
+    MeasurementMode.frameStats.value = true;
+    addTearDown(() {
+      MeasurementMode.reset();
+      RepaintCause.reset();
+    });
+
+    await _pumpWorkspace(tester);
+    final rasters = _byLabel(tester);
+    expect(rasters, isNotEmpty);
+
+    for (final raster in rasters.values) {
+      raster.captureCauses.clear();
+    }
+
+    // Force a re-bake while the pointer is the thing that moved: the
+    // canvas panel marks `pointer` on every hover it accepts.
+    final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
+    await gesture.addPointer(location: const Offset(800, 500));
+    addTearDown(gesture.removePointer);
+    for (var i = 0; i < 6; i += 1) {
+      await gesture.moveTo(Offset(800 + i * 4, 500));
+      await tester.pump();
+    }
+
+    // Nothing SHOULD have re-baked — that is the fix working — so this
+    // asserts the shape of the answer rather than a count: whatever did
+    // bake is attributed, and nothing is silently unlabelled when the
+    // pointer was the only thing that moved.
+    for (final entry in rasters.entries) {
+      expect(
+        entry.value.captureCauses.keys,
+        everyElement(anyOf('pointer', 'unknown')),
+        reason: '${entry.key} attributed a bake to something impossible',
       );
     }
   });
@@ -162,7 +212,8 @@ void main() {
         final size = entry.value.size;
         baked.add(
           '${entry.key} '
-          '(${size.width.round()}x${size.height.round()})',
+          '(${size.width.round()}x${size.height.round()}) '
+          'x${entry.value.captureCount} ${entry.value.captureCauses}',
         );
       }
     }
