@@ -7,6 +7,25 @@ import 'package:anicel/main.dart';
 import 'package:anicel/src/ui/debug/frame_stats.dart';
 import 'package:anicel/src/ui/debug/frame_stats_readout.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
+import 'package:anicel/src/ui/widgets/static_raster.dart';
+
+/// Repaints whenever its notifier ticks, so a test can make a bake happen
+/// on demand. `shouldRepaint` is false on purpose: the `repaint` listenable
+/// is what drives it, which is the same path a real painter uses.
+class _TickPainter extends CustomPainter {
+  const _TickPainter(Listenable repaint) : super(repaint: repaint);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    canvas.drawRect(
+      Offset.zero & size,
+      Paint()..color = const Color(0xFF336699),
+    );
+  }
+
+  @override
+  bool shouldRepaint(_TickPainter oldDelegate) => false;
+}
 
 /// One synthetic frame. Every duration is expressed in milliseconds so
 /// the expectations below read as the numbers a person would see on
@@ -252,10 +271,7 @@ void main() {
 
     test('the bake rate is a slope, not the session total', () {
       // The counter climbs for the life of the process; what says "a
-      // panel is re-baking on the pointer" is its slope against the same
-      // span the fps figure uses, so the two can be read side by side.
-      // Reporting the raw total would show a huge number that only ever
-      // grows and means nothing.
+      // panel is re-baking on the pointer" is its slope, not its total.
       FrameStats.debugFeed(<FrameTiming>[
         for (var i = 0; i <= 60; i += 1)
           _frame(uiMs: 1, rasterMs: 1, atMs: i * 16),
@@ -273,6 +289,92 @@ void main() {
         FrameStats.latest.value!.bakesPerSecond,
         0,
         reason: 'no bakes happened between the two, so the slope is flat',
+      );
+    });
+
+    testWidgets('the slope is over the interval it measured, not the window', (
+      tester,
+    ) async {
+      // 🚨 The test above cannot see the bug this one exists for: with
+      // zero bakes, EVERY denominator gives zero. The first version of
+      // this instrument divided the delta accumulated since the last
+      // publication (a quarter second) by the whole window's span
+      // (seconds), and so answered "0.0/s" no matter what was baking.
+      // Only a fixture that actually bakes can tell the two apart.
+      MeasurementMode.frameStats.value = true;
+      final repaint = ValueNotifier<int>(0);
+      addTearDown(repaint.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Directionality(
+            textDirection: TextDirection.ltr,
+            child: Center(
+              child: SizedBox(
+                width: 100,
+                height: 100,
+                child: StaticRaster(
+                  debugLabel: 'rate-fixture',
+                  // The stand-down is a separate question; letting it fire
+                  // here would silently reduce the delta to nothing and
+                  // make this test vacuous again.
+                  maxConsecutiveCaptures: 1000,
+                  child: CustomPaint(painter: _TickPainter(repaint)),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+
+      // A window spanning FOUR SECONDS, published twice a QUARTER SECOND
+      // apart. The two intervals differ by 17x, which is the whole point.
+      FrameStats.debugFeed(<FrameTiming>[
+        for (var ms = 0; ms <= 4000; ms += 40)
+          _frame(uiMs: 1, rasterMs: 1, atMs: ms),
+      ]);
+      FrameStats.publish();
+      expect(FrameStats.latest.value!.windowSeconds, closeTo(4.0, 0.001));
+
+      final before = StaticRaster.censusCaptures;
+      for (var i = 0; i < 5; i += 1) {
+        repaint.value += 1;
+        await tester.pump();
+      }
+      final baked = StaticRaster.censusCaptures - before;
+      expect(
+        baked,
+        greaterThan(0),
+        reason:
+            'the fixture never baked, so any arithmetic would pass — this '
+            'assertion is the difference between a test and a decoration',
+      );
+
+      FrameStats.debugFeed(<FrameTiming>[
+        _frame(uiMs: 1, rasterMs: 1, atMs: 4250),
+      ]);
+      FrameStats.publish();
+      final stats = FrameStats.latest.value!;
+      expect(
+        stats.frames,
+        102,
+        reason:
+            'the pumps must not have injected timings of their own, or the '
+            'window is not the one the arithmetic below assumes',
+      );
+
+      expect(
+        stats.bakesPerSecond,
+        closeTo(baked / 0.25, 0.01),
+        reason: 'the delta happened over the quarter second between publishes',
+      );
+      expect(
+        stats.bakesPerSecond,
+        isNot(closeTo(baked / stats.windowSeconds, 0.01)),
+        reason:
+            'that is the old answer — a quarter-second delta spread over a '
+            'four-second window, low by the ratio between them',
       );
     });
 
