@@ -19,6 +19,7 @@ import 'playback/playback_transport_controls.dart';
 import 'storyboard_cut_fade_policy.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnailResolver;
 import 'storyboard_panel.dart';
+import 'timeline/timeline_row_filter.dart' show TimelineRowFilter;
 import 'timeline/layer_rail_window.dart' show LayerRailExtent;
 import '../models/layer_effect.dart' show LayerEffect;
 import 'timeline/effect_lane_editing.dart'
@@ -61,7 +62,14 @@ class StoryboardTabHost extends StatefulWidget {
     this.onTrackLaneHeightChanged,
     required this.thumbnailFor,
     this.cameraViewEnabled,
+    this.rowFilter = TimelineRowFilter.none,
+    this.onSetRowFilter,
   });
+
+  /// The legend's row filter, shared with the timeline and the sheet
+  /// (R5 #9). Null [onSetRowFilter] leaves the chips inert.
+  final TimelineRowFilter rowFilter;
+  final ValueChanged<TimelineRowFilter>? onSetRowFilter;
 
   /// The shortest this tab is laid out at — the dock splitter's floor and
   /// the tab shell's minimum content height. See
@@ -497,6 +505,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                 listenable: _session.voiceRecordPreviewLane,
                 builder: (context, _) => StoryboardPanel(
                   project: _session.repository.requireProject(),
+                  rowFilter: widget.rowFilter,
                   seLanePreview: _session.voiceRecordPreviewLane.value,
                   dragPreview: _session.dragPreview,
                   // While playing, the highlight follows the PLAYING cut
@@ -803,12 +812,35 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onUnmuteAllSe: () => _session.setAllSeLayersMuted(false),
                     onBypassAllFx: () => _session.setAllLayersFxBypassed(true),
                     onEnableAllFx: () => _session.setAllLayersFxBypassed(false),
-                    // Row solos stand down here (showRowSolos: false).
-                    onToggleMarkFilter: (_) {},
-                    onToggleKindFilter: (_) {},
-                    onToggleSheetOnlyFilter: () {},
-                    onToggleFxOnlyFilter: () {},
-                    onToggleFillReferenceOnlyFilter: () {},
+                    // R5 #9: the chips are LIVE here now — same filter
+                    // object as the timeline's, so setting one on either
+                    // surface sets it on both.
+                    onToggleMarkFilter: (mark) =>
+                        widget.onSetRowFilter?.call(
+                          widget.rowFilter.toggledMark(mark),
+                        ),
+                    onToggleKindFilter: (kind) =>
+                        widget.onSetRowFilter?.call(
+                          widget.rowFilter.toggledKind(kind),
+                        ),
+                    onToggleSheetOnlyFilter: () =>
+                        widget.onSetRowFilter?.call(
+                          widget.rowFilter.copyWith(
+                            onTimesheetOnly: !widget.rowFilter.onTimesheetOnly,
+                          ),
+                        ),
+                    onToggleFxOnlyFilter: () => widget.onSetRowFilter?.call(
+                      widget.rowFilter.copyWith(
+                        fxOnly: !widget.rowFilter.fxOnly,
+                      ),
+                    ),
+                    onToggleFillReferenceOnlyFilter: () =>
+                        widget.onSetRowFilter?.call(
+                          widget.rowFilter.copyWith(
+                            fillReferenceOnly:
+                                !widget.rowFilter.fillReferenceOnly,
+                          ),
+                        ),
                     onPreviewLayersOpacity: _session.previewLayersOpacity,
                     onCommitLayersOpacity: _session.commitLayersOpacity,
                   ),

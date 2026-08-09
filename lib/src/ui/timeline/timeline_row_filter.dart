@@ -48,20 +48,50 @@ class TimelineRowFilter {
 
   /// Whether [layer] passes every active facet (AND). [fxEnabled] resolves
   /// the layer's session-level fx state for the [fxOnly] facet.
-  bool allows(Layer layer, {required bool fxEnabled}) {
-    if (markColors.isNotEmpty && !markColors.contains(layer.mark)) {
+  bool allows(Layer layer, {required bool fxEnabled}) => allowsFacets(
+    mark: layer.mark,
+    kind: layer.kind,
+    onTimesheet: layer.onTimesheet,
+    fxEnabled: fxEnabled,
+    isFillReference: layer.isFillReference,
+  );
+
+  /// Whether a row passes, judged ONLY on the facets it actually carries
+  /// (R5 #9, the user's rule: "차이두지마").
+  ///
+  /// A null field means the row HAS no such facet, and a chip never hides a
+  /// row it cannot judge. One rule, applied to whatever the row is: a
+  /// storyboard V row carries `fxEnabled` and nothing else, so the fx chip
+  /// filters it exactly like a layer while the mark chip leaves it alone —
+  /// not because it is a track, but because a track has no mark.
+  ///
+  /// Judging the missing ones as FAILURES was the alternative, and it is
+  /// not a filter: turning on any mark would empty the storyboard whatever
+  /// the mark was.
+  ///
+  /// When a row kind later gains a facet — the user means to give tracks a
+  /// mark — the call site passes it and the chip starts working there with
+  /// no change to this rule.
+  bool allowsFacets({
+    LayerMark? mark,
+    LayerKind? kind,
+    bool? onTimesheet,
+    required bool fxEnabled,
+    bool? isFillReference,
+  }) {
+    if (mark != null && markColors.isNotEmpty && !markColors.contains(mark)) {
       return false;
     }
-    if (kinds.isNotEmpty && !kinds.contains(layer.kind)) {
+    if (kind != null && kinds.isNotEmpty && !kinds.contains(kind)) {
       return false;
     }
-    if (onTimesheetOnly && !layer.onTimesheet) {
+    if (onTimesheet == false && onTimesheetOnly) {
       return false;
     }
     if (fxOnly && !fxEnabled) {
       return false;
     }
-    if (fillReferenceOnly && !layer.isFillReference) {
+    if (isFillReference == false && fillReferenceOnly) {
       return false;
     }
     return true;
