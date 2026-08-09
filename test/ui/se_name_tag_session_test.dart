@@ -104,7 +104,10 @@ void main() {
     s.updateSelectedSeEntry(dialogue: 'おはよう', seName: 'タモツ');
 
     final cut = s.requireActiveCut;
-    expect(s.seNameTagsForCutFrame(cut, 0).single.content.text, '[タモツ] おはよう');
+    // R5 #7: two runs — the name in the box, the dialogue beside it.
+    final tag = s.seNameTagsForCutFrame(cut, 0).single;
+    expect(tag.content.text, 'タモツ');
+    expect(tag.line?.text, 'おはよう');
     expect(
       s.seNameTagsForCutFrame(cut, 10),
       isEmpty,
