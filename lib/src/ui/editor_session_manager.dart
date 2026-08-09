@@ -198,7 +198,8 @@ import 'timeline/effect_lane_editing.dart'
         effectsWithEnabledToggled,
         effectsWithLaneKeyRemoved,
         effectsWithLaneKeyToggled,
-        effectsWithLaneSpanKeysShifted;
+        effectsWithLaneSpanKeysShifted,
+        effectsWithGroupReset;
 import 'timeline/effect_lane_policy.dart'
     show effectLaneDisplayOrder, effectLaneSpan, parseEffectLaneId;
 import 'timeline/transform_lane_editing.dart'
@@ -206,7 +207,8 @@ import 'timeline/transform_lane_editing.dart'
         transformLaneKeyFrames,
         transformTrackWithLaneKeyRemoved,
         transformTrackWithLaneKeyToggled,
-        transformTrackWithLaneSpanKeysShifted;
+        transformTrackWithLaneSpanKeysShifted,
+        transformTrackWithGroupReset;
 import 'timeline/transform_lane_policy.dart'
     show transformGroupHeaderLane, transformLaneDisplayOrder, transformLaneSpan;
 
@@ -3015,6 +3017,26 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     updateTrackEffects(trackId, next, description: 'Remove effect');
+  }
+
+  /// A V-track effect group's RESET (R5) — the track twin of
+  /// [resetLaneGroup]. Track effects have no lane-range selection of their
+  /// own, so the scope is always the playhead.
+  bool resetTrackEffectGroup(TrackId trackId, String headerLaneId) {
+    final track = _trackById(trackId);
+    if (track == null) {
+      return false;
+    }
+    final next = effectsWithGroupReset(
+      track.effects,
+      laneId: headerLaneId,
+      frameIndexes: [_timelineController.currentFrameIndex],
+    );
+    if (next == null) {
+      return false;
+    }
+    updateTrackEffects(trackId, next, description: 'Reset group');
+    return true;
   }
 
   /// One effect's own bypass on the V row — the switch on its group header,
@@ -8087,6 +8109,71 @@ class EditorSessionManager extends ChangeNotifier {
     return changed;
   }
 
+  /// AE's group Reset (R5, user 2026-08-09): puts a GROUP HEADER's members
+  /// back to their defaults without deleting a single key.
+  ///
+  /// Scope is [_laneVerbRange]'s, the same one Add and Delete Key take —
+  /// the playhead alone, or a live lane-range selection. What differs is
+  /// what a span MEANS here: "선택범위에서 작동하면 선택한 키들 리셋", so a
+  /// span resets the keys it covers and authors none, while the playhead
+  /// case must write one on an animated lane (nothing else can make the
+  /// value THERE the default). An unkeyed lane is left alone either way —
+  /// it already sits at its default, and keying it would turn a static
+  /// property into an animated one behind the user's back.
+  ///
+  /// [headerLaneId] names the group: the transform header resets the
+  /// transform track, an `fx-group:` header its own effect.
+  bool resetLaneGroup(LayerId layerId, String headerLaneId) {
+    final layer = _layerById(layerId);
+    if (layer == null || isAttachedLayer(layer)) {
+      return false;
+    }
+    final span = laneRangeSelection.value;
+    // A span covering this very group is the only one that scopes the
+    // reset: standing elsewhere with a selection alive on another row must
+    // not silently retarget it.
+    final scoped =
+        span != null &&
+        span.layerId == layerId &&
+        span.spanLaneIds.contains(headerLaneId);
+    final frames = scoped
+        ? [for (var i = span.startIndex; i < span.endIndexExclusive; i += 1) i]
+        : [_timelineController.currentFrameIndex];
+
+    if (parseEffectLaneId(headerLaneId) != null) {
+      final effects = effectsWithGroupReset(
+        layer.effects,
+        laneId: headerLaneId,
+        frameIndexes: frames,
+        keyedFramesOnly: scoped,
+      );
+      if (effects == null) {
+        return false;
+      }
+      updateLayerEffects(layer.id, effects, description: 'Reset group');
+      return true;
+    }
+    if (headerLaneId != transformGroupHeaderLane.laneId) {
+      return false;
+    }
+    final canvasSize = requireActiveCut.canvasSize;
+    final next = transformTrackWithGroupReset(
+      _laneTransformTrackOf(layer),
+      frameIndexes: frames,
+      identity: layerIdentityPose(canvasSize),
+      defaultAnchorPoint: CanvasPoint(
+        x: canvasSize.width / 2,
+        y: canvasSize.height / 2,
+      ),
+      keyedFramesOnly: scoped,
+    );
+    if (next == null) {
+      return false;
+    }
+    _commitLaneTransformTrack(layer, next, description: 'Reset group');
+    return true;
+  }
+
   /// Whether [_laneVerbRange] holds a key to delete.
   bool get _laneVerbRangeHasKeys {
     final lane = _laneVerbRange;
@@ -12858,6 +12945,56 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// SE rows: the selected entry's speaker/effect name (the accent box).
   String? get selectedFrameSeName => selectedFrame?.seName;
+
+  /// The sounds the SELECTED SE instance carries, each with the index it
+  /// sits at in its layer's clip list (R5 #19 — the instance editor shows
+  /// what a block is linked to, and lets you take it off).
+  ///
+  /// The index travels with the clip because [removeAudioClipAt] addresses
+  /// by position: a clip has no id of its own, and looking it up again
+  /// afterwards would search a list that just changed.
+  List<({AudioClip clip, int index})> get selectedSeAudioClips {
+    final layer = activeLayer;
+    final frame = selectedFrame;
+    if (layer == null || frame == null) {
+      return const [];
+    }
+    return [
+      for (var index = 0; index < layer.audioClips.length; index += 1)
+        if (layer.audioClips[index].frameId == frame.id)
+          (clip: layer.audioClips[index], index: index),
+    ];
+  }
+
+  /// Takes the sounds at [clipIndexes] off the ACTIVE layer in one step —
+  /// the instance editor's unlink, which can drop several at once and must
+  /// be one undo with them.
+  ///
+  /// Descending removal: every index is into the list as it stands NOW, and
+  /// removing a low one would shift the rest.
+  void unlinkAudioClipsFromActiveLayer(Iterable<int> clipIndexes) {
+    final layer = activeLayer;
+    if (layer == null) {
+      return;
+    }
+    final ordered = clipIndexes.toList()..sort((a, b) => b.compareTo(a));
+    final next = [...layer.audioClips];
+    for (final index in ordered) {
+      if (index >= 0 && index < next.length) {
+        next.removeAt(index);
+      }
+    }
+    if (next.length == layer.audioClips.length) {
+      return;
+    }
+    _cutCommandCoordinator.updateLayerAudioClips(
+      cutId: requireActiveCut.id,
+      layerId: layer.id,
+      audioClips: next,
+      description: 'Unlink audio',
+    );
+    notifyListeners();
+  }
 
   /// Applies a rename to the currently selected frame.
   ///

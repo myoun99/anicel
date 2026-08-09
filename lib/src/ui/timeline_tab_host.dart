@@ -25,6 +25,7 @@ import 'editor_command_actions.dart';
 import 'editor_session_manager.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'playback/playback_transport_controls.dart';
+import '../models/media_asset.dart' show mediaAssetDefaultName;
 import '../models/transform_track.dart';
 import '../services/camera_pose_resolver.dart';
 import 'text/app_strings.dart';
@@ -587,6 +588,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       return;
     }
 
+    // R5 #19: the block says what sound it carries. The clip's INDEX is the
+    // token — a clip has no id, and it is read once here so the dialog and
+    // the unlink below address the same list.
+    final linked = _session.selectedSeAudioClips;
     final result = await showDialog<SeInstanceDialogResult>(
       context: context,
       builder: (context) => SeInstanceDialog(
@@ -594,6 +599,13 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         initialSeName: _session.selectedFrameSeName ?? '',
         initialDialogue: _session.selectedFrameName ?? '',
         previewAxis: _previewAxis,
+        linkedAudio: [
+          for (final entry in linked)
+            (
+              label: mediaAssetDefaultName(entry.clip.filePath),
+              token: entry.index,
+            ),
+        ],
       ),
     );
     if (!mounted || result == null) {
@@ -603,6 +615,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     final seName = result.seName.isEmpty ? null : result.seName;
     // SE edits never hit the link-conflict flow (duplicates allowed).
     _session.updateSelectedSeEntry(dialogue: result.dialogue, seName: seName);
+    if (result.unlinkedAudioTokens.isNotEmpty) {
+      _session.unlinkAudioClipsFromActiveLayer(result.unlinkedAudioTokens);
+    }
   }
 
   /// Text cells (R5): covered cells open the parameter editor; EMPTY
@@ -1251,6 +1266,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                 'Toggle ${lane.label}',
               );
             },
+            // R5: AE's group Reset. The session owns the scope rule (the
+            // playhead, or a live lane range's keys) so both grids and the
+            // storyboard ask the same question.
+            onResetLaneGroup: (layer, lane) =>
+                _session.resetLaneGroup(layer.id, lane.laneId),
             timelineActionToolbar: timelineToolbar,
           );
           // The GAP empty state (UI-R9 #3): no cut selected — no rows, no

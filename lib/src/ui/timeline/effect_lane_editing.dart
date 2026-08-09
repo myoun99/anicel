@@ -118,6 +118,84 @@ List<LayerEffect>? effectsWithLaneValueEdited(
   });
 }
 
+/// AE's group Reset for ONE effect header (R5, user 2026-08-09) — the same
+/// rule the transform group's takes: **키를 삭제하진 않고 값만 리셋**.
+///
+/// An effect parameter has BOTH a static slot and a track, so the two cases
+/// separate cleanly: an unkeyed parameter resets its static value (no key is
+/// authored — a reset must not turn a static property into an animated one),
+/// and a keyed one takes the spec default at the scope frames with its
+/// existing interpolation kept.
+///
+/// [keyedFramesOnly] tells the two scopes apart, exactly as it does for the
+/// transform group: at the playhead a keyed lane MUST take a key (the only
+/// way the value THERE can be the default), while a lane-range selection
+/// means "reset the selected keys" and invents none.
+///
+/// Null when [laneId] is not an effect GROUP header, or nothing changed.
+List<LayerEffect>? effectsWithGroupReset(
+  List<LayerEffect> effects, {
+  required String laneId,
+  required Iterable<int> frameIndexes,
+  bool keyedFramesOnly = false,
+}) {
+  final address = parseEffectLaneId(laneId);
+  if (address == null || address.parameterId != null) {
+    return null;
+  }
+  final frames = frameIndexes.where((frame) => frame >= 0).toSet();
+  if (frames.isEmpty) {
+    return null;
+  }
+  for (var index = 0; index < effects.length; index += 1) {
+    final effect = effects[index];
+    if (effect.id != address.effectId) {
+      continue;
+    }
+    var next = effect;
+    var changed = false;
+    for (final spec in effectParametersOf(effect.kind)) {
+      final parameter = effect.parameterOf(spec.id);
+      if (parameter.track.isEmpty) {
+        if (parameter.value == spec.defaultValue) {
+          continue;
+        }
+        next = next.withParameter(
+          spec.id,
+          parameter.copyWith(value: spec.defaultValue),
+        );
+        changed = true;
+        continue;
+      }
+      var track = parameter.track;
+      for (final frame in frames) {
+        if (keyedFramesOnly && parameter.track.keyAt(frame) == null) {
+          continue;
+        }
+        track = track.withKey(
+          frame,
+          spec.defaultValue,
+          interpolation:
+              parameter.track.keyAt(frame)?.interpolation ??
+              PropertyKeyInterpolation.linear,
+        );
+      }
+      if (track == parameter.track) {
+        continue;
+      }
+      next = next.withParameter(spec.id, parameter.copyWith(track: track));
+      changed = true;
+    }
+    if (!changed) {
+      return null;
+    }
+    final chain = List<LayerEffect>.of(effects);
+    chain[index] = next;
+    return chain;
+  }
+  return null;
+}
+
 /// Shifts EVERY key of ONE effect lane inside [rangeStartIndex,
 /// [rangeEndIndexExclusive]) by [frameDelta] — the lane-scoped range move
 /// (UI-R23 #3): rigid group, one delta, all-or-nothing. Null when nothing

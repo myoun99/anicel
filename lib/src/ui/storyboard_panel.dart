@@ -399,6 +399,7 @@ class StoryboardPanel extends StatefulWidget {
     this.onTrackOpacityChanged,
     this.onTrackOpacityChangeEnd,
     this.onToggleTrackEffectEnabled,
+    this.onResetTrackEffectGroup,
     this.seCommaDrag,
     this.seSelect,
     this.onSetAudioClipOffset,
@@ -758,6 +759,11 @@ class StoryboardPanel extends StatefulWidget {
   /// of a layer effect's switch). Null leaves the glyph inert.
   final void Function(Track track, EffectId effectId)?
   onToggleTrackEffectEnabled;
+
+  /// One V-track group header's RESET (R5, AE's group Reset) — the lane id
+  /// names the group, exactly as the layer surfaces' does.
+  final void Function(Track track, String headerLaneId)?
+  onResetTrackEffectGroup;
 
   /// Range selection on the S rows — the cut row's hooks one row up, in
   /// the same track-axis selection. Null keeps the S rows unselectable.
@@ -1273,6 +1279,10 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     /// The header's own ON/OFF switch (AE's per-effect eyeball). Null leaves
     /// the glyph inert, which is what a Transform header wants here.
     void Function(PropertyLaneRow lane)? onToggleGroupEnabled,
+
+    /// The header's RESET (R5, AE's group Reset). Null hides the button —
+    /// a header whose group has no reset route must not show one.
+    void Function(PropertyLaneRow lane)? onResetGroup,
   }) {
     final metrics = TimelineGridMetrics(
       frameCellWidth: widget.pixelsPerFrame,
@@ -1296,6 +1306,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       onToggleLaneGroupEnabled: onToggleGroupEnabled == null
           ? null
           : (_, _) => onToggleGroupEnabled(lane),
+      onResetLaneGroup: onResetGroup == null || !lane.isGroupHeader
+          ? null
+          : (_, _) => onResetGroup(lane),
       keyPrefix: 'storyboard',
       leadingInset: layerSectionLabelSlotWidth,
       currentRowHooks: widget.currentRowHooks,
@@ -1556,6 +1569,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                     widget.onToggleTrackEffectEnabled!(track, parsed.effectId);
                   }
                 },
+          onResetGroup: widget.onResetTrackEffectGroup == null
+              ? null
+              : (lane) => widget.onResetTrackEffectGroup!(track, lane.laneId),
           active: true,
           frameCursor: widget.playheadFrame,
           onSelectFrame: widget.onSeekGlobalFrame,

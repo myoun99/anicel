@@ -207,6 +207,9 @@ class AppStrings {
   String get seInstanceEditTitle => _s('seInstanceEditTitle');
   String get seNameLabel => _s('seNameLabel');
   String get seDialogueLabel => _s('seDialogueLabel');
+  String get seLinkedAudioLabel => _s('seLinkedAudioLabel');
+  String get seLinkedAudioNone => _s('seLinkedAudioNone');
+  String get seUnlinkAudio => _s('seUnlinkAudio');
 
   /// '{frame}' is replaced with the 1-based frame number.
   String get cameraKeyTitleTemplate => _s('cameraKeyTitleTemplate');
@@ -457,6 +460,7 @@ class AppStrings {
   String get tlDuplicateLayer => _s('tlDuplicateLayer');
   String get tlLinkDuplicateLayer => _s('tlLinkDuplicateLayer');
   String get tlUnlinkLayer => _s('tlUnlinkLayer');
+  String get tlResetGroup => _s('tlResetGroup');
   String get tlRenameLayer => _s('tlRenameLayer');
   String get tlCopyLayer => _s('tlCopyLayer');
   String get tlDeleteLayer => _s('tlDeleteLayer');
@@ -887,6 +891,9 @@ class AppStrings {
     'seInstanceEditTitle': 'Edit SE',
     'seNameLabel': 'Name (speaker — blank hides the box)',
     'seDialogueLabel': 'Dialogue',
+    'seLinkedAudioLabel': 'Linked audio',
+    'seLinkedAudioNone': 'None',
+    'seUnlinkAudio': 'Unlink',
     'cameraKeyTitleTemplate': 'Camera keys — frame {frame}',
     'cameraKeyLinear': 'Linear',
     'cameraKeyHold': 'Hold',
@@ -1362,6 +1369,7 @@ class AppStrings {
     'tlDuplicateLayer': 'Duplicate layer',
     'tlLinkDuplicateLayer': 'Link duplicate layer',
     'tlUnlinkLayer': 'Unlink layer',
+    'tlResetGroup': 'Reset (keeps keys)',
     'tlRenameLayer': 'Rename layer…',
     'tlCopyLayer': 'Copy layer',
     'tlDeleteLayer': 'Delete layer',
@@ -1503,6 +1511,9 @@ class AppStrings {
     'seInstanceEditTitle': 'SEの編集',
     'seNameLabel': '名前（話者 — 空欄でボックス非表示）',
     'seDialogueLabel': 'セリフ',
+    'seLinkedAudioLabel': 'リンクされた音声',
+    'seLinkedAudioNone': 'なし',
+    'seUnlinkAudio': 'リンクを解除',
     'cameraKeyTitleTemplate': 'カメラキー — {frame}フレーム目',
     'cameraKeyLinear': 'リニア',
     'cameraKeyHold': 'ホールド',
@@ -2059,6 +2070,7 @@ class AppStrings {
     'tlDuplicateLayer': 'レイヤーを複製',
     'tlLinkDuplicateLayer': 'リンクして複製',
     'tlUnlinkLayer': 'リンクを解除',
+    'tlResetGroup': 'リセット（キーは残す）',
     'tlRenameLayer': 'レイヤー名を変更…',
     'tlCopyLayer': 'レイヤーをコピー',
     'tlDeleteLayer': 'レイヤーを削除',
@@ -2199,6 +2211,9 @@ class AppStrings {
     'seInstanceEditTitle': 'SE 편집',
     'seNameLabel': '이름 (화자 — 비우면 박스 숨김)',
     'seDialogueLabel': '대사',
+    'seLinkedAudioLabel': '링크된 오디오',
+    'seLinkedAudioNone': '없음',
+    'seUnlinkAudio': '링크 해제',
     'cameraKeyTitleTemplate': '카메라 키 — {frame}프레임',
     'cameraKeyLinear': '리니어',
     'cameraKeyHold': '홀드',
@@ -2752,6 +2767,7 @@ class AppStrings {
     'tlDuplicateLayer': '레이어 복제',
     'tlLinkDuplicateLayer': '링크해서 복제',
     'tlUnlinkLayer': '링크 해제',
+    'tlResetGroup': '리셋 (키는 유지)',
     'tlRenameLayer': '레이어 이름 변경…',
     'tlCopyLayer': '레이어 복사',
     'tlDeleteLayer': '레이어 삭제',
@@ -2896,6 +2912,9 @@ class AppStrings {
     'seInstanceEditTitle': 'Modifier le SE',
     'seNameLabel': 'Nom (locuteur — vide masque le cadre)',
     'seDialogueLabel': 'Dialogue',
+    'seLinkedAudioLabel': 'Audio lié',
+    'seLinkedAudioNone': 'Aucun',
+    'seUnlinkAudio': 'Dissocier',
     'cameraKeyTitleTemplate': 'Clés caméra — image {frame}',
     'cameraKeyLinear': 'Linéaire',
     'cameraKeyHold': 'Maintien',
@@ -3480,6 +3499,7 @@ class AppStrings {
     'tlDuplicateLayer': 'Dupliquer le calque',
     'tlLinkDuplicateLayer': 'Dupliquer en liant',
     'tlUnlinkLayer': 'Délier le calque',
+    'tlResetGroup': 'Réinitialiser (garde les clés)',
     'tlRenameLayer': 'Renommer le calque…',
     'tlCopyLayer': 'Copier le calque',
     'tlDeleteLayer': 'Supprimer le calque',
@@ -3619,6 +3639,9 @@ class AppStrings {
     'seInstanceEditTitle': '编辑 SE',
     'seNameLabel': '名称（说话者 — 留空则隐藏名条）',
     'seDialogueLabel': '台词',
+    'seLinkedAudioLabel': '已链接音频',
+    'seLinkedAudioNone': '无',
+    'seUnlinkAudio': '解除链接',
     'cameraKeyTitleTemplate': '摄影表关键帧 — 第 {frame} 帧',
     'cameraKeyLinear': '线性',
     'cameraKeyHold': '保持',
@@ -4146,6 +4169,7 @@ class AppStrings {
     'tlDuplicateLayer': '复制图层',
     'tlLinkDuplicateLayer': '链接复制图层',
     'tlUnlinkLayer': '取消图层链接',
+    'tlResetGroup': '重置（保留关键帧）',
     'tlRenameLayer': '重命名图层…',
     'tlCopyLayer': '复制图层',
     'tlDeleteLayer': '删除图层',

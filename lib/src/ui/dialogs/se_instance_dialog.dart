@@ -5,13 +5,26 @@ import '../widgets/app_window.dart';
 import 'instance_edit_dialog.dart';
 import 'instance_edit_preview.dart';
 
+/// A sound the edited SE instance carries: what to show, and the opaque
+/// token the host uses to find it again (R5 #19).
+typedef SeInstanceAudioLink = ({String label, int token});
+
 /// What the SE instance dialog resolved to: the (possibly empty) speaker
-/// name and the dialogue text.
+/// name, the dialogue text, and the sounds the user took off.
 class SeInstanceDialogResult {
-  const SeInstanceDialogResult({required this.seName, required this.dialogue});
+  const SeInstanceDialogResult({
+    required this.seName,
+    required this.dialogue,
+    this.unlinkedAudioTokens = const {},
+  });
 
   final String seName;
   final String dialogue;
+
+  /// The [SeInstanceAudioLink.token]s of the sounds unlinked in this
+  /// sitting. Empty on every dialog that never showed one — unlinking is a
+  /// decision made HERE and applied on OK, so Cancel keeps the sound.
+  final Set<int> unlinkedAudioTokens;
 }
 
 /// The SE layer's instance editor — name (speaker/effect, accent box) +
@@ -26,10 +39,16 @@ class SeInstanceDialog extends StatefulWidget {
     this.initialDialogue = '',
     this.creating = false,
     this.previewAxis = Axis.horizontal,
+    this.linkedAudio = const [],
   });
 
   final String initialSeName;
   final String initialDialogue;
+
+  /// The sounds this instance carries (R5 #19). Shown even when empty —
+  /// "none" is the answer to "what is this block linked to?", and a field
+  /// that appears only sometimes cannot be asked.
+  final List<SeInstanceAudioLink> linkedAudio;
 
   /// Whether a new entry is being created (title wording only).
   final bool creating;
@@ -67,12 +86,63 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
     super.dispose();
   }
 
+  /// Tokens struck through in this sitting, applied on OK.
+  final Set<int> _unlinked = <int>{};
+
   void _submit() {
     Navigator.of(context).pop(
       SeInstanceDialogResult(
         seName: _seNameController.text.trim(),
         dialogue: _dialogueController.text.trim(),
+        unlinkedAudioTokens: Set.unmodifiable(_unlinked),
       ),
+    );
+  }
+
+  Widget _linkedAudioField(AppStrings strings) {
+    final theme = Theme.of(context);
+    final remaining = [
+      for (final link in widget.linkedAudio)
+        if (!_unlinked.contains(link.token)) link,
+    ];
+    return AppWindowField(
+      label: strings.seLinkedAudioLabel,
+      child: remaining.isEmpty
+          ? Text(
+              strings.seLinkedAudioNone,
+              key: const ValueKey<String>('se-linked-audio-none'),
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            )
+          : Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                for (final link in remaining)
+                  Row(
+                    children: [
+                      const Icon(Icons.graphic_eq, size: 16),
+                      const SizedBox(width: 6),
+                      Expanded(
+                        child: Text(
+                          link.label,
+                          overflow: TextOverflow.ellipsis,
+                          style: theme.textTheme.bodySmall,
+                        ),
+                      ),
+                      TextButton(
+                        key: ValueKey<String>(
+                          'se-unlink-audio-${link.token}',
+                        ),
+                        onPressed: () =>
+                            setState(() => _unlinked.add(link.token)),
+                        child: Text(strings.seUnlinkAudio),
+                      ),
+                    ],
+                  ),
+              ],
+            ),
     );
   }
 
@@ -107,6 +177,8 @@ class _SeInstanceDialogState extends State<SeInstanceDialog> {
               maxLines: null,
             ),
           ),
+          const SizedBox(height: 12),
+          _linkedAudioField(strings),
         ],
       ),
       preview: InstanceEditPreview.se(
