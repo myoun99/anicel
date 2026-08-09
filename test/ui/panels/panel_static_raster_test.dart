@@ -138,15 +138,35 @@ void main() {
       await tester.pump();
     }
 
-    // Nothing SHOULD have re-baked — that is the fix working — so this
-    // asserts the shape of the answer rather than a count: whatever did
-    // bake is attributed, and nothing is silently unlabelled when the
-    // pointer was the only thing that moved.
+    // 🚨 What used to be here was vacuous twice over: `everyElement` over
+    // a map that is always empty passes, and `'unknown'` was in the
+    // allowed set, so it also passed when the channel could only ever say
+    // `unknown` — which for a while was the only thing it could say.
+    //
+    // The two halves that are actually worth asserting:
+    //
+    // 1. The app still MARKS. A channel with nothing wired into it looks
+    //    exactly like a channel reporting good news. Delete the
+    //    `RepaintCause.note('pointer')` in `brush_canvas_panel.dart` and
+    //    this line goes red.
+    expect(
+      RepaintCause.debugMarkedCause,
+      'pointer',
+      reason:
+          'the canvas stopped marking hover, so every future bake would be '
+          'attributed to `unknown` and read as "nothing to see here"',
+    );
+
+    // 2. And no panel re-baked BECAUSE of it. This is the failure the
+    //    whole round exists to prevent, stated in the channel's own terms.
     for (final entry in rasters.entries) {
       expect(
-        entry.value.captureCauses.keys,
-        everyElement(anyOf('pointer', 'unknown')),
-        reason: '${entry.key} attributed a bake to something impossible',
+        entry.value.captureCauses.containsKey('pointer'),
+        isFalse,
+        reason:
+            '${entry.key} re-baked on a pointer move — the panel is paying '
+            'its full price again and looks identical while doing it.\n'
+            'Causes: ${entry.value.captureCauses}',
       );
     }
   });
