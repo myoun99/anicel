@@ -3493,8 +3493,35 @@ class _StagePlanesPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final box = Offset.zero & size;
+    // 🚨 Clip to our own box, because the quad below is built in VIEWPORT
+    // coordinates and therefore reaches as far as the pasteboard does —
+    // five canvas widths and heights, which is 9600 x 5400 units at the
+    // default project size. A `CustomPaint` clips nothing on its own, so
+    // the display list's BOUNDS became that whole quad, and the engine
+    // sizes a raster cache entry from the bounds times the transform:
+    //
+    //   197.75 MiB  x  zoom²  x  dpr²
+    //
+    // Measured on the real app: the picture cache ran to ~1 GB on an
+    // EMPTY project and tracked zoom² exactly, with a cliff where the
+    // allocation finally failed. One `drawPath`.
+    //
+    // Everything past this box is composited away anyway, so the app was
+    // paying hundreds of megabytes to rasterize pixels it then threw out.
+    // And by default it was not even a visible colour: `backdrop` and
+    // `pasteboard` are BOTH `0xFF141517`, so the money went on painting
+    // #141517 over #141517.
+    //
+    // This is a return to the convention, not an invention — four of the
+    // five canvas-space painters already clip (`canvas_layer_stack_view`,
+    // `editor_canvas_area` twice, `camera_frame_overlay`, whose comment
+    // says in as many words that CustomPaint does not clip). This one was
+    // the exception.
+    canvas.save();
+    canvas.clipRect(box);
     canvas.drawRect(box, Paint()..color = backdrop);
     if (pasteboard.a <= 0 || margin < 0) {
+      canvas.restore();
       return;
     }
     final width = canvasSize.width.toDouble();
@@ -3518,6 +3545,7 @@ class _StagePlanesPainter extends CustomPainter {
       ..lineTo(at(left, bottom).dx, at(left, bottom).dy)
       ..close();
     canvas.drawPath(path, Paint()..color = pasteboard);
+    canvas.restore();
   }
 
   @override
