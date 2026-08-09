@@ -71,14 +71,17 @@ abstract final class RepaintCause {
   /// nothing, and carrying it forward would turn the report into a story
   /// about whatever the user last touched.
   ///
-  /// ⚠️ The residual: a pending mark that no bake ever claims stays
-  /// pending, so a mark followed by a long quiet period and then a bake
-  /// attributes that bake to the stale mark. In practice the marks this
-  /// serves arrive continuously while the pen is moving, so the window is
-  /// one frame. Bounding it properly would need a frame-end hook, and
-  /// this channel is correlational by construction — being wrong makes a
-  /// diagnosis misleading and cannot make a pixel stale, which is the
-  /// only reason it is allowed to be approximate at all.
+  /// An unclaimed mark expires at the end of the frame it was waiting
+  /// for — see [install].
+  ///
+  /// 🚨 That bound is not a nicety. The first version argued the window
+  /// was one frame because marks arrive continuously while the pen moves,
+  /// which gets it exactly backwards: **when the design is working,
+  /// nothing bakes while the pen moves.** So the pending mark would
+  /// survive the whole hover and attach itself to the next bake that
+  /// happened for any reason at all — clicking a panel, say — and label
+  /// it `pointer`. The one false positive this channel exists to catch,
+  /// manufactured by the channel itself.
   static String attribute() {
     if (!collecting) {
       return 'unknown';
@@ -110,6 +113,46 @@ abstract final class RepaintCause {
           SchedulerBinding.instance.schedulerPhase == SchedulerPhase.midFrameMicrotasks
       ? SchedulerBinding.instance.currentFrameTimeStamp
       : null;
+
+  static bool _installed = false;
+
+  /// Registers the frame-end sweep that expires an unclaimed mark. Call
+  /// from `main()` before `runApp`.
+  ///
+  /// A persistent frame callback added after the binding's own runs after
+  /// the render pipeline has flushed, so every bake this frame has
+  /// already had its chance to claim the mark. Anything left is a mark
+  /// for a frame that has been and gone.
+  ///
+  /// Registered for the process lifetime even while the switch is off —
+  /// one bool write per frame, against the classic double-register that
+  /// add-and-remove-on-toggle invites.
+  static void install() {
+    if (_installed) {
+      return;
+    }
+    _installed = true;
+    debugRegistrations += 1;
+    SchedulerBinding.instance.addPersistentFrameCallback((_) {
+      debugSweeps += 1;
+      _pending = false;
+    });
+  }
+
+  @visibleForTesting
+  static int debugRegistrations = 0;
+
+  /// How many frame-end sweeps have run. A test that expects a mark to
+  /// have expired is asserting about this callback; if it never fired,
+  /// the test is measuring the harness, not the rule.
+  @visibleForTesting
+  static int debugSweeps = 0;
+
+  @visibleForTesting
+  static bool get debugPending => _pending;
+
+  @visibleForTesting
+  static Duration? get debugCauseFrame => _causeFrame;
 
   /// The last thing the app marked, whether or not a bake ever claimed
   /// it. Exists so a test can prove the app still CALLS [note] — an
