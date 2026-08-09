@@ -16,13 +16,25 @@ class ResolvedSeNameTag {
     required this.layerId,
     required this.content,
     required this.widthBudget,
+    this.line,
   });
 
   /// The SE row the tag belongs to (its eye is the display switch).
   final String layerId;
 
-  /// The tag as a text block — the same [TextCelContent] the text layer
-  /// speaks, so ONE painter draws both (ⓣ).
+  /// The DIALOGUE run, or null when there is none to show.
+  ///
+  /// It carries NO usable position: where it sits depends on how wide the
+  /// name box laid out, which is known only once the name is measured. The
+  /// painter places it, off the box's right edge.
+  final TextCelContent? line;
+
+  /// The NAME run as a text block — the same [TextCelContent] the text
+  /// layer speaks, so ONE painter draws both (ⓣ).
+  ///
+  /// Its position is the box's CENTRE, not the text's top-left: the
+  /// dialogue hangs off the box's right edge, so the box is the thing that
+  /// has to stay put when the dialogue is turned off (R5 #7).
   final TextCelContent content;
 
   /// The width the tag may occupy before it shrinks to fit — the shot's
@@ -70,27 +82,37 @@ List<ResolvedSeNameTag> resolveSeNameTagsAt({
     if (frame == null) {
       continue;
     }
-    final text = seNameTagText(seName: frame.seName, dialogue: frame.name);
-    if (text.isEmpty) {
+    final tag = layer.seNameTag;
+    final name = frame.seName?.trim() ?? '';
+    final dialogue = frame.name?.trim() ?? '';
+    final showsLine = (tag?.showLine ?? true) && dialogue.isNotEmpty;
+    if (name.isEmpty && !showsLine) {
       continue;
     }
-    final tag = layer.seNameTag;
+    final anchor =
+        tag?.position ??
+        defaultSeNameTagPosition(
+          canvas: canvas,
+          cameraFrame: cameraFrame,
+          rowIndex: rowIndex,
+          rowOffset: rowOffset,
+        );
     tags.add(
       ResolvedSeNameTag(
         layerId: layer.id.value,
         widthBudget: budget,
         content: TextCelContent(
-          text: text,
+          text: name,
           style: tag?.style ?? SeNameTag.defaultStyle,
-          position:
-              tag?.position ??
-              defaultSeNameTagPosition(
-                canvas: canvas,
-                cameraFrame: cameraFrame,
-                rowIndex: rowIndex,
-                rowOffset: rowOffset,
-              ),
+          position: anchor,
         ),
+        line: showsLine
+            ? TextCelContent(
+                text: dialogue,
+                style: tag?.lineStyle ?? SeNameTag.defaultLineStyle,
+                position: anchor,
+              )
+            : null,
       ),
     );
   }
@@ -101,5 +123,5 @@ List<ResolvedSeNameTag> resolveSeNameTagsAt({
 /// to decide whether a repaint is needed without holding the tags.
 Object seNameTagSignature(List<ResolvedSeNameTag> tags) => Object.hashAll([
   for (final tag in tags)
-    Object.hash(tag.layerId, tag.content, tag.widthBudget),
+    Object.hash(tag.layerId, tag.content, tag.line, tag.widthBudget),
 ]);

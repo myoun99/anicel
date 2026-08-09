@@ -67,15 +67,19 @@ void main() {
     rowOffset: rowOffset,
   );
 
-  test('a covered row shows [name] dialogue, and the stacked default lands '
-      'INSIDE THE SHOT — the canvas is bigger than the frame, so a '
-      'canvas-relative default would never reach the video', () {
+  test('a covered row shows the name and the dialogue as SEPARATE runs, and '
+      'the stacked default lands INSIDE THE SHOT — the canvas is bigger '
+      'than the frame, so a canvas-relative default would never reach the '
+      'video', () {
     final tags = resolve([
       seRow(id: 's1', name: 'S1', seName: 'タモツ', dialogue: 'おはよう'),
       seRow(id: 's2', name: 'S2', seName: 'ユキ', dialogue: 'うん'),
     ], localFrameIndex: 3);
 
-    expect(tags.map((tag) => tag.content.text), ['[タモツ] おはよう', '[ユキ] うん']);
+    // R5 #7: two runs, not one `[name] line` string — the name lives in
+    // the box and the dialogue hangs beside it with its own ink.
+    expect(tags.map((tag) => tag.content.text), ['タモツ', 'ユキ']);
+    expect(tags.map((tag) => tag.line?.text), ['おはよう', 'うん']);
     expect(tags.first.layerId, 's1');
 
     // The camera's rect on the canvas at the resting pose.

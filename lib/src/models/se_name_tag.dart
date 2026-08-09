@@ -18,10 +18,20 @@ import 'text_cel_style.dart';
 /// whether the sound plays, so a main-line export can drop the tags and
 /// keep the audio with one toggle.
 class SeNameTag {
-  const SeNameTag({this.position, this.style = defaultStyle});
+  const SeNameTag({
+    this.position,
+    this.style = defaultStyle,
+    this.lineStyle = defaultLineStyle,
+    this.showLine = true,
+  });
 
-  /// Canvas coordinates; the style's alignment spreads the tag around it
-  /// and the first line's top sits here (the text-cel anchor grammar).
+  /// Canvas coordinates — the exact geometric CENTRE of the name box
+  /// (R5 #7, the user's rule).
+  ///
+  /// The centre of the box, not of the whole tag: the dialogue hangs to
+  /// the box's right and must not move it. Anchoring on the pair's centre
+  /// would make turning the dialogue off slide the name somewhere else,
+  /// which is precisely the thing the user rejected.
   ///
   /// NULL keeps the row on the stacked default — which is per CUT (the
   /// shot's geometry) and per row, so a style-only edit must not freeze
@@ -29,7 +39,16 @@ class SeNameTag {
   /// sized cut.
   final Offset? position;
 
+  /// The NAME run: the white-on-red box.
   final TextCelStyle style;
+
+  /// The DIALOGUE run, hanging to the box's right — its own ink, so the
+  /// line can be read against the picture while the name stays in its box.
+  final TextCelStyle lineStyle;
+
+  /// Whether the dialogue shows at all (R5 #7: a keyable member, because a
+  /// name tag with no line is the ordinary アフレコ case).
+  final bool showLine;
 
   /// The アフレコ look: white bold text in the danger-red box, the same
   /// red the SE bars and cut strikethroughs already speak.
@@ -41,17 +60,36 @@ class SeNameTag {
     backgroundColor: 0xFFC95C5C,
   );
 
-  SeNameTag copyWith({Object? position = _sentinel, TextCelStyle? style}) =>
-      SeNameTag(
-        position: identical(position, _sentinel)
-            ? this.position
-            : position as Offset?,
-        style: style ?? this.style,
-      );
+  /// The line reads on the picture, so it takes an outline instead of a
+  /// box — a second filled box beside the first would read as two names.
+  static const TextCelStyle defaultLineStyle = TextCelStyle(
+    fontSize: 34,
+    bold: true,
+    align: TextCelAlign.left,
+    color: 0xFFFFFFFF,
+    outlineColor: 0xFF202020,
+    outlineWidth: 3,
+  );
+
+  SeNameTag copyWith({
+    Object? position = _sentinel,
+    TextCelStyle? style,
+    TextCelStyle? lineStyle,
+    bool? showLine,
+  }) => SeNameTag(
+    position: identical(position, _sentinel)
+        ? this.position
+        : position as Offset?,
+    style: style ?? this.style,
+    lineStyle: lineStyle ?? this.lineStyle,
+    showLine: showLine ?? this.showLine,
+  );
 
   Map<String, dynamic> toJson() => {
     if (position != null) 'position': [position!.dx, position!.dy],
     'style': style.toJson(),
+    'lineStyle': lineStyle.toJson(),
+    if (!showLine) 'showLine': false,
   };
 
   factory SeNameTag.fromJson(Map<String, dynamic> json) {
@@ -66,16 +104,24 @@ class SeNameTag {
       style: json['style'] is Map<String, dynamic>
           ? TextCelStyle.fromJson(json['style'] as Map<String, dynamic>)
           : defaultStyle,
+      lineStyle: json['lineStyle'] is Map<String, dynamic>
+          ? TextCelStyle.fromJson(json['lineStyle'] as Map<String, dynamic>)
+          : defaultLineStyle,
+      showLine: json['showLine'] as bool? ?? true,
     );
   }
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is SeNameTag && other.position == position && other.style == style;
+      other is SeNameTag &&
+          other.position == position &&
+          other.style == style &&
+          other.lineStyle == lineStyle &&
+          other.showLine == showLine;
 
   @override
-  int get hashCode => Object.hash(position, style);
+  int get hashCode => Object.hash(position, style, lineStyle, showLine);
 
   static const Object _sentinel = Object();
 }

@@ -436,6 +436,8 @@ class AppStrings {
   String get textCelAlignRight => _s('textCelAlignRight');
   String get textCelColorLabel => _s('textCelColorLabel');
   String get textCelBoldLabel => _s('textCelBoldLabel');
+  String get seNameTagShowLineLabel => _s('seNameTagShowLineLabel');
+  String get seNameTagLineInkLabel => _s('seNameTagLineInkLabel');
   String get textCelOutlineLabel => _s('textCelOutlineLabel');
   String get textCelBackgroundLabel => _s('textCelBackgroundLabel');
   String get textCelPositionLabel => _s('textCelPositionLabel');
@@ -1345,6 +1347,8 @@ class AppStrings {
     'textCelAlignRight': 'Right',
     'textCelColorLabel': 'Ink',
     'textCelBoldLabel': 'Bold',
+    'seNameTagShowLineLabel': 'Show dialogue',
+    'seNameTagLineInkLabel': 'Dialogue ink',
     'textCelOutlineLabel': 'Outline (white)',
     'textCelBackgroundLabel': 'Box (red)',
     'textCelPositionLabel': 'Position',
@@ -2046,6 +2050,8 @@ class AppStrings {
     'textCelAlignRight': '右',
     'textCelColorLabel': 'インク',
     'textCelBoldLabel': '太字',
+    'seNameTagShowLineLabel': 'セリフを表示',
+    'seNameTagLineInkLabel': 'セリフの色',
     'textCelOutlineLabel': 'フチ（白）',
     'textCelBackgroundLabel': 'ボックス（赤）',
     'textCelPositionLabel': '位置',
@@ -2743,6 +2749,8 @@ class AppStrings {
     'textCelAlignRight': '오른쪽',
     'textCelColorLabel': '잉크',
     'textCelBoldLabel': '굵게',
+    'seNameTagShowLineLabel': '대사 표시',
+    'seNameTagLineInkLabel': '대사 잉크',
     'textCelOutlineLabel': '외곽선(흰색)',
     'textCelBackgroundLabel': '박스(빨강)',
     'textCelPositionLabel': '위치',
@@ -3475,6 +3483,8 @@ class AppStrings {
     'textCelAlignRight': 'Droite',
     'textCelColorLabel': 'Encre',
     'textCelBoldLabel': 'Gras',
+    'seNameTagShowLineLabel': 'Afficher le dialogue',
+    'seNameTagLineInkLabel': 'Encre du dialogue',
     'textCelOutlineLabel': 'Contour (blanc)',
     'textCelBackgroundLabel': 'Boîte (rouge)',
     'textCelPositionLabel': 'Position',
@@ -4147,6 +4157,8 @@ class AppStrings {
     'textCelAlignRight': '右',
     'textCelColorLabel': '墨色',
     'textCelBoldLabel': '加粗',
+    'seNameTagShowLineLabel': '显示台词',
+    'seNameTagLineInkLabel': '台词颜色',
     'textCelOutlineLabel': '描边（白）',
     'textCelBackgroundLabel': '底框（红）',
     'textCelPositionLabel': '位置',
