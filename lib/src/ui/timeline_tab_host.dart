@@ -30,6 +30,10 @@ import '../models/transform_track.dart';
 import '../services/camera_pose_resolver.dart';
 import 'text/app_strings.dart';
 import '../models/timeline_coverage.dart' show TimelineBlockEdge;
+import '../models/se_name_tag.dart' show SeNameTag;
+import 'timeline/se_name_tag_lane_policy.dart' show laneIsSeNameTag;
+import 'timeline/se_name_tag_lane_editing.dart'
+    show seNameTagWithLaneKeyToggled, seNameTagWithLaneValueEdited;
 import 'timeline/camera_key_edit.dart';
 import 'timeline/layer_rail_window.dart' show LayerRailExtent;
 import 'timeline/effect_lane_editing.dart';
@@ -349,6 +353,19 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
 
   /// Commits an edited EFFECT CHAIN as one undo step (R6).
   ///
+  /// A NAME TAG lane edit (R5 #7) — one undo, through the session's own
+  /// verb so the cut-window conversion happens in exactly one place.
+  void _commitSeNameTagLaneEdit(
+    Layer layer,
+    SeNameTag? next,
+    String description,
+  ) {
+    if (next == null) {
+      return;
+    }
+    _session.setSeNameTagForLayer(layer.id, next);
+  }
+
   /// Track-owned SE rows convert through the cut window for the same
   /// reason their transform lanes do (R5 #8) — the chain the row showed is
   /// cut-local, and the layer it lands on is global.
@@ -371,6 +388,20 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
 
   PropertyLaneEditCallbacks get _laneEdit => PropertyLaneEditCallbacks(
     onToggleKeyAt: (layer, lane, frameIndex) {
+      // R5 #7: the name tag is a fixed FIELD on the row, so it commits
+      // through its own verb — not the transform track, not the chain.
+      if (laneIsSeNameTag(lane.laneId)) {
+        _commitSeNameTagLaneEdit(
+          layer,
+          seNameTagWithLaneKeyToggled(
+            layer.seNameTag ?? const SeNameTag(),
+            laneId: lane.laneId,
+            frameIndex: frameIndex,
+          ),
+          '${lane.label} keyframe at frame ${frameIndex + 1}',
+        );
+        return;
+      }
       if (laneIsEffectLane(lane)) {
         _commitEffectLaneEdit(
           layer,
@@ -406,6 +437,19 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       );
     },
     onSetValue: (layer, lane, frameIndex, input) {
+      if (laneIsSeNameTag(lane.laneId)) {
+        _commitSeNameTagLaneEdit(
+          layer,
+          seNameTagWithLaneValueEdited(
+            layer.seNameTag ?? const SeNameTag(),
+            laneId: lane.laneId,
+            frameIndex: frameIndex,
+            input: input,
+          ),
+          'Set ${lane.label} at frame ${frameIndex + 1}',
+        );
+        return;
+      }
       // The SE audio lane's value field edits the playhead span's offset
       // trim instead of a transform property (one undo via the session).
       if (laneIsSeAudio(lane)) {

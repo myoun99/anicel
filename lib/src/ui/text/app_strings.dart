@@ -438,6 +438,11 @@ class AppStrings {
   String get textCelBoldLabel => _s('textCelBoldLabel');
   String get seNameTagShowLineLabel => _s('seNameTagShowLineLabel');
   String get seNameTagLineInkLabel => _s('seNameTagLineInkLabel');
+
+  /// The name-tag preview's FIXED samples (R5 #7) — it shows the look, not
+  /// the block's own text, so these never change with the playhead.
+  String get seNameTagPreviewName => _s('seNameTagPreviewName');
+  String get seNameTagPreviewLine => _s('seNameTagPreviewLine');
   String get textCelOutlineLabel => _s('textCelOutlineLabel');
   String get textCelBackgroundLabel => _s('textCelBackgroundLabel');
   String get textCelPositionLabel => _s('textCelPositionLabel');
@@ -1349,6 +1354,8 @@ class AppStrings {
     'textCelBoldLabel': 'Bold',
     'seNameTagShowLineLabel': 'Show dialogue',
     'seNameTagLineInkLabel': 'Dialogue ink',
+    'seNameTagPreviewName': 'Name',
+    'seNameTagPreviewLine': 'Line',
     'textCelOutlineLabel': 'Outline (white)',
     'textCelBackgroundLabel': 'Box (red)',
     'textCelPositionLabel': 'Position',
@@ -2052,6 +2059,8 @@ class AppStrings {
     'textCelBoldLabel': '太字',
     'seNameTagShowLineLabel': 'セリフを表示',
     'seNameTagLineInkLabel': 'セリフの色',
+    'seNameTagPreviewName': '名前',
+    'seNameTagPreviewLine': 'セリフ',
     'textCelOutlineLabel': 'フチ（白）',
     'textCelBackgroundLabel': 'ボックス（赤）',
     'textCelPositionLabel': '位置',
@@ -2751,6 +2760,8 @@ class AppStrings {
     'textCelBoldLabel': '굵게',
     'seNameTagShowLineLabel': '대사 표시',
     'seNameTagLineInkLabel': '대사 잉크',
+    'seNameTagPreviewName': '이름',
+    'seNameTagPreviewLine': '대사',
     'textCelOutlineLabel': '외곽선(흰색)',
     'textCelBackgroundLabel': '박스(빨강)',
     'textCelPositionLabel': '위치',
@@ -3485,6 +3496,8 @@ class AppStrings {
     'textCelBoldLabel': 'Gras',
     'seNameTagShowLineLabel': 'Afficher le dialogue',
     'seNameTagLineInkLabel': 'Encre du dialogue',
+    'seNameTagPreviewName': 'Nom',
+    'seNameTagPreviewLine': 'Réplique',
     'textCelOutlineLabel': 'Contour (blanc)',
     'textCelBackgroundLabel': 'Boîte (rouge)',
     'textCelPositionLabel': 'Position',
@@ -4159,6 +4172,8 @@ class AppStrings {
     'textCelBoldLabel': '加粗',
     'seNameTagShowLineLabel': '显示台词',
     'seNameTagLineInkLabel': '台词颜色',
+    'seNameTagPreviewName': '名字',
+    'seNameTagPreviewLine': '台词',
     'textCelOutlineLabel': '描边（白）',
     'textCelBackgroundLabel': '底框（红）',
     'textCelPositionLabel': '位置',

@@ -1196,6 +1196,24 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// A NAME TAG lane edit landing on [layerId] (R5 #7) — one undo.
+  ///
+  /// The tag's keys sit on the track-owned row's GLOBAL axis while the lane
+  /// was read off a cut-local clone, so the frames convert on the way out,
+  /// exactly as the transform track's do (#8). The lane helpers key at
+  /// whatever frame the caller hands them, so the conversion belongs HERE —
+  /// after the edit, before the commit.
+  void setSeNameTagForLayer(LayerId layerId, SeNameTag? tag) {
+    final keys = tag?.track;
+    _cutCommandCoordinator.setSeNameTag(
+      layerId: layerId,
+      seNameTag: keys == null || !isTrackSeLayerId(layerId)
+          ? tag
+          : tag!.copyWith(track: trackSeWindow.globalSeNameTagTrack(keys)),
+    );
+    notifyListeners();
+  }
+
   /// The ON-CANVAS name tags for a cut's local frame (R5b, §6-z15) — the
   /// one resolution every drawing surface asks (editing canvas, playback,
   /// the parked stack, export), so none of them can disagree. Works for

@@ -163,15 +163,33 @@ List<Widget> layerRailTrailingCells({
   Widget? opacity,
   bool hasBlendColumn = false,
   Widget? blend,
+  Widget? trailingRegion,
 }) {
   return [
     layerRailSlot(axis, layerFillReferenceSlotWidth, fillReference),
     layerRailSlot(axis, layerFxSlotWidth, fx),
-    if (hasOnionColumn) layerRailSlot(axis, layerOnionSlotWidth, onion),
-    layerRailSlot(axis, layerVisibilitySlotWidth, visibility),
-    layerRailSlot(axis, layerMuteSlotWidth, mute),
-    layerRailSlot(axis, layerOpacitySlotWidth, opacity),
-    if (hasBlendColumn) layerRailSlot(axis, layerBlendSlotWidth, blend),
+    // R5 #7: everything AFTER fx as ONE region instead of its columns — a
+    // group header has no eye, no mute and no blend, so the space is free
+    // and a preview wants it whole. The EXTENT is identical either way (it
+    // comes from [layerRailTrailingWidth]), which is what keeps the fx
+    // column pinned however this branches.
+    if (trailingRegion != null)
+      layerRailSlot(
+        axis,
+        layerRailTrailingWidth(
+          from: LayerRailTrailingSlot.onion,
+          hasOnionColumn: hasOnionColumn,
+          hasBlendColumn: hasBlendColumn,
+        ),
+        trailingRegion,
+      )
+    else ...[
+      if (hasOnionColumn) layerRailSlot(axis, layerOnionSlotWidth, onion),
+      layerRailSlot(axis, layerVisibilitySlotWidth, visibility),
+      layerRailSlot(axis, layerMuteSlotWidth, mute),
+      layerRailSlot(axis, layerOpacitySlotWidth, opacity),
+      if (hasBlendColumn) layerRailSlot(axis, layerBlendSlotWidth, blend),
+    ],
   ];
 }
 

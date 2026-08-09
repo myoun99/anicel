@@ -5,6 +5,7 @@ import '../../models/layer.dart';
 import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
+import '../../models/se_name_tag.dart' show SeNameTag;
 import 'timeline_row_filter.dart';
 import 'timeline_section_policy.dart';
 
@@ -23,7 +24,23 @@ class PropertyLaneRow {
     this.isGroupHeader = false,
     this.groupExpanded = false,
     this.groupEnabled,
+    this.previewText,
   });
+
+  /// R5 #7: a group header may show a live PREVIEW of what it draws, in the
+  /// region right of the fx column. Two fixed runs — the name and the
+  /// dialogue — because a preview's job is to show the LOOK, not the
+  /// content: it never reads the block's own text, so it says the same
+  /// thing wherever the playhead parks.
+  ///
+  /// [tagAt] resolves the look at a FRAME, like [valueLabel] does for a
+  /// member's readout — so the preview follows every keyed member exactly
+  /// as the picture does, instead of freezing the static slot.
+  ///
+  /// Null on every header that has nothing to preview, which is all of them
+  /// but the name tag's.
+  final ({String name, String line, SeNameTag Function(int frameIndex) tagAt})?
+  previewText;
 
   /// Stable id within the owning layer (e.g. 'position', an FX param id).
   final String laneId;
