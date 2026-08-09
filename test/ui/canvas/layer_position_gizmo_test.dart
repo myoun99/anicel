@@ -101,6 +101,46 @@ void main() {
       expect(committed.single.y, closeTo(80 - 20 / 2, 0.001));
     });
 
+    testWidgets('R5 #10: the ANCHOR gizmo keys anchor-point alone — the '
+        'member you touch is the member that keys', (tester) async {
+      final committed = <CanvasPoint>[];
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: LayerAnchorGizmo(
+              anchorPoint: CanvasPoint(x: 60, y: 40),
+              viewport: CanvasViewport(zoom: 2),
+              onAnchorCommitted: committed.add,
+            ),
+          ),
+        ),
+      );
+
+      await tester.drag(
+        find.byKey(const ValueKey<String>('layer-anchor-gizmo')),
+        const Offset(30, 10),
+      );
+      await tester.pumpAndSettle();
+
+      expect(committed, hasLength(1));
+      expect(committed.single.x, closeTo(60 + 30 / 2, 0.001));
+      expect(committed.single.y, closeTo(40 + 10 / 2, 0.001));
+
+      // Position is NOT compensated: the track helper touches one lane.
+      final dragged = transformTrackWithAnchorDragged(
+        TransformTrack.empty(),
+        frameIndex: 3,
+        anchorPoint: committed.single,
+      );
+      expect(dragged.anchorPoint.keyAt(3)!.value, committed.single);
+      expect(
+        dragged.position.isEmpty,
+        isTrue,
+        reason: 'compensating would key Position, which the user\'s rule for '
+            '#10 forbids',
+      );
+    });
+
     testWidgets('R5 #10: shows only while a lane that DECLARES it is the '
         'standing row — twirling alone is not intent', (tester) async {
       await tester.binding.setSurfaceSize(const Size(1280, 900));
@@ -150,9 +190,15 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byKey(_gizmoKey), findsNothing);
 
-      // Standing on the Transform group declares everything its members do.
+      // Standing on the Transform group declares everything its members do
+      // — the box AND the anchor, together, which is the one row where both
+      // are on screen at once.
       await _standOnTransformHeader(tester);
       expect(find.byKey(_gizmoKey), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey<String>('layer-anchor-gizmo')),
+        findsOneWidget,
+      );
 
       // Stepping back onto the LAYER row takes it away — the layer is what
       // you draw on, and nothing there declares a manipulator.
@@ -161,6 +207,10 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(find.byKey(_gizmoKey), findsNothing);
+      expect(
+        find.byKey(const ValueKey<String>('layer-anchor-gizmo')),
+        findsNothing,
+      );
     });
 
     testWidgets('the TRANSFORM group\'s own bypass hides it — the row MASTER '

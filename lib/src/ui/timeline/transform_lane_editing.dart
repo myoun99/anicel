@@ -226,6 +226,23 @@ TransformTrack transformTrackWithPositionDragged(
   );
 }
 
+/// The anchor gizmo's release (R5 #10): ONE key at the playhead, the twin
+/// of [transformTrackWithPositionDragged]. The member you touch is the
+/// member that keys — Position is not compensated.
+TransformTrack transformTrackWithAnchorDragged(
+  TransformTrack track, {
+  required int frameIndex,
+  required CanvasPoint anchorPoint,
+}) {
+  return track.copyWith(
+    anchorPoint: track.anchorPoint.withKey(
+      frameIndex,
+      anchorPoint,
+      interpolation: _keptInterpolation(track.anchorPoint, frameIndex),
+    ),
+  );
+}
+
 CanvasPoint? _parsePoint(String input) {
   final parts = input.split(',');
   if (parts.length != 2) {
