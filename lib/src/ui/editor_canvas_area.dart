@@ -516,6 +516,13 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                 canvasManipulatorsForLane(
                   standing.laneId,
                 ).contains(CanvasManipulator.transformBox);
+            final showAnchorGizmo =
+                canPoseActiveLayer &&
+                standing is LaneRowAddress &&
+                standing.layerId == activeLayer.id &&
+                canvasManipulatorsForLane(
+                  standing.laneId,
+                ).contains(CanvasManipulator.anchorPoint);
             return MainCanvasBrushHost(
               rowAcceptsStrokes: _rowAcceptsStrokes(
                 session.currentRowListenable.value,
@@ -738,6 +745,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               viewportOverlayBuilder:
                   (cameraOverlayVisible ||
                           showPositionGizmo ||
+                          showAnchorGizmo ||
                           showFadeWash ||
                           seNameTags.isNotEmpty) &&
                       !isPlaybackActive
@@ -840,6 +848,36 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                                         position: position,
                                       ),
                                       description: 'Move ${activeLayer.name}',
+                                    ),
+                              ),
+                              sample: cutPoseSample,
+                              canvasSize: canvasSize,
+                              viewport: viewport,
+                            ),
+                          ),
+                        if (showAnchorGizmo)
+                          Positioned.fill(
+                            // Same cut-pose wrap as the position handle:
+                            // the glyph sits ON the posed picture and the
+                            // committed anchor stays in the layer's own
+                            // canvas space.
+                            child: _wrapInCutPose(
+                              LayerAnchorGizmo(
+                                anchorPoint: session.layerAnchorPointAtFrame(
+                                  activeLayer,
+                                  session.currentFrameIndex,
+                                ),
+                                viewport: viewport,
+                                onAnchorCommitted: (anchorPoint) =>
+                                    session.updateLayerTransformTrack(
+                                      activeLayer.id,
+                                      transformTrackWithAnchorDragged(
+                                        activeLayer.transformTrack,
+                                        frameIndex: session.currentFrameIndex,
+                                        anchorPoint: anchorPoint,
+                                      ),
+                                      description:
+                                          'Anchor ${activeLayer.name}',
                                     ),
                               ),
                               sample: cutPoseSample,
