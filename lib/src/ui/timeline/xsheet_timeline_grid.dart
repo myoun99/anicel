@@ -1677,6 +1677,8 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                                     entries[index],
                                                                   )
                                                                 : _LayerHeader(
+                                                                    depth: entries[index]
+                                                                        .depth,
                                                                     headerExtent:
                                                                         _naturalHeaderExtent,
                                                                     onToggleLayerOnionSkin:
@@ -2492,9 +2494,23 @@ class _XSheetSectionBandCell extends StatelessWidget {
   }
 }
 
+/// How many nesting levels a COLUMN spells out before it stops.
+///
+/// The rail indents along a row's long axis, where the name keeps whatever
+/// width is left. A column indents along its own length — the very run the
+/// name is written down — so every level costs the name directly (#18's
+/// "빈 칸 N개 + 화살표 1개", transposed). The name clips rather than
+/// ellipsing (a vertical `…` costs one of the two or three characters that
+/// identify the row, and dropping a run for it is a regression this repo
+/// has already shipped once), and past this depth the arrow alone says
+/// "nested" so the name never clips to nothing (user, 2026-08-09: 잘리게
+/// 하되 추천 로직대로).
+const int _xsheetMaxNestingLevels = 2;
+
 class _LayerHeader extends StatelessWidget {
   const _LayerHeader({
     required this.layer,
+    this.depth = 0,
     required this.active,
     required this.onSelectLayer,
     required this.onToggleLayerVisibility,
@@ -2541,6 +2557,10 @@ class _LayerHeader extends StatelessWidget {
   final double headerExtent;
 
   final Layer layer;
+
+  /// The row's folder nesting depth, spelled out up to
+  /// [_xsheetMaxNestingLevels].
+  final int depth;
   final bool active;
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
@@ -2667,6 +2687,8 @@ class _LayerHeader extends StatelessWidget {
             children: [
               ...layerRailLeadingCells(
                 axis: Axis.vertical,
+                // #18 transposed, capped: see [_xsheetMaxNestingLevels].
+                depth: math.min(depth, _xsheetMaxNestingLevels),
                 // The band is the strip above, not a slot in here.
                 includeSectionSlot: false,
                 laneToggle: showLaneToggle
