@@ -402,10 +402,35 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// window has 589 — so the default would arrive already scrolling, which
   /// is the one thing 「넘칠 때만 스크롤」 exists to avoid. The second button
   /// is one press away and opens at the height it was left at.
-  static Set<String> _defaultOpenRails() => {
-    EditorWorkspace.leftGroupId,
-    EditorWorkspace.railGroupId(right: true, slot: 2),
-  };
+  static Set<String> _defaultOpenRails() => debugOpenEveryRail
+      ? <String>{
+          for (var slot = 1; slot <= EditorWorkspace.railSlots; slot += 1) ...[
+            EditorWorkspace.railGroupId(right: false, slot: slot),
+            EditorWorkspace.railGroupId(right: true, slot: slot),
+          ],
+          EditorWorkspace.leftGroupId,
+          EditorWorkspace.rightGroupId,
+          EditorWorkspace.toolLeftGroupId,
+          EditorWorkspace.toolRightGroupId,
+        }
+      : {
+          EditorWorkspace.leftGroupId,
+          EditorWorkspace.railGroupId(right: true, slot: 2),
+        };
+
+  /// Opens every rail group at startup, for tests only.
+  ///
+  /// 🚨 A rail group that ships closed mounts no `EditorPanelTabs`, so a
+  /// test that walks the tabs it can find cannot reach the panels inside
+  /// one — seven of the app's fifteen. That is how three panels went a
+  /// whole round paying full raster price with the enforcement test green
+  /// over them.
+  ///
+  /// The alternative was to open them in the shipped app "temporarily for
+  /// testing", which changes the product for a test's convenience and
+  /// leaves a revert nobody remembers. This changes nothing anyone sees.
+  @visibleForTesting
+  static bool debugOpenEveryRail = false;
 
   /// The slots of one rail, in order, whatever is in them.
   static List<String> _railSlotIds({required bool right}) => [

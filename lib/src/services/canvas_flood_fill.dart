@@ -320,7 +320,13 @@ class LazyCanvasRasterRgb {
             tx <= floorDiv(worldRight - 1, surfaceTileSize);
             tx += 1
           ) {
-            final tile = surface.tiles[TileCoord(x: tx, y: ty)];
+            // ⚠️ `tileAt`, NOT `surface.tiles[...]`. The `tiles` getter is
+            // `Map.unmodifiable(_tiles)` — it copies the WHOLE map, and
+            // this is the inner line of a nested loop over every tile the
+            // fill touches. Measured at 82.7 ms for a 1024-tile canvas,
+            // which is a tap that feels broken rather than a frame that
+            // is slightly late.
+            final tile = surface.tileAt(TileCoord(x: tx, y: ty));
             if (tile == null) {
               continue;
             }
@@ -403,7 +409,13 @@ class LazyCanvasRasterRgb {
             tx <= floorDiv(right + originX - 1, surfaceTileSize);
             tx += 1
           ) {
-            final tile = surface.tiles[TileCoord(x: tx, y: ty)];
+            // ⚠️ `tileAt`, NOT `surface.tiles[...]`. The `tiles` getter is
+            // `Map.unmodifiable(_tiles)` — it copies the WHOLE map, and
+            // this is the inner line of a nested loop over every tile the
+            // fill touches. Measured at 82.7 ms for a 1024-tile canvas,
+            // which is a tap that feels broken rather than a frame that
+            // is slightly late.
+            final tile = surface.tileAt(TileCoord(x: tx, y: ty));
             if (tile == null) {
               continue;
             }
@@ -459,7 +471,9 @@ class LazyCanvasRasterRgb {
           tx <= floorDiv(right + originX - 1, surfaceTileSize);
           tx += 1
         ) {
-          final tile = surface.tiles[TileCoord(x: tx, y: ty)];
+          // ⚠️ `tileAt`, NOT `surface.tiles[...]` — the getter copies the
+          // whole map, and this is inside a nested loop. See above.
+          final tile = surface.tileAt(TileCoord(x: tx, y: ty));
           if (tile == null) {
             continue;
           }

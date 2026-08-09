@@ -1,4 +1,4 @@
-import 'dart:ui' show FramePhase, FrameTiming;
+import 'dart:ui' show FramePhase, FrameTiming, PlatformDispatcher;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
@@ -39,6 +39,7 @@ class FrameStatsSnapshot {
     required this.layerCacheMegabytes,
     required this.pictureCacheCount,
     required this.pictureCacheMegabytes,
+    required this.windowMegabytes,
     required this.bakedSurfaces,
     required this.bakedMegabytes,
     required this.bakesPerSecond,
@@ -95,6 +96,10 @@ class FrameStatsSnapshot {
   final double layerCacheMegabytes;
   final int pictureCacheCount;
   final double pictureCacheMegabytes;
+
+  /// What one window-sized RGBA surface costs, so a cache total has
+  /// something to be divided by. Without it, "495 MB" is unreadable.
+  final double windowMegabytes;
 
   /// What OUR baked panels cost, which the engine's counters above will
   /// never show — a `StaticRaster` image is an ordinary `ui.Image` the
@@ -283,6 +288,23 @@ abstract final class FrameStats {
     latest.value = null;
   }
 
+  /// One window-sized RGBA surface, in megabytes.
+  ///
+  /// 🚨 The yardstick the cache line was missing. `picture cache 16 /
+  /// 495.3 MB` read as an alarm for a while; it is ~31 MB an entry, and a
+  /// maximised window on a 4K display at 150% has a client area of about
+  /// 8.0 Mpx = 30.6 MB. One entry per viewport, which is the least
+  /// surprising thing a picture cache could be doing. The panic came from
+  /// dividing by a number nobody had.
+  static double _windowMegabytes() {
+    final view = PlatformDispatcher.instance.implicitView;
+    if (view == null) {
+      return 0;
+    }
+    final size = view.physicalSize;
+    return size.width * size.height * 4 / 1024 / 1024;
+  }
+
   static FrameStatsSnapshot _summarize(List<FrameTiming> window) {
     final raster = <int>[];
     final ui = <int>[];
@@ -346,6 +368,7 @@ abstract final class FrameStats {
       layerCacheMegabytes: last.layerCacheMegabytes,
       pictureCacheCount: last.pictureCacheCount,
       pictureCacheMegabytes: last.pictureCacheMegabytes,
+      windowMegabytes: _windowMegabytes(),
       bakedSurfaces: StaticRaster.census.length,
       bakedMegabytes: StaticRaster.censusBytes / 1024.0 / 1024.0,
       bakesPerSecond: bakesPerSecond,
