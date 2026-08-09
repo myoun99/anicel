@@ -151,6 +151,11 @@ List<PropertyLaneRow> timelineLanesForLayer({
       // R6b: an adjustment row has no picture to move, so its twirl-down is
       // the Effects groups alone — its whole content.
       return layerEffectLanes();
+    case LayerKind.transition:
+      // Nothing to twirl down: the row carries transition spans and no
+      // authoring of its own inside a cut. A lane here would be a second
+      // place to edit what the global axis owns.
+      return const [];
     case LayerKind.animation:
     case LayerKind.image:
     case LayerKind.text:

@@ -24,7 +24,11 @@ TimelineSection timelineSectionForLayerKind(LayerKind kind) {
     LayerKind.folder ||
     LayerKind.adjustment => TimelineSection.drawing,
     LayerKind.se => TimelineSection.se,
-    LayerKind.instruction || LayerKind.camera => TimelineSection.camera,
+    // The TRANSITION row is a camera-section row like the direction row it
+    // is made of — it just belongs to the track instead of the cut.
+    LayerKind.instruction ||
+    LayerKind.transition ||
+    LayerKind.camera => TimelineSection.camera,
   };
 }
 
