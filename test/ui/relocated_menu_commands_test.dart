@@ -34,7 +34,6 @@ void main() {
     // an attach folder is made the same way — so neither has a Layer-menu
     // entry to relocate any more.
     await expectInFlyout(tester, 'timeline-rasterize-layer-button');
-    await expectInFlyout(tester, 'timeline-se-name-tag-button');
   });
 
   testWidgets('the relocated CUT commands reach the Cut flyouts', (

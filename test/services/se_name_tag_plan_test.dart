@@ -5,7 +5,10 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/se_name_tag.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/models/text_cel_style.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/services/se_name_tag_plan.dart';
@@ -100,18 +103,6 @@ void main() {
       );
     }
 
-    final first = tags[0].content.position!;
-    final second = tags[1].content.position!;
-    expect(first.dx, second.dx, reason: 'one left margin for every row');
-    expect(
-      second.dy,
-      lessThan(first.dy),
-      reason: 'later rows stack UPWARD from the bottom',
-    );
-    // The pitch must clear the painted red box (line height + both pads),
-    // or consecutive boxes fuse into one stepped blob.
-    final boxHeight = SeNameTag.defaultStyle.fontSize * (1.25 + 0.25 * 2);
-    expect(first.dy - second.dy, greaterThan(boxHeight));
     expect(tags.first.content.style, SeNameTag.defaultStyle);
     expect(
       tags.first.content.style.backgroundColor,
@@ -125,17 +116,8 @@ void main() {
     );
   });
 
-  test('rowOffset stacks the tracks BELOW this one, so a multitrack frame '
-      'never piles two tracks on one spot', () {
-    final base = resolve([seRow(id: 's1', name: 'S1', seName: 'A')]);
-    final upper = resolve([
-      seRow(id: 't1', name: 'S1', seName: 'B'),
-    ], rowOffset: 2);
-    expect(
-      upper.single.content.position!.dy,
-      lessThan(base.single.content.position!.dy),
-    );
-  });
+  // The `rowOffset` stacking test went with the stacked default: nothing
+  // shifts per row or per track any more, so there is no offset to pin.
 
   test('a lone speaker needs no brackets and a lone line needs no box '
       'label; a block with no writing at all shows nothing', () {
@@ -181,33 +163,41 @@ void main() {
     );
   });
 
-  test('a configured tag overrides position AND style; a STYLE-ONLY tag '
-      'keeps riding the per-cut default (the position stays null)', () {
-    const configured = SeNameTag(
-      position: Offset(400, 900),
-      style: TextCelStyle(fontSize: 64, color: 0xFF202020),
-    );
-    final placed = resolve([
-      seRow(id: 's1', name: 'S1', seName: 'タモツ', tag: configured),
+  // R5 #7 (user, 2026-08-09): the tag has no position of its own, and rows
+  // get no per-row default. Every tag starts at the canvas centre and the
+  // SE row's TRANSFORM moves it — one rule, no exception per row.
+  test('an untouched row puts its tag at the CANVAS CENTRE, and so does '
+      'every other row', () {
+    final tags = resolve([
+      seRow(id: 's1', name: 'S1', seName: 'タモツ'),
+      seRow(id: 's2', name: 'S2', seName: 'ユキ'),
     ]);
-    expect(placed.single.content.position, const Offset(400, 900));
-    expect(placed.single.content.style.fontSize, 64);
-    expect(SeNameTag.fromJson(configured.toJson()), configured);
+    final centre = Offset(canvas.width / 2, canvas.height / 2);
+    expect(tags.map((tag) => tag.content.position), [centre, centre]);
+  });
 
+  test('the row\'s TRANSFORM is what moves it', () {
+    final moved = seRow(id: 's1', name: 'S1', seName: 'タモツ').copyWith(
+      transformTrack: TransformTrack.empty().copyWith(
+        position: PropertyTrack<CanvasPoint>().withKey(
+          0,
+          CanvasPoint(x: 400, y: 900),
+        ),
+      ),
+    );
+    expect(resolve([moved]).single.content.position, const Offset(400, 900));
+  });
+
+  test('a style-only tag round-trips and never places', () {
     const styleOnly = SeNameTag(style: TextCelStyle(fontSize: 20));
     final styled = resolve([
       seRow(id: 's1', name: 'S1', seName: 'タモツ', tag: styleOnly),
     ]);
     expect(styled.single.content.style.fontSize, 20);
+    expect(SeNameTag.fromJson(styleOnly.toJson()), styleOnly);
     expect(
       styled.single.content.position,
-      defaultSeNameTagPosition(
-        canvas: canvas,
-        cameraFrame: camera,
-        rowIndex: 0,
-      ),
-      reason: 'a colour edit must not pin this cut\'s default in pixels',
+      Offset(canvas.width / 2, canvas.height / 2),
     );
-    expect(SeNameTag.fromJson(styleOnly.toJson()).position, isNull);
   });
 }

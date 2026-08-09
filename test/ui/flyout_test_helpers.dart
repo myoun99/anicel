@@ -23,7 +23,9 @@ const Map<String, String> flyoutOwnerByItemKey = {
   'legend-section-camera': 'legend-sections',
   // R5 #6: the effect chain has a button of its own now.
   'add-effect-blur': 'timeline-effects-button',
-  'timeline-se-name-tag-button': 'timeline-layer-menu-button',
+  // 'timeline-se-name-tag-button' is gone (R5 #7): the tag's controls are
+  // lanes on the SE row now, so the window it opened had nothing left to
+  // hold.
   'rename-frame-button': 'timeline-frame-menu-button',
   'copy-frame-button': 'timeline-frame-menu-button',
   'paste-linked-frame-button': 'timeline-frame-menu-button',

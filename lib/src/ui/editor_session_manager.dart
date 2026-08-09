@@ -2,7 +2,6 @@ import 'dart:async' show Timer, unawaited;
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui show ImageByteFormat;
-import 'dart:ui' show Offset;
 
 import 'package:flutter/foundation.dart';
 
@@ -1159,31 +1158,10 @@ class EditorSessionManager extends ChangeNotifier {
   bool get canEditActiveSeNameTag =>
       activeLayer?.kind == LayerKind.se && activeCutOrNull != null;
 
-  /// The stacked default position the active SE row draws with today —
-  /// what the editor SEEDS its fields from, without writing it: pinning a
-  /// per-cut default into absolute pixels would strand the tag on a
-  /// differently sized cut.
-  Offset? get activeSeNameTagDefaultPosition {
-    final layer = activeLayer;
-    final cut = activeCutOrNull;
-    if (layer == null || cut == null || layer.kind != LayerKind.se) {
-      return null;
-    }
-    var rowOffset = 0;
-    for (final track in _repository.requireProject().tracks) {
-      final rowIndex = track.seLayers.indexWhere((row) => row.id == layer.id);
-      if (rowIndex >= 0) {
-        return defaultSeNameTagPosition(
-          canvas: cut.canvasSize,
-          cameraFrame: cameraFrameSize,
-          rowIndex: rowIndex,
-          rowOffset: rowOffset,
-        );
-      }
-      rowOffset += track.seLayers.length;
-    }
-    return null;
-  }
+  // `activeSeNameTagDefaultPosition` seeded the placement dialog's x/y
+  // fields from a stacked per-row default. Both are gone with R5 #7: a tag
+  // has no position of its own, so the SE row's Position lane is the whole
+  // answer and there is nothing to seed.
 
   /// Sets (or with null resets) the active SE row's name tag — one undo,
   /// reaching the TRACK-owned row through the anywhere seam.
