@@ -16,6 +16,7 @@ class Track {
     required this.name,
     required List<Cut> cuts,
     List<Layer> seLayers = const [],
+    Layer? transitionLayer,
     TransformTrack? transformTrack,
     List<LayerEffect> effects = const [],
     this.type = TrackType.video,
@@ -24,6 +25,7 @@ class Track {
   }) : cuts = List.unmodifiable(cuts),
        seLayers = List.unmodifiable(seLayers),
        effects = List.unmodifiable(effects),
+       transitionLayer = transitionLayer ?? createTrackTransitionLayer(id),
        transformTrack = transformTrack ?? TransformTrack.empty();
 
   final TrackId id;
@@ -37,6 +39,19 @@ class Track {
   /// content (NLE audio-track semantics — the precondition for
   /// cut-crossing sounds).
   final List<Layer> seLayers;
+
+  /// The track's ONE transition row: O.L / F.I / F.O spans on the track's
+  /// GLOBAL frame axis, exactly like [seLayers] and for the same reason —
+  /// an O.L straddles a cut boundary, so it cannot belong to either cut.
+  ///
+  /// What it holds are ordinary [InstructionEvent]s; the span gestures, the
+  /// edit dialog and the bowtie painter are the direction row's, unchanged.
+  /// A CUT's timeline windows this row for READING only — authoring happens
+  /// on the global axis ("글로벌 트랙이 메인, 컷 타임라인은 보여주기만").
+  ///
+  /// Always present (a fixture like the cut's camera row): older files
+  /// backfill one on load, so no consumer has to handle its absence.
+  final Layer transitionLayer;
 
   /// The V track's own effects (R4): pose lanes + the fade's opacity lane,
   /// keys on the track's GLOBAL frame axis — TRACK-owned, exactly like
@@ -86,6 +101,7 @@ class Track {
     String? name,
     List<Cut>? cuts,
     List<Layer>? seLayers,
+    Layer? transitionLayer,
     TransformTrack? transformTrack,
     List<LayerEffect>? effects,
     TrackType? type,
@@ -97,6 +113,7 @@ class Track {
       name: name ?? this.name,
       cuts: cuts ?? this.cuts,
       seLayers: seLayers ?? this.seLayers,
+      transitionLayer: transitionLayer ?? this.transitionLayer,
       transformTrack: transformTrack ?? this.transformTrack,
       effects: effects ?? this.effects,
       type: type ?? this.type,
@@ -110,6 +127,11 @@ class Track {
     'name': name,
     'cuts': cuts.map((cut) => cut.toJson()).toList(),
     'seLayers': seLayers.map((layer) => layer.toJson()).toList(),
+    // R8's rule again: a default is silence. An untouched transition row
+    // carries no spans and no flag changes, so it writes nothing and a file
+    // that never used one keeps exactly the shape it had.
+    if (transitionLayer != createTrackTransitionLayer(id))
+      'transition': transitionLayer.toJson(),
     if (transformTrack.isNotEmpty) 'transform': transformTrack.toJson(),
     if (effects.isNotEmpty)
       'effects': [for (final effect in effects) effect.toJson()],
@@ -131,6 +153,12 @@ class Track {
     final transformTrack = transformJson is Map<String, dynamic>
         ? TransformTrack.fromJson(transformJson)
         : liftCutTransformsToTrack(cutsJson);
+    // Missing key = a file written before the transition row existed: it
+    // backfills a fresh empty one, so nothing downstream sees an absence.
+    final transitionJson = json['transition'];
+    final transitionLayer = transitionJson is Map<String, dynamic>
+        ? Layer.fromJson(transitionJson)
+        : createTrackTransitionLayer(id);
     final opacity = (json['opacity'] as num?)?.toDouble() ?? 1.0;
     final fxEnabled = json['fxEnabled'] as bool? ?? true;
     final effectsJson = json['effects'] as List<dynamic>?;
@@ -150,6 +178,7 @@ class Track {
               .map((layer) => Layer.fromJson(layer as Map<String, dynamic>))
               .toList(),
         ),
+        transitionLayer: transitionLayer,
         transformTrack: transformTrack,
         effects: effects,
         type: TrackType.values.byName(json['type'] as String),
@@ -167,6 +196,7 @@ class Track {
       name: json['name'] as String,
       cuts: lifted.cuts,
       seLayers: lifted.seLayers,
+      transitionLayer: transitionLayer,
       transformTrack: transformTrack,
       effects: effects,
       type: TrackType.values.byName(json['type'] as String),
@@ -183,6 +213,7 @@ class Track {
           other.name == name &&
           listEquals(other.cuts, cuts) &&
           listEquals(other.seLayers, seLayers) &&
+          other.transitionLayer == transitionLayer &&
           other.transformTrack == transformTrack &&
           listEquals(other.effects, effects) &&
           other.type == type &&
@@ -195,6 +226,7 @@ class Track {
     name,
     Object.hashAll(cuts),
     Object.hashAll(seLayers),
+    transitionLayer,
     transformTrack,
     Object.hashAll(effects),
     type,
@@ -205,5 +237,6 @@ class Track {
   @override
   String toString() =>
       'Track(id: $id, name: $name, cuts: $cuts, seLayers: $seLayers, '
-      'transform: $transformTrack, type: $type)';
+      'transition: $transitionLayer, transform: $transformTrack, '
+      'type: $type)';
 }

@@ -53,6 +53,27 @@ List<Layer> withEnsuredTrackSeLayers(TrackId trackId, List<Layer> seLayers) {
   return result;
 }
 
+LayerId transitionLayerIdForTrack(TrackId trackId) =>
+    LayerId('${trackId.value}-transitions');
+
+/// The track's ONE transition row (O.L / F.I / F.O …), keyed on the global
+/// frame axis like the SE rows beside it.
+///
+/// ★ ONE row, not a list, and the singleton is load-bearing:
+/// [validateInstructionCoverage] already refuses overlapping spans within a
+/// layer, so a single row makes "at most one transition per cut boundary"
+/// fall out of an invariant that was already enforced — two spans
+/// straddling the same boundary would have to overlap.
+Layer createTrackTransitionLayer(TrackId trackId) {
+  return Layer(
+    id: transitionLayerIdForTrack(trackId),
+    name: 'TR',
+    frames: const [],
+    timeline: const {},
+    kind: LayerKind.transition,
+  );
+}
+
 LayerId instructionLayerIdForCut(CutId cutId) =>
     LayerId('${cutId.value}-instructions');
 
