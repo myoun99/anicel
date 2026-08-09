@@ -138,12 +138,24 @@ class StaticRaster extends SingleChildRenderObjectWidget {
   /// Bakes taken since the app started, across every surface. Differenced
   /// over time this is the rate — the number that says a surface is
   /// re-baking on the pointer rather than on a change.
-  static int get censusCaptures {
-    var total = 0;
-    for (final raster in census) {
-      total += raster.captureCount;
-    }
-    return total;
+  ///
+  /// 🚨 Counted into a process-lifetime total rather than summed over
+  /// [census], because the census SHRINKS: a surface leaves it on
+  /// `detach` and on `dispose`. Summing live members meant the total went
+  /// DOWN whenever a panel closed or a dock was rearranged, and a slope
+  /// taken across that reads as a negative bake rate on screen.
+  ///
+  /// The comment that used to sit on the differencing code said the
+  /// counter only ever grows, so the only error it could make was an
+  /// overstatement. That was wrong in both halves, and wrong in the way
+  /// that stops the next reader from checking.
+  static int get censusCaptures => _capturesEver;
+  static int _capturesEver = 0;
+
+  /// Bytes are a LEVEL, not a counter — what is held right now — so this
+  /// one is correctly a sum over the live census and must stay one.
+  static void debugNoteCapture() {
+    _capturesEver += 1;
   }
 
   @override
@@ -408,6 +420,7 @@ class RenderStaticRaster extends RenderProxyBox {
     );
     debugCaptureRefusal = null;
     captureCount += 1;
+    StaticRaster.debugNoteCapture();
     if (RepaintCause.collecting) {
       final cause = RepaintCause.attribute();
       captureCauses[cause] = (captureCauses[cause] ?? 0) + 1;

@@ -378,6 +378,66 @@ void main() {
       );
     });
 
+    testWidgets('closing a panel does not make the rate go negative', (
+      tester,
+    ) async {
+      // 🚨 The census SHRINKS — a surface leaves it on detach and on
+      // dispose — so a total summed over live members goes DOWN whenever
+      // a panel closes or a dock is rearranged. A slope taken across that
+      // is negative, and `-4.0/s` is printed on screen as confidently as
+      // any other number.
+      MeasurementMode.frameStats.value = true;
+      final repaint = ValueNotifier<int>(0);
+      addTearDown(repaint.dispose);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Directionality(
+            textDirection: TextDirection.ltr,
+            child: Center(
+              child: SizedBox(
+                width: 100,
+                height: 100,
+                child: StaticRaster(
+                  debugLabel: 'closing-fixture',
+                  maxConsecutiveCaptures: 1000,
+                  child: CustomPaint(painter: _TickPainter(repaint)),
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      expect(
+        StaticRaster.censusCaptures,
+        greaterThan(0),
+        reason: 'nothing baked, so unmounting it could not lose anything',
+      );
+
+      FrameStats.debugFeed(<FrameTiming>[
+        _frame(uiMs: 1, rasterMs: 1, atMs: 0),
+        _frame(uiMs: 1, rasterMs: 1, atMs: 16),
+      ]);
+      FrameStats.publish();
+
+      // The panel closes. Its bakes still happened.
+      await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+      await tester.pump();
+      expect(StaticRaster.census, isEmpty);
+
+      FrameStats.debugFeed(<FrameTiming>[
+        _frame(uiMs: 1, rasterMs: 1, atMs: 266),
+      ]);
+      FrameStats.publish();
+
+      expect(
+        FrameStats.latest.value!.bakesPerSecond,
+        greaterThanOrEqualTo(0),
+        reason: 'a count of things that happened cannot become smaller',
+      );
+    });
+
     test('a single frame reports no span rather than an infinite rate', () {
       FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
       FrameStats.publish();
