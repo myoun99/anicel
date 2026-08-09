@@ -11,6 +11,7 @@ import 'src/services/pdf/pdf_render_service.dart';
 import 'src/services/persistence/app_documents.dart' show AppStorage;
 import 'src/ui/debug/frame_stats.dart';
 import 'src/ui/debug/frame_stats_readout.dart';
+import 'src/ui/debug/repaint_cause.dart';
 import 'src/ui/debug/measurement_mode.dart';
 import 'src/ui/home_page.dart';
 import 'src/ui/input/app_input_settings.dart' show AppInput;
@@ -72,6 +73,7 @@ void main() {
   // recorder is inert until the switch is on — it costs one bool per
   // frame batch.
   FrameStats.install();
+  RepaintCause.install();
   runApp(const AnicelApp());
 }
 

@@ -44,6 +44,8 @@ class _TickPainter extends CustomPainter {
 
 void main() {
   setUp(() {
+    TestWidgetsFlutterBinding.ensureInitialized();
+    RepaintCause.install();
     MeasurementMode.frameStats.value = true;
     RepaintCause.reset();
   });
@@ -54,25 +56,28 @@ void main() {
 
   Future<RenderStaticRaster> pumpBake(
     WidgetTester tester,
-    ValueNotifier<int> repaint,
-  ) async {
+    ValueNotifier<int> repaint, {
+    Listenable? outside,
+  }) async {
+    Widget surface = StaticRaster(
+      debugLabel: 'cause-fixture',
+      // The stand-down would stop the bakes these assertions count, and a
+      // test that counts zero bakes passes on any implementation.
+      maxConsecutiveCaptures: 1000,
+      child: CustomPaint(painter: _TickPainter(repaint)),
+    );
+    if (outside != null) {
+      // An ancestor that repaints without touching its child — the shape
+      // of the real problem, and the only way to get frames that are not
+      // bakes.
+      surface = CustomPaint(painter: _TickPainter(outside), child: surface);
+    }
     await tester.pumpWidget(
       MaterialApp(
         home: Directionality(
           textDirection: TextDirection.ltr,
           child: Center(
-            child: SizedBox(
-              width: 100,
-              height: 100,
-              child: StaticRaster(
-                debugLabel: 'cause-fixture',
-                // The stand-down would stop the bakes these assertions
-                // count, and a test that counts zero bakes passes on any
-                // implementation.
-                maxConsecutiveCaptures: 1000,
-                child: CustomPaint(painter: _TickPainter(repaint)),
-              ),
-            ),
+            child: SizedBox(width: 100, height: 100, child: surface),
           ),
         ),
       ),
@@ -184,6 +189,84 @@ void main() {
             'mark must not consume it for its sibling',
       );
     }
+  });
+
+  testWidgets('an unclaimed mark expires with its frame', (tester) async {
+    // 🚨 The case the first version got backwards. It argued the stale
+    // window was one frame because marks arrive continuously while the
+    // pen moves — but when the design is working, NOTHING BAKES while the
+    // pen moves. So the mark would survive the whole hover and label
+    // whatever baked next, for any reason, `pointer`: the one false
+    // positive this channel exists to catch, manufactured by itself.
+    final repaint = ValueNotifier<int>(0);
+    addTearDown(repaint.dispose);
+    // ⚠️ Something OUTSIDE the surface has to repaint, or the fixture does
+    // not reach the case. `tester.pump()` runs a frame only
+    // `if (hasScheduledFrame)`, so a loop of bare pumps over a clean tree
+    // produces NO FRAMES AT ALL — measured, four sweeps for thirty-one
+    // pumps — and a mark cannot expire on frames that never happened.
+    //
+    // Which is the real scenario anyway, and the one this whole round is
+    // about: the pen moves, frames go out because of it, and the panels
+    // do not bake.
+    final outside = ValueNotifier<int>(0);
+    addTearDown(outside.dispose);
+    final raster = await pumpBake(tester, repaint, outside: outside);
+    raster.captureCauses.clear();
+
+    RepaintCause.note('pointer');
+
+    final sweepsBefore = RepaintCause.debugSweeps;
+    for (var i = 0; i < 30; i += 1) {
+      outside.value += 1;
+      await tester.pump(_oneFrame);
+    }
+    expect(
+      RepaintCause.debugSweeps - sweepsBefore,
+      30,
+      reason:
+          'the frames have to actually happen, or nothing was under test — '
+          'this is the assertion that caught the fixture, not the code',
+    );
+    expect(
+      raster.captureCauses,
+      isEmpty,
+      reason:
+          'something baked during the quiet stretch, so the mark was claimed '
+          'honestly and this fixture never reaches the case it is named for',
+    );
+
+    // Now something unrelated dirties the surface.
+    repaint.value += 1;
+    await tester.pump(_oneFrame);
+
+    expect(
+      RepaintCause.debugSweeps,
+      greaterThan(0),
+      reason: 'the frame-end sweep never ran, so nothing was under test',
+    );
+    expect(
+      raster.captureCauses.containsKey('pointer'),
+      isFalse,
+      reason:
+          'a mark from thirty frames ago explains nothing, and blaming the '
+          'pointer for this bake is the diagnosis being wrong in the one '
+          'direction that matters.\n'
+          'pending=${RepaintCause.debugPending} '
+          'sweeps=${RepaintCause.debugSweeps} '
+          'causeFrame=${RepaintCause.debugCauseFrame} '
+          'causes=${raster.captureCauses}',
+    );
+    expect(raster.captureCauses['unknown'], isNotNull);
+  });
+
+  testWidgets('install registers exactly once however often it is called', (
+    tester,
+  ) async {
+    final before = RepaintCause.debugRegistrations;
+    RepaintCause.install();
+    RepaintCause.install();
+    expect(RepaintCause.debugRegistrations, before);
   });
 
   testWidgets('nothing is collected while the switch is off', (tester) async {
