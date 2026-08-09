@@ -266,8 +266,7 @@ abstract final class FrameStats {
     _lastPublishedVsync = null;
     // The slope's previous reading has to go too. Leaving it behind
     // makes the next publish subtract a total from another session (or
-    // another test) and report a rate that never happened — and because
-    // the counter only ever grows, the lie is always an overstatement.
+    // another test) and report a rate that never happened.
     _lastCaptureTotal = -1;
     _lastCaptureVsync = null;
     latest.value = null;
