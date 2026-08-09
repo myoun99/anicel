@@ -177,6 +177,22 @@ class StaticRaster extends SingleChildRenderObjectWidget {
       View.of(context).devicePixelRatio;
 }
 
+/// How a surface sits on the device pixel grid, which is what decides
+/// whether its bake is a copy or a resample.
+@immutable
+class _GridFit {
+  const _GridFit({required this.shift, required this.scale});
+
+  /// How far the surface's top-left corner sits INTO the device pixel it
+  /// begins in, in the surface's own logical units. Zero when the surface
+  /// already starts on a whole pixel.
+  final Offset shift;
+
+  /// One logical unit of the surface, in device pixels — the view's ratio
+  /// times any scale an ancestor applies.
+  final double scale;
+}
+
 class RenderStaticRaster extends RenderProxyBox {
   RenderStaticRaster({
     required this.debugLabel,
@@ -230,6 +246,7 @@ class RenderStaticRaster extends RenderProxyBox {
 
   ui.Image? _raster;
   Size? _rasterSourceSize;
+  _GridFit? _rasterFit;
 
   /// Why the last capture attempt gave up, if it did. Diagnostics only.
   String? debugCaptureRefusal;
@@ -279,6 +296,11 @@ class RenderStaticRaster extends RenderProxyBox {
         : (source.width * source.height * 4).round();
   }
 
+  /// How this surface sat on the device pixel grid at the last bake, for
+  /// tests that need to prove the blit was a copy and not a resample.
+  @visibleForTesting
+  Offset? get debugGridShift => _rasterFit?.shift;
+
   @override
   void attach(PipelineOwner owner) {
     super.attach(owner);
@@ -315,6 +337,7 @@ class RenderStaticRaster extends RenderProxyBox {
     _raster?.dispose();
     _raster = null;
     _rasterSourceSize = null;
+    _rasterFit = null;
   }
 
   @override
@@ -357,8 +380,19 @@ class RenderStaticRaster extends RenderProxyBox {
       return;
     }
 
+    final fit = _gridFit();
+    if (fit == null) {
+      // A rotation or a non-uniform scale between us and the screen. There
+      // is no 1:1 blit to be had, and a resampled one would not be the
+      // same pixels — see [_GridFit].
+      debugCaptureRefusal = 'not axis-aligned to the device pixel grid';
+      _dropRaster();
+      _paintThrough(context, offset);
+      return;
+    }
+
     _dropRaster();
-    final captured = _captureChild();
+    final captured = _captureChild(fit);
     if (captured == null) {
       // Either a platform view the engine cannot rasterize, or a capture
       // the engine refused. Painting through is always available and
@@ -367,7 +401,12 @@ class RenderStaticRaster extends RenderProxyBox {
       return;
     }
     _raster = captured;
-    _rasterSourceSize = size * _devicePixelRatio;
+    _rasterFit = fit;
+    _rasterSourceSize = Size(
+      captured.width.toDouble(),
+      captured.height.toDouble(),
+    );
+    debugCaptureRefusal = null;
     captureCount += 1;
     if (RepaintCause.collecting) {
       final cause = RepaintCause.attribute();
@@ -385,9 +424,13 @@ class RenderStaticRaster extends RenderProxyBox {
   /// draws past its own bounds therefore looked different baked than
   /// not — and since a surface stands itself down the moment it starts
   /// changing every frame, the difference appeared and disappeared while
-  /// someone worked. A parity test caught exactly that on the onion
-  /// panel: a horizontal band present when painting through and
-  /// transparent when baked.
+  /// someone worked.
+  ///
+  /// ⚠️The onion panel's missing band, which this was written for, turned
+  /// out NOT to be an overflow — it was the unaligned blit that
+  /// [_GridFit] now fixes. The clip below is still right, and it was
+  /// still not enough on its own; the two facts are unrelated and were
+  /// filed as one for a round.
   ///
   /// The fix is not to hunt down every widget that overflows by a
   /// hairline. It is to make the two modes agree BY CONSTRUCTION, so
@@ -410,15 +453,27 @@ class RenderStaticRaster extends RenderProxyBox {
   void _blit(PaintingContext context, Offset offset) {
     final image = _raster!;
     final sourceSize = _rasterSourceSize!;
-    // 1:1 by construction — the image was captured at exactly
-    // `size * devicePixelRatio` and is drawn back into exactly `size` at
-    // the same ratio — so there is nothing to resample and
-    // `FilterQuality.none` is both the fastest and the SHARPEST choice.
-    // Anything else would soften a panel full of small text for no gain.
+    final fit = _rasterFit!;
+    // 1:1, and NOT by construction — by [_GridFit] having put it there.
+    //
+    // The whole image goes back, at the whole-device-pixel corner the
+    // capture was aligned to, at exactly the scale it was taken at. Every
+    // source pixel therefore lands on exactly one device pixel, which is
+    // what makes `FilterQuality.none` both the fastest and the SHARPEST
+    // choice rather than a snapping resample. The destination reaches up
+    // to one device pixel above and left of `offset & size`; that margin
+    // is the transparent slack [_GridFit.shift] describes, because the
+    // capture clips the child to its own box exactly as painting through
+    // does.
     context.canvas.drawImageRect(
       image,
       Offset.zero & sourceSize,
-      offset & size,
+      Rect.fromLTWH(
+        offset.dx - fit.shift.dx,
+        offset.dy - fit.shift.dy,
+        image.width / fit.scale,
+        image.height / fit.scale,
+      ),
       Paint()..filterQuality = FilterQuality.none,
     );
     if (MeasurementMode.showRepaints.value) {
@@ -459,21 +514,31 @@ class RenderStaticRaster extends RenderProxyBox {
   ///
   /// Painting through is always available and always correct, so a
   /// failed capture costs the optimisation and nothing else.
-  ui.Image? _captureChild() {
+  ui.Image? _captureChild(_GridFit fit) {
     final offsetLayer = OffsetLayer();
     try {
-      final context = PaintingContext(offsetLayer, Offset.zero & size);
-      super.paint(context, Offset.zero);
+      // Grown by the sub-pixel slack so the image covers WHOLE device
+      // pixels at both ends, and the child painted at `fit.shift` so it
+      // lands on the same pixel grid it would have unbaked.
+      final bounds = Offset.zero & (size + fit.shift);
+      final context = PaintingContext(offsetLayer, bounds);
+      // The clip painting through pushes, pushed here too, so the two
+      // modes cannot disagree about what is inside the box — including on
+      // the boundary row, where a box that is a fractional number of
+      // device pixels tall has one.
+      context.pushClipRect(
+        needsCompositing,
+        fit.shift,
+        Offset.zero & size,
+        super.paint,
+      );
       // ignore: invalid_use_of_protected_member
       context.stopRecordingIfNeeded();
       if (!offsetLayer.supportsRasterization()) {
         debugCaptureRefusal = 'unrasterizable subtree';
         return null;
       }
-      return offsetLayer.toImageSync(
-        Offset.zero & size,
-        pixelRatio: _devicePixelRatio,
-      );
+      return offsetLayer.toImageSync(bounds, pixelRatio: fit.scale);
     } catch (error, stack) {
       debugCaptureRefusal = 'threw: $error';
       // Reported, not swallowed silently: a capture that keeps failing
@@ -521,6 +586,98 @@ class RenderStaticRaster extends RenderProxyBox {
       _streak = 0;
     }
     _lastCaptureFrame = now;
+  }
+
+  /// Where this surface's top-left corner sits on the device pixel grid,
+  /// or null when no 1:1 blit exists at all.
+  ///
+  /// 🚨This is the difference between a bake that COPIES and a bake that
+  /// RESAMPLES, and getting it wrong is invisible in the one configuration
+  /// people usually test in.
+  ///
+  /// `toImageSync` rounds the image UP to whole pixels, and the blit lands
+  /// wherever layout puts the box. So unless the box's device-space origin
+  /// AND size are both whole pixels, `FilterQuality.none` snaps every
+  /// column and row to its nearest neighbour. Measured, both ways:
+  ///
+  ///  * a panel half a device pixel off the grid: **1483 pixels wrong
+  ///    across 12 whole columns**, worst channel 128 — entire hairlines
+  ///    and glyph stems jumping a pixel;
+  ///  * a panel whose height is not a whole number of device pixels: the
+  ///    whole bottom row wrong, worst channel 127.
+  ///
+  /// Neither is exotic. The second happens to EVERY panel at the 125%,
+  /// 150% and 175% display scalings Windows ships, and the first whenever
+  /// a splitter leaves a dock on a fractional pixel. At 100% and 200% both
+  /// vanish, which is exactly why this survived: the parity test rendered
+  /// at a whole ratio, on whole bounds, at a whole offset.
+  ///
+  /// So the capture is aligned instead: grown to cover whole device pixels
+  /// and painted with [_GridFit.shift] so the content keeps the sub-pixel
+  /// phase it would have had unbaked.
+  _GridFit? _gridFit() {
+    final ratio = _devicePixelRatio;
+    if (!ratio.isFinite || ratio <= 0) {
+      return null;
+    }
+    // Logical global pixels, not device ones — `getTransformTo(null)`
+    // stops at the root render object and the view's own ratio is applied
+    // after it.
+    final Matrix4 toGlobal = getTransformTo(null);
+    final double? uniformScale = _uniformScaleOf(toGlobal);
+    if (uniformScale == null) {
+      return null;
+    }
+    // One of OUR logical units, in device pixels: the ancestors' scale
+    // takes it to global logical units and the view's ratio from there.
+    final double scale = uniformScale * ratio;
+    if (!scale.isFinite || scale <= 0) {
+      return null;
+    }
+    // `origin` is already in global logical units, so it needs the view's
+    // ratio and not the ancestors' scale a second time.
+    final Offset origin = MatrixUtils.transformPoint(toGlobal, Offset.zero);
+    final double left = origin.dx * ratio;
+    final double top = origin.dy * ratio;
+    if (!left.isFinite || !top.isFinite) {
+      return null;
+    }
+    return _GridFit(
+      shift: Offset(
+        (left - left.floorToDouble()) / scale,
+        (top - top.floorToDouble()) / scale,
+      ),
+      scale: scale,
+    );
+  }
+
+  /// The scale in [transform] when it is a translation and a single
+  /// positive uniform scale, and null for anything else — a rotation, a
+  /// skew, a mirror, a scale that differs per axis. Those can still be
+  /// baked, but not as a pixel-for-pixel copy, so the surface paints
+  /// through instead of quietly resampling itself.
+  static double? _uniformScaleOf(Matrix4 transform) {
+    final Float64List m = transform.storage;
+    const double epsilon = 1e-6;
+    bool zero(double value) => value.abs() < epsilon;
+    if (!zero(m[1]) ||
+        !zero(m[2]) ||
+        !zero(m[3]) ||
+        !zero(m[4]) ||
+        !zero(m[6]) ||
+        !zero(m[7]) ||
+        !zero(m[8]) ||
+        !zero(m[9]) ||
+        !zero(m[11]) ||
+        (m[15] - 1).abs() > epsilon) {
+      return null;
+    }
+    final double sx = m[0];
+    final double sy = m[5];
+    if (sx <= 0 || (sx - sy).abs() > epsilon) {
+      return null;
+    }
+    return sx;
   }
 
   bool _childHasRepaintBoundary() {

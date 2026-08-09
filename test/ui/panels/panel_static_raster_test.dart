@@ -195,6 +195,40 @@ void main() {
     }
   });
 
+  testWidgets('a wrapped panel that is on screen really does bake', (
+    tester,
+  ) async {
+    // The other way a panel can quietly stop being free, and the one the
+    // allowlist above cannot see.
+    //
+    // A bake is only a COPY when the surface's device rectangle is whole
+    // pixels, so [RenderStaticRaster] aligns its capture — and refuses
+    // outright when it cannot (a rotation or a non-uniform scale above
+    // it). That refusal is correct and it is also invisible: the panel
+    // looks right and pays its full raster price. Put a `Transform`
+    // somewhere above the docks and every panel in the app would go back
+    // to costing what it cost before the whole exercise, with every other
+    // test in this file still green.
+    await _pumpWorkspace(tester);
+    for (final entry in _byLabel(tester).entries) {
+      final raster = entry.value;
+      if (raster.debugNestedBoundary ||
+          !raster.enabled ||
+          raster.debugStoodDown ||
+          raster.size.isEmpty) {
+        continue;
+      }
+      expect(
+        raster.captureCount,
+        greaterThan(0),
+        reason:
+            '${entry.key} is wrapped, enabled, on screen and unblocked, and '
+            'has still never baked.\n'
+            'Refused because: ${raster.debugCaptureRefusal}',
+      );
+    }
+  });
+
   testWidgets('REPORT: which panels actually bake, and which pay full price', (
     tester,
   ) async {
