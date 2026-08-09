@@ -7,6 +7,7 @@ import 'package:flutter/widgets.dart';
 
 import '../debug/measurement_mode.dart';
 import '../debug/repaint_cause.dart';
+import '../panels/panel_visibility_scope.dart';
 
 /// Bakes its child into ONE image and blits that until the child actually
 /// changes.
@@ -165,6 +166,7 @@ class StaticRaster extends SingleChildRenderObjectWidget {
       enabled: enabled,
       maxConsecutiveCaptures: maxConsecutiveCaptures,
       devicePixelRatio: _devicePixelRatioOf(context),
+      visible: PanelVisibilityScope.maybeOf(context),
     );
   }
 
@@ -177,7 +179,8 @@ class StaticRaster extends SingleChildRenderObjectWidget {
       ..debugLabel = debugLabel
       ..enabled = enabled
       ..maxConsecutiveCaptures = maxConsecutiveCaptures
-      ..devicePixelRatio = _devicePixelRatioOf(context);
+      ..devicePixelRatio = _devicePixelRatioOf(context)
+      ..visible = PanelVisibilityScope.maybeOf(context);
   }
 
   /// The `MediaQuery` value when there is one, the view's own otherwise.
@@ -211,9 +214,46 @@ class RenderStaticRaster extends RenderProxyBox {
     required bool enabled,
     required int maxConsecutiveCaptures,
     required double devicePixelRatio,
+    ValueListenable<bool>? visible,
   }) : _enabled = enabled,
        _maxConsecutiveCaptures = maxConsecutiveCaptures,
-       _devicePixelRatio = devicePixelRatio;
+       _devicePixelRatio = devicePixelRatio,
+       _visible = visible;
+
+  /// Whether the panel this surface lives in is the ACTIVE tab of its
+  /// group, when there is one to ask.
+  ///
+  /// 🚨 A keep-alive tab that goes offstage keeps its whole subtree
+  /// mounted, so a baked surface back there holds a full-resolution RGBA
+  /// image of a panel nobody can see. Measured: one preset list held
+  /// 2,232,000 bytes after the dock had been switched to another tab.
+  ///
+  /// Asked here rather than by each caller because the alternative is a
+  /// rule every future panel author has to remember, and a panel that
+  /// forgets looks exactly like one that did not.
+  ValueListenable<bool>? _visible;
+  ValueListenable<bool>? get visible => _visible;
+  set visible(ValueListenable<bool>? value) {
+    if (identical(_visible, value)) {
+      return;
+    }
+    if (attached) {
+      _visible?.removeListener(_onGloballyEnabledChanged);
+    }
+    _visible = value;
+    if (attached) {
+      _visible?.addListener(_onGloballyEnabledChanged);
+    }
+    _dropRaster();
+    markNeedsPaint();
+  }
+
+  /// The gate the paint path reads: our own switch, the global one, and
+  /// being on screen at all.
+  bool get _bakingAllowed =>
+      _enabled &&
+      StaticRaster.globallyEnabled.value &&
+      (_visible?.value ?? true);
 
   /// The point of the whole class: our own layer, so Flutter's dirty bit
   /// is the invalidation signal and an ancestor's repaint does not reach
@@ -319,6 +359,7 @@ class RenderStaticRaster extends RenderProxyBox {
     StaticRaster.census.add(this);
     StaticRaster.globallyEnabled.addListener(_onGloballyEnabledChanged);
     MeasurementMode.showRepaints.addListener(_onGloballyEnabledChanged);
+    _visible?.addListener(_onGloballyEnabledChanged);
   }
 
   @override
@@ -326,6 +367,7 @@ class RenderStaticRaster extends RenderProxyBox {
     StaticRaster.census.remove(this);
     StaticRaster.globallyEnabled.removeListener(_onGloballyEnabledChanged);
     MeasurementMode.showRepaints.removeListener(_onGloballyEnabledChanged);
+    _visible?.removeListener(_onGloballyEnabledChanged);
     _dropRaster();
     super.detach();
   }
@@ -336,6 +378,7 @@ class RenderStaticRaster extends RenderProxyBox {
     StaticRaster.census.remove(this);
     StaticRaster.globallyEnabled.removeListener(_onGloballyEnabledChanged);
     MeasurementMode.showRepaints.removeListener(_onGloballyEnabledChanged);
+    _visible?.removeListener(_onGloballyEnabledChanged);
     _dropRaster();
     super.dispose();
   }
@@ -371,7 +414,7 @@ class RenderStaticRaster extends RenderProxyBox {
       _paintThrough(context, offset);
       return;
     }
-    if (!_enabled || !StaticRaster.globallyEnabled.value) {
+    if (!_bakingAllowed) {
       _dropRaster();
       _paintThrough(context, offset);
       return;

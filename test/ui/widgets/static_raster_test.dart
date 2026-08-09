@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/ui/panels/panel_visibility_scope.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
 
 /// Counts its own paints. The whole point of [StaticRaster] is that this
@@ -531,5 +532,57 @@ void main() {
     expect(tapped, isTrue);
     expect(find.bySemanticsLabel('inside the raster'), findsOneWidget);
     handle.dispose();
+  });
+
+  testWidgets('a surface parked offstage drops its image', (tester) async {
+    // 🚨 A keep-alive tab keeps its whole subtree mounted when another tab
+    // is showing, so a baked surface back there holds a full-resolution
+    // RGBA image of a panel nobody can see. Measured on the real
+    // workspace before this: one preset list held 2,232,000 bytes after
+    // the dock had been switched away.
+    //
+    // Asked by the surface itself rather than passed in by each caller,
+    // because a rule every future panel author has to remember is a rule
+    // that gets forgotten — and a panel that forgot would look exactly
+    // like one that did not.
+    final visible = ValueNotifier<bool>(true);
+    addTearDown(visible.dispose);
+
+    await tester.pumpWidget(
+      _host(
+        PanelVisibilityScope(
+          visible: visible,
+          child: StaticRaster(
+            debugLabel: 'parked',
+            child: CustomPaint(painter: _CountingPainter(counter: <int>[0])),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    final raster = tester.renderObject<RenderStaticRaster>(
+      find.byType(StaticRaster),
+    );
+    expect(
+      raster.rasterBytes,
+      greaterThan(0),
+      reason: 'nothing was held, so there is nothing for going offstage to '
+          'release and this test proves nothing',
+    );
+
+    visible.value = false;
+    await tester.pump();
+    expect(
+      raster.rasterBytes,
+      0,
+      reason: 'an image of a panel nobody can see is pure cost',
+    );
+
+    // And it comes back — a surface that could not recover would be a
+    // freeze wearing a different hat.
+    visible.value = true;
+    await tester.pump();
+    expect(raster.rasterBytes, greaterThan(0));
   });
 }
