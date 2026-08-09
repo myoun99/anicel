@@ -611,6 +611,31 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     super.dispose();
   }
 
+  /// The layer-axis position, or null when the controller is attached to
+  /// anything other than exactly one view: `hasClients` only rules out
+  /// zero, and `.offset` asserts on two as well.
+  ScrollPosition? get _verticalPosition {
+    final positions = _verticalScrollController.positions;
+    return positions.length == 1 ? positions.first : null;
+  }
+
+  /// Re-read the layer-axis offset from the position itself.
+  ///
+  /// 🚨The position's pixels move WITHOUT notifying: when the rows shrink
+  /// out from under it, `ScrollPosition` silently `correctPixels` back into
+  /// range during layout, and [_handleVerticalScroll] never runs. An offset
+  /// cached from notifications alone therefore freezes at the pre-collapse
+  /// value — and (UI-R5 #3) comes back to life the moment the rows grow
+  /// again, because the clamp below is applied to a COPY. Expanding an
+  /// attach group then scrolled the view down by exactly the rows that had
+  /// been folded, cancelling the insertion the user had just asked to see.
+  void _readVerticalScrollOffset() {
+    final position = _verticalPosition;
+    if (position != null && position.hasPixels) {
+      _verticalScrollOffset = position.pixels;
+    }
+  }
+
   /// Layer-axis virtualization: re-plan only when the scroll crosses a
   /// row boundary (the ≥2-row overscan absorbs sub-row movement).
   void _handleVerticalScroll() {
@@ -1563,6 +1588,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                 // windowing (UI-R9 #9): lane collapses shrink the rows
                                 // under a stale scroll offset, and the raw value would
                                 // inflate the leading spacer (sections pushed down).
+                                // The clamp is read fresh off the position every build
+                                // so it can never outlive the shrink that caused it
+                                // (UI-R5 #3 — see [_readVerticalScrollOffset]).
+                                _readVerticalScrollOffset();
                                 final effectiveVerticalScrollOffset =
                                     _effectiveVerticalScrollOffset(
                                       requestedOffset: _verticalScrollOffset,
