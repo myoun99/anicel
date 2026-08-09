@@ -16,6 +16,7 @@ import 'layer_label_controls.dart'
         layerLaneValueSlotWidth,
         railSelectedRowColor;
 import 'timeline_current_row.dart';
+import '../text/app_strings.dart' show AppText;
 import 'layer_rail_columns.dart'
     show layerRailTrailingCells, layerRailTwirlIcon;
 import 'property_lane_model.dart';
@@ -86,6 +87,7 @@ class TimelineLaneControlsRow extends StatefulWidget {
     this.laneEdit,
     this.onToggleLaneGroup,
     this.onToggleLaneGroupEnabled,
+    this.onResetLaneGroup,
     this.axis = Axis.horizontal,
     this.keyPrefix = 'timeline',
     this.width,
@@ -118,6 +120,11 @@ class TimelineLaneControlsRow extends StatefulWidget {
   /// Only reached for headers whose [PropertyLaneRow.groupEnabled] is set.
   final void Function(Layer layer, PropertyLaneRow lane)?
   onToggleLaneGroupEnabled;
+
+  /// The group header's RESET (R5, AE's group Reset). Never deletes a key:
+  /// it puts the group's members back to their defaults at the playhead —
+  /// or at the keys a live lane-range selection covers.
+  final void Function(Layer layer, PropertyLaneRow lane)? onResetLaneGroup;
 
   /// Which optional columns the OWNING surface carries, so a group header
   /// lays its trailing controls on the same grid its layer rows do (R5 #7,
@@ -618,6 +625,32 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
               // restyling fx still happens in exactly one place.
               ...layerRailTrailingCells(
                 axis: widget.axis,
+                // R5: AE's group Reset, in the slot immediately left of fx
+                // — the one the fill-reference toggle owns on layer rows,
+                // and the two never appear on the same row.
+                fillReference: widget.onResetLaneGroup == null
+                    ? null
+                    : IconButton(
+                        key: ValueKey<String>(
+                          '$_keyPrefix-lane-group-reset-'
+                          '${layer.id}-${lane.laneId}',
+                        ),
+                        padding: EdgeInsets.zero,
+                        visualDensity: VisualDensity.compact,
+                        constraints: const BoxConstraints(
+                          minWidth: 22,
+                          minHeight: 22,
+                        ),
+                        iconSize: 14,
+                        tooltip: AppText.strings.tlResetGroup,
+                        onPressed: () =>
+                            widget.onResetLaneGroup!(layer, lane),
+                        icon: Icon(
+                          Icons.settings_backup_restore,
+                          size: 14,
+                          color: colorScheme.onSurfaceVariant,
+                        ),
+                      ),
                 fx: lane.groupEnabled == null
                     ? null
                     : IconButton(

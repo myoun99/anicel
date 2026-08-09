@@ -460,6 +460,7 @@ class AppStrings {
   String get tlDuplicateLayer => _s('tlDuplicateLayer');
   String get tlLinkDuplicateLayer => _s('tlLinkDuplicateLayer');
   String get tlUnlinkLayer => _s('tlUnlinkLayer');
+  String get tlResetGroup => _s('tlResetGroup');
   String get tlRenameLayer => _s('tlRenameLayer');
   String get tlCopyLayer => _s('tlCopyLayer');
   String get tlDeleteLayer => _s('tlDeleteLayer');
@@ -1368,6 +1369,7 @@ class AppStrings {
     'tlDuplicateLayer': 'Duplicate layer',
     'tlLinkDuplicateLayer': 'Link duplicate layer',
     'tlUnlinkLayer': 'Unlink layer',
+    'tlResetGroup': 'Reset (keeps keys)',
     'tlRenameLayer': 'Rename layer…',
     'tlCopyLayer': 'Copy layer',
     'tlDeleteLayer': 'Delete layer',
@@ -2068,6 +2070,7 @@ class AppStrings {
     'tlDuplicateLayer': 'レイヤーを複製',
     'tlLinkDuplicateLayer': 'リンクして複製',
     'tlUnlinkLayer': 'リンクを解除',
+    'tlResetGroup': 'リセット（キーは残す）',
     'tlRenameLayer': 'レイヤー名を変更…',
     'tlCopyLayer': 'レイヤーをコピー',
     'tlDeleteLayer': 'レイヤーを削除',
@@ -2764,6 +2767,7 @@ class AppStrings {
     'tlDuplicateLayer': '레이어 복제',
     'tlLinkDuplicateLayer': '링크해서 복제',
     'tlUnlinkLayer': '링크 해제',
+    'tlResetGroup': '리셋 (키는 유지)',
     'tlRenameLayer': '레이어 이름 변경…',
     'tlCopyLayer': '레이어 복사',
     'tlDeleteLayer': '레이어 삭제',
@@ -3495,6 +3499,7 @@ class AppStrings {
     'tlDuplicateLayer': 'Dupliquer le calque',
     'tlLinkDuplicateLayer': 'Dupliquer en liant',
     'tlUnlinkLayer': 'Délier le calque',
+    'tlResetGroup': 'Réinitialiser (garde les clés)',
     'tlRenameLayer': 'Renommer le calque…',
     'tlCopyLayer': 'Copier le calque',
     'tlDeleteLayer': 'Supprimer le calque',
@@ -4164,6 +4169,7 @@ class AppStrings {
     'tlDuplicateLayer': '复制图层',
     'tlLinkDuplicateLayer': '链接复制图层',
     'tlUnlinkLayer': '取消图层链接',
+    'tlResetGroup': '重置（保留关键帧）',
     'tlRenameLayer': '重命名图层…',
     'tlCopyLayer': '复制图层',
     'tlDeleteLayer': '删除图层',

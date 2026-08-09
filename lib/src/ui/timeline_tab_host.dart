@@ -1266,6 +1266,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                 'Toggle ${lane.label}',
               );
             },
+            // R5: AE's group Reset. The session owns the scope rule (the
+            // playhead, or a live lane range's keys) so both grids and the
+            // storyboard ask the same question.
+            onResetLaneGroup: (layer, lane) =>
+                _session.resetLaneGroup(layer.id, lane.laneId),
             timelineActionToolbar: timelineToolbar,
           );
           // The GAP empty state (UI-R9 #3): no cut selected — no rows, no

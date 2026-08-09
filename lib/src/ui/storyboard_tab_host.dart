@@ -826,6 +826,9 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   // group header.
                   onToggleTrackEffectEnabled: (track, effectId) =>
                       _session.toggleTrackEffectEnabled(track.id, effectId),
+                  // R5: AE's group Reset on the V row's chain.
+                  onResetTrackEffectGroup: (track, headerLaneId) =>
+                      _session.resetTrackEffectGroup(track.id, headerLaneId),
                   trackOpacityOf: (track) =>
                       _session.trackStaticOpacity(track.id),
                   onTrackOpacityChanged: (track, opacity) =>

@@ -247,6 +247,76 @@ PropertyKeyInterpolation _keptInterpolation<T>(
       PropertyKeyInterpolation.linear;
 }
 
+/// AE's group Reset, for the Transform group (R5, user 2026-08-09).
+///
+/// The rule, in the user's words: **키를 삭제하진 않고 값만 리셋**. So this
+/// never removes a key, and it never authors animation where there was
+/// none — an EMPTY lane is already sitting at its default, and writing one
+/// there would turn a static property into a keyed one behind the user's
+/// back.
+///
+/// [frameIndexes] is the scope: the playhead alone, or the frames of the
+/// keys a live lane-range selection covers. [keyedFramesOnly] is what tells
+/// those two apart — resetting AT the playhead has to write a key on an
+/// animated lane (that is the only way the value THERE can be the default),
+/// while resetting a SELECTION means "reset the selected keys" and must not
+/// invent one at every frame the band happens to cross.
+///
+/// Returns null when nothing changed.
+TransformTrack? transformTrackWithGroupReset(
+  TransformTrack track, {
+  required Iterable<int> frameIndexes,
+  required TransformPose identity,
+  required CanvasPoint defaultAnchorPoint,
+  double defaultOpacity = 1,
+  bool keyedFramesOnly = false,
+}) {
+  final frames = frameIndexes.where((frame) => frame >= 0).toSet();
+  if (frames.isEmpty) {
+    return null;
+  }
+
+  PropertyTrack<T>? reset<T>(PropertyTrack<T> lane, T value) {
+    // Untouched by design: no keys means the lane already resolves to its
+    // default everywhere.
+    if (lane.isEmpty) {
+      return null;
+    }
+    var next = lane;
+    for (final frame in frames) {
+      if (keyedFramesOnly && lane.keyAt(frame) == null) {
+        continue;
+      }
+      next = next.withKey(
+        frame,
+        value,
+        interpolation: _keptInterpolation(lane, frame),
+      );
+    }
+    return next == lane ? null : next;
+  }
+
+  final anchor = reset(track.anchorPoint, defaultAnchorPoint);
+  final position = reset(track.position, identity.center);
+  final scale = reset(track.scale, identity.zoom);
+  final rotation = reset(track.rotation, identity.rotationDegrees);
+  final opacity = reset(track.opacity, defaultOpacity);
+  if (anchor == null &&
+      position == null &&
+      scale == null &&
+      rotation == null &&
+      opacity == null) {
+    return null;
+  }
+  return track.copyWith(
+    anchorPoint: anchor ?? track.anchorPoint,
+    position: position ?? track.position,
+    scale: scale ?? track.scale,
+    rotation: rotation ?? track.rotation,
+    opacity: opacity ?? track.opacity,
+  );
+}
+
 /// Shifts EVERY key of ONE lane inside [rangeStartIndex,
 /// [rangeEndIndexExclusive]) by [frameDelta] — the lane-scoped range move
 /// (UI-R23 #3 part 2): rigid group, one delta, all-or-nothing. Null when
