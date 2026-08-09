@@ -24,6 +24,7 @@ import '../dialogs/preferences_dialog.dart';
 import '../canvas/paper_background.dart' show alphaPreviewEnabled;
 import '../debug/input_inspector.dart';
 import '../debug/measurement_mode.dart';
+import '../widgets/static_raster.dart';
 import '../dialogs/project_background_dialog.dart';
 import '../editor_session_manager.dart';
 import '../../services/persistence/app_export_settings_store.dart';
@@ -430,6 +431,24 @@ class EditorTopStrip extends StatelessWidget {
       onPressed: () {
         MeasurementMode.showRepaints.value =
             !MeasurementMode.showRepaints.value;
+      },
+    ),
+    // The A/B. Turning the bakes off puts the app back the way it was
+    // before them, in the SAME build, so "what did this actually buy" is
+    // two readings a few seconds apart rather than an argument.
+    //
+    // 🚨 It existed as a `ValueNotifier` from the day the bakes shipped
+    // and was never wired to anything, so the one switch the whole
+    // measurement needs could not be reached without editing code. A
+    // debug affordance nobody can press is a debug affordance nobody has.
+    _item(
+      id: 'edit-bake-panels',
+      label: 'Bake Static Panels',
+      icon: Icons.layers_outlined,
+      checked: StaticRaster.globallyEnabled.value,
+      onPressed: () {
+        StaticRaster.globallyEnabled.value =
+            !StaticRaster.globallyEnabled.value;
       },
     ),
     // And the marker for where the canvas painter had NO picture for a
