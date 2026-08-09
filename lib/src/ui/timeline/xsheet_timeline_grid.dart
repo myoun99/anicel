@@ -988,6 +988,10 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
           onToggleLaneGroup: widget.onToggleLaneGroup,
           onToggleLaneGroupEnabled: widget.onToggleLaneGroupEnabled,
           currentRowHooks: widget.currentRowHooks,
+          // The SAME flags the layer's own column header passes, so a
+          // group header's fx lands in the sheet's fx row (R5 #7).
+          hasOnionColumn: widget.onToggleLayerOnionSkin != null,
+          hasBlendColumn: widget.onLayerBlendModeSelected != null,
         ),
       ),
     );

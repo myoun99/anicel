@@ -16,7 +16,8 @@ import 'layer_label_controls.dart'
         layerLaneValueSlotWidth,
         railSelectedRowColor;
 import 'timeline_current_row.dart';
-import 'layer_rail_columns.dart' show layerRailTwirlIcon;
+import 'layer_rail_columns.dart'
+    show layerRailTrailingCells, layerRailTwirlIcon;
 import 'property_lane_model.dart';
 import 'transform_lane_policy.dart' show laneSelectionCoversBandRow;
 import 'timeline_cell_style.dart' show timelineDrawingStartColor;
@@ -92,6 +93,8 @@ class TimelineLaneControlsRow extends StatefulWidget {
     this.minContentExtent,
     this.leadingInset = 0,
     this.currentRowHooks,
+    this.hasOnionColumn = false,
+    this.hasBlendColumn = false,
   });
 
   final Layer layer;
@@ -115,6 +118,19 @@ class TimelineLaneControlsRow extends StatefulWidget {
   /// Only reached for headers whose [PropertyLaneRow.groupEnabled] is set.
   final void Function(Layer layer, PropertyLaneRow lane)?
   onToggleLaneGroupEnabled;
+
+  /// Which optional columns the OWNING surface carries, so a group header
+  /// lays its trailing controls on the same grid its layer rows do (R5 #7,
+  /// user: "그걸 원한 거야").
+  ///
+  /// A header used to put its fx switch straight after the label, so the
+  /// switch landed at a different x on every header — wherever that
+  /// header's name happened to end. It rides
+  /// [layerRailTrailingCells] now, which is the same skeleton the layer row
+  /// above it uses: matching the flags is what keeps the two in ONE column,
+  /// and hand-placing it is exactly how it drifted before.
+  final bool hasOnionColumn;
+  final bool hasBlendColumn;
 
   /// The owning grid's frame-axis direction (drives only the cell's
   /// composition; every control behaves identically).
@@ -566,7 +582,12 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
                   size: 16,
                 ),
               ),
-              Flexible(
+              // The name takes the leftover; the controls after it are a
+              // fixed grid, so `Expanded` (not `Flexible`) — the trailing
+              // run has to start at the same place on every header, and
+              // shrink-wrapping the name is what made it start wherever a
+              // name happened to end.
+              Expanded(
                 child: widget.axis == Axis.horizontal
                     ? Text(
                         lane.label,
@@ -590,41 +611,43 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
                         ),
                       ),
               ),
-              // R6: the group's own switch, for the headers that have one
-              // (each effect). The shared `fx` glyph, so restyling fx
-              // still happens in exactly one place.
-              if (lane.groupEnabled != null) ...[
-                // Along the ROW's axis: a width-only box contributes
-                // nothing to a vertical Flex, so on the sheet the switch
-                // sat flush against the label.
-                SizedBox(
-                  width: widget.axis == Axis.horizontal ? 4 : null,
-                  height: widget.axis == Axis.horizontal ? null : 4,
-                ),
-                IconButton(
-                  key: ValueKey<String>(
-                    '$_keyPrefix-lane-group-fx-${layer.id}-${lane.laneId}',
-                  ),
-                  padding: EdgeInsets.zero,
-                  visualDensity: VisualDensity.compact,
-                  constraints: const BoxConstraints(
-                    minWidth: 22,
-                    minHeight: 22,
-                  ),
-                  iconSize: 16,
-                  tooltip: lane.groupEnabled!
-                      ? 'Bypass ${lane.label}'
-                      : 'Apply ${lane.label}',
-                  onPressed: widget.onToggleLaneGroupEnabled == null
-                      ? null
-                      : () => widget.onToggleLaneGroupEnabled!(layer, lane),
-                  icon: fxGlyph(
-                    context: context,
-                    active: lane.groupEnabled!,
-                    fontSize: 11,
-                  ),
-                ),
-              ],
+              // R5 #7: the group's switch sits in the LAYER ROW'S fx
+              // column, through the layer row's own skeleton. R6 put it
+              // straight after the label, which put it at a different x on
+              // every header. The shared `fx` glyph either way, so
+              // restyling fx still happens in exactly one place.
+              ...layerRailTrailingCells(
+                axis: widget.axis,
+                fx: lane.groupEnabled == null
+                    ? null
+                    : IconButton(
+                        key: ValueKey<String>(
+                          '$_keyPrefix-lane-group-fx-'
+                          '${layer.id}-${lane.laneId}',
+                        ),
+                        padding: EdgeInsets.zero,
+                        visualDensity: VisualDensity.compact,
+                        constraints: const BoxConstraints(
+                          minWidth: 22,
+                          minHeight: 22,
+                        ),
+                        iconSize: 16,
+                        tooltip: lane.groupEnabled!
+                            ? 'Bypass ${lane.label}'
+                            : 'Apply ${lane.label}',
+                        onPressed: widget.onToggleLaneGroupEnabled == null
+                            ? null
+                            : () =>
+                                  widget.onToggleLaneGroupEnabled!(layer, lane),
+                        icon: fxGlyph(
+                          context: context,
+                          active: lane.groupEnabled!,
+                          fontSize: 11,
+                        ),
+                      ),
+                hasOnionColumn: widget.hasOnionColumn,
+                hasBlendColumn: widget.hasBlendColumn,
+              ),
             ],
           ),
         ),

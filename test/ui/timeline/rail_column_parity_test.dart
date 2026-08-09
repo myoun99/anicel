@@ -5,6 +5,8 @@ import 'package:anicel/src/models/attached_placement.dart';
 import 'package:anicel/src/models/layer_section_defaults.dart'
     show seLayerIdForTrack;
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
+import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
@@ -176,6 +178,68 @@ void main() {
       reason:
           'this is the 44px the user reported: the two panels\' rails are '
           'the same table and must measure identically',
+    );
+  });
+
+  // R5 #7 — the user caught the drift on a mockup before it shipped: a
+  // group header laid its own trailing controls, so the fx switch landed
+  // wherever that header's NAME happened to end. Measured against the layer
+  // row's fx, from each row's own right edge, so the two cannot drift
+  // apart without this going red.
+  testWidgets('a lane GROUP HEADER puts its fx switch in the layer rows\' '
+      'fx column', (tester) async {
+    // The WHOLE app: lane expansion is HomePage's state, so a bare
+    // TimelineTabHost has no twirl to tap at all.
+    await tester.binding.setSurfaceSize(const Size(1280, 1200));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+    await tester.pumpWidget(
+      MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+    );
+    await tester.pumpAndSettle();
+    await tester.drag(
+      find.byKey(const ValueKey<String>('dock-resize-bottom')),
+      const Offset(0, -520),
+    );
+    await tester.pumpAndSettle();
+
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+    final layerId = session.activeLayerId!;
+    // Twirl the lanes open so the Transform group header exists.
+    final laneToggle = find.byKey(
+      ValueKey<String>('timeline-lane-toggle-$layerId'),
+    );
+    await tester.ensureVisible(laneToggle);
+    await tester.pumpAndSettle();
+    await tester.tap(laneToggle);
+    await tester.pumpAndSettle();
+
+    final layerRow = find.byKey(
+      ValueKey<String>('timeline-layer-row-$layerId'),
+    );
+    final headerRow = find.byKey(
+      ValueKey<String>('timeline-lane-label-$layerId-transform-group'),
+    );
+    final layerFx = find.byKey(ValueKey<String>('timeline-layer-fx-$layerId'));
+    final headerFx = find.byKey(
+      ValueKey<String>('timeline-lane-group-fx-$layerId-transform-group'),
+    );
+    expect(layerFx, findsOneWidget);
+    expect(headerFx, findsOneWidget);
+
+    // From each row's RIGHT edge: the two rows do not share a left origin
+    // (the header sits inside the section gutter), and the trailing run is
+    // anchored on the right by construction.
+    double trailingInsetOf(Finder control, Finder row) =>
+        tester.getTopRight(row).dx - tester.getCenter(control).dx;
+
+    expect(
+      trailingInsetOf(headerFx, headerRow),
+      moreOrLessEquals(trailingInsetOf(layerFx, layerRow), epsilon: 0.5),
+      reason:
+          'the header rides the layer row\'s trailing skeleton — hand-placing '
+          'it is exactly how it drifted',
     );
   });
 

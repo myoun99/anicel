@@ -1302,6 +1302,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
             onToggleLaneGroupEnabled: widget.onToggleLaneGroupEnabled,
             currentRowHooks: widget.currentRowHooks,
             leadingInset: layerSectionLabelSlotWidth,
+            // The SAME flags the layer row below passes, so a group
+            // header's fx lands in the layer rows' fx column (R5 #7).
+            hasOnionColumn: widget.onToggleLayerOnionSkin != null,
+            hasBlendColumn: widget.onLayerBlendModeSelected != null,
           ),
         ),
       );
