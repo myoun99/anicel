@@ -39,8 +39,25 @@ enum LayerKind {
 
   /// Camera-work instruction row (FI/FO/PAN … chips): carries instruction
   /// events, never drawing frames, and sorts into the camera section. Every
-  /// cut keeps at least one.
+  /// cut keeps at least one. Displayed as the "direction layer" — the
+  /// camera section names three types apart (camera, direction, transition)
+  /// and this is the CUT-scoped one.
   instruction('instruction'),
+
+  /// The TRANSITION row: the same instruction events one level up —
+  /// TRACK-owned with keys on the track's GLOBAL frame axis, exactly like
+  /// [Track.seLayers], so a span may straddle a cut boundary. That is what
+  /// an O.L is: the outgoing cut's F.O and the incoming cut's F.I over one
+  /// shared span.
+  ///
+  /// It is the same machinery as [instruction] — the span create/edge-grip
+  /// gestures, [InstructionEvent], the edit dialog and the bowtie painter
+  /// all serve it unchanged. Only two things differ: its vocabulary picker
+  /// is filtered to the transition terms
+  /// ([cameraInstructionIsTransition]), and inside a CUT's timeline it is
+  /// READ-ONLY — the cut view windows it for reading, authoring happens on
+  /// the global axis ("글로벌 트랙이 메인, 컷 타임라인은 보여주기만").
+  transition('transition'),
 
   /// The cut's camera track: selecting it puts the canvas into camera
   /// manipulation mode and its timeline row shows camera keyframes. Exactly
@@ -103,6 +120,7 @@ bool layerKindHoldsDrawings(LayerKind kind) {
     LayerKind.text ||
     LayerKind.se => true,
     LayerKind.instruction ||
+    LayerKind.transition ||
     LayerKind.camera ||
     LayerKind.folder ||
     LayerKind.adjustment => false,
@@ -123,6 +141,7 @@ bool layerKindIsDrawingCel(LayerKind kind) {
     LayerKind.text => true,
     LayerKind.se ||
     LayerKind.instruction ||
+    LayerKind.transition ||
     LayerKind.camera ||
     LayerKind.folder ||
     LayerKind.adjustment => false,
@@ -147,6 +166,7 @@ bool layerKindAcceptsBrushInput(LayerKind kind) {
     LayerKind.text ||
     LayerKind.se ||
     LayerKind.instruction ||
+    LayerKind.transition ||
     LayerKind.camera ||
     LayerKind.folder ||
     LayerKind.adjustment => false,
@@ -174,6 +194,7 @@ bool layerKindComposites(LayerKind kind) {
     LayerKind.text ||
     LayerKind.se ||
     LayerKind.instruction ||
+    LayerKind.transition ||
     LayerKind.folder ||
     LayerKind.adjustment => true,
     LayerKind.camera => false,
@@ -212,6 +233,7 @@ bool layerKindHasPictureOpacity(LayerKind kind) {
     LayerKind.text ||
     LayerKind.se ||
     LayerKind.instruction ||
+    LayerKind.transition ||
     LayerKind.folder ||
     // The adjustment's slider IS its own opacity — it just means MIX
     // rather than fade (Photoshop's rule), so the bulk-opacity commands
@@ -232,6 +254,7 @@ bool layerKindHasLayerTransform(LayerKind kind) {
     LayerKind.text ||
     LayerKind.se ||
     LayerKind.instruction ||
+    LayerKind.transition ||
     LayerKind.folder => true,
     // An ADJUSTMENT row has no picture of its own to move, and moving what
     // it filters is not something a transform could mean — its twirl-down
@@ -266,6 +289,7 @@ bool layerKindHasTransformFxSwitch(LayerKind kind) {
     LayerKind.text ||
     LayerKind.se ||
     LayerKind.instruction ||
+    LayerKind.transition ||
     LayerKind.folder ||
     LayerKind.camera => true,
     LayerKind.adjustment => false,
@@ -288,6 +312,7 @@ bool layerKindHasLayerEffects(LayerKind kind) {
     LayerKind.text ||
     LayerKind.se ||
     LayerKind.instruction ||
+    LayerKind.transition ||
     LayerKind.folder ||
     LayerKind.adjustment => true,
     LayerKind.camera => false,
@@ -316,6 +341,7 @@ bool layerKindLinksIntoLinkedCut(LayerKind kind) {
     LayerKind.storyboard ||
     LayerKind.se ||
     LayerKind.instruction ||
+    LayerKind.transition ||
     LayerKind.camera => false,
   };
 }
@@ -366,6 +392,7 @@ bool layerKindIsSingletonPerCut(LayerKind kind) {
     LayerKind.text ||
     LayerKind.se ||
     LayerKind.instruction ||
+    LayerKind.transition ||
     LayerKind.folder ||
     LayerKind.adjustment => false,
   };
@@ -383,6 +410,9 @@ bool layerKindIsClipboardCopyable(LayerKind kind) {
     LayerKind.image ||
     LayerKind.text ||
     LayerKind.instruction => true,
+    // The TRANSITION row is track-owned like SE: duplicating it would
+    // recreate a shape the model retired (one row per track).
+    LayerKind.transition ||
     // The adjustment stands down with the folder for a STRUCTURAL reason,
     // not a payload one (the payload carries composite state now): what an
     // adjustment does is decided by WHERE it sits, and a paste lands it
@@ -414,7 +444,9 @@ bool layerKindExportsCels(LayerKind kind) {
     LayerKind.image ||
     LayerKind.text ||
     LayerKind.instruction => true,
+    // Track-owned rows are not part of a cut's cel scope.
     LayerKind.se ||
+    LayerKind.transition ||
     LayerKind.camera ||
     LayerKind.folder ||
     LayerKind.adjustment => false,
@@ -431,7 +463,11 @@ bool layerKindTakesTimesheetColumn(LayerKind kind) {
     LayerKind.animation ||
     LayerKind.storyboard ||
     LayerKind.se ||
-    LayerKind.instruction => true,
+    LayerKind.instruction ||
+    // The TRANSITION row is why it is a row at all: the sheet's camera
+    // group needs a column to print O.L/F.I/F.O into, and a column is what
+    // a row gets. (A ruler mark would have had no column to print in.)
+    LayerKind.transition => true,
     // Text rows annotate the picture (cut numbers on paper), not the
     // sheet — printed cel columns stay the field's vocabulary. An
     // adjustment is 촬영 direction with no cel to print at all.

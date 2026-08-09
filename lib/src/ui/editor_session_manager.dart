@@ -3380,6 +3380,9 @@ class EditorSessionManager extends ChangeNotifier {
     final layers = cut.layers;
     return switch (activeLayer.kind) {
       LayerKind.camera => false,
+      // The TRANSITION row is a track fixture like the camera: exactly one,
+      // never deleted from inside a cut.
+      LayerKind.transition => false,
       // The sheet's fixture floors: at least two SE rows (S1·S2, now
       // track-owned) and one instruction row survive.
       LayerKind.se => activeTrack.seLayers.length > 2,
@@ -3819,6 +3822,11 @@ class EditorSessionManager extends ChangeNotifier {
     _layerSequence += 1;
     final layerId = defaultLayerIdForSequence(_layerSequence);
     switch (kind) {
+      case LayerKind.transition:
+        // A track fixture, created with the track — "Add layer" never makes
+        // one (canAddLayerOfKind refuses first; this keeps the switch
+        // exhaustive and the intent stated).
+        return;
       case LayerKind.se:
         // SE rows are track-owned: insert directly above the active SE row
         // in the TRACK list (the same S1,S3,S2 insertion order the
@@ -7548,7 +7556,8 @@ class EditorSessionManager extends ChangeNotifier {
       LayerKind.image => 'Image Layer',
       LayerKind.text => 'Text Layer',
       LayerKind.se => 'SE Layer',
-      LayerKind.instruction => 'Instruction Layer',
+      LayerKind.instruction => 'Direction Layer',
+      LayerKind.transition => 'Transition Layer',
       LayerKind.camera => 'Camera Layer',
       LayerKind.folder => 'Folder',
       LayerKind.adjustment => 'Adjustment Layer',

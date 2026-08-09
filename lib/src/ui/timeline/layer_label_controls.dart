@@ -518,6 +518,8 @@ IconData layerKindIcon(LayerKind kind) {
     LayerKind.text => Icons.title_outlined,
     LayerKind.se => Icons.music_note_outlined,
     LayerKind.instruction => Icons.theaters_outlined,
+    // The cross-fade glyph: a transition span is two pictures overlapping.
+    LayerKind.transition => Icons.compare_arrows_outlined,
     LayerKind.camera => Icons.videocam_outlined,
     LayerKind.folder => Icons.folder_outlined,
     // The sliders glyph: an adjustment row IS its parameters.
@@ -533,7 +535,8 @@ String layerKindDisplayName(LayerKind kind) {
     LayerKind.image => 'Image',
     LayerKind.text => 'Text',
     LayerKind.se => 'SE',
-    LayerKind.instruction => 'Instruction',
+    LayerKind.instruction => 'Direction',
+    LayerKind.transition => 'Transition',
     LayerKind.camera => 'Camera',
     LayerKind.folder => 'Folder',
     LayerKind.adjustment => 'Adjustment',

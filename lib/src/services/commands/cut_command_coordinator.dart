@@ -777,6 +777,10 @@ class CutCommandCoordinator {
       // least two SE rows (S1·S2), one instruction row and one drawing cel.
       final refused = switch (layer.kind) {
         LayerKind.camera => true,
+        // A TRANSITION row is track-owned: it never appears in a cut's
+        // layer list, so this floor can only be reached by a programming
+        // error. Refuse rather than delete something the cut does not own.
+        LayerKind.transition => true,
         LayerKind.se =>
           cut.layers.where((other) => other.kind == LayerKind.se).length <= 2,
         LayerKind.instruction =>

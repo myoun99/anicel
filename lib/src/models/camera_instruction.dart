@@ -45,6 +45,22 @@ enum CameraInstructionMarkType {
   }
 }
 
+/// Whether [def] belongs on the TRANSITION row rather than a cut's own
+/// direction row — the 場面転換 terms: F.I, F.O, W.I, W.O and O.L.
+///
+/// These are the instructions that replace the WHOLE screen rather than
+/// move the camera inside it, and that line is what decides which row of
+/// the camera section a term may be dropped on.
+///
+/// ⚠️ Implemented as "carries a non-bar mark" because today the two sets
+/// coincide exactly — the wedge/bowtie glyphs are worn by precisely those
+/// five. They are different questions though (the mark says how a span is
+/// PAINTED, this says what it MEANS), so if a term ever wants a wedge
+/// without being a transition, or the reverse, this grows a stored flag on
+/// the def instead of reading [CameraInstructionDef.markType].
+bool cameraInstructionIsTransition(CameraInstructionDef def) =>
+    def.markType != CameraInstructionMarkType.bar;
+
 class CameraInstructionDef {
   const CameraInstructionDef({
     required this.id,

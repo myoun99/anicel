@@ -455,6 +455,10 @@ class AppStrings {
   String get seNameTagSampleName => _s('seNameTagSampleName');
   String get seNameTagSampleLine => _s('seNameTagSampleLine');
   String get seNameTagReset => _s('seNameTagReset');
+  /// The cut-scoped camera row's DISPLAY name: "Direction layer". The code
+  /// kind stays [LayerKind.instruction] (save compatibility) — only the word
+  /// the user reads changed, so the camera section can name its three types
+  /// apart: camera, direction layer, transition layer.
   String get tlKindInstruction => _s('tlKindInstruction');
   String get tlAttachFreeAbove => _s('tlAttachFreeAbove');
   String get tlAttachFreeBelow => _s('tlAttachFreeBelow');
@@ -1189,7 +1193,7 @@ class AppStrings {
     'exApplyLayerFx': 'Apply layer FX',
     'exApplyLayerFxHelp': 'Apply layer FX (transforms and animated opacity)',
     'exOnTimesheetOnly': 'On-timesheet layers only',
-    'exInstructionLayer': 'Instruction layer',
+    'exInstructionLayer': 'Direction layer',
     'exMuxSeMix': 'Mux the SE mix into the video',
     'exCutFolder': 'Cut folder',
     'exLayerFolder': 'Layer folder',
@@ -1337,7 +1341,7 @@ class AppStrings {
     'tlKindAdjustment': 'Adjustment',
     'tlKindFolder': 'Folder',
     'tlKindSe': 'SE',
-    'tlKindInstruction': 'Instruction',
+    'tlKindInstruction': 'Direction',
     'textCelNewTitle': 'New Text',
     'textCelEditTitle': 'Edit Text',
     'textCelTextLabel': 'Text',
@@ -1895,7 +1899,7 @@ class AppStrings {
     'exApplyLayerFx': 'レイヤーFXを適用',
     'exApplyLayerFxHelp': 'レイヤーFXを適用（変形とアニメーション不透明度）',
     'exOnTimesheetOnly': 'シートに載っているレイヤーのみ',
-    'exInstructionLayer': '指示レイヤー',
+    'exInstructionLayer': 'ディレクションレイヤー',
     'exMuxSeMix': 'SEミックスを動画に多重化',
     'exCutFolder': 'カットフォルダ',
     'exLayerFolder': 'レイヤーフォルダ',
@@ -2069,7 +2073,7 @@ class AppStrings {
     'seNameTagSampleName': '名前',
     'seNameTagSampleLine': 'セリフ',
     'seNameTagReset': '既定に戻す',
-    'tlKindInstruction': '指示',
+    'tlKindInstruction': 'ディレクション',
     'tlAttachFreeAbove': '上にフリーの付属レイヤー',
     'tlAttachFreeBelow': '下にフリーの付属レイヤー',
     'tlAttachSyncedAbove': '上に同期の付属レイヤー',
@@ -2594,7 +2598,7 @@ class AppStrings {
     'exApplyLayerFx': '레이어 FX 적용',
     'exApplyLayerFxHelp': '레이어 FX 적용 (변형과 애니메이션 불투명도)',
     'exOnTimesheetOnly': '시트에 올라간 레이어만',
-    'exInstructionLayer': '지시 레이어',
+    'exInstructionLayer': '디렉션 레이어',
     'exMuxSeMix': 'SE 믹스를 영상에 먹싱',
     'exCutFolder': '컷 폴더',
     'exLayerFolder': '레이어 폴더',
@@ -2768,7 +2772,7 @@ class AppStrings {
     'seNameTagSampleName': '이름',
     'seNameTagSampleLine': '대사',
     'seNameTagReset': '기본값으로',
-    'tlKindInstruction': '지시',
+    'tlKindInstruction': '디렉션',
     'tlAttachFreeAbove': '위에 프리 부속 레이어',
     'tlAttachFreeBelow': '아래에 프리 부속 레이어',
     'tlAttachSyncedAbove': '위에 동기 부속 레이어',
@@ -3324,7 +3328,7 @@ class AppStrings {
     'exApplyLayerFxHelp':
         'Appliquer les FX de calque (transformations et opacité animée)',
     'exOnTimesheetOnly': 'Uniquement les calques sur la feuille',
-    'exInstructionLayer': "Calque d'indications",
+    'exInstructionLayer': 'Calque de direction',
     'exMuxSeMix': 'Intégrer le mixage SE dans la vidéo',
     'exCutFolder': 'Dossier du plan',
     'exLayerFolder': 'Dossier du calque',
@@ -3473,7 +3477,7 @@ class AppStrings {
     'tlKindAdjustment': 'Calque de réglage',
     'tlKindFolder': 'Dossier',
     'tlKindSe': 'SE',
-    'tlKindInstruction': 'Indication',
+    'tlKindInstruction': 'Direction',
     'textCelNewTitle': 'Nouveau texte',
     'textCelEditTitle': 'Modifier le texte',
     'textCelTextLabel': 'Texte',
