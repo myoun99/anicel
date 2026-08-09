@@ -179,15 +179,20 @@ void main() {
   ) async {
     final counter = <int>[0];
     final repaint = ValueNotifier<int>(0);
+    final outside = ValueNotifier<int>(0);
     addTearDown(repaint.dispose);
+    addTearDown(outside.dispose);
 
     await tester.pumpWidget(
       _host(
-        StaticRaster(
-          debugLabel: 'test',
-          maxConsecutiveCaptures: 3,
-          child: CustomPaint(
-            painter: _CountingPainter(counter: counter, repaint: repaint),
+        _RepaintingParent(
+          repaint: outside,
+          child: StaticRaster(
+            debugLabel: 'test',
+            maxConsecutiveCaptures: 3,
+            child: CustomPaint(
+              painter: _CountingPainter(counter: counter, repaint: repaint),
+            ),
           ),
         ),
       ),
@@ -218,9 +223,69 @@ void main() {
     );
 
     // ...and it comes back when the surface goes quiet again.
+    //
+    // ⚠️ "Quiet" is FRAMES going by without this surface baking, not time
+    // passing. `tester.pump(const Duration(seconds: 1))` advances the
+    // clock and produces exactly ONE frame, which under a frame-counted
+    // rule is still the very next one — so the quiet has to be made of
+    // real frames that something ELSE dirtied. Which is also the shape of
+    // the app: the pen keeps moving, frames keep going out, and this
+    // panel is not in them.
+    final serialBefore = StaticRaster.debugFrameSerial;
+    for (var i = 0; i < 5; i += 1) {
+      outside.value += 1;
+      await tester.pump(const Duration(milliseconds: 16));
+    }
+    expect(
+      StaticRaster.debugFrameSerial - serialBefore,
+      5,
+      reason: 'the quiet frames have to actually happen, or nothing is tested',
+    );
+
     repaint.value += 1;
-    await tester.pump(const Duration(seconds: 1));
+    await tester.pump(const Duration(milliseconds: 16));
     expect(render.debugStoodDown, isFalse);
+  });
+
+  testWidgets('the stand-down does not depend on how fast the app is', (
+    tester,
+  ) async {
+    // 🚨 The hole this replaced. The rule used to be "was the last capture
+    // within 34 ms" — two display frames at 60 Hz — so it only worked on
+    // an app that was already fast. Swept: at 35 ms per frame and beyond
+    // the surface NEVER stood down and re-baked every single time. A
+    // debug build of this app measured 27.6 ms/frame, which is to say the
+    // protection was missing exactly where it was needed and would have
+    // switched itself on again once the app no longer needed it.
+    for (final frameMs in <int>[16, 35, 60, 120]) {
+      final repaint = ValueNotifier<int>(0);
+      await tester.pumpWidget(
+        _host(
+          StaticRaster(
+            debugLabel: 'test',
+            maxConsecutiveCaptures: 3,
+            child: CustomPaint(
+              painter: _CountingPainter(counter: <int>[0], repaint: repaint),
+            ),
+          ),
+        ),
+      );
+      final render = tester.renderObject<RenderStaticRaster>(
+        find.byType(StaticRaster),
+      );
+      for (var i = 0; i < 6; i += 1) {
+        repaint.value += 1;
+        await tester.pump(Duration(milliseconds: frameMs));
+      }
+      expect(
+        render.debugStoodDown,
+        isTrue,
+        reason:
+            'at ${frameMs}ms per frame the surface re-baked on every one of '
+            'them and never opted out',
+      );
+      repaint.dispose();
+    }
   });
 
   testWidgets('the nested-boundary report is about THIS frame', (tester) async {
