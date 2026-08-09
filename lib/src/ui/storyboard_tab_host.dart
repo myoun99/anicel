@@ -694,6 +694,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   // no cut needed) and the S rows' layer Transform lanes.
                   trackLaneEditFor: _trackLaneEditFor,
                   laneRange: TimelineLaneRangeCallbacks(
+                    // This rail IS the track's global axis — the master
+                    // one — so it reads and writes the span unshifted.
                     selection: _session.laneRangeSelection,
                     onSelectUpdate:
                         (
@@ -707,6 +709,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                           laneId: laneId,
                           anchorIndex: anchorIndex,
                           headIndex: headIndex,
+                          framesAreGlobal: true,
                           headLaneId: _laneSpanHeadLane(
                             layerId,
                             laneId,

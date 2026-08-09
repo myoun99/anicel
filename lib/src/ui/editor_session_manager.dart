@@ -273,6 +273,9 @@ class EditorSessionManager extends ChangeNotifier {
     audioDeviceTransport.attach();
     audioPlaybackSync.attach();
     playback.globalFrameIndexListenable.addListener(_followPlaybackCut);
+    // The lane span's cut-window view follows the span itself; the other
+    // half of its input (which cut is open) republishes on cut switch.
+    laneRangeSelection.addListener(_publishCutLocalLaneRange);
     // Dirty tracking (P3): every history change — commands, undo/redo and
     // brush strokes, which execute here straight from the canvas — marks
     // the project unsaved.
@@ -834,6 +837,9 @@ class EditorSessionManager extends ChangeNotifier {
     // A cut switch re-seats the active layer, which is what the drawn row
     // falls back to when nothing is engaged.
     _publishCurrentRow();
+    // The window moved, so the part of a track-global lane span this cut
+    // can see moved with it. The selection itself is untouched.
+    _publishCutLocalLaneRange();
   }
 
   int _clampedFrameIndex(int frameIndex) {
@@ -1492,6 +1498,8 @@ class EditorSessionManager extends ChangeNotifier {
     brushInputActive.removeListener(_bumpCelTintRevision);
     celTintRevision.dispose();
     currentRowListenable.dispose();
+    laneRangeSelection.removeListener(_publishCutLocalLaneRange);
+    cutLocalLaneRangeSelection.dispose();
     revealSelectionTick.dispose();
     cacheInvalidationHub.removeBrushFrameListener(_onBrushFrameInvalidated);
     playback.globalFrameIndexListenable.removeListener(_followPlaybackCut);
@@ -8071,7 +8079,7 @@ class EditorSessionManager extends ChangeNotifier {
       return span;
     }
     if (currentRow case LaneRowAddress(:final layerId, :final laneId)) {
-      final frame = _timelineController.currentFrameIndex;
+      final frame = _laneVerbFrameFor(layerId);
       return TimelineLaneSelection(
         layerId: layerId,
         laneId: laneId,
@@ -8094,6 +8102,31 @@ class EditorSessionManager extends ChangeNotifier {
       ? (activeCutOrNull?.camera.track ?? layer.transformTrack)
       : layer.transformTrack;
 
+  /// The layer a LANE verb READS and WRITES.
+  ///
+  /// ★A track-owned SE row answers with the GLOBAL layer, never the cut's
+  /// display clone (user, 2026-08-09: **"글로벌 트랙이 메인이고 컷
+  /// 타임라인 내부에서는 그걸 알기 쉽게 보여주기만 할 뿐"**). The lane
+  /// selection is stated on that same global axis, so a span that runs
+  /// past the cut edge still reaches every key it covers — reading the
+  /// clone could only ever have touched the keys the current cut happens
+  /// to show.
+  ///
+  /// This is the axis rule the frame-shift verbs already follow
+  /// ([_shiftLayerFor], UI-R18 #1), now said once more for the lane
+  /// family. R5 #8's window conversion on the way OUT retires with it:
+  /// what goes in was global to begin with.
+  Layer? _laneVerbLayerFor(LayerId layerId) => isTrackSeLayerId(layerId)
+      ? trackSeGlobalLayerById(layerId)
+      : _layerById(layerId);
+
+  /// The playhead as [layerId]'s own lanes key it — the frame half of
+  /// [_laneVerbLayerFor]. A track-SE row is on the global axis, so the
+  /// cut-local cursor has to be translated before it can name a key.
+  int _laneVerbFrameFor(LayerId layerId) =>
+      _timelineController.currentFrameIndex +
+      (isTrackSeLayerId(layerId) ? activeCutGlobalStartFrame : 0);
+
   void _commitLaneTransformTrack(
     Layer layer,
     TransformTrack track, {
@@ -8103,36 +8136,24 @@ class EditorSessionManager extends ChangeNotifier {
       updateActiveCutCameraTrack(track, description: description);
       return;
     }
-    // R5 #8: a track-owned SE row's lanes are read off a cut-LOCAL clone,
-    // so the edited track goes back through the window. The tab host's
-    // twin refused these outright; this path never checked at all, which
-    // would have planted local frames on the global axis.
-    updateLayerTransformTrack(
-      layer.id,
-      isTrackSeLayerId(layer.id)
-          ? trackSeWindow.globalTransformTrack(track)
-          : track,
-      description: description,
-    );
+    // No window conversion: [_laneVerbLayerFor] hands these verbs the
+    // GLOBAL layer for a track-SE row, so the track they edited is already
+    // on the axis it belongs to. Converting here would shift it twice.
+    updateLayerTransformTrack(layer.id, track, description: description);
   }
 
-  /// The lane path's EFFECT commit — the twin of [_commitLaneTransformTrack]
-  /// and, like it, the one place that converts a track-owned SE row's
-  /// cut-local chain back onto the global axis (R5 #8).
+  /// The lane path's EFFECT commit — the twin of [_commitLaneTransformTrack].
   ///
   /// A funnel rather than three call sites: Add, Delete and Reset all
-  /// commit chains read off the same clone, and the conversion is exactly
-  /// the kind of step that gets remembered in two of three places.
+  /// commit chains read off the same layer, and which axis that layer is
+  /// on is exactly the kind of step that gets remembered in two places out
+  /// of three.
   void _commitLaneEffects(
     Layer layer,
     List<LayerEffect> effects, {
     required String description,
   }) {
-    updateLayerEffects(
-      layer.id,
-      isTrackSeLayerId(layer.id) ? trackSeWindow.globalEffects(effects) : effects,
-      description: description,
-    );
+    updateLayerEffects(layer.id, effects, description: description);
   }
 
   /// The lanes a verb may act on for [layer]. The CAMERA row draws only
@@ -8172,7 +8193,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// mirror of [_createLaneKeysForSelection], one undo. Returns whether
   /// anything was there to remove.
   bool _removeLaneKeysForSelection(TimelineLaneSelection lane) {
-    final layer = _layerById(lane.layerId);
+    final layer = _laneVerbLayerFor(lane.layerId);
     if (layer == null || isAttachedLayer(layer)) {
       return false;
     }
@@ -8240,7 +8261,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// [headerLaneId] names the group: the transform header resets the
   /// transform track, an `fx-group:` header its own effect.
   bool resetLaneGroup(LayerId layerId, String headerLaneId) {
-    final layer = _layerById(layerId);
+    final layer = _laneVerbLayerFor(layerId);
     if (layer == null || isAttachedLayer(layer)) {
       return false;
     }
@@ -8254,7 +8275,7 @@ class EditorSessionManager extends ChangeNotifier {
         span.spanLaneIds.contains(headerLaneId);
     final frames = scoped
         ? [for (var i = span.startIndex; i < span.endIndexExclusive; i += 1) i]
-        : [_timelineController.currentFrameIndex];
+        : [_laneVerbFrameFor(layerId)];
 
     if (parseEffectLaneId(headerLaneId) != null) {
       final effects = effectsWithGroupReset(
@@ -8313,7 +8334,7 @@ class EditorSessionManager extends ChangeNotifier {
 
   /// value on every unkeyed frame of the range — one undo.
   void _createLaneKeysForSelection(TimelineLaneSelection lane) {
-    final layer = _layerById(lane.layerId);
+    final layer = _laneVerbLayerFor(lane.layerId);
     if (layer == null || isAttachedLayer(layer)) {
       return;
     }
@@ -10559,6 +10580,45 @@ class EditorSessionManager extends ChangeNotifier {
   final ValueNotifier<TimelineLaneSelection?> laneRangeSelection =
       ValueNotifier<TimelineLaneSelection?>(null);
 
+  /// [laneRangeSelection] as the CUT's timeline keys it.
+  ///
+  /// ★The display half of the global-master rule (user, 2026-08-09:
+  /// **"글로벌 트랙이 메인이고 컷 타임라인 내부에서는 그걸 알기 쉽게
+  /// 보여주기만 할 뿐"**). A track-SE row's span is stated on the track's
+  /// global axis; a cut panel shows the part that falls inside its own
+  /// window, on its own axis, and nothing when they do not overlap — the
+  /// selection is still there, this cut just is not looking at it.
+  /// Everything else passes straight through: only track-owned rows have
+  /// two axes to be on.
+  final ValueNotifier<TimelineLaneSelection?> cutLocalLaneRangeSelection =
+      ValueNotifier<TimelineLaneSelection?>(null);
+
+  void _publishCutLocalLaneRange() {
+    if (_disposed) {
+      return;
+    }
+    final span = laneRangeSelection.value;
+    if (span == null || !isTrackSeLayerId(span.layerId)) {
+      cutLocalLaneRangeSelection.value = span;
+      return;
+    }
+    final offset = activeCutGlobalStartFrame;
+    final start = math.max(span.startIndex, offset);
+    final end = math.min(
+      span.endIndexExclusive,
+      offset + activeCutPlaybackFrameCount,
+    );
+    cutLocalLaneRangeSelection.value = end <= start
+        ? null
+        : TimelineLaneSelection(
+            layerId: span.layerId,
+            laneId: span.laneId,
+            startIndex: start - offset,
+            endIndexExclusive: end - offset,
+            laneIds: span.laneIds,
+          );
+  }
+
   /// A lane-band select-drag step (raw cells — lane keys are points, no
   /// block snap). Starting a lane selection clears the cell selection
   /// (mutual exclusion, the F4 rule).
@@ -10569,12 +10629,18 @@ class EditorSessionManager extends ChangeNotifier {
   /// lane. Starting on ANOTHER layer's lanes activates that layer
   /// (선택하면 액티브 레이어가 바뀜); lanes of the active layer leave it
   /// unchanged — the fx-row selection rides ALONGSIDE the active layer.
+  /// [framesAreGlobal] says which axis the surface counted in — the same
+  /// question [_shiftAnchorFor] asks for the frame-shift verbs. The
+  /// storyboard's strips ARE the track's global axis; a cut panel's are
+  /// its window, and a track-SE row's span is translated onto the global
+  /// axis on the way in, because that is where the selection lives.
   void updateLaneRangeSelectionDrag({
     required LayerId layerId,
     required String laneId,
     required int anchorIndex,
     required int headIndex,
     String? headLaneId,
+    bool framesAreGlobal = false,
   }) {
     final carrierTrackId = trackIdOfTransformLaneCarrier(layerId);
     if (carrierTrackId != null) {
@@ -10597,8 +10663,12 @@ class EditorSessionManager extends ChangeNotifier {
       }
     }
     clearFrameRangeSelection();
-    final start = math.max(0, math.min(anchorIndex, headIndex));
-    final endExclusive = math.max(anchorIndex, headIndex) + 1;
+    final toGlobal = !framesAreGlobal && isTrackSeLayerId(layerId)
+        ? activeCutGlobalStartFrame
+        : 0;
+    final start =
+        math.max(0, math.min(anchorIndex, headIndex)) + toGlobal;
+    final endExclusive = math.max(anchorIndex, headIndex) + 1 + toGlobal;
     if (endExclusive <= start) {
       return;
     }
@@ -10676,7 +10746,7 @@ class EditorSessionManager extends ChangeNotifier {
         ),
       );
     }
-    final layer = _layerById(selection.layerId);
+    final layer = _laneVerbLayerFor(selection.layerId);
     if (layer == null || isAttachedLayer(layer)) {
       return null;
     }

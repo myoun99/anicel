@@ -30,11 +30,11 @@ class UpdateLayerTransformCommand implements Command {
 
   @override
   void execute() {
-    final layer = requireLayer(
-      repository.requireProject(),
-      cutId: cutId,
-      layerId: layerId,
-    );
+    // ANYWHERE lookup: layer ids are globally unique and a track-owned SE
+    // row is not IN any cut, so the cut-scoped read threw for exactly the
+    // rows whose lanes R5 #8 taught to key. The repository writer below
+    // has always searched both places; only the read had not caught up.
+    final layer = requireLayerAnywhere(repository.requireProject(), layerId);
     _previousTrack ??= layer.transformTrack;
 
     repository.updateLayerTransformTrack(
@@ -52,7 +52,7 @@ class UpdateLayerTransformCommand implements Command {
       throw StateError('Command has not been executed.');
     }
 
-    requireLayer(repository.requireProject(), cutId: cutId, layerId: layerId);
+    requireLayerAnywhere(repository.requireProject(), layerId);
     repository.updateLayerTransformTrack(
       cutId: cutId,
       layerId: layerId,

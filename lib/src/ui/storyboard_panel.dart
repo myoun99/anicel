@@ -1897,26 +1897,29 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     ];
   }
 
-  /// The LANE selection's band over this track's own Transform lane rows
-  /// (R4b) — the timeline's R27 #14 overlay language: ONE band with the
-  /// cell selection's decoration across the spanned lane rows, drawn
-  /// above the strips. Covered rows come from the SAME predicate the
-  /// gesture and markers use ([laneSelectionCoversBandRow]), so the
-  /// header row bands on a whole-group span, collapsed state included.
+  /// The LANE selection's band over this group's property-lane rows —
+  /// the V track's own (R4b) and its S rows' alike (R5 ③b). The
+  /// timeline's R27 #14 overlay language: ONE band with the cell
+  /// selection's decoration across the spanned lane rows, drawn above the
+  /// strips. Covered rows come from the SAME predicate the gesture and
+  /// markers use ([laneSelectionCoversBandRow]), so the header row bands
+  /// on a whole-group span, collapsed state included.
+  ///
+  /// The band is drawn straight from the selection's own numbers: both
+  /// kinds of row here are on the track's global axis, which is the axis
+  /// this rail measures in.
   Widget _trackLaneRangeBand(Track track, TimelineScale scale) {
     final selectionListenable = widget.laneRange?.selection;
     if (selectionListenable == null) {
       return const SizedBox.shrink();
     }
-    final carrierId = trackTransformLaneCarrierId(track.id);
     return ValueListenableBuilder<TimelineLaneSelection?>(
       valueListenable: selectionListenable,
       builder: (context, selection, _) {
-        if (selection == null ||
-            selection.layerId != carrierId ||
-            scale.pixelsPerFrame <= 0) {
+        if (selection == null || scale.pixelsPerFrame <= 0) {
           return const SizedBox.shrink();
         }
+        final subjectId = selection.layerId;
         double y = 0;
         double? top;
         double? bottom;
@@ -1924,10 +1927,10 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           final laneRow = slot.laneRow;
           if (slot.bandRow &&
               laneRow != null &&
-              laneRow.layerId == carrierId &&
+              laneRow.layerId == subjectId &&
               laneSelectionCoversBandRow(
                 selection,
-                carrierId,
+                subjectId,
                 laneRow.laneId,
               )) {
             top ??= y;
@@ -2237,11 +2240,10 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         ));
         // The SE transform strips: the group header, plus the property
         // lanes when twirled open ([_seTransformLaneStrips]'s shape).
-        // Display-only bands there for now (v1), so none is a band row.
         void seLane(String laneId) => slots.add((
           row: null,
           laneRow: layer == null ? null : LaneRowAddress(layer.id, laneId),
-          bandRow: false,
+          bandRow: layer != null,
           height: _transformLaneHeight,
         ));
         seLane(transformGroupHeaderLane.laneId);
@@ -2627,6 +2629,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
             width: width,
             timelineScale: scale,
             laneEdit: widget.layerLaneEdit,
+            // The S row's lanes take the range gesture too (R5 ③b). Their
+            // keys are the TRACK's, on the global axis this rail already
+            // draws — so the span is stated where it lives, and the cut
+            // panel is the one that has a window to fit it into.
+            laneRange: widget.laneRange,
           );
     return [
       strip(transformGroupHeaderLane.laneId),

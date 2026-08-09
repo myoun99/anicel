@@ -1140,7 +1140,12 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // the selection moves every spanned lane's keys. Frame
             // selection ⊥ transform keys, mutually exclusive domains.
             laneRange: TimelineLaneRangeCallbacks(
-              selection: _session.laneRangeSelection,
+              // This panel is a CUT's window. A track-owned SE row's span
+              // is stated on the track's global axis, so what this rail
+              // shows — and reads at press to pick its mode — is the part
+              // of it that falls inside the window, on the window's own
+              // numbers.
+              selection: _session.cutLocalLaneRangeSelection,
               onSelectUpdate:
                   (layerId, laneId, anchorIndex, headIndex, headRowDelta) =>
                       _session.updateLaneRangeSelectionDrag(
