@@ -1,4 +1,4 @@
-import 'dart:ui' show FramePhase, FrameTiming, PlatformDispatcher;
+import 'dart:ui' show FramePhase, FrameTiming, PlatformDispatcher, Size;
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
@@ -40,6 +40,9 @@ class FrameStatsSnapshot {
     required this.pictureCacheCount,
     required this.pictureCacheMegabytes,
     required this.windowMegabytes,
+    required this.devicePixelRatio,
+    required this.windowPhysicalWidth,
+    required this.windowPhysicalHeight,
     required this.bakedSurfaces,
     required this.bakedMegabytes,
     required this.bakesPerSecond,
@@ -100,6 +103,23 @@ class FrameStatsSnapshot {
   /// What one window-sized RGBA surface costs, so a cache total has
   /// something to be divided by. Without it, "495 MB" is unreadable.
   final double windowMegabytes;
+
+  /// The view's scale factor and its size in DEVICE pixels.
+  ///
+  /// 🚨 The missing denominator behind the missing denominator. Every
+  /// estimate this program has made about a cache entry is of the form
+  /// `bounds × dpr²` — and the dpr was never measured once. A whole round
+  /// of arithmetic ran parameterised by a number nobody had read, and the
+  /// one time it was back-solved out of a byte total it came to 1.38,
+  /// which is not a scale factor Windows offers.
+  ///
+  /// Printed as the raw triple rather than the derived logical size so it
+  /// stays legible when the two disagree: a display list recorded at
+  /// LOGICAL size and an entry allocated at DEVICE size differ by exactly
+  /// this factor, and telling those two apart is the whole job.
+  final double devicePixelRatio;
+  final double windowPhysicalWidth;
+  final double windowPhysicalHeight;
 
   /// What OUR baked panels cost, which the engine's counters above will
   /// never show — a `StaticRaster` image is an ordinary `ui.Image` the
@@ -297,13 +317,17 @@ abstract final class FrameStats {
   /// surprising thing a picture cache could be doing. The panic came from
   /// dividing by a number nobody had.
   static double _windowMegabytes() {
-    final view = PlatformDispatcher.instance.implicitView;
-    if (view == null) {
-      return 0;
-    }
-    final size = view.physicalSize;
+    final size = _viewPhysicalSize();
     return size.width * size.height * 4 / 1024 / 1024;
   }
+
+  /// The view's device-pixel size, or zero when there is no implicit view
+  /// (headless tests). Zero reads as "not measured" everywhere it lands.
+  static Size _viewPhysicalSize() =>
+      PlatformDispatcher.instance.implicitView?.physicalSize ?? Size.zero;
+
+  static double _devicePixelRatio() =>
+      PlatformDispatcher.instance.implicitView?.devicePixelRatio ?? 0;
 
   static FrameStatsSnapshot _summarize(List<FrameTiming> window) {
     final raster = <int>[];
@@ -369,6 +393,9 @@ abstract final class FrameStats {
       pictureCacheCount: last.pictureCacheCount,
       pictureCacheMegabytes: last.pictureCacheMegabytes,
       windowMegabytes: _windowMegabytes(),
+      devicePixelRatio: _devicePixelRatio(),
+      windowPhysicalWidth: _viewPhysicalSize().width,
+      windowPhysicalHeight: _viewPhysicalSize().height,
       bakedSurfaces: StaticRaster.census.length,
       bakedMegabytes: StaticRaster.censusBytes / 1024.0 / 1024.0,
       bakesPerSecond: bakesPerSecond,

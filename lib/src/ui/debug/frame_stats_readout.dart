@@ -14,8 +14,8 @@ import 'measurement_mode.dart';
 /// The app itself is passed through as a captured child, so this widget
 /// rebuilding never rebuilds the app under it: `Element.updateChild`
 /// short-circuits on an identical child widget instance. The readout's
-/// own 4 Hz republish therefore costs a rebuild of six `Text`s and
-/// nothing else.
+/// own 4 Hz republish therefore costs a rebuild of the readout's handful
+/// of `Text`s and nothing else.
 class MeasurementReadoutHost extends StatelessWidget {
   const MeasurementReadoutHost({super.key, required this.child});
 
@@ -50,7 +50,7 @@ class MeasurementReadoutHost extends StatelessWidget {
   }
 }
 
-/// Six lines of text that say what the frame clock is doing.
+/// A handful of lines of text that say what the frame clock is doing.
 ///
 /// Deliberately theme-independent: white on near-black, because this has
 /// to stay legible over the canvas, over a panel, and in a screenshot
@@ -67,6 +67,13 @@ class FrameStatsReadout extends StatelessWidget {
   );
 
   static String _ms(double value) => value.toStringAsFixed(1).padLeft(6);
+
+  static String _px(double value) => value.round().toString();
+
+  /// Guards the logical-size division only. A zero dpr means there is no
+  /// implicit view (headless), and the sizes are zero too — dividing by 1
+  /// keeps the line reading `0x0` instead of `NaNxNaN`.
+  static double _safeDpr(double dpr) => dpr <= 0 ? 1 : dpr;
 
   @override
   Widget build(BuildContext context) {
@@ -85,6 +92,18 @@ class FrameStatsReadout extends StatelessWidget {
                 'FRAME STATS  ${stats.frames}f  '
                     '${stats.windowSeconds.toStringAsFixed(1)}s  '
                     '${stats.framesPerSecond.toStringAsFixed(1)}fps',
+                // 🚨 The denominator every MiB estimate in this program was
+                // parameterised by and nobody had ever read. A cache entry
+                // is `bounds × dpr²`, so without the dpr a byte total can
+                // be divided into a viewport-sized entry or a
+                // content-sized one at will — which is how a round went by
+                // back-solving it out of a total and landing on 1.38, a
+                // scale factor Windows does not offer.
+                'view    dpr ${stats.devicePixelRatio.toStringAsFixed(2)}  '
+                    '${_px(stats.windowPhysicalWidth)}x'
+                    '${_px(stats.windowPhysicalHeight)} px  '
+                    '${_px(stats.windowPhysicalWidth / _safeDpr(stats.devicePixelRatio))}x'
+                    '${_px(stats.windowPhysicalHeight / _safeDpr(stats.devicePixelRatio))} logical',
                 'RASTER  p50${_ms(stats.rasterP50)}  '
                     'p95${_ms(stats.rasterP95)}  '
                     'max${_ms(stats.rasterWorst)}',
@@ -110,7 +129,7 @@ class FrameStatsReadout extends StatelessWidget {
                     '${stats.bakedMegabytes.toStringAsFixed(1)} MB  '
                     '${stats.bakesPerSecond.toStringAsFixed(1)}/s'
                     '${stats.blockedSurfaces == 0 ? '' : '\nblocked ${stats.blockedSurfaces} surfaces  '
-                          '${(stats.blockedArea / 1000).toStringAsFixed(0)}k px²'}',
+                              '${(stats.blockedArea / 1000).toStringAsFixed(0)}k px²'}',
               ];
         return DecoratedBox(
           decoration: const BoxDecoration(color: Color(0xE6101112)),
