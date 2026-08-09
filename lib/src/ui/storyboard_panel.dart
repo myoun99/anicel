@@ -17,7 +17,12 @@ import '../models/layer_mark.dart';
 import '../models/project.dart';
 import '../models/project_frame_rate.dart';
 import '../models/se_audio_spans.dart';
-import '../models/timeline_coverage.dart' show TimelineBlockEdge, drawingBlocks;
+import '../models/timeline_coverage.dart'
+    show
+        TimelineBlockEdge,
+        TimelineDrawingBlock,
+        coveringDrawingBlockAt,
+        drawingBlocks;
 import '../models/track.dart';
 import '../models/track_id.dart';
 import '../models/track_transform_lane_carrier.dart';
@@ -67,7 +72,8 @@ import 'timeline/timeline_cell_style.dart'
         timelineBaseGridAlpha,
         timelineDrawingInkColor,
         timelineRangeSelectionBandDecoration,
-        timelineSelectedFrameBorderColor;
+        timelineSelectedFrameBorderColor,
+        timelineStandingCellDecoration;
 import 'timeline/timeline_exposure_comma_drag_handle.dart'
     show TimelineBlockEdgeGrip, timelineBlockEdgeGripPlacement;
 import 'timeline/timeline_row_edit_chrome.dart'
@@ -90,7 +96,11 @@ import '../models/storyboard_coverage.dart'
 import '../models/timeline_frame_range.dart'
     show TimelineFrameRangeSelection, TimelineLaneSelection;
 import '../models/timeline_row_address.dart'
-    show LayerRowAddress, TimelineRowAddress, TrackRowAddress;
+    show
+        LaneRowAddress,
+        LayerRowAddress,
+        TimelineRowAddress,
+        TrackRowAddress;
 import '../models/track_frame_range.dart';
 import 'timeline/timeline_frame_span_layout.dart'
     show TimelineFixedFrameSpanLayer, TimelineFrameSpan;
@@ -115,6 +125,22 @@ import 'timeline/timeline_scale.dart';
 import 'timeline/timeline_se_row_visual.dart'
     show SePaperSpan, SeSpanVisual, timelineRowClipMarkerOverlays;
 import 'timeline/timeline_zoom_anchor_policy.dart';
+
+/// One row of a track group's rail, as the strip column lays it out.
+///
+/// [row] is the address a select-drag may land its head on (S rows and the
+/// V row). [laneRow] is the address you can STAND on when the row is a
+/// property lane — of the V track's carrier or of an SE layer — which is a
+/// wider set than [bandRow], the lanes that carry a range band. The
+/// fade-envelope row is the case that separates the two: it is the opacity
+/// lane's row and takes the standing ring, but it draws fade handles
+/// instead of key markers and no selection reaches it.
+typedef _StoryboardRailSlot = ({
+  TimelineRowAddress? row,
+  LaneRowAddress? laneRow,
+  bool bandRow,
+  double height,
+});
 
 /// The drag hooks the STRIP's edges need, mirroring the timeline's
 /// comma-drag callbacks: live preview per step, ONE undo on release.
@@ -1839,6 +1865,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         Positioned.fill(
           child: IgnorePointer(child: _trackLaneRangeBand(track, scale)),
         ),
+        // Above both bands: standing and selected are two statements, and
+        // the ring must stay readable inside a span that covers its row.
+        Positioned.fill(
+          child: IgnorePointer(child: _trackStandingCellRing(track, scale)),
+        ),
       ],
     );
   }
@@ -1893,13 +1924,20 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         double y = 0;
         double? top;
         double? bottom;
-        for (final (_, vLaneId, height) in _trackGroupRowGeometry(track)) {
-          if (vLaneId != null &&
-              laneSelectionCoversBandRow(selection, carrierId, vLaneId)) {
+        for (final slot in _trackGroupRowGeometry(track)) {
+          final laneRow = slot.laneRow;
+          if (slot.bandRow &&
+              laneRow != null &&
+              laneRow.layerId == carrierId &&
+              laneSelectionCoversBandRow(
+                selection,
+                carrierId,
+                laneRow.laneId,
+              )) {
             top ??= y;
-            bottom = y + height;
+            bottom = y + slot.height;
           }
-          y += height;
+          y += slot.height;
         }
         if (top == null || bottom == null) {
           return const SizedBox.shrink();
@@ -1928,6 +1966,130 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     );
   }
 
+  /// The RING on the cell you are STANDING on — the timeline's standing
+  /// visual (R5 ③b), on this rail's own row geometry.
+  ///
+  /// The band says what is SELECTED, the ring says where you STAND; the
+  /// storyboard had the first and not the second, so the one row that is
+  /// actually the subject of every lane verb was the one row that said
+  /// nothing about it. Every row kind wears it — S rows, the V row, and
+  /// the lane rows of both.
+  ///
+  /// Subscribes to the cursor and the current row itself, the cursor-layer
+  /// pattern: a playhead tick or a stand-elsewhere moves THIS overlay and
+  /// rebuilds no rows. 🚨[TimelineCurrentRowHooks.currentRow] publishes
+  /// WITHOUT a session notify, so it has to be read inside its own
+  /// subscription — read outside, this would answer for the row the user
+  /// has already left.
+  ///
+  /// That current row is the session's GLOBAL answer, and its default is a
+  /// cel layer inside the active cut — a row this rail does not have. So a
+  /// row this rail cannot place falls back to [StoryboardPanel.selectedRow],
+  /// the rail's own answer, exactly as the timeline's ring falls back from
+  /// an off-screen lane to the active layer's row: showing nothing reads as
+  /// broken rather than as elsewhere.
+  Widget _trackStandingCellRing(Track track, TimelineScale scale) {
+    final currentRow = widget.currentRowHooks?.currentRow;
+    final playhead = widget.playheadFrame;
+    if (currentRow == null || playhead == null || scale.pixelsPerFrame <= 0) {
+      return const SizedBox.shrink();
+    }
+    return ValueListenableBuilder<TimelineRowAddress?>(
+      valueListenable: currentRow,
+      builder: (context, standing, _) {
+        var row = standing;
+        var band = row == null ? null : _trackRowBand(track, row);
+        if (band == null) {
+          row = widget.selectedRow;
+          band = row == null ? null : _trackRowBand(track, row);
+        }
+        if (row == null || band == null) {
+          return const SizedBox.shrink();
+        }
+        final standingRow = row;
+        final rowBand = band;
+        return ValueListenableBuilder<int?>(
+          valueListenable: playhead,
+          builder: (context, frame, _) {
+            if (frame == null) {
+              return const SizedBox.shrink();
+            }
+            final block = _standingBlockAt(track, standingRow, frame);
+            final ring = Semantics(
+              key: const ValueKey<String>('storyboard-standing-cell'),
+              label: 'selected cell',
+              container: true,
+              // On a block the OUTLINE is the standing visual; the ring
+              // would draw a second one inside it (the timeline's UI-R10
+              // #8 rule). The node stays so the row still says where you
+              // are to semantics and to the probes that read it.
+              child: block == null
+                  ? DecoratedBox(decoration: timelineStandingCellDecoration)
+                  : const SizedBox.expand(),
+            );
+            return Stack(
+              children: [
+                if (block != null)
+                  Positioned(
+                    left: scale.leftForFrame(block.startIndex),
+                    top: rowBand.top,
+                    width:
+                        (block.endIndexExclusive - block.startIndex) *
+                        scale.pixelsPerFrame,
+                    height: rowBand.height,
+                    child: DecoratedBox(
+                      key: const ValueKey<String>('storyboard-standing-block'),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: timelineSelectedFrameBorderColor,
+                          width: 2,
+                        ),
+                        borderRadius: const BorderRadius.all(
+                          Radius.circular(6),
+                        ),
+                      ),
+                    ),
+                  ),
+                Positioned(
+                  left: scale.leftForFrame(frame),
+                  top: rowBand.top,
+                  width: scale.pixelsPerFrame,
+                  height: rowBand.height,
+                  child: ring,
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// The block under [frame] on the row you are standing on, when that row
+  /// HAS blocks: an S row's sounds, read from the very list the row paints
+  /// its spans from, so the outline and the block cannot disagree.
+  ///
+  /// The V row is left out on purpose, and not for want of blocks: its cut
+  /// under the playhead is already the ACTIVE cut, and an active cut block
+  /// already draws its own 2px accent border ([StoryboardCutBlocksPainter]).
+  /// Outlining it again would put two 2px borders on one rectangle.
+  TimelineDrawingBlock? _standingBlockAt(
+    Track track,
+    TimelineRowAddress row,
+    int frame,
+  ) {
+    if (row is! LayerRowAddress) {
+      return null;
+    }
+    for (var slot = 0; slot < _seSlotCount(track); slot += 1) {
+      final layer = _seDisplayAt(track, slot);
+      if (layer != null && layer.id == row.layerId) {
+        return coveringDrawingBlockAt(layer.timeline, frame);
+      }
+    }
+    return null;
+  }
+
   /// The band itself: [selection.spanRows] top to bottom — intervening
   /// twirled-open lanes ride under it, exactly as the timeline's band
   /// covers lanes between two covered layer rows.
@@ -1949,12 +2111,13 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         double y = 0;
         double? top;
         double? bottom;
-        for (final (address, _, height) in _trackGroupRowGeometry(track)) {
+        for (final slot in _trackGroupRowGeometry(track)) {
+          final address = slot.row;
           if (address != null && spanned.contains(address)) {
             top ??= y;
-            bottom = y + height;
+            bottom = y + slot.height;
           }
-          y += height;
+          y += slot.height;
         }
         if (top == null || bottom == null) {
           return const SizedBox.shrink();
@@ -1984,8 +2147,6 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// The group's rows in VISUAL order with their heights — mirrored from
   /// [_seStripRowsForTrack] and [_stripRowsForTrack] row for row. A new
   /// row kind must land in both, or the band drifts off its rows.
-  /// [vLaneId] tags the V track's OWN lane rows (R4b) so the LANE
-  /// selection band can find them; row-address rows carry null there.
   /// R9 #25 — the rail row a select-drag's pointer is over.
   ///
   /// [crossOffset] is the pointer's cross-axis distance from the ANCHOR
@@ -2003,14 +2164,14 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     required double crossOffset,
   }) {
     final geometry = _trackGroupRowGeometry(track);
-    final anchorIndex = geometry.indexWhere((slot) => slot.$1 == anchorRow);
+    final anchorIndex = geometry.indexWhere((slot) => slot.row == anchorRow);
     if (anchorIndex < 0) {
       return null;
     }
     final index = rowIndexForCrossOffset(
       crossOffset: crossOffset,
       anchorIndex: anchorIndex,
-      heights: [for (final slot in geometry) slot.$3],
+      heights: [for (final slot in geometry) slot.height],
     );
     // Audio and lane strips take up space but cannot BE a selection head:
     // walk back toward the anchor until a real row turns up, so a drag
@@ -2018,7 +2179,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     // collapsing to nothing.
     final step = index >= anchorIndex ? -1 : 1;
     for (var i = index; i >= 0 && i < geometry.length; i += step) {
-      final address = geometry[i].$1;
+      final address = geometry[i].row;
       if (address != null) {
         return address;
       }
@@ -2029,39 +2190,66 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     return anchorRow;
   }
 
-  List<(TimelineRowAddress?, String? vLaneId, double)> _trackGroupRowGeometry(
-    Track track,
-  ) {
-    final slots = <(TimelineRowAddress?, String?, double)>[];
+  List<_StoryboardRailSlot> _trackGroupRowGeometry(Track track) {
+    final slots = <_StoryboardRailSlot>[];
     for (var slot = _seSlotCount(track) - 1; slot >= 0; slot--) {
       final layer = _trackSeAt(track, slot);
       slots.add((
-        layer == null ? null : LayerRowAddress(layer.id),
-        null,
-        _seRowHeight,
+        row: layer == null ? null : LayerRowAddress(layer.id),
+        laneRow: null,
+        bandRow: false,
+        height: _seRowHeight,
       ));
       if (widget.expandedSeAudioRows.contains(
         StoryboardPanel.seRowKey(track, slot),
       )) {
-        slots.add((null, null, _audioLaneHeight));
+        slots.add((
+          row: null,
+          laneRow: null,
+          bandRow: false,
+          height: _audioLaneHeight,
+        ));
         // The SE transform strips: the group header, plus the property
         // lanes when twirled open ([_seTransformLaneStrips]'s shape).
-        slots.add((null, null, _transformLaneHeight));
+        // Display-only bands there for now (v1), so none is a band row.
+        void seLane(String laneId) => slots.add((
+          row: null,
+          laneRow: layer == null ? null : LaneRowAddress(layer.id, laneId),
+          bandRow: false,
+          height: _transformLaneHeight,
+        ));
+        seLane(transformGroupHeaderLane.laneId);
         if (widget.expandedTransformGroups.contains(
           StoryboardPanel.seRowKey(track, slot),
         )) {
-          for (var lane = 0; lane < 5; lane++) {
-            slots.add((null, null, _transformLaneHeight));
+          for (final laneId in const [
+            'anchor-point',
+            'position',
+            'scale',
+            'rotation',
+            'opacity',
+          ]) {
+            seLane(laneId);
           }
         }
       }
     }
-    slots.add((TrackRowAddress(track.id), null, widget.trackLaneHeight));
+    slots.add((
+      row: TrackRowAddress(track.id),
+      laneRow: null,
+      bandRow: false,
+      height: widget.trackLaneHeight,
+    ));
     // The V track's OWN Transform lane rows ([_trackTransformLaneStrips]'s
-    // shape): header, then the members when twirled open — the Opacity
-    // slot is the fade-envelope row, not a lane band row.
+    // shape): header, then the members when twirled open.
     if (widget.expandedTransformTracks.contains(track.id.value)) {
-      slots.add((null, transformGroupHeaderLane.laneId, _transformLaneHeight));
+      final carrierId = trackTransformLaneCarrierId(track.id);
+      slots.add((
+        row: null,
+        laneRow: LaneRowAddress(carrierId, transformGroupHeaderLane.laneId),
+        bandRow: true,
+        height: _transformLaneHeight,
+      ));
       if (widget.expandedTransformGroups.contains(track.id.value)) {
         for (final laneId in const [
           'anchor-point',
@@ -2069,16 +2257,55 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           'scale',
           'rotation',
         ]) {
-          slots.add((null, laneId, _transformLaneHeight));
+          slots.add((
+            row: null,
+            laneRow: LaneRowAddress(carrierId, laneId),
+            bandRow: true,
+            height: _transformLaneHeight,
+          ));
         }
-        slots.add((null, null, _opacityLaneHeight));
+        // The Opacity slot is the fade-envelope row. It IS the opacity
+        // lane's row here — standing lands on it, so the ring has to find
+        // it — but it draws fade handles instead of key markers and takes
+        // no selection band.
+        slots.add((
+          row: null,
+          laneRow: LaneRowAddress(carrierId, 'opacity'),
+          bandRow: false,
+          height: _opacityLaneHeight,
+        ));
       }
       // The fx chain's rows, from the same list both columns build from.
       for (final lane in _trackEffectLanes(track)) {
-        slots.add((null, lane.laneId, _transformLaneHeight));
+        slots.add((
+          row: null,
+          laneRow: LaneRowAddress(carrierId, lane.laneId),
+          bandRow: true,
+          height: _transformLaneHeight,
+        ));
       }
     }
     return slots;
+  }
+
+  /// The cross-axis band [row] occupies inside this track's group, or null
+  /// when the row belongs to another track (or is not on screen).
+  ///
+  /// Reads the SAME table the selection bands and the select-drag's row
+  /// resolver read, so the row a visual lands on and the row the gesture
+  /// reaches cannot become two different answers.
+  ({double top, double height})? _trackRowBand(
+    Track track,
+    TimelineRowAddress row,
+  ) {
+    var y = 0.0;
+    for (final slot in _trackGroupRowGeometry(track)) {
+      if (slot.row == row || slot.laneRow == row) {
+        return (top: y, height: slot.height);
+      }
+      y += slot.height;
+    }
+    return null;
   }
 
   /// One track group's strip rows, mirroring [_railRowsForTrack] row for
