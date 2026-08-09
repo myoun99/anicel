@@ -14,8 +14,15 @@ import 'timeline_cell_style.dart';
 ///
 /// The painter lives in the scroll CONTENT's coordinate space (its size
 /// is the full built content), so lines land on absolute frame
-/// boundaries; painting is a handful of `drawLine`s — no windowing
-/// needed.
+/// boundaries.
+///
+/// ⚠️ It used to say "a handful of `drawLine`s — no windowing needed",
+/// and that was not true: the size is the whole content, so the count
+/// scales with the timeline's LENGTH rather than with the window. An
+/// audit put it at about 3% of the ops a window would remove here, so
+/// the code is right to stay as it is — but for a reason it was not
+/// giving. A comment that says "cheap" without saying why is how a
+/// surface stops being looked at.
 /// The ink of the grid line at the boundary STARTING frame [frameIndex]
 /// — the one grid language shared by the cell grid overlay and the frame
 /// ruler (R26 #40: "룰러도 프레임 셀 그리드랑 통일감").

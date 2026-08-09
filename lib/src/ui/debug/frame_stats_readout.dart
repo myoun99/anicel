@@ -95,8 +95,17 @@ class FrameStatsReadout extends StatelessWidget {
                     'p95${_ms(stats.latencyP95)}',
                 'layer   cache ${stats.layerCacheCount}  '
                     '${stats.layerCacheMegabytes.toStringAsFixed(1)} MB',
+                // 🚨 Per-entry, against a window's worth of pixels — the
+                // yardstick this line was missing. `495 MB` read as an
+                // alarm until someone worked out it was ~31 MB an entry
+                // against a maximised 4K-at-150% client area of ~8.0
+                // Mpx, which is one entry PER VIEWPORT and entirely
+                // ordinary. A total with nothing to divide it by is a
+                // number people either ignore or panic at.
                 'picture cache ${stats.pictureCacheCount}  '
-                    '${stats.pictureCacheMegabytes.toStringAsFixed(1)} MB',
+                    '${stats.pictureCacheMegabytes.toStringAsFixed(1)} MB  '
+                    '${stats.pictureCacheCount == 0 ? '—' : (stats.pictureCacheMegabytes / stats.pictureCacheCount).toStringAsFixed(1)}/entry  '
+                    'window ${stats.windowMegabytes.toStringAsFixed(1)}',
                 'baked   ${stats.bakedSurfaces} surfaces  '
                     '${stats.bakedMegabytes.toStringAsFixed(1)} MB  '
                     '${stats.bakesPerSecond.toStringAsFixed(1)}/s'
