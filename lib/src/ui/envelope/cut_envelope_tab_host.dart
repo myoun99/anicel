@@ -14,6 +14,7 @@ import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../brush/brush_tool_state.dart';
 import '../editor_session_manager.dart';
 import '../widgets/app_icon_button.dart';
+import '../widgets/static_raster.dart';
 import 'cut_envelope_builder.dart';
 import 'cut_envelope_ink.dart';
 import 'cut_envelope_overlay.dart';
@@ -165,7 +166,19 @@ class _CutEnvelopeTabHostState extends State<CutEnvelopeTabHost> {
           return Stack(
             children: [
               Positioned.fill(
-                child: RepaintBoundary(
+                // Baked, not merely isolated — see the note on the conte
+                // page. `StaticRaster` is a repaint boundary itself, so
+                // this keeps what the `RepaintBoundary` bought and stops
+                // the raster thread replaying the page every frame the
+                // app happens to produce. It stands down while the pen is
+                // down, when the page changes on every sample.
+                child: ValueListenableBuilder<bool>(
+                  valueListenable: _strokeActive,
+                  builder: (context, stroking, child) => StaticRaster(
+                    debugLabel: 'envelope-page',
+                    enabled: !stroking,
+                    child: child!,
+                  ),
                   child: CustomPaint(
                     key: const ValueKey<String>('cut-envelope-page'),
                     painter: CutEnvelopePainter(

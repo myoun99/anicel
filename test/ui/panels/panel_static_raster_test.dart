@@ -4,24 +4,41 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/debug/repaint_cause.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/panels/editor_panel_tabs.dart';
 import 'package:anicel/src/ui/widgets/static_raster.dart';
 
 /// The rule this file exists to keep: **a docked panel is baked into one
 /// image while it is not changing, and nobody has to remember to make
 /// that happen.**
 ///
-/// It is installed once, on the funnel every tab passes through
-/// (`EditorPanelTabs._buildTabContent`), so a panel added next month is
-/// light without its author doing anything. What can silently undo it is
-/// a `RepaintBoundary` somewhere inside a panel: an inner boundary can
-/// never be reached again once its layers are detached, so [StaticRaster]
-/// notices one and paints through rather than freeze the subtree. That
-/// failure is INVISIBLE — the panel looks right and quietly costs its
-/// full price every frame.
+/// It is installed once, on the funnel every tab passes through, so a
+/// panel added next month is light without its author doing anything.
+/// What can silently undo it is a `RepaintBoundary` somewhere inside a
+/// panel: an inner boundary can never be reached again once its layers
+/// are detached, so [StaticRaster] notices one and paints through rather
+/// than freeze the subtree. That failure is INVISIBLE — the panel looks
+/// right and quietly costs its full price every frame.
 ///
-/// So the reporting test below is not decoration. It is the only thing
-/// that would tell you a panel stopped being free.
+/// 🚨 Two ways this file was blind, both found the hard way — by a user
+/// turning on Show Repaints and reporting that three panels never
+/// changed colour at all:
+///
+/// 1. **It only ever pumped the default layout.** Green meant "the
+///    panels that ship open are free", not "the app's panels are free".
+///    The storyboard, conte and cut-envelope panels were in NEITHER list.
+/// 2. **It keyed surfaces by `debugLabel` in a `Map`.** Five command
+///    groups share one label, so four of them lost the collision and
+///    never entered the enforcement loop at all.
+///
+/// So: iterate [StaticRaster.census] as objects, and walk every tab the
+/// app can build rather than the ones that happen to be on screen.
+Iterable<RenderStaticRaster> _surfaces() =>
+    StaticRaster.census.where((r) => r.attached);
+
+Iterable<String> _labels() => _surfaces().map((r) => r.debugLabel);
+
 Future<void> _pumpWorkspace(WidgetTester tester) async {
   await tester.binding.setSurfaceSize(const Size(1600, 1000));
   addTearDown(() => tester.binding.setSurfaceSize(null));
@@ -29,12 +46,86 @@ Future<void> _pumpWorkspace(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-Iterable<RenderStaticRaster> _rasters(WidgetTester tester) => tester
-    .renderObjectList<RenderStaticRaster>(find.byType(StaticRaster))
-    .where((r) => r.attached);
+/// Every entry here is an OUTER wrapper standing down for an inner one
+/// that does the actual baking, except where noted. That is the design
+/// working: a viewport is a repaint boundary, so a surface that scrolls
+/// can only be baked from inside, and the outer wrapper then correctly
+/// refuses rather than freeze it.
+///
+/// ⚠️ Before adding an entry, check for `Opacity` in the subtree.
+/// `RenderOpacity.alwaysNeedsCompositing` is `child != null && _alpha > 0`
+/// — **greater than zero, not less than 255** — so `Opacity(opacity: 1.0)`
+/// is a full repaint boundary and therefore a bake killer, and you cannot
+/// see that from the widget source. `AnimatedOpacity` and
+/// `FadeTransition` are the same.
+const _knownToPaintThrough = <String, String>{
+  'panel:brushes': 'yields to body:Brushes inside EditorPanelBody',
+  'edge-dock:tool-left': 'yields to tool-column inside the tool scroller',
+  'panel:timeline':
+      'partly addressed: the command bar bakes as five `command-group` '
+      'zones inside. The grid below them is the most genuinely live '
+      'surface in the app and is left alone deliberately — measured at '
+      '1.7 ms for the whole panel.',
+  'panel:storyboard':
+      'same shape as panel:timeline — a TimelineCommandBar whose leading '
+      'scroller is a viewport. The grid body below it is live and is '
+      'exempted on purpose.',
+  'panel:conte':
+      'yields to conte-page inside. The shell boundary is '
+      'brush_canvas_panel.dart:2641, which an earlier round placed there '
+      'by bisection and must stay.',
+  'panel:envelope': 'yields to envelope-page inside, same shell boundary',
+  'panel:canvas-editor':
+      'the canvas shell: boundaries throughout, and its live-stroke path '
+      'must never be asked for a full-surface copy',
+  'panel:media-viewer':
+      'an InteractiveViewer around the media preview: the transform is '
+      'the panel, so there is nothing static to bake.',
+};
 
-Map<String, RenderStaticRaster> _byLabel(WidgetTester tester) => <String, RenderStaticRaster>{
-  for (final raster in _rasters(tester)) raster.debugLabel: raster,
+/// Tabs the default layout cannot reach by selecting a tab, because their
+/// dock is not mounted (a closed rail group, a floating-only panel).
+/// Listed so that coverage is a decision rather than an accident.
+///
+/// ⚠️ Every one of these lives in a rail group that ships CLOSED, so no
+/// `EditorPanelTabs` hosts it and selecting a tab cannot reach it. The
+/// user's own working layout has several of them open — so this is a gap
+/// in the sweep, not in the app, and it is listed rather than silently
+/// skipped. Teaching the sweep to open a rail group closes it.
+const _unreachableInDefaultLayout = <String, String>{
+  EditorWorkspace.toolsTabId: 'rail group ships closed',
+  EditorWorkspace.brushSettingsTabId: 'rail group ships closed',
+  EditorWorkspace.colorWheelTabId: 'rail group ships closed',
+  EditorWorkspace.colorRgbTabId: 'rail group ships closed',
+  EditorWorkspace.colorPaletteTabId: 'rail group ships closed',
+  EditorWorkspace.onionSkinTabId: 'rail group ships closed',
+  EditorWorkspace.mediaTabId: 'rail group ships closed',
+};
+
+/// Named surfaces that MUST be baking while their tab is active.
+///
+/// The allowlist above says "this outer wrapper yields to an inner one",
+/// and nothing checks that the inner one exists. A typo in a
+/// `debugLabel`, or a bake that quietly moved, would leave the allowlist
+/// entry telling a story about a surface that is not there — and the
+/// panel would pay full price with every test in this file green. That is
+/// exactly how three panels went a whole round unbaked.
+const _mustBakeWhenActive = <String, List<String>>{
+  EditorWorkspace.conteTabId: <String>['conte-page'],
+  EditorWorkspace.envelopeTabId: <String>['envelope-page'],
+  // ⚠️ `media-viewer-page` is deliberately absent: with nothing imported
+  // the panel takes its "no media" branch and the page is never built, so
+  // asserting it here would fail on an empty project rather than on a
+  // defect. It IS baked — see media_viewer_tab_host.dart — and a fixture
+  // with a loaded document is what would pin it.
+  EditorWorkspace.timesheetTabId: <String>[
+    'timesheet-form',
+    'timesheet-content',
+  ],
+  // The command bar has no wrapper of its own — it was removed when the
+  // bar became zones, because an outer bake around inner ones is the
+  // nesting that freezes. Each group bakes itself instead.
+  EditorWorkspace.timelineTabId: <String>['command-group'],
 };
 
 void main() {
@@ -42,7 +133,7 @@ void main() {
     tester,
   ) async {
     await _pumpWorkspace(tester);
-    final labels = _byLabel(tester).keys.toSet();
+    final labels = _labels().toSet();
 
     expect(
       labels,
@@ -71,6 +162,25 @@ void main() {
     );
   });
 
+  testWidgets('every command group is its own zone, and all of them count', (
+    tester,
+  ) async {
+    // The label collision, stated as an assertion. A `Map` keyed by
+    // `debugLabel` kept one of these and silently dropped four — so four
+    // zones could stop baking and every test in this file would stay
+    // green.
+    await _pumpWorkspace(tester);
+    final groups = _labels().where((l) => l == 'command-group').length;
+    expect(
+      groups,
+      greaterThan(1),
+      reason:
+          'the command bar is baked per group so a change in one does not '
+          're-bake the others; finding one means the census is being '
+          'deduplicated somewhere it must not be',
+    );
+  });
+
   testWidgets('a pointer moving over the canvas does not re-bake a panel', (
     tester,
   ) async {
@@ -78,9 +188,8 @@ void main() {
     // mouse moving a few pixels over the canvas cost every open panel a
     // full re-raster: 24.0 of 27.6 ms/frame.
     await _pumpWorkspace(tester);
-    final before = <String, int>{
-      for (final entry in _byLabel(tester).entries)
-        entry.key: entry.value.captureCount,
+    final before = <RenderStaticRaster, int>{
+      for (final raster in _surfaces()) raster: raster.captureCount,
     };
     expect(before, isNotEmpty);
 
@@ -92,44 +201,33 @@ void main() {
       await tester.pump();
     }
 
-    for (final entry in _byLabel(tester).entries) {
+    for (final entry in before.entries) {
       expect(
-        entry.value.captureCount,
-        before[entry.key],
+        entry.key.captureCount,
+        entry.value,
         reason:
-            '${entry.key} re-baked while the pointer was somewhere else '
-            'entirely — that is the whole cost this wrapper removes.\n'
-            'Causes so far: ${entry.value.captureCauses}',
+            '${entry.key.debugLabel} re-baked while the pointer was somewhere '
+            'else entirely — that is the whole cost this wrapper removes.\n'
+            'Causes so far: ${entry.key.captureCauses}',
       );
     }
   });
 
   testWidgets('a bake caused by the pointer says so', (tester) async {
-    // The reason channel, and the one question it exists to answer.
-    // Without it, "this panel re-bakes 60 times a second" and "this
-    // panel re-bakes 60 times a second BECAUSE THE PEN MOVED" read the
-    // same, and only the second is a bug.
-    //
-    // Correlational by construction — the app marks what it is doing and
-    // a bake takes whatever was marked on its own frame. Being wrong
-    // makes a diagnosis misleading and cannot make a pixel stale, which
-    // is why it is allowed to be approximate at all.
     MeasurementMode.frameStats.value = true;
+    RepaintCause.install();
     addTearDown(() {
       MeasurementMode.reset();
       RepaintCause.reset();
     });
 
     await _pumpWorkspace(tester);
-    final rasters = _byLabel(tester);
+    final rasters = _surfaces().toList();
     expect(rasters, isNotEmpty);
-
-    for (final raster in rasters.values) {
+    for (final raster in rasters) {
       raster.captureCauses.clear();
     }
 
-    // Force a re-bake while the pointer is the thing that moved: the
-    // canvas panel marks `pointer` on every hover it accepts.
     final gesture = await tester.createGesture(kind: PointerDeviceKind.mouse);
     await gesture.addPointer(location: const Offset(800, 500));
     addTearDown(gesture.removePointer);
@@ -143,12 +241,8 @@ void main() {
     // allowed set, so it also passed when the channel could only ever say
     // `unknown` — which for a while was the only thing it could say.
     //
-    // The two halves that are actually worth asserting:
-    //
     // 1. The app still MARKS. A channel with nothing wired into it looks
-    //    exactly like a channel reporting good news. Delete the
-    //    `RepaintCause.note('pointer')` in `brush_canvas_panel.dart` and
-    //    this line goes red.
+    //    exactly like a channel reporting good news.
     expect(
       RepaintCause.debugMarkedCause,
       'pointer',
@@ -157,62 +251,132 @@ void main() {
           'attributed to `unknown` and read as "nothing to see here"',
     );
 
-    // 2. And no panel re-baked BECAUSE of it. This is the failure the
-    //    whole round exists to prevent, stated in the channel's own terms.
-    for (final entry in rasters.entries) {
+    // 2. And no panel re-baked BECAUSE of it.
+    for (final raster in rasters) {
       expect(
-        entry.value.captureCauses.containsKey('pointer'),
+        raster.captureCauses.containsKey('pointer'),
         isFalse,
         reason:
-            '${entry.key} re-baked on a pointer move — the panel is paying '
-            'its full price again and looks identical while doing it.\n'
-            'Causes: ${entry.value.captureCauses}',
+            '${raster.debugLabel} re-baked on a pointer move — the panel is '
+            'paying its full price again and looks identical while doing it.\n'
+            'Causes: ${raster.captureCauses}',
       );
     }
   });
 
-  testWidgets('a panel pays full price only if it is on the list, with a why', (
+  testWidgets('🥇 every tab the app can open is audited, not just the open ones', (
     tester,
   ) async {
-    // The enforcement, not a readout. A panel that quietly stopped
-    // baking looks exactly like one that never did, so "we will notice"
-    // is not a plan — the only way to keep the rule is to make being
-    // wrong impossible to do silently.
+    // The blindness this file shipped with. `_tabFor` builds fifteen
+    // panels; the default layout shows five of them. Everything the
+    // enforcement below asserts was only ever asserted about those five.
     //
-    // Landing here means a new panel (or a new `RepaintBoundary` in an
-    // old one) is costing its full raster price on every frame the app
-    // produces. The failure message names the render object responsible.
-    // Fix it, or add it below WITH a reason.
-    // Every entry here is an OUTER wrapper standing down for an inner one
-    // that does the actual baking, except where noted. That is the design
-    // working: a viewport is a repaint boundary, so a surface that scrolls
-    // can only be baked from inside, and the outer wrapper then correctly
-    // refuses rather than freeze it.
-    const knownToPaintThrough = <String, String>{
-      'panel:brushes': 'yields to body:Brushes inside EditorPanelBody',
-      'edge-dock:tool-left': 'yields to tool-column inside the tool scroller',
-      'panel:timeline':
-          'partly addressed: timeline-command-bar bakes inside. The grid '
-          'below it is the most genuinely live surface in the app and is '
-          'left alone deliberately — measured at 1.7 ms for the whole panel.',
-    };
-
+    // Tabs are activated through `EditorPanelTabs.onTabSelected` rather
+    // than by tapping buttons, which side-steps four separate traps: the
+    // button key is `tab.buttonKey ?? ValueKey('panel-tab-<id>')` and
+    // four of the panels under investigation use the first form; a
+    // prefix match also finds the overflow menu; the rail group buttons
+    // are toggles that would CLOSE the groups that ship open; and an
+    // offstage tab's `StaticRaster` is not in the tree at all, so
+    // anything collected after the loop has already lost it.
     await _pumpWorkspace(tester);
-    for (final entry in _byLabel(tester).entries) {
-      if (!entry.value.debugNestedBoundary) {
-        continue;
+
+    final byGroup = <String, List<String>>{};
+    for (final host in tester.widgetList<EditorPanelTabs>(
+      find.byType(EditorPanelTabs),
+    )) {
+      final group = host.groupId;
+      if (group != null) {
+        byGroup[group] = host.tabs.map((t) => t.id).toList();
       }
-      expect(
-        knownToPaintThrough,
-        contains(entry.key),
-        reason:
-            '${entry.key} pays its full raster price every frame.\n'
-            'Blocked by: ${entry.value.debugNestedBoundaryPath}\n'
-            'Remove that boundary, move the bake inside it (a viewport is '
-            'itself a boundary — see EditorPanelBody), or add this panel to '
-            'knownToPaintThrough with a reason.',
-      );
     }
+    expect(byGroup, isNotEmpty, reason: 'no tab host had a group id');
+
+    final visited = <String>{};
+    final offenders = <String>[];
+    final report = <String>[];
+
+    for (final entry in byGroup.entries) {
+      for (final tabId in entry.value) {
+        // Re-find the host every time: selecting a tab rebuilds the tree.
+        final host = tester
+            .widgetList<EditorPanelTabs>(find.byType(EditorPanelTabs))
+            .where((h) => h.groupId == entry.key)
+            .firstOrNull;
+        if (host == null) {
+          continue;
+        }
+        host.onTabSelected(tabId);
+        await tester.pumpAndSettle();
+        visited.add(tabId);
+
+        // Collect INSIDE the loop — the surfaces vanish when the tab does.
+        final live = _surfaces().toList();
+        final baked = live.where((r) => r.captureCount > 0).length;
+        report.add('$tabId: ${live.length} surfaces, $baked baked');
+
+        for (final label in _mustBakeWhenActive[tabId] ?? const <String>[]) {
+          final named = live.where((r) => r.debugLabel == label).toList();
+          expect(
+            named,
+            isNotEmpty,
+            reason:
+                'no surface called `$label` exists while `$tabId` is active, '
+                'so whatever the allowlist says it yields to is not there',
+          );
+          for (final raster in named) {
+            expect(
+              raster.captureCount,
+              greaterThan(0),
+              reason:
+                  '$label exists but has never baked while `$tabId` is '
+                  'active.\nRefused because: ${raster.debugCaptureRefusal}\n'
+                  'Nested boundary: ${raster.debugNestedBoundaryPath}',
+            );
+          }
+        }
+
+        for (final raster in live) {
+          if (!raster.debugNestedBoundary) {
+            continue;
+          }
+          if (!_knownToPaintThrough.containsKey(raster.debugLabel)) {
+            offenders.add(
+              '$tabId → ${raster.debugLabel}\n'
+              '      blocked by: ${raster.debugNestedBoundaryPath}',
+            );
+          }
+        }
+      }
+    }
+
+    debugPrint('StaticRaster TAB SWEEP:\n${report.join('\n')}');
+
+    expect(
+      offenders,
+      isEmpty,
+      reason:
+          'these panels pay their full raster price on every frame the app '
+          'produces, and look identical while doing it:\n'
+          '${offenders.join('\n')}\n'
+          'Remove the boundary, move the bake inside it (a viewport is '
+          'itself a boundary — see EditorPanelBody), or add it to '
+          '_knownToPaintThrough WITH a reason.',
+    );
+
+    final missed = EditorWorkspace.debugAllTabIds
+        .where((id) => !visited.contains(id))
+        .where((id) => !_unreachableInDefaultLayout.containsKey(id))
+        .toList();
+    expect(
+      missed,
+      isEmpty,
+      reason:
+          'these tabs exist in `_tabFor` and this sweep never opened them, '
+          'so nothing above says anything about them: $missed\n'
+          'Either make the sweep reach them or list them in '
+          '_unreachableInDefaultLayout with a reason.',
+    );
   });
 
   testWidgets('a wrapped panel that is on screen really does bake', (
@@ -225,13 +389,9 @@ void main() {
     // pixels, so [RenderStaticRaster] aligns its capture — and refuses
     // outright when it cannot (a rotation or a non-uniform scale above
     // it). That refusal is correct and it is also invisible: the panel
-    // looks right and pays its full raster price. Put a `Transform`
-    // somewhere above the docks and every panel in the app would go back
-    // to costing what it cost before the whole exercise, with every other
-    // test in this file still green.
+    // looks right and pays its full raster price.
     await _pumpWorkspace(tester);
-    for (final entry in _byLabel(tester).entries) {
-      final raster = entry.value;
+    for (final raster in _surfaces()) {
       if (raster.debugNestedBoundary ||
           !raster.enabled ||
           raster.debugStoodDown ||
@@ -242,8 +402,8 @@ void main() {
         raster.captureCount,
         greaterThan(0),
         reason:
-            '${entry.key} is wrapped, enabled, on screen and unblocked, and '
-            'has still never baked.\n'
+            '${raster.debugLabel} is wrapped, enabled, on screen and '
+            'unblocked, and has still never baked.\n'
             'Refused because: ${raster.debugCaptureRefusal}',
       );
     }
@@ -252,22 +412,20 @@ void main() {
   testWidgets('REPORT: which panels actually bake, and which pay full price', (
     tester,
   ) async {
-    // The readable form of the same facts, for when the ladder stops
-    // improving and someone needs to see where the money went.
     await _pumpWorkspace(tester);
     final baked = <String>[];
     final throughNested = <String>[];
-    for (final entry in _byLabel(tester).entries) {
-      if (entry.value.debugNestedBoundary) {
+    for (final raster in _surfaces()) {
+      if (raster.debugNestedBoundary) {
         throughNested.add(
-          '${entry.key}\n      ${entry.value.debugNestedBoundaryPath}',
+          '${raster.debugLabel}\n      ${raster.debugNestedBoundaryPath}',
         );
-      } else if (entry.value.captureCount > 0) {
-        final size = entry.value.size;
+      } else if (raster.captureCount > 0) {
+        final size = raster.size;
         baked.add(
-          '${entry.key} '
+          '${raster.debugLabel} '
           '(${size.width.round()}x${size.height.round()}) '
-          'x${entry.value.captureCount} ${entry.value.captureCauses}',
+          'x${raster.captureCount} ${raster.captureCauses}',
         );
       }
     }

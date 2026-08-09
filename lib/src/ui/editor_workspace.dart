@@ -251,6 +251,36 @@ class EditorWorkspace extends StatefulWidget {
   static const String timesheetTabId = 'timesheet';
   static const String mediaViewerTabId = 'media-viewer';
 
+  /// Every tab id `_tabFor` can build — the registry, not the layout.
+  ///
+  /// 🚨 The default dock layout is NOT this list. A test that walks the
+  /// docks it happens to find audits the panels that ship open and
+  /// nothing else, which is how three panels went a whole round paying
+  /// full raster price with an enforcement test sitting green over them.
+  /// Anything added to `_tabFor` belongs here, and
+  /// `panel_static_raster_test` asserts the two agree.
+  ///
+  /// ⚠️ [cameraTabId] is deliberately absent: it has no `_tabFor` case
+  /// and building it throws. It is a dead constant, not a missed panel.
+  @visibleForTesting
+  static const List<String> debugAllTabIds = <String>[
+    toolsTabId,
+    canvasTabId,
+    brushesTabId,
+    brushSettingsTabId,
+    colorWheelTabId,
+    colorRgbTabId,
+    colorPaletteTabId,
+    onionSkinTabId,
+    mediaTabId,
+    mediaViewerTabId,
+    timelineTabId,
+    storyboardTabId,
+    conteTabId,
+    envelopeTabId,
+    timesheetTabId,
+  ];
+
   /// The WIDTH frame-axis panels lay out at when docked somewhere narrower
   /// (their label rails and toolbars assume a wide region); the tab shell
   /// hosts them inside a horizontal scroller then. Unchanged by the

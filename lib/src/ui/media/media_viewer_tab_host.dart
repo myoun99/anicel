@@ -16,6 +16,7 @@ import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/drag_value_label.dart';
+import '../widgets/static_raster.dart';
 
 /// What the media viewer is looking at. Owned by the workspace (the
 /// dockable-panel view-state rule) so the choice survives tab switches
@@ -486,7 +487,12 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
             )
           else
             Positioned.fill(
-              child: RepaintBoundary(
+              // Same shape and same reason as the conte and envelope
+              // pages: a light table that changes when you page or pan
+              // and not otherwise, which was being re-rastered on every
+              // frame the app produced for any reason at all.
+              child: StaticRaster(
+                debugLabel: 'media-viewer-page',
                 child: CustomPaint(
                   key: const ValueKey<String>('media-viewer-page'),
                   painter: _MediaPagePainter(
