@@ -113,6 +113,33 @@ void main() {
     );
   });
 
+  test('Delete OFFERS itself on the global numbers — the menu asks the same '
+      'layer the verb acts on', () {
+    final manager = session();
+    // 🚨The SECOND cut, so the two axes are different numbers. In cut 1
+    // they coincide (it starts at global 0), and a fixture there cannot
+    // tell a global read from a cut-local one — mine could not, and passed
+    // with the predicate still on the clone.
+    manager.selectCut(manager.activeTrack.cuts[1].id);
+
+    // Global 13..16 covers the key at 14. The cut-2 clone keys that same
+    // key at LOCAL 4, which this span does not contain.
+    manager.updateLaneRangeSelectionDrag(
+      layerId: seId,
+      laneId: 'position',
+      anchorIndex: 13,
+      headIndex: 15,
+      framesAreGlobal: true,
+    );
+    expect(
+      manager.canDeleteCellAtCurrentFrame,
+      isTrue,
+      reason:
+          'the enablement predicate must read the GLOBAL layer too, or the '
+          'menu greys out exactly the case the verb now handles',
+    );
+  });
+
   test('the SAME drag from a CUT panel lands on the global axis', () {
     final manager = session();
     // Open the second cut: its window starts at global 10.

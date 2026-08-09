@@ -8314,7 +8314,11 @@ class EditorSessionManager extends ChangeNotifier {
   /// Whether [_laneVerbRange] holds a key to delete.
   bool get _laneVerbRangeHasKeys {
     final lane = _laneVerbRange;
-    final layer = lane == null ? null : _layerById(lane.layerId);
+    // The same layer the verb will act on, or the answer is about a
+    // different set of keys than the one Delete is about to remove: a
+    // track-SE row's clone holds only this cut's, on this cut's numbers,
+    // and the span is stated globally.
+    final layer = lane == null ? null : _laneVerbLayerFor(lane.layerId);
     if (lane == null || layer == null || isAttachedLayer(layer)) {
       return false;
     }
