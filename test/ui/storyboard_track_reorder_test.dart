@@ -5,6 +5,7 @@ import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
@@ -24,6 +25,25 @@ void main() {
   Track track(String id, String name) => Track(
     id: TrackId(id),
     name: name,
+    // SE rows on purpose: they sit BETWEEN two V rows, so a pitch counted
+    // in the V row's own height would step past a whole track per group.
+    // Without them the fixture cannot reach that defect at all.
+    seLayers: [
+      Layer(
+        id: LayerId('$id-s1'),
+        name: 'S1',
+        kind: LayerKind.se,
+        frames: const [],
+        timeline: const {},
+      ),
+      Layer(
+        id: LayerId('$id-s2'),
+        name: 'S2',
+        kind: LayerKind.se,
+        frames: const [],
+        timeline: const {},
+      ),
+    ],
     cuts: [
       Cut(
         id: CutId('$id-cut'),
@@ -165,5 +185,47 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(namesOf(session), ['Two', 'One', 'Three']);
+  });
+
+  testWidgets('the pitch is the whole GROUP, so a drag of two gaps moves '
+      'two tracks and not four', (tester) async {
+    await tester.binding.setSurfaceSize(const Size(1400, 900));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final session = threeTracks();
+    addTearDown(session.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ListenableBuilder(
+            listenable: session,
+            builder: (context, _) => StoryboardTabHost(
+              session: session,
+              pixelsPerFrame: 12,
+              onPixelsPerFrameChanged: (_) {},
+              showSeconds: false,
+              onShowSecondsChanged: (_) {},
+              thumbnailFor: null,
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    double topOf(String id) => tester
+        .getTopLeft(find.byKey(ValueKey<String>('storyboard-track-label-row-$id')))
+        .dy;
+    final toBottom = topOf('t3') - topOf('t1');
+
+    await tester.drag(
+      find.byKey(const ValueKey<String>('storyboard-track-label-row-t1')),
+      Offset(0, toBottom),
+    );
+    await tester.pumpAndSettle();
+
+    // Exactly to the end — not past it, which is what a too-small pitch
+    // would have computed and the clamp would have hidden.
+    expect(namesOf(session), ['Two', 'Three', 'One']);
   });
 }
