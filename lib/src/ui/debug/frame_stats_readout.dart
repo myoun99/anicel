@@ -38,8 +38,9 @@ class MeasurementReadoutHost extends StatelessWidget {
             child: RepaintBoundary(
               child: ValueListenableBuilder<bool>(
                 valueListenable: MeasurementMode.frameStats,
-                builder: (context, visible, _) =>
-                    visible ? const FrameStatsReadout() : const SizedBox.shrink(),
+                builder: (context, visible, _) => visible
+                    ? const FrameStatsReadout()
+                    : const SizedBox.shrink(),
               ),
             ),
           ),
@@ -96,6 +97,9 @@ class FrameStatsReadout extends StatelessWidget {
                     '${stats.layerCacheMegabytes.toStringAsFixed(1)} MB',
                 'picture cache ${stats.pictureCacheCount}  '
                     '${stats.pictureCacheMegabytes.toStringAsFixed(1)} MB',
+                'baked   ${stats.bakedSurfaces} surfaces  '
+                    '${stats.bakedMegabytes.toStringAsFixed(1)} MB  '
+                    '${stats.bakesPerSecond.toStringAsFixed(1)}/s',
               ];
         return DecoratedBox(
           decoration: const BoxDecoration(color: Color(0xE6101112)),

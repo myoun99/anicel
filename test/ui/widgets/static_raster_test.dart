@@ -367,6 +367,62 @@ void main() {
     expect(counter[0], greaterThan(1), reason: 'and it paints through');
   });
 
+  testWidgets('the census prices what the bakes cost', (tester) async {
+    // Qt warns about this exact mechanism used exactly the way we use it
+    // — a layer per item, `w × h × 4` each. We install bakes on blanket
+    // funnels, so the price has to be visible or the default gets
+    // abused.
+    expect(StaticRaster.censusBytes, 0, reason: 'nothing mounted yet');
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Center(
+          child: SizedBox(
+            width: 100,
+            height: 50,
+            child: StaticRaster(
+              debugLabel: 'test',
+              child: CustomPaint(painter: _CountingPainter(counter: <int>[0])),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(StaticRaster.census, hasLength(1));
+    final dpr = tester.view.devicePixelRatio;
+    expect(
+      StaticRaster.censusBytes,
+      (100 * dpr * 50 * dpr * 4).round(),
+      reason: 'width x height x 4, at the ratio it was captured for',
+    );
+    expect(StaticRaster.censusCaptures, greaterThan(0));
+
+    // Unmounting has to give it back, or the report grows for ever.
+    await tester.pumpWidget(const MaterialApp(home: SizedBox()));
+    expect(StaticRaster.census, isEmpty);
+    expect(StaticRaster.censusBytes, 0);
+  });
+
+  testWidgets('a surface painting through holds no bytes', (tester) async {
+    await tester.pumpWidget(
+      _host(
+        StaticRaster(
+          debugLabel: 'test',
+          child: RepaintBoundary(
+            child: CustomPaint(painter: _CountingPainter(counter: <int>[0])),
+          ),
+        ),
+      ),
+    );
+    expect(StaticRaster.census, hasLength(1));
+    expect(
+      StaticRaster.censusBytes,
+      0,
+      reason: 'it declined to bake, so it is holding nothing',
+    );
+  });
+
   testWidgets('taps still reach the child, and semantics survive', (
     tester,
   ) async {

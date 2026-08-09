@@ -3,6 +3,7 @@ import 'dart:ui' show FramePhase, FrameTiming;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 
+import '../widgets/static_raster.dart';
 import 'measurement_mode.dart';
 
 /// One publication of the frame clock: percentiles over a rolling window,
@@ -38,6 +39,9 @@ class FrameStatsSnapshot {
     required this.layerCacheMegabytes,
     required this.pictureCacheCount,
     required this.pictureCacheMegabytes,
+    required this.bakedSurfaces,
+    required this.bakedMegabytes,
+    required this.bakesPerSecond,
   });
 
   /// How many frames the window holds. Zero means the app produced none
@@ -90,8 +94,29 @@ class FrameStatsSnapshot {
   final int pictureCacheCount;
   final double pictureCacheMegabytes;
 
-  double get framesPerSecond =>
-      windowSeconds <= 0 ? 0 : frames / windowSeconds;
+  /// What OUR baked panels cost, which the engine's counters above will
+  /// never show — a `StaticRaster` image is an ordinary `ui.Image` the
+  /// app holds, not a cache entry.
+  ///
+  /// Qt warns about exactly our usage for the identical mechanism
+  /// (`layer.enabled`: `w × h × 4` per layer, batching lost, "a scene
+  /// with many layered items may have performance problems"), and we
+  /// install bakes on blanket funnels so a new panel gets one for free.
+  /// A default whose price is invisible is a default that gets abused.
+  final int bakedSurfaces;
+  final double bakedMegabytes;
+
+  /// Bakes per second across every surface.
+  ///
+  /// This is the number that says the fix is not working: a baked panel
+  /// should re-bake when it CHANGES, so a few per second is a person
+  /// editing and sixty is a panel re-baking on the pointer. Blender gets
+  /// this for free — its `do_draw` tag is set by named notifiers, so
+  /// "who dirtied this region and why" is auditable. Ours is implicit in
+  /// whether Flutter ran `paint()`, so the rate is the most we can say.
+  final double bakesPerSecond;
+
+  double get framesPerSecond => windowSeconds <= 0 ? 0 : frames / windowSeconds;
 
   @override
   String toString() =>
@@ -144,6 +169,11 @@ abstract final class FrameStats {
   /// The published window. Null until enough frames have arrived.
   static final ValueNotifier<FrameStatsSnapshot?> latest =
       ValueNotifier<FrameStatsSnapshot?>(null);
+
+  /// The bake counter at the previous publication, so the rate is a
+  /// slope. −1 means "no previous reading", which reports 0 rather than
+  /// a spike made of the whole session's history.
+  static int _lastCaptureTotal = -1;
 
   static final List<FrameTiming> _window = <FrameTiming>[];
   static bool _installed = false;
@@ -259,6 +289,18 @@ abstract final class FrameStats {
     // would blur a cache that is filling into one that is half full.
     final last = window.last;
 
+    // Bakes are a COUNTER, so the useful reading is its slope. Measured
+    // against the same frame-timestamp span the fps figure uses, so the
+    // two are directly comparable: bakes/s approaching fps means a
+    // surface is re-baking on the pointer instead of on a change.
+    final captures = StaticRaster.censusCaptures;
+    final sinceLast = captures - _lastCaptureTotal;
+    final elapsed = spanSeconds <= 0 ? 0.0 : spanSeconds;
+    final bakesPerSecond = elapsed <= 0 || _lastCaptureTotal < 0
+        ? 0.0
+        : sinceLast / elapsed;
+    _lastCaptureTotal = captures;
+
     return FrameStatsSnapshot(
       frames: window.length,
       windowSeconds: spanSeconds,
@@ -274,6 +316,9 @@ abstract final class FrameStats {
       layerCacheMegabytes: last.layerCacheMegabytes,
       pictureCacheCount: last.pictureCacheCount,
       pictureCacheMegabytes: last.pictureCacheMegabytes,
+      bakedSurfaces: StaticRaster.census.length,
+      bakedMegabytes: StaticRaster.censusBytes / 1024.0 / 1024.0,
+      bakesPerSecond: bakesPerSecond,
     );
   }
 

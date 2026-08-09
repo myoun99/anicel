@@ -48,13 +48,25 @@ class OnionSkinPanel extends StatelessWidget {
   Widget build(BuildContext context) {
     return SingleChildScrollView(
       padding: const EdgeInsets.all(8),
-      // Baked INSIDE its own scroll view, like every other panel body: a
-      // viewport is itself a repaint boundary, so the tab-level wrapper
-      // can never reach past one. See [StaticRaster] and
-      // `EditorPanelBody`, which does the same thing for panels that use
-      // the shared body instead of rolling their own scroller.
+      // ⛔NOT baked, and the reason is written down rather than guessed
+      // at. `static_raster_parity_test.dart` renders a subtree baked and
+      // painted-through and compares the bytes; this panel is the one
+      // surface in the app where they disagree, by a full opaque channel
+      // — a horizontal band inside the strip is present when painting
+      // through and TRANSPARENT when baked.
+      //
+      // It is not the overflow case: `StaticRaster` clips both modes
+      // identically now, and the difference survives that. So content
+      // that is inside its own box is going missing from the capture,
+      // and until someone knows why, this panel does not get baked.
+      //
+      // The trade is cheap on purpose: the onion panel measured 0.2 ms
+      // of the 27.6 — the smallest item on the whole ladder. Correctness
+      // is worth more than the smallest number on the list, and a
+      // difference nobody can explain is not a difference to ship.
       child: StaticRaster(
         debugLabel: 'body:onion',
+        enabled: false,
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [

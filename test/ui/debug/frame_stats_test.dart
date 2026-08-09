@@ -250,6 +250,32 @@ void main() {
       expect(stats.framesPerSecond, closeTo(63.54, 0.01));
     });
 
+    test('the bake rate is a slope, not the session total', () {
+      // The counter climbs for the life of the process; what says "a
+      // panel is re-baking on the pointer" is its slope against the same
+      // span the fps figure uses, so the two can be read side by side.
+      // Reporting the raw total would show a huge number that only ever
+      // grows and means nothing.
+      FrameStats.debugFeed(<FrameTiming>[
+        for (var i = 0; i <= 60; i += 1)
+          _frame(uiMs: 1, rasterMs: 1, atMs: i * 16),
+      ]);
+      FrameStats.publish();
+      final first = FrameStats.latest.value!;
+      expect(
+        first.bakesPerSecond,
+        0,
+        reason: 'the first publication has no previous reading to slope from',
+      );
+
+      FrameStats.publish();
+      expect(
+        FrameStats.latest.value!.bakesPerSecond,
+        0,
+        reason: 'no bakes happened between the two, so the slope is flat',
+      );
+    });
+
     test('a single frame reports no span rather than an infinite rate', () {
       FrameStats.debugFeed(<FrameTiming>[_frame(uiMs: 1, rasterMs: 1)]);
       FrameStats.publish();
