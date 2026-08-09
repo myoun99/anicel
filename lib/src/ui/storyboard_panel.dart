@@ -1258,18 +1258,18 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   }
 
   /// One S row's Transform-group lanes, header first, valued against the
-  /// ACTIVE cut's slot layer (the same raw-track resolution the timeline's
-  /// value column uses — fx bypass never touches authoring values).
-  List<PropertyLaneRow> _seTransformLanes(
-    Track track,
-    int slot,
-    Cut? activeCut,
-    Layer? layer,
-  ) {
+  /// row's own TRACK-owned layer (the same raw-track resolution the
+  /// timeline's value column uses — fx bypass never touches authoring
+  /// values). No cut is consulted: the row belongs to the track.
+  List<PropertyLaneRow> _seTransformLanes(Track track, int slot, Layer? layer) {
     final expanded = widget.expandedTransformGroups.contains(
       StoryboardPanel.seRowKey(track, slot),
     );
-    final lanes = layer == null || activeCut == null
+    // The display size comes from the SESSION, exactly as the V row's
+    // lanes take it — never from "the cut that happens to be open", which
+    // made another track's S row show its values as defaults.
+    final displaySize = widget.poseDisplaySize;
+    final lanes = layer == null
         ? transformPropertyLanes(
             TransformTrack.empty(),
             includeAnchorAndOpacity: true,
@@ -1277,16 +1277,23 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         : transformPropertyLanes(
             layer.transformTrack,
             includeAnchorAndOpacity: true,
-            poseAt: (frame) => layer.transformTrack.resolveAt(
-              frameIndex: frame,
-              orElse: () => layerIdentityPose(activeCut.canvasSize),
-            ),
-            anchorAt: (frame) =>
-                resolveAnchorTrackAt(layer.transformTrack.anchorPoint, frame) ??
-                CanvasPoint(
-                  x: activeCut.canvasSize.width / 2,
-                  y: activeCut.canvasSize.height / 2,
-                ),
+            poseAt: displaySize == null
+                ? null
+                : (frame) => layer.transformTrack.resolveAt(
+                    frameIndex: frame,
+                    orElse: () => layerIdentityPose(displaySize),
+                  ),
+            anchorAt: displaySize == null
+                ? null
+                : (frame) =>
+                      resolveAnchorTrackAt(
+                        layer.transformTrack.anchorPoint,
+                        frame,
+                      ) ??
+                      CanvasPoint(
+                        x: displaySize.width / 2,
+                        y: displaySize.height / 2,
+                      ),
             opacityAt: (frame) =>
                 resolveOpacityTrackAt(layer.transformTrack.opacity, frame),
           );
@@ -1433,7 +1440,12 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// would close both.
   Widget _draggableSeRow(Track track, int slot, Layer? trackLayer, Widget row) {
     final hooks = widget.rowDragHooks;
-    if (hooks == null || trackLayer == null || _activeCutOf(track) == null) {
+    // No active-cut gate: an S row is a TRACK fixture and re-orders its
+    // own track's list, so which cut is open has nothing to say about it
+    // (user, 2026-08-09: "S행은 V랑 관련없이 독립적으로 움직일 수 있어야
+    // 해"). The gate guarded a session that committed to the SELECTED
+    // track; the commit resolves the row's own track now.
+    if (hooks == null || trackLayer == null) {
       return row;
     }
     // The rail lists the slots top-down, which is the track's list
@@ -1541,12 +1553,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     )) {
       extent += _audioLaneHeight;
       extent +=
-          _seTransformLanes(
-            track,
-            slot,
-            _activeCutOf(track),
-            _trackSeAt(track, slot),
-          ).length *
+          _seTransformLanes(track, slot, _trackSeAt(track, slot)).length *
           _transformLaneHeight;
     }
     return extent;
@@ -1632,14 +1639,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                 _trackSeAt(track, slot) ??
                 _vLaneCarrier('se-${StoryboardPanel.seRowKey(track, slot)}'),
             groupKey: StoryboardPanel.seRowKey(track, slot),
-            lanes: _seTransformLanes(
-              track,
-              slot,
-              activeCut,
-              _trackSeAt(track, slot),
-            ),
+            lanes: _seTransformLanes(track, slot, _trackSeAt(track, slot)),
             laneEdit: widget.layerLaneEdit,
-            active: activeCut != null && _trackSeAt(track, slot) != null,
+            // The row exists or it does not; the open cut is not part of
+            // the question (user, 2026-08-09).
+            active: _trackSeAt(track, slot) != null,
             frameCursor: widget.activeCutFrameCursor,
           ),
         ],
@@ -3533,9 +3537,10 @@ Layer? _trackSeAt(Track track, int slot) =>
 /// cut) keeps the controls up (UI-R10 #12): the SE rows are TRACK-owned —
 /// standing in a gap merely means no cut is selected.
 Layer? _activeSlotLayerOf(Track track, CutId? activeCutId, int slot) {
-  if (activeCutId != null && !track.cuts.any((cut) => cut.id == activeCutId)) {
-    return null;
-  }
+  // The controls belong to the ROW, and the row belongs to the track. A
+  // gap kept them up already (UI-R10 #12, "the SE rows are TRACK-owned");
+  // the active cut living on ANOTHER track is the same statement, so it
+  // gets the same answer (user, 2026-08-09).
   return _trackSeAt(track, slot);
 }
 

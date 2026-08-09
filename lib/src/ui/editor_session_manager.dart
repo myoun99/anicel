@@ -1156,8 +1156,16 @@ class EditorSessionManager extends ChangeNotifier {
     cutDurationFrames: activeCutOrNull?.duration ?? 0,
   );
 
-  bool isTrackSeLayerId(LayerId layerId) =>
-      activeTrack.seLayers.any((layer) => layer.id == layerId);
+  /// Whether [layerId] names a TRACK-owned SE row — a question about what
+  /// KIND of row it is, on any track in the project.
+  ///
+  /// ★It used to ask `activeTrack` only, which quietly made it "…and that
+  /// track holds the open cut". Every axis rule keyed off it then answered
+  /// NO for another track's S row, so those rows fell onto the cut-layer
+  /// paths and did nothing (user, 2026-08-09: "S행은 V랑 관련없이
+  /// 독립적으로 움직일 수 있어야 해"). Which cut is open is not part of
+  /// what a row IS.
+  bool isTrackSeLayerId(LayerId layerId) => _trackSeAnywhere(layerId) != null;
 
   /// Whether the active row can carry an on-canvas name tag (R5b): the
   /// SE rows, and only while a cut gives the canvas its geometry.
@@ -4364,9 +4372,11 @@ class EditorSessionManager extends ChangeNotifier {
     if (state == null || subject is! LayerRowSubject) {
       return;
     }
-    if (isTrackSeLayerId(subject.layerId)) {
+    // The row's OWN track, not the selected one: an S row is a track
+    // fixture and re-orders its own track's list wherever the open cut is.
+    if (_trackSeAnywhere(subject.layerId)?.track case final seTrack?) {
       final order = resolveTrackSeDrop(
-        seLayers: activeTrack.seLayers,
+        seLayers: seTrack.seLayers,
         displayRows: displayLayers,
         movingId: subject.layerId,
         slot: slot,
@@ -4586,11 +4596,18 @@ class EditorSessionManager extends ChangeNotifier {
       return;
     }
     if (seOrder != null) {
-      _cutCommandCoordinator.setTrackSeOrder(
-        trackId: selectedTrackId,
-        order: seOrder,
-      );
-      notifyListeners();
+      // The track the dragged row BELONGS to. This used to commit to the
+      // selected track, which is why the rail only offered the drag while
+      // that track held the open cut — the gate was a guard against this
+      // line, not a rule anyone wanted.
+      final seTrack = _trackSeAnywhere(subject.layerId)?.track;
+      if (seTrack != null) {
+        _cutCommandCoordinator.setTrackSeOrder(
+          trackId: seTrack.id,
+          order: seOrder,
+        );
+        notifyListeners();
+      }
       return;
     }
     if (plan == null || cut == null) {
@@ -8116,9 +8133,31 @@ class EditorSessionManager extends ChangeNotifier {
   /// ([_shiftLayerFor], UI-R18 #1), now said once more for the lane
   /// family. R5 #8's window conversion on the way OUT retires with it:
   /// what goes in was global to begin with.
-  Layer? _laneVerbLayerFor(LayerId layerId) => isTrackSeLayerId(layerId)
-      ? trackSeGlobalLayerById(layerId)
-      : _layerById(layerId);
+  /// ★And a V TRACK's own lane rows answer with a CARRIER layer — the
+  /// track's transform and chain wearing the carrier id, the very shape
+  /// the rails already draw those rows with ([_vLaneCarrier]). Without it
+  /// the verbs looked the carrier up as a layer, found nothing, and
+  /// reported "no keys here": Delete then fell through to the CEL path and
+  /// removed the active layer's drawing instead. The commit funnels below
+  /// send it home to the track.
+  Layer? _laneVerbLayerFor(LayerId layerId) {
+    final carrierTrackId = trackIdOfTransformLaneCarrier(layerId);
+    if (carrierTrackId != null) {
+      final track = _trackById(carrierTrackId);
+      return track == null
+          ? null
+          : Layer(
+              id: layerId,
+              name: 'V',
+              frames: const [],
+              transformTrack: track.transformTrack,
+              effects: track.effects,
+            );
+    }
+    return isTrackSeLayerId(layerId)
+        ? trackSeGlobalLayerById(layerId)
+        : _layerById(layerId);
+  }
 
   /// The playhead as [layerId]'s own lanes key it — the frame half of
   /// [_laneVerbLayerFor]. A track-SE row is on the global axis, so the
@@ -8134,6 +8173,12 @@ class EditorSessionManager extends ChangeNotifier {
   }) {
     if (layer.kind == LayerKind.camera) {
       updateActiveCutCameraTrack(track, description: description);
+      return;
+    }
+    // A V row's carrier goes home to the TRACK it stands for.
+    final carrierTrackId = trackIdOfTransformLaneCarrier(layer.id);
+    if (carrierTrackId != null) {
+      updateTrackTransformTrack(carrierTrackId, track, description: description);
       return;
     }
     // No window conversion: [_laneVerbLayerFor] hands these verbs the
@@ -8153,6 +8198,11 @@ class EditorSessionManager extends ChangeNotifier {
     List<LayerEffect> effects, {
     required String description,
   }) {
+    final carrierTrackId = trackIdOfTransformLaneCarrier(layer.id);
+    if (carrierTrackId != null) {
+      updateTrackEffects(carrierTrackId, effects, description: description);
+      return;
+    }
     updateLayerEffects(layer.id, effects, description: description);
   }
 
