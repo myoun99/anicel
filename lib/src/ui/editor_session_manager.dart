@@ -8051,7 +8051,36 @@ class EditorSessionManager extends ChangeNotifier {
       updateActiveCutCameraTrack(track, description: description);
       return;
     }
-    updateLayerTransformTrack(layer.id, track, description: description);
+    // R5 #8: a track-owned SE row's lanes are read off a cut-LOCAL clone,
+    // so the edited track goes back through the window. The tab host's
+    // twin refused these outright; this path never checked at all, which
+    // would have planted local frames on the global axis.
+    updateLayerTransformTrack(
+      layer.id,
+      isTrackSeLayerId(layer.id)
+          ? trackSeWindow.globalTransformTrack(track)
+          : track,
+      description: description,
+    );
+  }
+
+  /// The lane path's EFFECT commit — the twin of [_commitLaneTransformTrack]
+  /// and, like it, the one place that converts a track-owned SE row's
+  /// cut-local chain back onto the global axis (R5 #8).
+  ///
+  /// A funnel rather than three call sites: Add, Delete and Reset all
+  /// commit chains read off the same clone, and the conversion is exactly
+  /// the kind of step that gets remembered in two of three places.
+  void _commitLaneEffects(
+    Layer layer,
+    List<LayerEffect> effects, {
+    required String description,
+  }) {
+    updateLayerEffects(
+      layer.id,
+      isTrackSeLayerId(layer.id) ? trackSeWindow.globalEffects(effects) : effects,
+      description: description,
+    );
   }
 
   /// The lanes a verb may act on for [layer]. The CAMERA row draws only
@@ -8116,7 +8145,7 @@ class EditorSessionManager extends ChangeNotifier {
         }
       }
       if (changed) {
-        updateLayerEffects(layer.id, effects, description: 'Delete keys');
+        _commitLaneEffects(layer, effects, description: 'Delete keys');
       }
       return changed;
     }
@@ -8185,7 +8214,7 @@ class EditorSessionManager extends ChangeNotifier {
       if (effects == null) {
         return false;
       }
-      updateLayerEffects(layer.id, effects, description: 'Reset group');
+      _commitLaneEffects(layer, effects, description: 'Reset group');
       return true;
     }
     if (headerLaneId != transformGroupHeaderLane.laneId) {
@@ -8264,7 +8293,7 @@ class EditorSessionManager extends ChangeNotifier {
         }
       }
       if (effectsChanged) {
-        updateLayerEffects(layer.id, effects, description: 'Create keys');
+        _commitLaneEffects(layer, effects, description: 'Create keys');
       }
       return;
     }

@@ -11,7 +11,9 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/track_se_window.dart';
+import 'package:anicel/src/models/transform_track.dart';
 
 /// W3: SE rows move from cut-owned to TRACK-owned (global frame axis,
 /// cut-crossing sounds). Pins the legacy migration, the JSON shapes and
@@ -199,6 +201,79 @@ void main() {
         'without a cut there is no local axis to rebase onto', () {
       const parked = TrackSeWindow(cutStartFrame: 0, cutDurationFrames: 0);
       expect(parked.displayLayer(global).timeline, isEmpty);
+    });
+  });
+
+  // R5 #8: the row showed transform lanes and refused every key, because
+  // the display clone dropped the track outright. It rebases now, and the
+  // edit rebases back.
+  group('the display clone rebases the transform track, both ways', () {
+    const window = TrackSeWindow(cutStartFrame: 12, cutDurationFrames: 24);
+
+    Layer withRotation(Map<int, double> keys) => Layer(
+      id: const LayerId('se-1'),
+      name: 'S1',
+      kind: LayerKind.se,
+      frames: const [],
+      timeline: const {},
+      transformTrack: TransformTrack.empty().copyWith(
+        rotation: keys.entries.fold<PropertyTrack<double>>(
+          PropertyTrack<double>(),
+          (track, entry) => track.withKey(entry.key, entry.value),
+        ),
+      ),
+    );
+
+    test('global keys arrive on the cut-local axis', () {
+      final local = window
+          .displayLayer(withRotation({12: 10, 20: 20, 40: 30}))
+          .transformTrack
+          .rotation;
+      expect(local.keys.keys.toList(), [0, 8, 28]);
+      expect(local.keyAt(0)!.value, 10);
+      expect(
+        local.keyAt(28)!.value,
+        30,
+        reason: 'the runway is open-ended: keys past the cut end ride too',
+      );
+    });
+
+    test('a key from an EARLIER cut is dropped, not folded onto frame 0', () {
+      final local = window
+          .displayLayer(withRotation({4: 99, 12: 10}))
+          .transformTrack
+          .rotation;
+      expect(local.keys.keys.toList(), [0]);
+      expect(
+        local.keyAt(0)!.value,
+        10,
+        reason: 'the negative one has no row here; it must not overwrite',
+      );
+    });
+
+    test('an edit made against the clone lands back on the global axis — '
+        'this is the round trip the commit path takes', () {
+      final local = window
+          .displayLayer(withRotation({12: 10}))
+          .transformTrack
+          .rotation;
+      // Key frame 5 LOCALLY, as the lane verbs do.
+      final edited = TransformTrack.empty().copyWith(
+        rotation: local.withKey(5, 45),
+      );
+      final global = window.globalTransformTrack(edited).rotation;
+      expect(global.keys.keys.toList(), [12, 17]);
+      expect(global.keyAt(17)!.value, 45);
+    });
+
+    test('a window at the track start is the identity — no needless copy',
+        () {
+      const first = TrackSeWindow(cutStartFrame: 0, cutDurationFrames: 24);
+      final track = withRotation({0: 10, 6: 20}).transformTrack;
+      expect(
+        first.globalTransformTrack(track).rotation.keys.keys.toList(),
+        [0, 6],
+      );
     });
   });
 }

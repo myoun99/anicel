@@ -317,12 +317,16 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     if (next == null) {
       return;
     }
-    // Track-owned SE rows: their display clones strip the transform track
-    // (global keys cannot render at cut-local lane positions), so a
-    // clone-based commit would plant LOCAL-frame keys on the GLOBAL
-    // layer. SE transform-lane editing stands down until the lane path
-    // converts through the cut window.
+    // Track-owned SE rows edit a cut-LOCAL clone of a GLOBAL layer, so the
+    // edited track goes back through the window before it lands (R5 #8).
+    // This used to stand down entirely — the row showed lanes and refused
+    // every key, which is the bug the user reported.
     if (_session.isTrackSeLayerId(layer.id)) {
+      _session.updateLayerTransformTrack(
+        layer.id,
+        _session.trackSeWindow.globalTransformTrack(next),
+        description: description,
+      );
       return;
     }
     if (layer.kind == LayerKind.camera) {
@@ -345,18 +349,24 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
 
   /// Commits an edited EFFECT CHAIN as one undo step (R6).
   ///
-  /// Track-owned SE rows stand down for the same reason their transform
-  /// lanes do: the display clone strips FX, so a clone-based commit would
-  /// plant the chain where nothing can edit it.
+  /// Track-owned SE rows convert through the cut window for the same
+  /// reason their transform lanes do (R5 #8) — the chain the row showed is
+  /// cut-local, and the layer it lands on is global.
   void _commitEffectLaneEdit(
     Layer layer,
     List<LayerEffect>? next,
     String description,
   ) {
-    if (next == null || _session.isTrackSeLayerId(layer.id)) {
+    if (next == null) {
       return;
     }
-    _session.updateLayerEffects(layer.id, next, description: description);
+    _session.updateLayerEffects(
+      layer.id,
+      _session.isTrackSeLayerId(layer.id)
+          ? _session.trackSeWindow.globalEffects(next)
+          : next,
+      description: description,
+    );
   }
 
   PropertyLaneEditCallbacks get _laneEdit => PropertyLaneEditCallbacks(
