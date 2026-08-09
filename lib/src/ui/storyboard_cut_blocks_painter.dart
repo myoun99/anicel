@@ -474,15 +474,23 @@ class StoryboardCutBlocksPainter extends CustomPainter {
     // painted per slot above) — the divider question #760 left open is
     // closed by those, not by a rule of their own.
 
+    // ONE border for every cut block. The active cut used to wear a 2px
+    // accent one here — this rail's own way of saying "the block you are
+    // standing on", invented because the storyboard was never unified with
+    // the timeline. The standing outline says it now, in the timeline's
+    // words and on every row kind, so a second sentence in the same place
+    // is just two borders on one rectangle. Which cut is ACTIVE still
+    // reads from the BACKGROUND: a different statement, a different
+    // channel, and the one that survives standing somewhere else.
     canvas.drawRRect(
-      rrect.deflate(block.isActive ? 1 : 0.5),
+      rrect.deflate(0.5),
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = block.isActive ? 2 : 1
+        ..strokeWidth = 1
         ..color = storyboardCutBlockEdgeColor(
           colorScheme,
           brightness,
-          active: block.isActive,
+          active: false,
           hovered: block.isHovered,
         ),
     );

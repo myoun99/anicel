@@ -33,11 +33,9 @@ class UpdateLayerEffectsCommand implements Command {
 
   @override
   void execute() {
-    final layer = requireLayer(
-      repository.requireProject(),
-      cutId: cutId,
-      layerId: layerId,
-    );
+    // ANYWHERE lookup, like the transform twin: a track-owned SE row is
+    // not in any cut, and the repository writer already searches both.
+    final layer = requireLayerAnywhere(repository.requireProject(), layerId);
     _previousEffects ??= layer.effects;
 
     repository.updateLayerEffects(
@@ -55,7 +53,7 @@ class UpdateLayerEffectsCommand implements Command {
       throw StateError('Command has not been executed.');
     }
 
-    requireLayer(repository.requireProject(), cutId: cutId, layerId: layerId);
+    requireLayerAnywhere(repository.requireProject(), layerId);
     repository.updateLayerEffects(
       cutId: cutId,
       layerId: layerId,

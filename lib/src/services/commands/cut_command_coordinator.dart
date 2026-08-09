@@ -1199,7 +1199,10 @@ class CutCommandCoordinator {
     required TransformTrack transformTrack,
     String description = 'Edit layer transform',
   }) {
-    final layer = _requireLayer(cutId: cutId, layerId: layerId);
+    // Anywhere lookup, like the name tag above — SE rows are TRACK
+    // fixtures and the cut-scoped read throws for them, which is what
+    // stood between R5 #8's converted lane edits and the project.
+    final layer = requireLayerAnywhere(repository.requireProject(), layerId);
     if (!layerKindHasLayerTransform(layer.kind)) {
       throw StateError(
         'The camera layer transforms through the cut camera track.',
