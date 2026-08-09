@@ -479,8 +479,6 @@ class AppStrings {
   String get tlDropAttachSyncedTemplate => _s('tlDropAttachSyncedTemplate');
   String get tlDropAttachFreeTemplate => _s('tlDropAttachFreeTemplate');
   String get tlDropDetachAttach => _s('tlDropDetachAttach');
-  String get tlAttachToLayerAbove => _s('tlAttachToLayerAbove');
-  String get tlAttachToLayerBelow => _s('tlAttachToLayerBelow');
   String get tlDetachLayer => _s('tlDetachLayer');
   String get tlCopyFrame => _s('tlCopyFrame');
   String get tlPasteLinkedFrame => _s('tlPasteLinkedFrame');
@@ -1392,8 +1390,6 @@ class AppStrings {
     'tlDropAttachSyncedTemplate': 'attach to {name} (synced)',
     'tlDropAttachFreeTemplate': 'attach to {name} (free)',
     'tlDropDetachAttach': 'detach',
-    'tlAttachToLayerAbove': 'Attach to the layer above',
-    'tlAttachToLayerBelow': 'Attach to the layer below',
     'tlDetachLayer': 'Detach from base',
     'tlCopyFrame': 'Copy frame',
     'tlPasteLinkedFrame': 'Paste linked frame',
@@ -2097,8 +2093,6 @@ class AppStrings {
     'tlDropAttachSyncedTemplate': '{name} に付属（同期）',
     'tlDropAttachFreeTemplate': '{name} に付属（フリー）',
     'tlDropDetachAttach': '付属を解除',
-    'tlAttachToLayerAbove': '上のレイヤーに付属させる',
-    'tlAttachToLayerBelow': '下のレイヤーに付属させる',
     'tlDetachLayer': '付属を解除',
     'tlCopyFrame': 'フレームをコピー',
     'tlPasteLinkedFrame': 'リンクフレームを貼り付け',
@@ -2798,8 +2792,6 @@ class AppStrings {
     'tlDropAttachSyncedTemplate': '{name}에 장착 (동기)',
     'tlDropAttachFreeTemplate': '{name}에 장착 (프리)',
     'tlDropDetachAttach': '어태치 해제',
-    'tlAttachToLayerAbove': '위 레이어에 장착',
-    'tlAttachToLayerBelow': '아래 레이어에 장착',
     'tlDetachLayer': '어태치 해제',
     'tlCopyFrame': '프레임 복사',
     'tlPasteLinkedFrame': '링크 프레임 붙여넣기',
@@ -3534,8 +3526,6 @@ class AppStrings {
     'tlDropAttachSyncedTemplate': 'attacher à {name} (synchronisé)',
     'tlDropAttachFreeTemplate': 'attacher à {name} (libre)',
     'tlDropDetachAttach': 'détacher',
-    'tlAttachToLayerAbove': 'Attacher au calque du dessus',
-    'tlAttachToLayerBelow': 'Attacher au calque du dessous',
     'tlDetachLayer': 'Détacher de la base',
     'tlCopyFrame': "Copier l'image",
     'tlPasteLinkedFrame': "Coller l'image liée",
@@ -4208,8 +4198,6 @@ class AppStrings {
     'tlDropAttachSyncedTemplate': '附属到 {name}（同步）',
     'tlDropAttachFreeTemplate': '附属到 {name}（自由）',
     'tlDropDetachAttach': '解除附属',
-    'tlAttachToLayerAbove': '附属到上方图层',
-    'tlAttachToLayerBelow': '附属到下方图层',
     'tlDetachLayer': '解除附属',
     'tlCopyFrame': '复制帧',
     'tlPasteLinkedFrame': '粘贴链接帧',

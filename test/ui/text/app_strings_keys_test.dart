@@ -543,8 +543,6 @@ void main() {
     'tlDropAttachSyncedTemplate': (s) => s.tlDropAttachSyncedTemplate,
     'tlDropAttachFreeTemplate': (s) => s.tlDropAttachFreeTemplate,
     'tlDropDetachAttach': (s) => s.tlDropDetachAttach,
-    'tlAttachToLayerAbove': (s) => s.tlAttachToLayerAbove,
-    'tlAttachToLayerBelow': (s) => s.tlAttachToLayerBelow,
     'tlDetachLayer': (s) => s.tlDetachLayer,
     'tlCopyFrame': (s) => s.tlCopyFrame,
     'tlPasteLinkedFrame': (s) => s.tlPasteLinkedFrame,

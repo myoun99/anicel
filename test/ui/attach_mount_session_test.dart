@@ -11,8 +11,12 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
     show LayerRowSubject;
 
-/// P3's MENU door: mounting onto the row next door, and 어태치 해제, which
-/// has to leave the group's run and the 공정 folder behind it.
+/// P3's 어태치 해제, which has to leave the group's run and the 공정 folder
+/// behind it, and the mounts the DRAG commits.
+///
+/// R5 deleted the two "장착 to the neighbour" menu verbs: dropping ON a row
+/// (`layer_row_drag_test`, "dropping a row ON a drawing row makes it that
+/// row's FIRST rider") reaches the case they existed for.
 
 EditorSessionManager _session() =>
     EditorSessionManager(initialProject: createDefaultProject());
@@ -41,55 +45,6 @@ List<String> _animationOrder(EditorSessionManager s) => [
 ];
 
 void main() {
-  test('the menu mounts the active row on the neighbour the drag cannot '
-      'reach — a base with no attach rows yet', () {
-    final s = _session();
-    final base = s.activeLayer!;
-    s.createDrawingAtCurrentFrame();
-    s.addLayerOfKind(LayerKind.animation);
-    final row = s.activeLayer!;
-    expect(
-      _rows(s).indexWhere((layer) => layer.id == row.id),
-      _rows(s).indexWhere((layer) => layer.id == base.id) + 1,
-      reason: 'the new row lands directly above the base',
-    );
-
-    // Nothing rides the base yet, so no slot is "inside" it: the drag has
-    // no way to make this attach, and this is the door that does.
-    expect(s.attachNeighbourForActiveLayer(above: false)?.id, base.id);
-    expect(s.attachNeighbourForActiveLayer(above: true), isNull);
-
-    s.attachActiveLayerToNeighbour(above: false);
-
-    final mounted = _row(s, row.id);
-    expect(mounted.attachedToLayerId, base.id);
-    // The base is below, so the row draws ABOVE it.
-    expect(mounted.attachedPlacement, AttachedPlacement.above);
-    // The base has a cel and the row has none: their shapes disagree, so the
-    // mount is FREE and the row keeps authoring its own timing.
-    expect(mounted.attachedMode, AttachedMode.free);
-    expect(folderStructureProblem(_rows(s)), isNull);
-
-    s.undo();
-    expect(_row(s, row.id).attachedToLayerId, isNull);
-  });
-
-  test('an attach row is not offered as a base, and neither is a folder', () {
-    final s = _session();
-    s.createDrawingAtCurrentFrame();
-    s.addAttachedLayer(AttachedPlacement.above);
-    final attachId = s.activeLayer!.id;
-    s.addLayerOfKind(LayerKind.animation);
-
-    // The row directly below the new layer is the ATTACH row: attaches do
-    // not nest, so no offer.
-    expect(
-      _rows(s)[_rows(s).indexWhere((l) => l.id == s.activeLayer!.id) - 1].id,
-      attachId,
-    );
-    expect(s.attachNeighbourForActiveLayer(above: false), isNull);
-  });
-
   test('어태치 해제 bakes the timing, and STEPS OUT of the group so the run '
       'stays whole', () {
     final s = _session();
