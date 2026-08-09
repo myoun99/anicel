@@ -134,6 +134,43 @@ const List<String> transformLaneDisplayOrder = [
   'opacity',
 ];
 
+/// What the CANVAS can be driven with, for one standing lane.
+///
+/// R5 #10 — the rule, in the user's words: **an fx declares its own
+/// manipulators.** Not "the twirl is open", which is what the position
+/// crosshair used to answer to: opening a row's lanes to read a Blur radius
+/// put a Position handle on the artwork, and picking Opacity left it there
+/// still moving Position. What is selected is what you can grab.
+enum CanvasManipulator {
+  /// The transform box: position, scale and rotation on one frame, the way
+  /// the selection transform already reads.
+  transformBox,
+
+  /// The anchor point on its own — the thing scale and rotation turn about,
+  /// so it has to be placeable without them moving.
+  anchorPoint,
+}
+
+/// The manipulators [laneId] declares. The GROUP HEADER declares everything
+/// its members do, because standing on the group is standing on all of it.
+///
+/// A lane that names no manipulator — Opacity, and every effect parameter —
+/// answers with nothing, and nothing is drawn. That is a real answer: the
+/// user's rule was that showing a control for a value you cannot grab on
+/// the canvas is worse than showing none.
+Set<CanvasManipulator> canvasManipulatorsForLane(String? laneId) {
+  if (laneId == transformGroupHeaderLane.laneId) {
+    return const {CanvasManipulator.transformBox, CanvasManipulator.anchorPoint};
+  }
+  return switch (laneId) {
+    'position' || 'scale' || 'rotation' => const {
+      CanvasManipulator.transformBox,
+    },
+    'anchor-point' => const {CanvasManipulator.anchorPoint},
+    _ => const {},
+  };
+}
+
 /// The rows as SELECTION sees them: the header is the first of them.
 ///
 /// R9 #20: the header used to be outside this list and handled by a

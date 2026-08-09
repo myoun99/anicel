@@ -41,6 +41,8 @@ import '../models/timeline_row_address.dart'
     show LaneRowAddress, TimelineRowAddress;
 import 'widgets/cursor_notice.dart';
 import 'timeline/transform_lane_editing.dart';
+import 'timeline/transform_lane_policy.dart'
+    show CanvasManipulator, canvasManipulatorsForLane;
 
 /// The central drawing area: the interactive brush canvas with its layer
 /// composites, camera overlay and playback swap.
@@ -448,11 +450,16 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
             activeCutForTags,
             session.currentFrameIndex,
           );
-    // The Position drag gizmo: only while the active layer's Transform
-    // lanes are twirled open (deliberate transform-editing mode) and its
-    // fx apply.
+    // R5 #10: WHAT IS SELECTED IS WHAT YOU CAN GRAB.
+    //
+    // The crosshair used to answer to "the row's lanes are twirled open",
+    // which is not a statement about intent at all: opening a row to read a
+    // Blur radius put a Position handle on the artwork, and standing on
+    // Opacity left that handle there, still moving Position. The standing
+    // LANE declares its manipulators now, and a lane that declares none
+    // (Opacity, every effect parameter) draws none.
     final activeLayer = session.activeLayer;
-    final showPositionGizmo =
+    final canPoseActiveLayer =
         !isPlaybackActive &&
         !isScrubbing &&
         !isCameraLayerActive &&
@@ -466,8 +473,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         layerKindShowsFxToggle(activeLayer.kind) &&
         // R8: the TRANSFORM group's switch, not the row master — a row
         // with a colour effect off still has a pose to drag.
-        session.isLayerTransformFxEnabled(activeLayer.id) &&
-        (widget.expandedLaneLayerIds?.value.contains(activeLayer.id) ?? false);
+        session.isLayerTransformFxEnabled(activeLayer.id);
     // Camera mode retargets the Fit button at the camera frame's bounds —
     // fitting the cut canvas there framed the wrong rectangle.
     final fitFocusRect = isCameraLayerActive
@@ -498,6 +504,18 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
           ]),
           builder: (context, _) {
             final toolState = widget.brushToolState.value;
+            // INSIDE the builder, deliberately: the standing row is
+            // published without a session notify, so a manipulator gate
+            // computed above would answer the row you left. Same trap the
+            // stroke gate two lines down was written to avoid.
+            final standing = session.currentRowListenable.value;
+            final showPositionGizmo =
+                canPoseActiveLayer &&
+                standing is LaneRowAddress &&
+                standing.layerId == activeLayer.id &&
+                canvasManipulatorsForLane(
+                  standing.laneId,
+                ).contains(CanvasManipulator.transformBox);
             return MainCanvasBrushHost(
               rowAcceptsStrokes: _rowAcceptsStrokes(
                 session.currentRowListenable.value,

@@ -163,4 +163,66 @@ void main() {
       expect(s.frameRangeSelection.value, isNotNull);
     });
   });
+
+  // R5 #10 — an fx declares its own manipulators, and the canvas shows
+  // exactly what the standing lane declares.
+  group('what the canvas can be driven with', () {
+    test('the transform group header declares everything its members do', () {
+      expect(canvasManipulatorsForLane(transformGroupHeaderLane.laneId), {
+        CanvasManipulator.transformBox,
+        CanvasManipulator.anchorPoint,
+      });
+    });
+
+    test('position, scale and rotation are one box — they are what a '
+        'transform box IS', () {
+      for (final laneId in ['position', 'scale', 'rotation']) {
+        expect(
+          canvasManipulatorsForLane(laneId),
+          {CanvasManipulator.transformBox},
+          reason: '$laneId is grabbed through the box, not a handle of its own',
+        );
+      }
+    });
+
+    test('the anchor point is placed WITHOUT the box, because the box turns '
+        'about it', () {
+      expect(canvasManipulatorsForLane('anchor-point'), {
+        CanvasManipulator.anchorPoint,
+      });
+    });
+
+    test('a lane with nothing to grab declares nothing — opacity, and every '
+        'effect parameter', () {
+      expect(canvasManipulatorsForLane('opacity'), isEmpty);
+      expect(canvasManipulatorsForLane('fx:blur-1:radius'), isEmpty);
+      expect(canvasManipulatorsForLane('fx-group:blur-1'), isEmpty);
+      expect(canvasManipulatorsForLane(null), isEmpty);
+      expect(
+        canvasManipulatorsForLane('se-audio'),
+        isEmpty,
+        reason: 'a lane the transform order never heard of answers nothing '
+            'rather than guessing',
+      );
+    });
+
+    test('every lane the transform group shows is accounted for', () {
+      for (final laneId in transformLaneSelectionOrder) {
+        // No lane may fall through unconsidered: the set is the answer,
+        // and "empty" is one of the answers.
+        expect(canvasManipulatorsForLane(laneId), isNotNull);
+      }
+      // …and exactly one of them is the anchor's.
+      expect(
+        [
+          for (final laneId in transformLaneDisplayOrder)
+            if (canvasManipulatorsForLane(
+              laneId,
+            ).contains(CanvasManipulator.anchorPoint))
+              laneId,
+        ],
+        ['anchor-point'],
+      );
+    });
+  });
 }
