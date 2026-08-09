@@ -42,6 +42,8 @@ class FrameStatsSnapshot {
     required this.bakedSurfaces,
     required this.bakedMegabytes,
     required this.bakesPerSecond,
+    required this.blockedSurfaces,
+    required this.blockedArea,
   });
 
   /// How many frames the window holds. Zero means the app produced none
@@ -115,6 +117,15 @@ class FrameStatsSnapshot {
   /// "who dirtied this region and why" is auditable. Ours is implicit in
   /// whether Flutter ran `paint()`, so the rate is the most we can say.
   final double bakesPerSecond;
+
+  /// Surfaces painting through for a reason that could be fixed, and the
+  /// screen area they cover in logical px².
+  ///
+  /// 🚨 A blocked panel is pixel-identical to a free one, so this is the
+  /// only thing that reports it without turning a debug mode on. It was
+  /// missing, and three panels went a whole round paying full price.
+  final int blockedSurfaces;
+  final double blockedArea;
 
   double get framesPerSecond => windowSeconds <= 0 ? 0 : frames / windowSeconds;
 
@@ -338,6 +349,8 @@ abstract final class FrameStats {
       bakedSurfaces: StaticRaster.census.length,
       bakedMegabytes: StaticRaster.censusBytes / 1024.0 / 1024.0,
       bakesPerSecond: bakesPerSecond,
+      blockedSurfaces: StaticRaster.censusAvoidableCost.$1,
+      blockedArea: StaticRaster.censusAvoidableCost.$2,
     );
   }
 

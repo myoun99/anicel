@@ -99,7 +99,9 @@ class FrameStatsReadout extends StatelessWidget {
                     '${stats.pictureCacheMegabytes.toStringAsFixed(1)} MB',
                 'baked   ${stats.bakedSurfaces} surfaces  '
                     '${stats.bakedMegabytes.toStringAsFixed(1)} MB  '
-                    '${stats.bakesPerSecond.toStringAsFixed(1)}/s',
+                    '${stats.bakesPerSecond.toStringAsFixed(1)}/s'
+                    '${stats.blockedSurfaces == 0 ? '' : '\nblocked ${stats.blockedSurfaces} surfaces  '
+                          '${(stats.blockedArea / 1000).toStringAsFixed(0)}k px²'}',
               ];
         return DecoratedBox(
           decoration: const BoxDecoration(color: Color(0xE6101112)),

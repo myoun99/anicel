@@ -159,6 +159,26 @@ class StaticRaster extends SingleChildRenderObjectWidget {
     _capturesEver += 1;
   }
 
+  /// Surfaces paying their full raster price for a reason that could be
+  /// fixed, and how much screen they cover in logical px².
+  ///
+  /// 🚨 This is the number the round was missing. A blocked panel looks
+  /// exactly like a free one — same pixels, same everything — so the only
+  /// way anyone finds out is by being told. Show Repaints answers it one
+  /// panel at a time; this answers it at a glance, and it is the half
+  /// that does not require turning a debug mode on to see.
+  static (int, double) get censusAvoidableCost {
+    var count = 0;
+    var area = 0.0;
+    for (final raster in census) {
+      if (raster.standDown.isAvoidable && raster.hasSize) {
+        count += 1;
+        area += raster.size.width * raster.size.height;
+      }
+    }
+    return (count, area);
+  }
+
   /// Frames the app has produced, counted so the stand-down can say "the
   /// frame after this one" exactly instead of guessing at it in
   /// milliseconds. Self-installing on the first attach: a rule that needs
@@ -224,6 +244,49 @@ class _GridFit {
   /// One logical unit of the surface, in device pixels — the view's ratio
   /// times any scale an ancestor applies.
   final double scale;
+}
+
+/// Why a surface is painting through instead of baking.
+///
+/// 🚨 This exists because "no colour under Show Repaints" used to mean
+/// three different things at once — blocked (a loss), standing down
+/// (correct), not instrumented (unknown) — and a user reported exactly
+/// that ambiguity: three panels showed no colour and there was no way to
+/// tell which. A debug view that cannot separate a problem from a
+/// non-problem sends you looking in the wrong place.
+enum StandDownReason {
+  /// Baking, or about to.
+  none,
+
+  /// Zero-size box, mid-layout.
+  empty,
+
+  /// Switched off by the caller or by the global A/B switch.
+  disabled,
+
+  /// The panel is parked behind another tab.
+  offstage,
+
+  /// Changing on consecutive frames, so a snapshot costs more than it
+  /// saves. Correct, and worth seeing.
+  alive,
+
+  /// 🚨 A repaint boundary inside. Pays full price every frame and looks
+  /// identical while doing it — the one that is worth fixing.
+  nested,
+
+  /// 🚨 Rotated or non-uniformly scaled, so there is no 1:1 blit.
+  /// Invisible: the panel looks right and costs everything.
+  unlocatable,
+
+  /// The engine refused the capture.
+  captureFailed;
+
+  /// Whether this is costing something that could be fixed.
+  bool get isAvoidable =>
+      this == StandDownReason.nested ||
+      this == StandDownReason.unlocatable ||
+      this == StandDownReason.captureFailed;
 }
 
 class RenderStaticRaster extends RenderProxyBox {
@@ -345,6 +408,11 @@ class RenderStaticRaster extends RenderProxyBox {
   @visibleForTesting
   int captureCount = 0;
 
+  /// Why this surface last painted through, or [StandDownReason.none] if
+  /// it baked. Read by the Frame Stats readout and by Show Repaints.
+  StandDownReason get standDown => _standDown;
+  StandDownReason _standDown = StandDownReason.none;
+
   /// Bakes by what the app was doing at the time.
   ///
   /// The report says WHICH panels re-bake and HOW OFTEN; this says WHY,
@@ -425,6 +493,7 @@ class RenderStaticRaster extends RenderProxyBox {
     _nestedBoundary = _childHasRepaintBoundary();
 
     if (size.isEmpty) {
+      _standDown = StandDownReason.empty;
       _dropRaster();
       // Paint through rather than return. A zero-size box normally paints
       // nothing, but a child is free to paint outside its box, and
@@ -434,6 +503,9 @@ class RenderStaticRaster extends RenderProxyBox {
       return;
     }
     if (!_bakingAllowed) {
+      _standDown = (_visible?.value ?? true)
+          ? StandDownReason.disabled
+          : StandDownReason.offstage;
       _dropRaster();
       _paintThrough(context, offset);
       return;
@@ -443,12 +515,14 @@ class RenderStaticRaster extends RenderProxyBox {
     // row means the surface is alive, not static.
     _noteCaptureFrame();
     if (_streak >= _maxConsecutiveCaptures) {
+      _standDown = StandDownReason.alive;
       _dropRaster();
       _paintThrough(context, offset);
       return;
     }
 
     if (_nestedBoundary) {
+      _standDown = StandDownReason.nested;
       _dropRaster();
       _paintThrough(context, offset);
       return;
@@ -460,6 +534,7 @@ class RenderStaticRaster extends RenderProxyBox {
       // is no 1:1 blit to be had, and a resampled one would not be the
       // same pixels — see [_GridFit].
       debugCaptureRefusal = 'not axis-aligned to the device pixel grid';
+      _standDown = StandDownReason.unlocatable;
       _dropRaster();
       _paintThrough(context, offset);
       return;
@@ -471,9 +546,11 @@ class RenderStaticRaster extends RenderProxyBox {
       // Either a platform view the engine cannot rasterize, or a capture
       // the engine refused. Painting through is always available and
       // always correct — see [_captureChild].
+      _standDown = StandDownReason.captureFailed;
       _paintThrough(context, offset);
       return;
     }
+    _standDown = StandDownReason.none;
     _raster = captured;
     _rasterFit = fit;
     _rasterSourceSize = Size(
@@ -518,7 +595,12 @@ class RenderStaticRaster extends RenderProxyBox {
       needsCompositing,
       offset,
       Offset.zero & size,
-      super.paint,
+      (innerContext, innerOffset) {
+        super.paint(innerContext, innerOffset);
+        if (MeasurementMode.showRepaints.value && !size.isEmpty) {
+          _paintStandDownBadge(innerContext, innerOffset);
+        }
+      },
       oldLayer: _clipLayer.layer,
     );
   }
@@ -569,6 +651,44 @@ class RenderStaticRaster extends RenderProxyBox {
     Color(0x33FFEA00),
     Color(0x3300E676),
   ];
+
+  /// The other half of Show Repaints: a surface that is NOT baking says so,
+  /// and says why.
+  ///
+  /// A BORDER rather than a fill, because the fill is already spoken for
+  /// by the cycling bake tint and because a full-surface wash over a panel
+  /// that is paying full price makes it unreadable — you cannot look at
+  /// the thing you are diagnosing.
+  ///
+  /// Two colours, because there are only two answers worth acting on:
+  ///
+  /// * **red** — avoidable. A repaint boundary inside, or a transform that
+  ///   makes the blit impossible. The panel looks perfect and costs
+  ///   everything, which is the whole reason this exists.
+  /// * **amber** — correct. Alive on consecutive frames, where a snapshot
+  ///   would cost more than it saves.
+  ///
+  /// Deliberately off, disabled or parked draws nothing: those are
+  /// decisions, and colouring them would put noise next to the signal.
+  void _paintStandDownBadge(PaintingContext context, Offset offset) {
+    final Color? color = switch (_standDown) {
+      StandDownReason.nested ||
+      StandDownReason.unlocatable ||
+      StandDownReason.captureFailed => const Color(0xCCFF1744),
+      StandDownReason.alive => const Color(0x99FFAB00),
+      _ => null,
+    };
+    if (color == null) {
+      return;
+    }
+    context.canvas.drawRect(
+      (offset & size).deflate(1),
+      Paint()
+        ..color = color
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 2,
+    );
+  }
 
   /// Paints the child into a detached layer and takes its picture, or
   /// returns null if the engine will not give us one. The routine is the
