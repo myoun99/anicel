@@ -1,4 +1,5 @@
 import '../../models/se_name_tag.dart';
+import '../text/app_strings.dart' show AppText;
 import 'property_lane_model.dart';
 
 /// The SE row's NAME TAG group (R5 #7) — a fixed group, sibling of
@@ -107,6 +108,17 @@ List<PropertyLaneRow> seNameTagPropertyLanes(
       groupExpanded: expanded,
       // NO bypass switch: a fixed group has nothing to turn off — the SE
       // row's own eye already decides whether its tag shows at all.
+      //
+      // The preview's strings are FIXED and localized: it shows the look,
+      // never the block's own text, so it says the same thing wherever the
+      // playhead parks (the user: "프리뷰는 그냥 어떤식으로 될지 확인만
+      // 하는거니까"). The dialogue sample disappears with the Show
+      // Dialogue member, which is the one thing it does follow.
+      previewText: (
+        name: AppText.strings.seNameTagPreviewName,
+        line: AppText.strings.seNameTagPreviewLine,
+        tagAt: resolveAt,
+      ),
     ),
     if (expanded)
       for (final laneId in seNameTagLaneDisplayOrder)

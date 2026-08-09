@@ -107,6 +107,8 @@ void main() {
     'tlResetGroup': (s) => s.tlResetGroup,
     'seNameTagShowLineLabel': (s) => s.seNameTagShowLineLabel,
     'seNameTagLineInkLabel': (s) => s.seNameTagLineInkLabel,
+    'seNameTagPreviewName': (s) => s.seNameTagPreviewName,
+    'seNameTagPreviewLine': (s) => s.seNameTagPreviewLine,
     'seLinkedAudioLabel': (s) => s.seLinkedAudioLabel,
     'seLinkedAudioNone': (s) => s.seLinkedAudioNone,
     'seUnlinkAudio': (s) => s.seUnlinkAudio,

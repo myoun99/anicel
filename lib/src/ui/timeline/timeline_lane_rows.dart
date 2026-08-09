@@ -16,6 +16,8 @@ import 'layer_label_controls.dart'
         layerLaneValueSlotWidth,
         railSelectedRowColor;
 import 'timeline_current_row.dart';
+import '../../models/se_name_tag.dart' show SeNameTag;
+import 'se_name_tag_lane_preview.dart' show SeNameTagLanePreview;
 import '../text/app_strings.dart' show AppText;
 import 'layer_rail_columns.dart'
     show layerRailTrailingCells, layerRailTwirlIcon;
@@ -173,6 +175,11 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
   Layer get layer => widget.layer;
   PropertyLaneRow get lane => widget.lane;
   String get _keyPrefix => widget.keyPrefix;
+
+  /// The preview's look at the playhead — resolved ONCE per build, since
+  /// both the sample text and the styles read it.
+  SeNameTag get _previewTag =>
+      lane.previewText!.tagAt(widget.currentFrameIndex);
 
   @override
   void dispose() {
@@ -680,6 +687,31 @@ class _TimelineLaneControlsRowState extends State<TimelineLaneControlsRow> {
                       ),
                 hasOnionColumn: widget.hasOnionColumn,
                 hasBlendColumn: widget.hasBlendColumn,
+                // R5 #7: the preview fills the slots RIGHT OF fx as ONE
+                // region, right-aligned — the user's placement ②. It goes
+                // through the skeleton rather than beside it, so it cannot
+                // drift from the fx column the way a hand-placed run did.
+                trailingRegion: lane.previewText == null
+                    ? null
+                    : Align(
+                        alignment: widget.axis == Axis.horizontal
+                            ? Alignment.centerRight
+                            : Alignment.bottomCenter,
+                        child: SeNameTagLanePreview(
+                          key: ValueKey<String>(
+                            '$_keyPrefix-lane-group-preview-'
+                            '${layer.id}-${lane.laneId}',
+                          ),
+                          name: lane.previewText!.name,
+                          // The dialogue SAMPLE follows the Show Dialogue
+                          // member — the one thing a fixed-string preview
+                          // does track.
+                          line: _previewTag.showLine
+                              ? lane.previewText!.line
+                              : '',
+                          tag: _previewTag,
+                        ),
+                      ),
               ),
             ],
           ),
