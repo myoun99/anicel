@@ -159,6 +159,24 @@ class StaticRaster extends SingleChildRenderObjectWidget {
     _capturesEver += 1;
   }
 
+  /// Frames the app has produced, counted so the stand-down can say "the
+  /// frame after this one" exactly instead of guessing at it in
+  /// milliseconds. Self-installing on the first attach: a rule that needs
+  /// a `main()` line is a rule that is missing in every test.
+  static int get debugFrameSerial => _frameSerial;
+  static int _frameSerial = 0;
+  static bool _frameClockInstalled = false;
+
+  static void _ensureFrameClock() {
+    if (_frameClockInstalled) {
+      return;
+    }
+    _frameClockInstalled = true;
+    SchedulerBinding.instance.addPersistentFrameCallback((_) {
+      _frameSerial += 1;
+    });
+  }
+
   @override
   RenderStaticRaster createRenderObject(BuildContext context) {
     return RenderStaticRaster(
@@ -337,7 +355,7 @@ class RenderStaticRaster extends RenderProxyBox {
   final Map<String, int> captureCauses = <String, int>{};
 
   int _streak = 0;
-  Duration? _lastCaptureFrame;
+  int? _lastCaptureSerial;
 
   /// What this surface's image costs, in bytes. Zero when it is painting
   /// through.
@@ -356,6 +374,7 @@ class RenderStaticRaster extends RenderProxyBox {
   @override
   void attach(PipelineOwner owner) {
     super.attach(owner);
+    StaticRaster._ensureFrameClock();
     StaticRaster.census.add(this);
     StaticRaster.globallyEnabled.addListener(_onGloballyEnabledChanged);
     MeasurementMode.showRepaints.addListener(_onGloballyEnabledChanged);
@@ -620,28 +639,41 @@ class RenderStaticRaster extends RenderProxyBox {
   }
 
   /// Bumps [_streak] when this capture lands on the frame after the last
-  /// one, and resets it when the surface has been quiet.
+  /// one, and resets it when a frame went by without one.
   ///
-  /// The frame timestamp is only read inside a frame's persistent
-  /// callbacks — `paint` also runs outside frames (an ancestor's
-  /// `toImage`, a thumbnail capture) and `currentFrameTimeStamp` is not
-  /// valid there.
+  /// 🚨 This used to ask the CLOCK — "was the last capture within 34 ms",
+  /// two display frames at 60 Hz. Which quietly meant the stand-down only
+  /// worked on an app that was already fast. Swept: at 4, 8, 16, 28, 33
+  /// and 34 ms between paints the surface stands down after three
+  /// captures; **at 35 ms and beyond it never stands down at all** and
+  /// re-bakes every single time.
+  ///
+  /// A debug build of this app sits exactly in that band — the whole
+  /// reason this class exists was a measurement of 27.6 ms/frame — so the
+  /// protection was absent precisely where it was needed, and would have
+  /// switched itself on again once the app got fast enough not to need
+  /// it. A threshold in milliseconds cannot express "the frame after".
+  ///
+  /// [StaticRaster.debugFrameSerial] counts frames instead, so this is
+  /// the same rule at any frame rate, and it is exact rather than
+  /// approximately two frames' worth.
+  ///
+  /// Only read inside a frame's persistent callbacks — `paint` also runs
+  /// outside frames (an ancestor's `toImage`, a thumbnail capture), and a
+  /// capture there is not part of any run.
   void _noteCaptureFrame() {
     if (SchedulerBinding.instance.schedulerPhase !=
         SchedulerPhase.persistentCallbacks) {
       return;
     }
-    final now = SchedulerBinding.instance.currentFrameTimeStamp;
-    final last = _lastCaptureFrame;
-    // Two display frames' worth of slack, so this reads "back to back"
-    // at 60Hz and at 120Hz alike without needing to know the rate.
-    const consecutive = Duration(milliseconds: 34);
-    if (last != null && now - last <= consecutive) {
+    final now = StaticRaster.debugFrameSerial;
+    final last = _lastCaptureSerial;
+    if (last != null && now - last <= 1) {
       _streak += 1;
     } else {
       _streak = 0;
     }
-    _lastCaptureFrame = now;
+    _lastCaptureSerial = now;
   }
 
   /// Where this surface's top-left corner sits on the device pixel grid,
