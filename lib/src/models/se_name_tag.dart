@@ -1,5 +1,4 @@
 import 'dart:math' as math;
-import 'dart:ui' show Offset;
 
 import 'canvas_size.dart';
 import 'property_track.dart';
@@ -155,7 +154,6 @@ class SeNameTagTrack {
 
 class SeNameTag {
   const SeNameTag({
-    this.position,
     this.style = defaultStyle,
     this.lineStyle = defaultLineStyle,
     this.showLine = true,
@@ -199,7 +197,6 @@ class SeNameTag {
       lerp: lerpArgb,
     );
     return SeNameTag(
-      position: position,
       style: style.copyWith(
         fontSize: size(style.fontSize),
         letterSpacing: tracking(style.letterSpacing),
@@ -227,19 +224,15 @@ class SeNameTag {
     );
   }
 
-  /// Canvas coordinates — the exact geometric CENTRE of the name box
-  /// (R5 #7, the user's rule).
-  ///
-  /// The centre of the box, not of the whole tag: the dialogue hangs to
-  /// the box's right and must not move it. Anchoring on the pair's centre
-  /// would make turning the dialogue off slide the name somewhere else,
-  /// which is precisely the thing the user rejected.
-  ///
-  /// NULL keeps the row on the stacked default — which is per CUT (the
-  /// shot's geometry) and per row, so a style-only edit must not freeze
-  /// today's default into absolute pixels that then miss a differently
-  /// sized cut.
-  final Offset? position;
+  // The tag carried its own `position`, and rows carried a stacked default
+  // so S1/S2/S3 would not pile up. Both are gone (user, 2026-08-09: "모든
+  // 이름표가 캔버스 중앙에 있어도되. 그걸 트랜스폼으로 바꾸게하는거야.
+  // 차이두지마").
+  //
+  // Every tag starts at the canvas centre and the SE row's TRANSFORM moves
+  // it — the same rule a layer follows, and the reason there is nothing to
+  // store here: a position field would be a second place to keep one
+  // position, and a per-row default would be a third.
 
   /// The NAME run: the white-on-red box.
   final TextCelStyle style;
@@ -274,15 +267,11 @@ class SeNameTag {
   );
 
   SeNameTag copyWith({
-    Object? position = _sentinel,
     TextCelStyle? style,
     TextCelStyle? lineStyle,
     bool? showLine,
     SeNameTagTrack? track,
   }) => SeNameTag(
-    position: identical(position, _sentinel)
-        ? this.position
-        : position as Offset?,
     style: style ?? this.style,
     lineStyle: lineStyle ?? this.lineStyle,
     showLine: showLine ?? this.showLine,
@@ -290,7 +279,6 @@ class SeNameTag {
   );
 
   Map<String, dynamic> toJson() => {
-    if (position != null) 'position': [position!.dx, position!.dy],
     'style': style.toJson(),
     'lineStyle': lineStyle.toJson(),
     if (!showLine) 'showLine': false,
@@ -300,14 +288,10 @@ class SeNameTag {
   };
 
   factory SeNameTag.fromJson(Map<String, dynamic> json) {
-    final position = json['position'] as List<dynamic>?;
+    // A stored `position` from before R5 #7 is simply dropped: the SE row's
+    // transform is where a tag's place lives now, and there is no
+    // production data to migrate ([[no-production-data-yet]]).
     return SeNameTag(
-      position: position == null
-          ? null
-          : Offset(
-              (position[0] as num).toDouble(),
-              (position[1] as num).toDouble(),
-            ),
       style: json['style'] is Map<String, dynamic>
           ? TextCelStyle.fromJson(json['style'] as Map<String, dynamic>)
           : defaultStyle,
@@ -325,16 +309,13 @@ class SeNameTag {
   bool operator ==(Object other) =>
       identical(this, other) ||
       other is SeNameTag &&
-          other.position == position &&
           other.style == style &&
           other.lineStyle == lineStyle &&
           other.showLine == showLine &&
           other.track == track;
 
   @override
-  int get hashCode => Object.hash(position, style, lineStyle, showLine, track);
-
-  static const Object _sentinel = Object();
+  int get hashCode => Object.hash(style, lineStyle, showLine, track);
 }
 
 /// The camera's rect in CANVAS coordinates at the resting pose (centered,
@@ -357,35 +338,15 @@ class SeNameTag {
   );
 }
 
-/// Where an UNCONFIGURED row's tag sits: stacked up from the SHOT's
-/// bottom-left, one line per SE row, so S1·S2·S3 read as separate
-/// speakers instead of piling on one spot — and so the default actually
-/// reaches the framed surfaces.
-///
-/// [rowOffset] shifts the stack for rows on the tracks BELOW this one, so
-/// two covered tracks in the multitrack stack never land on the same
-/// spot.
-Offset defaultSeNameTagPosition({
-  required CanvasSize canvas,
-  required CanvasSize cameraFrame,
-  required int rowIndex,
-  int rowOffset = 0,
-}) {
-  final shot = shotRectIn(canvas: canvas, cameraFrame: cameraFrame);
-  // The painted box is the text line plus the background pad on each side
-  // (TextCelStyle's line height + 2× box pad ≈ 1.77em), so a tighter
-  // pitch fuses consecutive rows' red boxes into one stepped blob.
-  final line = SeNameTag.defaultStyle.fontSize * seNameTagStackPitchFactor;
-  final margin = shot.height * 0.06;
-  return Offset(
-    shot.left + shot.width * 0.06,
-    shot.top + shot.height - margin - line * (rowIndex + rowOffset + 1),
-  );
-}
-
-/// The stacked default's pitch in ems — above the painted box height so
-/// neighbouring rows keep a visible gap.
-const double seNameTagStackPitchFactor = 2.0;
+// `defaultSeNameTagPosition` stacked unconfigured rows up from the shot's
+// bottom-left so S1·S2·S3 would not pile on one spot. It is gone with the
+// position field (user, 2026-08-09: "모든 이름표가 캔버스 중앙에 있어도되.
+// 그걸 트랜스폼으로 바꾸게하는거야. 차이두지마").
+//
+// Every tag now starts at the canvas centre — the SE row's transform
+// identity — and moving one is moving that row's Position. Rows DO pile up
+// until you move them, and that is the point: one rule, no per-row
+// exception, and the pile is visible so nobody wonders where a tag went.
 
 /// The width a tag may occupy before it shrinks to fit: the shot's width
 /// minus the same 6% margin on both sides. Without a budget a long line

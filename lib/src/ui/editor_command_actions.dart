@@ -17,7 +17,6 @@ import 'package:flutter/services.dart' show Clipboard, ClipboardData;
 import '../models/cut_id.dart';
 import '../models/layer_kind.dart';
 import 'dialogs/convert_to_linked_cut_dialog.dart';
-import 'dialogs/se_name_tag_dialog.dart';
 import 'editor_session_manager.dart';
 import 'export/ae_keyframe_data.dart';
 
@@ -58,30 +57,11 @@ void createActiveInstance(EditorSessionManager session) {
   }
 }
 
-/// Places the active SE row's on-canvas name tag (R5b). The TEXT stays the
-/// block's own name — this is placement and look.
-Future<void> showSeNameTagEditor(
-  BuildContext context,
-  EditorSessionManager session,
-) async {
-  final layer = session.activeLayer;
-  final defaultPosition = session.activeSeNameTagDefaultPosition;
-  if (layer == null || defaultPosition == null) {
-    return;
-  }
-  final result = await showDialog<SeNameTagDialogResult>(
-    context: context,
-    builder: (context) => SeNameTagDialog(
-      storedTag: layer.seNameTag,
-      defaultPosition: defaultPosition,
-      rowName: layer.name,
-    ),
-  );
-  if (!context.mounted || result == null) {
-    return;
-  }
-  session.setActiveSeNameTag(result.tag);
-}
+// `showSeNameTagEditor` opened a window to place and style the tag. It is
+// gone (R5 #7): every control it held is a LANE on the SE row's Name Tag
+// group now, and the placement it also did is that row's Position lane,
+// which the canvas gizmo drags. A window duplicating the rail is a second
+// place to change one thing.
 
 /// Whether [showConvertActiveCutToLinked] has anywhere to go: a cut to
 /// convert and at least one cut to borrow the pictures from.

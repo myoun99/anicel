@@ -10,7 +10,6 @@ import '../../models/layer_kind.dart';
 import '../../models/project_frame_rate.dart';
 import '../cut_command_group.dart';
 import '../dialogs/fps_audio_choice_dialog.dart';
-import '../editor_command_actions.dart';
 import '../editor_session_manager.dart';
 import '../widgets/app_icon_button.dart';
 import 'timeline_shift_buttons.dart';
@@ -419,13 +418,9 @@ class TimelineActionToolbar extends StatelessWidget {
         enabled: session.canRasterizeActiveLayer,
         onSelected: session.rasterizeActiveLayer,
       ),
-      PanelFlyoutItem(
-        keyValue: 'timeline-se-name-tag-button',
-        label: AppText.strings.menuLabel('layer-se-name-tag', 'SE name tag…'),
-        icon: Icons.label_outline,
-        enabled: session.canEditActiveSeNameTag,
-        onSelected: () => unawaited(showSeNameTagEditor(context, session)),
-      ),
+      // 'SE name tag…' opened a window. R5 #7 put every control it held on
+      // the SE row's Name Tag lane group, so the entry would only lead
+      // somewhere that changes the same thing a second way.
       PanelFlyoutItem(
         keyValue: 'timeline-link-duplicate-button',
         label: AppText.strings.tlLinkDuplicateLayer,

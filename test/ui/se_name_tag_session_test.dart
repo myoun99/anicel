@@ -19,24 +19,11 @@ void main() {
     s.selectLayer(seRow.id);
     expect(s.canEditActiveSeNameTag, isTrue);
 
-    // Unconfigured: the editor seeds from the default the row DRAWS with
-    // today — inside the shot, and without writing anything.
-    final seeded = s.activeSeNameTagDefaultPosition;
-    expect(seeded, isNotNull);
-    final cut = s.requireActiveCut;
-    final shot = shotRectIn(
-      canvas: cut.canvasSize,
-      cameraFrame: s.cameraFrameSize,
-    );
-    expect(seeded!.dy, inInclusiveRange(shot.top, shot.top + shot.height));
-    expect(
-      s.activeTrack.seLayers.first.seNameTag,
-      isNull,
-      reason: 'seeding never writes',
-    );
+    // R5 #7: a tag has no position of its own — nothing to seed, and
+    // nothing written until a STYLE is set.
+    expect(s.activeTrack.seLayers.first.seNameTag, isNull);
 
     const configured = SeNameTag(
-      position: Offset(200, 800),
       style: TextCelStyle(fontSize: 48, color: 0xFFFFFFFF),
     );
     s.setActiveSeNameTag(configured);
@@ -66,7 +53,7 @@ void main() {
 
     final seRow = s.activeTrack.seLayers.first;
     s.selectLayer(seRow.id);
-    const tag = SeNameTag(position: Offset(10, 20));
+    const tag = SeNameTag(style: TextCelStyle(fontSize: 11));
     s.setActiveSeNameTag(tag);
     final undoDepthAfterFirst = s.canUndo;
     s.setActiveSeNameTag(tag);
@@ -84,8 +71,7 @@ void main() {
     );
     s.selectLayer(drawing.id);
     expect(s.canEditActiveSeNameTag, isFalse);
-    expect(s.activeSeNameTagDefaultPosition, isNull);
-    s.setActiveSeNameTag(const SeNameTag(position: Offset(1, 2)));
+    s.setActiveSeNameTag(const SeNameTag(style: TextCelStyle(fontSize: 9)));
     expect(
       s.requireActiveCut.layers.firstWhere((l) => l.id == drawing.id).seNameTag,
       isNull,
@@ -186,10 +172,8 @@ void main() {
     );
     final stored = s.activeTrack.seLayers.first.seNameTag!;
     expect(stored.style.fontSize, 20);
-    expect(
-      stored.position,
-      isNull,
-      reason: 'a colour edit must not pin this cut\'s default in pixels',
-    );
+    // R5 #7: a tag has no position at all — styling never places, because
+    // placing is the SE row's Position lane.
+    expect(stored.track, isNull, reason: 'a style edit keys nothing');
   });
 }

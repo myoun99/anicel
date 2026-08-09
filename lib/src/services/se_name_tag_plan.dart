@@ -1,8 +1,11 @@
+import 'dart:ui' show Offset;
+
 import '../models/canvas_size.dart';
 import '../models/layer.dart';
 import '../models/se_name_tag.dart';
 import '../models/text_cel_style.dart';
 import '../models/timeline_coverage.dart';
+import 'cut_frame_composite_plan.dart' show layerIdentityPose;
 
 /// PURE resolution of the on-canvas SE name tags for one (cut, frame) —
 /// what the editing canvas, playback and export each draw over the
@@ -91,14 +94,15 @@ List<ResolvedSeNameTag> resolveSeNameTagsAt({
     if (name.isEmpty && !showsLine) {
       continue;
     }
-    final anchor =
-        tag?.position ??
-        defaultSeNameTagPosition(
-          canvas: canvas,
-          cameraFrame: cameraFrame,
-          rowIndex: rowIndex,
-          rowOffset: rowOffset,
-        );
+    // R5 #7: the tag has NO position of its own — the SE row's TRANSFORM is
+    // where it sits (user, 2026-08-09). Identity is the canvas centre, so
+    // an untouched row's tag starts there and Position moves it, exactly
+    // like a layer's artwork.
+    final pose = layer.transformTrack.resolveAt(
+      frameIndex: globalFrame,
+      orElse: () => layerIdentityPose(canvas),
+    );
+    final anchor = Offset(pose.center.x, pose.center.y);
     tags.add(
       ResolvedSeNameTag(
         layerId: layer.id.value,
