@@ -406,6 +406,7 @@ class StoryboardPanel extends StatefulWidget {
     this.onSetAudioClipOffset,
     this.dragPreview,
     this.legend,
+    this.rowFilter = TimelineRowFilter.none,
     this.visibilitySoloEnabled = false,
     this.opacityDragPreview,
     this.legendOpacityValue = 1.0,
@@ -726,6 +727,18 @@ class StoryboardPanel extends StatefulWidget {
   /// bulk flyouts + master opacity bar, acting on the ACTIVE cut's layers
   /// through the same session hooks. Null renders a display-only legend.
   final LayerLegendCallbacks? legend;
+
+  /// The legend's row filter (R5 #9 — "있는거면 다 달아서 통일").
+  ///
+  /// Judged FACET BY FACET, not row kind by row kind: a chip hides only
+  /// rows that carry the field it reads. An S row is a layer and answers
+  /// every chip; a V row carries `fxEnabled` and nothing else, so the fx
+  /// chip filters it exactly like a layer while the mark chip leaves it
+  /// alone — because a track has no mark, not because it is a track.
+  ///
+  /// The alternative was to fail the fields a track lacks, and that is not
+  /// a filter: any mark would empty the storyboard whatever the mark was.
+  final TimelineRowFilter rowFilter;
 
   /// Whether the visibility solo mode is engaged (legend eye state color).
   final bool visibilitySoloEnabled;
@@ -1456,6 +1469,46 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// ABOVE the V track row and ITS Transform group, slots counting UP from
   /// the bottom like the timeline's layer stack (S1 sits right above V,
   /// S2 above it); the section ZONE spans the whole group (UI-R7 #2).
+  /// Whether the legend's filter lets this S row show (R5 #9).
+  ///
+  /// An S row IS a layer, so it answers every chip. The row you are
+  /// STANDING on is exempt — the timeline's rule, and for the same reason:
+  /// a filter must never hide the row you are editing.
+  bool _filterAllowsSeRow(Track track, int slot) {
+    final layer = _trackSeAt(track, slot);
+    if (layer == null || !widget.rowFilter.isActive) {
+      return true;
+    }
+    if (widget.selectedRow == LayerRowAddress(layer.id)) {
+      return true;
+    }
+    return widget.rowFilter.allows(
+      layer,
+      fxEnabled: widget.layerFxStateOf?.call(layer.id) != LayerFxState.off,
+    );
+  }
+
+  /// Whether the filter lets this V row show.
+  ///
+  /// A track carries `fxEnabled` and nothing else the chips read, so it is
+  /// judged on that alone — the fx chip filters it exactly like a layer,
+  /// and the chips whose field it lacks leave it be. Same rule as the S
+  /// row above; only the facets differ, because the rows differ.
+  ///
+  /// When tracks gain a mark (the user means to), pass it here and the mark
+  /// chip starts filtering V rows with no change to the rule.
+  bool _filterAllowsTrackRow(Track track) {
+    if (!widget.rowFilter.isActive) {
+      return true;
+    }
+    if (widget.selectedRow == TrackRowAddress(track.id)) {
+      return true;
+    }
+    return widget.rowFilter.allowsFacets(
+      fxEnabled: widget.trackFxStateOf?.call(track) != LayerFxState.off,
+    );
+  }
+
   /// How tall ONE S ROW stands on the rail: the row, plus its Audio lane
   /// and Transform lanes when twirled open. The same construction
   /// `_railRowsForTrack` lays out, read back as a number.
@@ -1535,11 +1588,12 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     final activeCut = _activeCutOf(track);
     final topSlot = _seSlotCount(track) - 1;
     final seRows = <Widget>[
-      for (var slot = topSlot; slot >= 0; slot--) ...[
-        _seLabelRow(track, slot),
-        if (widget.expandedSeAudioRows.contains(
-          StoryboardPanel.seRowKey(track, slot),
-        )) ...[
+      for (var slot = topSlot; slot >= 0; slot--)
+        if (_filterAllowsSeRow(track, slot)) ...[
+          _seLabelRow(track, slot),
+          if (widget.expandedSeAudioRows.contains(
+            StoryboardPanel.seRowKey(track, slot),
+          )) ...[
           // Audio leads the S twirl-down (the row's main tool, timeline
           // parity); the Transform group sits below, collapsed default.
           _StoryboardLaneLabel(
@@ -1666,16 +1720,20 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       ],
     ];
     return [
-      _sectionZoneGroup(
-        keyValue: 'storyboard-section-zone-${track.id.value}-se',
-        label: 'SE',
-        rows: seRows,
-      ),
-      _sectionZoneGroup(
-        keyValue: 'storyboard-section-zone-${track.id.value}-v',
-        label: 'V',
-        rows: vRows,
-      ),
+      // A section with no rows left draws no zone: an empty SE band would
+      // be a label over nothing once the filter took its rows.
+      if (seRows.isNotEmpty)
+        _sectionZoneGroup(
+          keyValue: 'storyboard-section-zone-${track.id.value}-se',
+          label: 'SE',
+          rows: seRows,
+        ),
+      if (_filterAllowsTrackRow(track))
+        _sectionZoneGroup(
+          keyValue: 'storyboard-section-zone-${track.id.value}-v',
+          label: 'V',
+          rows: vRows,
+        ),
     ];
   }
 
@@ -2541,8 +2599,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                           layerControlsWidth: StoryboardPanel._trackLabelWidth,
                         ),
                         legend: widget.legend,
-                        rowFilter: TimelineRowFilter.none,
-                        showRowSolos: false,
+                        rowFilter: widget.rowFilter,
+                        showRowSolos: true,
                         marksInUse: _legendMarksInUse(),
                         kindsInUse: _legendKindsInUse(),
                         visibilitySoloEnabled: widget.visibilitySoloEnabled,

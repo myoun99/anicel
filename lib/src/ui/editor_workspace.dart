@@ -1872,6 +1872,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             ]),
             builder: (context) => StoryboardTabHost(
               session: widget.session,
+              // R5 #9: ONE filter across the surfaces — the same state the
+              // timeline and the sheet read, so a chip set on one is set
+              // wherever the legend appears.
+              rowFilter: _timelineRowFilter.value,
+              onSetRowFilter: _setTimelineRowFilter,
               pixelsPerFrame: _storyboardPixelsPerFrame.value,
               onPixelsPerFrameChanged: (value) {
                 _storyboardPixelsPerFrame.value = value;
