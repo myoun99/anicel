@@ -373,24 +373,14 @@ class TimelineActionToolbar extends StatelessWidget {
       // now; the one thing the step could reach that a drop cannot — the
       // inside of an EMPTY folder — is the drop mode this round adds
       // instead, where dropping ON a folder row puts the layer in it.
-      // 장착·분리 (P3). The DRAG makes an attach by dropping a row strictly
-      // inside a group; these cover what it cannot reach — a base with no
-      // attach rows yet has no inside — and the release, which must not be a
-      // one-way door (user 2026-08-07).
-      PanelFlyoutItem(
-        keyValue: 'timeline-attach-to-layer-above-button',
-        label: AppText.strings.tlAttachToLayerAbove,
-        icon: Icons.vertical_align_top,
-        enabled: session.attachNeighbourForActiveLayer(above: true) != null,
-        onSelected: () => session.attachActiveLayerToNeighbour(above: true),
-      ),
-      PanelFlyoutItem(
-        keyValue: 'timeline-attach-to-layer-below-button',
-        label: AppText.strings.tlAttachToLayerBelow,
-        icon: Icons.vertical_align_bottom,
-        enabled: session.attachNeighbourForActiveLayer(above: false) != null,
-        onSelected: () => session.attachActiveLayerToNeighbour(above: false),
-      ),
+      // 분리 (P3). MAKING an attach is the drag's alone: dropping a row
+      // strictly inside a group mounts it, and R5 #15 gave the one case a gap
+      // cannot reach — the first rider on a base — its own door, dropping ON
+      // the row. The two "위/아래 레이어에 장착" entries that used to stand
+      // here were that door before it existed, so R5 deleted them rather than
+      // keep a second way to say the same thing.
+      //
+      // The RELEASE stays: it must not be a one-way door (user 2026-08-07).
       PanelFlyoutItem(
         keyValue: 'timeline-detach-layer-button',
         label: AppText.strings.tlDetachLayer,

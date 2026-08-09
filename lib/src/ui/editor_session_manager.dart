@@ -4034,87 +4034,16 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  // --- 장착·분리 by MENU (P3) --------------------------------------------
+  // --- 분리 by MENU (P3) --------------------------------------------------
   //
-  // The drag makes an attach by dropping a row strictly INSIDE a group, and
-  // that leaves one thing it cannot do: a base with no attach rows yet has no
-  // inside. These two verbs are that door — "the row next to me" is an
-  // unambiguous target, so no picker is needed — and they land on the same
-  // policy and the same command the drag uses.
-
-  /// The base the active row could mount onto by menu: its immediate stack
-  /// neighbour, [above] naming which side. Null when that row cannot be a
-  /// base, when the active row cannot ride one, or when the structure would
-  /// not survive it.
-  ///
-  /// Immediate neighbour ONLY, and that is what keeps the group contiguous
-  /// without moving anything: the row is already touching the base.
-  Layer? attachNeighbourForActiveLayer({required bool above}) {
-    final cut = activeCutOrNull;
-    final row = activeLayer;
-    if (cut == null || row == null) {
-      return null;
-    }
-    final index = cut.layers.indexWhere((layer) => layer.id == row.id);
-    final at = index + (above ? 1 : -1);
-    if (index < 0 || at < 0 || at >= cut.layers.length) {
-      return null;
-    }
-    final base = cut.layers[at];
-    if (!canMountLayerOnBase(row: row, base: base) ||
-        cut.layers.any((other) => other.attachedToLayerId == row.id)) {
-      return null; // No nesting: a row with attaches of its own is a base.
-    }
-    if (row.attachedToLayerId == base.id) {
-      // Already riding this one — the entry would promise something new and
-      // do nothing but re-decide the mode.
-      return null;
-    }
-    // The validator answers whether the result is a legal structure (a folder
-    // boundary between the two, an organizer that would stop being pure)
-    // instead of this verb keeping a second list of rules.
-    final placement = above
-        ? AttachedPlacement.below
-        : AttachedPlacement.above;
-    final proposed = [
-      for (final layer in cut.layers)
-        if (layer.id == row.id)
-          layer.copyWith(
-            attachedToLayerId: base.id,
-            attachedPlacement: placement,
-          )
-        else
-          layer,
-    ];
-    return folderStructureProblem(proposed) == null ? base : null;
-  }
-
-  /// Mounts the active row on the neighbour [attachNeighbourForActiveLayer]
-  /// names. The MODE (synced/free) is the coordinator's answer across every
-  /// 겸용 use — never this verb's.
-  void attachActiveLayerToNeighbour({required bool above}) {
-    final cut = activeCutOrNull;
-    final row = activeLayer;
-    final base = attachNeighbourForActiveLayer(above: above);
-    if (cut == null || row == null || base == null) {
-      return;
-    }
-    _cutCommandCoordinator.setLayerAttachment(
-      cutId: cut.id,
-      attach: LayerAttachDrop(
-        mount: (
-          layerId: row.id,
-          baseId: base.id,
-          placement: above
-              ? AttachedPlacement.below
-              : AttachedPlacement.above,
-        ),
-      ),
-      description: 'Attach layer',
-    );
-    _refreshAfterCutCommand(preferredActiveLayerId: row.id);
-    notifyListeners();
-  }
+  // MOUNTING has no menu verb: the drag makes an attach by dropping a row
+  // strictly INSIDE a group, and R5 #15 gave the one case a gap cannot
+  // reach — the first rider on a base — its own landing, dropping ON the row
+  // ([updateLayerRowDropOnRow]). The pair of "장착 to the neighbour" verbs
+  // that lived here were that door before it existed; R5 deleted them once
+  // they became a second answer to the same question.
+  //
+  // The release keeps its menu entry: the drag must not be a one-way door.
 
   bool get canDetachActiveLayer =>
       activeLayer != null && isAttachedLayer(activeLayer!);
