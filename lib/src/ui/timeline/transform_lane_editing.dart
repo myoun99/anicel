@@ -226,6 +226,38 @@ TransformTrack transformTrackWithPositionDragged(
   );
 }
 
+/// The transform box's SCALE release (R5 #10): ONE key at the playhead on
+/// the scale lane alone. Dragging a corner is a statement about scale, so
+/// nothing else keys.
+TransformTrack transformTrackWithScaleDragged(
+  TransformTrack track, {
+  required int frameIndex,
+  required double zoom,
+}) {
+  return track.copyWith(
+    scale: track.scale.withKey(
+      frameIndex,
+      zoom,
+      interpolation: _keptInterpolation(track.scale, frameIndex),
+    ),
+  );
+}
+
+/// The transform box's ROTATE release (R5 #10) — the rotation lane alone.
+TransformTrack transformTrackWithRotationDragged(
+  TransformTrack track, {
+  required int frameIndex,
+  required double rotationDegrees,
+}) {
+  return track.copyWith(
+    rotation: track.rotation.withKey(
+      frameIndex,
+      rotationDegrees,
+      interpolation: _keptInterpolation(track.rotation, frameIndex),
+    ),
+  );
+}
+
 /// The anchor gizmo's release (R5 #10): ONE key at the playhead, the twin
 /// of [transformTrackWithPositionDragged]. The member you touch is the
 /// member that keys — Position is not compensated.
