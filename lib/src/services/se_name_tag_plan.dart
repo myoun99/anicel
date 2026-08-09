@@ -82,7 +82,9 @@ List<ResolvedSeNameTag> resolveSeNameTagsAt({
     if (frame == null) {
       continue;
     }
-    final tag = layer.seNameTag;
+    // R5 #7: resolved at the GLOBAL frame, because the tag's keys live on
+    // the track-owned SE layer like every other property of that row.
+    final tag = layer.seNameTag?.resolveAt(globalFrame);
     final name = frame.seName?.trim() ?? '';
     final dialogue = frame.name?.trim() ?? '';
     final showsLine = (tag?.showLine ?? true) && dialogue.isNotEmpty;

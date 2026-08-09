@@ -2,12 +2,15 @@ import '../../models/attached_layer_resolve.dart';
 import '../../models/key_range_move.dart' show transformKeyFrameUnion;
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
+import '../../models/se_name_tag.dart' show SeNameTag;
 import '../../models/transform_track.dart';
 import '../../services/camera_pose_resolver.dart' show resolveCameraPoseAt;
 import '../editor_session_manager.dart';
 import 'effect_lane_policy.dart' show effectGroupLaneId, effectPropertyLanes;
 import 'property_lane_model.dart';
 import 'se_audio_lane.dart' show seAudioLanesFor;
+import 'se_name_tag_lane_policy.dart'
+    show seNameTagGroupLaneId, seNameTagPropertyLanes;
 import 'transform_lane_policy.dart'
     show
         transformGroupHeader,
@@ -127,9 +130,21 @@ List<PropertyLaneRow> timelineLanesForLayer({
     case LayerKind.se:
       // Audio controls lead the SE twirl-down (the row's main tool); the
       // Transform group sits below, collapsed by default.
+      //
+      // R5 #7: the NAME TAG group is Transform's SIBLING — not a member of
+      // it, and not an effect. The row simply HAS one, the way it has a
+      // transform track, so it sits directly above Transform.
+      final nameTag = layer.seNameTag ?? const SeNameTag();
       return [
         ...seAudioLanesFor(layer),
         ...layerEffectLanes(),
+        ...seNameTagPropertyLanes(
+          nameTag,
+          expanded: expandedGroupKeys.contains(
+            laneGroupKey(layer.id, seNameTagGroupLaneId),
+          ),
+          resolveAt: nameTag.resolveAt,
+        ),
         ...collapsibleTransformGroup(layerTransformLanes()),
       ];
     case LayerKind.adjustment:

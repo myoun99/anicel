@@ -286,6 +286,32 @@ CanvasPoint lerpCanvasPoint(CanvasPoint a, CanvasPoint b, double t) =>
 
 double lerpDouble(double a, double b, double t) => a + (b - a) * t;
 
+/// ARGB interpolation, channel by channel (R5 #7 — the first colour lanes).
+///
+/// Straight sRGB, not linear light: these are UI inks picked off a swatch
+/// roster, and someone who keys white → red expects the midpoint they see
+/// in the picker. Gamma-correct blending is the compositor's business, not
+/// the value track's.
+int lerpArgb(int a, int b, double t) {
+  int channel(int shift) {
+    final from = (a >> shift) & 0xFF;
+    final to = (b >> shift) & 0xFF;
+    return (from + (to - from) * t).round().clamp(0, 255);
+  }
+
+  return (channel(24) << 24) |
+      (channel(16) << 16) |
+      (channel(8) << 8) |
+      channel(0);
+}
+
+/// Booleans never tween: half a shown line is not a state (R5 #7).
+///
+/// Written as a lerp rather than special-cased at each call so a boolean
+/// lane rides the ordinary [PropertyTrack.resolveAt] path — the value HOLDS
+/// until the next key, which is what AE's checkbox properties do.
+bool lerpBoolHold(bool a, bool b, double t) => a;
+
 Map<int, PropertyKey<T>> _poseComponentKeys<T>(
   Map<int, TransformPose>? keyframes,
   T Function(TransformPose pose) component,

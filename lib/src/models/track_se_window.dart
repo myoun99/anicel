@@ -3,6 +3,7 @@ import 'timeline_coverage.dart';
 import 'timeline_exposure.dart';
 import 'layer_effect.dart';
 import 'property_track.dart';
+import 'se_name_tag.dart';
 import 'transform_track.dart';
 
 /// A cut-local DISPLAY window over a track-global SE layer.
@@ -108,6 +109,14 @@ class TrackSeWindow {
       timeline: local,
       transformTrack: _rebasedTrack(globalLayer.transformTrack, toLocal: true),
       effects: _rebasedEffects(globalLayer.effects, toLocal: true),
+      seNameTag: globalLayer.seNameTag?.track == null
+          ? globalLayer.seNameTag
+          : globalLayer.seNameTag!.copyWith(
+              track: _rebasedNameTag(
+                globalLayer.seNameTag!.track!,
+                toLocal: true,
+              ),
+            ),
     );
   }
 
@@ -126,23 +135,52 @@ class TrackSeWindow {
   /// an earlier cut and have no row here to sit on. Nothing is dropped on
   /// the way out — the caller only ever hands back what it was shown, so a
   /// negative would mean the local axis itself was wrong.
+  /// ONE lane's keys shifted by a cut start, in either direction — the
+  /// primitive every rebase below is made of.
+  PropertyTrack<T> _shift<T>(PropertyTrack<T> lane, {required bool toLocal}) {
+    final moved = <int, PropertyKey<T>>{};
+    for (final entry in lane.keys.entries) {
+      final frame = toLocal
+          ? toLocalFrame(entry.key)
+          : toGlobalFrame(entry.key);
+      if (toLocal && frame < 0) {
+        continue;
+      }
+      moved[frame] = entry.value;
+    }
+    return PropertyTrack<T>(keys: moved);
+  }
+
+  /// The NAME TAG twin of [globalTransformTrack] (R5 #7): its members key
+  /// on the same global axis and its lanes are read off the same cut-local
+  /// clone, so it takes the same trip.
+  SeNameTagTrack globalSeNameTagTrack(SeNameTagTrack localTrack) =>
+      _rebasedNameTag(localTrack, toLocal: false);
+
+  SeNameTagTrack _rebasedNameTag(
+    SeNameTagTrack track, {
+    required bool toLocal,
+  }) {
+    if (cutStartFrame == 0) {
+      return track;
+    }
+    return SeNameTagTrack(
+      fontSize: _shift(track.fontSize, toLocal: toLocal),
+      letterSpacing: _shift(track.letterSpacing, toLocal: toLocal),
+      bold: _shift(track.bold, toLocal: toLocal),
+      nameInk: _shift(track.nameInk, toLocal: toLocal),
+      boxColor: _shift(track.boxColor, toLocal: toLocal),
+      lineInk: _shift(track.lineInk, toLocal: toLocal),
+      showLine: _shift(track.showLine, toLocal: toLocal),
+    );
+  }
+
   TransformTrack _rebasedTrack(TransformTrack track, {required bool toLocal}) {
     if (cutStartFrame == 0) {
       return track;
     }
-    PropertyTrack<T> shift<T>(PropertyTrack<T> lane) {
-      final moved = <int, PropertyKey<T>>{};
-      for (final entry in lane.keys.entries) {
-        final frame = toLocal
-            ? toLocalFrame(entry.key)
-            : toGlobalFrame(entry.key);
-        if (toLocal && frame < 0) {
-          continue;
-        }
-        moved[frame] = entry.value;
-      }
-      return PropertyTrack<T>(keys: moved);
-    }
+    PropertyTrack<T> shift<T>(PropertyTrack<T> lane) =>
+        _shift(lane, toLocal: toLocal);
 
     return track.copyWith(
       anchorPoint: shift(track.anchorPoint),

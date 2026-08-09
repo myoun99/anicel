@@ -2,7 +2,9 @@ import 'dart:math' as math;
 import 'dart:ui' show Offset;
 
 import 'canvas_size.dart';
+import 'property_track.dart';
 import 'text_cel_style.dart';
+import 'transform_track.dart' show lerpArgb, lerpBoolHold, lerpDouble;
 
 /// An SE row's ON-CANVAS NAME TAG (R5b, §6-z15): the アフレコ label —
 /// white text in a red box — that names who is speaking over the picture,
@@ -17,13 +19,213 @@ import 'text_cel_style.dart';
 /// The row's EYE decides whether it shows and [Layer.muted] decides
 /// whether the sound plays, so a main-line export can drop the tags and
 /// keep the audio with one toggle.
+///
+/// (The class itself is [SeNameTag], below its keyable members.)
+
+/// The name tag's KEYABLE members (R5 #7) — the AE-grade half.
+///
+/// Static slot plus track, exactly as `EffectParameter` does it: the styles
+/// on [SeNameTag] carry the value while a member is unkeyed, and a track
+/// here overrides it once one exists. Keying is additive — nothing about an
+/// untouched tag changes, and its JSON does not grow a field.
+///
+/// Seven members, in the user's own grouping: size, tracking and bold are
+/// SHARED by both runs (one lane drives the name and the line together);
+/// the three inks and the dialogue switch are per-run.
+class SeNameTagTrack {
+  SeNameTagTrack({
+    PropertyTrack<double>? fontSize,
+    PropertyTrack<double>? letterSpacing,
+    PropertyTrack<bool>? bold,
+    PropertyTrack<int>? nameInk,
+    PropertyTrack<int>? boxColor,
+    PropertyTrack<int>? lineInk,
+    PropertyTrack<bool>? showLine,
+  }) : fontSize = fontSize ?? PropertyTrack<double>.empty(),
+       letterSpacing = letterSpacing ?? PropertyTrack<double>.empty(),
+       bold = bold ?? PropertyTrack<bool>.empty(),
+       nameInk = nameInk ?? PropertyTrack<int>.empty(),
+       boxColor = boxColor ?? PropertyTrack<int>.empty(),
+       lineInk = lineInk ?? PropertyTrack<int>.empty(),
+       showLine = showLine ?? PropertyTrack<bool>.empty();
+
+  factory SeNameTagTrack.empty() => SeNameTagTrack();
+
+  final PropertyTrack<double> fontSize;
+  final PropertyTrack<double> letterSpacing;
+  final PropertyTrack<bool> bold;
+  final PropertyTrack<int> nameInk;
+  final PropertyTrack<int> boxColor;
+  final PropertyTrack<int> lineInk;
+  final PropertyTrack<bool> showLine;
+
+  bool get isEmpty =>
+      fontSize.isEmpty &&
+      letterSpacing.isEmpty &&
+      bold.isEmpty &&
+      nameInk.isEmpty &&
+      boxColor.isEmpty &&
+      lineInk.isEmpty &&
+      showLine.isEmpty;
+
+  /// Every frame any member keys — the group header's key union, the same
+  /// summary the Transform header shows.
+  Set<int> get keyedFrames => {
+    ...fontSize.keys.keys,
+    ...letterSpacing.keys.keys,
+    ...bold.keys.keys,
+    ...nameInk.keys.keys,
+    ...boxColor.keys.keys,
+    ...lineInk.keys.keys,
+    ...showLine.keys.keys,
+  };
+
+  SeNameTagTrack copyWith({
+    PropertyTrack<double>? fontSize,
+    PropertyTrack<double>? letterSpacing,
+    PropertyTrack<bool>? bold,
+    PropertyTrack<int>? nameInk,
+    PropertyTrack<int>? boxColor,
+    PropertyTrack<int>? lineInk,
+    PropertyTrack<bool>? showLine,
+  }) => SeNameTagTrack(
+    fontSize: fontSize ?? this.fontSize,
+    letterSpacing: letterSpacing ?? this.letterSpacing,
+    bold: bold ?? this.bold,
+    nameInk: nameInk ?? this.nameInk,
+    boxColor: boxColor ?? this.boxColor,
+    lineInk: lineInk ?? this.lineInk,
+    showLine: showLine ?? this.showLine,
+  );
+
+  Map<String, dynamic> toJson() => {
+    if (fontSize.isNotEmpty) 'fontSize': fontSize.toJson((v) => v),
+    if (letterSpacing.isNotEmpty)
+      'letterSpacing': letterSpacing.toJson((v) => v),
+    if (bold.isNotEmpty) 'bold': bold.toJson((v) => v),
+    if (nameInk.isNotEmpty) 'nameInk': nameInk.toJson((v) => v),
+    if (boxColor.isNotEmpty) 'boxColor': boxColor.toJson((v) => v),
+    if (lineInk.isNotEmpty) 'lineInk': lineInk.toJson((v) => v),
+    if (showLine.isNotEmpty) 'showLine': showLine.toJson((v) => v),
+  };
+
+  factory SeNameTagTrack.fromJson(Map<String, dynamic> json) {
+    PropertyTrack<double> number(String key) => PropertyTrack.fromJson(
+      json[key] as List?,
+      (v) => (v as num).toDouble(),
+    );
+    PropertyTrack<int> argb(String key) =>
+        PropertyTrack.fromJson(json[key] as List?, (v) => (v as num).toInt());
+    PropertyTrack<bool> flag(String key) =>
+        PropertyTrack.fromJson(json[key] as List?, (v) => v as bool);
+    return SeNameTagTrack(
+      fontSize: number('fontSize'),
+      letterSpacing: number('letterSpacing'),
+      bold: flag('bold'),
+      nameInk: argb('nameInk'),
+      boxColor: argb('boxColor'),
+      lineInk: argb('lineInk'),
+      showLine: flag('showLine'),
+    );
+  }
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is SeNameTagTrack &&
+          other.fontSize == fontSize &&
+          other.letterSpacing == letterSpacing &&
+          other.bold == bold &&
+          other.nameInk == nameInk &&
+          other.boxColor == boxColor &&
+          other.lineInk == lineInk &&
+          other.showLine == showLine;
+
+  @override
+  int get hashCode => Object.hash(
+    fontSize,
+    letterSpacing,
+    bold,
+    nameInk,
+    boxColor,
+    lineInk,
+    showLine,
+  );
+}
+
 class SeNameTag {
   const SeNameTag({
     this.position,
     this.style = defaultStyle,
     this.lineStyle = defaultLineStyle,
     this.showLine = true,
+    this.track,
   });
+
+  /// The keyable members (R5 #7). Null while the tag has never been keyed,
+  /// which is every tag until someone does — so the common one stays as
+  /// cheap as it was.
+  final SeNameTagTrack? track;
+
+  /// This tag as it stands at [frameIndex]: the styles with every KEYED
+  /// member substituted in.
+  ///
+  /// ONE function, so the plan, the painter and the lane value column
+  /// cannot disagree about what a frame looks like — the trap the pose
+  /// resolver exists to avoid on the transform side.
+  SeNameTag resolveAt(int frameIndex) {
+    final keys = track;
+    if (keys == null || keys.isEmpty) {
+      return this;
+    }
+    double size(double fallback) => keys.fontSize.resolveAt(
+      frameIndex: frameIndex,
+      orElse: () => fallback,
+      lerp: lerpDouble,
+    );
+    double tracking(double fallback) => keys.letterSpacing.resolveAt(
+      frameIndex: frameIndex,
+      orElse: () => fallback,
+      lerp: lerpDouble,
+    );
+    bool weight(bool fallback) => keys.bold.resolveAt(
+      frameIndex: frameIndex,
+      orElse: () => fallback,
+      lerp: lerpBoolHold,
+    );
+    int ink(PropertyTrack<int> lane, int fallback) => lane.resolveAt(
+      frameIndex: frameIndex,
+      orElse: () => fallback,
+      lerp: lerpArgb,
+    );
+    return SeNameTag(
+      position: position,
+      style: style.copyWith(
+        fontSize: size(style.fontSize),
+        letterSpacing: tracking(style.letterSpacing),
+        bold: weight(style.bold),
+        color: ink(keys.nameInk, style.color),
+        backgroundColor: keys.boxColor.isEmpty
+            ? style.backgroundColor
+            : ink(keys.boxColor, style.backgroundColor ?? 0),
+      ),
+      lineStyle: lineStyle.copyWith(
+        // Size, tracking and bold are ONE lane driving both runs (the
+        // user's grouping), so the line follows the name rather than
+        // carrying a second set nobody asked to key.
+        fontSize: size(lineStyle.fontSize),
+        letterSpacing: tracking(lineStyle.letterSpacing),
+        bold: weight(lineStyle.bold),
+        color: ink(keys.lineInk, lineStyle.color),
+      ),
+      showLine: keys.showLine.resolveAt(
+        frameIndex: frameIndex,
+        orElse: () => showLine,
+        lerp: lerpBoolHold,
+      ),
+      track: keys,
+    );
+  }
 
   /// Canvas coordinates — the exact geometric CENTRE of the name box
   /// (R5 #7, the user's rule).
@@ -76,6 +278,7 @@ class SeNameTag {
     TextCelStyle? style,
     TextCelStyle? lineStyle,
     bool? showLine,
+    SeNameTagTrack? track,
   }) => SeNameTag(
     position: identical(position, _sentinel)
         ? this.position
@@ -83,6 +286,7 @@ class SeNameTag {
     style: style ?? this.style,
     lineStyle: lineStyle ?? this.lineStyle,
     showLine: showLine ?? this.showLine,
+    track: track ?? this.track,
   );
 
   Map<String, dynamic> toJson() => {
@@ -90,6 +294,9 @@ class SeNameTag {
     'style': style.toJson(),
     'lineStyle': lineStyle.toJson(),
     if (!showLine) 'showLine': false,
+    // Written only once a member is keyed, so an untouched tag's JSON is
+    // byte-identical to what it was before keying existed.
+    if (track != null && !track!.isEmpty) 'keys': track!.toJson(),
   };
 
   factory SeNameTag.fromJson(Map<String, dynamic> json) {
@@ -108,6 +315,9 @@ class SeNameTag {
           ? TextCelStyle.fromJson(json['lineStyle'] as Map<String, dynamic>)
           : defaultLineStyle,
       showLine: json['showLine'] as bool? ?? true,
+      track: json['keys'] is Map<String, dynamic>
+          ? SeNameTagTrack.fromJson(json['keys'] as Map<String, dynamic>)
+          : null,
     );
   }
 
@@ -118,10 +328,11 @@ class SeNameTag {
           other.position == position &&
           other.style == style &&
           other.lineStyle == lineStyle &&
-          other.showLine == showLine;
+          other.showLine == showLine &&
+          other.track == track;
 
   @override
-  int get hashCode => Object.hash(position, style, lineStyle, showLine);
+  int get hashCode => Object.hash(position, style, lineStyle, showLine, track);
 
   static const Object _sentinel = Object();
 }
