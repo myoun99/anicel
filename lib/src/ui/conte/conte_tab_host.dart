@@ -21,6 +21,7 @@ import '../storyboard_cut_thumbnail_store.dart'
 import '../text/app_strings.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/drag_value_label.dart';
+import '../widgets/static_raster.dart';
 import 'conte_fonts.dart';
 import 'conte_ink.dart';
 import 'conte_page_painter.dart';
@@ -367,7 +368,28 @@ class _ConteTabHostState extends State<ConteTabHost> {
           ),
           if (page != null)
             Positioned.fill(
-              child: RepaintBoundary(
+              // The sheet page is the timesheet's answer applied to its
+              // sibling. A `RepaintBoundary` here stopped the page being
+              // re-RECORDED, which was never the cost — the raster thread
+              // still replayed the whole display list every frame the app
+              // produced, for any reason, including the pen moving over
+              // the canvas in another panel.
+              //
+              // `StaticRaster` is itself a repaint boundary, so the
+              // isolation this had is kept and the bake is added on top.
+              // The surrounding `Stack` already clips `Clip.hardEdge`, so
+              // the bake's own clip is a no-op and the pixels do not move.
+              //
+              // ⚠️ It stands down while the pen is down: capturing costs a
+              // full paint PLUS a full-page copy, and a stroke dirties the
+              // page on every sample.
+              child: ValueListenableBuilder<bool>(
+                valueListenable: _inkStrokeActive,
+                builder: (context, stroking, child) => StaticRaster(
+                  debugLabel: 'conte-page',
+                  enabled: !stroking,
+                  child: child!,
+                ),
                 child: CustomPaint(
                   key: const ValueKey<String>('conte-page'),
                   painter: ContePagePainter(
