@@ -367,6 +367,86 @@ void main() {
     expect(counter[0], greaterThan(1), reason: 'and it paints through');
   });
 
+  testWidgets('zones re-bake independently, and nesting would not', (
+    tester,
+  ) async {
+    // PARTIAL RE-BAKE, without anyone declaring anything.
+    //
+    // GIMP keeps its cache validity as a region and re-renders only the
+    // invalid part; doing that here would mean a panel announcing which
+    // rectangle changed — and an announcement can be WRONG, which is the
+    // one class of bug this design currently makes impossible.
+    //
+    // Siblings get the same result for free. Dirt from zone A walks up to
+    // A's own boundary and stops, so B is untouched; the invalidation is
+    // still Flutter's dirty bit and still cannot be wrong. The parent
+    // must NOT be a bake itself — a bake inside a bake is the freeze —
+    // which is exactly why this is a Column of two, not one wrapping the
+    // other.
+    final zoneA = <int>[0];
+    final zoneB = <int>[0];
+    final repaintA = ValueNotifier<int>(0);
+    addTearDown(repaintA.dispose);
+
+    await tester.pumpWidget(
+      _host(
+        Column(
+          // ⚠️Stretch, or the cross axis stays LOOSE and a childless
+          // `CustomPaint` takes `constraints.smallest` — width zero, so
+          // the zones paint through instead of baking and this test
+          // measures nothing. That is the fifth time `constraints
+          // .smallest` has caught this project.
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: <Widget>[
+            Expanded(
+              child: StaticRaster(
+                debugLabel: 'zone-a',
+                child: CustomPaint(
+                  painter: _CountingPainter(counter: zoneA, repaint: repaintA),
+                ),
+              ),
+            ),
+            Expanded(
+              child: StaticRaster(
+                debugLabel: 'zone-b',
+                child: CustomPaint(painter: _CountingPainter(counter: zoneB)),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+    expect(zoneA[0], 1);
+    expect(zoneB[0], 1);
+
+    final rasters = tester
+        .renderObjectList<RenderStaticRaster>(find.byType(StaticRaster))
+        .toList();
+    expect(rasters, hasLength(2));
+    final bakesBefore = rasters.map((r) => r.captureCount).toList();
+
+    // Change ONE zone, three times over.
+    for (var i = 0; i < 3; i += 1) {
+      repaintA.value += 1;
+      await tester.pump(const Duration(seconds: 1));
+    }
+
+    expect(zoneA[0], 4, reason: 'the changed zone repainted each time');
+    expect(
+      zoneB[0],
+      1,
+      reason:
+          'the untouched zone never repainted — that is the partial '
+          're-bake, and nobody had to declare a region to get it',
+    );
+    expect(rasters[0].captureCount, greaterThan(bakesBefore[0]));
+    expect(
+      rasters[1].captureCount,
+      bakesBefore[1],
+      reason: 'and it never re-baked either',
+    );
+  });
+
   testWidgets('the census prices what the bakes cost', (tester) async {
     // Qt warns about this exact mechanism used exactly the way we use it
     // — a layer per item, `w × h × 4` each. We install bakes on blanket

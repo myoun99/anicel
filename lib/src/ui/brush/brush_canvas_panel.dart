@@ -5,6 +5,7 @@ import 'package:flutter/gestures.dart' show kPrimaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart' show HardwareKeyboard, KeyEvent;
 
+import '../debug/repaint_cause.dart';
 import '../../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
 import '../../services/brush_stroke_commit_data.dart';
@@ -707,6 +708,12 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // sentence as the contract: the always-mounted census WRITES, everything
     // else READS.
     if (_brushCursorActive || _fillCursorActive) {
+      // The frame this schedules is the one the whole raster program is
+      // about: the pen moves over the canvas and, before the bakes, every
+      // open panel was re-rastered for it. Naming it here is what lets
+      // the Frame Stats readout say "this panel re-baked on `pointer`",
+      // which is otherwise invisible — see [RepaintCause].
+      RepaintCause.note('pointer');
       _toolCursorHover.value = localPosition;
     }
     if (!sample) {
