@@ -225,8 +225,16 @@ void main() {
       'is live (UI-R20 #14)', (tester) async {
     await pumpHome(tester);
     // The rail rows in visual top-to-bottom order: the default stack shows
-    // [camera, instructions, se2, se1, drawing] with the drawing layer
-    // active at the BOTTOM.
+    // [transition, camera, instructions, se2, se1, drawing] with the
+    // drawing layer active at the BOTTOM.
+    //
+    // Steps are counted from the ends rather than by literal index so that
+    // adding a row is a one-line change here instead of a puzzle.
+    //
+    // The TRANSITION row joins the walk on purpose. It is READ-ONLY — its
+    // verbs refuse and its spans are edited on the global axis — but the
+    // arrow keys must not skip a row the eye can see, or the walk would
+    // jump a gap the user cannot account for.
     List<TimelineLayerControlsRow> rails() => tester
         .widgetList<TimelineLayerControlsRow>(
           find.byType(TimelineLayerControlsRow),
@@ -235,7 +243,7 @@ void main() {
     LayerId activeId() => rails().singleWhere((r) => r.active).layer.id;
 
     final order = [for (final rail in rails()) rail.layer.id];
-    expect(order.length, 5);
+    expect(order.length, 6);
     expect(activeId(), order.last, reason: 'drawing layer starts active');
 
     // Clamped at the bottom row: ↓ has nowhere to go.
@@ -246,11 +254,11 @@ void main() {
     // ↑ climbs the visual stack one row at a time.
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
     await tester.pumpAndSettle();
-    expect(activeId(), order[3]);
+    expect(activeId(), order[order.length - 2]);
 
     await tester.sendKeyEvent(LogicalKeyboardKey.arrowUp);
     await tester.pumpAndSettle();
-    expect(activeId(), order[2]);
+    expect(activeId(), order[order.length - 3]);
 
     // Clamped at the top row.
     for (var i = 0; i < order.length; i += 1) {
