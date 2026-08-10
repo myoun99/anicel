@@ -428,6 +428,35 @@ class ProjectRepository {
     });
   }
 
+  /// The track's TRANSITION row — O.L / F.I / F.O spans on the global frame
+  /// axis. Track-owned like the pose and the SE rows, and for the same
+  /// reason: a span straddles a cut boundary, so a cut trim or reorder must
+  /// not drag it along.
+  void updateTrackTransitionLayer({
+    required TrackId trackId,
+    required Layer transitionLayer,
+  }) {
+    updateProject((project) {
+      var found = false;
+      final next = project.copyWith(
+        tracks: [
+          for (final track in project.tracks)
+            if (track.id == trackId)
+              (() {
+                found = true;
+                return track.copyWith(transitionLayer: transitionLayer);
+              })()
+            else
+              track,
+        ],
+      );
+      if (!found) {
+        throw StateError('Track not found: $trackId');
+      }
+      return next;
+    });
+  }
+
   /// The V track's EFFECT CHAIN — the V row's fx over the composited cut,
   /// keyed on the global axis like its pose.
   void updateTrackEffects({
