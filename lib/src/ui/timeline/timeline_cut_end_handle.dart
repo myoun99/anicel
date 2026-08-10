@@ -46,6 +46,31 @@ int timelineCutEndPreviewFrameCount({
   return playbackFrameCount;
 }
 
+/// The DRAWN-end frame count a boundary consumer should display: the same
+/// answer as [timelineCutEndPreviewFrameCount] plus the のりしろ handle.
+///
+/// 🚨The handle is a LENGTH, so it rides the cut end instead of standing
+/// still: a transition span crossing this boundary still crosses it after a
+/// trim, and asks for the same number of frames on the far side. Computing it
+/// as `cutEnd + handle` is what keeps the blue line, the wash edge and the
+/// ruler's letters from splitting apart mid-drag — three surfaces reading one
+/// function. [drawnFrameCount] null (or not past the cut) means no handle, and
+/// then this is just the cut end.
+int timelineDrawnEndPreviewFrameCount({
+  required TimelineDragPreview? preview,
+  required CutId? cutId,
+  required int playbackFrameCount,
+  required int? drawnFrameCount,
+}) {
+  final handle = (drawnFrameCount ?? playbackFrameCount) - playbackFrameCount;
+  final cutEnd = timelineCutEndPreviewFrameCount(
+    preview: preview,
+    cutId: cutId,
+    playbackFrameCount: playbackFrameCount,
+  );
+  return handle <= 0 ? cutEnd : cutEnd + handle;
+}
+
 /// The draggable layer over a cut-end boundary line (UI-R18 #14): a
 /// 12px grip strip centered on the line, axis-aware (vertical line in
 /// the horizontal timeline, horizontal line in the X-sheet). Hosts mount

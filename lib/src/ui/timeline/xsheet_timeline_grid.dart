@@ -25,6 +25,7 @@ import 'package:flutter/semantics.dart' show SemanticsProperties;
 
 import 'timeline_cell_style.dart';
 import 'timeline_frame_ruler_painter.dart' show TimelineRulerHeaderModel;
+import 'timeline_body_norishiro_boundary.dart';
 import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
 import 'timeline_exposure_comma_drag_policy.dart';
@@ -1313,6 +1314,17 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                 playbackFrameCount: widget.frameCount,
                 metrics: _metrics,
               );
+              // The DRAWN end, following a live trim so the blue line, the wash
+              // edge and the ruler's letters never split from the red line
+              // mid-drag (one function, four surfaces).
+              double drawnEndOffset(TimelineDragPreview? preview) =>
+                  timelineDrawnEndPreviewFrameCount(
+                    preview: preview,
+                    cutId: widget.cutEndDrag?.cutId,
+                    playbackFrameCount: widget.frameCount,
+                    drawnFrameCount: widget.drawnFrameCount,
+                  ) *
+                  _metrics.frameCellWidth;
 
               return Stack(
                 children: [
@@ -1559,11 +1571,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                           cutEnd:
                                                               cutEndBoundaryOffset,
                                                           drawnEnd:
-                                                              (widget.drawnFrameCount ??
-                                                                  widget
-                                                                      .frameCount) *
-                                                              _metrics
-                                                                  .frameCellWidth,
+                                                              drawnEndOffset(
+                                                                null,
+                                                              ),
                                                           label: widget
                                                               .noriShiroLabel,
                                                         ),
@@ -2013,7 +2023,7 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                                         ? CustomPaint(
                                                                             painter: TimelineOutsideCutWashPainter(
                                                                               axis: Axis.vertical,
-                                                                              outsideStart: cutEndBoundaryOffset,
+                                                                              outsideStart: drawnEndOffset(null),
                                                                               colorScheme: colorScheme,
                                                                             ),
                                                                           )
@@ -2030,13 +2040,9 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                                                 ) => CustomPaint(
                                                                                   painter: TimelineOutsideCutWashPainter(
                                                                                     axis: Axis.vertical,
-                                                                                    outsideStart:
-                                                                                        timelineCutEndPreviewFrameCount(
-                                                                                          preview: preview,
-                                                                                          cutId: widget.cutEndDrag!.cutId,
-                                                                                          playbackFrameCount: widget.frameCount,
-                                                                                        ) *
-                                                                                        _metrics.frameCellWidth,
+                                                                                    outsideStart: drawnEndOffset(
+                                                                                      preview,
+                                                                                    ),
                                                                                     colorScheme: colorScheme,
                                                                                   ),
                                                                                 ),
@@ -2080,6 +2086,51 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                                   axis: Axis
                                                                       .vertical,
                                                                   left:
+                                                                      cutEndBoundaryOffset,
+                                                                ),
+                                                              // のりしろ, over the
+                                                              // wash: the same
+                                                              // continuous mark
+                                                              // the ruler draws.
+                                                              if (widget.cutEndDrag !=
+                                                                      null &&
+                                                                  widget.dragPreview !=
+                                                                      null)
+                                                                ValueListenableBuilder<
+                                                                  TimelineDragPreview?
+                                                                >(
+                                                                  valueListenable:
+                                                                      widget
+                                                                          .dragPreview!,
+                                                                  builder:
+                                                                      (
+                                                                        context,
+                                                                        preview,
+                                                                        _,
+                                                                      ) => TimelineBodyNoriShiroBoundary(
+                                                                        axis: Axis
+                                                                            .vertical,
+                                                                        left: drawnEndOffset(
+                                                                          preview,
+                                                                        ),
+                                                                        cutEnd:
+                                                                            timelineCutEndPreviewFrameCount(
+                                                                              preview: preview,
+                                                                              cutId: widget.cutEndDrag!.cutId,
+                                                                              playbackFrameCount: widget.frameCount,
+                                                                            ) *
+                                                                            _metrics.frameCellWidth,
+                                                                      ),
+                                                                )
+                                                              else
+                                                                TimelineBodyNoriShiroBoundary(
+                                                                  axis: Axis
+                                                                      .vertical,
+                                                                  left:
+                                                                      drawnEndOffset(
+                                                                        null,
+                                                                      ),
+                                                                  cutEnd:
                                                                       cutEndBoundaryOffset,
                                                                 ),
                                                               if (widget

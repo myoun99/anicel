@@ -3,12 +3,18 @@ import 'dart:collection';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
+import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_section_defaults.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/timeline/timeline_beat_lines.dart';
+import 'package:anicel/src/ui/timeline/timeline_body_norishiro_boundary.dart';
+import 'package:anicel/src/ui/timeline/timeline_cut_end_handle.dart';
+import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 import 'package:anicel/src/ui/timeline/timeline_ruler_norishiro_boundary.dart';
 
 /// The ruler's のりしろ mark: a second end-line saying how much is DRAWN, past
@@ -126,6 +132,181 @@ void main() {
       final line = find.byType(DecoratedBox);
       expect(tester.getTopLeft(line).dy, 140);
       expect(tester.getSize(line).height, 2);
+    });
+
+    testWidgets('the letters sit at the TOP of the ruler, not centred in it '
+        '(user 2026-08-11: centred was hard to read over the numbers)', (
+      tester,
+    ) async {
+      await pumpBoundary(tester, cutEnd: 100, drawnEnd: 300);
+      final region = tester.getRect(
+        find.byKey(const ValueKey<String>('timeline-norishiro-label')),
+      );
+      final glyph = tester.getRect(find.text('노'));
+      expect(
+        glyph.top,
+        moreOrLessEquals(region.top),
+        reason: 'flush with the top edge of the handle region',
+      );
+      expect(
+        glyph.bottom,
+        lessThan(region.center.dy),
+        reason: 'and entirely in the upper half — centred would straddle it',
+      );
+    });
+
+    testWidgets('line and letters wear the app ACCENT, and follow it when the '
+        'user changes it', (tester) async {
+      final before = AppColors.accentSettings.value;
+      addTearDown(() => AppColors.accentSettings.value = before);
+
+      await pumpBoundary(tester, cutEnd: 100, drawnEnd: 300);
+      BoxDecoration lineDecoration() =>
+          tester.widget<DecoratedBox>(find.byType(DecoratedBox)).decoration
+              as BoxDecoration;
+      expect(lineDecoration().color, AppColors.accent);
+      expect(
+        tester.widget<Text>(find.text('노')).style!.color,
+        AppColors.accent,
+        reason: 'one colour for the line and the word it names',
+      );
+      expect(
+        lineDecoration().color,
+        isNot(const Color(0xFF5C8AC9)),
+        reason: 'the fixed muted blue I had chosen is gone',
+      );
+
+      // The accent is a LIVE setting, so a const colour here would strand the
+      // mark on the default while everything else moved.
+      const picked = Color(0xFFCC7722);
+      AppColors.accentSettings.value = before.copyWith(accent: picked);
+      await pumpBoundary(tester, cutEnd: 100, drawnEnd: 300);
+      expect(lineDecoration().color, picked);
+      expect(tester.widget<Text>(find.text('노')).style!.color, picked);
+    });
+  });
+
+  group('the body boundary', () {
+    Future<void> pumpBody(
+      WidgetTester tester, {
+      required double cutEnd,
+      required double drawnEnd,
+      Axis axis = Axis.horizontal,
+    }) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: SizedBox(
+              width: 400,
+              height: 200,
+              child: Stack(
+                children: [
+                  TimelineBodyNoriShiroBoundary(
+                    left: drawnEnd,
+                    cutEnd: cutEnd,
+                    axis: axis,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    testWidgets('runs the FULL cross axis, so the mark is one continuous line '
+        'with the ruler\'s instead of a stub that stops at the header', (
+      tester,
+    ) async {
+      await pumpBody(tester, cutEnd: 100, drawnEnd: 180);
+      final line = tester.getRect(find.byType(DecoratedBox));
+      expect(line.left, 180);
+      expect(line.width, 2);
+      expect(
+        line.height,
+        200,
+        reason: 'top to bottom of the body, exactly like the red line',
+      );
+    });
+
+    testWidgets('draws nothing when nothing is drawn past the cut', (
+      tester,
+    ) async {
+      await pumpBody(tester, cutEnd: 120, drawnEnd: 120);
+      expect(find.byType(DecoratedBox), findsNothing);
+    });
+
+    testWidgets('transposes for the X-sheet', (tester) async {
+      await pumpBody(tester, cutEnd: 40, drawnEnd: 90, axis: Axis.vertical);
+      final line = tester.getRect(find.byType(DecoratedBox));
+      expect(line.top, 90);
+      expect(line.height, 2);
+      expect(line.width, 400);
+    });
+  });
+
+  group('the drawn end a live trim shows', () {
+    const cut = CutId('cut-1');
+
+    test('is the cut end when no span crosses — the number every cut had '
+        'before any of this existed', () {
+      expect(
+        timelineDrawnEndPreviewFrameCount(
+          preview: null,
+          cutId: cut,
+          playbackFrameCount: 24,
+          drawnFrameCount: null,
+        ),
+        24,
+      );
+      expect(
+        timelineDrawnEndPreviewFrameCount(
+          preview: null,
+          cutId: cut,
+          playbackFrameCount: 24,
+          drawnFrameCount: 24,
+        ),
+        24,
+      );
+    });
+
+    test('🚨RIDES the trim: the handle is a LENGTH past the boundary, so a '
+        'shorter cut keeps the same margin instead of stranding the blue line '
+        'where the red one used to be', () {
+      final preview = CutTrimDragPreview(previewDurations: {cut: 18});
+      expect(
+        timelineCutEndPreviewFrameCount(
+          preview: preview,
+          cutId: cut,
+          playbackFrameCount: 24,
+        ),
+        18,
+      );
+      expect(
+        timelineDrawnEndPreviewFrameCount(
+          preview: preview,
+          cutId: cut,
+          playbackFrameCount: 24,
+          drawnFrameCount: 30,
+        ),
+        24,
+        reason: '18 previewed + the 6-frame handle it still owes',
+      );
+    });
+
+    test('a drag on a DIFFERENT cut moves neither', () {
+      final preview = CutTrimDragPreview(
+        previewDurations: {const CutId('other'): 4},
+      );
+      expect(
+        timelineDrawnEndPreviewFrameCount(
+          preview: preview,
+          cutId: cut,
+          playbackFrameCount: 24,
+          drawnFrameCount: 30,
+        ),
+        30,
+      );
     });
   });
 
@@ -262,6 +443,68 @@ void main() {
       expect(label, endsWith(session.uiStrings.tlNoriShiro));
       // Both handles counted, not one of them.
       expect(session.activeCutDrawnFrameCount, second + 4);
+    });
+
+    testWidgets('🚨the wash begins BEHIND the blue line, not at the red one: '
+        'のりしろ frames are drawn material, so shading them as outside-the-cut '
+        'was the wash claiming territory it does not own', (tester) async {
+      await tester.binding.setSurfaceSize(const Size(1400, 900));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+      );
+      await tester.pumpAndSettle();
+
+      double washStart() => tester
+          .widgetList<CustomPaint>(find.byType(CustomPaint))
+          .map((paint) => paint.painter)
+          .whereType<TimelineOutsideCutWashPainter>()
+          .single
+          .outsideStart;
+
+      final session = tester
+          .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
+          .session;
+      final duration = session.activeCutPlaybackFrameCount;
+
+      // Before: no handle, so the wash sits exactly where it always did.
+      final cutEndX = tester
+          .widget<TimelineRulerNoriShiroBoundary>(
+            find.byType(TimelineRulerNoriShiroBoundary),
+          )
+          .cutEnd;
+      expect(washStart(), moreOrLessEquals(cutEndX));
+      expect(find.byType(TimelineBodyNoriShiroBoundary), findsOneWidget);
+
+      session.updateTransitionInstructions(
+        SplayTreeMap<int, InstructionEvent>.from({
+          duration - 4: const InstructionEvent(instructionId: 'ol', length: 8),
+        }),
+      );
+      await tester.pumpAndSettle();
+
+      final bodyLine = tester.widget<TimelineBodyNoriShiroBoundary>(
+        find.byType(TimelineBodyNoriShiroBoundary),
+      );
+      expect(
+        bodyLine.left,
+        greaterThan(cutEndX),
+        reason: 'the body line moved out to the drawn end',
+      );
+      expect(
+        washStart(),
+        moreOrLessEquals(bodyLine.left),
+        reason: 'ONE edge: the wash starts where the blue line stands',
+      );
+      // And the ruler agrees with the body — one mark, not two that drift.
+      expect(
+        tester
+            .widget<TimelineRulerNoriShiroBoundary>(
+              find.byType(TimelineRulerNoriShiroBoundary),
+            )
+            .drawnEnd,
+        moreOrLessEquals(bodyLine.left),
+      );
     });
   });
 }

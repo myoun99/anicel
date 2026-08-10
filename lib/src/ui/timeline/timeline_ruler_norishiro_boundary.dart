@@ -5,14 +5,20 @@ import '../theme/app_theme.dart';
 /// The のりしろ boundary in the frame ruler: where the cut is DRAWN to, past
 /// the red line that says where it plays to.
 ///
-/// 📐 The visual contract (user 2026-08-09):
-/// - the red cut-end line and its outside-cut wash stay exactly as they are;
-///   this adds ONE blue line and nothing else
+/// 📐 The visual contract (user 2026-08-09, revised 2026-08-11):
+/// - the red cut-end line stays exactly as it is; this adds ONE line
 /// - the ruler spells the word across the handle's own width, so a longer
 ///   handle spaces its letters further apart
-/// - line and letters share one colour
+/// - line and letters share one colour, and it is the app ACCENT
+/// - the letters sit at the TOP of the ruler, not centred: centred put them
+///   behind the frame numbers, where they were hard to read (user 2026-08-11)
 /// - ⚠️a short handle (0+2) cannot hold the word: below the threshold the
 ///   letters are dropped and the line stands alone
+/// - the line runs the full cross-axis in the BODY too
+///   ([TimelineBodyNoriShiroBoundary]) — one continuous mark like the red
+///   line, not a stub that stops at the ruler — and the outside-cut wash
+///   begins BEHIND it, because のりしろ frames are drawn material rather than
+///   outside-the-cut emptiness
 ///
 /// The letters are spread by laying them out `spaceEvenly` in the region
 /// rather than by computing a letterSpacing — "spread it over the width" is
@@ -51,10 +57,13 @@ class TimelineRulerNoriShiroBoundary extends StatelessWidget {
   /// length changes with both the term and the language.
   static const double _minGlyphExtent = 11;
 
-  static const TextStyle _labelStyle = TextStyle(
+  /// Non-const because the accent is LIVE (UI-R22 #5) — the app root rebuilds
+  /// when the accent setting changes, and a `const` colour would strand this
+  /// mark on the default teal.
+  static TextStyle get _labelStyle => TextStyle(
     fontSize: 9,
     height: 1,
-    color: AppColors.handle,
+    color: AppColors.noriShiro,
     fontWeight: FontWeight.w600,
   );
 
@@ -63,8 +72,8 @@ class TimelineRulerNoriShiroBoundary extends StatelessWidget {
     if (drawnEnd <= cutEnd) {
       return const SizedBox.shrink();
     }
-    const line = IgnorePointer(
-      child: DecoratedBox(decoration: BoxDecoration(color: AppColors.handle)),
+    final line = IgnorePointer(
+      child: DecoratedBox(decoration: BoxDecoration(color: AppColors.noriShiro)),
     );
     final extent = drawnEnd - cutEnd;
     final glyphs = label.characters;
@@ -75,7 +84,9 @@ class TimelineRulerNoriShiroBoundary extends StatelessWidget {
             child: Flex(
               direction: axis,
               mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-              crossAxisAlignment: CrossAxisAlignment.center,
+              // TOP of the ruler (user 2026-08-11): centred sat the letters
+              // right on the frame numbers.
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 for (final glyph in glyphs) Text(glyph, style: _labelStyle),
               ],

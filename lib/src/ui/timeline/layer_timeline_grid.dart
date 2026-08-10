@@ -2248,6 +2248,14 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                               playbackFrameCount:
                                                                   widget
                                                                       .playbackFrameCount,
+                                                              // のりしろ: the blue
+                                                              // line runs through
+                                                              // the body too, and
+                                                              // the wash starts
+                                                              // behind it.
+                                                              drawnFrameCount:
+                                                                  widget
+                                                                      .drawnFrameCount,
                                                               // The cursor layer decides
                                                               // per frame what to show —
                                                               // the slot itself is static
