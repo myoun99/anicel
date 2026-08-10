@@ -70,6 +70,8 @@ import 'storyboard_cut_thumbnail_store.dart';
 import 'storyboard_panel.dart' show StoryboardPanel;
 import 'storyboard_playhead_mapping.dart';
 import '../models/timeline_row_address.dart';
+import 'playback/canvas_playback_controller.dart' show PlaybackScope;
+import 'timeline/frame_panel_sill_controls.dart';
 import 'timeline/layer_rail_window.dart';
 import '../models/layer_kind.dart' show LayerKind, layerKindHoldsDrawings;
 import 'canvas/flip_hud_controller.dart';
@@ -1839,6 +1841,18 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           // The heavy frame-axis panels keep their subtree offstage
           // across switches (R10-②) — switching back is instant.
           keepAlive: true,
+          // 유저 확정 (2026-08-10): 재생 그룹과 설정은 문턱으로. Only the
+          // ACTIVE tab's sill controls are mounted, so the timeline's
+          // active-cut transport and the storyboard's all-cuts one share
+          // the one strip without either knowing about the other.
+          sillTrailing: (context) => FramePanelSillControls(
+            session: widget.session,
+            scope: PlaybackScope.activeCut,
+            cameraViewEnabled: _cameraViewEnabled,
+            cameraViewKeyValue: 'timeline-camera-view-button',
+            playbackStartFrame: () => widget.session.currentFrameIndex,
+            onSkipToStart: () => widget.session.selectFrameIndex(0),
+          ),
           builder: (context) => PanelAwareListenableBuilder(
             // The session subscription lives HERE now (HomePage no longer
             // setStates the world). Seeks are NOT session notifies — the
@@ -1907,6 +1921,18 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           minContentHeight: _minContentHeightFor(tabId),
           locked: locked,
           keepAlive: true,
+          // The same sill controls the timeline mounts — a different
+          // playlist and a different "to start", and nothing else.
+          sillTrailing: (context) => FramePanelSillControls(
+            session: widget.session,
+            scope: PlaybackScope.allCuts,
+            cameraViewEnabled: _cameraViewEnabled,
+            cameraViewKeyValue: 'storyboard-camera-view-button',
+            playbackStartFrame: () =>
+                storyboardPlayheadFrame(widget.session) ?? 0,
+            onSkipToStart: () =>
+                seekStoryboardPlayheadToTrackStart(widget.session),
+          ),
           builder: (context) => PanelAwareListenableBuilder(
             // Session subscription — the timeline tab's list exactly, and
             // for the same reason: seeks are NOT session notifies, so this
@@ -1946,10 +1972,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                 _storyboardTrackLaneHeight.value = value;
               },
               thumbnailFor: _storyboardThumbnails.thumbnailFor,
-              // R28 #1: the same camera-view state the timeline command
-              // bar and the canvas overlay drive — one notifier, three
-              // entrances.
-              cameraViewEnabled: _cameraViewEnabled,
+              // ⛔The camera-view notifier no longer comes through here:
+              // R28 #1's toggle rides the sill with the transport now
+              // (`sillTrailing` above), so the panel does not see it.
             ),
           ),
         );

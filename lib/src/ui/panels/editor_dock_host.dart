@@ -107,6 +107,9 @@ class EditorDockHost extends StatelessWidget {
       canAcceptTab: canAcceptTab,
       onTabMoved: onTabMoved,
       onTabDragChanged: onTabDragChanged,
+      // The sill's own controls stand down while anything is in flight, so
+      // the strip goes back to being landing area.
+      draggingTab: draggingTab,
       onToggleLock: onToggleLock,
       onCloseTab: onCloseTab,
       flash: flash,

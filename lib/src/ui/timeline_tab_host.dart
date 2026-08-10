@@ -10,7 +10,6 @@ import '../models/layer_id.dart';
 import '../models/timeline_row_address.dart';
 import '../models/layer_kind.dart';
 import '../models/text_cel_style.dart';
-import 'camera/camera_view_toggle_button.dart';
 import 'dialogs/camera_key_dialog.dart';
 import 'dialogs/delete_layer_dialog.dart';
 import 'dialogs/frame_name_conflict_dialog.dart';
@@ -23,8 +22,6 @@ import 'dialogs/se_instance_dialog.dart';
 import 'dialogs/text_cel_dialog.dart';
 import 'editor_command_actions.dart';
 import 'editor_session_manager.dart';
-import 'playback/canvas_playback_controller.dart';
-import 'playback/playback_transport_controls.dart';
 import '../models/media_asset.dart' show mediaAssetDefaultName;
 import '../models/transform_track.dart';
 import '../services/camera_pose_resolver.dart';
@@ -1457,37 +1454,12 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     return _SeekGatedTimelineToolbar(
       session: _session,
       hiddenSections: widget.hiddenSections,
-      transportBuilder: (context) => Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          PlaybackTransportControls(
-            controller: _session.playback,
-            scope: PlaybackScope.activeCut,
-            quality: _session.playbackQuality,
-            onQualityChanged: _session.setPlaybackQuality,
-            playbackStartFrame: () => _session.currentFrameIndex,
-            onSkipToStart: () => _session.selectFrameIndex(0),
-            resolveMeterPeaks: () => _session.audioDeviceTransport.meterPeaks,
-            isVoiceRecording: _session.isVoiceRecording,
-            onToggleVoiceRecording: () =>
-                toggleVoiceRecordingWithFeedback(context, _session),
-            voiceRecordClipLit: _session.voiceRecordClipLit,
-            resolveStrings: () => _session.uiStrings,
-          ),
-          // R27 #1: the CAMERA VIEW toggle, right beside the transport.
-          // It lived only on the camera layer row, which meant scrolling
-          // the rail to it every time; the state itself is a view mode,
-          // so the command bar is its natural second home (both entrances
-          // drive the one notifier). R28 #1 moved the button itself into
-          // a shared widget the storyboard's command bar mounts too — and
-          // that widget wears R26 #42's standard AppIconButton, so both
-          // panels get the same button in the same style.
-          CameraViewToggleButton(
-            enabled: widget.cameraViewEnabled,
-            keyValue: 'timeline-camera-view-button',
-          ),
-        ],
-      ),
+      // ⛔The TRANSPORT and the camera-view toggle left this bar (유저 확정,
+      // 2026-08-10). They are the 문턱's now — see [FramePanelSillControls],
+      // mounted by the workspace through `EditorPanelTab.sillTrailing` —
+      // because the sill's right edge is the one place in this region that
+      // does not move when a panel is added. What is left here is what
+      // reaches into THIS panel's own contents.
       actionsBuilder: (context) => TimelineActionToolbar(
         session: _session,
         onAddLayer: _session.addLayer,
@@ -1502,58 +1474,44 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   }
 }
 
-/// Caches the timeline's transport + action toolbar and rebuilds each ONLY
-/// when what ITS buttons SHOW changes — for BOTH a committed seek AND a
-/// session notify (the host rebuild). The bar reconstructs a transport +
-/// ~25 Material buttons; the scoped-notify measurement put that at a large,
-/// row-independent share of every notify, even though a layer-select or a
-/// far-away cell edit changes nothing it renders.
+/// Caches the timeline's action toolbar and rebuilds it ONLY when what its
+/// buttons SHOW changes — for BOTH a committed seek AND a session notify
+/// (the host rebuild). The bar reconstructs ~20 Material buttons; the
+/// scoped-notify measurement put that at a large, row-independent share of
+/// every notify, even though a layer-select or a far-away cell edit changes
+/// nothing it renders.
 ///
-/// TWO groups, TWO tokens (frame-axis round): the transport and the action
-/// toolbar read disjoint state, and the frequent change — landing a drawing
-/// flips the frame-group enablements — belongs entirely to the actions. Under
-/// one shared token that legitimate refresh dragged the transport's ~180
-/// widgets along with it; measured at 24 layers, the whole bar was ~48% of a
-/// notify's rebuilds and the transport was a third of that.
+/// ⛔It used to gate TWO groups on two tokens, because the playback transport
+/// lived on this bar and read disjoint state from the action buttons. The
+/// transport moved to the 문턱 (2026-08-10) and the workspace mounts it
+/// there, so the second group — and the whole reason for two tokens — went
+/// with it. The measurement that justified the split still stands; it just
+/// describes a bar this one no longer is.
 ///
-/// Each group's token holds every value that group's DIRECTLY-rendered
-/// widgets read. Three kinds of state are deliberately absent from both,
-/// because caching cannot make them stale:
-///
-/// - flyout menu contents (Layer / Frame / Cut / fps / sample-rate entries)
-///   are built by `entriesBuilder` at OPEN time, so they always read fresh;
-/// - the playback display rides the transport's own
-///   AnimatedBuilder(controller), and the mic / clip lights are
-///   ValueNotifiers the transport subscribes to itself — a ValueNotifier in
-///   the token would compare a `final` field's identity, which never
-///   changes: coverage in appearance only;
-/// - the camera-view toggle follows its own notifier.
+/// The token holds every value the toolbar's DIRECTLY-rendered widgets read.
+/// One kind of state is deliberately absent: flyout menu contents (Cut /
+/// Layer / Frame / FX entries) are built by `entriesBuilder` at OPEN time,
+/// so they always read fresh.
 ///
 /// COMPLETENESS CONTRACT: any NEW directly-rendered value (an enablement, a
-/// shown label, a lit indicator read as a plain value) MUST join ITS group's
-/// token — [_deriveTransportToken] or [_deriveActionsToken] — otherwise a
-/// notify that changes only that value leaves a stale button. And if its
-/// source does not travel through a host rebuild or a committed seek, it
-/// needs a listener here too (as the language settings do).
-/// playhead_rebuild_guard_test.dart drives one mutation per dimension AND
-/// pins which group each one may reconstruct; a dimension added without a
-/// case there is unguarded.
+/// shown label, a lit indicator read as a plain value) MUST join
+/// [_deriveActionsToken] — otherwise a notify that changes only that value
+/// leaves a stale button. And if its source does not travel through a host
+/// rebuild or a committed seek, it needs a listener here too (as the
+/// language settings do). playhead_rebuild_guard_test.dart drives one
+/// mutation per dimension; a dimension added without a case there is
+/// unguarded.
 class _SeekGatedTimelineToolbar extends StatefulWidget {
   const _SeekGatedTimelineToolbar({
     required this.session,
-    required this.transportBuilder,
     required this.actionsBuilder,
     required this.hiddenSections,
   });
 
   final EditorSessionManager session;
 
-  /// The playback transport + camera-view toggle: gated on
-  /// [_SeekGatedTimelineToolbarState._deriveTransportToken].
-  final WidgetBuilder transportBuilder;
-
-  /// The action toolbar (frame group, layer buttons, project dropdowns):
-  /// gated on [_SeekGatedTimelineToolbarState._deriveActionsToken].
+  /// The action toolbar (the four command pills): gated on
+  /// [_SeekGatedTimelineToolbarState._deriveActionsToken].
   final WidgetBuilder actionsBuilder;
 
   /// Folds into the ACTIONS key: the Layer flyout's show/hide checkmarks read
@@ -1572,33 +1530,11 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
   // state (warming fires no session notify, so nothing accesses it earlier).
   // The token would then latch the NEW value and miss the change it exists to
   // catch.
-  late Object _transportToken;
   late Object _actionsToken;
 
-  /// The last-built groups. Held across BOTH seeks and host rebuilds so a
-  /// notify with an unchanged token reuses that group's widgets — and a
-  /// notify that changes only one group leaves the other's alone.
-  Widget? _cachedTransport;
+  /// The last-built toolbar. Held across BOTH seeks and host rebuilds so a
+  /// notify with an unchanged token reuses its widgets.
   Widget? _cachedActions;
-
-  /// Every value the TRANSPORT group's directly-rendered widgets read.
-  ///
-  /// See the completeness contract on [_SeekGatedTimelineToolbar]. The
-  /// playback clock is deliberately absent (its own AnimatedBuilder), as are
-  /// the mic/clip lights (ValueNotifiers the transport subscribes to itself)
-  /// and the camera-view state (its own notifier).
-  Object _deriveTransportToken() {
-    final session = widget.session;
-    return (
-      // The transport's one plain-value prop.
-      session.playbackQuality,
-      // It resolves its mic tooltips through `session.uiStrings` DURING
-      // build, and a language switch fires no session notify at all (it moves
-      // its own notifier), so without this the cached transport would keep
-      // the old language until some unrelated token change.
-      session.languageSettings.value,
-    );
-  }
 
   /// Every value the ACTION toolbar's directly-rendered widgets read. Split by
   /// the widget that consumes each so a future button's owner is obvious.
@@ -1631,33 +1567,29 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       // publishes through its OWN notifier without a session notify, which
       // is why this entry needs the listener in initState as well.
       session.currentLaneKeyAddress != null,
-      // Shown labels: the two project-axis dropdowns print their values.
-      session.projectFrameRate,
-      session.projectAudioSampleRate,
+      // The layer pill's promoted verb.
+      session.canDeleteActiveLayer,
+      // ⛔The two project-axis values LEFT this token with the dropdowns
+      // that printed them: they are entries of the settings pill on the
+      // 문턱 now, and a flyout's entries are built at open time.
+      //
       // Button tooltips and menu labels print in the program language.
       session.languageSettings.value,
     );
   }
 
-  /// Drops each group's cache iff what THAT group shows changed. Every entry
-  /// point (a committed seek, a host rebuild, a language switch) funnels its
+  /// Drops the cache iff what the toolbar shows changed. Every entry point
+  /// (a committed seek, a host rebuild, a language switch) funnels its
   /// decision here.
   bool _tokenOrSectionsChanged(Set<TimelineSection> oldSections) {
-    var changed = false;
-    final nextTransport = _deriveTransportToken();
-    if (nextTransport != _transportToken) {
-      _transportToken = nextTransport;
-      _cachedTransport = null;
-      changed = true;
-    }
     final nextActions = _deriveActionsToken();
     if (nextActions != _actionsToken ||
         !setEquals(oldSections, widget.hiddenSections)) {
       _actionsToken = nextActions;
       _cachedActions = null;
-      changed = true;
+      return true;
     }
-    return changed;
+    return false;
   }
 
   /// Re-derives after a signal that does NOT come through a host rebuild.
@@ -1672,7 +1604,6 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
   @override
   void initState() {
     super.initState();
-    _transportToken = _deriveTransportToken();
     _actionsToken = _deriveActionsToken();
     widget.session.frameSeekCommitted.addListener(_handleExternalSignal);
     // A language switch moves its own notifier and fires NO session notify,
@@ -1697,7 +1628,6 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       widget.session.frameSeekCommitted.addListener(_handleExternalSignal);
       widget.session.languageSettings.addListener(_handleExternalSignal);
       widget.session.currentRowListenable.addListener(_handleExternalSignal);
-      _cachedTransport = null;
       _cachedActions = null;
     }
     _tokenOrSectionsChanged(oldWidget.hiddenSections);
@@ -1712,14 +1642,6 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
   }
 
   @override
-  Widget build(BuildContext context) {
-    // The Row is rebuilt; its CHILDREN are the cached instances, so an
-    // unchanged group's element subtree is skipped whole.
-    return Row(
-      children: [
-        _cachedTransport ??= widget.transportBuilder(context),
-        Expanded(child: _cachedActions ??= widget.actionsBuilder(context)),
-      ],
-    );
-  }
+  Widget build(BuildContext context) =>
+      _cachedActions ??= widget.actionsBuilder(context);
 }

@@ -20,9 +20,11 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  // The counter stacks track-global over cut-local (2026-08-10); the flip
+  // these tests drive is a CUT-local move, so the local line is the reading.
   String counterText(WidgetTester tester) => tester
       .widget<Text>(
-        find.byKey(const ValueKey<String>('timeline-current-frame-counter')),
+        find.byKey(const ValueKey<String>('timeline-local-frame-counter')),
       )
       .data!;
 

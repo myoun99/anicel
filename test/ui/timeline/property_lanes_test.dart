@@ -1229,7 +1229,7 @@ void main() {
         tester
             .widget<Text>(
               find.byKey(
-                const ValueKey<String>('timeline-current-frame-counter'),
+                const ValueKey<String>('timeline-local-frame-counter'),
               ),
             )
             .data,
@@ -1517,7 +1517,7 @@ void main() {
         tester
             .widget<Text>(
               find.byKey(
-                const ValueKey<String>('timeline-current-frame-counter'),
+                const ValueKey<String>('timeline-local-frame-counter'),
               ),
             )
             .data,

@@ -535,6 +535,10 @@ class AppStrings {
   String get tlStoryboardLayer => _s('tlStoryboardLayer');
 
   // --- The cut command group ---
+  /// The cut PILL's name cell — the noun itself, beside [tlLayer] and
+  /// [tlFrame]. The pill's first cell writes the noun out (유저 확정: 컷 ·
+  /// 레이어 · 프레임은 아이콘 말고 텍스트), so all three need a short word.
+  String get tlCut => _s('tlCut');
   String get cutCommands => _s('cutCommands');
   String get cutAddCut => _s('cutAddCut');
   String get cutNewCut => _s('cutNewCut');
@@ -1393,6 +1397,7 @@ class AppStrings {
     'tlAttachSyncedBelow': 'Attach synced layer below',
     'tlLayerCommands': 'Layer commands',
     'tlFrameCommands': 'Frame commands',
+    'tlCut': 'Cut',
     'tlLayer': 'Layer',
     'tlFrame': 'Frame',
     'tlDuplicateLayer': 'Duplicate layer',
@@ -2099,6 +2104,7 @@ class AppStrings {
     'tlAttachSyncedBelow': '下に同期の付属レイヤー',
     'tlLayerCommands': 'レイヤー操作',
     'tlFrameCommands': 'フレーム操作',
+    'tlCut': 'カット',
     'tlLayer': 'レイヤー',
     'tlFrame': 'フレーム',
     'tlDuplicateLayer': 'レイヤーを複製',
@@ -2801,6 +2807,7 @@ class AppStrings {
     'tlAttachSyncedBelow': '아래에 동기 부속 레이어',
     'tlLayerCommands': '레이어 명령',
     'tlFrameCommands': '프레임 명령',
+    'tlCut': '컷',
     'tlLayer': '레이어',
     'tlFrame': '프레임',
     'tlDuplicateLayer': '레이어 복제',
@@ -3538,6 +3545,7 @@ class AppStrings {
     'tlAttachSyncedBelow': 'Calque attaché synchronisé en dessous',
     'tlLayerCommands': 'Commandes de calque',
     'tlFrameCommands': "Commandes d'image",
+    'tlCut': 'Plan',
     'tlLayer': 'Calque',
     'tlFrame': 'Image',
     'tlDuplicateLayer': 'Dupliquer le calque',
@@ -4213,6 +4221,7 @@ class AppStrings {
     'tlAttachSyncedBelow': '在下方添加同步附属图层',
     'tlLayerCommands': '图层命令',
     'tlFrameCommands': '帧命令',
+    'tlCut': '镜头',
     'tlLayer': '图层',
     'tlFrame': '帧',
     'tlDuplicateLayer': '复制图层',

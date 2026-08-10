@@ -95,6 +95,19 @@ class TimelineViewCluster extends StatelessWidget {
     return Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        // TWO LINES, one number each: the TRACK-global frame on top, the
+        // cut-local one under it (유저 확정, 2026-08-10). Stacking costs no
+        // width, absorbs a digit's growth into the line that grew, and — the
+        // reason it is stated for BOTH panels rather than for the storyboard
+        // alone — puts the local number at the SAME height whichever panel
+        // is open. The timeline leaves the top line EMPTY (it is one cut's
+        // window; there is no global frame to print) and keeps the line
+        // rather than dropping it, which is what makes the heights agree.
+        //
+        // 🚫No `G`/`L` labels (유저 확정): above and below IS the label.
+        // 🚫No width reserved for the widest number either — it grows into
+        // the free space on its left, and the bar's own scroller takes the
+        // squeeze exactly as every other overflow on this row does.
         ListenableBuilder(
           listenable: globalFrame == null
               ? frameCursor
@@ -102,15 +115,37 @@ class TimelineViewCluster extends StatelessWidget {
           builder: (context, _) {
             final local = _frameLabel(frameCursor.value + 1);
             final global = globalFrame?.value;
-            return Text(
-              global == null ? local : '${_frameLabel(global + 1)} · $local',
+            final style = TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 10.5,
+              height: 1.24,
+              fontWeight: FontWeight.w600,
+              color: colorScheme.primary,
+            );
+            return Column(
               key: const ValueKey<String>('timeline-current-frame-counter'),
-              style: TextStyle(
-                fontFamily: 'monospace',
-                fontSize: 13,
-                fontWeight: FontWeight.w600,
-                color: colorScheme.primary,
-              ),
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.end,
+              children: [
+                // Dimmer, never smaller: the two numbers have to line up
+                // digit for digit, and a second size would break that at
+                // the one moment it matters — reading them together.
+                Opacity(
+                  opacity: 0.62,
+                  child: Text(
+                    global == null ? '' : _frameLabel(global + 1),
+                    key: const ValueKey<String>(
+                      'timeline-global-frame-counter',
+                    ),
+                    style: style,
+                  ),
+                ),
+                Text(
+                  local,
+                  key: const ValueKey<String>('timeline-local-frame-counter'),
+                  style: style,
+                ),
+              ],
             );
           },
         ),

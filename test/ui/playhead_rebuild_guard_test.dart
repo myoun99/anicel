@@ -5,7 +5,6 @@ import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/models/playback_quality.dart';
-import 'package:anicel/src/ui/playback/playback_transport_controls.dart';
 import 'package:anicel/src/ui/timeline/timeline_section_policy.dart';
 import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_header.dart';
@@ -143,57 +142,43 @@ void main() {
     final session = await pumpNotifyWrappedHost(tester);
 
     Object toolbar() => tester.widget(find.byType(TimelineActionToolbar));
-    Object transport() => tester.widget(find.byType(PlaybackTransportControls));
 
-    // 1. The project frame-rate dropdown prints its label.
+    // ⛔The TRANSPORT is not on this bar any more (2026-08-10) — it rides the
+    // 문턱, mounted by the workspace — so the two-group half of this guard
+    // went with it. What replaces it is the INVERSE guard: the three values
+    // that left must no longer be able to reconstruct the toolbar.
+    //
+    // 1-3. fps, audio sample rate and playback quality are ENTRIES of the
+    // settings pill now, and a flyout builds its entries at OPEN time — so
+    // none of them is a value this bar renders. A token that still carried
+    // them would reconstruct ~20 buttons for a menu nobody has open.
     var before = toolbar();
     final oldRate = session.projectFrameRate;
     session.setProjectFps(session.projectFps + 5);
-    await tester.pump();
-    expect(session.projectFrameRate == oldRate, isFalse,
-        reason: 'sanity: the fps mutation must actually change the rate');
-    expect(identical(toolbar(), before), isFalse,
-        reason: 'the fps label change must refresh the toolbar');
-
-    // 2. The audio sample-rate dropdown prints its label.
-    before = toolbar();
     session.setProjectAudioSampleRate(
       session.projectAudioSampleRate == 48000 ? 44100 : 48000,
     );
-    await tester.pump();
-    expect(identical(toolbar(), before), isFalse,
-        reason: 'the sample-rate label change must refresh the toolbar');
-
-    // 3. Playback quality is a transport value-prop (its clock is live via
-    // AnimatedBuilder, but this is read as a plain value). It belongs to the
-    // TRANSPORT group alone — the action toolbar must ride through it.
-    before = transport();
-    var actionsBefore = toolbar();
     session.setPlaybackQuality(
       session.playbackQuality == PlaybackQuality.full
           ? PlaybackQuality.half
           : PlaybackQuality.full,
     );
     await tester.pump();
-    expect(identical(transport(), before), isFalse,
-        reason: 'a playback-quality change must refresh the transport');
-    expect(identical(toolbar(), actionsBefore), isTrue,
-        reason: 'the action toolbar shows no playback quality — it must not '
-            'be dragged along by the transport group');
+    expect(session.projectFrameRate == oldRate, isFalse,
+        reason: 'sanity: the fps mutation must actually change the rate');
+    expect(identical(toolbar(), before), isTrue,
+        reason: 'the toolbar prints no project axis and no playback quality '
+            '— they moved to the settings pill and must not drag it along');
 
     // 4. Landing a drawing flips the cell-sensitive enablements (which the
     // comma buttons and the Add button read through their can* getters).
-    // The frequent case, and the reason the groups are split: the transport
-    // shows none of it and must survive.
+    // The frequent case, and the one the gate exists for.
     before = toolbar();
-    final transportBefore = transport();
     session.selectFrameIndex(0);
     session.createDrawingAtCurrentFrame();
     await tester.pump();
     expect(identical(toolbar(), before), isFalse,
         reason: 'an enablement change must refresh the toolbar');
-    expect(identical(transport(), transportBefore), isTrue,
-        reason: 'an enablement change must NOT rebuild the transport');
 
     // 5. Moving the active layer refreshes it. HONEST SCOPE: this does not
     // isolate `activeLayer.kind` — a layer switch moves the can* getters
@@ -215,11 +200,10 @@ void main() {
     expect(identical(toolbar(), before), isFalse,
         reason: 'an active-layer change must refresh the toolbar');
 
-    // 6. The transport prints its mic tooltips in the PROGRAM language, and
+    // 6. Every pill's NAME CELL prints a word now (컷 · 레이어 · 프레임), and
     // a language switch fires no session notify at all — the gate has to be
-    // listening to it directly. Both groups print language, so both refresh.
+    // listening to it directly.
     before = toolbar();
-    final transportBeforeLanguage = transport();
     session.setLanguageSettings(
       AppLanguageSettings(
         programLanguage:
@@ -231,8 +215,18 @@ void main() {
     await tester.pump();
     expect(identical(toolbar(), before), isFalse,
         reason: 'a language change must refresh the toolbar');
-    expect(identical(transport(), transportBeforeLanguage), isFalse,
-        reason: 'a language change must refresh the transport too');
+
+    // 7. The layer pill promoted DELETE out of its menu, so its enablement
+    // is a value the bar renders — the completeness contract's newest entry.
+    session.selectLayer(session.layers.first.id);
+    await tester.pump();
+    before = toolbar();
+    while (session.canDeleteActiveLayer) {
+      session.deleteActiveLayer();
+      await tester.pump();
+    }
+    expect(identical(toolbar(), before), isFalse,
+        reason: 'the delete button losing its enablement must refresh the bar');
 
     await drainWarming(tester);
   });

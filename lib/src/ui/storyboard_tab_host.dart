@@ -12,11 +12,8 @@ import '../models/timeline_row_address.dart';
 import '../models/track.dart';
 import '../models/track_transform_lane_carrier.dart';
 import '../models/transform_track.dart';
-import 'camera/camera_view_toggle_button.dart';
 import 'cut_command_group.dart';
 import 'editor_session_manager.dart';
-import 'playback/canvas_playback_controller.dart';
-import 'playback/playback_transport_controls.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnailResolver;
 import 'storyboard_panel.dart';
 import 'timeline/timeline_row_filter.dart' show TimelineRowFilter;
@@ -61,7 +58,6 @@ class StoryboardTabHost extends StatefulWidget {
     this.trackLaneHeight = StoryboardPanel.defaultTrackLaneHeight,
     this.onTrackLaneHeightChanged,
     required this.thumbnailFor,
-    this.cameraViewEnabled,
     this.rowFilter = TimelineRowFilter.none,
     this.onSetRowFilter,
   });
@@ -101,10 +97,10 @@ class StoryboardTabHost extends StatefulWidget {
   /// survives tab switches.
   final StoryboardThumbnailResolver? thumbnailFor;
 
-  /// R28 #1: the workspace's camera-view state. The storyboard's command
-  /// bar carries the same toggle the timeline's does — one notifier, so
-  /// the two entrances can never disagree. Null = no button.
-  final ValueNotifier<bool>? cameraViewEnabled;
+  // ⛔The camera-view notifier is no longer this host's business. R28 #1 put
+  // the toggle beside the transport, and the transport moved to the 문턱
+  // (2026-08-10) — the workspace hands both to [FramePanelSillControls] now,
+  // so this panel neither mounts the button nor needs the state behind it.
 
   @override
   State<StoryboardTabHost> createState() => _StoryboardTabHostState();
@@ -174,19 +170,10 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     _activeCutFrameCursor.value = _session.currentFrameIndex;
   }
 
-  /// "To start" (REC1-B): the first cut's first frame — where an
-  /// all-cuts roll begins.
-  void _seekPlayheadToTrackStart() {
-    final layout = _activeTrackLayout();
-    if (layout.isEmpty) {
-      return;
-    }
-    final firstCutId = layout.first.cutId;
-    if (_session.activeCutOrNull?.id != firstCutId) {
-      _session.selectCut(firstCutId);
-    }
-    _session.selectFrameIndex(0);
-  }
+  // ⛔"To start" (REC1-B) is a free function now
+  // ([seekStoryboardPlayheadToTrackStart]): the button that calls it is the
+  // 문턱's, built by the workspace, and the layout cache it wants lives here.
+  // One implementation, two possible callers, no host method to reach for.
 
   @override
   void initState() {
@@ -404,31 +391,11 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
               child: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  PlaybackTransportControls(
-                    controller: _session.playback,
-                    scope: PlaybackScope.allCuts,
-                    quality: _session.playbackQuality,
-                    onQualityChanged: _session.setPlaybackQuality,
-                    resolveMeterPeaks: () =>
-                        _session.audioDeviceTransport.meterPeaks,
-                    isVoiceRecording: _session.isVoiceRecording,
-                    onToggleVoiceRecording: () =>
-                        toggleVoiceRecordingWithFeedback(context, _session),
-                    voiceRecordClipLit: _session.voiceRecordClipLit,
-                    resolveStrings: () => _session.uiStrings,
-                    // Play from the storyboard playhead, like the
-                    // timeline's transport does.
-                    playbackStartFrame: () =>
-                        storyboardPlayheadFrame(_session) ?? 0,
-                    onSkipToStart: _seekPlayheadToTrackStart,
-                  ),
-                  // R28 #1: camera view is a VIEW MODE, so every panel
-                  // with a transport carries the toggle beside it.
-                  CameraViewToggleButton(
-                    enabled: widget.cameraViewEnabled,
-                    keyValue: 'storyboard-camera-view-button',
-                  ),
-                  const SizedBox(width: 8),
+                  // ⛔The TRANSPORT and the camera-view toggle left this bar
+                  // (유저 확정, 2026-08-10): they are the 문턱's now, mounted
+                  // by the workspace through `EditorPanelTab.sillTrailing`
+                  // (see [FramePanelSillControls]). What stays here is what
+                  // reaches into THIS panel's own contents.
                   CutCommandGroup(session: _session),
                   const SizedBox(width: 4),
                   // The V row's fx (user 2026-08-08): a chain over the whole

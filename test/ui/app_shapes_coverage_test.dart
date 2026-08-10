@@ -122,7 +122,14 @@ void main() {
 /// `AppShapes.container(AppShapes.windowRadius)` inside the shell itself.
 /// **77** since the V row's transform teardown took the cut-fade envelope span
 /// with it — one corner fewer to convert, banked here rather than left as slack.
-const int _knownOffenders = 77;
+/// **75** since the command-pill round retired `SplitIconButton` — its
+/// hand-typed corners went with it, and the pill that replaced it wears
+/// `AppShapes.control` on both its border and its splash.
+///
+/// ⚠️Those two rounds ran in parallel and each lowered this to 77 for its own
+/// reason, so the merge had to RE-COUNT rather than take either number: two
+/// independent subtractions from the same total are not the same subtraction.
+const int _knownOffenders = 75;
 
 final RegExp _offending = RegExp(
   r'BorderRadius\.circular|RoundedRectangleBorder|ClipRRect',

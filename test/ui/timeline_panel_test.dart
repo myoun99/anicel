@@ -335,12 +335,22 @@ void main() {
   ) async {
     await tester.pumpWidget(_panel(currentFrameIndex: 3));
 
+    // The counter is TWO lines now (2026-08-10). On the timeline the top one
+    // is empty and KEPT: this panel is one cut's window, so there is no
+    // track-global frame to print — and holding the line is what puts the
+    // local number at the same height it sits at on the storyboard.
     expect(
       tester
           .widget<Text>(
-            find.byKey(
-              const ValueKey<String>('timeline-current-frame-counter'),
-            ),
+            find.byKey(const ValueKey<String>('timeline-global-frame-counter')),
+          )
+          .data,
+      isEmpty,
+    );
+    expect(
+      tester
+          .widget<Text>(
+            find.byKey(const ValueKey<String>('timeline-local-frame-counter')),
           )
           .data,
       '4',
