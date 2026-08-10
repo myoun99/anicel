@@ -1027,7 +1027,7 @@ class EditorSessionManager extends ChangeNotifier {
   /// away) falls back to the track row rather than lighting nothing.
   TimelineRowAddress get selectedRow {
     final row = _storyboardRow;
-    if (row is LayerRowAddress && isTrackSeLayerId(row.layerId)) {
+    if (row is LayerRowAddress && isTrackOwnedRailLayerId(row.layerId)) {
       return row;
     }
     return TrackRowAddress(selectedTrackId);
@@ -1048,7 +1048,8 @@ class EditorSessionManager extends ChangeNotifier {
         // the rail's row selection and the track selection must not
         // disagree (the range drag that follows a press resolves its rows
         // against the SELECTED track's rail).
-        final owner = _trackSeAnywhere(layerId)?.track;
+        final owner =
+            _trackSeAnywhere(layerId)?.track ?? _trackTransitionOwner(layerId);
         var trackMoved = false;
         if (owner != null && selectedTrackId != owner.id) {
           _editingSession.setSelectedTrackId(owner.id);
@@ -1180,6 +1181,32 @@ class EditorSessionManager extends ChangeNotifier {
   /// 독립적으로 움직일 수 있어야 해"). Which cut is open is not part of
   /// what a row IS.
   bool isTrackSeLayerId(LayerId layerId) => _trackSeAnywhere(layerId) != null;
+
+  /// The track that owns [layerId] as its TRANSITION row, on any track.
+  Track? _trackTransitionOwner(LayerId layerId) {
+    for (final track in _repository.requireProject().tracks) {
+      if (track.transitionLayer.id == layerId) {
+        return track;
+      }
+    }
+    return null;
+  }
+
+  bool isTrackTransitionLayerId(LayerId layerId) =>
+      _trackTransitionOwner(layerId) != null;
+
+  /// Whether [layerId] is a TRACK-OWNED row of the storyboard's rail — an SE
+  /// lane or the transition row.
+  ///
+  /// ★Deliberately not `isTrackSeLayerId` at the call sites that mean THIS.
+  /// "Is it an SE row" was standing in for "is it a row this rail can be
+  /// standing on", and the transition row is the second answer — the same
+  /// substitution that made the cut view's bulk verbs reach for a
+  /// track-owned row as if it were a cut layer. Row behaviour that really is
+  /// SE-specific (block snapping, sound order drags, range moves) keeps
+  /// asking the SE question.
+  bool isTrackOwnedRailLayerId(LayerId layerId) =>
+      isTrackSeLayerId(layerId) || isTrackTransitionLayerId(layerId);
 
   /// Whether the active row can carry an on-canvas name tag (R5b): the
   /// SE rows, and only while a cut gives the canvas its geometry.
@@ -1599,6 +1626,7 @@ class EditorSessionManager extends ChangeNotifier {
     brushInputActive.dispose();
     selectionInteractionActive.dispose();
     dragPreview.dispose();
+    transitionEdgeDragPreview.dispose();
     opacityDragPreview.dispose();
     onionSkinSettings.dispose();
     onionSkinLayerIds.dispose();
@@ -5133,17 +5161,20 @@ class EditorSessionManager extends ChangeNotifier {
       if (cameraInstructionIsTransition(def)) def,
   ];
 
-  /// The playhead on the TRACK's axis — where a transition span is placed.
-  int get currentGlobalFrameIndex =>
-      activeCutGlobalStartFrame + _timelineController.currentFrameIndex;
-
   /// Whether a transition span can start at the playhead: there has to be a
   /// vocabulary to draw from and no span there already.
+  ///
+  /// The playhead is [editingGlobalFrame] — the ONE track-global reader — and
+  /// not "cut start + local index". A parked playhead sits in a GAP with no
+  /// active cut, and a gap is a legitimate transition partner (a fade out to
+  /// black, or the のりしろ an animator gets by opening a gap in front of the
+  /// only cut they were given), so the arithmetic that needs a cut answers
+  /// wrong in precisely the case this row exists for.
   bool get canCreateTransitionSpanAtPlayhead {
     if (transitionInstructionDefs.isEmpty) {
       return false;
     }
-    final frame = currentGlobalFrameIndex;
+    final frame = editingGlobalFrame;
     if (frame < 0) {
       return false;
     }
@@ -5169,7 +5200,7 @@ class EditorSessionManager extends ChangeNotifier {
     final before = track.transitionLayer;
     final next = instructionMapWithEventAdded(
       before.instructions,
-      startIndex: currentGlobalFrameIndex,
+      startIndex: editingGlobalFrame,
       event: InstructionEvent(
         instructionId: transitionInstructionDefs.first.id,
         length: 1,
@@ -5212,6 +5243,148 @@ class EditorSessionManager extends ChangeNotifier {
     );
     _transitionDisplayClone = null;
     notifyListeners();
+  }
+
+  /// The vocabulary a transition dialog picks from — the same set object the
+  /// picker already takes, holding only the 場面転換 terms. The vocabulary
+  /// EDITOR is not offered from here: it commits the whole set, so editing a
+  /// filtered copy would delete every camera-work term.
+  CameraInstructionSet get transitionInstructionSet =>
+      CameraInstructionSet(defs: transitionInstructionDefs);
+
+  /// The transition span covering [globalFrame] on the active track, as
+  /// (startIndex, event); null on an empty cell. Frames are GLOBAL — this
+  /// row's axis is the track's.
+  MapEntry<int, InstructionEvent>? transitionSpanAt(int globalFrame) =>
+      instructionSpanCovering(
+        activeTrack.transitionLayer.instructions,
+        globalFrame,
+      );
+
+  /// Replaces the event of the span covering [globalFrame], keeping its start
+  /// and length (the grips own those). No-op on an empty cell — creation is
+  /// [createTransitionSpanAtPlayhead]'s job, so the dialog can never move a
+  /// span by re-picking its term.
+  void replaceTransitionEventAt(int globalFrame, InstructionEvent event) {
+    final covering = transitionSpanAt(globalFrame);
+    if (covering == null) {
+      return;
+    }
+    final next = instructionMapWithEventReplaced(
+      activeTrack.transitionLayer.instructions,
+      spanStartIndex: covering.key,
+      event: event,
+    );
+    if (next == null) {
+      return;
+    }
+    updateTransitionInstructions(next, description: 'Edit transition');
+  }
+
+  /// Removes the transition span covering [globalFrame]; one undo step.
+  void removeTransitionSpanAt(int globalFrame) {
+    final covering = transitionSpanAt(globalFrame);
+    if (covering == null) {
+      return;
+    }
+    final next = instructionMapWithEventRemoved(
+      activeTrack.transitionLayer.instructions,
+      spanStartIndex: covering.key,
+    );
+    if (next == null) {
+      return;
+    }
+    updateTransitionInstructions(next, description: 'Delete transition');
+  }
+
+  // --- The transition row's edge drags -------------------------------------
+  //
+  // The grip widget, the callback shape and the pure span edit are the
+  // direction row's, unchanged. What differs is WHICH map the delta lands in
+  // (the track's, on the global axis) and which command commits it — so this
+  // is its own small verb rather than a branch inside the exposure drag,
+  // whose commit writes CUT layers and whose bulk/ripple/cut-sync machinery
+  // means nothing to a span that owns no cels.
+
+  Layer? _transitionEdgeBefore;
+  int? _transitionEdgeSpanStart;
+  TimelineBlockEdge? _transitionEdgeEdge;
+  Layer? _transitionEdgeAfter;
+
+  /// The transition row as the in-flight edge drag would leave it — the
+  /// strip renders THIS while a grip is held, so the mark follows the hand
+  /// instead of jumping on release. Null when no drag is in flight.
+  final ValueNotifier<Layer?> transitionEdgeDragPreview = ValueNotifier(null);
+
+  /// Grabs [edge] of the transition span starting at [spanStartIndex]
+  /// (GLOBAL frame); false when no span starts there.
+  ///
+  /// [layerId], when given, must BE the active track's transition row. Every
+  /// verb here is active-track scoped (as `activeTrackTransitionSpans`, the
+  /// sheet and the compositor all are), so a grip belonging to another
+  /// track's row is refused rather than silently retiming this track's span.
+  /// Pressing a row selects its track, which is how that grip becomes
+  /// reachable.
+  bool beginTransitionEdgeDrag({
+    required int spanStartIndex,
+    required TimelineBlockEdge edge,
+    LayerId? layerId,
+  }) {
+    final layer = activeTrack.transitionLayer;
+    if (layerId != null && layerId != layer.id) {
+      return false;
+    }
+    if (!layer.instructions.containsKey(spanStartIndex)) {
+      return false;
+    }
+    _transitionEdgeBefore = layer;
+    _transitionEdgeSpanStart = spanStartIndex;
+    _transitionEdgeEdge = edge;
+    _transitionEdgeAfter = null;
+    return true;
+  }
+
+  void updateTransitionEdgeDrag(int cumulativeDelta) {
+    final before = _transitionEdgeBefore;
+    final spanStart = _transitionEdgeSpanStart;
+    final edge = _transitionEdgeEdge;
+    if (before == null || spanStart == null || edge == null) {
+      return;
+    }
+    final next = instructionMapWithEdgeShifted(
+      before.instructions,
+      spanStartIndex: spanStart,
+      startEdge: edge == TimelineBlockEdge.start,
+      delta: cumulativeDelta,
+    );
+    _transitionEdgeAfter = next == null
+        ? null
+        : before.copyWith(instructions: next);
+    transitionEdgeDragPreview.value = _transitionEdgeAfter;
+  }
+
+  /// Commits the drag as ONE undo step through the row's own writer.
+  void endTransitionEdgeDrag() {
+    final before = _transitionEdgeBefore;
+    final after = _transitionEdgeAfter;
+    _clearTransitionEdgeDrag();
+    if (before == null || after == null || after == before) {
+      return;
+    }
+    updateTransitionInstructions(
+      after.instructions,
+      description: 'Resize transition',
+    );
+  }
+
+  void cancelTransitionEdgeDrag() => _clearTransitionEdgeDrag();
+
+  void _clearTransitionEdgeDrag() {
+    _transitionEdgeBefore = null;
+    _transitionEdgeSpanStart = null;
+    _transitionEdgeEdge = null;
+    _transitionEdgeAfter = null;
+    transitionEdgeDragPreview.value = null;
   }
 
   /// The instruction span covering [frameIndex] on [layerId], as
