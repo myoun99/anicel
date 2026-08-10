@@ -7,6 +7,7 @@ import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
@@ -14,6 +15,8 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
+    show effectGroupLaneId, effectLaneId;
 
 /// UI-R5 ③b: the storyboard wears the timeline's STANDING visual.
 ///
@@ -43,6 +46,11 @@ Cut _cut(String id, int duration) {
   );
 }
 
+/// The V row's own lanes are its EFFECT chain since the transform teardown, so
+/// the fixture carries one — otherwise the row's twirl-down is empty and there
+/// is no V lane row to stand on.
+const _trackEffect = EffectId('sb-fx');
+
 Project _project() {
   return Project(
     id: const ProjectId('sb-standing-project'),
@@ -53,6 +61,13 @@ Project _project() {
         id: const TrackId('sb-track'),
         name: 'Video',
         cuts: [_cut('cut-1', 8), _cut('cut-2', 6)],
+        effects: [
+          LayerEffect(
+            id: _trackEffect,
+            kind: EffectKind.brightnessContrast,
+            parameters: {'brightness': EffectParameter(value: 0.4)},
+          ),
+        ],
         seLayers: [
           Layer(
             id: const LayerId('se-row-1'),
@@ -262,6 +277,9 @@ void main() {
     );
   });
 
+  /// Twirls the V row's lanes open, then its EFFECT group. There is no
+  /// Transform group in between any more — a track row does not own one — so
+  /// the fx chain is the whole twirl-down.
   Future<void> twirlOpenVLanes(WidgetTester tester) async {
     await tester.tap(
       find.byKey(
@@ -271,48 +289,27 @@ void main() {
     await tester.pumpAndSettle();
     await tester.tap(
       find.byKey(
-        const ValueKey<String>(
-          'storyboard-lane-group-toggle-v-track:sb-track-transform-group',
+        ValueKey<String>(
+          'storyboard-lane-group-toggle-v-track:sb-track-'
+          '${effectGroupLaneId(_trackEffect)}',
         ),
       ),
     );
     await tester.pumpAndSettle();
   }
 
-  /// Scrolls [finder] into the panel's viewport, then taps it.
-  ///
-  /// The twirled-open V lanes sit at the BOTTOM of the group, so every row the
-  /// rail gains pushes them further down and eventually past the viewport's
-  /// clip — where `getRect` still reports a layout position but a tap cannot
-  /// land, which reads as "standing never moved" rather than as an off-screen
-  /// target. The rail and the strips share ONE vertical viewport, so this
-  /// scroll moves both and the ring/row comparison stays valid.
-  Future<void> scrollToAndTap(WidgetTester tester, Finder finder) async {
-    await tester.ensureVisible(finder);
-    await tester.pumpAndSettle();
-    await tester.tap(finder);
-    await tester.pumpAndSettle();
-  }
-
-  testWidgets('the FADE row is the Opacity lane\'s row: standing on it rings '
-      'there, not back on the V row', (tester) async {
-    await pumpStoryboard(tester);
-    await twirlOpenVLanes(tester);
-
-    // The one V lane whose strip is not a key-marker band — it draws the
-    // cut fades. Standing has to reach it anyway, or the ring answers for
-    // a row the user is not on.
-    await scrollToAndTap(
-      tester,
-      find.byKey(
-        const ValueKey<String>(
-          'storyboard-lane-label-v-track:sb-track-opacity',
-        ),
-      ),
-    );
-
-    expectRingOnRow(tester, 'storyboard-opacity-lane-row-0');
-  });
+  // `scrollToAndTap` went with the FADE row's test. ⚠️Its reason has NOT gone
+  // away and the next test that reaches a twirled-open V lane needs it back:
+  // those lanes sit at the BOTTOM of the group, so every row the rail gains
+  // pushes them past the viewport's clip — where `getRect` still reports a
+  // layout position but a tap cannot land, which reads as "standing never
+  // moved" rather than as an off-screen target. `ensureVisible` first; the rail
+  // and the strips share ONE vertical viewport, so the scroll moves both and
+  // the ring/row comparison stays valid.
+  //
+  // The FADE row's test itself is gone with the cut-fade envelope: the V row's
+  // Opacity lane no longer exists, and the fade it drew is F.I/F.O spans on the
+  // transition row.
 
   testWidgets('standing on a V LANE row rings the lane, not its track row', (
     tester,
@@ -320,10 +317,12 @@ void main() {
     await pumpStoryboard(tester);
     await twirlOpenVLanes(tester);
 
-    // Stand on the Position lane by pressing its band — the storyboard's
-    // own press path (R5 ③a), through the real host wiring.
+    // Stand on the effect's parameter lane by pressing its band — the
+    // storyboard's own press path (R5 ③a), through the real host wiring. The
+    // lane KIND changed with the teardown; the contract did not.
+    final laneId = effectLaneId(_trackEffect, 'brightness');
     final laneRow = find.byKey(
-      const ValueKey<String>('storyboard-track-lane-row-0-position'),
+      ValueKey<String>('storyboard-track-lane-row-0-$laneId'),
     );
     await tester.ensureVisible(laneRow);
     await tester.pumpAndSettle();
@@ -331,7 +330,7 @@ void main() {
     await tester.tapAt(Offset(rowRect.left + 6, rowRect.center.dy));
     await tester.pumpAndSettle();
 
-    expectRingOnRow(tester, 'storyboard-track-lane-row-0-position');
+    expectRingOnRow(tester, 'storyboard-track-lane-row-0-$laneId');
     expect(
       find.byKey(const ValueKey<String>('storyboard-standing-cell')),
       findsOneWidget,

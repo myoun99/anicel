@@ -8,7 +8,6 @@ import '../../models/cut.dart';
 import '../../models/playback_quality.dart';
 import '../../models/project_background.dart';
 import '../../services/se_name_tag_plan.dart';
-import '../canvas/layer_pose_paint.dart' show LayerPoseSample;
 import 'cut_frame_composite_cache.dart';
 import 'playback_frame_painter.dart';
 
@@ -30,7 +29,6 @@ class CanvasScrubPreview extends StatefulWidget {
     required this.compositeCache,
     required this.cut,
     required this.qualityOf,
-    this.cutPoseSampleAt,
     this.cutFadeOpacityAt,
     this.seNameTagsAt,
     this.viewport,
@@ -59,9 +57,8 @@ class CanvasScrubPreview extends StatefulWidget {
   /// parking per move on its own. Null = the void.
   final WidgetBuilder? gapContentBuilder;
 
-  /// The canvas-space cut pose per cursor frame (fx-gated by the caller —
-  /// the same sample the editing canvas wraps with, R9-B). Null = identity.
-  final LayerPoseSample? Function(int frameIndex)? cutPoseSampleAt;
+  // `cutPoseSampleAt` went with the V row's transform: there is no cut-level
+  // pose for a scrub to sample.
 
   /// The cut fade per cursor frame (fx-gated by the caller, R9-C → R3b:
   /// transparency — the painter thins the cut's unit, revealing the
@@ -164,15 +161,12 @@ class _CanvasScrubPreviewState extends State<CanvasScrubPreview> {
       _heldFrame = composite.clone();
     }
 
-    final poseSample = widget.cutPoseSampleAt?.call(frameIndex);
     return SizedBox.expand(
       child: CustomPaint(
         painter: PlaybackFramePainter(
           image: _heldFrame,
           canvasSize: cut.canvasSize,
           viewport: widget.viewport,
-          cutPose: poseSample?.pose,
-          cutAnchorPoint: poseSample?.anchorPoint,
           paperBackground: widget.paperBackground,
           fadeOpacity: widget.cutFadeOpacityAt?.call(frameIndex) ?? 1,
           seNameTags: widget.seNameTagsAt?.call(frameIndex) ?? const [],

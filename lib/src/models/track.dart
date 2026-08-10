@@ -5,8 +5,6 @@ import 'layer_effect.dart';
 import 'layer_section_defaults.dart';
 import 'track_id.dart';
 import 'track_se_migration.dart';
-import 'track_transform_migration.dart';
-import 'transform_track.dart';
 
 enum TrackType { video, audio }
 
@@ -17,7 +15,6 @@ class Track {
     required List<Cut> cuts,
     List<Layer> seLayers = const [],
     Layer? transitionLayer,
-    TransformTrack? transformTrack,
     List<LayerEffect> effects = const [],
     this.type = TrackType.video,
     this.opacity = 1.0,
@@ -25,8 +22,7 @@ class Track {
   }) : cuts = List.unmodifiable(cuts),
        seLayers = List.unmodifiable(seLayers),
        effects = List.unmodifiable(effects),
-       transitionLayer = transitionLayer ?? createTrackTransitionLayer(id),
-       transformTrack = transformTrack ?? TransformTrack.empty();
+       transitionLayer = transitionLayer ?? createTrackTransitionLayer(id);
 
   final TrackId id;
   final String name;
@@ -53,27 +49,33 @@ class Track {
   /// backfill one on load, so no consumer has to handle its absence.
   final Layer transitionLayer;
 
-  /// The V track's own effects (R4): pose lanes + the fade's opacity lane,
-  /// keys on the track's GLOBAL frame axis — TRACK-owned, exactly like
-  /// [seLayers]. Cut trims/reorders do NOT move these keys, keys exist
-  /// with no cut under them, and moving them together is a SELECTION (the
-  /// user's independence rule, 2026-07-29). Display/export resolve per
-  /// global frame; never baked into composites.
-  final TransformTrack transformTrack;
+  // A track HAD a transform of its own — pose lanes plus the fade's opacity
+  // lane, on the global axis. It is gone (user, 2026-08-09/08-10), and what
+  // replaces it is a RULE rather than a deletion: [timelineRowOwnsTransform],
+  // which the rails ask, so another row can be given the same answer in one
+  // case instead of a hand-edit per rail.
+  //
+  // It meant AE PRECOMP: a whole track's finished output posed on the camera's
+  // stage. That needs several tracks to mean anything, and with no V-track
+  // authoring there is only ever one — moving it is moving the film, which is
+  // the camera's job. Its opacity lane carried the cut fade; F.I/F.O spans on
+  // [transitionLayer] carry that now, where the span's length IS the ramp and
+  // two overlapping cuts can hold different values.
 
   /// The V track's EFFECT CHAIN — the same [LayerEffect] vocabulary a layer
   /// carries, one level up: a layer's chain filters that layer's picture,
   /// and this one filters the whole COMPOSITED CUT under the playhead (user
   /// 2026-08-08: "레이어에 fx 거는 거랑 똑같이 컷에 fx를 거는 느낌").
   ///
-  /// TRACK-owned with keys on the GLOBAL frame axis, exactly like
-  /// [transformTrack] and for the same reason (R4): a cut trim or reorder
-  /// must not drag the V row's authoring with it. A grade that should end
-  /// with a cut is keyed to end there.
+  /// TRACK-owned with keys on the GLOBAL frame axis (R4): a cut trim or
+  /// reorder must not drag the V row's authoring with it. A grade that should
+  /// end with a cut is keyed to end there.
   ///
-  /// Applied where the pose and the fade are applied — around the cut's
-  /// composited picture in each render route, never baked — and bypassed
-  /// together with them by [fxEnabled].
+  /// STAYS through the transform teardown, on purpose — the user's rule was
+  /// "the transform member goes, but effects must still be addable".
+  ///
+  /// Applied around the cut's composited picture in each render route, never
+  /// baked, and bypassed by [fxEnabled].
   final List<LayerEffect> effects;
 
   final TrackType type;
@@ -102,7 +104,6 @@ class Track {
     List<Cut>? cuts,
     List<Layer>? seLayers,
     Layer? transitionLayer,
-    TransformTrack? transformTrack,
     List<LayerEffect>? effects,
     TrackType? type,
     double? opacity,
@@ -114,7 +115,6 @@ class Track {
       cuts: cuts ?? this.cuts,
       seLayers: seLayers ?? this.seLayers,
       transitionLayer: transitionLayer ?? this.transitionLayer,
-      transformTrack: transformTrack ?? this.transformTrack,
       effects: effects ?? this.effects,
       type: type ?? this.type,
       opacity: opacity ?? this.opacity,
@@ -132,7 +132,9 @@ class Track {
     // that never used one keeps exactly the shape it had.
     if (transitionLayer != createTrackTransitionLayer(id))
       'transition': transitionLayer.toJson(),
-    if (transformTrack.isNotEmpty) 'transform': transformTrack.toJson(),
+    // No 'transform' key any more: the V row has no transform. A file that
+    // carries one still LOADS — the key is read and dropped — so an old
+    // project opens one row lighter rather than failing.
     if (effects.isNotEmpty)
       'effects': [for (final effect in effects) effect.toJson()],
     'type': type.name,
@@ -146,13 +148,9 @@ class Track {
     final id = TrackId.fromJson(json['id'] as Map<String, dynamic>);
     final cutsJson = (json['cuts'] as List<dynamic>).cast<Map<String, dynamic>>();
     final cuts = cutsJson.map(Cut.fromJson).toList();
-    // Legacy shape (no track transform key): the V effects lived on each
-    // cut — lift them onto the global axis (shape-based migration, the SE
-    // lift's convention; Cut.fromJson itself ignores 'transform' now).
-    final transformJson = json['transform'];
-    final transformTrack = transformJson is Map<String, dynamic>
-        ? TransformTrack.fromJson(transformJson)
-        : liftCutTransformsToTrack(cutsJson);
+    // A 'transform' key written before the teardown is read and DROPPED, as is
+    // the per-cut transform an even older file kept: there is nothing to load
+    // them into. Old projects open, one row lighter.
     // Missing key = a file written before the transition row existed: it
     // backfills a fresh empty one, so nothing downstream sees an absence.
     final transitionJson = json['transition'];
@@ -179,7 +177,6 @@ class Track {
               .toList(),
         ),
         transitionLayer: transitionLayer,
-        transformTrack: transformTrack,
         effects: effects,
         type: TrackType.values.byName(json['type'] as String),
         opacity: opacity,
@@ -197,7 +194,6 @@ class Track {
       cuts: lifted.cuts,
       seLayers: lifted.seLayers,
       transitionLayer: transitionLayer,
-      transformTrack: transformTrack,
       effects: effects,
       type: TrackType.values.byName(json['type'] as String),
       opacity: opacity,
@@ -214,7 +210,6 @@ class Track {
           listEquals(other.cuts, cuts) &&
           listEquals(other.seLayers, seLayers) &&
           other.transitionLayer == transitionLayer &&
-          other.transformTrack == transformTrack &&
           listEquals(other.effects, effects) &&
           other.type == type &&
           other.opacity == opacity &&
@@ -227,7 +222,6 @@ class Track {
     Object.hashAll(cuts),
     Object.hashAll(seLayers),
     transitionLayer,
-    transformTrack,
     Object.hashAll(effects),
     type,
     opacity,
@@ -237,6 +231,6 @@ class Track {
   @override
   String toString() =>
       'Track(id: $id, name: $name, cuts: $cuts, seLayers: $seLayers, '
-      'transition: $transitionLayer, transform: $transformTrack, '
+      'transition: $transitionLayer, '
       'type: $type)';
 }

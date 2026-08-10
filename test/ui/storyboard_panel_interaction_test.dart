@@ -1,13 +1,14 @@
+import 'dart:collection';
 import 'dart:ui' as ui;
 
 import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/camera_instruction.dart'
+    show InstructionEvent;
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
-import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame.dart';
 import 'package:anicel/src/models/frame_id.dart';
@@ -274,8 +275,8 @@ void main() {
       expect(began, isEmpty);
     });
 
-    testWidgets('the slide still works when the track carries fx transform '
-        'keys (R12-⑧, R4: track-owned lanes)', (tester) async {
+    testWidgets('the slide still works when the track carries TRANSITION spans '
+        '(R12-⑧, R4: track-owned authoring)', (tester) async {
       final began = <CutId>[];
       final updates = <int>[];
 
@@ -287,24 +288,19 @@ void main() {
         layers: [_animationLayer('animation-cut-b')],
       );
       final base = _singleTrackProject([_cut('cut-a', name: 'Cut A'), keyed]);
+      final track = base.tracks.first;
       await _pumpStoryboardPanel(
         tester,
         base.copyWith(
           tracks: [
-            base.tracks.first.copyWith(
-              transformTrack: TransformTrack(
-                keyframes: {
-                  0: TransformPose(
-                    center: CanvasPoint(x: 640, y: 360),
-                    zoom: 1.2,
-                    rotationDegrees: 0,
-                  ),
-                  12: TransformPose(
-                    center: CanvasPoint(x: 700, y: 360),
-                    zoom: 1.0,
-                    rotationDegrees: 5,
-                  ),
-                },
+            // The V row's transform is gone; what a track owns on the global
+            // axis now is its transition spans, so that is what the slide
+            // must not disturb.
+            track.copyWith(
+              transitionLayer: track.transitionLayer.copyWith(
+                instructions: SplayTreeMap<int, InstructionEvent>.from({
+                  10: const InstructionEvent(instructionId: 'ol', length: 6),
+                }),
               ),
             ),
           ],

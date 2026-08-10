@@ -65,7 +65,6 @@ import 'update_cut_camera_command.dart';
 import 'update_cut_note_command.dart';
 import 'update_track_display_command.dart';
 import 'update_track_effects_command.dart';
-import 'update_track_transform_command.dart';
 import 'update_cut_thumbnail_frame_command.dart';
 import 'update_layer_audio_clips_command.dart';
 import 'update_se_name_tag_command.dart';
@@ -395,32 +394,9 @@ class CutCommandCoordinator {
     );
   }
 
-  /// Replaces a TRACK's transform lanes in one undo step (R4: the V
-  /// effects are track data on the global axis; fades key the opacity
-  /// lane through the same write).
-  void updateTrackTransform({
-    required TrackId trackId,
-    required TransformTrack transformTrack,
-    String description = 'Edit track transform',
-  }) {
-    for (final track in repository.requireProject().tracks) {
-      if (track.id == trackId) {
-        if (track.transformTrack == transformTrack) {
-          return;
-        }
-        break;
-      }
-    }
-
-    historyManager.execute(
-      UpdateTrackTransformCommand(
-        repository: repository,
-        trackId: trackId,
-        transformTrack: transformTrack,
-        description: description,
-      ),
-    );
-  }
+  // `updateTrackTransform` retired with the V row's transform. The fade it
+  // wrote is F.I/F.O spans on the transition row now
+  // ([EditorSessionManager.updateTransitionInstructions]).
 
   /// Replaces the V track's EFFECT CHAIN; one undo step, no-op when
   /// unchanged.

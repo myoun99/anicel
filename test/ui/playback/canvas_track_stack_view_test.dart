@@ -11,10 +11,8 @@ import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
-import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/models/transition_geometry.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/playback/playback_frame_mapping.dart';
@@ -98,7 +96,7 @@ void main() {
     required List<StoryboardTimelineLayoutEntry> layout,
     bool Function(CutId cutId)? cutFxEnabledOf,
     bool Function(CutId cutId)? cutPictureVisibleOf,
-    TransformTrack Function(CutId cutId)? transformTrackOf,
+    double Function(CutId cutId)? trackStaticOpacityOf,
     List<TransitionSpan> Function(TrackId trackId)? spansOf,
     bool cameraViewEnabled = true,
   }) async {
@@ -120,7 +118,7 @@ void main() {
                 CameraPose(center: CanvasPoint(x: 4, y: 4)),
             cutFxEnabledOf: cutFxEnabledOf,
             cutPictureVisibleOf: cutPictureVisibleOf,
-            transformTrackOf: transformTrackOf,
+            trackStaticOpacityOf: trackStaticOpacityOf,
             pasteboardArgb: 0xff123456,
           ),
         ),
@@ -295,19 +293,11 @@ void main() {
     f.composites.dispose();
   });
 
-  testWidgets('the V-row display gates apply per track: fx off bypasses '
-      'the track pose AND fade, the eye off drops that track\'s picture '
-      'alone', (tester) async {
-    // track-1 carries a geometric key + an opacity key: posed and fading.
-    final trackOne = TransformTrack.empty().copyWith(
-      position: PropertyTrack<CanvasPoint>.empty().withKey(
-        0,
-        CanvasPoint(x: 6, y: 4),
-      ),
-      opacity: PropertyTrack<double>.empty().withKey(0, 0.5),
-    );
-    TransformTrack transformTrackOf(CutId cutId) =>
-        cutId == const CutId('cut-a') ? trackOne : TransformTrack.empty();
+  // The pose and animated-fade halves of the V-row display gates went with the
+  // V row's transform. The EYE is still a per-track gate.
+  testWidgets('the V-row eye drops THAT track\'s picture alone', (
+    tester,
+  ) async {
     final posed = fixture();
     await warm(tester, posed.composites, posed.layout, [
       ('cut-a', 3),
@@ -319,28 +309,6 @@ void main() {
       composites: posed.composites,
       frame: posed.frame,
       layout: posed.layout,
-      transformTrackOf: transformTrackOf,
-    );
-    expect(paintersOf(tester)[0].cutPose, isNotNull);
-    expect(paintersOf(tester)[0].fadeOpacity, 0.5);
-
-    await pumpView(
-      tester,
-      composites: posed.composites,
-      frame: posed.frame,
-      layout: posed.layout,
-      transformTrackOf: transformTrackOf,
-      cutFxEnabledOf: (cutId) => cutId != const CutId('cut-a'),
-    );
-    expect(paintersOf(tester)[0].cutPose, isNull, reason: 'pose bypassed');
-    expect(paintersOf(tester)[0].fadeOpacity, 1, reason: 'fade bypassed');
-
-    await pumpView(
-      tester,
-      composites: posed.composites,
-      frame: posed.frame,
-      layout: posed.layout,
-      transformTrackOf: transformTrackOf,
       cutPictureVisibleOf: (cutId) => cutId != const CutId('cut-a'),
     );
     expect(paintersOf(tester)[0].image, isNull, reason: 'eye off');
@@ -349,17 +317,14 @@ void main() {
     posed.composites.dispose();
   });
 
-  testWidgets('fades split by stack position: the bottom track washes the '
+  testWidgets('opacity splits by stack position: the bottom track washes the '
       'frame (playback parity), an upper track thins its own contribution '
       'instead of blanking the stage below', (tester) async {
-    // Both tracks mid-fade at the parked frame.
-    final trackFades = <CutId, TransformTrack>{
-      const CutId('cut-a'): TransformTrack.empty().copyWith(
-        opacity: PropertyTrack<double>.empty().withKey(0, 0.5),
-      ),
-      const CutId('cut-c'): TransformTrack.empty().copyWith(
-        opacity: PropertyTrack<double>.empty().withKey(0, 0.25),
-      ),
+    // The animated fade lane is gone; a track's STATIC opacity is what thins
+    // it now, and the stack-position split is unchanged.
+    final opacities = <CutId, double>{
+      const CutId('cut-a'): 0.5,
+      const CutId('cut-c'): 0.25,
     };
     final fading = fixture();
     await warm(tester, fading.composites, fading.layout, [
@@ -372,8 +337,7 @@ void main() {
       composites: fading.composites,
       frame: fading.frame,
       layout: fading.layout,
-      transformTrackOf: (cutId) =>
-          trackFades[cutId] ?? TransformTrack.empty(),
+      trackStaticOpacityOf: (cutId) => opacities[cutId] ?? 1.0,
     );
 
     final painters = paintersOf(tester);

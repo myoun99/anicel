@@ -4,7 +4,6 @@ import 'package:flutter/gestures.dart' show kSecondaryButton;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/audio_clip.dart';
-import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
@@ -14,7 +13,6 @@ import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
-import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/ui/timeline/property_lane_model.dart'
     show PropertyLaneEditCallbacks;
 import 'package:anicel/src/ui/timeline/timeline_exposure_comma_drag_policy.dart'
@@ -25,13 +23,8 @@ import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
-import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/services/audio/audio_peaks_extractor.dart';
-import 'package:anicel/src/ui/storyboard_cut_fade_policy.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
-import 'package:anicel/src/ui/theme/app_theme.dart' show AppColors;
-import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
-    show railSelectedRowColor;
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
     show
         LayerRowDragState,
@@ -60,7 +53,6 @@ Layer _seLayer() => Layer(
 Project _project({
   Cut Function(Cut cut)? mapCut,
   List<Layer>? seLayers,
-  TransformTrack? transformTrack,
 }) {
   var cut = Cut(
     id: const CutId('lane-cut'),
@@ -83,8 +75,6 @@ Project _project({
         cuts: [cut],
         // SE rows are TRACK-owned (global frame axis).
         seLayers: seLayers ?? [_seLayer()],
-        // The V effects too (R4): lanes keyed on the track's global axis.
-        transformTrack: transformTrack,
       ),
     ],
   );
@@ -176,76 +166,36 @@ Future<void> _pumpPanel(
   await tester.pumpAndSettle();
 }
 
-/// Twirls down the V track and its Transform group (AE double step: the
-/// chevron reveals the group header, the header opens the lanes).
-Future<void> _expandVTransform(WidgetTester tester) async {
-  await tester.tap(
-    find.byKey(
-      const ValueKey<String>('storyboard-track-lane-toggle-lane-track'),
-    ),
-  );
-  await tester.pumpAndSettle();
-  await tester.tap(
-    find.byKey(
-      const ValueKey<String>(
-        'storyboard-lane-group-toggle-v-track:lane-track-transform-group',
-      ),
-    ),
-  );
-  await tester.pumpAndSettle();
-}
+// `_expandVTransform` went with the V row's Transform group: the chevron opens
+// the row's fx chain now, and an effect group opens by its own header.
 
 void main() {
-  testWidgets('a V lane label stands on its row and wears the wash — the '
-      'rail half of R10 #19, on the third surface', (tester) async {
-    const laneRow = LaneRowAddress(
-      LayerId('v-track:lane-track'),
-      'transform-group',
-    );
-    final currentRow = ValueNotifier<TimelineRowAddress?>(null);
-    addTearDown(currentRow.dispose);
-    final stood = <TimelineRowAddress>[];
-
-    await _pumpPanel(
-      tester,
-      project: _project(),
-      currentRowHooks: TimelineCurrentRowHooks(
-        currentRow: currentRow,
-        onStandOnLane: (layerId, laneId) =>
-            stood.add(LaneRowAddress(layerId, laneId)),
-      ),
-    );
-    await _expandVTransform(tester);
-
-    final header = find.byKey(
-      const ValueKey<String>(
-        'storyboard-lane-label-v-track:lane-track-transform-group',
-      ),
-    );
-    BoxDecoration plate() =>
-        tester.widget<Container>(header).decoration! as BoxDecoration;
-    expect(plate().color, AppColors.washDown);
-
+  testWidgets('the V row\'s chevron opens its fx chain and NO Transform group '
+      '— a track row does not own one', (tester) async {
+    await _pumpPanel(tester, project: _project());
     await tester.tap(
-      find.descendant(of: header, matching: find.text('Transform')),
-      warnIfMissed: false,
+      find.byKey(
+        const ValueKey<String>('storyboard-track-lane-toggle-lane-track'),
+      ),
     );
     await tester.pumpAndSettle();
 
-    expect(stood, [laneRow], reason: 'the storyboard threads the same bundle');
-    // The press left the group OPEN: the chevron owns the twirl here too.
     expect(
       find.byKey(
-        const ValueKey<String>('storyboard-track-lane-row-0-position'),
+        const ValueKey<String>(
+          'storyboard-lane-group-toggle-v-track:lane-track-transform-group',
+        ),
       ),
-      findsOneWidget,
+      findsNothing,
     );
-
-    currentRow.value = laneRow;
-    await tester.pumpAndSettle();
     expect(
-      plate().color,
-      railSelectedRowColor(Theme.of(tester.element(header)).colorScheme),
+      find.byKey(
+        const ValueKey<String>(
+          'storyboard-lane-label-v-track:lane-track-transform-group',
+        ),
+      ),
+      findsNothing,
+      reason: 'nor on the rail — the rail ASKS the policy instead of deciding',
     );
   });
 
@@ -319,109 +269,6 @@ void main() {
       find.byKey(const ValueKey<String>('storyboard-layer-visibility-lane-se')),
       findsOneWidget,
       reason: 'the SE eye survives the no-cut state',
-    );
-  });
-
-  testWidgets('the V-track chevron twirls down the Transform GROUP header '
-      '(collapsed, AE-style) and the header opens the lanes with the '
-      'fade-envelope Opacity strip last', (tester) async {
-    await _pumpPanel(tester, project: _project());
-
-    // Collapsed: no lane rows at all.
-    expect(
-      find.byKey(
-        const ValueKey<String>('storyboard-track-lane-row-0-transform-group'),
-      ),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-opacity-lane-row-0')),
-      findsNothing,
-    );
-
-    await tester.tap(
-      find.byKey(
-        const ValueKey<String>('storyboard-track-lane-toggle-lane-track'),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    // The group header shows, its members stay collapsed (default).
-    expect(
-      find.byKey(
-        const ValueKey<String>(
-          'storyboard-lane-label-v-track:lane-track-transform-group',
-        ),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-opacity-lane-row-0')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(
-        const ValueKey<String>('storyboard-track-lane-row-0-position'),
-      ),
-      findsNothing,
-    );
-
-    await tester.tap(
-      find.byKey(
-        const ValueKey<String>(
-          'storyboard-lane-group-toggle-v-track:lane-track-transform-group',
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-
-    // AE order: Anchor Point / Position / Scale / Rotation / Opacity —
-    // the Opacity strip IS the cut-fade envelope row.
-    for (final laneId in ['anchor-point', 'position', 'scale', 'rotation']) {
-      expect(
-        find.byKey(
-          ValueKey<String>('storyboard-lane-label-v-track:lane-track-$laneId'),
-        ),
-        findsOneWidget,
-      );
-      expect(
-        find.byKey(ValueKey<String>('storyboard-track-lane-row-0-$laneId')),
-        findsOneWidget,
-      );
-    }
-    expect(
-      find.byKey(
-        const ValueKey<String>(
-          'storyboard-lane-label-v-track:lane-track-opacity',
-        ),
-      ),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-opacity-lane-row-0')),
-      findsOneWidget,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-cut-fade-span-lane-cut')),
-      findsOneWidget,
-    );
-
-    // The chevron twirls the whole group back up.
-    await tester.tap(
-      find.byKey(
-        const ValueKey<String>('storyboard-track-lane-toggle-lane-track'),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(
-      find.byKey(const ValueKey<String>('storyboard-opacity-lane-row-0')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(
-        const ValueKey<String>('storyboard-track-lane-row-0-transform-group'),
-      ),
-      findsNothing,
     );
   });
 
@@ -499,61 +346,6 @@ void main() {
         findsOneWidget,
       );
     }
-  });
-
-  testWidgets('the V Transform lanes edit the TRACK on its global axis '
-      '(R4b): key toggles route the track lane edit hooks and keyed '
-      'frames show as markers on the continuous row', (tester) async {
-    final toggles = <(String, String, int)>[];
-    await _pumpPanel(
-      tester,
-      project: _project(
-        transformTrack: TransformTrack.empty().copyWith(
-          position: PropertyTrack<CanvasPoint>.empty().withKey(
-            2,
-            CanvasPoint(x: 10, y: 20),
-          ),
-        ),
-      ),
-      trackLaneEditFor: (track) => PropertyLaneEditCallbacks(
-        onToggleKeyAt: (_, lane, frame) =>
-            toggles.add((track.id.value, lane.laneId, frame)),
-      ),
-    );
-    await _expandVTransform(tester);
-
-    // The keyed frame sits at its GLOBAL position on the continuous row.
-    expect(
-      find.byKey(
-        const ValueKey<String>(
-          'storyboard-lane-key-v-track:lane-track-position-2',
-        ),
-      ),
-      findsOneWidget,
-    );
-    // The value column resolves the track pose over the display space —
-    // unkeyed lanes read the identity (display center).
-    expect(
-      find.descendant(
-        of: find.byKey(
-          const ValueKey<String>(
-            'storyboard-lane-value-v-track:lane-track-scale',
-          ),
-        ),
-        matching: find.text('100%'),
-      ),
-      findsOneWidget,
-    );
-
-    await tester.tap(
-      find.byKey(
-        const ValueKey<String>(
-          'storyboard-lane-key-toggle-v-track:lane-track-position',
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    expect(toggles, [('lane-track', 'position', 0)]);
   });
 
   testWidgets('the S-row Transform lanes edit the slot LAYER\'s track '
@@ -667,94 +459,6 @@ void main() {
       find.byKey(
         const ValueKey<String>('storyboard-se-waveform-toggle-lane-track-1'),
       ),
-      findsNothing,
-    );
-  });
-
-  testWidgets('dragging the cut-fade handles commits the fade lengths '
-      '(one commit per drag)', (tester) async {
-    final commits = <(CutId, int, int)>[];
-    await _pumpPanel(
-      tester,
-      project: _project(),
-      onSetCutFade: (cutId, fadeIn, fadeOut) =>
-          commits.add((cutId, fadeIn, fadeOut)),
-    );
-
-    await _expandVTransform(tester);
-
-    // 12 px/frame: 3 frames = 36 px rightward on the fade-in handle.
-    await tester.drag(
-      find.byKey(
-        const ValueKey<String>('storyboard-cut-fade-in-handle-lane-cut'),
-      ),
-      const Offset(36, 0),
-    );
-    await tester.pumpAndSettle();
-    expect(commits, [(const CutId('lane-cut'), 3, 0)]);
-
-    // 2 frames leftward on the fade-out handle.
-    await tester.drag(
-      find.byKey(
-        const ValueKey<String>('storyboard-cut-fade-out-handle-lane-cut'),
-      ),
-      const Offset(-24, 0),
-    );
-    await tester.pumpAndSettle();
-    expect(commits, [
-      (const CutId('lane-cut'), 3, 0),
-      (const CutId('lane-cut'), 0, 2),
-    ]);
-  });
-
-  testWidgets('existing fade keys read back into the handles: dragging '
-      'extends from the current lengths', (tester) async {
-    final commits = <(CutId, int, int)>[];
-    await _pumpPanel(
-      tester,
-      project: _project(
-        transformTrack: trackTransformWithCutFade(
-          TransformTrack.empty(),
-          startFrame: 0,
-          duration: 10,
-          fadeInFrames: 2,
-          fadeOutFrames: 0,
-        ),
-      ),
-      onSetCutFade: (cutId, fadeIn, fadeOut) =>
-          commits.add((cutId, fadeIn, fadeOut)),
-    );
-
-    await _expandVTransform(tester);
-
-    await tester.drag(
-      find.byKey(
-        const ValueKey<String>('storyboard-cut-fade-in-handle-lane-cut'),
-      ),
-      const Offset(24, 0),
-    );
-    await tester.pumpAndSettle();
-    expect(commits, [(const CutId('lane-cut'), 4, 0)]);
-  });
-
-  testWidgets('the fade span carries NO target menu any more (R3b): the '
-      'fade is transparency toward the backdrop, so a long-press does '
-      'nothing here', (tester) async {
-    await _pumpPanel(tester, project: _project(), onSetCutFade: (_, _, _) {});
-
-    await _expandVTransform(tester);
-
-    await tester.longPress(
-      find.byKey(const ValueKey<String>('storyboard-cut-fade-span-lane-cut')),
-    );
-    await tester.pumpAndSettle();
-
-    expect(
-      find.byKey(const ValueKey<String>('cut-fade-target-white')),
-      findsNothing,
-    );
-    expect(
-      find.byKey(const ValueKey<String>('cut-fade-target-black')),
       findsNothing,
     );
   });

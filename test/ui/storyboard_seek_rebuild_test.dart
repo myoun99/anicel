@@ -1,10 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/property_track.dart';
-import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
+    show effectGroupLaneId, effectLaneId;
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
@@ -58,19 +59,28 @@ void main() {
     return manager;
   }
 
-  Future<void> twirlOpenTrackLanes(WidgetTester tester, String trackId) async {
+  /// Twirls the V row's lane strips open. There is no Transform group header
+  /// after it any more — a track row does not own one — so the twirl-down is
+  /// its fx chain, and an effect group opens by its own header.
+  Future<void> twirlOpenTrackLanes(
+    WidgetTester tester,
+    String trackId, {
+    String? effectGroupLane,
+  }) async {
     await tester.tap(
       find.byKey(ValueKey<String>('storyboard-track-lane-toggle-$trackId')),
     );
     await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(
-        ValueKey<String>(
-          'storyboard-lane-group-toggle-v-track:$trackId-transform-group',
+    if (effectGroupLane != null) {
+      await tester.tap(
+        find.byKey(
+          ValueKey<String>(
+            'storyboard-lane-group-toggle-v-track:$trackId-$effectGroupLane',
+          ),
         ),
-      ),
-    );
-    await tester.pumpAndSettle();
+      );
+      await tester.pumpAndSettle();
+    }
   }
 
   double playheadX(WidgetTester tester) => tester
@@ -118,21 +128,39 @@ void main() {
       EditorSessionManager(initialProject: createDefaultProject()),
     );
     final trackId = manager.activeTrack.id;
-    manager.updateTrackTransformTrack(
-      trackId,
-      TransformTrack.empty().copyWith(
-        position: PropertyTrack<CanvasPoint>.empty()
-            .withKey(0, CanvasPoint(x: 0, y: 0))
-            .withKey(6, CanvasPoint(x: 120, y: 240)),
+    // The V row's lanes are its EFFECT chain now: a keyed brightness gives the
+    // value cell something that moves with the cursor.
+    const effectId = EffectId('fx-seek');
+    manager.updateTrackEffects(trackId, [
+      LayerEffect(
+        id: effectId,
+        kind: EffectKind.brightnessContrast,
+        parameters: {
+          'brightness': EffectParameter(
+            value: 0,
+            track: PropertyTrack<double>(
+              keys: {
+                0: const PropertyKey<double>(0),
+                6: const PropertyKey<double>(0.8),
+              },
+            ),
+          ),
+        },
       ),
-    );
+    ]);
     await tester.pumpAndSettle();
-    await twirlOpenTrackLanes(tester, trackId.value);
+    await twirlOpenTrackLanes(
+      tester,
+      trackId.value,
+      effectGroupLane: effectGroupLaneId(effectId),
+    );
 
     final valueCell = find.descendant(
       of: find.byKey(
-        ValueKey<String>('storyboard-lane-value-v-track:${trackId.value}-'
-            'position'),
+        ValueKey<String>(
+          'storyboard-lane-value-v-track:${trackId.value}-'
+          '${effectLaneId(effectId, 'brightness')}',
+        ),
       ),
       matching: find.byType(Text),
     );

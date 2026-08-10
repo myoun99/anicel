@@ -21,10 +21,9 @@ import '../../services/playback/playback_frame_mapping.dart'
         sourceOverWeights,
         trackGroupSourceOverWeights;
 import '../camera/camera_frame_render_service.dart';
-import '../canvas/layer_pose_paint.dart';
 import '../editor_session_manager.dart';
 import '../playback/playback_frame_painter.dart';
-import '../storyboard_cut_fade_policy.dart';
+import '../track_effect_paint_policy.dart';
 import '../storyboard_timeline_layout.dart';
 import 'export_cel_group_plan.dart';
 import 'export_plan.dart';
@@ -259,25 +258,23 @@ class ExportFrameRenderer {
     // The presentation render: the アフレコ name tags belong in the video
     // (their row's eye is the switch).
     final image = await renderComposite(task, mode, withNameTags: true);
-    // The V effects are TRACK data on the global axis now (R4).
-    final transformTrack = session.transformTrackForCut(task.cut.id);
+    // The V effects are TRACK data on the global axis (R4).
     final trackFrame = session.trackGlobalFrameOf(task.cut.id, task.frameIndex);
     // The V row's fx MASTER reaches the OUTPUT, like every fx switch since
     // R8 ("a bypass that vanished on reload while a per-effect bypass
-    // survived" is exactly what R8 refused). It gates the pose, the animated
-    // fade and the effect chain — never the STATIC opacity, which is a
-    // compositing property and not an fx (R9 #21).
+    // survived" is exactly what R8 refused). It gates the effect chain —
+    // never the STATIC opacity, which is a compositing property and not an fx
+    // (R9 #21).
     final trackFxEnabled = session.isCutFxEnabled(task.cut.id);
-    final fade =
-        session.trackStaticOpacityForCut(task.cut.id) *
-        (trackFxEnabled ? trackFadeOpacityAt(transformTrack, trackFrame) : 1.0);
-    final poseActive = trackFxEnabled && trackPoseIsActive(transformTrack);
+    // No animated track fade any more; the transition row's ramp lands in
+    // [_canvasSpaceTransitionFrame] above, on the frames it actually covers.
+    final fade = session.trackStaticOpacityForCut(task.cut.id);
     final trackEffects = trackEffectPaintAt(
       session.trackEffectsForCut(task.cut.id),
       trackFrame,
       enabled: trackFxEnabled,
     );
-    if (fade >= 1 && !poseActive && trackEffects.isEmpty) {
+    if (fade >= 1 && trackEffects.isEmpty) {
       return image;
     }
     final recorder = ui.PictureRecorder();
@@ -288,9 +285,8 @@ class ExportFrameRenderer {
       image.width.toDouble(),
       image.height.toDouble(),
     );
-    // The BACKDROP ground (R3b): the pose can uncover the output edges,
-    // and a fade thins the frame down to it. An alpha master leaves both
-    // transparent instead.
+    // The BACKDROP ground (R3b): a fade thins the frame down to it. An alpha
+    // master leaves it transparent instead.
     if (!preserveAlpha) {
       canvas.drawRect(
         bounds,
@@ -298,8 +294,8 @@ class ExportFrameRenderer {
           ..color = ui.Color(session.repository.requireProject().backdropArgb),
       );
     }
-    // The fade is transparency (R3b): the frame — pose and all — thins as
-    // one layer over the ground; no target-color wash.
+    // The fade is transparency (R3b): the frame thins as one layer over the
+    // ground; no target-color wash.
     if (fade < 1) {
       canvas.saveLayer(
         bounds,
@@ -307,24 +303,11 @@ class ExportFrameRenderer {
           ..color = ui.Color.fromRGBO(0, 0, 0, fade.clamp(0.0, 1.0)),
       );
     }
-    if (poseActive) {
-      final space = CanvasSize(width: image.width, height: image.height);
-      canvas.save();
-      applyLayerPoseTransform(
-        canvas,
-        trackPoseAt(transformTrack, trackFrame, space),
-        space,
-        anchorPoint: trackAnchorPointAt(transformTrack, trackFrame),
-      );
-    }
     final framePaint = ui.Paint();
-    // The chain filters the cut's finished picture, inside the pose and under
-    // the fade — the same order the screen draws it in.
+    // The chain filters the cut's finished picture, under the fade — the same
+    // order the screen draws it in.
     trackEffects.applyTo(framePaint);
     canvas.drawImage(image, ui.Offset.zero, framePaint);
-    if (poseActive) {
-      canvas.restore();
-    }
     if (fade < 1) {
       canvas.restore();
     }
@@ -384,13 +367,7 @@ class ExportFrameRenderer {
     final unitAlphas = <double>[
       for (final contribution in contributions)
         contribution.opacity *
-            session.trackStaticOpacityForCut(contribution.cut.id) *
-            (session.isCutFxEnabled(contribution.cut.id)
-                ? trackFadeOpacityAt(
-                    session.transformTrackForCut(contribution.cut.id),
-                    globalFrame,
-                  )
-                : 1.0),
+            session.trackStaticOpacityForCut(contribution.cut.id),
     ];
     final weights = sourceOverWeights(unitAlphas);
 
@@ -420,9 +397,6 @@ class ExportFrameRenderer {
           withNameTags: true,
         );
         images.add(image);
-        final transformTrack = session.transformTrackForCut(cut.id);
-        final trackFxEnabled = session.isCutFxEnabled(cut.id);
-        final poseActive = trackFxEnabled && trackPoseIsActive(transformTrack);
         final weight = weights[i].clamp(0.0, 1.0);
         if (weight < 1) {
           canvas.saveLayer(
@@ -430,26 +404,13 @@ class ExportFrameRenderer {
             ui.Paint()..color = ui.Color.fromRGBO(0, 0, 0, weight),
           );
         }
-        if (poseActive) {
-          final space = CanvasSize(width: image.width, height: image.height);
-          canvas.save();
-          applyLayerPoseTransform(
-            canvas,
-            trackPoseAt(transformTrack, globalFrame, space),
-            space,
-            anchorPoint: trackAnchorPointAt(transformTrack, globalFrame),
-          );
-        }
         final framePaint = ui.Paint();
         trackEffectPaintAt(
           session.trackEffectsForCut(cut.id),
           globalFrame,
-          enabled: trackFxEnabled,
+          enabled: session.isCutFxEnabled(cut.id),
         ).applyTo(framePaint);
         canvas.drawImage(image, ui.Offset.zero, framePaint);
-        if (poseActive) {
-          canvas.restore();
-        }
         if (weight < 1) {
           canvas.restore();
         }
@@ -505,13 +466,7 @@ class ExportFrameRenderer {
     final unitAlphas = <double>[
       for (final position in positions)
         position.opacity *
-            session.trackStaticOpacityForCut(position.cut.id) *
-            (session.isCutFxEnabled(position.cut.id)
-                ? trackFadeOpacityAt(
-                    session.transformTrackForCut(position.cut.id),
-                    position.globalFrameIndex,
-                  )
-                : 1.0),
+            session.trackStaticOpacityForCut(position.cut.id),
     ];
     final weights = trackGroupSourceOverWeights(positions, unitAlphas);
 
@@ -558,10 +513,8 @@ class ExportFrameRenderer {
         // Track effects at the frame's GLOBAL position (R4) — the stack's
         // own axis — with the row's fx master gating them (R8's rule; the
         // static opacity is not an fx and stays).
-        final transformTrack = session.transformTrackForCut(cut.id);
         final trackFxEnabled = session.isCutFxEnabled(cut.id);
         final weight = weights[i];
-        final poseActive = trackFxEnabled && trackPoseIsActive(transformTrack);
         // The stage belongs to the bottom covered TRACK, and to every
         // contribution of it: an O.L is a 場面転換, so the arriving cut brings
         // its own paper and the weights cross-fade the whole screen. Keyed to
@@ -579,12 +532,7 @@ class ExportFrameRenderer {
           ),
           cameraPose: session.cameraPoseForCut(cut, position.localFrameIndex),
           cameraFrameSize: size,
-          cutPose: poseActive
-              ? trackPoseAt(transformTrack, position.globalFrameIndex, size)
-              : null,
-          cutAnchorPoint: poseActive
-              ? trackAnchorPointAt(transformTrack, position.globalFrameIndex)
-              : null,
+          // No cutPose/cutAnchorPoint: the V row has no transform.
           cutEffects: trackEffectPaintAt(
             session.trackEffectsForCut(cut.id),
             position.globalFrameIndex,
