@@ -67,7 +67,11 @@ LayerId transitionLayerIdForTrack(TrackId trackId) =>
 Layer createTrackTransitionLayer(TrackId trackId) {
   return Layer(
     id: transitionLayerIdForTrack(trackId),
-    name: 'TR',
+    // The FULL word, not a code (user 2026-08-10). S1/S2 and CAM 1 are
+    // abbreviations because they are cel ADDRESSES a sheet is read by; this
+    // row is one fixture that cannot be renamed, so its name is just what it
+    // is and it has the width to say so.
+    name: 'Transition',
     frames: const [],
     timeline: const {},
     kind: LayerKind.transition,

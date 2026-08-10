@@ -74,6 +74,8 @@ class LayerTimelineGrid extends StatefulWidget {
     this.frameCachedSignal,
     this.revealSelectionTick,
     required this.playbackFrameCount,
+    this.drawnFrameCount,
+    this.noriShiroLabel = '',
     required this.exposureStateForLayer,
     this.frameNameForLayer,
     this.celContent,
@@ -192,6 +194,14 @@ class LayerTimelineGrid extends StatefulWidget {
   final ValueListenable<int>? revealSelectionTick;
 
   final int playbackFrameCount;
+
+  /// How many frames the cut is DRAWN for (尺 + のりしろ). Null keeps the
+  /// ruler's blue handle boundary off, which is every cut no transition
+  /// crosses.
+  final int? drawnFrameCount;
+
+  /// The word the ruler spells across the handle.
+  final String noriShiroLabel;
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
@@ -1728,6 +1738,10 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                                                           currentFrameIndex: -1,
                                                           playbackFrameCount: widget
                                                               .playbackFrameCount,
+                                                          drawnFrameCount: widget
+                                                              .drawnFrameCount,
+                                                          noriShiroLabel: widget
+                                                              .noriShiroLabel,
                                                           leadingFrameSpacerWidth:
                                                               0,
                                                           trailingFrameSpacerWidth:

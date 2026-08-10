@@ -122,6 +122,8 @@ import 'timeline/timeline_vertical_scrollbar_rail.dart';
 import 'timeline/timeline_playhead.dart' show timelinePlayheadColor;
 import 'timeline/timeline_row_filter.dart';
 import 'timeline/timeline_scale.dart';
+import 'timeline/timeline_section_policy.dart'
+    show TimelineSection, timelineSectionLabel;
 import 'timeline/timeline_se_row_visual.dart'
     show SePaperSpan, SeSpanVisual, timelineRowClipMarkerOverlays;
 import 'timeline/timeline_zoom_anchor_policy.dart';
@@ -1848,9 +1850,14 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       // The transition row heads the group. It is a FIXTURE like S1/S2 — one
       // per track, always there — so it takes no filter gate and no reorder
       // drag: there is nothing to hide it behind and nowhere to move it to.
+      //
+      // The band says CAM because the transition row IS a camera-section row
+      // ([timelineSectionForLayerKind]) — the label comes from that policy
+      // rather than being typed here, so the two rails cannot start naming
+      // the same section differently.
       _sectionZoneGroup(
         keyValue: 'storyboard-section-zone-${track.id.value}-transition',
-        label: 'TR',
+        label: timelineSectionLabel(TimelineSection.camera),
         rows: [_transitionLabelRow(track)],
       ),
       // A section with no rows left draws no zone: an empty SE band would

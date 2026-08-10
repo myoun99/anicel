@@ -90,7 +90,22 @@ class LayerController {
     if (trackSe.isEmpty && transition == null) {
       return displayed;
     }
-    return [...displayed, ...trackSe, ?transition];
+    final composed = [...displayed, ...trackSe];
+    if (transition != null) {
+      // Directly BEFORE the camera row in raw order, which puts the camera row
+      // on TOP on screen: the horizontal timeline reverses raw order, so last
+      // in the list is highest. The order is direction, transition, camera
+      // with the camera highest (user 2026-08-10).
+      //
+      // Appending it — which is what this did — put the TRANSITION on top for
+      // exactly that reason.
+      final cameraIndex = composed.cameraIndex;
+      composed.insert(
+        cameraIndex < 0 ? composed.length : cameraIndex,
+        transition,
+      );
+    }
+    return composed;
   }
 
   LayerId? get activeLayerId {
