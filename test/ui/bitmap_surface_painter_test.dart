@@ -14,6 +14,7 @@ import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart'
     show ActiveStrokePixelSource;
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
+import 'package:anicel/src/core/sync_image_upload.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
@@ -835,6 +836,166 @@ void main() {
       );
     });
   });
+
+  /// N4 ⑤: an engine that can turn BYTES into a picture within the frame.
+  ///
+  /// 🚨 Every machine that runs this suite says it cannot — Windows is
+  /// Skia in every build, CI included — so these drive the cache's
+  /// injection point. The uploader here is faithful: it draws the actual
+  /// premultiplied bytes it is handed, so the raster below is the tile's
+  /// own pixels and not a token standing for them.
+  group('bytes become pictures within the frame (N4 ⑤)', () {
+    tearDown(() => debugSyncImageUploadOverride = null);
+
+    ui.Image fromPremultiplied(Uint8List pixels, int width, int height) {
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      final paint = Paint();
+      for (var y = 0; y < height; y += 1) {
+        for (var x = 0; x < width; x += 1) {
+          final offset = (y * width + x) * 4;
+          final alpha = pixels[offset + 3];
+          if (alpha == 0) {
+            continue;
+          }
+          int straight(int value) =>
+              alpha == 255 ? value : ((value * 255) ~/ alpha).clamp(0, 255);
+          paint.color = Color.fromARGB(
+            alpha,
+            straight(pixels[offset]),
+            straight(pixels[offset + 1]),
+            straight(pixels[offset + 2]),
+          );
+          canvas.drawRect(
+            Rect.fromLTWH(x.toDouble(), y.toDouble(), 1, 1),
+            paint,
+          );
+        }
+      }
+      final picture = recorder.endRecording();
+      final image = picture.toImageSync(width, height);
+      picture.dispose();
+      return image;
+    }
+
+    test('an undecoded tile draws its OWN bytes instead of the previous '
+        'generation', () async {
+      // The stale-tile bug in one frame: a coordinate that HAS a previous
+      // picture and a new tile that has none. Everything before this
+      // could only choose which wrong-or-absent answer to give. With a
+      // synchronous upload the right answer is simply available.
+      const scope = 'cel';
+      final cache = BitmapTileImageCache();
+      debugSyncImageUploadOverride = fromPremultiplied;
+
+      final previous = _tile(
+        coord: TileCoord(x: 0, y: 0),
+        size: 2,
+        colors: {const _Point(0, 0): RgbaColor(r: 0, g: 0, b: 255, a: 255)},
+      );
+      cache.adoptDecoded(previous, await _solid2(const Color(0xFF0000FF)),
+          staleScope: scope);
+
+      final committed = _tile(
+        coord: TileCoord(x: 0, y: 0),
+        size: 2,
+        colors: {const _Point(0, 0): RgbaColor(r: 255, g: 0, b: 0, a: 255)},
+      );
+
+      final pixels = await _paintPixels(
+        BitmapSurfacePainter(
+          surface: BitmapSurface(
+            canvasSize: CanvasSize(width: 2, height: 2),
+            tileSize: 2,
+            tiles: {committed.coord: committed},
+          ),
+          showTransparentBackground: false,
+          staleScope: scope,
+          tileImageCache: cache,
+        ),
+        width: 2,
+        height: 2,
+      );
+
+      expect(
+        _rgbaAt(pixels, width: 2, x: 0, y: 0),
+        [255, 0, 0, 255],
+        reason:
+            'blue is the borrow — the previous generation answering for a '
+            'tile whose own bytes were available the whole time',
+      );
+      expect(
+        cache.imageFor(committed),
+        isNotNull,
+        reason: 'and it is adopted, so the coordinate pays this once',
+      );
+    });
+
+    test('the four-tile budget stops being the ceiling', () async {
+      // Ten undecoded tiles and nothing to borrow. The per-pixel fallback
+      // draws four of them and the rest are silent; an upload draws all
+      // ten, which is what makes a whole-canvas landing appear at once
+      // instead of converging tile by tile.
+      const columns = 10;
+      const tileSize = 2;
+      final cache = BitmapTileImageCache();
+      debugSyncImageUploadOverride = fromPremultiplied;
+      final tiles = <TileCoord, BitmapTile>{};
+      for (var column = 0; column < columns; column += 1) {
+        final coord = TileCoord(x: column, y: 0);
+        tiles[coord] = _tile(
+          coord: coord,
+          size: tileSize,
+          colors: {const _Point(0, 0): RgbaColor(r: 255, g: 0, b: 0, a: 255)},
+        );
+      }
+
+      final pixels = await _paintPixels(
+        BitmapSurfacePainter(
+          surface: BitmapSurface(
+            canvasSize: CanvasSize(width: columns * tileSize, height: tileSize),
+            tileSize: tileSize,
+            tiles: tiles,
+          ),
+          showTransparentBackground: false,
+          tileImageCache: cache,
+        ),
+        width: columns * tileSize,
+        height: tileSize,
+      );
+
+      var drawn = 0;
+      for (var column = 0; column < columns; column += 1) {
+        if (_rgbaAt(
+              pixels,
+              width: columns * tileSize,
+              x: column * tileSize,
+              y: 0,
+            )[3] !=
+            0) {
+          drawn += 1;
+        }
+      }
+      expect(
+        drawn,
+        columns,
+        reason: '$drawn of $columns drew — four means the budget is still '
+            'the answer and the upload never ran',
+      );
+    });
+  });
+}
+
+Future<ui.Image> _solid2(Color color) async {
+  final recorder = ui.PictureRecorder();
+  Canvas(recorder).drawRect(
+    const Rect.fromLTWH(0, 0, 2, 2),
+    Paint()..color = color,
+  );
+  final picture = recorder.endRecording();
+  final image = picture.toImageSync(2, 2);
+  picture.dispose();
+  return image;
 }
 
 /// Full-alpha stroke coverage at canvas (0,0) only — a minimal live ERASE

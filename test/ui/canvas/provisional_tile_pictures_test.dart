@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/painting.dart';
 import 'package:flutter_test/flutter_test.dart';
 
+import 'package:anicel/src/core/sync_image_upload.dart';
 import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/bitmap_tile.dart';
 import 'package:anicel/src/models/canvas_size.dart';
@@ -161,6 +162,46 @@ void main() {
       cache: cache,
     );
     expect(second.seeded, 1);
+  });
+
+  test('where the engine can upload, it takes the tile own bytes instead '
+      'of composing an approximation of them', () {
+    // N4 ⑤. Composition is the Skia answer and it is off by a rounding
+    // step at the faintest ink; an upload of the tile's own bytes is
+    // exact. Preferring the approximation when the exact picture is
+    // available would also leave a provisional lifecycle running for a
+    // picture that never needs replacing.
+    addTearDown(() => debugSyncImageUploadOverride = null);
+    debugSyncImageUploadOverride = (_, _, _) {
+      final recorder = ui.PictureRecorder();
+      ui.Canvas(recorder).drawRect(
+        const Rect.fromLTWH(0, 0, 2, 2),
+        Paint()..color = const Color(0xFF123456),
+      );
+      final picture = recorder.endRecording();
+      final image = picture.toImageSync(2, 2);
+      picture.dispose();
+      return image;
+    };
+
+    final cache = BitmapTileImageCache();
+    final post = surfaceOf([tile(coord0, at00: red)]);
+    final result = seedProvisionalTilePictures(
+      preSurface: surfaceOf([tile(coord0)]),
+      postSurface: post,
+      coords: [coord0],
+      ink: greenEverywhere(),
+      cache: cache,
+    );
+
+    expect(result.adopted, 1);
+    expect(result.seeded, 0);
+    expect(cache.imageFor(post.tileAt(coord0)!), isNotNull);
+    expect(
+      cache.hasProvisional(post.tileAt(coord0)!),
+      isFalse,
+      reason: 'an exact picture needs no stand-in beside it',
+    );
   });
 
   testWidgets('the composed picture IS the pre picture with the ink over '

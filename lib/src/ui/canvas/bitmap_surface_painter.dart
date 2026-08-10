@@ -323,8 +323,17 @@ class BitmapSurfacePainter extends CustomPainter {
         // first — and this order also keeps the stand-in out of the
         // per-pixel budget, which is spent on coordinates that have
         // nothing at all.
+        //
+        // N4 ⑤: and where the engine can upload bytes synchronously, the
+        // tile's OWN bytes become its picture right here — no borrow, no
+        // per-pixel path, no waiting a decode round. It costs 30-49 us
+        // for a 256 px tile against 24-103 ms for four tiles of the
+        // per-pixel fallback, and it ADOPTS, so a coordinate pays it
+        // once. Null on Skia (probed once per run), where the two
+        // fallbacks below stay the whole answer.
         final tileImage =
             tileImageCache.displayImageFor(tile) ??
+            tileImageCache.adoptSyncUpload(tile, staleScope: staleScope) ??
             tileImageCache.latestImageForCoord(tile.coord, scope: staleScope);
         if (tileImage != null) {
           canvas.drawImage(

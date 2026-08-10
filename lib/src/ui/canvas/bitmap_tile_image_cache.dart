@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/scheduler.dart';
 
+import '../../core/sync_image_upload.dart';
 import '../../models/bitmap_tile.dart';
 import '../../models/tile_coord.dart';
 import '../../native/qa_native_engine.dart';
@@ -247,6 +248,53 @@ class BitmapTileImageCache extends ChangeNotifier {
         tile;
     _evictScopesBeyondBudget();
   }
+
+  /// Uploads [tile]'s own bytes synchronously and adopts the result as
+  /// TRUTH; null where the engine cannot ([syncImageUploadSupported] —
+  /// Impeller only), or where the tile already has a picture or a decode
+  /// in flight.
+  ///
+  /// Truth, not a stand-in: these are the same premultiplied bytes
+  /// [ensureDecoded] would have handed the asynchronous decoder, so the
+  /// picture is the tile's own and there is nothing to replace later.
+  /// That is the difference from [putProvisional], and it is why this
+  /// retires a stand-in rather than sitting beside one.
+  ///
+  /// The scratch is freed as soon as the call returns; see
+  /// [uploadImageSync] for why that is safe and what breaks if it stops
+  /// being.
+  ui.Image? adoptSyncUpload(BitmapTile tile, {Object? staleScope}) {
+    // FIRST, and it is a cached bool. On Skia this method is called at
+    // every undrawable coordinate of every paint and must cost exactly
+    // that much; the Expando lookups below would otherwise be paid on a
+    // machine that can never use their answer.
+    if (!syncImageUploadSupported) {
+      return null;
+    }
+    final existing = _images[tile];
+    if (existing != null) {
+      return existing;
+    }
+    // An in-flight decode would land later and overwrite the entry,
+    // leaking this image's ownership — the same reason [adoptDecoded]
+    // stands aside for one.
+    if (_inFlight[tile] != null) {
+      return null;
+    }
+    final upload = premultipliedTileUpload(tile);
+    final ui.Image? image;
+    try {
+      image = uploadImageSync(upload.view, tile.size, tile.size);
+    } finally {
+      upload.free();
+    }
+    if (image == null) {
+      return null;
+    }
+    adoptDecoded(tile, image, staleScope: staleScope);
+    return _images[tile];
+  }
+
 
   /// Forgets every stale-fallback tile in [scope], so the next paint of a
   /// surface in that scope has nothing to borrow.

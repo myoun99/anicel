@@ -2289,6 +2289,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // Under the probe because it is the one part of a confirm whose cost
     // scales with the LANDING rather than with the change: a whole-canvas
     // stamp is every tile of the cel, at a `toImageSync` each.
+    final activeKey = coordinator.activeFrameKey;
     labProbe(
       'confirm.composeStandIns',
       () => seedProvisionalTilePictures(
@@ -2296,6 +2297,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         postSurface: postSurface,
         coords: coords,
         ink: paintInk,
+        // The cel's lineage. Only the synchronous-upload path inside
+        // reaches the bucket, but it puts TRUTH there, and truth in the
+        // null bucket is the shared-tin defect the float once had.
+        staleScope: (activeKey.layerId, activeKey.frameId),
       ),
     );
   }

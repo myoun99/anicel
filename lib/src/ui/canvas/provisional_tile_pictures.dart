@@ -52,11 +52,12 @@ final Paint _tilePaint = Paint()
 /// Returns what it did: coordinates it could not answer for keep today's
 /// behaviour, and the count is how a caller (or a test) sees that without
 /// guessing.
-({int seeded, int skipped}) seedProvisionalTilePictures({
+({int seeded, int adopted, int skipped}) seedProvisionalTilePictures({
   required BitmapSurface preSurface,
   required BitmapSurface postSurface,
   required Iterable<TileCoord> coords,
   required ProvisionalInkPainter ink,
+  Object? staleScope,
   BitmapTileImageCache? cache,
 }) {
   final images = cache ?? BitmapTileImageCache.instance;
@@ -73,12 +74,21 @@ final Paint _tilePaint = Paint()
     canvasSize.pasteboardBottomExclusive.toDouble(),
   );
   var seeded = 0;
+  var adopted = 0;
   var skipped = 0;
   for (final coord in coords) {
     final tile = postSurface.tileAt(coord);
     if (tile == null || images.displayImageFor(tile) != null) {
       // Nothing there, or it can already draw itself.
       skipped += 1;
+      continue;
+    }
+    // N4 ⑤: where the engine uploads bytes synchronously, the tile's OWN
+    // bytes are right here and they are EXACT. Composing an approximation
+    // of a picture we can simply have would be strictly worse, and it
+    // would leave a provisional lifecycle running for nothing.
+    if (images.adoptSyncUpload(tile, staleScope: staleScope) != null) {
+      adopted += 1;
       continue;
     }
     final preTile = preSurface.tileAt(coord);
@@ -135,7 +145,7 @@ final Paint _tilePaint = Paint()
     images.putProvisional(tile, image);
     seeded += 1;
   }
-  return (seeded: seeded, skipped: skipped);
+  return (seeded: seeded, adopted: adopted, skipped: skipped);
 }
 
 /// Ink that is ONE image already sitting at [placement] in canvas space —

@@ -5,6 +5,7 @@ import '../native/qa_audio_native.dart';
 import '../native/qa_engine_abi.dart';
 import '../native/qa_native_engine.dart';
 import '../native/qa_tablet_bridge.dart';
+import '../core/sync_image_upload.dart';
 import '../native/qa_video_encoder.dart';
 import 'pdf/pdf_render_service.dart';
 
@@ -137,6 +138,26 @@ List<RuntimePathEntry> collectRuntimePathReport() {
           'bundled at build time. There is no substitute path: without '
           'it the importer and the media viewer state the absence '
           'instead of degrading.',
+    ),
+  );
+
+  // --- Tile picture upload: whether a tile's bytes can become a drawable
+  // picture INSIDE the frame that needs it, or only a frame or two later.
+  entries.add(
+    RuntimePathEntry(
+      subsystem: 'Tile picture upload',
+      active: syncImageUploadSupported
+          ? 'Synchronous (Impeller, decodeImageFromPixelsSync)'
+          : 'Asynchronous only (Skia) — freshly edited tiles paint a '
+                'frame or two late',
+      isPrimary: syncImageUploadSupported,
+      detail:
+          'An edit produces new tile pixels, and the canvas can only '
+          'draw a picture of them. Impeller can make one immediately; '
+          'Skia cannot, so those tiles show slightly older content or '
+          'wait. Windows runs Skia in every build, iOS and Android run '
+          'Impeller — this row is the renderer showing through, not a '
+          'packaging problem.',
     ),
   );
 
