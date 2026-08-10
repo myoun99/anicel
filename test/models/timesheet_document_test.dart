@@ -15,6 +15,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timesheet_document.dart';
 import 'package:anicel/src/models/timesheet_info.dart';
+import 'package:anicel/src/models/transition_geometry.dart';
 
 Layer _layer(
   String id, {
@@ -588,6 +589,86 @@ void main() {
       final column = seColumn();
       expect(column.crossesCutEnd, isTrue, reason: 'sound runs past 48');
       expect(column.spillsInAtStart, isTrue, reason: 'sound from before 24');
+    });
+  });
+
+  group('のりしろ on the sheet', () {
+    // The design's own numbers: this cut is c21, 3+0 long, sitting at
+    // global 48; a 1+0 O.L centred on that boundary runs [36, 60).
+    const fps = 24;
+    const cutStart = 48;
+    final cut = Cut(
+      id: const CutId('c21'),
+      name: 'c21',
+      layers: const [],
+      duration: 3 * fps,
+      canvasSize: const CanvasSize(width: 100, height: 100),
+    );
+
+    TimesheetDocument sheet({List<TransitionSpan> spans = const []}) =>
+        TimesheetDocument.fromCut(
+          cut: cut,
+          projectName: 'p',
+          fps: fps,
+          cutStartFrame: cutStart,
+          transitionSpans: spans,
+        );
+
+    test('no transition means no のりしろ — the sheet is the conte 尺', () {
+      final document = sheet();
+
+      expect(document.transitionHandles, CutTransitionHandles.none);
+      expect(document.drawnFrameCount, document.playbackFrameCount);
+    });
+
+    test('a span inside the cut still means nothing', () {
+      // [72, 96) — comfortably inside c21, crossing neither boundary.
+      final document = sheet(spans: const [(start: 72, length: 24)]);
+
+      expect(document.transitionHandles, CutTransitionHandles.none);
+      expect(document.drawnFrameCount, 3 * fps);
+    });
+
+    test('an O.L across the cut head adds 0+12 to what the sheet asks for', () {
+      final document = sheet(spans: const [(start: 36, length: 24)]);
+
+      expect(document.transitionHandles.head, 12);
+      // 3+0 (3+12): the conte 尺 is untouched, the drawn 尺 is longer.
+      expect(document.playbackFrameCount, 3 * fps);
+      expect(document.drawnFrameCount, 3 * fps + 12);
+      expect(document.durationLabel, '3+0');
+      expect(document.drawnDurationLabel, '3+12');
+    });
+
+    test('a sheet without transitions prints one number, as it always did', () {
+      expect(sheet().durationLabel, '3+0');
+      expect(sheet().drawnDurationLabel, isNull);
+    });
+
+    test('のりしろ can push the sheet onto another page', () {
+      // A cut exactly one page long: the handle has nowhere to go but a
+      // second sheet of paper, and 撮ま! says the rows must be there
+      // ("シートは必ずここまで記入する").
+      final onePage = Cut(
+        id: const CutId('c30'),
+        name: 'c30',
+        layers: const [],
+        duration: 6 * fps,
+        canvasSize: const CanvasSize(width: 100, height: 100),
+      );
+      final document = TimesheetDocument.fromCut(
+        cut: onePage,
+        projectName: 'p',
+        fps: fps,
+        cutStartFrame: 0,
+        // Crosses the cut's END at 144, reaching 12 frames past it.
+        transitionSpans: const [(start: 132, length: 24)],
+      );
+
+      expect(document.transitionHandles.tail, 12);
+      expect(document.drawnFrameCount, 6 * fps + 12);
+      expect(document.pages.length, 2);
+      expect(document.rowCount, greaterThanOrEqualTo(document.drawnFrameCount));
     });
   });
 }
