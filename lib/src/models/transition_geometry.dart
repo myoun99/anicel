@@ -118,6 +118,58 @@ CutTransitionHandles cutTransitionHandles({
   required CutTransitionHandles handles,
 }) => (start: cutStart - handles.head, end: cutEnd + handles.tail);
 
+/// The alpha a cut's picture carries at [globalFrame] — 1 when nothing is
+/// happening, ramping while a transition crosses one of its boundaries, and
+/// 0 outside the frames it has material for.
+///
+/// ★ This is the whole compositing contract, and it is why an O.L needed no
+/// new kind of effect. The span asks each side the SAME question and the
+/// two answers are mirror images: the cut whose END is crossed fades out by
+/// the progress, the cut whose START is crossed fades in by it. Play both
+/// and you have a cross-dissolve; the pair IS the O.L. A lone F.I on a cut
+/// with nothing before it runs through the identical code and simply has no
+/// partner to cross with.
+///
+/// It is also what makes per-cut opacity possible at all. The old fade lived
+/// on one lane per TRACK, so two cuts sharing a frame necessarily read the
+/// same value; a function of (cut, frame) can hand them different ones.
+double cutOpacityAt({
+  required int cutStart,
+  required int cutEnd,
+  required Iterable<TransitionSpan> spans,
+  required int globalFrame,
+}) {
+  final handles = cutTransitionHandles(
+    cutStart: cutStart,
+    cutEnd: cutEnd,
+    spans: spans,
+  );
+  final media = cutMediaRange(
+    cutStart: cutStart,
+    cutEnd: cutEnd,
+    handles: handles,
+  );
+  if (globalFrame < media.start || globalFrame >= media.end) {
+    return 0;
+  }
+
+  var alpha = 1.0;
+  for (final span in spans) {
+    final progress = transitionProgressAt(span, globalFrame);
+    if (progress == null) {
+      continue;
+    }
+    final spanEnd = span.start + span.length;
+    if (span.start < cutEnd && spanEnd > cutEnd) {
+      alpha *= 1 - progress; // this cut is the outgoing side
+    }
+    if (span.start < cutStart && spanEnd > cutStart) {
+      alpha *= progress; // …and the incoming side of the one before it
+    }
+  }
+  return alpha;
+}
+
 /// How far a transition has progressed at [globalFrame], as 0 → 1 across
 /// the span, or null when the frame is outside it.
 ///
@@ -125,6 +177,11 @@ CutTransitionHandles cutTransitionHandles({
 /// out by it and the incoming side fades in by it, over the SAME span —
 /// which is what makes the pair an O.L rather than two separate fades.
 /// It is computed, never keyed: the span's length is the only input.
+/// ★ It reaches 1 ON the span's LAST frame, not one frame after it — the
+/// canonical shape [trackFadeLengthsInWindow] already pins for the cut fade
+/// ("the fade bottoms out ON the window's final frame"). So a 1+0 O.L is 24
+/// frames that run from wholly the outgoing picture to wholly the incoming
+/// one, inclusive, and the frame after the span is simply the new cut.
 double? transitionProgressAt(TransitionSpan span, int globalFrame) {
   if (span.length <= 0) {
     return null;
@@ -133,5 +190,9 @@ double? transitionProgressAt(TransitionSpan span, int globalFrame) {
   if (offset < 0 || offset >= span.length) {
     return null;
   }
-  return offset / span.length;
+  if (span.length == 1) {
+    // Degenerate: a one-frame transition is already over on its only frame.
+    return 1;
+  }
+  return offset / (span.length - 1);
 }
