@@ -106,16 +106,25 @@ class AppScrollBehavior extends MaterialScrollBehavior {
 /// Declares a scrollable to be CHROME rather than content, so the app's
 /// scrollbar stays off it.
 ///
-/// The four users are compressed tool strips — a panel header's trailing
-/// controls, a dialog's tab row, the timeline toolbar, the storyboard
-/// toolbar. They scroll as an escape valve when the window squeezes them,
-/// and a bar there is not information: it is a 12px lane lying across a
-/// 30px row of buttons, eating the bottom third of each one's target.
+/// The users are compressed tool strips — a panel header's trailing
+/// controls, a dialog's tab row. They scroll as an escape valve when the
+/// window squeezes them, and a bar there is not information: it is a lane
+/// lying across a 30px row of buttons, eating the bottom third of each
+/// one's target.
 ///
 /// 유저 확정 (R4): 가로 스크롤은 내용에만. Content that overflows sideways —
 /// a sheet laid out at its own minimum width inside a narrow rail — keeps
 /// its bar, because there the bar is the only thing that says the rest of
 /// the page is out there.
+///
+/// ★THE FRAME PANELS' COMMAND BAR LEFT THIS LIST (유저, 2026-08-10: 「버튼
+/// 사라지기 시작하면 생기는 스크롤바」). The R4 reading still holds for what
+/// it was written about — a 30px row of loose buttons — but that bar is a
+/// 36px row of 28px PILLS now, and it is the one strip whose buttons the
+/// user watches disappear as the region narrows. The app's bar is exactly
+/// the shape asked for there: present only while it overflows, and costing
+/// no layout when it does not. Which is to say the rule did not change; the
+/// surface did.
 class UnbarredScrollable extends StatelessWidget {
   const UnbarredScrollable({super.key, required this.child});
 

@@ -6,7 +6,6 @@ import '../../models/playback_quality.dart';
 import '../../services/persistence/app_documents.dart' show AppStorage;
 import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
-import '../theme/app_theme.dart' show instantMenuAnimation;
 import 'audio_level_meter.dart';
 import 'audio_recorder.dart' show VoiceRecordStartResult;
 import 'canvas_playback_controller.dart';
@@ -49,8 +48,6 @@ class PlaybackTransportControls extends StatelessWidget {
     super.key,
     required this.controller,
     required this.scope,
-    required this.quality,
-    required this.onQualityChanged,
     this.playbackStartFrame,
     this.onSkipToStart,
     this.resolveMeterPeaks,
@@ -62,8 +59,6 @@ class PlaybackTransportControls extends StatelessWidget {
 
   final CanvasPlaybackController controller;
   final PlaybackScope scope;
-  final PlaybackQuality quality;
-  final ValueChanged<PlaybackQuality> onQualityChanged;
 
   /// The device transport's pre-clip bus peaks (AUDIO-PRO R2); non-null
   /// mounts the level meter at the row's end.
@@ -218,28 +213,13 @@ class PlaybackTransportControls extends StatelessWidget {
                         ),
                       ),
               ),
-            PopupMenuButton<PlaybackQuality>(
-              key: const ValueKey<String>('playback-quality-selector'),
-              tooltip: AppText.strings.playbackQuality,
-              popUpAnimationStyle: instantMenuAnimation,
-              initialValue: quality,
-              onSelected: onQualityChanged,
-              itemBuilder: (context) => [
-                for (final candidate in PlaybackQuality.values)
-                  PopupMenuItem(
-                    key: ValueKey<String>('playback-quality-${candidate.name}'),
-                    value: candidate,
-                    child: Text(qualityLabel(candidate)),
-                  ),
-              ],
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 6),
-                child: Text(
-                  qualityLabel(quality),
-                  style: Theme.of(context).textTheme.labelMedium,
-                ),
-              ),
-            ),
+            // ⛔The QUALITY selector left this row (유저 확정, 2026-08-10:
+            // 품질도 설정에 두자). It is a setting, not a transport control —
+            // touched about as often as the project frame rate — and the
+            // transport is the one row on the 문턱 that has to stay readable
+            // at a glance. Its entries (and their key strings) live in
+            // [ProjectSettingsPill] now. [qualityLabel] stays here because
+            // the label is this widget's vocabulary; the pill borrows it.
             // The level meter (AUDIO-PRO R2), only while THIS scope's
             // playback is live — a silent strip otherwise would just be
             // chrome.

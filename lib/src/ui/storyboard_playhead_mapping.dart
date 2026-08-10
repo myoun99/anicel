@@ -27,6 +27,28 @@ List<StoryboardTimelineLayoutEntry> storyboardActiveTrackLayout(
   return scoped.isEmpty ? layout : scoped;
 }
 
+/// "To start" (REC1-B): the first cut's first frame — where an all-cuts
+/// play would begin.
+///
+/// A free function for the same reason the two above are: the storyboard's
+/// transport left its panel for the 문턱 (유저 확정, 2026-08-10), so the
+/// button that calls this is built by the WORKSPACE now while the host still
+/// owns the layout cache. One implementation, two callers.
+void seekStoryboardPlayheadToTrackStart(
+  EditorSessionManager session, {
+  List<StoryboardTimelineLayoutEntry>? layout,
+}) {
+  final entries = layout ?? storyboardActiveTrackLayout(session);
+  if (entries.isEmpty) {
+    return;
+  }
+  final firstCutId = entries.first.cutId;
+  if (session.activeCutOrNull?.id != firstCutId) {
+    session.selectCut(firstCutId);
+  }
+  session.selectFrameIndex(0);
+}
+
 /// Where the storyboard playhead sits: the playback position while playback
 /// is active (an activeCut-scope playlist is rebased to frame 0, so map
 /// through the cut's track slot), the editing playhead otherwise. An

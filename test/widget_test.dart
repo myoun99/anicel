@@ -354,11 +354,11 @@ void _expectActiveLayerName(String name) {
 }
 
 void _expectCurrentFrame(WidgetTester tester, int frameNumber) {
+  // The counter is two stacked lines (2026-08-10) — track-global above,
+  // cut-local below. This is the timeline, where the top line is blank, so
+  // the number under assertion is the LOCAL one.
   expect(
-    _statusText(
-      tester,
-      const ValueKey<String>('timeline-current-frame-counter'),
-    ),
+    _statusText(tester, const ValueKey<String>('timeline-local-frame-counter')),
     '$frameNumber',
   );
 }
@@ -799,7 +799,7 @@ void main() {
 
     String counterText() => tester
         .widget<Text>(
-          find.byKey(const ValueKey<String>('timeline-current-frame-counter')),
+          find.byKey(const ValueKey<String>('timeline-local-frame-counter')),
         )
         .data!;
     expect(counterText(), '1');

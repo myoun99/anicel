@@ -8,12 +8,16 @@ import 'dialogs/canvas_size_dialog.dart';
 import 'dialogs/rename_cut_dialog.dart';
 import 'editor_session_manager.dart';
 import 'text/app_strings.dart';
+import 'widgets/command_pill.dart';
 import 'widgets/panel_flyout.dart';
-import 'widgets/split_icon_button.dart';
 
-/// The cut command group mounted IDENTICALLY on the timeline and storyboard
-/// toolbars: a split new-cut button plus the Cut ▾ flyout carrying the full
-/// cut command set (the storyboard body's nine-button toolbar, retired).
+/// The CUT pill, mounted IDENTICALLY on the timeline and storyboard bars.
+///
+/// One of the bar's four nouns ([CommandPill]): the name cell writes 「컷」
+/// and opens the full cut command set, and the one verb outside the menu is
+/// `＋`, whose top band offers the other ways of making one (duplicate,
+/// linked). The cut used to be folded into the layer group as "행"; the user
+/// split it back out because 「오히려 나누는 게 알기 쉬울 것 같아서」.
 ///
 /// Owns its dialog flows (rename/note/canvas size) so both hosts share the
 /// wiring; menu item keys reuse the retired buttons' key strings so tests
@@ -202,23 +206,26 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
+    return CommandPill(
+      head: PillNameCell(
+        keyValue: 'cut-menu-button',
+        label: AppText.strings.tlCut,
+        tooltip: AppText.strings.cutCommands,
+        entriesBuilder: _menuEntries,
+      ),
       children: [
-        SplitIconButton(
+        const PillDivider(),
+        StrapIconButton(
           buttonKey: 'new-cut-button',
           menuKey: 'new-cut-menu',
-          icon: Icons.add_photo_alternate_outlined,
+          // `add` and not `add_photo_alternate`: which noun it adds is what
+          // the pill around it already says, and 「＋가 있는 모든 곳」 wears
+          // the same glyph (유저 확정).
+          icon: Icons.add,
           tooltip: AppText.strings.cutNewCut,
           onPressed: session.createCut,
           entriesBuilder: _addEntries,
-        ),
-        const SizedBox(width: 4),
-        PanelFlyoutButton(
-          key: const ValueKey<String>('cut-menu-button'),
-          label: 'Cut',
-          tooltip: AppText.strings.cutCommands,
-          entriesBuilder: _menuEntries,
+          accent: true,
         ),
       ],
     );

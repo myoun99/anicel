@@ -95,12 +95,19 @@ Offset _seRowPoint(WidgetTester tester, int globalFrame) {
   );
 }
 
-/// The toolbar counter reads `global · local`, both 1-based.
-String _frameCounter(WidgetTester tester) => tester
-    .widget<Text>(
-      find.byKey(const ValueKey<String>('timeline-current-frame-counter')),
-    )
-    .data!;
+/// The counter's two lines, both 1-based, joined the way this file has
+/// always read them.
+///
+/// It used to BE one string, `global · local`. Since 2026-08-10 the two
+/// numbers are STACKED — global above, local below — so the join happens
+/// here instead of on screen. What these tests are about (which frame a
+/// press lands on) is unchanged.
+String _frameCounter(WidgetTester tester) {
+  String line(String keyValue) =>
+      tester.widget<Text>(find.byKey(ValueKey<String>(keyValue))).data!;
+  return '${line('timeline-global-frame-counter')} · '
+      '${line('timeline-local-frame-counter')}';
+}
 
 void main() {
   testWidgets('pressing the cut row seeks to the PRESSED frame, not just to '

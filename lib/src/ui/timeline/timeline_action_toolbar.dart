@@ -1,20 +1,15 @@
-import 'dart:async' show unawaited;
 import 'package:flutter/material.dart';
-
-import '../theme/app_scroll_behavior.dart';
 
 import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_kind.dart';
-import '../../models/project_frame_rate.dart';
 import '../cut_command_group.dart';
-import '../dialogs/fps_audio_choice_dialog.dart';
 import '../editor_session_manager.dart';
 import '../widgets/app_icon_button.dart';
 import 'timeline_shift_buttons.dart';
+import '../widgets/command_pill.dart';
 import '../widgets/panel_flyout.dart';
-import '../widgets/split_icon_button.dart';
 import '../widgets/static_raster.dart';
 import 'timeline_section_policy.dart';
 import '../theme/app_theme.dart';
@@ -138,7 +133,7 @@ class TimelineActionToolbar extends StatelessWidget {
     required this.onAddLayer,
     required this.onRenameLayer,
     required this.onDeleteLayer,
-    required this.onEditInstance,
+    this.onEditInstance,
     required this.onCreateInstance,
     this.hiddenSections = const {},
     this.onToggleSection,
@@ -155,7 +150,13 @@ class TimelineActionToolbar extends StatelessWidget {
 
   /// Opens the unified instance-edit dialog for the active layer at the
   /// playhead (kind-dispatched by the host).
-  final VoidCallback onEditInstance;
+  ///
+  /// NULL when the host cannot serve it — the frame pill's menu entry greys
+  /// out rather than pretending. The storyboard passes null today: the
+  /// dispatch is ~300 lines of dialogs that still live in the timeline's
+  /// host, and lifting them out is its own change rather than a passenger
+  /// on this one.
+  final VoidCallback? onEditInstance;
 
   /// Kind-dispatched creation: new frame / camera key / SE entry /
   /// instruction event.
@@ -459,93 +460,11 @@ class TimelineActionToolbar extends StatelessWidget {
     ];
   }
 
-  /// R26 #30-1: whether the ACTIVE layer takes a blend mode (drawing
-  /// section rows — attach rows included, their pixels blend on their
-  /// own).
-  /// R26 #32: the frame-rate presets. RT made the project rate an exact
-  /// rational, so the NTSC pulldown rates are here alongside the whole
-  /// ones — 23.976 is stored and played as 24000/1001, never as a
-  /// rounded decimal.
-  static const List<ProjectFrameRate> fpsPresets = ProjectFrameRate.presets;
-
-  List<PanelFlyoutEntry> _fpsEntries(BuildContext context) {
-    final current = session.projectFrameRate;
-    return [
-      for (final rate in fpsPresets)
-        PanelFlyoutItem(
-          // Integer rates keep their original key (`timeline-fps-24`);
-          // the pulldown rates key off the fraction, since `23.976` in a
-          // key string would be the same rounding we just removed.
-          keyValue: rate.isInteger
-              ? 'timeline-fps-${rate.numerator}'
-              : 'timeline-fps-${rate.numerator}-${rate.denominator}',
-          label: rate.label,
-          checked: rate == current,
-          onSelected: () => unawaited(_selectFrameRate(context, rate)),
-        ),
-      const PanelFlyoutDivider(),
-      PanelFlyoutItem(
-        keyValue: 'timeline-fps-custom',
-        label: AppText.strings.tlCustom,
-        icon: Icons.edit_outlined,
-        onSelected: () => unawaited(showTimelineFpsDialog(context, session)),
-      ),
-    ];
-  }
-
-  /// EXPORT-AUDIO ④: a pulldown-pair change (23.976↔24 — 0.1% of real
-  /// speed) asks what happens to SOUND, because audio exists in real
-  /// seconds and cannot stay both frame-exact and time-exact. Any other
-  /// change, or a project with no sound, just changes the rate. (The
-  /// custom-rate dialog keeps the plain path — pulldown pairs live in
-  /// the presets.)
-  Future<void> _selectFrameRate(
-    BuildContext context,
-    ProjectFrameRate rate,
-  ) async {
-    final pull = audioPullBetween(session.projectFrameRate, rate);
-    if (pull == null || !session.projectHasAnyAudio) {
-      session.setProjectFrameRate(rate);
-      return;
-    }
-    final choice = await showFpsAudioChoiceDialog(
-      context,
-      from: session.projectFrameRate,
-      to: rate,
-      strings: session.uiStrings,
-    );
-    switch (choice) {
-      case null:
-        return; // cancelled — the rate stays too
-      case FpsAudioChoice.keep:
-        session.setProjectFrameRate(rate);
-      case FpsAudioChoice.pull:
-        session.setProjectFrameRateWithAudioPull(rate);
-    }
-  }
-
-  /// EXPORT-AUDIO ③: the audio-rate presets — 48k is the film standard,
-  /// 44.1k the music one, 96k for the rare high-rate delivery.
-  static const List<int> audioSampleRatePresets = [44100, 48000, 96000];
-
-  /// '48kHz' / '44.1kHz' — kilohertz reads at a glance; the raw hertz
-  /// number is a spec sheet.
-  static String audioSampleRateLabel(int rate) => rate % 1000 == 0
-      ? '${rate ~/ 1000}kHz'
-      : '${(rate / 1000).toStringAsFixed(1)}kHz';
-
-  List<PanelFlyoutEntry> _audioSampleRateEntries() {
-    final current = session.projectAudioSampleRate;
-    return [
-      for (final rate in audioSampleRatePresets)
-        PanelFlyoutItem(
-          keyValue: 'timeline-samplerate-$rate',
-          label: audioSampleRateLabel(rate),
-          checked: rate == current,
-          onSelected: () => session.setProjectAudioSampleRate(rate),
-        ),
-    ];
-  }
+  // ⛔The two PROJECT-axis dropdowns (fps, audio sample rate) LEFT this bar
+  // (유저 확정, 2026-08-10). They print project values and nothing about the
+  // playhead, they are touched about once per project, and they were sitting
+  // in the middle of the frame verbs — so they are entries of the settings
+  // pill now ([ProjectSettingsPill]), which rides the 문턱 with the transport.
 
   List<PanelFlyoutEntry> _frameEntries() {
     return [
@@ -553,7 +472,9 @@ class TimelineActionToolbar extends StatelessWidget {
         keyValue: 'rename-frame-button',
         label: AppText.strings.tlEditInstance,
         icon: Icons.edit_outlined,
-        enabled: _canEditInstance,
+        // A host with no dispatch to offer greys the entry out — the same
+        // answer the enablement gate gives, from a different cause.
+        enabled: onEditInstance != null && _canEditInstance,
         onSelected: onEditInstance,
       ),
       PanelFlyoutItem(
@@ -589,12 +510,19 @@ class TimelineActionToolbar extends StatelessWidget {
     required String tooltip,
     required IconData icon,
     required VoidCallback? onPressed,
+    bool accent = false,
   }) {
     return AppIconButton(
       keyValue: key.value,
       tooltip: tooltip,
       onPressed: onPressed,
-      icon: Icon(icon),
+      // 유저 확정: accent는 ＋ 글리프에만, ＋가 있는 모든 곳에. Never the
+      // border, never a caret — and it goes out with the button, because an
+      // accent on a dead control reads as "press me".
+      icon: Icon(
+        icon,
+        color: accent && onPressed != null ? AppColors.accent : null,
+      ),
     );
   }
 
@@ -610,273 +538,233 @@ class TimelineActionToolbar extends StatelessWidget {
         key: key,
         onPressed: onPressed,
         style: TextButton.styleFrom(
-          minimumSize: const Size(26, 30),
-          padding: const EdgeInsets.symmetric(horizontal: 5),
+          // Sized to sit INSIDE a pill (28 outer, 2px of breath each side)
+          // rather than to stand on its own in the bar.
+          minimumSize: const Size(21, 24),
+          maximumSize: const Size(24, 24),
+          padding: EdgeInsets.zero,
           visualDensity: VisualDensity.compact,
+          tapTargetSize: MaterialTapTargetSize.shrinkWrap,
         ),
-        child: Text(label, style: const TextStyle(fontSize: 13)),
+        child: Text(label, style: const TextStyle(fontSize: 12.5)),
       ),
     );
   }
 
-  Widget _groupDivider(BuildContext context) {
-    return SizedBox(
-      height: 22,
-      child: VerticalDivider(
-        width: 14,
-        thickness: 1,
-        color: Theme.of(context).colorScheme.outlineVariant,
+  // ⛔`_groupDivider` is gone. A group is a PILL now and its border says
+  // where it ends — a rule drawn between two bordered things says nothing
+  // the borders had not already said.
+
+  /// The LAYER pill.
+  ///
+  /// Cached (see [_StaticCommandGroup]) on the hidden-section mask — the
+  /// menu's show/hide checkmarks read `hiddenSections` from THIS closure —
+  /// on the program LANGUAGE, because the name cell prints a word now, and
+  /// on the one predicate a verb outside the menu reads.
+  Widget _layerPill() => _StaticCommandGroup(
+    rebuildKey: Object.hash(
+      hiddenSections.fold<int>(
+        0,
+        (mask, section) => mask | (1 << section.index),
       ),
-    );
-  }
+      AppText.settings.value.programLanguage,
+      session.canDeleteActiveLayer,
+    ),
+    builder: (context) => CommandPill(
+      key: const ValueKey<String>('timeline-toolbar-layer-group'),
+      head: PillNameCell(
+        keyValue: 'timeline-layer-menu-button',
+        label: AppText.strings.tlLayer,
+        tooltip: AppText.strings.tlLayerCommands,
+        entriesBuilder: () => _layerEntries(context),
+      ),
+      children: [
+        const PillDivider(),
+        StrapIconButton(
+          buttonKey: 'timeline-toolbar-add-layer-button',
+          menuKey: 'timeline-toolbar-add-layer-menu',
+          icon: Icons.add,
+          tooltip: AppText.strings.tlAddLayerHeader,
+          accent: true,
+          onPressed: onAddLayer,
+          entriesBuilder: _addLayerEntries,
+        ),
+        // 유저 확정: 자주 쓸 만한 것을 알약 밖으로, 우선 딜리트 레이어만.
+        // The menu keeps its own entry — that is the same shape `＋` already
+        // has (the Add menu's "same as selected"), not a second door.
+        AppIconButton(
+          keyValue: 'timeline-delete-layer-button',
+          tooltip: AppText.strings.tlDeleteLayer,
+          icon: const Icon(Icons.delete_outline),
+          onPressed: session.canDeleteActiveLayer ? onDeleteLayer : null,
+        ),
+      ],
+    ),
+  );
+
+  /// The FRAME pill — the verbs a rough pass wears out, none of them folded.
+  Widget _framePill() => CommandPill(
+    key: const ValueKey<String>('timeline-toolbar-frame-group'),
+    head: PillNameCell(
+      keyValue: 'timeline-frame-menu-button',
+      label: AppText.strings.tlFrame,
+      tooltip: AppText.strings.tlFrameCommands,
+      entriesBuilder: _frameEntries,
+    ),
+    children: [
+      const PillDivider(),
+      // Cached on the three predicates THESE buttons read, for the reason
+      // spelled out at the comma group below.
+      _StaticCommandGroup(
+        rebuildKey: (
+          _canCreateInstance,
+          session.canCutExposureAtCurrentFrame,
+          session.canToggleMarkAtCurrentFrame,
+          session.languageSettings.value,
+        ),
+        builder: (context) => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // ⛔NO band on this `＋`: it makes ONE thing, in the place you
+            // are standing. A band means there is something to choose, so
+            // its absence here is the signal rather than an omission.
+            _iconButton(
+              key: const ValueKey<String>('new-frame-button'),
+              tooltip: AppText.strings.tlAdd,
+              icon: Icons.add,
+              accent: true,
+              onPressed: _canCreateInstance ? onCreateInstance : null,
+            ),
+            _iconButton(
+              key: const ValueKey<String>('blank-exposure-button'),
+              tooltip: AppText.strings.tlBlankX,
+              icon: Icons.close,
+              onPressed: session.canCutExposureAtCurrentFrame
+                  ? session.cutExposureAtCurrentFrame
+                  : null,
+            ),
+            _iconButton(
+              key: const ValueKey<String>('toggle-mark-button'),
+              tooltip: AppText.strings.tlMark,
+              icon: Icons.circle,
+              onPressed: session.canToggleMarkAtCurrentFrame
+                  ? session.toggleMarkAtCurrentFrame
+                  : null,
+            ),
+          ],
+        ),
+      ),
+      const PillDivider(),
+      // Design D: the rigid shove a drag used to do, aimed. Scope = the live
+      // selection's rows, or the current row at the current cell. ONE pair
+      // for both axes — this rail's rows are all layer rows, so it asks as
+      // itself.
+      TimelineShiftButtons(session: session),
+      const PillDivider(),
+      // Comma set (UI-R17 #7, TVP-style): the current block — or the whole
+      // selection, packed — takes the pressed exposure outright; N asks for
+      // a count. Shortcuts 1-5.
+      //
+      // Cached on THEIR OWN predicate. Five buttons that all read one boolean
+      // sat in the same rebuild as the icon buttons beside them, so a flip
+      // step that changed only this one rebuilt every button in the row — and
+      // one that changed only an icon button's rebuilt all five of these.
+      // Measured: crossing "no cel ↔ cel" changed 5 of the toolbar's 10
+      // buttons and rebuilt all 10.
+      _StaticCommandGroup(
+        rebuildKey: (
+          session.canSetCommaForSelectionOrCurrent,
+          session.languageSettings.value,
+        ),
+        builder: (context) => Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            for (var comma = 1; comma <= 4; comma += 1)
+              _commaButton(
+                key: ValueKey<String>('set-comma-$comma-button'),
+                label: '$comma',
+                tooltip: AppText.strings.tlSetCommaTemplate.replaceAll(
+                  '{n}',
+                  '$comma',
+                ),
+                onPressed: session.canSetCommaForSelectionOrCurrent
+                    ? () => session.setCommaForSelectionOrCurrent(comma)
+                    : null,
+              ),
+            Builder(
+              builder: (context) => _commaButton(
+                key: const ValueKey<String>('set-comma-n-button'),
+                label: 'N',
+                tooltip: AppText.strings.tlSetCommasN,
+                onPressed: session.canSetCommaForSelectionOrCurrent
+                    ? () => showTimelineCommaCountDialog(context, session)
+                    : null,
+              ),
+            ),
+          ],
+        ),
+      ),
+    ],
+  );
+
+  /// The FX pill — a noun with no verbs outside its menu yet, which the
+  /// grammar allows: same shape, empty list.
+  ///
+  /// Safe inside the cached group for the R13-2 reason: the builder closes
+  /// over the stable session and reads the active layer's chain when the
+  /// flyout OPENS, so a reused button widget cannot show a stale list.
+  Widget _fxPill() => _StaticCommandGroup(
+    rebuildKey: AppText.settings.value.programLanguage,
+    builder: (context) => CommandPill(
+      head: PillNameCell(
+        keyValue: 'timeline-effects-button',
+        icon: Icons.auto_fix_high_outlined,
+        tooltip: AppText.strings.tlEffects,
+        entriesBuilder: _effectEntries,
+      ),
+    ),
+  );
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
+    // ⛔The outer border and fill are gone. Every noun wears its own pill
+    // border now, so a box around all four of them was a frame around
+    // frames — and the command bar it sits in already has an edge.
+    //
+    // 🆕The scroller is BARRED again (유저, 2026-08-10: 「버튼 사라지기
+    // 시작하면 생기는 스크롤바」). R4 retired the bar here when this was a
+    // 30px row of loose buttons, where a lane laid across it took the bottom
+    // third of every target; the pills are 28px inside a 36px row now, and
+    // the app's bar exists only WHILE it overflows and costs no layout — so
+    // the case that retired it no longer holds. See [UnbarredScrollable].
+    return Padding(
       key: const ValueKey<String>('timeline-action-toolbar'),
-      decoration: ShapeDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        shape: AppShapes.container(
-          AppShapes.windowRadius,
-          side: BorderSide(color: Theme.of(context).colorScheme.outlineVariant),
-        ),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
-        child: UnbarredScrollable(
-          child: SingleChildScrollView(
-            scrollDirection: Axis.horizontal,
-            // ⛔The bake is NOT here. It used to wrap the whole bar,
-            // which meant one button's state changing re-baked every
-            // button on the row. Each [_StaticCommandGroup] bakes ITSELF
-            // now, so the groups are ZONES: siblings, each with its own
-            // dirty bit, each re-baking only for its own reason. The
-            // wrapper had to come off rather than stay as an outer
-            // layer, because a bake inside a bake is the one thing that
-            // freezes.
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Static (see [_StaticCommandGroup]): both buttons build their
-                // entries at open time. The key is the hidden-section mask
-                // because the Layer flyout's show/hide checkmarks read
-                // `hiddenSections` from THIS closure — and the PROGRAM
-                // LANGUAGE, because the labels are no longer fixed: a cached
-                // group would keep printing the old language after a switch.
-                _StaticCommandGroup(
-                  rebuildKey: Object.hash(
-                    hiddenSections.fold<int>(
-                      0,
-                      (mask, section) => mask | (1 << section.index),
-                    ),
-                    AppText.settings.value.programLanguage,
-                  ),
-                  builder: (context) => Row(
-                    key: const ValueKey<String>('timeline-toolbar-layer-group'),
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SplitIconButton(
-                        buttonKey: 'timeline-toolbar-add-layer-button',
-                        menuKey: 'timeline-toolbar-add-layer-menu',
-                        icon: Icons.add,
-                        tooltip: AppText.strings.tlAddLayerHeader,
-                        accent: true,
-                        onPressed: onAddLayer,
-                        entriesBuilder: _addLayerEntries,
-                      ),
-                      const SizedBox(width: 4),
-                      PanelFlyoutButton(
-                        key: const ValueKey<String>(
-                          'timeline-layer-menu-button',
-                        ),
-                        label: AppText.strings.tlLayer,
-                        tooltip: AppText.strings.tlLayerCommands,
-                        entriesBuilder: () => _layerEntries(context),
-                      ),
-                      const SizedBox(width: 4),
-                      // R5 #6: EFFECTS get a button of their own. The
-                      // chain used to hang off the tail of the Layer
-                      // menu, and the effect LIST is what this button is
-                      // going to grow into — so it stopped being a tail.
-                      //
-                      // Safe inside the cached group for the R13-2
-                      // reason: the builder closes over the stable
-                      // session and reads the active layer's chain when
-                      // the flyout OPENS, so a reused button widget
-                      // cannot show a stale list.
-                      PanelFlyoutButton(
-                        key: const ValueKey<String>('timeline-effects-button'),
-                        label: AppText.strings.tlEffects,
-                        tooltip: AppText.strings.tlEffects,
-                        entriesBuilder: _effectEntries,
-                      ),
-                      // R27 #6: the layer BLEND dropdown left this toolbar for
-                      // the layer LABEL's rightmost column (user placement) —
-                      // per-row reading, PS/CSP style. See LayerBlendModeChip.
-                    ],
-                  ),
-                ),
-                _groupDivider(context),
-                Row(
-                  key: const ValueKey<String>('timeline-toolbar-frame-group'),
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    // Cached on the three predicates THESE buttons read, for
-                    // the reason spelled out at the comma group below.
-                    _StaticCommandGroup(
-                      rebuildKey: (
-                        _canCreateInstance,
-                        session.canCutExposureAtCurrentFrame,
-                        session.canToggleMarkAtCurrentFrame,
-                        session.languageSettings.value,
-                      ),
-                      builder: (context) => Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          _iconButton(
-                            key: const ValueKey<String>('new-frame-button'),
-                            tooltip: AppText.strings.tlAdd,
-                            icon: Icons.add_box_outlined,
-                            onPressed: _canCreateInstance
-                                ? onCreateInstance
-                                : null,
-                          ),
-                          _iconButton(
-                            key: const ValueKey<String>(
-                              'blank-exposure-button',
-                            ),
-                            tooltip: AppText.strings.tlBlankX,
-                            icon: Icons.close,
-                            onPressed: session.canCutExposureAtCurrentFrame
-                                ? session.cutExposureAtCurrentFrame
-                                : null,
-                          ),
-                          _iconButton(
-                            key: const ValueKey<String>('toggle-mark-button'),
-                            tooltip: AppText.strings.tlMark,
-                            icon: Icons.circle,
-                            onPressed: session.canToggleMarkAtCurrentFrame
-                                ? session.toggleMarkAtCurrentFrame
-                                : null,
-                          ),
-                        ],
-                      ),
-                    ),
-                    // Design D: the rigid shove a drag used to do, aimed.
-                    // Scope = the live selection's rows, or the current row
-                    // at the current cell. ONE pair for both axes — this
-                    // rail's rows are all layer rows, so it asks as itself.
-                    TimelineShiftButtons(session: session),
-                    const SizedBox(width: 4),
-                    // Comma set (UI-R17 #7, TVP-style): the current block —
-                    // or the whole selection, packed — takes the pressed
-                    // exposure outright; N asks for a count. Shortcuts 1-5.
-                    //
-                    // Cached on THEIR OWN predicate. Five buttons that all
-                    // read one boolean sat in the same rebuild as the icon
-                    // buttons beside them, so a flip step that changed only
-                    // this one rebuilt every button in the row — and one
-                    // that changed only an icon button's rebuilt all five of
-                    // these. Measured: crossing "no cel ↔ cel" changed 5 of
-                    // the toolbar's 10 buttons and rebuilt all 10.
-                    _StaticCommandGroup(
-                      rebuildKey: (
-                        session.canSetCommaForSelectionOrCurrent,
-                        session.languageSettings.value,
-                      ),
-                      builder: (context) => Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          for (var comma = 1; comma <= 4; comma += 1)
-                            _commaButton(
-                              key: ValueKey<String>('set-comma-$comma-button'),
-                              label: '$comma',
-                              tooltip: AppText.strings.tlSetCommaTemplate
-                                  .replaceAll('{n}', '$comma'),
-                              onPressed:
-                                  session.canSetCommaForSelectionOrCurrent
-                                  ? () => session.setCommaForSelectionOrCurrent(
-                                      comma,
-                                    )
-                                  : null,
-                            ),
-                          Builder(
-                            builder: (context) => _commaButton(
-                              key: const ValueKey<String>('set-comma-n-button'),
-                              label: 'N',
-                              tooltip: AppText.strings.tlSetCommasN,
-                              onPressed:
-                                  session.canSetCommaForSelectionOrCurrent
-                                  ? () => showTimelineCommaCountDialog(
-                                      context,
-                                      session,
-                                    )
-                                  : null,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    const SizedBox(width: 4),
-                    PanelFlyoutButton(
-                      key: const ValueKey<String>('timeline-frame-menu-button'),
-                      label: AppText.strings.tlFrame,
-                      tooltip: AppText.strings.tlFrameCommands,
-                      entriesBuilder: _frameEntries,
-                    ),
-                    const SizedBox(width: 4),
-                    // The two PROJECT-axis dropdowns print project values and
-                    // nothing about the playhead, so they are cached on those
-                    // — a flip step must not rebuild them at all.
-                    _StaticCommandGroup(
-                      rebuildKey: (
-                        session.projectFrameRate,
-                        session.projectAudioSampleRate,
-                        session.languageSettings.value,
-                      ),
-                      builder: (context) => Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          // R26 #32: the PROJECT frame rate — the axis
-                          // everything timed reads. One rate per project,
-                          // never per cut.
-                          PanelFlyoutButton(
-                            key: const ValueKey<String>(
-                              'timeline-fps-menu-button',
-                            ),
-                            label: session.projectFrameRate.label,
-                            tooltip: AppText.strings.projectFpsTitle,
-                            entriesBuilder: () => _fpsEntries(context),
-                          ),
-                          const SizedBox(width: 4),
-                          // EXPORT-AUDIO ③: the PROJECT audio rate — what
-                          // every sound conforms to and the mixer runs at.
-                          PanelFlyoutButton(
-                            key: const ValueKey<String>(
-                              'timeline-samplerate-menu-button',
-                            ),
-                            label: audioSampleRateLabel(
-                              session.projectAudioSampleRate,
-                            ),
-                            tooltip: AppText.strings.tlProjectAudioRate,
-                            entriesBuilder: _audioSampleRateEntries,
-                          ),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
-                _groupDivider(context),
-                // Static too: a New-cut split button and a Cut flyout, both
-                // lazily-built. Keyed on the language for the same reason as
-                // the layer group — the labels move when the setting does.
-                _StaticCommandGroup(
-                  rebuildKey: AppText.settings.value.programLanguage,
-                  builder: (context) => CutCommandGroup(session: session),
-                ),
-              ],
+      padding: const EdgeInsets.symmetric(horizontal: 2),
+      // ⛔The bake is NOT here. It used to wrap the whole bar, which meant
+      // one button's state changing re-baked every button on the row. Each
+      // [_StaticCommandGroup] bakes ITSELF now, so the groups are ZONES:
+      // siblings, each with its own dirty bit, each re-baking only for its
+      // own reason. The wrapper had to come off rather than stay as an outer
+      // layer, because a bake inside a bake is the one thing that freezes.
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // 컷 · 레이어 · 프레임 · FX — the four nouns, in the order the
+            // data nests (유저 확정). Keyed on the language for the same
+            // reason as the others: every name cell prints a word.
+            _StaticCommandGroup(
+              rebuildKey: AppText.settings.value.programLanguage,
+              builder: (context) => CutCommandGroup(session: session),
             ),
-          ),
+            const SizedBox(width: 6),
+            _layerPill(),
+            const SizedBox(width: 6),
+            _framePill(),
+            const SizedBox(width: 6),
+            _fxPill(),
+          ],
         ),
       ),
     );

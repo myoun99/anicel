@@ -4,8 +4,10 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
+import '../widgets/grip_band.dart';
 import '../widgets/static_raster.dart';
 import '../widgets/superellipse_clip.dart';
+import 'panel_collapsed_scope.dart';
 import 'panel_flash.dart';
 import 'panel_visibility_scope.dart';
 
@@ -22,6 +24,8 @@ class EditorPanelTab {
     this.locked = false,
     this.keepAlive = false,
     this.staticRaster = true,
+    this.sillTrailing,
+    this.collapsedExtent = 0,
   });
 
   /// Stable identifier the group reports through `onTabSelected`.
@@ -74,6 +78,25 @@ class EditorPanelTab {
   /// wrapper notices and stands itself down. See
   /// [StaticRaster.maxConsecutiveCaptures].)
   final bool staticRaster;
+
+  /// What THIS tab puts on the group's 문턱, right-aligned, ahead of the
+  /// group's own [EditorPanelTabs.trailing].
+  ///
+  /// Only the ACTIVE tab's is mounted, which is what makes the sill able to
+  /// carry a panel's own controls at all: the frame panels put their
+  /// playback transport and their settings pill here (유저 확정,
+  /// 2026-08-10), and 「존재할 거면 늘 그 자리에」 holds because the sill's
+  /// right edge is fixed while the tabs grow from the left.
+  final WidgetBuilder? sillTrailing;
+
+  /// How tall this panel needs to be when the region is COLLAPSED — see
+  /// [PanelCollapsedScope] for why the shell owns this at all.
+  ///
+  /// Zero means the honest thing: the panel has nothing to say at that size,
+  /// so the shell shows NOTHING and the region is its sill alone (유저 확정
+  /// for 콘티·뷰어: 「진짜 깔끔하게 내용물 안 보이게」). The frame panels ask
+  /// for their command bar's height and keep working while folded.
+  final double collapsedExtent;
 }
 
 /// A tab in flight between (or within) tab groups.
@@ -113,6 +136,8 @@ class EditorPanelTabs extends StatefulWidget {
     this.onTabMoved,
     this.canAcceptTab,
     this.onTabDragChanged,
+    this.draggingTab,
+    this.collapsed = false,
     this.onToggleLock,
     this.onCloseTab,
     this.flash,
@@ -168,6 +193,17 @@ class EditorPanelTabs extends StatefulWidget {
   /// null when the drag ends — lets the dock layout reveal its drop zones
   /// for the tab in flight.
   final ValueChanged<EditorPanelTabDragData?>? onTabDragChanged;
+
+  /// The tab in flight ANYWHERE in the workspace — including one lifted off
+  /// another group and headed here. The sill's right-hand controls fade out
+  /// while it is non-null so the whole strip is landing area again; see
+  /// [_EditorPanelTabsState._buildSillTrailing].
+  final ValueListenable<EditorPanelTabDragData?>? draggingTab;
+
+  /// Whether the REGION this group lives in is folded down. The strip stays
+  /// exactly as it is — collapsed is not closed — and the content area
+  /// switches to the active tab's collapsed form; see [PanelCollapsedScope].
+  final bool collapsed;
 
   /// Toggles a tab's drag lock (every tab button carries the toggle, left
   /// of its name). Null hides the toggle.
@@ -314,45 +350,52 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
                 //
                 // Buttons STRETCH the strip's full height so the selected
                 // tab meets the content edge-to-edge.
-                LayoutBuilder(
-                  builder: (context, constraints) {
-                    final trailingRoom = widget.trailing == null ? 0.0 : 32.0;
-                    final room = math.max(
-                      0.0,
-                      constraints.maxWidth - trailingRoom,
-                    );
-                    // How many fit. The overflow button costs one slot, so
-                    // it only appears when it actually buys room.
-                    final fits = (room / EditorPanelTabs._tabExtent).floor();
-                    final overflowing = fits < tabs.length;
-                    final shown = overflowing
-                        ? math.max(0, fits - 1)
-                        : tabs.length;
-                    return Row(
-                      mainAxisSize: MainAxisSize.min,
-                      crossAxisAlignment: CrossAxisAlignment.stretch,
-                      children: [
-                        for (var index = 0; index < shown; index += 1)
-                          _buildTabButton(index),
-                        if (overflowing)
-                          _TabOverflowButton(
-                            groupId: widget.groupId,
-                            hidden: tabs.sublist(shown),
-                            activeTabId: widget.activeTabId,
-                            onTabSelected: widget.onTabSelected,
-                          ),
-                      ],
-                    );
-                  },
-                ),
-                if (widget.trailing != null)
-                  Align(
-                    alignment: AlignmentDirectional.centerEnd,
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: widget.trailing!,
+                //
+                // ★ONE Row, not a Stack overlay (2026-08-10). The trailing
+                // group used to be `Align`ed over the tabs and the tab count
+                // guessed 32px of room for it — which was fine while it held
+                // one chevron and wrong the moment the sill grew a transport
+                // and a settings pill. A Row lays its INFLEXIBLE child out
+                // first and hands the `Flexible` what is left, so the tab
+                // count is measured against the room that actually exists
+                // and cannot drift from what the trailing group costs.
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Flexible(
+                      child: LayoutBuilder(
+                        builder: (context, constraints) {
+                          // How many fit. The overflow button costs one slot,
+                          // so it only appears when it actually buys room.
+                          final fits =
+                              (constraints.maxWidth /
+                                      EditorPanelTabs._tabExtent)
+                                  .floor();
+                          final overflowing = fits < tabs.length;
+                          final shown = overflowing
+                              ? math.max(0, fits - 1)
+                              : tabs.length;
+                          return Row(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              for (var index = 0; index < shown; index += 1)
+                                _buildTabButton(index),
+                              if (overflowing)
+                                _TabOverflowButton(
+                                  groupId: widget.groupId,
+                                  hidden: tabs.sublist(shown),
+                                  activeTabId: widget.activeTabId,
+                                  onTabSelected: widget.onTabSelected,
+                                ),
+                            ],
+                          );
+                        },
+                      ),
                     ),
-                  ),
+                    _buildSillTrailing(context, active),
+                  ],
+                ),
               ],
             ),
           );
@@ -390,19 +433,37 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
                       if (tab.id == active.id || _builtTabIds.contains(tab.id))
                         Offstage(
                           key: ValueKey<String>('panel-content-${tab.id}'),
-                          offstage: tab.id != active.id,
+                          // A collapsed region whose active tab declared no
+                          // collapsed form shows NOTHING — not a crop of the
+                          // panel, not a sliver of its top. That is the whole
+                          // contract, and offstage is how it is kept: the
+                          // subtree stays mounted (a keep-alive tab must not
+                          // lose its state to a fold) and simply does not lay
+                          // out.
+                          offstage:
+                              tab.id != active.id ||
+                              (widget.collapsed && tab.collapsedExtent <= 0),
                           child: TickerMode(
-                            enabled: tab.id == active.id,
+                            enabled: tab.id == active.id && !widget.collapsed,
                             child: PanelVisibilityScope(
                               visible: _visibilityFor(
                                 tab.id,
                                 visible: tab.id == active.id,
                               ),
-                              child: tab.keepAlive
-                                  ? (_contentCache[tab.id] ??= _buildTabContent(
-                                      tab,
-                                    ))
-                                  : _buildTabContent(tab),
+                              // OUTSIDE the content cache on purpose: the
+                              // cached widget instance never changes, and an
+                              // inherited dependency marks its dependents
+                              // dirty directly — so folding reaches a
+                              // keep-alive panel without dropping the cache
+                              // that makes tab switches instant.
+                              child: PanelCollapsedScope(
+                                collapsed:
+                                    widget.collapsed && tab.id == active.id,
+                                child: tab.keepAlive
+                                    ? (_contentCache[tab.id] ??=
+                                          _buildTabContent(tab))
+                                    : _buildTabContent(tab),
+                              ),
                             ),
                           ),
                         ),
@@ -435,6 +496,42 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
           if (strip != null && widget.stripAtBottom) strip,
         ],
       ),
+    );
+  }
+
+  /// The sill's right-hand group: the ACTIVE tab's own controls, then the
+  /// group's ([EditorPanelTabs.trailing]).
+  ///
+  /// ★It gets out of the way while a tab is in flight. The whole strip is a
+  /// drop target ([_TabStripTailDropRegion] carpets it), so anything sitting
+  /// on it is eating landing area — and this group is no longer one chevron
+  /// but a transport and a pill. Fading it out is not decoration: it hands
+  /// the sill back to the drag for exactly as long as the drag lasts.
+  Widget _buildSillTrailing(BuildContext context, EditorPanelTab active) {
+    final own = active.sillTrailing?.call(context);
+    final group = widget.trailing;
+    if (own == null && (group == null || group.isEmpty)) {
+      return const SizedBox.shrink();
+    }
+    final row = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [?own, ...?group],
+    );
+    final dragging = widget.draggingTab;
+    if (dragging == null) {
+      return row;
+    }
+    return ValueListenableBuilder<EditorPanelTabDragData?>(
+      valueListenable: dragging,
+      builder: (context, inFlight, child) => IgnorePointer(
+        ignoring: inFlight != null,
+        child: AnimatedOpacity(
+          opacity: inFlight != null ? 0 : 1,
+          duration: const Duration(milliseconds: 120),
+          child: child,
+        ),
+      ),
+      child: row,
     );
   }
 
@@ -499,7 +596,15 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
   }
 
   Widget _buildTabInterior(EditorPanelTab tab) {
-    if (tab.minContentWidth == null && tab.minContentHeight == null) {
+    // ★A COLLAPSED panel never meets the minimum-size scroller. That branch
+    // is what turned folding into cropping: it takes "the dock is smaller
+    // than my floor" and answers "then lay out at the floor and let them
+    // scroll", which is right for a frame panel squeezed into a side rail
+    // and exactly wrong here — the panel has already been told to render a
+    // form that fits, and putting that form in a scroller would give it back
+    // a height it did not ask for.
+    if (widget.collapsed ||
+        (tab.minContentWidth == null && tab.minContentHeight == null)) {
       return _bake(tab, Builder(builder: tab.builder));
     }
     return LayoutBuilder(
@@ -768,15 +873,11 @@ class _PanelTabButton extends StatefulWidget {
   final EditorPanelTabDragData? dragData;
   final ValueChanged<EditorPanelTabDragData?>? onTabDragChanged;
 
-  /// The lift zone's extent along the tab's window-facing edge — the band
-  /// is thinner than this, but the TARGET may not move under the pointer
-  /// just because the band grew.
-  static const double gripExtent = 8;
-
-  /// What the band is when it is saying a STATE, and when it is offering a
-  /// HANDLE.
-  static const double bandRest = 2;
-  static const double bandReach = 6;
+  // ⛔The three numbers and the colour ladder LEFT this class (2026-08-10):
+  // they are [GripBand] now, because the command pill's `＋` wears the same
+  // band along its own top edge to open its list of kinds. A second copy of
+  // 「2px for a state, 6px for a handle, and the target is 8 either way」 is
+  // exactly the drift this repo keeps paying for.
 
   @override
   State<_PanelTabButton> createState() => _PanelTabButtonState();
@@ -791,10 +892,11 @@ class _PanelTabButtonState extends State<_PanelTabButton> {
   /// Thick when there is something to grab, thin when it is only offering
   /// itself.
   double get _bandExtent => _armed && (_dragging || _gripHovered)
-      ? _PanelTabButton.bandReach
-      : _PanelTabButton.bandRest;
+      ? GripBand.reach
+      : GripBand.rest;
 
-  /// The app's one grip ladder, and NOTHING ELSE (유저, R3 #9).
+  /// The app's one grip ladder ([GripBand.ink]), and NOTHING ELSE (유저,
+  /// R3 #9).
   ///
   /// ⛔The ACTIVE rung is gone. The band used to turn accent for the open
   /// tab, which meant the tab you were most likely to want to drag was the
@@ -803,21 +905,15 @@ class _PanelTabButtonState extends State<_PanelTabButton> {
   /// open is still said twice over without it: the selected tab wears the
   /// body's own fill and its glyph is accent.
   ///
-  /// Three rungs, on the three things a hand does: the panel is under the
-  /// pointer (기본색) → the band itself is (호버색) → it is being dragged
-  /// (클릭색).
-  Color _bandColor(bool panelHovered) {
-    if (!_armed) {
-      return Colors.transparent;
-    }
-    if (_dragging) {
-      return AppColors.accent;
-    }
-    if (_gripHovered) {
-      return AppColors.gripHover;
-    }
-    return panelHovered ? AppColors.hairlineStrong : Colors.transparent;
-  }
+  /// A tab that cannot be lifted has no band at all, which is why the
+  /// `_armed` gate stays here rather than moving into the ladder.
+  Color _bandColor(bool panelHovered) => _armed
+      ? GripBand.ink(
+          nearby: panelHovered,
+          hovered: _gripHovered,
+          active: _dragging,
+        )
+      : Colors.transparent;
 
   /// The tab's silhouette: rounded on the edge AWAY from the panel body,
   /// square where it meets it.
@@ -844,7 +940,7 @@ class _PanelTabButtonState extends State<_PanelTabButton> {
       onExit: (_) => setState(() => _gripHovered = false),
       child: SizedBox(
         key: widget.gripKey,
-        height: _PanelTabButton.gripExtent,
+        height: GripBand.hitExtent,
         // The TARGET is a constant 8px of the edge; the band inside it
         // grows toward the frame, so a pointer resting on the grip never
         // finds the thing it is over moving out from under it.

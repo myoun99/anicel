@@ -530,6 +530,7 @@ void main() {
     'tlAttachSyncedBelow': (s) => s.tlAttachSyncedBelow,
     'tlLayerCommands': (s) => s.tlLayerCommands,
     'tlFrameCommands': (s) => s.tlFrameCommands,
+    'tlCut': (s) => s.tlCut,
     'tlLayer': (s) => s.tlLayer,
     'tlFrame': (s) => s.tlFrame,
     'tlDuplicateLayer': (s) => s.tlDuplicateLayer,

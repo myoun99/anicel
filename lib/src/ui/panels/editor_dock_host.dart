@@ -51,6 +51,7 @@ class EditorDockHost extends StatelessWidget {
     this.chromeless = false,
     this.stripAtBottom = false,
     this.trailing,
+    this.collapsed = false,
   });
 
   final EditorPanelLayoutModel layout;
@@ -84,6 +85,9 @@ class EditorDockHost extends StatelessWidget {
   /// at the far end of the strip against the window frame.
   final List<Widget>? trailing;
 
+  /// Whether this dock's region is folded down — see [PanelCollapsedScope].
+  final bool collapsed;
+
   @override
   Widget build(BuildContext context) {
     final tabIds = layout.tabsIn(dockId);
@@ -107,6 +111,10 @@ class EditorDockHost extends StatelessWidget {
       canAcceptTab: canAcceptTab,
       onTabMoved: onTabMoved,
       onTabDragChanged: onTabDragChanged,
+      // The sill's own controls stand down while anything is in flight, so
+      // the strip goes back to being landing area.
+      draggingTab: draggingTab,
+      collapsed: collapsed,
       onToggleLock: onToggleLock,
       onCloseTab: onCloseTab,
       flash: flash,

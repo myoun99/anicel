@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../panels/panel_collapsed_scope.dart';
 import '../../models/app_language.dart' show AppLanguage;
 import '../../models/camera_instruction.dart';
 import '../../models/layer_blend_mode.dart';
@@ -445,6 +446,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
     final xsheetMetrics = XSheetTimelineGrid.defaultMetrics.copyWith(
       frameCellWidth: widget.pixelsPerFrame,
     );
+    final collapsed = PanelCollapsedScope.of(context);
 
     return Material(
       color: colorScheme.surfaceContainerHighest,
@@ -482,8 +484,22 @@ class _TimelinePanelState extends State<TimelinePanel> {
               ],
             ),
           ),
+          // ★COLLAPSED = the command bar and nothing else (유저 확정,
+          // 2026-08-10: 「접으면 버튼행만 남는다」). The grid goes OFFSTAGE
+          // rather than out of the tree: it keeps its scroll positions, its
+          // tile caches and its whole element subtree, so unfolding is a
+          // flag flip instead of a rebuild — and the parent chain never
+          // changes, which is the thing that silently remounts a panel
+          // (the flip-HUD round paid for that lesson once already).
+          //
+          // The `Expanded` stays too, and it is what makes the arithmetic
+          // work out: at the collapsed height the bar takes the whole
+          // column, this gets zero, and an offstage child does not lay out
+          // at all — so there is nothing to overflow.
           Expanded(
-            child: widget.orientation == TimelineOrientation.horizontal
+            child: Offstage(
+              offstage: collapsed,
+              child: widget.orientation == TimelineOrientation.horizontal
                 ? LayerTimelineGrid(
                     layers: horizontalLayers,
                     activeLayerId: widget.activeLayerId,
@@ -630,6 +646,7 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     onToggleAttachGroup: widget.onToggleAttachGroup,
                     cutEndDrag: widget.cutEndDrag,
                   ),
+            ),
           ),
         ],
       ),

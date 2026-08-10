@@ -3,7 +3,6 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
-import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/project_id.dart';
@@ -46,18 +45,16 @@ void main() {
     WidgetTester tester, {
     required CanvasPlaybackController controller,
     PlaybackScope scope = PlaybackScope.activeCut,
-    PlaybackQuality quality = PlaybackQuality.half,
-    ValueChanged<PlaybackQuality>? onQualityChanged,
     int Function()? playbackStartFrame,
   }) {
+    // ⛔No quality here any more: the selector moved to the settings pill on
+    // the 문턱 (2026-08-10), so the transport neither takes it nor shows it.
     return tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: PlaybackTransportControls(
             controller: controller,
             scope: scope,
-            quality: quality,
-            onQualityChanged: onQualityChanged ?? (_) {},
             playbackStartFrame: playbackStartFrame,
           ),
         ),
@@ -133,28 +130,21 @@ void main() {
     expect(c.loopMode, PlaybackLoopMode.loop);
   });
 
-  testWidgets('quality selector reports the chosen preset', (tester) async {
+  testWidgets('the quality selector is NOT on the transport', (tester) async {
+    // It moved to the settings pill on the 문턱 (유저 확정, 2026-08-10):
+    // a setting touched once a project does not belong on the one row that
+    // has to read at a glance. Guarded here rather than merely deleted,
+    // because "the transport lost a control" is exactly the kind of change
+    // a later round re-adds by reflex.
     final c = controller();
     addTearDown(c.dispose);
-    final chosen = <PlaybackQuality>[];
-    await pumpControls(
-      tester,
-      controller: c,
-      quality: PlaybackQuality.half,
-      onQualityChanged: chosen.add,
-    );
-    expect(find.text('1/2'), findsOneWidget);
+    await pumpControls(tester, controller: c);
 
-    await tester.tap(
+    expect(
       find.byKey(const ValueKey<String>('playback-quality-selector')),
+      findsNothing,
     );
-    await tester.pumpAndSettle();
-    await tester.tap(
-      find.byKey(const ValueKey<String>('playback-quality-full')),
-    );
-    await tester.pumpAndSettle();
-
-    expect(chosen, [PlaybackQuality.full]);
+    expect(find.text('1/2'), findsNothing);
   });
 
   testWidgets('a scope only controls its own playback', (tester) async {
