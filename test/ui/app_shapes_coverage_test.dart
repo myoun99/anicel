@@ -120,7 +120,9 @@ void main() {
 /// 84 at R1e. **81** since R4 #8 folded the anchored popup's three
 /// hand-rolled `Material(borderRadius: circular(6))` surfaces into one
 /// `AppShapes.container(AppShapes.windowRadius)` inside the shell itself.
-const int _knownOffenders = 78;
+/// **77** since the V row's transform teardown took the cut-fade envelope span
+/// with it — one corner fewer to convert, banked here rather than left as slack.
+const int _knownOffenders = 77;
 
 final RegExp _offending = RegExp(
   r'BorderRadius\.circular|RoundedRectangleBorder|ClipRRect',

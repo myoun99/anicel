@@ -23,7 +23,6 @@ import 'camera/camera_frame_overlay.dart';
 import 'canvas/active_stroke_overlay.dart';
 import 'canvas/flip_hud_controller.dart';
 import 'canvas/canvas_layer_stack_view.dart';
-import 'canvas/layer_pose_paint.dart';
 import 'canvas/layer_position_gizmo.dart';
 import 'canvas/layer_transform_box.dart';
 import 'editor_session_manager.dart';
@@ -325,33 +324,13 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       backdropArgb: project.backdropArgb,
       pasteboardArgb: project.pasteboardArgb,
       showAlphaCheckerboard: alphaPreviewEnabled.value,
-      transformTrackOf: session.transformTrackForCut,
       trackEffectsOf: session.trackEffectsForCut,
     );
   }
 
-  /// Wraps editing-canvas content in the CUT pose (R9-B) — identity
-  /// pass-through when [sample] is null. Content only: the paper, the
-  /// camera overlay chrome and the fade wash stay outside.
-  Widget _wrapInCutPose(
-    Widget child, {
-    required LayerPoseSample? sample,
-    required CanvasSize canvasSize,
-    required CanvasViewport viewport,
-  }) {
-    if (sample == null) {
-      return child;
-    }
-    return Transform(
-      transform: layerPoseViewportWrapMatrix(
-        sample.pose,
-        canvasSize,
-        viewport,
-        anchorPoint: sample.anchorPoint,
-      ),
-      child: child,
-    );
-  }
+  // `_wrapInCutPose` went with the V row's transform: nothing poses a whole cut
+  // on the editing canvas any more, so its content, gizmos and overlays all
+  // draw straight in the layer's own canvas space.
 
   /// R26 #35: WHY the paint press did nothing — a drawing row simply has
   /// no cel at this frame; every other section cannot hold artwork at
@@ -422,25 +401,16 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final interactivePose = selection == null
         ? null
         : session.layerCanvasPoseSample(selection.layerId);
-    // The CUT-level pose (storyboard V-row fx, R9-B): with fx on, the
-    // editing canvas shows the cut's transform exactly like the layer fx —
-    // the paper stays put, all layer CONTENT rides the pose. The active
-    // layer's wrap composes cut ∘ layer into ONE pose sample (similarities
-    // compose exactly), so draw-through keeps landing strokes in artwork
-    // coordinates through the single Transform's hit-test inverse.
+    // There is no CUT-level pose to compose in: the V row's transform is gone,
+    // so the only pose the editing canvas wraps is the active LAYER's.
+    //
     // Gap state (no active cut, UI-R9 #3): the void keeps a stable stage
     // geometry — the camera frame size stands in for the missing cut.
     final canvasSize =
         session.activeCutOrNull?.canvasSize ?? session.cameraFrameSize;
-    final cutPoseSample = session.activeCutCanvasPoseSample();
-    final interactiveWrapPose = cutPoseSample == null
-        ? interactivePose
-        : interactivePose == null
-        ? cutPoseSample
-        : composeLayerPoseSamples(cutPoseSample, interactivePose, canvasSize);
-    // The cut FADE follows the fx switch too (R9-C: fx ALWAYS reflects —
-    // dark faded frames are worked with fx off): a wash of the fade target
-    // color over the canvas, above the content, below the chrome.
+    // The cut FADE still follows the cursor (R9-C: fx ALWAYS reflects — dark
+    // faded frames are worked with fx off). It is the track's static opacity
+    // times the TRANSITION row's ramp now.
     final cutFadeOpacity = session.activeCutEditingFadeOpacity();
     final showFadeWash =
         !isPlaybackActive && !isScrubbing && cutFadeOpacity < 1;
@@ -726,37 +696,16 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                         viewport: viewport,
                         // R16-⑥: no cut in a gap — no paper (per-cut papers
                         // make anything else confusing; the void is the truth).
-                        paintPaper: cutPoseSample == null && !inGap,
+                        paintPaper: !inGap,
                         paperBackground: session.projectBackground,
                       );
-                      if (cutPoseSample == null) {
-                        return below;
-                      }
-                      return Stack(
-                        children: [
-                          Positioned.fill(
-                            child: CanvasLayerStackView(
-                              nodes: const [],
-                              imageCache: session.layerFrameImageCache,
-                              canvasSize: canvasSize,
-                              viewport: viewport,
-                              paintPaper: true,
-                              paperBackground: session.projectBackground,
-                            ),
-                          ),
-                          Positioned.fill(
-                            child: _wrapInCutPose(
-                              below,
-                              sample: cutPoseSample,
-                              canvasSize: canvasSize,
-                              viewport: viewport,
-                            ),
-                          ),
-                        ],
-                      );
+                      // The paper-stays-put split under a cut pose went with
+                      // the V row's transform: nothing poses the whole cut on
+                      // the editing canvas, so the layers draw straight.
+                      return below;
                     },
               interactiveContentOpacity: layerStack.activeLayerOpacity,
-              interactiveContentPose: interactiveWrapPose,
+              interactiveContentPose: interactivePose,
               // The playback view renders the camera framing itself; the editing
               // overlay would show a stale playhead pose on top of it. A scrub
               // keeps the CAMERA overlay only — the preview is the current view
@@ -781,17 +730,12 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                             // annotates the posed picture, exactly as the
                             // frame painter draws it inside the pose.
                             child: IgnorePointer(
-                              child: _wrapInCutPose(
-                                CustomPaint(
-                                  painter: _SeNameTagOverlayPainter(
-                                    viewport: viewport,
-                                    canvasSize: canvasSize,
-                                    tags: seNameTags,
-                                  ),
+                              child: CustomPaint(
+                                painter: _SeNameTagOverlayPainter(
+                                  viewport: viewport,
+                                  canvasSize: canvasSize,
+                                  tags: seNameTags,
                                 ),
-                                sample: cutPoseSample,
-                                canvasSize: canvasSize,
-                                viewport: viewport,
                               ),
                             ),
                           ),
@@ -851,10 +795,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                           Positioned.fill(
                             // R5 #10: the box frames the PICTURE, and its
                             // corners scale while its rotate handle turns —
-                            // one member per handle. It rides the cut pose
-                            // like the crosshair inside it.
-                            child: _wrapInCutPose(
-                              LayerTransformBox(
+                            // one member per handle. No cut pose to ride any
+                            // more: the V row's transform is gone.
+                            child: LayerTransformBox(
                                 bounds: transformBoxBounds,
                                 pose: session.layerPoseAtFrame(
                                   activeLayer,
@@ -887,21 +830,15 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                                       description:
                                           'Rotate ${activeLayer.name}',
                                     ),
-                              ),
-                              sample: cutPoseSample,
-                              canvasSize: canvasSize,
-                              viewport: viewport,
                             ),
                           ),
                         if (showPositionGizmo)
                           Positioned.fill(
-                            // The gizmo rides the cut pose too (R9-C): the
-                            // crosshair sits ON the posed picture and the
-                            // wrap's hit-test inverse maps drag deltas back
-                            // into the layer's own canvas space — the
-                            // committed Position stays unposed.
-                            child: _wrapInCutPose(
-                              LayerPositionGizmo(
+                            // No cut-pose wrap: the V row's transform is gone,
+                            // so the crosshair sits directly on the layer's own
+                            // canvas space and the committed Position needs no
+                            // un-posing.
+                            child: LayerPositionGizmo(
                                 pose: session.layerPoseAtFrame(
                                   activeLayer,
                                   session.currentFrameIndex,
@@ -919,20 +856,13 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                                       ),
                                       description: 'Move ${activeLayer.name}',
                                     ),
-                              ),
-                              sample: cutPoseSample,
-                              canvasSize: canvasSize,
-                              viewport: viewport,
                             ),
                           ),
                         if (showAnchorGizmo)
                           Positioned.fill(
-                            // Same cut-pose wrap as the position handle:
-                            // the glyph sits ON the posed picture and the
-                            // committed anchor stays in the layer's own
-                            // canvas space.
-                            child: _wrapInCutPose(
-                              LayerAnchorGizmo(
+                            // Unwrapped like the position handle, for the same
+                            // reason.
+                            child: LayerAnchorGizmo(
                                 anchorPoint: session.layerAnchorPointAtFrame(
                                   activeLayer,
                                   session.currentFrameIndex,
@@ -949,10 +879,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                                       description:
                                           'Anchor ${activeLayer.name}',
                                     ),
-                              ),
-                              sample: cutPoseSample,
-                              canvasSize: canvasSize,
-                              viewport: viewport,
                             ),
                           ),
                       ],
@@ -985,7 +911,6 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                           pasteboardArgb: session.repository
                               .requireProject()
                               .pasteboardArgb,
-                          transformTrackOf: session.transformTrackForCut,
                           trackEffectsOf: session.trackEffectsForCut,
                           trackGlobalFrameOf: session.trackGlobalFrameOf,
                           // ALL-CUTS playback watches the whole stage: the
@@ -1022,12 +947,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                       gapParking: session.gapParkingListenable,
                       gapContentBuilder: (context) =>
                           _buildTrackStackView(session, viewport),
-                      // The cut pose AND fade follow the editing canvas
-                      // (R9-B/C): fx-gated per cursor frame, identity when
-                      // off. The fade is transparency now (R3b) — the
-                      // painter thins the unit; nothing to color here.
-                      cutPoseSampleAt: (frame) =>
-                          session.activeCutCanvasPoseSample(frameIndex: frame),
+                      // The cut FADE follows the editing canvas per cursor
+                      // frame; it is the transition row's ramp times the
+                      // track's static opacity now, and there is no cut pose
+                      // left to sample.
                       cutFadeOpacityAt: (frame) => session
                           .activeCutEditingFadeOpacity(frameIndex: frame),
                       seNameTagsAt: (frame) {

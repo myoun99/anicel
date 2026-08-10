@@ -1,12 +1,11 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/camera_instruction.dart'
+    show InstructionEvent;
 import 'package:anicel/src/models/cut_id.dart';
-import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
-import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
-import 'package:anicel/src/ui/storyboard_cut_fade_policy.dart';
 import 'package:anicel/src/ui/storyboard_timeline_layout.dart';
 import 'package:anicel/src/ui/timeline/timeline_drag_preview.dart';
 
@@ -294,13 +293,18 @@ void main() {
     expect(layoutStart(s, second), firstDuration - 3);
   });
 
-  test('a trim NEVER moves transform keys — the track owns the lanes (R4 '
-      'independence: "the transform is not the block\'s")', () {
+  test('a trim NEVER moves TRACK-owned authoring — the R4 independence rule, '
+      'now guarded on the transition row the V transform used to stand for', () {
+    // The V row's transform (and its fade keys) is gone; the invariant it was
+    // asserted through is not. A transition span straddles a cut boundary on
+    // the GLOBAL axis, so a trim moving it would break the O.L outright.
     final (s, first, _) = twoCutSession();
     final duration = s.cutById(first)!.duration;
-    s.setCutFade(first, fadeInFrames: 0, fadeOutFrames: 6);
-    final keyed = s.transformTrackForCut(first);
-    expect(keyed.opacity.keyAt(duration - 1)!.value, 0.0);
+    s.updateTransitionInstructions({
+      duration - 3: const InstructionEvent(instructionId: 'ol', length: 6),
+    });
+    final spans = s.activeTrack.transitionLayer.instructions;
+    expect(spans.keys, [duration - 3]);
 
     s.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
     s.updateCutEdgeDrag(-4);
@@ -308,65 +312,32 @@ void main() {
 
     expect(s.cutById(first)!.duration, duration - 4);
     expect(
-      s.transformTrackForCut(first),
-      keyed,
-      reason: 'keys hold their global frames through the trim',
-    );
-    // The shortened window no longer reaches the fade keys, so the cut's
-    // handles read no fade — the keys still sit on the axis, past the end.
-    expect(
-      trackFadeLengthsInWindow(
-        s.transformTrackForCut(first),
-        startFrame: 0,
-        duration: duration - 4,
-      ),
-      (fadeInFrames: 0, fadeOutFrames: 0),
+      s.activeTrack.transitionLayer.instructions,
+      spans,
+      reason: 'spans hold their global frames through the trim',
     );
 
-    // ONE undo restores the duration; the keys never changed.
+    // ONE undo restores the duration; the spans never changed.
     s.undo();
     expect(s.cutById(first)!.duration, duration);
-    expect(s.transformTrackForCut(first), keyed);
-    expect(
-      trackFadeLengthsInWindow(
-        s.transformTrackForCut(first),
-        startFrame: 0,
-        duration: duration,
-      ),
-      (fadeInFrames: 0, fadeOutFrames: 6),
-    );
+    expect(s.activeTrack.transitionLayer.instructions, spans);
 
     // Growth leaves them alone the same way.
     s.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
     s.updateCutEdgeDrag(5);
     s.endCutEdgeDrag();
     expect(s.cutById(first)!.duration, duration + 5);
-    expect(s.transformTrackForCut(first), keyed);
+    expect(s.activeTrack.transitionLayer.instructions, spans);
   });
 
-  test('a hand-keyed (non-canonical) opacity lane survives a trim '
-      'untouched', () {
-    final (s, first, _) = twoCutSession();
-    final trackId = s.trackOwningCut(first)!.id;
-    final custom = TransformTrack.empty().copyWith(
-      opacity: PropertyTrack<double>.empty().withKey(3, 0.4).withKey(7, 0.9),
-    );
-    s.updateTrackTransformTrack(trackId, custom);
-
-    s.beginCutEdgeDrag(cutId: first, edge: TimelineBlockEdge.end);
-    s.updateCutEdgeDrag(-4);
-    s.endCutEdgeDrag();
-
-    expect(s.transformTrackForCut(first).opacity, custom.opacity);
-  });
-
-  test('a lead-edge drag shifts the cut\'s WINDOW, not the keys — the '
-      'fade stays at its global frames and reads shifted from the cut', () {
+  test('a lead-edge drag shifts the cut\'s WINDOW, not the track\'s spans — '
+      'they stay at their global frames and read shifted from the cut', () {
     final (s, first, second) = twoCutSession();
-    s.setCutFade(second, fadeInFrames: 2, fadeOutFrames: 3);
-    final keyed = s.transformTrackForCut(second);
-    final startBefore = layoutStart(s, second);
-    final durationBefore = s.cutById(second)!.duration;
+    final secondStart = layoutStart(s, second);
+    s.updateTransitionInstructions({
+      secondStart - 2: const InstructionEvent(instructionId: 'ol', length: 4),
+    });
+    final spans = s.activeTrack.transitionLayer.instructions;
 
     s.beginCutEdgeDrag(cutId: second, edge: TimelineBlockEdge.start);
     s.updateCutEdgeDrag(5);
@@ -376,29 +347,9 @@ void main() {
     expect(s.cutById(first)!.leadingGapFrames, 5);
     expect(s.cutById(second)!.leadingGapFrames, 0);
     expect(
-      s.transformTrackForCut(second),
-      keyed,
-      reason: 'keys hold their global frames through the window shift',
-    );
-    // Read through the moved window: the fade-in ramp now starts BEFORE
-    // the cut and vanishes from the handles — but the END edge never
-    // moved, so the fade-out still lands exactly on the cut's last frame.
-    expect(
-      trackFadeLengthsInWindow(
-        s.transformTrackForCut(second),
-        startFrame: layoutStart(s, second),
-        duration: s.cutById(second)!.duration,
-      ),
-      (fadeInFrames: 0, fadeOutFrames: 3),
-    );
-    // The ORIGINAL window still reads the full canonical shape.
-    expect(
-      trackFadeLengthsInWindow(
-        s.transformTrackForCut(second),
-        startFrame: startBefore,
-        duration: durationBefore,
-      ),
-      (fadeInFrames: 2, fadeOutFrames: 3),
+      s.activeTrack.transitionLayer.instructions,
+      spans,
+      reason: 'spans hold their global frames through the window shift',
     );
   });
 

@@ -19,7 +19,7 @@ import 'package:anicel/src/services/project_repository.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/canvas/composite_effect_paint.dart'
     show blurSigmaPerRadius;
-import 'package:anicel/src/ui/storyboard_cut_fade_policy.dart';
+import 'package:anicel/src/ui/track_effect_paint_policy.dart';
 
 /// The V row's EFFECT CHAIN: a layer's fx one level up, filtering the whole
 /// composited cut (user 2026-08-08). Track data on the GLOBAL axis, like the

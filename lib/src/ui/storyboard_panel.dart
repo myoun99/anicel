@@ -26,7 +26,6 @@ import '../models/transform_track.dart';
 import '../services/audio/audio_peaks_extractor.dart';
 import '../services/cut_frame_composite_plan.dart' show layerIdentityPose;
 import 'audio/waveform_painter.dart';
-import 'storyboard_cut_fade_policy.dart';
 import 'storyboard_cut_blocks_painter.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnailResolver;
 import 'storyboard_layer_policy.dart';
@@ -1170,27 +1169,8 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   Layer _vLaneCarrier(String seed) =>
       Layer(id: LayerId('v-$seed'), name: 'V', frames: const []);
 
-  /// The cut's WINDOW of its owning TRACK's transform lanes (R4a): the
-  /// per-cut strips and labels still speak cut-local frames; this is the
-  /// projection they read — the SE display clone's idiom for the V
-  /// effects.
-  TransformTrack _cutWindowTransformOf(Cut cut) {
-    for (final track in widget.project.tracks) {
-      var start = 0;
-      for (final candidate in track.cuts) {
-        start += candidate.leadingGapFrames;
-        if (candidate.id == cut.id) {
-          return trackTransformCutWindow(
-            track.transformTrack,
-            startFrame: start,
-            duration: cut.duration,
-          );
-        }
-        start += candidate.duration;
-      }
-    }
-    return TransformTrack.empty();
-  }
+  // `_cutWindowTransformOf` retired with the V row's transform: there is no
+  // track lane for a cut window to project.
 
   /// The group key one V-track EFFECT's lanes twirl under. The V row keeps
   /// its own flat key space (its Transform group is keyed by the bare track
@@ -1276,35 +1256,20 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     ];
   }
 
-  /// The Transform-group member lanes of one V track, header first: the
-  /// AE lane list valued against the TRACK's own lanes at GLOBAL frames
-  /// (R4b — no active cut needed: "keys exist with no cut under them",
-  /// so the rail reads and keys the axis wherever the playhead parks).
-  /// The Opacity lane stays LAST — its strip is the cut-fade envelope
-  /// row, and the labels must line up.
-  List<PropertyLaneRow> _trackTransformLanes(Track track) {
-    final expanded = widget.expandedTransformGroups.contains(track.id.value);
-    final displaySize = widget.poseDisplaySize;
-    final transform = track.transformTrack;
-    final lanes = transformPropertyLanes(
-      transform,
-      includeAnchorAndOpacity: true,
-      poseAt: displaySize == null
-          ? null
-          : (frame) => trackPoseAt(transform, frame, displaySize),
-      anchorAt: displaySize == null
-          ? null
-          : (frame) =>
-                trackAnchorPointAt(transform, frame) ??
-                CanvasPoint(
-                  x: displaySize.width / 2,
-                  y: displaySize.height / 2,
-                ),
-      opacityAt: (frame) => trackFadeOpacityAt(transform, frame),
-    );
+  /// The V row's OWN lanes — its Transform group when it has one, then its
+  /// EFFECT chain.
+  ///
+  /// The rail ASKS [timelineRowOwnsTransform] rather than deciding: a track row
+  /// answers no since the teardown, so the pose lanes and the fade's Opacity
+  /// lane are simply absent, and giving another row the same answer is one case
+  /// in that policy instead of an edit here.
+  List<PropertyLaneRow> _trackOwnLanes(Track track) {
     return [
-      transformGroupHeader(expanded: expanded),
-      if (expanded) ...lanes.where((lane) => !lane.isGroupHeader),
+      if (timelineRowOwnsTransform(subject: TimelineTransformSubject.track))
+        transformGroupHeader(
+          expanded: widget.expandedTransformGroups.contains(track.id.value),
+        ),
+      ..._trackEffectLanes(track),
     ];
   }
 
@@ -1675,7 +1640,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       extent += _seRowGroupExtent(track, slot);
     }
     if (widget.expandedTransformTracks.contains(track.id.value)) {
-      extent += _trackTransformLanes(track).length * _transformLaneHeight;
+      extent += _trackOwnLanes(track).length * _transformLaneHeight;
     }
     return extent;
   }
@@ -1794,25 +1759,11 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         ),
       ),
       if (widget.expandedTransformTracks.contains(track.id.value)) ...[
-        ..._transformLaneLabels(
-          carrier: Layer(
-            id: trackTransformLaneCarrierId(track.id),
-            name: 'V',
-            frames: const [],
-          ),
-          groupKey: track.id.value,
-          lanes: _trackTransformLanes(track),
-          laneEdit: widget.trackLaneEditFor?.call(track),
-          // The TRACK's lanes need no cut (R4b): the rail keys and jumps
-          // on the GLOBAL axis wherever the playhead parks.
-          active: true,
-          frameCursor: widget.playheadFrame,
-          onSelectFrame: widget.onSeekGlobalFrame,
-        ),
-        // The V row's own fx chain, under its Transform group — the same
-        // place a layer keeps its effects, and the same lane substrate.
-        // Grabbing a header re-orders the chain, exactly as it does on a
-        // layer's rail (the fx-order drag's subject only differs in WHICH
+        // No Transform-group labels: a track row does not own one
+        // ([timelineRowOwnsTransform]). Its twirl-down is the fx chain alone —
+        // the same place a layer keeps its effects, and the same lane
+        // substrate. Grabbing a header re-orders the chain, exactly as it does
+        // on a layer's rail (the fx-order drag's subject only differs in WHICH
         // chain it names).
         ..._draggableTrackEffectRows(track, _transformLaneLabels(
           carrier: Layer(
@@ -2416,42 +2367,14 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       bandRow: false,
       height: widget.trackLaneHeight,
     ));
-    // The V track's OWN Transform lane rows ([_trackTransformLaneStrips]'s
-    // shape): header, then the members when twirled open.
+    // The V track's OWN lane rows ([_trackTransformLaneStrips]'s shape): its fx
+    // chain, and no Transform group — a track row does not own one
+    // ([timelineRowOwnsTransform]). Leaving the removed slots here is exactly
+    // how the ring lands on a neighbour: this table is what the bands and the
+    // select-drag read, so a slot the rail no longer draws shifts every row
+    // under it.
     if (widget.expandedTransformTracks.contains(track.id.value)) {
       final carrierId = trackTransformLaneCarrierId(track.id);
-      slots.add((
-        row: null,
-        laneRow: LaneRowAddress(carrierId, transformGroupHeaderLane.laneId),
-        bandRow: true,
-        height: _transformLaneHeight,
-      ));
-      if (widget.expandedTransformGroups.contains(track.id.value)) {
-        for (final laneId in const [
-          'anchor-point',
-          'position',
-          'scale',
-          'rotation',
-        ]) {
-          slots.add((
-            row: null,
-            laneRow: LaneRowAddress(carrierId, laneId),
-            bandRow: true,
-            height: _transformLaneHeight,
-          ));
-        }
-        // The Opacity slot is the fade-envelope row. It IS the opacity
-        // lane's row here — standing lands on it, so the ring has to find
-        // it — but it draws fade handles instead of key markers and takes
-        // no selection band.
-        slots.add((
-          row: null,
-          laneRow: LaneRowAddress(carrierId, 'opacity'),
-          bandRow: false,
-          height: _opacityLaneHeight,
-        ));
-      }
-      // The fx chain's rows, from the same list both columns build from.
       for (final lane in _trackEffectLanes(track)) {
         slots.add((
           row: null,
@@ -2649,12 +2572,12 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     ).firstWhere((lane) => lane.laneId == laneId);
   }
 
-  /// The V track's Transform strip rows: the group header band plus,
-  /// twirled open, the AE lanes' key-marker strips — CONTINUOUS on the
-  /// track's global axis (R4b: keys show and edit anywhere, cut or no
-  /// cut, and the range gesture rides the band) — and the cut-fade
-  /// envelope row AS the Opacity strip (fade handles unchanged, canonical
-  /// key policy intact).
+  /// The V track's own strip rows.
+  ///
+  /// No Transform strips: a track row does not own a Transform group
+  /// ([timelineRowOwnsTransform]). The pose lanes and the cut-fade envelope
+  /// that used to sit here are gone — the fade is F.I/F.O spans on the
+  /// transition row, whose strip is always visible instead of two twirls deep.
   List<Widget> _trackTransformLaneStrips(
     Track track,
     int trackIndex,
@@ -2662,60 +2585,21 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     double width,
     TimelineScale scale,
   ) {
-    final expanded = widget.expandedTransformGroups.contains(track.id.value);
     final carrier = Layer(
       id: trackTransformLaneCarrierId(track.id),
       name: 'V',
       frames: const [],
     );
     final laneEdit = widget.trackLaneEditFor?.call(track);
-    Widget strip(String laneId) => ValueListenableBuilder(
-      // The lane-move drag previews per step on the scoped channel; the
-      // committed track renders otherwise.
-      valueListenable:
-          widget.dragPreview ??
-          const AlwaysStoppedAnimation<TimelineDragPreview?>(null),
-      builder: (context, preview, _) {
-        final previewTransforms = preview is BlockMoveDragPreview
-            ? preview.previewTrackTransforms
-            : null;
-        final transform = previewTransforms?[track.id] ?? track.transformTrack;
-        return _StoryboardLaneStripRow(
-          rowKey: 'storyboard-track-lane-row-$trackIndex-$laneId',
-          carrier: carrier,
-          lane: _laneOfTrack(transform, laneId),
-          width: width,
-          timelineScale: scale,
-          laneEdit: laneEdit,
-          laneRange: widget.laneRange,
-        );
-      },
-    );
     return [
-      strip(transformGroupHeaderLane.laneId),
-      if (expanded) ...[
-        strip('anchor-point'),
-        strip('position'),
-        strip('scale'),
-        strip('rotation'),
-        _StoryboardOpacityLaneRow(
-          trackIndex: trackIndex,
-          layoutEntries: entries,
-          width: width,
-          timelineScale: scale,
-          windowOf: _cutWindowTransformOf,
-          onSetCutFade: widget.onSetCutFade,
-        ),
-      ],
       // The fx chain's strips, row for row with its labels — the rail and
       // the strips share no scaffolding, so the two lists are built from the
       // SAME lane list to keep them in lockstep.
       //
-      // A key-move drag previews on the scoped channel, like the transform
-      // strips above. Nothing previewed here before 2026-08-08 because
-      // nothing could MOVE here: the lane-move path looked at a track's
-      // transform and never at its effects, so the drag answered "nothing
-      // to move" and refused in silence.
+      // A key-move drag previews on the scoped channel. Nothing previewed here
+      // before 2026-08-08 because nothing could MOVE here: the lane-move path
+      // looked at a track's transform and never at its effects, so the drag
+      // answered "nothing to move" and refused in silence.
       ValueListenableBuilder(
         valueListenable:
             widget.dragPreview ??
@@ -3677,11 +3561,10 @@ const double _seRowHeight = 30;
 /// up with the rail's own row pitch.
 const double _transitionRowHeight = 30;
 
-/// Twirl-down lane heights: the enlarged waveform strip, the cut-fade
-/// (Opacity) envelope lane and the Transform lanes (labels and strips
-/// share these — the rail and strips columns must stay height-synced).
+/// Twirl-down lane heights: the enlarged waveform strip and the property lanes
+/// (labels and strips share these — the rail and strips columns must stay
+/// height-synced). The cut-fade envelope's own height went with that row.
 const double _audioLaneHeight = 36;
-const double _opacityLaneHeight = 26;
 const double _transformLaneHeight = 26;
 
 /// The track's SE row count: SE rows are TRACK-owned (list order is THE
@@ -4891,327 +4774,6 @@ class _StoryboardLaneStripRow extends StatelessWidget {
   }
 }
 
-/// The twirled-down V track's Opacity lane: one fade-envelope span per cut
-/// with draggable fade in/out handles at the span edges — the cut fade
-/// ("opacity joins the transform system"). Commits ONE undo per handle
-/// drag via [StoryboardPanel.onSetCutFade].
-class _StoryboardOpacityLaneRow extends StatelessWidget {
-  const _StoryboardOpacityLaneRow({
-    required this.trackIndex,
-    required this.layoutEntries,
-    required this.width,
-    required this.timelineScale,
-    required this.windowOf,
-    this.onSetCutFade,
-  });
-
-  final int trackIndex;
-  final List<StoryboardTimelineLayoutEntry> layoutEntries;
-  final double width;
-  final TimelineScale timelineScale;
-
-  /// The cut's window of the owning track's lanes (R4a) — the envelope's
-  /// reading.
-  final TransformTrack Function(Cut cut) windowOf;
-
-  final void Function(CutId cutId, int fadeInFrames, int fadeOutFrames)?
-  onSetCutFade;
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      key: ValueKey<String>('storyboard-opacity-lane-row-$trackIndex'),
-      width: width,
-      height: _opacityLaneHeight,
-      child: Stack(
-        children: [
-          for (final entry in layoutEntries)
-            Positioned(
-              left: timelineScale.leftForFrame(entry.startFrame),
-              top: 1,
-              bottom: 1,
-              width: entry.duration * timelineScale.pixelsPerFrame,
-              child: _CutFadeSpan(
-                key: ValueKey<String>(
-                  'storyboard-cut-fade-span-${entry.cut.id.value}',
-                ),
-                cut: entry.cut,
-                transformWindow: windowOf(entry.cut),
-                frameCellExtent: timelineScale.pixelsPerFrame,
-                onSetFade: onSetCutFade == null
-                    ? null
-                    : (fadeIn, fadeOut) =>
-                          onSetCutFade!(entry.cut.id, fadeIn, fadeOut),
-              ),
-            ),
-        ],
-      ),
-    );
-  }
-}
-
-/// One cut's fade-envelope span. The opacity envelope paints from the
-/// cut's WINDOW of the track lane (R4a — any key shape), while dragging
-/// an EDGE ZONE previews and commits the canonical fade shape for that
-/// end.
-class _CutFadeSpan extends StatefulWidget {
-  const _CutFadeSpan({
-    super.key,
-    required this.cut,
-    required this.transformWindow,
-    required this.frameCellExtent,
-    this.onSetFade,
-  });
-
-  final Cut cut;
-
-  /// The cut's window of the owning track's lanes, LOCAL frames — what
-  /// the envelope samples and the handles parse.
-  final TransformTrack transformWindow;
-
-  final double frameCellExtent;
-  final void Function(int fadeInFrames, int fadeOutFrames)? onSetFade;
-
-  @override
-  State<_CutFadeSpan> createState() => _CutFadeSpanState();
-}
-
-class _CutFadeSpanState extends State<_CutFadeSpan> {
-  static const double _handleExtent = 14;
-
-  double _dragDelta = 0;
-  bool _dragging = false;
-  bool _draggingOut = false;
-
-  int get _deltaFrames => (_dragDelta / widget.frameCellExtent).round();
-
-  int get _maxFade => math.max(0, widget.cut.duration - 1);
-
-  ({int fadeInFrames, int fadeOutFrames}) get _baseLengths =>
-      trackFadeLengthsInWindow(
-        widget.transformWindow,
-        startFrame: 0,
-        duration: widget.cut.duration,
-      );
-
-  int get _previewFadeIn {
-    final base = _baseLengths.fadeInFrames;
-    if (!_dragging || _draggingOut) {
-      return base;
-    }
-    return (base + _deltaFrames).clamp(0, _maxFade);
-  }
-
-  int get _previewFadeOut {
-    final base = _baseLengths.fadeOutFrames;
-    if (!_dragging || !_draggingOut) {
-      return base;
-    }
-    return (base - _deltaFrames).clamp(0, _maxFade);
-  }
-
-  void _endDrag() {
-    final fadeIn = _previewFadeIn;
-    final fadeOut = _previewFadeOut;
-    final base = _baseLengths;
-    setState(() {
-      _dragging = false;
-      _dragDelta = 0;
-    });
-    if (fadeIn != base.fadeInFrames || fadeOut != base.fadeOutFrames) {
-      widget.onSetFade?.call(fadeIn, fadeOut);
-    }
-  }
-
-  /// Per-frame opacity samples: the window's lane at rest, the canonical
-  /// preview shape while a handle drags.
-  List<double> _envelopeSamples() {
-    final duration = math.max(1, widget.cut.duration);
-    if (!_dragging) {
-      return [
-        for (var frame = 0; frame < duration; frame += 1)
-          trackFadeOpacityAt(widget.transformWindow, frame),
-      ];
-    }
-    final fadeIn = _previewFadeIn;
-    final fadeOut = _previewFadeOut;
-    final last = duration - 1;
-    return [
-      for (var frame = 0; frame < duration; frame += 1)
-        math.min(
-          fadeIn > 0 && frame < fadeIn ? frame / fadeIn : 1.0,
-          fadeOut > 0 && frame > last - fadeOut
-              ? (last - frame) / fadeOut
-              : 1.0,
-        ),
-    ];
-  }
-
-  Widget _handleZone({required bool trailing}) {
-    return Positioned(
-      left: trailing ? null : 0,
-      right: trailing ? 0 : null,
-      top: 0,
-      bottom: 0,
-      width: _handleExtent,
-      child: Tooltip(
-        message: trailing ? 'Fade Out' : 'Fade In',
-        waitDuration: const Duration(milliseconds: 600),
-        child: MouseRegion(
-          cursor: SystemMouseCursors.resizeLeftRight,
-          child: GestureDetector(
-            key: ValueKey<String>(
-              'storyboard-cut-fade-${trailing ? 'out' : 'in'}-handle-'
-              '${widget.cut.id.value}',
-            ),
-            behavior: HitTestBehavior.opaque,
-            dragStartBehavior: DragStartBehavior.down,
-            onHorizontalDragStart: (_) => setState(() {
-              _dragging = true;
-              _draggingOut = trailing;
-              _dragDelta = 0;
-            }),
-            onHorizontalDragUpdate: (details) =>
-                setState(() => _dragDelta += details.delta.dx),
-            onHorizontalDragEnd: (_) => _endDrag(),
-            onHorizontalDragCancel: () => setState(() {
-              _dragging = false;
-              _dragDelta = 0;
-            }),
-          ),
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final editable = widget.onSetFade != null && widget.cut.duration > 1;
-    final fadeIn = _previewFadeIn;
-    final fadeOut = _previewFadeOut;
-    // One envelope color: the fade is transparency now (R3b) — there is
-    // no per-cut target to tint toward, and a white-out is a white cut on
-    // a lower track.
-    final envelopeColor = AppColors.accent;
-
-    return Stack(
-      clipBehavior: Clip.hardEdge,
-      children: [
-        Positioned.fill(
-          child: DecoratedBox(
-            decoration: BoxDecoration(
-              color: AppColors.washDown.withValues(alpha: 0.6),
-              borderRadius: const BorderRadius.all(Radius.circular(3)),
-              border: Border.all(color: colorScheme.outlineVariant),
-            ),
-            child: CustomPaint(
-              painter: _CutFadeEnvelopePainter(
-                samples: _envelopeSamples(),
-                pixelsPerFrame: widget.frameCellExtent,
-                lineColor: envelopeColor,
-                fillColor: envelopeColor.withValues(alpha: 0.15),
-              ),
-            ),
-          ),
-        ),
-        if (editable) _handleZone(trailing: false),
-        if (editable) _handleZone(trailing: true),
-        if (_dragging)
-          Positioned(
-            left: 4,
-            top: 1,
-            child: IgnorePointer(
-              child: DecoratedBox(
-                decoration: BoxDecoration(
-                  color: AppColors.accent.withValues(alpha: 0.85),
-                  borderRadius: BorderRadius.circular(3),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 4,
-                    vertical: 1,
-                  ),
-                  child: Text(
-                    _draggingOut ? 'out ${fadeOut}f' : 'in ${fadeIn}f',
-                    style: const TextStyle(fontSize: 9, color: Colors.black),
-                  ),
-                ),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
-}
-
-/// Paints a cut's opacity envelope: a line through per-frame samples with
-/// the area underneath filled — 1.0 rides the top edge, 0.0 the bottom.
-class _CutFadeEnvelopePainter extends CustomPainter {
-  const _CutFadeEnvelopePainter({
-    required this.samples,
-    required this.pixelsPerFrame,
-    required this.lineColor,
-    required this.fillColor,
-  });
-
-  final List<double> samples;
-  final double pixelsPerFrame;
-  final Color lineColor;
-  final Color fillColor;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (samples.isEmpty || size.isEmpty) {
-      return;
-    }
-    const inset = 2.0;
-    final usable = size.height - inset * 2;
-    double yFor(double value) => inset + (1 - value.clamp(0.0, 1.0)) * usable;
-
-    final line = Path()..moveTo(0, yFor(samples.first));
-    for (var frame = 0; frame < samples.length; frame += 1) {
-      // Each frame holds its value across its own cell.
-      final left = frame * pixelsPerFrame;
-      final right = math.min(size.width, left + pixelsPerFrame);
-      final y = yFor(samples[frame]);
-      line.lineTo(left, y);
-      line.lineTo(right, y);
-      if (right >= size.width) {
-        break;
-      }
-    }
-
-    final fill = Path.from(line)
-      ..lineTo(size.width, size.height)
-      ..lineTo(0, size.height)
-      ..close();
-    canvas.drawPath(fill, Paint()..color = fillColor);
-    canvas.drawPath(
-      line,
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.5
-        ..color = lineColor,
-    );
-  }
-
-  @override
-  bool shouldRepaint(covariant _CutFadeEnvelopePainter oldDelegate) {
-    if (oldDelegate.pixelsPerFrame != pixelsPerFrame ||
-        oldDelegate.lineColor != lineColor ||
-        oldDelegate.fillColor != fillColor ||
-        oldDelegate.samples.length != samples.length) {
-      return true;
-    }
-    for (var index = 0; index < samples.length; index += 1) {
-      if (oldDelegate.samples[index] != samples[index]) {
-        return true;
-      }
-    }
-    return false;
-  }
-}
 
 /// Rail rows share the timeline label rail's row language — bordered
 /// surface rows, a kind icon leading the name — so the storyboard's left

@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/camera_pose.dart';
-import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/cut.dart';
@@ -16,7 +15,7 @@ import '../../models/project_background.dart';
 import '../../models/transform_track.dart';
 import '../../services/se_name_tag_plan.dart';
 import '../canvas/composite_effect_paint.dart' show CompositeEffectPaint;
-import '../storyboard_cut_fade_policy.dart';
+import '../track_effect_paint_policy.dart';
 import 'canvas_playback_controller.dart';
 import 'cut_frame_composite_cache.dart';
 import 'playback_frame_painter.dart';
@@ -201,43 +200,12 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
     final cutPictureVisible =
         cut == null || (widget.cutPictureVisibleOf?.call(cut.id) ?? true);
 
-    // The TRACK-level transform (R4: the V effects on the global axis),
-    // display-time only — never baked into the composite cache. Camera
-    // mode resolves the pose over the camera frame (the space the lanes
-    // author in); CANVAS mode remaps that same camera-space pose onto the
-    // canvas — resolving over the canvas instead read every key in the
-    // wrong space and snapped the picture top-left (R8-③).
-    final transformTrack = cut == null
-        ? TransformTrack.empty()
-        : widget.transformTrackOf?.call(cut.id) ?? TransformTrack.empty();
+    // No TRACK-level pose any more: the V row has no transform, so the camera
+    // is the only thing that moves the picture on the stage.
     final trackFrame = cut != null && position != null
         ? widget.trackGlobalFrameOf?.call(cut.id, position.localFrameIndex) ??
               position.localFrameIndex
         : 0;
-    TransformPose? cutPose;
-    CanvasPoint? cutAnchorPoint;
-    if (cut != null &&
-        position != null &&
-        cutFxEnabled &&
-        trackPoseIsActive(transformTrack)) {
-      if (widget.cameraViewEnabled) {
-        cutPose = trackPoseAt(
-          transformTrack,
-          trackFrame,
-          widget.cameraFrameSize,
-        );
-        cutAnchorPoint = trackAnchorPointAt(transformTrack, trackFrame);
-      } else {
-        final preview = trackPoseForCanvasPreview(
-          transformTrack,
-          trackFrame,
-          cameraFrameSize: widget.cameraFrameSize,
-          canvasSize: canvasSize,
-        );
-        cutPose = preview.pose;
-        cutAnchorPoint = preview.anchorPoint;
-      }
-    }
 
     return GestureDetector(
       key: const ValueKey<String>('canvas-playback-view'),
@@ -270,11 +238,10 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
               cameraFrameSize: widget.cameraViewEnabled
                   ? widget.cameraFrameSize
                   : null,
-              cutPose: cutPose,
-              cutAnchorPoint: cutAnchorPoint,
+              // No cutPose/cutAnchorPoint: the V row has no transform.
               // The V row's fx chain over the cut's picture, sampled on the
-              // GLOBAL axis its keys live on and bypassed by the same fx
-              // master as the pose and the fade.
+              // GLOBAL axis its keys live on and bypassed by the row's fx
+              // master.
               cutEffects: inGap || cut == null || position == null
                   ? CompositeEffectPaint.none
                   : trackEffectPaintAt(
@@ -290,15 +257,14 @@ class _CanvasPlaybackViewState extends State<CanvasPlaybackView>
               pasteboardColor: widget.cameraViewEnabled && !inGap
                   ? Color(widget.pasteboardArgb)
                   : null,
-              // R9 #21: the track's STATIC opacity carries the animated
-              // fade (a layer's static opacity carries its own) and stays
-              // on through an fx bypass, because it is not an fx.
+              // R9 #21: the track's STATIC opacity, which is not an fx and so
+              // survives the bypass. The ANIMATED fade it used to carry is
+              // F.I/F.O spans on the transition row now — single-cut playback
+              // shows one cut and so cannot show a cross-boundary ramp; the
+              // all-cuts track stack is where a transition plays.
               fadeOpacity: inGap || cut == null || position == null
                   ? 1
-                  : (widget.trackStaticOpacityOf?.call(cut.id) ?? 1.0) *
-                        (cutFxEnabled
-                            ? trackFadeOpacityAt(transformTrack, trackFrame)
-                            : 1.0),
+                  : (widget.trackStaticOpacityOf?.call(cut.id) ?? 1.0),
             ),
           ),
           _prerenderProgressBar(context),

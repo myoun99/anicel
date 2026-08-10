@@ -271,6 +271,42 @@ bool layerKindHasLayerTransform(LayerKind kind) {
   };
 }
 
+/// The kinds of row a rail can show, for the ONE question "does this row own a
+/// Transform group?".
+///
+/// A layer row answers through its [LayerKind]; the V row is a TRACK and has no
+/// layer kind — which is exactly why it used to answer nowhere and had its
+/// group hardcoded on.
+enum TimelineTransformSubject { layer, track }
+
+/// THE answer to "does this row own a Transform group" — pose lanes, an
+/// opacity/fade lane, keys of its own — for every kind of row a rail shows.
+///
+/// ★Stated as a rule rather than settled by deleting one row's lanes, because
+/// it is a rule that may be wanted for OTHER rows (user, 2026-08-10: "혹시
+/// 다른 행에서도 추가할수있는 규칙이거든? 그러니 공통사용가능하게 해줘"). A row
+/// that should not own a transform says so HERE, in one case, instead of having
+/// its lanes removed by hand at every rail that draws them.
+///
+/// The V row answers NO since the O.L round. `Track.transformTrack` was AE
+/// PRECOMP semantics — a whole track's finished output moved and scaled on the
+/// camera's stage — which only means something when several tracks stack. With
+/// no V-track authoring there is never a second track, and moving the only one
+/// is moving the film, which is the camera's job. Its opacity lane carried the
+/// cut fade; F.I/F.O spans on the transition row carry that now, where the
+/// span's length IS the ramp and two overlapping cuts can hold different values
+/// — the one thing a single lane per track could not do.
+bool timelineRowOwnsTransform({
+  required TimelineTransformSubject subject,
+  LayerKind? layerKind,
+}) {
+  return switch (subject) {
+    TimelineTransformSubject.layer =>
+      layerKind != null && layerKindHasLayerTransform(layerKind),
+    TimelineTransformSubject.track => false,
+  };
+}
+
 /// A row's FX switches read as ONE answer, for the layer-label master
 /// button (R8): every group on, every group off, or a mix of the two.
 ///

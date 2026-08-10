@@ -1,11 +1,12 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track_transform_lane_carrier.dart';
-import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timeline/effect_lane_policy.dart'
+    show effectPropertyLanes;
 
 /// UI-R5 — the V track's own lane rows are a place the lane VERBS work.
 ///
@@ -24,23 +25,46 @@ void main() {
     return manager;
   }
 
-  test('Delete on a V transform lane removes THAT lane\'s key, and leaves '
-      'the active layer\'s cel alone', () {
+  /// A keyed brightness effect on the V row — the only lanes a track row has
+  /// since its Transform group was torn down
+  /// ([timelineRowOwnsTransform] answers no for a track).
+  LayerEffect brightness({Map<int, double>? keys}) => LayerEffect(
+    id: const EffectId('fx-1'),
+    kind: EffectKind.brightnessContrast,
+    parameters: {
+      'brightness': EffectParameter(
+        value: 0.5,
+        track: keys == null
+            ? null
+            : PropertyTrack<double>(
+                keys: {
+                  for (final entry in keys.entries)
+                    entry.key: PropertyKey<double>(entry.value),
+                },
+              ),
+      ),
+    },
+  );
+
+  /// The lane id of that effect's `brightness` parameter, as the rail builds it.
+  String brightnessLaneId(LayerEffect effect) =>
+      effectPropertyLanes([effect], isExpanded: (_) => true)
+          .firstWhere((lane) => !lane.isGroupHeader)
+          .laneId;
+
+  test('Delete on a V EFFECT lane removes THAT lane\'s key, and leaves the '
+      'active layer\'s cel alone', () {
     final manager = session();
     final trackId = manager.activeTrack.id;
-    manager.updateTrackTransformTrack(
-      trackId,
-      TransformTrack.empty().copyWith(
-        position: PropertyTrack<CanvasPoint>.empty().withKey(
-          0,
-          CanvasPoint(x: 5, y: 5),
-        ),
-      ),
-    );
+    final effect = brightness(keys: {0: 0.5});
+    manager.updateTrackEffects(trackId, [effect]);
     final celsBefore = manager.activeLayer!.timeline.length;
 
     manager.selectRow(
-      LaneRowAddress(trackTransformLaneCarrierId(trackId), 'position'),
+      LaneRowAddress(
+        trackTransformLaneCarrierId(trackId),
+        brightnessLaneId(effect),
+      ),
     );
     expect(
       manager.canDeleteCellAtCurrentFrame,
@@ -51,8 +75,8 @@ void main() {
     manager.deleteCellAtCurrentFrame();
 
     expect(
-      manager.activeTrack.transformTrack.position.isEmpty,
-      isTrue,
+      manager.activeTrack.effects.single.parameters['brightness']!.track,
+      anyOf(isNull, predicate<PropertyTrack<double>>((t) => t.isEmpty)),
       reason: 'the lane key is gone',
     );
     expect(
@@ -62,18 +86,27 @@ void main() {
     );
   });
 
-  test('Add Key on a V transform lane keys the track', () {
+  test('Add Key on a V EFFECT lane keys the TRACK behind the carrier', () {
     final manager = session();
     final trackId = manager.activeTrack.id;
-    expect(manager.activeTrack.transformTrack.position.isEmpty, isTrue);
+    final effect = brightness();
+    manager.updateTrackEffects(trackId, [effect]);
+    expect(
+      manager.activeTrack.effects.single.parameters['brightness']!.track,
+      anyOf(isNull, predicate<PropertyTrack<double>>((t) => t.isEmpty)),
+    );
 
     manager.selectRow(
-      LaneRowAddress(trackTransformLaneCarrierId(trackId), 'position'),
+      LaneRowAddress(
+        trackTransformLaneCarrierId(trackId),
+        brightnessLaneId(effect),
+      ),
     );
     manager.createInstancesForSelection();
 
     expect(
-      manager.activeTrack.transformTrack.position.isNotEmpty,
+      manager.activeTrack.effects.single.parameters['brightness']!.track
+          .isNotEmpty,
       isTrue,
       reason: 'the verb reached the TRACK behind the carrier',
     );

@@ -118,7 +118,6 @@ import 'playback/cut_frame_composite_cache.dart';
 import 'playback/layer_frame_image_cache.dart';
 import 'playback/playback_cache_budget.dart';
 import 'playback/playback_prerender_scheduler.dart';
-import 'storyboard_cut_fade_policy.dart';
 import 'storyboard_layer_policy.dart';
 import 'text/app_strings.dart';
 import 'text/text_cel_render.dart';
@@ -2414,9 +2413,8 @@ class EditorSessionManager extends ChangeNotifier {
     return null;
   }
 
-  /// [cutId]'s owning track's transform lanes; empty for an orphan.
-  TransformTrack transformTrackForCut(CutId cutId) =>
-      trackOwningCut(cutId)?.transformTrack ?? TransformTrack.empty();
+  // `transformTrackForCut` retired with the V row's transform: every route
+  // that asked for a track pose or fade now has neither to apply.
 
   /// [cutId]'s owning track's EFFECT chain — the V row's fx, which every
   /// route that draws this cut filters its finished picture through. Empty
@@ -2437,57 +2435,30 @@ class EditorSessionManager extends ChangeNotifier {
     return frameIndex;
   }
 
-  /// The ACTIVE cut's V-track pose over the CANVAS at [frameIndex]
-  /// (default: the playhead) — the storyboard V-row fx preview on the
-  /// EDITING canvas and the scrub preview (R9-B). Non-null only while the
-  /// TRACK's geometric lanes carry keys AND the cut's fx apply;
-  /// canvas-space via the camera-frame conjugation (the exact remap
-  /// playback uses, R8-③). Resolved at the frame's GLOBAL position (R4).
-  LayerPoseSample? activeCutCanvasPoseSample({int? frameIndex}) {
-    final cut = activeCutOrNull;
-    if (cut == null || !isCutFxEnabled(cut.id)) {
-      return null;
-    }
-    final track = transformTrackForCut(cut.id);
-    if (!trackPoseIsActive(track)) {
-      return null;
-    }
-    final preview = trackPoseForCanvasPreview(
-      track,
-      trackGlobalFrameOf(
-        cut.id,
-        frameIndex ?? _timelineController.currentFrameIndex,
-      ),
-      cameraFrameSize: cameraFrameSize,
-      canvasSize: cut.canvasSize,
-    );
-    return (pose: preview.pose, anchorPoint: preview.anchorPoint);
-  }
+  // `activeCutCanvasPoseSample` retired with the V row's transform: there is
+  // no track pose for the editing canvas or the scrub preview to apply.
 
   /// The fade the editing canvas (and the scrub preview) shows at
-  /// [frameIndex] (default: the playhead) — the TRACK's opacity at the
-  /// frame's global position while the cut's fx apply, 1 when bypassed.
-  /// R9-C rule: fx ALWAYS reflects; dark faded frames are worked with the
-  /// fx switch off.
+  /// [frameIndex] (default: the playhead).
+  ///
+  /// The animated half is the TRANSITION row's now (an F.O span thins the cut
+  /// toward its end), so this is the track's STATIC opacity times the cut's
+  /// own transition ramp. R9 #21 still holds for the static half: it is not an
+  /// fx, so the fx bypass does not touch it.
   double activeCutEditingFadeOpacity({int? frameIndex}) {
     final cut = activeCutOrNull;
     if (cut == null) {
       return 1;
     }
-    // R9 #21: the track's STATIC opacity is not an fx — a layer's static
-    // opacity is not gated by its fx switch either — so it survives the
-    // bypass and only the animated fade stands down.
     final static = trackStaticOpacityForCut(cut.id);
-    if (!isCutFxEnabled(cut.id)) {
-      return static;
-    }
+    final start = activeCutGlobalStartFrame;
     return static *
-        trackFadeOpacityAt(
-          transformTrackForCut(cut.id),
-          trackGlobalFrameOf(
-            cut.id,
-            frameIndex ?? _timelineController.currentFrameIndex,
-          ),
+        cutOpacityAt(
+          cutStart: start,
+          cutEnd: start + cut.duration,
+          spans: activeTrackTransitionSpans,
+          globalFrame:
+              start + (frameIndex ?? _timelineController.currentFrameIndex),
         );
   }
 
@@ -2644,51 +2615,11 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Sets [cutId]'s fade in/out lengths (the storyboard V-track's fade
-  /// handles): rewrites the canonical fade shape into the CUT'S WINDOW of
-  /// the owning TRACK's opacity lane (R4 — keys outside the window are
-  /// other cuts' fades and stay put); one undo step, no-op when unchanged.
-  void setCutFade(
-    CutId cutId, {
-    required int fadeInFrames,
-    required int fadeOutFrames,
-  }) {
-    final owner = trackOwningCut(cutId);
-    final cut = cutById(cutId);
-    if (owner == null || cut == null) {
-      return;
-    }
-    updateTrackTransformTrack(
-      owner.id,
-      trackTransformWithCutFade(
-        owner.transformTrack,
-        startFrame: trackGlobalFrameOf(cutId, 0),
-        duration: cut.duration,
-        fadeInFrames: fadeInFrames,
-        fadeOutFrames: fadeOutFrames,
-      ),
-      description: 'Fade cut',
-    );
-  }
-
-  /// Replaces [trackId]'s transform lanes (the storyboard V track's
-  /// Transform — the whole composed picture moving on the display space,
-  /// keys on the GLOBAL axis, applied at display time and never baked
-  /// into composites); one undo step, no-op when unchanged. The fade
-  /// handles keep writing the same track through [setCutFade].
-  void updateTrackTransformTrack(
-    TrackId trackId,
-    TransformTrack track, {
-    String description = 'Edit track transform',
-  }) {
-    _cutCommandCoordinator.updateTrackTransform(
-      trackId: trackId,
-      transformTrack: track,
-      description: description,
-    );
-    _refreshAfterCutCommand();
-    notifyListeners();
-  }
+  // `setCutFade` and `updateTrackTransformTrack` retired with the V row's
+  // transform. The cut fade is F.I / F.O spans on the TRANSITION row now
+  // ([updateTransitionInstructions]) — where the span's length IS the ramp,
+  // and where two cuts overlapping across a boundary can carry different
+  // values, which one opacity lane per track never could.
 
   /// Replaces [layerId]'s transform track (the AE Transform lanes on every
   /// drawing layer — applied at composite time, never baked); one undo
@@ -8472,7 +8403,8 @@ class EditorSessionManager extends ChangeNotifier {
               id: layerId,
               name: 'V',
               frames: const [],
-              transformTrack: track.transformTrack,
+              // No transform of its own any more; the V row's lane carrier
+              // exists for the EFFECT chain alone.
               effects: track.effects,
             );
     }
@@ -8497,10 +8429,10 @@ class EditorSessionManager extends ChangeNotifier {
       updateActiveCutCameraTrack(track, description: description);
       return;
     }
-    // A V row's carrier goes home to the TRACK it stands for.
-    final carrierTrackId = trackIdOfTransformLaneCarrier(layer.id);
-    if (carrierTrackId != null) {
-      updateTrackTransformTrack(carrierTrackId, track, description: description);
+    // A V row's carrier has no transform to go home to any more: the row's
+    // lanes are its EFFECT chain alone, so a transform commit here would be
+    // writing where nothing reads.
+    if (trackIdOfTransformLaneCarrier(layer.id) != null) {
       return;
     }
     // No window conversion: [_laneVerbLayerFor] hands these verbs the
@@ -11105,17 +11037,16 @@ class EditorSessionManager extends ChangeNotifier {
       if (track == null) {
         return null;
       }
+      // EFFECT lanes only: the V row has no transform of its own, so a
+      // transform key range on it has nothing to move and says so.
       return _LaneMoveSubject(
-        transformTrack: track.transformTrack,
+        transformTrack: TransformTrack.empty(),
         effects: track.effects,
-        commitTransform: (next) =>
-            updateTrackTransformTrack(track.id, next, description: _laneMoveWhy),
+        commitTransform: (_) {},
         commitEffects: (next) =>
             updateTrackEffects(track.id, next, description: _laneMoveWhy),
-        previewTransform: (next) => BlockMoveDragPreview(
-          previewLayers: const {},
-          previewTrackTransforms: {track.id: next},
-        ),
+        previewTransform: (_) =>
+            const BlockMoveDragPreview(previewLayers: {}),
         previewEffects: (next) => BlockMoveDragPreview(
           previewLayers: const {},
           previewTrackEffects: {track.id: next},

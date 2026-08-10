@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'theme/app_scroll_behavior.dart';
 
 import '../models/camera_instruction.dart' show InstructionEvent;
-import '../models/canvas_point.dart';
 import '../models/cut_id.dart';
 import 'dialogs/instruction_event_dialog.dart';
 import '../models/layer_id.dart';
@@ -18,7 +17,6 @@ import 'cut_command_group.dart';
 import 'editor_session_manager.dart';
 import 'playback/canvas_playback_controller.dart';
 import 'playback/playback_transport_controls.dart';
-import 'storyboard_cut_fade_policy.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnailResolver;
 import 'storyboard_panel.dart';
 import 'timeline/timeline_row_filter.dart' show TimelineRowFilter;
@@ -227,29 +225,14 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     });
   }
 
-  /// Lane edit hooks for the V TRACK's own Transform lanes (R4b): the
-  /// timeline's per-lane track edits applied straight to
-  /// [Track.transformTrack] at GLOBAL frames — the continuous rows and
-  /// the rail both speak the track's axis now, so there is no window
-  /// translation and no cut in the loop ("keys exist with no cut under
-  /// them"). Committed as ONE undo through the session — the same command
-  /// the fade handles use, so fades and pose keys share history cleanly.
+  /// Lane edit hooks for the V TRACK's own lanes — its EFFECT chain, which is
+  /// all a track row has since the transform teardown
+  /// ([timelineRowOwnsTransform]). Keys land on the GLOBAL axis and commit as
+  /// ONE undo through the session, exactly as a layer effect's do.
+  ///
+  /// A transform lane cannot reach here any more: the rail builds none for a
+  /// track row, so the dispatch is effects or nothing.
   PropertyLaneEditCallbacks _trackLaneEditFor(Track track) {
-    final transform = track.transformTrack;
-    void commit(TransformTrack? next, String description) {
-      if (next == null) {
-        return;
-      }
-      _session.updateTrackTransformTrack(
-        track.id,
-        next,
-        description: description,
-      );
-    }
-
-    // The V row's fx lanes ride the SAME bundle, dispatched by lane id — the
-    // layer path's arrangement (one callback set, two chains behind it), so
-    // a track effect keys exactly like a layer effect does.
     void commitEffects(List<LayerEffect>? next, String description) {
       if (next == null) {
         return;
@@ -257,60 +240,32 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
       _session.updateTrackEffects(track.id, next, description: description);
     }
 
-    // The pose lives in DISPLAY space (the camera's output frame — what
-    // playback and the MP4 bake apply it over), so resolved values freeze
-    // against that space's identity.
-    final displaySize = _session.cameraFrameSize;
     return PropertyLaneEditCallbacks(
       onToggleKeyAt: (_, lane, frameIndex) {
-        final description = '${lane.label} keyframe at frame ${frameIndex + 1}';
-        if (laneIsEffectLane(lane)) {
-          commitEffects(
-            effectsWithLaneKeyToggled(
-              track.effects,
-              laneId: lane.laneId,
-              frameIndex: frameIndex,
-            ),
-            description,
-          );
+        if (!laneIsEffectLane(lane)) {
           return;
         }
-        commit(
-          transformTrackWithLaneKeyToggled(
-            transform,
+        commitEffects(
+          effectsWithLaneKeyToggled(
+            track.effects,
             laneId: lane.laneId,
             frameIndex: frameIndex,
-            resolvedPose: trackPoseAt(transform, frameIndex, displaySize),
-            resolvedAnchorPoint:
-                trackAnchorPointAt(transform, frameIndex) ??
-                CanvasPoint(x: displaySize.width / 2, y: displaySize.height / 2),
-            resolvedOpacity: trackFadeOpacityAt(transform, frameIndex),
           ),
-          description,
+          '${lane.label} keyframe at frame ${frameIndex + 1}',
         );
       },
       onSetValue: (_, lane, frameIndex, input) {
-        final description = 'Set ${lane.label} at frame ${frameIndex + 1}';
-        if (laneIsEffectLane(lane)) {
-          commitEffects(
-            effectsWithLaneValueEdited(
-              track.effects,
-              laneId: lane.laneId,
-              frameIndex: frameIndex,
-              input: input,
-            ),
-            description,
-          );
+        if (!laneIsEffectLane(lane)) {
           return;
         }
-        commit(
-          transformTrackWithLaneValueEdited(
-            transform,
+        commitEffects(
+          effectsWithLaneValueEdited(
+            track.effects,
             laneId: lane.laneId,
             frameIndex: frameIndex,
             input: input,
           ),
-          description,
+          'Set ${lane.label} at frame ${frameIndex + 1}',
         );
       },
     );
@@ -822,12 +777,11 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   activeCutFrameCursor: _activeCutFrameCursor,
                   onSelectFrameIndex: _session.selectFrameIndex,
                   poseDisplaySize: _session.cameraFrameSize,
-                  onSetCutFade: (cutId, fadeIn, fadeOut) => _session.setCutFade(
-                    cutId,
-                    fadeInFrames: fadeIn,
-                    fadeOutFrames: fadeOut,
-                  ),
-                  // FO=black / WO=white — the fade span's context menu.
+                  // No onSetCutFade: the fade handles went with the V row's
+                  // transform. F.I/F.O spans on the transition row are the
+                  // fade now — an always-visible row rather than two twirls
+                  // deep, and the user did not want the block-edge drag kept
+                  // ("애초에 마음에 안 들었었으니까", 2026-08-10).
                   // Timeline-parity layer controls on the ACTIVE cut's SE
                   // rows — the SAME session hooks the timeline host wires.
                   onToggleLayerVisibility: _session.toggleLayerVisibility,

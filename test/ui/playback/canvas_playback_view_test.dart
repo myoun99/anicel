@@ -19,7 +19,6 @@ import 'package:anicel/src/models/playback_quality.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/project_id.dart';
-import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
@@ -223,104 +222,12 @@ void main() {
     f.composites.dispose();
   });
 
-  testWidgets('the TRACK pose (V lanes) reaches the painter — resolved in '
-      'CAMERA space and remapped onto the canvas (R8-③) — while fade-only '
-      'tracks stay on the pose-free path', (tester) async {
-    // A geometric key activates the pose; the opacity lane alone must not.
-    // Keys author in camera space (frame 4×2, center (2,1)); the canvas
-    // (8×8) preview shifts center AND anchor by d = canvasC − frameC =
-    // (2,3), so the camera-space delta replays 1:1 on the canvas.
-    final posed = fixture();
-    posed.controller.play(scope: PlaybackScope.activeCut);
-    await pumpView(
-      tester,
-      controller: posed.controller,
-      composites: posed.composites,
-      transformTrack: TransformTrack.empty().copyWith(
-        position: PropertyTrack<CanvasPoint>.empty().withKey(
-          0,
-          CanvasPoint(x: 6, y: 4),
-        ),
-      ),
-    );
-    final canvasPose = painterOf(tester).cutPose;
-    expect(canvasPose, isNotNull);
-    expect(canvasPose!.center, CanvasPoint(x: 8, y: 7));
-    expect(canvasPose.zoom, 1);
-    expect(painterOf(tester).cutAnchorPoint, CanvasPoint(x: 4, y: 4));
-
-    posed.controller.stop();
-    await tester.pump();
-    posed.composites.dispose();
-
-    // The top-left snap regression: an UNTOUCHED key (= the camera-frame
-    // center) must read as identity motion on the canvas — center and
-    // anchor both land on the canvas center.
-    final untouched = fixture();
-    untouched.controller.play(scope: PlaybackScope.activeCut);
-    await pumpView(
-      tester,
-      controller: untouched.controller,
-      composites: untouched.composites,
-      transformTrack: TransformTrack.empty().copyWith(
-        position: PropertyTrack<CanvasPoint>.empty().withKey(
-          0,
-          CanvasPoint(x: 2, y: 1),
-        ),
-      ),
-    );
-    expect(painterOf(tester).cutPose!.center, CanvasPoint(x: 4, y: 4));
-    expect(painterOf(tester).cutAnchorPoint, CanvasPoint(x: 4, y: 4));
-
-    untouched.controller.stop();
-    await tester.pump();
-    untouched.composites.dispose();
-
-    final fadeOnly = fixture();
-    fadeOnly.controller.play(scope: PlaybackScope.activeCut);
-    await pumpView(
-      tester,
-      controller: fadeOnly.controller,
-      composites: fadeOnly.composites,
-      transformTrack: TransformTrack.empty().copyWith(
-        opacity: PropertyTrack<double>.empty().withKey(0, 0.5),
-      ),
-    );
-    expect(painterOf(tester).cutPose, isNull, reason: 'zero-cost fade path');
-    expect(painterOf(tester).fadeOpacity, 0.5);
-
-    fadeOnly.controller.stop();
-    await tester.pump();
-    fadeOnly.composites.dispose();
-  });
-
-  testWidgets('the V-row display gates (R9): fx off bypasses the track '
-      'pose AND the fade; the eye off drops the picture (paper only)', (
+  // The pose half of the V-row display gates went with the V row's transform:
+  // there is no track pose to bypass, and the animated fade it gated is F.I/F.O
+  // spans on the transition row now. The EYE is still a gate, and still here.
+  testWidgets('the V-row eye drops the picture and keeps the paper (R9)', (
     tester,
   ) async {
-    // fx off: a posed + faded track plays pose-free at full opacity.
-    final posed = fixture();
-    posed.controller.play(scope: PlaybackScope.activeCut);
-    await pumpView(
-      tester,
-      controller: posed.controller,
-      composites: posed.composites,
-      cutFxEnabledOf: (_) => false,
-      transformTrack: TransformTrack.empty().copyWith(
-        position: PropertyTrack<CanvasPoint>.empty().withKey(
-          0,
-          CanvasPoint(x: 6, y: 4),
-        ),
-        opacity: PropertyTrack<double>.empty().withKey(0, 0.5),
-      ),
-    );
-    expect(painterOf(tester).cutPose, isNull, reason: 'pose bypassed');
-    expect(painterOf(tester).fadeOpacity, 1, reason: 'fade bypassed');
-
-    posed.controller.stop();
-    await tester.pump();
-    posed.composites.dispose();
-
     // eye off: the warmed composite is withheld from the painter — the
     // paper stays, the picture doesn't draw.
     final hidden = fixture();

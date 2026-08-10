@@ -403,30 +403,10 @@ class ProjectRepository {
     });
   }
 
-  void updateTrackTransform({
-    required TrackId trackId,
-    required TransformTrack transformTrack,
-  }) {
-    updateProject((project) {
-      var found = false;
-      final next = project.copyWith(
-        tracks: [
-          for (final track in project.tracks)
-            if (track.id == trackId)
-              (() {
-                found = true;
-                return track.copyWith(transformTrack: transformTrack);
-              })()
-            else
-              track,
-        ],
-      );
-      if (!found) {
-        throw StateError('Track not found: $trackId');
-      }
-      return next;
-    });
-  }
+  // `updateTrackTransform` retired with the V row's transform: there is no
+  // track pose or fade lane to write. Layer transforms keep their own writer,
+  // and the cut fade is F.I/F.O spans on the transition row now
+  // ([updateTrackTransitionLayer]).
 
   /// The track's TRANSITION row — O.L / F.I / F.O spans on the global frame
   /// axis. Track-owned like the pose and the SE rows, and for the same

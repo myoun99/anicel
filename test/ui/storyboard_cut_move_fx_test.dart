@@ -2,8 +2,8 @@ import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
-import 'package:anicel/src/models/canvas_point.dart';
-import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/models/camera_instruction.dart'
+    show InstructionEvent;
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
 import 'storyboard_cut_block_probe.dart';
@@ -80,64 +80,49 @@ void main() {
     tester,
   ) async {
     final manager = await pumpHost(tester);
-    final keyed = TransformTrack(
-      keyframes: {
-        0: TransformPose(
-          center: CanvasPoint(x: 100, y: 100),
-          zoom: 1.2,
-          rotationDegrees: 0,
-        ),
-        8: TransformPose(
-          center: CanvasPoint(x: 200, y: 100),
-          zoom: 1.0,
-          rotationDegrees: 10,
-        ),
-      },
-    );
-    manager.updateTrackTransformTrack(manager.activeTrack.id, keyed);
+    // The V row's transform is gone; the R4 independence rule it demonstrated
+    // is guarded on the TRANSITION row now — a span straddles a cut boundary,
+    // so a slide moving it would break the O.L outright.
+    final firstDuration = manager.activeTrack.cuts[0].duration;
+    manager.updateTransitionInstructions({
+      firstDuration - 2: const InstructionEvent(
+        instructionId: 'ol',
+        length: 4,
+      ),
+    });
+    final spans = manager.activeTrack.transitionLayer.instructions;
     await tester.pumpAndSettle();
 
     await dragSecondCut(tester, manager);
 
     // 48px at 12 px/frame = the cut slid 4 frames: its leading gap opened.
     expect(manager.activeTrack.cuts[1].leadingGapFrames, 4);
-    // R4 independence: the slide moved the CUT, not the track's keys.
-    expect(manager.activeTrack.transformTrack, keyed);
+    expect(manager.activeTrack.transitionLayer.instructions, spans);
   });
 
-  testWidgets('slide works with the Transform strips twirled open', (
+  testWidgets('slide works with the V row\'s lane strips twirled open', (
     tester,
   ) async {
     final manager = await pumpHost(tester);
-    manager.updateTrackTransformTrack(
-      manager.activeTrack.id,
-      TransformTrack(
-        keyframes: {
-          0: TransformPose(
-            center: CanvasPoint(x: 100, y: 100),
-            zoom: 1.2,
-            rotationDegrees: 0,
-          ),
-        },
-      ),
-    );
     await tester.pumpAndSettle();
 
-    // Twirl the V track's lane strips open (the chevron), then the
-    // Transform group header — the state keys get authored in.
+    // Twirl the V track's lane strips open (the chevron). There is no
+    // Transform group header to open after it any more — a track row does not
+    // own one — so the twirl-down is its fx chain alone.
     final trackId = manager.activeTrack.id.value;
     await tester.tap(
       find.byKey(ValueKey<String>('storyboard-track-lane-toggle-$trackId')),
     );
     await tester.pumpAndSettle();
-    await tester.tap(
+    expect(
       find.byKey(
         ValueKey<String>(
           'storyboard-lane-group-toggle-v-track:$trackId-transform-group',
         ),
       ),
+      findsNothing,
+      reason: 'the V row lost its Transform group with the teardown',
     );
-    await tester.pumpAndSettle();
 
     await dragSecondCut(tester, manager);
 

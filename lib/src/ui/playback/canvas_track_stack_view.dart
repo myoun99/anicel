@@ -18,7 +18,7 @@ import '../../services/playback/playback_frame_mapping.dart';
 import '../../services/se_name_tag_plan.dart';
 import '../canvas/paper_background.dart'
     show AlphaCheckerboardPainter;
-import '../storyboard_cut_fade_policy.dart';
+import '../track_effect_paint_policy.dart';
 import 'cut_frame_composite_cache.dart';
 import 'playback_frame_painter.dart';
 
@@ -282,20 +282,11 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
     // track's own opacity and fade. The weights that follow turn those into
     // source-over alphas — see [sourceOverWeights] for why they are not the
     // same number.
-    final unitAlphas = <double>[];
-    for (final position in positions) {
-      final cut = position.cut;
-      final cutFxEnabled = widget.cutFxEnabledOf?.call(cut.id) ?? true;
-      final transformTrack =
-          widget.transformTrackOf?.call(cut.id) ?? TransformTrack.empty();
-      unitAlphas.add(
+    final unitAlphas = <double>[
+      for (final position in positions)
         position.opacity *
-            (widget.trackStaticOpacityOf?.call(cut.id) ?? 1.0) *
-            (cutFxEnabled
-                ? trackFadeOpacityAt(transformTrack, position.globalFrameIndex)
-                : 1.0),
-      );
-    }
+            (widget.trackStaticOpacityOf?.call(position.cut.id) ?? 1.0),
+    ];
     final weights = trackGroupSourceOverWeights(positions, unitAlphas);
     for (var i = 0; i < positions.length; i++) {
       final position = positions[i];
@@ -321,14 +312,7 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
       final cutPictureVisible =
           widget.cutPictureVisibleOf?.call(cut.id) ?? true;
 
-      // The TRACK-level pose (R4: the V effects live on the track's
-      // global axis), display-time only — resolved over the CAMERA frame,
-      // the space its lanes author in (R8-③), at the frame's GLOBAL
-      // position (this stack's own axis).
-      final transformTrack =
-          widget.transformTrackOf?.call(cut.id) ?? TransformTrack.empty();
       final globalFrame = position.globalFrameIndex;
-      final poseActive = cutFxEnabled && trackPoseIsActive(transformTrack);
       final weight = weights[i];
       // The stage — paper, letterbox, apron — belongs to the bottom covered
       // TRACK, and to EVERY contribution of it: a 場面転換 cross-fades the
@@ -356,19 +340,8 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
                 ? widget.seNameTagsOf?.call(cut, localFrame) ?? const []
                 : const [],
             cameraFrameSize: cameraView ? widget.cameraFrameSize : null,
-            cutPose: !poseActive
-                ? null
-                : cameraView
-                ? trackPoseAt(transformTrack, globalFrame, widget.cameraFrameSize)
-                : trackPoseForCanvasPreview(
-                    transformTrack,
-                    globalFrame,
-                    cameraFrameSize: widget.cameraFrameSize,
-                    canvasSize: cut.canvasSize,
-                  ).pose,
-            cutAnchorPoint: poseActive
-                ? trackAnchorPointAt(transformTrack, globalFrame)
-                : null,
+            // No cutPose/cutAnchorPoint: the V row has no transform. The
+            // camera is what moves the picture on the stage.
             // The V row's chain, on the cut's picture. rasterScale stays 1:
             // the composite is drawn up to CANVAS space here, whatever
             // quality it was cached at, and a blur radius is canvas pixels.

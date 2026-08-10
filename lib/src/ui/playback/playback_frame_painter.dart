@@ -67,18 +67,24 @@ class PlaybackFramePainter extends CustomPainter {
   final CameraPose? cameraPose;
   final CanvasSize? cameraFrameSize;
 
-  /// The V track's pose (Track.transformTrack — AE precomp semantics):
-  /// the finished picture moves on the DISPLAY space, above the camera
-  /// projection. Resolved by trackPoseAt at the frame's GLOBAL position
-  /// over the same space this painter draws (camera frame in camera mode,
-  /// canvas otherwise); null = identity, zero cost. Display-time only,
-  /// never baked into composites (the fade's rule). Canvas mode keeps the
-  /// PAPER static and moves only the merged content, clipped to the
-  /// canvas (R7-③: "the canvas stays put, the contents move as one") —
-  /// the paper is the panel's stage, not part of the cut's picture there.
+  /// A pose for the FINISHED picture on the DISPLAY space, above the camera
+  /// projection (AE precomp semantics): null = identity, zero cost.
+  /// Display-time only, never baked into composites (the fade's rule). Canvas
+  /// mode keeps the PAPER static and moves only the merged content, clipped to
+  /// the canvas (R7-③: "the canvas stays put, the contents move as one") — the
+  /// paper is the panel's stage, not part of the cut's picture there.
+  ///
+  /// ⚠️NO CALLER passes this today. It was the V row's `Track.transformTrack`,
+  /// torn down in the O.L round: a whole track's output posed on the stage only
+  /// means something when several tracks stack, and there is no V-track
+  /// authoring. The slot stays because it is the shared renderer's capability
+  /// and a row that should own a transform declares that through
+  /// [timelineRowOwnsTransform] — but nothing declares it, so treat this as
+  /// unexercised until something does.
   final TransformPose? cutPose;
 
-  /// The cut pose's anchor; null = the display-space center.
+  /// The cut pose's anchor; null = the display-space center. Unexercised for
+  /// the same reason as [cutPose].
   final CanvasPoint? cutAnchorPoint;
 
   /// The V track's EFFECT chain, already sampled at this frame
