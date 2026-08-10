@@ -9,12 +9,18 @@ import 'package:anicel/src/ui/home_page.dart';
 /// rather than appearance.
 ///
 /// 🚨 The quad is built in VIEWPORT coordinates, so it reaches as far as
-/// the pasteboard does — five canvas widths and heights, 9600 x 5400
-/// units at the default project size. A `CustomPaint` clips nothing, so
-/// the display list's BOUNDS were that whole quad, and the engine sizes a
+/// the pasteboard does — five canvas widths and heights, 11700 x 8270
+/// units at the default cut size. A `CustomPaint` clips nothing, so the
+/// display list's BOUNDS were that whole quad, and the engine sizes a
 /// raster cache entry from bounds x transform:
 ///
-///     197.75 MiB  x  zoom²  x  dpr²
+///     369 MiB  x  zoom²  x  dpr²
+///
+/// ⚠️ The constant is the CUT canvas (`defaultCutCanvasSize`, 2340 x
+/// 1654), not the camera's 1920 x 1080 — this painter is handed
+/// `widget.canvasSize`. The camera size gives 197.75 MiB and misses by a
+/// factor of two; with dpr since measured at 1.0, the corrected figure
+/// lands within 5% of both real-app readings.
 ///
 /// Measured on the real app: the picture cache reached ~1 GB on an EMPTY
 /// project, tracked zoom² exactly, and fell off a cliff where the

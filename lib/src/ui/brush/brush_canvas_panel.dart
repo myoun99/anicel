@@ -3495,12 +3495,20 @@ class _StagePlanesPainter extends CustomPainter {
     final box = Offset.zero & size;
     // 🚨 Clip to our own box, because the quad below is built in VIEWPORT
     // coordinates and therefore reaches as far as the pasteboard does —
-    // five canvas widths and heights, which is 9600 x 5400 units at the
-    // default project size. A `CustomPaint` clips nothing on its own, so
-    // the display list's BOUNDS became that whole quad, and the engine
-    // sizes a raster cache entry from the bounds times the transform:
+    // five canvas widths and heights, which is 11700 x 8270 units at the
+    // default cut size. A `CustomPaint` clips nothing on its own, so the
+    // display list's BOUNDS became that whole quad, and the engine sizes
+    // a raster cache entry from the bounds times the transform:
     //
-    //   197.75 MiB  x  zoom²  x  dpr²
+    //   369 MiB  x  zoom²  x  dpr²
+    //
+    // ⚠️ That constant is the CUT canvas (`defaultCutCanvasSize`, 2340 x
+    // 1654) — this painter is handed `widget.canvasSize`, not the
+    // camera's 1920 x 1080. Working it from the camera size gives 197.75
+    // MiB, which is what the commit adding this clip said, and misses by
+    // a factor of two. With dpr since measured at 1.0 the corrected
+    // figure lands within 5% of both real-app readings: 90% zoom predicts
+    // 313 MB against 296 measured, 131% predicts 664 against 634.
     //
     // Measured on the real app: the picture cache ran to ~1 GB on an
     // EMPTY project and tracked zoom² exactly, with a cliff where the
