@@ -6,11 +6,16 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/camera/camera_frame_overlay.dart';
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
 
 /// The multitrack display path's canvas mount (parked state): a gap
 /// parking swaps the canvas content to the track stack — a parked frame
-/// ON a cut shows that cut's camera-framed composite instead of the old
-/// unconditional void, while a frame no track covers keeps the void.
+/// ON a cut shows that cut's composite instead of the old unconditional void,
+/// while a frame no track covers keeps the void.
+///
+/// 📐 And it shows it UNCROPPED. The crop is playback's (user 2026-08-11); a
+/// preview draws the whole canvas with the camera frame over it, which is what
+/// the editing canvas beside it has always done.
 void main() {
   const stackKey = ValueKey<String>('canvas-track-stack-view');
   const framesKey = ValueKey<String>('canvas-track-stack-frames');
@@ -61,7 +66,7 @@ void main() {
   }
 
   testWidgets('a parking ON a covered frame shows the track stack (the '
-      'SE-row press contract, feedback #7): camera-framed composite, not '
+      'SE-row press contract, feedback #7): that cut\'s composite, not '
       'the void', (tester) async {
     final (s, first, _) = gappedSession();
     addTearDown(s.dispose);
@@ -116,7 +121,7 @@ void main() {
     expect(
       find.byType(CameraFrameOverlay),
       findsNothing,
-      reason: 'no active cut = nothing to author; the stack frames itself',
+      reason: 'no active cut = no pose to author, so nothing to draw',
     );
     expect(find.byKey(stackKey), findsOneWidget);
 
@@ -126,5 +131,63 @@ void main() {
     expect(find.byType(CameraFrameOverlay), findsOneWidget);
     expect(find.byKey(stackKey), findsNothing);
     await drainWarming(tester);
+  });
+
+  /// 🚨The storyboard RULER DRAG (user 2026-08-11).
+  ///
+  /// `scrubGlobalFrame` parks the moment the frame belongs to another cut, so
+  /// dragging the ruler across cuts is this stack — and it used to CROP to the
+  /// camera while the state the drag started from showed the whole canvas with
+  /// the frame drawn over it. Same picture, two framings, one gesture apart.
+  ///
+  /// The rule now: the crop is PLAYBACK's. A preview is canvas + overlay.
+  bool stackCrops(WidgetTester tester) => tester
+      .widget<CanvasTrackStackView>(find.byKey(stackKey))
+      .cameraViewEnabled;
+
+  testWidgets('a ruler drag across cuts shows the WHOLE canvas, camera view '
+      'on or off — the crop does not appear one gesture into a drag', (
+    tester,
+  ) async {
+    final (s, first, aEnd) = gappedSession();
+    addTearDown(s.dispose);
+    s.selectCut(first);
+    await pumpArea(tester, s, cameraViewEnabled: true);
+    expect(find.byKey(stackKey), findsNothing, reason: 'cut active = editing');
+
+    // Two out-of-territory moves: the preview engages on the SECOND, never on
+    // the pointer-down alone — the real drag, not a tap.
+    s.scrubGlobalFrame(aEnd + 1);
+    s.scrubGlobalFrame(aEnd + 2);
+    await tester.pump();
+
+    expect(s.frameScrubActive.value, isTrue, reason: 'a drag, not a tap');
+    expect(find.byKey(stackKey), findsOneWidget);
+    expect(
+      stackCrops(tester),
+      isFalse,
+      reason: 'the ruler drag shows what the eye already had',
+    );
+    await drainWarming(tester);
+  });
+
+  testWidgets('and the toggle does not move that answer: a parked preview is '
+      'uncropped either way', (tester) async {
+    for (final toggle in [false, true]) {
+      final (s, first, _) = gappedSession();
+      s.selectCut(first);
+      await pumpArea(tester, s, cameraViewEnabled: toggle);
+      s.parkGlobalFrame(1);
+      await tester.pump();
+
+      expect(find.byKey(stackKey), findsOneWidget);
+      expect(
+        stackCrops(tester),
+        isFalse,
+        reason: 'camera view $toggle — the preview framing is not the toggle\'s',
+      );
+      await drainWarming(tester);
+      s.dispose();
+    }
   });
 }
