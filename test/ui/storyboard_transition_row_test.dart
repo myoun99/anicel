@@ -1,0 +1,388 @@
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/timeline_coverage.dart'
+    show TimelineBlockEdge;
+import 'package:anicel/src/models/timeline_row_address.dart';
+import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/storyboard_panel.dart';
+import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
+
+/// The GLOBAL surface authors transitions. The transition row is track-owned
+/// and its spans address the track's frame axis, so this panel — not the cut
+/// timeline, which shows the same spans read-only — is where an O.L is made,
+/// sized and named.
+Future<StoryboardPanel> _openStoryboard(WidgetTester tester) async {
+  await tester.binding.setSurfaceSize(const Size(1400, 800));
+  addTearDown(() => tester.binding.setSurfaceSize(null));
+  await tester.pumpWidget(
+    MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+  );
+  await tester.pumpAndSettle();
+  await tester.tap(
+    find.byKey(const ValueKey<String>('timeline-mode-storyboard-button')),
+  );
+  await tester.pumpAndSettle();
+  return tester.widget<StoryboardPanel>(find.byType(StoryboardPanel));
+}
+
+StoryboardPanel _panel(WidgetTester tester) =>
+    tester.widget<StoryboardPanel>(find.byType(StoryboardPanel));
+
+Track _track(WidgetTester tester) => _panel(tester).project.tracks.single;
+
+void main() {
+  group('the transition row on the global rail', () {
+    testWidgets('is there for every track, ABOVE the SE rows', (tester) async {
+      await _openStoryboard(tester);
+      final trackId = _track(tester).id.value;
+
+      final label = find.byKey(
+        ValueKey<String>('storyboard-transition-label-$trackId'),
+      );
+      final strip = find.byKey(
+        ValueKey<String>('storyboard-transition-row-$trackId'),
+      );
+      expect(label, findsOneWidget);
+      expect(strip, findsOneWidget);
+
+      // Above the S rows on both columns — the rail and the strip mirror one
+      // geometry, so a row that led one and trailed the other would drift the
+      // selection bands off their rows.
+      final seLabel = find.byKey(
+        ValueKey<String>('storyboard-se-label-$trackId-1'),
+      );
+      expect(
+        tester.getTopLeft(label).dy,
+        lessThan(tester.getTopLeft(seLabel).dy),
+      );
+      expect(
+        tester.getTopLeft(strip).dy,
+        lessThan(tester.getTopLeft(find.byKey(
+          const ValueKey<String>('storyboard-se-row-0-1'),
+        )).dy),
+      );
+      // The two columns agree on the row's top, which is what keeps the rail
+      // and the strips in lockstep.
+      expect(tester.getTopLeft(label).dy, tester.getTopLeft(strip).dy);
+    });
+
+    testWidgets('is a layer row that SELECTS, like every other row', (
+      tester,
+    ) async {
+      await _openStoryboard(tester);
+      final layer = _track(tester).transitionLayer;
+      expect(layer.kind, LayerKind.transition);
+
+      _panel(tester).onRowFramePress!(LayerRowAddress(layer.id), 4);
+      await tester.pumpAndSettle();
+
+      expect(_panel(tester).selectedRow, LayerRowAddress(layer.id));
+      // Owning no cuts, it lands the playhead and takes no cut active — the
+      // SE rows' rule, and for the same reason.
+      expect(_panel(tester).playheadFrame?.value, 4);
+    });
+
+    testWidgets('the + button makes a one-frame span at the playhead, and the '
+        'strip draws it', (tester) async {
+      await _openStoryboard(tester);
+      final trackId = _track(tester).id.value;
+
+      _panel(tester).onRowFramePress!(
+        TrackRowAddress(_track(tester).id),
+        6,
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(ValueKey<String>('storyboard-transition-add-$trackId')),
+      );
+      await tester.pumpAndSettle();
+
+      final spans = _track(tester).transitionLayer.instructions;
+      expect(spans.keys, [6]);
+      expect(spans[6]!.length, 1);
+      // The paper the strip lays under the span — proof the row renders what
+      // the track stores, on the global axis.
+      expect(
+        find.byKey(
+          ValueKey<String>(
+            'storyboard-transition-paper-'
+            '${_track(tester).transitionLayer.id}-6',
+          ),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('the + button stands down where a span already covers the '
+        'playhead — creation never edits', (tester) async {
+      await _openStoryboard(tester);
+      final trackId = _track(tester).id.value;
+      final add = find.byKey(
+        ValueKey<String>('storyboard-transition-add-$trackId'),
+      );
+
+      _panel(tester).onRowFramePress!(TrackRowAddress(_track(tester).id), 2);
+      await tester.pumpAndSettle();
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+      expect(_track(tester).transitionLayer.instructions.keys, [2]);
+
+      // Same frame again: the button is disabled, so a second press cannot
+      // silently replace the span's term or move it.
+      expect(tester.widget<IconButton>(add).onPressed, isNull);
+      expect(_panel(tester).resolveCanCreateTransition!(), isFalse);
+    });
+
+    testWidgets('the + button follows the PLAYHEAD, which moves without '
+        'rebuilding the panel', (tester) async {
+      await _openStoryboard(tester);
+      final trackId = _track(tester).id.value;
+      final add = find.byKey(
+        ValueKey<String>('storyboard-transition-add-$trackId'),
+      );
+
+      _panel(tester).onRowFramePress!(TrackRowAddress(_track(tester).id), 8);
+      await tester.pumpAndSettle();
+      await tester.tap(add);
+      await tester.pumpAndSettle();
+      expect(tester.widget<IconButton>(add).onPressed, isNull);
+
+      // Step off the span through the cursor channel alone. A state captured
+      // at build time would still say "covered" here.
+      _panel(tester).onSeekGlobalFrame!(9);
+      await tester.pump();
+      expect(
+        tester.widget<IconButton>(add).onPressed,
+        isNotNull,
+        reason: 'the button re-asks per tick, it does not remember',
+      );
+    });
+  });
+
+  group('the playhead a transition is created at', () {
+    /// Two cuts with a 4-frame gap before the second — the shape that tells
+    /// "cut start + local index" apart from the track-global playhead.
+    (EditorSessionManager, CutId, int) gappedSession() {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+      session.createCut();
+      final track = session.repository.requireProject().tracks.first;
+      final second = track.cuts[1].id;
+      session.repository.updateCutLeadingGap(
+        cutId: second,
+        leadingGapFrames: 4,
+      );
+      return (session, second, track.cuts[0].duration);
+    }
+
+    test('a GAP parking creates the span at the gap frame — a gap is a '
+        'legitimate partner (the fade to black, and the のりしろ an animator '
+        'gets by opening a gap in front of their only cut)', () {
+      final (session, _, aEnd) = gappedSession();
+
+      seekStoryboardGlobalFrame(session, aEnd + 2);
+      expect(session.activeCutId, isNull, reason: 'a gap holds no cut');
+
+      expect(session.canCreateTransitionSpanAtPlayhead, isTrue);
+      session.createTransitionSpanAtPlayhead();
+
+      expect(
+        session.activeTrack.transitionLayer.instructions.keys,
+        [aEnd + 2],
+        reason: 'the span lands where the playhead is, not at cut-start + 0',
+      );
+    });
+
+    test('a span on the SECOND cut lands at its GLOBAL frame, not its local '
+        'one', () {
+      final (session, second, aEnd) = gappedSession();
+      session.selectCut(second);
+      session.selectFrameIndex(1);
+
+      session.createTransitionSpanAtPlayhead();
+
+      expect(session.activeTrack.transitionLayer.instructions.keys, [
+        aEnd + 4 + 1,
+      ]);
+    });
+  });
+
+  group('sizing a transition span', () {
+    test('the END grip lengthens it; ONE undo restores the length', () {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+      session.selectGlobalFrame(3);
+      session.createTransitionSpanAtPlayhead();
+      expect(session.activeTrack.transitionLayer.instructions[3]!.length, 1);
+
+      expect(
+        session.beginTransitionEdgeDrag(
+          spanStartIndex: 3,
+          edge: TimelineBlockEdge.end,
+        ),
+        isTrue,
+      );
+      session.updateTransitionEdgeDrag(11);
+      // The in-flight form is on the preview channel, so the strip can follow
+      // the hand while the repository still holds the committed span.
+      expect(
+        session.transitionEdgeDragPreview.value!.instructions[3]!.length,
+        12,
+      );
+      expect(
+        session.activeTrack.transitionLayer.instructions[3]!.length,
+        1,
+        reason: 'nothing is committed until release',
+      );
+
+      session.endTransitionEdgeDrag();
+      expect(session.transitionEdgeDragPreview.value, isNull);
+      expect(session.activeTrack.transitionLayer.instructions[3]!.length, 12);
+
+      session.undo();
+      expect(
+        session.activeTrack.transitionLayer.instructions[3]!.length,
+        1,
+        reason: 'one release, one undo step',
+      );
+    });
+
+    test('the START grip moves the start and holds the end', () {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+      session.selectGlobalFrame(10);
+      session.createTransitionSpanAtPlayhead();
+      session.beginTransitionEdgeDrag(
+        spanStartIndex: 10,
+        edge: TimelineBlockEdge.end,
+      );
+      session.updateTransitionEdgeDrag(5);
+      session.endTransitionEdgeDrag();
+      expect(session.activeTrack.transitionLayer.instructions[10]!.length, 6);
+
+      session.beginTransitionEdgeDrag(
+        spanStartIndex: 10,
+        edge: TimelineBlockEdge.start,
+      );
+      session.updateTransitionEdgeDrag(-4);
+      session.endTransitionEdgeDrag();
+
+      final spans = session.activeTrack.transitionLayer.instructions;
+      expect(spans.keys, [6]);
+      expect(
+        spans[6]!.length,
+        10,
+        reason: 'the end stayed at 16 — the start is what moved',
+      );
+    });
+
+    test('a cancelled drag commits nothing and drops the preview', () {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+      session.selectGlobalFrame(1);
+      session.createTransitionSpanAtPlayhead();
+
+      session.beginTransitionEdgeDrag(
+        spanStartIndex: 1,
+        edge: TimelineBlockEdge.end,
+      );
+      session.updateTransitionEdgeDrag(20);
+      session.cancelTransitionEdgeDrag();
+
+      expect(session.transitionEdgeDragPreview.value, isNull);
+      expect(session.activeTrack.transitionLayer.instructions[1]!.length, 1);
+    });
+
+    test('a grip on a frame no span starts at is refused', () {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+      expect(
+        session.beginTransitionEdgeDrag(
+          spanStartIndex: 4,
+          edge: TimelineBlockEdge.end,
+        ),
+        isFalse,
+      );
+    });
+  });
+
+  group('naming and removing a span', () {
+    test('the term is replaced without moving or resizing the span', () {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+      session.selectGlobalFrame(2);
+      session.createTransitionSpanAtPlayhead();
+      session.beginTransitionEdgeDrag(
+        spanStartIndex: 2,
+        edge: TimelineBlockEdge.end,
+      );
+      session.updateTransitionEdgeDrag(9);
+      session.endTransitionEdgeDrag();
+
+      final terms = session.transitionInstructionDefs;
+      expect(terms.length, greaterThan(1));
+      final other = terms.last;
+      session.replaceTransitionEventAt(
+        6,
+        session.activeTrack.transitionLayer.instructions[2]!.copyWith(
+          instructionId: other.id,
+        ),
+      );
+
+      final spans = session.activeTrack.transitionLayer.instructions;
+      expect(spans.keys, [2], reason: 'the start never moves');
+      expect(spans[2]!.length, 10, reason: 'the grips own the length');
+      expect(spans[2]!.instructionId, other.id);
+    });
+
+    test('the vocabulary offered is the 場面転換 terms only, and the editable '
+        'set is untouched by that filter', () {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+
+      final filtered = session.transitionInstructionSet.defs;
+      expect(filtered, isNotEmpty);
+      expect(filtered.length, lessThan(session.cameraInstructionSet.defs.length));
+      expect(
+        session.transitionInstructionDefs.map((def) => def.id),
+        filtered.map((def) => def.id),
+      );
+    });
+
+    test('removing the covering span empties the row', () {
+      final session = EditorSessionManager(
+        initialProject: createDefaultProject(),
+      );
+      addTearDown(session.dispose);
+      session.selectGlobalFrame(5);
+      session.createTransitionSpanAtPlayhead();
+      expect(session.transitionSpanAt(5), isNotNull);
+
+      session.removeTransitionSpanAt(5);
+      expect(session.activeTrack.transitionLayer.instructions, isEmpty);
+
+      session.undo();
+      expect(session.activeTrack.transitionLayer.instructions.keys, [5]);
+    });
+  });
+}
