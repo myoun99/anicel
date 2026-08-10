@@ -3424,6 +3424,11 @@ class EditorSessionManager extends ChangeNotifier {
     if (activeLayer == null) {
       return false;
     }
+    // Read-only where a cut can see it: the transition row is deleted (and
+    // moved) on the global axis, never from inside a cut.
+    if (layerKindIsReadOnlyInCut(activeLayer.kind)) {
+      return false;
+    }
     // Attach rows are accessories: always deletable, never counted toward
     // the drawing floor (deleting a BASE cascades over its attach rows).
     if (isAttachedLayer(activeLayer)) {

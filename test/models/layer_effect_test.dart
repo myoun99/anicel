@@ -298,11 +298,15 @@ void main() {
   });
 
   group('the kind predicate', () {
-    test('every kind but the camera authors its own effect chain', () {
+    test('a row authors an effect chain unless it has no picture to filter', () {
+      // The camera is the frame rather than a thing inside it, and the
+      // TRANSITION row is read-only notation on the track's axis — a grade
+      // on a boundary annotation would have nothing to grade.
+      const chainless = {LayerKind.camera, LayerKind.transition};
       for (final kind in LayerKind.values) {
         expect(
           layerKindHasLayerEffects(kind),
-          kind != LayerKind.camera,
+          !chainless.contains(kind),
           reason: kind.name,
         );
       }

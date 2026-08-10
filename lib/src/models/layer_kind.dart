@@ -435,6 +435,17 @@ bool layerKindIsClipboardCopyable(LayerKind kind) {
   };
 }
 
+/// Whether a row of [kind] is READ-ONLY where a cut can see it — the
+/// user's law for the transition row: "글로벌 트랙이 메인, 컷 타임라인은
+/// 보여주기만".
+///
+/// Selection may still land on it (arrow-walking the rows must not skip a
+/// row the eye can see), but every verb that would CHANGE it — rename,
+/// move, delete, edge drag — refuses. Those verbs live on the global axis,
+/// in the storyboard panel, where the span really is; here the row's local
+/// placement is a projection and editing it would be editing a lie.
+bool layerKindIsReadOnlyInCut(LayerKind kind) => kind == LayerKind.transition;
+
 /// Whether [kind] is a FIXED kind — one the user can neither convert a
 /// layer into nor convert away from (the camera fixture, folders and
 /// adjustments, whose kind IS their structure; instruction rows carry
