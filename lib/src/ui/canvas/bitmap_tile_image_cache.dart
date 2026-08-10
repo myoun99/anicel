@@ -66,8 +66,92 @@ class BitmapTileImageCache extends ChangeNotifier {
   /// stay pinned.
   static const int retainedScopeLimit = 8;
 
+  /// SYNTHESIZED stand-ins: the picture a tile shows while its own decode
+  /// is still in flight, made from pictures already on the GPU rather than
+  /// borrowed from a previous generation at the same coordinate.
+  ///
+  /// Kept in its own slot rather than written into [_images] on purpose —
+  /// a stand-in must NOT stop the real decode, and it must not become the
+  /// tile's permanent picture. Composing `srcOver(pre, ink)` is the same
+  /// operation the screen was already performing while the user drew, but
+  /// it is not byte-identical to what the commit kernel produced: the
+  /// kernel blends in straight alpha and premultiplies once, the
+  /// composition premultiplies both operands first. Measured worst case is
+  /// one channel step, at the faintest ink over the faintest base
+  /// (`tile_image_sync_compose_parity_test`). Adopting that outright would
+  /// pin an off-by-one picture forever on exactly those tiles.
+  final Expando<ui.Image> _provisional = Expando<ui.Image>(
+    'bitmapTileProvisionalImages',
+  );
+
+  /// Detached explicitly when the real decode replaces a stand-in, so the
+  /// image is retired exactly once.
+  static final Finalizer<ui.Image> _provisionalFinalizer = Finalizer<ui.Image>(
+    (image) => DeferredImageDisposer.instance.retire(image),
+  );
+
   /// The decoded image for [tile], or `null` while the decode is pending.
+  ///
+  /// TRUTH only. Callers deciding what to DRAW want [displayImageFor];
+  /// callers deciding what to decode, adopt or hand to a later generation
+  /// want this one.
   ui.Image? imageFor(BitmapTile tile) => _images[tile];
+
+  /// What the painter should DRAW for [tile]: its own decoded picture if
+  /// that has landed, otherwise a synthesized stand-in.
+  ///
+  /// Both are pictures OF THIS TILE. That is the whole difference from
+  /// [latestImageForCoord], which answers with a different tile's picture
+  /// and is the reason a stroke could land and show the artwork that was
+  /// there before it.
+  ui.Image? displayImageFor(BitmapTile tile) =>
+      _images[tile] ?? _provisional[tile];
+
+  /// Whether the stand-in SLOT for [tile] is occupied.
+  ///
+  /// ⚠️ Deliberately says nothing about `_images`. Written as
+  /// "showing a stand-in" (`_images[tile] == null && ...`) it reads better
+  /// and is useless: once the real picture lands that expression is false
+  /// whether or not the stand-in was actually retired, so a test built on
+  /// it passes with the retirement DELETED — verified by mutation, which
+  /// is the only reason this comment exists. The leak is about ownership,
+  /// so the observable has to be about ownership too.
+  bool hasProvisional(BitmapTile tile) => _provisional[tile] != null;
+
+  /// Gives [tile] a synthesized stand-in until its own decode lands.
+  ///
+  /// Ownership transfers: the image is retired when the real decode
+  /// replaces it, or with the tile if no decode ever comes. The caller must
+  /// NOT dispose it.
+  ///
+  /// Does nothing if the tile already has a real picture (nothing to stand
+  /// in for) or already has a stand-in (the first one was composed from the
+  /// same operands; a second is redundant). Deliberately does NOT touch
+  /// [_latestDecodedByScope]: a stand-in is not a truthful predecessor for
+  /// some later generation to borrow, and seeding it there would put the
+  /// off-by-one into a lineage that outlives it.
+  void putProvisional(BitmapTile tile, ui.Image image) {
+    if (_images[tile] != null || _provisional[tile] != null) {
+      DeferredImageDisposer.instance.retire(image);
+      return;
+    }
+    _provisional[tile] = image;
+    _provisionalFinalizer.attach(tile, image, detach: tile);
+  }
+
+  /// Retires [tile]'s stand-in, if it has one. Called the moment its real
+  /// picture lands.
+  void _dropProvisional(BitmapTile tile) {
+    final provisional = _provisional[tile];
+    if (provisional == null) {
+      return;
+    }
+    _provisional[tile] = null;
+    // Detach first: without it the finalizer retires the same image a
+    // second time when the tile is eventually collected.
+    _provisionalFinalizer.detach(tile);
+    DeferredImageDisposer.instance.retire(provisional);
+  }
 
   /// The most recently decoded image at [coord] within [scope] (possibly for
   /// an older tile version), or `null` if nothing decoded there yet.
@@ -115,6 +199,8 @@ class BitmapTileImageCache extends ChangeNotifier {
         upload.free();
         _images[tile] = image;
         _imageFinalizer.attach(tile, image);
+        // Truth has landed; the stand-in has nothing left to stand in for.
+        _dropProvisional(tile);
         final scoped = _latestDecodedByScope.remove(staleScope);
         // Re-insert: this scope becomes the most recently used.
         (_latestDecodedByScope[staleScope] =
@@ -152,6 +238,9 @@ class BitmapTileImageCache extends ChangeNotifier {
     }
     _images[tile] = image;
     _imageFinalizer.attach(tile, image);
+    // An adopted picture IS the truth (the overlay decoded exactly these
+    // bytes), so it retires a stand-in just as a decode would.
+    _dropProvisional(tile);
     final scoped = _latestDecodedByScope.remove(staleScope);
     (_latestDecodedByScope[staleScope] =
             scoped ?? <TileCoord, BitmapTile>{})[tile.coord] =
