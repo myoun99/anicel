@@ -256,6 +256,12 @@ class BitmapSurfacePainter extends CustomPainter {
           // adoption the handoff already revision-matched. There is no
           // third path, so an image here is always the final picture.
           //
+          // ⚠️ `imageFor`, deliberately: a stand-in WOULD be a third path
+          // and it is the weaker picture here. The overlay tile this would
+          // displace holds the commit's own bytes exactly, so a composed
+          // approximation must never take its place — the stand-in exists
+          // for coordinates that have no such answer.
+          //
           // Drawn HERE and skipped in the overlay pass, never both: two
           // draws of the same coordinate is the double-density ghost.
           final settledImage = overlay.settling
@@ -306,8 +312,19 @@ class BitmapSurfacePainter extends CustomPainter {
         // decode really is an older version of this tile. A surface whose
         // content gets replaced empties its scope at that moment instead
         // of borrowing across the replacement.
+        //
+        // N4: `displayImageFor`, so a picture OF THIS TILE outranks a
+        // picture of a DIFFERENT one. A stand-in is composed from what the
+        // screen already held, so it is at worst a rounding step away from
+        // this tile's own bytes; the coordinate fallback below is a
+        // previous GENERATION, which is where "the stroke landed and the
+        // artwork that was there before it appeared" comes from. Truth
+        // still wins over both — `displayImageFor` reads the real image
+        // first — and this order also keeps the stand-in out of the
+        // per-pixel budget, which is spent on coordinates that have
+        // nothing at all.
         final tileImage =
-            tileImageCache.imageFor(tile) ??
+            tileImageCache.displayImageFor(tile) ??
             tileImageCache.latestImageForCoord(tile.coord, scope: staleScope);
         if (tileImage != null) {
           canvas.drawImage(

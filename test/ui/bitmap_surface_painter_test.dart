@@ -691,6 +691,150 @@ void main() {
       );
     });
   });
+
+  /// N4 ③: what the painter DRAWS for a tile whose own decode has not
+  /// landed. The order is truth, then a picture of THIS tile, then a
+  /// picture of a DIFFERENT one, then per-pixel, then nothing — and the
+  /// two tests here are the two places that order is load-bearing.
+  ///
+  /// The stand-in is deliberately a colour the tile's own bytes do not
+  /// contain, so the oracle can tell "drew the stand-in" apart from "drew
+  /// its pixels" and from "drew the previous generation". A stand-in the
+  /// same colour as the tile would make either outcome green.
+  group('a tile stands in for itself (N4 ③)', () {
+    ui.Image solid(int size, Color color) {
+      final recorder = ui.PictureRecorder();
+      Canvas(recorder).drawRect(
+        Rect.fromLTWH(0, 0, size.toDouble(), size.toDouble()),
+        Paint()..color = color,
+      );
+      final picture = recorder.endRecording();
+      final image = picture.toImageSync(size, size);
+      picture.dispose();
+      return image;
+    }
+
+    test('a stand-in outranks the previous generation at the same '
+        'coordinate', () async {
+      const scope = 'cel';
+      final cache = BitmapTileImageCache();
+
+      // The generation the user is looking at: BLUE, decoded, in the
+      // coordinate bucket.
+      final previous = _tile(
+        coord: TileCoord(x: 0, y: 0),
+        size: 2,
+        colors: {const _Point(0, 0): RgbaColor(r: 0, g: 0, b: 255, a: 255)},
+      );
+      cache.adoptDecoded(
+        previous,
+        solid(2, const Color(0xFF0000FF)),
+        staleScope: scope,
+      );
+
+      // The generation a commit just produced: a NEW tile object at the
+      // same coordinate, so its image lookup misses by construction.
+      final committed = _tile(
+        coord: TileCoord(x: 0, y: 0),
+        size: 2,
+        colors: {const _Point(0, 0): RgbaColor(r: 255, g: 0, b: 0, a: 255)},
+      );
+      cache.putProvisional(committed, solid(2, const Color(0xFF00FF00)));
+
+      final pixels = await _paintPixels(
+        BitmapSurfacePainter(
+          surface: BitmapSurface(
+            canvasSize: CanvasSize(width: 2, height: 2),
+            tileSize: 2,
+            tiles: {committed.coord: committed},
+          ),
+          showTransparentBackground: false,
+          staleScope: scope,
+          tileImageCache: cache,
+        ),
+        width: 2,
+        height: 2,
+      );
+
+      expect(
+        _rgbaAt(pixels, width: 2, x: 0, y: 0),
+        [0, 255, 0, 255],
+        reason:
+            'blue here is the stale-tile bug itself: the coordinate '
+            'fallback answering for a tile with a DIFFERENT tile picture',
+      );
+    });
+
+    test('the per-pixel budget cannot starve a stand-in', () async {
+      // ⚠️ TEN tiles, not four. The painter draws at most four undecoded
+      // tiles per paint, so a fixture inside that budget is drawn either
+      // way and proves nothing — the same trap that made three earlier
+      // fixtures in this program pass before their fix.
+      const columns = 10;
+      const tileSize = 2;
+      final cache = BitmapTileImageCache();
+      final tiles = <TileCoord, BitmapTile>{};
+      for (var column = 0; column < columns; column += 1) {
+        final coord = TileCoord(x: column, y: 0);
+        final tile = _tile(
+          coord: coord,
+          size: tileSize,
+          // Red ONLY at the tile's first pixel: the second pixel has no
+          // ink at all, so it is drawn only by something that covers the
+          // whole tile.
+          colors: {const _Point(0, 0): RgbaColor(r: 255, g: 0, b: 0, a: 255)},
+        );
+        tiles[coord] = tile;
+        cache.putProvisional(tile, solid(tileSize, const Color(0xFF00FF00)));
+      }
+
+      final pixels = await _paintPixels(
+        BitmapSurfacePainter(
+          surface: BitmapSurface(
+            canvasSize: CanvasSize(width: columns * tileSize, height: tileSize),
+            tileSize: tileSize,
+            tiles: tiles,
+          ),
+          showTransparentBackground: false,
+          tileImageCache: cache,
+        ),
+        width: columns * tileSize,
+        height: tileSize,
+      );
+
+      // Read BOTH pixels of every tile: the inked one says which route
+      // drew (stand-in vs the per-pixel budget), the blank one says
+      // whether the coordinate was covered at all. One column of the
+      // table alone cannot tell "the budget drew four" from "nothing
+      // drew", and those are different failures.
+      String glyph(int x) {
+        final rgba = _rgbaAt(pixels, width: columns * tileSize, x: x, y: 0);
+        if (rgba[3] == 0) {
+          return '.';
+        }
+        if (rgba[0] == 0 && rgba[1] == 255) {
+          return 'g';
+        }
+        if (rgba[0] == 255 && rgba[1] == 0) {
+          return 'r';
+        }
+        return '?';
+      }
+
+      final inked = [for (var c = 0; c < columns; c += 1) glyph(c * tileSize)];
+      final blank = [
+        for (var c = 0; c < columns; c += 1) glyph(c * tileSize + 1),
+      ];
+      expect(
+        '${inked.join()} / ${blank.join()}',
+        '${'g' * columns} / ${'g' * columns}',
+        reason:
+            'every coordinate must show its own stand-in. "r" is the '
+            'per-pixel budget drawing the tile bytes instead; "." is the '
+            'hole it leaves once the budget is gone',
+      );
+    });
+  });
 }
 
 /// Full-alpha stroke coverage at canvas (0,0) only — a minimal live ERASE
