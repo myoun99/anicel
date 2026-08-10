@@ -303,6 +303,23 @@ TransformTrack transformTrackWithNamedValues(
   );
 }
 
+/// The property a BARE transform lane id addresses ('anchor-point',
+/// 'position', 'scale', 'rotation', 'opacity'); null when [laneId] is
+/// something else — an `fx:` parameter lane, a group header.
+///
+/// The lane ids are the UI's display spelling and the enum is the model's,
+/// so the translation lives here rather than being re-guessed at each verb
+/// that has to cross between them.
+TransformPropertyId? transformPropertyOfLaneId(String laneId) =>
+    switch (laneId) {
+      'anchor-point' => TransformPropertyId.anchorPoint,
+      'position' => TransformPropertyId.position,
+      'scale' => TransformPropertyId.scale,
+      'rotation' => TransformPropertyId.rotation,
+      'opacity' => TransformPropertyId.opacity,
+      _ => null,
+    };
+
 /// [property]'s key NAME at [frameIndex] — null when the key is unnamed,
 /// and also when no key sits there (ask [transformLaneHasKeyAt] to tell
 /// those apart).

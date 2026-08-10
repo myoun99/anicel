@@ -2606,9 +2606,21 @@ class EditorSessionManager extends ChangeNotifier {
     if (cutId == null) {
       return;
     }
+    // "Same name, same value" INSIDE the camera's own track. A camera
+    // belongs to its cut, so this naming space has no second use site to
+    // reach — but two keys sharing a name on one lane still move together,
+    // which is the whole link at its smallest.
+    final before = cutById(cutId)?.camera.track;
     _cutCommandCoordinator.updateCutCamera(
       cutId: cutId,
-      camera: CutCamera.fromTrack(track),
+      camera: CutCamera.fromTrack(
+        before == null
+            ? track
+            : transformTrackWithNamedValues(
+                track,
+                transformNamedKeyChanges(before, track),
+              ),
+      ),
       description: description,
     );
     _refreshAfterCutCommand();
@@ -2872,6 +2884,216 @@ class EditorSessionManager extends ChangeNotifier {
       layerId,
       transformTrackWithKeyName(next, property, frameIndex, name),
       description: 'Name key',
+    );
+  }
+
+  /// The key NAME on lane [laneId] at [frameIndex] — null when that key is
+  /// unnamed, and also when no key sits there.
+  String? laneKeyName({
+    required LayerId layerId,
+    required String laneId,
+    required int frameIndex,
+  }) {
+    final layer = _laneVerbLayerFor(layerId);
+    if (layer == null) {
+      return null;
+    }
+    final effectLane = parseEffectLaneId(laneId);
+    if (effectLane case (:final effectId, parameterId: final String id)) {
+      return layer.effects
+          .where((effect) => effect.id == effectId)
+          .firstOrNull
+          ?.parameters[id]
+          ?.track
+          .keyAt(frameIndex)
+          ?.name;
+    }
+    final property = transformPropertyOfLaneId(laneId);
+    if (property == null) {
+      return null;
+    }
+    return transformLaneKeyName(
+      _laneTransformTrackOf(layer),
+      property,
+      frameIndex,
+    );
+  }
+
+  /// Whether lane [laneId] keys at [frameIndex] at all — a name needs a key
+  /// to sit on, and [laneKeyName] cannot tell "unnamed" from "no key".
+  bool laneHasKeyAt({
+    required LayerId layerId,
+    required String laneId,
+    required int frameIndex,
+  }) {
+    final layer = _laneVerbLayerFor(layerId);
+    if (layer == null) {
+      return false;
+    }
+    final effectLane = parseEffectLaneId(laneId);
+    if (effectLane case (:final effectId, parameterId: final String id)) {
+      return layer.effects
+              .where((effect) => effect.id == effectId)
+              .firstOrNull
+              ?.parameters[id]
+              ?.track
+              .keyAt(frameIndex) !=
+          null;
+    }
+    final property = transformPropertyOfLaneId(laneId);
+    return property != null &&
+        transformLaneHasKeyAt(
+          _laneTransformTrackOf(layer),
+          property,
+          frameIndex,
+        );
+  }
+
+  /// The lane KEY a naming verb addresses — the property row you are
+  /// STANDING on, at its own frame — or null when that row is not a lane,
+  /// or has no key there to name.
+  ///
+  /// The frame comes from [_laneVerbFrameFor], not the raw cursor: a
+  /// track-SE row is on the global axis, and a name has to land on the key
+  /// the row actually shows.
+  ({LayerId layerId, String laneId, int frameIndex})? get currentLaneKeyAddress {
+    if (currentRow case LaneRowAddress(:final layerId, :final laneId)) {
+      final frameIndex = _laneVerbFrameFor(layerId);
+      if (laneHasKeyAt(
+        layerId: layerId,
+        laneId: laneId,
+        frameIndex: frameIndex,
+      )) {
+        return (layerId: layerId, laneId: laneId, frameIndex: frameIndex);
+      }
+    }
+    return null;
+  }
+
+  /// Names (or un-names, with null) the key on lane [laneId] — ONE entrance
+  /// for both lane families.
+  ///
+  /// "The key I am standing on" is a single idea, so the caller does not
+  /// have to know whether this row is a transform lane or an effect
+  /// parameter; the lane id already says which, and every naming verb but
+  /// this one would have had to learn the difference twice.
+  ///
+  /// Returns true when [name] was ALREADY taken in that lane's naming space
+  /// and NOTHING was written — offer to join with [linkLaneKeyName].
+  bool setLaneKeyName({
+    required LayerId layerId,
+    required String laneId,
+    required int frameIndex,
+    required String? name,
+  }) {
+    final layer = _laneVerbLayerFor(layerId);
+    if (layer == null) {
+      return false;
+    }
+    final effectLane = parseEffectLaneId(laneId);
+    if (effectLane case (:final effectId, parameterId: final String id)) {
+      return setEffectKeyName(
+        layerId: layer.id,
+        effectId: effectId,
+        parameterId: id,
+        frameIndex: frameIndex,
+        name: name,
+      );
+    }
+    final property = transformPropertyOfLaneId(laneId);
+    if (property == null) {
+      return false;
+    }
+    final track = _laneTransformTrackOf(layer);
+    if (!transformLaneHasKeyAt(track, property, frameIndex) ||
+        transformLaneKeyName(track, property, frameIndex) == name) {
+      return false;
+    }
+    if (name != null &&
+        _laneTransformHoldingName(layer, property, name) != null) {
+      return true;
+    }
+    _commitLaneTransformTrack(
+      layer,
+      transformTrackWithKeyName(track, property, frameIndex, name),
+      description: name == null ? 'Unname key' : 'Name key',
+    );
+    return false;
+  }
+
+  /// Joins [name] on lane [laneId], ADOPTING the value that name already
+  /// holds — the answer to the "합칠까요?" [setLaneKeyName] raises.
+  void linkLaneKeyName({
+    required LayerId layerId,
+    required String laneId,
+    required int frameIndex,
+    required String name,
+  }) {
+    final layer = _laneVerbLayerFor(layerId);
+    if (layer == null) {
+      return;
+    }
+    final effectLane = parseEffectLaneId(laneId);
+    if (effectLane case (:final effectId, parameterId: final String id)) {
+      linkEffectKeyName(
+        layerId: layer.id,
+        effectId: effectId,
+        parameterId: id,
+        frameIndex: frameIndex,
+        name: name,
+      );
+      return;
+    }
+    final property = transformPropertyOfLaneId(laneId);
+    if (property == null) {
+      return;
+    }
+    final track = _laneTransformTrackOf(layer);
+    final holder = _laneTransformHoldingName(layer, property, name);
+    // Adopt BEFORE naming, so the write that follows carries a rename and
+    // nothing else — that is what stops the joining key imposing its own.
+    final adopted = holder == null
+        ? track
+        : transformTrackAdoptingName(
+            track,
+            holder,
+            property,
+            frameIndex,
+            name,
+          );
+    _commitLaneTransformTrack(
+      layer,
+      transformTrackWithKeyName(adopted, property, frameIndex, name),
+      description: 'Name key',
+    );
+  }
+
+  /// The transform track that ALREADY holds [name] in this lane's naming
+  /// space, or null when the name is free there.
+  ///
+  /// A LAYER row's space spans its 겸용 link group. A camera row's and a V
+  /// row's do not: a camera track belongs to its cut and a V track is held
+  /// once, so there is no second use site for a name to reach.
+  TransformTrack? _laneTransformHoldingName(
+    Layer layer,
+    TransformPropertyId property,
+    String name,
+  ) {
+    final track = _laneTransformTrackOf(layer);
+    if (transformLaneUsesName(track, property, name)) {
+      return track;
+    }
+    final cutId = _editingSession.activeCutId;
+    if (cutId == null ||
+        layer.kind == LayerKind.camera ||
+        trackIdOfTransformLaneCarrier(layer.id) != null) {
+      return null;
+    }
+    return _cutCommandCoordinator.transformTrackHoldingName(
+      cutId: cutId,
+      layerId: layer.id,
+      property: property,
+      name: name,
     );
   }
 

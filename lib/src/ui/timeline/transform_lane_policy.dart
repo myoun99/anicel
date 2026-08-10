@@ -317,6 +317,7 @@ PropertyLaneRow _lane<T>(
         if (entry.value.interpolation == PropertyKeyInterpolation.hold)
           entry.key,
     },
+    keyNames: track.namedKeysByFrame,
     valueLabel: valueLabel,
     scrubValue: scrubValue,
   );

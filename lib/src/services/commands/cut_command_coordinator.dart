@@ -396,7 +396,9 @@ class CutCommandCoordinator {
 
   // `updateTrackTransform` retired with the V row's transform. The fade it
   // wrote is F.I/F.O spans on the transition row now
-  // ([EditorSessionManager.updateTransitionInstructions]).
+  // ([EditorSessionManager.updateTransitionInstructions]). The named-key
+  // self-propagation this round gave it retired with it: a V row no longer
+  // has transform lanes for a name to link.
 
   /// Replaces the V track's EFFECT CHAIN; one undo step, no-op when
   /// unchanged.

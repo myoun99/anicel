@@ -189,6 +189,13 @@ class PropertyTrack<T> {
     return null;
   }
 
+  /// The NAMED keys by frame — what a lane row hands its band so the link
+  /// is visible where it lives. Frames absent here are unnamed.
+  Map<int, String> get namedKeysByFrame => {
+    for (final entry in keys.entries)
+      if (entry.value.name case final String name) entry.key: name,
+  };
+
   /// The names this track uses, in frame order — what a naming space asks
   /// for when it checks whether a name is already taken.
   Set<String> get keyNames => {

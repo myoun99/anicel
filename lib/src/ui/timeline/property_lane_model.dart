@@ -18,6 +18,7 @@ class PropertyLaneRow {
     required this.label,
     required this.keyedFrames,
     this.holdOutFrames = const {},
+    this.keyNames = const {},
     this.valueLabel,
     this.scrubValue,
     this.showsKeyNavigator = true,
@@ -53,6 +54,11 @@ class PropertyLaneRow {
 
   /// Keys whose OUT interpolation is HOLD (drawn as squares, AE-style).
   final Set<int> holdOutFrames;
+
+  /// Names on this lane's keys, by frame — "same name, same value" made
+  /// visible where the link lives. Frames absent here are unnamed, which
+  /// is the ordinary key: a name is what opts one INTO the link.
+  final Map<int, String> keyNames;
 
   /// The property's display value at a frame (AE's blue value column —
   /// already unit-formatted); null hides the value.
