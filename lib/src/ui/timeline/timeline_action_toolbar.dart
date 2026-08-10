@@ -133,7 +133,7 @@ class TimelineActionToolbar extends StatelessWidget {
     required this.onAddLayer,
     required this.onRenameLayer,
     required this.onDeleteLayer,
-    required this.onEditInstance,
+    this.onEditInstance,
     required this.onCreateInstance,
     this.hiddenSections = const {},
     this.onToggleSection,
@@ -150,7 +150,13 @@ class TimelineActionToolbar extends StatelessWidget {
 
   /// Opens the unified instance-edit dialog for the active layer at the
   /// playhead (kind-dispatched by the host).
-  final VoidCallback onEditInstance;
+  ///
+  /// NULL when the host cannot serve it — the frame pill's menu entry greys
+  /// out rather than pretending. The storyboard passes null today: the
+  /// dispatch is ~300 lines of dialogs that still live in the timeline's
+  /// host, and lifting them out is its own change rather than a passenger
+  /// on this one.
+  final VoidCallback? onEditInstance;
 
   /// Kind-dispatched creation: new frame / camera key / SE entry /
   /// instruction event.
@@ -466,7 +472,9 @@ class TimelineActionToolbar extends StatelessWidget {
         keyValue: 'rename-frame-button',
         label: AppText.strings.tlEditInstance,
         icon: Icons.edit_outlined,
-        enabled: _canEditInstance,
+        // A host with no dispatch to offer greys the entry out — the same
+        // answer the enablement gate gives, from a different cause.
+        enabled: onEditInstance != null && _canEditInstance,
         onSelected: onEditInstance,
       ),
       PanelFlyoutItem(

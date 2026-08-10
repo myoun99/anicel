@@ -84,6 +84,7 @@ class TimelineLayerControlsRow extends StatelessWidget {
     this.onLayerBlendModeSelected,
     this.blendLanguage = AppLanguage.en,
     this.opacityOverride,
+    this.chromeless = false,
   });
 
   final Layer layer;
@@ -177,6 +178,14 @@ class TimelineLayerControlsRow extends StatelessWidget {
   /// PROGRAM language for the blend-mode name.
   final AppLanguage blendLanguage;
 
+  /// Paint the CONTENTS and no ground: no fill, no active wash, no seams.
+  ///
+  /// For the collapsed overlay, which lies over the artwork. Everything the
+  /// row draws INSIDE stays exactly as it is — that is the whole point, and
+  /// it is why this is a flag here rather than a second row somewhere else
+  /// re-listing the same twelve slots.
+  final bool chromeless;
+
   /// R27 #9: a live opacity source that OUTRANKS `layer.opacity` for this
   /// row's slider. The camera row's opacity is a view notifier, not model
   /// state — reading it here lets the drag repaint just this slider
@@ -211,14 +220,21 @@ class TimelineLayerControlsRow extends StatelessWidget {
         // The section band hugs the row's LEFT edge (UI-R6 #5); the 8px
         // breathing room moves between the band and the lane chevron.
         padding: const EdgeInsets.only(right: 8),
-        decoration: BoxDecoration(
-          color: active ? activeColor : colorScheme.surface,
-          border: Border(
-            left: BorderSide(color: borderColor),
-            right: BorderSide(color: borderColor),
-            bottom: BorderSide(color: borderColor),
-          ),
-        ),
+        // CHROMELESS drops the ground and keeps the contents — the row over
+        // the artwork when the panel is folded (유저 확정: 바탕 없이 내용만).
+        // A flag on the real row rather than a second row that lists the
+        // same slots: the collapsed overlay then follows this widget by
+        // construction, including whatever column it grows next.
+        decoration: chromeless
+            ? null
+            : BoxDecoration(
+                color: active ? activeColor : colorScheme.surface,
+                border: Border(
+                  left: BorderSide(color: borderColor),
+                  right: BorderSide(color: borderColor),
+                  bottom: BorderSide(color: borderColor),
+                ),
+              ),
         child: Semantics(
           key: active
               ? const ValueKey<String>('timeline-selected-layer')

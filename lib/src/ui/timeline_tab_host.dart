@@ -11,13 +11,11 @@ import '../models/timeline_row_address.dart';
 import '../models/layer_kind.dart';
 import '../models/text_cel_style.dart';
 import 'dialogs/camera_key_dialog.dart';
-import 'dialogs/delete_layer_dialog.dart';
 import 'dialogs/frame_name_conflict_dialog.dart';
 import 'dialogs/instruction_event_dialog.dart';
 import 'dialogs/instruction_set_editor_dialog.dart';
 import 'timeline/se_layer_mixer.dart';
 import 'dialogs/rename_frame_dialog.dart';
-import 'dialogs/rename_layer_dialog.dart';
 import 'dialogs/se_instance_dialog.dart';
 import 'dialogs/text_cel_dialog.dart';
 import 'editor_command_actions.dart';
@@ -43,6 +41,7 @@ import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_cut_end_handle.dart';
 import 'timeline/timeline_frame_rows_scroll_body.dart' show TimelineRowMemoAux;
 import 'timeline/se_audio_lane.dart';
+import 'timeline/layer_name_commands.dart';
 import 'timeline/timeline_action_toolbar.dart';
 import 'timeline/timeline_frame_range_gesture.dart';
 import 'timeline/timeline_run_end_handles.dart';
@@ -485,39 +484,9 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     },
   );
 
-  Future<void> _deleteActiveLayer() async {
-    final activeLayer = _session.activeLayer;
-    if (activeLayer == null || !_session.canDeleteActiveLayer) {
-      return;
-    }
-
-    final shouldDelete = await showDialog<bool>(
-      context: context,
-      builder: (context) => DeleteLayerDialog(layerName: activeLayer.name),
-    );
-    if (!mounted || shouldDelete != true) {
-      return;
-    }
-
-    _session.deleteActiveLayer();
-  }
-
-  Future<void> _renameActiveLayer() async {
-    final activeLayer = _session.activeLayer;
-    if (activeLayer == null) {
-      return;
-    }
-
-    final nextName = await showDialog<String>(
-      context: context,
-      builder: (context) => RenameLayerDialog(initialName: activeLayer.name),
-    );
-    if (!mounted || nextName == null) {
-      return;
-    }
-
-    _session.renameActiveLayer(nextName);
-  }
+  // ⛔The two LAYER dialogs left this host (2026-08-10): the layer pill is
+  // mounted on the storyboard's bar too now, and nothing in either flow was
+  // ever about the timeline. See [layer_name_commands.dart].
 
   /// THE unified instance-edit entrance (double-tap on any cell, and the
   /// toolbar's Edit Instance button), dispatched by row kind: drawing
@@ -1463,8 +1432,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
       actionsBuilder: (context) => TimelineActionToolbar(
         session: _session,
         onAddLayer: _session.addLayer,
-        onRenameLayer: _renameActiveLayer,
-        onDeleteLayer: _deleteActiveLayer,
+        onRenameLayer: () =>
+            unawaited(renameActiveLayerWithDialog(context, _session)),
+        onDeleteLayer: () =>
+            unawaited(deleteActiveLayerWithDialog(context, _session)),
         onEditInstance: _editActiveInstance,
         onCreateInstance: _createActiveInstance,
         hiddenSections: widget.hiddenSections,

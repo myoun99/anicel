@@ -72,6 +72,8 @@ import 'storyboard_playhead_mapping.dart';
 import '../models/timeline_row_address.dart';
 import 'playback/canvas_playback_controller.dart' show PlaybackScope;
 import 'timeline/collapsed_row_overlay.dart';
+import 'timeline/timeline_grid_metrics.dart' show TimelineGridMetrics;
+import 'timeline/timeline_layer_controls_row.dart' show TimelineLayerControlsRow;
 import 'timeline/frame_panel_sill_controls.dart';
 import 'timeline/timeline_command_bar.dart' show TimelineCommandBar;
 import 'timeline/layer_rail_window.dart';
@@ -3169,6 +3171,54 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       railWidth: rail?.value ?? layerRailMinimumWindowExtent,
       pixelsPerFrame: _timelinePixelsPerFrame.value,
       framesPerSecond: widget.session.projectFrameRate.countingBase,
+      railChild: _collapsedRailRow(),
+    );
+  }
+
+  /// The rail half of the collapsed row: the REAL rail row, chromeless.
+  ///
+  /// 유저 확정: 「기존에 있는 fx접기버튼·타임시트on·레이어아이콘·레이어이름
+  /// 이런 거 싹 그대로」. Mounting the row is the only way to mean *그대로* —
+  /// a second widget listing the same slots would be right on the day it was
+  /// written and wrong on the day the rail grows a column.
+  ///
+  /// The callbacks are all no-ops: the overlay is inside an `IgnorePointer`,
+  /// so nothing here can be pressed and the row never asks who would answer.
+  /// Null for a property lane — the rail shows a name and a value there, not
+  /// a control cluster, and the overlay draws that itself.
+  Widget? _collapsedRailRow() {
+    final session = widget.session;
+    // A LAYER row only. The sealed address is what decides — a lane is a
+    // different shape of rail and the overlay draws that half itself.
+    final row = session.currentRow;
+    if (row is! LayerRowAddress) {
+      return null;
+    }
+    final layer = session.layers
+        .where((candidate) => candidate.id == row.layerId)
+        .firstOrNull;
+    if (layer == null) {
+      return null;
+    }
+    return TimelineLayerControlsRow(
+      chromeless: true,
+      layer: layer,
+      active: true,
+      metrics: TimelineGridMetrics.defaults,
+      // The view state the rail reads, from the same places the timeline tab
+      // reads it — not a second opinion, the same getters.
+      fxState: session.layerFxState(layer.id),
+      onionSkinEnabled: session.isLayerOnionSkinEnabled(layer.id),
+      isLayerSoloed: session.soloedSeLayerIds.value.contains(layer.id),
+      isLinked: session.isLayerLinked(layer.id),
+      hasLanes: true,
+      lanesExpanded: _expandedLaneLayerIds.value.contains(layer.id),
+      blendLanguage: session.languageSettings.value.programLanguage,
+      onSelectLayer: (_) {},
+      onToggleLayerVisibility: (_) {},
+      onLayerOpacityChanged: (_, _) {},
+      onToggleLayerTimesheet: (_) {},
+      onLayerMarkSelected: (_, _) {},
     );
   }
 

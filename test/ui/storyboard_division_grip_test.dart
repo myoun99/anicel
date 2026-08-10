@@ -86,7 +86,14 @@ Project _project() => Project(
 );
 
 Future<void> _openStoryboard(WidgetTester tester) async {
-  await tester.binding.setSurfaceSize(const Size(1500, 800));
+  // 1500 → 1900. The storyboard's bar grew the timeline's four command pills
+  // (2026-08-10), so at 1500 the region's own two-thirds width put the row
+  // steppers past the bar's right edge — laid out, scrolled out of view, and
+  // a tap on them silently missed. Widening is the honest fix: the bar is
+  // SUPPOSED to overflow into its scroller when the room runs out (유저:
+  // 버튼이 잘리는 건 이해한다), and this file is about the row heights, not
+  // about how narrow a window that starts happening in.
+  await tester.binding.setSurfaceSize(const Size(1900, 800));
   addTearDown(() => tester.binding.setSurfaceSize(null));
   await tester.pumpWidget(
     MaterialApp(home: HomePage(initialProject: _project())),

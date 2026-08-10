@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../canvas/flip_hud_model.dart';
@@ -30,11 +32,17 @@ import 'timeline_grid_metrics.dart';
 /// goes) and `showsKindIcon` (a property lane is not stamped with its
 /// owner's glyph).
 ///
-/// ⚠️NOT YET the rail's full control cluster (fx twirl · timesheet · mark ·
-/// eye · opacity · blend · onion). Those are row STATE the snapshot does not
-/// carry, and inventing a second path to read them is exactly what the
-/// paragraph above warns about. What is here is the kind glyph, the name and
-/// a lane's value.
+/// ★The RAIL half is the real thing: the caller hands in an actual
+/// `TimelineLayerControlsRow(chromeless: true)` — every slot the timeline
+/// draws (fx twirl · timesheet · mark · kind · name · eye · opacity · blend ·
+/// onion), painted with its ground removed.
+///
+/// ⛔It deliberately does NOT re-list those slots here. The first version did,
+/// from the snapshot's `name` + `kind`, and that was the wrong shape twice
+/// over: it showed three of twelve, and it would have needed editing again
+/// every time the rail grew a column. Mounting the row means the overlay
+/// follows it by construction. [railChild] is null on a property lane, whose
+/// rail is a name and a value rather than a control cluster.
 class CollapsedRowOverlay extends StatelessWidget {
   const CollapsedRowOverlay({
     super.key,
@@ -42,8 +50,12 @@ class CollapsedRowOverlay extends StatelessWidget {
     required this.railWidth,
     required this.pixelsPerFrame,
     required this.framesPerSecond,
+    this.railChild,
     this.laneValue,
   });
+
+  /// The rail row itself, chromeless — see the class doc. Null on a lane row.
+  final Widget? railChild;
 
   final FlipHudSnapshot snapshot;
 
@@ -73,16 +85,40 @@ class CollapsedRowOverlay extends StatelessWidget {
     return IgnorePointer(
       child: SizedBox(
         height: height,
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            SizedBox(
-              width: railWidth,
-              // The rail's own rule, and the reason this is a ClipRect and
-              // not an ellipsis: 「꼬리가 잘린다, `…` 없이」. An ellipsis in
-              // this app means one thing only — a LABEL overflowing its own
-              // slot — and a narrowed window is not that.
-              child: ClipRect(child: _rail(row, colorScheme)),
+        // ★The rail window is CLAMPED to the room that exists. The stored
+        // width is the splitter's answer for a panel as wide as the region,
+        // and the collapsed row is laid over a region that can be pulled
+        // narrower than that — an inflexible 434 beside an `Expanded` then
+        // overflows by the difference rather than yielding, which is exactly
+        // what the region tests caught. Clamping keeps the rail model's own
+        // rule: the window never exceeds what there is to window.
+        child: LayoutBuilder(
+          builder: (context, constraints) => Row(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              SizedBox(
+                width: math.min(railWidth, constraints.maxWidth),
+              // ★THE RAIL MODEL, verbatim: 「레일은 자기 자연 크기로 눕고,
+              // 스플리터는 그 위의 창을 정하고, 꼬리가 그냥 잘린다」. The
+              // `OverflowBox` is what lets it lie at its natural width —
+              // without it the row is squeezed into the window and its own
+              // Row overflows, which is what a narrow region actually did.
+              // And the clip is why there is no `…`: an ellipsis in this app
+              // means a LABEL overflowing its own slot, and a narrowed
+              // window is not that.
+              child: ClipRect(
+                child: OverflowBox(
+                  alignment: Alignment.centerLeft,
+                  maxWidth: double.infinity,
+                  child: _haloed(
+                    context,
+                    // A layer row is the REAL row, chromeless. A property
+                    // lane is its name and its value, which is what the rail
+                    // shows there — so the caller hands null instead.
+                    railChild ?? _rail(row, colorScheme),
+                  ),
+                ),
+              ),
             ),
             Expanded(
               child: ClipRect(
@@ -98,21 +134,31 @@ class CollapsedRowOverlay extends StatelessWidget {
               ),
             ),
           ],
+          ),
         ),
       ),
     );
   }
 
+  /// A halo rather than a plate. The panel's fill is what was removed, so
+  /// legibility has to come from the glyphs themselves — over a bright sheet
+  /// a translucent light label simply is not there. ⛔Not a backdrop blur: a
+  /// live blur over the drawing surface is the class of cost the raster round
+  /// just finished removing.
+  static const List<Shadow> _halo = [
+    Shadow(color: Color(0xE6000000), blurRadius: 3),
+    Shadow(color: Color(0x99000000), blurRadius: 7),
+  ];
+
+  /// Wraps the real rail row so its icons and labels carry the halo without
+  /// the row knowing anything about lying on artwork.
+  Widget _haloed(BuildContext context, Widget child) => IconTheme.merge(
+    data: const IconThemeData(shadows: _halo),
+    child: DefaultTextStyle.merge(style: const TextStyle(shadows: _halo), child: child),
+  );
+
   Widget _rail(FlipHudRow row, ColorScheme colorScheme) {
-    // A halo rather than a plate. The panel's fill is what was removed, so
-    // legibility has to come from the glyph itself — over a bright sheet a
-    // translucent light label simply is not there. ⛔Not a backdrop blur:
-    // a live blur over the drawing surface is the class of cost the raster
-    // round just finished removing.
-    final shadows = [
-      const Shadow(color: Color(0xE6000000), blurRadius: 3),
-      const Shadow(color: Color(0x99000000), blurRadius: 7),
-    ];
+    const shadows = _halo;
     return Padding(
       padding: const EdgeInsets.only(left: 8),
       child: Row(

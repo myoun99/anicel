@@ -11,7 +11,9 @@ import '../models/timeline_row_address.dart';
 import '../models/track.dart';
 import '../models/track_transform_lane_carrier.dart';
 import '../models/transform_track.dart';
-import 'cut_command_group.dart';
+import 'editor_command_actions.dart' show createActiveInstance;
+import 'timeline/layer_name_commands.dart';
+import 'timeline/timeline_action_toolbar.dart';
 import 'editor_session_manager.dart';
 import 'panels/panel_collapsed_scope.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnailResolver;
@@ -400,7 +402,25 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   // by the workspace through `EditorPanelTab.sillTrailing`
                   // (see [FramePanelSillControls]). What stays here is what
                   // reaches into THIS panel's own contents.
-                  CutCommandGroup(session: _session),
+                  //
+                  // ★THE SAME FOUR PILLS the timeline mounts — literally the
+                  // same widget (유저: 스토리보드 레이어의 프레임을 조절해야
+                  // 하고 레이어도 만들고 지워야 한다). 컷 · 레이어 · 프레임 ·
+                  // FX, in the order the data nests. The only thing it cannot
+                  // serve here is `Edit Instance`, whose kind-dispatch still
+                  // lives in the timeline's host; passing null greys that one
+                  // menu entry rather than offering a dead command.
+                  TimelineActionToolbar(
+                    session: _session,
+                    onAddLayer: _session.addLayer,
+                    onRenameLayer: () => unawaited(
+                      renameActiveLayerWithDialog(context, _session),
+                    ),
+                    onDeleteLayer: () => unawaited(
+                      deleteActiveLayerWithDialog(context, _session),
+                    ),
+                    onCreateInstance: () => createActiveInstance(_session),
+                  ),
                   const SizedBox(width: 6),
                   // The V row's fx (user 2026-08-08): a chain over the whole
                   // composited cut, authored from this panel.
