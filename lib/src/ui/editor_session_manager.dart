@@ -91,6 +91,7 @@ import '../models/track_frame_range.dart';
 import '../models/track_id.dart';
 import '../models/track_se_window.dart';
 import '../models/track_transform_lane_carrier.dart';
+import '../models/transition_geometry.dart';
 import '../services/bitmap_surface_geometry.dart'
     show bitmapSurfaceContentBounds;
 import '../services/brush_frame_store.dart';
@@ -1125,6 +1126,16 @@ class EditorSessionManager extends ChangeNotifier {
       (track) => track.id == trackId,
     );
   }
+
+  /// The active track's transition spans on the GLOBAL frame axis — the one
+  /// reader for every surface that has to answer a transition question
+  /// (the sheet's のりしろ, the cut view's read-only marks, the compositor's
+  /// ramp). They are plain `{start, length}` records so nobody downstream
+  /// has to know a layer is behind them.
+  List<TransitionSpan> get activeTrackTransitionSpans => [
+    for (final entry in activeTrack.transitionLayer.instructions.entries)
+      (start: entry.key, length: entry.value.length),
+  ];
 
   /// The active cut's global start frame on its track (cumulative cut
   /// durations — the storyboard layout's number for this cut).
