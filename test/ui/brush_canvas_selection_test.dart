@@ -120,6 +120,32 @@ void main() {
       for (var x = 30; x <= 750; x += 40) dab(x.toDouble(), y.toDouble()),
   ];
 
+  /// A picture whose pixels are SEMI-TRANSPARENT and soft-edged, so a
+  /// landing dropped on top of it makes the stand-in composition actually
+  /// blend.
+  ///
+  /// ⚠️ The hard opaque squares above cannot measure the composition at
+  /// all: `srcOver` of an opaque source is exact by construction, so a
+  /// landing made of them agrees with the commit whatever the rounding
+  /// does. Every other fixture in this file lifts the WHOLE picture too,
+  /// which leaves the pre-commit tiles EMPTY — and composing over nothing
+  /// is exact for the same reason.
+  BrushDab softDab(double x, double y) => BrushDab(
+    center: CanvasPoint(x: x, y: y),
+    color: 0xFFFF2020,
+    size: 26,
+    opacity: 0.45,
+    flow: 0.8,
+    hardness: 0.25,
+    tipShape: BrushTipShape.round,
+    pressure: 1,
+    sequence: 0,
+  );
+  final blendedPicture = <BrushDab>[
+    for (var y = 40; y <= 520; y += 26)
+      for (var x = 40; x <= 720; x += 26) softDab(x.toDouble(), y.toDouble()),
+  ];
+
   /// The cel's CURRENT pixels — 0/null means transparent.
   int inkAt(BrushFrameEditingCoordinator coordinator, int x, int y) {
     return surfacePixelRgba(
@@ -1799,6 +1825,118 @@ void main() {
         reason:
             'the confirm frame differs from the settled frame in '
             '$differing pixels (worst channel $worst)',
+      );
+    });
+
+    testWidgets('what the composition costs the EYE: at most one channel '
+        'step, against the screen and against the truth', (tester) async {
+      // N4 ②, and it is the judgement that closes the Skia side.
+      //
+      // The parity suite measures composed-vs-COMMIT and answers "may we
+      // adopt this?" (no — up to two channel steps, so it stays
+      // provisional). That is not the question a USER has. Theirs is: on
+      // the frame my edit lands, does the picture change under me? So
+      // this measures the composed stand-in against BOTH neighbours — the
+      // frame before it and the settled truth after — through the panel's
+      // own capture, which is what the eye gets.
+      //
+      // ⚠️ THE FIXTURE IS THE WHOLE TEST. Every other confirm test here
+      // lifts the WHOLE picture with hard opaque dabs, and both halves of
+      // that are exact by construction: composing over an emptied tile is
+      // exact, and srcOver of an opaque source is exact. So none of them
+      // has ever exercised a blend. This one lifts a SUB-REGION of a
+      // soft, semi-transparent picture and drops it back on top of the
+      // rest, which is the only shape where the two rounding orders can
+      // disagree at all — and the anti-vacuity assertion below fails if a
+      // future change makes it stop blending.
+      final env = await pumpSelectionPanel(
+        tester,
+        sourceDabs: blendedPicture,
+      );
+      await dragOnLayer(tester, const Offset(120, 120), const Offset(430, 380));
+      await env.setTool(CanvasTool.move);
+      await dragOnLayer(tester, const Offset(250, 220), const Offset(286, 249));
+      await settle(tester);
+
+      final live = await screenBytes(tester);
+      env.commands.confirmPendingMove();
+      await tester.pump();
+      final atConfirm = await screenBytes(tester);
+      await settle(tester);
+      final settled = await screenBytes(tester);
+
+      // ⚠️ The ants and the confirm button vanish AT the confirm, so a
+      // whole-panel diff of live-vs-confirm is dominated by chrome —
+      // measured 2105 pixels at a full 255. A pixel counts as chrome when
+      // live disagrees with SETTLED by more than a rounding step, since
+      // the settled frame has neither chrome nor stand-ins.
+      var chrome = 0;
+      var vsScreen = 0;
+      var vsScreenWorst = 0;
+      var vsTruth = 0;
+      var vsTruthWorst = 0;
+      for (var i = 0; i < settled.length; i += 4) {
+        var liveVsSettled = 0;
+        var liveVsConfirm = 0;
+        var confirmVsSettled = 0;
+        for (var c = 0; c < 4; c += 1) {
+          final a = (live[i + c] - settled[i + c]).abs();
+          final b = (live[i + c] - atConfirm[i + c]).abs();
+          final d = (atConfirm[i + c] - settled[i + c]).abs();
+          if (a > liveVsSettled) liveVsSettled = a;
+          if (b > liveVsConfirm) liveVsConfirm = b;
+          if (d > confirmVsSettled) confirmVsSettled = d;
+        }
+        if (confirmVsSettled > 0) {
+          vsTruth += 1;
+          if (confirmVsSettled > vsTruthWorst) {
+            vsTruthWorst = confirmVsSettled;
+          }
+        }
+        if (liveVsSettled > 1) {
+          chrome += 1;
+          continue;
+        }
+        if (liveVsConfirm > 0) {
+          vsScreen += 1;
+          if (liveVsConfirm > vsScreenWorst) vsScreenWorst = liveVsConfirm;
+        }
+      }
+
+      // ANTI-VACUITY. Zero differing pixels would mean the landing never
+      // blended and the bounds below are statements about nothing.
+      expect(
+        vsTruth,
+        greaterThan(500),
+        reason:
+            'only $vsTruth pixels differ from the settled frame — the '
+            'landing is not blending, so this measures nothing',
+      );
+      expect(
+        chrome,
+        greaterThan(0),
+        reason: 'no chrome was masked — the session was not pending',
+      );
+
+      // THE JUDGEMENT. One step is invisible and it is on the FIDELITY
+      // axis, which this program's invariant permits trading; coverage is
+      // the axis it never trades, and the coverage assertions live in the
+      // neighbouring tests. Measured: 2674 pixels against the screen,
+      // 3509 against the truth, worst channel 1 on both.
+      expect(
+        vsScreenWorst,
+        lessThanOrEqualTo(1),
+        reason:
+            'the confirm frame moved the picture under the user by '
+            '$vsScreenWorst channel steps on $vsScreen pixels',
+      );
+      expect(
+        vsTruthWorst,
+        lessThanOrEqualTo(1),
+        reason:
+            'the stand-in is $vsTruthWorst channel steps from the truth on '
+            '$vsTruth pixels — the sweep allows two, but the screen has '
+            'never shown more than one and a regression should say so',
       );
     });
 
