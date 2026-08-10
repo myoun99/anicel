@@ -120,7 +120,20 @@ Project? updateLayerAnywhere(
               return update(layer);
             })
             .toList(growable: false);
-        return track.copyWith(cuts: cuts, seLayers: seLayers);
+        // The TRANSITION row lives on the track beside the SE rows and
+        // reaches a cut's row list as a display clone, so a flag command
+        // (eye, mark, timesheet) sweeping the visible rows can name it.
+        final transition = track.transitionLayer.id == layerId
+            ? (() {
+                found = true;
+                return update(track.transitionLayer);
+              })()
+            : track.transitionLayer;
+        return track.copyWith(
+          cuts: cuts,
+          seLayers: seLayers,
+          transitionLayer: transition,
+        );
       })
       .toList(growable: false);
   return found ? project.copyWith(tracks: tracks) : null;

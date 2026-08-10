@@ -194,10 +194,13 @@ bool layerKindComposites(LayerKind kind) {
     LayerKind.text ||
     LayerKind.se ||
     LayerKind.instruction ||
-    LayerKind.transition ||
     LayerKind.folder ||
     LayerKind.adjustment => true,
-    LayerKind.camera => false,
+    // The TRANSITION row carries no pixels and no chain of its own: what it
+    // holds is a boundary annotation the compositor READS, never a surface
+    // in a cut's stack. It sits with the camera for the same reason — it is
+    // about the picture rather than in it.
+    LayerKind.transition || LayerKind.camera => false,
   };
 }
 
@@ -233,13 +236,15 @@ bool layerKindHasPictureOpacity(LayerKind kind) {
     LayerKind.text ||
     LayerKind.se ||
     LayerKind.instruction ||
-    LayerKind.transition ||
     LayerKind.folder ||
     // The adjustment's slider IS its own opacity — it just means MIX
     // rather than fade (Photoshop's rule), so the bulk-opacity commands
     // may write it like any other row's.
     LayerKind.adjustment => true,
-    LayerKind.camera => false,
+    // Read-only in a cut, so there is no picture opacity for a bulk sweep
+    // to write. Answering true here is what made "set all layers" try to
+    // write a row the cut does not own.
+    LayerKind.transition || LayerKind.camera => false,
   };
 }
 
@@ -254,12 +259,15 @@ bool layerKindHasLayerTransform(LayerKind kind) {
     LayerKind.text ||
     LayerKind.se ||
     LayerKind.instruction ||
-    LayerKind.transition ||
     LayerKind.folder => true,
     // An ADJUSTMENT row has no picture of its own to move, and moving what
     // it filters is not something a transform could mean — its twirl-down
     // shows the Effects groups alone.
-    LayerKind.camera || LayerKind.adjustment => false,
+    // Nothing of the TRANSITION row's own to move either — it is notation
+    // on the track's axis, read-only where a cut can see it.
+    LayerKind.transition ||
+    LayerKind.camera ||
+    LayerKind.adjustment => false,
   };
 }
 
@@ -289,10 +297,11 @@ bool layerKindHasTransformFxSwitch(LayerKind kind) {
     LayerKind.text ||
     LayerKind.se ||
     LayerKind.instruction ||
-    LayerKind.transition ||
     LayerKind.folder ||
     LayerKind.camera => true,
-    LayerKind.adjustment => false,
+    // No transform and no chain to bypass, so the master switch would read
+    // an always-on flag and report every row mixed.
+    LayerKind.transition || LayerKind.adjustment => false,
   };
 }
 
@@ -312,10 +321,11 @@ bool layerKindHasLayerEffects(LayerKind kind) {
     LayerKind.text ||
     LayerKind.se ||
     LayerKind.instruction ||
-    LayerKind.transition ||
     LayerKind.folder ||
     LayerKind.adjustment => true,
-    LayerKind.camera => false,
+    // A grade on a boundary annotation has nothing to filter — and the row
+    // is read-only where a cut can reach it anyway.
+    LayerKind.transition || LayerKind.camera => false,
   };
 }
 

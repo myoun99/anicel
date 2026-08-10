@@ -81,6 +81,12 @@ Layer requireLayerAnywhere(Project project, LayerId layerId) {
         return layer;
       }
     }
+    // The TRANSITION row is track-owned too, and it reaches a cut's row
+    // list as a display clone — so an id arriving here from the rows the
+    // user can see may well be this one.
+    if (track.transitionLayer.id == layerId) {
+      return track.transitionLayer;
+    }
     for (final cut in track.cuts) {
       for (final layer in cut.layers) {
         if (layer.id == layerId) {
