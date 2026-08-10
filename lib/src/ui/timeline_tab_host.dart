@@ -3,33 +3,21 @@ import 'dart:async' show unawaited;
 import 'package:flutter/foundation.dart' show ValueListenable, setEquals;
 import 'package:flutter/material.dart';
 
-import '../models/camera_instruction.dart';
 import '../models/layer.dart';
 import '../models/layer_effect.dart';
 import '../models/layer_id.dart';
 import '../models/timeline_row_address.dart';
 import '../models/layer_kind.dart';
-import '../models/text_cel_style.dart';
-import 'dialogs/camera_key_dialog.dart';
-import 'dialogs/frame_name_conflict_dialog.dart';
-import 'dialogs/instruction_event_dialog.dart';
-import 'dialogs/instruction_set_editor_dialog.dart';
 import 'timeline/se_layer_mixer.dart';
-import 'dialogs/rename_frame_dialog.dart';
-import 'dialogs/se_instance_dialog.dart';
-import 'dialogs/text_cel_dialog.dart';
 import 'editor_command_actions.dart';
 import 'editor_session_manager.dart';
-import '../models/media_asset.dart' show mediaAssetDefaultName;
 import '../models/transform_track.dart';
-import '../services/camera_pose_resolver.dart';
 import 'text/app_strings.dart';
 import '../models/timeline_coverage.dart' show TimelineBlockEdge;
 import '../models/se_name_tag.dart' show SeNameTag;
 import 'timeline/se_name_tag_lane_policy.dart' show laneIsSeNameTag;
 import 'timeline/se_name_tag_lane_editing.dart'
     show seNameTagWithLaneKeyToggled, seNameTagWithLaneValueEdited;
-import 'timeline/camera_key_edit.dart';
 import 'timeline/layer_rail_window.dart' show LayerRailExtent;
 import 'timeline/effect_lane_editing.dart';
 import 'timeline/effect_lane_policy.dart';
@@ -41,6 +29,7 @@ import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_cut_end_handle.dart';
 import 'timeline/timeline_frame_rows_scroll_body.dart' show TimelineRowMemoAux;
 import 'timeline/se_audio_lane.dart';
+import 'timeline/instance_editor_commands.dart';
 import 'timeline/layer_name_commands.dart';
 import 'timeline/timeline_action_toolbar.dart';
 import 'timeline/timeline_frame_range_gesture.dart';
@@ -488,66 +477,14 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   // mounted on the storyboard's bar too now, and nothing in either flow was
   // ever about the timeline. See [layer_name_commands.dart].
 
-  /// THE unified instance-edit entrance (double-tap on any cell, and the
-  /// toolbar's Edit Instance button), dispatched by row kind: drawing
-  /// kinds edit the frame name, SE its name/dialogue, instruction its
-  /// event, camera its keys at the frame.
-  Future<void> _activateCellEditor(LayerId layerId, int frameIndex) async {
-    final layer = _session.activeLayer;
-    if (layer == null || layer.id != layerId) {
-      return;
-    }
-    // Pin the EDITING selection to the tapped cell: during playback the
-    // tap's select routes to the playback clock and leaves the editing
-    // playhead parked elsewhere — every editor below reads/writes
-    // selectedFrame, and a stale playhead made the dialog edit the wrong
-    // cell (worst on text rows, where Save overwrites the cel).
-    if (frameIndex >= 0 && _session.currentFrameIndex != frameIndex) {
-      _session.selectFrameIndex(frameIndex);
-    }
-    // A LANE row's instance is its KEY. Asked BEFORE the kind switch,
-    // because "which row am I standing on" is a different question from
-    // "what kind of layer owns it" — a drawing row standing on its Rotation
-    // lane would otherwise rename the frame, which is the row's cell and
-    // not the thing under the cursor at all.
-    if (_session.currentLaneKeyAddress != null) {
-      await _renameLaneKey();
-      return;
-    }
-    switch (layer.kind) {
-      case LayerKind.se:
-        await _editSeLabel();
-      case LayerKind.instruction:
-        await _editInstructionEvent(layerId, frameIndex);
-      case LayerKind.camera:
-        await _editCameraKeys(frameIndex);
-      case LayerKind.text:
-        await _editTextCel();
-      case LayerKind.folder:
-      case LayerKind.adjustment:
-        // A folder's band is the members' aggregate and an adjustment's is
-        // empty: neither has a cell of its own to edit. Their work lives
-        // in the twirl-down.
-        break;
-      case LayerKind.transition:
-        // READ-ONLY inside a cut. The cut view windows the track's spans
-        // for reading; a double-tap here must not open the editor, or the
-        // "컷 타임라인은 보여주기만" law would be broken by the one gesture
-        // that looks harmless.
-        break;
-      case LayerKind.animation || LayerKind.storyboard || LayerKind.image:
-        await _renameSelectedFrame();
-    }
-  }
-
-  /// Toolbar 'Edit Instance': the same entrance at the playhead.
-  Future<void> _editActiveInstance() async {
-    final layer = _session.activeLayer;
-    if (layer == null) {
-      return;
-    }
-    await _activateCellEditor(layer.id, _session.currentFrameIndex);
-  }
+  // ⛔THE INSTANCE EDITOR left this host (2026-08-11). Every flow it held —
+  // the kind dispatch, the camera keys, the SE entry, the text cel, the
+  // instruction event and its vocabulary editor, the frame rename and the
+  // lane-key rename — is [instance_editor_commands.dart] now, because the
+  // storyboard's bar carries the same `Edit Instance` entry and had to grey
+  // it out for want of a way to reach them. Nothing in the dispatch was ever
+  // about the timeline; the one thing a host still decides is the preview
+  // axis, and it passes that.
 
   /// Toolbar 'Add' — kind-dispatched creation. NO dialogs anywhere
   /// (UI-R25 #2, 조작 통일화): SE/instruction create a DEFAULT instance
@@ -557,293 +494,23 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   /// gaps, camera keys, lane keys.
   void _createActiveInstance() => createActiveInstance(_session);
 
-  /// Camera cells: per-lane key/value/interpolation dialog at the frame;
-  /// the edited states fold into ONE track commit (one undo).
-  Future<void> _editCameraKeys(int frameIndex) async {
-    if (frameIndex < 0) {
-      return;
-    }
-    final cut = _session.activeCutOrNull;
-    if (cut == null) {
-      return;
-    }
-    final before = cameraKeyLaneStatesAt(
-      cut.camera.track,
-      frameIndex: frameIndex,
-      resolvedPose: resolveCameraPoseAt(
-        camera: cut.camera,
-        canvasSize: cut.canvasSize,
-        frameIndex: frameIndex,
-      ),
-    );
-
-    final after = await showDialog<List<CameraKeyLaneState>>(
-      context: context,
-      builder: (context) =>
-          CameraKeyDialog(frameIndex: frameIndex, lanes: before),
-    );
-    if (!mounted || after == null) {
-      return;
-    }
-
-    // Re-read after the dialog: the track may have changed underneath.
-    final trackAfterDialog = _session.activeCutOrNull?.camera.track;
-    if (trackAfterDialog == null) {
-      return;
-    }
-    final next = transformTrackWithKeyDialogApplied(
-      trackAfterDialog,
-      frameIndex: frameIndex,
-      before: before,
-      after: after,
-    );
-    if (next != null) {
-      _session.updateActiveCutCameraTrack(
-        next,
-        description: 'Edit camera keys at frame ${frameIndex + 1}',
-      );
-    }
-  }
-
   /// The preview inside the instance dialogs follows the visible
   /// orientation (Axis policy in miniature).
   Axis get _previewAxis => widget.orientation == TimelineOrientation.horizontal
       ? Axis.horizontal
       : Axis.vertical;
 
-  /// SE cells: covered cells edit the covering entry's name/dialogue in
-  /// the dialog; EMPTY cells create a default one-frame entry DIRECTLY
-  /// (UI-R25 #2 — creation never opens a dialog; edit it afterwards).
-  Future<void> _editSeLabel() async {
-    final creating = _session.selectedFrame == null;
-    if (creating) {
-      if (_session.canCreateDrawingAtCurrentFrame) {
-        _session.createSeEntryAtCurrentFrame(name: '', lengthFrames: 1);
-      }
-      return;
-    }
-
-    // R5 #19: the block says what sound it carries. The clip's INDEX is the
-    // token — a clip has no id, and it is read once here so the dialog and
-    // the unlink below address the same list.
-    final linked = _session.selectedSeAudioClips;
-    final result = await showDialog<SeInstanceDialogResult>(
-      context: context,
-      builder: (context) => SeInstanceDialog(
-        creating: false,
-        initialSeName: _session.selectedFrameSeName ?? '',
-        initialDialogue: _session.selectedFrameName ?? '',
+  Future<void> _activateCellEditor(LayerId layerId, int frameIndex) =>
+      activateCellEditor(
+        context,
+        _session,
+        layerId: layerId,
+        frameIndex: frameIndex,
         previewAxis: _previewAxis,
-        linkedAudio: [
-          for (final entry in linked)
-            (
-              label: mediaAssetDefaultName(entry.clip.filePath),
-              token: entry.index,
-            ),
-        ],
-      ),
-    );
-    if (!mounted || result == null) {
-      return;
-    }
+      );
 
-    final seName = result.seName.isEmpty ? null : result.seName;
-    // SE edits never hit the link-conflict flow (duplicates allowed).
-    _session.updateSelectedSeEntry(dialogue: result.dialogue, seName: seName);
-    if (result.unlinkedAudioTokens.isNotEmpty) {
-      _session.unlinkAudioClipsFromActiveLayer(result.unlinkedAudioTokens);
-    }
-  }
-
-  /// Text cells (R5): covered cells open the parameter editor; EMPTY
-  /// cells create a blank cel directly (UI-R25 #2) — the next double-tap
-  /// types into it.
-  Future<void> _editTextCel() async {
-    if (_session.selectedFrame == null) {
-      if (_session.canCreateDrawingAtCurrentFrame) {
-        _session.createDrawingAtCurrentFrame();
-      }
-      return;
-    }
-
-    final cut = _session.activeCutOrNull;
-    final content = _session.selectedTextCelContent;
-    final result = await showDialog<TextCelContent>(
-      context: context,
-      builder: (context) => TextCelDialog(
-        creating: content == null,
-        initialContent: content,
-        defaultPosition: cut == null
-            ? null
-            : Offset(cut.canvasSize.width / 2, cut.canvasSize.height / 2),
-      ),
-    );
-    if (!mounted || result == null) {
-      return;
-    }
-    _session.setTextCelContentForSelectedFrame(result);
-  }
-
-  /// Instruction cells: covered cells edit/delete the covering event in
-  /// the dialog; EMPTY cells create a default one-frame event DIRECTLY
-  /// (UI-R25 #2). The vocabulary editor is reachable from the picker.
-  Future<void> _editInstructionEvent(LayerId layerId, int frameIndex) async {
-    final covering = _session.instructionSpanAt(layerId, frameIndex);
-    if (covering == null) {
-      _session.createDefaultInstructionEventAtCurrentFrame();
-      return;
-    }
-
-    final result = await showDialog<InstructionEventDialogResult>(
-      context: context,
-      builder: (context) => InstructionEventDialog(
-        instructionSet: _session.cameraInstructionSet,
-        initialInstructionId: covering.value.instructionId,
-        initialText: covering.value.text,
-        initialValueA: covering.value.valueA,
-        initialValueB: covering.value.valueB,
-        initialMemo: covering.value.memo,
-        editing: true,
-        onEditInstructionSet: () => _editInstructionSet(context),
-        previewAxis: _previewAxis,
-      ),
-    );
-    if (!mounted || result == null) {
-      return;
-    }
-
-    if (result.delete) {
-      _session.removeInstructionEventAt(layerId, frameIndex);
-      return;
-    }
-    final instructionId = result.instructionId;
-    if (instructionId == null) {
-      return;
-    }
-    _session.upsertInstructionEventAt(
-      layerId,
-      frameIndex,
-      InstructionEvent(
-        instructionId: instructionId,
-        length: 1,
-        text: result.text,
-        valueA: result.valueA,
-        valueB: result.valueB,
-        memo: result.memo,
-      ),
-      createLengthFrames: 1,
-    );
-  }
-
-  /// Opens the vocabulary editor and commits the edited set immediately
-  /// (its own undo step), so it sticks even when the event dialog is then
-  /// cancelled. The already-open picker keeps its old list until reopened.
-  Future<void> _editInstructionSet(BuildContext dialogContext) async {
-    final edited = await showDialog<CameraInstructionSet>(
-      context: dialogContext,
-      builder: (context) =>
-          InstructionSetEditorDialog(initialSet: _session.cameraInstructionSet),
-    );
-    if (!mounted || edited == null) {
-      return;
-    }
-    _session.updateCameraInstructionSet(edited);
-  }
-
-  // R5 #5: the file-picker import went with the Layer ▾ entry that opened
-  // it. The media browser is the entrance now — it links an asset onto a
-  // frame block, which is the shape this work actually has, and
-  // `addAudioClipToActiveSeLayer` is still what lands the sound.
-
-  /// A lane KEY's name — the frame-name flow said of a keyframe, down to
-  /// the dialog and the confirmation: the same rename prompt, the same
-  /// [FrameNameConflictDialog] when the name is taken, and joining ADOPTS
-  /// the value that name already holds instead of imposing this key's
-  /// (user 2026-08-10: "프레임블록이랑 같은 규칙이면됨").
-  ///
-  /// An emptied field UN-names the key, which is the only way back to an
-  /// ordinary unlinked one.
-  Future<void> _renameLaneKey() async {
-    final address = _session.currentLaneKeyAddress;
-    if (address == null) {
-      return;
-    }
-    final strings = AppText.strings;
-    final nextName = await showDialog<String>(
-      context: context,
-      builder: (context) => RenameFrameDialog(
-        initialName:
-            _session.laneKeyName(
-              layerId: address.layerId,
-              laneId: address.laneId,
-              frameIndex: address.frameIndex,
-            ) ??
-            '',
-        title: strings.renameKeyTitle,
-        fieldLabel: strings.renameKeyField,
-      ),
-    );
-    if (!mounted || nextName == null) {
-      return;
-    }
-
-    final trimmed = nextName.trim();
-    final taken = _session.setLaneKeyName(
-      layerId: address.layerId,
-      laneId: address.laneId,
-      frameIndex: address.frameIndex,
-      name: trimmed.isEmpty ? null : trimmed,
-    );
-    if (!taken) {
-      return;
-    }
-
-    final shouldLink = await showDialog<bool>(
-      context: context,
-      builder: (context) => const FrameNameConflictDialog(),
-    );
-    if (!mounted || shouldLink != true) {
-      return;
-    }
-
-    _session.linkLaneKeyName(
-      layerId: address.layerId,
-      laneId: address.laneId,
-      frameIndex: address.frameIndex,
-      name: trimmed,
-    );
-  }
-
-  Future<void> _renameSelectedFrame() async {
-    if (_session.selectedFrame == null ||
-        !_session.canRenameFrameAtCurrentFrame) {
-      return;
-    }
-
-    final nextName = await showDialog<String>(
-      context: context,
-      builder: (context) =>
-          RenameFrameDialog(initialName: _session.selectedFrameName ?? ''),
-    );
-    if (!mounted || nextName == null) {
-      return;
-    }
-
-    final conflictingFrameId = _session.renameSelectedFrame(nextName);
-    if (conflictingFrameId == null) {
-      return;
-    }
-
-    final shouldLink = await showDialog<bool>(
-      context: context,
-      builder: (context) => const FrameNameConflictDialog(),
-    );
-    if (!mounted || shouldLink != true) {
-      return;
-    }
-
-    _session.linkSelectedFrame(conflictingFrameId);
-  }
+  Future<void> _editActiveInstance() =>
+      editActiveInstance(context, _session, previewAxis: _previewAxis);
 
   /// The end-line drag's session hooks (UI-R18 #14): the boundary grip
   /// end-trims the ACTIVE cut through the storyboard's trim channel.

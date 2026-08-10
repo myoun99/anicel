@@ -10,10 +10,11 @@ import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 /// 레이어도 만들고 지워야 한다 — so the storyboard mounts the SAME four
 /// pills the timeline does, from the same widget rather than a parallel copy.
 ///
-/// The one thing it cannot serve is `Edit Instance`, whose kind-dispatch
-/// still lives in the timeline's host. That is passed as null and the entry
-/// greys out; this file pins BOTH halves, because "the pills are there" and
-/// "the one it cannot do says so" are the two ways this can regress.
+/// `Edit Instance` is included: its kind-dispatch used to be private to the
+/// timeline's host, so the entry shipped greyed out for exactly one commit.
+/// It is [instance_editor_commands.dart] now and both panels call it — the
+/// last test here opens the editor for real, because "the entry is enabled"
+/// and "the entry does something" fail apart.
 void main() {
   Future<EditorSessionManager> pumpStoryboard(WidgetTester tester) async {
     await tester.binding.setSurfaceSize(const Size(1600, 700));
@@ -95,21 +96,38 @@ void main() {
     );
   });
 
-  testWidgets('Edit Instance greys out, because this host cannot serve it', (
+  testWidgets('Edit Instance is LIVE here — the dispatch is a free function', (
     tester,
   ) async {
-    await pumpStoryboard(tester);
+    // It shipped greyed out for one commit, because the kind-dispatch lived
+    // in the timeline's host and there was no way to reach it from here.
+    // Now it is [instance_editor_commands.dart] and both panels call it.
+    final manager = await pumpStoryboard(tester);
+    // A drawing row at a named cell is the plainest thing the dispatch can
+    // open — the frame-rename branch.
+    manager.selectFrameIndex(0);
+    manager.createDrawingAtCurrentFrame();
+    await tester.pumpAndSettle();
+
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-frame-menu-button')),
     );
     await tester.pumpAndSettle();
 
     final entry = find.byKey(const ValueKey<String>('rename-frame-button'));
-    expect(entry, findsOneWidget, reason: 'the entry is present…');
+    expect(entry, findsOneWidget);
     expect(
       tester.widget<PopupMenuItem<PanelFlyoutItem>>(entry).enabled,
-      isFalse,
-      reason: '…and disabled rather than offering a dead command',
+      isTrue,
+      reason: 'the storyboard can serve Edit Instance now',
+    );
+
+    await tester.tap(entry);
+    await tester.pumpAndSettle();
+    expect(
+      find.byType(TextField),
+      findsWidgets,
+      reason: 'and it actually opens the editor rather than doing nothing',
     );
   });
 }
