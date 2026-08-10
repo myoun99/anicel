@@ -296,10 +296,19 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// Three mounts, one construction: the parked contentOverride, the
   /// scrub preview's gap branch (both on the gap parking) and ALL-CUTS
   /// playback (on the clock's global frame, R3a).
+  ///
+  /// 🚨[cameraView] is the CROP, and it belongs to PLAYBACK alone (user
+  /// 2026-08-11). The parked canvas has always shown the whole canvas with the
+  /// camera frame drawn OVER it, and a storyboard ruler drag parks per move
+  /// (`scrubGlobalFrame` parks the moment the frame belongs to another cut) —
+  /// so cropping here made the drag look nothing like the state it started
+  /// from. Two mounts pass false and the answer is the same one the eye
+  /// already had: preview = canvas + overlay, playback = crop.
   Widget _buildTrackStackView(
     EditorSessionManager session,
     CanvasViewport viewport, {
     ValueListenable<int?>? globalFrame,
+    bool cameraView = false,
   }) {
     final project = session.repository.requireProject();
     return CanvasTrackStackView(
@@ -308,11 +317,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
       compositeCache: session.cutFrameCompositeCache,
       qualityOf: () => session.playbackQuality,
       cameraFrameSize: session.cameraFrameSize,
-      // The framing is the VIEW MODE's answer here too (user 2026-08-10): a
-      // storyboard ruler drag parks per move, so this stack is what shows
-      // while you scrub, and it used to crop to the camera whatever the
-      // toggle said.
-      cameraViewEnabled: widget.cameraViewEnabled.value,
+      cameraViewEnabled: cameraView,
       cameraPoseOf: session.cameraPoseForCut,
       seNameTagsOf: session.seNameTagsForCutFrame,
       cutFxEnabledOf: session.isCutFxEnabled,
@@ -384,8 +389,11 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
         !isPlaybackActive && !isScrubbing && session.editingPlayheadInGap;
     // The camera overlay authors the ACTIVE cut's pose — with no cut (a
     // gap parking) there is nothing to author and reading the pose would
-    // throw (requireActiveCut); the parked track stack renders its own
-    // camera framing per covered cut instead.
+    // throw (requireActiveCut).
+    //
+    // It survives a SCRUB (only `isPlaybackActive` gates the overlay builder),
+    // and that is the whole answer to the ruler-drag framing: the overlay was
+    // never the missing half — the track stack's crop was the extra one.
     final cameraOverlayVisible =
         showCameraOverlay && session.activeCutOrNull != null;
     final layerStack = inGap
@@ -927,6 +935,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                                   globalFrame: session
                                       .playback
                                       .globalFrameIndexListenable,
+                                  // Playback is the one place the crop
+                                  // belongs, and there it answers the toggle.
+                                  cameraView: widget.cameraViewEnabled.value,
                                 )
                               : null,
                         ),
@@ -964,9 +975,9 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                     )
                   // The parked state (no active cut): the multitrack
                   // display path — every covered track's composite stacks
-                  // in camera-frame space where the void used to be. An
-                  // uncovered frame still shows the void (the stack view
-                  // renders nothing there).
+                  // where the void used to be, in its own CANVAS space (the
+                  // crop is playback's). An uncovered frame still shows the
+                  // void (the stack view renders nothing there).
                   : inGap
                   ? (context, viewport) =>
                         _buildTrackStackView(session, viewport)
