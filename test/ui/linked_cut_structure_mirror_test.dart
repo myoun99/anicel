@@ -5,6 +5,7 @@ import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_effect.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/transform_track.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
 /// 겸용컷 STRUCTURE mirroring: layer existence is shared structure, so a
@@ -256,9 +257,9 @@ void main() {
       ]);
     }
 
-    void nameKey(CutId cutId) {
+    bool nameKey(CutId cutId) {
       session.selectCut(cutId);
-      session.setEffectKeyName(
+      return session.setEffectKeyName(
         layerId: counterpartIn(cutId, row).id,
         effectId: effectId,
         parameterId: radiusId,
@@ -267,28 +268,113 @@ void main() {
       );
     }
 
+    void joinKey(CutId cutId) {
+      session.selectCut(cutId);
+      session.linkEffectKeyName(
+        layerId: counterpartIn(cutId, row).id,
+        effectId: effectId,
+        parameterId: radiusId,
+        frameIndex: 0,
+        name: 'A',
+      );
+    }
+
+    double radiusAt(CutId cutId) => counterpartIn(
+      cutId,
+      row,
+    ).effects.single.parameters[radiusId]!.track.keyAt(0)!.value;
+
     putKey(pair.linked, 3);
     putKey(pair.source, 5);
+    expect(radiusAt(pair.source), 5, reason: 'values start out independent');
+
+    expect(nameKey(pair.source), isFalse, reason: 'that name was free');
+
+    // The sibling joining the SAME name is a COLLISION: nothing is written
+    // and the caller is told, so it can offer to join instead — the
+    // frame-rename flow exactly.
     expect(
-      counterpartIn(
-        pair.source,
-        row,
-      ).effects.single.parameters[radiusId]!.track.keyAt(0)!.value,
-      5,
-      reason: 'values start out independent',
+      nameKey(pair.linked),
+      isTrue,
+      reason: 'the name is already taken across the 겸용 link',
     );
-
-    nameKey(pair.source);
-    nameKey(pair.linked);
-
     expect(
-      counterpartIn(
-        pair.source,
-        row,
-      ).effects.single.parameters[radiusId]!.track.keyAt(0)!.value,
+      radiusAt(pair.linked),
       3,
-      reason: 'joining the name adopts the joining key\'s number',
+      reason: 'a collision writes NOTHING until it is confirmed',
     );
+
+    // Confirming ADOPTS the name's value instead of imposing this key's
+    // own — the frame-link rule the user chose (2026-08-10).
+    joinKey(pair.linked);
+    expect(radiusAt(pair.linked), 5);
+    expect(
+      radiusAt(pair.source),
+      5,
+      reason: 'the number that was already there is untouched',
+    );
+
+    // And from then on the link is LIVE: a value edit at either end moves
+    // both, which is the point of having joined at all.
+    putKey(pair.linked, 9);
+    expect(radiusAt(pair.source), 9, reason: 'same name, same value');
+  });
+
+  test('a NAMED transform key crosses 겸용 cuts through the LINK GROUP — a '
+      'transform carries no shared id to ride', () {
+    final pair = makeLinkedPair();
+    final row = session.activeLayer!;
+
+    void putRotation(CutId cutId, double degrees) {
+      session.selectCut(cutId);
+      final layer = counterpartIn(cutId, row);
+      session.updateLayerTransformTrack(
+        layer.id,
+        layer.transformTrack.copyWith(
+          rotation: layer.transformTrack.rotation.withKey(0, degrees),
+        ),
+      );
+    }
+
+    bool nameRotation(CutId cutId) {
+      session.selectCut(cutId);
+      return session.setTransformKeyName(
+        layerId: counterpartIn(cutId, row).id,
+        property: TransformPropertyId.rotation,
+        frameIndex: 0,
+        name: 'A',
+      );
+    }
+
+    double rotationAt(CutId cutId) =>
+        counterpartIn(cutId, row).transformTrack.rotation.keyAt(0)!.value;
+
+    putRotation(pair.linked, 10);
+    putRotation(pair.source, 45);
+    expect(rotationAt(pair.source), 45, reason: 'lanes start out per-use');
+
+    expect(nameRotation(pair.source), isFalse, reason: 'that name was free');
+    expect(
+      nameRotation(pair.linked),
+      isTrue,
+      reason: 'the sibling row is in the SAME naming space, via the group',
+    );
+    expect(rotationAt(pair.linked), 10, reason: 'a collision writes nothing');
+
+    session.selectCut(pair.linked);
+    session.linkTransformKeyName(
+      layerId: counterpartIn(pair.linked, row).id,
+      property: TransformPropertyId.rotation,
+      frameIndex: 0,
+      name: 'A',
+    );
+
+    expect(rotationAt(pair.linked), 45, reason: 'joining adopts the name');
+    expect(rotationAt(pair.source), 45, reason: 'the holder is untouched');
+
+    // Live from here on: an edit at either end moves both.
+    putRotation(pair.linked, 90);
+    expect(rotationAt(pair.source), 90, reason: 'same name, same value');
   });
 
   test('removing an effect removes it from the sibling too', () {

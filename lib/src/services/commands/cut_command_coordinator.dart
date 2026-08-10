@@ -1192,15 +1192,89 @@ class CutCommandCoordinator {
       return;
     }
 
-    historyManager.execute(
+    // "Same name, same value": a named key MOVED by this write drags every
+    // other key of that name along — here and in the 겸용 siblings, whose
+    // transform lanes are otherwise entirely their own ("레인만 각자").
+    // This is the ONLY way a transform number crosses cuts.
+    final changes = transformNamedKeyChanges(
+      layer.transformTrack,
+      transformTrack,
+    );
+    final commands = <Command>[
       UpdateLayerTransformCommand(
         repository: repository,
         cutId: cutId,
         layerId: layerId,
-        transformTrack: transformTrack,
+        transformTrack: transformTrackWithNamedValues(transformTrack, changes),
         description: description,
       ),
+    ];
+    if (!changes.isEmpty) {
+      final project = repository.requireProject();
+      for (final target in linkMirrorTargets(
+        project,
+        cutId: cutId,
+        layerId: layerId,
+      )) {
+        if (target.cutId == cutId && target.layerId == layerId) {
+          continue;
+        }
+        final sibling = requireLayerAnywhere(project, target.layerId);
+        final next = transformTrackWithNamedValues(
+          sibling.transformTrack,
+          changes,
+        );
+        if (next == sibling.transformTrack) {
+          continue;
+        }
+        commands.add(
+          UpdateLayerTransformCommand(
+            repository: repository,
+            cutId: target.cutId,
+            layerId: target.layerId,
+            transformTrack: next,
+            description: description,
+          ),
+        );
+      }
+    }
+
+    historyManager.execute(
+      commands.length == 1
+          ? commands.single
+          : CompositeCommand(description: description, commands: commands),
     );
+  }
+
+  /// The transform track that ALREADY holds [name] in [property]'s lane,
+  /// anywhere in this row's naming space — the row itself AND its 겸용
+  /// siblings. Null when the name is free, which is what tells a rename it
+  /// can simply apply.
+  ///
+  /// The space is keyed by the LINK GROUP because a transform has no
+  /// equivalent of the effect id that carries an FX naming space across
+  /// cuts: sibling rows are different [LayerId]s holding the same part, and
+  /// [linkMirrorTargets] is exactly that group. Returning the TRACK rather
+  /// than a bool lets the joining key adopt from it — the two questions a
+  /// rename asks have one answer.
+  TransformTrack? transformTrackHoldingName({
+    required CutId cutId,
+    required LayerId layerId,
+    required TransformPropertyId property,
+    required String name,
+  }) {
+    final project = repository.requireProject();
+    for (final target in linkMirrorTargets(
+      project,
+      cutId: cutId,
+      layerId: layerId,
+    )) {
+      final track = requireLayerAnywhere(project, target.layerId).transformTrack;
+      if (transformLaneUsesName(track, property, name)) {
+        return track;
+      }
+    }
+    return null;
   }
 
   /// Replaces a layer's EFFECT CHAIN (R6); one undo step, no-op when
@@ -1621,6 +1695,41 @@ class CutCommandCoordinator {
         order: order,
       ),
     );
+  }
+
+  /// The value [name] ALREADY holds in one effect parameter's whole naming
+  /// space — this row AND its 겸용 siblings — or null when the name is free
+  /// and a rename can simply apply.
+  ///
+  /// The space spans cuts for the reason [effectChainWithSharedShape]
+  /// relies on: linked rows are created by COPYING, so one shared effect
+  /// carries the same id in every use site. Asking only the local row would
+  /// call a name free while a sibling holds it, and the rename would then
+  /// silently fork one name into two values.
+  double? namedEffectKeyValueInSpace({
+    required CutId cutId,
+    required LayerId layerId,
+    required EffectId effectId,
+    required String parameterId,
+    required String name,
+  }) {
+    final targets = linkMirrorTargets(
+      repository.requireProject(),
+      cutId: cutId,
+      layerId: layerId,
+    );
+    for (final target in targets) {
+      final value = namedEffectKeyValue(
+        _requireLayer(cutId: target.cutId, layerId: target.layerId).effects,
+        effectId: effectId,
+        parameterId: parameterId,
+        name: name,
+      );
+      if (value != null) {
+        return value;
+      }
+    }
+    return null;
   }
 
   /// The commands one effect-chain write needs — INCLUDING the 겸용컷 link

@@ -144,6 +144,51 @@ class PropertyTrack<T> {
     return changed ? PropertyTrack(keys: next) : this;
   }
 
+  /// [this] with every key whose name appears in [values] set to that
+  /// name's value — the many-names form of [withNamedValue].
+  ///
+  /// One transform write can move several named keys at once (a pose key
+  /// touches position, scale and rotation together), so the link applies
+  /// them in one pass rather than rebuilding the track per name.
+  PropertyTrack<T> withNamedValues(Map<String, T> values) {
+    if (values.isEmpty || keys.isEmpty) {
+      return this;
+    }
+    var changed = false;
+    final next = <int, PropertyKey<T>>{};
+    for (final entry in keys.entries) {
+      final key = entry.value;
+      final name = key.name;
+      if (name != null && values.containsKey(name)) {
+        final value = values[name] as T;
+        if (key.value != value) {
+          next[entry.key] = key.copyWith(value: value);
+          changed = true;
+          continue;
+        }
+      }
+      next[entry.key] = key;
+    }
+    return changed ? PropertyTrack(keys: next) : this;
+  }
+
+  /// The value the keys called [name] hold here, or null when this track
+  /// does not use the name.
+  ///
+  /// The link IS "same name, same value", so every match holds the same
+  /// number and the first one speaks for all of them. This is the read a
+  /// rename does before it commits: joining a name adopts the value the
+  /// name ALREADY has, the way linking a frame adopts the drawing that is
+  /// already there rather than overwriting it (user 2026-08-10).
+  T? valueForName(String name) {
+    for (final key in keys.values) {
+      if (key.name == name) {
+        return key.value;
+      }
+    }
+    return null;
+  }
+
   /// The names this track uses, in frame order — what a naming space asks
   /// for when it checks whether a name is already taken.
   Set<String> get keyNames => {
@@ -237,6 +282,35 @@ class PropertyTrack<T> {
 
   @override
   String toString() => 'PropertyTrack(keys: $keys)';
+}
+
+/// The named keys whose VALUE moved between [before] and [after] — what one
+/// track edit hands the "same name, same value" link.
+///
+/// A RENAME carries nothing, and neither does a key that ARRIVES already
+/// named: joining a name adopts the value that name ALREADY holds, which
+/// the rename verb pulls before it commits (the frame-link rule, user
+/// 2026-08-10). Only a number that MOVED propagates from here.
+Map<String, T> movedNamedValues<T>(
+  PropertyTrack<T> before,
+  PropertyTrack<T> after,
+) {
+  final moved = <String, T>{};
+  if (after.isEmpty) {
+    return moved;
+  }
+  for (final entry in after.keys.entries) {
+    final name = entry.value.name;
+    if (name == null) {
+      continue;
+    }
+    final old = before.keys[entry.key];
+    if (old == null || old.value == entry.value.value) {
+      continue;
+    }
+    moved[name] = entry.value.value;
+  }
+  return moved;
 }
 
 SplayTreeMap<int, PropertyKey<T>> _immutableKeys<T>(
