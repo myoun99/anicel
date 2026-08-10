@@ -109,6 +109,7 @@ List<PropertyLaneRow> effectPropertyLanes(
               if (entry.value.interpolation == PropertyKeyInterpolation.hold)
                 entry.key,
           },
+          keyNames: parameter.track.namedKeysByFrame,
           valueLabel: valueAt == null
               ? null
               : (frameIndex) => formatEffectLaneValue(

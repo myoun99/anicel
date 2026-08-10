@@ -188,6 +188,11 @@ class TimelineActionToolbar extends StatelessWidget {
     if (layer == null) {
       return false;
     }
+    // Standing on a LANE row, the instance is that lane's KEY — which the
+    // owning layer's kind cannot answer.
+    if (session.currentLaneKeyAddress != null) {
+      return true;
+    }
     return switch (layer.kind) {
       LayerKind.camera ||
       LayerKind.instruction => session.hasActiveNonNegativeCell,

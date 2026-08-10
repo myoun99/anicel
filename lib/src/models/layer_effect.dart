@@ -519,32 +519,45 @@ List<NamedEffectKeyChange> namedEffectKeyChanges(
       if (oldTrack == null) {
         continue;
       }
-      for (final key in entry.value.track.keys.entries) {
-        final name = key.value.name;
-        if (name == null) {
-          continue;
-        }
-        final oldKey = oldTrack.keys[key.key];
-        // A rename counts as a change even at the same value: joining a
-        // name means adopting THIS key's number everywhere that name
-        // appears, which is the "합칠까요?" the dialog confirms.
-        if (oldKey != null &&
-            oldKey.value == key.value.value &&
-            oldKey.name == name) {
-          continue;
-        }
+      // What counts as "moved" is the LANE's predicate ([movedNamedValues]),
+      // not this loop's: an effect parameter and a transform lane are the
+      // same kind of thing to the link, and deciding it twice is how the
+      // two would drift.
+      for (final moved
+          in movedNamedValues(oldTrack, entry.value.track).entries) {
         changes.add(
           NamedEffectKeyChange(
             effectId: effect.id,
             parameterId: entry.key,
-            name: name,
-            value: key.value.value,
+            name: moved.key,
+            value: moved.value,
           ),
         );
       }
     }
   }
   return changes;
+}
+
+/// The value [name] ALREADY holds in [effects], inside one effect's one
+/// parameter — null when the name is free there.
+///
+/// This is the rename's pull: a key joining an existing name takes that
+/// name's number rather than imposing its own. Callers ask it across the
+/// whole naming space (this row AND its 겸용 siblings, which share effect
+/// ids), so a free name here can still be taken next door.
+double? namedEffectKeyValue(
+  List<LayerEffect> effects, {
+  required EffectId effectId,
+  required String parameterId,
+  required String name,
+}) {
+  for (final effect in effects) {
+    if (effect.id == effectId) {
+      return effect.parameters[parameterId]?.track.valueForName(name);
+    }
+  }
+  return null;
 }
 
 /// [effects] with every key carrying a change's name — in that change's own

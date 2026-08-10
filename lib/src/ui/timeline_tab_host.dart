@@ -539,6 +539,15 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
     if (frameIndex >= 0 && _session.currentFrameIndex != frameIndex) {
       _session.selectFrameIndex(frameIndex);
     }
+    // A LANE row's instance is its KEY. Asked BEFORE the kind switch,
+    // because "which row am I standing on" is a different question from
+    // "what kind of layer owns it" — a drawing row standing on its Rotation
+    // lane would otherwise rename the frame, which is the row's cell and
+    // not the thing under the cursor at all.
+    if (_session.currentLaneKeyAddress != null) {
+      await _renameLaneKey();
+      return;
+    }
     switch (layer.kind) {
       case LayerKind.se:
         await _editSeLabel();
@@ -779,6 +788,65 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
   // it. The media browser is the entrance now — it links an asset onto a
   // frame block, which is the shape this work actually has, and
   // `addAudioClipToActiveSeLayer` is still what lands the sound.
+
+  /// A lane KEY's name — the frame-name flow said of a keyframe, down to
+  /// the dialog and the confirmation: the same rename prompt, the same
+  /// [FrameNameConflictDialog] when the name is taken, and joining ADOPTS
+  /// the value that name already holds instead of imposing this key's
+  /// (user 2026-08-10: "프레임블록이랑 같은 규칙이면됨").
+  ///
+  /// An emptied field UN-names the key, which is the only way back to an
+  /// ordinary unlinked one.
+  Future<void> _renameLaneKey() async {
+    final address = _session.currentLaneKeyAddress;
+    if (address == null) {
+      return;
+    }
+    final strings = AppText.strings;
+    final nextName = await showDialog<String>(
+      context: context,
+      builder: (context) => RenameFrameDialog(
+        initialName:
+            _session.laneKeyName(
+              layerId: address.layerId,
+              laneId: address.laneId,
+              frameIndex: address.frameIndex,
+            ) ??
+            '',
+        title: strings.renameKeyTitle,
+        fieldLabel: strings.renameKeyField,
+      ),
+    );
+    if (!mounted || nextName == null) {
+      return;
+    }
+
+    final trimmed = nextName.trim();
+    final taken = _session.setLaneKeyName(
+      layerId: address.layerId,
+      laneId: address.laneId,
+      frameIndex: address.frameIndex,
+      name: trimmed.isEmpty ? null : trimmed,
+    );
+    if (!taken) {
+      return;
+    }
+
+    final shouldLink = await showDialog<bool>(
+      context: context,
+      builder: (context) => const FrameNameConflictDialog(),
+    );
+    if (!mounted || shouldLink != true) {
+      return;
+    }
+
+    _session.linkLaneKeyName(
+      layerId: address.layerId,
+      laneId: address.laneId,
+      frameIndex: address.frameIndex,
+      name: trimmed,
+    );
+  }
 
   Future<void> _renameSelectedFrame() async {
     if (_session.selectedFrame == null ||
@@ -1558,6 +1626,11 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       // test proves each one.
       session.activeLayer?.kind,
       session.hasActiveNonNegativeCell,
+      // Edit Instance means THAT LANE'S KEY while you stand on a lane row,
+      // an enablement no layer kind can answer. The row you stand on
+      // publishes through its OWN notifier without a session notify, which
+      // is why this entry needs the listener in initState as well.
+      session.currentLaneKeyAddress != null,
       // Shown labels: the two project-axis dropdowns print their values.
       session.projectFrameRate,
       session.projectAudioSampleRate,
@@ -1605,6 +1678,9 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
     // A language switch moves its own notifier and fires NO session notify,
     // so nothing else would ever re-derive the tokens for it.
     widget.session.languageSettings.addListener(_handleExternalSignal);
+    // Same story for the row you are STANDING on: it publishes on its own
+    // notifier, and Edit Instance's enablement now reads it.
+    widget.session.currentRowListenable.addListener(_handleExternalSignal);
   }
 
   @override
@@ -1615,8 +1691,12 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
         _handleExternalSignal,
       );
       oldWidget.session.languageSettings.removeListener(_handleExternalSignal);
+      oldWidget.session.currentRowListenable.removeListener(
+        _handleExternalSignal,
+      );
       widget.session.frameSeekCommitted.addListener(_handleExternalSignal);
       widget.session.languageSettings.addListener(_handleExternalSignal);
+      widget.session.currentRowListenable.addListener(_handleExternalSignal);
       _cachedTransport = null;
       _cachedActions = null;
     }
@@ -1627,6 +1707,7 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
   void dispose() {
     widget.session.frameSeekCommitted.removeListener(_handleExternalSignal);
     widget.session.languageSettings.removeListener(_handleExternalSignal);
+    widget.session.currentRowListenable.removeListener(_handleExternalSignal);
     super.dispose();
   }
 

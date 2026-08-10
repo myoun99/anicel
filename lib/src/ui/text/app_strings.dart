@@ -190,6 +190,11 @@ class AppStrings {
   String get renameFrameTitle => _s('renameFrameTitle');
   String get renameFrameField => _s('renameFrameField');
 
+  /// A KEY's name is a link, exactly as a frame's is: same name, same
+  /// value. The wording stays parallel because the flow is the same one.
+  String get renameKeyTitle => _s('renameKeyTitle');
+  String get renameKeyField => _s('renameKeyField');
+
   /// The cut's note — empty is allowed, it CLEARS the note.
   String get cutNoteTitle => _s('cutNoteTitle');
   String get cutNoteField => _s('cutNoteField');
@@ -896,6 +901,8 @@ class AppStrings {
     'renameCutEmpty': 'Cut name cannot be empty.',
     'renameFrameTitle': 'Rename frame',
     'renameFrameField': 'Frame name',
+    'renameKeyTitle': 'Rename key',
+    'renameKeyField': 'Key name',
     'cutNoteTitle': 'Edit cut note',
     'cutNoteField': 'Cut note',
     'deleteLayerTitle': 'Delete layer',
@@ -1519,6 +1526,8 @@ class AppStrings {
     'renameCutEmpty': 'カット名を空にはできません。',
     'renameFrameTitle': 'フレーム名の変更',
     'renameFrameField': 'フレーム名',
+    'renameKeyTitle': 'キー名の変更',
+    'renameKeyField': 'キー名',
     'cutNoteTitle': 'カットメモの編集',
     'cutNoteField': 'カットメモ',
     'deleteLayerTitle': 'レイヤーの削除',
@@ -2222,6 +2231,8 @@ class AppStrings {
     'renameCutEmpty': '컷 이름은 비울 수 없습니다.',
     'renameFrameTitle': '프레임 이름 변경',
     'renameFrameField': '프레임 이름',
+    'renameKeyTitle': '키 이름 변경',
+    'renameKeyField': '키 이름',
     'cutNoteTitle': '컷 메모 편집',
     'cutNoteField': '컷 메모',
     'deleteLayerTitle': '레이어 삭제',
@@ -2926,6 +2937,8 @@ class AppStrings {
     'renameCutEmpty': 'Le nom du plan ne peut pas être vide.',
     'renameFrameTitle': "Renommer l'image",
     'renameFrameField': "Nom de l'image",
+    'renameKeyTitle': 'Renommer la clé',
+    'renameKeyField': 'Nom de la clé',
     'cutNoteTitle': 'Modifier la note du plan',
     'cutNoteField': 'Note du plan',
     'deleteLayerTitle': 'Supprimer le calque',
@@ -3656,6 +3669,8 @@ class AppStrings {
     'renameCutEmpty': '镜头名称不能为空。',
     'renameFrameTitle': '重命名帧',
     'renameFrameField': '帧名称',
+    'renameKeyTitle': '重命名关键帧',
+    'renameKeyField': '关键帧名称',
     'cutNoteTitle': '编辑镜头备注',
     'cutNoteField': '镜头备注',
     'deleteLayerTitle': '删除图层',

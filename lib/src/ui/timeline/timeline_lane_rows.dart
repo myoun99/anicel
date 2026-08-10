@@ -1013,6 +1013,22 @@ class TimelineLaneFrameRow extends StatelessWidget {
     bool selectionCoversRow(TimelineLaneSelection? selection) =>
         laneSelectionCoversBandRow(selection, layer.id, lane.laneId);
 
+    // The room a NAME has before the next key on this lane: a label may not
+    // run under the diamond that follows it, which is the same thing the
+    // run labels do on the frame blocks.
+    double nameRoom(int frame) {
+      var next = frameEndIndexExclusive;
+      for (final other in lane.keyedFrames) {
+        if (other > frame && other < next) {
+          next = other;
+        }
+      }
+      return ((next - frame) * cellExtent - markerSize).clamp(
+        0.0,
+        double.infinity,
+      );
+    }
+
     List<Widget> markerChildren(TimelineLaneSelection? selection) => [
       // R27 #14: the selection BAND is no longer painted here. It rides
       // the cursor overlay with the cell selection's exact geometry and
@@ -1050,6 +1066,31 @@ class TimelineLaneFrameRow extends StatelessWidget {
                   selection.contains(frame),
             ),
           ),
+      // The key's NAME, at the diamond's upper right (user 2026-07-30) —
+      // "same name, same value" made visible where the link lives. Clipped
+      // to the room before the next key so two names cannot collide, and
+      // gone entirely once the cells are too narrow to read a word between
+      // two diamonds.
+      //
+      // Horizontal only: the X-sheet's lane is a COLUMN one cell wide, so
+      // there is no "right of the diamond" there to put a word in.
+      if (horizontal && cellExtent >= _laneKeyNameMinCellExtent)
+        for (final entry in lane.keyNames.entries)
+          if (entry.key >= frameStartIndex &&
+              entry.key < frameEndIndexExclusive)
+            Positioned(
+              left:
+                  (entry.key - frameStartIndex) * cellExtent +
+                  cellExtent / 2 +
+                  markerSize * 0.6,
+              top: (crossExtent / 2 - markerSize / 2 - _laneKeyNameExtent)
+                  .clamp(0.0, crossExtent),
+              width: nameRoom(entry.key),
+              height: _laneKeyNameExtent,
+              // Display only: the band's own gestures (stand, select, move)
+              // own this axis, and a label is not a second grammar.
+              child: IgnorePointer(child: _LaneKeyName(text: entry.value)),
+            ),
     ];
 
     final selectionListenable = laneRange?.selection;
@@ -1143,6 +1184,45 @@ class TimelineLaneFrameRow extends StatelessWidget {
 /// The camera row kept the old drag for one round, because its lanes had no
 /// band to defer to. They do now.
 ///
+/// Below this cell width a key name is not drawn: the diamonds are nearly
+/// touching by then, and a word squeezed between two of them reads as noise
+/// rather than as a label. The zoom itself is the gate — no separate
+/// setting, the same way the run labels fade out on their own.
+const double _laneKeyNameMinCellExtent = 14;
+const double _laneKeyNameExtent = 9;
+const double _laneKeyNameFontSize = 8;
+
+/// A named key's label at the diamond's upper right.
+///
+/// CLIPPED, not ellipsised: the slot IS the room before the next key, and a
+/// name that outgrows it should be cut rather than turned into "Wal…" —
+/// the first letters are what tell two names apart at a glance.
+class _LaneKeyName extends StatelessWidget {
+  const _LaneKeyName({required this.text});
+
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    return ClipRect(
+      child: Align(
+        alignment: Alignment.centerLeft,
+        child: Text(
+          text,
+          maxLines: 1,
+          softWrap: false,
+          overflow: TextOverflow.clip,
+          style: TextStyle(
+            fontSize: _laneKeyNameFontSize,
+            height: 1,
+            color: Theme.of(context).colorScheme.onSurfaceVariant,
+          ),
+        ),
+      ),
+    );
+  }
+}
+
 /// [IgnorePointer] is load-bearing, not tidiness: `RenderDecoratedBox`
 /// answers hit tests TRUE anywhere inside its decoration, so a drawn
 /// diamond is a hit target in its own right and the Stack would stop at it
