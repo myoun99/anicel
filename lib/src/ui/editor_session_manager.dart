@@ -1,4 +1,5 @@
 import 'dart:async' show Timer, unawaited;
+import 'dart:collection' show SplayTreeMap;
 import 'dart:io';
 import 'dart:math' as math;
 import 'dart:ui' as ui show ImageByteFormat;
@@ -822,6 +823,7 @@ class EditorSessionManager extends ChangeNotifier {
       frameId: _frameId,
       initialActiveLayerId: initialActiveLayerId,
       trackSeDisplayLayers: () => trackSeDisplayLayers,
+      trackTransitionDisplayLayer: () => trackTransitionDisplayLayer,
     );
     _timelineController = TimelineController(
       repository: _repository,
@@ -1413,6 +1415,48 @@ class EditorSessionManager extends ChangeNotifier {
         ),
     ];
   }
+
+  /// The track's TRANSITION row as a cut-local display clone — the camera
+  /// section's read-only third row.
+  ///
+  /// 🚨 Unlike the SE clones this is a PROJECTION, not a window
+  /// ([transitionMarkInCut]): a span that crosses this cut's boundary shows
+  /// at its FULL length on the side it belongs to, because half a bowtie
+  /// says nothing to whoever is reading the row. The clone therefore does
+  /// NOT describe where the span really is — the global row does that, and
+  /// the global row is the only one that may be edited.
+  ///
+  /// Cached on the same terms as the SE clones: same source layer + same
+  /// window = the same instance back, so identity-keyed row memos hold.
+  Layer get trackTransitionDisplayLayer {
+    final source = activeTrack.transitionLayer;
+    final cutStart = activeCutGlobalStartFrame;
+    final duration = activeCutOrNull?.duration ?? 0;
+    final cached = _transitionDisplayClone;
+    if (cached != null &&
+        identical(cached.$1, source) &&
+        cached.$2 == cutStart &&
+        cached.$3 == duration) {
+      return cached.$4;
+    }
+    final projected = SplayTreeMap<int, InstructionEvent>();
+    for (final entry in source.instructions.entries) {
+      final mark = transitionMarkInCut(
+        span: (start: entry.key, length: entry.value.length),
+        cutStart: cutStart,
+        cutEnd: cutStart + duration,
+      );
+      if (mark == null) {
+        continue;
+      }
+      projected[mark.start] = entry.value;
+    }
+    final display = source.copyWith(instructions: projected);
+    _transitionDisplayClone = (source, cutStart, duration, display);
+    return display;
+  }
+
+  (Layer, int, int, Layer)? _transitionDisplayClone;
 
   /// The track SE rows whose display clone starts with a spill-in block —
   /// a sound carrying over from an earlier cut (UI-R7 #6: the timeline

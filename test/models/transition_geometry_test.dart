@@ -174,6 +174,64 @@ void main() {
     });
   });
 
+  group('the mark projected into a cut', () {
+    test('does not appear for a span that stays inside the cut', () {
+      expect(
+        transitionMarkInCut(
+          span: const (start: 10, length: 12),
+          cutStart: c20Start,
+          cutEnd: c20End,
+        ),
+        isNull,
+      );
+    });
+
+    test('sits at the outgoing cut\'s tail and overhangs its end', () {
+      final mark = transitionMarkInCut(
+        span: ol,
+        cutStart: c20Start,
+        cutEnd: c20End,
+      )!;
+
+      expect(mark.start, 36);
+      expect(mark.length, 24, reason: 'the FULL 1+0, not the half inside');
+      expect(mark.start + mark.length, greaterThan(c20End - c20Start));
+    });
+
+    test('is pulled whole to the incoming cut\'s head, never clipped', () {
+      final mark = transitionMarkInCut(
+        span: ol,
+        cutStart: c21Start,
+        cutEnd: c21End,
+      )!;
+
+      // Globally the span opens 12 frames before c21 does; locally the mark
+      // starts at 0 and keeps its whole length. Half a bowtie would say
+      // nothing to the animator reading the row.
+      expect(mark.start, 0);
+      expect(mark.length, 24);
+    });
+
+    test('global and local disagree on purpose', () {
+      final outgoing = transitionMarkInCut(
+        span: ol,
+        cutStart: c20Start,
+        cutEnd: c20End,
+      )!;
+      final incoming = transitionMarkInCut(
+        span: ol,
+        cutStart: c21Start,
+        cutEnd: c21End,
+      )!;
+
+      // Same span, two different local placements — each cut sees it at its
+      // own end. Only the global row places it where it really is.
+      expect(outgoing.start + c20Start, ol.start);
+      expect(incoming.start + c21Start, isNot(ol.start));
+      expect(outgoing.length, incoming.length);
+    });
+  });
+
   group('per-cut opacity', () {
     double outgoing(int frame) => cutOpacityAt(
       cutStart: c20Start,

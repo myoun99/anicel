@@ -23,11 +23,13 @@ class LayerController {
     required FrameId frameId,
     LayerId? initialActiveLayerId,
     List<Layer> Function()? trackSeDisplayLayers,
+    Layer Function()? trackTransitionDisplayLayer,
   }) : _repository = repository,
        _historyManager = historyManager,
        _cutId = cutId,
        _defaultFrameId = frameId,
        _trackSeDisplayLayers = trackSeDisplayLayers,
+       _trackTransitionDisplayLayer = trackTransitionDisplayLayer,
        _activeLayerId = initialActiveLayerId {
     if (_activeLayerId != null && !_hasLayer(_activeLayerId!)) {
       throw StateError('Layer not found: $_activeLayerId');
@@ -48,6 +50,12 @@ class LayerController {
   /// and every read path see one composed list; mutations detect SE ids
   /// and edit the track's GLOBAL layers instead (never these clones).
   final List<Layer> Function()? _trackSeDisplayLayers;
+
+  /// The track's ONE transition row, likewise a read-only display clone.
+  /// It is a PROJECTION rather than a window: a span crossing this cut's
+  /// boundary shows at full length on the side it belongs to, so the clone
+  /// deliberately disagrees with the global row about where the span sits.
+  final Layer Function()? _trackTransitionDisplayLayer;
 
   LayerId? _activeLayerId;
 
@@ -75,10 +83,14 @@ class LayerController {
           layer,
     ];
     final trackSe = _trackSeDisplayLayers?.call() ?? const <Layer>[];
-    if (trackSe.isEmpty) {
+    // The TRANSITION row joins on the same terms as the SE rows: track
+    // owned, read here through a display clone, written only on the global
+    // axis. It sorts into the camera section by kind like any other row.
+    final transition = _trackTransitionDisplayLayer?.call();
+    if (trackSe.isEmpty && transition == null) {
       return displayed;
     }
-    return [...displayed, ...trackSe];
+    return [...displayed, ...trackSe, ?transition];
   }
 
   LayerId? get activeLayerId {
