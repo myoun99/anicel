@@ -52,6 +52,7 @@ class CanvasTrackStackView extends StatefulWidget {
     required this.qualityOf,
     required this.cameraFrameSize,
     required this.cameraPoseOf,
+    this.cameraViewEnabled = true,
     this.seNameTagsOf,
     this.cutFxEnabledOf,
     this.trackStaticOpacityOf,
@@ -71,10 +72,22 @@ class CanvasTrackStackView extends StatefulWidget {
   /// nothing shows.
   final ValueListenable<int?> globalFrame;
 
-  /// Live per-track resolution (resolveTrackStackPositions over the
+  /// Live per-track resolution (resolveTrackStackContributions over the
   /// CURRENT project layout — never playlist snapshots, so edits made
-  /// while parked show up on the next build).
-  final List<PlaybackPosition> Function(int globalFrame) positionsOf;
+  /// while parked show up on the next build). An O.L answers with BOTH
+  /// cuts, the leaving one first.
+  final List<TrackStackContribution> Function(int globalFrame) positionsOf;
+
+  /// Whether the CAMERA VIEW is on — the same view-mode flag the playback
+  /// view takes, and the reason this stack no longer crops unconditionally.
+  ///
+  /// ★A ruler scrub across cut boundaries parks per move (UI-R7 #9), so the
+  /// parked stack is what the storyboard shows while you drag. It used to
+  /// be the one display path that ignored the toggle, which meant dragging
+  /// the ruler reframed the canvas into the camera crop even with camera
+  /// view off. The law is one line now: camera view decides the framing,
+  /// wherever the picture comes from.
+  final bool cameraViewEnabled;
 
   final CutFrameCompositeCache compositeCache;
   final PlaybackQuality Function() qualityOf;
@@ -240,7 +253,7 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
   Widget build(BuildContext context) {
     final frame = widget.globalFrame.value;
     final positions = frame == null
-        ? const <PlaybackPosition>[]
+        ? const <TrackStackContribution>[]
         : widget.positionsOf(frame);
     _pruneStale([for (final position in positions) position.cutId]);
     // The BACKDROP floor (R3b): the void is retired — an uncovered frame
@@ -265,6 +278,25 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
 
     final quality = widget.qualityOf();
     final layers = <Widget>[floor];
+    // The unit alpha of each contribution: its transition share times the
+    // track's own opacity and fade. The weights that follow turn those into
+    // source-over alphas — see [sourceOverWeights] for why they are not the
+    // same number.
+    final unitAlphas = <double>[];
+    for (final position in positions) {
+      final cut = position.cut;
+      final cutFxEnabled = widget.cutFxEnabledOf?.call(cut.id) ?? true;
+      final transformTrack =
+          widget.transformTrackOf?.call(cut.id) ?? TransformTrack.empty();
+      unitAlphas.add(
+        position.opacity *
+            (widget.trackStaticOpacityOf?.call(cut.id) ?? 1.0) *
+            (cutFxEnabled
+                ? trackFadeOpacityAt(transformTrack, position.globalFrameIndex)
+                : 1.0),
+      );
+    }
+    final weights = trackGroupSourceOverWeights(positions, unitAlphas);
     for (var i = 0; i < positions.length; i++) {
       final position = positions[i];
       final cut = position.cut;
@@ -297,12 +329,13 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
           widget.transformTrackOf?.call(cut.id) ?? TransformTrack.empty();
       final globalFrame = position.globalFrameIndex;
       final poseActive = cutFxEnabled && trackPoseIsActive(transformTrack);
-      // R9 #21: the track's STATIC opacity carries the animated fade, the
-      // way a layer's static opacity carries its own — and stays on
-      // through an fx bypass, because it is not an fx.
-      final fade =
-          (widget.trackStaticOpacityOf?.call(cut.id) ?? 1.0) *
-          (cutFxEnabled ? trackFadeOpacityAt(transformTrack, globalFrame) : 1.0);
+      final weight = weights[i];
+      // The stage — paper, letterbox, apron — belongs to the bottom covered
+      // TRACK, and to EVERY contribution of it: a 場面転換 cross-fades the
+      // whole screen, so the arriving cut brings its own paper and the
+      // weights mix the two. Tracks above composite transparently over it.
+      final isStage = position.isBottomTrack;
+      final cameraView = widget.cameraViewEnabled;
       layers.add(
         CustomPaint(
           painter: PlaybackFramePainter(
@@ -313,14 +346,26 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
                 : null,
             canvasSize: cut.canvasSize,
             viewport: widget.viewport,
-            cameraPose: widget.cameraPoseOf(cut, localFrame),
+            // Camera view off: the cut sits in its own canvas space, uncropped
+            // and unprojected — the editing framing, which is what a ruler
+            // scrub should keep showing.
+            cameraPose: cameraView
+                ? widget.cameraPoseOf(cut, localFrame)
+                : null,
             seNameTags: cutPictureVisible
                 ? widget.seNameTagsOf?.call(cut, localFrame) ?? const []
                 : const [],
-            cameraFrameSize: widget.cameraFrameSize,
-            cutPose: poseActive
+            cameraFrameSize: cameraView ? widget.cameraFrameSize : null,
+            cutPose: !poseActive
+                ? null
+                : cameraView
                 ? trackPoseAt(transformTrack, globalFrame, widget.cameraFrameSize)
-                : null,
+                : trackPoseForCanvasPreview(
+                    transformTrack,
+                    globalFrame,
+                    cameraFrameSize: widget.cameraFrameSize,
+                    canvasSize: cut.canvasSize,
+                  ).pose,
             cutAnchorPoint: poseActive
                 ? trackAnchorPointAt(transformTrack, globalFrame)
                 : null,
@@ -333,17 +378,16 @@ class _CanvasTrackStackViewState extends State<CanvasTrackStackView> {
               enabled: cutFxEnabled,
             ),
             paperBackground: widget.background,
-            // The bottom covered track is the stage: letterbox, the
-            // pasteboard apron, the paper. Its fade thins the WHOLE stage
-            // (R3b: fade is transparency — the backdrop behind shows
-            // through); the tracks above composite transparently and
-            // their fades thin THEIR contribution only, revealing the
-            // stage instead of blanking it.
-            paintPaper: i == 0,
-            paintLetterbox: i == 0,
-            pasteboardColor: i == 0 ? Color(widget.pasteboardArgb) : null,
-            fadeOpacity: i == 0 ? fade : 1,
-            imageOpacity: i == 0 ? 1 : fade,
+            paintPaper: isStage,
+            // Nothing to letterbox against without a camera frame.
+            paintLetterbox: isStage && cameraView,
+            // The apron rides the camera view, as the playback view's does:
+            // it is what the camera sees past the paper.
+            pasteboardColor: isStage && cameraView
+                ? Color(widget.pasteboardArgb)
+                : null,
+            fadeOpacity: isStage ? weight : 1,
+            imageOpacity: isStage ? 1 : weight,
           ),
         ),
       );

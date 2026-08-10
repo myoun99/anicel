@@ -305,10 +305,15 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
     final project = session.repository.requireProject();
     return CanvasTrackStackView(
       globalFrame: globalFrame ?? session.gapParkingListenable,
-      positionsOf: session.trackStackPositionsAt,
+      positionsOf: session.trackStackContributionsAt,
       compositeCache: session.cutFrameCompositeCache,
       qualityOf: () => session.playbackQuality,
       cameraFrameSize: session.cameraFrameSize,
+      // The framing is the VIEW MODE's answer here too (user 2026-08-10): a
+      // storyboard ruler drag parks per move, so this stack is what shows
+      // while you scrub, and it used to crop to the camera whatever the
+      // toggle said.
+      cameraViewEnabled: widget.cameraViewEnabled.value,
       cameraPoseOf: session.cameraPoseForCut,
       seNameTagsOf: session.seNameTagsForCutFrame,
       cutFxEnabledOf: session.isCutFxEnabled,

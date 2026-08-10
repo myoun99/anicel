@@ -353,4 +353,215 @@ void main() {
       expect(at(1, spans: const [(start: 0, length: 3)]).single.opacity, 1.0);
     });
   });
+
+  group('sourceOverWeights', () {
+    /// What source-over ACTUALLY produces: paint bottom to top, each weight
+    /// over what is already there. Returns (per-picture share, floor share) —
+    /// the oracle the formula has to satisfy, computed independently of it.
+    (List<double>, double) composited(List<double> weights) {
+      final shares = List<double>.filled(weights.length, 0);
+      var floor = 1.0;
+      for (var i = 0; i < weights.length; i += 1) {
+        final w = weights[i];
+        for (var j = 0; j < i; j += 1) {
+          shares[j] *= 1 - w;
+        }
+        floor *= 1 - w;
+        shares[i] = w;
+      }
+      return (shares, floor);
+    }
+
+    test('one contribution paints at its own share, so a lone F.O really does '
+        'fade to the floor', () {
+      expect(sourceOverWeights([0.4]), [closeTo(0.4, 1e-9)]);
+      final (shares, floor) = composited(sourceOverWeights([0.4]));
+      expect(shares.single, closeTo(0.4, 1e-9));
+      expect(floor, closeTo(0.6, 1e-9));
+    });
+
+    test('an O.L pair lays the leaving cut down OPAQUE — its own share would '
+        'leave t(1-t) of the floor showing mid-dissolve', () {
+      for (final t in [0.0, 0.25, 1 / 3, 0.5, 0.75, 1.0]) {
+        final weights = sourceOverWeights([1 - t, t]);
+        // The leaving cut goes down opaque for as long as it is there at all;
+        // at t == 1 it is gone, and a weight of 1 would freeze it on screen.
+        expect(weights[0], closeTo(t < 1 ? 1.0 : 0.0, 1e-9), reason: 't=$t');
+        expect(weights[1], closeTo(t, 1e-9), reason: 't=$t');
+
+        // The contract that actually matters, checked independently of the
+        // formula: the mix is the ramp and the floor never shows.
+        final (shares, floor) = composited(weights);
+        expect(shares[0], closeTo(1 - t, 1e-9), reason: 't=$t');
+        expect(shares[1], closeTo(t, 1e-9), reason: 't=$t');
+        expect(floor, closeTo(0.0, 1e-9), reason: 'no dip to black at t=$t');
+      }
+
+      // The naive version, for contrast: at t=0.5 a quarter of the floor
+      // shows through the middle of every dissolve.
+      final (_, naiveFloor) = composited([0.5, 0.5]);
+      expect(naiveFloor, closeTo(0.25, 1e-9));
+    });
+
+    test('a partially faded pair keeps BOTH its mix and its floor share — the '
+        'O.L runs inside a track fade without either eating the other', () {
+      final weights = sourceOverWeights([0.5 * 0.75, 0.5 * 0.25]);
+      final (shares, floor) = composited(weights);
+
+      expect(shares[0], closeTo(0.375, 1e-9));
+      expect(shares[1], closeTo(0.125, 1e-9));
+      expect(floor, closeTo(0.5, 1e-9), reason: 'the track fade, intact');
+    });
+
+    test('alphas summing past 1 are layering, not a mix, and pass through', () {
+      expect(sourceOverWeights([1.0, 1.0]), [1.0, 1.0]);
+      expect(sourceOverWeights([0.8, 0.8]), [0.8, 0.8]);
+    });
+
+    test('an empty stack has no weights, and zeros stay zero', () {
+      expect(sourceOverWeights(const []), isEmpty);
+      expect(sourceOverWeights([0.0]), [0.0]);
+      expect(sourceOverWeights([0.0, 0.0]), [0.0, 0.0]);
+    });
+  });
+
+  group('resolveTrackStackContributions', () {
+    Project twoTracks() => Project(
+      id: const ProjectId('project'),
+      name: 'Project',
+      tracks: [
+        Track(
+          id: const TrackId('track-1'),
+          name: 'One',
+          cuts: [cut('a1', 4), cut('a2', 6)],
+        ),
+        Track(id: const TrackId('track-2'), name: 'Two', cuts: [cut('b1', 8)]),
+      ],
+      createdAt: DateTime.utc(2026),
+    );
+
+    test('with no transition it agrees with resolveTrackStackPositions, frame '
+        'for frame', () {
+      final layout = buildStoryboardTimelineLayout(twoTracks());
+      for (var frame = -1; frame < 12; frame += 1) {
+        final positions = resolveTrackStackPositions(
+          layout: layout,
+          globalFrameIndex: frame,
+        );
+        final contributions = resolveTrackStackContributions(
+          layout: layout,
+          spansOf: (_) => const [],
+          globalFrameIndex: frame,
+        );
+        expect(
+          contributions.map((c) => (c.cut.id, c.localFrameIndex)),
+          positions.map((p) => (p.cut.id, p.localFrameIndex)),
+          reason: 'frame $frame',
+        );
+        expect(
+          contributions.every((c) => c.opacity == 1.0),
+          isTrue,
+          reason: 'frame $frame',
+        );
+      }
+    });
+
+    test('the STAGE is the bottom covered TRACK, and every contribution of it '
+        '— including the cut arriving over an O.L', () {
+      final layout = buildStoryboardTimelineLayout(twoTracks());
+      final stack = resolveTrackStackContributions(
+        layout: layout,
+        spansOf: (trackId) => trackId == const TrackId('track-1')
+            ? const [(start: 2, length: 4)]
+            : const [],
+        globalFrameIndex: 3,
+      );
+
+      expect(stack.map((c) => c.cut.id), [
+        const CutId('a1'),
+        const CutId('a2'),
+        const CutId('b1'),
+      ]);
+      expect(stack[0].isBottomTrack, isTrue);
+      expect(stack[1].isBottomTrack, isTrue, reason: 'same track, same stage');
+      expect(stack[2].isBottomTrack, isFalse);
+    });
+
+    test('a track that gaps here is simply absent, and the NEXT track becomes '
+        'the stage', () {
+      final project = Project(
+        id: const ProjectId('project'),
+        name: 'Project',
+        tracks: [
+          Track(id: const TrackId('track-1'), name: 'One', cuts: [cut('a', 2)]),
+          Track(id: const TrackId('track-2'), name: 'Two', cuts: [cut('b', 8)]),
+        ],
+        createdAt: DateTime.utc(2026),
+      );
+      final stack = resolveTrackStackContributions(
+        layout: buildStoryboardTimelineLayout(project),
+        spansOf: (_) => const [],
+        globalFrameIndex: 5,
+      );
+
+      expect(stack.map((c) => c.cut.id), [const CutId('b')]);
+      expect(stack.single.isBottomTrack, isTrue);
+    });
+  });
+
+  group('trackGroupSourceOverWeights', () {
+    test('normalises WITHIN a track and leaves the tracks layering — two '
+        'tracks each at half opacity stay two half-opacity layers', () {
+      final project = Project(
+        id: const ProjectId('project'),
+        name: 'Project',
+        tracks: [
+          Track(id: const TrackId('t1'), name: 'One', cuts: [cut('a', 8)]),
+          Track(id: const TrackId('t2'), name: 'Two', cuts: [cut('b', 8)]),
+        ],
+        createdAt: DateTime.utc(2026),
+      );
+      final stack = resolveTrackStackContributions(
+        layout: buildStoryboardTimelineLayout(project),
+        spansOf: (_) => const [],
+        globalFrameIndex: 3,
+      );
+
+      expect(trackGroupSourceOverWeights(stack, [0.5, 0.5]), [0.5, 0.5]);
+    });
+
+    test('a bottom-track O.L is normalised while an upper track keeps its own '
+        'share', () {
+      final project = Project(
+        id: const ProjectId('project'),
+        name: 'Project',
+        tracks: [
+          Track(
+            id: const TrackId('t1'),
+            name: 'One',
+            cuts: [cut('a1', 4), cut('a2', 6)],
+          ),
+          Track(id: const TrackId('t2'), name: 'Two', cuts: [cut('b', 8)]),
+        ],
+        createdAt: DateTime.utc(2026),
+      );
+      final stack = resolveTrackStackContributions(
+        layout: buildStoryboardTimelineLayout(project),
+        spansOf: (trackId) => trackId == const TrackId('t1')
+            ? const [(start: 2, length: 4)]
+            : const [],
+        globalFrameIndex: 3,
+      );
+      expect(stack, hasLength(3));
+
+      final weights = trackGroupSourceOverWeights(stack, [
+        stack[0].opacity,
+        stack[1].opacity,
+        0.4,
+      ]);
+      expect(weights[0], closeTo(1.0, 1e-9), reason: 'the pair partitions');
+      expect(weights[1], closeTo(stack[1].opacity, 1e-9));
+      expect(weights[2], closeTo(0.4, 1e-9), reason: 'a track apart');
+    });
+  });
 }
