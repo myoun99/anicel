@@ -28,6 +28,7 @@ import '../../models/pasteboard_bounds.dart';
 import '../brush/canvas_selection_commands.dart';
 import 'selection_ants_painter.dart';
 import 'bitmap_surface_painter.dart';
+import 'provisional_tile_pictures.dart';
 import 'bitmap_tile_image_cache.dart';
 import 'viewport_canvas_transform.dart';
 
@@ -63,8 +64,31 @@ class CanvasSelectionLayer extends StatefulWidget {
     this.alwaysShowTransformBox = false,
     this.contentBoundsProvider,
     this.committedRegionPendingTiles,
+    this.composeCommittedRegionPictures,
     this.resampleMode = ResampleMode.blend,
   });
+
+  /// Offers the host the picture the screen is showing over the landing
+  /// rect, so the tiles the commit just created can draw THEMSELVES on the
+  /// next frame instead of being covered for.
+  ///
+  /// The hold above is a cover: the float keeps painting where the base
+  /// cannot. This is the other move — give the base a picture — and it is
+  /// strictly better where it applies, because a covered tile is a second
+  /// widget clipped over the canvas and an answered one is just the canvas.
+  /// Whatever this cannot answer for, the hold still covers; the two are
+  /// read through the same predicate, so a tile is never both.
+  ///
+  /// [paintInk] draws in CANVAS coordinates and reports whether it drew
+  /// everything that belongs in the rect it was given.
+  final void Function(
+    int left,
+    int top,
+    int right,
+    int bottom,
+    ProvisionalInkPainter paintInk,
+  )?
+  composeCommittedRegionPictures;
 
   /// WHICH tiles of the canvas rect a session just landed into the host's
   /// committed surface cannot PAINT yet — the ones whose tile exists but
@@ -1566,9 +1590,8 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // The pending stamp is gone by now, so the float's drift has to come
     // from the dab that actually landed.
     _floatHoldCentre = landed.center;
-    final pendingTiles = widget.committedRegionPendingTiles;
     final stamp = landed.stamp;
-    if (pendingTiles == null || stamp == null) {
+    if (stamp == null) {
       setState(_releaseFloatHold);
       return;
     }
@@ -1577,6 +1600,24 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     final top = (landed.center.y - stamp.height / 2).round();
     final right = left + stamp.width;
     final bottom = top + stamp.height;
+    // FIRST, and before the pending set is read: every coordinate this
+    // answers for is one the base can now paint, so it drops out of the
+    // hold instead of being covered — which is also what keeps the two
+    // from compositing the same partial-alpha pixels twice. It runs even
+    // when the host offers no pending-tile hook, because giving the base
+    // a picture is worth doing whether or not anything is covering for it.
+    final compose = widget.composeCommittedRegionPictures;
+    if (compose != null) {
+      final ink = _landedInkPainter(landed, left, top);
+      if (ink != null) {
+        compose(left, top, right, bottom, ink);
+      }
+    }
+    final pendingTiles = widget.committedRegionPendingTiles;
+    if (pendingTiles == null) {
+      setState(_releaseFloatHold);
+      return;
+    }
     final initial = pendingTiles(left, top, right, bottom);
     if (initial.isEmpty) {
       setState(_releaseFloatHold);
@@ -1603,6 +1644,61 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     setState(() => _floatHoldTiles = initial);
     _floatHold = release;
     BitmapTileImageCache.instance.addListener(release);
+  }
+
+  /// The picture of the landing that this session is holding, ready to be
+  /// composed into the base's new tiles — or null when it has none.
+  ///
+  /// The two branches are the two things a confirm can be holding, and
+  /// they are the same two the hold itself draws:
+  ///
+  ///  - the decoded RESAMPLE, when it is `identical`ly the dab that
+  ///    landed. One image of exactly the landed bytes at exactly the
+  ///    landed rect.
+  ///  - the FLOAT SURFACE, for a move, which is materialized once at
+  ///    [_floatSurfaceCentre] and translated afterwards. The delta is
+  ///    taken in CANVAS space from the centre the pixels were made at to
+  ///    the centre they landed at — not [_floatDrawOffset], which is the
+  ///    same journey in screen space and carries the viewport's rotation
+  ///    and zoom with it.
+  ///
+  /// A live drag is not a landing: `_moveScreenDelta` is zeroed when the
+  /// gesture ends, so a non-zero one here means the float is somewhere
+  /// this arithmetic does not describe.
+  ProvisionalInkPainter? _landedInkPainter(BrushDab landed, int left, int top) {
+    final resampled = _resampledFloatImage;
+    if (resampled != null && identical(_resampledImageDab, landed)) {
+      return inkFromImage(
+        resampled,
+        Rect.fromLTWH(
+          left.toDouble(),
+          top.toDouble(),
+          resampled.width.toDouble(),
+          resampled.height.toDouble(),
+        ),
+      );
+    }
+    final float = _floatSurface;
+    final from = _floatSurfaceCentre;
+    final stamp = landed.stamp;
+    if (float == null ||
+        from == null ||
+        stamp == null ||
+        _moveScreenDelta != Offset.zero) {
+      return null;
+    }
+    // ⚠️ The delta between the two ROUNDED placements, not the difference
+    // of the centres. Both materializations put the stamp at
+    // `(centre - size/2).round()`, so the pixels moved by a whole number
+    // of pixels even when the centres differ by a fraction — and half a
+    // pixel of drift would resample the float against the grid it is
+    // supposed to line up with exactly.
+    final floatLeft = (from.x - stamp.width / 2).round();
+    final floatTop = (from.y - stamp.height / 2).round();
+    return inkFromSurface(
+      float,
+      Offset((left - floatLeft).toDouble(), (top - floatTop).toDouble()),
+    );
   }
 
   /// Drops everything the hold was keeping alive. Call inside a setState.
