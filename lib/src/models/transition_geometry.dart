@@ -118,6 +118,33 @@ CutTransitionHandles cutTransitionHandles({
   required CutTransitionHandles handles,
 }) => (start: cutStart - handles.head, end: cutEnd + handles.tail);
 
+/// Where a span's mark is DRAWN inside one cut's local timeline, or null
+/// when the span does not fire for this cut.
+///
+/// 🚨 This is a PROJECTION, not a window, and the difference is the whole
+/// rule: a windowed span would show each cut the half that overlaps it,
+/// and half a bowtie tells an animator nothing. Both sides see the mark at
+/// its FULL length — the outgoing cut at its tail, overhanging its own end
+/// by the のりしろ; the incoming cut at its head, starting at local 0.
+///
+/// So the global row and a cut's row deliberately disagree about where the
+/// mark sits, and that is the design ("글로벌↔로컬은 다르게 그린다"). The
+/// global row is the one that is edited; a cut's row is for reading, and
+/// what it has to say is "a 1+0 O.L happens at this end of you".
+({int start, int length})? transitionMarkInCut({
+  required TransitionSpan span,
+  required int cutStart,
+  required int cutEnd,
+}) {
+  if (!transitionSpanFires(span: span, cutStart: cutStart, cutEnd: cutEnd)) {
+    return null;
+  }
+  final localStart = span.start - cutStart;
+  // Negative means the span opened before this cut did — the incoming side.
+  // Pull the whole mark to the head rather than clipping off its front.
+  return (start: localStart < 0 ? 0 : localStart, length: span.length);
+}
+
 /// The alpha a cut's picture carries at [globalFrame] — 1 when nothing is
 /// happening, ramping while a transition crosses one of its boundaries, and
 /// 0 outside the frames it has material for.
