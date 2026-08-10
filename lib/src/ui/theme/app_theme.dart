@@ -96,13 +96,14 @@ abstract final class AppColors {
   /// Muted red for destructive/warning marks (cut-end boundary).
   static const Color danger = Color(0xFFC95C5C);
 
-  /// Muted blue for the のりしろ boundary — where a cut is DRAWN to, past the
-  /// red line that says where it plays to.
+  /// The のりしろ boundary — where a cut is DRAWN to, past the red line that
+  /// says where it plays to.
   ///
-  /// A fixed hue rather than [accent] on purpose: the accent means selection,
-  /// playhead and active state, and this is a length. Muted to the same degree
-  /// as [danger] so the two lines read as one family of marks.
-  static const Color handle = Color(0xFF5C8AC9);
+  /// ⚠️This is the ACCENT (user 2026-08-11), reversing the muted `#5C8AC9`
+  /// blue this used to be: I had argued a fixed hue kept the accent meaning
+  /// "selection, playhead, active state", but the user wants the app's accent
+  /// here. ⇒ non-const, since the accent is a live setting.
+  static Color get noriShiro => accent;
 }
 
 /// The app's one corner.

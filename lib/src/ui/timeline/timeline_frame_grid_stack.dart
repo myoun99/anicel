@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 
 import 'timeline_beat_lines.dart';
 import 'timeline_body_cut_end_boundary.dart';
+import 'timeline_body_norishiro_boundary.dart';
 import 'timeline_cut_end_handle.dart';
 import 'timeline_drag_preview.dart';
 
@@ -19,6 +20,7 @@ class TimelineFrameGridStack extends StatelessWidget {
     this.dragPreview,
     this.frameCellExtent = 0,
     this.playbackFrameCount = 0,
+    this.drawnFrameCount,
   });
 
   final Widget rowsBody;
@@ -39,6 +41,23 @@ class TimelineFrameGridStack extends StatelessWidget {
   final ValueListenable<TimelineDragPreview?>? dragPreview;
   final double frameCellExtent;
   final int playbackFrameCount;
+
+  /// How many frames the cut is DRAWN for — its 尺 plus the のりしろ a
+  /// transition span crossing one of its boundaries asks for. Null (or equal to
+  /// [playbackFrameCount]) is every cut nothing crosses: no blue line, and the
+  /// wash starts at the cut end exactly as it always did.
+  final int? drawnFrameCount;
+
+  /// Where the DRAWN end sits in content pixels, following a live trim so the
+  /// blue line and the wash edge never split from the red line mid-drag.
+  double _drawnEnd(TimelineDragPreview? preview) =>
+      timelineDrawnEndPreviewFrameCount(
+        preview: preview,
+        cutId: cutEndDrag?.cutId,
+        playbackFrameCount: playbackFrameCount,
+        drawnFrameCount: drawnFrameCount,
+      ) *
+      frameCellExtent;
 
   @override
   Widget build(BuildContext context) {
@@ -61,6 +80,11 @@ class TimelineFrameGridStack extends StatelessWidget {
         // everything, cursor and selection included. The wash being its own
         // layer at all is what lets a cut-length drag repaint one rect
         // instead of re-baking every row's tiles.
+        //
+        // 🚨It starts at the DRAWN end, not the cut end (user 2026-08-11):
+        // のりしろ frames are drawn material, so shading them as "outside the
+        // cut" was the wash claiming territory it does not own. Without a
+        // handle the two are the same number and nothing changes.
         if (frameCellExtent > 0)
           Positioned.fill(
             child: IgnorePointer(
@@ -68,7 +92,7 @@ class TimelineFrameGridStack extends StatelessWidget {
                 child: dragPreview == null || cutEndDrag == null
                     ? CustomPaint(
                         painter: TimelineOutsideCutWashPainter(
-                          outsideStart: playbackFrameCount * frameCellExtent,
+                          outsideStart: _drawnEnd(null),
                           colorScheme: Theme.of(context).colorScheme,
                         ),
                       )
@@ -76,13 +100,7 @@ class TimelineFrameGridStack extends StatelessWidget {
                         valueListenable: dragPreview,
                         builder: (context, preview, _) => CustomPaint(
                           painter: TimelineOutsideCutWashPainter(
-                            outsideStart:
-                                timelineCutEndPreviewFrameCount(
-                                  preview: preview,
-                                  cutId: cutEndDrag.cutId,
-                                  playbackFrameCount: playbackFrameCount,
-                                ) *
-                                frameCellExtent,
+                            outsideStart: _drawnEnd(preview),
                             colorScheme: Theme.of(context).colorScheme,
                           ),
                         ),
@@ -90,6 +108,27 @@ class TimelineFrameGridStack extends StatelessWidget {
               ),
             ),
           ),
+        // Over the wash, under nothing: one continuous mark with the ruler's.
+        if (frameCellExtent > 0)
+          if (cutEndDrag != null && dragPreview != null)
+            ValueListenableBuilder<TimelineDragPreview?>(
+              valueListenable: dragPreview,
+              builder: (context, preview, _) => TimelineBodyNoriShiroBoundary(
+                left: _drawnEnd(preview),
+                cutEnd:
+                    timelineCutEndPreviewFrameCount(
+                      preview: preview,
+                      cutId: cutEndDrag.cutId,
+                      playbackFrameCount: playbackFrameCount,
+                    ) *
+                    frameCellExtent,
+              ),
+            )
+          else
+            TimelineBodyNoriShiroBoundary(
+              left: _drawnEnd(null),
+              cutEnd: playbackFrameCount * frameCellExtent,
+            ),
         if (cutEndDrag != null && dragPreview != null && frameCellExtent > 0)
           ValueListenableBuilder<TimelineDragPreview?>(
             valueListenable: dragPreview,

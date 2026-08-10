@@ -89,21 +89,48 @@ class TimelineFrameRuler extends StatelessWidget {
         // DRAWN, which is a length, while the red line marks where the cut
         // ends. Both, so the two questions stay two answers.
         //
-        // No drag-preview branch: a cut trim moves the red line live, and the
-        // handle follows on the commit — the handle is derived from transition
-        // spans, not from the duration being dragged.
-        TimelineRulerNoriShiroBoundary(
-          cutEnd: timelineCutEndBoundaryX(
-            playbackFrameCount: playbackFrameCount,
-            metrics: metrics,
+        // The handle is a LENGTH past the boundary, so it RIDES a live trim
+        // rather than standing still — `timelineDrawnEndPreviewFrameCount` is
+        // the one function the wash edge and the body's line read too, which is
+        // what keeps the three from splitting apart mid-drag.
+        if (dragPreview != null && previewCutId != null)
+          ValueListenableBuilder<TimelineDragPreview?>(
+            valueListenable: dragPreview,
+            builder: (context, preview, _) => TimelineRulerNoriShiroBoundary(
+              cutEnd: timelineCutEndBoundaryX(
+                playbackFrameCount: timelineCutEndPreviewFrameCount(
+                  preview: preview,
+                  cutId: previewCutId,
+                  playbackFrameCount: playbackFrameCount,
+                ),
+                metrics: metrics,
+              ),
+              drawnEnd: timelineCutEndBoundaryX(
+                playbackFrameCount: timelineDrawnEndPreviewFrameCount(
+                  preview: preview,
+                  cutId: previewCutId,
+                  playbackFrameCount: playbackFrameCount,
+                  drawnFrameCount: drawnFrameCount,
+                ),
+                metrics: metrics,
+              ),
+              label: noriShiroLabel,
+              axis: axis,
+            ),
+          )
+        else
+          TimelineRulerNoriShiroBoundary(
+            cutEnd: timelineCutEndBoundaryX(
+              playbackFrameCount: playbackFrameCount,
+              metrics: metrics,
+            ),
+            drawnEnd: timelineCutEndBoundaryX(
+              playbackFrameCount: drawnFrameCount ?? playbackFrameCount,
+              metrics: metrics,
+            ),
+            label: noriShiroLabel,
+            axis: axis,
           ),
-          drawnEnd: timelineCutEndBoundaryX(
-            playbackFrameCount: drawnFrameCount ?? playbackFrameCount,
-            metrics: metrics,
-          ),
-          label: noriShiroLabel,
-          axis: axis,
-        ),
         if (dragPreview != null && previewCutId != null)
           ValueListenableBuilder<TimelineDragPreview?>(
             valueListenable: dragPreview,
