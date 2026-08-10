@@ -15,7 +15,11 @@ import '../../models/timeline_coverage.dart';
 import '../../services/cut_frame_composite_plan.dart';
 import '../text/se_name_tag_paint.dart';
 import '../../services/playback/playback_frame_mapping.dart'
-    show resolveTrackStackPositions;
+    show
+        resolveTrackStackContributions,
+        resolveTransitionContributions,
+        sourceOverWeights,
+        trackGroupSourceOverWeights;
 import '../camera/camera_frame_render_service.dart';
 import '../canvas/layer_pose_paint.dart';
 import '../editor_session_manager.dart';
@@ -240,6 +244,18 @@ class ExportFrameRenderer {
         picture.dispose();
       }
     }
+    // A transition reaching across this frame's boundary puts a SECOND cut
+    // here, and canvas space is shared whenever the two agree on their canvas
+    // size — which two cuts of one track normally do. Only differing sizes
+    // keep the single-cut bake, because then there is no shared space to mix
+    // in (the camera frame is that space, and that is the camera path above).
+    final overlap = await _canvasSpaceTransitionFrame(
+      task,
+      preserveAlpha: preserveAlpha,
+    );
+    if (overlap != null) {
+      return overlap;
+    }
     // The presentation render: the アフレコ name tags belong in the video
     // (their row's eye is the switch).
     final image = await renderComposite(task, mode, withNameTags: true);
@@ -321,6 +337,136 @@ class ExportFrameRenderer {
     }
   }
 
+  /// A CANVAS-size video frame that two cuts share, because a transition
+  /// reaches across the boundary here — null when this frame has only one
+  /// contribution (the ordinary bake) or when the contributing cuts disagree
+  /// on their canvas size (no shared space to mix in).
+  ///
+  /// Each cut is drawn with its own track pose, chain and unit weight, in the
+  /// order the resolver returns them (leaving cut first) — the camera path's
+  /// rules, in canvas space instead of the camera frame.
+  Future<ui.Image?> _canvasSpaceTransitionFrame(
+    ExportFrameTask task, {
+    required bool preserveAlpha,
+  }) async {
+    final layout = _stackLayout ??= buildStoryboardTimelineLayout(
+      session.repository.requireProject(),
+    );
+    final own = layout.where((entry) => entry.cutId == task.cut.id).firstOrNull;
+    if (own == null) {
+      return null;
+    }
+    // This cut's own TRACK axis: a transition is a track's, so the partner can
+    // only come from here.
+    final entries = [
+      for (final entry in layout)
+        if (entry.trackId == own.trackId) entry,
+    ];
+    final globalFrame = own.startFrame + task.frameIndex;
+    final contributions = resolveTransitionContributions(
+      playlist: entries,
+      spans: session.transitionSpansOfTrack(own.trackId),
+      globalFrameIndex: globalFrame,
+    );
+    if (contributions.length < 2) {
+      return null;
+    }
+    final size = contributions.first.cut.canvasSize;
+    for (final contribution in contributions) {
+      if (contribution.cut.canvasSize != size) {
+        return null;
+      }
+    }
+    _retainSurfacesFor([
+      for (final contribution in contributions) contribution.cut.id,
+    ]);
+
+    final unitAlphas = <double>[
+      for (final contribution in contributions)
+        contribution.opacity *
+            session.trackStaticOpacityForCut(contribution.cut.id) *
+            (session.isCutFxEnabled(contribution.cut.id)
+                ? trackFadeOpacityAt(
+                    session.transformTrackForCut(contribution.cut.id),
+                    globalFrame,
+                  )
+                : 1.0),
+    ];
+    final weights = sourceOverWeights(unitAlphas);
+
+    final recorder = ui.PictureRecorder();
+    final canvas = ui.Canvas(recorder);
+    final bounds = ui.Rect.fromLTWH(
+      0,
+      0,
+      size.width.toDouble(),
+      size.height.toDouble(),
+    );
+    if (!preserveAlpha) {
+      canvas.drawRect(
+        bounds,
+        ui.Paint()
+          ..color = ui.Color(session.repository.requireProject().backdropArgb),
+      );
+    }
+    final images = <ui.Image>[];
+    try {
+      for (var i = 0; i < contributions.length; i += 1) {
+        final contribution = contributions[i];
+        final cut = contribution.cut;
+        final image = await renderComposite(
+          ExportFrameTask(cut: cut, frameIndex: contribution.localFrameIndex),
+          ExportSizeMode.canvas,
+          withNameTags: true,
+        );
+        images.add(image);
+        final transformTrack = session.transformTrackForCut(cut.id);
+        final trackFxEnabled = session.isCutFxEnabled(cut.id);
+        final poseActive = trackFxEnabled && trackPoseIsActive(transformTrack);
+        final weight = weights[i].clamp(0.0, 1.0);
+        if (weight < 1) {
+          canvas.saveLayer(
+            bounds,
+            ui.Paint()..color = ui.Color.fromRGBO(0, 0, 0, weight),
+          );
+        }
+        if (poseActive) {
+          final space = CanvasSize(width: image.width, height: image.height);
+          canvas.save();
+          applyLayerPoseTransform(
+            canvas,
+            trackPoseAt(transformTrack, globalFrame, space),
+            space,
+            anchorPoint: trackAnchorPointAt(transformTrack, globalFrame),
+          );
+        }
+        final framePaint = ui.Paint();
+        trackEffectPaintAt(
+          session.trackEffectsForCut(cut.id),
+          globalFrame,
+          enabled: trackFxEnabled,
+        ).applyTo(framePaint);
+        canvas.drawImage(image, ui.Offset.zero, framePaint);
+        if (poseActive) {
+          canvas.restore();
+        }
+        if (weight < 1) {
+          canvas.restore();
+        }
+      }
+      final picture = recorder.endRecording();
+      try {
+        return await picture.toImage(size.width, size.height);
+      } finally {
+        picture.dispose();
+      }
+    } finally {
+      for (final image in images) {
+        image.dispose();
+      }
+    }
+  }
+
   /// The camera-frame video frame as the display's track stack (R3a).
   ///
   /// The task's cut names the frame's GLOBAL index (its layout start plus
@@ -344,14 +490,30 @@ class ExportFrameRenderer {
         break;
       }
     }
-    final positions = resolveTrackStackPositions(
+    final positions = resolveTrackStackContributions(
       layout: layout,
+      spansOf: session.transitionSpansOfTrack,
       globalFrameIndex: globalFrame,
     );
     _retainSurfacesFor([
       task.cut.id,
       for (final position in positions) position.cutId,
     ]);
+    // The unit alpha per contribution — its transition share times the
+    // track's opacity and fade — and the source-over weights that make the
+    // stack read as that mix (see [sourceOverWeights]).
+    final unitAlphas = <double>[
+      for (final position in positions)
+        position.opacity *
+            session.trackStaticOpacityForCut(position.cut.id) *
+            (session.isCutFxEnabled(position.cut.id)
+                ? trackFadeOpacityAt(
+                    session.transformTrackForCut(position.cut.id),
+                    position.globalFrameIndex,
+                  )
+                : 1.0),
+    ];
+    final weights = trackGroupSourceOverWeights(positions, unitAlphas);
 
     final size = session.cameraFrameSize;
     final recorder = ui.PictureRecorder();
@@ -398,12 +560,13 @@ class ExportFrameRenderer {
         // static opacity is not an fx and stays).
         final transformTrack = session.transformTrackForCut(cut.id);
         final trackFxEnabled = session.isCutFxEnabled(cut.id);
-        final fade =
-            session.trackStaticOpacityForCut(cut.id) *
-            (trackFxEnabled
-                ? trackFadeOpacityAt(transformTrack, position.globalFrameIndex)
-                : 1.0);
+        final weight = weights[i];
         final poseActive = trackFxEnabled && trackPoseIsActive(transformTrack);
+        // The stage belongs to the bottom covered TRACK, and to every
+        // contribution of it: an O.L is a 場面転換, so the arriving cut brings
+        // its own paper and the weights cross-fade the whole screen. Keyed to
+        // the bottom CONTRIBUTION this baked a superimpose.
+        final isStage = position.isBottomTrack;
         PlaybackFramePainter(
           image: image,
           canvasSize: cut.canvasSize,
@@ -428,22 +591,18 @@ class ExportFrameRenderer {
             enabled: trackFxEnabled,
           ),
           paperBackground: session.projectBackground,
-          // The stage is the bottom covered track's: its pasteboard
-          // apron, its paper — and its fade thins the whole unit (R3b:
-          // transparency, revealing the backdrop). Tracks above composite
-          // transparently and fade their OWN contribution.
-          paintPaper: i == 0,
+          paintPaper: isStage,
           // The alpha matrix (user 2026-07-29): alpha masters exclude the
           // backdrop AND the pasteboard — they are compositing sources,
           // and the paper carries its own alpha.
-          pasteboardColor: i == 0 && !preserveAlpha
+          pasteboardColor: isStage && !preserveAlpha
               ? ui.Color(session.repository.requireProject().pasteboardArgb)
               : null,
           // The output IS the camera frame — there is no outside to
           // letterbox, and an alpha master needs the ground transparent.
           paintLetterbox: false,
-          fadeOpacity: i == 0 ? fade : 1,
-          imageOpacity: i == 0 ? 1 : fade,
+          fadeOpacity: isStage ? weight : 1,
+          imageOpacity: isStage ? 1 : weight,
         ).paint(
           canvas,
           ui.Size(size.width.toDouble(), size.height.toDouble()),

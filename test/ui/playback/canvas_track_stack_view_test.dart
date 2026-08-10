@@ -15,6 +15,7 @@ import 'package:anicel/src/models/property_track.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
 import 'package:anicel/src/models/transform_track.dart';
+import 'package:anicel/src/models/transition_geometry.dart';
 import 'package:anicel/src/services/brush_frame_store.dart';
 import 'package:anicel/src/services/playback/playback_frame_mapping.dart';
 import 'package:anicel/src/ui/playback/canvas_track_stack_view.dart';
@@ -98,24 +99,29 @@ void main() {
     bool Function(CutId cutId)? cutFxEnabledOf,
     bool Function(CutId cutId)? cutPictureVisibleOf,
     TransformTrack Function(CutId cutId)? transformTrackOf,
+    List<TransitionSpan> Function(TrackId trackId)? spansOf,
+    bool cameraViewEnabled = true,
   }) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
           body: CanvasTrackStackView(
             globalFrame: frame,
-            positionsOf: (globalFrame) => resolveTrackStackPositions(
+            positionsOf: (globalFrame) => resolveTrackStackContributions(
               layout: layout,
+              spansOf: spansOf ?? (_) => const [],
               globalFrameIndex: globalFrame,
             ),
             compositeCache: composites,
             qualityOf: () => PlaybackQuality.full,
             cameraFrameSize: cameraFrameSize,
+            cameraViewEnabled: cameraViewEnabled,
             cameraPoseOf: (cut, frameIndex) =>
                 CameraPose(center: CanvasPoint(x: 4, y: 4)),
             cutFxEnabledOf: cutFxEnabledOf,
             cutPictureVisibleOf: cutPictureVisibleOf,
             transformTrackOf: transformTrackOf,
+            pasteboardArgb: 0xff123456,
           ),
         ),
       ),
@@ -381,5 +387,154 @@ void main() {
     expect(painters[1].imageOpacity, 0.25, reason: 'its own picture thins');
 
     fading.composites.dispose();
+  });
+
+  group('a cut-crossing O.L', () {
+    /// ONE track, cut-a [0,4) then cut-b [4,10), with a 4-frame transition
+    /// spanning [2,6) — dead centre on the boundary, so frames 2..5 have two
+    /// pictures and the ramp runs 0, 1/3, 2/3, 1.
+    Project olProject() => Project(
+      id: const ProjectId('project'),
+      name: 'Project',
+      cameraSize: cameraFrameSize,
+      tracks: [
+        Track(
+          id: const TrackId('track-1'),
+          name: 'One',
+          cuts: [cutOf('cut-a', 4), cutOf('cut-b', 6)],
+        ),
+      ],
+      createdAt: DateTime.utc(2026),
+    );
+
+    List<TransitionSpan> spans(TrackId _) => const [(start: 2, length: 4)];
+
+    testWidgets('puts BOTH cuts on screen, leaving one first, and both paint '
+        'the stage — a 場面転換 cross-fades the paper too, so keying it to the '
+        'bottom CONTRIBUTION would superimpose line art over the old paper', (
+      tester,
+    ) async {
+      final store = BrushFrameStore();
+      final composites = CutFrameCompositeCache(
+        layerImages: LayerFrameImageCache(frameStore: store),
+        frameStore: store,
+        frameKeyOf: frameKey,
+      );
+      final layout = buildStoryboardTimelineLayout(olProject());
+      final frame = ValueNotifier<int?>(3);
+      await pumpView(
+        tester,
+        composites: composites,
+        frame: frame,
+        layout: layout,
+        spansOf: spans,
+      );
+
+      final painters = paintersOf(tester);
+      expect(painters, hasLength(2));
+      expect(painters[0].paintPaper, isTrue);
+      expect(painters[1].paintPaper, isTrue, reason: 'the arriving cut too');
+      expect(painters[0].paintLetterbox, isTrue);
+      expect(painters[1].paintLetterbox, isTrue);
+
+      composites.dispose();
+    });
+
+    testWidgets('lays the leaving cut down OPAQUE and the arriving one at the '
+        'ramp — painting both at their own share leaves t(1-t) of the floor '
+        'showing, which is a dip to black mid-dissolve', (tester) async {
+      final store = BrushFrameStore();
+      final composites = CutFrameCompositeCache(
+        layerImages: LayerFrameImageCache(frameStore: store),
+        frameStore: store,
+        frameKeyOf: frameKey,
+      );
+      final layout = buildStoryboardTimelineLayout(olProject());
+      final frame = ValueNotifier<int?>(3);
+      await pumpView(
+        tester,
+        composites: composites,
+        frame: frame,
+        layout: layout,
+        spansOf: spans,
+      );
+
+      // Frame 3 = offset 1 of 4 → the canonical ramp bottoms out ON the last
+      // frame, so t = 1/3 and the leaving cut owns 2/3.
+      final painters = paintersOf(tester);
+      expect(painters[0].fadeOpacity, 1, reason: 'no floor may show through');
+      expect(painters[1].fadeOpacity, closeTo(1 / 3, 1e-9));
+      // The mix the two weights actually produce IS the ramp: source-over of
+      // 1 then 1/3 gives 2/3 of the leaving picture and 1/3 of the arriving.
+      expect((1 - 1 / 3) * 1, closeTo(2 / 3, 1e-9));
+
+      composites.dispose();
+    });
+
+    testWidgets('outside the span nothing changes — one contribution, its own '
+        'share, exactly as a project with no transition', (tester) async {
+      final store = BrushFrameStore();
+      final composites = CutFrameCompositeCache(
+        layerImages: LayerFrameImageCache(frameStore: store),
+        frameStore: store,
+        frameKeyOf: frameKey,
+      );
+      final layout = buildStoryboardTimelineLayout(olProject());
+      final frame = ValueNotifier<int?>(8);
+      await pumpView(
+        tester,
+        composites: composites,
+        frame: frame,
+        layout: layout,
+        spansOf: spans,
+      );
+
+      final painters = paintersOf(tester);
+      expect(painters, hasLength(1));
+      expect(painters.single.fadeOpacity, 1);
+      expect(painters.single.paintPaper, isTrue);
+
+      composites.dispose();
+    });
+  });
+
+  testWidgets('CAMERA VIEW OFF leaves the stack in canvas space — no crop, no '
+      'letterbox, no apron. A storyboard ruler drag parks per move, so this '
+      'stack is what shows while scrubbing, and it used to reframe into the '
+      'camera whatever the toggle said', (tester) async {
+    final f = fixture();
+    await warm(tester, f.composites, f.layout, [('cut-a', 3), ('cut-c', 1)]);
+    f.frame.value = 3;
+
+    await pumpView(
+      tester,
+      composites: f.composites,
+      frame: f.frame,
+      layout: f.layout,
+      cameraViewEnabled: false,
+    );
+    var painters = paintersOf(tester);
+    expect(painters[0].cameraFrameSize, isNull);
+    expect(painters[0].cameraPose, isNull);
+    expect(painters[0].paintLetterbox, isFalse);
+    expect(painters[0].pasteboardColor, isNull);
+    expect(painters[0].paintPaper, isTrue, reason: 'the paper is not the crop');
+    expect(painters[0].image, isNotNull);
+
+    // Toggle on: the crop is back, so framing stays available while scrubbing
+    // rather than being reserved for playback.
+    await pumpView(
+      tester,
+      composites: f.composites,
+      frame: f.frame,
+      layout: f.layout,
+    );
+    painters = paintersOf(tester);
+    expect(painters[0].cameraFrameSize, cameraFrameSize);
+    expect(painters[0].cameraPose, isNotNull);
+    expect(painters[0].paintLetterbox, isTrue);
+    expect(painters[0].pasteboardColor, isNotNull);
+
+    f.composites.dispose();
   });
 }

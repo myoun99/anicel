@@ -1,6 +1,7 @@
 import '../../models/cut.dart';
 import '../../models/cut_id.dart';
 import '../../models/project_frame_rate.dart';
+import '../../models/track_id.dart';
 import '../../models/transition_geometry.dart';
 import '../../ui/storyboard_timeline_layout.dart';
 
@@ -133,6 +134,168 @@ List<TransitionContribution> resolveTransitionContributions({
     );
   }
   return contributions;
+}
+
+/// One entry of the stack a compositor paints: a cut's picture, its unit
+/// alpha, and which track group it belongs to.
+class TrackStackContribution {
+  const TrackStackContribution({
+    required this.cut,
+    required this.localFrameIndex,
+    required this.globalFrameIndex,
+    required this.trackIndex,
+    required this.opacity,
+    required this.isBottomTrack,
+  });
+
+  final Cut cut;
+
+  /// The frame inside the cut, counted from its first frame of MATERIAL —
+  /// so a cut arriving over an O.L supplies pictures before its own block.
+  final int localFrameIndex;
+  final int globalFrameIndex;
+  final int trackIndex;
+
+  /// The share of the result this cut's picture should own — the transition
+  /// ramp, before any track fade the caller multiplies in. 1 outside an O.L.
+  final double opacity;
+
+  /// Whether this contribution belongs to the bottom covered TRACK — the
+  /// stage, which owns the paper, the letterbox and the pasteboard apron.
+  ///
+  /// ★Deliberately per TRACK and not "is this the bottom contribution".
+  /// A Japanese O.L is a 場面転換: the whole screen changes, paper and BG
+  /// included, so BOTH cuts of a same-track O.L paint the stage and the
+  /// weights cross-fade it. Keying the stage to the bottom CONTRIBUTION is
+  /// what made the arriving cut a superimpose of line art over the leaving
+  /// cut's paper.
+  final bool isBottomTrack;
+
+  CutId get cutId => cut.id;
+
+  @override
+  String toString() =>
+      'TrackStackContribution(cut: ${cut.id}, local: $localFrameIndex, '
+      'global: $globalFrameIndex, track: $trackIndex, opacity: $opacity, '
+      'bottom: $isBottomTrack)';
+}
+
+/// Source-over paint alphas that make a stack of contributions read as the
+/// weighted MIX their [alphas] describe, with whatever sits below showing
+/// exactly the share the mix leaves unclaimed.
+///
+/// 🚨★Painting an O.L's two halves at their own alphas is wrong and looks
+/// like a bug: source-over leaves `t(1-t)` of the floor showing through the
+/// middle of every dissolve — a dip to black at the exact moment the two
+/// pictures should be all there is. The leaving picture has to go down
+/// OPAQUE and the arriving one over it at `t`.
+///
+/// That is this formula's `i == 0` case, and it generalises: with
+/// `S_i = below + Σ_{j≤i} a_j` and `w_i = a_i / S_i`, the result's
+/// coefficient for each picture is exactly `a_i` and the floor keeps
+/// `1 - Σa`. A lone F.O into a gap therefore still fades to the backdrop
+/// (`w = a`), while an O.L's pair does not (`w = 1, t`).
+///
+/// [alphas] summing past 1 is not a mix but plain layering (independent
+/// tracks), and the alphas are returned unchanged — the premise the
+/// normalisation rests on is that the group PARTITIONS one screen, which is
+/// true within a track and false across them.
+List<double> sourceOverWeights(List<double> alphas) {
+  final clamped = [for (final alpha in alphas) alpha.clamp(0.0, 1.0)];
+  var total = 0.0;
+  for (final alpha in clamped) {
+    total += alpha;
+  }
+  if (total >= 1) {
+    if (clamped.length <= 1) {
+      return clamped;
+    }
+    // Only a partition can be normalised; anything else is layering.
+    if (total > 1 + 1e-9) {
+      return clamped;
+    }
+  }
+  var cumulative = total >= 1 ? 0.0 : 1 - total;
+  final weights = <double>[];
+  for (final alpha in clamped) {
+    cumulative += alpha;
+    weights.add(cumulative <= 0 ? 0.0 : (alpha / cumulative).clamp(0.0, 1.0));
+  }
+  return weights;
+}
+
+/// [sourceOverWeights] applied PER TRACK GROUP over a whole stack.
+///
+/// The normalisation only holds inside a track, where an O.L's two halves
+/// partition one screen. Across tracks the contributions layer, so each
+/// track's run is weighted on its own and the runs stack unchanged.
+List<double> trackGroupSourceOverWeights(
+  List<TrackStackContribution> stack,
+  List<double> unitAlphas,
+) {
+  final weights = List<double>.filled(stack.length, 1);
+  var runStart = 0;
+  while (runStart < stack.length) {
+    var runEnd = runStart;
+    while (runEnd < stack.length &&
+        stack[runEnd].trackIndex == stack[runStart].trackIndex) {
+      runEnd += 1;
+    }
+    final run = sourceOverWeights(unitAlphas.sublist(runStart, runEnd));
+    for (var i = 0; i < run.length; i += 1) {
+      weights[runStart + i] = run[i];
+    }
+    runStart = runEnd;
+  }
+  return weights;
+}
+
+/// Everything a compositor must paint at [globalFrameIndex], across every
+/// track, transitions included — bottom to top.
+///
+/// Per track this is [resolveTransitionContributions] (so an O.L answers
+/// with both cuts, outgoing first); across tracks it keeps project track
+/// order, exactly as [resolveTrackStackPositions] did. With no transition
+/// anywhere the two agree contribution for contribution.
+List<TrackStackContribution> resolveTrackStackContributions({
+  required List<StoryboardTimelineLayoutEntry> layout,
+  required List<TransitionSpan> Function(TrackId trackId) spansOf,
+  required int globalFrameIndex,
+}) {
+  final byTrack = <int, List<StoryboardTimelineLayoutEntry>>{};
+  for (final entry in layout) {
+    (byTrack[entry.trackIndex] ??= []).add(entry);
+  }
+  final trackIndexes = byTrack.keys.toList()..sort();
+  final stack = <TrackStackContribution>[];
+  var bottomTrackIndex = -1;
+  for (final trackIndex in trackIndexes) {
+    final entries = byTrack[trackIndex]!;
+    final contributions = resolveTransitionContributions(
+      playlist: entries,
+      spans: spansOf(entries.first.trackId),
+      globalFrameIndex: globalFrameIndex,
+    );
+    if (contributions.isEmpty) {
+      continue;
+    }
+    if (bottomTrackIndex < 0) {
+      bottomTrackIndex = trackIndex;
+    }
+    for (final contribution in contributions) {
+      stack.add(
+        TrackStackContribution(
+          cut: contribution.cut,
+          localFrameIndex: contribution.localFrameIndex,
+          globalFrameIndex: globalFrameIndex,
+          trackIndex: trackIndex,
+          opacity: contribution.opacity,
+          isBottomTrack: trackIndex == bottomTrackIndex,
+        ),
+      );
+    }
+  }
+  return stack;
 }
 
 /// The multitrack display resolution: [globalFrameIndex] answered by EVERY

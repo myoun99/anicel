@@ -13996,6 +13996,30 @@ class EditorSessionManager extends ChangeNotifier {
         globalFrameIndex: globalFrame,
       );
 
+  /// The same resolution WITH transitions: an O.L answers with both cuts,
+  /// leaving one first, each carrying its share of the frame. One reader for
+  /// the parked canvas, all-cuts playback and the camera-size bake.
+  List<TrackStackContribution> trackStackContributionsAt(int globalFrame) =>
+      resolveTrackStackContributions(
+        layout: _projectLayout(),
+        spansOf: transitionSpansOfTrack,
+        globalFrameIndex: globalFrame,
+      );
+
+  /// One track's transition spans on its own global axis. Falls back to no
+  /// spans for a track id the project no longer holds.
+  List<TransitionSpan> transitionSpansOfTrack(TrackId trackId) {
+    for (final track in _repository.requireProject().tracks) {
+      if (track.id == trackId) {
+        return [
+          for (final entry in track.transitionLayer.instructions.entries)
+            (start: entry.key, length: entry.value.length),
+        ];
+      }
+    }
+    return const [];
+  }
+
   /// Deselects the active cut for a GAP landing (UI-R9 #3): standing in a
   /// gap means NO cut is selected — the timeline/timesheet show their
   /// empty states and the canvas shows the void. QUIET: callers notify
