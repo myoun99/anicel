@@ -14,6 +14,7 @@ import 'package:anicel/src/services/bitmap_tile_rgba.dart';
 import 'package:anicel/src/services/brush_live_stroke_rasterizer.dart'
     show ActiveStrokePixelSource;
 import 'package:anicel/src/ui/canvas/active_stroke_overlay.dart';
+import 'package:anicel/src/core/sync_image_upload.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/debug/measurement_mode.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
@@ -691,6 +692,389 @@ void main() {
       );
     });
   });
+
+  /// N4 ③: what the painter DRAWS for a tile whose own decode has not
+  /// landed. The order is truth, then a picture of THIS tile, then a
+  /// picture of a DIFFERENT one, then per-pixel, then nothing — and the
+  /// two tests here are the two places that order is load-bearing.
+  ///
+  /// The stand-in is deliberately a colour the tile's own bytes do not
+  /// contain, so the oracle can tell "drew the stand-in" apart from "drew
+  /// its pixels" and from "drew the previous generation". A stand-in the
+  /// same colour as the tile would make either outcome green.
+  group('a tile stands in for itself (N4 ③)', () {
+    ui.Image solid(int size, Color color) {
+      final recorder = ui.PictureRecorder();
+      Canvas(recorder).drawRect(
+        Rect.fromLTWH(0, 0, size.toDouble(), size.toDouble()),
+        Paint()..color = color,
+      );
+      final picture = recorder.endRecording();
+      final image = picture.toImageSync(size, size);
+      picture.dispose();
+      return image;
+    }
+
+    test('a stand-in outranks the previous generation at the same '
+        'coordinate', () async {
+      const scope = 'cel';
+      final cache = BitmapTileImageCache();
+
+      // The generation the user is looking at: BLUE, decoded, in the
+      // coordinate bucket.
+      final previous = _tile(
+        coord: TileCoord(x: 0, y: 0),
+        size: 2,
+        colors: {const _Point(0, 0): RgbaColor(r: 0, g: 0, b: 255, a: 255)},
+      );
+      cache.adoptDecoded(
+        previous,
+        solid(2, const Color(0xFF0000FF)),
+        staleScope: scope,
+      );
+
+      // The generation a commit just produced: a NEW tile object at the
+      // same coordinate, so its image lookup misses by construction.
+      final committed = _tile(
+        coord: TileCoord(x: 0, y: 0),
+        size: 2,
+        colors: {const _Point(0, 0): RgbaColor(r: 255, g: 0, b: 0, a: 255)},
+      );
+      cache.putProvisional(committed, solid(2, const Color(0xFF00FF00)));
+
+      final pixels = await _paintPixels(
+        BitmapSurfacePainter(
+          surface: BitmapSurface(
+            canvasSize: CanvasSize(width: 2, height: 2),
+            tileSize: 2,
+            tiles: {committed.coord: committed},
+          ),
+          showTransparentBackground: false,
+          staleScope: scope,
+          tileImageCache: cache,
+        ),
+        width: 2,
+        height: 2,
+      );
+
+      expect(
+        _rgbaAt(pixels, width: 2, x: 0, y: 0),
+        [0, 255, 0, 255],
+        reason:
+            'blue here is the stale-tile bug itself: the coordinate '
+            'fallback answering for a tile with a DIFFERENT tile picture',
+      );
+    });
+
+    test('the per-pixel budget cannot starve a stand-in', () async {
+      // ⚠️ TEN tiles, not four. The painter draws at most four undecoded
+      // tiles per paint, so a fixture inside that budget is drawn either
+      // way and proves nothing — the same trap that made three earlier
+      // fixtures in this program pass before their fix.
+      const columns = 10;
+      const tileSize = 2;
+      final cache = BitmapTileImageCache();
+      final tiles = <TileCoord, BitmapTile>{};
+      for (var column = 0; column < columns; column += 1) {
+        final coord = TileCoord(x: column, y: 0);
+        final tile = _tile(
+          coord: coord,
+          size: tileSize,
+          // Red ONLY at the tile's first pixel: the second pixel has no
+          // ink at all, so it is drawn only by something that covers the
+          // whole tile.
+          colors: {const _Point(0, 0): RgbaColor(r: 255, g: 0, b: 0, a: 255)},
+        );
+        tiles[coord] = tile;
+        cache.putProvisional(tile, solid(tileSize, const Color(0xFF00FF00)));
+      }
+
+      final pixels = await _paintPixels(
+        BitmapSurfacePainter(
+          surface: BitmapSurface(
+            canvasSize: CanvasSize(width: columns * tileSize, height: tileSize),
+            tileSize: tileSize,
+            tiles: tiles,
+          ),
+          showTransparentBackground: false,
+          tileImageCache: cache,
+        ),
+        width: columns * tileSize,
+        height: tileSize,
+      );
+
+      // Read BOTH pixels of every tile: the inked one says which route
+      // drew (stand-in vs the per-pixel budget), the blank one says
+      // whether the coordinate was covered at all. One column of the
+      // table alone cannot tell "the budget drew four" from "nothing
+      // drew", and those are different failures.
+      String glyph(int x) {
+        final rgba = _rgbaAt(pixels, width: columns * tileSize, x: x, y: 0);
+        if (rgba[3] == 0) {
+          return '.';
+        }
+        if (rgba[0] == 0 && rgba[1] == 255) {
+          return 'g';
+        }
+        if (rgba[0] == 255 && rgba[1] == 0) {
+          return 'r';
+        }
+        return '?';
+      }
+
+      final inked = [for (var c = 0; c < columns; c += 1) glyph(c * tileSize)];
+      final blank = [
+        for (var c = 0; c < columns; c += 1) glyph(c * tileSize + 1),
+      ];
+      expect(
+        '${inked.join()} / ${blank.join()}',
+        '${'g' * columns} / ${'g' * columns}',
+        reason:
+            'every coordinate must show its own stand-in. "r" is the '
+            'per-pixel budget drawing the tile bytes instead; "." is the '
+            'hole it leaves once the budget is gone',
+      );
+    });
+  });
+
+  /// N4 ⑤: an engine that can turn BYTES into a picture within the frame.
+  ///
+  /// 🚨 Every machine that runs this suite says it cannot — Windows is
+  /// Skia in every build, CI included — so these drive the cache's
+  /// injection point. The uploader here is faithful: it draws the actual
+  /// premultiplied bytes it is handed, so the raster below is the tile's
+  /// own pixels and not a token standing for them.
+  group('bytes become pictures within the frame (N4 ⑤)', () {
+    tearDown(() => debugSyncImageUploadOverride = null);
+
+    ui.Image fromPremultiplied(Uint8List pixels, int width, int height) {
+      final recorder = ui.PictureRecorder();
+      final canvas = Canvas(recorder);
+      final paint = Paint();
+      for (var y = 0; y < height; y += 1) {
+        for (var x = 0; x < width; x += 1) {
+          final offset = (y * width + x) * 4;
+          final alpha = pixels[offset + 3];
+          if (alpha == 0) {
+            continue;
+          }
+          int straight(int value) =>
+              alpha == 255 ? value : ((value * 255) ~/ alpha).clamp(0, 255);
+          paint.color = Color.fromARGB(
+            alpha,
+            straight(pixels[offset]),
+            straight(pixels[offset + 1]),
+            straight(pixels[offset + 2]),
+          );
+          canvas.drawRect(
+            Rect.fromLTWH(x.toDouble(), y.toDouble(), 1, 1),
+            paint,
+          );
+        }
+      }
+      final picture = recorder.endRecording();
+      final image = picture.toImageSync(width, height);
+      picture.dispose();
+      return image;
+    }
+
+    test('an undecoded tile draws its OWN bytes instead of the previous '
+        'generation', () async {
+      // The stale-tile bug in one frame: a coordinate that HAS a previous
+      // picture and a new tile that has none. Everything before this
+      // could only choose which wrong-or-absent answer to give. With a
+      // synchronous upload the right answer is simply available.
+      const scope = 'cel';
+      final cache = BitmapTileImageCache();
+      debugSyncImageUploadOverride = fromPremultiplied;
+
+      final previous = _tile(
+        coord: TileCoord(x: 0, y: 0),
+        size: 2,
+        colors: {const _Point(0, 0): RgbaColor(r: 0, g: 0, b: 255, a: 255)},
+      );
+      cache.adoptDecoded(previous, await _solid2(const Color(0xFF0000FF)),
+          staleScope: scope);
+
+      final committed = _tile(
+        coord: TileCoord(x: 0, y: 0),
+        size: 2,
+        colors: {const _Point(0, 0): RgbaColor(r: 255, g: 0, b: 0, a: 255)},
+      );
+
+      final pixels = await _paintPixels(
+        BitmapSurfacePainter(
+          surface: BitmapSurface(
+            canvasSize: CanvasSize(width: 2, height: 2),
+            tileSize: 2,
+            tiles: {committed.coord: committed},
+          ),
+          showTransparentBackground: false,
+          staleScope: scope,
+          tileImageCache: cache,
+        ),
+        width: 2,
+        height: 2,
+      );
+
+      expect(
+        _rgbaAt(pixels, width: 2, x: 0, y: 0),
+        [255, 0, 0, 255],
+        reason:
+            'blue is the borrow — the previous generation answering for a '
+            'tile whose own bytes were available the whole time',
+      );
+      expect(
+        cache.imageFor(committed),
+        isNotNull,
+        reason: 'and it is adopted, so the coordinate pays this once',
+      );
+    });
+
+    test('the four-tile budget stops being the ceiling', () async {
+      // Ten undecoded tiles and nothing to borrow. The per-pixel fallback
+      // draws four of them and the rest are silent; an upload draws all
+      // ten, which is what makes a whole-canvas landing appear at once
+      // instead of converging tile by tile.
+      const columns = 10;
+      const tileSize = 2;
+      final cache = BitmapTileImageCache();
+      debugSyncImageUploadOverride = fromPremultiplied;
+      final tiles = <TileCoord, BitmapTile>{};
+      for (var column = 0; column < columns; column += 1) {
+        final coord = TileCoord(x: column, y: 0);
+        tiles[coord] = _tile(
+          coord: coord,
+          size: tileSize,
+          colors: {const _Point(0, 0): RgbaColor(r: 255, g: 0, b: 0, a: 255)},
+        );
+      }
+
+      final pixels = await _paintPixels(
+        BitmapSurfacePainter(
+          surface: BitmapSurface(
+            canvasSize: CanvasSize(width: columns * tileSize, height: tileSize),
+            tileSize: tileSize,
+            tiles: tiles,
+          ),
+          showTransparentBackground: false,
+          tileImageCache: cache,
+        ),
+        width: columns * tileSize,
+        height: tileSize,
+      );
+
+      var drawn = 0;
+      for (var column = 0; column < columns; column += 1) {
+        if (_rgbaAt(
+              pixels,
+              width: columns * tileSize,
+              x: column * tileSize,
+              y: 0,
+            )[3] !=
+            0) {
+          drawn += 1;
+        }
+      }
+      expect(
+        drawn,
+        columns,
+        reason: '$drawn of $columns drew — four means the budget is still '
+            'the answer and the upload never ran',
+      );
+    });
+
+    test('uploads are rationed per paint, and drain over the next ones', () {
+      // An upload costs what a decode START costs — the 256KB tile copy
+      // and premultiply — plus the upload. Unrationed, a zoomed-out paint
+      // of a large cel would do the whole visible grid at once, which is
+      // precisely the burst decodeStartBudget exists to spread out. This
+      // is the one N4 ⑤ regression that could never show on the renderer
+      // it was written on: Skia declines every call before the budget is
+      // even consulted.
+      const budget = BitmapSurfacePainter.decodeStartBudget;
+      const columns = budget + 8;
+      const tileSize = 2;
+      final cache = BitmapTileImageCache();
+      debugSyncImageUploadOverride = fromPremultiplied;
+      final tiles = <TileCoord, BitmapTile>{};
+      for (var column = 0; column < columns; column += 1) {
+        final coord = TileCoord(x: column, y: 0);
+        tiles[coord] = _tile(
+          coord: coord,
+          size: tileSize,
+          colors: {const _Point(0, 0): RgbaColor(r: 255, g: 0, b: 0, a: 255)},
+        );
+      }
+      final surface = BitmapSurface(
+        canvasSize: CanvasSize(width: columns * tileSize, height: tileSize),
+        tileSize: tileSize,
+        tiles: tiles,
+      );
+      final painter = BitmapSurfacePainter(
+        surface: surface,
+        showTransparentBackground: false,
+        // Its own scope: a borrow would answer before the upload is ever
+        // offered, and then this measures nothing.
+        staleScope: Object(),
+        tileImageCache: cache,
+      );
+
+      int uploaded() =>
+          surface.tiles.values.where((t) => cache.imageFor(t) != null).length;
+
+      void paintOnce() {
+        final recorder = ui.PictureRecorder();
+        final size = Size(
+          (columns * tileSize).toDouble(),
+          tileSize.toDouble(),
+        );
+        painter.paint(Canvas(recorder, Offset.zero & size), size);
+        recorder.endRecording().dispose();
+      }
+
+      paintOnce();
+      final afterFirst = uploaded();
+      expect(
+        afterFirst,
+        budget,
+        reason: 'one paint uploaded $afterFirst of $columns — the whole '
+            'visible grid in one frame is the burst this rations',
+      );
+
+      paintOnce();
+      expect(
+        uploaded(),
+        greaterThan(afterFirst),
+        reason: 'the remainder must drain on later paints, not stall',
+      );
+      // ⚠️ NOT "all of them". The first paint's collect pass starts
+      // asynchronous decodes for tiles it could not upload, and
+      // `adoptSyncUpload` stands aside for an in-flight decode — that one
+      // would land later and overwrite the entry, leaking the image it
+      // displaced. So the tail arrives by decode rather than by upload,
+      // and what has to be true is that NOTHING is left waiting for a
+      // start that will never come.
+      expect(
+        surface.tiles.values.where(cache.needsDecodeStart).toList(),
+        isEmpty,
+        reason: 'a tile with neither a picture nor a decode in flight is a '
+            'coordinate that has stopped converging',
+      );
+    });
+  });
+}
+
+Future<ui.Image> _solid2(Color color) async {
+  final recorder = ui.PictureRecorder();
+  Canvas(recorder).drawRect(
+    const Rect.fromLTWH(0, 0, 2, 2),
+    Paint()..color = color,
+  );
+  final picture = recorder.endRecording();
+  final image = picture.toImageSync(2, 2);
+  picture.dispose();
+  return image;
 }
 
 /// Full-alpha stroke coverage at canvas (0,0) only — a minimal live ERASE

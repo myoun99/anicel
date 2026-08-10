@@ -120,6 +120,32 @@ void main() {
       for (var x = 30; x <= 750; x += 40) dab(x.toDouble(), y.toDouble()),
   ];
 
+  /// A picture whose pixels are SEMI-TRANSPARENT and soft-edged, so a
+  /// landing dropped on top of it makes the stand-in composition actually
+  /// blend.
+  ///
+  /// ⚠️ The hard opaque squares above cannot measure the composition at
+  /// all: `srcOver` of an opaque source is exact by construction, so a
+  /// landing made of them agrees with the commit whatever the rounding
+  /// does. Every other fixture in this file lifts the WHOLE picture too,
+  /// which leaves the pre-commit tiles EMPTY — and composing over nothing
+  /// is exact for the same reason.
+  BrushDab softDab(double x, double y) => BrushDab(
+    center: CanvasPoint(x: x, y: y),
+    color: 0xFFFF2020,
+    size: 26,
+    opacity: 0.45,
+    flow: 0.8,
+    hardness: 0.25,
+    tipShape: BrushTipShape.round,
+    pressure: 1,
+    sequence: 0,
+  );
+  final blendedPicture = <BrushDab>[
+    for (var y = 40; y <= 520; y += 26)
+      for (var x = 40; x <= 720; x += 26) softDab(x.toDouble(), y.toDouble()),
+  ];
+
   /// The cel's CURRENT pixels — 0/null means transparent.
   int inkAt(BrushFrameEditingCoordinator coordinator, int x, int y) {
     return surfacePixelRgba(
@@ -168,6 +194,23 @@ void main() {
     });
     image.dispose();
     return mask;
+  }
+
+  /// The panel's raw pixels, same capture as [screenInkMask] but without
+  /// the red threshold — for questions about the VALUE of a pixel rather
+  /// than whether it counts as ink.
+  Future<Uint8List> screenBytes(WidgetTester tester) async {
+    final boundary = tester.renderObject<RenderRepaintBoundary>(
+      find.byKey(const ValueKey<String>('panel-capture')),
+    );
+    final image = boundary.toImageSync();
+    late Uint8List bytes;
+    await tester.runAsync(() async {
+      final data = await image.toByteData(format: ImageByteFormat.rawRgba);
+      bytes = Uint8List.fromList(data!.buffer.asUint8List());
+    });
+    image.dispose();
+    return bytes;
   }
 
   /// What the frame gets WRONG against the settled result: ink where the
@@ -1299,64 +1342,88 @@ void main() {
       // The float is what should cover that, because it is not a stand-in:
       // by P3a's preview/commit byte-identity contract it holds exactly
       // these bytes at exactly this place.
-      final env = await pumpSelectionPanel(tester);
-      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      final env = await pumpSelectionPanel(tester, sourceDabs: widePicture);
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(700, 500));
       await env.setTool(CanvasTool.move);
-      await dragOnLayer(tester, const Offset(45, 45), const Offset(58, 49));
+      await dragOnLayer(tester, const Offset(300, 200), const Offset(340, 225));
       await tester.pump();
 
       // Something on screen must be able to paint the moved artwork: the
-      // float, or a committed surface whose tiles have decoded. Stated as
-      // the OR because which one it is depends on decode timing, and the
-      // defect is that on the confirm frame it was NEITHER.
+      // float, or the committed surface itself. Stated as the OR because
+      // which one it is depends on decode timing, and the defect is that
+      // on the confirm frame it was NEITHER.
       // ⚠️ "The float is UP" is NOT "the float PAINTS", and an earlier
       // version of this oracle only asked the first. Its tiles are new
       // objects, so they miss the identity-keyed image cache, and the
       // painter's per-pixel fallback covers four tiles a frame — so a
       // mutant that pinned an EMPTY surface, which is the user's symptom
       // verbatim, passed all 29 tests in this file. It asks the raster now.
+      //
+      // ⚠️ EVERY surface painter, the committed one included. This used to
+      // exclude it and ask a separate question of the cache — "has every
+      // committed tile decoded" — which stopped being the right question
+      // once a committed tile could also answer with a picture composed
+      // from the float. Two ways of asking meant a mechanism that made the
+      // frame CORRECT could still read as a failure. The raster does not
+      // care which mechanism drew.
+      //
+      // 🚨 THIS ORACLE COULD NOT FAIL, FOR TWO SEPARATE REASONS, AND BOTH
+      // ARE FIXED HERE. Measured against a painter rebuilt with a
+      // brand-new EMPTY cache — no decode, no stand-in, no borrow, no
+      // upload, i.e. every mechanism the assertion names removed:
+      //
+      //  1. THE WINDOW. Sampled at 128×128 it sits inside a SINGLE 256px
+      //     tile whatever the artwork is, so the four-tile per-pixel
+      //     budget covers it alone: own=48 missing=0, pass. `widePicture`
+      //     over the full 800×600 viewport puts twelve tiles in range,
+      //     eight past the budget. Same reason `widePicture` exists at
+      //     all — four tiles is the threshold below which every defect in
+      //     this family is invisible.
+      //  2. THE PAPER, which is the worse one and survived fix 1:
+      //     `missing` asked whether the painted pixel had any ALPHA, and
+      //     the base painter fills the canvas with opaque paper before it
+      //     draws a single tile. So alpha is 255 everywhere in-canvas and
+      //     `missing` was structurally 0 — own=1064 missing=0 on an empty
+      //     cache. It has to ask for the INK, and it now uses the same
+      //     red predicate `screenInkMask` does. With both fixed, the
+      //     empty-cache painter reports missing=800 of 1064 and fails.
+      bool isInk(Uint8List px, int offset) =>
+          px[offset] > 128 && px[offset + 1] < 100 && px[offset + 2] < 100;
       Future<bool> somethingCanPaintIt() async {
-        final committed = env.coordinator.currentSurfaceOf(
-          env.coordinator.activeFrameKey,
-        );
-        final floats = tester
+        final painters = tester
             .widgetList<CustomPaint>(find.byType(CustomPaint))
             .map((paint) => paint.painter)
             .whereType<BitmapSurfacePainter>()
-            .where((painter) => !identical(painter.surface, committed))
             .toList();
-        // Sampled BEFORE any render: the render below runs through
-        // runAsync, which lets the pending decodes land and would make
-        // this frame read as ready when it was not.
-        final committedReady = committed.tiles.values.every(
-          (tile) => BitmapTileImageCache.instance.imageFor(tile) != null,
-        );
-        for (final painter in floats) {
+        for (final painter in painters) {
           var own = 0;
           var missing = 0;
           await tester.runAsync(() async {
             final recorder = PictureRecorder();
-            const size = Size(128, 128);
+            const size = Size(800, 600);
             painter.paint(Canvas(recorder, Offset.zero & size), size);
-            final image = await recorder.endRecording().toImage(128, 128);
+            final image = await recorder.endRecording().toImage(800, 600);
             final data = await image.toByteData(
               format: ImageByteFormat.rawRgba,
             );
             final painted = data!.buffer.asUint8List();
-            for (var y = 0; y < 128; y += 1) {
-              for (var x = 0; x < 128; x += 1) {
+            // Stepped, like its neighbour: an exhaustive walk of 480k
+            // pixels through a per-pixel tile lookup takes minutes and
+            // finds nothing extra.
+            for (var y = 0; y < 600; y += 2) {
+              for (var x = 0; x < 800; x += 2) {
                 final own32 = surfacePixelRgba(painter.surface, x, y) ?? 0;
                 if (((own32 >> 24) & 0xff) == 0) continue;
                 own += 1;
-                if (painted[(y * 128 + x) * 4 + 3] == 0) missing += 1;
+                if (!isInk(painted, (y * 800 + x) * 4)) missing += 1;
               }
             }
           });
           // `own > 0` rejects an empty pinned surface; `missing == 0`
-          // rejects a float the four-tile budget cannot cover.
+          // rejects a painter the four-tile budget cannot cover.
           if (own > 0 && missing == 0) return true;
         }
-        return committedReady;
+        return false;
       }
 
       expect(
@@ -1524,11 +1591,19 @@ void main() {
       );
     });
 
-    testWidgets('the held preview lets go once the base can paint, and does '
-        'not keep painting over it', (tester) async {
+    testWidgets('nothing of the confirm outlives it — the held picture is '
+        'let go, and the frame it covered is covered', (tester) async {
       // Keeping a decoded image alive past the session is only safe if it
       // is also let go. A hold that outlived its release would paint one
       // transform state over every later edit for the rest of the session.
+      //
+      // ⚠️ The premise used to be "the preview IS mounted on the confirm
+      // frame", and it stopped being true for a good reason: the landing's
+      // tiles now get that same picture composed onto them, so the base
+      // paints the landing itself and there is nothing left to hold. A
+      // mount assertion cannot tell that apart from the hold failing, so
+      // the frame is asked about instead — released early is only correct
+      // if the artwork is still there, and that is the question.
       final env = await pumpSelectionPanel(
         tester,
         tool: CanvasTool.move,
@@ -1545,13 +1620,20 @@ void main() {
       await settle(tester);
       env.commands.commitTransform();
       await tester.pump();
-      expect(
-        find.byKey(const ValueKey<String>('transform-resample-preview')),
-        findsOneWidget,
-        reason: 'the confirm did not hold the picture it just landed',
-      );
+      final atConfirm = await screenInkMask(tester);
 
       await settle(tester);
+      final settled = await screenInkMask(tester);
+      final settledInk = settled.where((on) => on).length;
+      final delta = inkDelta(atConfirm, settled);
+      expect(settledInk, greaterThan(0), reason: 'the landing has ink at all');
+      expect(
+        delta.hole,
+        lessThan((settledInk * 0.1).round()),
+        reason:
+            'the confirm frame lost the artwork: ${delta.hole} of '
+            '$settledInk absent',
+      );
       expect(
         find.byKey(const ValueKey<String>('transform-resample-preview')),
         findsNothing,
@@ -1577,6 +1659,50 @@ void main() {
       );
       await dragOnLayer(tester, const Offset(300, 200), const Offset(340, 225));
       expect(env.commands.movePending, isTrue);
+      // ⚠️ THE FLOAT HAS TO HAVE DECODED, and only `runAsync` gets it
+      // there: `decodeImageFromPixels` never completes inside `pump`'s
+      // fake async, so without this the float's tiles have no pictures at
+      // the confirm — a state production cannot be in, because the user
+      // has been looking at that float for the whole drag. Written
+      // without it, this measured a confirm whose float had nothing to
+      // give and reported no change from a fix that gives the base the
+      // float's picture.
+      await settle(tester);
+      // ⚠️ THE FLOAT'S tiles, not just the cel's. The comment above names
+      // the float as the premise, and the float is by this file's own
+      // definition the surface that is NOT `currentSurface` — a separate
+      // 9-tile object with its own tiles. Asserting only the cel read as
+      // a guard and guarded the wrong thing: after a whole-picture lift
+      // those cel tiles are fully TRANSPARENT, so their decodes put no
+      // pixels in the frame the bound below measures, while the float's
+      // are the operand `inkFromSurface` refuses to compose without.
+      // (Both matter — the cel is the pre-image half of the composition —
+      // so both are asserted.)
+      final committedBefore = currentSurface(env.coordinator);
+      final floatSurfaces = tester
+          .widgetList<CustomPaint>(find.byType(CustomPaint))
+          .map((paint) => paint.painter)
+          .whereType<BitmapSurfacePainter>()
+          .map((painter) => painter.surface)
+          .where((surface) => !identical(surface, committedBefore))
+          .toList();
+      expect(
+        floatSurfaces,
+        isNotEmpty,
+        reason: 'no float is mounted during the session — bad premise',
+      );
+      for (final surface in [committedBefore, ...floatSurfaces]) {
+        expect(
+          surface.tiles.values.every(
+            (tile) =>
+                BitmapTileImageCache.instance.displayImageFor(tile) != null,
+          ),
+          isTrue,
+          reason:
+              'decodes did not land in the settle window — the bound below '
+              'is measuring the fixture, not the confirm',
+        );
+      }
 
       env.commands.confirmPendingMove();
       await tester.pump();
@@ -1587,21 +1713,24 @@ void main() {
       final delta = inkDelta(atConfirm, settled);
 
       expect(settledInk, greaterThan(0));
-      // ⚠️ CHARACTERIZED, NOT SATISFIED. The confirm frame of a wide move
-      // is still missing about 42% of the landing. It was 55% before the
-      // base stopped lying and 44% before the move stopped rebuilding the
-      // float; what is left is the hold's own coverage, not either of
-      // those. This bound catches it getting worse.
+      // 🚨 THIS BOUND USED TO READ 45%, AND THE 45 WAS THE FIXTURE.
       //
-      // It moved 37% → 42% when R2 #13 took the panel's frame away: the
-      // viewport gained the status strip's 20px, the bottom bar's 28 and
-      // the right strip's 14, so more of a WIDE picture is on screen and
-      // more of its tiles are pending on the one frame this measures. The
-      // hold's coverage did not change; the window it is measured through
-      // did.
+      // The comment here recorded a confirm frame "still missing about
+      // 42% of the landing", tracked down from 55% and 44% across two
+      // earlier fixes, and attributed the rest to the hold's own
+      // coverage. It was none of that: the fixture never let the float
+      // DECODE. `decodeImageFromPixels` does not complete inside `pump`'s
+      // fake async, so the hold was covering with a surface that had no
+      // pictures, and the four-tile per-pixel budget was all the coverage
+      // there was. Production cannot be in that state — the user has been
+      // looking at that float for the whole drag.
+      //
+      // With the `settle` above, the number is 0. Not "small": the hold
+      // covers the landing exactly. So the bound is 0, and the premise
+      // that makes it reachable is asserted rather than assumed.
       expect(
         delta.hole,
-        lessThan((settledInk * 0.45).round()),
+        0,
         reason:
             '${delta.hole} of $settledInk absent on the confirm frame '
             '(ghost ${delta.ghost})',
@@ -1613,6 +1742,201 @@ void main() {
         delta.ghost,
         lessThan((settledInk * 0.1).round()),
         reason: '${delta.ghost} pixels of artwork where the result has none',
+      );
+    });
+
+    testWidgets('the canvas paints its OWN landing: nothing is left covering '
+        'for it, and the frame is the settled frame', (tester) async {
+      // N4. Everything before this closed the confirm frame by COVERING
+      // it — the float, or the held resample, clipped over the tiles the
+      // base could not paint yet. The measurements say that cover works:
+      // with a float whose tiles have decoded, the confirm frame is
+      // already pixel-identical to the settled one, hole 0 and ghost 0.
+      //
+      // So this test is not about a missing pixel. It is about WHICH
+      // object is drawing: composing the float's picture onto the base's
+      // new tiles means the canvas answers for itself and the cover can
+      // go, and a cover that is never mounted cannot mis-clip, cannot
+      // composite a partial-alpha edge twice, and cannot outlive its
+      // release.
+      //
+      // ⚠️ The float must have DECODED before the confirm — `runAsync`,
+      // because `decodeImageFromPixels` never completes under `pump`.
+      // Without it the float has no picture to give and this measures a
+      // state production is never in (the user has been looking at that
+      // float for the whole drag).
+      final env = await pumpSelectionPanel(
+        tester,
+        tool: CanvasTool.move,
+        sourceDabs: widePicture,
+      );
+      await dragOnLayer(tester, const Offset(300, 200), const Offset(340, 225));
+      await settle(tester);
+      final committedBefore = currentSurface(env.coordinator);
+      expect(
+        tester
+            .widgetList<CustomPaint>(find.byType(CustomPaint))
+            .map((paint) => paint.painter)
+            .whereType<BitmapSurfacePainter>()
+            .any((painter) => !identical(painter.surface, committedBefore)),
+        isTrue,
+        reason: 'no float during the session — bad premise',
+      );
+
+      env.commands.confirmPendingMove();
+      await tester.pump();
+      final atConfirm = await screenBytes(tester);
+      final committed = currentSurface(env.coordinator);
+      final covers = tester
+          .widgetList<CustomPaint>(find.byType(CustomPaint))
+          .map((paint) => paint.painter)
+          .whereType<BitmapSurfacePainter>()
+          .where((painter) => !identical(painter.surface, committed))
+          .length;
+
+      await settle(tester);
+      final settled = await screenBytes(tester);
+      var differing = 0;
+      var worst = 0;
+      for (var i = 0; i < settled.length; i += 4) {
+        var pixelWorst = 0;
+        for (var c = 0; c < 4; c += 1) {
+          final delta = (atConfirm[i + c] - settled[i + c]).abs();
+          if (delta > pixelWorst) pixelWorst = delta;
+        }
+        if (pixelWorst > 0) differing += 1;
+        if (pixelWorst > worst) worst = pixelWorst;
+      }
+
+      expect(
+        covers,
+        0,
+        reason:
+            'the landing is still being covered for by $covers surface(s) '
+            '— the base did not take its own picture',
+      );
+      // And taking the cover away cost nothing: composing is only allowed
+      // to move fidelity by the rounding step the parity sweep measured,
+      // and here the landing sits on erased tiles, so there is not even
+      // that.
+      expect(
+        differing,
+        0,
+        reason:
+            'the confirm frame differs from the settled frame in '
+            '$differing pixels (worst channel $worst)',
+      );
+    });
+
+    testWidgets('what the composition costs the EYE: at most one channel '
+        'step, against the screen and against the truth', (tester) async {
+      // N4 ②, and it is the judgement that closes the Skia side.
+      //
+      // The parity suite measures composed-vs-COMMIT and answers "may we
+      // adopt this?" (no — up to two channel steps, so it stays
+      // provisional). That is not the question a USER has. Theirs is: on
+      // the frame my edit lands, does the picture change under me? So
+      // this measures the composed stand-in against BOTH neighbours — the
+      // frame before it and the settled truth after — through the panel's
+      // own capture, which is what the eye gets.
+      //
+      // ⚠️ THE FIXTURE IS THE WHOLE TEST. Every other confirm test here
+      // lifts the WHOLE picture with hard opaque dabs, and both halves of
+      // that are exact by construction: composing over an emptied tile is
+      // exact, and srcOver of an opaque source is exact. So none of them
+      // has ever exercised a blend. This one lifts a SUB-REGION of a
+      // soft, semi-transparent picture and drops it back on top of the
+      // rest, which is the only shape where the two rounding orders can
+      // disagree at all — and the anti-vacuity assertion below fails if a
+      // future change makes it stop blending.
+      final env = await pumpSelectionPanel(
+        tester,
+        sourceDabs: blendedPicture,
+      );
+      await dragOnLayer(tester, const Offset(120, 120), const Offset(430, 380));
+      await env.setTool(CanvasTool.move);
+      await dragOnLayer(tester, const Offset(250, 220), const Offset(286, 249));
+      await settle(tester);
+
+      final live = await screenBytes(tester);
+      env.commands.confirmPendingMove();
+      await tester.pump();
+      final atConfirm = await screenBytes(tester);
+      await settle(tester);
+      final settled = await screenBytes(tester);
+
+      // ⚠️ The ants and the confirm button vanish AT the confirm, so a
+      // whole-panel diff of live-vs-confirm is dominated by chrome —
+      // measured 2105 pixels at a full 255. A pixel counts as chrome when
+      // live disagrees with SETTLED by more than a rounding step, since
+      // the settled frame has neither chrome nor stand-ins.
+      var chrome = 0;
+      var vsScreen = 0;
+      var vsScreenWorst = 0;
+      var vsTruth = 0;
+      var vsTruthWorst = 0;
+      for (var i = 0; i < settled.length; i += 4) {
+        var liveVsSettled = 0;
+        var liveVsConfirm = 0;
+        var confirmVsSettled = 0;
+        for (var c = 0; c < 4; c += 1) {
+          final a = (live[i + c] - settled[i + c]).abs();
+          final b = (live[i + c] - atConfirm[i + c]).abs();
+          final d = (atConfirm[i + c] - settled[i + c]).abs();
+          if (a > liveVsSettled) liveVsSettled = a;
+          if (b > liveVsConfirm) liveVsConfirm = b;
+          if (d > confirmVsSettled) confirmVsSettled = d;
+        }
+        if (confirmVsSettled > 0) {
+          vsTruth += 1;
+          if (confirmVsSettled > vsTruthWorst) {
+            vsTruthWorst = confirmVsSettled;
+          }
+        }
+        if (liveVsSettled > 1) {
+          chrome += 1;
+          continue;
+        }
+        if (liveVsConfirm > 0) {
+          vsScreen += 1;
+          if (liveVsConfirm > vsScreenWorst) vsScreenWorst = liveVsConfirm;
+        }
+      }
+
+      // ANTI-VACUITY. Zero differing pixels would mean the landing never
+      // blended and the bounds below are statements about nothing.
+      expect(
+        vsTruth,
+        greaterThan(500),
+        reason:
+            'only $vsTruth pixels differ from the settled frame — the '
+            'landing is not blending, so this measures nothing',
+      );
+      expect(
+        chrome,
+        greaterThan(0),
+        reason: 'no chrome was masked — the session was not pending',
+      );
+
+      // THE JUDGEMENT. One step is invisible and it is on the FIDELITY
+      // axis, which this program's invariant permits trading; coverage is
+      // the axis it never trades, and the coverage assertions live in the
+      // neighbouring tests. Measured: 2674 pixels against the screen,
+      // 3509 against the truth, worst channel 1 on both.
+      expect(
+        vsScreenWorst,
+        lessThanOrEqualTo(1),
+        reason:
+            'the confirm frame moved the picture under the user by '
+            '$vsScreenWorst channel steps on $vsScreen pixels',
+      );
+      expect(
+        vsTruthWorst,
+        lessThanOrEqualTo(1),
+        reason:
+            'the stand-in is $vsTruthWorst channel steps from the truth on '
+            '$vsTruth pixels — the sweep allows two, but the screen has '
+            'never shown more than one and a regression should say so',
       );
     });
 

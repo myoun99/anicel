@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/native/qa_native_engine.dart';
+import 'package:anicel/src/core/sync_image_upload.dart';
 import 'package:anicel/src/services/runtime_path_report.dart';
 import 'package:anicel/src/ui/dialogs/system_status_section.dart';
 
@@ -23,6 +24,7 @@ void main() {
       'Audio import decoder',
       'Video export encoder',
       'PDF renderer',
+      'Tile picture upload',
       'Pen tablet driver',
     ]);
     for (final entry in entries) {
@@ -39,6 +41,21 @@ void main() {
     );
     expect(pdf.isPrimary, isFalse);
     expect(pdf.active, contains('disabled'));
+  });
+
+  test('the tile picture upload follows the RENDERER, not the packaging', () {
+    // The only row here whose non-primary state is normal rather than a
+    // problem: `decodeImageFromPixelsSync` is Impeller-only, and Windows
+    // runs Skia in every build. flutter_tester is Skia too, so this is
+    // what a Windows user sees — and the detail has to say why, or an
+    // amber row on every desktop install reads as a broken build.
+    final upload = collectRuntimePathReport().singleWhere(
+      (entry) => entry.subsystem == 'Tile picture upload',
+    );
+    expect(upload.isPrimary, syncImageUploadSupported);
+    expect(upload.isPrimary, isFalse, reason: 'flutter_tester runs Skia');
+    expect(upload.active, contains('Asynchronous'));
+    expect(upload.detail, contains('Impeller'));
   });
 
   test('a missing raster engine reports the Dart fallback honestly', () {

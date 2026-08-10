@@ -46,6 +46,7 @@ import 'brush_cursor_overlay.dart';
 import '../../core/floor_math.dart';
 import '../../models/tile_coord.dart';
 import '../canvas/bitmap_tile_image_cache.dart';
+import '../canvas/provisional_tile_pictures.dart';
 import '../canvas/interactive_brush_edit_canvas_view.dart';
 import '../canvas/layer_pose_paint.dart';
 import 'brush_canvas_defaults.dart';
@@ -1714,6 +1715,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                             // LIFT ERASED.
                                                             committedRegionPendingTiles:
                                                                 _committedRegionPendingTiles,
+                                                            // And where the float's own picture
+                                                            // can be composed onto those tiles,
+                                                            // they stop being pending at all.
+                                                            composeCommittedRegionPictures:
+                                                                _composeCommittedRegionPictures,
                                                             // Pending move sessions hold the
                                                             // session's edit lock (seeks
                                                             // refused) WITHOUT locking
@@ -2214,7 +2220,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       for (var tx = firstTx; tx <= lastTx; tx++) {
         final coord = TileCoord(x: tx, y: ty);
         final tile = surface.tileAt(coord);
-        if (tile != null && cache.imageFor(tile) == null) {
+        // `displayImageFor`, not `imageFor`: the question this predicate
+        // asks is "can the base paint here", and a stand-in composed from
+        // the very picture the hold would show is an answer to it. Reading
+        // truth only would keep the float clipped over coordinates the
+        // canvas is already drawing correctly — the same coordinate
+        // source-over'd twice, which is how partial-alpha edges came out
+        // darker on a wide landing.
+        if (tile != null && cache.displayImageFor(tile) == null) {
           if (identical(pending, const <TileCoord>{})) {
             pending = <TileCoord>{};
           }
@@ -2223,6 +2236,97 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       }
     }
     return pending;
+  }
+
+  /// The cel as it stood just before a lift session's landing committed —
+  /// the base half of a composed stand-in.
+  ///
+  /// Captured at the call rather than read back, because by the time the
+  /// selection layer asks, the commit has already replaced it. Consumed
+  /// once; a stale one would compose the wrong artwork under the landing.
+  ///
+  /// 🚨 Released on the NEXT FRAME whether or not anyone consumed it, and
+  /// that is not tidiness. Three ordinary endings land a stamp and never
+  /// reach the composer — a tool switch that confirms from the unmounting
+  /// layer's `dispose`, a cel change that lands the pending stamp through
+  /// `_resetAll`, and a confirm with no ink to compose from — and a
+  /// [BitmapSurface] holds every tile the landing replaced, whose pixels
+  /// are NATIVE allocations plus their GPU images. On a whole-picture
+  /// transform of a 2340×1654 cel that is tens of megabytes pinned for
+  /// the rest of the session, which is the same "every edit pins its last
+  /// generation" term [BitmapTileImageCache.retainedScopeLimit] exists to
+  /// bound. The compose runs synchronously inside the same landing, so a
+  /// post-frame release can never take it away early.
+  BitmapSurface? _preLandingSurface;
+
+  /// Captures the pre-landing cel and schedules its release, so the slot
+  /// cannot outlive the landing that filled it.
+  void _holdPreLandingSurface(BrushFrameEditingCoordinator coordinator) {
+    _preLandingSurface = coordinator.currentSurfaceOf(
+      coordinator.activeFrameKey,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _preLandingSurface = null;
+    });
+  }
+
+  /// Gives the tiles a landing just created a picture of themselves,
+  /// composed from what the float is already showing.
+  ///
+  /// This is the answer to the same question the hold covers for, and it
+  /// runs first: what it can seed leaves the pending set, so the float is
+  /// clipped to a smaller region — or to nothing at all, which is the
+  /// whole landing painted by the canvas on the frame it lands.
+  ///
+  /// Silent about coordinates it cannot answer for, deliberately: those
+  /// keep the hold, which is today's behaviour and correct.
+  void _composeCommittedRegionPictures(
+    int left,
+    int top,
+    int right,
+    int bottom,
+    ProvisionalInkPainter paintInk,
+  ) {
+    final coordinator = widget._editableCoordinator;
+    final preSurface = _preLandingSurface;
+    _preLandingSurface = null;
+    if (coordinator == null || preSurface == null) {
+      return;
+    }
+    final postSurface = coordinator.currentSurfaceOf(coordinator.activeFrameKey);
+    if (identical(postSurface, preSurface) ||
+        postSurface.tileSize != preSurface.tileSize) {
+      return;
+    }
+    // floorDiv, not ~/: a landing in the pasteboard has negative
+    // coordinates, where truncation picks the wrong tile.
+    final size = postSurface.tileSize;
+    final firstTx = floorDiv(left, size);
+    final lastTx = floorDiv(right - 1, size);
+    final lastTy = floorDiv(bottom - 1, size);
+    final coords = <TileCoord>[];
+    for (var ty = floorDiv(top, size); ty <= lastTy; ty += 1) {
+      for (var tx = firstTx; tx <= lastTx; tx += 1) {
+        coords.add(TileCoord(x: tx, y: ty));
+      }
+    }
+    // Under the probe because it is the one part of a confirm whose cost
+    // scales with the LANDING rather than with the change: a whole-canvas
+    // stamp is every tile of the cel, at a `toImageSync` each.
+    final activeKey = coordinator.activeFrameKey;
+    labProbe(
+      'confirm.composeStandIns',
+      () => seedProvisionalTilePictures(
+        preSurface: preSurface,
+        postSurface: postSurface,
+        coords: coords,
+        ink: paintInk,
+        // The cel's lineage. Only the synchronous-upload path inside
+        // reaches the bucket, but it puts TRUTH there, and truth in the
+        // null bucket is the shared-tin defect the float once had.
+        staleScope: (activeKey.layerId, activeKey.frameId),
+      ),
+    );
   }
 
   /// shape covers no pixels.
@@ -2337,6 +2441,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // unrelated rebuild). Mounted guard: the layer's unmount path
     // confirms post-frame, possibly after this panel went with it.
     void run() {
+      // The base the landing is about to be blended onto, for the
+      // composed stand-ins the layer asks for immediately after this.
+      _holdPreLandingSurface(coordinator);
       final historyManager = widget.historyManager;
       if (historyManager == null || preLift == null) {
         // Headless hosts (focused tests) or a lost anchor: land raw.
@@ -2398,6 +2505,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       return;
     }
     void run() {
+      _holdPreLandingSurface(coordinator);
       coordinator.commitSourceStroke(
         sourceDabs: [stampDab],
         cacheInvalidationSink: widget.cacheInvalidationSink,
