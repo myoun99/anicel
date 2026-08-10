@@ -166,6 +166,7 @@ import 'playback/audio_recorder.dart';
 import 'playback/voice_take_processing.dart';
 import '../services/audio/audio_conform_runner.dart' show runConformHere;
 import '../services/commands/track_se_layer_commands.dart';
+import '../services/commands/track_transition_commands.dart';
 import '../services/history_manager.dart';
 import '../services/project_repository.dart';
 import 'audio/audio_conform_store.dart';
@@ -5111,6 +5112,100 @@ class EditorSessionManager extends ChangeNotifier {
       instructions: instructions,
       description: description,
     );
+    notifyListeners();
+  }
+
+  // ---------------------------------------------------------------------
+  // The TRANSITION row (O.L / F.I / F.O). Same spans, same dialog, same
+  // grips as a cut's direction row — the differences are that the frames
+  // are GLOBAL and the vocabulary is filtered to the 場面転換 terms.
+  // ---------------------------------------------------------------------
+
+  /// The terms a transition span may carry: F.I, F.O, W.I, W.O, O.L. The
+  /// camera-work terms (PAN, T.U, …) stay on the cut's direction row.
+  List<CameraInstructionDef> get transitionInstructionDefs => [
+    for (final def in cameraInstructionSet.defs)
+      if (cameraInstructionIsTransition(def)) def,
+  ];
+
+  /// The playhead on the TRACK's axis — where a transition span is placed.
+  int get currentGlobalFrameIndex =>
+      activeCutGlobalStartFrame + _timelineController.currentFrameIndex;
+
+  /// Whether a transition span can start at the playhead: there has to be a
+  /// vocabulary to draw from and no span there already.
+  bool get canCreateTransitionSpanAtPlayhead {
+    if (transitionInstructionDefs.isEmpty) {
+      return false;
+    }
+    final frame = currentGlobalFrameIndex;
+    if (frame < 0) {
+      return false;
+    }
+    return instructionSpanCovering(
+          activeTrack.transitionLayer.instructions,
+          frame,
+        ) ==
+        null;
+  }
+
+  /// Starts a one-frame transition span at the playhead, on the GLOBAL axis.
+  ///
+  /// Dialog-free like its direction-row twin (UI-R25 #2): it takes the first
+  /// transition term and the Edit Instance dialog changes it afterwards. The
+  /// grips own the length from then on — and a span only DOES anything once
+  /// it has been dragged across a cut boundary, which is the rule the
+  /// geometry enforces rather than this verb.
+  void createTransitionSpanAtPlayhead() {
+    if (!canCreateTransitionSpanAtPlayhead) {
+      return;
+    }
+    final track = activeTrack;
+    final before = track.transitionLayer;
+    final next = instructionMapWithEventAdded(
+      before.instructions,
+      startIndex: currentGlobalFrameIndex,
+      event: InstructionEvent(
+        instructionId: transitionInstructionDefs.first.id,
+        length: 1,
+      ),
+    );
+    if (next == null) {
+      return;
+    }
+    _historyManager.execute(
+      UpdateTrackTransitionLayerCommand(
+        repository: _repository,
+        trackId: track.id,
+        before: before,
+        after: before.copyWith(instructions: next),
+        label: 'Add transition',
+      ),
+    );
+    _transitionDisplayClone = null;
+    notifyListeners();
+  }
+
+  /// Replaces the whole transition span map in one undo step — the writer
+  /// behind the edge grips and the edit dialog.
+  void updateTransitionInstructions(
+    Map<int, InstructionEvent> instructions, {
+    String description = 'Edit transition',
+  }) {
+    final track = activeTrack;
+    final before = track.transitionLayer;
+    _historyManager.execute(
+      UpdateTrackTransitionLayerCommand(
+        repository: _repository,
+        trackId: track.id,
+        before: before,
+        after: before.copyWith(
+          instructions: SplayTreeMap<int, InstructionEvent>.from(instructions),
+        ),
+        label: description,
+      ),
+    );
+    _transitionDisplayClone = null;
     notifyListeners();
   }
 
