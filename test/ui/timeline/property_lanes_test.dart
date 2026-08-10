@@ -566,14 +566,20 @@ void main() {
       // R6-④: the group is the FULL AE set, identical to drawing layers —
       // Anchor Point and Opacity included. The layer axis is virtualized,
       // so rows below the viewport need a scroll to be built at all.
-      final verticalScrollable = find
-          .descendant(
-            of: find.byKey(
+      //
+      // Drive the scroll through the viewport's own controller, the way the
+      // pinned rail scrollbar does (see timeline_expand_scroll_anchor_test).
+      // A `drag` on the body cannot scroll here — the cells under the drag
+      // point own their own drag recognizers, so the gesture never reaches
+      // the Scrollable. `scrollUntilVisible` used to sit here and looked
+      // green only because the last lane happened to be built already.
+      final verticalScroll = tester
+          .widget<SingleChildScrollView>(
+            find.byKey(
               const ValueKey<String>('timeline-vertical-scroll-viewport'),
             ),
-            matching: find.byType(Scrollable),
           )
-          .first;
+          .controller!;
       expect(
         find.byKey(
           const ValueKey<String>(
@@ -582,13 +588,8 @@ void main() {
         ),
         findsOneWidget,
       );
-      await tester.scrollUntilVisible(
-        find.byKey(
-          const ValueKey<String>('timeline-lane-label-lane-se-layer-opacity'),
-        ),
-        52,
-        scrollable: verticalScrollable,
-      );
+      verticalScroll.jumpTo(verticalScroll.position.maxScrollExtent);
+      await tester.pumpAndSettle();
       expect(
         find.byKey(
           const ValueKey<String>('timeline-lane-label-lane-se-layer-opacity'),
@@ -598,15 +599,16 @@ void main() {
 
       // The navigator diamond keys the SE layer's OWN transform track.
       expect(seLayer().transformTrack.isEmpty, isTrue);
-      await tester.scrollUntilVisible(
+      verticalScroll.jumpTo(0);
+      await tester.pumpAndSettle();
+      await tester.ensureVisible(
         find.byKey(
           const ValueKey<String>(
             'timeline-lane-key-toggle-lane-se-layer-position',
           ),
         ),
-        -52,
-        scrollable: verticalScrollable,
       );
+      await tester.pumpAndSettle();
       await tester.tap(
         find.byKey(
           const ValueKey<String>(
