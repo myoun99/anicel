@@ -984,6 +984,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             revealSelectionTick: _session.revealSelectionTick,
             isFrameCached: _session.isPlaybackFrameCached,
             playbackFrameCount: _session.activeCutPlaybackFrameCount,
+            // The のりしろ: how far past the cut's end line it is DRAWN, and
+            // the word the ruler spells across that. Same derivation the
+            // sheet pages by, so the two cannot disagree.
+            drawnFrameCount: _session.activeCutDrawnFrameCount,
+            noriShiroLabel: _session.activeCutNoriShiroLabel,
             exposureStateForLayer: _session.exposureStateForLayer,
             frameNameForLayer: _session.frameNameForLayer,
             // R26 #44: ACTION-section blocks whose cel is still blank gray

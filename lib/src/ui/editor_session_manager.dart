@@ -1876,6 +1876,62 @@ class EditorSessionManager extends ChangeNotifier {
   int get activeCutPlaybackFrameCount =>
       math.max(1, activeCutOrNull?.duration ?? 1);
 
+  /// How many frames the active cut is DRAWN for: its conte 尺 plus the
+  /// のりしろ every transition span crossing one of its boundaries asks for.
+  /// Equal to [activeCutPlaybackFrameCount] whenever nothing crosses.
+  ///
+  /// ★The same number the sheet pages by and prints in parentheses
+  /// (`2+0 (2+12)`), read from the same derivation — the ruler's blue line and
+  /// the sheet's row count cannot disagree about how much there is to draw.
+  int get activeCutDrawnFrameCount {
+    final cut = activeCutOrNull;
+    if (cut == null) {
+      return activeCutPlaybackFrameCount;
+    }
+    final start = activeCutGlobalStartFrame;
+    return cutTransitionHandles(
+      cutStart: start,
+      cutEnd: start + cut.duration,
+      spans: activeTrackTransitionSpans,
+    ).drawnFrames(activeCutPlaybackFrameCount);
+  }
+
+  /// What the ruler writes across that margin: the TERM that asked for it, then
+  /// the word — "O.L のりしろ", "O.L 여백" (user 2026-08-10, "그럼 뭐때문에 여백
+  /// 길이가 생겼는지 아니까"). Empty when nothing crosses this cut.
+  ///
+  /// Every span that FIRES on this cut is named, not just one: head and tail
+  /// handles add up, so with a transition at each boundary no single term set
+  /// the length and claiming one would be a half-truth.
+  String get activeCutNoriShiroLabel {
+    final cut = activeCutOrNull;
+    if (cut == null) {
+      return '';
+    }
+    final start = activeCutGlobalStartFrame;
+    final end = start + cut.duration;
+    final terms = <String>[];
+    for (final entry in activeTrack.transitionLayer.instructions.entries) {
+      if (!transitionSpanFires(
+        span: (start: entry.key, length: entry.value.length),
+        cutStart: start,
+        cutEnd: end,
+      )) {
+        continue;
+      }
+      final term = entry.value.displayLabel(
+        cameraInstructionSet.defById(entry.value.instructionId),
+      );
+      if (term.isNotEmpty && !terms.contains(term)) {
+        terms.add(term);
+      }
+    }
+    if (terms.isEmpty) {
+      return '';
+    }
+    return '${terms.join('/')} ${uiStrings.tlNoriShiro}';
+  }
+
   /// R27 #31: the cut an EXPORT anchors on. Parking the playhead in a gap
   /// leaves no active cut, but that is a playhead position — not "no
   /// film" — so the export window must still open (it used to throw

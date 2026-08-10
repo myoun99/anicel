@@ -34,6 +34,13 @@ void main() {
     expect(t.transitionLayer.instructions, isEmpty);
   });
 
+  test('the row is named in FULL, not with a code (user 2026-08-10)', () {
+    // S1/S2 and CAM 1 are abbreviations because they are cel addresses a
+    // sheet is read by. This row is one unrenameable fixture, so its name is
+    // the word itself.
+    expect(track().transitionLayer.name, 'Transition');
+  });
+
   test('an untouched transition row writes nothing', () {
     // R8's rule: a default is silence, so a project that never used a
     // transition keeps exactly the file shape it had before the row existed.

@@ -52,6 +52,8 @@ class TimelinePanel extends StatefulWidget {
     this.frameCachedSignal,
     this.revealSelectionTick,
     required this.playbackFrameCount,
+    this.drawnFrameCount,
+    this.noriShiroLabel = '',
     required this.exposureStateForLayer,
     this.frameNameForLayer,
     this.celContent,
@@ -164,6 +166,11 @@ class TimelinePanel extends StatefulWidget {
   final ValueListenable<int>? revealSelectionTick;
 
   final int playbackFrameCount;
+
+  /// How many frames the cut is DRAWN for (尺 + のりしろ) and the word the
+  /// ruler spells across the difference. Null/empty keeps the handle off.
+  final int? drawnFrameCount;
+  final String noriShiroLabel;
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
@@ -485,6 +492,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     frameCachedSignal: widget.frameCachedSignal,
                     revealSelectionTick: widget.revealSelectionTick,
                     playbackFrameCount: widget.playbackFrameCount,
+                    drawnFrameCount: widget.drawnFrameCount,
+                    noriShiroLabel: widget.noriShiroLabel,
                     exposureStateForLayer: widget.exposureStateForLayer,
                     frameNameForLayer: widget.frameNameForLayer,
                     celContent: widget.celContent,
@@ -561,6 +570,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     frameCachedSignal: widget.frameCachedSignal,
                     revealSelectionTick: widget.revealSelectionTick,
                     frameCount: widget.playbackFrameCount,
+                    drawnFrameCount: widget.drawnFrameCount,
+                    noriShiroLabel: widget.noriShiroLabel,
                     exposureStateForLayer: widget.exposureStateForLayer,
                     frameNameForLayer: widget.frameNameForLayer,
                     celContent: widget.celContent,

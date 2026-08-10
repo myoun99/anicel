@@ -460,6 +460,14 @@ class AppStrings {
   /// the user reads changed, so the camera section can name its three types
   /// apart: camera, direction layer, transition layer.
   String get tlKindInstruction => _s('tlKindInstruction');
+
+  /// The WORD for the drawn-past-the-end margin, spelled across the handle in
+  /// the ruler. The ruler prefixes it with the TERM that asked for the margin
+  /// — "O.L のりしろ", "O.L 여백" — so the length says what caused it.
+  ///
+  /// Japanese keeps the trade word のりしろ; every other language says its own
+  /// word for MARGIN, because のりしろ is not borrowed outside Japanese.
+  String get tlNoriShiro => _s('tlNoriShiro');
   String get tlAttachFreeAbove => _s('tlAttachFreeAbove');
   String get tlAttachFreeBelow => _s('tlAttachFreeBelow');
   String get tlAttachSyncedAbove => _s('tlAttachSyncedAbove');
@@ -1342,6 +1350,7 @@ class AppStrings {
     'tlKindFolder': 'Folder',
     'tlKindSe': 'SE',
     'tlKindInstruction': 'Direction',
+    'tlNoriShiro': 'MARGIN',
     'textCelNewTitle': 'New Text',
     'textCelEditTitle': 'Edit Text',
     'textCelTextLabel': 'Text',
@@ -2074,6 +2083,7 @@ class AppStrings {
     'seNameTagSampleLine': 'セリフ',
     'seNameTagReset': '既定に戻す',
     'tlKindInstruction': 'ディレクション',
+    'tlNoriShiro': 'のりしろ',
     'tlAttachFreeAbove': '上にフリーの付属レイヤー',
     'tlAttachFreeBelow': '下にフリーの付属レイヤー',
     'tlAttachSyncedAbove': '上に同期の付属レイヤー',
@@ -2773,6 +2783,7 @@ class AppStrings {
     'seNameTagSampleLine': '대사',
     'seNameTagReset': '기본값으로',
     'tlKindInstruction': '디렉션',
+    'tlNoriShiro': '여백',
     'tlAttachFreeAbove': '위에 프리 부속 레이어',
     'tlAttachFreeBelow': '아래에 프리 부속 레이어',
     'tlAttachSyncedAbove': '위에 동기 부속 레이어',
@@ -3478,6 +3489,7 @@ class AppStrings {
     'tlKindFolder': 'Dossier',
     'tlKindSe': 'SE',
     'tlKindInstruction': 'Direction',
+    'tlNoriShiro': 'MARGE',
     'textCelNewTitle': 'Nouveau texte',
     'textCelEditTitle': 'Modifier le texte',
     'textCelTextLabel': 'Texte',
@@ -4179,6 +4191,7 @@ class AppStrings {
     'seNameTagSampleLine': '台词',
     'seNameTagReset': '恢复默认',
     'tlKindInstruction': '指示',
+    'tlNoriShiro': '留白',
     'tlAttachFreeAbove': '在上方添加自由附属图层',
     'tlAttachFreeBelow': '在下方添加自由附属图层',
     'tlAttachSyncedAbove': '在上方添加同步附属图层',

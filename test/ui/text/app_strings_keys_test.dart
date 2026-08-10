@@ -521,6 +521,7 @@ void main() {
     'seNameTagReset': (s) => s.seNameTagReset,
     'tlKindSe': (s) => s.tlKindSe,
     'tlKindInstruction': (s) => s.tlKindInstruction,
+    'tlNoriShiro': (s) => s.tlNoriShiro,
     'tlAttachFreeAbove': (s) => s.tlAttachFreeAbove,
     'tlAttachFreeBelow': (s) => s.tlAttachFreeBelow,
     'tlAttachSyncedAbove': (s) => s.tlAttachSyncedAbove,

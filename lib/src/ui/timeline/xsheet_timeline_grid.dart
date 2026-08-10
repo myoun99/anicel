@@ -64,6 +64,7 @@ import 'pen_friendly_scroll_controller.dart';
 import 'stylus_glide_stop.dart';
 import 'timeline_horizontal_scrollbar_rail.dart';
 import 'timeline_ruler_cut_end_boundary.dart';
+import 'timeline_ruler_norishiro_boundary.dart';
 import 'timeline_section_policy.dart';
 import 'timeline_section_runs.dart';
 import 'timeline_vertical_scrollbar_rail.dart';
@@ -90,6 +91,8 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.frameCachedSignal,
     this.revealSelectionTick,
     required this.frameCount,
+    this.drawnFrameCount,
+    this.noriShiroLabel = '',
     required this.exposureStateForLayer,
     this.frameNameForLayer,
     this.celContent,
@@ -186,6 +189,11 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// Playback frame count of the active cut (the visible range extends to
   /// the shared minimum, exactly like the horizontal timeline).
   final int frameCount;
+
+  /// How many frames the cut is DRAWN for (尺 + のりしろ) and the word the
+  /// frame rail spells across the difference. Null/empty keeps it off.
+  final int? drawnFrameCount;
+  final String noriShiroLabel;
   final TimelineCellExposureState Function(Layer layer, int frameIndex)
   exposureStateForLayer;
   final String? Function(Layer layer, int frameIndex)? frameNameForLayer;
@@ -1543,6 +1551,22 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                             left:
                                                                 cutEndBoundaryOffset,
                                                           ),
+                                                        // The のりしろ boundary,
+                                                        // transposed: a length
+                                                        // below the cut's end.
+                                                        TimelineRulerNoriShiroBoundary(
+                                                          axis: Axis.vertical,
+                                                          cutEnd:
+                                                              cutEndBoundaryOffset,
+                                                          drawnEnd:
+                                                              (widget.drawnFrameCount ??
+                                                                  widget
+                                                                      .frameCount) *
+                                                              _metrics
+                                                                  .frameCellWidth,
+                                                          label: widget
+                                                              .noriShiroLabel,
+                                                        ),
                                                       ],
                                                     ),
                                                   );
