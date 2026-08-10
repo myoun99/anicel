@@ -279,6 +279,21 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// Scrolls [finder] into the panel's viewport, then taps it.
+  ///
+  /// The twirled-open V lanes sit at the BOTTOM of the group, so every row the
+  /// rail gains pushes them further down and eventually past the viewport's
+  /// clip — where `getRect` still reports a layout position but a tap cannot
+  /// land, which reads as "standing never moved" rather than as an off-screen
+  /// target. The rail and the strips share ONE vertical viewport, so this
+  /// scroll moves both and the ring/row comparison stays valid.
+  Future<void> scrollToAndTap(WidgetTester tester, Finder finder) async {
+    await tester.ensureVisible(finder);
+    await tester.pumpAndSettle();
+    await tester.tap(finder);
+    await tester.pumpAndSettle();
+  }
+
   testWidgets('the FADE row is the Opacity lane\'s row: standing on it rings '
       'there, not back on the V row', (tester) async {
     await pumpStoryboard(tester);
@@ -287,14 +302,14 @@ void main() {
     // The one V lane whose strip is not a key-marker band — it draws the
     // cut fades. Standing has to reach it anyway, or the ring answers for
     // a row the user is not on.
-    await tester.tap(
+    await scrollToAndTap(
+      tester,
       find.byKey(
         const ValueKey<String>(
           'storyboard-lane-label-v-track:sb-track-opacity',
         ),
       ),
     );
-    await tester.pumpAndSettle();
 
     expectRingOnRow(tester, 'storyboard-opacity-lane-row-0');
   });
@@ -310,6 +325,8 @@ void main() {
     final laneRow = find.byKey(
       const ValueKey<String>('storyboard-track-lane-row-0-position'),
     );
+    await tester.ensureVisible(laneRow);
+    await tester.pumpAndSettle();
     final rowRect = tester.getRect(laneRow);
     await tester.tapAt(Offset(rowRect.left + 6, rowRect.center.dy));
     await tester.pumpAndSettle();

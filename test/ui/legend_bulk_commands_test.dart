@@ -189,14 +189,16 @@ void main() {
     final s = session();
     final targets = {
       for (final layer in s.layers)
-        if (layer.kind != LayerKind.camera) layer.id,
+        if (layerKindHasPictureOpacity(layer.kind)) layer.id,
     };
     s.commitLayersOpacity(targets, 0.3);
     for (final layer in s.layers) {
-      if (layer.kind == LayerKind.camera) {
-        expect(layer.opacity, 1.0);
-      } else {
+      if (layerKindHasPictureOpacity(layer.kind)) {
         expect(layer.opacity, closeTo(0.3, 1e-9));
+      } else {
+        // The camera's slider is the view dim, and the TRANSITION row is
+        // read-only notation — neither has a picture opacity to write.
+        expect(layer.opacity, 1.0, reason: '${layer.kind}');
       }
     }
   });
@@ -207,7 +209,7 @@ void main() {
     expect(s.lastMasterOpacity, 1.0);
     final targets = {
       for (final layer in s.layers)
-        if (layer.kind != LayerKind.camera) layer.id,
+        if (layerKindHasPictureOpacity(layer.kind)) layer.id,
     };
 
     s.previewLayersOpacity(targets, 0.42);
@@ -259,7 +261,15 @@ void main() {
     expect(s.layers.every((layer) => s.isLayerFxEnabled(layer.id)), isTrue);
 
     s.setAllLayersFxBypassed(true);
-    expect(s.layers.every((layer) => !s.isLayerFxEnabled(layer.id)), isTrue);
+    // The TRANSITION row has neither a transform nor a chain, so it owns no
+    // fx switch to flip — its flag stays where it was rather than reading
+    // as an un-bypassed row the sweep missed.
+    expect(
+      s.layers
+          .where((layer) => layerKindHasTransformFxSwitch(layer.kind))
+          .every((layer) => !s.isLayerFxEnabled(layer.id)),
+      isTrue,
+    );
 
     s.setAllLayersFxBypassed(false);
     expect(s.layers.every((layer) => s.isLayerFxEnabled(layer.id)), isTrue);

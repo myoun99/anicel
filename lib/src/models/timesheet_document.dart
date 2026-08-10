@@ -7,6 +7,7 @@ import 'layer_kind.dart';
 import 'timeline_repeat.dart';
 import 'timesheet_info.dart';
 import 'track_se_window.dart';
+import 'transition_geometry.dart';
 
 /// What a timesheet column represents on the paper form.
 enum TimesheetColumnKind {
@@ -209,6 +210,7 @@ class TimesheetDocument {
     required this.cutName,
     required this.fps,
     required this.playbackFrameCount,
+    this.transitionHandles = CutTransitionHandles.none,
     required this.pageFrameCount,
     required this.columns,
     required this.pages,
@@ -229,6 +231,11 @@ class TimesheetDocument {
     // cut; [cutStartFrame] is the cut's global start on its track.
     List<Layer> trackSeLayers = const [],
     int cutStartFrame = 0,
+    // The track's transition spans on the GLOBAL axis. Only the ones that
+    // CROSS one of this cut's boundaries matter, and what they buy the
+    // sheet is のりしろ: the frames drawn outside the conte 尺 so the two
+    // ramps of an O.L have something to cross-fade.
+    List<TransitionSpan> transitionSpans = const [],
     // DATA-sheet cells (UI-R24 #1): print the EXPORT-SOURCE data instead
     // of the notation shorthand — every ghost chain (repeat word, 止め,
     // front-hold relocation) renders verbatim as the concrete per-entry
@@ -248,9 +255,22 @@ class TimesheetDocument {
     }
 
     final playbackFrameCount = cut.duration < 1 ? 1 : cut.duration;
+    // のりしろ. The conte 尺 (and so the cut block, and so the total) never
+    // moves — the sheet just has more rows to fill than the cut is long,
+    // which is exactly what 「シートは必ずここまで記入する」 asks for.
+    //
+    // Both sides show it at the TAIL (user's rule): the blue line answers
+    // "how much do I draw", not "where does the extra sit", and the mark on
+    // the transition row answers where.
+    final handles = cutTransitionHandles(
+      cutStart: cutStartFrame,
+      cutEnd: cutStartFrame + playbackFrameCount,
+      spans: transitionSpans,
+    );
+    final drawnFrameCount = handles.drawnFrames(playbackFrameCount);
     final pageFrameCount = pageSeconds * fps;
     final pageCount =
-        ((playbackFrameCount + pageFrameCount - 1) ~/ pageFrameCount).clamp(
+        ((drawnFrameCount + pageFrameCount - 1) ~/ pageFrameCount).clamp(
           1,
           1 << 20,
         );
@@ -451,6 +471,7 @@ class TimesheetDocument {
       cutName: cut.name,
       fps: fps,
       playbackFrameCount: playbackFrameCount,
+      transitionHandles: handles,
       pageFrameCount: pageFrameCount,
       columns: List.unmodifiable(columns),
       pages: List.unmodifiable([
@@ -492,8 +513,23 @@ class TimesheetDocument {
   final String cutName;
   final int fps;
 
-  /// The cut's playback length; rows beyond it (page padding) stay blank.
+  /// The cut's playback length — its CONTE 尺. Rows beyond
+  /// [drawnFrameCount] (page padding) stay blank.
   final int playbackFrameCount;
+
+  /// The のりしろ this cut owes to the transitions that cross its
+  /// boundaries. Empty unless a transition span straddles one.
+  final CutTransitionHandles transitionHandles;
+
+  /// How many rows the animator actually fills: the conte 尺 plus のりしろ.
+  /// This is the parenthesised number on the sheet — `2+0 (2+12)` — and the
+  /// row the blue のりしろ end line is drawn at.
+  ///
+  /// 撮ま!: 「シートは必ずここまで記入する（止めやリピートでも省略しては
+  /// いけない）」. Leaving it at the conte 尺 is the documented way to end up
+  /// with 尺変更 retakes.
+  int get drawnFrameCount =>
+      transitionHandles.drawnFrames(playbackFrameCount);
 
   /// Rows per paper page (pageSeconds × fps).
   final int pageFrameCount;
@@ -509,8 +545,19 @@ class TimesheetDocument {
   int get rowCount => pages.length * pageFrameCount;
 
   /// The cut duration in the sheet's `초+コマ` notation (e.g. '2+12').
-  String get durationLabel =>
-      '${playbackFrameCount ~/ fps}+${playbackFrameCount % fps}';
+  ///
+  /// This is the CONTE 尺 — the number that sums to the running time, and
+  /// the one 撮ま! insists goes in the 尺 column: 「O.Lの中心までの尺を記入
+  /// する（のりしろを含むと総尺計算の際に間違いのもとになる）」.
+  String get durationLabel => _frameLabel(playbackFrameCount);
+
+  /// What the animator actually draws, in the same notation — the
+  /// parenthesised half of `2+0 (2+12)`. Null when there is no のりしろ, so
+  /// a sheet without transitions prints one number as it always did.
+  String? get drawnDurationLabel =>
+      transitionHandles.isEmpty ? null : _frameLabel(drawnFrameCount);
+
+  String _frameLabel(int frames) => '${frames ~/ fps}+${frames % fps}';
 
   static int _slotCount(int fixedSlots, List<Object> layers) {
     return layers.length > fixedSlots ? layers.length : fixedSlots;

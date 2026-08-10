@@ -99,6 +99,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
   Object? _documentInfo;
   Object? _documentInstructionSet;
   Object? _documentTrackSe;
+  Object? _documentTransition;
   int? _documentCutStartFrame;
   String? _documentProjectName;
   int? _documentFps;
@@ -125,12 +126,16 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
     // Track-owned SE rows join the memo key: their edits change the track
     // list identity, not the cut's.
     final trackSeLayers = session.activeTrack.seLayers;
+    // Same story for the transition row: track-owned, so an edit there
+    // changes the track's identity rather than the cut's.
+    final transitionLayer = session.activeTrack.transitionLayer;
     final cutStartFrame = session.activeCutGlobalStartFrame;
     if (_document == null ||
         !identical(_documentCut, cut) ||
         !identical(_documentInfo, info) ||
         !identical(_documentInstructionSet, instructionSet) ||
         !identical(_documentTrackSe, trackSeLayers) ||
+        !identical(_documentTransition, transitionLayer) ||
         _documentCutStartFrame != cutStartFrame ||
         _documentProjectName != projectName ||
         _documentFps != session.projectFps ||
@@ -139,6 +144,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
       _documentInfo = info;
       _documentInstructionSet = instructionSet;
       _documentTrackSe = trackSeLayers;
+      _documentTransition = transitionLayer;
       _documentCutStartFrame = cutStartFrame;
       _documentProjectName = projectName;
       _documentFps = session.projectFps;
@@ -151,6 +157,7 @@ class _TimesheetTabHostState extends State<TimesheetTabHost> {
         instructionDefById: instructionSet.defById,
         trackSeLayers: trackSeLayers,
         cutStartFrame: cutStartFrame,
+        transitionSpans: session.activeTrackTransitionSpans,
         dataSheet: _dataSheet,
       );
       _layout = null;

@@ -13,19 +13,24 @@ void main() {
     return s;
   }
 
-  test('setAllLayersOpacity sets every non-camera layer', () {
+  // The sweep's subject is "rows that HAVE a picture opacity", which used
+  // to be spelled "everything but the camera". It is not any more: the
+  // TRANSITION row is read-only notation on the track's axis with no
+  // picture of its own, so it keeps its value. Ask the predicate the setter
+  // asks instead of a proxy for it, and the next such row is covered too.
+  test('setAllLayersOpacity sets every picture-opacity layer', () {
     final s = session();
     s.setAllLayersOpacity(0.4);
     for (final layer in s.layers) {
-      if (layer.kind != LayerKind.camera) {
+      if (layerKindHasPictureOpacity(layer.kind)) {
         expect(layer.opacity, moreOrLessEquals(0.4, epsilon: 1e-9));
+      } else {
+        expect(layer.opacity, 1.0, reason: '${layer.kind} takes no bulk set');
       }
     }
     s.resetAllLayersOpacity();
     for (final layer in s.layers) {
-      if (layer.kind != LayerKind.camera) {
-        expect(layer.opacity, 1.0);
-      }
+      expect(layer.opacity, 1.0);
     }
   });
 }

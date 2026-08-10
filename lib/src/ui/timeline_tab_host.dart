@@ -554,6 +554,12 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
         // empty: neither has a cell of its own to edit. Their work lives
         // in the twirl-down.
         break;
+      case LayerKind.transition:
+        // READ-ONLY inside a cut. The cut view windows the track's spans
+        // for reading; a double-tap here must not open the editor, or the
+        // "컷 타임라인은 보여주기만" law would be broken by the one gesture
+        // that looks harmless.
+        break;
       case LayerKind.animation || LayerKind.storyboard || LayerKind.image:
         await _renameSelectedFrame();
     }

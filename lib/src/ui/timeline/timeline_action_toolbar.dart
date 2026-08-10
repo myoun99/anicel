@@ -337,19 +337,23 @@ class TimelineActionToolbar extends StatelessWidget {
 
   List<PanelFlyoutEntry> _layerEntries(BuildContext context) {
     final active = session.activeLayer;
+    // A row the cut may only READ takes no verb from here — the transition
+    // row is authored on the global axis ("컷 타임라인은 보여주기만"), so
+    // selecting it must not light up rename/duplicate/delete.
+    final editable = active != null && !layerKindIsReadOnlyInCut(active.kind);
     return [
       PanelFlyoutItem(
         keyValue: 'rename-layer-button',
         label: AppText.strings.tlRenameLayer,
         icon: Icons.drive_file_rename_outline,
-        enabled: active != null,
+        enabled: editable,
         onSelected: onRenameLayer,
       ),
       PanelFlyoutItem(
         keyValue: 'duplicate-layer-button',
         label: AppText.strings.tlDuplicateLayer,
         icon: Icons.copy_outlined,
-        enabled: active != null,
+        enabled: editable,
         onSelected: session.duplicateActiveLayer,
       ),
       PanelFlyoutItem(

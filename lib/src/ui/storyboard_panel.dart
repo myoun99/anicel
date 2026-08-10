@@ -107,6 +107,10 @@ import 'timeline/timeline_frame_coordinate_policy.dart'
 import 'timeline/timeline_frame_range_policy.dart'
     show endlessTrailingFrames, endlessViewportFillFrames;
 import '../models/layer_kind.dart';
+import '../models/camera_instruction.dart' show CameraInstructionDef;
+import 'timeline/instruction_span_editing.dart' show instructionSpanCovering;
+import 'timeline/timeline_instruction_row_visual.dart'
+    show timelineRowInstructionEdgeGrips, timelineRowInstructionOverlays;
 import 'timeline/timeline_frame_ruler.dart';
 import 'timeline/timeline_edge_auto_pan.dart';
 import 'timeline/timeline_frame_window.dart';
@@ -426,6 +430,12 @@ class StoryboardPanel extends StatefulWidget {
     this.seCommaDrag,
     this.seSelect,
     this.onSetAudioClipOffset,
+    this.transitionDefById,
+    this.transitionPreview,
+    this.transitionCommaDrag,
+    this.onCreateTransition,
+    this.resolveCanCreateTransition,
+    this.onEditTransitionSpan,
     this.dragPreview,
     this.legend,
     this.rowFilter = TimelineRowFilter.none,
@@ -814,6 +824,45 @@ class StoryboardPanel extends StatefulWidget {
   /// timeline lane substrate). Null keeps the lane display-only.
   final void Function(LayerId layerId, int clipIndex, int offsetFrames)?
   onSetAudioClipOffset;
+
+  // The TRANSITION row (O.L / F.I / F.O). This panel is the ONE surface that
+  // authors it: the row is track-owned and its spans address the global frame
+  // axis, so the cut timeline shows the same spans READ-ONLY (user's law —
+  // the global track is where transitions are made). Null hooks keep the row
+  // display-only here too, which is what a host with no session does.
+
+  /// The vocabulary lookup the marks draw from (id → def), so the row paints
+  /// the same wedge/bowtie the cut's direction row does. Null leaves the
+  /// spans unmarked.
+  final CameraInstructionDef? Function(String instructionId)? transitionDefById;
+
+  /// The session's live edge-drag form of the row: while a grip is held the
+  /// strip renders THIS, so the mark follows the hand instead of jumping on
+  /// release ([[drag-verb-lifetime]] — the verb and its in-flight value live
+  /// in the session, never in this widget's State).
+  final ValueListenable<Layer?>? transitionPreview;
+
+  /// The row's edge grips — the timeline's own comma-drag hooks, pointed at
+  /// the session's transition writer. Block starts are GLOBAL frames.
+  final TimelineCommaDragCallbacks? transitionCommaDrag;
+
+  /// "Make one here": a one-frame transition span at the playhead, which the
+  /// grips then size.
+  final VoidCallback? onCreateTransition;
+
+  /// Whether there is anywhere to put one right now — no vocabulary, or a
+  /// span already covering the playhead, greys the button out.
+  ///
+  /// A RESOLVER, not a bool, and read inside a subscription to
+  /// [playheadFrame]: the playhead moves without rebuilding this panel (that
+  /// is the whole point of the cursor being its own channel), so a value
+  /// captured at build time would say "yes" long after the playhead had
+  /// walked onto a span.
+  final bool Function()? resolveCanCreateTransition;
+
+  /// Opens the term dialog (O.L / F.I / F.O …) for the span covering this
+  /// GLOBAL frame — also where the span is deleted.
+  final void Function(int globalFrame)? onEditTransitionSpan;
 
   /// The per-S-row view-state key: `<trackId>-<slot>`.
   static String seRowKey(Track track, int slot) => '${track.id.value}-$slot';
@@ -1420,6 +1469,56 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     return _draggableSeRow(track, slot, trackLayer, _seLabel(track, slot));
   }
 
+  /// The transition row's rail label. It carries ONE verb — "make one at the
+  /// playhead" — because that is the only thing about this row that is not
+  /// already a gesture on the strip: the grips size the span and the strip's
+  /// own press opens its term dialog.
+  Widget _transitionLabelRow(Track track) {
+    final layer = track.transitionLayer;
+    return _StoryboardTransitionLabel(
+      track: track,
+      layer: layer,
+      active: widget.selectedRow == LayerRowAddress(layer.id),
+      onSelectLayer: widget.onSelectLayer,
+      onCreate: widget.onCreateTransition,
+      resolveCanCreate: widget.resolveCanCreateTransition,
+      playheadFrame: widget.playheadFrame,
+    );
+  }
+
+  /// The transition row's strip: the track's spans on the GLOBAL axis, live
+  /// through the session's edge-drag form while a grip is held.
+  Widget _transitionStripRow(
+    Track track,
+    double width,
+    TimelineScale scale,
+  ) {
+    final committed = track.transitionLayer;
+    Widget row(Layer layer) => _StoryboardTransitionRow(
+      track: track,
+      layer: layer,
+      width: width,
+      timelineScale: scale,
+      defById: widget.transitionDefById,
+      commaDrag: widget.transitionCommaDrag,
+      onRowFramePress: widget.onRowFramePress,
+      onEditSpan: widget.onEditTransitionSpan,
+    );
+    final preview = widget.transitionPreview;
+    if (preview == null) {
+      return row(committed);
+    }
+    return ValueListenableBuilder<Layer?>(
+      valueListenable: preview,
+      // By IDENTITY, like the SE preview gate: the in-flight form stands in
+      // for THIS row only when it is this row's layer being dragged.
+      builder: (context, inFlight, _) =>
+          row(inFlight != null && inFlight.id == committed.id
+              ? inFlight
+              : committed),
+    );
+  }
+
   /// The S row, made draggable — the rail's row-order drag, on the third
   /// surface.
   ///
@@ -1567,7 +1666,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// counting in the V row's own 64px moved two tracks per group and the
   /// widget test caught it immediately.
   double _trackGroupExtent(Track track) {
-    var extent = widget.trackLaneHeight;
+    var extent = widget.trackLaneHeight + _transitionRowHeight;
     for (var slot = 0; slot < _seSlotCount(track); slot += 1) {
       // Through the S row's own accounting, so an open S row is counted
       // once and identically by both drags.
@@ -1746,6 +1845,14 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       ],
     ];
     return [
+      // The transition row heads the group. It is a FIXTURE like S1/S2 — one
+      // per track, always there — so it takes no filter gate and no reorder
+      // drag: there is nothing to hide it behind and nowhere to move it to.
+      _sectionZoneGroup(
+        keyValue: 'storyboard-section-zone-${track.id.value}-transition',
+        label: 'TR',
+        rows: [_transitionLabelRow(track)],
+      ),
       // A section with no rows left draws no zone: an empty SE band would
       // be a label over nothing once the filter took its rows.
       if (seRows.isNotEmpty)
@@ -1824,16 +1931,16 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   /// Layer. This is the storyboard's version of that gate, at the altitude
   /// the strip's own unit of work sits at.
   ///
-  /// The SE rows are already handed in from outside the subscription (R10-③,
-  /// the same idea reached one row at a time); everything else in the body
-  /// now builds from the committed project once.
+  /// The track-global rows are already handed in from outside the
+  /// subscription (R10-③, the same idea reached one row at a time);
+  /// everything else in the body now builds from the committed project once.
   Widget _trackGroupSection(
     Track track,
     int index,
     List<StoryboardTimelineLayoutEntry> entries,
     double width,
     TimelineScale scale,
-    List<Widget> seRows,
+    List<Widget> trackGlobalRows,
   ) {
     final dragPreview = widget.dragPreview;
     return Stack(
@@ -1841,7 +1948,14 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
         Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: dragPreview == null
-              ? _stripRowsForTrack(track, index, entries, width, scale, seRows)
+              ? _stripRowsForTrack(
+                  track,
+                  index,
+                  entries,
+                  width,
+                  scale,
+                  trackGlobalRows,
+                )
               : [
                   ValueListenableBuilder<TimelineDragPreview?>(
                     valueListenable: dragPreview,
@@ -1853,7 +1967,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                         _previewedEntriesFor(index, preview, entries),
                         width,
                         scale,
-                        seRows,
+                        trackGlobalRows,
                       ),
                     ),
                   ),
@@ -2085,6 +2199,20 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   ) {
     switch (row) {
       case LayerRowAddress(:final layerId):
+        // The transition row's blocks are its SPANS: standing on one outlines
+        // the whole span, the way standing on a sound outlines its block.
+        if (layerId == track.transitionLayer.id) {
+          final span = instructionSpanCovering(
+            track.transitionLayer.instructions,
+            frame,
+          );
+          return span == null
+              ? null
+              : (
+                  startIndex: span.key,
+                  endIndexExclusive: span.key + span.value.length,
+                );
+        }
         for (var slot = 0; slot < _seSlotCount(track); slot += 1) {
           final layer = _seDisplayAt(track, slot);
           if (layer != null && layer.id == layerId) {
@@ -2225,6 +2353,15 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
 
   List<_StoryboardRailSlot> _trackGroupRowGeometry(Track track) {
     final slots = <_StoryboardRailSlot>[];
+    // Index 0 is the TOP of the group ([_trackRowBand] accumulates y from
+    // here), and the transition row heads it — above the S rows, the way the
+    // camera section heads the cut timeline's rows.
+    slots.add((
+      row: LayerRowAddress(track.transitionLayer.id),
+      laneRow: null,
+      bandRow: false,
+      height: _transitionRowHeight,
+    ));
     for (var slot = _seSlotCount(track) - 1; slot >= 0; slot--) {
       final layer = _trackSeAt(track, slot);
       slots.add((
@@ -2349,12 +2486,14 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     List<StoryboardTimelineLayoutEntry> entries,
     double width,
     TimelineScale scale,
-    List<Widget> seRows,
+    List<Widget> trackGlobalRows,
   ) {
     return [
       // Prebuilt from the RAW project outside the drag-preview builder
       // (R10-③): identical instances per step = subtree rebuilds skipped.
-      ...seRows,
+      // The transition row and the S rows are both track-global, so both
+      // qualify — a cut trim cannot change either.
+      ...trackGlobalRows,
       _stripRowLine(
         _StoryboardTrackRow(
           track: track,
@@ -2711,34 +2850,44 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
           // painters included). The trade: an in-flight trim doesn't slide
           // their cut-boundary marks until release. SE comma drags edit the
           // ACTIVE layer through the timeline gates, unaffected here.
-          final seStripRowsByTrack = _seStripRowsByTrack();
+          final trackGlobalStripRowsByTrack = _trackGlobalStripRowsByTrack();
           // The body builds from the COMMITTED project, once. The drag
           // preview is read further down, at [_trackGroupSection] — see the
           // measurement in its doc for why the difference is not small.
-          return _buildBody(context, widget.project, seStripRowsByTrack);
+          return _buildBody(context, widget.project, trackGlobalStripRowsByTrack);
         },
       ),
     );
   }
 
-  /// The base-layout SE strip rows (+ their twirled-down lanes) per track
-  /// index — computed once per PANEL build and reused across drag-preview
-  /// steps.
-  List<List<Widget>> _seStripRowsByTrack() {
+  /// The base-layout TRACK-GLOBAL strip rows per track index — the transition
+  /// row and the SE rows (+ their twirled-down lanes) — computed once per
+  /// PANEL build and reused across drag-preview steps.
+  List<List<Widget>> _trackGlobalStripRowsByTrack() {
     final layoutEntries = buildStoryboardTimelineLayout(widget.project);
     final scale = _scale;
     final contentWidth = _contentWidthFor(widget.project, layoutEntries, scale);
     return [
       for (var index = 0; index < widget.project.tracks.length; index++)
-        _seStripRowsForTrack(
-          widget.project.tracks[index],
-          index,
-          layoutEntries
-              .where((entry) => entry.trackIndex == index)
-              .toList(growable: false),
-          contentWidth,
-          scale,
-        ),
+        [
+          // Heads the group, matching the rail's row order.
+          _stripRowLine(
+            _transitionStripRow(
+              widget.project.tracks[index],
+              contentWidth,
+              scale,
+            ),
+          ),
+          ..._seStripRowsForTrack(
+            widget.project.tracks[index],
+            index,
+            layoutEntries
+                .where((entry) => entry.trackIndex == index)
+                .toList(growable: false),
+            contentWidth,
+            scale,
+          ),
+        ],
     ];
   }
 
@@ -2785,7 +2934,7 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
   Widget _buildBody(
     BuildContext context,
     Project project,
-    List<List<Widget>> seStripRowsByTrack,
+    List<List<Widget>> trackGlobalStripRowsByTrack,
   ) {
     final colorScheme = Theme.of(context).colorScheme;
     final layoutEntries = buildStoryboardTimelineLayout(project);
@@ -3085,9 +3234,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
                                                     contentWidth,
                                                     scale,
                                                     index <
-                                                            seStripRowsByTrack
+                                                            trackGlobalStripRowsByTrack
                                                                 .length
-                                                        ? seStripRowsByTrack[index]
+                                                        ? trackGlobalStripRowsByTrack[index]
                                                         : const [],
                                                   ),
                                               ],
@@ -3516,6 +3665,11 @@ class _StoryboardRulerState extends State<_StoryboardRuler> {
 // 22 → 30 with the timeline-parity S-row controls (mute/eye/opacity).
 const double _seRowHeight = 30;
 
+/// The transition row's height. Same regulation as an S row — the transition
+/// row is the timesheet's CAMERA column on this axis, and the two must line
+/// up with the rail's own row pitch.
+const double _transitionRowHeight = 30;
+
 /// Twirl-down lane heights: the enlarged waveform strip, the cut-fade
 /// (Opacity) envelope lane and the Transform lanes (labels and strips
 /// share these — the rail and strips columns must stay height-synced).
@@ -3805,6 +3959,133 @@ class _StoryboardSeLabel extends StatelessWidget {
   }
 }
 
+/// The TRANSITION row's rail label — the track's O.L / F.I / F.O row.
+///
+/// The rail's shared column skeleton, like every other row, but most slots
+/// stay empty on purpose: the row carries no picture, so it has no eye, no
+/// opacity, no fx and no mark ([layerKindHasPictureOpacity] and friends
+/// answer false for [LayerKind.transition]). What it does carry is the one
+/// verb that has no home on the strip — "make one at the playhead".
+class _StoryboardTransitionLabel extends StatelessWidget {
+  const _StoryboardTransitionLabel({
+    required this.track,
+    required this.layer,
+    required this.active,
+    this.onSelectLayer,
+    this.onCreate,
+    this.resolveCanCreate,
+    this.playheadFrame,
+  });
+
+  final Track track;
+  final Layer layer;
+
+  /// Whether this row is THE selected row (same highlight as every other).
+  final bool active;
+  final ValueChanged<LayerId>? onSelectLayer;
+
+  final VoidCallback? onCreate;
+
+  /// Re-asked on every playhead tick — the button greys out rather than
+  /// disappearing, so the row's shape does not change under the hand.
+  final bool Function()? resolveCanCreate;
+  final ValueListenable<int?>? playheadFrame;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final onSelect = onSelectLayer;
+    return InkWell(
+      key: ValueKey<String>(
+        'storyboard-transition-label-${track.id.value}',
+      ),
+      onTap: onSelect == null ? null : () => onSelect(layer.id),
+      child: Container(
+        width: StoryboardPanel._trackLabelWidth,
+        height: _transitionRowHeight,
+        padding: const EdgeInsets.only(right: 8),
+        decoration: BoxDecoration(
+          color: active
+              ? colorScheme.secondaryContainer.withValues(alpha: 0.55)
+              : colorScheme.surface,
+          border: Border(
+            left: BorderSide(color: colorScheme.outlineVariant),
+            right: BorderSide(color: colorScheme.outlineVariant),
+            bottom: BorderSide(color: colorScheme.outlineVariant),
+          ),
+        ),
+        child: Semantics(
+          // The rail's ONE selection marker — every row carries this key, so
+          // "exactly one row is selected" stays one assertion.
+          key: active
+              ? const ValueKey<String>('storyboard-selected-row')
+              : null,
+          label: active ? 'selected layer' : 'layer',
+          container: true,
+          explicitChildNodes: true,
+          child: Row(
+            children: [
+              ...layerRailLeadingCells(
+                typeButton: LayerTypeButton(
+                  keyPrefix: 'storyboard',
+                  idValue: '${track.id.value}-transition',
+                  kind: LayerKind.transition,
+                  height: _transitionRowHeight,
+                  onTap: onSelect == null ? null : () => onSelect(layer.id),
+                ),
+              ),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text(
+                    layer.name,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 11,
+                      color: active
+                          ? colorScheme.onSurface
+                          : colorScheme.onSurfaceVariant,
+                    ),
+                  ),
+                ),
+              ),
+              _addButton(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// "Make one at the playhead". Subscribed to the cursor so its enabled
+  /// state is asked again per tick — see [resolveCanCreate].
+  Widget _addButton() {
+    Widget button(bool enabled) => IconButton(
+      key: ValueKey<String>('storyboard-transition-add-${track.id.value}'),
+      onPressed: enabled ? onCreate : null,
+      iconSize: 16,
+      visualDensity: VisualDensity.compact,
+      padding: EdgeInsets.zero,
+      constraints: const BoxConstraints.tightFor(width: 26, height: 26),
+      tooltip: 'Add transition at playhead',
+      icon: const Icon(Icons.add),
+    );
+
+    final resolve = resolveCanCreate;
+    final playhead = playheadFrame;
+    if (resolve == null) {
+      return button(false);
+    }
+    if (playhead == null) {
+      return button(resolve());
+    }
+    return ValueListenableBuilder<int?>(
+      valueListenable: playhead,
+      builder: (context, _, _) => button(resolve()),
+    );
+  }
+}
+
 /// A twirled-down lane's rail label row (Audio / Opacity), indented under
 /// its owner row like the timeline's lane labels.
 class _StoryboardLaneLabel extends StatelessWidget {
@@ -3850,6 +4131,184 @@ class _StoryboardLaneLabel extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+/// The TRACK-owned TRANSITION row on the global frame axis: the O.L / F.I /
+/// F.O spans exactly as stored, marks and grips included.
+///
+/// This is the surface that AUTHORS them. The cut timeline shows the same
+/// spans projected onto each participating cut and read-only, which is why
+/// the two surfaces state a span's position differently on purpose — here it
+/// straddles the cut boundary it fires across; there each cut sees the whole
+/// mark on its own side.
+///
+/// Everything drawn here is the direction row's own machinery: the paper
+/// span, [timelineRowInstructionOverlays] for the marks and
+/// [TimelineBlockEdgeGrip] for the edges. Nothing about a mark is re-drawn
+/// for this row.
+class _StoryboardTransitionRow extends StatelessWidget {
+  const _StoryboardTransitionRow({
+    required this.track,
+    required this.layer,
+    required this.width,
+    required this.timelineScale,
+    this.defById,
+    this.commaDrag,
+    this.onRowFramePress,
+    this.onEditSpan,
+  });
+
+  final Track track;
+
+  /// The row as it should RENDER — the committed layer, or the session's
+  /// in-flight edge-drag form while a grip is held.
+  final Layer layer;
+  final double width;
+  final TimelineScale timelineScale;
+  final CameraInstructionDef? Function(String instructionId)? defById;
+  final TimelineCommaDragCallbacks? commaDrag;
+  final StoryboardRowFramePress? onRowFramePress;
+  final void Function(int globalFrame)? onEditSpan;
+
+  /// The visible frame window this strip covers — the whole content width,
+  /// like the SE grips' own geometry.
+  int get _frameEndExclusive => timelineScale.pixelsPerFrame <= 0
+      ? 0
+      : (width / timelineScale.pixelsPerFrame).ceil();
+
+  TimelineFrameGeometry get _geometry => TimelineFrameGeometry(
+    frameCellExtent: timelineScale.pixelsPerFrame,
+    frameStartIndex: 0,
+    frameEndIndexExclusive: _frameEndExclusive,
+  );
+
+  @override
+  Widget build(BuildContext context) {
+    final spans = <Widget>[];
+    // The paper under each span, at its TRUE global extent: this row has no
+    // cells of its own, so it paints its paper the way the storyboard's SE
+    // rows do rather than through the cell exposure states. [SePaperSpan] is
+    // the shared paper block (a rounded block with per-frame dividers) —
+    // named for its first user, not SE-specific.
+    for (final entry in layer.instructions.entries) {
+      spans.add(
+        Positioned(
+          left: timelineScale.leftForFrame(entry.key),
+          top: 0,
+          bottom: 0,
+          width: entry.value.length * timelineScale.pixelsPerFrame,
+          child: IgnorePointer(
+            key: ValueKey<String>(
+              'storyboard-transition-paper-${layer.id}-${entry.key}',
+            ),
+            child: SePaperSpan(
+              axis: Axis.horizontal,
+              frameCellExtent: timelineScale.pixelsPerFrame,
+            ),
+          ),
+        ),
+      );
+    }
+    // The marks, from the direction row's own overlay builder.
+    final defById = this.defById;
+    if (defById != null && _frameEndExclusive > 0) {
+      spans.add(
+        Positioned.fill(
+          child: IgnorePointer(
+            child: TimelineFixedFrameSpanLayer(
+              geometry: _geometry,
+              crossAxisExtent: _transitionRowHeight,
+              axis: Axis.horizontal,
+              children: timelineRowInstructionOverlays(
+                layer: layer,
+                frameStartIndex: 0,
+                frameEndIndexExclusive: _frameEndExclusive,
+                axis: Axis.horizontal,
+                defById: defById,
+                keyPrefix: 'storyboard',
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+    // Row-wide press: stand here, like every other row on this rail — a bare
+    // Listener, the SE row's own, so the park lands whatever gesture follows.
+    // DOUBLE-tap opens the span's term dialog, which is the cut timeline's
+    // gesture for "edit this instance" and the only place a term is renamed
+    // or a span deleted. Creation stays the rail's + button, so no boundary
+    // gains an O.L by being brushed past. Mounted BEFORE the grips so the
+    // edges keep drag priority.
+    final onRowFramePress = this.onRowFramePress;
+    final onEditSpan = this.onEditSpan;
+    if (onRowFramePress != null || onEditSpan != null) {
+      int? frameAt(Offset local) => timelineScale.pixelsPerFrame <= 0
+          ? null
+          : (local.dx / timelineScale.pixelsPerFrame).floor();
+      spans.add(
+        Positioned.fill(
+          key: ValueKey<String>('storyboard-transition-press-${layer.id}'),
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onDoubleTapDown: onEditSpan == null
+                ? null
+                : (details) {
+                    final frame = frameAt(details.localPosition);
+                    if (frame == null ||
+                        instructionSpanCovering(layer.instructions, frame) ==
+                            null) {
+                      return;
+                    }
+                    onEditSpan(frame);
+                  },
+            child: Listener(
+              behavior: HitTestBehavior.translucent,
+              onPointerDown: (event) {
+                if (event.buttons != 0 &&
+                    (event.buttons & kPrimaryButton) == 0) {
+                  return;
+                }
+                final frame = frameAt(event.localPosition);
+                if (frame == null) {
+                  return;
+                }
+                onRowFramePress?.call(LayerRowAddress(layer.id), frame);
+              },
+            ),
+          ),
+        ),
+      );
+    }
+    final commaDrag = this.commaDrag;
+    if (commaDrag != null && _frameEndExclusive > 0) {
+      final grips = timelineRowInstructionEdgeGrips(
+        layer: layer,
+        frameStartIndex: 0,
+        frameEndIndexExclusive: _frameEndExclusive,
+        resolveFrameCellExtent: () => timelineScale.pixelsPerFrame,
+        commaDrag: commaDrag,
+        axis: Axis.horizontal,
+      );
+      if (grips.isNotEmpty) {
+        spans.add(
+          Positioned.fill(
+            child: TimelineFixedFrameSpanLayer(
+              geometry: _geometry,
+              crossAxisExtent: _transitionRowHeight,
+              axis: Axis.horizontal,
+              children: grips,
+            ),
+          ),
+        );
+      }
+    }
+    return SizedBox(
+      key: ValueKey<String>('storyboard-transition-row-${track.id.value}'),
+      width: width,
+      height: _transitionRowHeight,
+      child: Stack(children: spans),
     );
   }
 }

@@ -2724,8 +2724,9 @@ Line 8''';
       );
 
       expect(find.text('A'), findsWidgets);
-      // Two drawing rows plus the always-present S1·S2/CAM 1/camera rows.
-      expect(_timelineLayerRows(), findsNWidgets(6));
+      // Two drawing rows plus the always-present fixtures: S1·S2, CAM 1,
+      // the camera, and the track's transition row.
+      expect(_timelineLayerRows(), findsNWidgets(7));
       expect(
         find.descendant(
           of: find.byKey(const ValueKey<String>('timeline-selected-layer')),
@@ -2735,10 +2736,10 @@ Line 8''';
       );
 
       await _tapToolbarButton(tester, const ValueKey<String>('undo-button'));
-      expect(_timelineLayerRows(), findsNWidgets(5));
+      expect(_timelineLayerRows(), findsNWidgets(6));
 
       await _tapToolbarButton(tester, const ValueKey<String>('redo-button'));
-      expect(_timelineLayerRows(), findsNWidgets(6));
+      expect(_timelineLayerRows(), findsNWidgets(7));
       expect(
         find.descendant(
           of: find.byKey(const ValueKey<String>('timeline-selected-layer')),
@@ -2808,8 +2809,9 @@ Line 8''';
       );
 
       expect(find.text('A'), findsWidgets);
-      // Two drawing rows plus the always-present S1·S2/CAM 1/camera rows.
-      expect(_timelineLayerRows(), findsNWidgets(6));
+      // Two drawing rows plus the always-present fixtures: S1·S2, CAM 1,
+      // the camera, and the track's transition row.
+      expect(_timelineLayerRows(), findsNWidgets(7));
       expect(
         find.descendant(
           of: find.byKey(const ValueKey<String>('timeline-selected-layer')),

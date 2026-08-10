@@ -4,8 +4,10 @@ import 'package:flutter/material.dart';
 
 import 'theme/app_scroll_behavior.dart';
 
+import '../models/camera_instruction.dart' show InstructionEvent;
 import '../models/canvas_point.dart';
 import '../models/cut_id.dart';
+import 'dialogs/instruction_event_dialog.dart';
 import '../models/layer_id.dart';
 import '../models/timeline_row_address.dart';
 import '../models/track.dart';
@@ -387,6 +389,54 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
       return;
     }
     _session.updateLayerTransformTrack(layerId, next, description: description);
+  }
+
+  /// The transition span's term dialog — the direction row's dialog verbatim,
+  /// with two differences: the picker's vocabulary is filtered to the 場面
+  /// 転換 terms, and the vocabulary EDITOR is not offered (it commits the
+  /// whole set, so editing a filtered copy would drop the camera-work terms).
+  ///
+  /// Length is NOT taken from the dialog: the grips own it here, so a re-pick
+  /// can never resize the span out from under the boundary it fires across.
+  Future<void> _editTransitionSpan(int globalFrame) async {
+    final covering = _session.transitionSpanAt(globalFrame);
+    if (covering == null) {
+      return;
+    }
+    final result = await showDialog<InstructionEventDialogResult>(
+      context: context,
+      builder: (context) => InstructionEventDialog(
+        instructionSet: _session.transitionInstructionSet,
+        initialInstructionId: covering.value.instructionId,
+        initialText: covering.value.text,
+        initialValueA: covering.value.valueA,
+        initialValueB: covering.value.valueB,
+        initialMemo: covering.value.memo,
+        editing: true,
+      ),
+    );
+    if (!mounted || result == null) {
+      return;
+    }
+    if (result.delete) {
+      _session.removeTransitionSpanAt(globalFrame);
+      return;
+    }
+    final instructionId = result.instructionId;
+    if (instructionId == null) {
+      return;
+    }
+    _session.replaceTransitionEventAt(
+      globalFrame,
+      InstructionEvent(
+        instructionId: instructionId,
+        length: covering.value.length,
+        text: result.text,
+        valueA: result.valueA,
+        valueB: result.valueB,
+        memo: result.memo,
+      ),
+    );
   }
 
   /// ONE command-bar row — the timeline's own widget now, not a parallel
@@ -916,6 +966,26 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   ),
                   // The Audio lane's slide edit (active cut).
                   onSetAudioClipOffset: _session.setAudioClipOffset,
+                  // The TRANSITION row. This panel is its only editor: the
+                  // row is track-owned and its spans address the global
+                  // axis, so the cut timeline shows them read-only.
+                  transitionDefById: _session.cameraInstructionSet.defById,
+                  transitionPreview: _session.transitionEdgeDragPreview,
+                  transitionCommaDrag: TimelineCommaDragCallbacks(
+                    onBegin: (layerId, blockStartIndex, edge) =>
+                        _session.beginTransitionEdgeDrag(
+                          layerId: layerId,
+                          spanStartIndex: blockStartIndex,
+                          edge: edge,
+                        ),
+                    onUpdate: _session.updateTransitionEdgeDrag,
+                    onEnd: _session.endTransitionEdgeDrag,
+                    onCancel: _session.cancelTransitionEdgeDrag,
+                  ),
+                  resolveCanCreateTransition: () =>
+                      _session.canCreateTransitionSpanAtPlayhead,
+                  onCreateTransition: _session.createTransitionSpanAtPlayhead,
+                  onEditTransitionSpan: _editTransitionSpan,
                 ),
               ),
             ),
