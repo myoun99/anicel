@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/layer_effect.dart';
 import 'editor_session_manager.dart';
 import 'text/app_strings.dart';
+import 'widgets/command_pill.dart';
 import 'widgets/panel_flyout.dart';
 
 /// The V row's fx entrance — the storyboard's counterpart of the timeline's
@@ -51,11 +52,17 @@ class TrackFxCommandGroup extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return PanelFlyoutButton(
-      key: const ValueKey<String>('storyboard-track-fx-menu-button'),
-      label: 'V',
-      tooltip: AppText.strings.sbTrackFxCommands,
-      entriesBuilder: _entries,
+    // The bar's one grammar (2026-08-10): a noun inside a border, its name
+    // cell being both the label and the menu. This pill has no verbs outside
+    // its menu yet — which the rule allows, being the same shape with the
+    // list empty rather than an exception to it.
+    return CommandPill(
+      head: PillNameCell(
+        keyValue: 'storyboard-track-fx-menu-button',
+        label: 'V',
+        tooltip: AppText.strings.sbTrackFxCommands,
+        entriesBuilder: _entries,
+      ),
     );
   }
 }

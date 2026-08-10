@@ -2,7 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'theme/app_scroll_behavior.dart';
 
 import '../models/camera_instruction.dart' show InstructionEvent;
 import '../models/cut_id.dart';
@@ -386,7 +385,11 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
   /// copy of it: transport + cut group left, the shared view cluster right.
   Widget _commandBar(BuildContext context) {
     return TimelineCommandBar(
-      leading: UnbarredScrollable(
+      // Barred like the timeline's (유저, 2026-08-10: 「버튼 사라지기
+      // 시작하면 생기는 스크롤바」) — the app's overflow bar exists only
+      // while it overflows and costs no layout when it does not.
+      leading: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 2),
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
               child: Row(
@@ -398,25 +401,40 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   // (see [FramePanelSillControls]). What stays here is what
                   // reaches into THIS panel's own contents.
                   CutCommandGroup(session: _session),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 6),
                   // The V row's fx (user 2026-08-08): a chain over the whole
                   // composited cut, authored from this panel.
                   TrackFxCommandGroup(session: _session),
-                  const SizedBox(width: 4),
+                  const SizedBox(width: 6),
+                  // ⚠️The LAYER and FRAME pills are not here yet. The
+                  // storyboard needs them — 유저: 스토리보드 레이어의 프레임을
+                  // 조절해야 하고 레이어도 만들고 지워야 한다 — but they are
+                  // the timeline host's dialog flows (rename layer, delete
+                  // layer, the kind-dispatched instance editor), and lifting
+                  // those out is a refactor of that host rather than a line
+                  // here. Until then this panel keeps the two nouns it can
+                  // honestly serve.
+                  //
                   // THE push/pull pair, the timeline rail's own widget: the
                   // rail asks as ITSELF, so with nothing selected the shove
                   // aims at the row this rail is on (a cut row shoves cuts,
                   // an S row shoves sounds).
+                  // ⛔These two are deliberately NOT in a pill. A pill is a
+                  // noun and its verbs; these are loose verbs whose noun is
+                  // not on this bar yet — push/pull belongs to the FRAME
+                  // pill (it is a frame-axis shove) and it will move there
+                  // when that pill arrives. Inventing a "rows" noun to hold
+                  // them in the meantime would be a border drawn around a
+                  // gap.
                   TimelineShiftButtons(
                     session: _session,
                     currentRow: _session.selectedRow,
                   ),
                   const SizedBox(width: 4),
-                  // V ROW HEIGHT — one pair for every V track, because
-                  // there is one height (user's rule). A pair of steppers
-                  // rather than a slider: this panel is worked on an iPad,
-                  // and the push/pull pair beside it already reads this
-                  // way.
+                  // V ROW HEIGHT — one pair for every V track, because there
+                  // is one height (user's rule). Steppers rather than a
+                  // slider: this panel is worked on an iPad, and the
+                  // push/pull pair beside it already reads that way.
                   _TrackLaneHeightButtons(
                     height: widget.trackLaneHeight,
                     onChanged: widget.onTrackLaneHeightChanged,
