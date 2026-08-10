@@ -983,6 +983,85 @@ void main() {
             'the answer and the upload never ran',
       );
     });
+
+    test('uploads are rationed per paint, and drain over the next ones', () {
+      // An upload costs what a decode START costs — the 256KB tile copy
+      // and premultiply — plus the upload. Unrationed, a zoomed-out paint
+      // of a large cel would do the whole visible grid at once, which is
+      // precisely the burst decodeStartBudget exists to spread out. This
+      // is the one N4 ⑤ regression that could never show on the renderer
+      // it was written on: Skia declines every call before the budget is
+      // even consulted.
+      const budget = BitmapSurfacePainter.decodeStartBudget;
+      const columns = budget + 8;
+      const tileSize = 2;
+      final cache = BitmapTileImageCache();
+      debugSyncImageUploadOverride = fromPremultiplied;
+      final tiles = <TileCoord, BitmapTile>{};
+      for (var column = 0; column < columns; column += 1) {
+        final coord = TileCoord(x: column, y: 0);
+        tiles[coord] = _tile(
+          coord: coord,
+          size: tileSize,
+          colors: {const _Point(0, 0): RgbaColor(r: 255, g: 0, b: 0, a: 255)},
+        );
+      }
+      final surface = BitmapSurface(
+        canvasSize: CanvasSize(width: columns * tileSize, height: tileSize),
+        tileSize: tileSize,
+        tiles: tiles,
+      );
+      final painter = BitmapSurfacePainter(
+        surface: surface,
+        showTransparentBackground: false,
+        // Its own scope: a borrow would answer before the upload is ever
+        // offered, and then this measures nothing.
+        staleScope: Object(),
+        tileImageCache: cache,
+      );
+
+      int uploaded() =>
+          surface.tiles.values.where((t) => cache.imageFor(t) != null).length;
+
+      void paintOnce() {
+        final recorder = ui.PictureRecorder();
+        final size = Size(
+          (columns * tileSize).toDouble(),
+          tileSize.toDouble(),
+        );
+        painter.paint(Canvas(recorder, Offset.zero & size), size);
+        recorder.endRecording().dispose();
+      }
+
+      paintOnce();
+      final afterFirst = uploaded();
+      expect(
+        afterFirst,
+        budget,
+        reason: 'one paint uploaded $afterFirst of $columns — the whole '
+            'visible grid in one frame is the burst this rations',
+      );
+
+      paintOnce();
+      expect(
+        uploaded(),
+        greaterThan(afterFirst),
+        reason: 'the remainder must drain on later paints, not stall',
+      );
+      // ⚠️ NOT "all of them". The first paint's collect pass starts
+      // asynchronous decodes for tiles it could not upload, and
+      // `adoptSyncUpload` stands aside for an in-flight decode — that one
+      // would land later and overwrite the entry, leaking the image it
+      // displaced. So the tail arrives by decode rather than by upload,
+      // and what has to be true is that NOTHING is left waiting for a
+      // start that will never come.
+      expect(
+        surface.tiles.values.where(cache.needsDecodeStart).toList(),
+        isEmpty,
+        reason: 'a tile with neither a picture nor a decode in flight is a '
+            'coordinate that has stopped converging',
+      );
+    });
   });
 }
 

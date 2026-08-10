@@ -113,6 +113,36 @@ void main() {
     expect(cache.hasProvisional(post.tileAt(coord0)!), isTrue);
   });
 
+  test('a coordinate the commit did not touch gets no invented change', () {
+    // The caller hands over the landing RECT, and a landing is not a
+    // rectangle: a lasso, or anything rotated, has corners inside its own
+    // bounds that the stamp never wrote to. Structural sharing hands back
+    // the SAME tile object there, and composing ink onto it would be
+    // inventing a change the commit did not make.
+    //
+    // ⚠️ The tile is BLANK and undecoded, and that is the only fixture
+    // that reaches this guard. An inked one is stopped a line later by
+    // the pre-coverage check (pixels, no picture) and a decoded one is
+    // stopped a line earlier (it can already draw itself) — written with
+    // ink first, this test passed with the guard DELETED, which is the
+    // trap this whole program keeps paying for.
+    final cache = BitmapTileImageCache();
+    final untouched = tile(coord0);
+    final shared = surfaceOf([untouched]);
+
+    final result = seedProvisionalTilePictures(
+      preSurface: shared,
+      postSurface: shared,
+      coords: [coord0],
+      ink: greenEverywhere(),
+      cache: cache,
+    );
+
+    expect(result.seeded, 0);
+    expect(result.skipped, 1);
+    expect(cache.hasProvisional(untouched), isFalse);
+  });
+
   test('a tile that already has its own picture is not given a second '
       'one', () {
     final cache = BitmapTileImageCache();
@@ -164,10 +194,42 @@ void main() {
     expect(second.seeded, 1);
   });
 
+  test('a landing that reaches past the float own wall composes nothing', () {
+    // The float and the landing have DIFFERENT pasteboards. The float was
+    // materialized at its own centre through the same clipping stamp
+    // kernel, so a selection dragged off-stage and picked up again lost
+    // that band from the float for good — while the commit writes it at
+    // the landed position. An absent float tile there does not mean
+    // "nothing belongs here", and answering true would publish a stand-in
+    // with that band missing AND drop those coordinates from the hold,
+    // because a successful compose is what makes the base look paintable.
+    final cache = BitmapTileImageCache();
+    // The float's canvas is 4 wide, so its pasteboard runs x ∈ [-8, 12).
+    // A canvasDelta of 11 maps the landing's tile (1,0) — canvas x 2..4 —
+    // back to float x -9..-7, which reaches past that wall. At a delta of
+    // 10 it lands exactly ON the wall and is legitimately inside, which
+    // is why the number is 11 and not a round one.
+    final floatTile = tile(coord0, at00: red);
+    final float = surfaceOf([floatTile]);
+    cache.adoptDecoded(floatTile, solid(tileSize, const Color(0xFF00FF00)));
+
+    final post = surfaceOf([tile(coord1)]);
+    final result = seedProvisionalTilePictures(
+      preSurface: surfaceOf([tile(coord1)]),
+      postSurface: post,
+      coords: [coord1],
+      ink: inkFromSurface(float, const Offset(11, 0), cache: cache),
+      cache: cache,
+    );
+
+    expect(result.seeded, 0);
+    expect(cache.hasProvisional(post.tileAt(coord1)!), isFalse);
+  });
+
   test('where the engine can upload, it takes the tile own bytes instead '
       'of composing an approximation of them', () {
     // N4 ⑤. Composition is the Skia answer and it is off by a rounding
-    // step at the faintest ink; an upload of the tile's own bytes is
+    // steps at middling alpha; an upload of the tile's own bytes is
     // exact. Preferring the approximation when the exact picture is
     // available would also leave a provisional lifecycle running for a
     // picture that never needs replacing.

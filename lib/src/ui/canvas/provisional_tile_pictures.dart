@@ -37,10 +37,12 @@ final Paint _tilePaint = Paint()
 /// The result is PROVISIONAL, never adopted. The commit kernel blends in
 /// straight alpha and premultiplies once; this composition premultiplies
 /// both operands and blends in premultiplied space, and the two 8-bit
-/// rounding orders disagree by one channel step at the faintest ink over
-/// the faintest base (`tile_image_sync_compose_parity_test` sweeps it).
-/// One frame off by one along the FIDELITY axis is what this program's
-/// invariant says to trade; coverage is the axis it says never to trade.
+/// rounding orders disagree by up to TWO channel steps, at middling alpha
+/// on both operands (`tile_image_sync_compose_parity_test` sweeps it —
+/// and note that an earlier, coarser sweep said one step and blamed the
+/// faintest ink, so trust the test rather than this sentence). A frame
+/// off by two along the FIDELITY axis is what this program's invariant
+/// says to trade; coverage is the axis it says never to trade.
 ///
 /// ⚠️ Composition, not upload. Every operand has to be a `ui.Image`
 /// already, which is why this is called where the picture lives — the
@@ -48,6 +50,14 @@ final Paint _tilePaint = Paint()
 /// funnel, which holds only bytes. Turning bytes into an image
 /// synchronously is `decodeImageFromPixelsSync`, and that is Impeller
 /// only while Windows runs Skia in every build.
+///
+/// ⚠️ PRECONDITION: the commit being stood in for must composite the ink
+/// with plain SOURCE-OVER. That is what this draws, and nothing here can
+/// check it. It holds at the only caller — a lift/move landing commits a
+/// stamp dab at the default [BrushBlendMode.color], which is `srcOver`
+/// (`brush_blend_mode.dart`) — but an erase, a `behind`, or any separable
+/// brush blend would need its own operator, and composing one of those as
+/// srcOver would publish a picture the commit never wrote.
 ///
 /// Returns what it did: coordinates it could not answer for keep today's
 /// behaviour, and the count is how a caller (or a test) sees that without
@@ -171,6 +181,18 @@ ProvisionalInkPainter inkFromImage(ui.Image image, Rect placement) {
 /// Answers false for a region a float tile covers without a picture of its
 /// own: the composition would be missing exactly the artwork it is there
 /// to carry.
+///
+/// ⚠️ And false for a region that falls outside the float's OWN pasteboard,
+/// which is a different wall from the landing's. The float was
+/// materialized through the same clipping stamp kernel, at
+/// `_floatSurfaceCentre` — so a selection dragged off-stage and then
+/// picked up again lost that band from the float permanently, while the
+/// commit writes it at the LANDED position. There, an absent float tile
+/// does not mean "nothing belongs here", it means "the wall ate it", and
+/// the two are indistinguishable once you are only looking at tiles.
+/// Answering true would publish a stand-in with that band of the landing
+/// missing AND take those coordinates out of the hold, since a successful
+/// compose is what makes the base look paintable.
 ProvisionalInkPainter inkFromSurface(
   BitmapSurface surface,
   Offset canvasDelta, {
@@ -179,9 +201,22 @@ ProvisionalInkPainter inkFromSurface(
   final images = cache ?? BitmapTileImageCache.instance;
   final tileSize = surface.tileSize;
   final tileExtent = tileSize.toDouble();
+  final floatCanvas = surface.canvasSize;
+  final floatPasteboard = Rect.fromLTRB(
+    floatCanvas.pasteboardLeft.toDouble(),
+    floatCanvas.pasteboardTop.toDouble(),
+    floatCanvas.pasteboardRightExclusive.toDouble(),
+    floatCanvas.pasteboardBottomExclusive.toDouble(),
+  );
   return (canvas, region) {
     // The region read in the float's OWN coordinates.
     final local = region.shift(-canvasDelta);
+    if (local.left < floatPasteboard.left ||
+        local.top < floatPasteboard.top ||
+        local.right > floatPasteboard.right ||
+        local.bottom > floatPasteboard.bottom) {
+      return false;
+    }
     final firstX = floorDiv(local.left.floor(), tileSize);
     final lastX = floorDiv(local.right.ceil() - 1, tileSize);
     final firstY = floorDiv(local.top.floor(), tileSize);

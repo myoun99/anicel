@@ -13,7 +13,7 @@ import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 /// stop the real decode, and it must not survive it — a composed picture is
 /// the same operation the screen was already performing, but it is not
 /// byte-identical to the commit kernel's output, so letting it become the
-/// tile's permanent picture would pin an off-by-one forever
+/// tile's permanent picture would pin an off-by-two forever
 /// (`tile_image_sync_compose_parity_test` measures that).
 void main() {
   BitmapTile tileAt(int x, int y) => BitmapTile.blank(
@@ -52,7 +52,7 @@ void main() {
       // bucket read, and none of them may see a synthesized picture.
       expect(cache.imageFor(tile), isNull);
       // 🚨 The load-bearing one. If a stand-in stopped the decode, the
-      // off-by-one would become permanent and nothing would ever say so.
+      // off-by-two would become permanent and nothing would ever say so.
       expect(cache.needsDecodeStart(tile), isTrue);
     });
   });
@@ -124,7 +124,7 @@ void main() {
 
       // The whole point of the stand-in is that it is a picture of THIS
       // tile. Letting it seed the per-coordinate bucket would hand the
-      // off-by-one to a later generation as if it were truth — the exact
+      // off-by-two to a later generation as if it were truth — the exact
       // shape of the bug this work exists to remove.
       expect(cache.latestImageForCoord(tile.coord, scope: scope), isNull);
     });

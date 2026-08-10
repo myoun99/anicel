@@ -182,6 +182,24 @@ class BitmapSurfacePainter extends CustomPainter {
     // for its decode (it lands within a few frames — the repaint hook
     // brings it in).
     var pixelFallbackBudget = 4;
+    // N4 ⑤: the SAME rationing for synchronous uploads, and for the same
+    // reason. An upload costs the tile copy + premultiply a decode START
+    // costs, plus the upload itself — so doing it for every undrawable
+    // visible coordinate would rebuild, inside one frame, exactly the
+    // burst [decodeStartBudget] exists to spread over several. Zoomed out
+    // on a large cel that is the whole visible grid at once.
+    //
+    // Same number as the decode-start budget, because it is the same cost
+    // being rationed and the two are alternatives for one coordinate. Any
+    // tile that misses out is not lost: it keeps today's answer for this
+    // frame, its decode was already started by the collect pass, and the
+    // next paint offers it the upload again.
+    //
+    // ⚠️ Skia never reaches this — `adoptSyncUpload` returns on a cached
+    // bool before the budget is consulted — so nothing here changes the
+    // renderer this is developed on. That is precisely why it needs to be
+    // reasoned about rather than measured here.
+    var syncUploadBudget = decodeStartBudget;
     // R27 #2: the budget goes to tiles the user can actually SEE. Since
     // the walk below is now visible-only, every coordinate it reaches
     // already shows — no separate visibility test is needed.
@@ -331,10 +349,23 @@ class BitmapSurfacePainter extends CustomPainter {
         // per-pixel fallback, and it ADOPTS, so a coordinate pays it
         // once. Null on Skia (probed once per run), where the two
         // fallbacks below stay the whole answer.
-        final tileImage =
-            tileImageCache.displayImageFor(tile) ??
-            tileImageCache.adoptSyncUpload(tile, staleScope: staleScope) ??
-            tileImageCache.latestImageForCoord(tile.coord, scope: staleScope);
+        var tileImage = tileImageCache.displayImageFor(tile);
+        if (tileImage == null && syncUploadBudget > 0) {
+          tileImage = tileImageCache.adoptSyncUpload(
+            tile,
+            staleScope: staleScope,
+          );
+          // Spent on the ANSWER, not the attempt — the same correction
+          // the per-pixel budget needed. On Skia every call declines, and
+          // charging for a decline would be charging for nothing.
+          if (tileImage != null) {
+            syncUploadBudget -= 1;
+          }
+        }
+        tileImage ??= tileImageCache.latestImageForCoord(
+          tile.coord,
+          scope: staleScope,
+        );
         if (tileImage != null) {
           canvas.drawImage(
             tileImage,

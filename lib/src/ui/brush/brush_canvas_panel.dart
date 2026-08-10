@@ -2244,7 +2244,31 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   /// Captured at the call rather than read back, because by the time the
   /// selection layer asks, the commit has already replaced it. Consumed
   /// once; a stale one would compose the wrong artwork under the landing.
+  ///
+  /// 🚨 Released on the NEXT FRAME whether or not anyone consumed it, and
+  /// that is not tidiness. Three ordinary endings land a stamp and never
+  /// reach the composer — a tool switch that confirms from the unmounting
+  /// layer's `dispose`, a cel change that lands the pending stamp through
+  /// `_resetAll`, and a confirm with no ink to compose from — and a
+  /// [BitmapSurface] holds every tile the landing replaced, whose pixels
+  /// are NATIVE allocations plus their GPU images. On a whole-picture
+  /// transform of a 2340×1654 cel that is tens of megabytes pinned for
+  /// the rest of the session, which is the same "every edit pins its last
+  /// generation" term [BitmapTileImageCache.retainedScopeLimit] exists to
+  /// bound. The compose runs synchronously inside the same landing, so a
+  /// post-frame release can never take it away early.
   BitmapSurface? _preLandingSurface;
+
+  /// Captures the pre-landing cel and schedules its release, so the slot
+  /// cannot outlive the landing that filled it.
+  void _holdPreLandingSurface(BrushFrameEditingCoordinator coordinator) {
+    _preLandingSurface = coordinator.currentSurfaceOf(
+      coordinator.activeFrameKey,
+    );
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _preLandingSurface = null;
+    });
+  }
 
   /// Gives the tiles a landing just created a picture of themselves,
   /// composed from what the float is already showing.
@@ -2419,9 +2443,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     void run() {
       // The base the landing is about to be blended onto, for the
       // composed stand-ins the layer asks for immediately after this.
-      _preLandingSurface = coordinator.currentSurfaceOf(
-        coordinator.activeFrameKey,
-      );
+      _holdPreLandingSurface(coordinator);
       final historyManager = widget.historyManager;
       if (historyManager == null || preLift == null) {
         // Headless hosts (focused tests) or a lost anchor: land raw.
@@ -2483,9 +2505,7 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       return;
     }
     void run() {
-      _preLandingSurface = coordinator.currentSurfaceOf(
-        coordinator.activeFrameKey,
-      );
+      _holdPreLandingSurface(coordinator);
       coordinator.commitSourceStroke(
         sourceDabs: [stampDab],
         cacheInvalidationSink: widget.cacheInvalidationSink,

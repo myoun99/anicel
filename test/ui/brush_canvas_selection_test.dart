@@ -1316,10 +1316,10 @@ void main() {
       // The float is what should cover that, because it is not a stand-in:
       // by P3a's preview/commit byte-identity contract it holds exactly
       // these bytes at exactly this place.
-      final env = await pumpSelectionPanel(tester);
-      await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+      final env = await pumpSelectionPanel(tester, sourceDabs: widePicture);
+      await dragOnLayer(tester, const Offset(20, 20), const Offset(700, 500));
       await env.setTool(CanvasTool.move);
-      await dragOnLayer(tester, const Offset(45, 45), const Offset(58, 49));
+      await dragOnLayer(tester, const Offset(300, 200), const Offset(340, 225));
       await tester.pump();
 
       // Something on screen must be able to paint the moved artwork: the
@@ -1340,6 +1340,29 @@ void main() {
       // from the float. Two ways of asking meant a mechanism that made the
       // frame CORRECT could still read as a failure. The raster does not
       // care which mechanism drew.
+      //
+      // 🚨 THIS ORACLE COULD NOT FAIL, FOR TWO SEPARATE REASONS, AND BOTH
+      // ARE FIXED HERE. Measured against a painter rebuilt with a
+      // brand-new EMPTY cache — no decode, no stand-in, no borrow, no
+      // upload, i.e. every mechanism the assertion names removed:
+      //
+      //  1. THE WINDOW. Sampled at 128×128 it sits inside a SINGLE 256px
+      //     tile whatever the artwork is, so the four-tile per-pixel
+      //     budget covers it alone: own=48 missing=0, pass. `widePicture`
+      //     over the full 800×600 viewport puts twelve tiles in range,
+      //     eight past the budget. Same reason `widePicture` exists at
+      //     all — four tiles is the threshold below which every defect in
+      //     this family is invisible.
+      //  2. THE PAPER, which is the worse one and survived fix 1:
+      //     `missing` asked whether the painted pixel had any ALPHA, and
+      //     the base painter fills the canvas with opaque paper before it
+      //     draws a single tile. So alpha is 255 everywhere in-canvas and
+      //     `missing` was structurally 0 — own=1064 missing=0 on an empty
+      //     cache. It has to ask for the INK, and it now uses the same
+      //     red predicate `screenInkMask` does. With both fixed, the
+      //     empty-cache painter reports missing=800 of 1064 and fails.
+      bool isInk(Uint8List px, int offset) =>
+          px[offset] > 128 && px[offset + 1] < 100 && px[offset + 2] < 100;
       Future<bool> somethingCanPaintIt() async {
         final painters = tester
             .widgetList<CustomPaint>(find.byType(CustomPaint))
@@ -1351,24 +1374,27 @@ void main() {
           var missing = 0;
           await tester.runAsync(() async {
             final recorder = PictureRecorder();
-            const size = Size(128, 128);
+            const size = Size(800, 600);
             painter.paint(Canvas(recorder, Offset.zero & size), size);
-            final image = await recorder.endRecording().toImage(128, 128);
+            final image = await recorder.endRecording().toImage(800, 600);
             final data = await image.toByteData(
               format: ImageByteFormat.rawRgba,
             );
             final painted = data!.buffer.asUint8List();
-            for (var y = 0; y < 128; y += 1) {
-              for (var x = 0; x < 128; x += 1) {
+            // Stepped, like its neighbour: an exhaustive walk of 480k
+            // pixels through a per-pixel tile lookup takes minutes and
+            // finds nothing extra.
+            for (var y = 0; y < 600; y += 2) {
+              for (var x = 0; x < 800; x += 2) {
                 final own32 = surfacePixelRgba(painter.surface, x, y) ?? 0;
                 if (((own32 >> 24) & 0xff) == 0) continue;
                 own += 1;
-                if (painted[(y * 128 + x) * 4 + 3] == 0) missing += 1;
+                if (!isInk(painted, (y * 800 + x) * 4)) missing += 1;
               }
             }
           });
           // `own > 0` rejects an empty pinned surface; `missing == 0`
-          // rejects a float the four-tile budget cannot cover.
+          // rejects a painter the four-tile budget cannot cover.
           if (own > 0 && missing == 0) return true;
         }
         return false;
@@ -1616,15 +1642,41 @@ void main() {
       // give and reported no change from a fix that gives the base the
       // float's picture.
       await settle(tester);
+      // ⚠️ THE FLOAT'S tiles, not just the cel's. The comment above names
+      // the float as the premise, and the float is by this file's own
+      // definition the surface that is NOT `currentSurface` — a separate
+      // 9-tile object with its own tiles. Asserting only the cel read as
+      // a guard and guarded the wrong thing: after a whole-picture lift
+      // those cel tiles are fully TRANSPARENT, so their decodes put no
+      // pixels in the frame the bound below measures, while the float's
+      // are the operand `inkFromSurface` refuses to compose without.
+      // (Both matter — the cel is the pre-image half of the composition —
+      // so both are asserted.)
+      final committedBefore = currentSurface(env.coordinator);
+      final floatSurfaces = tester
+          .widgetList<CustomPaint>(find.byType(CustomPaint))
+          .map((paint) => paint.painter)
+          .whereType<BitmapSurfacePainter>()
+          .map((painter) => painter.surface)
+          .where((surface) => !identical(surface, committedBefore))
+          .toList();
       expect(
-        currentSurface(env.coordinator).tiles.values.every(
-          (tile) => BitmapTileImageCache.instance.displayImageFor(tile) != null,
-        ),
-        isTrue,
-        reason:
-            'the decodes did not land in the settle window — the bound '
-            'below is measuring the fixture, not the confirm',
+        floatSurfaces,
+        isNotEmpty,
+        reason: 'no float is mounted during the session — bad premise',
       );
+      for (final surface in [committedBefore, ...floatSurfaces]) {
+        expect(
+          surface.tiles.values.every(
+            (tile) =>
+                BitmapTileImageCache.instance.displayImageFor(tile) != null,
+          ),
+          isTrue,
+          reason:
+              'decodes did not land in the settle window — the bound below '
+              'is measuring the fixture, not the confirm',
+        );
+      }
 
       env.commands.confirmPendingMove();
       await tester.pump();

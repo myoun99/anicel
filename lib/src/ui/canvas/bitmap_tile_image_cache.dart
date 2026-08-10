@@ -78,9 +78,9 @@ class BitmapTileImageCache extends ChangeNotifier {
   /// it is not byte-identical to what the commit kernel produced: the
   /// kernel blends in straight alpha and premultiplies once, the
   /// composition premultiplies both operands first. Measured worst case is
-  /// one channel step, at the faintest ink over the faintest base
+  /// TWO channel steps, at middling alpha on both operands
   /// (`tile_image_sync_compose_parity_test`). Adopting that outright would
-  /// pin an off-by-one picture forever on exactly those tiles.
+  /// pin an off-by-two picture forever on those tiles.
   final Expando<ui.Image> _provisional = Expando<ui.Image>(
     'bitmapTileProvisionalImages',
   );
@@ -130,7 +130,7 @@ class BitmapTileImageCache extends ChangeNotifier {
   /// same operands; a second is redundant). Deliberately does NOT touch
   /// [_latestDecodedByScope]: a stand-in is not a truthful predecessor for
   /// some later generation to borrow, and seeding it there would put the
-  /// off-by-one into a lineage that outlives it.
+  /// off-by-two into a lineage that outlives it.
   void putProvisional(BitmapTile tile, ui.Image image) {
     if (_images[tile] != null || _provisional[tile] != null) {
       DeferredImageDisposer.instance.retire(image);
