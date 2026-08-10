@@ -94,6 +94,8 @@ void main() {
     'renameCutEmpty': (s) => s.renameCutEmpty,
     'renameFrameTitle': (s) => s.renameFrameTitle,
     'renameFrameField': (s) => s.renameFrameField,
+    'renameKeyTitle': (s) => s.renameKeyTitle,
+    'renameKeyField': (s) => s.renameKeyField,
     'cutNoteTitle': (s) => s.cutNoteTitle,
     'cutNoteField': (s) => s.cutNoteField,
     'deleteLayerTitle': (s) => s.deleteLayerTitle,
