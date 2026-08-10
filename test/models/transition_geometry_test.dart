@@ -145,12 +145,19 @@ void main() {
   });
 
   group('the ramp', () {
-    test('runs 0 to 1 across the span and is null outside it', () {
+    test('runs 0 to 1 INCLUSIVE across the span and is null outside it', () {
       expect(transitionProgressAt(ol, 35), isNull);
       expect(transitionProgressAt(ol, 36), 0.0);
-      expect(transitionProgressAt(ol, 48), 0.5); // the conte boundary
-      expect(transitionProgressAt(ol, 59), closeTo(1.0, 1 / 24));
+      // Bottoms out ON the last frame — the canonical fade shape the cut
+      // fade already uses, so a 1+0 O.L is 24 frames from wholly A to
+      // wholly B and the frame after it is simply B.
+      expect(transitionProgressAt(ol, 59), 1.0);
       expect(transitionProgressAt(ol, 60), isNull);
+    });
+
+    test('a one-frame transition is over on its only frame', () {
+      expect(transitionProgressAt((start: 48, length: 1), 48), 1.0);
+      expect(transitionProgressAt((start: 48, length: 1), 49), isNull);
     });
 
     test('both cuts read the SAME ramp — that is what makes it an O.L', () {
@@ -164,6 +171,68 @@ void main() {
 
     test('a zero-length span has no ramp rather than dividing by zero', () {
       expect(transitionProgressAt((start: 48, length: 0), 48), isNull);
+    });
+  });
+
+  group('per-cut opacity', () {
+    double outgoing(int frame) => cutOpacityAt(
+      cutStart: c20Start,
+      cutEnd: c20End,
+      spans: const [ol],
+      globalFrame: frame,
+    );
+    double incoming(int frame) => cutOpacityAt(
+      cutStart: c21Start,
+      cutEnd: c21End,
+      spans: const [ol],
+      globalFrame: frame,
+    );
+
+    test('is 1 wherever no transition is running', () {
+      expect(outgoing(0), 1.0);
+      expect(outgoing(35), 1.0);
+      expect(incoming(100), 1.0);
+    });
+
+    test('the two sides are mirror images across the same span', () {
+      // Same question, opposite answers — that is the cross-dissolve.
+      for (final frame in [36, 42, 48, 54, 59]) {
+        expect(
+          outgoing(frame) + incoming(frame),
+          closeTo(1.0, 1e-9),
+          reason: 'frame $frame',
+        );
+      }
+      expect(outgoing(36), 1.0, reason: 'first frame: wholly the old cut');
+      expect(incoming(36), 0.0);
+      expect(outgoing(59), 0.0, reason: 'last frame: wholly the new cut');
+      expect(incoming(59), 1.0);
+    });
+
+    test('two cuts on the same frame get DIFFERENT values', () {
+      // The thing one opacity lane per track could never do.
+      expect(outgoing(42), isNot(incoming(42)));
+    });
+
+    test('a cut has no picture outside its media range', () {
+      // c21's material starts 12 frames before its conte start and not one
+      // frame earlier.
+      expect(incoming(35), 0.0);
+      expect(incoming(36), 0.0, reason: 'in range, but the ramp is at 0');
+      expect(incoming(37), greaterThan(0.0));
+      expect(outgoing(60), 0.0, reason: 'past c20 tail material');
+    });
+
+    test('a span inside the cut changes nothing', () {
+      expect(
+        cutOpacityAt(
+          cutStart: c20Start,
+          cutEnd: c20End,
+          spans: const [(start: 10, length: 12)],
+          globalFrame: 16,
+        ),
+        1.0,
+      );
     });
   });
 }
