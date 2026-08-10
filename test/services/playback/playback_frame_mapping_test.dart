@@ -7,6 +7,7 @@ import 'package:anicel/src/models/project_frame_rate.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/transition_geometry.dart';
 import 'package:anicel/src/services/playback/playback_frame_mapping.dart';
 import 'package:anicel/src/ui/storyboard_timeline_layout.dart';
 
@@ -269,6 +270,87 @@ void main() {
         resolveTrackStackPositions(layout: layout(), globalFrameIndex: -1),
         isEmpty,
       );
+    });
+  });
+
+  group('resolveTransitionContributions', () {
+    // cut-a is [0, 4), cut-b is [4, 10). A 4-frame O.L centred on the
+    // boundary runs [2, 6): each side owes 2 frames of のりしろ.
+    const ol = (start: 2, length: 4);
+
+    List<TransitionContribution> at(int frame, {List<TransitionSpan> spans = const []}) =>
+        resolveTransitionContributions(
+          playlist: playlist(),
+          spans: spans,
+          globalFrameIndex: frame,
+        );
+
+    test('without transitions it answers exactly like the single resolver', () {
+      for (var frame = 0; frame < 10; frame += 1) {
+        final contributions = at(frame);
+        final single = resolvePlaybackPosition(
+          playlist: playlist(),
+          globalFrameIndex: frame,
+        );
+
+        expect(contributions, hasLength(1), reason: 'frame $frame');
+        expect(contributions.single.cut.id, single!.cutId);
+        expect(contributions.single.localFrameIndex, single.localFrameIndex);
+        expect(contributions.single.opacity, 1.0);
+      }
+    });
+
+    test('outside every cut it answers nothing', () {
+      expect(at(-1), isEmpty);
+      expect(at(10), isEmpty);
+    });
+
+    test('inside the O.L both cuts arrive, outgoing first', () {
+      final contributions = at(3, spans: const [ol]);
+
+      expect(contributions, hasLength(2));
+      expect(contributions[0].cut.id, const CutId('cut-a'));
+      expect(contributions[1].cut.id, const CutId('cut-b'));
+    });
+
+    test('their opacities are the two halves of one ramp', () {
+      for (final frame in [2, 3, 4, 5]) {
+        final contributions = at(frame, spans: const [ol]);
+        expect(contributions, hasLength(2), reason: 'frame $frame');
+        expect(
+          contributions[0].opacity + contributions[1].opacity,
+          closeTo(1.0, 1e-9),
+          reason: 'frame $frame',
+        );
+      }
+      expect(at(2, spans: const [ol])[0].opacity, 1.0);
+      expect(at(5, spans: const [ol])[1].opacity, 1.0);
+    });
+
+    test('the incoming cut supplies frames before its own block', () {
+      // cut-b starts at global 4 but owes a 2-frame head handle, so its
+      // frame 0 sits at global 2 — the block itself never moved.
+      final early = at(2, spans: const [ol]);
+
+      expect(early[1].cut.id, const CutId('cut-b'));
+      expect(early[1].localFrameIndex, 0);
+      expect(at(4, spans: const [ol])[1].localFrameIndex, 2);
+    });
+
+    test('the outgoing cut keeps supplying past its own block', () {
+      final late = at(5, spans: const [ol]);
+
+      expect(late[0].cut.id, const CutId('cut-a'));
+      // 4 frames of conte plus the 2-frame tail handle: local 5 is the last.
+      expect(late[0].localFrameIndex, 5);
+      expect(at(6, spans: const [ol]).map((c) => c.cut.id), [
+        const CutId('cut-b'),
+      ]);
+    });
+
+    test('a span inside one cut leaves the frame alone', () {
+      expect(at(1, spans: const [(start: 0, length: 3)]), hasLength(1));
+      expect(at(1, spans: const [(start: 0, length: 3)]).single.opacity, 1.0);
     });
   });
 }
