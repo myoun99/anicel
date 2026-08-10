@@ -14,6 +14,7 @@ import '../models/track_transform_lane_carrier.dart';
 import '../models/transform_track.dart';
 import 'cut_command_group.dart';
 import 'editor_session_manager.dart';
+import 'panels/panel_collapsed_scope.dart';
 import 'storyboard_cut_thumbnail_store.dart' show StoryboardThumbnailResolver;
 import 'storyboard_panel.dart';
 import 'timeline/timeline_row_filter.dart' show TimelineRowFilter;
@@ -462,6 +463,11 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
             // committed seek can change is the push/pull pair, and it owns
             // that subscription itself ([TimelineShiftButtons]).
             _commandBar(context),
+            // ★COLLAPSED = the command bar and nothing else, the same rule
+            // the timeline panel follows (유저 확정, 2026-08-10). Offstage
+            // and not removed: the panel keeps its scroll positions and its
+            // thumbnail cache, and — the part that matters more — its parent
+            // chain never changes, so folding cannot silently remount it.
             Expanded(
               // Edit drags (cut trims, SE comma drags) preview through the
               // session's scoped channel. The PANEL consumes it internally
@@ -473,7 +479,9 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
               // at most once per FRAME while recording — this panel-scoped
               // rebuild is the notify-free channel (R12-B: ticks never
               // notify the session), same as the timeline host's merge.
-              child: ListenableBuilder(
+              child: Offstage(
+                offstage: PanelCollapsedScope.of(context),
+                child: ListenableBuilder(
                 listenable: _session.voiceRecordPreviewLane,
                 builder: (context, _) => StoryboardPanel(
                   project: _session.repository.requireProject(),
@@ -907,6 +915,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                       _session.canCreateTransitionSpanAtPlayhead,
                   onCreateTransition: _session.createTransitionSpanAtPlayhead,
                   onEditTransitionSpan: _editTransitionSpan,
+                ),
                 ),
               ),
             ),

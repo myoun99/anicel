@@ -71,7 +71,9 @@ import 'storyboard_panel.dart' show StoryboardPanel;
 import 'storyboard_playhead_mapping.dart';
 import '../models/timeline_row_address.dart';
 import 'playback/canvas_playback_controller.dart' show PlaybackScope;
+import 'timeline/collapsed_row_overlay.dart';
 import 'timeline/frame_panel_sill_controls.dart';
+import 'timeline/timeline_command_bar.dart' show TimelineCommandBar;
 import 'timeline/layer_rail_window.dart';
 import '../models/layer_kind.dart' show LayerKind, layerKindHoldsDrawings;
 import 'canvas/flip_hud_controller.dart';
@@ -1845,6 +1847,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           // ACTIVE tab's sill controls are mounted, so the timeline's
           // active-cut transport and the storyboard's all-cuts one share
           // the one strip without either knowing about the other.
+          // 접으면 버튼행만 (유저 확정): the panel keeps its command bar and
+          // offstages the grid, so the fold is 문턱 30 + this 36 = 66 — and
+          // every verb a rough pass needs is still on screen while folded.
+          collapsedExtent: TimelineCommandBar.height,
           sillTrailing: (context) => FramePanelSillControls(
             session: widget.session,
             scope: PlaybackScope.activeCut,
@@ -1923,6 +1929,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
           keepAlive: true,
           // The same sill controls the timeline mounts — a different
           // playlist and a different "to start", and nothing else.
+          collapsedExtent: TimelineCommandBar.height,
           sillTrailing: (context) => FramePanelSillControls(
             session: widget.session,
             scope: PlaybackScope.allCuts,
@@ -2141,11 +2148,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     bool chromeless = false,
     bool stripAtBottom = false,
     List<Widget>? trailing,
+    bool collapsed = false,
   }) {
     return EditorDockHost(
       chromeless: chromeless,
       stripAtBottom: stripAtBottom,
       trailing: trailing,
+      collapsed: collapsed,
       layout: _layout,
       dockId: dockId,
       tabResolver: _tabFor,
@@ -2820,13 +2829,26 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     );
   }
 
-  /// The collapsed floating region: its 문턱 plus a brief line of whatever
-  /// is open (the timeline's ruler, the storyboard's first row).
+  /// The collapsed floating region: its 문턱 plus whatever the ACTIVE tab
+  /// says it needs at that size ([EditorPanelTab.collapsedExtent]).
   ///
   /// Collapsed is not CLOSED — 유저 확정. The region stays on screen, keeps
   /// its threshold, and keeps taking drops; it just stops asking for a
   /// third of the drawing.
-  static const double _collapsedBottomHeight = 70;
+  ///
+  /// ⛔It used to be a flat 70. That number was a guess at "the sill plus a
+  /// brief line of whatever is open", and the panel was never told about it:
+  /// the dock simply handed it 40px over a 136px floor, the shell's overflow
+  /// branch put it in a scroller at its natural height, and what showed was
+  /// the top of it — the command bar and four pixels of grid. Asking the tab
+  /// is what turns that crop into a representation, and it is also what lets
+  /// a tab with nothing to say at that size collapse to its sill alone
+  /// (유저 확정 for 콘티·뷰어).
+  double _collapsedBottomHeight() {
+    final tabId = _layout.activeTabIn(EditorWorkspace.bottomGroupId);
+    final extent = tabId == null ? 0.0 : _tabFor(tabId).collapsedExtent;
+    return EditorPanelTabs.stripHeight + math.max(0.0, extent);
+  }
 
   bool _bottomDockCollapsed = false;
 
@@ -2921,10 +2943,10 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   double _bottomDockHeight(double availableExtent) {
     if (_bottomDockCollapsed) {
       // Through the same ceiling as the open height: collapsed is smaller,
-      // but in a window short enough for 70px to crowd the drawing out it
-      // is still the window that decides.
+      // but in a window short enough for even that to crowd the drawing out
+      // it is still the window that decides.
       return math.min(
-        _collapsedBottomHeight,
+        _collapsedBottomHeight(),
         math.max(0.0, _bottomDockCeiling(availableExtent)),
       );
     }
@@ -2973,6 +2995,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     // region out of the same law that moved the resize handle.
     stripAtBottom: !onTop,
     trailing: [_bottomCollapseButton(onTop: onTop)],
+    collapsed: _bottomDockCollapsed,
   );
 
   Widget _buildBottomDock({
@@ -3122,6 +3145,32 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       railSpan > 0 && (inset - railSpan).abs() <= _bottomInsetDetent
       ? railSpan
       : inset;
+
+  /// The collapsed row over the artwork — only for the tabs that HAVE a row
+  /// to show. A collapsed conte or viewer says nothing here, which is the
+  /// same answer its zero [EditorPanelTab.collapsedExtent] gives inside.
+  ///
+  /// It reads the FLIP HUD's snapshot on purpose (see [CollapsedRowOverlay]):
+  /// one description of "where am I", built from the rows the timeline is
+  /// displaying, so the thing that moves the cursor and the thing that draws
+  /// it cannot disagree.
+  Widget _collapsedRowOverlay() {
+    final tabId = _layout.activeTabIn(EditorWorkspace.bottomGroupId);
+    if (tabId != EditorWorkspace.timelineTabId &&
+        tabId != EditorWorkspace.storyboardTabId) {
+      return const SizedBox.shrink();
+    }
+    final rail = _railExtents[LayerRailId.timeline];
+    return CollapsedRowOverlay(
+      snapshot: _flipHudSnapshot(FlipHudAxis.frame),
+      // 유저 확정: 레일 폭은 가로 스플리터를 그대로 따라간다 — the same
+      // stored window the panel's own rail lays out against, so narrowing
+      // one narrows the other by construction rather than by agreement.
+      railWidth: rail?.value ?? layerRailMinimumWindowExtent,
+      pixelsPerFrame: _timelinePixelsPerFrame.value,
+      framesPerSecond: widget.session.projectFrameRate.countingBase,
+    );
+  }
 
   Widget _bottomCollapseButton({bool onTop = false}) {
     return IconButton(
@@ -3472,6 +3521,23 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                                 hosts: rightRailHosts,
                               ),
                             ),
+                            // ★The collapsed row, over the artwork and OUTSIDE
+                            // the region's clip. It has to be a sibling: the
+                            // region is inside a `SuperellipseClip`, so an
+                            // overlay mounted in there could never reach up
+                            // onto the canvas. It also has to come BEFORE the
+                            // region in this stack — the region paints over
+                            // it, which is what keeps the row from spilling
+                            // onto the sill when the two meet.
+                            if (hasBottomDock && _bottomDockCollapsed)
+                              Positioned(
+                                left: bottomInset,
+                                right: bottomInset,
+                                top: onTop ? bottomHeight : null,
+                                bottom: onTop ? null : bottomHeight,
+                                height: CollapsedRowOverlay.height,
+                                child: _collapsedRowOverlay(),
+                              ),
                             Positioned(
                               left: bottomInset,
                               right: bottomInset,
@@ -3488,35 +3554,44 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                                 grips: !hasBottomDock
                                     ? const []
                                     : [
-                                        Positioned(
-                                          left: 0,
-                                          right: 0,
-                                          // 기하는 캔버스 향한 변에: the resize
-                                          // handle rides whichever edge faces
-                                          // the artwork, which flips with the
-                                          // region and needs no rule of its own.
-                                          top: onTop ? null : 0,
-                                          bottom: onTop ? 0 : null,
-                                          height: DockEdgeSplitter.thickness,
-                                          child: DockEdgeSplitter(
+                                        // ★NO HEIGHT GRIP WHILE COLLAPSED
+                                        // (유저 확정, 2026-08-10): folding is a
+                                        // state change, not a small size, so
+                                        // the handle that changes size does not
+                                        // appear and does not answer.
+                                        //
+                                        // ⛔It used to do the opposite —
+                                        // dragging it meant "give me it back"
+                                        // and unfolded the region. That was the
+                                        // right call while the fold had no
+                                        // representation of its own (a live
+                                        // grip that moved nothing would have
+                                        // been worse), and it is the wrong one
+                                        // now: the collapsed panel is a working
+                                        // surface, and a grip on its edge
+                                        // invites a resize it cannot do.
+                                        // ⇒ The sill's ⌃ is the only way in and
+                                        // the only way out. The SIDE grips stay
+                                        // live either way — width is not the
+                                        // axis the fold is about.
+                                        if (!_bottomDockCollapsed)
+                                          Positioned(
+                                            left: 0,
+                                            right: 0,
+                                            // 기하는 캔버스 향한 변에: the resize
+                                            // handle rides whichever edge faces
+                                            // the artwork, which flips with the
+                                            // region and needs no rule of its
+                                            // own.
+                                            top: onTop ? null : 0,
+                                            bottom: onTop ? 0 : null,
+                                            height: DockEdgeSplitter.thickness,
+                                            child: DockEdgeSplitter(
                                             key: const ValueKey<String>(
                                               'dock-resize-bottom',
                                             ),
                                             axis: Axis.horizontal,
                                             onDragDelta: (delta) {
-                                              // Dragging the handle of a
-                                              // collapsed region means "give
-                                              // me it back" — otherwise the
-                                              // grip is live, moves nothing,
-                                              // and the only way out is a
-                                              // button somewhere else.
-                                              if (_bottomDockCollapsed) {
-                                                setState(
-                                                  () => _bottomDockCollapsed =
-                                                      false,
-                                                );
-                                                _scheduleLayoutSave();
-                                              }
                                               // What the edge used, back in
                                               // POINTER units — the sign flip
                                               // below has to be undone or the
@@ -3564,8 +3639,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                                               );
                                               return onTop ? used : -used;
                                             },
+                                            ),
                                           ),
-                                        ),
                                         // The region's side grips. TWO of
                                         // them and ONE number — pulling
                                         // either edge in pulls the other in

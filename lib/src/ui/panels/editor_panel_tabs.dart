@@ -7,6 +7,7 @@ import '../theme/app_theme.dart';
 import '../widgets/grip_band.dart';
 import '../widgets/static_raster.dart';
 import '../widgets/superellipse_clip.dart';
+import 'panel_collapsed_scope.dart';
 import 'panel_flash.dart';
 import 'panel_visibility_scope.dart';
 
@@ -24,6 +25,7 @@ class EditorPanelTab {
     this.keepAlive = false,
     this.staticRaster = true,
     this.sillTrailing,
+    this.collapsedExtent = 0,
   });
 
   /// Stable identifier the group reports through `onTabSelected`.
@@ -86,6 +88,15 @@ class EditorPanelTab {
   /// 2026-08-10), and 「존재할 거면 늘 그 자리에」 holds because the sill's
   /// right edge is fixed while the tabs grow from the left.
   final WidgetBuilder? sillTrailing;
+
+  /// How tall this panel needs to be when the region is COLLAPSED — see
+  /// [PanelCollapsedScope] for why the shell owns this at all.
+  ///
+  /// Zero means the honest thing: the panel has nothing to say at that size,
+  /// so the shell shows NOTHING and the region is its sill alone (유저 확정
+  /// for 콘티·뷰어: 「진짜 깔끔하게 내용물 안 보이게」). The frame panels ask
+  /// for their command bar's height and keep working while folded.
+  final double collapsedExtent;
 }
 
 /// A tab in flight between (or within) tab groups.
@@ -126,6 +137,7 @@ class EditorPanelTabs extends StatefulWidget {
     this.canAcceptTab,
     this.onTabDragChanged,
     this.draggingTab,
+    this.collapsed = false,
     this.onToggleLock,
     this.onCloseTab,
     this.flash,
@@ -187,6 +199,11 @@ class EditorPanelTabs extends StatefulWidget {
   /// while it is non-null so the whole strip is landing area again; see
   /// [_EditorPanelTabsState._buildSillTrailing].
   final ValueListenable<EditorPanelTabDragData?>? draggingTab;
+
+  /// Whether the REGION this group lives in is folded down. The strip stays
+  /// exactly as it is — collapsed is not closed — and the content area
+  /// switches to the active tab's collapsed form; see [PanelCollapsedScope].
+  final bool collapsed;
 
   /// Toggles a tab's drag lock (every tab button carries the toggle, left
   /// of its name). Null hides the toggle.
@@ -416,19 +433,37 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
                       if (tab.id == active.id || _builtTabIds.contains(tab.id))
                         Offstage(
                           key: ValueKey<String>('panel-content-${tab.id}'),
-                          offstage: tab.id != active.id,
+                          // A collapsed region whose active tab declared no
+                          // collapsed form shows NOTHING — not a crop of the
+                          // panel, not a sliver of its top. That is the whole
+                          // contract, and offstage is how it is kept: the
+                          // subtree stays mounted (a keep-alive tab must not
+                          // lose its state to a fold) and simply does not lay
+                          // out.
+                          offstage:
+                              tab.id != active.id ||
+                              (widget.collapsed && tab.collapsedExtent <= 0),
                           child: TickerMode(
-                            enabled: tab.id == active.id,
+                            enabled: tab.id == active.id && !widget.collapsed,
                             child: PanelVisibilityScope(
                               visible: _visibilityFor(
                                 tab.id,
                                 visible: tab.id == active.id,
                               ),
-                              child: tab.keepAlive
-                                  ? (_contentCache[tab.id] ??= _buildTabContent(
-                                      tab,
-                                    ))
-                                  : _buildTabContent(tab),
+                              // OUTSIDE the content cache on purpose: the
+                              // cached widget instance never changes, and an
+                              // inherited dependency marks its dependents
+                              // dirty directly — so folding reaches a
+                              // keep-alive panel without dropping the cache
+                              // that makes tab switches instant.
+                              child: PanelCollapsedScope(
+                                collapsed:
+                                    widget.collapsed && tab.id == active.id,
+                                child: tab.keepAlive
+                                    ? (_contentCache[tab.id] ??=
+                                          _buildTabContent(tab))
+                                    : _buildTabContent(tab),
+                              ),
                             ),
                           ),
                         ),
@@ -561,7 +596,15 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
   }
 
   Widget _buildTabInterior(EditorPanelTab tab) {
-    if (tab.minContentWidth == null && tab.minContentHeight == null) {
+    // ★A COLLAPSED panel never meets the minimum-size scroller. That branch
+    // is what turned folding into cropping: it takes "the dock is smaller
+    // than my floor" and answers "then lay out at the floor and let them
+    // scroll", which is right for a frame panel squeezed into a side rail
+    // and exactly wrong here — the panel has already been told to render a
+    // form that fits, and putting that form in a scroller would give it back
+    // a height it did not ask for.
+    if (widget.collapsed ||
+        (tab.minContentWidth == null && tab.minContentHeight == null)) {
       return _bake(tab, Builder(builder: tab.builder));
     }
     return LayoutBuilder(
