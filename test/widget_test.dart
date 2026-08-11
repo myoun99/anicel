@@ -647,7 +647,6 @@ void main() {
       'set-cut-thumbnail-button',
       'move-cut-left-button',
       'move-cut-right-button',
-      'delete-cut-button',
     ]) {
       expect(find.byKey(ValueKey<String>(item)), findsOneWidget);
     }
@@ -2780,7 +2779,7 @@ Line 8''';
 
     await _tapToolbarButton(
       tester,
-      const ValueKey<String>('delete-layer-button'),
+      const ValueKey<String>('timeline-delete-layer-button'),
     );
     await _tapToolbarButton(
       tester,
@@ -2848,7 +2847,7 @@ Line 8''';
 
     await _tapToolbarButton(
       tester,
-      const ValueKey<String>('delete-layer-button'),
+      const ValueKey<String>('timeline-delete-layer-button'),
     );
     await _tapToolbarButton(
       tester,

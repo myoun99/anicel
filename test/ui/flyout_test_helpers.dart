@@ -40,7 +40,9 @@ const Map<String, String> flyoutOwnerByItemKey = {
   'set-cut-thumbnail-button': 'cut-menu-button',
   'move-cut-left-button': 'cut-menu-button',
   'move-cut-right-button': 'cut-menu-button',
-  'delete-cut-button': 'cut-menu-button',
+  // ⛔'delete-cut-button' is NOT here any more: ① moved it out of the cut
+  // menu and onto the pill, so it is a plain bar button with no owner to
+  // open first.
 };
 
 /// Opens the flyout that owns [itemKey] (no-op for direct buttons).

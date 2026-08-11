@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
 import '../../models/layer_effect.dart';
+import '../../models/delete_subject.dart';
 import '../../models/layer_kind.dart';
 import '../../models/timeline_row_address.dart';
 import '../cut_command_group.dart';
@@ -480,15 +481,10 @@ class TimelineActionToolbar extends StatelessWidget {
       // sections cell has shown and hidden both since UI-R7, so this pair
       // was a second door to one setting — and the one further from where
       // the rows are.
-      const PanelFlyoutDivider(),
-      PanelFlyoutItem(
-        keyValue: 'delete-layer-button',
-        label: AppText.strings.tlDeleteLayer,
-        icon: Icons.delete_outline,
-        danger: true,
-        enabled: session.canDeleteActiveLayer,
-        onSelected: onDeleteLayer,
-      ),
+      // ⛔The layer DELETE left this menu (유저 2026-08-12: 「밖에 딜리트
+      // 레이어있으니 버튼내부에있는 딜리트레이어 삭제」) — and then left the
+      // bar entirely, because delete is ONE verb now that asks what is
+      // selected. See the shared pill and [EditorSessionManager.deleteSubject].
     ];
   }
 
@@ -543,6 +539,7 @@ class TimelineActionToolbar extends StatelessWidget {
     required IconData icon,
     required VoidCallback? onPressed,
     bool accent = false,
+    bool danger = false,
   }) {
     return AppIconButton(
       keyValue: key.value,
@@ -551,7 +548,18 @@ class TimelineActionToolbar extends StatelessWidget {
       // 유저 확정: accent는 ＋ 글리프에만, ＋가 있는 모든 곳에 — the law
       // itself is [AppColors.addGlyph], since 「모든 곳」 has to be one
       // decision rather than the same decision made at each button.
-      icon: Icon(icon, color: accent ? AppColors.addGlyph(enabled: onPressed != null) : null),
+      //
+      // 🆕And its twin (유저 2026-08-12): 「+버튼은 강조색이라는 공통규칙있는데,
+      // 딜리트는 지금처럼 빨간색 공통규칙두자」 — same shape, same rule, the
+      // GLYPH only, and it goes out with the button.
+      icon: Icon(
+        icon,
+        color: danger
+            ? AppColors.deleteGlyph(enabled: onPressed != null)
+            : (accent
+                  ? AppColors.addGlyph(enabled: onPressed != null)
+                  : null),
+      ),
     );
   }
 
@@ -618,14 +626,56 @@ class TimelineActionToolbar extends StatelessWidget {
           onPressed: onAddLayer,
           entriesBuilder: _addLayerEntries,
         ),
-        // 유저 확정: 자주 쓸 만한 것을 알약 밖으로, 우선 딜리트 레이어만.
-        // The menu keeps its own entry — that is the same shape `＋` already
-        // has (the Add menu's "same as selected"), not a second door.
-        AppIconButton(
-          keyValue: 'timeline-delete-layer-button',
+        // ⚠️THE LAYER DELETE STAYS HERE UNTIL ⑨ LANDS.
+        //
+        // ⑰ folds every delete into the shared pill, and that pill asks WHAT
+        // IS SELECTED — but rows have no selection yet (⑨ builds it), so
+        // `DeleteSubject.layers` is a rung nothing can reach. Removing this
+        // button on the strength of the unified one would leave layer deletion
+        // with NO entrance at all: the successor cannot yet do the
+        // predecessor's job, which is the one condition that makes deleting a
+        // predecessor wrong ([[duplication-program]]).
+        //
+        // ⛔The MENU copy is gone regardless (유저: 「밖에 딜리트레이어있으니
+        // 버튼내부에있는 딜리트레이어 삭제」) — that was a second door onto
+        // this same button, not a door of its own.
+        _iconButton(
+          key: const ValueKey<String>('timeline-delete-layer-button'),
           tooltip: AppText.strings.tlDeleteLayer,
-          icon: const Icon(Icons.delete_outline),
+          icon: Icons.delete_outline,
+          danger: true,
           onPressed: session.canDeleteActiveLayer ? onDeleteLayer : null,
+        ),
+      ],
+    ),
+  );
+
+  /// 🚨★★★ THE SHARED PILL — verbs that belong to no noun (⑰㉕, 유저 2026-08-12:
+  /// 「프레임알약 옆에 공용버튼 들어가는 알약만들고 거기」).
+  ///
+  /// It has **no name cell**, and that is the point: its verbs act on whatever
+  /// is selected, and a selection is not a thing with a menu. Giving it one
+  /// would have been a border drawn around a gap.
+  ///
+  /// ⛔Three delete buttons died for this one: `delete-cut-button` in the cut
+  /// menu, `delete-layer-button` in the layer menu, and the loose
+  /// `timeline-delete-layer-button` beside it. Each was hard-wired to one
+  /// noun, which is why the same word did different things depending on where
+  /// you reached for it — and why nothing on the bar could delete a CUT while
+  /// the cut menu was closed.
+  Widget _sharedPill() => _StaticCommandGroup(
+    rebuildKey: (session.deleteSubject, AppText.settings.value.programLanguage),
+    builder: (context) => CommandPill(
+      key: const ValueKey<String>('timeline-toolbar-shared-group'),
+      children: [
+        _iconButton(
+          key: const ValueKey<String>('shared-delete-button'),
+          tooltip: AppText.strings.tlDeleteCell,
+          icon: Icons.delete_outline,
+          danger: true,
+          onPressed: session.deleteSubject == DeleteSubject.nothing
+              ? null
+              : session.deleteSelectionSubject,
         ),
       ],
     ),
@@ -792,6 +842,10 @@ class TimelineActionToolbar extends StatelessWidget {
             _layerPill(),
             const SizedBox(width: 6),
             _framePill(),
+            const SizedBox(width: 6),
+            // 유저 확정: 프레임 알약 옆. It follows the nouns because it is
+            // not one — everything in it acts on the selection.
+            _sharedPill(),
             const SizedBox(width: 6),
             _fxPill(),
           ],
