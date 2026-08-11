@@ -6,7 +6,9 @@ import 'package:flutter/widgets.dart' show Matrix4;
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
+import '../../models/drawing_guide.dart';
 import '../../models/transform_track.dart';
+import '../../services/guide_geometry.dart';
 import 'viewport_canvas_transform.dart';
 
 /// A layer's resolved GEOMETRIC transform at one frame: the shared pose
@@ -115,4 +117,44 @@ Matrix4 layerPoseViewportWrapMatrix(
   return viewportTransformMatrix(viewport).multiplied(
     layerPoseMatrix(pose, canvasSize, anchorPoint: anchorPoint),
   )..multiply(viewportInverseTransformMatrix(viewport));
+}
+
+/// [guides] moved out of CANVAS space and into the ARTWORK space of a layer
+/// posed by [sample].
+///
+/// The counterpart of [layerPoseViewportWrapMatrix]: that one puts the
+/// artwork on screen through the pose, and Flutter's hit testing brings
+/// pointers back the other way, so a stroke on a posed layer records in the
+/// layer's own coordinates. Guides live in canvas space, so they have to
+/// make the same trip or the axis will sit where the pen is not.
+///
+/// Built from [layerPoseMatrix] rather than from the pose's numbers so
+/// there is one piece of pose math in the app, not two that can drift.
+/// Returns [guides] unchanged for a null or singular pose — a zero zoom
+/// collapses the layer to nothing, and there is no artwork space to speak
+/// of then.
+CutGuides guidesInArtworkSpace(
+  CutGuides guides,
+  LayerPoseSample? sample,
+  CanvasSize canvasSize,
+) {
+  if (sample == null || guides.isEmpty) return guides;
+  final matrix = layerPoseMatrix(
+    sample.pose,
+    canvasSize,
+    anchorPoint: sample.anchorPoint,
+  );
+  if (matrix.invert() == 0) return guides;
+  final inverse = matrix.storage;
+  return mapGuides(
+    guides,
+    GuideTransform(
+      inverse[0],
+      inverse[1],
+      inverse[4],
+      inverse[5],
+      inverse[12],
+      inverse[13],
+    ),
+  );
 }

@@ -35,6 +35,54 @@ class GuideTransform {
     y: b * point.x + d * point.y + ty,
   );
 
+  /// A [GuideAxis] angle after this map.
+  ///
+  /// An axis points along `(cos φ, sin φ)` — the plain canvas convention,
+  /// unlike a dab's tip angle, which is measured the other way round. Two
+  /// methods rather than one flag: the two conventions are a standing trap
+  /// and naming them apart is what keeps them straight.
+  double mapAxisAngleDegrees(double angleDegrees) {
+    final radians = angleDegrees * math.pi / 180;
+    final dirX = math.cos(radians);
+    final dirY = math.sin(radians);
+    final mappedX = a * dirX + c * dirY;
+    final mappedY = b * dirX + d * dirY;
+    if (mappedX == 0 && mappedY == 0) return angleDegrees;
+    return math.atan2(mappedY, mappedX) * 180 / math.pi;
+  }
+
+  /// A direction (not a position) under this map, renormalised. Null when
+  /// the map collapses it.
+  ({double dx, double dy})? mapDirection(double dx, double dy) {
+    final mappedX = a * dx + c * dy;
+    final mappedY = b * dx + d * dy;
+    final scale = math.max(mappedX.abs(), mappedY.abs());
+    if (scale == 0 || !scale.isFinite) return null;
+    final sx = mappedX / scale;
+    final sy = mappedY / scale;
+    final length = math.sqrt(sx * sx + sy * sy);
+    if (length == 0 || !length.isFinite) return null;
+    return (dx: sx / length, dy: sy / length);
+  }
+
+  /// A brush dab's tip angle after this map — the tip turns with its copy.
+  ///
+  /// `BrushDab.angleDegrees` is the VISUAL counter-clockwise rotation of the
+  /// tip's major axis, and canvas coordinates run y-down, so the axis points
+  /// along `(cos α, −sin α)`. Mapping that direction and reading the angle
+  /// back covers rotations and reflections with one rule — the alternative
+  /// is a sign case per transform kind, which is where this sort of thing
+  /// usually goes wrong.
+  double mapTipAngleDegrees(double angleDegrees) {
+    final radians = angleDegrees * math.pi / 180;
+    final axisX = math.cos(radians);
+    final axisY = -math.sin(radians);
+    final mappedX = a * axisX + c * axisY;
+    final mappedY = b * axisX + d * axisY;
+    if (mappedX == 0 && mappedY == 0) return angleDegrees;
+    return -math.atan2(mappedY, mappedX) * 180 / math.pi;
+  }
+
   /// `this ∘ other` — apply [other] first.
   GuideTransform compose(GuideTransform other) => GuideTransform(
     a * other.a + c * other.b,
@@ -252,6 +300,74 @@ CanvasPoint projectOntoAxis(GuideAxis axis, CanvasPoint point) {
     y: axis.origin.y + dy * along,
   );
 }
+
+/// [guides] carried through [transform] — every axis, vanishing point and
+/// defining line.
+///
+/// Guides are stored in CANVAS space, but a layer carrying a transform is
+/// drawn through it and its strokes record in the layer's own ARTWORK
+/// coordinates ("draw-through"). Feeding the canvas-space guide to that
+/// stroke path unchanged would put the axis somewhere the pen is not. The
+/// transform to pass is the layer pose's inverse.
+///
+/// Poses are similarities, so a mapped axis is still a straight line and a
+/// mapped direction is still a direction — nothing here has to cope with
+/// shear.
+CutGuides mapGuides(CutGuides guides, GuideTransform transform) {
+  if (transform.isIdentity || guides.isEmpty) return guides;
+  return CutGuides(
+    guides: [
+      for (final guide in guides.guides)
+        guide.copyWith(shape: _mapShape(guide.shape, transform)),
+    ],
+    activeSymmetryId: guides.activeSymmetryId,
+  );
+}
+
+GuideShape _mapShape(GuideShape shape, GuideTransform transform) {
+  return switch (shape) {
+    SymmetryShape() => shape.copyWith(
+      axis: _mapAxis(shape.axis, transform),
+    ),
+    PerspectiveShape() => shape.copyWith(
+      vanishingPoints: [
+        for (final point in shape.vanishingPoints)
+          _mapVanishingPoint(point, transform),
+      ],
+      eyeLevel: _mapAxis(shape.eyeLevel, transform),
+    ),
+  };
+}
+
+GuideAxis _mapAxis(GuideAxis axis, GuideTransform transform) => GuideAxis(
+  origin: transform.apply(axis.origin),
+  angleDegrees: transform.mapAxisAngleDegrees(axis.angleDegrees),
+);
+
+VanishingPoint _mapVanishingPoint(
+  VanishingPoint point,
+  GuideTransform transform,
+) {
+  switch (point) {
+    case VanishingPointAt():
+      return VanishingPointAt(transform.apply(point.point));
+    case VanishingPointTowards():
+      final mapped = transform.mapDirection(point.dx, point.dy);
+      // A collapsed direction has no meaningful image; keeping the original
+      // is closer to the truth than inventing one.
+      return mapped == null
+          ? point
+          : VanishingPointTowards(dx: mapped.dx, dy: mapped.dy);
+    case VanishingPointFromLines():
+      return VanishingPointFromLines(
+        _mapLine(point.first, transform),
+        _mapLine(point.second, transform),
+      );
+  }
+}
+
+GuideLine _mapLine(GuideLine line, GuideTransform transform) =>
+    GuideLine(a: transform.apply(line.a), b: transform.apply(line.b));
 
 /// Where a vanishing point being dragged to [target] actually lands.
 ///
