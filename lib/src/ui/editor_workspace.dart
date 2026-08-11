@@ -2053,6 +2053,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               widget.session.languageSettings,
             ]),
             builder: (context) => MediaViewerTabHost(
+              viewerId: tabId,
               session: widget.session,
               request: _mediaViewerRequest,
               viewport: _mediaViewerViewport.value,

@@ -45,12 +45,23 @@ class MediaViewerRequest {
 class MediaViewerTabHost extends StatefulWidget {
   const MediaViewerTabHost({
     super.key,
+    required this.viewerId,
     required this.session,
     required this.request,
     this.viewport,
     this.onViewportChanged,
     this.filePicker,
   });
+
+  /// WHICH viewer this is — the panel's tab id, and the prefix every
+  /// widget key in here is built from.
+  ///
+  /// 🚨 Required, and never spell a key literally below. The app mounts
+  /// more than one of these at once (the floor's viewer and the sub
+  /// viewer beside the drawing), and a hardcoded key would have both
+  /// instances answering the same `find.byKey` — one test finding two
+  /// widgets, and no way to say which viewer a test means.
+  final String viewerId;
 
   final EditorSessionManager session;
 
@@ -344,12 +355,17 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
 
   static void _noDrag(double units) {}
 
+  /// Every widget key in this panel, built from [MediaViewerTabHost.viewerId]
+  /// — the ONE place the prefix is applied, so a second viewer cannot end
+  /// up sharing a key with the first.
+  String _key(String suffix) => '${widget.viewerId}-$suffix';
+
   List<Widget> _bottomBarLeading(int pageIndex, int pageCount) {
     final strings = AppText.strings;
     final paged = pageCount > 1;
     return [
       AppIconButton(
-        keyValue: 'media-viewer-previous-page-button',
+        keyValue: _key('previous-page-button'),
         tooltip: strings.cnPreviousPage,
         icon: const Icon(Icons.chevron_left),
         onPressed: paged && pageIndex > 0
@@ -357,8 +373,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
             : null,
       ),
       DragValueLabel(
-        keyValue: 'media-viewer-page-readout',
-        inputKeyValue: 'media-viewer-page-input',
+        keyValue: _key('page-readout'),
+        inputKeyValue: _key('page-input'),
         text: '${pageCount == 0 ? 0 : pageIndex + 1} / $pageCount',
         tooltip: strings.sheetPageDrag,
         width: 48,
@@ -378,7 +394,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
         },
       ),
       AppIconButton(
-        keyValue: 'media-viewer-next-page-button',
+        keyValue: _key('next-page-button'),
         tooltip: strings.cnNextPage,
         icon: const Icon(Icons.chevron_right),
         onPressed: paged && pageIndex < pageCount - 1
@@ -448,7 +464,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
           : null,
       bottomBarLeading: [
         AppIconButton(
-          keyValue: 'media-viewer-open-file-button',
+          keyValue: _key('open-file-button'),
           tooltip: strings.mediaViewerOpenFile,
           icon: const Icon(Icons.file_open_outlined),
           size: AppIconButtonSize.strip,
@@ -474,7 +490,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
                   padding: const EdgeInsets.all(24),
                   child: Text(
                     message,
-                    key: const ValueKey<String>('media-viewer-message'),
+                    key: ValueKey<String>(_key('message')),
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
@@ -488,9 +504,9 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
               // and not otherwise, which was being re-rastered on every
               // frame the app produced for any reason at all.
               child: StaticRaster(
-                debugLabel: 'media-viewer-page',
+                debugLabel: _key('page'),
                 child: CustomPaint(
-                  key: const ValueKey<String>('media-viewer-page'),
+                  key: ValueKey<String>(_key('page')),
                   painter: _MediaPagePainter(
                     image: pageImage,
                     docSize: docSize,
@@ -509,7 +525,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
     );
 
     return ColoredBox(
-      key: const ValueKey<String>('media-viewer-panel'),
+      key: ValueKey<String>(_key('panel')),
       color: Theme.of(context).colorScheme.surfaceContainerHighest,
       child: panel,
     );

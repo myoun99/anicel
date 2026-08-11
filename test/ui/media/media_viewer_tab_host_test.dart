@@ -33,11 +33,18 @@ void main() {
     session.dispose();
   });
 
-  Future<void> pumpViewer(WidgetTester tester) async {
+  Future<void> pumpViewer(
+    WidgetTester tester, {
+    String viewerId = 'media-viewer',
+  }) async {
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: MediaViewerTabHost(session: session, request: request),
+          body: MediaViewerTabHost(
+            viewerId: viewerId,
+            session: session,
+            request: request,
+          ),
         ),
       ),
     );
@@ -127,6 +134,92 @@ void main() {
     );
     await tester.pumpAndSettle();
     expect(find.text(AppText.strings.mediaViewerCannotDisplay), findsOneWidget);
+  });
+
+  testWidgets('two viewers mounted at once keep separate keys and separate '
+      'documents', (tester) async {
+    // The app mounts two of these (the floor's viewer and the sub viewer
+    // beside the drawing). Before the keys carried a per-viewer prefix,
+    // every `find.byKey` in this file matched BOTH — a test could not say
+    // which viewer it meant, and this whole file would have started
+    // failing with "found 2 widgets".
+    final mainRequest = ValueNotifier<MediaViewerRequest?>(null);
+    final subRequest = ValueNotifier<MediaViewerRequest?>(null);
+    addTearDown(mainRequest.dispose);
+    addTearDown(subRequest.dispose);
+
+    // Two documents of DIFFERENT lengths, so the readouts cannot be
+    // confused for one another.
+    final mainPdf = FakePdfDocument(
+      pageSizes: const [ui.Size(595, 842), ui.Size(595, 842)],
+    );
+    final subPdf = FakePdfDocument(
+      pageSizes: const [
+        ui.Size(595, 842),
+        ui.Size(595, 842),
+        ui.Size(595, 842),
+      ],
+    );
+    PdfRenderService.debugOpenerOverride = (path) async =>
+        path.endsWith('sub.pdf') ? subPdf : mainPdf;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Column(
+            children: [
+              Expanded(
+                child: MediaViewerTabHost(
+                  viewerId: 'media-viewer',
+                  session: session,
+                  request: mainRequest,
+                ),
+              ),
+              Expanded(
+                child: MediaViewerTabHost(
+                  viewerId: 'media-viewer-sub',
+                  session: session,
+                  request: subRequest,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // Each panel answers to its own key, and to ONLY its own.
+    expect(
+      find.byKey(const ValueKey<String>('media-viewer-panel')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('media-viewer-sub-panel')),
+      findsOneWidget,
+    );
+
+    mainRequest.value = const MediaViewerRequest(
+      path: 'C:/work/main.pdf',
+      kind: MediaAssetKind.pdf,
+    );
+    subRequest.value = const MediaViewerRequest(
+      path: 'C:/work/sub.pdf',
+      kind: MediaAssetKind.pdf,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('1 / 2'), findsOneWidget, reason: 'the main viewer');
+    expect(find.text('1 / 3'), findsOneWidget, reason: 'the sub viewer');
+
+    // Stepping ONE viewer moves that one only — the two share a widget
+    // class and nothing else.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('media-viewer-sub-next-page-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('2 / 3'), findsOneWidget);
+    expect(find.text('1 / 2'), findsOneWidget, reason: 'the main did not move');
   });
 
   testWidgets('an image request decodes through the import codec and '
