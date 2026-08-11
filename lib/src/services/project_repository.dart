@@ -12,6 +12,7 @@ import '../models/cut_camera.dart';
 import '../models/drawing_guide.dart';
 import '../models/cut_id.dart';
 import '../models/cut_metadata.dart';
+import '../models/media_viewer_bookmark.dart';
 import '../models/export_overrides.dart';
 import '../models/frame.dart';
 import '../models/frame_id.dart';
@@ -74,6 +75,20 @@ class ProjectRepository {
     updateProject(
       (project) =>
           project.copyWith(exportOverrides: update(project.exportOverrides)),
+    );
+  }
+
+  /// What each viewer is looking at (유저 확정 ⑤㉑): PROJECT data — a
+  /// reference belongs to the work it is beside — but not a document
+  /// edit, so it lands directly with no history entry, exactly like
+  /// [updateExportOverrides]. Paging a reference must never be undoable.
+  void updateMediaViewerBookmarks(
+    MediaViewerBookmarks Function(MediaViewerBookmarks bookmarks) update,
+  ) {
+    updateProject(
+      (project) => project.copyWith(
+        mediaViewerBookmarks: update(project.mediaViewerBookmarks),
+      ),
     );
   }
 

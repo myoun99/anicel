@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io' show Platform;
+import 'dart:io' show File, Platform;
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -11,11 +11,14 @@ import '../models/brush_preset.dart';
 import '../models/brush_preset_id.dart';
 import '../models/canvas_size.dart';
 import '../models/cut.dart';
+import '../models/media_viewer_bookmark.dart' show MediaViewerBookmark;
 import '../models/project.dart'
     show
+        Project,
         defaultProjectBackdropArgb,
         defaultProjectPasteboardArgb,
         defaultProjectPasteboardMargin;
+import '../models/project_id.dart' show ProjectId;
 import '../models/layer_id.dart';
 import '../models/media_asset.dart' show MediaAsset;
 import '../services/brush_preset_file_service.dart';
@@ -1014,6 +1017,91 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   MediaViewerSlot _viewerSlot(String tabId) =>
       tabId == EditorWorkspace.mediaViewerSubTabId ? _subViewer : _mainViewer;
 
+  Map<String, MediaViewerSlot> get _viewerSlots => {
+    EditorWorkspace.mediaViewerTabId: _mainViewer,
+    EditorWorkspace.mediaViewerSubTabId: _subViewer,
+  };
+
+  /// Which project the viewers were last filled from. A File ▸ Open
+  /// replaces the project under this widget, and the references belong to
+  /// the FILM — so the panels have to follow it rather than keep showing
+  /// the last one's conte.
+  ProjectId? _viewersSeededFrom;
+
+  /// Puts each viewer back where the project left it (유저 확정 ⑤㉑).
+  void _syncViewersWithProject() {
+    final project = widget.session.repository.currentProject;
+    if (project == null || project.id == _viewersSeededFrom) {
+      return;
+    }
+    _viewersSeededFrom = project.id;
+    for (final entry in _viewerSlots.entries) {
+      final bookmark = project.mediaViewerBookmarks[entry.key];
+      entry.value.restore(
+        _requestForBookmark(bookmark, project),
+        position: bookmark?.position ?? 0,
+      );
+    }
+  }
+
+  /// A remembered reference, or null when the app can no longer reach it.
+  ///
+  /// 유저 확정 ⑭: BOTH kinds come back — a pooled asset by its pool key
+  /// (its name and kind are the pool's, which may have been renamed since)
+  /// and a loose file by the absolute path it was opened from. A path
+  /// that is neither is simply gone: the viewer comes back empty and says
+  /// nothing, because a reference is not the work and losing one must not
+  /// greet anybody with a dialog.
+  MediaViewerRequest? _requestForBookmark(
+    MediaViewerBookmark? bookmark,
+    Project project,
+  ) {
+    if (bookmark == null) {
+      return null;
+    }
+    final asset = project.mediaAssetByPath(bookmark.path);
+    if (asset != null) {
+      return MediaViewerRequest(
+        path: asset.path,
+        kind: asset.kind,
+        name: asset.name,
+      );
+    }
+    // Sync on purpose: this runs inside a notify, and a widget test's
+    // fake-async zone never completes an awaited dart:io future.
+    if (!File(bookmark.path).existsSync()) {
+      return null;
+    }
+    return MediaViewerRequest(
+      path: bookmark.path,
+      kind: bookmark.kind,
+      name: bookmark.name,
+    );
+  }
+
+  /// Writes both viewers back into the project — no command, so no undo
+  /// entry and no dirty flag (see [MediaViewerBookmark]).
+  void _writeViewerBookmarks() {
+    if (_viewersSeededFrom == null ||
+        !widget.session.repository.hasProject) {
+      // Before the first seed there is nothing to write, and writing
+      // would erase what we are about to read.
+      return;
+    }
+    widget.session.repository.updateMediaViewerBookmarks(
+      (_) => {
+        for (final entry in _viewerSlots.entries)
+          if (entry.value.request.value case final request?)
+            entry.key: MediaViewerBookmark(
+              path: request.path,
+              kind: request.kind,
+              name: request.name,
+              position: entry.value.position.value,
+            ),
+      },
+    );
+  }
+
   /// The cel stores are the SESSION's (R5): the archive saves and loads
   /// them with the project; this controller owns only the edit sessions.
   late final ConteInkController _conteInk = ConteInkController(
@@ -1090,6 +1178,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     );
     widget.layerNav?.bind(_stepDisplayedLayer);
     widget.flipHud?.bind(_flipHudSnapshot);
+    // The viewers follow the PROJECT: seed them from it now, and again
+    // whenever a different one is opened under us.
+    _syncViewersWithProject();
+    widget.session.addListener(_syncViewersWithProject);
+    for (final slot in _viewerSlots.values) {
+      slot.request.addListener(_writeViewerBookmarks);
+      slot.position.addListener(_writeViewerBookmarks);
+    }
   }
 
   /// What the flip HUD draws: the rows the timeline is DISPLAYING, in its
@@ -1660,6 +1756,11 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _envelopeInkEnabled.dispose();
     _envelopeFormId.dispose();
     _envelopeInk.dispose();
+    widget.session.removeListener(_syncViewersWithProject);
+    for (final slot in _viewerSlots.values) {
+      slot.request.removeListener(_writeViewerBookmarks);
+      slot.position.removeListener(_writeViewerBookmarks);
+    }
     _mainViewer.dispose();
     _subViewer.dispose();
     _draggingTab.dispose();

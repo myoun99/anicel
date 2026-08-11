@@ -61,6 +61,15 @@ class MediaViewerSlot {
     position.value = 0;
   }
 
+  /// Puts back a document the project remembered, at the page it
+  /// remembered — the one path that sets a request WITHOUT going back to
+  /// the start. Null empties the viewer, which is what a reference the
+  /// app can no longer reach comes back as (유저 확정 ⑭: quietly).
+  void restore(MediaViewerRequest? request, {int position = 0}) {
+    this.request.value = request;
+    this.position.value = request == null || position < 0 ? 0 : position;
+  }
+
   /// Trades documents with the other viewer: 유저 확정 ⑪⑯⑰ — the verb is
   /// SWAP and it has no special cases, so trading with an empty viewer
   /// leaves this one empty. A button whose result depends on what the
