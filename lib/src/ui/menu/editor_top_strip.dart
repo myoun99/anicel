@@ -1100,9 +1100,11 @@ Future<ProjectPick?> pickProjectToOpen(BuildContext context) async {
   if (grant?.path == null || !context.mounted) {
     return null;
   }
+  final folder = grant!.path!;
   final chosen = await showProjectChooser(
     context,
-    entries: anicelProjectsIn(grant!.path!),
+    entries: anicelProjectsIn(folder),
+    folderPath: folder,
   );
   return chosen == null
       ? null

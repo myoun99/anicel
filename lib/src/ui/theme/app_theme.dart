@@ -223,6 +223,44 @@ const AnimationStyle instantMenuAnimation = AnimationStyle(
   reverseDuration: Duration.zero,
 );
 
+/// THE SUMMONED WINDOW'S SKIN — one definition for every surface the
+/// pointer calls up: menus, flyouts, and the anchored sub-windows.
+///
+/// 🐛유저, R6 #4: 「앵커팝오버등이 규격들이 다 제각각임. 텍스트사이즈도 다
+/// 다르고 이상함. 공통로직사용해서 통일화」. There were three of these, and
+/// they disagreed about the two things anyone notices first — the outline
+/// and the shadow:
+///
+///  * the anchored popup drew NO outline, at elevation 6;
+///  * [PopupMenuThemeData] drew a hairline at whatever elevation Material
+///    picked that year, with the M3 surface tint still switched on, so its
+///    fill was not even the same colour as the other two;
+///  * [MenuStyle] drew a hairline at elevation 0 — no shadow at all.
+///
+/// Three windows wearing one name. Restyling any of them restyles all of
+/// them now, which is what the shared shell was supposed to buy in the
+/// first place (R28 #9).
+abstract final class AppPopupSurface {
+  /// The one summoned surface (FILL 3): menus, tooltips and popovers are
+  /// the same kind of thing — chrome the pointer called up, sitting over
+  /// chrome that was already there.
+  static const Color color = AppColors.surfaceHigh;
+
+  /// Enough shadow to lift the window off the panel under it. A summoned
+  /// window is not docked to anything, so it may not read as flush.
+  static const double elevation = 6;
+
+  static const BorderSide edge = BorderSide(color: AppColors.hairline);
+
+  /// ⚠️Material 3 tints an elevated surface with the primary colour unless
+  /// it is told not to. The app paints its own greys and any tint is a
+  /// drift, so every consumer passes this.
+  static const Color surfaceTint = Colors.transparent;
+
+  static RoundedSuperellipseBorder get shape =>
+      AppShapes.container(AppShapes.windowRadius, side: edge);
+}
+
 /// The one outline every text input wears: hairline at rest, accent on
 /// focus, danger on error, 4px corners. Inline cell editors that must stay
 /// bare opt out at the call site with `filled: false` + [InputBorder.none].
@@ -423,28 +461,24 @@ ThemeData buildAppTheme() {
       mainAxisMargin: 2,
     ),
     popupMenuTheme: PopupMenuThemeData(
-      color: AppColors.surfaceHigh,
-      shape: AppShapes.container(
-        AppShapes.windowRadius,
-        side: const BorderSide(color: AppColors.hairline),
-      ),
+      color: AppPopupSurface.color,
+      shape: AppPopupSurface.shape,
+      elevation: AppPopupSurface.elevation,
+      surfaceTintColor: AppPopupSurface.surfaceTint,
       textStyle: const TextStyle(color: AppColors.text, fontSize: 12),
     ),
     menuTheme: MenuThemeData(
       style: MenuStyle(
         backgroundColor: const WidgetStatePropertyAll<Color>(
-          AppColors.surfaceHigh,
+          AppPopupSurface.color,
         ),
         surfaceTintColor: const WidgetStatePropertyAll<Color>(
-          Colors.transparent,
+          AppPopupSurface.surfaceTint,
         ),
-        elevation: const WidgetStatePropertyAll<double>(0),
-        shape: WidgetStatePropertyAll<OutlinedBorder>(
-          AppShapes.container(
-            AppShapes.windowRadius,
-            side: const BorderSide(color: AppColors.hairline),
-          ),
+        elevation: const WidgetStatePropertyAll<double>(
+          AppPopupSurface.elevation,
         ),
+        shape: WidgetStatePropertyAll<OutlinedBorder>(AppPopupSurface.shape),
       ),
     ),
     // A tooltip carries a SHAPE now rather than a BoxDecoration's radius,

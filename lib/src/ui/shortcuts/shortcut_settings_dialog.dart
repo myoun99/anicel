@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 
-import '../theme/app_theme.dart' show instantMenuAnimation;
+import '../widgets/panel_flyout.dart';
 import 'editor_action_registry.dart';
 import 'editor_shortcut_bindings.dart';
 import 'shortcut_activator_codec.dart';
@@ -265,54 +265,53 @@ class _ShortcutSettingsDialogState extends State<ShortcutSettingsDialog> {
           // The TOUCH binding (R11-⑨): one multi-finger gesture per
           // action, picked from the fixed vocabulary — same custom feel
           // as the key bindings, same conflict highlighting.
-          PopupMenuButton<Object>(
+          // R6 #4: the shared flyout. These rows carried no `height`, so
+          // they came out at Material's 48 beside the app's 32.
+          //
+          // ✅The sentinel is gone with the migration: a flyout item carries
+          // a CALLBACK rather than a value, so "None" simply passes null and
+          // no longer has to be told apart from a dismissal.
+          PanelFlyoutTrigger(
             key: ValueKey<String>('shortcut-touch-${definition.id}'),
             tooltip: AppText.strings.shortcutTouch,
-            popUpAnimationStyle: instantMenuAnimation,
-            // A popup item cannot carry a null VALUE (indistinguishable
-            // from dismissal), so 'None' rides a sentinel string.
-            onSelected: (value) => widget.bindings.setTouchGesture(
-              definition.id,
-              value is TouchGesture ? value : null,
-            ),
-            itemBuilder: (context) => [
-              PopupMenuItem<Object>(
-                key: ValueKey<String>('shortcut-touch-${definition.id}-none'),
-                value: 'none',
-                child: const Text('None'),
+            padding: const EdgeInsets.symmetric(horizontal: 4),
+            entriesBuilder: () => [
+              PanelFlyoutItem(
+                keyValue: 'shortcut-touch-${definition.id}-none',
+                label: 'None',
+                selected: touchGesture == null,
+                onSelected: () =>
+                    widget.bindings.setTouchGesture(definition.id, null),
               ),
               for (final gesture in TouchGesture.values)
-                PopupMenuItem<Object>(
-                  key: ValueKey<String>(
-                    'shortcut-touch-${definition.id}-${gesture.name}',
-                  ),
-                  value: gesture,
-                  child: Text(gesture.label),
+                PanelFlyoutItem(
+                  keyValue: 'shortcut-touch-${definition.id}-${gesture.name}',
+                  label: gesture.label,
+                  selected: gesture == touchGesture,
+                  onSelected: () =>
+                      widget.bindings.setTouchGesture(definition.id, gesture),
                 ),
             ],
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 4),
-              child: touchGesture == null
-                  ? Icon(
-                      Icons.touch_app_outlined,
-                      size: 18,
-                      color: theme.colorScheme.onSurfaceVariant.withValues(
-                        alpha: 0.5,
-                      ),
-                    )
-                  : Chip(
-                      label: Text(
-                        touchGesture.label,
-                        style: theme.textTheme.labelSmall,
-                      ),
-                      avatar: const Icon(Icons.touch_app_outlined, size: 14),
-                      visualDensity: VisualDensity.compact,
-                      materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                      backgroundColor: touchConflicted
-                          ? theme.colorScheme.errorContainer
-                          : null,
+            child: touchGesture == null
+                ? Icon(
+                    Icons.touch_app_outlined,
+                    size: 18,
+                    color: theme.colorScheme.onSurfaceVariant.withValues(
+                      alpha: 0.5,
                     ),
-            ),
+                  )
+                : Chip(
+                    label: Text(
+                      touchGesture.label,
+                      style: theme.textTheme.labelSmall,
+                    ),
+                    avatar: const Icon(Icons.touch_app_outlined, size: 14),
+                    visualDensity: VisualDensity.compact,
+                    materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    backgroundColor: touchConflicted
+                        ? theme.colorScheme.errorContainer
+                        : null,
+                  ),
           ),
           IconButton(
             key: ValueKey<String>('shortcut-record-${definition.id}'),

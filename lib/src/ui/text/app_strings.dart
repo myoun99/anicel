@@ -328,6 +328,11 @@ class AppStrings {
   String get fileNameEmpty => _s('fileNameEmpty');
   String get recentProjectsTitle => _s('recentProjectsTitle');
   String get recentReconnect => _s('recentReconnect');
+  String get sortByName => _s('sortByName');
+  String get sortByModified => _s('sortByModified');
+  String get sortBySize => _s('sortBySize');
+  String get sortAscending => _s('sortAscending');
+  String get sortDescending => _s('sortDescending');
 
   // --- Canvas size ---
   String get canvasSizeTitle => _s('canvasSizeTitle');
@@ -1048,6 +1053,11 @@ class AppStrings {
     'fileNameEmpty': 'File name cannot be empty.',
     'recentProjectsTitle': 'Recent projects',
     'recentReconnect': 'Reconnect',
+    'sortByName': 'Name',
+    'sortByModified': 'Modified',
+    'sortBySize': 'Size',
+    'sortAscending': 'Ascending',
+    'sortDescending': 'Descending',
     'canvasSizeTitle': 'Canvas size',
     'canvasWidthLabel': 'Width (px)',
     'canvasHeightLabel': 'Height (px)',
@@ -1745,6 +1755,11 @@ class AppStrings {
     'fileNameEmpty': 'ファイル名を入力してください。',
     'recentProjectsTitle': '最近使ったプロジェクト',
     'recentReconnect': '再接続',
+    'sortByName': '名前',
+    'sortByModified': '更新日時',
+    'sortBySize': 'サイズ',
+    'sortAscending': '昇順',
+    'sortDescending': '降順',
     'canvasSizeTitle': 'カンバスサイズ',
     'canvasWidthLabel': '幅（px）',
     'canvasHeightLabel': '高さ（px）',
@@ -2477,6 +2492,11 @@ class AppStrings {
     'fileNameEmpty': '파일 이름을 입력하세요.',
     'recentProjectsTitle': '최근 프로젝트',
     'recentReconnect': '다시 연결',
+    'sortByName': '이름',
+    'sortByModified': '수정일시',
+    'sortBySize': '크기',
+    'sortAscending': '오름차순',
+    'sortDescending': '내림차순',
     'canvasSizeTitle': '캔버스 크기',
     'canvasWidthLabel': '너비 (px)',
     'canvasHeightLabel': '높이 (px)',
@@ -3218,6 +3238,11 @@ class AppStrings {
     'fileNameEmpty': 'Le nom de fichier ne peut pas être vide.',
     'recentProjectsTitle': 'Projets récents',
     'recentReconnect': 'Reconnecter',
+    'sortByName': 'Nom',
+    'sortByModified': 'Modifié',
+    'sortBySize': 'Taille',
+    'sortAscending': 'Croissant',
+    'sortDescending': 'Décroissant',
     'canvasSizeTitle': 'Taille du canevas',
     'canvasWidthLabel': 'Largeur (px)',
     'canvasHeightLabel': 'Hauteur (px)',
@@ -3959,6 +3984,11 @@ class AppStrings {
     'fileNameEmpty': '文件名不能为空。',
     'recentProjectsTitle': '最近的项目',
     'recentReconnect': '重新连接',
+    'sortByName': '名称',
+    'sortByModified': '修改时间',
+    'sortBySize': '大小',
+    'sortAscending': '升序',
+    'sortDescending': '降序',
     'canvasSizeTitle': '画布尺寸',
     'canvasWidthLabel': '宽度（px）',
     'canvasHeightLabel': '高度（px）',

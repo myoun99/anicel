@@ -6,6 +6,7 @@ import '../../models/layer_folder.dart';
 import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../../models/se_name_tag.dart' show SeNameTag;
+import '../../models/timeline_row_address.dart';
 import 'timeline_row_filter.dart';
 import 'timeline_section_policy.dart';
 
@@ -156,6 +157,18 @@ class TimelineDisplayRow {
   bool get isLane => lane != null;
 
   bool get isFolder => lane == null && layerKindGroupsLayers(layer.kind);
+
+  /// WHICH row this is, in the vocabulary every frame-axis gesture speaks.
+  ///
+  /// ★The display row list is the app's ONE ordered answer to "what rows are
+  /// on screen, in what order", and it already carries what a model walk
+  /// cannot know about: the track-owned transition clone the rail inserts,
+  /// the lane rows of whatever is twirled open, and their group headers.
+  /// Handing that list out as ADDRESSES is what lets selection stop
+  /// re-deriving a row list of its own and drifting from what is drawn.
+  TimelineRowAddress get address => lane == null
+      ? LayerRowAddress(layer.id)
+      : LaneRowAddress(layer.id, lane!.laneId);
 }
 
 /// Lane key edit hooks — layer-generic on purpose: the camera routes them

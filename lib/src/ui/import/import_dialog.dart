@@ -4,6 +4,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/import/cut_folder_parse.dart';
+import '../../models/import/tvp_json_parse.dart';
 import '../../models/media_asset.dart';
 import '../../services/import/media_import_planner.dart';
 import '../../services/pdf/pdf_render_service.dart';
@@ -55,6 +56,12 @@ class _ImportDialogState extends State<ImportDialog> {
   bool _running = false;
   String _status = '';
 
+  /// A picked `.json` that turns out to be a TVPaint export. It brings a
+  /// whole cut with it — stack, exposure, cel numbers — so it becomes THE
+  /// source rather than joining the file list.
+  String? _tvpJsonPath;
+  TvpJsonParseResult? _tvpJson;
+
   /// Sources the drop carried but this window cannot act on (the folder
   /// path wins when a folder is among them) — listed so nothing exits
   /// silently.
@@ -83,7 +90,75 @@ class _ImportDialogState extends State<ImportDialog> {
       _ignoredSources.addAll(_files);
       _files.clear();
       _reparseFolder();
+    } else {
+      _adoptTvpJsonFromFiles();
     }
+  }
+
+  /// Promotes a picked or dropped TVPaint `.json` to THE source. A
+  /// `.json` that is not one keeps the window open with the reason
+  /// instead of failing later as a decode (§6-z21: nothing exits
+  /// silently).
+  void _adoptTvpJsonFromFiles() {
+    _tvpJsonPath = null;
+    _tvpJson = null;
+    final candidate = _files.firstWhere(
+      (path) => path.toLowerCase().endsWith('.json'),
+      orElse: () => '',
+    );
+    if (candidate.isEmpty) {
+      return;
+    }
+    // A `.json` this window cannot read must LEAVE the file list. Left in
+    // it, Import would send it down the still-image path and report
+    // "corrupt or password-locked" — which is not what happened.
+    void reject(String reason) {
+      _status = '${mediaAssetDefaultName(candidate)}: $reason';
+      _files.remove(candidate);
+      _ignoredSources.add(candidate);
+    }
+
+    final TvpJsonParseResult parsed;
+    try {
+      parsed = parseTvpJson(File(candidate).readAsStringSync());
+    } on TvpJsonParseException catch (error) {
+      reject(error.message);
+      return;
+    } on FileSystemException catch (error) {
+      reject(error.message);
+      return;
+    }
+    _tvpJson = parsed;
+    _tvpJsonPath = candidate;
+    // The export IS the import; anything picked alongside it is listed
+    // rather than dropped.
+    _ignoredSources.addAll(_files.where((path) => path != candidate));
+    _files.clear();
+  }
+
+  Future<void> _pickTvpJson() async {
+    final picker =
+        widget.filePicker ??
+        () async {
+          final file = await openFile(
+            acceptedTypeGroups: const [FileTypeGroups.tvpaintJson],
+          );
+          return [if (file != null) file.path];
+        };
+    final paths = await picker();
+    if (paths.isEmpty || !mounted) {
+      return;
+    }
+    setState(() {
+      _folder = null;
+      _parsed = null;
+      _status = '';
+      _ignoredSources.clear();
+      _files
+        ..clear()
+        ..addAll(paths);
+      _adoptTvpJsonFromFiles();
+    });
   }
 
   Future<void> _pickFiles() async {
@@ -105,6 +180,7 @@ class _ImportDialogState extends State<ImportDialog> {
       _files
         ..clear()
         ..addAll(paths);
+      _adoptTvpJsonFromFiles();
     });
   }
 
@@ -121,6 +197,8 @@ class _ImportDialogState extends State<ImportDialog> {
     }
     setState(() {
       _files.clear();
+      _tvpJsonPath = null;
+      _tvpJson = null;
       _folder = path;
       _rasterize = true;
       _reparseFolder();
@@ -181,7 +259,10 @@ class _ImportDialogState extends State<ImportDialog> {
   }
 
   bool get _canImport =>
-      !_running && (_files.isNotEmpty || (_folder != null && _parsed != null));
+      !_running &&
+      (_files.isNotEmpty ||
+          (_folder != null && _parsed != null) ||
+          _tvpJson != null);
 
   /// Kinds not placeable yet (video needs a decode engine): named
   /// honestly instead of failing as a decode. PDF left this set in R4.
@@ -203,7 +284,20 @@ class _ImportDialogState extends State<ImportDialog> {
     final done = <String>[];
     try {
       final folder = _folder;
-      if (folder != null) {
+      final tvpJsonPath = _tvpJsonPath;
+      if (tvpJsonPath != null) {
+        final tvpWarnings = await session.importTvpJson(
+          jsonPath: tvpJsonPath,
+          fit: _fit,
+        );
+        if (tvpWarnings == null) {
+          warnings.add('Could not read that TVPaint export.');
+        } else {
+          imported += 1;
+          done.add(tvpJsonPath);
+          warnings.addAll(tvpWarnings);
+        }
+      } else if (folder != null) {
         final folderWarnings = await session.importCutFolder(
           folderPath: folder,
           config: _parseConfig,
@@ -311,8 +405,16 @@ class _ImportDialogState extends State<ImportDialog> {
     setState(() {
       _running = false;
       // What SUCCEEDED leaves the list — pressing Import again after
-      // fixing a problem must never duplicate what already landed.
+      // fixing a problem must never duplicate what already landed. A
+      // TVPaint export is not IN that list (it replaced it), so it is
+      // released here or a second Enter lands the cut twice — and the
+      // camera warning keeps this window open often enough for that to
+      // be reachable.
       _files.removeWhere(done.contains);
+      if (_tvpJsonPath != null && done.contains(_tvpJsonPath)) {
+        _tvpJsonPath = null;
+        _tvpJson = null;
+      }
       _status = warnings.isEmpty
           ? 'Nothing imported.'
           : warnings.take(3).join(' · ');
@@ -373,7 +475,9 @@ class _ImportDialogState extends State<ImportDialog> {
 
   Widget _sourceBar(BuildContext context) {
     final theme = Theme.of(context);
-    final label = _folder != null
+    final label = _tvpJsonPath != null
+        ? _tvpJsonPath!
+        : _folder != null
         ? _folder!
         : _files.isEmpty
         ? 'No source selected'
@@ -402,6 +506,12 @@ class _ImportDialogState extends State<ImportDialog> {
             key: const ValueKey<String>('import-browse-folder-button'),
             onPressed: _running ? null : _pickFolder,
             child: const Text('Cut folder…'),
+          ),
+          const SizedBox(width: 6),
+          OutlinedButton(
+            key: const ValueKey<String>('import-browse-tvpaint-button'),
+            onPressed: _running ? null : _pickTvpJson,
+            child: const Text('TVPaint JSON…'),
           ),
         ],
       ),
@@ -443,8 +553,44 @@ class _ImportDialogState extends State<ImportDialog> {
       );
     }
 
+    final tvp = _tvpJson;
     final parsed = _parsed;
-    if (parsed != null) {
+    if (tvp != null) {
+      addRow(
+        'Clip',
+        '${tvp.clipName} · ${tvp.width}×${tvp.height} · ${tvp.frameCount} '
+            'frames · ${tvp.frameRate.toStringAsFixed(tvp.frameRate.truncateToDouble() == tvp.frameRate ? 0 : 3)}fps',
+      );
+      // Top-first, the way the layer panel reads — the parse hands them
+      // over bottom-first because that is what the cut wants.
+      for (final layer in tvp.layers.reversed) {
+        final edges = [
+          if (layer.preBehavior != TvpEdgeBehavior.none)
+            'pre ${layer.preBehavior.name}',
+          if (layer.postBehavior != TvpEdgeBehavior.none)
+            'post ${layer.postBehavior.name}',
+        ];
+        addRow(
+          'Layer ${layer.position}',
+          '${layer.name} — ${layer.instances.length} drawing(s), '
+              '${layer.blocks.length} exposure(s)'
+              '${edges.isEmpty ? '' : ' · ${edges.join(', ')}'}'
+              '${layer.visible ? '' : ' · hidden'}',
+          dim: !layer.visible,
+        );
+      }
+      if (tvp.camera.isAnimated) {
+        addRow(
+          'Camera',
+          '${tvp.camera.keyframes.length} keyframe(s) — read, not applied '
+              'yet',
+          dim: true,
+        );
+      }
+      for (final warning in tvp.warnings) {
+        addRow('⚠', warning);
+      }
+    } else if (parsed != null) {
       addRow(
         'Cut',
         parsed.cutNumbers.isEmpty
@@ -516,12 +662,16 @@ class _ImportDialogState extends State<ImportDialog> {
 
   Widget _settingsColumn(BuildContext context) {
     final isFolder = _folder != null;
+    final isTvp = _tvpJson != null;
+    // Both of these land a whole CUT rather than placing a file, so the
+    // destination and rasterize knobs have nothing to decide.
+    final landsWholeCut = isFolder || isTvp;
     return SingleChildScrollView(
       padding: const EdgeInsets.all(8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          if (!isFolder) ...[
+          if (!landsWholeCut) ...[
             ExportModuleRow(
               label: 'Place as',
               child: Wrap(
@@ -570,10 +720,16 @@ class _ImportDialogState extends State<ImportDialog> {
             const SizedBox(height: 6),
           ] else ...[
             // §6-z22: a cut folder's cels are what you draw on next, so
-            // the folder import always bakes — no toggle to mislead.
+            // the folder import always bakes — no toggle to mislead. A
+            // TVPaint export is the same shape.
             Text(
-              'Cut folders always bake their cels; scans and movies stay '
-              'references.',
+              isTvp
+                  ? 'A TVPaint export always bakes its cels. Export it with '
+                        '「빈 사진 포함」 on — with it off, TVPaint omits every '
+                        'instance whose image is blank and their labels and '
+                        'timing come through empty.'
+                  : 'Cut folders always bake their cels; scans and movies '
+                        'stay references.',
               style: Theme.of(context).textTheme.labelSmall!.copyWith(
                 color: Theme.of(context).colorScheme.outline,
               ),

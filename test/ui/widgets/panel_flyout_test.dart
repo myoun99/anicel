@@ -59,6 +59,93 @@ void main() {
     expect(find.byKey(const ValueKey<String>('flyout-item-a')), findsNothing);
   });
 
+  testWidgets('PanelFlyoutTrigger opens the shared list from an arbitrary '
+      'child — R6 #4: the four raw PopupMenuButtons had no other door', (
+    tester,
+  ) async {
+    var picked = 0;
+    await tester.pumpWidget(
+      harness(
+        PanelFlyoutTrigger(
+          key: const ValueKey<String>('trigger-under-test'),
+          tooltip: 'Options',
+          entriesBuilder: () => [
+            PanelFlyoutItem(
+              keyValue: 'trigger-item-a',
+              label: 'Pick me',
+              onSelected: () => picked += 1,
+            ),
+          ],
+          child: const Icon(Icons.more_vert, size: 16),
+        ),
+      ),
+    );
+
+    await tester.tap(find.byKey(const ValueKey<String>('trigger-under-test')));
+    await tester.pumpAndSettle();
+    final row = tester.widget<PopupMenuItem<PanelFlyoutItem>>(
+      find.byKey(const ValueKey<String>('trigger-item-a')),
+    );
+    expect(
+      row.height,
+      32,
+      reason:
+          'the point of the migration: rows come from the shared list, not '
+          'from whatever Material picks (48 in two of the four hosts)',
+    );
+
+    await tester.tap(find.byKey(const ValueKey<String>('trigger-item-a')));
+    await tester.pumpAndSettle();
+    expect(picked, 1);
+  });
+
+  testWidgets('a SELECTED row accents and grows no glyph — 유저 R11-①: '
+      '어차피 선택하면 ui적으로 색 바뀌니까 그거로 충분해', (tester) async {
+    // The overflow tab list tinted its active glyph and had to keep doing
+    // so through the migration. A check would have been the M3 habit the
+    // rule exists to refuse, and it would widen the row besides.
+    await tester.pumpWidget(
+      harness(
+        PanelFlyoutButton(
+          key: const ValueKey<String>('flyout-under-test'),
+          label: 'Test',
+          entriesBuilder: () => const [
+            PanelFlyoutItem(
+              keyValue: 'flyout-item-current',
+              label: 'Current',
+              icon: Icons.layers,
+              selected: true,
+            ),
+            PanelFlyoutItem(
+              keyValue: 'flyout-item-other',
+              label: 'Other',
+              icon: Icons.layers,
+            ),
+          ],
+        ),
+      ),
+    );
+    await tester.tap(find.byKey(const ValueKey<String>('flyout-under-test')));
+    await tester.pumpAndSettle();
+
+    Text labelOf(String key) => tester.widget<Text>(
+      find.descendant(
+        of: find.byKey(ValueKey<String>(key)),
+        matching: find.byType(Text),
+      ),
+    );
+    expect(labelOf('flyout-item-current').style?.color, AppColors.accent);
+    expect(labelOf('flyout-item-other').style?.color, AppColors.text);
+    expect(
+      find.descendant(
+        of: find.byKey(const ValueKey<String>('flyout-item-current')),
+        matching: find.byIcon(Icons.check),
+      ),
+      findsNothing,
+      reason: 'selection is colour and never a check glyph',
+    );
+  });
+
   testWidgets('StrapIconButton: the body fires the primary action, the top '
       'band opens the flyout', (tester) async {
     var primary = 0;

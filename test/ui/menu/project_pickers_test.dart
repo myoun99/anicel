@@ -83,9 +83,34 @@ void main() {
   }
 
   group('opening', () {
-    testWidgets('a folder with one project opens it directly', (tester) async {
+    testWidgets('one project still goes through the chooser', (tester) async {
+      // REPLACES 'a folder with one project opens it directly'. The skip made
+      // what came back after picking a folder depend on a count the user
+      // could not see; the window now opens whatever is in there. The
+      // bookmark assertion stays — it rides through the chooser too.
       writeProject('only.anicel');
-      final pick = await runFlow(tester, pickProjectToOpen);
+      ProjectPick? pick;
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () async => pick = await pickProjectToOpen(context),
+                child: const Text('go'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('go'));
+      await tester.pumpAndSettle();
+      await tester.pumpAndSettle();
+      expect(
+        find.byKey(const ValueKey<String>('project-chooser-dialog')),
+        findsOneWidget,
+      );
+      await tester.tap(find.text('only.anicel'));
+      await tester.pumpAndSettle();
       expect(pick?.path, '${folder.path.replaceAll('\\', '/')}/only.anicel');
       expect(pick?.folderBookmark, 'BOOK==');
     });

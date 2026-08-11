@@ -1,0 +1,501 @@
+{
+    "version": {
+        "major": 5,
+        "minor": 1
+    },
+    "project": {
+        "format": {
+            "extension": "png"
+        },
+        "camera": {
+            "width": 1920,
+            "height": 1080,
+            "field": 0,
+            "framerate": 24.0,
+            "pixelaspectratio": 1.0
+        },
+        "clip": {
+            "name": "クリップ_001",
+            "width": 2150,
+            "height": 1518,
+            "dpi": 72,
+            "framerate": 24.0,
+            "pixelaspectratio": 1.0,
+            "image-count": 24,
+            "bg": {
+                "red": 255,
+                "green": 255,
+                "blue": 255
+            },
+            "markin": {
+                "status": false,
+                "value": 0
+            },
+            "markout": {
+                "status": true,
+                "value": 23
+            },
+            "camera": {
+                "mode": 0,
+                "motion-blur": 0.0,
+                "lock-all": false,
+                "lock-x": false,
+                "lock-y": false,
+                "lock-angle": false,
+                "lock-scale": false,
+                "lock-sizex": false,
+                "lock-sizey": false,
+                "points": [
+                    {
+                        "frame": 1,
+                        "x": 1073.0,
+                        "y": 669.0,
+                        "angle": 0.0,
+                        "scale": 1.0,
+                        "sizeX": 2150.0,
+                        "sizeY": 1518.0
+                    },
+                    {
+                        "frame": 24,
+                        "x": 1085.0,
+                        "y": 853.0,
+                        "angle": 0.0,
+                        "scale": 1.0,
+                        "sizeX": 2150.0,
+                        "sizeY": 1518.0
+                    }
+                ],
+                "positions": [
+                    {
+                        "frame": 1,
+                        "x": 1073.0,
+                        "y": 669.0,
+                        "angle": 0.0,
+                        "scale": 1.0,
+                        "sizeX": 1920.0,
+                        "sizeY": 1080.0
+                    },
+                    {
+                        "frame": 2,
+                        "x": 1073.4998855573358,
+                        "y": 676.66491187914846,
+                        "angle": 0.0,
+                        "scale": 1.0,
+                        "sizeX": 1920.0,
+                        "sizeY": 1080.0
+                    },
+                    {
+                        "frame": 3,
+                        "x": 1073.9998931868467,
+                        "y": 684.33169553164976,
+                        "angle": 0.0,
+                        "scale": 1.0,
+                        "sizeX": 1920.0,
+                        "sizeY": 1080.0
+                    },
+                    {
+                        "frame": 4,
+                        "x": 1074.4998397802701,
+                        "y": 691.99754329747464,
+                        "angle": 0.0,
+                        "scale": 1.0,
+                        "sizeX": 1920.0,
+                        "sizeY": 1080.0
+                    },
+                    {
+                        "frame": 5,
+                        "x": 1074.9999084458686,
+                        "y": 699.66526283665212,
+                        "angle": 0.0,
+                        "scale": 1.0,
+                        "sizeX": 1920.0,
+                        "sizeY": 1080.0
+                    },
+                    {
+                        "frame": 6,
+                        "x": 1075.4999160753796,
+                        "y": 707.3320464891533,
+                        "angle": 0.0,
+                        "scale": 1.0,
+                        "sizeX": 1920.0,
+                        "sizeY": 1080.0
+                    },
+                    {
+                        "frame": 7,
+                        "x": 1075.999862668803,
+                        "y": 714.99789425497829,
+                        "angle": 0.0,
+                        "scale": 1.0,
+                        "sizeX": 1920.0,
+                        "sizeY": 1080.0
+                    },
+                    {
+                        "frame": 8,
+                        "x": 1076.4999313344015,
+                        "y": 722.66561379415589,
+                        "angle": 0.0,
+                        "scale": 1.0,
+                        "sizeX": 1920.0,
+                        "sizeY": 1080.0
+                    },
+                    {
+                        "frame": 9,
+                        "x": 1076.9999389639124,
+                        "y": 730.33239744665707,
+                        "angle": 0.0,
+                        "scale": 1.0,
+                        "sizeX": 1920.0,
+                        "sizeY": 1080.0
+                    },
+                    {
+                        "frame": 10,
+                        "x": 1077.4998855573358,
+                        "y": 737.99824521248183,
+                        "angle": 0.0,
+                        "scale": 1.0,
+                        "sizeX": 1920.0,
+                        "sizeY": 1080.0
+                    },
+                    {
+                        "frame": 11,
+                        "x": 1077.9999542229343,
+                        "y": 745.66596475165943,
+                        "angle": 0.0,
+                        "scale": 1.0,
+                        "sizeX": 1920.0,
+                        "sizeY": 1080.0
+                    },
+                    {
+                        "frame": 12,
+                        "x": 1078.4999618524453,
+                        "y": 753.33274840416061,
+                        "angle": 0.0,
+                        "scale": 1.0,
+                        "sizeX": 1920.0,
+                        "sizeY": 1080.0
+                    },
+                    {
+                        "frame": 13,
+                        "x": 1078.9999084458686,
+                        "y": 760.99859616998549,
+                        "angle": 0.0,
+                        "scale": 1.0,
+                        "sizeX": 1920.0,
+                        "sizeY": 1080.0
+                    },
+                    {
+                        "frame": 14,
+                        "x": 1079.499855039292,
+                        "y": 768.66444393581037,
+                        "angle": 0.0,
+                        "scale": 1.0,
+                        "sizeX": 1920.0,
+                        "sizeY": 1080.0
+                    },
+                    {
+                        "frame": 15,
+                        "x": 1079.999862668803,
+                        "y": 776.33122758831155,
+                        "angle": 0.0,
+                        "scale": 1.0,
+                        "sizeX": 1920.0,
+                        "sizeY": 1080.0
+                    },
+                    {
+                        "frame": 16,
+                        "x": 1080.4999313344015,
+                        "y": 783.99894712748915,
+                        "angle": 0.0,
+                        "scale": 1.0,
+                        "sizeX": 1920.0,
+                        "sizeY": 1080.0
+                    },
+                    {
+                        "frame": 17,
+                        "x": 1080.9998779278249,
+                        "y": 791.66479489331402,
+                        "angle": 0.0,
+                        "scale": 1.0,
+                        "sizeX": 1920.0,
+                        "sizeY": 1080.0
+                    },
+                    {
+                        "frame": 18,
+                        "x": 1081.4998855573358,
+                        "y": 799.3315785458152,
+                        "angle": 0.0,
+                        "scale": 1.0,
+                        "sizeX": 1920.0,
+                        "sizeY": 1080.0
+                    },
+                    {
+                        "frame": 19,
+                        "x": 1081.9999542229343,
+                        "y": 806.99929808499269,
+                        "angle": 0.0,
+                        "scale": 1.0,
+                        "sizeX": 1920.0,
+                        "sizeY": 1080.0
+                    },
+                    {
+                        "frame": 20,
+                        "x": 1082.4999008163577,
+                        "y": 814.66514585081768,
+                        "angle": 0.0,
+                        "scale": 1.0,
+                        "sizeX": 1920.0,
+                        "sizeY": 1080.0
+                    },
+                    {
+                        "frame": 21,
+                        "x": 1082.9999084458686,
+                        "y": 822.33192950331886,
+                        "angle": 0.0,
+                        "scale": 1.0,
+                        "sizeX": 1920.0,
+                        "sizeY": 1080.0
+                    },
+                    {
+                        "frame": 22,
+                        "x": 1083.4999771114672,
+                        "y": 829.99964904249646,
+                        "angle": 0.0,
+                        "scale": 1.0,
+                        "sizeX": 1920.0,
+                        "sizeY": 1080.0
+                    },
+                    {
+                        "frame": 23,
+                        "x": 1083.9999237048905,
+                        "y": 837.66549680832122,
+                        "angle": 0.0,
+                        "scale": 1.0,
+                        "sizeX": 1920.0,
+                        "sizeY": 1080.0
+                    },
+                    {
+                        "frame": 24,
+                        "x": 1084.4999313344013,
+                        "y": 845.33228046082252,
+                        "angle": 0.0,
+                        "scale": 1.0,
+                        "sizeX": 1920.0,
+                        "sizeY": 1080.0
+                    }
+                ]
+            },
+            "layers": [
+                {
+                    "name": "TAP",
+                    "visible": true,
+                    "position": 1,
+                    "opacity": 255,
+                    "start": 0,
+                    "end": 23,
+                    "pre-behavior": 0,
+                    "post-behavior": 3,
+                    "blending-mode": "Color",
+                    "group": {
+                        "red": 255,
+                        "green": 254,
+                        "blue": 241
+                    },
+                    "link": [
+                        {
+                            "instance-index": 0,
+                            "instance-name": "1",
+                            "file": "[001] TAP/[0001] TAP.png",
+                            "images": [
+                                0
+                            ]
+                        }
+                    ],
+                    "repeat": []
+                },
+                {
+                    "name": "E",
+                    "visible": true,
+                    "position": 2,
+                    "opacity": 255,
+                    "start": 16,
+                    "end": 16,
+                    "pre-behavior": 0,
+                    "post-behavior": 3,
+                    "blending-mode": "Color",
+                    "group": {
+                        "red": 255,
+                        "green": 254,
+                        "blue": 241
+                    },
+                    "link": [
+                        {
+                            "instance-index": 16,
+                            "instance-name": "1",
+                            "file": "[002] E/[0017] E.png",
+                            "images": [
+                                16
+                            ]
+                        }
+                    ],
+                    "repeat": []
+                },
+                {
+                    "name": "D",
+                    "visible": true,
+                    "position": 3,
+                    "opacity": 255,
+                    "start": 0,
+                    "end": 8,
+                    "pre-behavior": 0,
+                    "post-behavior": 1,
+                    "blending-mode": "Color",
+                    "group": {
+                        "red": 0,
+                        "green": 0,
+                        "blue": 0
+                    },
+                    "link": [
+                        {
+                            "instance-index": 0,
+                            "instance-name": "1",
+                            "file": "[003] D/[0001] D.png",
+                            "images": [
+                                0
+                            ]
+                        },
+                        {
+                            "instance-index": 3,
+                            "instance-name": "2",
+                            "file": "[003] D/[0004] D.png",
+                            "images": [
+                                3
+                            ]
+                        },
+                        {
+                            "instance-index": 6,
+                            "instance-name": "3",
+                            "file": "[003] D/[0007] D.png",
+                            "images": [
+                                6
+                            ]
+                        }
+                    ],
+                    "repeat": []
+                },
+                {
+                    "name": "C",
+                    "visible": true,
+                    "position": 4,
+                    "opacity": 255,
+                    "start": 0,
+                    "end": 8,
+                    "pre-behavior": 0,
+                    "post-behavior": 0,
+                    "blending-mode": "Color",
+                    "group": {
+                        "red": 0,
+                        "green": 0,
+                        "blue": 0
+                    },
+                    "link": [
+                        {
+                            "instance-index": 0,
+                            "instance-name": "1",
+                            "file": "[004] C/[0001] C.png",
+                            "images": [
+                                0
+                            ]
+                        },
+                        {
+                            "instance-index": 3,
+                            "instance-name": "2",
+                            "file": "[004] C/[0004] C.png",
+                            "images": [
+                                3
+                            ]
+                        },
+                        {
+                            "instance-index": 6,
+                            "instance-name": "3",
+                            "file": "[004] C/[0007] C.png",
+                            "images": [
+                                6
+                            ]
+                        }
+                    ],
+                    "repeat": []
+                },
+                {
+                    "name": "B",
+                    "visible": true,
+                    "position": 5,
+                    "opacity": 255,
+                    "start": 0,
+                    "end": 2,
+                    "pre-behavior": 0,
+                    "post-behavior": 3,
+                    "blending-mode": "Color",
+                    "group": {
+                        "red": 255,
+                        "green": 254,
+                        "blue": 241
+                    },
+                    "link": [
+                        {
+                            "instance-index": 0,
+                            "instance-name": "1",
+                            "file": "[005] B/[0001] B.png",
+                            "images": [
+                                0
+                            ]
+                        }
+                    ],
+                    "repeat": []
+                },
+                {
+                    "name": "A",
+                    "visible": true,
+                    "position": 6,
+                    "opacity": 255,
+                    "start": 0,
+                    "end": 8,
+                    "pre-behavior": 0,
+                    "post-behavior": 3,
+                    "blending-mode": "Color",
+                    "group": {
+                        "red": 0,
+                        "green": 0,
+                        "blue": 0
+                    },
+                    "link": [
+                        {
+                            "instance-index": 0,
+                            "instance-name": "1",
+                            "file": "[006] A/[0001] A.png",
+                            "images": [
+                                0
+                            ]
+                        },
+                        {
+                            "instance-index": 3,
+                            "instance-name": "2",
+                            "file": "[006] A/[0004] A.png",
+                            "images": [
+                                3
+                            ]
+                        },
+                        {
+                            "instance-index": 6,
+                            "instance-name": "3",
+                            "file": "[006] A/[0007] A.png",
+                            "images": [
+                                6
+                            ]
+                        }
+                    ],
+                    "repeat": []
+                }
+            ]
+        }
+    }
+}
