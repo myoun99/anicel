@@ -16,8 +16,6 @@ import 'package:anicel/src/ui/canvas/layer_pose_paint.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
-import 'brush_canvas_test_helpers.dart';
-
 /// Guides live in CANVAS space, but a layer carrying a transform is drawn
 /// through it and its strokes record in the layer's own ARTWORK coordinates
 /// — the panel wraps the view in the pose and Flutter's hit testing brings
