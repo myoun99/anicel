@@ -579,14 +579,13 @@ class _ImportDialogState extends State<ImportDialog> {
           dim: !layer.visible,
         );
       }
-      if (tvp.camera.isAnimated) {
-        addRow(
-          'Camera',
-          '${tvp.camera.keyframes.length} keyframe(s) — read, not applied '
-              'yet',
-          dim: true,
-        );
-      }
+      addRow(
+        'Camera',
+        'shoots ${tvp.camera.width}×${tvp.camera.height}'
+            '${tvp.camera.isAnimated ? ', ${tvp.camera.positions.length} '
+                  'baked frames' : ', still'}',
+        dim: !tvp.camera.isAnimated,
+      );
       for (final warning in tvp.warnings) {
         addRow('⚠', warning);
       }
