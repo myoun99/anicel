@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
@@ -31,8 +32,8 @@ void main() {
     }
   });
 
-  Future<String> writePng(String name) async {
-    final pixels = Uint8List(8 * 8 * 4)..fillRange(0, 8 * 8 * 4, 0xAA);
+  Future<String> writePngFilled(String name, int fill) async {
+    final pixels = Uint8List(8 * 8 * 4)..fillRange(0, 8 * 8 * 4, fill);
     final completer = Completer<ui.Image>();
     ui.decodeImageFromPixels(
       pixels,
@@ -49,6 +50,12 @@ void main() {
     await file.writeAsBytes(bytes!.buffer.asUint8List());
     return file.path;
   }
+
+  Future<String> writePng(String name) => writePngFilled(name, 0xAA);
+
+  /// A fully transparent PNG — what 「빈 사진 포함」 writes for an instance
+  /// with no pixels (a quarter of the files in a real export).
+  Future<String> writeBlankPng(String name) => writePngFilled(name, 0x00);
 
   testWidgets('a dropped cut folder shows the interpretation (layers, '
       'pictures, exclusions) and Import builds the cut through the '
@@ -258,5 +265,172 @@ void main() {
       reason: 'the absence is a stated condition, not a decode failure',
     );
     expect(s.mediaAssets, isEmpty);
+  });
+
+  testWidgets('a dropped TVPaint JSON export becomes the source outright, '
+      'and Import lands the clip as one cut — exposure, hold edge and '
+      'blank-instance labels included', (tester) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+
+    final jsonPath = await tester.runAsync(() async {
+      // Forward slashes on purpose: that is how the export writes its
+      // relative paths, whichever platform wrote it.
+      await writePng('[001] A/[0001] A.png');
+      await writePng('[001] A/[0004] A.png');
+      await writeBlankPng('[002] SE/[0001] SE.png');
+      // Layer A: two drawings three commas apart, then a hold edge.
+      // Layer SE: one instance with no pixels, carrying only its label —
+      // the shape 「빈 사진 포함」 produces.
+      const json = '''
+{"version":{"major":5,"minor":1},
+ "project":{"camera":{"width":8,"height":8},
+ "clip":{"name":"C001","width":8,"height":8,"framerate":24.0,
+  "image-count":8,"bg":{"red":255,"green":255,"blue":255},
+  "markin":{"status":false,"value":0},"markout":{"status":false,"value":0},
+  "camera":{"points":[],"positions":[]},
+  "layers":[
+   {"name":"SE","position":1,"visible":true,"opacity":255,"start":0,"end":5,
+    "pre-behavior":0,"post-behavior":0,"blending-mode":"Color",
+    "link":[{"instance-index":0,"instance-name":"arisu,\\u304a\\u306f\\u3088",
+      "file":"[002] SE/[0001] SE.png","images":[0]}],"repeat":[]},
+   {"name":"A","position":2,"visible":true,"opacity":255,"start":0,"end":5,
+    "pre-behavior":0,"post-behavior":3,"blending-mode":"Color",
+    "link":[{"instance-index":0,"instance-name":"1",
+      "file":"[001] A/[0001] A.png","images":[0]},
+     {"instance-index":3,"instance-name":"2",
+      "file":"[001] A/[0004] A.png","images":[3]}],"repeat":[]}
+  ]}}}''';
+      final file = File('${tempDir.path}/C001.json');
+      await file.writeAsString(json);
+      return file.path;
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ImportDialog(session: s, initialPaths: [jsonPath!]),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.textContaining('C001'), findsWidgets, reason: 'clip row');
+    expect(
+      find.textContaining('2 drawing(s), 2 exposure(s)'),
+      findsOneWidget,
+      reason: 'layer A, read top-first like the layer panel',
+    );
+    expect(find.textContaining('post hold'), findsOneWidget);
+    expect(
+      find.byKey(const ValueKey<String>('import-rasterize-toggle')),
+      findsNothing,
+      reason: 'an export lands a whole cut — nothing to place',
+    );
+    expect(find.textContaining('빈 사진 포함'), findsOneWidget,
+        reason: 'the window names the export setting it depends on');
+
+    final cutsBefore = s.repository.requireProject().tracks.first.cuts.length;
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    // The cels bake AFTER the command lands the cut, so waiting on the
+    // cut count alone would sample the store mid-flight — wait for the
+    // pixels themselves.
+    for (var tries = 0; tries < 200; tries += 1) {
+      final cuts = s.repository.requireProject().tracks.first.cuts;
+      final landed = cuts.where((cut) => cut.name == 'C001');
+      if (landed.isNotEmpty) {
+        final cut = landed.first;
+        final layer = cut.layers.firstWhere((layer) => layer.name == 'A');
+        if (layer.frames.isNotEmpty &&
+            s.brushFrameStore.bakedSurfaceOrNull(
+                  s.brushFrameKeyForCut(cut, layer.id, layer.frames.first.id),
+                ) !=
+                null) {
+          break;
+        }
+      }
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+
+    final track = s.repository.requireProject().tracks.first;
+    expect(track.cuts.length, cutsBefore + 1);
+    final cut = track.cuts.firstWhere((cut) => cut.name == 'C001');
+    expect(cut.duration, 8, reason: 'image-count is the cut length');
+    expect(cut.canvasSize.width, 8);
+
+    final a = cut.layers.firstWhere((layer) => layer.name == 'A');
+    expect(a.frames, hasLength(2));
+    expect(a.timeline.keys, [0, 3]);
+    expect(a.timeline.values.map((entry) => entry.length), [3, 3]);
+    expect(a.frames.map((frame) => frame.name), ['1', '2']);
+    expect(a.runBehaviors.single.mode, TimelineRunEdgeMode.hold);
+
+    final se = cut.layers.firstWhere((layer) => layer.name == 'SE');
+    expect(
+      se.frames.single.name,
+      'arisu,おはよ',
+      reason: 'a blank instance is a LABEL, not nothing',
+    );
+
+    // A is opaque and must have baked; SE is transparent and must not
+    // have donated an empty surface into the store.
+    expect(
+      s.brushFrameStore.bakedSurfaceOrNull(
+        s.brushFrameKeyForCut(cut,a.id, a.frames.first.id),
+      ),
+      isNotNull,
+    );
+    expect(
+      s.brushFrameStore.bakedSurfaceOrNull(
+        s.brushFrameKeyForCut(cut, se.id, se.frames.single.id),
+      ),
+      isNull,
+      reason: 'blank instances carry no pixels into the save',
+    );
+  });
+
+  testWidgets('a .json that is not a TVPaint export is refused by name and '
+      'leaves the file list — never a decode failure later', (tester) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+
+    final path = await tester.runAsync(() async {
+      final file = File('${tempDir.path}/notes.json');
+      await file.writeAsString('{"hello":"world"}');
+      return file.path;
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ImportDialog(session: s, initialPaths: [path!]),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.textContaining('not a TVPaint JSON export'),
+      findsOneWidget,
+      reason: 'the window names what the file is, not what failed to decode',
+    );
+    expect(
+      find.textContaining('Ignored'),
+      findsOneWidget,
+      reason: 'and it is listed rather than dropped',
+    );
+    expect(
+      tester
+          .widget<TextButton>(
+            find.byKey(const ValueKey<String>('import-run-button')),
+          )
+          .onPressed,
+      isNull,
+      reason: 'there is nothing left to import',
+    );
   });
 }

@@ -10,10 +10,12 @@ import '../controllers/default_cut_helpers.dart'
     show createDefaultCut, defaultCutCanvasSize;
 import '../controllers/default_layer_helpers.dart';
 import '../models/import/cut_folder_parse.dart';
+import '../models/import/tvp_json_parse.dart';
 import '../services/commands/import_media_command.dart';
 import '../services/commands/reorder_track_command.dart';
 import '../services/import/media_import_planner.dart';
 import '../services/import/raster_cel_import.dart';
+import '../services/import/tvp_json_import_planner.dart';
 import '../services/input/wintab_pen_service.dart';
 import '../services/pdf/pdf_render_service.dart';
 import '../services/project_lookup.dart' show cutIdOfLayer;
@@ -6415,6 +6417,96 @@ class EditorSessionManager extends ChangeNotifier {
         sourceCutId: plan.cut.id,
         name: extraNumber,
       );
+    }
+
+    _refreshAfterCutCommand();
+    notifyListeners();
+    return plan.warnings;
+  }
+
+  /// Imports a TVPaint JSON export: one cut carrying the clip's whole
+  /// layer stack, exposure, hold/repeat edges and cel numbers, in one
+  /// undo. [jsonPath] is the `.json` TVPaint wrote; its image folders sit
+  /// beside it, which is what [planTvpJsonImport] resolves against.
+  ///
+  /// Returns the read-and-plan warnings, or null when the file is gone or
+  /// is not a TVPaint export.
+  Future<List<String>?> importTvpJson({
+    required String jsonPath,
+    MediaFitMode fit = MediaFitMode.none,
+  }) async {
+    final file = File(jsonPath);
+    final TvpJsonParseResult parsed;
+    try {
+      parsed = parseTvpJson(await file.readAsString());
+    } on TvpJsonParseException {
+      return null;
+    } on FileSystemException {
+      return null;
+    }
+
+    final directory = file.parent.path.replaceAll('\\', '/');
+    final mint = _importIdMint();
+    final plan = planTvpJsonImport(
+      parsed: parsed,
+      // The export writes POSIX-ish relative paths (`[003] D/[0004] D.png`)
+      // whichever platform wrote it.
+      resolveFile: (relative) =>
+          '$directory/${relative.replaceAll('\\', '/')}',
+      mint: mint,
+      fit: fit,
+    );
+
+    _historyManager.execute(
+      ImportMediaCommand(
+        repository: _repository,
+        editingSession: _editingSession,
+        trackId: selectedTrackId,
+        newCuts: [plan.cut],
+        // Nothing registers: a TVPaint export's images ARE the cels.
+        assetAdditions: const [],
+        description: 'Import TVPaint ${parsed.clipName}',
+      ),
+    );
+
+    final bakedCut = _cutById(plan.cut.id);
+    if (bakedCut != null) {
+      for (final bake in plan.bakes) {
+        final List<DecodedImageFrame> frames;
+        try {
+          frames = await decodeImageFrames(
+            await File(bake.sourceFile).readAsBytes(),
+          );
+        } on Object {
+          continue; // Unreadable file — the cel keeps its name, no pixels.
+        }
+        if (frames.isEmpty) {
+          continue;
+        }
+        try {
+          final surface = await rasterizeImageToSurface(
+            image: frames.first.image,
+            canvas: bakedCut.canvasSize,
+            fit: bake.fit,
+          );
+          // 「빈 사진 포함」 exports a fully transparent PNG for every
+          // instance with no pixels — a quarter of a real clip's files.
+          // Those rasterize to zero tiles; donating one would mark an
+          // empty cel edited and carry it into every save for nothing.
+          // The cel still exists, still holds its label.
+          if (surface.tiles.isNotEmpty) {
+            bakeCelSurface(
+              brushFrameStore,
+              brushFrameKeyForCut(bakedCut, bake.layerId, bake.frameId),
+              surface,
+            );
+          }
+        } finally {
+          for (final frame in frames) {
+            frame.image.dispose();
+          }
+        }
+      }
     }
 
     _refreshAfterCutCommand();

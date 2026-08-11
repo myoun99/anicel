@@ -1,0 +1,164 @@
+{
+    "version": {
+        "major": 5,
+        "minor": 1
+    },
+    "project": {
+        "format": {
+            "extension": "png"
+        },
+        "camera": {
+            "width": 2150,
+            "height": 1518,
+            "field": 0,
+            "framerate": 24.0,
+            "pixelaspectratio": 1.0
+        },
+        "clip": {
+            "name": "クリップ_001",
+            "width": 2150,
+            "height": 1518,
+            "dpi": 72,
+            "framerate": 24.0,
+            "pixelaspectratio": 1.0,
+            "image-count": 3,
+            "bg": {
+                "red": 255,
+                "green": 255,
+                "blue": 255
+            },
+            "markin": {
+                "status": false,
+                "value": 0
+            },
+            "markout": {
+                "status": false,
+                "value": 0
+            },
+            "camera": {
+                "mode": 0,
+                "motion-blur": 0.0,
+                "lock-all": false,
+                "lock-x": false,
+                "lock-y": false,
+                "lock-angle": false,
+                "lock-scale": false,
+                "lock-sizex": false,
+                "lock-sizey": false,
+                "points": [],
+                "positions": [
+                    {
+                        "frame": 1,
+                        "x": 0.0,
+                        "y": 0.0,
+                        "angle": 0.0,
+                        "scale": 1.0,
+                        "sizeX": 2150.0,
+                        "sizeY": 1518.0
+                    },
+                    {
+                        "frame": 2,
+                        "x": 0.0,
+                        "y": 0.0,
+                        "angle": 0.0,
+                        "scale": 1.0,
+                        "sizeX": 2150.0,
+                        "sizeY": 1518.0
+                    },
+                    {
+                        "frame": 3,
+                        "x": 0.0,
+                        "y": 0.0,
+                        "angle": 0.0,
+                        "scale": 1.0,
+                        "sizeX": 2150.0,
+                        "sizeY": 1518.0
+                    }
+                ]
+            },
+            "layers": [
+                {
+                    "name": "C",
+                    "visible": true,
+                    "position": 1,
+                    "opacity": 255,
+                    "start": 0,
+                    "end": 2,
+                    "pre-behavior": 0,
+                    "post-behavior": 0,
+                    "blending-mode": "Color",
+                    "group": {
+                        "red": 255,
+                        "green": 254,
+                        "blue": 241
+                    },
+                    "link": [
+                        {
+                            "instance-index": 0,
+                            "instance-name": "1",
+                            "file": "[001] C/[0001] C.png",
+                            "images": [
+                                0
+                            ]
+                        }
+                    ],
+                    "repeat": []
+                },
+                {
+                    "name": "B",
+                    "visible": true,
+                    "position": 2,
+                    "opacity": 255,
+                    "start": 0,
+                    "end": 2,
+                    "pre-behavior": 0,
+                    "post-behavior": 3,
+                    "blending-mode": "Color",
+                    "group": {
+                        "red": 0,
+                        "green": 0,
+                        "blue": 0
+                    },
+                    "link": [
+                        {
+                            "instance-index": 0,
+                            "instance-name": "1",
+                            "file": "[002] B/[0001] B.png",
+                            "images": [
+                                0
+                            ]
+                        }
+                    ],
+                    "repeat": []
+                },
+                {
+                    "name": "A",
+                    "visible": true,
+                    "position": 3,
+                    "opacity": 255,
+                    "start": 0,
+                    "end": 2,
+                    "pre-behavior": 0,
+                    "post-behavior": 0,
+                    "blending-mode": "Color",
+                    "group": {
+                        "red": 255,
+                        "green": 254,
+                        "blue": 241
+                    },
+                    "link": [
+                        {
+                            "instance-index": 0,
+                            "instance-name": "1",
+                            "file": "[003] A/[0001] A.png",
+                            "images": [
+                                0
+                            ]
+                        }
+                    ],
+                    "repeat": []
+                }
+            ]
+        }
+    }
+}
