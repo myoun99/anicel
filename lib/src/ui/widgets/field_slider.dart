@@ -6,6 +6,7 @@ import 'package:flutter/services.dart';
 
 import '../text/vertical_writing_text.dart';
 import '../theme/app_theme.dart';
+import 'axis_bar_gesture.dart';
 
 /// How a [FieldSlider] maps track position to value.
 enum FieldSliderScale {
@@ -307,8 +308,14 @@ class _FieldSliderState extends State<FieldSlider> {
     setState(() => _gestureT = null);
     final restore = _preDownValue;
     _preDownValue = null;
-    final across = _vertical ? _pointerShift.dx : _pointerShift.dy;
-    if (across.abs() < _scrollSlop) {
+    // 「바는 자기 축을 따라 움직인 것을 지킨다」 — the rule itself lives in
+    // [rivalOwnsGesture] now, because the splitter needs the identical one
+    // and a second copy of it would drift.
+    if (!rivalOwnsGesture(
+      dragAxis: widget.axis,
+      travelSinceDown: _pointerShift,
+      rivalSlop: _scrollSlop,
+    )) {
       if (t != null) {
         // Pointer-down already emitted this value; only the commit is owed.
         widget.onChangeEnd?.call(_valueFor(t));
@@ -354,8 +361,7 @@ class _FieldSliderState extends State<FieldSlider> {
 
   @override
   Widget build(BuildContext context) {
-    _scrollSlop =
-        MediaQuery.maybeGestureSettingsOf(context)?.touchSlop ?? kTouchSlop;
+    _scrollSlop = rivalScrollSlop(context);
     final textTheme = Theme.of(context).textTheme;
     final labelStyle = textTheme.labelSmall?.copyWith(color: AppColors.textDim);
     final valueStyle = textTheme.labelSmall?.copyWith(

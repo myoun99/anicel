@@ -48,6 +48,14 @@ class CommandPill extends StatelessWidget {
   /// with the [GripBand.hitExtent] of its `＋` reaching into the margin.
   static const double height = 28;
 
+  /// The breath after the LAST verb, so the pill is not open on one side.
+  ///
+  /// It matches the smaller of the head's two paddings (4 for an icon name
+  /// cell, 6 for a text one) rather than picking the larger: the verbs
+  /// already carry a little of their own inside their 24px boxes, and the
+  /// complaint was a border touching a glyph, not a cramped row.
+  static const double _tailBreath = 4;
+
   @override
   Widget build(BuildContext context) {
     final pill = DecoratedBox(
@@ -65,7 +73,22 @@ class CommandPill extends StatelessWidget {
         height: height,
         child: Row(
           mainAxisSize: MainAxisSize.min,
-          children: [head, ...children],
+          children: [
+            head,
+            ...children,
+            // ② 유저 2026-08-12: 「N 옆에 공간이 잘린거마냥 공간부족해서
+            // 이상해보임」.
+            //
+            // The head carries its own leading breath and the tail carried
+            // none, so the last verb sat flat against the border — which on
+            // the frame pill is `N`, a glyph with no bearing of its own
+            // (`_commaButton` is 24px wide with zero padding). The pill owes
+            // its contents the same margin on both ends, so it pays it here
+            // rather than in each bar: a trailing `SizedBox` in the frame
+            // pill alone would have fixed the complaint and left cut, layer
+            // and fx still lopsided.
+            const SizedBox(width: _tailBreath),
+          ],
         ),
       ),
     );

@@ -2722,12 +2722,26 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             ),
             child: child,
           );
-          // 넘칠 때만 (유저 확정). A rail that scrolls hands vertical drags
-          // to the scroll arena before the panel tabs see them, so it may
-          // not scroll a moment sooner than it has to.
-          if (!railExtent.isFinite || content <= railExtent) {
-            return inGap(Align(alignment: Alignment.topCenter, child: column));
-          }
+          // 🚨★★★ ONE TREE SHAPE, ALWAYS (R6-⑤, 유저: 「아래스플리터가
+          // 조작중에 멋대로 그립이 풀려버림. 클릭중인데도.」)
+          //
+          // This used to return two DIFFERENT trees — `Padding > Align >
+          // column` under the rail's height, `Stack > … > SingleChildScrollView
+          // > column` over it. Dragging the bottom height grip changes
+          // `content`, so crossing that boundary swapped the trees, element
+          // matching failed, and the whole column was rebuilt from scratch —
+          // taking with it the State of the very `DockEdgeSplitter` the hand
+          // was holding. The grip released itself mid-drag, while the button
+          // was still down. The colour wheel and the timesheet hit it because
+          // they are tall enough to sit near the boundary.
+          //
+          // ★The user's rule (넘칠 때만 스크롤) survives for free: a
+          // `SingleChildScrollView` whose content fits has min == max extent,
+          // and Flutter drops its drag recognizer at that point
+          // (`shouldAcceptUserOffset`). So the scroller is always MOUNTED and
+          // only sometimes LIVE, which is exactly what was wanted — and the
+          // tree stops changing shape under a live gesture.
+          final overflowing = railExtent.isFinite && content > railExtent;
           final controller = _railScrollControllers[right]!;
           return Stack(
             children: [
@@ -2747,7 +2761,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                         'rail-scroll-${right ? 'right' : 'left'}',
                       ),
                       controller: controller,
-                      child: column,
+                      // Top-aligned when it does not fill, which is what the
+                      // `Align` used to do on the non-scrolling branch.
+                      child: Align(
+                        alignment: Alignment.topCenter,
+                        child: column,
+                      ),
                     ),
                   ),
                 ),
@@ -2758,20 +2777,25 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               // pointed away from the strip it belongs to. The lane IS the
               // gap — narrower than the app's other lanes, and it can be,
               // because nothing else is within reach of it to mis-hit.
-              Positioned(
-                left: right ? null : 0,
-                right: right ? 0 : null,
-                top: 0,
-                bottom: 0,
-                width: _railGroupGap,
-                child: AppControllerScrollbar(
-                  controller: controller,
-                  axis: Axis.vertical,
-                  thumbKey: ValueKey<String>(
-                    'rail-scroll-thumb-${right ? 'right' : 'left'}',
+              // The BAR stays conditional — it is the one thing here that
+              // should appear only while there is something to scroll, and
+              // adding or removing it cannot disturb the column: it is a
+              // SIBLING in the stack, not an ancestor.
+              if (overflowing)
+                Positioned(
+                  left: right ? null : 0,
+                  right: right ? 0 : null,
+                  top: 0,
+                  bottom: 0,
+                  width: _railGroupGap,
+                  child: AppControllerScrollbar(
+                    controller: controller,
+                    axis: Axis.vertical,
+                    thumbKey: ValueKey<String>(
+                      'rail-scroll-thumb-${right ? 'right' : 'left'}',
+                    ),
                   ),
                 ),
-              ),
             ],
           );
         },
