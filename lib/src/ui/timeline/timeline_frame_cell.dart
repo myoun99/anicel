@@ -294,7 +294,7 @@ String _markerForCell({
     // row-level span overlays; the cells stay glyph-free paper.
     TimelineCellExposureState.drawingStart =>
       layerKindUsesSeSheetCells(layer.kind) ||
-              layer.kind == LayerKind.instruction
+              layerKindCarriesInstructions(layer.kind)
           ? ''
           : frameName == null || frameName.isEmpty
           ? '○'
@@ -311,7 +311,7 @@ String? _semanticsLabelForCell({
   String? frameName,
 }) {
   // Instruction spans carry their own semantics on the row overlay.
-  if (layer.kind == LayerKind.instruction) {
+  if (layerKindCarriesInstructions(layer.kind)) {
     return null;
   }
   return switch (exposureState) {

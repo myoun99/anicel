@@ -1470,6 +1470,13 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       commaDrag: widget.transitionCommaDrag,
       onRowFramePress: widget.onRowFramePress,
       onEditSpan: widget.onEditTransitionSpan,
+      // The SE rows' selection bundle, unchanged: one rail, one range verb.
+      select: widget.seSelect,
+      railRowAt: (anchorRow, crossOffset) => _railRowAtCrossOffset(
+        track: track,
+        anchorRow: anchorRow,
+        crossOffset: crossOffset,
+      ),
     );
     final preview = widget.transitionPreview;
     if (preview == null) {
@@ -4050,6 +4057,8 @@ class _StoryboardTransitionRow extends StatelessWidget {
     this.commaDrag,
     this.onRowFramePress,
     this.onEditSpan,
+    this.select,
+    this.railRowAt,
   });
 
   final Track track;
@@ -4063,6 +4072,23 @@ class _StoryboardTransitionRow extends StatelessWidget {
   final TimelineCommaDragCallbacks? commaDrag;
   final StoryboardRowFramePress? onRowFramePress;
   final void Function(int globalFrame)? onEditSpan;
+
+  /// Range selection, the SE row's own bundle: the transition row is a
+  /// track-owned rail row like an S row, so it selects through the same verb.
+  /// Its `move` half is deliberately ignored here — see the mount.
+  final StoryboardSeSelectCallbacks? select;
+
+  /// The rail's row lookup, so a select-drag can reach across rows exactly as
+  /// the S rows' does.
+  final TimelineRowAddress? Function(TimelineRowAddress, double)? railRowAt;
+
+  bool _isSelectedAt(StoryboardSeSelectCallbacks select, int frame) {
+    final selection = select.selectedRange.value;
+    return selection != null &&
+        selection.coversRow(LayerRowAddress(layer.id)) &&
+        frame >= selection.startFrame &&
+        frame < selection.endFrameExclusive;
+  }
 
   /// The visible frame window this strip covers — the whole content width,
   /// like the SE grips' own geometry.
@@ -4195,6 +4221,49 @@ class _StoryboardTransitionRow extends StatelessWidget {
           ),
         );
       }
+    }
+    // THE range gesture — the SE row's, verbatim, addressed to this row. It was
+    // the one row of this rail a range drag could not touch (user 2026-08-11),
+    // and the reason was simply that nothing mounted it here.
+    //
+    // ⚠️SELECT ONLY: no `move` half. Selecting is reading, and the transition
+    // row reads; sliding it would be authoring on a row whose local placement
+    // is a projection ([layerKindIsReadOnlyInCut]). Mounted UNDER the grips so
+    // the edges keep their drag priority, exactly as the SE row's is.
+    final select = this.select;
+    if (select != null && _frameEndExclusive > 0) {
+      spans.add(
+        TimelineFrameRangeGestureLayer(
+          key: ValueKey<String>(
+            'storyboard-transition-range-gesture-slot-${layer.id}',
+          ),
+          row: LayerRowAddress(layer.id),
+          geometry: TimelineFrameGeometryHandle(_geometry),
+          crossAxisExtent: _transitionRowHeight,
+          callbacks: TimelineRangeGestureCallbacks(
+            isInSelection: (_, frame) => _isSelectedAt(select, frame),
+            onSelectUpdate: (_, anchorIndex, headIndex, headCrossOffset) =>
+                select.onDrag(
+                  layerId: layer.id,
+                  anchorGlobalFrame: anchorIndex,
+                  headGlobalFrame: headIndex,
+                  headRow: railRowAt?.call(
+                    LayerRowAddress(layer.id),
+                    headCrossOffset,
+                  ),
+                ),
+            onTapClear: (_) => select.onClear(),
+            // The move half REFUSES rather than being absent: the gesture
+            // needs an answer at drag start, and "false" is the read-only
+            // answer — the press falls through to a fresh select instead of
+            // sliding a projection.
+            onMoveBegin: (_, _) => false,
+            onMoveUpdate: (_, _) {},
+            onMoveEnd: () {},
+            onMoveCancel: () {},
+          ),
+        ),
+      );
     }
     return SizedBox(
       key: ValueKey<String>('storyboard-transition-row-${track.id.value}'),

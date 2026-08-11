@@ -88,13 +88,54 @@ void main() {
     expect(selection.endFrameExclusive, session.requireActiveCut.duration);
   });
 
+  test('⑧ the TRANSITION row selects through the same verb — it is a '
+      'track-owned rail row, and "is it an SE row" was standing in for that', () {
+    final session = sessionWithSound();
+    final transitionId = session.activeTrack.transitionLayer.id;
+
+    session.updateTrackRowRangeSelectionByFrame(
+      layerId: transitionId,
+      anchorGlobalFrame: 2,
+      headGlobalFrame: 6,
+    );
+
+    final selection = session.trackFrameRangeSelection.value;
+    expect(
+      selection,
+      isNotNull,
+      reason:
+          'before this the owner lookup asked _trackSeAnywhere, missed, and '
+          'returned early — the one row of the rail a drag could not touch',
+    );
+    expect(selection!.anchorRow, LayerRowAddress(transitionId));
+    expect(selection.startFrame, lessThanOrEqualTo(2));
+    expect(selection.endFrameExclusive, greaterThan(6));
+  });
+
+  test('⑧ and it still reaches ACROSS rows from there, like any other row', () {
+    final session = sessionWithSound();
+    final trackId = session.selectedTrackId;
+    final transitionId = session.activeTrack.transitionLayer.id;
+
+    session.updateTrackRowRangeSelectionByFrame(
+      layerId: transitionId,
+      anchorGlobalFrame: 3,
+      headGlobalFrame: 5,
+      headRow: TrackRowAddress(trackId),
+    );
+
+    final selection = session.trackFrameRangeSelection.value!;
+    expect(selection.anchorRow, LayerRowAddress(transitionId));
+    expect(selection.spanRows, contains(TrackRowAddress(trackId)));
+  });
+
   test('reaching DOWN from an S row picks up the V row below — the same '
       'rail, the direction the screen actually stacks them', () {
     final session = sessionWithSound();
     final trackId = session.selectedTrackId;
     final seId = session.activeTrack.seLayers.first.id;
 
-    session.updateTrackSeRangeSelectionByFrame(
+    session.updateTrackRowRangeSelectionByFrame(
       layerId: seId,
       anchorGlobalFrame: 3,
       headGlobalFrame: 5,
@@ -210,7 +251,7 @@ void main() {
       ),
     );
 
-    session.updateTrackSeRangeSelectionByFrame(
+    session.updateTrackRowRangeSelectionByFrame(
       layerId: otherSe.id,
       anchorGlobalFrame: 2,
       headGlobalFrame: 5,
@@ -221,7 +262,7 @@ void main() {
     expect(selection.startFrame, 0, reason: 'snapped to the sound');
     expect(selection.endFrameExclusive, 10, reason: 'snapped to the sound');
 
-    session.updateTrackSeRangeSelectionByFrame(
+    session.updateTrackRowRangeSelectionByFrame(
       layerId: otherSe.id,
       anchorGlobalFrame: 2,
       headGlobalFrame: 5,

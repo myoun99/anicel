@@ -104,7 +104,7 @@ void main() {
     test('removes the covered blocks of the S row — the timeline block '
         'delete, aimed at the track axis', () {
       final session = sessionFor();
-      session.updateTrackSeRangeSelectionByFrame(
+      session.updateTrackRowRangeSelectionByFrame(
         layerId: _seLayerId,
         anchorGlobalFrame: 3,
         headGlobalFrame: 3,
@@ -122,7 +122,7 @@ void main() {
     test('reaches a sound in another cut, and takes both when the range '
         'covers both', () {
       final session = sessionFor();
-      session.updateTrackSeRangeSelectionByFrame(
+      session.updateTrackRowRangeSelectionByFrame(
         layerId: _seLayerId,
         anchorGlobalFrame: 3,
         headGlobalFrame: 10,
@@ -135,7 +135,7 @@ void main() {
 
     test('is undoable as ONE step, like every block delete', () {
       final session = sessionFor();
-      session.updateTrackSeRangeSelectionByFrame(
+      session.updateTrackRowRangeSelectionByFrame(
         layerId: _seLayerId,
         anchorGlobalFrame: 3,
         headGlobalFrame: 10,
@@ -169,7 +169,7 @@ void main() {
   group('Push / pull on the storyboard selection', () {
     test('shoves the S row on the GLOBAL axis, from the range start', () {
       final session = sessionFor();
-      session.updateTrackSeRangeSelectionByFrame(
+      session.updateTrackRowRangeSelectionByFrame(
         layerId: _seLayerId,
         anchorGlobalFrame: 3,
         headGlobalFrame: 3,
@@ -190,7 +190,7 @@ void main() {
       // would move the anchor by the cut's start frame (8) and shove the
       // wrong sound.
       session.selectGlobalFrame(9);
-      session.updateTrackSeRangeSelectionByFrame(
+      session.updateTrackRowRangeSelectionByFrame(
         layerId: _seLayerId,
         anchorGlobalFrame: 3,
         headGlobalFrame: 3,
@@ -204,7 +204,7 @@ void main() {
     test('pull slack is measured on the global layer: it stops where the '
         'first sound would be overrun', () {
       final session = sessionFor();
-      session.updateTrackSeRangeSelectionByFrame(
+      session.updateTrackRowRangeSelectionByFrame(
         layerId: _seLayerId,
         anchorGlobalFrame: 6,
         headGlobalFrame: 6,
@@ -233,7 +233,7 @@ void main() {
   group('Range MOVE on an S row', () {
     test('slides the selected sounds along the GLOBAL axis, one undo', () {
       final session = sessionFor();
-      session.updateTrackSeRangeSelectionByFrame(
+      session.updateTrackRowRangeSelectionByFrame(
         layerId: _seLayerId,
         anchorGlobalFrame: 3,
         headGlobalFrame: 3,
@@ -253,7 +253,7 @@ void main() {
 
     test('the selection FOLLOWS the landing, and stays on the track axis', () {
       final session = sessionFor();
-      session.updateTrackSeRangeSelectionByFrame(
+      session.updateTrackRowRangeSelectionByFrame(
         layerId: _seLayerId,
         anchorGlobalFrame: 3,
         headGlobalFrame: 3,
@@ -274,7 +274,7 @@ void main() {
     test('a slide stops at CONTACT rather than pushing its neighbour — the '
         'timeline rule, on the track axis', () {
       final session = sessionFor();
-      session.updateTrackSeRangeSelectionByFrame(
+      session.updateTrackRowRangeSelectionByFrame(
         layerId: _seLayerId,
         anchorGlobalFrame: 3,
         headGlobalFrame: 3,
@@ -292,7 +292,7 @@ void main() {
 
     test('reaching past the neighbour\'s midpoint REORDERS the sounds', () {
       final session = sessionFor();
-      session.updateTrackSeRangeSelectionByFrame(
+      session.updateTrackRowRangeSelectionByFrame(
         layerId: _seLayerId,
         anchorGlobalFrame: 3,
         headGlobalFrame: 3,
@@ -315,7 +315,7 @@ void main() {
     test('lands on a SIBLING S row: the timeline row-change grammar, on '
         'the track axis', () {
       final session = sessionFor();
-      session.updateTrackSeRangeSelectionByFrame(
+      session.updateTrackRowRangeSelectionByFrame(
         layerId: _seLayerId,
         anchorGlobalFrame: 3,
         headGlobalFrame: 3,
@@ -337,7 +337,7 @@ void main() {
 
     test('the selection follows onto the row it landed on', () {
       final session = sessionFor();
-      session.updateTrackSeRangeSelectionByFrame(
+      session.updateTrackRowRangeSelectionByFrame(
         layerId: _seLayerId,
         anchorGlobalFrame: 3,
         headGlobalFrame: 3,
@@ -358,7 +358,7 @@ void main() {
 
     test('a row change carries the frame delta with it', () {
       final session = sessionFor();
-      session.updateTrackSeRangeSelectionByFrame(
+      session.updateTrackRowRangeSelectionByFrame(
         layerId: _seLayerId,
         anchorGlobalFrame: 3,
         headGlobalFrame: 3,
@@ -376,7 +376,7 @@ void main() {
 
     test('cancelling puts the selection back where it started', () {
       final session = sessionFor();
-      session.updateTrackSeRangeSelectionByFrame(
+      session.updateTrackRowRangeSelectionByFrame(
         layerId: _seLayerId,
         anchorGlobalFrame: 3,
         headGlobalFrame: 3,
@@ -393,7 +393,7 @@ void main() {
     test('a track-axis drag leaves the cut-local machine unarmed: the next '
         'timeline move publishes to its own selection', () {
       final session = sessionFor();
-      session.updateTrackSeRangeSelectionByFrame(
+      session.updateTrackRowRangeSelectionByFrame(
         layerId: _seLayerId,
         anchorGlobalFrame: 3,
         headGlobalFrame: 3,
@@ -448,7 +448,7 @@ void main() {
 
     test('an S-ROW selection shoves sounds instead', () {
       final session = sessionFor();
-      session.updateTrackSeRangeSelectionByFrame(
+      session.updateTrackRowRangeSelectionByFrame(
         layerId: _seLayerId,
         anchorGlobalFrame: 3,
         headGlobalFrame: 3,

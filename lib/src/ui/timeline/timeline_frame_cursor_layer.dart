@@ -416,10 +416,13 @@ class TimelineCursorLayer extends StatelessWidget {
           // Ghost cells read as EMPTY here (UI-R11 #5): the selection
           // block outline never wraps derived exposures — they show text
           // only, no block UI of any kind.
+          // 🚨This read is what a RANGE SELECTION measures, so a row kind
+          // missing from it selects nothing at all — the transition row's
+          // symptom (user 2026-08-11: 「선택범위… 트랜지션레이어만 작동안하니까」).
           TimelineCellExposureState stateAt(int frameIndex) =>
               timelineIndexIsGhost(layer, frameIndex)
               ? TimelineCellExposureState.uncovered
-              : layer.kind == LayerKind.instruction
+              : layerKindCarriesInstructions(layer.kind)
               ? instructionCellExposureState(layer, frameIndex)
               : exposureStateForLayer(layer, frameIndex);
           final displayRange = resolveSelectedExposureDisplayRange(

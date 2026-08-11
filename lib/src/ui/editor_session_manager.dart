@@ -1047,8 +1047,7 @@ class EditorSessionManager extends ChangeNotifier {
         // the rail's row selection and the track selection must not
         // disagree (the range drag that follows a press resolves its rows
         // against the SELECTED track's rail).
-        final owner =
-            _trackSeAnywhere(layerId)?.track ?? _trackTransitionOwner(layerId);
+        final owner = _trackOwnedRailOwner(layerId);
         var trackMoved = false;
         if (owner != null && selectedTrackId != owner.id) {
           _editingSession.setSelectedTrackId(owner.id);
@@ -1206,6 +1205,12 @@ class EditorSessionManager extends ChangeNotifier {
   /// asking the SE question.
   bool isTrackOwnedRailLayerId(LayerId layerId) =>
       isTrackSeLayerId(layerId) || isTrackTransitionLayerId(layerId);
+
+  /// The track that owns [layerId] as one of its rail rows — the resolver half
+  /// of [isTrackOwnedRailLayerId], for the verbs that need the track and not
+  /// just a yes.
+  Track? _trackOwnedRailOwner(LayerId layerId) =>
+      _trackSeAnywhere(layerId)?.track ?? _trackTransitionOwner(layerId);
 
   /// Whether the active row can carry an on-canvas name tag (R5b): the
   /// SE rows, and only while a cut gives the canvas its geometry.
@@ -10593,6 +10598,11 @@ class EditorSessionManager extends ChangeNotifier {
   List<TimelineRowAddress> _storyboardRailRows(TrackId trackId) {
     final track = _trackById(trackId);
     return [
+      // The TRANSITION row heads the group on screen, so it heads the list: a
+      // row delta walks this in VISUAL order, and a row missing from it is
+      // unreachable — which is what left a cross-row drag unable to start on
+      // it or arrive at it (user 2026-08-11).
+      if (track != null) LayerRowAddress(track.transitionLayer.id),
       if (track != null)
         for (final layer in track.seLayers.reversed) LayerRowAddress(layer.id),
       TrackRowAddress(trackId),
@@ -10637,7 +10647,29 @@ class EditorSessionManager extends ChangeNotifier {
         // Resolved on the row's OWN track: the active-track lookup left
         // every unselected track's sounds snapless.
         final layer = _trackSeAnywhere(layerId)?.layer;
-        return layer == null ? null : (index) => exposureBlockAt(layer, index);
+        if (layer != null) {
+          return (index) => exposureBlockAt(layer, index);
+        }
+        // 🚨The transition row snaps to its SPANS, and a row with no snap lane
+        // at all produced no span — which cleared the selection instead of
+        // making one. Its blocks are instruction events rather than exposures,
+        // so the material differs and the shape does not.
+        final transition = _trackTransitionOwner(layerId)?.transitionLayer;
+        if (transition == null) {
+          return null;
+        }
+        return (index) {
+          final covering = instructionSpanCovering(
+            transition.instructions,
+            index,
+          );
+          return covering == null
+              ? null
+              : RangeBlock(
+                  startIndex: covering.key,
+                  endIndexExclusive: covering.key + covering.value.length,
+                );
+        };
       case LaneRowAddress():
         // Lane keys are POINTS, not blocks — the lane domain's own rule
         // ("raw cells, no block snap"), so there is nothing to snap to.
@@ -10722,25 +10754,32 @@ class EditorSessionManager extends ChangeNotifier {
     }
   }
 
-  /// A select-drag step on a track-SE row of the storyboard, stated on the
-  /// track's GLOBAL frame axis.
+  /// A select-drag step on a TRACK-OWNED rail row of the storyboard — an SE
+  /// lane or the transition row — stated on the track's GLOBAL frame axis.
   ///
   /// The SAME selection the cut row paints — one axis, several rows. It
   /// cannot be the timeline's cut-local selection: the display clone the
   /// timeline shows is WINDOWED to the active cut, so a sound two cuts away
   /// has no cut-local address to be selected by. The snap runs on the
   /// GLOBAL layer, which is also the layer any edit would commit against.
-  void updateTrackSeRangeSelectionByFrame({
+  ///
+  /// 🚨The owner lookup asks [isTrackOwnedRailLayerId]'s question, not "is it
+  /// an SE row" — that substitution is what left the transition row the one row
+  /// of this rail a range drag could not touch (user 2026-08-11:
+  /// 「선택범위… 트랜지션레이어만 작동안하니까 공통 규칙 그대로」). Selecting is
+  /// reading; the read-only rule bites on the verbs that CHANGE a row, and the
+  /// transition row simply mounts no move half.
+  void updateTrackRowRangeSelectionByFrame({
     required LayerId layerId,
     required int anchorGlobalFrame,
     required int headGlobalFrame,
     TimelineRowAddress? headRow,
   }) {
-    // The anchor row names its own track: gating on the ACTIVE track's SE
+    // The anchor row names its own track: gating on the ACTIVE track's row
     // list (and stating the selection on [selectedTrackId]) killed every
     // drag that anchored on an unselected track's row — the rail lookup
     // missed, so a cross-row reach collapsed to the anchor alone.
-    final owner = _trackSeAnywhere(layerId)?.track;
+    final owner = _trackOwnedRailOwner(layerId);
     if (owner == null) {
       return;
     }

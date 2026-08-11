@@ -272,10 +272,12 @@ class TimelineFrameCellsRow extends StatelessWidget {
               audioLane!.onDropMediaAsset!(layer.id, blockStartFrame, path),
           keyPrefix: keyPrefix,
         ),
-      // Instruction rows: the sheet's CAM column — bar arrows or the O.L
-      // bowtie on the paper block, A → B endpoint values and the name
-      // snapped to the anchor cell.
-      if (layer.kind == LayerKind.instruction && instructionDefById != null)
+      // Instruction-carrying rows: the sheet's CAM column — bar arrows or the
+      // O.L bowtie on the paper block, A → B endpoint values and the name
+      // snapped to the anchor cell. The TRANSITION row draws here too — its
+      // marks are a projection of the global row, read-only but visible.
+      if (layerKindCarriesInstructions(layer.kind) &&
+          instructionDefById != null)
         ...timelineRowInstructionOverlays(
           layer: layer,
           frameStartIndex: frames.frameStartIndex,
@@ -286,7 +288,13 @@ class TimelineFrameCellsRow extends StatelessWidget {
         ),
     ];
     final spanGrips = <Widget>[
-      if (commaDrag != null && layer.kind == LayerKind.instruction)
+      // 🚨Grips are the one instruction facility the transition row does NOT
+      // get: its local placement is a projection ([layerKindIsReadOnlyInCut]),
+      // so dragging an edge here would be editing a lie. Authoring lives on
+      // the global axis, in the storyboard.
+      if (commaDrag != null &&
+          layerKindCarriesInstructions(layer.kind) &&
+          !layerKindIsReadOnlyInCut(layer.kind))
         ...timelineRowInstructionEdgeGrips(
           layer: layer,
           frameStartIndex: frames.frameStartIndex,
@@ -344,12 +352,12 @@ class TimelineFrameCellsRow extends StatelessWidget {
                   axis: axis,
                 )
               : null,
-          // Instruction rows have no timeline entries — their events adapt
-          // onto the shared exposure states so the cells paint the same
+          // Instruction-carrying rows have no timeline entries — their events
+          // adapt onto the shared exposure states so the cells paint the same
           // paper blocks. A TOP-LEVEL tear-off, not a closure: the painter
           // value-compares this field, and a fresh closure per build would
           // re-record the row on every pass.
-          exposureStateForLayer: layer.kind == LayerKind.instruction
+          exposureStateForLayer: layerKindCarriesInstructions(layer.kind)
               ? instructionCellExposureState
               : exposureStateForLayer,
           frameNameForLayer: frameNameForLayer,

@@ -350,12 +350,18 @@ class _TimelineFrameRowsScrollBodyState
   }
 
   /// The row kind's external-input identity for the memo token.
+  ///
+  /// The def table is external input for EVERY instruction-carrying row: a
+  /// renamed or recoloured term has to reach the transition row's marks too,
+  /// and a row whose external input is missing from this token memoises stale.
   Object? _auxiliaryIdentityFor(Layer layer) {
-    return switch (layer.kind) {
-      LayerKind.camera => widget.memoAux.cameraTrack,
-      LayerKind.instruction => widget.memoAux.instructionDefs,
-      _ => null,
-    };
+    if (layer.kind == LayerKind.camera) {
+      return widget.memoAux.cameraTrack;
+    }
+    if (layerKindCarriesInstructions(layer.kind)) {
+      return widget.memoAux.instructionDefs;
+    }
+    return null;
   }
 
   /// The handle every row follows.
