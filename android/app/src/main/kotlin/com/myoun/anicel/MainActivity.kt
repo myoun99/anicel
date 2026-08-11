@@ -35,9 +35,139 @@ class MainActivity : FlutterActivity() {
                 }
                 "appDocumentsPath" -> result.success(appDocumentsPath())
                 "requestMicrophone" -> requestMicrophone(result)
+                "pickProjectFolder" -> pickProjectFolder(result)
+                // Android hands out durable real paths, so there is no
+                // bookmark to resolve and no scope to re-acquire. Both
+                // answer honestly rather than pretending.
+                "resolveFolderBookmark" ->
+                    result.success(mapOf("status" to "unavailable"))
+                "ensureFolderAccess" ->
+                    result.success(
+                        (call.argument<String>("path") ?: "").let {
+                            it.isNotEmpty() && java.io.File(it).isDirectory
+                        }
+                    )
                 else -> result.notImplemented()
             }
         }
+    }
+
+    // PICK-2: the folder grant. The Result waits here the same way the mic
+    // grant does - the answer arrives in onActivityResult.
+    private var pendingFolderResult: MethodChannel.Result? = null
+
+    // 4801 and 4802 are taken by the two permission requests below.
+    private val folderPickRequestCode = 4803
+
+    // PICK-2: asks the system for a folder, then converts what it hands back
+    // into a REAL PATH.
+    //
+    // ACTION_OPEN_DOCUMENT_TREE returns a SAF tree Uri, and this app is
+    // built on real paths end to end: incremental saves rewrite a ZIP's
+    // central directory in place, the autosave sidecar is a sibling file,
+    // and <project>.assets/ is a real directory tree. None of that survives
+    // a content:// Uri. So the tree is used as a LOCATION CHOOSER only - the
+    // system UI picks the folder, and the existing MANAGE_EXTERNAL_STORAGE
+    // grant is what actually opens it.
+    //
+    // When no real path exists behind the choice (Drive and other document
+    // providers, SD cards, USB), that is reported rather than papered over:
+    // a project saved to a path the writer cannot edit in place would fail
+    // later and silently.
+    private fun pickProjectFolder(result: MethodChannel.Result) {
+        // A second request while one is open answers the first rather than
+        // leaking it - the same discipline requestMicrophone uses.
+        pendingFolderResult?.success(mapOf("status" to "cancelled"))
+        pendingFolderResult = result
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
+            addFlags(
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+            )
+        }
+        try {
+            startActivityForResult(intent, folderPickRequestCode)
+        } catch (_: Exception) {
+            pendingFolderResult = null
+            result.success(mapOf("status" to "unavailable"))
+        }
+    }
+
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        // MUST come first: FlutterActivity forwards activity results to the
+        // plugin delegate here, and every plugin that opens an activity -
+        // file_selector above all - stops returning if this is shadowed.
+        super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode != folderPickRequestCode) {
+            return
+        }
+        val waiting = pendingFolderResult
+        pendingFolderResult = null
+        if (waiting == null) {
+            return
+        }
+        val tree = data?.data
+        if (resultCode != RESULT_OK || tree == null) {
+            waiting.success(mapOf("status" to "cancelled"))
+            return
+        }
+        // Keep the grant across restarts. Harmless when the real path is
+        // what ends up being used, and it keeps the choice visible in the
+        // system's permission list.
+        try {
+            contentResolver.takePersistableUriPermission(
+                tree,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+            )
+        } catch (_: Exception) {
+            // Not every provider offers a persistable grant; the real path
+            // below is what this app actually uses.
+        }
+        val path = realPathForTree(tree)
+        if (path == null) {
+            waiting.success(mapOf("status" to "noFilesystemPath"))
+        } else {
+            // No bookmark: an Android path is durable on its own.
+            waiting.success(mapOf("status" to "granted", "path" to path))
+        }
+    }
+
+    // Resolves a SAF tree Uri to a filesystem path, or null when none
+    // exists.
+    //
+    // Only primary shared storage is resolvable. A document id looks like
+    // "primary:Documents/Anicel"; the part before the colon names the
+    // volume, and anything other than "primary" is an SD card or USB stick
+    // whose mount point cannot be derived reliably. A Drive or Dropbox
+    // provider does not use this authority at all.
+    private fun realPathForTree(tree: Uri): String? {
+        if (tree.authority != "com.android.externalstorage.documents") {
+            return null
+        }
+        val documentId = try {
+            android.provider.DocumentsContract.getTreeDocumentId(tree)
+        } catch (_: Exception) {
+            return null
+        }
+        val separator = documentId.indexOf(':')
+        if (separator < 0) {
+            return null
+        }
+        val volume = documentId.substring(0, separator)
+        val relative = documentId.substring(separator + 1)
+        if (!volume.equals("primary", ignoreCase = true)) {
+            return null
+        }
+        val root = Environment.getExternalStorageDirectory() ?: return null
+        val resolved = if (relative.isEmpty()) {
+            root
+        } else {
+            java.io.File(root, relative)
+        }
+        // The grant is what makes this readable; if it is missing the
+        // directory probe fails here rather than at save time.
+        return if (resolved.isDirectory) resolved.absolutePath else null
     }
 
     private fun isMicrophoneGranted(): Boolean {

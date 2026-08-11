@@ -62,7 +62,10 @@ String ensuredAppDocumentsDirectorySync() {
 /// the Android real-path model's grants and the mobile app-documents
 /// home. Desktop needs none of it (env paths + full FS access).
 abstract final class AppStorage {
-  static const MethodChannel _channel = MethodChannel('qa_storage');
+  /// The platform-storage channel. Public so PICK-2's folder grants ride the
+  /// same channel instead of spelling a second copy of the name — one
+  /// rename, one place.
+  static const MethodChannel channel = MethodChannel('qa_storage');
 
   /// The platform-provided app documents home (mobile); null until
   /// [ensureInitialized] resolves it (or on desktop, always).
@@ -77,7 +80,7 @@ abstract final class AppStorage {
       return;
     }
     try {
-      channelDocumentsPath = await _channel.invokeMethod<String>(
+      channelDocumentsPath = await channel.invokeMethod<String>(
         'appDocumentsPath',
       );
     } on Object {
@@ -96,7 +99,7 @@ abstract final class AppStorage {
       return true;
     }
     try {
-      return await _channel.invokeMethod<bool>('isAllFilesAccessGranted') ??
+      return await channel.invokeMethod<bool>('isAllFilesAccessGranted') ??
           false;
     } on Object {
       return false;
@@ -114,7 +117,7 @@ abstract final class AppStorage {
       return true;
     }
     try {
-      return await _channel.invokeMethod<bool>('requestMicrophone') ?? false;
+      return await channel.invokeMethod<bool>('requestMicrophone') ?? false;
     } on Object {
       return false;
     }
@@ -126,7 +129,7 @@ abstract final class AppStorage {
       return;
     }
     try {
-      await _channel.invokeMethod<void>('requestAllFilesAccess');
+      await channel.invokeMethod<void>('requestAllFilesAccess');
     } on Object {
       // The settings screen failing to open leaves the notice visible.
     }

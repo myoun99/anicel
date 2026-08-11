@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/services/persistence/app_documents.dart';
+import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/input/app_input_settings.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
@@ -31,6 +32,10 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // previous value, never null (null falls back to the real home).
   final sandbox = Directory.systemTemp.createTempSync('qa_test_docs_');
   AppStorage.channelDocumentsPath = sandbox.path.replaceAll('\\', '/');
+  // PICK-2: the folder-picker seam is a static, so a file that installs one
+  // and forgets to remove it would hand its fake to every file after it.
+  // Cleared here rather than trusted to each suite's tearDown.
+  FolderPicker.debugFolderPicker = null;
   try {
     await testMain();
   } finally {
