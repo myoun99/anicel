@@ -389,12 +389,37 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     ),
   };
 
-  /// The panels that may lie on the floor, in the order the top strip's
-  /// switch offers them.
-  static const List<String> _floorTabIds = [
+  /// The panels that BELONG on the floor — the two full-page surfaces you
+  /// look at rather than read beside the drawing. They lead the top
+  /// strip's switch and stay on it even when docked elsewhere, because
+  /// pressing their button fetches them back ([_selectFloorTab]).
+  static const List<String> _floorHomeTabIds = [
     EditorWorkspace.canvasTabId,
     EditorWorkspace.mediaViewerTabId,
   ];
+
+  /// What the top strip's floor switch offers, in strip order: the two
+  /// homes, then anything else actually lying down there.
+  ///
+  /// 🚨 That tail is not a nicety, it closes a trap. The floor has NO tab
+  /// strip ([_buildCenterDock] builds it `chromeless`), so a panel
+  /// dragged onto the center dock has no button anywhere — and the Panels
+  /// menu reports it as OPEN, so the only thing that menu offers for it is
+  /// CLOSING it. Listing whatever is down there is what makes it reachable
+  /// again, for every panel and not just the viewers.
+  ///
+  /// Deliberately NOT a static list with the sub viewer added to it: that
+  /// spelling would give the sub viewer a permanent button meaning "pull
+  /// me off the rail and onto the floor", which is the opposite of what a
+  /// panel that exists to sit beside the drawing is for.
+  List<String> _floorTabIds() {
+    final onTheFloor = _layout.tabsIn(EditorWorkspace.centerGroupId);
+    return [
+      ..._floorHomeTabIds,
+      for (final tabId in onTheFloor)
+        if (!_floorHomeTabIds.contains(tabId)) tabId,
+    ];
+  }
 
   /// Only narrow-fit panels may live in the slim edge docks.
   static const Set<String> _edgeDockTabIds = {EditorWorkspace.toolsTabId};
@@ -1027,7 +1052,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       toolRailMover: _setToolRailOnRight,
       floorTabId: _activeFloorTabId,
       floorTabs: () => [
-        for (final tabId in _EditorWorkspaceState._floorTabIds)
+        for (final tabId in _floorTabIds())
           (
             tabId: tabId,
             label: _tabFor(tabId).label,
@@ -3528,11 +3553,22 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       return;
     }
     _mutatingLayout(() {
-      _layout.moveTab(
-        tabId: tabId,
-        toDockId: EditorWorkspace.centerGroupId,
-        insertIndex: tabs.length,
-      );
+      // A panel CLOSED from the Panels list is in no dock at all, and
+      // `moveTab` moves only what it can already locate — so pressing
+      // 캔버스 after closing the canvas did nothing whatsoever, and the
+      // Panels list was the only way back to the app's own floor. Adding
+      // it is the same answer `_revealPanel` already gives, and `addTab`
+      // does not front what it appends, so say which one is showing.
+      if (_layout.locateTab(tabId) == null) {
+        _layout.addTab(tabId, toDockId: EditorWorkspace.centerGroupId);
+      } else {
+        _layout.moveTab(
+          tabId: tabId,
+          toDockId: EditorWorkspace.centerGroupId,
+          insertIndex: tabs.length,
+        );
+      }
+      _layout.selectTab(EditorWorkspace.centerGroupId, tabId);
     });
   }
 

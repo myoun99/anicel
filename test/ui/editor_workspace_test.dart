@@ -78,24 +78,28 @@ Future<void> _closeRightRail(WidgetTester tester) async {
   await tester.pumpAndSettle();
 }
 
-/// R26 #31: the right dock ships OCCUPIED by the timesheet, so the
-/// collapsed-dock behaviours (its drop rail) need it emptied first —
-/// closing the sheet's tab is the shortest honest way there.
-Future<void> _closeTimesheet(WidgetTester tester) async {
-  // The tab's X went with the rest of the panel frame (패널 프레임 최소화),
-  // so the settings list is the switch — in both directions.
+/// Flips one panel's visibility through the Panels list.
+///
+/// The tab's X went with the rest of the panel frame (패널 프레임 최소화),
+/// so this list is the switch — in both directions, and for the floor's
+/// panels it is the ONLY switch (the floor draws no tab strip at all).
+Future<void> _togglePanel(WidgetTester tester, String tabId) async {
   await tester.tap(
     find.byKey(const ValueKey<String>('top-strip-settings-button')),
   );
   await tester.pumpAndSettle();
-  final entry = find.byKey(
-    const ValueKey<String>('panels-menu-item-timesheet'),
-  );
+  final entry = find.byKey(ValueKey<String>('panels-menu-item-$tabId'));
   await tester.ensureVisible(entry);
   await tester.pumpAndSettle();
   await tester.tap(entry);
   await tester.pumpAndSettle();
 }
+
+/// R26 #31: the right dock ships OCCUPIED by the timesheet, so the
+/// collapsed-dock behaviours (its drop rail) need it emptied first —
+/// closing the sheet's tab is the shortest honest way there.
+Future<void> _closeTimesheet(WidgetTester tester) =>
+    _togglePanel(tester, 'timesheet');
 
 /// Drags a tab to a target by its GRIP handle (R10-⑩: only the grip
 /// lifts a tab; the rest of the button is a plain tap target). The target
@@ -376,6 +380,59 @@ void main() {
       await tester.pumpAndSettle();
       expect(find.byType(EditorCanvasArea), findsOneWidget);
       expect(find.byType(MediaViewerTabHost), findsNothing);
+    });
+
+    testWidgets('a panel that ends up on the floor keeps a way back', (
+      tester,
+    ) async {
+      // The floor is the one dock with NO tab strip, so a panel down there
+      // has no button on itself — and the Panels list reports it as OPEN,
+      // which means the only thing that list offers is closing it. The
+      // switch listing whatever is actually on the floor is the way back.
+      await _pumpHome(tester);
+
+      // Emptying the floor is what makes its drop zone appear; the Panels
+      // list is the only way to do it (no X on a chromeless dock).
+      await _togglePanel(tester, 'canvas');
+      await _togglePanel(tester, 'media-viewer');
+      expect(find.byType(EditorCanvasArea), findsNothing);
+      expect(
+        find.byKey(const ValueKey<String>('top-strip-floor-timesheet')),
+        findsNothing,
+        reason: 'nothing is on the floor yet',
+      );
+
+      await _dragTab(
+        tester,
+        find.byKey(_timesheetTabKey),
+        () => tester.getCenter(
+          find.byKey(const ValueKey<String>('editor-dock-drop-rail-center')),
+        ),
+      );
+      expect(find.byType(TimesheetTabHost), findsOneWidget);
+
+      // It is on the floor, so the switch offers it — after the two homes,
+      // which stay listed whatever is down there.
+      final timesheetFloorButton = find.byKey(
+        const ValueKey<String>('top-strip-floor-timesheet'),
+      );
+      expect(timesheetFloorButton, findsOneWidget);
+
+      // Fetch a home back: the sheet is now BEHIND the canvas with nothing
+      // of its own on screen. This is the state that used to be a dead end.
+      await tester.tap(
+        find.byKey(const ValueKey<String>('top-strip-floor-canvas')),
+      );
+      await tester.pumpAndSettle();
+      expect(find.byType(EditorCanvasArea), findsOneWidget);
+      expect(find.byType(TimesheetTabHost), findsNothing);
+
+      // And back again — the button is still there, and it works.
+      expect(timesheetFloorButton, findsOneWidget);
+      await tester.tap(timesheetFloorButton);
+      await tester.pumpAndSettle();
+      expect(find.byType(TimesheetTabHost), findsOneWidget);
+      expect(find.byType(EditorCanvasArea), findsNothing);
     });
   });
 
