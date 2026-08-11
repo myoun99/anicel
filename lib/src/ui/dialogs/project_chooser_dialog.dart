@@ -319,12 +319,11 @@ class _ProjectChooserDialogState extends State<_ProjectChooserDialog> {
 
   /// The sort control.
   ///
-  /// The BUTTON carries the current state, not a mark inside the menu. This
-  /// app's rule is that a selection is shown with colour and never with a
-  /// checkmark (a checkmark means a toggle), and the shared flyout item has
-  /// no colour affordance today — so rather than add one to a widget another
-  /// round is actively rewriting, the state lives where it is visible without
-  /// opening anything at all.
+  /// Says the current order TWICE, and both are deliberate. The button reads
+  /// `Name ↑` so the state is legible without opening anything, and inside
+  /// the menu the row in force is marked `selected` — which this app renders
+  /// as COLOUR, never a check glyph. `checked` would be wrong here: it means
+  /// a toggle, and picking one of three orders is a selection.
   Widget _sortButton(AppStrings strings) {
     final arrow = _ascending ? '↑' : '↓';
     return PanelFlyoutButton(
@@ -341,17 +340,20 @@ class _ProjectChooserDialogState extends State<_ProjectChooserDialog> {
               ProjectSortKey.modified => strings.sortByModified,
               ProjectSortKey.size => strings.sortBySize,
             },
+            selected: key == _key,
             onSelected: () => _applySort(key: key),
           ),
         const PanelFlyoutDivider(),
         PanelFlyoutItem(
           keyValue: 'project-chooser-sort-asc',
           label: strings.sortAscending,
+          selected: _ascending,
           onSelected: () => _applySort(ascending: true),
         ),
         PanelFlyoutItem(
           keyValue: 'project-chooser-sort-desc',
           label: strings.sortDescending,
+          selected: !_ascending,
           onSelected: () => _applySort(ascending: false),
         ),
       ],
