@@ -53,7 +53,7 @@ Future<void> activateCellEditor(
   // layer owns it" — a drawing row standing on its Rotation lane would
   // otherwise rename the frame, which is the row's cell and not the thing
   // under the cursor at all.
-  if (session.currentLaneKeyAddress != null) {
+  if (session.canNameLaneKeys) {
     await _renameLaneKey(context, session);
     return;
   }
@@ -398,21 +398,16 @@ Future<void> _renameLaneKey(
   BuildContext context,
   EditorSessionManager session,
 ) async {
-  final address = session.currentLaneKeyAddress;
-  if (address == null) {
+  if (!session.canNameLaneKeys) {
     return;
   }
   final strings = AppText.strings;
   final nextName = await showDialog<String>(
     context: context,
     builder: (context) => RenameFrameDialog(
-      initialName:
-          session.laneKeyName(
-            layerId: address.layerId,
-            laneId: address.laneId,
-            frameIndex: address.frameIndex,
-          ) ??
-          '',
+      // What the covered keys already AGREE on; blank when they disagree,
+      // the same thing the group header says with its `…`.
+      initialName: session.laneKeyNameForSelection ?? '',
       title: strings.renameKeyTitle,
       fieldLabel: strings.renameKeyField,
     ),
@@ -421,17 +416,20 @@ Future<void> _renameLaneKey(
     return;
   }
 
+  // The RANGE form is the only one called: a single key is the one-frame
+  // span at the playhead, so naming one and naming five is the same verb
+  // (user 2026-08-10, "선택범위로 통하는 조작이 모두 다른것들이랑 동일한
+  // 로직"). The covered keys of a lane land on ONE value, which is what a
+  // shared name means.
   final trimmed = nextName.trim();
-  final taken = session.setLaneKeyName(
-    layerId: address.layerId,
-    laneId: address.laneId,
-    frameIndex: address.frameIndex,
-    name: trimmed.isEmpty ? null : trimmed,
+  final taken = session.setLaneKeyNamesForSelection(
+    trimmed.isEmpty ? null : trimmed,
   );
   if (!taken) {
     return;
   }
 
+  // Asked ONCE for the whole range, never once per key.
   final shouldLink = await showDialog<bool>(
     context: context,
     builder: (context) => const FrameNameConflictDialog(),
@@ -440,12 +438,7 @@ Future<void> _renameLaneKey(
     return;
   }
 
-  session.linkLaneKeyName(
-    layerId: address.layerId,
-    laneId: address.laneId,
-    frameIndex: address.frameIndex,
-    name: trimmed,
-  );
+  session.linkLaneKeyNamesForSelection(trimmed);
 }
 
 Future<void> _renameSelectedFrame(

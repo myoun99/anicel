@@ -223,7 +223,7 @@ class TimelineActionToolbar extends StatelessWidget {
     }
     // Standing on a LANE row, the instance is that lane's KEY — which the
     // owning layer's kind cannot answer.
-    if (session.currentLaneKeyAddress != null) {
+    if (session.canNameLaneKeys) {
       return true;
     }
     return switch (layer.kind) {

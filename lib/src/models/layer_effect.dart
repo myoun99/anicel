@@ -551,10 +551,14 @@ double? namedEffectKeyValue(
   required EffectId effectId,
   required String parameterId,
   required String name,
+  Set<int> excludeFrames = const {},
 }) {
   for (final effect in effects) {
     if (effect.id == effectId) {
-      return effect.parameters[parameterId]?.track.valueForName(name);
+      return effect.parameters[parameterId]?.track.valueForName(
+        name,
+        excludeFrames: excludeFrames,
+      );
     }
   }
   return null;

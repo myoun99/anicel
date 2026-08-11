@@ -180,13 +180,65 @@ class PropertyTrack<T> {
   /// rename does before it commits: joining a name adopts the value the
   /// name ALREADY has, the way linking a frame adopts the drawing that is
   /// already there rather than overwriting it (user 2026-08-10).
-  T? valueForName(String name) {
-    for (final key in keys.values) {
-      if (key.name == name) {
-        return key.value;
+  /// [excludeFrames] drops keys a RANGE rename is about to name: those are
+  /// the keys doing the joining, so they must not answer for the name they
+  /// are joining. "Is it taken?" and "what does it hold?" are the same
+  /// question, so they stay one method — a range asks it with the range
+  /// excluded, a single key with nothing excluded.
+  T? valueForName(String name, {Set<int> excludeFrames = const {}}) {
+    for (final entry in keys.entries) {
+      if (entry.value.name == name && !excludeFrames.contains(entry.key)) {
+        return entry.value.value;
       }
     }
     return null;
+  }
+
+  /// [this] with every key at [frames] named [name] — and, when named, all
+  /// of them collapsed onto ONE value. Null when nothing here changed.
+  ///
+  /// ★The collapse IS the intent, not a side effect (user 2026-08-10:
+  /// "같은행 여러키 이름변경할때 한값으로 뭉개는거 맞음. 그게 의도"). A
+  /// name MEANS "same value", so asking for one name across five keys is
+  /// asking for exactly that. Un-naming (a null [name]) touches no values:
+  /// there is no shared number left to agree on.
+  ///
+  /// Which value they land on, in order: [adopted] when the name already
+  /// holds one somewhere (joining adopts, the frame-link rule), else the
+  /// key at [preferredFrame] — the one you are standing on — else the
+  /// earliest key in range. Interpolation rides across untouched; adopting
+  /// a value must not restyle the segment leaving a key.
+  PropertyTrack<T>? withRangeNamed({
+    required Set<int> frames,
+    required String? name,
+    T? adopted,
+    int? preferredFrame,
+  }) {
+    final keyed = frames.where((frame) => keys[frame] != null).toList()..sort();
+    if (keyed.isEmpty) {
+      return null;
+    }
+    var next = this;
+    if (name != null) {
+      // The standing key only speaks for a range it is IN. Reading it from
+      // outside would let the playhead's number reach in and overwrite a
+      // key it was never pointing at — which is what naming one far-away
+      // key did before this guard.
+      final standing = preferredFrame != null && keyed.contains(preferredFrame)
+          ? keys[preferredFrame]?.value
+          : null;
+      final value = adopted ?? standing ?? keys[keyed.first]!.value;
+      for (final frame in keyed) {
+        final key = next.keys[frame]!;
+        if (key.value != value) {
+          next = next.withKey(frame, value, interpolation: key.interpolation);
+        }
+      }
+    }
+    for (final frame in keyed) {
+      next = next.withKeyName(frame, name);
+    }
+    return next == this ? null : next;
   }
 
   /// The NAMED keys by frame — what a lane row hands its band so the link

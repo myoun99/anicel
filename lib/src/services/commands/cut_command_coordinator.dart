@@ -1264,6 +1264,7 @@ class CutCommandCoordinator {
     required LayerId layerId,
     required TransformPropertyId property,
     required String name,
+    Set<int> excludeFramesOnSource = const {},
   }) {
     final project = repository.requireProject();
     for (final target in linkMirrorTargets(
@@ -1271,8 +1272,16 @@ class CutCommandCoordinator {
       cutId: cutId,
       layerId: layerId,
     )) {
+      final isSource = target.cutId == cutId && target.layerId == layerId;
       final track = requireLayerAnywhere(project, target.layerId).transformTrack;
-      if (transformLaneUsesName(track, property, name)) {
+      if (transformLaneUsesName(
+        track,
+        property,
+        name,
+        // Only the SOURCE row holds the keys a range rename is naming; a
+        // sibling's keys are all "somewhere else" by construction.
+        excludeFrames: isSource ? excludeFramesOnSource : const {},
+      )) {
         return track;
       }
     }
@@ -1714,6 +1723,7 @@ class CutCommandCoordinator {
     required EffectId effectId,
     required String parameterId,
     required String name,
+    Set<int> excludeFramesOnSource = const {},
   }) {
     final targets = linkMirrorTargets(
       repository.requireProject(),
@@ -1721,11 +1731,15 @@ class CutCommandCoordinator {
       layerId: layerId,
     );
     for (final target in targets) {
+      final isSource = target.cutId == cutId && target.layerId == layerId;
       final value = namedEffectKeyValue(
         _requireLayer(cutId: target.cutId, layerId: target.layerId).effects,
         effectId: effectId,
         parameterId: parameterId,
         name: name,
+        // Only the SOURCE row holds the keys a range rename is naming; a
+        // sibling's keys are all "somewhere else" by construction.
+        excludeFrames: isSource ? excludeFramesOnSource : const {},
       );
       if (value != null) {
         return value;

@@ -52,6 +52,32 @@ List<LayerEffect>? effectsWithLaneKeyRemoved(
   });
 }
 
+/// [effects] with parameter lane [laneId]'s keys inside [frames] named
+/// [name] (null un-names them), all collapsed onto ONE value. Null when
+/// nothing changed.
+///
+/// The range form of naming — see [PropertyTrack.withRangeNamed] for why
+/// the collapse is the intent rather than a side effect. [adopted] supplies
+/// the value when the name is already held elsewhere in the naming space.
+List<LayerEffect>? effectsWithLaneRangeNamed(
+  List<LayerEffect> effects, {
+  required String laneId,
+  required Set<int> frames,
+  required String? name,
+  double? adopted,
+  int? preferredFrame,
+}) {
+  return _editParameter(effects, laneId, (parameter, spec) {
+    final track = parameter.track.withRangeNamed(
+      frames: frames,
+      name: name,
+      adopted: adopted,
+      preferredFrame: preferredFrame,
+    );
+    return track == null ? null : parameter.copyWith(track: track);
+  });
+}
+
 /// Flips a key between linear and HOLD interpolation (AE's Toggle Hold
 /// Keyframe).
 List<LayerEffect>? effectsWithLaneHoldToggled(
