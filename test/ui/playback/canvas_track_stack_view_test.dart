@@ -1,3 +1,4 @@
+import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_frame_key.dart';
@@ -371,7 +372,7 @@ void main() {
       createdAt: DateTime.utc(2026),
     );
 
-    List<TransitionSpan> spans(TrackId _) => const [(start: 2, length: 4)];
+    List<TransitionSpan> spans(TrackId _) => const [(start: 2, length: 4, mark: CameraInstructionMarkType.ol)];
 
     testWidgets('puts BOTH cuts on screen, leaving one first, and both paint '
         'the stage — a 場面転換 cross-fades the paper too, so keying it to the '

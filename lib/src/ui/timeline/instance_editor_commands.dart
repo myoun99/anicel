@@ -83,6 +83,14 @@ Future<void> activateCellEditor(
       // reading; a double-tap here must not open the editor, or the
       // "컷 타임라인은 보여주기만" law would be broken by the one gesture
       // that looks harmless.
+      //
+      // ⚠️Reaching the row's editor is NOT this switch's job even on the
+      // global axis, because this whole function dispatches on
+      // [EditorSessionManager.activeLayer] — the CUT's drawing target — and the
+      // storyboard rail's standing row is deliberately separate state (user
+      // 2026-07-27: picking a rail row never moves the drawing target). The
+      // storyboard host dispatches [editTransitionSpanInstance] off
+      // `selectedRow` instead.
       break;
     case LayerKind.animation || LayerKind.storyboard || LayerKind.image:
       await _renameSelectedFrame(context, session);
@@ -291,6 +299,72 @@ Future<void> _editInstructionEvent(
       memo: result.memo,
     ),
     createLengthFrames: 1,
+  );
+}
+
+/// The TRANSITION row's instance: the span at the playhead on the GLOBAL axis.
+///
+/// The direction row's flow ([_editInstructionEvent]) with three differences,
+/// each forced by what a transition IS:
+/// - the frame is [EditorSessionManager.editingGlobalFrame], the one
+///   track-global reader — a parked playhead sits in a gap with no active cut,
+///   and a gap is a legitimate transition partner
+/// - the picker's vocabulary is filtered to the 場面転換 terms, and the
+///   vocabulary EDITOR is not offered: it commits the whole set, so editing a
+///   filtered copy would drop every camera-work term
+/// - LENGTH is not taken from the dialog. The grips own it, so a re-pick can
+///   never resize a span out from under the boundary it fires across.
+///
+/// An EMPTY cell creates, exactly as the direction row's does. That is the whole
+/// of the user's 2026-08-11 ask: 「프레임생성하는거 행에 버튼만들어서 넣은거같은데,
+/// 그게아니라 인스턴스편집버튼으로 작동하도록. 삭제나 그런거 다 똑같이」 — one verb
+/// for create, edit and delete, reached from whatever button the rail grows.
+Future<void> editTransitionSpanInstance(
+  BuildContext context,
+  EditorSessionManager session, {
+  int? globalFrame,
+  Axis previewAxis = Axis.horizontal,
+}) async {
+  final frame = globalFrame ?? session.editingGlobalFrame;
+  final covering = session.transitionSpanAt(frame);
+  if (covering == null) {
+    session.createTransitionSpanAtPlayhead();
+    return;
+  }
+  final result = await showDialog<InstructionEventDialogResult>(
+    context: context,
+    builder: (dialogContext) => InstructionEventDialog(
+      instructionSet: session.transitionInstructionSet,
+      initialInstructionId: covering.value.instructionId,
+      initialText: covering.value.text,
+      initialValueA: covering.value.valueA,
+      initialValueB: covering.value.valueB,
+      initialMemo: covering.value.memo,
+      editing: true,
+      previewAxis: previewAxis,
+    ),
+  );
+  if (!context.mounted || result == null) {
+    return;
+  }
+  if (result.delete) {
+    session.removeTransitionSpanAt(frame);
+    return;
+  }
+  final instructionId = result.instructionId;
+  if (instructionId == null) {
+    return;
+  }
+  session.replaceTransitionEventAt(
+    frame,
+    InstructionEvent(
+      instructionId: instructionId,
+      length: covering.value.length,
+      text: result.text,
+      valueA: result.valueA,
+      valueB: result.valueB,
+      memo: result.memo,
+    ),
   );
 }
 

@@ -623,14 +623,14 @@ void main() {
 
     test('a span inside the cut still means nothing', () {
       // [72, 96) — comfortably inside c21, crossing neither boundary.
-      final document = sheet(spans: const [(start: 72, length: 24)]);
+      final document = sheet(spans: const [(start: 72, length: 24, mark: CameraInstructionMarkType.ol)]);
 
       expect(document.transitionHandles, CutTransitionHandles.none);
       expect(document.drawnFrameCount, 3 * fps);
     });
 
     test('an O.L across the cut head adds 0+12 to what the sheet asks for', () {
-      final document = sheet(spans: const [(start: 36, length: 24)]);
+      final document = sheet(spans: const [(start: 36, length: 24, mark: CameraInstructionMarkType.ol)]);
 
       expect(document.transitionHandles.head, 12);
       // 3+0 (3+12): the conte 尺 is untouched, the drawn 尺 is longer.
@@ -662,7 +662,7 @@ void main() {
         fps: fps,
         cutStartFrame: 0,
         // Crosses the cut's END at 144, reaching 12 frames past it.
-        transitionSpans: const [(start: 132, length: 24)],
+        transitionSpans: const [(start: 132, length: 24, mark: CameraInstructionMarkType.ol)],
       );
 
       expect(document.transitionHandles.tail, 12);

@@ -5,9 +5,15 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/transition_geometry.dart'
+    show TransitionSides, transitionSidesOf;
 import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/dialogs/instruction_event_dialog.dart'
+    show InstructionEventDialog;
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/timeline/instance_editor_commands.dart'
+    show editActiveInstance;
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart'
     show TimelineLayerControlsRow;
@@ -194,6 +200,99 @@ void main() {
         markStart,
       ),
       TimelineCellExposureState.uncovered,
+    );
+  });
+
+  /// ⑩ The span reader carries the TERM'S MARK.
+  ///
+  /// 🚨This is where F.O became O.L: the reader mapped each event to
+  /// `(start, length)` and dropped its id, so the geometry could only treat
+  /// every span as a symmetric cross-dissolve. Asserting the geometry alone
+  /// would not have caught it — the bug was in the hand-off.
+  test('⑩ the session hands the geometry each span WITH its mark, so an F.O '
+      'reaches it as one-sided', () {
+    final session = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(session.dispose);
+    final foId = session.cameraInstructionSet.defs
+        .firstWhere((def) => def.markType == CameraInstructionMarkType.fo)
+        .id;
+    final olId = session.cameraInstructionSet.defs
+        .firstWhere((def) => def.markType == CameraInstructionMarkType.ol)
+        .id;
+
+    session.updateTransitionInstructions(
+      SplayTreeMap<int, InstructionEvent>.from({
+        0: InstructionEvent(instructionId: foId, length: 4),
+        8: InstructionEvent(instructionId: olId, length: 4),
+      }),
+    );
+
+    final spans = session.activeTrackTransitionSpans;
+    expect(spans, hasLength(2));
+    expect(
+      spans.map((span) => span.mark),
+      [CameraInstructionMarkType.fo, CameraInstructionMarkType.ol],
+      reason: 'the mark survives the hand-off, in span order',
+    );
+    expect(
+      transitionSidesOf(spans.first.mark),
+      TransitionSides.fadesOut,
+      reason: 'so the geometry can tell this from a cross-dissolve',
+    );
+  });
+
+  /// ③ Create / edit / delete are ONE verb — the instance editor.
+  ///
+  /// The user's ask was that the transition row stop having its own creation
+  /// button and answer to Edit Instance like every other row, with only the
+  /// wiring done because the button itself arrives later. So the test is about
+  /// the ROUTE, and the route's fork is which surface asked: the storyboard
+  /// authors, the cut view reads.
+  testWidgets('③ the cut view still refuses to open the editor, while the '
+      'enablement gate says a span is there to edit', (tester) async {
+    final session = await pumpTwoCutsWithOverlap(tester);
+    final before = session.activeTrack.transitionLayer.instructions;
+    expect(before, isNotEmpty);
+
+    await tester.tap(transitionRow());
+    await tester.pumpAndSettle();
+    expect(session.activeLayerId, session.activeTrack.transitionLayer.id);
+
+    // The default is the READ-ONLY answer, so a caller that forgets the flag
+    // cannot break the law by omission.
+    await editActiveInstance(tester.element(transitionRow()), session);
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byType(InstructionEventDialog),
+      findsNothing,
+      reason: 'no editor in a cut — its placement here is a projection',
+    );
+    expect(
+      session.activeTrack.transitionLayer.instructions,
+      before,
+      reason: 'and nothing was created either',
+    );
+  });
+
+  test('③ an EMPTY frame creates rather than opening a dialog — the same '
+      'shape the direction row has, so one verb covers create and edit', () {
+    final session = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(session.dispose);
+    expect(session.activeTrack.transitionLayer.instructions, isEmpty);
+
+    // The create half needs no BuildContext: it is the session verb the
+    // editor falls through to when no span covers the playhead. Reached the
+    // same way `editTransitionSpanInstance` reaches it.
+    expect(session.transitionSpanAt(session.editingGlobalFrame), isNull);
+    expect(session.canCreateTransitionSpanAtPlayhead, isTrue);
+    session.createTransitionSpanAtPlayhead();
+
+    expect(session.activeTrack.transitionLayer.instructions, hasLength(1));
+    expect(
+      session.transitionSpanAt(session.editingGlobalFrame),
+      isNotNull,
+      reason: 'so a second Edit Instance opens the dialog instead',
     );
   });
 

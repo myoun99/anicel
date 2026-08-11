@@ -3,9 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 
-import '../models/camera_instruction.dart' show InstructionEvent;
 import '../models/cut_id.dart';
-import 'dialogs/instruction_event_dialog.dart';
 import '../models/layer_id.dart';
 import '../models/timeline_row_address.dart';
 import '../models/track.dart';
@@ -336,52 +334,50 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
     _session.updateLayerTransformTrack(layerId, next, description: description);
   }
 
-  /// The transition span's term dialog — the direction row's dialog verbatim,
-  /// with two differences: the picker's vocabulary is filtered to the 場面
-  /// 転換 terms, and the vocabulary EDITOR is not offered (it commits the
-  /// whole set, so editing a filtered copy would drop the camera-work terms).
+  /// The row's double-tap: the SHARED transition instance editor at the tapped
+  /// frame. The implementation moved to [editTransitionSpanInstance] so this
+  /// gesture and the Edit Instance verb cannot drift apart — a second copy here
+  /// is how "delete works from the dialog but not from the pill" starts.
+  Future<void> _editTransitionSpan(int globalFrame) =>
+      editTransitionSpanInstance(context, _session, globalFrame: globalFrame);
+
+  /// The transition row as the RAIL sees it, or null when the user is standing
+  /// somewhere else.
   ///
-  /// Length is NOT taken from the dialog: the grips own it here, so a re-pick
-  /// can never resize the span out from under the boundary it fires across.
-  Future<void> _editTransitionSpan(int globalFrame) async {
-    final covering = _session.transitionSpanAt(globalFrame);
-    if (covering == null) {
+  /// 🚨Asked of `selectedRow` and not `activeLayer`: this rail's standing row is
+  /// separate state from the cut's drawing target (user 2026-07-27, and the
+  /// reason the transition row could not be reached through the shared
+  /// `editActiveInstance` at all).
+  bool get _standingOnTransitionRow {
+    final row = _session.selectedRow;
+    return row is LayerRowAddress &&
+        _session.isTrackTransitionLayerId(row.layerId);
+  }
+
+  /// ③ Edit Instance on THIS panel: the transition row gets the span editor
+  /// (create on an empty frame, edit or delete on a covered one), every other
+  /// row keeps the shared kind dispatch. One verb, so the rail needs no
+  /// creation button of its own — 유저 2026-08-11: 「인스턴스편집버튼으로
+  /// 작동하도록. 삭제나 그런거 다 똑같이」.
+  void _editInstanceHere() {
+    if (_standingOnTransitionRow) {
+      unawaited(editTransitionSpanInstance(context, _session));
       return;
     }
-    final result = await showDialog<InstructionEventDialogResult>(
-      context: context,
-      builder: (context) => InstructionEventDialog(
-        instructionSet: _session.transitionInstructionSet,
-        initialInstructionId: covering.value.instructionId,
-        initialText: covering.value.text,
-        initialValueA: covering.value.valueA,
-        initialValueB: covering.value.valueB,
-        initialMemo: covering.value.memo,
-        editing: true,
-      ),
-    );
-    if (!mounted || result == null) {
-      return;
+    unawaited(editActiveInstance(context, _session));
+  }
+
+  /// The enablement half: a span to edit, or an empty frame to create into.
+  ///
+  /// ⚠️The frame is the track-GLOBAL playhead. `hasActiveNonNegativeCell` and
+  /// friends are cut-local and answer no in a gap — which is a legal place for a
+  /// span, since a gap is a legitimate transition partner.
+  bool _canEditTransitionInstanceHere() {
+    if (!_standingOnTransitionRow) {
+      return false;
     }
-    if (result.delete) {
-      _session.removeTransitionSpanAt(globalFrame);
-      return;
-    }
-    final instructionId = result.instructionId;
-    if (instructionId == null) {
-      return;
-    }
-    _session.replaceTransitionEventAt(
-      globalFrame,
-      InstructionEvent(
-        instructionId: instructionId,
-        length: covering.value.length,
-        text: result.text,
-        valueA: result.valueA,
-        valueB: result.valueB,
-        memo: result.memo,
-      ),
-    );
+    return _session.transitionSpanAt(_session.editingGlobalFrame) != null ||
+        _session.canCreateTransitionSpanAtPlayhead;
   }
 
   /// ONE command-bar row — the timeline's own widget now, not a parallel
@@ -422,9 +418,8 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onCreateInstance: () => createActiveInstance(_session),
                     // This panel reads left-to-right like the horizontal
                     // timeline, so its dialogs' miniatures do too.
-                    onEditInstance: () => unawaited(
-                      editActiveInstance(context, _session),
-                    ),
+                    onEditInstance: _editInstanceHere,
+                    resolveCanEditInstance: _canEditTransitionInstanceHere,
                   ),
                   const SizedBox(width: 6),
                   // The V row's fx (user 2026-08-08): a chain over the whole

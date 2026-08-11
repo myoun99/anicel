@@ -137,6 +137,7 @@ class TimelineActionToolbar extends StatelessWidget {
     required this.onRenameLayer,
     required this.onDeleteLayer,
     this.onEditInstance,
+    this.resolveCanEditInstance,
     required this.onCreateInstance,
     this.hiddenSections = const {},
     this.onToggleSection,
@@ -160,6 +161,15 @@ class TimelineActionToolbar extends StatelessWidget {
   /// nullability stays because a host that cannot serve a command should be
   /// able to say so rather than hand over one that does nothing.
   final VoidCallback? onEditInstance;
+
+  /// A host's answer for its own standing row, asked BEFORE the kind switch and
+  /// only able to say yes.
+  ///
+  /// It exists because the storyboard rail's standing row is separate state from
+  /// the drawing target (user 2026-07-27), so a row that lives only on that rail
+  /// — the transition row — is invisible to a gate reading `activeLayer`. Null
+  /// keeps the kind switch as the whole answer, which is the timeline's case.
+  final bool Function()? resolveCanEditInstance;
 
   /// Kind-dispatched creation: new frame / camera key / SE entry /
   /// instruction event.
@@ -188,6 +198,13 @@ class TimelineActionToolbar extends StatelessWidget {
   /// named-frame cell (the rename gate), SE either an entry to edit or an
   /// empty cell to create into, camera/instruction any cell.
   bool get _canEditInstance {
+    // A host may answer for its OWN standing row first. The storyboard's rail
+    // row is separate state from the drawing target (user 2026-07-27), so its
+    // transition row cannot be seen through [EditorSessionManager.activeLayer]
+    // at all — and the surface is the only thing that knows which row it means.
+    if (resolveCanEditInstance?.call() case final hostAnswer? when hostAnswer) {
+      return true;
+    }
     final layer = session.activeLayer;
     if (layer == null) {
       return false;
