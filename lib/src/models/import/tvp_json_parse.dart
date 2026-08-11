@@ -19,12 +19,17 @@
 /// CSV export of the same clips.
 ///
 /// **The export must be taken with 「빈 사진 포함」 (include empty images)
-/// ON.** With it off, instances whose image is blank are omitted from
+/// ON.** With it off, instances carrying no PIXELS are omitted from
 /// `link[]` entirely — eleven of `test_ge2`'s seventeen layers came
 /// through as `link: []` and their whole timeline was invisible, taking
-/// the meaning of `repeat[]` with it. A blank instance is not nothing: SE
+/// the meaning of `repeat[]` with it. Such an instance is not nothing: SE
 /// rows carry their dialogue in the instance NAME with no pixels at all
 /// (`"arisu,おはよ"`), and camera rows carry `"PAN"`/`"FI"` the same way.
+///
+/// (TVPaint's own term 「빈 인스턴스」 means an instance with no NAME,
+/// drawn or not — a different axis from the empty-image one this option
+/// controls. This file says "no pixels" and "unnamed" rather than
+/// "blank", because the two are independent.)
 ///
 /// 「화상の重複」 (duplicate images) may be either way. With it off TVPaint
 /// can point several instances at one file and list every position in
@@ -527,6 +532,13 @@ TvpLayer _parseLayer(
 /// Exposed for tests: this is the one piece of interpretation the format
 /// does not hand over, and every claim about it was measured rather than
 /// assumed.
+///
+/// "Until the next boundary" is safe because **a TVPaint layer has no
+/// holes**: from `start` to `end` it is one unbroken run of instances
+/// (user, 2026-08-12 — 「tvp엔 빈칸이없어. 시작부터 끝까지 연결되있고」).
+/// A drawing that must disappear mid-cut is an instance with an empty
+/// image, which is why 「빈 사진 포함」 is not optional: with it off that
+/// instance leaves no boundary and the previous drawing runs over it.
 ///
 /// The walk fills a per-frame array of "which instance shows here", then
 /// run-length encodes it. Doing it per-frame is what makes `repeat`

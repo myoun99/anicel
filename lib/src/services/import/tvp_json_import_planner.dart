@@ -266,9 +266,8 @@ const int _cameraMaxRunFrames = 512;
 /// neighbours already reproduces: a linear pan collapses back to two keys,
 /// a hold to one, and easing keeps exactly the keys it needs.
 ///
-/// ⚠️ `angle` maps straight through to [CameraPose.rotationDegrees]. No
-/// export measured so far carries a non-zero one, so the SIGN is the
-/// obvious reading rather than a verified fact.
+/// `angle` arrives NEGATED — the two apps count rotation opposite ways.
+/// See [_cameraPoseFor] for the measurement that settled it.
 CutCamera planTvpCamera({
   required TvpCamera camera,
   required CanvasSize cameraFrameSize,
@@ -336,7 +335,13 @@ CameraPose _cameraPoseFor(TvpCameraPose pose, CanvasSize frame) {
   return CameraPose(
     center: CanvasPoint(x: pose.x, y: pose.y),
     zoom: zoom.isFinite && zoom > 0 ? zoom : 1.0,
-    rotationDegrees: pose.angleDegrees.isFinite ? pose.angleDegrees : 0,
+    // NEGATED — the two apps count rotation opposite ways. Measured on
+    // `eased_camera`: its angle runs 0° → -7.67° over frames 1-15 and the
+    // camera RECTANGLE on TVPaint's canvas turns clockwise across that
+    // stretch, so TVPaint's negative is a clockwise camera.
+    // [CameraPose.rotationDegrees] turns the view clockwise on POSITIVE.
+    // Copying the sign through would mirror every rotating move.
+    rotationDegrees: pose.angleDegrees.isFinite ? -pose.angleDegrees : 0,
   );
 }
 
