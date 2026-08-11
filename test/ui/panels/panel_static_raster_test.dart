@@ -100,6 +100,11 @@ const _unreachableInDefaultLayout = <String, String>{
   EditorWorkspace.colorPaletteTabId: 'rail group ships closed',
   EditorWorkspace.onionSkinTabId: 'rail group ships closed',
   EditorWorkspace.mediaTabId: 'rail group ships closed',
+  // The sub viewer ships closed on purpose (유저 확정 ⑥): a reference
+  // panel earns its height only once there is a reference in it. It is
+  // the SAME widget as the floor's viewer, which this sweep does reach,
+  // so the bake being audited on one of them audits the code on both.
+  EditorWorkspace.mediaViewerSubTabId: 'rail group ships closed',
 };
 
 /// Named surfaces that MUST be baking while their tab is active.

@@ -30,6 +30,7 @@ class MediaBrowserPanel extends StatelessWidget {
     required this.onRemoveAsset,
     required this.onPromoteAsset,
     this.onOpenAsset,
+    this.onOpenAssetInSubViewer,
     this.audioFilePicker,
     this.fileExists,
   });
@@ -56,9 +57,17 @@ class MediaBrowserPanel extends StatelessWidget {
   /// the project at the copy. False when there was nothing to promote.
   final bool Function(String path) onPromoteAsset;
 
-  /// Opens the asset in the media viewer (double-click or the row menu);
+  /// Opens the asset in the MAIN viewer (double-click or the row menu);
   /// null hides both entrances.
+  ///
+  /// 유저 확정 ①: the double-click keeps meaning the main viewer, which
+  /// is the one on the floor — so it still swaps the drawing away. That
+  /// is the point of the second entry below.
   final void Function(MediaAsset asset)? onOpenAsset;
+
+  /// Opens the asset in the SUB viewer — the row menu only, because it is
+  /// the deliberate choice and the double-click is the reflex one.
+  final void Function(MediaAsset asset)? onOpenAssetInSubViewer;
 
   /// Injectable file dialog; defaults to the platform audio picker.
   final Future<String?> Function()? audioFilePicker;
@@ -297,6 +306,12 @@ class MediaBrowserPanel extends StatelessWidget {
                   keyValue: 'media-asset-menu-open',
                   label: AppText.strings.mediaOpenInViewer,
                   onSelected: () => onOpenAsset?.call(asset),
+                ),
+              if (onOpenAssetInSubViewer != null)
+                PanelFlyoutItem(
+                  keyValue: 'media-asset-menu-open-sub',
+                  label: AppText.strings.mediaOpenInSubViewer,
+                  onSelected: () => onOpenAssetInSubViewer?.call(asset),
                 ),
               PanelFlyoutItem(
                 keyValue: 'media-asset-menu-rename',
