@@ -4071,6 +4071,7 @@ class EditorSessionManager extends ChangeNotifier {
       replacedFrameCount: plan.replacedFrameCount,
       joiningFrameCount: plan.joiningFrameCount,
       linksAnything: plan.linksAnything,
+      canvasSizesDiffer: originCut.canvasSize != targetCut.canvasSize,
     );
   }
 

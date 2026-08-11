@@ -250,6 +250,8 @@ class AppStrings {
       _s('convertLinkedCutOriginGainsTemplate');
   String get convertLinkedCutNothing => _s('convertLinkedCutNothing');
   String get convertLinkedCutUndoNote => _s('convertLinkedCutUndoNote');
+  String get convertLinkedCutResizeFirst =>
+      _s('convertLinkedCutResizeFirst');
 
   // --- Project lifecycle confirmations ---
   String get recoverAutosaveTitle => _s('recoverAutosaveTitle');
@@ -943,6 +945,10 @@ class AppStrings {
         'Nothing to link — the cuts are already fully linked or share no '
         'drawing layers.',
     'convertLinkedCutUndoNote': 'Undo restores both cuts.',
+    'convertLinkedCutResizeFirst':
+        'These cuts have different canvas sizes. Linked cuts show one '
+        'picture, so the origin\'s size will win — matching the sizes '
+        'first is recommended.',
     'recoverAutosaveTitle': 'Recover autosaved changes?',
     'recoverAutosaveBody':
         'A newer autosave exists for this project. Recover it, or open the '
@@ -1564,6 +1570,9 @@ class AppStrings {
         'リンクするものがありません — 既に完全にリンク済みか、共有できる'
         '作画レイヤーがありません。',
     'convertLinkedCutUndoNote': '元に戻すと両方のカットが復元されます。',
+    'convertLinkedCutResizeFirst':
+        'キャンバスサイズが異なります。兼用カットは一枚の絵を共有するため'
+        '元のカットのサイズが優先されます。先にサイズを揃えることをおすすめします。',
     'recoverAutosaveTitle': '自動保存の変更を復元しますか？',
     'recoverAutosaveBody':
         'このプロジェクトには、より新しい自動保存があります。それを復元'
@@ -2268,6 +2277,9 @@ class AppStrings {
         '링크할 것이 없습니다 — 이미 완전히 링크됐거나 공유할 그리기 '
         '레이어가 없습니다.',
     'convertLinkedCutUndoNote': '실행 취소하면 두 컷 모두 복원됩니다.',
+    'convertLinkedCutResizeFirst':
+        '두 컷의 캔버스 크기가 다릅니다. 겸용컷은 그림 한 장을 함께 쓰므로 '
+        '원본 컷의 크기가 이깁니다 — 먼저 크기를 맞춘 뒤 변경하시길 권합니다.',
     'recoverAutosaveTitle': '자동 저장된 변경을 복구할까요?',
     'recoverAutosaveBody':
         '이 프로젝트에 더 최신인 자동 저장이 있습니다. 그것을 복구할까요, '
@@ -2973,6 +2985,10 @@ class AppStrings {
         'Rien à lier — les plans sont déjà entièrement liés ou ne partagent '
         'aucun calque de dessin.',
     'convertLinkedCutUndoNote': 'Annuler restaure les deux plans.',
+    'convertLinkedCutResizeFirst':
+        'Ces plans ont des tailles de canevas différentes. Les plans liés '
+        'partagent une seule image, donc la taille du plan d\'origine '
+        'l\'emporte — il est conseillé d\'harmoniser les tailles d\'abord.',
     'recoverAutosaveTitle': 'Récupérer les modifications enregistrées ?',
     'recoverAutosaveBody':
         'Une sauvegarde automatique plus récente existe pour ce projet. La '
@@ -3698,6 +3714,9 @@ class AppStrings {
         '没有可链接的内容 — 两个镜头已完全链接，'
         '或没有可共用的绘制图层。',
     'convertLinkedCutUndoNote': '撤销会同时还原两个镜头。',
+    'convertLinkedCutResizeFirst':
+        '两个镜头的画布尺寸不同。共用镜头共享同一张画，因此以原镜头的尺寸为准 '
+        '— 建议先统一尺寸再进行更改。',
     'recoverAutosaveTitle': '要恢复自动保存的更改吗？',
     'recoverAutosaveBody': '此项目存在更新的自动保存。是恢复它，还是打开上次保存的文件？',
     'recoverOpenSaved': '打开已保存版本',

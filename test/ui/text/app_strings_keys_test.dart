@@ -130,6 +130,7 @@ void main() {
         s.convertLinkedCutOriginGainsTemplate,
     'convertLinkedCutNothing': (s) => s.convertLinkedCutNothing,
     'convertLinkedCutUndoNote': (s) => s.convertLinkedCutUndoNote,
+    'convertLinkedCutResizeFirst': (s) => s.convertLinkedCutResizeFirst,
     'recoverAutosaveTitle': (s) => s.recoverAutosaveTitle,
     'recoverAutosaveBody': (s) => s.recoverAutosaveBody,
     'recoverOpenSaved': (s) => s.recoverOpenSaved,

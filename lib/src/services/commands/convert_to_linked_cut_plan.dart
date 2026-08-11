@@ -158,6 +158,7 @@ class ConvertToLinkedCutPreviewData {
     required this.replacedFrameCount,
     required this.joiningFrameCount,
     required this.linksAnything,
+    this.canvasSizesDiffer = false,
   });
 
   final String targetCutName;
@@ -167,6 +168,15 @@ class ConvertToLinkedCutPreviewData {
   final int replacedFrameCount;
   final int joiningFrameCount;
   final bool linksAnything;
+
+  /// The two cuts do not share a canvas size.
+  ///
+  /// Linking makes them show ONE physical cel, and a size they disagree on
+  /// puts that one picture in two differently-shaped frames. Linking still
+  /// goes ahead — the origin's size wins, like its pictures do — but the
+  /// target's artwork can end up outside the frame, so the 안내문 says to
+  /// match the sizes first.
+  final bool canvasSizesDiffer;
 }
 
 /// The frame-level merge for one matched pair (원본 승리):
