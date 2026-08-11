@@ -214,6 +214,190 @@ void main() {
     },
   );
 
+  group('R6 #1: the bar keeps what moved along its OWN axis', () {
+    // 유저: "상단띠 브러시사이즈 변경처럼 대충눌러도 바뀌도록하고싶음."
+    //
+    // Every case here is inside a ListView, because that is the ONLY thing
+    // that ever made the bar behave differently from the top strip.
+    Widget scrolled(
+      ValueNotifier<double> value,
+      List<double> commits, {
+      ScrollController? controller,
+    }) => MaterialApp(
+          theme: buildAppTheme(),
+          home: Scaffold(
+            body: ListView(
+              controller: controller,
+              children: [
+                const SizedBox(height: 100),
+                ValueListenableBuilder<double>(
+                  valueListenable: value,
+                  builder: (context, v, _) => FieldSlider(
+                    key: sliderKey,
+                    value: v,
+                    min: 0,
+                    max: 1,
+                    label: 'Test',
+                    valueText: v.toStringAsFixed(2),
+                    onChanged: (next) => value.value = next,
+                    onChangeEnd: commits.add,
+                  ),
+                ),
+                const SizedBox(height: 1200),
+              ],
+            ),
+          ),
+        );
+
+    testWidgets('a tap that wobbles ALONG the bar keeps the value — the old '
+        '6px tap slop called this a scroll and rolled it back', (tester) async {
+      final value = ValueNotifier<double>(0.2);
+      addTearDown(value.dispose);
+      final commits = <double>[];
+      await tester.pumpWidget(scrolled(value, commits));
+
+      final rect = tester.getRect(find.byKey(sliderKey));
+      final gesture = await tester.startGesture(
+        Offset(rect.left + rect.width * 0.75, rect.center.dy),
+        kind: PointerDeviceKind.stylus,
+      );
+      // Well past the retired 6px, nowhere near the 18px a scrollable needs:
+      // nothing took this gesture, so nothing may roll it back.
+      await gesture.moveBy(const Offset(10, 4));
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(value.value, moreOrLessEquals(0.75, epsilon: 0.02));
+      expect(commits, isNotEmpty);
+      expect(commits.last, moreOrLessEquals(0.75, epsilon: 0.02));
+    });
+
+    testWidgets('a tap that wobbles ACROSS the bar — but less than the scroll '
+        'threshold — also keeps it', (tester) async {
+      final value = ValueNotifier<double>(0.2);
+      addTearDown(value.dispose);
+      final commits = <double>[];
+      await tester.pumpWidget(scrolled(value, commits));
+
+      final rect = tester.getRect(find.byKey(sliderKey));
+      final gesture = await tester.startGesture(
+        Offset(rect.left + rect.width * 0.4, rect.center.dy),
+        kind: PointerDeviceKind.stylus,
+      );
+      await gesture.moveBy(const Offset(1, 9));
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(
+        value.value,
+        moreOrLessEquals(0.4, epsilon: 0.02),
+        reason: 'a scrollable that never claimed the gesture cannot undo it',
+      );
+    });
+
+    testWidgets('a scroll that STARTS sideways still rolls back', (
+      tester,
+    ) async {
+      final value = ValueNotifier<double>(0.2);
+      addTearDown(value.dispose);
+      final commits = <double>[];
+      final controller = ScrollController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        scrolled(value, commits, controller: controller),
+      );
+
+      final rect = tester.getRect(find.byKey(sliderKey));
+      final gesture = await tester.startGesture(
+        Offset(rect.left + rect.width * 0.75, rect.center.dy),
+        kind: PointerDeviceKind.stylus,
+      );
+      // The sideways lead-in is exactly what a distance test could not see
+      // past: it is travel, but it is not the travel that decides.
+      await gesture.moveBy(const Offset(10, 0));
+      // Split, because a drag that clears the slop in ONE move starts where
+      // that move ENDED and the remainder is thrown away — the list would
+      // take the gesture and then sit still, and the assertion below could
+      // not tell that from never taking it.
+      await gesture.moveBy(const Offset(0, -25));
+      await gesture.moveBy(const Offset(0, -35));
+      await gesture.up();
+      await tester.pumpAndSettle();
+
+      expect(controller.offset, greaterThan(0), reason: 'the list took it');
+      expect(
+        value.value,
+        moreOrLessEquals(0.2, epsilon: 0.001),
+        reason: 'so the tentative jump goes back',
+      );
+    });
+
+    testWidgets('stood up, the axes swap: a SIDEWAYS drag is the one that '
+        'rolls a vertical bar back', (tester) async {
+      final value = ValueNotifier<double>(0.5);
+      addTearDown(value.dispose);
+      final controller = ScrollController();
+      addTearDown(controller.dispose);
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: buildAppTheme(),
+          home: Scaffold(
+            body: ListView(
+              controller: controller,
+              scrollDirection: Axis.horizontal,
+              children: [
+                const SizedBox(width: 100),
+                SizedBox(
+                  height: trackWidth,
+                  child: ValueListenableBuilder<double>(
+                    valueListenable: value,
+                    builder: (context, v, _) => FieldSlider(
+                      key: sliderKey,
+                      axis: Axis.vertical,
+                      value: v,
+                      min: 0,
+                      max: 1,
+                      height: 18,
+                      valueText: '${(v * 100).round()}%',
+                      onChanged: (next) => value.value = next,
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 1200),
+              ],
+            ),
+          ),
+        ),
+      );
+
+      // 🚨Started OFF-CENTRE on purpose. Pressed at the middle, the
+      // pointer-down value and the resting value are the same number, so a
+      // bar that wrongly KEPT the gesture would land on 0.5 as well and
+      // this test would pass against the bug it exists to catch.
+      //
+      // `dragFrom` and not a hand-rolled `moveBy`: it pays the touch slop in
+      // its own move first, so what follows is travel the list can actually
+      // spend. One 80px jump clears the slop and starts the drag THERE,
+      // leaving nothing to scroll with.
+      final rect = tester.getRect(find.byKey(sliderKey));
+      await tester.dragFrom(
+        Offset(rect.center.dx, rect.bottom - rect.height / 4),
+        const Offset(-80, 0),
+        kind: PointerDeviceKind.stylus,
+      );
+      await tester.pumpAndSettle();
+
+      expect(controller.offset, greaterThan(0), reason: 'the row scrolled');
+      expect(
+        value.value,
+        moreOrLessEquals(0.5, epsilon: 0.001),
+        reason:
+            'across a STOOD-UP bar is left/right, so this one rolls back — '
+            'a bar that read dy as its cross axis would keep 0.25 here',
+      );
+    });
+  });
+
   testWidgets('a TAP inside that same scrollable sets the value and keeps it', (
     tester,
   ) async {

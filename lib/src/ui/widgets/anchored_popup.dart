@@ -32,16 +32,19 @@ class _AnchoredPopupSurface extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Material(
-      // The one summoned surface (FILL 3): menus, tooltips and these are the
-      // same kind of thing — chrome the pointer called up, sitting above
-      // chrome that was already there.
-      color: AppColors.surfaceHigh,
+      // Colour, corner, outline and shadow all come from [AppPopupSurface]
+      // — the same four values the menus read, so a popover and a flyout
+      // opened side by side are one window with two contents (R6 #4). The
+      // outline in particular is new here: this surface used to draw none
+      // while every menu drew a hairline.
+      color: AppPopupSurface.color,
       // CLIPPED, not merely painted: a shape that only fills leaves its
       // corners square to the pointer and to any child that paints to the
       // edge (the colour picker's saturation field does exactly that).
       clipBehavior: Clip.antiAlias,
-      shape: AppShapes.container(AppShapes.windowRadius),
-      elevation: 6,
+      shape: AppPopupSurface.shape,
+      elevation: AppPopupSurface.elevation,
+      surfaceTintColor: AppPopupSurface.surfaceTint,
       child: child,
     );
   }

@@ -34,6 +34,23 @@ class PressureCurveButton extends StatelessWidget {
   final BrushPressureCurve? curve;
   final ValueChanged<BrushPressureCurve?> onChanged;
 
+  /// The OFF state's ink, mark and edge together.
+  ///
+  /// 유저, R6 #2: 「필압아이콘 필압설정안하면 x잖아. 지금 진하니까 불투명도
+  /// 낮은 하얀색 x로」 · 「테두리도 그럼 흐리게하자」.
+  ///
+  /// ⚠️It is NOT [AppColors.textDim], which is what it used to be and is the
+  /// reason it read as loud: that token is 0xFF9DA2A6 against body text's
+  /// 0xFFB4B8BB — a "dim" that is only dim beside white, and BRIGHTER than
+  /// most of the row it sits in. The one control whose whole message is
+  /// "this setting is doing nothing" was the strongest mark on the line.
+  ///
+  /// A transparent white rather than another opaque grey, so it dims
+  /// against whatever surface the button lands on — the tool settings, the
+  /// brush panel and the top strip are three different greys.
+  static const Color _offInk = Color(0x4DFFFFFF);
+  static const Color _offEdge = Color(0x1AFFFFFF);
+
   @override
   Widget build(BuildContext context) {
     final active = curve != null;
@@ -52,9 +69,7 @@ class PressureCurveButton extends StatelessWidget {
           ),
           child: DecoratedBox(
             decoration: BoxDecoration(
-              border: Border.all(
-                color: active ? AppColors.accent : AppColors.hairline,
-              ),
+              border: Border.all(color: active ? AppColors.accent : _offEdge),
               borderRadius: BorderRadius.circular(4),
             ),
             child: Padding(
@@ -63,7 +78,7 @@ class PressureCurveButton extends StatelessWidget {
                 size: const Size(22, 14),
                 painter: _MiniCurvePainter(
                   curve: curve,
-                  color: active ? AppColors.accent : AppColors.textDim,
+                  color: active ? AppColors.accent : _offInk,
                 ),
               ),
             ),

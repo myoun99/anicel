@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../theme/app_theme.dart';
 import '../widgets/grip_band.dart';
+import '../widgets/panel_flyout.dart';
 import '../widgets/static_raster.dart';
 import '../widgets/superellipse_clip.dart';
 import 'panel_collapsed_scope.dart';
@@ -1085,33 +1086,27 @@ class _TabOverflowButton extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return PopupMenuButton<String>(
+    // R6 #4: the shared flyout. This list was the app's row grammar copied
+    // out by hand — 32px, 12pt, an icon and an 8px gap — and it had already
+    // drifted (a 14px glyph against the flyout's 16), which is how a copy
+    // announces itself.
+    return PanelFlyoutTrigger(
       key: ValueKey<String>('panel-tab-overflow-${groupId ?? 'group'}'),
       tooltip: '+${hidden.length}',
-      position: PopupMenuPosition.under,
-      popUpAnimationStyle: instantMenuAnimation,
-      itemBuilder: (context) => [
+      padding: EdgeInsets.zero,
+      entriesBuilder: () => [
         for (final tab in hidden)
-          PopupMenuItem<String>(
-            key: ValueKey<String>('panel-tab-overflow-item-${tab.id}'),
-            value: tab.id,
-            height: 32,
-            child: Row(
-              children: [
-                Icon(
-                  tab.icon,
-                  size: 14,
-                  color: tab.id == activeTabId
-                      ? colorScheme.primary
-                      : colorScheme.onSurfaceVariant,
-                ),
-                const SizedBox(width: 8),
-                Text(tab.label, style: const TextStyle(fontSize: 12)),
-              ],
-            ),
+          PanelFlyoutItem(
+            keyValue: 'panel-tab-overflow-item-${tab.id}',
+            label: tab.label,
+            icon: tab.icon,
+            // ⛔NOT a check. The open panel accents, exactly as the tinted
+            // glyph here always did — 「어차피 선택하면 ui적으로 색 바뀌니까
+            // 그거로 충분해」 (R11-①).
+            selected: tab.id == activeTabId,
+            onSelected: () => onTabSelected(tab.id),
           ),
       ],
-      onSelected: onTabSelected,
       // When the OPEN panel is one of the hidden ones, this button says so.
       // A compressed strip used to show `+2` and nothing else — no tab lit
       // anywhere — so the only way to learn what was on screen was to open

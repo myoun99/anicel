@@ -8,7 +8,8 @@ import '../../models/media_asset.dart';
 import '../../services/persistence/file_type_groups.dart';
 import '../dialogs/app_prompt_dialog.dart';
 import '../text/app_strings.dart';
-import '../theme/app_theme.dart' show AppColors, instantMenuAnimation;
+import '../theme/app_theme.dart' show AppColors;
+import '../widgets/panel_flyout.dart';
 import 'media_asset_drag_data.dart';
 
 /// The dockable media browser (the Resolve Media Pool counterpart): every
@@ -271,46 +272,36 @@ class MediaBrowserPanel extends StatelessWidget {
                 color: colorScheme.onSurfaceVariant,
               ),
             ),
-          PopupMenuButton<String>(
+          // R6 #4: the shared flyout. These rows had no `height` at all, so
+          // they came out at Material's `kMinInteractiveDimension` — 48px
+          // beside the app's 32.
+          PanelFlyoutTrigger(
             key: ValueKey<String>('media-asset-menu-${asset.path}'),
             tooltip: AppText.strings.mediaActions,
-            popUpAnimationStyle: instantMenuAnimation,
-            iconSize: 16,
-            onSelected: (action) {
-              switch (action) {
-                case 'open':
-                  onOpenAsset?.call(asset);
-                case 'rename':
-                  _rename(context, asset);
-                case 'relink':
-                  _relink(asset.path);
-                case 'remove':
-                  _remove(context, asset);
-              }
-            },
-            itemBuilder: (context) => [
+            entriesBuilder: () => [
               if (onOpenAsset != null)
-                PopupMenuItem<String>(
-                  key: const ValueKey<String>('media-asset-menu-open'),
-                  value: 'open',
-                  child: Text(AppText.strings.mediaOpenInViewer),
+                PanelFlyoutItem(
+                  keyValue: 'media-asset-menu-open',
+                  label: AppText.strings.mediaOpenInViewer,
+                  onSelected: () => onOpenAsset?.call(asset),
                 ),
-              PopupMenuItem<String>(
-                key: const ValueKey<String>('media-asset-menu-rename'),
-                value: 'rename',
-                child: Text(AppText.strings.commonRename),
+              PanelFlyoutItem(
+                keyValue: 'media-asset-menu-rename',
+                label: AppText.strings.commonRename,
+                onSelected: () => _rename(context, asset),
               ),
-              PopupMenuItem<String>(
-                key: const ValueKey<String>('media-asset-menu-relink'),
-                value: 'relink',
-                child: Text(AppText.strings.mediaRelink),
+              PanelFlyoutItem(
+                keyValue: 'media-asset-menu-relink',
+                label: AppText.strings.mediaRelink,
+                onSelected: () => _relink(asset.path),
               ),
-              PopupMenuItem<String>(
-                key: const ValueKey<String>('media-asset-menu-remove'),
-                value: 'remove',
-                child: Text(AppText.strings.mediaRemove),
+              PanelFlyoutItem(
+                keyValue: 'media-asset-menu-remove',
+                label: AppText.strings.mediaRemove,
+                onSelected: () => _remove(context, asset),
               ),
             ],
+            child: const Icon(Icons.more_vert, size: 16),
           ),
         ],
       ),

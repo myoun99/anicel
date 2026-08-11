@@ -56,6 +56,13 @@ void main() {
     // The discriminator is therefore INK BELOW THE TOP EDGE: the old
     // drawing put none there at any width, and an X puts some in both
     // bottom corners. Restore the flat line and this goes red.
+    //
+    // 🚨The BORDER is cropped out before anything is counted, and has to
+    // be: R6 #2 made the OFF state's edge fainter than the ON state's, so
+    // a frame-inclusive count compares two different frames and reports it
+    // as a difference in the MARK. It measured that way for one round and
+    // went red the moment the edge colour moved — the test was reading the
+    // button, not the drawing inside it.
     Future<List<double>> inkRows(BrushPressureCurve? curve) async {
       await tester.pumpWidget(
         MaterialApp(
@@ -87,11 +94,16 @@ void main() {
       final width = image.width;
       final height = image.height;
       image.dispose();
+      // Two logical pixels in from every edge: the 1px border and its
+      // antialiasing, gone. The X's corners sit 7 logical px in (a 3px
+      // border+padding inset, then the painter's own 3px), so nothing the
+      // test is actually about is cropped with it.
+      final inset = (2 * tester.view.devicePixelRatio).round();
       // How much non-background ink each row carries, top row first.
       final rows = <double>[];
-      for (var y = 0; y < height; y += 1) {
+      for (var y = inset; y < height - inset; y += 1) {
         var ink = 0.0;
-        for (var x = 0; x < width; x += 1) {
+        for (var x = inset; x < width - inset; x += 1) {
           ink += bytes[(y * width + x) * 4 + 3] / 255.0;
         }
         rows.add(ink);
@@ -120,6 +132,69 @@ void main() {
       reason:
           'the X reaches both bottom corners; a top-pinned line never leaves '
           'the top edge',
+    );
+  });
+
+  testWidgets('유저 R6 #2: the OFF button paints NOTHING at full strength — '
+      'mark and edge are both transparent white', (tester) async {
+    // 「필압아이콘 필압설정안하면 x잖아. 지금 진하니까 불투명도 낮은 하얀색
+    // x로」 · 「테두리도 그럼 흐리게하자」.
+    //
+    // The mark used to be AppColors.textDim, which is opaque AND brighter
+    // than body text — so "this setting is doing nothing" was the loudest
+    // thing on the row. The contract is therefore about ALPHA and not about
+    // a particular grey: nothing in the OFF state may reach full opacity.
+    // Put any opaque colour back on either the painter or the border and
+    // this goes red.
+    Future<int> peakAlpha(BrushPressureCurve? curve) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Center(
+              child: RepaintBoundary(
+                key: const ValueKey<String>('mini-curve-capture'),
+                child: PressureCurveButton(
+                  keyValue: 'test-pressure-button',
+                  title: 'Size',
+                  curve: curve,
+                  onChanged: (_) {},
+                ),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+      final boundary = tester.renderObject<RenderRepaintBoundary>(
+        find.byKey(const ValueKey<String>('mini-curve-capture')),
+      );
+      final image = boundary.toImageSync();
+      late Uint8List bytes;
+      await tester.runAsync(() async {
+        final data = await image.toByteData(format: ImageByteFormat.rawRgba);
+        bytes = data!.buffer.asUint8List();
+      });
+      image.dispose();
+      var peak = 0;
+      for (var i = 3; i < bytes.length; i += 4) {
+        if (bytes[i] > peak) {
+          peak = bytes[i];
+        }
+      }
+      return peak;
+    }
+
+    expect(
+      await peakAlpha(null),
+      lessThan(150),
+      reason: 'OFF is a whisper: the X is white at ~30%, the edge at ~10%',
+    );
+    expect(
+      await peakAlpha(BrushPressureCurve.identity()),
+      greaterThan(200),
+      reason:
+          'and ON is not — the accent still lands solidly, so this is a '
+          'statement about the OFF state and not about the whole button',
     );
   });
 
