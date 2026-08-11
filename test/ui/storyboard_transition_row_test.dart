@@ -16,6 +16,7 @@ import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
 import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart'
     show TimelineActionToolbar;
+import 'package:anicel/src/ui/widgets/panel_flyout.dart' show PanelFlyoutItem;
 
 /// The GLOBAL surface authors transitions. The transition row is track-owned
 /// and its spans address the track's frame axis, so this panel — not the cut
@@ -39,6 +40,50 @@ StoryboardPanel _panel(WidgetTester tester) =>
     tester.widget<StoryboardPanel>(find.byType(StoryboardPanel));
 
 Track _track(WidgetTester tester) => _panel(tester).project.tracks.single;
+
+/// Stand on the transition row at [frame].
+///
+/// 🚨It has to be THIS row and not the track row: the verb dispatches off the
+/// rail's `selectedRow`, because the storyboard rail's standing row is separate
+/// state from the cut's drawing target (user 2026-07-27) and the transition row
+/// is invisible to anything reading `activeLayer`.
+Future<void> _standOnTransitionRow(WidgetTester tester, int frame) async {
+  _panel(tester).onRowFramePress!(
+    LayerRowAddress(_track(tester).transitionLayer.id),
+    frame,
+  );
+  await tester.pumpAndSettle();
+}
+
+/// Open the frame pill and press Edit Instance — the real path, not the
+/// callback. Which button the rail grows is exactly what this round changed,
+/// so the test drives the button.
+Future<void> _tapEditInstance(WidgetTester tester) async {
+  await tester.tap(
+    find.byKey(const ValueKey<String>('timeline-frame-menu-button')),
+  );
+  await tester.pumpAndSettle();
+  await tester.tap(find.byKey(const ValueKey<String>('rename-frame-button')));
+  await tester.pumpAndSettle();
+}
+
+/// Whether the pill offers the verb here, read from the open flyout.
+Future<bool> _editInstanceEnabled(WidgetTester tester) async {
+  await tester.tap(
+    find.byKey(const ValueKey<String>('timeline-frame-menu-button')),
+  );
+  await tester.pumpAndSettle();
+  return tester
+      .widget<PopupMenuItem<PanelFlyoutItem>>(
+        find.byKey(const ValueKey<String>('rename-frame-button')),
+      )
+      .enabled;
+}
+
+Future<void> _closeFlyout(WidgetTester tester) async {
+  await tester.tapAt(const Offset(4, 4));
+  await tester.pumpAndSettle();
+}
 
 void main() {
   group('the transition row on the global rail', () {
@@ -92,21 +137,26 @@ void main() {
       expect(_panel(tester).playheadFrame?.value, 4);
     });
 
-    testWidgets('the + button makes a one-frame span at the playhead, and the '
-        'strip draws it', (tester) async {
+    testWidgets('the row grows NO button of its own — Edit Instance is the '
+        'whole verb', (tester) async {
       await _openStoryboard(tester);
       final trackId = _track(tester).id.value;
 
-      _panel(tester).onRowFramePress!(
-        TrackRowAddress(_track(tester).id),
-        6,
-      );
-      await tester.pumpAndSettle();
-
-      await tester.tap(
+      // 유저 2026-08-11: 「프레임생성하는거 행에 버튼만들어서 넣은거같은데,
+      // 그게아니라 인스턴스편집버튼으로 작동하도록. 삭제나 그런거 다 똑같이」.
+      // The rail's `＋` was the predecessor and it is gone; a second entrance
+      // is how "delete works from the dialog but not from the pill" starts.
+      expect(
         find.byKey(ValueKey<String>('storyboard-transition-add-$trackId')),
+        findsNothing,
       );
-      await tester.pumpAndSettle();
+    });
+
+    testWidgets('Edit Instance on an EMPTY frame makes a one-frame span at the '
+        'playhead, and the strip draws it', (tester) async {
+      await _openStoryboard(tester);
+      await _standOnTransitionRow(tester, 6);
+      await _tapEditInstance(tester);
 
       final spans = _track(tester).transitionLayer.instructions;
       expect(spans.keys, [6]);
@@ -124,49 +174,44 @@ void main() {
       );
     });
 
-    testWidgets('the + button stands down where a span already covers the '
-        'playhead — creation never edits', (tester) async {
+    testWidgets('the same verb EDITS where a span already covers the frame — '
+        'it does not stand down and it does not silently make a second one', (
+      tester,
+    ) async {
       await _openStoryboard(tester);
-      final trackId = _track(tester).id.value;
-      final add = find.byKey(
-        ValueKey<String>('storyboard-transition-add-$trackId'),
-      );
-
-      _panel(tester).onRowFramePress!(TrackRowAddress(_track(tester).id), 2);
-      await tester.pumpAndSettle();
-      await tester.tap(add);
-      await tester.pumpAndSettle();
+      await _standOnTransitionRow(tester, 2);
+      await _tapEditInstance(tester);
       expect(_track(tester).transitionLayer.instructions.keys, [2]);
 
-      // Same frame again: the button is disabled, so a second press cannot
-      // silently replace the span's term or move it.
-      expect(tester.widget<IconButton>(add).onPressed, isNull);
-      expect(_panel(tester).resolveCanCreateTransition!(), isFalse);
+      // Same frame again. The old `＋` went dark here because it could only
+      // create; one verb opens the span instead, which is where its term is
+      // repicked and where it is deleted.
+      await _standOnTransitionRow(tester, 2);
+      await _tapEditInstance(tester);
+      expect(find.byType(InstructionEventDialog), findsOneWidget);
+      expect(
+        _track(tester).transitionLayer.instructions.keys,
+        [2],
+        reason: 'opening the editor must not add a span beside the one it edits',
+      );
     });
 
-    testWidgets('the + button follows the PLAYHEAD, which moves without '
-        'rebuilding the panel', (tester) async {
+    testWidgets('the verb stays LIVE right across the row — covered or empty, '
+        'it has something to do', (tester) async {
       await _openStoryboard(tester);
-      final trackId = _track(tester).id.value;
-      final add = find.byKey(
-        ValueKey<String>('storyboard-transition-add-$trackId'),
-      );
+      await _standOnTransitionRow(tester, 8);
+      await _tapEditInstance(tester);
+      expect(_track(tester).transitionLayer.instructions.keys, [8]);
 
-      _panel(tester).onRowFramePress!(TrackRowAddress(_track(tester).id), 8);
-      await tester.pumpAndSettle();
-      await tester.tap(add);
-      await tester.pumpAndSettle();
-      expect(tester.widget<IconButton>(add).onPressed, isNull);
+      // ON the span it edits, one frame off it it creates. The entry that
+      // went dark on a covered frame belonged to a create-only button.
+      await _standOnTransitionRow(tester, 8);
+      expect(await _editInstanceEnabled(tester), isTrue);
+      await _closeFlyout(tester);
 
-      // Step off the span through the cursor channel alone. A state captured
-      // at build time would still say "covered" here.
-      _panel(tester).onSeekGlobalFrame!(9);
-      await tester.pump();
-      expect(
-        tester.widget<IconButton>(add).onPressed,
-        isNotNull,
-        reason: 'the button re-asks per tick, it does not remember',
-      );
+      await _standOnTransitionRow(tester, 9);
+      expect(await _editInstanceEnabled(tester), isTrue);
+      await _closeFlyout(tester);
     });
   });
 

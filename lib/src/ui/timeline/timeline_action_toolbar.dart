@@ -4,6 +4,7 @@ import '../../models/attached_mode.dart';
 import '../../models/attached_placement.dart';
 import '../../models/layer_effect.dart';
 import '../../models/layer_kind.dart';
+import '../../models/timeline_row_address.dart';
 import '../cut_command_group.dart';
 import '../editor_session_manager.dart';
 import '../widgets/app_icon_button.dart';
@@ -139,6 +140,7 @@ class TimelineActionToolbar extends StatelessWidget {
     this.onEditInstance,
     this.resolveCanEditInstance,
     required this.onCreateInstance,
+    this.currentRow,
     this.hiddenSections = const {},
     this.onToggleSection,
   });
@@ -174,6 +176,16 @@ class TimelineActionToolbar extends StatelessWidget {
   /// Kind-dispatched creation: new frame / camera key / SE entry /
   /// instruction event.
   final VoidCallback onCreateInstance;
+
+  /// Which rail is asking, for the ONE case the shift pair needs it: nothing
+  /// selected, so the shove aims at the row this rail is standing on.
+  ///
+  /// The timeline leaves it null — its current row IS the active layer, which
+  /// is the session's own fallback. The storyboard cannot, because its rail's
+  /// standing row is separate state from the drawing target (user 2026-07-27),
+  /// and that is the whole reason the pair used to be mounted a second time
+  /// beside this bar instead of inside it.
+  final TimelineRowAddress? currentRow;
 
   /// Sections hidden from the grids; the Layer menu's show/hide items and
   /// the rail's fold chevrons both flip this.
@@ -674,9 +686,10 @@ class TimelineActionToolbar extends StatelessWidget {
       const PillDivider(),
       // Design D: the rigid shove a drag used to do, aimed. Scope = the live
       // selection's rows, or the current row at the current cell. ONE pair
-      // for both axes — this rail's rows are all layer rows, so it asks as
-      // itself.
-      TimelineShiftButtons(session: session),
+      // for both axes, and now ONE pair for both panels: it is a frame-axis
+      // shove, so it belongs to the FRAME noun, and [currentRow] is how the
+      // asking rail names itself.
+      TimelineShiftButtons(session: session, currentRow: currentRow),
       const PillDivider(),
       // Comma set (UI-R17 #7, TVP-style): the current block — or the whole
       // selection, packed — takes the pressed exposure outright; N asks for

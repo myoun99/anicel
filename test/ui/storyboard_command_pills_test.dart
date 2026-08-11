@@ -3,7 +3,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_tab_host.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart';
+import 'package:anicel/src/ui/timeline/timeline_shift_buttons.dart';
 import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 /// 유저 확정 (2026-08-10): 스토리보드 레이어의 프레임을 조절해야 하고,
@@ -128,6 +130,40 @@ void main() {
       find.byType(TextField),
       findsWidgets,
       reason: 'and it actually opens the editor rather than doing nothing',
+    );
+  });
+
+  testWidgets('push/pull is on the bar ONCE, inside the frame pill, and still '
+      'asks as this rail', (tester) async {
+    final manager = await pumpStoryboard(tester);
+
+    // It used to be mounted a SECOND time as a loose pair beside the bar,
+    // because the frame pill did not exist here yet and a frame-axis shove
+    // had no noun to sit under. The pill arrived; two of them is one too many.
+    final pair = find.byType(TimelineShiftButtons);
+    expect(pair, findsOneWidget);
+    expect(
+      tester.getTopLeft(pair).dx,
+      greaterThan(
+        tester
+            .getTopLeft(
+              find.byKey(const ValueKey<String>('timeline-frame-menu-button')),
+            )
+            .dx,
+      ),
+      reason: 'inside the FRAME pill, after its name cell',
+    );
+
+    // 🚨And the surviving pair kept what the loose one was carrying: with
+    // nothing selected the shove aims at the row THIS rail stands on, which on
+    // the storyboard is separate state from the drawing target. A pair falling
+    // back to the session's active layer would shove the wrong row.
+    final transition = manager.activeTrack.transitionLayer.id;
+    manager.selectRow(LayerRowAddress(transition));
+    await tester.pumpAndSettle();
+    expect(
+      tester.widget<TimelineShiftButtons>(pair).currentRow,
+      LayerRowAddress(transition),
     );
   });
 }
