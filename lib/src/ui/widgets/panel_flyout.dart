@@ -31,6 +31,7 @@ class PanelFlyoutItem extends PanelFlyoutEntry {
     required this.label,
     this.icon,
     this.checked,
+    this.selected = false,
     this.danger = false,
     this.enabled = true,
     this.onSelected,
@@ -44,7 +45,20 @@ class PanelFlyoutItem extends PanelFlyoutEntry {
   final IconData? icon;
 
   /// Trailing check when true; null means the item is not a toggle.
+  ///
+  /// ⛔A TOGGLE, not a selection. Which of several things is CURRENT is
+  /// [selected] — see there for why the two may not share a glyph.
   final bool? checked;
+
+  /// This row is the one currently in force — the open panel in an overflow
+  /// list, the bound gesture in a picker.
+  ///
+  /// ★It reads as COLOUR and nothing else, and it may not grow the row.
+  /// 유저 (R11-①): 「어차피 선택하면 ui적으로 색 바뀌니까 그거로 충분해」 —
+  /// the standing rule that selection is never a check glyph, because a mark
+  /// that appears on selection changes the row's width and makes the list
+  /// twitch as you move through it.
+  final bool selected;
 
   /// Destructive styling (delete commands).
   final bool danger;
@@ -138,28 +152,13 @@ Future<void> showPanelFlyout(
             child: Row(
               children: [
                 if (entry.icon != null) ...[
-                  Icon(
-                    entry.icon,
-                    size: 16,
-                    color: !entry.enabled
-                        ? AppColors.textDim.withValues(alpha: 0.5)
-                        : entry.danger
-                        ? AppColors.danger
-                        : AppColors.text,
-                  ),
+                  Icon(entry.icon, size: 16, color: _inkFor(entry)),
                   const SizedBox(width: 8),
                 ],
                 Expanded(
                   child: Text(
                     entry.label,
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: !entry.enabled
-                          ? AppColors.textDim.withValues(alpha: 0.5)
-                          : entry.danger
-                          ? AppColors.danger
-                          : AppColors.text,
-                    ),
+                    style: TextStyle(fontSize: 12, color: _inkFor(entry)),
                   ),
                 ),
                 if (entry.checked == true) ...[
@@ -173,6 +172,88 @@ Future<void> showPanelFlyout(
     ],
   );
   selected?.onSelected?.call();
+}
+
+/// One row's ink. Disabled dims, destructive reddens, CURRENT accents —
+/// and the last of those is the whole way a flyout says "this one", because
+/// selection is colour and never a glyph (see [PanelFlyoutItem.selected]).
+Color _inkFor(PanelFlyoutItem entry) {
+  if (!entry.enabled) {
+    return AppColors.textDim.withValues(alpha: 0.5);
+  }
+  if (entry.danger) {
+    return AppColors.danger;
+  }
+  return entry.selected ? AppColors.accent : AppColors.text;
+}
+
+/// A flyout trigger that is NOT a chip: a `⋮`, a glyph, a composed label —
+/// whatever the host already draws — with the tap, the ink, the tooltip and
+/// the hit area supplied from here.
+///
+/// 🐛유저, R6 #4: 「규격들이 다 제각각임. 텍스트사이즈도 다 다르고 이상함.」
+/// [PanelFlyoutButton] only ever fitted the hosts that wanted a bordered
+/// word, so every host that wanted an icon reached past it for a raw
+/// `PopupMenuButton` — and inherited Material's row height instead of the
+/// app's. Four of them did, and they landed on three different heights (48,
+/// 34, and a hand-rolled 32). The shared list was never the hard part; the
+/// missing piece was a way to OPEN it without a label.
+///
+/// It carries no border and no padding of its own beyond [padding], because
+/// the things it wraps already look like themselves.
+///
+/// ⛔And for the same reason there is deliberately no `enabled`.
+/// [PanelFlyoutButton] has one because it draws its own label and border and
+/// can therefore DIM itself; this widget draws nothing, so all it could do
+/// is swallow the tap while the host's child went on looking live — a
+/// control that is shut without saying so, which is the exact thing 유저
+/// R4 #12 rejected (잠궜는데 바꿀 수 있으면 잠금이 아니잖아). A host that
+/// needs a shut state owns the appearance of one.
+class PanelFlyoutTrigger extends StatelessWidget {
+  const PanelFlyoutTrigger({
+    super.key,
+    required this.child,
+    required this.entriesBuilder,
+    this.tooltip,
+    this.padding = const EdgeInsets.all(8),
+  });
+
+  /// What the host draws — an `Icon`, a `Row`, a `Chip`.
+  final Widget child;
+
+  final List<PanelFlyoutEntry> Function() entriesBuilder;
+
+  final String? tooltip;
+
+  /// Grows the HIT AREA around [child]. A 16px glyph is not a target.
+  ///
+  /// The default is `PopupMenuButton`'s own, which is what all four hosts
+  /// were getting before they moved here — 8 around a 16px glyph is the
+  /// 32px target the panel headers are built on. A host that already sizes
+  /// its own child (the tab overflow's fixed-width slot) passes zero.
+  final EdgeInsetsGeometry padding;
+
+  @override
+  Widget build(BuildContext context) {
+    final Widget button = Material(
+      color: Colors.transparent,
+      child: InkWell(
+        // `customBorder` and not `borderRadius`: the splash is a corner like
+        // any other and takes the app's superellipse, so this widget adds
+        // nothing to the circular-corner debt (`app_shapes_coverage_test`,
+        // which only ever ratchets down). [PanelFlyoutButton] beside it still
+        // hand-types a `circular(4)` on both its border and its splash.
+        customBorder: AppShapes.container(AppShapes.wellRadius),
+        onTap: () => showPanelFlyout(context, entries: entriesBuilder()),
+        child: Padding(padding: padding, child: child),
+      ),
+    );
+    final message = tooltip;
+    if (message == null) {
+      return button;
+    }
+    return Tooltip(message: message, child: button);
+  }
 }
 
 /// A labeled flyout trigger ('Layer ▾', 'Frame ▾', 'Cut ▾'): compact

@@ -10,9 +10,10 @@ import '../../models/brush_preset_id.dart';
 import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/app_prompt_dialog.dart';
 import '../panels/editor_panel_frame.dart';
-import '../theme/app_theme.dart' show AppColors, instantMenuAnimation;
+import '../theme/app_theme.dart' show AppColors;
 import '../widgets/app_window.dart';
 import '../widgets/instant_tap_region.dart';
+import '../widgets/panel_flyout.dart';
 import 'brush_preset_reorder.dart';
 import 'brush_stroke_preview.dart';
 import 'brush_tip_preview.dart';
@@ -633,14 +634,35 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
     super.dispose();
   }
 
-  List<PopupMenuEntry<_BrushPresetMenuAction>> _menuItems() {
-    final actions = <PopupMenuEntry<_BrushPresetMenuAction>>[
+  /// The options menu, in the app's shared flyout vocabulary (R6 #4).
+  ///
+  /// It used to build `PopupMenuItem`s by hand at `height: 34`, which is
+  /// nobody's number: [showPanelFlyout] lays its rows out at 32 and every
+  /// other menu in the app came from there. The toggles were
+  /// `CheckedPopupMenuItem`s besides, so their check sat on the LEFT and
+  /// indented five rows away from the six beside them, while the flyout's
+  /// own check sits on the right.
+  List<PanelFlyoutEntry> _menuItems() {
+    PanelFlyoutItem item(
+      String keyValue,
+      String label,
+      _BrushPresetMenuAction action, {
+      bool enabled = true,
+      bool? checked,
+    }) => PanelFlyoutItem(
+      keyValue: keyValue,
+      label: label,
+      enabled: enabled,
+      checked: checked,
+      onSelected: () => _onMenuSelected(action),
+    );
+
+    final actions = <PanelFlyoutEntry>[
       if (widget.onGroupCreated != null)
-        PopupMenuItem<_BrushPresetMenuAction>(
-          key: ValueKey<String>('brush-preset-menu-new-group'),
-          value: _BrushPresetMenuAction.newGroup,
-          height: 34,
-          child: Text(AppText.strings.brNewGroup),
+        item(
+          'brush-preset-menu-new-group',
+          AppText.strings.brNewGroup,
+          _BrushPresetMenuAction.newGroup,
         ),
       // The OPEN group's own two verbs (유저, R4 #10). They used to live on
       // a ⋯ in the corner of every 26px tab, which meant every tab carried a
@@ -649,90 +671,80 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
       // Disabled on the root section, which is not a group and has no name
       // to change and nothing to delete.
       if (widget.onGroupEdited != null)
-        PopupMenuItem<_BrushPresetMenuAction>(
-          key: const ValueKey<String>('brush-preset-menu-rename-group'),
-          value: _BrushPresetMenuAction.renameGroup,
-          height: 34,
+        item(
+          'brush-preset-menu-rename-group',
+          AppText.strings.brRenameGroup,
+          _BrushPresetMenuAction.renameGroup,
           enabled: _openGroup != null,
-          child: Text(AppText.strings.brRenameGroup),
         ),
       if (widget.onGroupDeleted != null)
-        PopupMenuItem<_BrushPresetMenuAction>(
-          key: const ValueKey<String>('brush-preset-menu-delete-group'),
-          value: _BrushPresetMenuAction.deleteGroup,
-          height: 34,
+        item(
+          'brush-preset-menu-delete-group',
+          AppText.strings.brDeleteGroup,
+          _BrushPresetMenuAction.deleteGroup,
           enabled: _openGroup != null,
-          child: Text(AppText.strings.brDeleteGroup),
         ),
       if (widget.onPresetRenamed != null)
-        PopupMenuItem<_BrushPresetMenuAction>(
-          key: const ValueKey<String>('brush-preset-menu-rename'),
-          value: _BrushPresetMenuAction.rename,
-          height: 34,
+        item(
+          'brush-preset-menu-rename',
+          AppText.strings.brRenameSelected,
+          _BrushPresetMenuAction.rename,
           enabled: widget.selectedPresetId != null,
-          child: Text(AppText.strings.brRenameSelected),
         ),
       if (widget.onPresetDeleted != null)
-        PopupMenuItem<_BrushPresetMenuAction>(
-          key: const ValueKey<String>('brush-preset-menu-delete'),
-          value: _BrushPresetMenuAction.delete,
-          height: 34,
+        item(
+          'brush-preset-menu-delete',
+          AppText.strings.brDeleteSelected,
+          _BrushPresetMenuAction.delete,
           enabled: widget.selectedPresetId != null,
-          child: Text(AppText.strings.brDeleteSelected),
         ),
       if (widget.onLibraryReset != null) ...[
-        const PopupMenuDivider(),
-        PopupMenuItem<_BrushPresetMenuAction>(
-          key: ValueKey<String>('brush-preset-menu-reset'),
-          value: _BrushPresetMenuAction.reset,
-          height: 34,
-          child: Text(AppText.strings.brResetLibrary),
+        const PanelFlyoutDivider(),
+        item(
+          'brush-preset-menu-reset',
+          AppText.strings.brResetLibrary,
+          _BrushPresetMenuAction.reset,
         ),
       ],
     ];
     return [
-      CheckedPopupMenuItem<_BrushPresetMenuAction>(
-        key: const ValueKey<String>('brush-preset-view-icon-toggle'),
-        value: _BrushPresetMenuAction.toggleIcon,
-        height: 34,
+      item(
+        'brush-preset-view-icon-toggle',
+        AppText.strings.brTipIcon,
+        _BrushPresetMenuAction.toggleIcon,
         checked: _showTipIcon,
         enabled: _canToggleOff(_showTipIcon),
-        child: Text(AppText.strings.brTipIcon),
       ),
-      CheckedPopupMenuItem<_BrushPresetMenuAction>(
-        key: const ValueKey<String>('brush-preset-view-stroke-toggle'),
-        value: _BrushPresetMenuAction.toggleStroke,
-        height: 34,
+      item(
+        'brush-preset-view-stroke-toggle',
+        AppText.strings.brStrokePreview,
+        _BrushPresetMenuAction.toggleStroke,
         checked: _showStrokePreview,
         enabled: _canToggleOff(_showStrokePreview),
-        child: Text(AppText.strings.brStrokePreview),
       ),
-      CheckedPopupMenuItem<_BrushPresetMenuAction>(
-        key: const ValueKey<String>('brush-preset-view-name-toggle'),
-        value: _BrushPresetMenuAction.toggleName,
-        height: 34,
+      item(
+        'brush-preset-view-name-toggle',
+        'Name',
+        _BrushPresetMenuAction.toggleName,
         checked: _showName,
         enabled: _canToggleOff(_showName),
-        child: const Text('Name'),
       ),
-      const PopupMenuDivider(),
-      CheckedPopupMenuItem<_BrushPresetMenuAction>(
-        key: const ValueKey<String>('brush-preset-rail-icon-toggle'),
-        value: _BrushPresetMenuAction.toggleRailIcon,
-        height: 34,
+      const PanelFlyoutDivider(),
+      item(
+        'brush-preset-rail-icon-toggle',
+        AppText.strings.brFolderIcon,
+        _BrushPresetMenuAction.toggleRailIcon,
         checked: _railShowIcon,
         enabled: _canToggleOffRail(_railShowIcon),
-        child: Text(AppText.strings.brFolderIcon),
       ),
-      CheckedPopupMenuItem<_BrushPresetMenuAction>(
-        key: const ValueKey<String>('brush-preset-rail-name-toggle'),
-        value: _BrushPresetMenuAction.toggleRailName,
-        height: 34,
+      item(
+        'brush-preset-rail-name-toggle',
+        AppText.strings.brFolderName,
+        _BrushPresetMenuAction.toggleRailName,
         checked: _railShowName,
         enabled: _canToggleOffRail(_railShowName),
-        child: Text(AppText.strings.brFolderName),
       ),
-      if (actions.isNotEmpty) const PopupMenuDivider(),
+      if (actions.isNotEmpty) const PanelFlyoutDivider(),
       ...actions,
     ];
   }
@@ -896,18 +908,11 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
               tooltip: AppText.strings.brSaveAsPreset,
               onPressed: widget.onPresetSaveRequested,
             ),
-          PopupMenuButton<_BrushPresetMenuAction>(
+          PanelFlyoutTrigger(
             key: const ValueKey<String>('brush-preset-menu-button'),
             tooltip: AppText.strings.brBrushOptions,
-            popUpAnimationStyle: instantMenuAnimation,
-            icon: const Icon(Icons.more_vert, size: 16),
-            padding: EdgeInsets.zero,
-            style: const ButtonStyle(
-              visualDensity: VisualDensity.compact,
-              tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-            ),
-            onSelected: _onMenuSelected,
-            itemBuilder: (context) => _menuItems(),
+            entriesBuilder: _menuItems,
+            child: const Icon(Icons.more_vert, size: 16),
           ),
         ],
       ),

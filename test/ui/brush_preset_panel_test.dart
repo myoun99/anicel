@@ -1210,7 +1210,10 @@ void main() {
       find.byKey(const ValueKey<String>('brush-preset-menu-button')),
     );
     await tester.pumpAndSettle();
-    final strokeToggle = tester.widget<CheckedPopupMenuItem<Object?>>(
+    // R6 #4: the toggles are shared flyout rows now, not
+    // `CheckedPopupMenuItem`s — same key, same `enabled`, and the check
+    // moved from the left gutter to the right like every other flyout's.
+    final strokeToggle = tester.widget<PopupMenuItem<Object?>>(
       find.byKey(const ValueKey<String>('brush-preset-view-stroke-toggle')),
     );
     expect(strokeToggle.enabled, isFalse);

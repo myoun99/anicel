@@ -31,9 +31,10 @@ enum FieldSliderScale {
 /// - The scroll wheel steps the value by 1% of the track (Shift: 0.1%); with
 ///   [divisions] it steps one division instead.
 /// - A tap sets the value and KEEPS it, in every host and from every input
-///   device. A vertical scroll that takes the gesture rolls the tentative
-///   jump back instead, so bars inside scrollables stay safe to scroll over.
-///   Pointer travel is what separates the two — see [_FieldSliderState].
+///   device — however much the hand wobbled while it landed. A scroll that
+///   takes the gesture rolls the tentative jump back instead, so bars
+///   inside scrollables stay safe to scroll over. What separates the two is
+///   the DIRECTION the pointer went, not how far — see [_FieldSliderState].
 ///
 /// It does NOT type (R10 R5). A bar is a bar: tap or drag sets the value,
 /// and that is the whole control. The inline editor it used to carry was
@@ -168,14 +169,26 @@ class _FieldSliderState extends State<FieldSlider> {
   double? _gestureT;
   double? _preDownValue;
 
-  /// How far the raw pointer has travelled since it went down.
+  /// Where the raw pointer went since it went down — SIGNED, and per axis.
   ///
   /// Measured from POINTER events rather than drag updates, because the two
   /// cases this has to tell apart look identical to the drag recognizer: it
   /// is rejected without ever seeing an update either way. Only the pointer
-  /// knows whether a finger moved.
-  double _pointerTravel = 0;
+  /// knows where a finger went.
+  ///
+  /// It is a VECTOR and not a distance because the question is not "did the
+  /// pointer move" but "did it move the way a SCROLL moves" — see
+  /// [_handleCancel].
+  Offset _pointerShift = Offset.zero;
   Offset? _pointerDownAt;
+
+  /// The travel a scrollable above us needs before it may claim the gesture.
+  ///
+  /// Read from the platform rather than picked: Android hands down about 8
+  /// logical px where Flutter's own default is 18, and this number only
+  /// means anything if it is the SAME one our rival is using. Captured in
+  /// `build` because inherited widgets are for build methods.
+  double _scrollSlop = kTouchSlop;
 
   bool get _enabled => widget.onChanged != null;
 
@@ -257,32 +270,45 @@ class _FieldSliderState extends State<FieldSlider> {
     }
   }
 
-  /// The drag recognizer lost the pointer. What that MEANS depends on
-  /// whether the pointer moved.
+  /// The drag recognizer lost the pointer. What that MEANS depends on WHICH
+  /// WAY the pointer went.
   ///
-  /// A cancel after real movement is a vertical scrollable taking the
-  /// gesture, and the tentative jump from pointer-down has to roll back so
-  /// bars inside scrollables stay safe to scroll over.
+  /// ★THE BAR KEEPS WHAT MOVED ALONG ITS OWN AXIS. Only travel ACROSS the
+  /// bar — the direction a scrollable above us scrolls — can mean the
+  /// gesture was taken, so only that direction rolls the value back.
+  /// Everything else is a tap, and a tap sets the value: the bar's whole
+  /// job is to answer one immediately (R10 R5 retired the double-tap editor
+  /// for exactly this).
   ///
-  /// A cancel with the pointer still where it landed is a TAP, and a tap
-  /// sets the value — the bar's whole job is to answer one immediately
-  /// (R10 R5 retired the double-tap editor for exactly this). The
-  /// recognizer simply never won an arena it was never really contesting.
+  /// 🐛 This USED to ask how FAR the pointer had travelled, in any
+  /// direction, and call anything past 6px a scroll. Which quietly made a
+  /// wobble into a cancellation: a stylus tap that slid 8px sideways —
+  /// still nowhere near the 18px a scrollable needs, so nothing had taken
+  /// anything — rolled the value straight back, and the bar read as dead.
+  /// 유저, R6 #1: "툴설정은 뭔가 제스쳐 경합된다고? 6px인가 안움직이면
+  /// 변경인가 그랬는데 이거 진짜 못없애나? 아직도 불편해 ... 상단띠
+  /// 브러시사이즈 변경처럼 대충눌러도 바뀌도록하고싶음."
   ///
-  /// 🐛 Telling these apart is what the bar was missing, and the symptom
-  /// looked like three unrelated bugs: a pen tap did nothing in the tool
-  /// settings while a MOUSE tap worked (a desktop `Scrollable` only puts a
-  /// drag recognizer in the arena for touch and stylus, so the mouse had no
-  /// rival to lose to), and the layer-opacity bar failed for both. Only the
-  /// hosts with no scrollable above them — the top strip, the timeline zoom
-  /// — happened to work. 유저: "이거 통일 안 되어있는거 싹 통일하고싶어".
+  /// A DISTANCE cannot express the rule, because the two cases it has to
+  /// separate are not near and far — they are along and across. So there is
+  /// no tap slop any more, and no number of our own: the only threshold
+  /// left is [_scrollSlop], which belongs to the rival and is asked for by
+  /// name.
+  ///
+  /// 🚨 A cancel is the NORMAL end of a tap, not an error path — a drag
+  /// recognizer that never met its threshold rejects itself when the
+  /// pointer lifts, so this runs on every tap the bar ever receives,
+  /// scrollable above or not. That is why the top strip and the tool
+  /// settings only ever differed here: a desktop `Scrollable` puts a drag
+  /// recognizer in the arena for touch and stylus alone, so a MOUSE tap had
+  /// no rival to lose to and a PEN tap did.
   void _handleCancel() {
     final t = _gestureT;
     setState(() => _gestureT = null);
     final restore = _preDownValue;
     _preDownValue = null;
-    final wasTap = _pointerTravel <= _tapSlop;
-    if (wasTap) {
+    final across = _vertical ? _pointerShift.dx : _pointerShift.dy;
+    if (across.abs() < _scrollSlop) {
       if (t != null) {
         // Pointer-down already emitted this value; only the commit is owed.
         widget.onChangeEnd?.call(_valueFor(t));
@@ -294,11 +320,6 @@ class _FieldSliderState extends State<FieldSlider> {
       widget.onChangeEnd?.call(restore);
     }
   }
-
-  /// Movement below this is a tap that wobbled, not a scroll. A stylus
-  /// never lands perfectly still, so zero would make the fix pen-specific
-  /// in exactly the way the bug already was.
-  static const double _tapSlop = 6;
 
   void _handleWheel(PointerScrollEvent event) {
     if (!_enabled || event.scrollDelta.dy == 0) {
@@ -322,8 +343,19 @@ class _FieldSliderState extends State<FieldSlider> {
 
   double get _radius => widget.height < 20 ? 3 : 4;
 
+  /// Keeps [_pointerShift] current. One callback for move, up and cancel:
+  /// they all answer the same question.
+  void _trackShift(PointerEvent event) {
+    final from = _pointerDownAt;
+    if (from != null) {
+      _pointerShift = event.position - from;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
+    _scrollSlop =
+        MediaQuery.maybeGestureSettingsOf(context)?.touchSlop ?? kTouchSlop;
     final textTheme = Theme.of(context).textTheme;
     final labelStyle = textTheme.labelSmall?.copyWith(color: AppColors.textDim);
     final valueStyle = textTheme.labelSmall?.copyWith(
@@ -449,21 +481,18 @@ class _FieldSliderState extends State<FieldSlider> {
       child: Listener(
         // Raw pointer travel, watched here rather than in the drag
         // callbacks: a rejected recognizer reports no updates at all, so
-        // this is the only place that can say whether the gesture was a tap
-        // or a scroll (see [_handleCancel]).
+        // this is the only place that can say WHICH WAY the gesture went
+        // (see [_handleCancel]).
         onPointerDown: (event) {
           _pointerDownAt = event.position;
-          _pointerTravel = 0;
+          _pointerShift = Offset.zero;
         },
-        onPointerMove: (event) {
-          final from = _pointerDownAt;
-          if (from != null) {
-            _pointerTravel = math.max(
-              _pointerTravel,
-              (event.position - from).distance,
-            );
-          }
-        },
+        onPointerMove: _trackShift,
+        // The lift too: `Listener` sees it before the arena sweeps, and a
+        // gesture whose last move arrived with the finger already leaving
+        // would otherwise be judged on a stale position.
+        onPointerUp: _trackShift,
+        onPointerCancel: _trackShift,
         onPointerSignal: (event) {
           if (event is PointerScrollEvent) {
             _handleWheel(event);
