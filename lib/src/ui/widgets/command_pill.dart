@@ -26,14 +26,20 @@ import 'panel_flyout.dart';
 class CommandPill extends StatelessWidget {
   const CommandPill({
     super.key,
-    required this.head,
+    this.head,
     this.children = const <Widget>[],
     this.enabled = true,
   });
 
-  /// The noun's name cell — see [PillNameCell]. Always first, always the
-  /// menu.
-  final Widget head;
+  /// The noun's name cell — see [PillNameCell]. First, and the menu.
+  ///
+  /// NULL for the SHARED pill (유저 2026-08-12: 「프레임알약 옆에 공용버튼
+  /// 들어가는 알약만들고 거기」). Its verbs — delete, copy, paste — belong to
+  /// no noun: they act on whatever is selected, and the selection is not a
+  /// thing with a menu. Inventing a name cell for it would have been a
+  /// border drawn around a gap, which is the mistake push/pull avoided by
+  /// waiting for the frame pill rather than growing a "rows" noun.
+  final Widget? head;
 
   /// The verbs, in order. Put a [PillDivider] between groups.
   final List<Widget> children;
@@ -74,7 +80,9 @@ class CommandPill extends StatelessWidget {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            head,
+            // A headless pill still owes its first verb the same breath the
+            // name cell would have carried.
+            if (head case final head?) head else const SizedBox(width: 2),
             ...children,
             // ② 유저 2026-08-12: 「N 옆에 공간이 잘린거마냥 공간부족해서
             // 이상해보임」.

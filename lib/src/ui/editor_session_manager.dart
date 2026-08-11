@@ -86,6 +86,7 @@ import '../models/text_cel_style.dart';
 import '../models/timeline_coverage.dart';
 import '../models/flip_column_step.dart';
 import '../models/timeline_exposure.dart';
+import '../models/delete_subject.dart';
 import '../models/timeline_frame_range.dart';
 import '../models/timeline_repeat.dart';
 import '../models/timeline_row_address.dart';
@@ -14094,6 +14095,45 @@ class EditorSessionManager extends ChangeNotifier {
       layer: layer,
       frameIndex: _timelineController.currentFrameIndex,
     );
+  }
+
+  /// 🚨★★★ THE ONE DELETE — 유저 확정 2026-08-12 (⑰): 「딜리트버튼, 슬 통일하고싶음.
+  /// 버튼 그냥 하나로. 기본적으로 누르면 액티브레이어의 현재 프레임블록 삭제하고,
+  /// 물론 선택범위로 선택하고 삭제가능. 그리고 레이어 선택하고 누르면 레이어삭제.
+  /// 물론 여러개도가능. 컷도 마찬가지로 컷 선택하고 삭제버튼누르면 컷 삭제.」
+  ///
+  /// ★The verb does not ask WHICH BUTTON was pressed — it asks **what is
+  /// selected**, in the order the user gave. Delete lived in three separate
+  /// places before this (the cut menu, the layer menu, a loose layer button),
+  /// each hard-wired to one noun, which is why the same word did different
+  /// things depending on where you reached for it.
+  ///
+  /// ⚠️The LAYER rung is not wired yet — rows have no multi-selection until ⑨
+  /// lands. It is named here rather than left implicit, so the rung slots in
+  /// where the order already says it goes instead of being re-argued.
+  DeleteSubject get deleteSubject {
+    if (trackFrameRangeSelection.value != null) {
+      return DeleteSubject.cuts;
+    }
+    // ⑨ will add DeleteSubject.layers here, ABOVE the cell rung.
+    return canDeleteCellAtCurrentFrame
+        ? DeleteSubject.cells
+        : DeleteSubject.nothing;
+  }
+
+  /// Runs whatever [deleteSubject] names. One undo step either way — the cell
+  /// path already composes its own.
+  void deleteSelectionSubject() {
+    switch (deleteSubject) {
+      case DeleteSubject.cuts:
+        deleteActiveCut();
+      case DeleteSubject.layers:
+        deleteActiveLayer();
+      case DeleteSubject.cells:
+        deleteCellAtCurrentFrame();
+      case DeleteSubject.nothing:
+        break;
+    }
   }
 
   bool get canDeleteCellAtCurrentFrame {

@@ -8,6 +8,8 @@ import 'dialogs/canvas_size_dialog.dart';
 import 'dialogs/rename_cut_dialog.dart';
 import 'editor_session_manager.dart';
 import 'text/app_strings.dart';
+import 'theme/app_theme.dart' show AppColors;
+import 'widgets/app_icon_button.dart';
 import 'widgets/command_pill.dart';
 import 'widgets/panel_flyout.dart';
 
@@ -193,14 +195,9 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
         icon: Icons.videocam_outlined,
         onSelected: () => copyCameraAeKeyframes(context, session),
       ),
-      const PanelFlyoutDivider(),
-      PanelFlyoutItem(
-        keyValue: 'delete-cut-button',
-        label: AppText.strings.cutDelete,
-        icon: Icons.delete_outline,
-        danger: true,
-        onSelected: session.deleteActiveCut,
-      ),
+      // ⛔The cut DELETE left this MENU (① 유저 2026-08-12: 「컷 알약 밖으로
+      // 꺼낼 동사, 컷삭제, 리네임컷」) — it is a button on the pill now, one
+      // door instead of two.
     ];
   }
 
@@ -226,6 +223,24 @@ class _CutCommandGroupState extends State<CutCommandGroup> {
           onPressed: session.createCut,
           entriesBuilder: _addEntries,
           accent: true,
+        ),
+        // ① 유저 2026-08-12: 「컷 알약 밖으로 꺼낼 동사, 컷삭제, 리네임컷」 —
+        // out of the MENU and onto the pill, which is where it is now.
+        //
+        // ⚠️⑰ wants this folded into the shared delete as well, and it will
+        // be — but that verb reaches a cut through a cut SELECTION, and the
+        // cut axis only exists on the storyboard. Removing this would have
+        // left the timeline unable to delete a cut at all, which is the same
+        // mistake as pulling the layer delete before ⑨ builds row selection:
+        // a predecessor may only go once the successor can do its job.
+        AppIconButton(
+          keyValue: 'delete-cut-button',
+          tooltip: AppText.strings.cutDelete,
+          icon: Icon(
+            Icons.delete_outline,
+            color: AppColors.deleteGlyph(enabled: true),
+          ),
+          onPressed: session.deleteActiveCut,
         ),
       ],
     );

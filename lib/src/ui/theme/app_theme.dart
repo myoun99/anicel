@@ -47,6 +47,15 @@ abstract final class AppColors {
   /// still burns on a dead button would be advertising a door that is shut.
   static Color? addGlyph({required bool enabled}) => enabled ? accent : null;
 
+  /// The colour of a DELETE glyph, wherever one appears — [addGlyph]'s twin.
+  ///
+  /// 유저 확정 (2026-08-12): 「+버튼은 강조색이라는 공통규칙있는데, 딜리트는
+  /// 지금처럼 빨간색 공통규칙두자」. Same shape as the plus rule and for the
+  /// same reason: 「모든 곳」 has to be one decision rather than the same
+  /// decision made again at each button. The GLYPH only — never the border,
+  /// never the label beside it — and it goes dark with the button.
+  static Color? deleteGlyph({required bool enabled}) => enabled ? danger : null;
+
   /// FILL 1 — below every chrome surface: the scaffold, a well cut into a
   /// panel, the ring that separates a floating panel from the artwork.
   static const Color backdrop = Color(0xFF141517);

@@ -19,7 +19,11 @@ import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 
 import 'flyout_test_helpers.dart';
 
-const _deleteButtonKey = ValueKey<String>('delete-layer-button');
+// ⑰ (2026-08-12): Delete Layer left the Layer FLYOUT — 유저: 「밖에
+// 딜리트레이어있으니 버튼내부에있는 딜리트레이어 삭제」. The verb did not
+// change and neither did anything below; only the door did, from a menu entry
+// to the bar button that was already beside it.
+const _deleteButtonKey = ValueKey<String>('timeline-delete-layer-button');
 const _dialogKey = ValueKey<String>('delete-layer-dialog');
 const _cancelButtonKey = ValueKey<String>('delete-layer-cancel-button');
 const _confirmButtonKey = ValueKey<String>('delete-layer-confirm-button');
@@ -37,14 +41,24 @@ const _layerBId = LayerId('layer-b');
 const _layerCId = LayerId('layer-c');
 const _frameId = FrameId('frame-a');
 
+/// Enablement of a BAR button — the delete moved out of the flyout, so it is
+/// no longer a `PopupMenuItem` and `readCommandEnabled` (which opens a menu)
+/// cannot answer for it.
+bool _barButtonEnabled(WidgetTester tester, ValueKey<String> key) =>
+    tester.widget<IconButton>(find.byKey(key)).onPressed != null;
+
 void main() {
-  testWidgets('Delete Layer lives in the Layer flyout', (tester) async {
+  testWidgets('Delete Layer is ON the bar and NOT in the Layer flyout — one '
+      'door, not two', (tester) async {
     await tester.pumpWidget(const AnicelApp());
 
-    expect(find.byKey(_deleteButtonKey), findsNothing);
-    await openOwningFlyout(tester, _deleteButtonKey.value);
     expect(find.byKey(_deleteButtonKey), findsOneWidget);
-    await dismissFlyout(tester);
+    // The menu entry beside it is gone: it was a second way to the same verb,
+    // which is the shape ⑰ removes everywhere.
+    expect(
+      find.byKey(const ValueKey<String>('delete-layer-button')),
+      findsNothing,
+    );
   });
 
   testWidgets('R28 #14: Delete Layer is ENABLED with one layer — the cut '
@@ -55,7 +69,7 @@ void main() {
     );
 
     expect(
-      await readCommandEnabled(tester, _deleteButtonKey),
+      _barButtonEnabled(tester, _deleteButtonKey),
       isTrue,
       reason: 'R28 #14: the drawing floor that greyed this command is gone',
     );
@@ -66,7 +80,7 @@ void main() {
   ) async {
     await _pumpHome(tester);
 
-    expect(await readCommandEnabled(tester, _deleteButtonKey), isTrue);
+    expect(_barButtonEnabled(tester, _deleteButtonKey), isTrue);
   });
 
   testWidgets('confirmation dialog opens and cancel changes nothing', (
