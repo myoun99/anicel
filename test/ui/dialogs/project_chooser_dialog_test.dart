@@ -6,6 +6,7 @@ import 'package:anicel/src/services/persistence/recent_projects.dart';
 import 'package:anicel/src/services/persistence/recent_projects_store.dart';
 import 'package:anicel/src/ui/dialogs/project_chooser_dialog.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
+import 'package:anicel/src/ui/widgets/panel_flyout.dart';
 
 /// PICK-3: the window that answers "which project", once the OS has answered
 /// "which folder".
@@ -272,11 +273,40 @@ void main() {
     });
 
     testWidgets('the sort button states the current order', (tester) async {
-      // The BUTTON carries it, not a mark in the menu — a selection is shown
-      // with colour in this app and never with a checkmark, and the shared
-      // flyout item has no colour affordance.
       await pump(tester, [entry('a.anicel')]);
       expect(find.text('${AppText.strings.sortByName} ↑'), findsOneWidget);
+    });
+
+    testWidgets('the menu marks the order in force as selected', (
+      tester,
+    ) async {
+      // `selected`, never `checked`. This app renders a selection as COLOUR
+      // and a check glyph means a toggle — and a mark that appears on
+      // selection would change the row's width and make the list twitch.
+      await pump(tester, [entry('a.anicel')]);
+      await tester.tap(
+        find.byKey(const ValueKey<String>('project-chooser-sort')),
+      );
+      await tester.pumpAndSettle();
+
+      final items = tester
+          .widgetList<PopupMenuItem<PanelFlyoutItem>>(
+            find.byType(PopupMenuItem<PanelFlyoutItem>),
+          )
+          .map((item) => item.value)
+          .whereType<PanelFlyoutItem>();
+      final selected = items.where((item) => item.selected).map(
+        (item) => item.keyValue,
+      );
+      expect(selected, [
+        'project-chooser-sort-name',
+        'project-chooser-sort-asc',
+      ]);
+      expect(
+        items.where((item) => item.checked == true),
+        isEmpty,
+        reason: 'a selection may not wear a check glyph',
+      );
     });
 
     testWidgets('choosing another order reorders and is remembered', (
