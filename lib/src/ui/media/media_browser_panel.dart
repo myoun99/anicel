@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import '../../models/media_asset.dart';
 import '../dialogs/app_prompt_dialog.dart';
 import '../text/app_strings.dart';
-import '../theme/app_theme.dart' show instantMenuAnimation;
+import '../theme/app_theme.dart' show AppColors, instantMenuAnimation;
 import 'media_asset_drag_data.dart';
 
 /// The dockable media browser (the Resolve Media Pool counterpart): every
@@ -167,7 +167,12 @@ class MediaBrowserPanel extends StatelessWidget {
               IconButton(
                 key: const ValueKey<String>('media-import-button'),
                 tooltip: AppText.strings.mediaImportAudio,
-                icon: const Icon(Icons.add, size: 18),
+                // 「＋가 있는 모든 곳, 공통적으로」.
+                icon: Icon(
+                  Icons.add,
+                  size: 18,
+                  color: AppColors.addGlyph(enabled: true),
+                ),
                 onPressed: _import,
               ),
               const Spacer(),

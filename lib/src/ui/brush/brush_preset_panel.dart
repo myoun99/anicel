@@ -10,7 +10,7 @@ import '../../models/brush_preset_id.dart';
 import '../dialogs/app_confirm_dialog.dart';
 import '../dialogs/app_prompt_dialog.dart';
 import '../panels/editor_panel_frame.dart';
-import '../theme/app_theme.dart' show instantMenuAnimation;
+import '../theme/app_theme.dart' show AppColors, instantMenuAnimation;
 import '../widgets/app_window.dart';
 import '../widgets/instant_tap_region.dart';
 import 'brush_preset_reorder.dart';
@@ -884,7 +884,14 @@ class _BrushPresetPanelState extends State<BrushPresetPanel> {
           if (widget.onPresetSaveRequested != null)
             IconButton(
               key: const ValueKey<String>('brush-preset-save-button'),
-              icon: const Icon(Icons.add, size: 16),
+              // 「＋가 있는 모든 곳, 공통적으로」 — the glyph, not the button.
+              icon: Icon(
+                Icons.add,
+                size: 16,
+                color: AppColors.addGlyph(
+                  enabled: widget.onPresetSaveRequested != null,
+                ),
+              ),
               visualDensity: VisualDensity.compact,
               tooltip: AppText.strings.brSaveAsPreset,
               onPressed: widget.onPresetSaveRequested,

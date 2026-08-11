@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../services/color_palette_file_service.dart';
+import '../theme/app_theme.dart' show AppColors;
 
 /// The palette rows under the color wheel (P4): recent colors (newest
 /// first, read-only) and the pinned palette (tap = pick; the + chip pins
@@ -30,6 +31,7 @@ class ColorPaletteStrip extends StatelessWidget {
     required String keyValue,
     required IconData icon,
     required VoidCallback? onTap,
+    bool accent = false,
   }) {
     final enabled = onTap != null;
     return InkWell(
@@ -49,7 +51,14 @@ class ColorPaletteStrip extends StatelessWidget {
         child: Icon(
           icon,
           size: 14,
-          color: enabled ? null : theme.disabledColor,
+          // 「＋가 있는 모든 곳, 공통적으로」 — the add chip wears the accent
+          // and its − mirror does not, which is the whole difference the two
+          // glyphs are trying to say at 14px. The caller says which, rather
+          // than this reading the glyph back: an argument is a decision, and
+          // `icon == Icons.add` is a guess about one.
+          color: enabled
+              ? (accent ? AppColors.addGlyph(enabled: true) : null)
+              : theme.disabledColor,
         ),
       ),
     );
@@ -108,6 +117,7 @@ class ColorPaletteStrip extends StatelessWidget {
               theme: theme,
               keyValue: 'palette-add-button',
               icon: Icons.add,
+              accent: true,
               onTap: palette.pinned.contains(currentColor)
                   ? null
                   : () => onPaletteChanged(

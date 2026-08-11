@@ -3958,7 +3958,9 @@ class _StoryboardTransitionLabel extends StatelessWidget {
       padding: EdgeInsets.zero,
       constraints: const BoxConstraints.tightFor(width: 26, height: 26),
       tooltip: 'Add transition at playhead',
-      icon: const Icon(Icons.add),
+      // 「＋가 있는 모든 곳, 공통적으로」 — and this one goes dark often,
+      // since it can only fire where a transition may actually start.
+      icon: Icon(Icons.add, color: AppColors.addGlyph(enabled: enabled)),
     );
 
     final resolve = resolveCanCreate;
