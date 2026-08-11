@@ -308,14 +308,14 @@ void main() {
       await tester.tap(find.byKey(_laneToggleKey));
       await tester.pumpAndSettle();
 
-      // The twirl-down opens onto the Transform GROUP HEADER; its member
-      // lanes stay collapsed until the header toggle (R4 AE collapse).
-      expect(_laneLabel('transform-group'), findsOneWidget);
-      expect(_laneLabel('position'), findsNothing);
+      // ㉙ (유저 2026-08-12): the camera row has NO Transform group header —
+      // it IS that group, and its own band already draws the members' key
+      // union, so a header on top said the same noun twice. ONE twirl is the
+      // whole way in here; every other kind still opens onto its header,
+      // which `lane_row_standing_test` pins on the drawing row.
+      expect(_laneLabel('transform-group'), findsNothing);
 
-      await _expandTransformGroup(tester, 'lane-cam-layer');
-
-      // The whole AE Transform group twirls down.
+      // The whole AE Transform group, with no second twirl.
       expect(_laneLabel('position'), findsOneWidget);
       expect(_laneLabel('scale'), findsOneWidget);
       expect(_laneLabel('rotation'), findsOneWidget);
@@ -335,18 +335,15 @@ void main() {
         return (container.decoration! as BoxDecoration).color!;
       }
 
-      expect(_laneKey('transform-group', 0), findsOneWidget);
-      expect(markerFill(_laneKey('transform-group', 0)), timelineDrawingStartColor);
       expect(markerFill(_laneKey('position', 0)), timelineDrawingStartColor);
 
-      // The header collapses the group again; the layer twirl hides all.
-      await _expandTransformGroup(tester, 'lane-cam-layer');
-      expect(_laneLabel('position'), findsNothing);
-      expect(_laneLabel('transform-group'), findsOneWidget);
-
+      // ㉙: no header to collapse here, so the ROW's twirl is the only fold —
+      // and it takes every lane with it.
       await tester.tap(find.byKey(_laneToggleKey));
       await tester.pumpAndSettle();
-      expect(_laneLabel('transform-group'), findsNothing);
+      expect(_laneLabel('position'), findsNothing);
+      expect(_laneLabel('scale'), findsNothing);
+      expect(_laneLabel('rotation'), findsNothing);
     });
 
     testWidgets('independently keyed properties diamond only their own '

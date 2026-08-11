@@ -1463,7 +1463,7 @@ Line 8''';
       ),
       findsOneWidget,
     );
-    expect(_layerKindIcon(tester, 'default-layer-1'), Icons.brush_outlined);
+    expect(_layerKindIcon(tester, 'default-layer-1'), Icons.filter_frames);
     expect(find.bySemanticsLabel('Animation layer'), findsOneWidget);
     expect(find.text('A'), findsWidgets);
   });
@@ -1481,7 +1481,7 @@ Line 8''';
       ),
       findsOneWidget,
     );
-    expect(_layerKindIcon(tester, 'default-layer-2'), Icons.brush_outlined);
+    expect(_layerKindIcon(tester, 'default-layer-2'), Icons.filter_frames);
     _expectActiveLayerName('B');
     expect(find.bySemanticsLabel('Animation layer'), findsNWidgets(2));
   });
@@ -1491,7 +1491,7 @@ Line 8''';
   ) async {
     await tester.pumpWidget(const AnicelApp());
 
-    expect(_layerKindIcon(tester, 'default-layer-1'), Icons.brush_outlined);
+    expect(_layerKindIcon(tester, 'default-layer-1'), Icons.filter_frames);
 
     await _tapToolbarButton(
       tester,
@@ -1509,7 +1509,7 @@ Line 8''';
       const ValueKey<String>('toggle-storyboard-layer-button'),
     );
 
-    expect(_layerKindIcon(tester, 'default-layer-1'), Icons.brush_outlined);
+    expect(_layerKindIcon(tester, 'default-layer-1'), Icons.filter_frames);
     expect(find.bySemanticsLabel('Animation layer'), findsOneWidget);
   });
 
@@ -1524,7 +1524,7 @@ Line 8''';
       const ValueKey<String>('toggle-storyboard-layer-button'),
     );
 
-    expect(_layerKindIcon(tester, 'default-layer-1'), Icons.brush_outlined);
+    expect(_layerKindIcon(tester, 'default-layer-1'), Icons.filter_frames);
     expect(
       _layerKindIcon(tester, 'default-layer-2'),
       Icons.auto_stories_outlined,

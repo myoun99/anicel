@@ -530,7 +530,11 @@ class FxToggleButton extends StatelessWidget {
 /// flyout, R4 #8).
 IconData layerKindIcon(LayerKind kind) {
   return switch (kind) {
-    LayerKind.animation => Icons.brush_outlined,
+    // The framed-picture glyph: a CEL. 유저 2026-08-12 — the brush was the
+    // odd one out, and not because of how it looked: every other kind here
+    // names WHAT THE ROW IS (a book, a photo, a note, a camera) while this
+    // one named the TOOL you draw it with. A row is a noun.
+    LayerKind.animation => Icons.filter_frames,
     LayerKind.storyboard => Icons.auto_stories_outlined,
     LayerKind.image => Icons.image_outlined,
     LayerKind.text => Icons.title_outlined,

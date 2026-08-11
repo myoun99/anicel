@@ -105,7 +105,7 @@ Future<void> _pump(WidgetTester tester) async {
 Future<void> _openLanes(
   WidgetTester tester, {
   String keyPrefix = 'timeline',
-  String layerId = _cameraId,
+  String layerId = _drawId,
 }) async {
   await tester.tap(
     find.byKey(ValueKey<String>('$keyPrefix-lane-toggle-$layerId')),
@@ -123,7 +123,7 @@ Future<void> _openLanes(
 Finder _laneLabel(
   String laneId, {
   String keyPrefix = 'timeline',
-  String layerId = _cameraId,
+  String layerId = _drawId,
 }) => find.byKey(ValueKey<String>('$keyPrefix-lane-label-$layerId-$laneId'));
 
 /// The label's PLATE — what says "you are standing here".
@@ -140,7 +140,7 @@ Future<void> _pressLaneName(
   String laneId,
   String name, {
   String keyPrefix = 'timeline',
-  String layerId = _cameraId,
+  String layerId = _drawId,
 }) async {
   final label = _laneLabel(laneId, keyPrefix: keyPrefix, layerId: layerId);
   await tester.ensureVisible(label);
@@ -174,7 +174,7 @@ void main() {
 
       expect(
         session.currentRow,
-        const LaneRowAddress(_cameraLayerId, 'position'),
+        const LaneRowAddress(_drawLayerId, 'position'),
       );
       // Standing is not seeking: a label names a ROW.
       expect(session.currentFrameIndex, 5);
@@ -332,7 +332,7 @@ void main() {
       expect(
         session.currentRow,
         isA<LaneRowAddress>()
-            .having((row) => row.layerId, 'layerId', _cameraLayerId)
+            .having((row) => row.layerId, 'layerId', _drawLayerId)
             .having((row) => row.laneId, 'laneId', 'position'),
       );
 
@@ -341,7 +341,7 @@ void main() {
       await tester.tap(
         find.byKey(
           const ValueKey<String>(
-            'timeline-lane-group-toggle-$_cameraId-transform-group',
+            'timeline-lane-group-toggle-$_drawId-transform-group',
           ),
         ),
       );
@@ -349,7 +349,7 @@ void main() {
       expect(
         session.currentRow,
         isA<LaneRowAddress>()
-            .having((row) => row.layerId, 'layerId', _cameraLayerId)
+            .having((row) => row.layerId, 'layerId', _drawLayerId)
             .having((row) => row.laneId, 'laneId', 'transform-group'),
         reason: 'standing on a row that is no longer drawn is what made the '
             'canvas refuse strokes for a lane nobody could see',
@@ -357,7 +357,7 @@ void main() {
 
       // The whole TWIRL-DOWN closes: every lane goes, so the layer takes it.
       await tester.tap(
-        find.byKey(const ValueKey<String>('timeline-lane-toggle-$_cameraId')),
+        find.byKey(const ValueKey<String>('timeline-lane-toggle-$_drawId')),
       );
       await tester.pumpAndSettle();
       expect(
@@ -365,7 +365,7 @@ void main() {
         isA<LayerRowAddress>().having(
           (row) => row.layerId,
           'layerId',
-          _cameraLayerId,
+          _drawLayerId,
         ),
       );
     });
@@ -383,7 +383,7 @@ void main() {
       await tester.tap(
         find.byKey(
           const ValueKey<String>(
-            'timeline-lane-group-toggle-$_cameraId-transform-group',
+            'timeline-lane-group-toggle-$_drawId-transform-group',
           ),
         ),
       );
@@ -411,7 +411,7 @@ void main() {
 
       final session = _sessionOf(tester);
       session.updateLaneRangeSelectionDrag(
-        layerId: _cameraLayerId,
+        layerId: _drawLayerId,
         laneId: 'position',
         anchorIndex: 1,
         headIndex: 4,
@@ -449,7 +449,7 @@ void main() {
 
       expect(
         session.currentRow,
-        const LaneRowAddress(_cameraLayerId, 'transform-group'),
+        const LaneRowAddress(_drawLayerId, 'transform-group'),
       );
       expect(_laneLabel('position'), findsOneWidget);
 
@@ -457,7 +457,7 @@ void main() {
       await tester.tap(
         find.byKey(
           const ValueKey<String>(
-            'timeline-lane-group-toggle-$_cameraId-transform-group',
+            'timeline-lane-group-toggle-$_drawId-transform-group',
           ),
         ),
       );
@@ -482,7 +482,7 @@ void main() {
 
       expect(
         session.currentRow,
-        const LaneRowAddress(_cameraLayerId, 'position'),
+        const LaneRowAddress(_drawLayerId, 'position'),
       );
       expect(
         _plateOf(tester, _laneLabel('position', keyPrefix: 'xsheet')),
@@ -603,6 +603,56 @@ void main() {
       session.selectLayer(layerId);
       expect(session.currentRowListenable.value, LayerRowAddress(layerId));
       expect(notifications, greaterThan(settled));
+    });
+  });
+
+  group('the camera row IS the transform group (㉙)', () {
+    testWidgets('it has NO Transform header — one twirl is the whole way in', (
+      tester,
+    ) async {
+      // 유저 2026-08-12: 「카메라는 트랜스폼 헤더나 카메라나 똑같은 유니언의
+      // 그룹이란 느낌인데, 중복이니까 카메라레이어는 트랜스폼헤더 삭제하자.」
+      //
+      // ⚠️This is also why every test above moved its subject to the drawing
+      // row: they pin the group-HEADER contracts (the fold law, the header
+      // lighting), and the camera stopped being a row that has one.
+      await _pump(tester);
+      await tester.tap(
+        find.byKey(const ValueKey<String>('timeline-lane-toggle-$_cameraId')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(
+          const ValueKey<String>(
+            'timeline-lane-group-toggle-$_cameraId-transform-group',
+          ),
+        ),
+        findsNothing,
+        reason: 'the row already draws its members\' key union — a header on '
+            'top of that is the same noun said twice',
+      );
+      // …and the members are right there, with no second twirl.
+      expect(_laneLabel('position', layerId: _cameraId), findsOneWidget);
+      expect(_laneLabel('scale', layerId: _cameraId), findsOneWidget);
+    });
+
+    testWidgets('the DRAWING row keeps its header — the camera is the '
+        'exception, not a new default', (tester) async {
+      await _pump(tester);
+      await tester.tap(
+        find.byKey(const ValueKey<String>('timeline-lane-toggle-$_drawId')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(
+          const ValueKey<String>(
+            'timeline-lane-group-toggle-$_drawId-transform-group',
+          ),
+        ),
+        findsOneWidget,
+      );
     });
   });
 }
