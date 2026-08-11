@@ -82,21 +82,20 @@ final class FolderGrantHandler {
   /// pull the floor out from under an open project's autosave.
   private var scopedFolders: [String: URL] = [:]
 
-  func handle(_ call: FlutterMethodCall, _ result: @escaping FlutterResult) {
+  func handle(
+    _ call: FlutterMethodCall, host: NSWindow?, _ result: @escaping FlutterResult
+  ) {
     switch call.method {
     case "pickProjectFolder":
       pick(
         initialDirectory: (call.arguments as? [String: Any])?["initialDirectory"]
-          as? String, result: result)
+          as? String, host: host, result: result)
     case "resolveFolderBookmark":
       resolve(
         base64: (call.arguments as? [String: Any])?["bookmark"] as? String,
         result: result)
-    case "ensureFolderAccess":
-      let path = (call.arguments as? [String: Any])?["path"] as? String
-      result(path.map { scopedFolders[$0] != nil } ?? false)
     default:
-      // Only the three folder-grant methods live here. The channel's other
+      // Only the two folder-grant methods live here. The channel's other
       // methods are mobile-only on the Dart side — `ensureInitialized` early
       // -returns for every non-mobile platform and the two all-files methods
       // short-circuit for non-Android — so answering them here would be
@@ -105,7 +104,9 @@ final class FolderGrantHandler {
     }
   }
 
-  private func pick(initialDirectory: String?, result: @escaping FlutterResult) {
+  func pick(
+    initialDirectory: String?, host: NSWindow?, result: @escaping FlutterResult
+  ) {
     let panel = NSOpenPanel()
     panel.canChooseDirectories = true
     panel.canChooseFiles = false
@@ -114,13 +115,26 @@ final class FolderGrantHandler {
     if let initialDirectory, !initialDirectory.isEmpty {
       panel.directoryURL = URL(fileURLWithPath: initialDirectory)
     }
-    panel.begin { [weak self] response in
-      guard let self else { return }
+    let complete: (NSApplication.ModalResponse) -> Void = { [weak self] response in
+      // The cancel reply comes FIRST and does not need self — a dropped
+      // reply is an unkillable hang on the Dart side, not a visible error.
       guard response == .OK, let url = panel.url else {
         result(["status": "cancelled"])
         return
       }
+      guard let self else {
+        result(["status": "unavailable"])
+        return
+      }
       result(self.grantPayload(for: url))
+    }
+    // A SHEET, not `begin`'s modeless panel. Modeless, it leaves the canvas
+    // fully clickable underneath and can be sent behind a full-screen drawing
+    // window — the user sees "nothing happened" and opens a second one.
+    if let host {
+      panel.beginSheetModal(for: host, completionHandler: complete)
+    } else {
+      panel.begin(completionHandler: complete)
     }
   }
 
@@ -134,7 +148,11 @@ final class FolderGrantHandler {
       let url = try URL(
         resolvingBookmarkData: data, options: .withSecurityScope,
         relativeTo: nil, bookmarkDataIsStale: &isStale)
-      result(grantPayload(for: url))
+      // The payload carries a FRESH bookmark; `_openRecent` stores it, which
+      // is what stops an app-scoped bookmark decaying until it one day
+      // refuses and drops the user into the reconnect flow for no visible
+      // reason. That is also why `isStale` needs no separate channel field.
+      result(grantPayload(for: url, requiringScope: true))
     } catch {
       result(["status": "unavailable"])
     }
@@ -143,10 +161,21 @@ final class FolderGrantHandler {
   /// Takes the scope and mints a bookmark. The path it reports is an
   /// ordinary POSIX path — once the scope is open the sandbox extension
   /// applies process-wide, so the Dart save stack keeps using `dart:io`.
-  private func grantPayload(for url: URL) -> [String: Any?] {
-    if url.startAccessingSecurityScopedResource() {
-      scopedFolders[url.path] = url
+  private func grantPayload(for url: URL, requiringScope: Bool = false)
+    -> [String: Any?]
+  {
+    let opened = url.startAccessingSecurityScopedResource()
+    // See the iOS twin: a bookmark that resolves but will not open its scope
+    // is not a grant.
+    if requiringScope && !opened {
+      return ["status": "unavailable"]
     }
+    // Recorded unconditionally. A URL handed back by NSOpenPanel is NOT a
+    // security-scoped URL — Powerbox extends the sandbox to the process
+    // directly and `startAccessingSecurityScopedResource` returns false for
+    // it — so keying the insert on that flag left `scopedFolders` empty after
+    // every fresh pick.
+    scopedFolders[url.path] = url
     var bookmark: String?
     do {
       // `.withSecurityScope` is the macOS spelling — the iOS runner uses
@@ -188,8 +217,14 @@ class MainFlutterWindow: NSWindow {
     let storageChannel = FlutterMethodChannel(
       name: "qa_storage",
       binaryMessenger: flutterViewController.engine.binaryMessenger)
+    // The HANDLER is captured, not the window. `[weak self]` here meant a
+    // closed window (NSWindow.isReleasedWhenClosed defaults to true) would
+    // return without ever invoking `result`, and a method call that is never
+    // replied to leaves the Dart future pending for good — a hang, not an
+    // error. FolderGrantHandler holds no reference back, so there is no cycle.
+    let handler = folderGrantHandler
     storageChannel.setMethodCallHandler { [weak self] call, result in
-      self?.folderGrantHandler.handle(call, result)
+      handler.handle(call, host: self, result)
     }
 
     RegisterGeneratedPlugins(registry: flutterViewController)

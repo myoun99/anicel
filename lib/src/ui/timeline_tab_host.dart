@@ -70,7 +70,6 @@ class TimelineTabHost extends StatefulWidget {
     this.onSetRowFilter,
     this.collapsedAttachBaseIds = const {},
     this.onToggleAttachGroup,
-    this.audioFilePicker,
     this.cameraViewEnabled,
     this.cameraDimOpacity,
     this.onRevealOnionSkinPanel,
@@ -124,9 +123,6 @@ class TimelineTabHost extends StatefulWidget {
   /// the twirl UI.
   final Set<LayerId> collapsedAttachBaseIds;
   final ValueChanged<LayerId>? onToggleAttachGroup;
-
-  /// Injectable for tests; defaults to the platform open-file dialog.
-  final Future<String?> Function()? audioFilePicker;
 
   /// Unified layer controls: the CAMERA row's visibility button and opacity
   /// slider drive the camera-view overlay state (workspace-owned notifiers,

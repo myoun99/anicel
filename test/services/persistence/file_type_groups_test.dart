@@ -77,45 +77,118 @@ void main() {
   });
 
   group('the Apple plists agree with the Dart constants', () {
+    /// The `<dict>` that DECLARES [identifier], rather than any place the
+    /// string happens to appear.
+    ///
+    /// A plain `contains` was not enough: `com.myoun.anicel.project` appears
+    /// twice (the exported declaration and the document-type entry that
+    /// references it), so deleting the declaration's conformance or its
+    /// extension tag left the assertion green while `.anicel` — and `.flac`
+    /// with it — went back to being unselectable in the picker.
+    ///
+    /// Sliced between `UTTypeIdentifier` keys rather than on `<dict>`: a
+    /// declaration CONTAINS a nested dict (`UTTypeTagSpecification`), so
+    /// splitting on the tag cuts the block in half and loses the extension.
+    String? declarationFor(String contents, String identifier) {
+      const marker = '<key>UTTypeIdentifier</key>';
+      var from = 0;
+      while (true) {
+        final at = contents.indexOf(marker, from);
+        if (at < 0) {
+          return null;
+        }
+        final next = contents.indexOf(marker, at + marker.length);
+        final block = contents.substring(
+          at,
+          next < 0 ? contents.length : next,
+        );
+        final after = block.substring(marker.length).trimLeft();
+        if (after.startsWith('<string>$identifier</string>')) {
+          return block;
+        }
+        from = at + marker.length;
+      }
+    }
+
     for (final platform in ['ios', 'macos']) {
-      test('$platform exports the project UTI the pickers ask for', () {
+      test('$platform exports the project type, conformance and all', () {
         final contents = plist('$platform/Runner/Info.plist');
+        final block = declarationFor(contents, anicelProjectUti);
         expect(
-          contents,
-          contains('<string>$anicelProjectUti</string>'),
+          block,
+          isNotNull,
           reason:
               'FileTypeGroups.anicelProject filters on $anicelProjectUti. '
-              'If $platform/Runner/Info.plist does not export it, the picker '
-              'greys out every .anicel file with no error.',
+              'Without a declaration the picker greys out every .anicel file '
+              'with no error at all.',
         );
         expect(
-          contents,
-          contains('<string>$anicelProjectExtension</string>'),
-          reason: 'The exported type must claim the .$anicelProjectExtension '
-              'extension or nothing maps onto it.',
+          block,
+          contains('<string>public.data</string>'),
+          reason:
+              'A document type must conform to public.data (or to '
+              'com.apple.package, which the package round rejected) or the '
+              'system does not recognise it as a document type.',
         );
+        expect(
+          block,
+          contains('<string>$anicelProjectExtension</string>'),
+          reason: 'The type must claim the .$anicelProjectExtension extension.',
+        );
+        // Exported, not imported: this type is ours.
+        final exportedAt = contents.indexOf('UTExportedTypeDeclarations');
+        final importedAt = contents.indexOf('UTImportedTypeDeclarations');
+        final declaredAt = contents.indexOf(
+          '<string>$anicelProjectUti</string>',
+        );
+        expect(exportedAt, greaterThanOrEqualTo(0));
+        expect(declaredAt, greaterThan(exportedAt));
+        if (importedAt >= 0) {
+          expect(
+            declaredAt,
+            lessThan(importedAt),
+            reason: 'the project type must sit under the EXPORTED block',
+          );
+        }
+        // And something has to open it.
+        expect(contents, contains('CFBundleDocumentTypes'));
       });
 
       test('$platform imports every format Apple ships no type for', () {
         final contents = plist('$platform/Runner/Info.plist');
-        // These four are the whole reason UTImportedTypeDeclarations exists
-        // here: without a declaration they are UNSELECTABLE in the picker,
-        // not merely unfiltered, and the umbrella filters below cannot see
-        // them because nothing tells the system they are audio or movies.
-        for (final identifier in [
-          'org.xiph.flac',
-          'org.xiph.ogg',
-          'org.matroska.mkv',
-          'org.webmproject.webm',
-        ]) {
+        // Without a declaration these are UNSELECTABLE in the picker, not
+        // merely unfiltered — and the umbrella filters the call sites pass
+        // cannot reach them unless the declaration says which umbrella they
+        // belong to. Both halves are asserted.
+        const imported = {
+          'org.xiph.flac': ('public.audio', 'flac'),
+          'org.xiph.ogg': ('public.audio', 'ogg'),
+          'org.matroska.mkv': ('public.movie', 'mkv'),
+          'org.webmproject.webm': ('public.movie', 'webm'),
+        };
+        for (final entry in imported.entries) {
+          final block = declarationFor(contents, entry.key);
           expect(
-            contents,
-            contains('<string>$identifier</string>'),
-            reason: '$platform/Runner/Info.plist must import $identifier.',
+            block,
+            isNotNull,
+            reason: '$platform/Runner/Info.plist must import ${entry.key}.',
           );
-        }
-        for (final extension in ['flac', 'ogg', 'mkv', 'webm']) {
-          expect(FileTypeGroups.poolMedia.extensions, contains(extension));
+          expect(
+            block,
+            contains('<string>${entry.value.$1}</string>'),
+            reason:
+                '${entry.key} must conform to ${entry.value.$1}, or the '
+                'umbrella filter the pickers pass will never match it.',
+          );
+          expect(
+            block,
+            contains('<string>${entry.value.$2}</string>'),
+            reason: '${entry.key} must claim the .${entry.value.$2} extension.',
+          );
+          expect(
+            FileTypeGroups.poolMedia.extensions,
+            contains(entry.value.$2),
+          );
         }
       });
     }

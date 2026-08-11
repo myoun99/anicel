@@ -103,9 +103,13 @@ Future<void> _showStorageGrantNotice(BuildContext context) {
     context: context,
     builder: (context) => AppConfirmDialog(
       windowKey: const ValueKey<String>('storage-grant-dialog'),
-      title: strings.fileStorageOffNotice,
+      // `fileStorageOffNotice` is a two-clause sentence, authored as a BODY
+      // — it was the browser's banner text. Using it as a heading and then
+      // filling the body with the cloud-sync notice made the one dialog
+      // whose job is "grant storage access" answer a different question.
+      title: strings.folderStorageOffTitle,
       titleIcon: Icons.folder_off_outlined,
-      message: strings.fileCloudNoticeOpen,
+      message: strings.fileStorageOffNotice,
       actions: [
         AppWindowAction(
           label: strings.commonCancel,

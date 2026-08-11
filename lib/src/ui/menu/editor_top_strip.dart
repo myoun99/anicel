@@ -150,6 +150,18 @@ class EditorTopStrip extends StatelessWidget {
     if (pick == null || !context.mounted) {
       return;
     }
+    await _openWithRecovery(context, pick);
+  }
+
+  /// Opens [pick], offering autosave recovery first and recording the result.
+  ///
+  /// Shared with the Recent-projects rows on purpose. When this lived only in
+  /// `_openProject`, opening from Recent — which PICK-4 exists to make the
+  /// ONE-TAP common case — skipped the recovery prompt entirely: after a
+  /// crash the stale file loaded, the first save overwrote it, and the newer
+  /// sidecar was never offered. The prompt would have vanished from exactly
+  /// the path this round promoted.
+  Future<void> _openWithRecovery(BuildContext context, ProjectPick pick) async {
     final path = pick.path;
     // A newer autosave sidecar offers recovery (crash / sync loss).
     // SAVE-1: the sidecar may live beside the file OR in the user's
@@ -271,11 +283,16 @@ class EditorTopStrip extends StatelessWidget {
   /// moved themselves.
   Future<void> _openRecent(BuildContext context, RecentProject entry) async {
     var path = entry.path;
-    final bookmark = entry.folderBookmark;
+    // The FRESHEST token wins, and it is tracked rather than assumed. Both
+    // Apple runners re-mint on every resolve, so an entry that keeps opening
+    // keeps its bookmark young instead of decaying until it one day refuses
+    // and drops the user into the reconnect flow for no visible reason.
+    var bookmark = entry.folderBookmark;
     if (bookmark != null) {
       final grant = await FolderPicker.resolveBookmark(bookmark);
       if (grant.isGranted) {
         path = '${grant.path}/${entry.name}';
+        bookmark = grant.bookmark ?? bookmark;
       } else {
         storeRecentProjects(
           AppRecent.projects.value.withReconnectNeeded(entry.path),
@@ -283,36 +300,63 @@ class EditorTopStrip extends StatelessWidget {
         if (!context.mounted) {
           return;
         }
-        final regrant = await pickFolderGrantForUser(context);
-        final folder = regrant?.path;
-        if (folder == null) {
+        final relinked = await _relink(context, entry);
+        if (relinked == null) {
           return;
         }
-        path = '$folder/${entry.name}';
-        storeRecentProjects(
-          AppRecent.projects.value.withReconnected(entry.path, regrant!.bookmark),
-        );
+        path = relinked.path;
+        bookmark = relinked.folderBookmark;
       }
     }
     if (!File(path).existsSync()) {
+      // No bookmark, or a bookmark that resolved to a folder the project has
+      // since left. Offer the picker here too: without this the row wears a
+      // "Reconnect" label that nothing honours, and on Android — where there
+      // are no bookmarks at all — every row after a revoked storage grant
+      // became permanently dead with a "not found" that blamed the wrong
+      // thing.
       storeRecentProjects(
         AppRecent.projects.value.withReconnectNeeded(entry.path),
       );
-      if (context.mounted) {
-        _showFileError(context, 'Not found: $path');
+      if (!context.mounted) {
+        return;
       }
+      final relinked = await _relink(context, entry);
+      if (relinked == null) {
+        return;
+      }
+      path = relinked.path;
+      bookmark = relinked.folderBookmark;
+      if (!File(path).existsSync()) {
+        if (context.mounted) {
+          _showFileError(context, 'Not found: $path');
+        }
+        return;
+      }
+    }
+    // The old row goes when the project moved, or the list keeps a dead
+    // path beside the live one and both re-flag on the next launch.
+    if (path != entry.path) {
+      storeRecentProjects(AppRecent.projects.value.without(entry.path));
+    }
+    if (!context.mounted) {
       return;
     }
-    try {
-      await session.openProjectFromFile(path);
-      recordRecentProject(
-        RecentProject(path: path, folderBookmark: entry.folderBookmark),
-      );
-    } catch (error) {
-      if (context.mounted) {
-        _showFileError(context, error);
-      }
+    await _openWithRecovery(context, (path: path, folderBookmark: bookmark));
+  }
+
+  /// Asks for the folder a remembered project has moved to, and looks for it
+  /// there by FILE NAME. Null when the user backs out.
+  Future<ProjectPick?> _relink(
+    BuildContext context,
+    RecentProject entry,
+  ) async {
+    final regrant = await pickFolderGrantForUser(context);
+    final folder = regrant?.path;
+    if (folder == null) {
+      return null;
     }
+    return (path: '$folder/${entry.name}', folderBookmark: regrant!.bookmark);
   }
 
   /// The PROJECT popover: the file itself, and the two doors it has to the
@@ -1005,7 +1049,21 @@ bool? debugUseFolderPickerOverride;
 
 bool get useFolderPickerForProjects =>
     debugUseFolderPickerOverride ??
-    (Platform.isAndroid || Platform.isIOS || Platform.isMacOS);
+    folderPickerAppliesTo(Platform.operatingSystem);
+
+/// The routing decision as a pure function of the OS name.
+///
+/// Every test sets [debugUseFolderPickerOverride], so the `??` right-hand
+/// side is never evaluated by the suite — replacing the platform tuple
+/// outright left all tests green while sending iPad and macOS back to the OS
+/// FILE dialog, which picks the project file and leaves its sibling
+/// `.assets/` folder outside the grant. That is the exact bug this round
+/// exists to remove, so the tuple is pinned directly.
+@visibleForTesting
+bool folderPickerAppliesTo(String operatingSystem) =>
+    operatingSystem == 'android' ||
+    operatingSystem == 'ios' ||
+    operatingSystem == 'macos';
 
 /// A chosen project, plus the token that reopens its folder next launch.
 ///
@@ -1028,9 +1086,16 @@ Future<ProjectPick?> pickProjectToOpen(BuildContext context) async {
   // The SYNC twin on purpose: async `dart:io` never completes under the
   // widget-test clock, and this is the first line of the open flow — awaiting
   // the async one here would make the whole flow untestable.
+  //
+  // Not on macOS. There the app is sandboxed, so `$HOME` is the container and
+  // this path would point at `~/Library/Containers/…/Documents/Anicel` — the
+  // panel would open inside the sandbox on every Open and the user would have
+  // to climb out to reach their real Documents or Drive. With no hint,
+  // NSOpenPanel restores wherever they were last, which is what "behaves like
+  // iPad" meant.
   final grant = await pickFolderGrantForUser(
     context,
-    initialDirectory: ensuredAppDocumentsDirectorySync(),
+    initialDirectory: Platform.isMacOS ? null : ensuredAppDocumentsDirectorySync(),
   );
   if (grant?.path == null || !context.mounted) {
     return null;
