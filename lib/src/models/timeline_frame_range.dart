@@ -5,6 +5,7 @@ import 'layer.dart';
 import 'layer_id.dart';
 import 'range_snap.dart';
 import 'timeline_coverage.dart';
+import 'timeline_row_address.dart';
 
 /// One layer's selected frame RANGE (UI-R8, TVP-style): [startIndex,
 /// endIndexExclusive) snapped to whole exposure blocks. View state — never
@@ -15,6 +16,7 @@ class TimelineFrameRangeSelection {
     required this.startIndex,
     required this.endIndexExclusive,
     this.layerIds = const [],
+    this.rows = const [],
   }) : assert(endIndexExclusive > startIndex, 'Range must cover frames.');
 
   /// The ANCHOR layer (where the drag started) — single-layer flows keep
@@ -25,13 +27,42 @@ class TimelineFrameRangeSelection {
 
   /// The Excel-style layer SPAN (UI-R17 #8): display-ordered eligible
   /// layers from anchor to head. Empty = the anchor layer alone.
+  ///
+  /// ⚠️Derived from [rows] whenever the drag supplied them — the layer rows
+  /// of the span, in order. It stays because the many single-kind consumers
+  /// ask exactly this question.
   final List<LayerId> layerIds;
+
+  /// 🚨★★★ WHAT THE DRAG ACTUALLY SWEPT — every row it crossed, in the order
+  /// the rail draws them, whatever KIND those rows are (유저 확정 2026-08-12:
+  /// 「선택 객체 하나가 종류 섞인 행들을 담고, 각 동사가 행 종류별로 알아서 처리」).
+  ///
+  /// This is the authoritative span. [layerIds] used to be, and being a list
+  /// of `LayerId` it could not spell a lane row or a group header at all —
+  /// which is why a span drawn straight through them left them out.
+  ///
+  /// Empty when no row list was in reach of the drag (the storyboard's cut
+  /// axis, older tests); [coversRow] then falls back to the layer question,
+  /// so nothing reads differently than it did before rows existed.
+  final List<TimelineRowAddress> rows;
 
   /// The layers this selection covers, anchor-only selections included.
   List<LayerId> get spanLayerIds => layerIds.isEmpty ? [layerId] : layerIds;
 
   bool coversLayer(LayerId id) =>
       layerIds.isEmpty ? id == layerId : layerIds.contains(id);
+
+  /// Whether THIS row — of any kind — is in the swept run.
+  bool coversRow(TimelineRowAddress row) {
+    if (rows.isNotEmpty) {
+      return rows.contains(row);
+    }
+    return switch (row) {
+      LayerRowAddress(:final layerId) => coversLayer(layerId),
+      LaneRowAddress(:final layerId) => coversLayer(layerId),
+      TrackRowAddress() => false,
+    };
+  }
 
   int get lengthFrames => endIndexExclusive - startIndex;
 
@@ -45,7 +76,11 @@ class TimelineFrameRangeSelection {
           other.layerId == layerId &&
           other.startIndex == startIndex &&
           other.endIndexExclusive == endIndexExclusive &&
-          listEquals(other.layerIds, layerIds);
+          listEquals(other.layerIds, layerIds) &&
+          // [rows] joins the identity, or a drag that grows from a layer row
+          // onto its lanes — same layers, same frames, more rows — would
+          // compare EQUAL and the notifier would never publish it.
+          listEquals(other.rows, rows);
 
   @override
   int get hashCode => Object.hash(
@@ -53,6 +88,7 @@ class TimelineFrameRangeSelection {
     startIndex,
     endIndexExclusive,
     Object.hashAll(layerIds),
+    Object.hashAll(rows),
   );
 
   @override

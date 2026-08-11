@@ -822,12 +822,14 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
                     headIndex, {
                     headLayerId,
                     headLaneId,
+                    spanRows = const [],
                   }) => _session.updateFrameRangeSelectionDrag(
                     layerId: layerId,
                     anchorIndex: anchorIndex,
                     headIndex: headIndex,
                     headLayerId: headLayerId,
                     headLaneId: headLaneId,
+                    spanRows: spanRows,
                   ),
               onClear: _session.clearFrameRangeSelection,
               move: TimelineRangeMoveCallbacks(

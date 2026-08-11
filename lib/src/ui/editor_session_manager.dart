@@ -11967,12 +11967,24 @@ class EditorSessionManager extends ChangeNotifier {
     return folderBandRunsOf(layer.id);
   }
 
+  /// 🚨★★★ [spanRows] — what the drag SWEPT, straight off the rail's own row
+  /// list ([resolveSelectionSpanRows]).
+  ///
+  /// The span used to be re-derived here, out of `cut.layers + seLayers`, and
+  /// three kinds of on-screen row are not in that walk: the track-owned
+  /// transition clone, lane rows, group headers. So an anchor on one of them
+  /// missed and the span collapsed to a single row, while crossing one
+  /// stepped over it. ⛔**Do not reintroduce a model walk here.** The surface
+  /// that DRAWS the rows is the only thing that knows what is on screen; if
+  /// this list is empty the caller had no rows in reach (the storyboard cut
+  /// axis), and the anchor row alone is the honest answer.
   void updateFrameRangeSelectionDrag({
     required LayerId layerId,
     required int anchorIndex,
     required int headIndex,
     LayerId? headLayerId,
     String? headLaneId,
+    List<TimelineRowAddress> spanRows = const [],
   }) {
     if (!_rangeSelectionEligible(layerId)) {
       return;
@@ -12004,9 +12016,23 @@ class EditorSessionManager extends ChangeNotifier {
       frameRangeSelection.value = null;
       return;
     }
-    final spanIds = _selectionSpanLayerIds(layerId, headLayerId ?? layerId);
+    // The layer half of what was swept, in display order — derived from the
+    // rows rather than rebuilt, so the two can never disagree.
+    final spanIds = spanRows.isEmpty
+        ? _selectionSpanLayerIds(layerId, headLayerId ?? layerId)
+        : <LayerId>[
+            for (final row in spanRows)
+              if (row is LayerRowAddress) row.layerId,
+          ];
     if (spanIds.length <= 1) {
-      frameRangeSelection.value = base;
+      frameRangeSelection.value = spanRows.isEmpty
+          ? base
+          : TimelineFrameRangeSelection(
+              layerId: base.layerId,
+              startIndex: base.startIndex,
+              endIndexExclusive: base.endIndexExclusive,
+              rows: spanRows,
+            );
       _applySelectionLaneTail(
         layerId: layerId,
         headLaneId: laneTail,
@@ -12048,6 +12074,7 @@ class EditorSessionManager extends ChangeNotifier {
       startIndex: start,
       endIndexExclusive: end,
       layerIds: spanIds,
+      rows: spanRows,
     );
     _applySelectionLaneTail(
       layerId: layerId,
