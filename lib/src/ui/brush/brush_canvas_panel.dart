@@ -19,6 +19,7 @@ import '../../services/canvas_selection_region.dart';
 import '../../services/resample/resample_kernel.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
+import '../../models/drawing_guide.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/viewport_point.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
@@ -105,6 +106,7 @@ class BrushCanvasPanel extends StatefulWidget {
     required this.availableFrameKeys,
     required this.cacheInvalidationSink,
     this.canvasSize = BrushCanvasDefaults.canvasSize,
+    this.guides,
     this.brushToolState = BrushToolState.defaults,
     this.historyManager,
     this.viewport,
@@ -179,6 +181,12 @@ class BrushCanvasPanel extends StatefulWidget {
   final List<BrushFrameKey> availableFrameKeys;
   final CacheInvalidationSink cacheInvalidationSink;
   final CanvasSize canvasSize;
+
+  /// The active cut's drawing guides, in CANVAS space. Null (the default)
+  /// draws with none — the hosts that embed this panel without a cut behind
+  /// it pass nothing.
+  final CutGuides? guides;
+
   final BrushToolState brushToolState;
   final HistoryManager? historyManager;
   final CanvasViewport? viewport;
@@ -1893,6 +1901,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // An empty frame stands the view DOWN rather than unmounting it —
       // the mount was the expensive half of a flip that crosses a block.
       editable: widget.celEditable,
+      // Guides are stored in canvas space, but this view's strokes record
+      // in artwork coordinates (the draw-through wrap below). They make the
+      // same trip the pointers do, or the axis sits where the pen is not.
+      guides: guidesInArtworkSpace(
+        widget.guides ?? CutGuides.empty,
+        widget.interactiveContentPose,
+        widget.canvasSize,
+      ),
     );
     // The draw-through wrap: display AND hit testing share one screen
     // matrix, so the active layer draws posed and pointers inverse-map to
@@ -2125,6 +2141,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         // R22-A: fill taps are handled by the interactive view's stroke
         // pipeline (fillDabAt) — instant overlay, settling hold, and the
         // same primary-button discipline as strokes. No tap layer.
+        return null;
+      case CanvasTool.guide:
+        // The guide tool drags HANDLES, not points on the cel — it mounts
+        // its own layer in the viewport overlay, like the selection tools.
         return null;
     }
   }

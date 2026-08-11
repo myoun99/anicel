@@ -3,6 +3,7 @@ import 'canvas_size.dart';
 import 'cut_camera.dart';
 import 'cut_id.dart';
 import 'cut_metadata.dart';
+import 'drawing_guide.dart';
 import 'layer.dart';
 import 'layer_section_defaults.dart';
 
@@ -16,9 +17,11 @@ class Cut {
     this.metadata = const CutMetadata.empty(),
     this.leadingGapFrames = 0,
     CutCamera? camera,
+    CutGuides? guides,
   }) : assert(leadingGapFrames >= 0),
        layers = List.unmodifiable(layers),
-       camera = camera ?? CutCamera.empty();
+       camera = camera ?? CutCamera.empty(),
+       guides = guides ?? CutGuides.empty;
 
   final CutId id;
   final String name;
@@ -35,6 +38,15 @@ class Cut {
   final CutMetadata metadata;
   final CutCamera camera;
 
+  /// The drawing guides (symmetry/perspective) this cut draws with.
+  ///
+  /// Cut-level because a guide is set up for the BACKGROUND being drawn:
+  /// pinned to the viewport it would slide off the artwork on zoom, pinned
+  /// to a layer it would need redrawing on every new cel. 겸용 cuts show one
+  /// physical cel in two places, so their guides are kept identical — see
+  /// the guide command's fan-out over [Project.linkRegistry].
+  final CutGuides guides;
+
   // The V-track transform/fade left the cut (R4): the effects live on
   // [Track.transformTrack], keys on the GLOBAL frame axis — moving a cut
   // does not move them, and a legacy cut-level 'transform' entry is
@@ -49,6 +61,7 @@ class Cut {
     CutMetadata? metadata,
     int? leadingGapFrames,
     CutCamera? camera,
+    CutGuides? guides,
   }) {
     return Cut(
       id: id ?? this.id,
@@ -59,6 +72,7 @@ class Cut {
       metadata: metadata ?? this.metadata,
       leadingGapFrames: leadingGapFrames ?? this.leadingGapFrames,
       camera: camera ?? this.camera,
+      guides: guides ?? this.guides,
     );
   }
 
@@ -72,6 +86,9 @@ class Cut {
     // Omitted at 0: legacy files load gap-free with no migration.
     if (leadingGapFrames > 0) 'leadingGap': leadingGapFrames,
     'camera': camera.toJson(),
+    // Omitted while empty, the same way the gap is: every existing file
+    // loads guide-free with no migration step.
+    if (guides.isNotEmpty) 'guides': guides.toJson(),
   };
 
   factory Cut.fromJson(Map<String, dynamic> json) {
@@ -98,6 +115,9 @@ class Cut {
       camera: json['camera'] == null
           ? null
           : CutCamera.fromJson(json['camera'] as Map<String, dynamic>),
+      guides: json['guides'] == null
+          ? null
+          : CutGuides.fromJson(json['guides'] as Map<String, dynamic>),
       // Legacy 'transform' entries are read by Track.fromJson's lift, not
       // here — the cut model carries no transform any more (R4). The old
       // 'folders' table stays ignored the same way (no production data).
@@ -115,7 +135,8 @@ class Cut {
           other.canvasSize == canvasSize &&
           other.metadata == metadata &&
           other.leadingGapFrames == leadingGapFrames &&
-          other.camera == camera;
+          other.camera == camera &&
+          other.guides == guides;
 
   @override
   int get hashCode => Object.hash(
@@ -127,6 +148,7 @@ class Cut {
     metadata,
     leadingGapFrames,
     camera,
+    guides,
   );
 
   @override

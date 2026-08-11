@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart';
 import '../../models/brush_tip_entry.dart';
+import '../../models/drawing_guide.dart';
 import '../../services/canvas_color_sampler.dart' show CanvasColorSampleSource;
 import '../../services/canvas_flood_fill.dart';
 import '../../services/canvas_selection.dart';
@@ -11,6 +12,7 @@ import '../widgets/drag_value_label.dart';
 import '../widgets/field_slider.dart';
 import 'brush_settings_panel.dart';
 import 'brush_tool_state.dart';
+import 'guide_panels.dart';
 import 'canvas_selection_commands.dart';
 import '../theme/app_theme.dart';
 import '../text/app_strings.dart';
@@ -37,7 +39,16 @@ class ToolSettingsPanel extends StatelessWidget {
     this.onEyedropperSourceChanged,
     this.tips = const <BrushTipEntry>[],
     this.onTipImportRequested,
+    this.guides,
+    this.selectedGuideId,
+    this.onGuidesCommitted,
   });
+
+  /// The active cut's guides, and which one the tool is editing. Null
+  /// handler = the panel shows but cannot change them (hosts with no cut).
+  final CutGuides? guides;
+  final GuideId? selectedGuideId;
+  final ValueChanged<CutGuides>? onGuidesCommitted;
 
   /// The shared tip library, forwarded to the brush settings' tip pickers.
   final List<BrushTipEntry> tips;
@@ -112,6 +123,13 @@ class ToolSettingsPanel extends StatelessWidget {
           selectionCommands: selectionCommands,
           resampleMode: transformResampleMode,
           onResampleModeChanged: onTransformResampleModeChanged,
+        ),
+        // Guides get their knobs HERE, like every other tool. There is no
+        // guide panel of its own.
+        CanvasTool.guide => GuideSettings(
+          guides: guides ?? CutGuides.empty,
+          selectedGuideId: selectedGuideId,
+          onGuidesCommitted: onGuidesCommitted ?? (_) {},
         ),
       },
     );

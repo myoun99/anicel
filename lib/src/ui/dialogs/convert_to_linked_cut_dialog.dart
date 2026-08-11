@@ -140,6 +140,11 @@ class _PreviewSummary extends StatelessWidget {
           preview.layerNamesAppearingInOrigin.join(', '),
         ),
       if (!preview.linksAnything) strings.convertLinkedCutNothing,
+      // Sizes first: linking makes the two show ONE picture, and the
+      // origin's size wins — the target's artwork can land outside the
+      // frame if they disagree.
+      if (preview.linksAnything && preview.canvasSizesDiffer)
+        strings.convertLinkedCutResizeFirst,
       if (preview.linksAnything) strings.convertLinkedCutUndoNote,
     ];
     return Column(

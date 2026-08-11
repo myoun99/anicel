@@ -37,6 +37,9 @@ import '../../services/brush_stroke_commit_data.dart';
 import '../../native/qa_native_engine.dart';
 import '../../services/canvas_segment_clipper.dart';
 import '../../services/canvas_selection_region.dart';
+import '../../models/drawing_guide.dart';
+import '../../services/guide_geometry.dart';
+import '../../services/guide_stroke_input.dart';
 import '../../services/stroke_stabilizer.dart';
 import 'active_stroke_overlay.dart';
 import 'bitmap_tile_image_cache.dart';
@@ -128,7 +131,9 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
     this.paintsContent = true,
     this.editable = true,
     CanvasViewport? viewport,
-  }) : viewport = viewport ?? CanvasViewport();
+    CutGuides? guides,
+  }) : viewport = viewport ?? CanvasViewport(),
+       guides = guides ?? CutGuides.empty;
 
   /// Whether the cel under the playhead can be drawn on at all.
   ///
@@ -145,6 +150,12 @@ class InteractiveBrushEditCanvasView extends StatefulWidget {
   /// above [key]: a frame flip must reset this view IN PLACE, never
   /// rebuild it.
   final bool editable;
+
+  /// The cut's drawing guides. Empty (the default) leaves the stroke path
+  /// exactly as it was — the ink surfaces that reuse this view (conte,
+  /// timesheet, cut envelope) are not the cut's drawing canvas and pass
+  /// nothing.
+  final CutGuides guides;
 
   final BrushEditSessionState sessionState;
   final LayerId layerId;
@@ -285,6 +296,16 @@ class _InteractiveBrushEditCanvasViewState
   /// frozen per stroke); pen positions run through it BEFORE clipping and
   /// interpolation, so every downstream route sees the smoothed chain.
   StrokeStabilizer? _stabilizer;
+
+  /// Perspective ray lock for the active stroke: created at pointer-down
+  /// when a perspective guide is snapping, and fed AFTER the stabilizer —
+  /// smoothing a snapped line would bend the straightness back out of it.
+  PerspectiveSnapSession? _snapSession;
+
+  /// The acting symmetry's copy transforms, frozen at pointer-down so an
+  /// axis edited mid-stroke cannot tear the stroke in half. One identity
+  /// entry (or none) means no replication.
+  List<GuideTransform> _symmetryTransforms = const [];
 
   /// The last RAW pen position (pre-stabilization) — pen-up catches the
   /// brush up to it with a straight segment through the normal pipeline.
@@ -660,6 +681,18 @@ class _InteractiveBrushEditCanvasViewState
             start: canvasPosition,
           )
         : null;
+    // Guides are read ONCE per stroke. Both are frozen here rather than
+    // consulted per sample so an edit landing mid-stroke cannot bend the
+    // line that is already down.
+    _snapSession = PerspectiveSnapSession.maybeStart(
+      guides: widget.guides,
+      start: canvasPosition,
+      zoom: widget.viewport.zoom,
+    );
+    final symmetry = widget.guides.actingSymmetry;
+    _symmetryTransforms = symmetry == null
+        ? const []
+        : symmetryTransforms(symmetry);
     _strokeDynamics = BrushStrokeDynamics(settings: strokeSettings);
     _lastDirectionDegrees = null;
     _previousBaseDab = null;
@@ -707,13 +740,23 @@ class _InteractiveBrushEditCanvasViewState
     // R20-B: dabs resolve through the tip-stamp cache HERE, at generation
     // — the overlay, the commit, undo replay and the .anicel all see the
     // same resolved (quantized, prerotated-mask) dabs.
+    //
+    // ⚠️ Symmetry replicates HERE TOO. This is the stroke's FIRST dab, laid
+    // at pointer-down rather than through [_advanceStrokeTo], and it is a
+    // separate emission site — replicating only the move path left every
+    // symmetric stroke's copies one dab short at the start, a notch right
+    // where the pen landed.
     final emitted = BrushTipStampCache.instance.resolveDabs(
-      _withGroundMixing(
-        _strokeDynamics!.apply(
-          initialDabs,
-          firstSequence: _nextSequence,
-          directionDegrees: null,
+      replicateDabs(
+        _withGroundMixing(
+          _strokeDynamics!.apply(
+            initialDabs,
+            firstSequence: _nextSequence,
+            directionDegrees: null,
+          ),
         ),
+        _symmetryTransforms,
+        firstSequence: _nextSequence,
       ),
     );
     _collectedDabs.addAll(emitted);
@@ -754,7 +797,26 @@ class _InteractiveBrushEditCanvasViewState
     // The stabilizer smooths BEFORE clipping/interpolation, so every
     // downstream consumer (overlay, commit, replay) sees one chain — the
     // three-route parity holds by construction (P7).
-    _advanceStrokeTo(_stabilizer?.follow(penPosition) ?? penPosition);
+    _advanceStrokeThroughGuides(
+      _stabilizer?.follow(penPosition) ?? penPosition,
+    );
+  }
+
+  /// Stabilized point → perspective snap → the stroke.
+  ///
+  /// Smoothing runs first because smoothing a snapped line would bend the
+  /// straightness back out of it. The snap can return NOTHING while it is
+  /// still deciding which ray this stroke belongs to; those points are held
+  /// inside the session and arrive together the moment it locks.
+  void _advanceStrokeThroughGuides(CanvasPoint canvasPosition) {
+    final session = _snapSession;
+    if (session == null) {
+      _advanceStrokeTo(canvasPosition);
+      return;
+    }
+    for (final snapped in session.follow(canvasPosition)) {
+      _advanceStrokeTo(snapped);
+    }
   }
 
   void _advanceStrokeTo(CanvasPoint canvasPosition) {
@@ -822,14 +884,24 @@ class _InteractiveBrushEditCanvasViewState
     _lastDirectionDegrees =
         strokeDirectionDegrees(from: previousRaw, to: canvasPosition) ??
         _lastDirectionDegrees;
+    // Symmetry copies the DABS, after interpolation, spacing and dynamics
+    // have been computed once. The copy transforms are rigid, so distances
+    // — and therefore spacing — survive them exactly, and every copy of the
+    // stroke lands in the same batch as the original. That last part is why
+    // the axis does not darken: the copies pre-blend together instead of
+    // compositing over each other.
     final emitted = BrushTipStampCache.instance.resolveDabs(
-      _withGroundMixing(
-        _strokeDynamics?.apply(
+      replicateDabs(
+        _withGroundMixing(
+          _strokeDynamics?.apply(
+                baseDabs,
+                firstSequence: _nextSequence,
+                directionDegrees: _lastDirectionDegrees,
+              ) ??
               baseDabs,
-              firstSequence: _nextSequence,
-              directionDegrees: _lastDirectionDegrees,
-            ) ??
-            baseDabs,
+        ),
+        _symmetryTransforms,
+        firstSequence: _nextSequence,
       ),
     );
 
@@ -886,7 +958,17 @@ class _InteractiveBrushEditCanvasViewState
     // the normal pipeline, so line ends land where the pen lifted.
     final lastPen = _lastPenPosition;
     if (_stabilizer != null && lastPen != null) {
-      _advanceStrokeTo(lastPen);
+      _advanceStrokeThroughGuides(lastPen);
+    }
+    // A stroke can lift before it travelled far enough to name a ray; the
+    // snap settles on the best guess it has rather than swallowing a short
+    // flick. Runs AFTER the catch-up so the extra travel counts towards the
+    // decision.
+    final session = _snapSession;
+    if (session != null) {
+      for (final snapped in session.finish()) {
+        _advanceStrokeTo(snapped);
+      }
     }
 
     final hadDabs = _collectedDabs.isNotEmpty;
@@ -1484,6 +1566,10 @@ class _InteractiveBrushEditCanvasViewState
     _strokeDynamics = null;
     _lastDirectionDegrees = null;
     _previousBaseDab = null;
+    // Guides are re-read at the next pointer-down, so an axis moved between
+    // strokes takes effect on the next one and never on this one.
+    _snapSession = null;
+    _symmetryTransforms = const [];
     // The reservoir is per stroke: a new stroke starts with a clean brush.
     _groundMixer = null;
     _groundSampler = null;

@@ -53,6 +53,7 @@ import '../models/canvas_resize_anchor.dart';
 import '../models/canvas_size.dart';
 import '../models/cut.dart';
 import '../models/cut_camera.dart';
+import '../models/drawing_guide.dart';
 import '../models/transform_track.dart';
 import '../models/cut_id.dart';
 import '../models/cut_lead_edge_plan.dart';
@@ -137,6 +138,7 @@ import '../services/commands/update_layer_transform_enabled_command.dart';
 import '../services/commands/relink_media_asset_command.dart';
 import '../services/commands/update_cut_camera_command.dart';
 import '../services/commands/update_layer_fill_reference_command.dart';
+import '../services/commands/set_cut_guides_command.dart';
 import '../services/commands/update_layer_instructions_command.dart';
 import '../services/commands/update_layer_mark_command.dart';
 import '../services/commands/update_layer_timeline_command.dart';
@@ -2011,6 +2013,46 @@ class EditorSessionManager extends ChangeNotifier {
   /// unchanged). Everything timed — ruler seconds, sheet rows, playback,
   /// audio placement — reads this one axis, so this single write moves
   /// the whole project's time.
+  /// The active cut's drawing guides — empty when parked in a gap.
+  CutGuides get activeCutGuides => activeCutOrNull?.guides ?? CutGuides.empty;
+
+  GuideId? _selectedGuideId;
+
+  /// Which guide the guide tool is editing.
+  ///
+  /// UI state, like the active layer — the CUT stores the guides, not which
+  /// one is under the hand. It lives here rather than in a widget because
+  /// two of them need it (the tool panels and the canvas overlay), and two
+  /// copies of a selection are two answers waiting to disagree.
+  GuideId? get selectedGuideId => _selectedGuideId;
+
+  set selectedGuideId(GuideId? id) {
+    if (_selectedGuideId == id) return;
+    _selectedGuideId = id;
+    notifyListeners();
+  }
+
+  /// Writes the active cut's guides, fanning out to its 겸용 siblings in one
+  /// undoable step (see [SetCutGuidesCommand]).
+  ///
+  /// Handle DRAGS call this once, at release. The live preview in between
+  /// paints from the drag layer's own value and never touches the project,
+  /// so a drag is one undo entry rather than one per pointer sample.
+  void setActiveCutGuides(CutGuides guides) {
+    final cut = activeCutOrNull;
+    if (cut == null || cut.guides == guides) {
+      return;
+    }
+    _historyManager.execute(
+      SetCutGuidesCommand(
+        repository: _repository,
+        cutId: cut.id,
+        guides: guides,
+      ),
+    );
+    notifyListeners();
+  }
+
   void setProjectFrameRate(ProjectFrameRate frameRate) {
     if (frameRate.numerator < 1 ||
         frameRate.denominator < 1 ||
@@ -4073,6 +4115,7 @@ class EditorSessionManager extends ChangeNotifier {
       replacedFrameCount: plan.replacedFrameCount,
       joiningFrameCount: plan.joiningFrameCount,
       linksAnything: plan.linksAnything,
+      canvasSizesDiffer: originCut.canvasSize != targetCut.canvasSize,
     );
   }
 

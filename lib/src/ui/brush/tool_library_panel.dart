@@ -14,6 +14,7 @@ class ToolLibraryPanel extends StatelessWidget {
     required this.tool,
     required this.onToolChanged,
     required this.brushLibrary,
+    this.guideLibrary,
   });
 
   final CanvasTool tool;
@@ -22,6 +23,11 @@ class ToolLibraryPanel extends StatelessWidget {
   /// The brush preset library content (built by the workspace, which owns
   /// the preset state) — shown for the painting tools.
   final Widget brushLibrary;
+
+  /// The active cut's guide list, built by the workspace (which owns the
+  /// cut). Null in hosts with no cut behind them; the tool then explains
+  /// itself instead.
+  final Widget? guideLibrary;
 
   @override
   Widget build(BuildContext context) {
@@ -72,6 +78,19 @@ class ToolLibraryPanel extends StatelessWidget {
               'Fill floods the tapped region with the current color.\n'
               'Tolerance, expand and anti-alias live in Tool Settings.',
         );
+      case CanvasTool.guide:
+        // The cut's own guides, grouped by kind — the same shape the brush
+        // library has (group, then entries), with one difference worth
+        // knowing: the brush library is app-wide and permanent, while this
+        // list belongs to the CUT and changes when you move to another one.
+        return guideLibrary ??
+            const _ToolNote(
+              keyValue: 'tool-library-guide',
+              note:
+                  'Guides steer the other tools: symmetry copies a stroke, '
+                  'perspective holds it to a vanishing point.\n'
+                  'They belong to the cut, and 겸용 cuts share one set.',
+            );
     }
   }
 }

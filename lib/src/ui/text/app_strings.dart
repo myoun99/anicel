@@ -250,6 +250,35 @@ class AppStrings {
       _s('convertLinkedCutOriginGainsTemplate');
   String get convertLinkedCutNothing => _s('convertLinkedCutNothing');
   String get convertLinkedCutUndoNote => _s('convertLinkedCutUndoNote');
+  String get convertLinkedCutResizeFirst =>
+      _s('convertLinkedCutResizeFirst');
+
+  // Drawing guides (symmetry / perspective).
+  String get toolGuide => _s('toolGuide');
+  String get guideKindSymmetry => _s('guideKindSymmetry');
+  String get guideKindPerspective => _s('guideKindPerspective');
+  String get guideAdd => _s('guideAdd');
+  String get guideDelete => _s('guideDelete');
+  String get guideShow => _s('guideShow');
+  String get guideActsOn => _s('guideActsOn');
+  String get guideActsOff => _s('guideActsOff');
+  String get guideLibraryEmpty => _s('guideLibraryEmpty');
+  String get guideSelectPrompt => _s('guideSelectPrompt');
+  String get guideLineCount => _s('guideLineCount');
+  String get guideMirrorMode => _s('guideMirrorMode');
+  String get guideMirrorModeOn => _s('guideMirrorModeOn');
+  String get guideMirrorModeOff => _s('guideMirrorModeOff');
+  String get guideSnap => _s('guideSnap');
+  String get guideSnapNote => _s('guideSnapNote');
+  String get guideEyeLevelShow => _s('guideEyeLevelShow');
+  String get guideConstrainToEyeLevel => _s('guideConstrainToEyeLevel');
+  String get guideConstrainToEyeLevelNote =>
+      _s('guideConstrainToEyeLevelNote');
+  String get guideVanishingPoint => _s('guideVanishingPoint');
+  String get guideVanishingPointAtInfinity =>
+      _s('guideVanishingPointAtInfinity');
+  String get guideAddVanishingPoint => _s('guideAddVanishingPoint');
+  String get guideMakeVertical => _s('guideMakeVertical');
 
   // --- Project lifecycle confirmations ---
   String get recoverAutosaveTitle => _s('recoverAutosaveTitle');
@@ -948,6 +977,36 @@ class AppStrings {
         'Nothing to link — the cuts are already fully linked or share no '
         'drawing layers.',
     'convertLinkedCutUndoNote': 'Undo restores both cuts.',
+    'convertLinkedCutResizeFirst':
+        'These cuts have different canvas sizes. Linked cuts show one '
+        'picture, so the origin\'s size will win — matching the sizes '
+        'first is recommended.',
+    'toolGuide': 'Guide',
+    'guideKindSymmetry': 'Symmetry',
+    'guideKindPerspective': 'Perspective',
+    'guideAdd': 'Add',
+    'guideDelete': 'Delete',
+    'guideShow': 'Show on canvas',
+    'guideActsOn': 'Acting on strokes',
+    'guideActsOff': 'Not acting',
+    'guideLibraryEmpty': 'No guides in this cut yet.',
+    'guideSelectPrompt': 'Pick a guide to edit its settings.',
+    'guideLineCount': 'Copies',
+    'guideMirrorMode': 'Line symmetry',
+    'guideMirrorModeOn': 'Copies alternate handedness (a true mirror).',
+    'guideMirrorModeOff': 'Copies are rotations — nothing is mirrored.',
+    'guideSnap': 'Snap strokes',
+    'guideSnapNote':
+        'Several perspective guides can snap at once; switch off the ones '
+        'you are not drawing.',
+    'guideEyeLevelShow': 'Show eye level',
+    'guideConstrainToEyeLevel': 'Hold vanishing points on the eye level',
+    'guideConstrainToEyeLevelNote':
+        'Binds the next drag; it does not move what is already placed.',
+    'guideVanishingPoint': 'Vanishing point',
+    'guideVanishingPointAtInfinity': 'Parallel (at infinity)',
+    'guideAddVanishingPoint': 'Add vanishing point',
+    'guideMakeVertical': 'Make exactly vertical',
     'recoverAutosaveTitle': 'Recover autosaved changes?',
     'recoverAutosaveBody':
         'A newer autosave exists for this project. Recover it, or open the '
@@ -1574,6 +1633,34 @@ class AppStrings {
         'リンクするものがありません — 既に完全にリンク済みか、共有できる'
         '作画レイヤーがありません。',
     'convertLinkedCutUndoNote': '元に戻すと両方のカットが復元されます。',
+    'convertLinkedCutResizeFirst':
+        'キャンバスサイズが異なります。兼用カットは一枚の絵を共有するため'
+        '元のカットのサイズが優先されます。先にサイズを揃えることをおすすめします。',
+    'toolGuide': 'ガイド',
+    'guideKindSymmetry': '対称',
+    'guideKindPerspective': 'パース',
+    'guideAdd': '追加',
+    'guideDelete': '削除',
+    'guideShow': 'キャンバスに表示',
+    'guideActsOn': '線に効いている',
+    'guideActsOff': '効いていない',
+    'guideLibraryEmpty': 'このカットにはまだガイドがありません。',
+    'guideSelectPrompt': '設定するガイドを選んでください。',
+    'guideLineCount': '線の数',
+    'guideMirrorMode': '線対称',
+    'guideMirrorModeOn': 'コピーが左右反転します（本当の鏡）。',
+    'guideMirrorModeOff': 'コピーは回転のみ — 反転しません。',
+    'guideSnap': 'スナップ',
+    'guideSnapNote':
+        'パースガイドは複数同時にスナップできます。描かないものはオフに。',
+    'guideEyeLevelShow': 'アイレベルを表示',
+    'guideConstrainToEyeLevel': '消失点をアイレベル上に固定',
+    'guideConstrainToEyeLevelNote':
+        '次のドラッグに効きます。すでに置いたものは動きません。',
+    'guideVanishingPoint': '消失点',
+    'guideVanishingPointAtInfinity': '平行（無限遠）',
+    'guideAddVanishingPoint': '消失点を追加',
+    'guideMakeVertical': '完全な垂直にする',
     'recoverAutosaveTitle': '自動保存の変更を復元しますか？',
     'recoverAutosaveBody':
         'このプロジェクトには、より新しい自動保存があります。それを復元'
@@ -2283,6 +2370,34 @@ class AppStrings {
         '링크할 것이 없습니다 — 이미 완전히 링크됐거나 공유할 그리기 '
         '레이어가 없습니다.',
     'convertLinkedCutUndoNote': '실행 취소하면 두 컷 모두 복원됩니다.',
+    'convertLinkedCutResizeFirst':
+        '두 컷의 캔버스 크기가 다릅니다. 겸용컷은 그림 한 장을 함께 쓰므로 '
+        '원본 컷의 크기가 이깁니다 — 먼저 크기를 맞춘 뒤 변경하시길 권합니다.',
+    'toolGuide': '가이드',
+    'guideKindSymmetry': '대칭',
+    'guideKindPerspective': '퍼스',
+    'guideAdd': '추가',
+    'guideDelete': '삭제',
+    'guideShow': '캔버스에 표시',
+    'guideActsOn': '획에 작용 중',
+    'guideActsOff': '작용 안 함',
+    'guideLibraryEmpty': '이 컷에는 아직 가이드가 없습니다.',
+    'guideSelectPrompt': '설정할 가이드를 고르세요.',
+    'guideLineCount': '선 수',
+    'guideMirrorModeOn': '사본이 좌우로 뒤집힙니다(진짜 거울).',
+    'guideMirrorMode': '선대칭',
+    'guideMirrorModeOff': '사본은 회전일 뿐 — 뒤집히지 않습니다.',
+    'guideSnap': '스냅',
+    'guideSnapNote':
+        '퍼스 가이드는 여러 개가 동시에 스냅합니다. 안 그리는 건 꺼두세요.',
+    'guideEyeLevelShow': '아이레벨 표시',
+    'guideConstrainToEyeLevel': '소실점을 아이레벨에 고정',
+    'guideConstrainToEyeLevelNote':
+        '다음 드래그부터 적용됩니다. 이미 놓인 것은 움직이지 않습니다.',
+    'guideVanishingPoint': '소실점',
+    'guideVanishingPointAtInfinity': '평행(무한대)',
+    'guideAddVanishingPoint': '소실점 추가',
+    'guideMakeVertical': '정확히 수직으로',
     'recoverAutosaveTitle': '자동 저장된 변경을 복구할까요?',
     'recoverAutosaveBody':
         '이 프로젝트에 더 최신인 자동 저장이 있습니다. 그것을 복구할까요, '
@@ -2993,6 +3108,36 @@ class AppStrings {
         'Rien à lier — les plans sont déjà entièrement liés ou ne partagent '
         'aucun calque de dessin.',
     'convertLinkedCutUndoNote': 'Annuler restaure les deux plans.',
+    'convertLinkedCutResizeFirst':
+        'Ces plans ont des tailles de canevas différentes. Les plans liés '
+        'partagent une seule image, donc la taille du plan d\'origine '
+        'l\'emporte — il est conseillé d\'harmoniser les tailles d\'abord.',
+    'toolGuide': 'Repère',
+    'guideKindSymmetry': 'Symétrie',
+    'guideKindPerspective': 'Perspective',
+    'guideAdd': 'Ajouter',
+    'guideDelete': 'Supprimer',
+    'guideShow': 'Afficher sur le canevas',
+    'guideActsOn': 'Agit sur les traits',
+    'guideActsOff': 'N\'agit pas',
+    'guideLibraryEmpty': 'Aucun repère dans ce plan.',
+    'guideSelectPrompt': 'Choisissez un repère pour régler ses options.',
+    'guideLineCount': 'Copies',
+    'guideMirrorMode': 'Symétrie axiale',
+    'guideMirrorModeOn': 'Les copies sont inversées (un vrai miroir).',
+    'guideMirrorModeOff': 'Les copies sont des rotations — rien n\'est inversé.',
+    'guideSnap': 'Aimanter les traits',
+    'guideSnapNote':
+        'Plusieurs repères de perspective peuvent aimanter à la fois ; '
+        'désactivez ceux que vous ne dessinez pas.',
+    'guideEyeLevelShow': 'Afficher la ligne d\'horizon',
+    'guideConstrainToEyeLevel': 'Garder les points de fuite sur l\'horizon',
+    'guideConstrainToEyeLevelNote':
+        'S\'applique au prochain déplacement ; ne bouge pas l\'existant.',
+    'guideVanishingPoint': 'Point de fuite',
+    'guideVanishingPointAtInfinity': 'Parallèle (à l\'infini)',
+    'guideAddVanishingPoint': 'Ajouter un point de fuite',
+    'guideMakeVertical': 'Rendre exactement vertical',
     'recoverAutosaveTitle': 'Récupérer les modifications enregistrées ?',
     'recoverAutosaveBody':
         'Une sauvegarde automatique plus récente existe pour ce projet. La '
@@ -3723,6 +3868,32 @@ class AppStrings {
         '没有可链接的内容 — 两个镜头已完全链接，'
         '或没有可共用的绘制图层。',
     'convertLinkedCutUndoNote': '撤销会同时还原两个镜头。',
+    'convertLinkedCutResizeFirst':
+        '两个镜头的画布尺寸不同。共用镜头共享同一张画，因此以原镜头的尺寸为准 '
+        '— 建议先统一尺寸再进行更改。',
+    'toolGuide': '参考线',
+    'guideKindSymmetry': '对称',
+    'guideKindPerspective': '透视',
+    'guideAdd': '添加',
+    'guideDelete': '删除',
+    'guideShow': '在画布上显示',
+    'guideActsOn': '正在作用于笔画',
+    'guideActsOff': '未作用',
+    'guideLibraryEmpty': '此镜头还没有参考线。',
+    'guideSelectPrompt': '选择一条参考线以调整其设置。',
+    'guideLineCount': '份数',
+    'guideMirrorMode': '轴对称',
+    'guideMirrorModeOn': '副本左右翻转（真正的镜像）。',
+    'guideMirrorModeOff': '副本只是旋转 — 不会翻转。',
+    'guideSnap': '吸附笔画',
+    'guideSnapNote': '多条透视参考线可同时吸附；把不画的关掉。',
+    'guideEyeLevelShow': '显示视平线',
+    'guideConstrainToEyeLevel': '将消失点固定在视平线上',
+    'guideConstrainToEyeLevelNote': '对下一次拖动生效；不会移动已放置的。',
+    'guideVanishingPoint': '消失点',
+    'guideVanishingPointAtInfinity': '平行（无穷远）',
+    'guideAddVanishingPoint': '添加消失点',
+    'guideMakeVertical': '设为完全垂直',
     'recoverAutosaveTitle': '要恢复自动保存的更改吗？',
     'recoverAutosaveBody': '此项目存在更新的自动保存。是恢复它，还是打开上次保存的文件？',
     'recoverOpenSaved': '打开已保存版本',

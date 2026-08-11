@@ -14,12 +14,35 @@ import '../canvas/brush_edit_canvas_input_settings.dart';
 /// marquee / freehand lasso) drag out a region, and the MOVE tool
 /// (R11-⑧: selection ≠ move) drags the selected content — none of them
 /// start strokes.
-enum CanvasTool { brush, eraser, eyedropper, fill, selectRect, lasso, move }
+enum CanvasTool {
+  brush,
+  eraser,
+  eyedropper,
+  fill,
+  selectRect,
+  lasso,
+  move,
+
+  /// Edits the cut's drawing guides (symmetry, perspective). It marks
+  /// nothing itself — the guides it edits steer the OTHER tools, and they
+  /// keep doing so while this one is not selected.
+  guide,
+}
 
 /// Whether [tool] paints strokes through the interactive canvas (the
 /// non-painting tools mount a tool overlay instead).
 bool canvasToolPaints(CanvasTool tool) =>
     tool == CanvasTool.brush || tool == CanvasTool.eraser;
+
+/// Whether [tool] puts marks on the CEL — the strokes and the fill.
+///
+/// The question "would this press actually draw?" used to be spelled out at
+/// its one call site as `!canvasToolPaints(tool) && tool != CanvasTool.fill`,
+/// which quietly meant "and every tool added later draws too". It does not:
+/// the guide tool edits the guides, the eyedropper reads a colour, and the
+/// selection tools mark nothing.
+bool canvasToolMarksCel(CanvasTool tool) =>
+    canvasToolPaints(tool) || tool == CanvasTool.fill;
 
 /// Whether [tool] mounts the selection interaction layer (the P9
 /// marquee/lasso tools and the move tool that drags their region).
