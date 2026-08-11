@@ -8,6 +8,7 @@ import '../../models/media_asset.dart';
 import '../../services/import/media_import_planner.dart';
 import '../../services/pdf/pdf_render_service.dart';
 import '../../services/persistence/file_type_groups.dart';
+import '../dialogs/folder_pick_flow.dart';
 import '../editor_session_manager.dart';
 import '../export/export_settings_modules.dart';
 import '../widgets/app_window.dart';
@@ -108,8 +109,13 @@ class _ImportDialogState extends State<ImportDialog> {
   }
 
   Future<void> _pickFolder() async {
-    final picker = widget.directoryPicker ?? getDirectoryPath;
-    final path = await picker();
+    // PICK-2: not `getDirectoryPath`. That call is unimplemented on iOS and
+    // returns a SAF tree URI on Android — and the very next thing this does
+    // is `Directory(folder).listSync(recursive: true)`, which answers "that
+    // folder is gone" for a URI. A wrong answer that looks like a right one.
+    final path = widget.directoryPicker != null
+        ? await widget.directoryPicker!()
+        : await pickFolderForUser(context);
     if (path == null || !mounted) {
       return;
     }

@@ -1,6 +1,5 @@
 import 'dart:io' show Platform;
 
-import 'package:file_selector/file_selector.dart' show getDirectoryPath;
 import 'package:flutter/material.dart';
 
 import '../../services/persistence/app_documents.dart'
@@ -8,6 +7,7 @@ import '../../services/persistence/app_documents.dart'
 import '../../services/persistence/app_save_settings.dart';
 import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
+import 'folder_pick_flow.dart';
 
 /// SAVE-1: the autosave policy section (Preferences ▸ Autosave).
 ///
@@ -101,7 +101,11 @@ class AutosaveSettingsSection extends StatelessWidget {
                   TextButton(
                     key: const ValueKey<String>('settings-sidecar-browse'),
                     onPressed: () async {
-                      final directory = await getDirectoryPath();
+                      // PICK-2: this row is NOT platform-gated (its sibling
+                      // below is), so on iPad it was reaching a
+                      // `getDirectoryPath` that iOS never implemented — a
+                      // thrown UnimplementedError on every tap.
+                      final directory = await pickFolderForUser(context);
                       if (directory != null) {
                         session.setSaveSettings(
                           AppSave.settings.value.copyWith(
@@ -154,7 +158,7 @@ class AutosaveSettingsSection extends StatelessWidget {
                   TextButton(
                     key: const ValueKey<String>('settings-recordings-browse'),
                     onPressed: () async {
-                      final directory = await getDirectoryPath();
+                      final directory = await pickFolderForUser(context);
                       if (directory != null) {
                         session.setSaveSettings(
                           AppSave.settings.value.copyWith(
