@@ -44,9 +44,21 @@ String appRecordingsDirectory() {
 }
 
 /// [appDocumentsDirectory], created if missing.
+///
+/// A create that FAILS is not an error here, and that is deliberate: on
+/// Android this path is the public Documents folder, which cannot be created
+/// without the All-Files grant. Both callers use the result only as a
+/// picker's starting hint — and the picker is exactly where the grant gets
+/// asked for. Throwing instead meant the very first Open on a fresh install
+/// blew up before the permission dialog it was walking toward, closing the
+/// menu with no message at all.
 Future<String> ensuredAppDocumentsDirectory() async {
   final path = appDocumentsDirectory();
-  await Directory(path).create(recursive: true);
+  try {
+    await Directory(path).create(recursive: true);
+  } on Object {
+    // Permission, read-only volume, missing storage. The hint stands.
+  }
   return path;
 }
 
@@ -54,7 +66,11 @@ Future<String> ensuredAppDocumentsDirectory() async {
 /// under the widget-test clock; async never completes there).
 String ensuredAppDocumentsDirectorySync() {
   final path = appDocumentsDirectory();
-  Directory(path).createSync(recursive: true);
+  try {
+    Directory(path).createSync(recursive: true);
+  } on Object {
+    // See [ensuredAppDocumentsDirectory].
+  }
   return path;
 }
 

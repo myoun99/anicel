@@ -23,8 +23,17 @@ void main() {
   setUp(() {
     folder = Directory.systemTemp.createTempSync('qa_pickers_');
     debugUseFolderPickerOverride = true;
+    // The fake carries a BOOKMARK. Without one, replacing `grant.bookmark`
+    // with a hardcoded null anywhere in the pick functions left the whole
+    // suite green — and on iPad that mutation stores every recent-projects
+    // entry without its security-scoped token, so after relaunch every
+    // remembered project is refused. That is the exact failure the folder
+    // model exists to prevent, so it is pinned.
     FolderPicker.debugFolderPicker = ({String? initialDirectory}) async =>
-        FolderGrant.granted(path: folder.path.replaceAll('\\', '/'));
+        FolderGrant.granted(
+          path: folder.path.replaceAll('\\', '/'),
+          bookmark: 'BOOK==',
+        );
   });
   tearDown(() {
     debugUseFolderPickerOverride = null;
@@ -63,6 +72,12 @@ void main() {
       ),
     );
     await tester.tap(find.text('go'));
+    // Settled TWICE. The flow crosses two async gaps before a dialog exists
+    // — the injected picker's future, then `showDialog` — and a single
+    // settle can return between them, so the caller finds no dialog. It
+    // passed alone and failed once in a six-file run, which is the shape of
+    // that race rather than of a real defect.
+    await tester.pumpAndSettle();
     await tester.pumpAndSettle();
     return result;
   }
@@ -72,6 +87,21 @@ void main() {
       writeProject('only.anicel');
       final pick = await runFlow(tester, pickProjectToOpen);
       expect(pick?.path, '${folder.path.replaceAll('\\', '/')}/only.anicel');
+      expect(pick?.folderBookmark, 'BOOK==');
+    });
+
+    test('the folder picker applies to exactly three platforms', () {
+      // Every widget test here sets debugUseFolderPickerOverride, so the
+      // platform tuple behind it is never evaluated by them. Pinned directly:
+      // dropping macOS or iOS from it sends them back to the OS FILE dialog,
+      // which grants the project file and leaves its sibling .assets/ folder
+      // outside the grant.
+      for (final platform in ['android', 'ios', 'macos']) {
+        expect(folderPickerAppliesTo(platform), isTrue, reason: platform);
+      }
+      for (final platform in ['windows', 'linux', 'fuchsia']) {
+        expect(folderPickerAppliesTo(platform), isFalse, reason: platform);
+      }
     });
 
     testWidgets('a folder with several asks which', (tester) async {
@@ -161,7 +191,8 @@ void main() {
         find.byKey(const ValueKey<String>('project-save-name-confirm')),
       );
       await tester.pumpAndSettle();
-      expect(pick?.path,'${folder.path.replaceAll('\\', '/')}/Cut 12.anicel');
+      expect(pick?.path, '${folder.path.replaceAll('\\', '/')}/Cut 12.anicel');
+      expect(pick?.folderBookmark, 'BOOK==');
     });
 
     testWidgets('a name that already ends in .anicel is not doubled', (
@@ -289,7 +320,11 @@ void main() {
         find.byKey(const ValueKey<String>('project-save-replace-confirm')),
       );
       await tester.pumpAndSettle();
-      expect(pick?.path,endsWith('/Taken.anicel'));
+      expect(pick?.path, endsWith('/Taken.anicel'));
+      // The Replace branch is a SEPARATE return statement from the plain
+      // save, so it needs its own assertion or the bookmark can be dropped
+      // on exactly that path.
+      expect(pick?.folderBookmark, 'BOOK==');
     });
 
     testWidgets('cancelling the folder pick never asks for a name', (

@@ -149,12 +149,30 @@ void main() {
   });
 
   group('platform shape', () {
-    test('desktop grants are unscoped, Apple and Android are scoped', () {
-      // The whole reason two code paths exist: Windows and Linux hand out a
-      // path with no permission attached, so there is nothing to hold.
+    // The literal set, not a restatement of the getter. Written as
+    // `expect(grantsAreScoped, Platform.isIOS || …)` this was
+    // `expect(false, false)` on the Windows host — reducing the getter to
+    // `Platform.isIOS` alone left it green, which would send macOS and
+    // Android down the desktop branch and lose bookmarks on one and SAF
+    // resolution on the other.
+    const scoped = ['ios', 'macos', 'android'];
+    const unscoped = ['windows', 'linux', 'fuchsia'];
+
+    for (final platform in scoped) {
+      test('$platform needs a grant that must be held', () {
+        expect(FolderPicker.scopedForPlatform(platform), isTrue);
+      });
+    }
+    for (final platform in unscoped) {
+      test('$platform hands out a path that simply works', () {
+        expect(FolderPicker.scopedForPlatform(platform), isFalse);
+      });
+    }
+
+    test('the live getter agrees with the table on this host', () {
       expect(
         FolderPicker.grantsAreScoped,
-        Platform.isIOS || Platform.isMacOS || Platform.isAndroid,
+        FolderPicker.scopedForPlatform(Platform.operatingSystem),
       );
     });
 
@@ -168,22 +186,6 @@ void main() {
         (await FolderPicker.resolveBookmark('anything')).status,
         FolderPickStatus.unavailable,
       );
-    });
-
-    test('ensureAccess on desktop is a directory probe', () async {
-      if (FolderPicker.grantsAreScoped) {
-        return;
-      }
-      final temp = Directory.systemTemp.createTempSync('qa_grant_');
-      try {
-        expect(await FolderPicker.ensureAccess(temp.path), isTrue);
-        expect(
-          await FolderPicker.ensureAccess('${temp.path}/nope'),
-          isFalse,
-        );
-      } finally {
-        temp.deleteSync(recursive: true);
-      }
     });
   });
 }

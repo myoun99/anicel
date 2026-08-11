@@ -14,13 +14,18 @@ import 'package:flutter/foundation.dart';
 /// the path is only what it resolves to today.
 @immutable
 class RecentProject {
-  const RecentProject({
-    required this.path,
+  RecentProject({
+    required String path,
     this.folderBookmark,
     this.needsReconnect = false,
-  });
+    // Normalized HERE rather than at the call sites, because the desktop
+    // pickers hand back native separators: on Windows `getSaveLocation`
+    // returns `C:\Users\…\Cut12.anicel`, and [name] — which splits on `/` —
+    // would then label every menu row with its entire absolute path. The
+    // reconnect join `'$folder/$name'` assumes the same spelling.
+  }) : path = path.replaceAll('\\', '/');
 
-  /// The project file.
+  /// The project file. Always forward slashes.
   final String path;
 
   /// The security-scoped bookmark for the FOLDER the project sits in —

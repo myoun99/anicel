@@ -162,6 +162,7 @@ void main() {
     'replaceFileMessageTemplate': (s) => s.replaceFileMessageTemplate,
     'commonReplace': (s) => s.commonReplace,
     'folderNoPathTitle': (s) => s.folderNoPathTitle,
+    'folderStorageOffTitle': (s) => s.folderStorageOffTitle,
     'folderPickUnavailable': (s) => s.folderPickUnavailable,
     'projectChooserEmpty': (s) => s.projectChooserEmpty,
     'fileNameEmpty': (s) => s.fileNameEmpty,

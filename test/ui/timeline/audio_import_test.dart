@@ -67,9 +67,8 @@ EditorSessionManager _session() {
 
 Future<void> _pumpHost(
   WidgetTester tester,
-  EditorSessionManager session, {
-  Future<String?> Function()? audioFilePicker,
-}) async {
+  EditorSessionManager session,
+) async {
   // The test owns the session (HomePage normally does) — dispose it so
   // playback/prerender machinery cancels its timers before teardown.
   addTearDown(session.dispose);
@@ -86,7 +85,6 @@ Future<void> _pumpHost(
             onPixelsPerFrameChanged: (_) {},
             showSeconds: false,
             onShowSecondsChanged: (_) {},
-            audioFilePicker: audioFilePicker,
           ),
         ),
       ),

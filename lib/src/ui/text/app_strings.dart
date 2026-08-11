@@ -293,6 +293,7 @@ class AppStrings {
 
   // --- The native folder pickers (PICK-2) ---
   String get folderNoPathTitle => _s('folderNoPathTitle');
+  String get folderStorageOffTitle => _s('folderStorageOffTitle');
   String get folderPickUnavailable => _s('folderPickUnavailable');
   String get projectChooserEmpty => _s('projectChooserEmpty');
   String get fileNameEmpty => _s('fileNameEmpty');
@@ -982,6 +983,7 @@ class AppStrings {
     'replaceFileMessageTemplate': '{name} already exists here.',
     'commonReplace': 'Replace',
     'folderNoPathTitle': 'This location has no folder path',
+    'folderStorageOffTitle': 'Storage access is off',
     'folderPickUnavailable': 'The folder picker could not be opened.',
     'projectChooserEmpty': 'No Anicel projects in this folder.',
     'fileNameEmpty': 'File name cannot be empty.',
@@ -1650,6 +1652,7 @@ class AppStrings {
     'replaceFileMessageTemplate': '{name} はここに既にあります。',
     'commonReplace': '置き換え',
     'folderNoPathTitle': 'この場所にはフォルダーパスがありません',
+    'folderStorageOffTitle': 'ストレージへのアクセスがオフです',
     'folderPickUnavailable': 'フォルダー選択を開けませんでした。',
     'projectChooserEmpty': 'このフォルダーにAnicelプロジェクトがありません。',
     'fileNameEmpty': 'ファイル名を入力してください。',
@@ -2353,6 +2356,7 @@ class AppStrings {
     'replaceFileMessageTemplate': '{name}이(가) 여기 이미 있습니다.',
     'commonReplace': '바꾸기',
     'folderNoPathTitle': '이 위치에는 폴더 경로가 없습니다',
+    'folderStorageOffTitle': '저장소 접근이 꺼져 있습니다',
     'folderPickUnavailable': '폴더 선택 창을 열지 못했습니다.',
     'projectChooserEmpty': '이 폴더에 Anicel 프로젝트가 없습니다.',
     'fileNameEmpty': '파일 이름을 입력하세요.',
@@ -3063,6 +3067,7 @@ class AppStrings {
     'replaceFileMessageTemplate': '{name} existe déjà ici.',
     'commonReplace': 'Remplacer',
     'folderNoPathTitle': "Cet emplacement n'a pas de chemin de dossier",
+    'folderStorageOffTitle': "L'accès au stockage est désactivé",
     'folderPickUnavailable': "Impossible d'ouvrir le sélecteur de dossier.",
     'projectChooserEmpty': 'Aucun projet Anicel dans ce dossier.',
     'fileNameEmpty': 'Le nom de fichier ne peut pas être vide.',
@@ -3777,6 +3782,7 @@ class AppStrings {
     'replaceFileMessageTemplate': '{name} 已存在于此处。',
     'commonReplace': '替换',
     'folderNoPathTitle': '此位置没有文件夹路径',
+    'folderStorageOffTitle': '存储访问已关闭',
     'folderPickUnavailable': '无法打开文件夹选择器。',
     'projectChooserEmpty': '此文件夹中没有 Anicel 项目。',
     'fileNameEmpty': '文件名不能为空。',

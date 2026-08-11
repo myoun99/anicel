@@ -82,9 +82,6 @@ import UniformTypeIdentifiers
         let arguments = call.arguments as? [String: Any]
         self.resolveFolderBookmark(
           base64: arguments?["bookmark"] as? String, result: result)
-      case "ensureFolderAccess":
-        let arguments = call.arguments as? [String: Any]
-        result(self.ensureFolderAccess(path: arguments?["path"] as? String))
       default:
         result(FlutterMethodNotImplemented)
       }
@@ -104,10 +101,16 @@ import UniformTypeIdentifiers
   /// Dropbox are reachable at all: they are File Provider extensions, and no
   /// API lets a third-party app enumerate them.
   private func pickProjectFolder(result: @escaping FlutterResult) {
-    // A second request while one is open answers the first rather than
-    // leaking it — the same discipline MainActivity uses for the microphone.
-    if let stale = pendingFolderResult {
-      stale(["status": "cancelled"])
+    // REFUSE a second request rather than replacing the first. Replacing it
+    // would drop the only strong reference to delegate #1 — the picker's own
+    // `delegate` is weak — leaving picker #1 on screen, unable to report
+    // anything, and `topViewController()` would then try to present picker #2
+    // ON TOP of it. On the realistic trigger (a fast double-tap while #1 is
+    // still animating in) UIKit refuses the presentation, no callback ever
+    // fires, and the Dart future never completes for the life of the process.
+    if pendingFolderResult != nil {
+      result(["status": "cancelled"])
+      return
     }
     pendingFolderResult = result
 
@@ -125,11 +128,18 @@ import UniformTypeIdentifiers
     picker.delegate = delegate
     picker.allowsMultipleSelection = false
 
-    guard let presenter = topViewController() else {
+    guard let presenter = topViewController(), presenter.presentedViewController == nil
+    else {
       finishFolderPick(["status": "unavailable"])
       return
     }
-    presenter.present(picker, animated: true, completion: nil)
+    // A non-nil completion so a presentation that never took is an ERROR
+    // rather than a future that hangs. UIKit calls this after the animation;
+    // if the picker is not on screen by then, nothing else will report.
+    presenter.present(picker, animated: true) { [weak self, weak picker] in
+      guard let self, picker?.presentingViewController == nil else { return }
+      self.finishFolderPick(["status": "unavailable"])
+    }
   }
 
   /// Called by the delegate. Central so both the pick and the cancel paths
@@ -147,11 +157,24 @@ import UniformTypeIdentifiers
   /// applies to the underlying vnode for the whole process, so Dart's
   /// `dart:io` writes inside this tree with no further ceremony — the save
   /// stack does not learn a new API, it just works where it did not before.
-  fileprivate func grantPayload(for url: URL) -> [String: Any?] {
+  fileprivate func grantPayload(for url: URL, requiringScope: Bool = false)
+    -> [String: Any?]
+  {
     let opened = url.startAccessingSecurityScopedResource()
-    if opened {
-      scopedFolders[url.path] = url
+    // A bookmark for a provider that signed out, or a volume no longer
+    // mounted, RESOLVES without throwing and then refuses to open its scope.
+    // Reporting that as "granted" hands Dart a path every write will bounce:
+    // the project opens, the sidecar fires five minutes later, and each
+    // `dart:io` write dies inside a try that was written for a folder that
+    // was supposed to be writable. The status vocabulary already has the
+    // right word for it.
+    if requiringScope && !opened {
+      return ["status": "unavailable"]
     }
+    // Recorded whether or not a scope was needed — holding the URL is what
+    // keeps a real scope alive, and a picked (as opposed to resolved) URL
+    // does not always report one.
+    scopedFolders[url.path] = url
     var bookmark: String?
     do {
       // `.minimalBookmark` is the iOS spelling; `.withSecurityScope` is
@@ -183,22 +206,15 @@ import UniformTypeIdentifiers
       let url = try URL(
         resolvingBookmarkData: data, options: [], relativeTo: nil,
         bookmarkDataIsStale: &isStale)
-      // A stale bookmark still resolves; it just wants reminting. Report the
-      // grant and let the caller store the fresh bookmark from the payload.
-      result(grantPayload(for: url))
+      // A stale bookmark still resolves; it just wants reminting. The payload
+      // carries the FRESH bookmark and `_openRecent` stores it, so an entry
+      // that keeps being opened keeps its token young.
+      result(grantPayload(for: url, requiringScope: true))
     } catch {
       // Provider reinstalled, account changed, folder deleted. The caller
       // keeps the row and offers to reconnect rather than dropping it.
       result(["status": "unavailable"])
     }
-  }
-
-  private func ensureFolderAccess(path: String?) -> Bool {
-    guard let path else { return false }
-    if let url = scopedFolders[path] {
-      return FileManager.default.fileExists(atPath: url.path)
-    }
-    return false
   }
 
   /// The presenting view controller.
@@ -224,8 +240,14 @@ import UniformTypeIdentifiers
   }
 
   private func installPencilInteractionIfPossible() {
+    // Reaches for `topViewController()` rather than `window` because this
+    // app declares a `UIApplicationSceneManifest`: under the scene lifecycle
+    // the window belongs to the scene delegate and `FlutterAppDelegate.window`
+    // is nil, so the old `window?.rootViewController` guard never passed and
+    // the Pencil double-tap silently never installed. The picker code needed
+    // the same fallback, so they now share it.
     guard !pencilInteractionInstalled,
-      let view = window?.rootViewController?.view
+      let view = topViewController()?.view
     else { return }
     let interaction = UIPencilInteraction()
     interaction.delegate = self
@@ -236,14 +258,23 @@ import UniformTypeIdentifiers
   /// Pencil double-tap: forward the SYSTEM preference so Dart maps it
   /// the way the user configured the Pencil globally.
   func pencilInteractionDidTap(_ interaction: UIPencilInteraction) {
+    let preferred = UIPencilInteraction.preferredTapAction
     let action: String
-    switch UIPencilInteraction.preferredTapAction {
-    case .switchEraser: action = "switchEraser"
-    case .switchPrevious: action = "switchPrevious"
-    case .showColorPalette: action = "showColorPalette"
-    case .showInkAttributes: action = "showInkAttributes"
-    case .ignore: action = "ignore"
-    @unknown default: action = "switchEraser"
+    // `.showInkAttributes` arrived with Apple Pencil Pro and is declared
+    // `API_AVAILABLE(ios(17.5))`. Naming an unavailable enum element in a
+    // switch PATTERN is a compile ERROR in Swift, not a warning, and the
+    // deployment target here is 13.0 — so this case has to be tested
+    // outside the switch or `AppDelegate.swift` does not build at all.
+    if #available(iOS 17.5, *), preferred == .showInkAttributes {
+      action = "showInkAttributes"
+    } else {
+      switch preferred {
+      case .switchEraser: action = "switchEraser"
+      case .switchPrevious: action = "switchPrevious"
+      case .showColorPalette: action = "showColorPalette"
+      case .ignore: action = "ignore"
+      @unknown default: action = "switchEraser"
+      }
     }
     penChannel?.invokeMethod("pencilTap", arguments: ["action": action])
   }

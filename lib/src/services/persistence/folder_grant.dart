@@ -110,7 +110,22 @@ abstract final class FolderPicker {
   /// Whether this platform hands out a folder grant that must be held, as
   /// opposed to a path that simply works.
   static bool get grantsAreScoped =>
-      Platform.isIOS || Platform.isMacOS || Platform.isAndroid;
+      scopedForPlatform(Platform.operatingSystem);
+
+  /// The decision as a pure function of the OS name.
+  ///
+  /// Split out so a test can pin all five platforms from the Windows
+  /// workstation. Asserted through the getter it could only ever be
+  /// `expect(false, false)` here — and a test written as
+  /// `expect(grantsAreScoped, Platform.isIOS || …)` restates the
+  /// implementation, so reducing the getter to `Platform.isIOS` left it
+  /// green while sending macOS and Android down the desktop branch, losing
+  /// bookmarks on one and SAF resolution on the other.
+  @visibleForTesting
+  static bool scopedForPlatform(String operatingSystem) =>
+      operatingSystem == 'ios' ||
+      operatingSystem == 'macos' ||
+      operatingSystem == 'android';
 
   /// Asks the user for a folder.
   ///
@@ -152,22 +167,6 @@ abstract final class FolderPicker {
       return const FolderGrant.unavailable();
     }
     return _invoke('resolveFolderBookmark', {'bookmark': bookmark});
-  }
-
-  /// Re-acquires the scope for a path already granted this session. On
-  /// desktop this is a no-op that reports success, so callers never branch.
-  static Future<bool> ensureAccess(String path) async {
-    if (!grantsAreScoped) {
-      return Directory(path).existsSync();
-    }
-    try {
-      return await AppStorage.channel.invokeMethod<bool>('ensureFolderAccess', {
-            'path': path,
-          }) ??
-          false;
-    } on Object {
-      return false;
-    }
   }
 
   static Future<FolderGrant> _invoke(

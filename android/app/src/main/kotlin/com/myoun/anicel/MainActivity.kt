@@ -35,18 +35,13 @@ class MainActivity : FlutterActivity() {
                 }
                 "appDocumentsPath" -> result.success(appDocumentsPath())
                 "requestMicrophone" -> requestMicrophone(result)
-                "pickProjectFolder" -> pickProjectFolder(result)
+                "pickProjectFolder" ->
+                    pickProjectFolder(call.argument<String>("initialDirectory"), result)
                 // Android hands out durable real paths, so there is no
                 // bookmark to resolve and no scope to re-acquire. Both
                 // answer honestly rather than pretending.
                 "resolveFolderBookmark" ->
                     result.success(mapOf("status" to "unavailable"))
-                "ensureFolderAccess" ->
-                    result.success(
-                        (call.argument<String>("path") ?: "").let {
-                            it.isNotEmpty() && java.io.File(it).isDirectory
-                        }
-                    )
                 else -> result.notImplemented()
             }
         }
@@ -71,25 +66,61 @@ class MainActivity : FlutterActivity() {
     // grant is what actually opens it.
     //
     // When no real path exists behind the choice (Drive and other document
-    // providers, SD cards, USB), that is reported rather than papered over:
-    // a project saved to a path the writer cannot edit in place would fail
-    // later and silently.
-    private fun pickProjectFolder(result: MethodChannel.Result) {
-        // A second request while one is open answers the first rather than
-        // leaking it - the same discipline requestMicrophone uses.
-        pendingFolderResult?.success(mapOf("status" to "cancelled"))
+    // providers), that is reported rather than papered over: a project saved
+    // to a path the writer cannot edit in place would fail later and
+    // silently.
+    private fun pickProjectFolder(initialDirectory: String?, result: MethodChannel.Result) {
+        // REFUSE a second pick rather than replacing the waiter. Replacing it
+        // does not cancel the activity already on screen, and nothing ties a
+        // result to its request - so picker #1's answer would be handed to
+        // picker #2's caller and picker #2's own answer dropped. The user
+        // would receive the folder they chose in the OTHER dialog.
+        if (pendingFolderResult != null) {
+            result.success(mapOf("status" to "cancelled"))
+            return
+        }
         pendingFolderResult = result
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
             addFlags(
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or
                     Intent.FLAG_GRANT_WRITE_URI_PERMISSION
             )
+            // Open where the app lives rather than at "Internal storage".
+            // Without this the user re-walks Internal storage > Documents >
+            // Anicel on every save - a straight regression against the in-app
+            // browser, which started at the app documents home.
+            initialUriFor(initialDirectory)?.let {
+                putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI, it)
+            }
         }
         try {
             startActivityForResult(intent, folderPickRequestCode)
         } catch (_: Exception) {
             pendingFolderResult = null
             result.success(mapOf("status" to "unavailable"))
+        }
+    }
+
+    // Turns a real path back into the document Uri DocumentsUI accepts as a
+    // starting point (honoured from API 26). Null when the path is not on
+    // primary storage, in which case the picker opens where it last was.
+    private fun initialUriFor(path: String?): Uri? {
+        if (path.isNullOrEmpty() || Build.VERSION.SDK_INT < Build.VERSION_CODES.O) {
+            return null
+        }
+        val root = Environment.getExternalStorageDirectory()?.absolutePath ?: return null
+        val normalized = path.replace('\\', '/').trimEnd('/')
+        if (!normalized.startsWith(root)) {
+            return null
+        }
+        val relative = normalized.removePrefix(root).trimStart('/')
+        return try {
+            android.provider.DocumentsContract.buildDocumentUri(
+                "com.android.externalstorage.documents",
+                "primary:$relative",
+            )
+        } catch (_: Exception) {
+            null
         }
     }
 
@@ -111,9 +142,11 @@ class MainActivity : FlutterActivity() {
             waiting.success(mapOf("status" to "cancelled"))
             return
         }
-        // Keep the grant across restarts. Harmless when the real path is
-        // what ends up being used, and it keeps the choice visible in the
-        // system's permission list.
+        // Keep the tree grant across restarts. It buys nothing TODAY - the
+        // app uses the real path below and never touches the Uri again - and
+        // is taken only so a future content:// fallback has something to
+        // resume from. It is not, as an earlier comment here claimed, shown
+        // to the user anywhere in Settings.
         try {
             contentResolver.takePersistableUriPermission(
                 tree,
@@ -121,8 +154,7 @@ class MainActivity : FlutterActivity() {
                     Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
             )
         } catch (_: Exception) {
-            // Not every provider offers a persistable grant; the real path
-            // below is what this app actually uses.
+            // Not every provider offers a persistable grant.
         }
         val path = realPathForTree(tree)
         if (path == null) {
@@ -136,11 +168,22 @@ class MainActivity : FlutterActivity() {
     // Resolves a SAF tree Uri to a filesystem path, or null when none
     // exists.
     //
-    // Only primary shared storage is resolvable. A document id looks like
-    // "primary:Documents/Anicel"; the part before the colon names the
-    // volume, and anything other than "primary" is an SD card or USB stick
-    // whose mount point cannot be derived reliably. A Drive or Dropbox
-    // provider does not use this authority at all.
+    // A document id looks like "<volume>:<relative>". The volume is asked of
+    // the SYSTEM rather than guessed, because guessing gets three cases
+    // wrong:
+    //
+    //   "primary"  internal shared storage.
+    //   "home"     the Documents root that AOSP's ExternalStorageProvider
+    //              registers on API 24-29 - which is where this app's own
+    //              default project home lives, so refusing it meant refusing
+    //              Documents/Anicel on every device below Android 11.
+    //   <fs-uuid>  an SD card or USB volume. StorageManager knows its mount
+    //              point, and MANAGE_EXTERNAL_STORAGE opens it, so calling
+    //              these "unresolvable" sent Galaxy Tab users with a microSD
+    //              card to the cloud-sync advice for storage that works.
+    //
+    // A Drive or Dropbox provider does not use this authority at all, and
+    // that is the case that genuinely has no path.
     private fun realPathForTree(tree: Uri): String? {
         if (tree.authority != "com.android.externalstorage.documents") {
             return null
@@ -156,18 +199,30 @@ class MainActivity : FlutterActivity() {
         }
         val volume = documentId.substring(0, separator)
         val relative = documentId.substring(separator + 1)
-        if (!volume.equals("primary", ignoreCase = true)) {
-            return null
-        }
-        val root = Environment.getExternalStorageDirectory() ?: return null
-        val resolved = if (relative.isEmpty()) {
-            root
-        } else {
-            java.io.File(root, relative)
-        }
+        val root = rootForVolume(volume) ?: return null
+        val resolved = if (relative.isEmpty()) root else java.io.File(root, relative)
         // The grant is what makes this readable; if it is missing the
         // directory probe fails here rather than at save time.
         return if (resolved.isDirectory) resolved.absolutePath else null
+    }
+
+    private fun rootForVolume(volume: String): java.io.File? {
+        if (volume.equals("primary", ignoreCase = true)) {
+            return Environment.getExternalStorageDirectory()
+        }
+        if (volume.equals("home", ignoreCase = true)) {
+            return Environment.getExternalStoragePublicDirectory(
+                Environment.DIRECTORY_DOCUMENTS
+            )
+        }
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
+            val storage = getSystemService(android.os.storage.StorageManager::class.java)
+            val match = storage?.storageVolumes?.firstOrNull {
+                it.uuid?.equals(volume, ignoreCase = true) == true
+            }
+            return match?.directory
+        }
+        return null
     }
 
     private fun isMicrophoneGranted(): Boolean {
