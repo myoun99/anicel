@@ -214,7 +214,7 @@ class _StrapIconButtonState extends State<StrapIconButton> {
       onPressed: widget.onPressed,
       icon: Icon(
         widget.icon,
-        color: widget.accent && enabled ? AppColors.accent : null,
+        color: widget.accent ? AppColors.addGlyph(enabled: enabled) : null,
       ),
     );
     if (!_hasBand) {

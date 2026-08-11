@@ -34,6 +34,19 @@ abstract final class AppColors {
   /// customizable, UI-R22 #5).
   static Color get accent => accentSettings.value.accent;
 
+  /// The colour of a `＋` glyph, wherever one appears.
+  ///
+  /// 유저 확정 (2026-08-10): *"＋의 강조색은 ＋라는 아이콘에만 있는건 좋다고
+  /// 생각해. ＋가있는 모든곳. 공통적으로."* — so this is a law about the
+  /// GLYPH, not about any one bar, and it lives in one place rather than
+  /// being re-decided at each button. Never the border, never a caret, never
+  /// the label beside it: the plus itself and nothing else.
+  ///
+  /// Returns null when the button cannot be pressed, which hands the icon
+  /// back to whatever the surface dims disabled controls to — an accent that
+  /// still burns on a dead button would be advertising a door that is shut.
+  static Color? addGlyph({required bool enabled}) => enabled ? accent : null;
+
   /// FILL 1 — below every chrome surface: the scaffold, a well cut into a
   /// panel, the ring that separates a floating panel from the artwork.
   static const Color backdrop = Color(0xFF141517);

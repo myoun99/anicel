@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/camera_instruction.dart';
 import '../timeline/instruction_icon_palette.dart';
+import '../theme/app_theme.dart' show AppColors;
 import '../widgets/app_window.dart';
 import '../text/app_strings.dart';
 
@@ -127,7 +128,14 @@ class _InstructionSetEditorDialogState
               child: TextButton.icon(
                 key: const ValueKey<String>('instruction-def-add-button'),
                 onPressed: _addDef,
-                icon: const Icon(Icons.add, size: 16),
+                // 「＋가 있는 모든 곳, 공통적으로」 — the glyph only. The
+                // label beside it stays the button's own colour, which is
+                // what "＋라는 아이콘에만" means when there is a label.
+                icon: Icon(
+                  Icons.add,
+                  size: 16,
+                  color: AppColors.addGlyph(enabled: true),
+                ),
                 label: Text(strings.instructionAddButton),
               ),
             ),

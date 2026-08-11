@@ -75,10 +75,13 @@ Future<void> showTimelineFpsDialog(
 /// only the high-frequency commands stay as direct icons — everything else
 /// lives in the shared flyouts.
 ///
-/// Layout: [split add-layer][Layer ▾] │ [Add instance][Blank][Mark][Frame ▾]
-/// │ [cut group]. Menu items reuse the retired toolbar buttons' key strings
-/// so tests only gain a menu-open tap. The exposure ± buttons are GONE —
-/// block edge grips replaced them outright (session APIs kept for grips).
+/// Layout: four pills — `[컷 ＋] [레이어 ＋ 🗑] [프레임 ＋ ✕ ● ↑ ↓ 1 2 3 4 N]
+/// [✦]` — each one a noun's name cell followed by that noun's verbs. There
+/// are no `▾` carets: a name cell IS its menu, and a `＋` that can make more
+/// than one thing wears a band along its top edge instead. Menu items reuse
+/// the retired toolbar buttons' key strings so tests only gain a menu-open
+/// tap. The exposure ± buttons are GONE — block edge grips replaced them
+/// outright (session APIs kept for grips).
 /// Builds its group ONCE and hands the same widget back until [rebuildKey]
 /// moves.
 ///
@@ -141,8 +144,8 @@ class TimelineActionToolbar extends StatelessWidget {
 
   final EditorSessionManager session;
 
-  /// The unified Add Layer entrance (same kind as the selection); the
-  /// split ▾ adds kind-explicitly via [EditorSessionManager.addLayerOfKind].
+  /// The unified Add Layer entrance (same kind as the selection); the band
+  /// above it adds kind-explicitly via [EditorSessionManager.addLayerOfKind].
   final VoidCallback onAddLayer;
 
   final VoidCallback onRenameLayer;
@@ -152,18 +155,18 @@ class TimelineActionToolbar extends StatelessWidget {
   /// playhead (kind-dispatched by the host).
   ///
   /// NULL when the host cannot serve it — the frame pill's menu entry greys
-  /// out rather than pretending. The storyboard passes null today: the
-  /// dispatch is ~300 lines of dialogs that still live in the timeline's
-  /// host, and lifting them out is its own change rather than a passenger
-  /// on this one.
+  /// out rather than pretending. Nothing passes null today (the dispatch is
+  /// [instance_editor_commands.dart] now, and both panels reach it); the
+  /// nullability stays because a host that cannot serve a command should be
+  /// able to say so rather than hand over one that does nothing.
   final VoidCallback? onEditInstance;
 
   /// Kind-dispatched creation: new frame / camera key / SE entry /
   /// instruction event.
   final VoidCallback onCreateInstance;
 
-  /// Sections hidden from the grids; the Layer ▾ show/hide items and the
-  /// rail's fold chevrons both flip this.
+  /// Sections hidden from the grids; the Layer menu's show/hide items and
+  /// the rail's fold chevrons both flip this.
   final Set<TimelineSection> hiddenSections;
   final ValueChanged<TimelineSection>? onToggleSection;
 
@@ -516,13 +519,10 @@ class TimelineActionToolbar extends StatelessWidget {
       keyValue: key.value,
       tooltip: tooltip,
       onPressed: onPressed,
-      // 유저 확정: accent는 ＋ 글리프에만, ＋가 있는 모든 곳에. Never the
-      // border, never a caret — and it goes out with the button, because an
-      // accent on a dead control reads as "press me".
-      icon: Icon(
-        icon,
-        color: accent && onPressed != null ? AppColors.accent : null,
-      ),
+      // 유저 확정: accent는 ＋ 글리프에만, ＋가 있는 모든 곳에 — the law
+      // itself is [AppColors.addGlyph], since 「모든 곳」 has to be one
+      // decision rather than the same decision made at each button.
+      icon: Icon(icon, color: accent ? AppColors.addGlyph(enabled: onPressed != null) : null),
     );
   }
 

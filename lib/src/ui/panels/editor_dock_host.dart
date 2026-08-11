@@ -3,6 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
+import '../theme/app_theme.dart' show AppColors;
 import 'editor_panel_layout.dart';
 import 'editor_panel_tabs.dart';
 import 'panel_flash.dart';
@@ -189,9 +190,10 @@ class EditorDockDropZone extends StatelessWidget {
                 child: Icon(
                   Icons.add,
                   size: 14,
-                  color: hovered
-                      ? colorScheme.primary
-                      : colorScheme.onSurfaceVariant,
+                  // 「＋가 있는 모든 곳, 공통적으로」. This one only exists
+                  // while a tab is in the air, so it is never disabled —
+                  // hovering deepens the rail behind it, not the glyph.
+                  color: AppColors.addGlyph(enabled: true),
                 ),
               ),
             );
