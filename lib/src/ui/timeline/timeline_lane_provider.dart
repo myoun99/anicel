@@ -117,16 +117,22 @@ List<PropertyLaneRow> timelineLanesForLayer({
     case LayerKind.camera:
       // A camera row on screen implies an active cut.
       final cut = session.requireActiveCut;
-      return collapsibleTransformGroup(
-        transformPropertyLanes(
-          cut.camera.track,
-          poseAt: (frameIndex) => resolveCameraPoseAt(
-            camera: cut.camera,
-            canvasSize: cut.canvasSize,
-            frameIndex: frameIndex,
-          ),
+      // ㉙ 유저 2026-08-12: 「카메라는 트랜스폼 헤더나 카메라나 똑같은 유니언의
+      // 그룹이란 느낌인데, 중복이니까 카메라레이어는 트랜스폼헤더 삭제하자.
+      // 펼치면 포지션/스케일/로테이션만 남도록.」
+      //
+      // ★The camera row IS the transform group. Its own band already draws
+      // the member keys' union — the entire job a Transform header does for
+      // every other row — so a header on top of it said the same noun twice
+      // and cost a twirl to reach lanes the row was already summarising.
+      return transformPropertyLanes(
+        cut.camera.track,
+        poseAt: (frameIndex) => resolveCameraPoseAt(
+          camera: cut.camera,
+          canvasSize: cut.canvasSize,
+          frameIndex: frameIndex,
         ),
-      );
+      ).where((lane) => !lane.isGroupHeader).toList();
     case LayerKind.se:
       // Audio controls lead the SE twirl-down (the row's main tool); the
       // Transform group sits below, collapsed by default.

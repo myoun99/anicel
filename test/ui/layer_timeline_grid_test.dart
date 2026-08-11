@@ -800,7 +800,7 @@ void main() {
     final storyboardIcon = tester.widget<Icon>(
       find.byKey(const ValueKey<String>('timeline-layer-kind-icon-layer-2')),
     );
-    expect(animationIcon.icon, Icons.brush_outlined);
+    expect(animationIcon.icon, Icons.filter_frames);
     expect(storyboardIcon.icon, Icons.auto_stories_outlined);
     expect(find.bySemanticsLabel('Animation layer'), findsOneWidget);
     expect(find.bySemanticsLabel('Storyboard layer'), findsOneWidget);
