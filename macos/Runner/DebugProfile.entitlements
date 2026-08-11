@@ -10,5 +10,15 @@
 	<true/>
 	<key>com.apple.security.network.server</key>
 	<true/>
+	<!-- PICK-1: without user-selected.read-write the panel still OPENS under
+	     the sandbox and then every read and write of what the user picked
+	     fails - a failure mode that looks like a bug in our save code rather
+	     than a missing entitlement. bookmarks.app-scope is what lets a
+	     granted folder survive a relaunch, which is the whole point of the
+	     recent-projects list. -->
+	<key>com.apple.security.files.user-selected.read-write</key>
+	<true/>
+	<key>com.apple.security.files.bookmarks.app-scope</key>
+	<true/>
 </dict>
 </plist>
