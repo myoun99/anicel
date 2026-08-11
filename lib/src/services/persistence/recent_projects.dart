@@ -86,16 +86,68 @@ class RecentProject {
   int get hashCode => Object.hash(path, folderBookmark, needsReconnect);
 }
 
-/// The list, newest first.
+/// What the chooser orders its rows by.
+///
+/// Lives in the persistence layer rather than beside the dialog because it is
+/// a STORED value — the UI may not own the vocabulary of something written to
+/// disk, or the file format follows whatever the widget happened to be called.
+enum ProjectSortKey {
+  name('name'),
+  modified('modified'),
+  size('size');
+
+  const ProjectSortKey(this.jsonValue);
+
+  final String jsonValue;
+
+  static ProjectSortKey fromJson(Object? json) {
+    for (final value in ProjectSortKey.values) {
+      if (value.jsonValue == json) {
+        return value;
+      }
+    }
+    return ProjectSortKey.name;
+  }
+}
+
+/// The project-file browsing state the File menu and the chooser share: the
+/// recent list, and how the chooser is currently ordered.
+///
+/// The sort lives here rather than in an eleventh settings store because this
+/// one already has the two properties a chooser needs and a settings store
+/// does not: it reads SYNCHRONOUSLY (the dialog wants it during build, where
+/// an async `File` future never completes under the widget-test clock) and it
+/// redirects itself away from the user's real file under FLUTTER_TEST.
 @immutable
 class RecentProjects {
-  const RecentProjects({this.entries = const []});
+  const RecentProjects({
+    this.entries = const [],
+    this.sortKey = ProjectSortKey.name,
+    this.sortAscending = true,
+  });
 
   /// Ten, the same cap the recent-colours strip uses. Long enough to span a
   /// working week of cuts, short enough that the menu stays a menu.
   static const int maxEntries = 10;
 
   final List<RecentProject> entries;
+
+  /// Name, ascending — the user's call, replacing an earlier newest-first
+  /// default. A cut folder is read as a numbered SEQUENCE, and a sequence
+  /// wants to be in its own order rather than in the order it was last
+  /// touched.
+  final ProjectSortKey sortKey;
+  final bool sortAscending;
+
+  RecentProjects copyWith({
+    List<RecentProject>? entries,
+    ProjectSortKey? sortKey,
+    bool? sortAscending,
+  }) => RecentProjects(
+    entries: entries ?? this.entries,
+    sortKey: sortKey ?? this.sortKey,
+    sortAscending: sortAscending ?? this.sortAscending,
+  );
 
   /// Records an open. Promotes to the front, de-duplicates by path, caps.
   ///
@@ -107,7 +159,10 @@ class RecentProjects {
     if (entries.isNotEmpty && entries.first == project) {
       return this;
     }
-    return RecentProjects(
+    // copyWith, not a fresh RecentProjects: the sort preference rides in the
+    // same object, and rebuilding it from scratch here would silently reset
+    // the user's ordering on every open.
+    return copyWith(
       entries: [
         project,
         ...entries.where((entry) => entry.path != project.path),
@@ -129,7 +184,7 @@ class RecentProjects {
         else
           entry,
     ];
-    return changed ? RecentProjects(entries: next) : this;
+    return changed ? copyWith(entries: next) : this;
   }
 
   /// Replaces an entry's bookmark after a successful reconnect, clearing the
@@ -149,14 +204,14 @@ class RecentProjects {
         else
           entry,
     ];
-    return changed ? RecentProjects(entries: next) : this;
+    return changed ? copyWith(entries: next) : this;
   }
 
   RecentProjects without(String path) {
     if (!entries.any((entry) => entry.path == path)) {
       return this;
     }
-    return RecentProjects(
+    return copyWith(
       entries: [
         for (final entry in entries)
           if (entry.path != path) entry,
@@ -166,12 +221,17 @@ class RecentProjects {
 
   Map<String, dynamic> toJson() => {
     'entries': [for (final entry in entries) entry.toJson()],
+    'sortKey': sortKey.jsonValue,
+    'sortAscending': sortAscending,
   };
 
   static RecentProjects fromJson(Map<String, dynamic> json) {
+    final sortKey = ProjectSortKey.fromJson(json['sortKey']);
+    final sortAscending = json['sortAscending'] as bool? ?? true;
     final raw = json['entries'];
     if (raw is! List) {
-      return const RecentProjects();
+      // A file with no list can still carry a sort the user chose.
+      return RecentProjects(sortKey: sortKey, sortAscending: sortAscending);
     }
     final parsed = <RecentProject>[];
     for (final item in raw) {
@@ -186,15 +246,22 @@ class RecentProjects {
       }
     }
     // Re-capped on read so a hand-edited file cannot grow the menu.
-    return RecentProjects(entries: parsed.take(maxEntries).toList());
+    return RecentProjects(
+      entries: parsed.take(maxEntries).toList(),
+      sortKey: sortKey,
+      sortAscending: sortAscending,
+    );
   }
 
   @override
   bool operator ==(Object other) =>
-      other is RecentProjects && listEquals(other.entries, entries);
+      other is RecentProjects &&
+      listEquals(other.entries, entries) &&
+      other.sortKey == sortKey &&
+      other.sortAscending == sortAscending;
 
   @override
-  int get hashCode => Object.hashAll(entries);
+  int get hashCode => Object.hash(Object.hashAll(entries), sortKey, sortAscending);
 }
 
 /// The app-wide live list — the [AppSave] idiom.
