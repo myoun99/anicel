@@ -4,7 +4,6 @@ import 'dart:math' as math;
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/canvas_size.dart';
@@ -66,12 +65,11 @@ import '../timesheet/timesheet_document_painter.dart'
 import '../timesheet/timesheet_notation.dart';
 import '../widgets/app_window.dart';
 import '../dialogs/app_confirm_dialog.dart';
+import '../dialogs/folder_pick_flow.dart';
 import '../text/app_strings.dart';
 
 /// Picks the output directory (the Browse… button); `null` on cancel.
 typedef ExportDirectoryPicker = Future<String?> Function();
-
-Future<String?> _pickExportDirectory() => getDirectoryPath();
 
 /// The v10 export window: five zones (file/location bar → presets |
 /// preview | settings | queue → footer), four tabs, location-first flow —
@@ -2067,8 +2065,13 @@ class ExportDialogState extends State<ExportDialog> {
   // --- build ----------------------------------------------------------------
 
   Future<void> _browseLocation() async {
-    final picker = widget.exportDirectoryPicker ?? _pickExportDirectory;
-    final directory = await picker();
+    // PICK-2: the export location is PERSISTED as `lastLocation` and replayed
+    // on the next launch, so it has to be a durable real path. `getDirectoryPath`
+    // gave a SAF tree URI on Android and threw on iOS — either way the stored
+    // value would come back a dead location one session later.
+    final directory = widget.exportDirectoryPicker != null
+        ? await widget.exportDirectoryPicker!()
+        : await pickFolderForUser(context);
     if (directory == null || !mounted) {
       return;
     }

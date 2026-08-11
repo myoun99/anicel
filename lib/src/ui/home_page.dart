@@ -16,6 +16,8 @@ import '../services/persistence/app_workspace_colors_store.dart';
 import '../services/persistence/app_input_settings_store.dart';
 import '../services/persistence/app_save_settings.dart';
 import '../services/persistence/app_save_settings_store.dart';
+import '../services/persistence/recent_projects.dart';
+import '../services/persistence/recent_projects_store.dart';
 import '../services/persistence/audio_sync_settings_store.dart';
 import '../services/persistence/project_autosave_service.dart';
 import '../services/color_palette_file_service.dart';
@@ -162,6 +164,14 @@ class _HomePageState extends State<HomePage> {
   @override
   void initState() {
     super.initState();
+    // PICK-4: the recent-projects list, read once so the File menu has
+    // something to show on the first open.
+    //
+    // Unguarded, unlike the stores below: `RecentProjectsStore` redirects
+    // itself to a per-process temp file under FLUTTER_TEST, so a widget test
+    // that opens a project gets its own list rather than the developer's.
+    // Sync, because the menu reads this while BUILDING.
+    AppRecent.projects.value = RecentProjectsStore().load();
     // A NEW project seeds its pasteboard from the app-level default —
     // all that remains of the old app-state pasteboard (R3b promotion,
     // R28 #9 reversed): the color is project data now, and this is where

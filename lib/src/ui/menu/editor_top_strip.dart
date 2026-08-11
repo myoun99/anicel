@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io' show Platform;
+import 'dart:io' show File, Platform;
 
 import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
@@ -8,7 +8,10 @@ import '../../services/persistence/anicel_project_archive.dart';
 import '../../services/persistence/app_documents.dart';
 import '../../services/persistence/app_save_settings.dart';
 import '../../services/persistence/file_type_groups.dart';
+import '../../services/persistence/folder_grant.dart';
 import '../../services/persistence/project_autosave_service.dart';
+import '../../services/persistence/recent_projects.dart';
+import '../../services/persistence/recent_projects_store.dart';
 import '../dialogs/app_confirm_dialog.dart';
 import '../../models/brush_blend_mode.dart';
 import '../../models/brush_pressure_curve.dart';
@@ -20,7 +23,9 @@ import '../text/app_strings.dart';
 import '../widgets/app_window.dart';
 import '../widgets/panel_flyout.dart';
 import '../widgets/pressure_curve_popup.dart';
-import '../dialogs/file_browser_dialog.dart';
+import '../dialogs/app_prompt_dialog.dart';
+import '../dialogs/folder_pick_flow.dart';
+import '../dialogs/project_chooser_dialog.dart';
 import '../dialogs/preferences_dialog.dart';
 import '../canvas/paper_background.dart' show alphaPreviewEnabled;
 import '../debug/input_inspector.dart';
@@ -135,17 +140,17 @@ class EditorTopStrip extends StatelessWidget {
   }
 
   Future<void> _openProject(BuildContext context) async {
-    final path = anicelOpenFilePicker != null
-        ? await anicelOpenFilePicker!()
-        // SAVE-1c: mobile routes to the in-app browser (the OS pickers
-        // hand out content URIs the real-path save stack cannot edit in
-        // place); desktop keeps the OS dialog.
-        : useInAppBrowserForPickers
-        ? await showAnicelFileBrowser(context, mode: FileBrowserMode.open)
-        : await _defaultOpenPicker();
-    if (path == null || !context.mounted) {
+    final ProjectPick? pick;
+    if (anicelOpenFilePicker != null) {
+      final injected = await anicelOpenFilePicker!();
+      pick = injected == null ? null : (path: injected, folderBookmark: null);
+    } else {
+      pick = await pickProjectToOpen(context);
+    }
+    if (pick == null || !context.mounted) {
       return;
     }
+    final path = pick.path;
     // A newer autosave sidecar offers recovery (crash / sync loss).
     // SAVE-1: the sidecar may live beside the file OR in the user's
     // sidecar directory (and the setting may have changed since it was
@@ -190,6 +195,13 @@ class EditorTopStrip extends StatelessWidget {
     }
     try {
       await session.openProjectFromFile(openPath, recoverAs: recoverAs);
+      // Recorded AFTER the open succeeds, not at pick time: a file that
+      // fails to parse has no business sitting at the top of the menu.
+      // `path` rather than `openPath` — recovering from a sidecar still
+      // means the user opened the project, not the sidecar.
+      recordRecentProject(
+        RecentProject(path: path, folderBookmark: pick.folderBookmark),
+      );
     } catch (error) {
       if (context.mounted) {
         _showFileError(context, error);
@@ -208,6 +220,94 @@ class EditorTopStrip extends StatelessWidget {
     }
     try {
       await session.saveProjectToFile(path);
+    } catch (error) {
+      if (context.mounted) {
+        _showFileError(context, error);
+      }
+    }
+  }
+
+  /// PICK-4: the recent projects, or nothing at all.
+  ///
+  /// Absent rather than empty-and-disabled when there is no history: a
+  /// heading over nothing is a menu row that only ever says "no".
+  ///
+  /// These do NOT go through [_item]. That helper localizes by id, and a
+  /// project's file name is not a phrase in five languages — routing it
+  /// through the menu-label table would ask the app to translate the user's
+  /// own filenames.
+  List<PanelFlyoutEntry> _recentEntries(BuildContext context) {
+    final recents = AppRecent.projects.value.entries;
+    if (recents.isEmpty) {
+      return const [];
+    }
+    final strings = AppText.strings;
+    return [
+      const PanelFlyoutDivider(),
+      PanelFlyoutHeader(strings.recentProjectsTitle),
+      for (final entry in recents)
+        PanelFlyoutItem(
+          keyValue: 'menu-recent-${entry.path}',
+          label: entry.needsReconnect
+              ? '${entry.name} — ${strings.recentReconnect}'
+              : entry.name,
+          icon: entry.needsReconnect
+              ? Icons.link_off_outlined
+              : Icons.history_outlined,
+          enabled: true,
+          onSelected: () => unawaited(_openRecent(context, entry)),
+        ),
+    ];
+  }
+
+  /// Opens a remembered project, re-acquiring its folder first.
+  ///
+  /// On Apple platforms the stored path alone is refused — the security
+  /// scope has to be taken again from the bookmark before anything may read
+  /// it. When that fails the row is not deleted: the user still knows which
+  /// project they mean, so they are handed the folder picker to point at it
+  /// again, and a match by FILE NAME inside the newly granted folder is what
+  /// re-links it. That also covers the ordinary case of a project the user
+  /// moved themselves.
+  Future<void> _openRecent(BuildContext context, RecentProject entry) async {
+    var path = entry.path;
+    final bookmark = entry.folderBookmark;
+    if (bookmark != null) {
+      final grant = await FolderPicker.resolveBookmark(bookmark);
+      if (grant.isGranted) {
+        path = '${grant.path}/${entry.name}';
+      } else {
+        storeRecentProjects(
+          AppRecent.projects.value.withReconnectNeeded(entry.path),
+        );
+        if (!context.mounted) {
+          return;
+        }
+        final regrant = await pickFolderGrantForUser(context);
+        final folder = regrant?.path;
+        if (folder == null) {
+          return;
+        }
+        path = '$folder/${entry.name}';
+        storeRecentProjects(
+          AppRecent.projects.value.withReconnected(entry.path, regrant!.bookmark),
+        );
+      }
+    }
+    if (!File(path).existsSync()) {
+      storeRecentProjects(
+        AppRecent.projects.value.withReconnectNeeded(entry.path),
+      );
+      if (context.mounted) {
+        _showFileError(context, 'Not found: $path');
+      }
+      return;
+    }
+    try {
+      await session.openProjectFromFile(path);
+      recordRecentProject(
+        RecentProject(path: path, folderBookmark: entry.folderBookmark),
+      );
     } catch (error) {
       if (context.mounted) {
         _showFileError(context, error);
@@ -238,6 +338,7 @@ class EditorTopStrip extends StatelessWidget {
       icon: Icons.save_as_outlined,
       onPressed: () => unawaited(_saveProjectAs(context)),
     ),
+    ..._recentEntries(context),
     const PanelFlyoutDivider(),
     _item(
       id: 'file-project-background',
@@ -888,13 +989,137 @@ class _StripPopoverButton extends StatelessWidget {
 /// unsaved-autosave prompt land in the same picker + writer. SAVE-1: a
 /// never-saved project's picker starts in the app's project home (앱
 /// 문서 폴더); a saved one starts beside its current file.
-/// SAVE-1c: whether the save/open pickers use the in-app browser — the
-/// mobile real-path model's surface. Desktop keeps the OS dialogs.
+/// PICK-2: whether the project pickers ask for a FOLDER rather than a file.
+///
+/// Windows and Linux hand out real paths with no permission attached, so a
+/// file dialog is the whole story there and nothing changes. The other three
+/// need a grant the app has to hold — and because a grant covers exactly
+/// what was picked, picking the project FILE would leave its sibling
+/// `.assets/` folder and its autosave sidecar outside the grant.
+///
+/// macOS sits with iPad rather than with Windows here, which is the part
+/// that surprises: it is sandboxed, so a file selection extends the sandbox
+/// to that file and nothing beside it.
 @visibleForTesting
-bool? debugUseInAppBrowserOverride;
+bool? debugUseFolderPickerOverride;
 
-bool get useInAppBrowserForPickers =>
-    debugUseInAppBrowserOverride ?? (Platform.isAndroid || Platform.isIOS);
+bool get useFolderPickerForProjects =>
+    debugUseFolderPickerOverride ??
+    (Platform.isAndroid || Platform.isIOS || Platform.isMacOS);
+
+/// A chosen project, plus the token that reopens its folder next launch.
+///
+/// The bookmark travels with the path because the recent-projects list is
+/// worthless without it on Apple platforms — a stored path outside the app
+/// container is refused after relaunch unless the app can produce the
+/// security scope it was granted.
+typedef ProjectPick = ({String path, String? folderBookmark});
+
+/// Open: a folder grant, then which project inside it.
+///
+/// The chooser is skipped when the folder holds exactly one project, so the
+/// common single-project folder costs no extra tap.
+@visibleForTesting
+Future<ProjectPick?> pickProjectToOpen(BuildContext context) async {
+  if (!useFolderPickerForProjects) {
+    final path = await EditorTopStrip._defaultOpenPicker();
+    return path == null ? null : (path: path, folderBookmark: null);
+  }
+  // The SYNC twin on purpose: async `dart:io` never completes under the
+  // widget-test clock, and this is the first line of the open flow — awaiting
+  // the async one here would make the whole flow untestable.
+  final grant = await pickFolderGrantForUser(
+    context,
+    initialDirectory: ensuredAppDocumentsDirectorySync(),
+  );
+  if (grant?.path == null || !context.mounted) {
+    return null;
+  }
+  final chosen = await showProjectChooser(
+    context,
+    entries: anicelProjectsIn(grant!.path!),
+  );
+  return chosen == null
+      ? null
+      : (path: chosen, folderBookmark: grant.bookmark);
+}
+
+/// Save As: a folder grant, then a name.
+///
+/// The name is asked in-app because iOS HAS no save panel — Apple never
+/// shipped one, and every iOS app that writes a document asks for the name
+/// itself. Confirming an overwrite is asked here too, for the same reason:
+/// the system dialog that would normally do it is not in this flow.
+@visibleForTesting
+Future<ProjectPick?> pickProjectSaveTarget(
+  BuildContext context,
+  String suggestedName,
+  String initialDirectory,
+) async {
+  if (!useFolderPickerForProjects) {
+    final path = await _defaultAnicelSavePicker(suggestedName, initialDirectory);
+    return path == null ? null : (path: path, folderBookmark: null);
+  }
+  final grant = await pickFolderGrantForUser(
+    context,
+    initialDirectory: initialDirectory,
+  );
+  final folder = grant?.path;
+  if (folder == null || !context.mounted) {
+    return null;
+  }
+  final strings = AppText.strings;
+  final name = await showDialog<String>(
+    context: context,
+    builder: (context) => AppPromptDialog(
+      windowKey: const ValueKey<String>('project-save-name-dialog'),
+      title: strings.fileSaveTitle,
+      titleIcon: Icons.save_outlined,
+      fieldLabel: strings.fileNameLabel,
+      initialValue: suggestedName,
+      confirmLabel: strings.commonSave,
+      emptyError: strings.fileNameEmpty,
+      fieldKey: const ValueKey<String>('project-save-name-field'),
+      cancelKey: const ValueKey<String>('project-save-name-cancel'),
+      confirmKey: const ValueKey<String>('project-save-name-confirm'),
+    ),
+  );
+  if (name == null || name.isEmpty || !context.mounted) {
+    return null;
+  }
+  var target = '$folder/$name';
+  if (!target.toLowerCase().endsWith(anicelProjectSuffix)) {
+    target = '$target$anicelProjectSuffix';
+  }
+  if (!File(target).existsSync()) {
+    return (path: target, folderBookmark: grant!.bookmark);
+  }
+  final replace = await showDialog<bool>(
+    context: context,
+    builder: (context) => AppConfirmDialog(
+      windowKey: const ValueKey<String>('project-save-replace-dialog'),
+      title: strings.replaceFileTitle,
+      titleIcon: Icons.warning_amber_outlined,
+      message: strings.replaceFileMessageTemplate.replaceAll('{name}', name),
+      actions: [
+        AppWindowAction(
+          label: strings.commonCancel,
+          actionKey: const ValueKey<String>('project-save-replace-cancel'),
+          onPressed: () => Navigator.of(context).pop(false),
+        ),
+        AppWindowAction(
+          label: strings.commonReplace,
+          actionKey: const ValueKey<String>('project-save-replace-confirm'),
+          emphasis: AppWindowActionEmphasis.primary,
+          onPressed: () => Navigator.of(context).pop(true),
+        ),
+      ],
+    ),
+  );
+  return replace == true
+      ? (path: target, folderBookmark: grant!.bookmark)
+      : null;
+}
 
 Future<void> promptSaveProjectAs(
   BuildContext context,
@@ -911,24 +1136,25 @@ Future<void> promptSaveProjectAs(
   if (!context.mounted) {
     return;
   }
-  var path = savePicker != null
-      ? await savePicker(suggested)
-      : useInAppBrowserForPickers
-      ? await showAnicelFileBrowser(
-          context,
-          mode: FileBrowserMode.saveAs,
-          suggestedName: suggested,
-          initialDirectory: initialDirectory,
-        )
-      : await _defaultAnicelSavePicker(suggested, initialDirectory);
-  if (path == null || !context.mounted) {
+  final ProjectPick? pick;
+  if (savePicker != null) {
+    final injected = await savePicker(suggested);
+    pick = injected == null ? null : (path: injected, folderBookmark: null);
+  } else {
+    pick = await pickProjectSaveTarget(context, suggested, initialDirectory);
+  }
+  if (pick == null || !context.mounted) {
     return;
   }
+  var path = pick.path;
   if (!path.toLowerCase().endsWith(anicelProjectSuffix)) {
     path = '$path$anicelProjectSuffix';
   }
   try {
     await session.saveProjectToFile(path);
+    recordRecentProject(
+      RecentProject(path: path, folderBookmark: pick.folderBookmark),
+    );
   } catch (error) {
     if (context.mounted) {
       ScaffoldMessenger.maybeOf(

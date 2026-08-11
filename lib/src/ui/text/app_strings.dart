@@ -278,26 +278,26 @@ class AppStrings {
   String get menuPlay => _s('menuPlay');
   String get menuPause => _s('menuPause');
 
-  // --- The file browser ---
+  // --- Project files ---
   String get fileOpenTitle => _s('fileOpenTitle');
   String get fileSaveTitle => _s('fileSaveTitle');
-  String get fileAppDocuments => _s('fileAppDocuments');
   String get fileStorageOffNotice => _s('fileStorageOffNotice');
   String get fileOpenSettings => _s('fileOpenSettings');
-  String get fileCheckAgain => _s('fileCheckAgain');
   String get fileNameLabel => _s('fileNameLabel');
   String get fileCloudNoticeOpen => _s('fileCloudNoticeOpen');
-  String get fileCloudNoticeSave => _s('fileCloudNoticeSave');
-  String get fileNewFolderAction => _s('fileNewFolderAction');
-  String get newFolderTitle => _s('newFolderTitle');
-  String get newFolderField => _s('newFolderField');
-  String get newFolderEmpty => _s('newFolderEmpty');
-  String get commonCreate => _s('commonCreate');
   String get replaceFileTitle => _s('replaceFileTitle');
 
   /// '{name}' is the colliding file name.
   String get replaceFileMessageTemplate => _s('replaceFileMessageTemplate');
   String get commonReplace => _s('commonReplace');
+
+  // --- The native folder pickers (PICK-2) ---
+  String get folderNoPathTitle => _s('folderNoPathTitle');
+  String get folderPickUnavailable => _s('folderPickUnavailable');
+  String get projectChooserEmpty => _s('projectChooserEmpty');
+  String get fileNameEmpty => _s('fileNameEmpty');
+  String get recentProjectsTitle => _s('recentProjectsTitle');
+  String get recentReconnect => _s('recentReconnect');
 
   // --- Canvas size ---
   String get canvasSizeTitle => _s('canvasSizeTitle');
@@ -969,28 +969,24 @@ class AppStrings {
     'menuPause': 'Pause',
     'fileOpenTitle': 'Open project',
     'fileSaveTitle': 'Save project',
-    'fileAppDocuments': 'App documents',
     'fileStorageOffNotice':
         'Storage access is off — projects outside the app folder need the '
         'All-Files permission.',
     'fileOpenSettings': 'Open settings',
-    'fileCheckAgain': 'Check again',
     'fileNameLabel': 'File name',
     'fileCloudNoticeOpen':
         'Cloud services (Google Drive, Dropbox …): use a sync app (Autosync, '
         'FolderSync …) and open its mirror folder here — direct cloud '
         'documents are not supported.',
-    'fileCloudNoticeSave':
-        'Cloud folders: save into a sync-app mirror folder to work with '
-        'Google Drive / Dropbox.',
-    'fileNewFolderAction': 'New folder…',
-    'newFolderTitle': 'New folder',
-    'newFolderField': 'Folder name',
-    'newFolderEmpty': 'Folder name cannot be empty.',
-    'commonCreate': 'Create',
     'replaceFileTitle': 'Replace file?',
     'replaceFileMessageTemplate': '{name} already exists here.',
     'commonReplace': 'Replace',
+    'folderNoPathTitle': 'This location has no folder path',
+    'folderPickUnavailable': 'The folder picker could not be opened.',
+    'projectChooserEmpty': 'No Anicel projects in this folder.',
+    'fileNameEmpty': 'File name cannot be empty.',
+    'recentProjectsTitle': 'Recent projects',
+    'recentReconnect': 'Reconnect',
     'canvasSizeTitle': 'Canvas size',
     'canvasWidthLabel': 'Width (px)',
     'canvasHeightLabel': 'Height (px)',
@@ -1641,28 +1637,24 @@ class AppStrings {
     'menuAction.help-about': 'Anicel について',
     'fileOpenTitle': 'プロジェクトを開く',
     'fileSaveTitle': 'プロジェクトを保存',
-    'fileAppDocuments': 'アプリのドキュメント',
     'fileStorageOffNotice':
         'ストレージへのアクセスがオフです — アプリフォルダの外にある'
         'プロジェクトには「すべてのファイル」の権限が必要です。',
     'fileOpenSettings': '設定を開く',
-    'fileCheckAgain': '再確認',
     'fileNameLabel': 'ファイル名',
     'fileCloudNoticeOpen':
         'クラウドサービス（Google ドライブ、Dropbox など）：同期アプリ'
         '（Autosync、FolderSync など）を使い、そのミラーフォルダをここで'
         '開いてください — クラウド上のドキュメントを直接扱うことはできません。',
-    'fileCloudNoticeSave':
-        'クラウドフォルダ：Google ドライブ / Dropbox と連携するには、同期'
-        'アプリのミラーフォルダに保存してください。',
-    'fileNewFolderAction': '新規フォルダ…',
-    'newFolderTitle': '新規フォルダ',
-    'newFolderField': 'フォルダ名',
-    'newFolderEmpty': 'フォルダ名を空にはできません。',
-    'commonCreate': '作成',
     'replaceFileTitle': 'ファイルを置き換えますか？',
     'replaceFileMessageTemplate': '{name} はここに既にあります。',
     'commonReplace': '置き換え',
+    'folderNoPathTitle': 'この場所にはフォルダーパスがありません',
+    'folderPickUnavailable': 'フォルダー選択を開けませんでした。',
+    'projectChooserEmpty': 'このフォルダーにAnicelプロジェクトがありません。',
+    'fileNameEmpty': 'ファイル名を入力してください。',
+    'recentProjectsTitle': '最近使ったプロジェクト',
+    'recentReconnect': '再接続',
     'canvasSizeTitle': 'カンバスサイズ',
     'canvasWidthLabel': '幅（px）',
     'canvasHeightLabel': '高さ（px）',
@@ -2348,28 +2340,24 @@ class AppStrings {
     'menuAction.help-about': 'Anicel 정보',
     'fileOpenTitle': '프로젝트 열기',
     'fileSaveTitle': '프로젝트 저장',
-    'fileAppDocuments': '앱 문서',
     'fileStorageOffNotice':
         '저장소 접근이 꺼져 있습니다 — 앱 폴더 바깥의 프로젝트에는 '
         '모든 파일 권한이 필요합니다.',
     'fileOpenSettings': '설정 열기',
-    'fileCheckAgain': '다시 확인',
     'fileNameLabel': '파일 이름',
     'fileCloudNoticeOpen':
         '클라우드 서비스(Google 드라이브, Dropbox 등): 동기화 앱'
         '(Autosync, FolderSync 등)을 쓰고 그 미러 폴더를 여기서 여세요 — '
         '클라우드 문서를 직접 다루는 건 지원하지 않습니다.',
-    'fileCloudNoticeSave':
-        '클라우드 폴더: Google 드라이브 / Dropbox와 함께 쓰려면 동기화 앱의 '
-        '미러 폴더에 저장하세요.',
-    'fileNewFolderAction': '새 폴더…',
-    'newFolderTitle': '새 폴더',
-    'newFolderField': '폴더 이름',
-    'newFolderEmpty': '폴더 이름은 비울 수 없습니다.',
-    'commonCreate': '만들기',
     'replaceFileTitle': '파일을 바꿀까요?',
     'replaceFileMessageTemplate': '{name}이(가) 여기 이미 있습니다.',
     'commonReplace': '바꾸기',
+    'folderNoPathTitle': '이 위치에는 폴더 경로가 없습니다',
+    'folderPickUnavailable': '폴더 선택 창을 열지 못했습니다.',
+    'projectChooserEmpty': '이 폴더에 Anicel 프로젝트가 없습니다.',
+    'fileNameEmpty': '파일 이름을 입력하세요.',
+    'recentProjectsTitle': '최근 프로젝트',
+    'recentReconnect': '다시 연결',
     'canvasSizeTitle': '캔버스 크기',
     'canvasWidthLabel': '너비 (px)',
     'canvasHeightLabel': '높이 (px)',
@@ -3062,28 +3050,24 @@ class AppStrings {
     'menuAction.help-about': 'À propos de Anicel',
     'fileOpenTitle': 'Ouvrir un projet',
     'fileSaveTitle': 'Enregistrer le projet',
-    'fileAppDocuments': "Documents de l'app",
     'fileStorageOffNotice':
         "L'accès au stockage est désactivé — les projets hors du dossier de "
         "l'application exigent l'autorisation Tous les fichiers.",
     'fileOpenSettings': 'Ouvrir les réglages',
-    'fileCheckAgain': 'Vérifier à nouveau',
     'fileNameLabel': 'Nom du fichier',
     'fileCloudNoticeOpen':
         'Services cloud (Google Drive, Dropbox …) : utilisez une app de '
         'synchronisation (Autosync, FolderSync …) et ouvrez son dossier '
         'miroir ici — les documents cloud directs ne sont pas pris en charge.',
-    'fileCloudNoticeSave':
-        "Dossiers cloud : enregistrez dans le dossier miroir d'une app de "
-        'synchronisation pour travailler avec Google Drive / Dropbox.',
-    'fileNewFolderAction': 'Nouveau dossier…',
-    'newFolderTitle': 'Nouveau dossier',
-    'newFolderField': 'Nom du dossier',
-    'newFolderEmpty': 'Le nom du dossier ne peut pas être vide.',
-    'commonCreate': 'Créer',
     'replaceFileTitle': 'Remplacer le fichier ?',
     'replaceFileMessageTemplate': '{name} existe déjà ici.',
     'commonReplace': 'Remplacer',
+    'folderNoPathTitle': "Cet emplacement n'a pas de chemin de dossier",
+    'folderPickUnavailable': "Impossible d'ouvrir le sélecteur de dossier.",
+    'projectChooserEmpty': 'Aucun projet Anicel dans ce dossier.',
+    'fileNameEmpty': 'Le nom de fichier ne peut pas être vide.',
+    'recentProjectsTitle': 'Projets récents',
+    'recentReconnect': 'Reconnecter',
     'canvasSizeTitle': 'Taille du canevas',
     'canvasWidthLabel': 'Largeur (px)',
     'canvasHeightLabel': 'Hauteur (px)',
@@ -3782,24 +3766,22 @@ class AppStrings {
     'menuAction.help-about': '关于 Anicel',
     'fileOpenTitle': '打开项目',
     'fileSaveTitle': '保存项目',
-    'fileAppDocuments': '应用文档',
     'fileStorageOffNotice': '存储访问已关闭 — 应用文件夹之外的项目需要"所有文件"权限。',
     'fileOpenSettings': '打开设置',
-    'fileCheckAgain': '重新检查',
     'fileNameLabel': '文件名',
     'fileCloudNoticeOpen':
         '云服务（Google 云端硬盘、Dropbox 等）：请使用同步应用'
         '（Autosync、FolderSync 等），并在此打开它的镜像文件夹 — '
         '不支持直接打开云端文档。',
-    'fileCloudNoticeSave': '云文件夹：保存到同步应用的镜像文件夹，即可配合 Google 云端硬盘 / Dropbox 使用。',
-    'fileNewFolderAction': '新建文件夹…',
-    'newFolderTitle': '新建文件夹',
-    'newFolderField': '文件夹名称',
-    'newFolderEmpty': '文件夹名称不能为空。',
-    'commonCreate': '创建',
     'replaceFileTitle': '替换文件？',
     'replaceFileMessageTemplate': '{name} 已存在于此处。',
     'commonReplace': '替换',
+    'folderNoPathTitle': '此位置没有文件夹路径',
+    'folderPickUnavailable': '无法打开文件夹选择器。',
+    'projectChooserEmpty': '此文件夹中没有 Anicel 项目。',
+    'fileNameEmpty': '文件名不能为空。',
+    'recentProjectsTitle': '最近的项目',
+    'recentReconnect': '重新连接',
     'canvasSizeTitle': '画布尺寸',
     'canvasWidthLabel': '宽度（px）',
     'canvasHeightLabel': '高度（px）',
