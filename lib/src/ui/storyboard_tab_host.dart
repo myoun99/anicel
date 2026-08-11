@@ -903,7 +903,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   // behaved differently.
                   seSelect: StoryboardSeSelectCallbacks(
                     selectedRange: _session.trackFrameRangeSelection,
-                    onDrag: _session.updateTrackSeRangeSelectionByFrame,
+                    onDrag: _session.updateTrackRowRangeSelectionByFrame,
                     onClear: _session.clearStoryboardCutSelection,
                     // Sliding the selection: the timeline's own range-move
                     // machine, entered on the track axis (its sources commit

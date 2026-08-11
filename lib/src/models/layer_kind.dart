@@ -482,6 +482,36 @@ bool layerKindIsClipboardCopyable(LayerKind kind) {
 /// placement is a projection and editing it would be editing a lie.
 bool layerKindIsReadOnlyInCut(LayerKind kind) => kind == LayerKind.transition;
 
+/// Whether a row of [kind] carries INSTRUCTION EVENTS rather than cels — the
+/// sheet's CAM column shape: named spans with a bar arrow or an O.L bowtie,
+/// their writing on the row overlay instead of in the cells.
+///
+/// 🚨This is a PREDICATE because two kinds answer yes and the timeline used to
+/// ask `kind == LayerKind.instruction` at eight separate sites (user 2026-08-11:
+/// the transition row's spans drew nothing in a cut, and a range selection on it
+/// covered nothing). A row that carries instructions needs all eight: the span
+/// overlays, the def-table identity, the exposure adapter that turns events into
+/// paper blocks, the glyph and semantics suppression that keeps the cells blank
+/// under a span, and the cursor layer's exposure read — which is what a range
+/// selection measures. Miss one and the row is half-drawn.
+///
+/// ⚠️It does NOT license editing. The EDGE GRIPS ask this AND
+/// [layerKindIsReadOnlyInCut]: the transition row's local placement is a
+/// projection, so a grip there would be dragging a lie.
+bool layerKindCarriesInstructions(LayerKind kind) {
+  return switch (kind) {
+    LayerKind.instruction || LayerKind.transition => true,
+    LayerKind.animation ||
+    LayerKind.storyboard ||
+    LayerKind.image ||
+    LayerKind.text ||
+    LayerKind.se ||
+    LayerKind.camera ||
+    LayerKind.folder ||
+    LayerKind.adjustment => false,
+  };
+}
+
 /// Whether [kind] is a FIXED kind — one the user can neither convert a
 /// layer into nor convert away from (the camera fixture, folders and
 /// adjustments, whose kind IS their structure; instruction rows carry
