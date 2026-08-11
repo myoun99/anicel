@@ -7,6 +7,7 @@ import '../../models/import/cut_folder_parse.dart';
 import '../../models/media_asset.dart';
 import '../../services/import/media_import_planner.dart';
 import '../../services/pdf/pdf_render_service.dart';
+import '../../services/persistence/file_type_groups.dart';
 import '../editor_session_manager.dart';
 import '../export/export_settings_modules.dart';
 import '../widgets/app_window.dart';
@@ -89,15 +90,7 @@ class _ImportDialogState extends State<ImportDialog> {
         widget.filePicker ??
         () async {
           final files = await openFiles(
-            acceptedTypeGroups: const [
-              XTypeGroup(
-                label: 'Media',
-                extensions: [
-                  'png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'pdf',
-                  'mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg',
-                ],
-              ),
-            ],
+            acceptedTypeGroups: const [FileTypeGroups.importableMedia],
           );
           return [for (final file in files) file.path];
         };

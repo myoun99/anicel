@@ -13,6 +13,7 @@ import '../../models/brush_settings.dart';
 import '../../services/abr/abr_decoder.dart';
 import '../../services/brush_preset_defaults.dart';
 import '../../services/brush_preset_file_service.dart';
+import '../../services/persistence/file_type_groups.dart';
 import '../../services/sut/sut_decoder.dart';
 import 'brush_import_merge.dart';
 import 'brush_tip_library.dart';
@@ -26,11 +27,9 @@ typedef BrushFilePicker = Future<BrushFilePick?> Function();
 /// Production picker: the platform open-file dialog filtered to the
 /// supported brush formats.
 Future<BrushFilePick?> _openBrushFileDialog() async {
-  const typeGroup = XTypeGroup(
-    label: 'Brushes (Photoshop, Clip Studio)',
-    extensions: ['abr', 'sut', 'sutg'],
+  final file = await openFile(
+    acceptedTypeGroups: const [FileTypeGroups.brushes],
   );
-  final file = await openFile(acceptedTypeGroups: const [typeGroup]);
   if (file == null) {
     return null;
   }

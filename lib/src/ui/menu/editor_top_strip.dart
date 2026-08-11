@@ -7,6 +7,7 @@ import 'package:flutter/material.dart';
 import '../../services/persistence/anicel_project_archive.dart';
 import '../../services/persistence/app_documents.dart';
 import '../../services/persistence/app_save_settings.dart';
+import '../../services/persistence/file_type_groups.dart';
 import '../../services/persistence/project_autosave_service.dart';
 import '../dialogs/app_confirm_dialog.dart';
 import '../../models/brush_blend_mode.dart';
@@ -122,12 +123,7 @@ class EditorTopStrip extends StatelessWidget {
     final file = await openFile(
       // SAVE-1: pickers start in the app's project home (앱 문서 폴더).
       initialDirectory: await ensuredAppDocumentsDirectory(),
-      acceptedTypeGroups: const [
-        XTypeGroup(
-          label: 'Anicel project',
-          extensions: [anicelProjectExtension],
-        ),
-      ],
+      acceptedTypeGroups: const [FileTypeGroups.anicelProject],
     );
     return file?.path;
   }
@@ -949,9 +945,7 @@ Future<String?> _defaultAnicelSavePicker(
   final location = await getSaveLocation(
     suggestedName: suggestedName,
     initialDirectory: initialDirectory,
-    acceptedTypeGroups: const [
-      XTypeGroup(label: 'Anicel project', extensions: [anicelProjectExtension]),
-    ],
+    acceptedTypeGroups: const [FileTypeGroups.anicelProject],
   );
   return location?.path;
 }
