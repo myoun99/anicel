@@ -11,6 +11,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/models/timeline_frame_range.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/transform_track.dart';
 
 import 'timeline_cell_probe.dart';
@@ -85,6 +86,13 @@ void main() {
   TimelineFrameRangeHooks hooks({
     required ValueNotifier<TimelineFrameRangeSelection?> selection,
     void Function(LayerId, int, int)? onSelectUpdate,
+
+    /// The rows the GRID says the drag swept — the seam the span law rides.
+    /// Captured here rather than read off the session because this file
+    /// mounts the real grid and drives real gestures, which is the only
+    /// place that can tell "the slice is computed" from "the slice is
+    /// handed over".
+    void Function(List<TimelineRowAddress>)? onSpanRows,
     VoidCallback? onClear,
     bool Function()? onMoveBegin,
     void Function({required int frameDelta, LayerId? targetLayerId})?
@@ -93,10 +101,18 @@ void main() {
   }) {
     return TimelineFrameRangeHooks(
       selection: selection,
-      onSelectUpdate: onSelectUpdate == null
-          ? (_, _, _, {headLayerId, headLaneId}) {}
-          : (layerId, anchorIndex, headIndex, {headLayerId, headLaneId}) =>
-                onSelectUpdate(layerId, anchorIndex, headIndex),
+      onSelectUpdate:
+          (
+            layerId,
+            anchorIndex,
+            headIndex, {
+            headLayerId,
+            headLaneId,
+            spanRows = const [],
+          }) {
+            onSelectUpdate?.call(layerId, anchorIndex, headIndex);
+            onSpanRows?.call(spanRows);
+          },
       onClear: onClear ?? () {},
       move: TimelineRangeMoveCallbacks(
         onBegin: onMoveBegin == null ? (_) => true : (_) => onMoveBegin(),
@@ -157,6 +173,57 @@ void main() {
     await tester.pump();
     expect(selectUpdates, isNotEmpty);
     expect(selectUpdates.last.$1, const LayerId('se-1'));
+  });
+
+  testWidgets('the grid HANDS OVER the rows it swept, not just the layer ids '
+      '— the span law\'s seam', (tester) async {
+    // 🚨This is the half a pure-function test cannot reach. The slice itself
+    // is pinned in `selection_span_rows_test.dart`, and it would keep
+    // passing with the grid quietly sending `const []` — which is exactly
+    // the shape of failure this repo has hit before (「배선을 고쳤으면 오라클도
+    // 배선의 산출물이어야 한다」).
+    final cursor = ValueNotifier<int>(0);
+    final selection = ValueNotifier<TimelineFrameRangeSelection?>(null);
+    addTearDown(cursor.dispose);
+    addTearDown(selection.dispose);
+    final spans = <List<TimelineRowAddress>>[];
+
+    await tester.pumpWidget(
+      harness(
+        layers: [
+          blockLayer('layer-a'),
+          blockLayer('se-1').copyWith(kind: LayerKind.se),
+        ],
+        cursor: cursor,
+        rangeHooks: hooks(selection: selection, onSpanRows: spans.add),
+      ),
+    );
+
+    final anchorRow = find.byKey(
+      const ValueKey<String>('timeline-range-gesture-layer-a'),
+    );
+    final gesture = await tester.startGesture(
+      tester.getTopLeft(anchorRow) + const Offset(24 + 5 * 48, 26),
+      kind: PointerDeviceKind.mouse,
+    );
+    await gesture.moveBy(const Offset(96, 0));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+
+    expect(spans, isNotEmpty, reason: 'the drag reported at least once');
+    expect(
+      spans.last,
+      isNotEmpty,
+      reason: 'an empty span means the grid computed the slice and threw it '
+          'away — the selection then falls back to a model walk, which is '
+          'the whole thing this round removed',
+    );
+    expect(
+      spans.last.first,
+      const LayerRowAddress(LayerId('layer-a')),
+      reason: 'the run starts at the row the drag anchored on',
+    );
   });
 
   testWidgets('with touch-timeline-scroll ON, a TOUCH pan no longer '
@@ -416,7 +483,8 @@ void main() {
             onLayerMarkSelected: (_, _) {},
             rangeHooks: TimelineFrameRangeHooks(
               selection: selection,
-              onSelectUpdate: (_, _, _, {headLayerId, headLaneId}) {},
+              onSelectUpdate:
+                  (_, _, _, {headLayerId, headLaneId, spanRows = const []}) {},
               onClear: () {},
               move: TimelineRangeMoveCallbacks(
                 onBegin: (_) => true,
@@ -1147,7 +1215,6 @@ void main() {
       final moveUpdates = <int>[];
       final selectUpdates = <int>[];
 
-
       await tester.pumpWidget(
         MaterialApp(
           home: Scaffold(
@@ -1428,10 +1495,9 @@ void main() {
               expandedLaneLayerIds: {const LayerId('layer-a')},
               // THE production shape: the lane is derived from the layer,
               // so whichever layer the gate hands over decides the keys.
-              lanesForLayer: (layer) =>
-                  transformPropertyLanes(layer.transformTrack)
-                      .where((lane) => lane.laneId == 'position')
-                      .toList(),
+              lanesForLayer: (layer) => transformPropertyLanes(
+                layer.transformTrack,
+              ).where((lane) => lane.laneId == 'position').toList(),
               metrics: const TimelineGridMetrics(
                 frameCellWidth: 48,
                 layerRowHeight: 52,
@@ -1457,7 +1523,8 @@ void main() {
       expect(
         marker(5),
         findsOneWidget,
-        reason: 'the band read `row.lane` — built once from the COMMITTED '
+        reason:
+            'the band read `row.lane` — built once from the COMMITTED '
             'layer — so the keys sat still until the pointer came up',
       );
       expect(marker(2), findsNothing);

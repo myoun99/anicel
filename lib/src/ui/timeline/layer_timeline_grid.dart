@@ -16,7 +16,8 @@ import '../../models/layer_mark.dart';
 import '../../models/timeline_row_address.dart';
 import 'timeline_row_cross_offset.dart';
 import '../../services/audio/audio_peaks_extractor.dart';
-import 'timeline_row_span_resolver.dart' show resolveSelectionSpanHead;
+import 'timeline_row_span_resolver.dart'
+    show resolveSelectionSpanHead, resolveSelectionSpanRows;
 import 'effect_lane_policy.dart' show parseEffectLaneId;
 import 'layer_drop_policy.dart'
     show effectHeaderRowsOf, effectStepsBetween, slotForSteps;
@@ -1465,7 +1466,17 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
             // Cross-row select (UI-R17 #8): the gesture's row delta maps
             // onto the display rows exactly like the move drags do.
             onSelectUpdate: (row, anchorIndex, headIndex, headCrossOffset) {
-              if (row is! LayerRowAddress) {
+              // ⛔No kind gate on the anchor. WHICH rows a drag may sweep is
+              // answered by the row LIST below and by nothing else — a test
+              // here is how the transition clone and the lane rows came to
+              // be unanchorable one kind at a time (유저 2026-08-12: 「헤더니까
+              // 뭐 다르게한다거나 제발좀 절대로좀 그만좀하자」).
+              final layerId = switch (row) {
+                LayerRowAddress(:final layerId) => layerId,
+                LaneRowAddress(:final layerId) => layerId,
+                TrackRowAddress() => null,
+              };
+              if (layerId == null) {
                 return;
               }
               // R9 #25: the gesture hands up raw pixels; this surface's
@@ -1476,7 +1487,6 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                 crossOffset: headCrossOffset,
                 rowExtent: _metrics.layerRowHeight,
               );
-              final layerId = row.layerId;
               // R27 #14: the head row may be a LANE row of the dragged
               // layer — the span then runs cell → lane → lane and stops
               // where the pointer is, instead of stepping over the whole
@@ -1494,6 +1504,12 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
                 headIndex,
                 headLayerId: head?.layerId,
                 headLaneId: head?.laneId,
+                // 🚨★ THE SPAN, sliced off what this grid actually drew.
+                spanRows: resolveSelectionSpanRows(
+                  rows: rows,
+                  anchor: row,
+                  rowDelta: headRowDelta,
+                ),
               );
             },
             onTapClear: (_) => rangeHooks.onClear(),

@@ -59,12 +59,18 @@ class TimelineFrameRangeHooks {
   /// is a property LANE row (R27 #14): the drag then reaches down the
   /// layer's own lane group instead of skipping past it to the next
   /// layer's cells.
+  ///
+  /// [spanRows] is what the drag SWEPT, sliced off the mounting surface's own
+  /// display row list — the authoritative span since 2026-08-12. Empty from a
+  /// surface that has no row list in reach, which then keeps the older
+  /// layer-derived behaviour.
   final void Function(
     LayerId layerId,
     int anchorIndex,
     int headIndex, {
     LayerId? headLayerId,
     String? headLaneId,
+    List<TimelineRowAddress> spanRows,
   })
   onSelectUpdate;
   final VoidCallback onClear;

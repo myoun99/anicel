@@ -289,19 +289,37 @@ class LayerBlendModeChip extends StatelessWidget {
 bool layerKindEligibleForTimesheetToggle(LayerKind kind) =>
     !layerKindGroupsLayers(kind);
 
-/// Every layer kind shows the opacity slider (unified layer controls —
-/// "레이어는 싹 다 공통화"): compositing cels use it directly, the CAMERA
+/// Almost every layer kind shows the opacity slider (unified layer controls
+/// — "레이어는 싹 다 공통화"): compositing cels use it directly, the CAMERA
 /// row's slider drives the camera-view DIM opacity, and instruction rows
 /// carry the same control for entrance parity.
-bool layerKindShowsOpacityControl(LayerKind kind) => true;
+///
+/// ⛔The TRANSITION row does not. It is the one row that carries no picture
+/// of its own — it says WHEN two cuts cross-dissolve — so there is nothing
+/// for a slider to fade, and [layerKindHasPictureOpacity] has answered false
+/// for it all along. 유저 2026-08-12: 「타임라인에서 fx랑 불투명도 뺌」.
+///
+/// 🚨★These two predicates took a `kind` and returned a bare `true`, which
+/// is how the timeline came to draw controls the storyboard's own transition
+/// row never had: one panel asked a question that could not say no, the
+/// other simply did not build the cells. A predicate that ignores its
+/// argument is a constant wearing a predicate's clothes — and it hides
+/// exactly this class of drift.
+bool layerKindShowsOpacityControl(LayerKind kind) =>
+    kind != LayerKind.transition;
 
-/// Every layer kind shows the fx switch (unified layer controls): drawing
-/// cels and SE rows bypass their composite-time transform/opacity (SE fx
-/// move the canvas dialogue), the CAMERA row bypasses the camera work on
-/// the render routes (playback/export/thumbnails — authoring overlays
+/// Almost every layer kind shows the fx switch (unified layer controls):
+/// drawing cels and SE rows bypass their composite-time transform/opacity
+/// (SE fx move the canvas dialogue), the CAMERA row bypasses the camera work
+/// on the render routes (playback/export/thumbnails — authoring overlays
 /// keep the real pose), and instruction rows carry the switch as authored
 /// state for entrance parity.
-bool layerKindShowsFxToggle(LayerKind kind) => true;
+///
+/// ⛔The TRANSITION row does not — see [layerKindShowsOpacityControl]. It
+/// composites nothing, so it has no fx chain to bypass; what it does own is
+/// a VISIBILITY toggle, which is a different verb (apply this O.L / F.O on
+/// playback or do not).
+bool layerKindShowsFxToggle(LayerKind kind) => kind != LayerKind.transition;
 
 /// The `fx` GLYPH — italic, bold, accent when the FX apply and dim when
 /// bypassed. Defined ONCE (R28 follow-up).
