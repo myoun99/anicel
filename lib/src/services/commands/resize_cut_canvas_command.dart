@@ -8,7 +8,16 @@ import '../brush_frame_store.dart';
 import '../command.dart';
 import '../project_lookup.dart';
 import '../project_repository.dart';
+import 'link_mirror.dart';
 
+/// Resizes a cut's canvas — and every 겸용 sibling's with it.
+///
+/// The siblings are not a courtesy: linked cuts share ONE physical cel, so
+/// the same bitmap is shown in both. Different canvas sizes would put that
+/// one picture in two differently-shaped frames, which was already
+/// incoherent before guides existed — guides only made it visible, because
+/// an axis stored in canvas coordinates means two different places when the
+/// canvases disagree.
 class ResizeCutCanvasCommand implements Command {
   ResizeCutCanvasCommand({
     required this.repository,
@@ -31,7 +40,13 @@ class ResizeCutCanvasCommand implements Command {
   Project? _previousProject;
   double _contentDx = 0;
   double _contentDy = 0;
-  Map<BrushFrameKey, BitmapSurface>? _previousBaked;
+
+  /// Every cut this resize touched — the target and its 겸용 siblings.
+  /// Undo has to walk the SAME list: the project snapshot restores the
+  /// sizes, but the pixel shift lives in the brush store and has to be
+  /// reversed cut by cut.
+  List<CutId> _targets = const [];
+  Map<CutId, Map<BrushFrameKey, BitmapSurface>> _previousBaked = const {};
 
   @override
   String get description =>
@@ -49,17 +64,26 @@ class ResizeCutCanvasCommand implements Command {
     _contentDx = offset.dx;
     _contentDy = offset.dy;
 
+    _targets = [cutId, ...linkedCutSiblings(project, cutId: cutId)];
+
     // R19 bake-only: the raster blit clips pixels shifted off-canvas, so
     // the exact undo restores the pre-resize baked surfaces by reference
     // (immutable — the snapshot is free).
-    _previousBaked = brushFrameStore?.bakedSurfacesForCut(cutId);
+    final store = brushFrameStore;
+    if (store != null) {
+      _previousBaked = {
+        for (final target in _targets) target: store.bakedSurfacesForCut(target),
+      };
+    }
 
-    repository.updateCutCanvasSize(cutId: cutId, canvasSize: canvasSize);
-    brushFrameStore?.translateCutContent(
-      cutId: cutId,
-      dx: _contentDx,
-      dy: _contentDy,
-    );
+    for (final target in _targets) {
+      repository.updateCutCanvasSize(cutId: target, canvasSize: canvasSize);
+      store?.translateCutContent(
+        cutId: target,
+        dx: _contentDx,
+        dy: _contentDy,
+      );
+    }
   }
 
   @override
@@ -70,16 +94,18 @@ class ResizeCutCanvasCommand implements Command {
     }
 
     repository.replaceProject(previousProject);
-    brushFrameStore?.translateCutContent(
-      cutId: cutId,
-      dx: -_contentDx,
-      dy: -_contentDy,
-    );
-    final previousBaked = _previousBaked;
-    if (previousBaked != null) {
-      // Reference restore SUPERSEDES the blit-back above: pixels the
-      // forward blit clipped come back exactly.
-      brushFrameStore?.restoreBakedForCut(cutId, previousBaked);
+    for (final target in _targets) {
+      brushFrameStore?.translateCutContent(
+        cutId: target,
+        dx: -_contentDx,
+        dy: -_contentDy,
+      );
+      final previousBaked = _previousBaked[target];
+      if (previousBaked != null) {
+        // Reference restore SUPERSEDES the blit-back above: pixels the
+        // forward blit clipped come back exactly.
+        brushFrameStore?.restoreBakedForCut(target, previousBaked);
+      }
     }
   }
 }

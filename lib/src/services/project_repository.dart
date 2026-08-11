@@ -9,6 +9,7 @@ import '../models/covering_image_normalize.dart';
 import '../models/covering_storyboard_normalize.dart';
 import '../models/cut.dart';
 import '../models/cut_camera.dart';
+import '../models/drawing_guide.dart';
 import '../models/cut_id.dart';
 import '../models/cut_metadata.dart';
 import '../models/export_overrides.dart';
@@ -381,6 +382,20 @@ class ProjectRepository {
               rederiveRunBehaviors(layer, cutFrameCount: duration),
           ],
         ),
+      );
+      if (next == null) {
+        throw StateError('Cut not found: $cutId');
+      }
+      return next;
+    });
+  }
+
+  void updateCutGuides({required CutId cutId, required CutGuides guides}) {
+    updateProject((project) {
+      final next = updateCutAnywhere(
+        project,
+        cutId,
+        (cut) => cut.copyWith(guides: guides),
       );
       if (next == null) {
         throw StateError('Cut not found: $cutId');
