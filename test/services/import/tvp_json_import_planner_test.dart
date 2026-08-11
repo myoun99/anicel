@@ -1,12 +1,15 @@
 import 'dart:io';
 
+import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/import/tvp_json_parse.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/project.dart' show defaultProjectCameraSize;
 import 'package:anicel/src/models/timeline_repeat.dart';
+import 'package:anicel/src/services/camera_pose_resolver.dart';
 import 'package:anicel/src/services/import/media_import_planner.dart';
 import 'package:anicel/src/services/import/tvp_json_import_planner.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -24,12 +27,17 @@ void main() {
     );
   }
 
-  TvpJsonImportPlan planFixture(String name) => planTvpJsonImport(
-    parsed: parseTvpJson(
-      File('test/fixtures/tvpaint/$name.json').readAsStringSync(),
-    ),
+  TvpJsonParseResult fixture(String name) =>
+      parseTvpJson(File('test/fixtures/tvpaint/$name.json').readAsStringSync());
+
+  TvpJsonImportPlan planFixture(
+    String name, {
+    CanvasSize cameraFrameSize = defaultProjectCameraSize,
+  }) => planTvpJsonImport(
+    parsed: fixture(name),
     resolveFile: (relative) => '/export/$relative',
     mint: mint(),
+    cameraFrameSize: cameraFrameSize,
   );
 
   group('edge_behaviors.json', () {
@@ -39,6 +47,28 @@ void main() {
       expect(plan.cut.canvasSize.width, 2150);
       expect(plan.cut.canvasSize.height, 1518);
       expect(plan.cut.name, 'クリップ_001');
+    });
+
+    test('a linear pan collapses back to the two keys that describe it', () {
+      // This clip's camera steps 1073→1084.5 in x and 669→845.33 in y at a
+      // constant rate across all 24 frames. The export lists 24 baked
+      // poses; the track that reproduces them needs two.
+      final plan = planFixture('edge_behaviors');
+      expect(plan.cut.camera.keyframes.keys, [0, 23]);
+      final first = plan.cut.camera.keyframeAt(0)!;
+      expect(first.center.x, closeTo(1073, 1e-6));
+      expect(first.center.y, closeTo(669, 1e-6));
+      expect(
+        plan.cut.camera.keyframeAt(23)!.center.y,
+        closeTo(845.332, 0.01),
+        reason: "the BAKED end, not the authored key's 853.0 — TVPaint "
+            'never showed 853',
+      );
+      expect(
+        first.zoom,
+        closeTo(1.0, 1e-9),
+        reason: 'this clip shoots 1920×1080, the project default',
+      );
     });
 
     test('the stack keeps TVPaint\'s order, bottom-first, with the cut '
@@ -115,6 +145,34 @@ void main() {
     });
   });
 
+  group('held_instances.json', () {
+    test('a clip whose camera was never touched gets NO camera — its baked '
+        'poses are a 0,0 placeholder, not a centre', () {
+      // This export carries `points: []` and three positions that all read
+      // x: 0, y: 0. Taken literally that parks the camera on the canvas
+      // corner and shows one quadrant; the empty key list is what says
+      // "no camera work".
+      final parsed = fixture('held_instances');
+      expect(parsed.camera.keyframes, isEmpty);
+      expect(parsed.camera.positions, isNotEmpty);
+      expect(parsed.camera.positions.first.x, 0);
+
+      final plan = planFixture('held_instances');
+      expect(plan.cut.camera.isEmpty, isTrue);
+      final pose = resolveCameraPoseAt(
+        camera: plan.cut.camera,
+        canvasSize: plan.cut.canvasSize,
+        frameIndex: 0,
+      );
+      expect(
+        pose.center.x,
+        plan.cut.canvasSize.width / 2,
+        reason: "the cut falls back to Anicel's own centred default",
+      );
+      expect(pose.center.y, plan.cut.canvasSize.height / 2);
+    });
+  });
+
   group('production_clip.json', () {
     test('a repeated pattern re-exposes its cels instead of duplicating '
         'them', () {
@@ -150,10 +208,55 @@ void main() {
       );
     });
 
-    test('camera work is reported rather than silently dropped', () {
-      final plan = planFixture('production_clip');
+    test('the camera reproduces every baked frame TVPaint showed, from a '
+        'handful of keys', () {
+      const shootingFrame = CanvasSize(width: 1075, height: 759);
+      final parsed = fixture('production_clip');
+      final plan = planFixture(
+        'production_clip',
+        cameraFrameSize: shootingFrame,
+      );
+
       expect(
-        plan.warnings.where((warning) => warning.contains('camera work')),
+        plan.cut.camera.keyframes.length,
+        lessThan(10),
+        reason: '159 baked frames, but the move is a ramp and a hold',
+      );
+      // The contract is not the key COUNT — it is that resolving the track
+      // gives back what TVPaint displayed, frame for frame.
+      for (final baked in parsed.camera.positions) {
+        final resolved = resolveCameraPoseAt(
+          camera: plan.cut.camera,
+          canvasSize: plan.cut.canvasSize,
+          frameIndex: baked.frame - 1,
+        );
+        expect(
+          resolved.center.x,
+          closeTo(baked.x, 0.25),
+          reason: 'frame ${baked.frame} x',
+        );
+        expect(
+          resolved.center.y,
+          closeTo(baked.y, 0.25),
+          reason: 'frame ${baked.frame} y',
+        );
+        expect(resolved.zoom, closeTo(1.0, 1e-9),
+            reason: 'the clip shoots exactly this project frame');
+      }
+    });
+
+    test('a shooting frame that differs becomes a zoom, and says so', () {
+      // The clip shoots 1075×759; this project shoots 1920×1080. Fitting on
+      // the tighter axis (height) keeps the whole TVPaint frame visible.
+      final plan = planFixture('production_clip');
+      final pose = resolveCameraPoseAt(
+        camera: plan.cut.camera,
+        canvasSize: plan.cut.canvasSize,
+        frameIndex: 0,
+      );
+      expect(pose.zoom, closeTo(1080 / 759, 1e-9));
+      expect(
+        plan.warnings.where((warning) => warning.contains('shoots')),
         hasLength(1),
       );
     });
@@ -182,6 +285,7 @@ void main() {
       parsed: parseTvpJson(clip(layers)),
       resolveFile: (relative) => relative,
       mint: mint(),
+      cameraFrameSize: defaultProjectCameraSize,
     );
 
     test('a layer whose link[] is empty keeps its row and names the export '

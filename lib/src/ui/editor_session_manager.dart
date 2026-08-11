@@ -6454,6 +6454,9 @@ class EditorSessionManager extends ChangeNotifier {
       resolveFile: (relative) =>
           '$directory/${relative.replaceAll('\\', '/')}',
       mint: mint,
+      // The clip's own shooting frame becomes a zoom against THIS project's
+      // frame — a cut import must not repoint the project's camera.
+      cameraFrameSize: cameraFrameSize,
       fit: fit,
     );
 
