@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/gestures.dart' show kTouchSlop;
 
 import '../theme/app_theme.dart';
+import 'axis_bar_gesture.dart';
 
 /// A draggable divider between two areas that share an extent.
 ///
@@ -109,6 +111,65 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
     _owed = wanted - used;
   }
 
+  /// 🚨★ THE POINTER PATH — see [rivalOwnsGesture].
+  ///
+  /// ⑧ 유저 2026-08-12: 「펜 갖다대면 5번중 1번만 성공함. 뭔가 펜을 스플리터
+  /// 위에 두고 멈추고 조작해야 먹히는거같음.」
+  ///
+  /// The grip used to take `GestureDetector`'s axis drags, which have to WIN
+  /// AN ARENA before they see a single update — and a desktop `Scrollable`
+  /// enters that arena for touch and stylus alone. A pen leaving the grip on
+  /// any diagonal let the scroller cross its threshold first, so the drag
+  /// never started; a mouse, with no rival, always worked. Holding the pen
+  /// still first "fixed" it because a stationary pointer gives the rival
+  /// nothing to claim.
+  ///
+  /// A raw [Listener] keeps delivering whoever wins the arena, so the grip no
+  /// longer needs to win one — it only needs to know when to STOP, and that
+  /// is the axis question, not a distance.
+  Offset _pointerShift = Offset.zero;
+  Offset? _pointerDownAt;
+  double _rivalSlop = kTouchSlop;
+
+  /// The axis the grip MOVES along — perpendicular to the line it draws.
+  Axis get _dragAxis =>
+      widget.axis == Axis.vertical ? Axis.horizontal : Axis.vertical;
+
+  void _handlePointerDown(PointerDownEvent event) {
+    _pointerDownAt = event.position;
+    _pointerShift = Offset.zero;
+    _setDragging(true);
+  }
+
+  void _handlePointerMove(PointerMoveEvent event) {
+    final origin = _pointerDownAt;
+    if (origin == null) {
+      return;
+    }
+    _pointerShift = event.position - origin;
+    if (!_dragging) {
+      return;
+    }
+    // The rival earned it: stop, and leave what has already been applied.
+    // Nothing is rolled back — an edge that sprang back to where it started
+    // would be [[no-optimistic-commit-then-revert]] wearing a splitter.
+    if (rivalOwnsGesture(
+      dragAxis: _dragAxis,
+      travelSinceDown: _pointerShift,
+      rivalSlop: _rivalSlop,
+    )) {
+      _setDragging(false);
+      return;
+    }
+    _applyDelta(_dragAxis == Axis.horizontal ? event.delta.dx : event.delta.dy);
+  }
+
+  void _handlePointerEnd(PointerEvent event) {
+    _pointerDownAt = null;
+    _pointerShift = Offset.zero;
+    _setDragging(false);
+  }
+
   Color get _lineColor {
     if (_dragging) {
       return AppColors.accent;
@@ -138,31 +199,30 @@ class _DockEdgeSplitterState extends State<DockEdgeSplitter> {
   @override
   Widget build(BuildContext context) {
     final vertical = widget.axis == Axis.vertical;
+    // The rival's own threshold, captured where inherited widgets belong.
+    _rivalSlop = rivalScrollSlop(context);
     Widget grip = MouseRegion(
       cursor: vertical
           ? SystemMouseCursors.resizeLeftRight
           : SystemMouseCursors.resizeUpDown,
       onEnter: (_) => setState(() => _hovered = true),
       onExit: (_) => setState(() => _hovered = false),
-      child: GestureDetector(
+      child: Listener(
         behavior: HitTestBehavior.opaque,
-        onDoubleTap: widget.onDoubleTap,
-        onHorizontalDragStart: vertical ? (_) => _setDragging(true) : null,
-        onHorizontalDragEnd: vertical ? (_) => _setDragging(false) : null,
-        onHorizontalDragCancel: vertical ? () => _setDragging(false) : null,
-        onHorizontalDragUpdate: vertical
-            ? (details) => _applyDelta(details.delta.dx)
-            : null,
-        onVerticalDragStart: vertical ? null : (_) => _setDragging(true),
-        onVerticalDragEnd: vertical ? null : (_) => _setDragging(false),
-        onVerticalDragCancel: vertical ? null : () => _setDragging(false),
-        onVerticalDragUpdate: vertical
-            ? null
-            : (details) => _applyDelta(details.delta.dy),
-        child: SizedBox(
-          width: vertical ? DockEdgeSplitter.thickness : null,
-          height: vertical ? null : DockEdgeSplitter.thickness,
-          child: ColoredBox(color: _lineColor),
+        onPointerDown: _handlePointerDown,
+        onPointerMove: _handlePointerMove,
+        onPointerUp: _handlePointerEnd,
+        onPointerCancel: _handlePointerEnd,
+        // ⛔The double tap stays on a recognizer: it is a TAP, so it has no
+        // axis to keep and nothing to lose by waiting for the arena.
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onDoubleTap: widget.onDoubleTap,
+          child: SizedBox(
+            width: vertical ? DockEdgeSplitter.thickness : null,
+            height: vertical ? null : DockEdgeSplitter.thickness,
+            child: ColoredBox(color: _lineColor),
+          ),
         ),
       ),
     );
