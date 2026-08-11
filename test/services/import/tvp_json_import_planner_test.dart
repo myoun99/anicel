@@ -145,6 +145,91 @@ void main() {
     });
   });
 
+  group('eased_camera.json — rotation, zoom and a shaped curve', () {
+    test('every baked frame comes back, curve shape and all', () {
+      final parsed = fixture('eased_camera');
+      final plan = planFixture('eased_camera');
+      expect(parsed.camera.positions, hasLength(24));
+
+      for (final baked in parsed.camera.positions) {
+        final resolved = resolveCameraPoseAt(
+          camera: plan.cut.camera,
+          canvasSize: plan.cut.canvasSize,
+          frameIndex: baked.frame - 1,
+        );
+        expect(resolved.center.x, closeTo(baked.x, 0.25),
+            reason: 'frame ${baked.frame} x');
+        expect(resolved.center.y, closeTo(baked.y, 0.25),
+            reason: 'frame ${baked.frame} y');
+        // The clip shoots the project's own frame, so scale IS the zoom.
+        expect(resolved.zoom, closeTo(baked.scale, 1e-4),
+            reason: 'frame ${baked.frame} zoom');
+        // NEGATED: TVPaint's negative angle is a clockwise camera, and
+        // CameraPose turns the view clockwise on positive.
+        expect(resolved.rotationDegrees, closeTo(-baked.angleDegrees, 0.01),
+            reason: 'frame ${baked.frame} angle');
+      }
+    });
+
+    test('the camera turns the way TVPaint turned it', () {
+      final plan = planFixture('eased_camera');
+      double angleAt(int frameIndex) => resolveCameraPoseAt(
+        camera: plan.cut.camera,
+        canvasSize: plan.cut.canvasSize,
+        frameIndex: frameIndex,
+      ).rotationDegrees;
+
+      // Measured in TVPaint by the user: across frames 1-15 the camera
+      // RECTANGLE on the canvas turns clockwise, and from 15 to 24 it
+      // turns back the other way. CameraPose turns the view clockwise on
+      // POSITIVE, so the imported track must climb and then fall — the
+      // opposite of TVPaint's own numbers, which fall and then climb.
+      expect(angleAt(0), closeTo(0, 1e-9));
+      expect(
+        angleAt(14),
+        greaterThan(angleAt(0)),
+        reason: 'frames 1-15 turn clockwise',
+      );
+      expect(
+        angleAt(23),
+        lessThan(angleAt(14)),
+        reason: 'frames 15-24 turn back anticlockwise',
+      );
+    });
+
+    test('a shaped curve keeps the keys it needs and no more', () {
+      final plan = planFixture('eased_camera');
+      // Eased, so most frames leave the straight line — but the three
+      // near-linear stretches between the authored keys still fold.
+      expect(
+        plan.cut.camera.keyframes.length,
+        13,
+        reason: 'the exact number is the point: it must not creep toward 24 '
+            '(the simplifier stopped working) nor toward 2 (the tolerance '
+            'got loose enough to flatten the easing)',
+      );
+    });
+
+    test('rotation and zoom follow the BAKED curve, not the authored key — '
+        'the key at frame 7 reads 0° and scale 1.0, and TVPaint showed '
+        'neither', () {
+      final parsed = fixture('eased_camera');
+      final authored = parsed.camera.keyframes.firstWhere(
+        (pose) => pose.frame == 7,
+      );
+      expect(authored.angleDegrees, 0.0);
+      expect(authored.scale, 1.0);
+
+      final shown = resolveCameraPoseAt(
+        camera: planFixture('eased_camera').cut.camera,
+        canvasSize: const CanvasSize(width: 2150, height: 1518),
+        frameIndex: 6,
+      );
+      expect(shown.rotationDegrees, closeTo(3.2856, 0.01));
+      expect(shown.zoom, closeTo(0.9193, 1e-3));
+    });
+  });
+
   group('held_instances.json', () {
     test('a clip whose camera was never touched gets NO camera — its baked '
         'poses are a 0,0 placeholder, not a centre', () {
