@@ -50,6 +50,78 @@ class _AnchoredPopupSurface extends StatelessWidget {
   }
 }
 
+/// What an anchored window SAYS, as opposed to what it is made of.
+///
+/// 🐛유저, R6 #4: 「앵커팝오버등이 규격들이 다 제각각임. **텍스트사이즈도 다
+/// 다르고** 이상함. 공통로직사용해서 통일화」.
+///
+/// The shell owned the window and not one word inside it, so the four
+/// callers each invented a title: `TextStyle(fontSize: 11)`, `fontSize: 12
+/// + w600`, `labelSmall` (11/w500) and `labelMedium` (12/w500) — four
+/// treatments for the same line of text, over margins of 10, 10, 10 and
+/// `fromLTRB(8, 6, 4, 4)`. Restyling the shell restyled every window's
+/// FRAME and left its contents exactly as mismatched as before.
+abstract final class AnchoredPopupText {
+  /// The window's own name, once, at the top. Heavier than the flyout's
+  /// 12pt rows on purpose: a menu is a list of peers, a window has a title.
+  static const TextStyle title = TextStyle(
+    fontSize: 12,
+    fontWeight: FontWeight.w600,
+    color: AppColors.text,
+  );
+
+  /// A line that explains rather than acts — an axis label, a caveat.
+  ///
+  /// ⚠️[AppColors.textDim] and NOT `hairline`: the SE mixer's pan caveat
+  /// was drawn in the BORDER colour (0xFF37393C) on this surface
+  /// (0xFF303336), which is a sentence you cannot read. A token borrowed
+  /// from the wrong family stops being a colour choice and becomes a bug.
+  static const TextStyle caption = TextStyle(
+    fontSize: 10,
+    color: AppColors.textDim,
+  );
+
+  /// The window's ONE margin. Content that fills its own width — a swatch
+  /// grid, a colour wheel — lines its padding up with this rather than
+  /// picking a smaller number of its own.
+  static const EdgeInsets bodyPadding = EdgeInsets.all(10);
+
+  /// Between the title row and the first control under it.
+  static const double titleGap = 8;
+}
+
+/// The window's name, once, at the top — with the single control that
+/// belongs beside it (a switch, an import button, a live swatch).
+///
+/// It ellipsises. Every one of these windows is 216–236px wide and at
+/// least one title is built from a caller's string, so "it fits today" was
+/// never a property anyone had checked.
+class AnchoredPopupHeader extends StatelessWidget {
+  const AnchoredPopupHeader({super.key, required this.title, this.trailing});
+
+  final String title;
+
+  /// The one control that reads as part of the title — not a toolbar.
+  final Widget? trailing;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: Text(
+            title,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: AnchoredPopupText.title,
+          ),
+        ),
+        ?trailing,
+      ],
+    );
+  }
+}
+
 /// The ONE anchored sub-window (R28 #9), in two kinds.
 ///
 /// The brush panel's pressure-curve editor established this shape and the

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/brush_pressure_curve.dart';
+import 'package:anicel/src/ui/widgets/anchored_popup.dart';
 import 'package:anicel/src/ui/widgets/pressure_curve_popup.dart';
 
 /// BB-3: the shared pressure-curve editor popup — the CSP editing grammar
@@ -196,6 +197,28 @@ void main() {
           'and ON is not — the accent still lands solidly, so this is a '
           'statement about the OFF state and not about the whole button',
     );
+  });
+
+  testWidgets('유저 R6 #4: this window titles itself the same way every other '
+      'anchored window does', (tester) async {
+    // The other half of 「텍스트사이즈도 다 다르고」: the SHELL was unified
+    // (surface, corner, hairline, lift) while the four bodies each picked
+    // their own title — this one a bare `fontSize: 11`. Paired with the
+    // identical assertion in brush_tip_picker_test, so a caller that
+    // re-types a size is caught on whichever side drifts.
+    await pumpButton(tester, curve: null, onChanged: (_) {});
+    await openPopup(tester);
+
+    final title = tester.widget<Text>(
+      find
+          .descendant(
+            of: find.byType(AnchoredPopupHeader),
+            matching: find.byType(Text),
+          )
+          .first,
+    );
+    expect(title.data, 'Size — Pen pressure');
+    expect(title.style, AnchoredPopupText.title);
   });
 
   testWidgets('the switch turns pressure on (identity) and off (null)', (

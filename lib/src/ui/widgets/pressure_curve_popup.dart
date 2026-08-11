@@ -245,41 +245,31 @@ class _PressureCurveEditorState extends State<_PressureCurveEditor> {
     // designed, and it was the last thing the shell did not own.
     return Padding(
       key: const ValueKey<String>('pressure-curve-popup'),
-      padding: const EdgeInsets.all(10),
+      padding: AnchoredPopupText.bodyPadding,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(
-                  '${widget.title} — Pen pressure',
-                  style: const TextStyle(fontSize: 11, color: AppColors.text),
+          AnchoredPopupHeader(
+            title: '${widget.title} — Pen pressure',
+            trailing: SizedBox(
+              height: 24,
+              child: FittedBox(
+                child: Switch(
+                  key: const ValueKey<String>('pressure-curve-enable-switch'),
+                  value: _enabled,
+                  onChanged: _setEnabled,
                 ),
               ),
-              SizedBox(
-                height: 24,
-                child: FittedBox(
-                  child: Switch(
-                    key: const ValueKey<String>('pressure-curve-enable-switch'),
-                    value: _enabled,
-                    onChanged: _setEnabled,
-                  ),
-                ),
-              ),
-            ],
+            ),
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: AnchoredPopupText.titleGap),
           _buildGraph(),
           const SizedBox(height: 4),
           Row(
             children: [
               const Expanded(
-                child: Text(
-                  'Pressure →',
-                  style: TextStyle(fontSize: 9, color: AppColors.textDim),
-                ),
+                child: Text('Pressure →', style: AnchoredPopupText.caption),
               ),
               InkWell(
                 key: const ValueKey<String>('pressure-curve-reset'),

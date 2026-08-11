@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/brush/brush_settings_panel.dart';
 import 'package:anicel/src/ui/brush/brush_tip_picker.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/theme/app_theme.dart';
+import 'package:anicel/src/ui/widgets/anchored_popup.dart';
 
 BrushTipMask _mask(String id, {int value = 200}) => BrushTipMask(
   id: id,
@@ -97,6 +98,41 @@ void main() {
       reason:
           'the popup body must sit on the app window: FILL 3, the app corner '
           'and a lift off what is behind it',
+    );
+  });
+
+  testWidgets('유저 R6 #4: the picker titles itself in the window vocabulary, '
+      'not one of its own', (tester) async {
+    // 「텍스트사이즈도 다 다르고 이상함」. This window said its name in
+    // `labelSmall` while the pressure editor used a bare 11, the colour
+    // picker `labelMedium` and the SE mixer 12/w600 — four treatments of
+    // one line. Asserting the shared HEADER and the shared STYLE together
+    // catches both ways back: dropping the widget, and re-typing a size
+    // inside it.
+    await pumpPanel(tester, tips: [_entry('tip-1', 'Mine')]);
+    final swatch = find.byKey(const ValueKey<String>('brush-tip-picker-tip'));
+    await tester.ensureVisible(swatch);
+    await tester.tap(swatch);
+    await tester.pumpAndSettle();
+
+    final header = find.ancestor(
+      of: find.byKey(const ValueKey<String>('brush-tip-picker-grid')),
+      matching: find.byType(Material),
+    );
+    expect(header, findsWidgets, reason: 'the popup is open');
+    final title = tester.widget<Text>(
+      find
+          .descendant(
+            of: find.byType(AnchoredPopupHeader),
+            matching: find.byType(Text),
+          )
+          .first,
+    );
+    expect(title.style, AnchoredPopupText.title);
+    expect(
+      title.overflow,
+      TextOverflow.ellipsis,
+      reason: 'a 232px window cannot promise a caller-supplied name fits',
     );
   });
 
