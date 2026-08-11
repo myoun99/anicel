@@ -5,6 +5,7 @@ import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/media_asset.dart';
+import '../../services/persistence/file_type_groups.dart';
 import '../dialogs/app_prompt_dialog.dart';
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart' show AppColors, instantMenuAnimation;
@@ -54,18 +55,9 @@ class MediaBrowserPanel extends StatelessWidget {
   /// Injectable existence probe; defaults to the real file system.
   final bool Function(String path)? fileExists;
 
-  static const List<String> _mediaExtensions = [
-    'mp3', 'wav', 'm4a', 'aac', 'flac', 'ogg',
-    'png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif',
-    'mp4', 'mov', 'avi', 'mkv', 'webm',
-    'pdf',
-  ];
-
   static Future<String?> _pickAudioFile() async {
     final file = await openFile(
-      acceptedTypeGroups: const [
-        XTypeGroup(label: 'Media', extensions: _mediaExtensions),
-      ],
+      acceptedTypeGroups: const [FileTypeGroups.poolMedia],
     );
     return file?.path;
   }

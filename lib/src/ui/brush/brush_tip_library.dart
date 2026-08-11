@@ -9,6 +9,7 @@ import '../../models/brush_tip_mask.dart';
 import '../../services/brush_tip_defaults.dart';
 import '../../services/brush_tip_image_codec.dart';
 import '../../services/brush_tip_library_service.dart';
+import '../../services/persistence/file_type_groups.dart';
 
 /// A picked image file: display name plus raw bytes.
 typedef TipImagePick = ({String name, Uint8List bytes});
@@ -17,11 +18,9 @@ typedef TipImagePick = ({String name, Uint8List bytes});
 typedef BrushTipImagePicker = Future<TipImagePick?> Function();
 
 Future<TipImagePick?> _openTipImageDialog() async {
-  const typeGroup = XTypeGroup(
-    label: 'Images',
-    extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif'],
+  final file = await openFile(
+    acceptedTypeGroups: const [FileTypeGroups.images],
   );
-  final file = await openFile(acceptedTypeGroups: const [typeGroup]);
   if (file == null) {
     return null;
   }

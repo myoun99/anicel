@@ -10,6 +10,7 @@ import '../../models/canvas_viewport.dart';
 import '../../models/media_asset.dart';
 import '../../services/import/raster_cel_import.dart';
 import '../../services/pdf/pdf_render_service.dart';
+import '../../services/persistence/file_type_groups.dart';
 import '../brush/brush_canvas_panel.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../editor_session_manager.dart';
@@ -328,12 +329,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
         widget.filePicker ??
         () async {
           final file = await openFile(
-            acceptedTypeGroups: const [
-              XTypeGroup(
-                label: 'Viewable media',
-                extensions: ['png', 'jpg', 'jpeg', 'webp', 'bmp', 'gif', 'pdf'],
-              ),
-            ],
+            acceptedTypeGroups: const [FileTypeGroups.viewableMedia],
           );
           return file?.path;
         };
