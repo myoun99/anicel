@@ -35,7 +35,6 @@ import 'storyboard_timeline_layout.dart';
 import 'text/app_strings.dart';
 import 'timeline/timeline_frame_range_gesture.dart'
     show TimelineLaneRangeCallbacks;
-import 'timeline/timeline_shift_buttons.dart';
 import 'timeline/timeline_command_bar.dart';
 import 'timeline/timeline_view_cluster.dart';
 import 'track_fx_command_group.dart';
@@ -420,36 +419,16 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     // timeline, so its dialogs' miniatures do too.
                     onEditInstance: _editInstanceHere,
                     resolveCanEditInstance: _canEditTransitionInstanceHere,
+                    // Which rail is asking: with nothing selected the frame
+                    // pill's shove aims at the row THIS rail is standing on
+                    // (a cut row shoves cuts, an S row shoves sounds), which
+                    // is not the session's active-layer fallback.
+                    currentRow: _session.selectedRow,
                   ),
                   const SizedBox(width: 6),
                   // The V row's fx (user 2026-08-08): a chain over the whole
                   // composited cut, authored from this panel.
                   TrackFxCommandGroup(session: _session),
-                  const SizedBox(width: 6),
-                  // ⚠️The LAYER and FRAME pills are not here yet. The
-                  // storyboard needs them — 유저: 스토리보드 레이어의 프레임을
-                  // 조절해야 하고 레이어도 만들고 지워야 한다 — but they are
-                  // the timeline host's dialog flows (rename layer, delete
-                  // layer, the kind-dispatched instance editor), and lifting
-                  // those out is a refactor of that host rather than a line
-                  // here. Until then this panel keeps the two nouns it can
-                  // honestly serve.
-                  //
-                  // THE push/pull pair, the timeline rail's own widget: the
-                  // rail asks as ITSELF, so with nothing selected the shove
-                  // aims at the row this rail is on (a cut row shoves cuts,
-                  // an S row shoves sounds).
-                  // ⛔These two are deliberately NOT in a pill. A pill is a
-                  // noun and its verbs; these are loose verbs whose noun is
-                  // not on this bar yet — push/pull belongs to the FRAME
-                  // pill (it is a frame-axis shove) and it will move there
-                  // when that pill arrives. Inventing a "rows" noun to hold
-                  // them in the meantime would be a border drawn around a
-                  // gap.
-                  TimelineShiftButtons(
-                    session: _session,
-                    currentRow: _session.selectedRow,
-                  ),
                   const SizedBox(width: 4),
                   // V ROW HEIGHT — one pair for every V track, because there
                   // is one height (user's rule). Steppers rather than a
@@ -949,9 +928,6 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     onEnd: _session.endTransitionEdgeDrag,
                     onCancel: _session.cancelTransitionEdgeDrag,
                   ),
-                  resolveCanCreateTransition: () =>
-                      _session.canCreateTransitionSpanAtPlayhead,
-                  onCreateTransition: _session.createTransitionSpanAtPlayhead,
                   onEditTransitionSpan: _editTransitionSpan,
                 ),
                 ),

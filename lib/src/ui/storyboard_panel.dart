@@ -434,8 +434,6 @@ class StoryboardPanel extends StatefulWidget {
     this.transitionDefById,
     this.transitionPreview,
     this.transitionCommaDrag,
-    this.onCreateTransition,
-    this.resolveCanCreateTransition,
     this.onEditTransitionSpan,
     this.dragPreview,
     this.legend,
@@ -847,22 +845,13 @@ class StoryboardPanel extends StatefulWidget {
   /// the session's transition writer. Block starts are GLOBAL frames.
   final TimelineCommaDragCallbacks? transitionCommaDrag;
 
-  /// "Make one here": a one-frame transition span at the playhead, which the
-  /// grips then size.
-  final VoidCallback? onCreateTransition;
-
-  /// Whether there is anywhere to put one right now — no vocabulary, or a
-  /// span already covering the playhead, greys the button out.
-  ///
-  /// A RESOLVER, not a bool, and read inside a subscription to
-  /// [playheadFrame]: the playhead moves without rebuilding this panel (that
-  /// is the whole point of the cursor being its own channel), so a value
-  /// captured at build time would say "yes" long after the playhead had
-  /// walked onto a span.
-  final bool Function()? resolveCanCreateTransition;
-
   /// Opens the term dialog (O.L / F.I / F.O …) for the span covering this
-  /// GLOBAL frame — also where the span is deleted.
+  /// GLOBAL frame — also where the span is created and deleted.
+  ///
+  /// ⛔There is no `onCreateTransition` beside it any more. Creation used to
+  /// be a `＋` on the rail with its own enablement resolver; it is the same
+  /// verb as editing now (an empty frame creates), so the panel takes ONE
+  /// callback and the row grew no second door.
   final void Function(int globalFrame)? onEditTransitionSpan;
 
   /// The per-S-row view-state key: `<trackId>-<slot>`.
@@ -1436,10 +1425,10 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     return _draggableSeRow(track, slot, trackLayer, _seLabel(track, slot));
   }
 
-  /// The transition row's rail label. It carries ONE verb — "make one at the
-  /// playhead" — because that is the only thing about this row that is not
-  /// already a gesture on the strip: the grips size the span and the strip's
-  /// own press opens its term dialog.
+  /// The transition row's rail label — a name and a selection highlight, and
+  /// no verb. Everything this row can do is already a gesture on the strip
+  /// (grips size the span, a press opens its term dialog) or the shared Edit
+  /// Instance verb, which creates on an empty frame.
   Widget _transitionLabelRow(Track track) {
     final layer = track.transitionLayer;
     return _StoryboardTransitionLabel(
@@ -1447,9 +1436,6 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       layer: layer,
       active: widget.selectedRow == LayerRowAddress(layer.id),
       onSelectLayer: widget.onSelectLayer,
-      onCreate: widget.onCreateTransition,
-      resolveCanCreate: widget.resolveCanCreateTransition,
-      playheadFrame: widget.playheadFrame,
     );
   }
 
@@ -3861,17 +3847,21 @@ class _StoryboardSeLabel extends StatelessWidget {
 /// The rail's shared column skeleton, like every other row, but most slots
 /// stay empty on purpose: the row carries no picture, so it has no eye, no
 /// opacity, no fx and no mark ([layerKindHasPictureOpacity] and friends
-/// answer false for [LayerKind.transition]). What it does carry is the one
-/// verb that has no home on the strip — "make one at the playhead".
+/// answer false for [LayerKind.transition]).
+///
+/// ⛔It carries **no verb of its own** either. It used to hold a `＋` reading
+/// "make one at the playhead", and that button is what the user was pointing
+/// at (2026-08-11): 「프레임생성하는거 행에 버튼만들어서 넣은거같은데, 그게아니라
+/// 인스턴스편집버튼으로 작동하도록. 삭제나 그런거 다 똑같이」. Create, edit and
+/// delete are one verb now — [editTransitionSpanInstance], reached from the
+/// frame pill's Edit Instance and from the row's double-tap — so a second
+/// entrance on the rail is the predecessor, not a convenience.
 class _StoryboardTransitionLabel extends StatelessWidget {
   const _StoryboardTransitionLabel({
     required this.track,
     required this.layer,
     required this.active,
     this.onSelectLayer,
-    this.onCreate,
-    this.resolveCanCreate,
-    this.playheadFrame,
   });
 
   final Track track;
@@ -3880,13 +3870,6 @@ class _StoryboardTransitionLabel extends StatelessWidget {
   /// Whether this row is THE selected row (same highlight as every other).
   final bool active;
   final ValueChanged<LayerId>? onSelectLayer;
-
-  final VoidCallback? onCreate;
-
-  /// Re-asked on every playhead tick — the button greys out rather than
-  /// disappearing, so the row's shape does not change under the hand.
-  final bool Function()? resolveCanCreate;
-  final ValueListenable<int?>? playheadFrame;
 
   @override
   Widget build(BuildContext context) {
@@ -3946,41 +3929,10 @@ class _StoryboardTransitionLabel extends StatelessWidget {
                   ),
                 ),
               ),
-              _addButton(),
             ],
           ),
         ),
       ),
-    );
-  }
-
-  /// "Make one at the playhead". Subscribed to the cursor so its enabled
-  /// state is asked again per tick — see [resolveCanCreate].
-  Widget _addButton() {
-    Widget button(bool enabled) => IconButton(
-      key: ValueKey<String>('storyboard-transition-add-${track.id.value}'),
-      onPressed: enabled ? onCreate : null,
-      iconSize: 16,
-      visualDensity: VisualDensity.compact,
-      padding: EdgeInsets.zero,
-      constraints: const BoxConstraints.tightFor(width: 26, height: 26),
-      tooltip: 'Add transition at playhead',
-      // 「＋가 있는 모든 곳, 공통적으로」 — and this one goes dark often,
-      // since it can only fire where a transition may actually start.
-      icon: Icon(Icons.add, color: AppColors.addGlyph(enabled: enabled)),
-    );
-
-    final resolve = resolveCanCreate;
-    final playhead = playheadFrame;
-    if (resolve == null) {
-      return button(false);
-    }
-    if (playhead == null) {
-      return button(resolve());
-    }
-    return ValueListenableBuilder<int?>(
-      valueListenable: playhead,
-      builder: (context, _, _) => button(resolve()),
     );
   }
 }
