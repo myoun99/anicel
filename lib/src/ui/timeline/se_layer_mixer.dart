@@ -96,18 +96,15 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
     // now (R4 #8).
     return Padding(
       key: const ValueKey<String>('se-layer-mixer'),
-      padding: const EdgeInsets.all(10),
+      padding: AnchoredPopupText.bodyPadding,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Text(
-            layer.name.isEmpty ? strings.layerAudioTitle : layer.name,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+          AnchoredPopupHeader(
+            title: layer.name.isEmpty ? strings.layerAudioTitle : layer.name,
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AnchoredPopupText.titleGap),
           Row(
             children: [
               Expanded(
@@ -179,10 +176,11 @@ class _SeLayerMixerState extends State<_SeLayerMixer> {
           // The one honest caveat this window owes the user: pan reaches
           // the sound only on the device-mixer path. The platform-player
           // fallback sets volume and drops pan entirely.
-          Text(
-            strings.layerAudioPanHelp,
-            style: TextStyle(fontSize: 10, color: AppColors.hairline),
-          ),
+          //
+          // 🐛It was drawn in `AppColors.hairline` — the BORDER token,
+          // 0xFF37393C, on a 0xFF303336 surface. A caveat nobody can read
+          // is not a caveat.
+          Text(strings.layerAudioPanHelp, style: AnchoredPopupText.caption),
         ],
       ),
     );

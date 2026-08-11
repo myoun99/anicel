@@ -125,36 +125,31 @@ class _ColorPickerBodyState extends State<_ColorPickerBody> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
     // ⛔No `Material` of its own (R4 #8). It drew elevation 8 where the two
     // other anchored windows drew 6 — one window in three costumes, until a
     // fourth arrived with none.
     return Padding(
-      padding: const EdgeInsets.all(10),
+      padding: AnchoredPopupText.bodyPadding,
       child: Column(
         mainAxisSize: MainAxisSize.min,
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: Text(widget.title, style: theme.textTheme.labelMedium),
+          AnchoredPopupHeader(
+            title: widget.title,
+            // The live result, in the same round swatch vocabulary as
+            // the button that opened this.
+            trailing: Container(
+              key: const ValueKey<String>('color-picker-preview'),
+              width: 16,
+              height: 16,
+              decoration: BoxDecoration(
+                color: _hsv.toColor(),
+                shape: BoxShape.circle,
+                border: Border.all(color: AppColors.hairline),
               ),
-              // The live result, in the same round swatch vocabulary as
-              // the button that opened this.
-              Container(
-                key: const ValueKey<String>('color-picker-preview'),
-                width: 16,
-                height: 16,
-                decoration: BoxDecoration(
-                  color: _hsv.toColor(),
-                  shape: BoxShape.circle,
-                  border: Border.all(color: AppColors.hairline),
-                ),
-              ),
-            ],
+            ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AnchoredPopupText.titleGap),
           SizedBox(
             height: 180,
             child: ColorWheel(

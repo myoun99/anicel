@@ -186,34 +186,38 @@ class _BrushTipPickerBody extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(8, 6, 4, 4),
-            child: Row(
-              children: [
-                Expanded(
-                  child: Text(
-                    AppText.strings.brBrushTip,
-                    style: theme.textTheme.labelSmall,
-                  ),
-                ),
-                if (onImportRequested != null)
-                  IconButton(
-                    key: const ValueKey<String>('brush-tip-picker-add'),
-                    icon: const Icon(
-                      Icons.add_photo_alternate_outlined,
-                      size: 16,
+            // The window's one margin, minus the bottom — the grid below
+            // supplies the gap and lines its own sides up with this.
+            padding: AnchoredPopupText.bodyPadding.copyWith(bottom: 0),
+            child: AnchoredPopupHeader(
+              title: AppText.strings.brBrushTip,
+              trailing: onImportRequested == null
+                  ? null
+                  : IconButton(
+                      key: const ValueKey<String>('brush-tip-picker-add'),
+                      icon: const Icon(
+                        Icons.add_photo_alternate_outlined,
+                        size: 16,
+                      ),
+                      visualDensity: VisualDensity.compact,
+                      tooltip: AppText.strings.brAddTipImage,
+                      onPressed: onImportRequested,
                     ),
-                    visualDensity: VisualDensity.compact,
-                    tooltip: AppText.strings.brAddTipImage,
-                    onPressed: onImportRequested,
-                  ),
-              ],
             ),
           ),
           Expanded(
             child: GridView.count(
               key: const ValueKey<String>('brush-tip-picker-grid'),
               crossAxisCount: 5,
-              padding: const EdgeInsets.symmetric(horizontal: 6),
+              // Lined up with the header above rather than 4px inside it,
+              // and carrying the gap under it — the header's own bottom is
+              // zero so that this one number decides the distance.
+              padding: EdgeInsets.fromLTRB(
+                AnchoredPopupText.bodyPadding.left,
+                AnchoredPopupText.titleGap,
+                AnchoredPopupText.bodyPadding.right,
+                0,
+              ),
               mainAxisSpacing: 4,
               crossAxisSpacing: 4,
               children: [
