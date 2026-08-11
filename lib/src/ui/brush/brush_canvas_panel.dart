@@ -2142,6 +2142,10 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
         // pipeline (fillDabAt) — instant overlay, settling hold, and the
         // same primary-button discipline as strokes. No tap layer.
         return null;
+      case CanvasTool.guide:
+        // The guide tool drags HANDLES, not points on the cel — it mounts
+        // its own layer in the viewport overlay, like the selection tools.
+        return null;
     }
   }
 

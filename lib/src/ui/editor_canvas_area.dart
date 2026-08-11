@@ -22,6 +22,8 @@ import 'brush/main_canvas_brush_host.dart';
 import 'camera/camera_frame_overlay.dart';
 import 'canvas/active_stroke_overlay.dart';
 import 'canvas/flip_hud_controller.dart';
+import '../models/drawing_guide.dart';
+import 'canvas/guide_overlay.dart';
 import 'canvas/canvas_layer_stack_view.dart';
 import 'canvas/layer_position_gizmo.dart';
 import 'canvas/layer_transform_box.dart';
@@ -131,6 +133,13 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
   /// drag maps EXPONENTIALLY from here (120px per doubling) so the feel
   /// is uniform at every size.
   double? _brushSizeDragStartSize;
+
+  /// The guides as they look MID-DRAG, before the release commits them.
+  ///
+  /// Null except while a handle is moving. The project is not written until
+  /// the finger lifts, so dragging an axis across the canvas is one undo
+  /// entry rather than one per pointer sample.
+  CutGuides? _liveGuides;
 
   CanvasViewport _canvasViewport = CanvasViewport();
 
@@ -542,6 +551,10 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               // back to the first drawn layer at the playhead.
               selection: selection,
               canvasSize: canvasSize,
+              // The cut's guides reach the stroke pipeline through here;
+              // the panel maps them into the active layer's artwork space
+              // before the view sees them.
+              guides: session.activeCutGuides,
               frameStore: session.brushFrameStore,
               cacheInvalidationSink: session.cacheInvalidationHub,
               historyManager: session.historyManager,
@@ -728,10 +741,56 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                           showPositionGizmo ||
                           showAnchorGizmo ||
                           showFadeWash ||
+                          session.activeCutGuides.isNotEmpty ||
                           seNameTags.isNotEmpty) &&
                       !isPlaybackActive
                   ? (context, viewport) => Stack(
                       children: [
+                        // Guides are EDITING scaffolding: they are drawn
+                        // here and nowhere else — playback, thumbnails and
+                        // export never see them, the way a ruler never
+                        // prints. Under the camera frame and the gizmos,
+                        // which are chrome about the shot rather than about
+                        // the drawing.
+                        if (session.activeCutGuides.isNotEmpty)
+                          Positioned.fill(
+                            child: IgnorePointer(
+                              child: CustomPaint(
+                                painter: GuideOverlayPainter(
+                                  // The live drag value while a handle is
+                                  // moving, so the drawn guide follows the
+                                  // finger without a project write.
+                                  guides:
+                                      _liveGuides ?? session.activeCutGuides,
+                                  viewport: viewport,
+                                  canvasSize: canvasSize,
+                                  emphasized:
+                                      toolState.tool == CanvasTool.guide,
+                                  color: Theme.of(context).colorScheme.primary,
+                                  selectedGuideId: session.selectedGuideId,
+                                ),
+                              ),
+                            ),
+                          ),
+                        // The handle layer mounts ONLY for the guide tool,
+                        // so it never stands between the brush and the cel.
+                        if (toolState.tool == CanvasTool.guide)
+                          Positioned.fill(
+                            child: GuideEditLayer(
+                              guides: _liveGuides ?? session.activeCutGuides,
+                              viewport: viewport,
+                              onGuideSelected: (id) =>
+                                  session.selectedGuideId = id,
+                              // Live while dragging: the project is not
+                              // touched, so a drag is one undo entry.
+                              onGuidesChanged: (guides) =>
+                                  setState(() => _liveGuides = guides),
+                              onGuidesCommitted: (guides) {
+                                setState(() => _liveGuides = null);
+                                session.setActiveCutGuides(guides);
+                              },
+                            ),
+                          ),
                         if (seNameTags.isNotEmpty)
                           Positioned.fill(
                             // Rides the cut pose like the gizmo: the tag

@@ -36,6 +36,8 @@ import 'brush/brush_tool_state.dart';
 import 'brush/canvas_selection_commands.dart';
 import 'brush/canvas_view_commands.dart';
 import 'brush/paint_tool_state_notifier.dart';
+import 'brush/brush_canvas_defaults.dart';
+import 'brush/guide_panels.dart';
 import 'brush/tool_library_panel.dart';
 import 'brush/tool_settings_panel.dart';
 import 'brush/tools_panel.dart';
@@ -1665,6 +1667,23 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                             onLibraryReset: _presetLibrary.resetToDefaults,
                           ),
                         ),
+                        // The cut's own guides. Unlike the brush library
+                        // above — app-wide and permanent — this list belongs
+                        // to the CUT, so it follows the session.
+                        guideLibrary: ListenableBuilder(
+                          listenable: widget.session,
+                          builder: (context, _) => GuideLibraryList(
+                            guides: widget.session.activeCutGuides,
+                            canvasSize:
+                                widget.session.activeCutOrNull?.canvasSize ??
+                                BrushCanvasDefaults.canvasSize,
+                            selectedGuideId: widget.session.selectedGuideId,
+                            onGuideSelected: (id) =>
+                                widget.session.selectedGuideId = id,
+                            onGuidesCommitted:
+                                widget.session.setActiveCutGuides,
+                          ),
+                        ),
                       ),
                     ),
               ),
@@ -1714,12 +1733,31 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                                       // so the pickers have to follow it.
                                       builder: (context, eyedropperSource, _) =>
                                           ListenableBuilder(
-                                            listenable: _tipLibrary,
+                                            // The guides live on the CUT and
+                                            // the selection is UI state, so
+                                            // both have to reach this panel:
+                                            // neither is in the keep-alive
+                                            // tuple above, which decides when
+                                            // the subtree is discarded rather
+                                            // than when it rebuilds.
+                                            listenable: Listenable.merge([
+                                              _tipLibrary,
+                                              widget.session,
+                                            ]),
                                             builder: (context, _) =>
                                                 ToolSettingsPanel(
                                                   state: toolState,
                                                   onChanged: (state) =>
                                                       _brushTool.value = state,
+                                                  guides: widget
+                                                      .session
+                                                      .activeCutGuides,
+                                                  selectedGuideId: widget
+                                                      .session
+                                                      .selectedGuideId,
+                                                  onGuidesCommitted: widget
+                                                      .session
+                                                      .setActiveCutGuides,
                                                   tips: _tipLibrary.tips,
                                                   onTipImportRequested: () {
                                                     unawaited(

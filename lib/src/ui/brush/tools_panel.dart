@@ -127,6 +127,16 @@ class ToolsPanel extends StatelessWidget {
               onPressed: () => onToolChanged(CanvasTool.fill),
             ),
             const SizedBox(height: 4),
+            RailButton(
+              keyValue: 'tool-guide-button',
+              tooltip: AppText.strings.toolGuide,
+              // A drafting square: the tool sets up the guides, and the
+              // guides steer the brush.
+              icon: Icons.architecture_outlined,
+              selected: tool == CanvasTool.guide,
+              onPressed: () => onToolChanged(CanvasTool.guide),
+            ),
+            const SizedBox(height: 4),
             // R17-U: ONE selection tool — the rectangle/lasso variant is a
             // tool SETTING, not a separate toolbar entry (유저 채택 설계).
             RailButton(

@@ -8,6 +8,7 @@ import '../playback/playback_frame_painter.dart';
 import '../../models/brush_history_policy.dart';
 import '../../models/canvas_point.dart';
 import '../../models/canvas_size.dart';
+import '../../models/drawing_guide.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/project_background.dart';
 import '../canvas/flip_hud_controller.dart';
@@ -42,6 +43,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.selection,
     this.availableFrameKeys,
     this.canvasSize = BrushCanvasDefaults.canvasSize,
+    this.guides,
     this.frameStore,
     this.cacheInvalidationSink,
     this.historyManager,
@@ -87,6 +89,10 @@ class MainCanvasBrushHost extends StatefulWidget {
   final BrushEditorSelection? selection;
   final List<BrushFrameKey>? availableFrameKeys;
   final CanvasSize canvasSize;
+
+  /// The active cut's drawing guides, in canvas space — forwarded to the
+  /// panel, which maps them into the layer's artwork space.
+  final CutGuides? guides;
 
   /// Injectable stroke store (the session-owned one in production, so
   /// app-level commands can transform stroke data); defaults to a local one.
@@ -299,8 +305,8 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
                 return;
               }
               final tool = widget.brushToolState.tool;
-              if (!canvasToolPaints(tool) && tool != CanvasTool.fill) {
-                return; // Eyedropper/selection/pan have their own meaning.
+              if (!canvasToolMarksCel(tool)) {
+                return; // Eyedropper/selection/guides/pan mean other things.
               }
               // R27 #15: only a press that would actually DRAW earns the
               // notice. A finger whose one-finger slot is flip/pan/none is
@@ -334,6 +340,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       availableFrameKeys: _frameKeys,
       cacheInvalidationSink: _cacheInvalidationSink,
       canvasSize: widget.canvasSize,
+      guides: widget.guides,
       historyManager: widget.historyManager,
       viewport: widget.viewport,
       onViewportChanged: widget.onViewportChanged,
