@@ -412,10 +412,29 @@ void main() {
       // not all fit — and not a moment sooner, because a scrolling rail
       // hands vertical drags to the scroll arena before the panel tabs see
       // them (the reason 띠는 스크롤하지 않는다 in the first place).
+      //
+      // 🚨R6-⑤ (2026-08-12) moved WHERE this is asked. The scroller is always
+      // MOUNTED now and only sometimes LIVE — two different trees either side
+      // of the overflow boundary used to swap under a live drag and dispose
+      // the splitter the hand was holding. So "does it scroll" is read from
+      // the scroll POSITION and from the bar, not from whether the widget
+      // exists: a `SingleChildScrollView` whose content fits has no extent to
+      // move and Flutter drops its drag recognizer by itself.
       await pumpApp(tester);
       Finder railScroll() =>
           find.byKey(const ValueKey<String>('rail-scroll-left'));
-      expect(railScroll(), findsNothing, reason: 'one group fits');
+      Finder railThumb() =>
+          find.byKey(const ValueKey<String>('rail-scroll-thumb-left'));
+      // The rail's OWN controller — the panels inside carry scrollables of
+      // their own, so a descendant search finds several.
+      double railExtent() => tester
+          .widget<SingleChildScrollView>(railScroll())
+          .controller!
+          .position
+          .maxScrollExtent;
+
+      expect(railExtent(), 0, reason: 'one group fits — nothing to scroll');
+      expect(railThumb(), findsNothing, reason: 'and no bar says otherwise');
 
       // Open the left rail's second group (the tool settings).
       await tester.tap(
@@ -425,6 +444,12 @@ void main() {
 
       // Two 320px panels and a gap need 648; the rail has ~589.
       expect(railScroll(), findsOneWidget);
+      expect(
+        railExtent(),
+        greaterThan(0),
+        reason: 'now it overflows, so the same scroller has somewhere to go',
+      );
+      expect(railThumb(), findsOneWidget);
       // …and both panels are still there to be scrolled to.
       expect(find.byType(BrushPresetPanel), findsOneWidget);
       expect(find.byType(BrushSettingsPanel), findsOneWidget);
