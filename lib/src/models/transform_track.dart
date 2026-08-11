@@ -351,16 +351,34 @@ bool transformLaneHasKeyAt(
 
 /// Whether [name] is already used by [property]'s lane in [track] — the
 /// read a rename does before it commits.
+/// [excludeFrames] drops the keys a RANGE rename is about to name — they
+/// are the ones joining, so they must not answer for the name.
 bool transformLaneUsesName(
   TransformTrack track,
   TransformPropertyId property,
-  String name,
-) => switch (property) {
-  TransformPropertyId.anchorPoint => track.anchorPoint.valueForName(name),
-  TransformPropertyId.position => track.position.valueForName(name),
-  TransformPropertyId.scale => track.scale.valueForName(name),
-  TransformPropertyId.rotation => track.rotation.valueForName(name),
-  TransformPropertyId.opacity => track.opacity.valueForName(name),
+  String name, {
+  Set<int> excludeFrames = const {},
+}) => switch (property) {
+  TransformPropertyId.anchorPoint => track.anchorPoint.valueForName(
+    name,
+    excludeFrames: excludeFrames,
+  ),
+  TransformPropertyId.position => track.position.valueForName(
+    name,
+    excludeFrames: excludeFrames,
+  ),
+  TransformPropertyId.scale => track.scale.valueForName(
+    name,
+    excludeFrames: excludeFrames,
+  ),
+  TransformPropertyId.rotation => track.rotation.valueForName(
+    name,
+    excludeFrames: excludeFrames,
+  ),
+  TransformPropertyId.opacity => track.opacity.valueForName(
+    name,
+    excludeFrames: excludeFrames,
+  ),
 } != null;
 
 /// [track] with [property]'s key at [frameIndex] renamed to [name] (null

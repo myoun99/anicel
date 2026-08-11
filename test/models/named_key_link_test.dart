@@ -307,4 +307,95 @@ void main() {
       );
     });
   });
+
+  // Naming a RANGE: the covered keys collapse onto one value, because a
+  // shared name MEANS a shared value (user 2026-08-10).
+  group('range naming', () {
+    test('the covered keys collapse onto ONE value', () {
+      final result = track({
+        0: (1, null),
+        5: (2, null),
+        9: (3, null),
+      }).withRangeNamed(frames: {0, 5, 9}, name: 'A');
+
+      expect(result!.keyAt(0)!.value, 1, reason: 'the earliest speaks');
+      expect(result.keyAt(5)!.value, 1);
+      expect(result.keyAt(9)!.value, 1);
+      expect(result.keyNames, {'A'});
+    });
+
+    test('the key you are STANDING on outranks the earliest', () {
+      final result = track({
+        0: (1, null),
+        5: (2, null),
+      }).withRangeNamed(frames: {0, 5}, name: 'A', preferredFrame: 5);
+
+      expect(result!.keyAt(0)!.value, 2);
+      expect(result.keyAt(5)!.value, 2);
+    });
+
+    test('an ADOPTED value outranks both — joining takes what is there', () {
+      final result = track({0: (1, null), 5: (2, null)}).withRangeNamed(
+        frames: {0, 5},
+        name: 'A',
+        adopted: 9,
+        preferredFrame: 5,
+      );
+
+      expect(result!.keyAt(0)!.value, 9);
+      expect(result.keyAt(5)!.value, 9);
+    });
+
+    test('un-naming touches no values', () {
+      final result = track({
+        0: (1, 'A'),
+        5: (2, 'A'),
+      }).withRangeNamed(frames: {0, 5}, name: null);
+
+      expect(result!.keyAt(0)!.value, 1, reason: 'no shared number left');
+      expect(result.keyAt(5)!.value, 2);
+      expect(result.keyNames, isEmpty);
+    });
+
+    test('frames with no key are skipped; a keyless range is null', () {
+      expect(
+        track({3: (1, null)}).withRangeNamed(frames: {0, 1}, name: 'A'),
+        isNull,
+      );
+
+      final result = track({
+        3: (1, null),
+      }).withRangeNamed(frames: {0, 3}, name: 'A');
+      expect(result!.keyNames, {'A'});
+      expect(result.keys, hasLength(1));
+    });
+
+    test('interpolation survives the collapse', () {
+      final subject = PropertyTrack<double>(
+        keys: {
+          0: const PropertyKey(1),
+          5: const PropertyKey(
+            2,
+            interpolation: PropertyKeyInterpolation.hold,
+          ),
+        },
+      );
+
+      final result = subject.withRangeNamed(frames: {0, 5}, name: 'A');
+
+      expect(result!.keyAt(5)!.interpolation, PropertyKeyInterpolation.hold);
+      expect(result.keyAt(5)!.value, 1, reason: 'value collapsed all the same');
+    });
+
+    test('valueForName can EXCLUDE the keys that are joining', () {
+      final subject = track({0: (1, 'A'), 5: (2, null)});
+
+      expect(subject.valueForName('A'), 1);
+      expect(
+        subject.valueForName('A', excludeFrames: {0}),
+        isNull,
+        reason: 'a key doing the joining must not answer for the name',
+      );
+    });
+  });
 }

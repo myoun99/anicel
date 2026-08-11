@@ -202,6 +202,7 @@ import 'timeline/effect_lane_editing.dart'
         effectLaneKeyFrames,
         effectsWithEnabledToggled,
         effectsWithLaneKeyRemoved,
+        effectsWithLaneRangeNamed,
         effectsWithLaneKeyToggled,
         effectsWithLaneSpanKeysShifted,
         effectsWithGroupReset;
@@ -211,6 +212,7 @@ import 'timeline/transform_lane_editing.dart'
     show
         transformLaneKeyFrames,
         transformTrackWithLaneKeyRemoved,
+        transformTrackWithLaneRangeNamed,
         transformTrackWithLaneKeyToggled,
         transformTrackWithLaneSpanKeysShifted,
         transformTrackWithGroupReset;
@@ -2893,186 +2895,13 @@ class EditorSessionManager extends ChangeNotifier {
     );
   }
 
-  /// The key NAME on lane [laneId] at [frameIndex] — null when that key is
-  /// unnamed, and also when no key sits there.
-  String? laneKeyName({
-    required LayerId layerId,
-    required String laneId,
-    required int frameIndex,
-  }) {
-    final layer = _laneVerbLayerFor(layerId);
-    if (layer == null) {
-      return null;
-    }
-    final effectLane = parseEffectLaneId(laneId);
-    if (effectLane case (:final effectId, parameterId: final String id)) {
-      return layer.effects
-          .where((effect) => effect.id == effectId)
-          .firstOrNull
-          ?.parameters[id]
-          ?.track
-          .keyAt(frameIndex)
-          ?.name;
-    }
-    final property = transformPropertyOfLaneId(laneId);
-    if (property == null) {
-      return null;
-    }
-    return transformLaneKeyName(
-      _laneTransformTrackOf(layer),
-      property,
-      frameIndex,
-    );
-  }
-
-  /// Whether lane [laneId] keys at [frameIndex] at all — a name needs a key
-  /// to sit on, and [laneKeyName] cannot tell "unnamed" from "no key".
-  bool laneHasKeyAt({
-    required LayerId layerId,
-    required String laneId,
-    required int frameIndex,
-  }) {
-    final layer = _laneVerbLayerFor(layerId);
-    if (layer == null) {
-      return false;
-    }
-    final effectLane = parseEffectLaneId(laneId);
-    if (effectLane case (:final effectId, parameterId: final String id)) {
-      return layer.effects
-              .where((effect) => effect.id == effectId)
-              .firstOrNull
-              ?.parameters[id]
-              ?.track
-              .keyAt(frameIndex) !=
-          null;
-    }
-    final property = transformPropertyOfLaneId(laneId);
-    return property != null &&
-        transformLaneHasKeyAt(
-          _laneTransformTrackOf(layer),
-          property,
-          frameIndex,
-        );
-  }
-
-  /// The lane KEY a naming verb addresses — the property row you are
-  /// STANDING on, at its own frame — or null when that row is not a lane,
-  /// or has no key there to name.
-  ///
-  /// The frame comes from [_laneVerbFrameFor], not the raw cursor: a
-  /// track-SE row is on the global axis, and a name has to land on the key
-  /// the row actually shows.
-  ({LayerId layerId, String laneId, int frameIndex})? get currentLaneKeyAddress {
-    if (currentRow case LaneRowAddress(:final layerId, :final laneId)) {
-      final frameIndex = _laneVerbFrameFor(layerId);
-      if (laneHasKeyAt(
-        layerId: layerId,
-        laneId: laneId,
-        frameIndex: frameIndex,
-      )) {
-        return (layerId: layerId, laneId: laneId, frameIndex: frameIndex);
-      }
-    }
-    return null;
-  }
-
-  /// Names (or un-names, with null) the key on lane [laneId] — ONE entrance
-  /// for both lane families.
-  ///
-  /// "The key I am standing on" is a single idea, so the caller does not
-  /// have to know whether this row is a transform lane or an effect
-  /// parameter; the lane id already says which, and every naming verb but
-  /// this one would have had to learn the difference twice.
-  ///
-  /// Returns true when [name] was ALREADY taken in that lane's naming space
-  /// and NOTHING was written — offer to join with [linkLaneKeyName].
-  bool setLaneKeyName({
-    required LayerId layerId,
-    required String laneId,
-    required int frameIndex,
-    required String? name,
-  }) {
-    final layer = _laneVerbLayerFor(layerId);
-    if (layer == null) {
-      return false;
-    }
-    final effectLane = parseEffectLaneId(laneId);
-    if (effectLane case (:final effectId, parameterId: final String id)) {
-      return setEffectKeyName(
-        layerId: layer.id,
-        effectId: effectId,
-        parameterId: id,
-        frameIndex: frameIndex,
-        name: name,
-      );
-    }
-    final property = transformPropertyOfLaneId(laneId);
-    if (property == null) {
-      return false;
-    }
-    final track = _laneTransformTrackOf(layer);
-    if (!transformLaneHasKeyAt(track, property, frameIndex) ||
-        transformLaneKeyName(track, property, frameIndex) == name) {
-      return false;
-    }
-    if (name != null &&
-        _laneTransformHoldingName(layer, property, name) != null) {
-      return true;
-    }
-    _commitLaneTransformTrack(
-      layer,
-      transformTrackWithKeyName(track, property, frameIndex, name),
-      description: name == null ? 'Unname key' : 'Name key',
-    );
-    return false;
-  }
-
-  /// Joins [name] on lane [laneId], ADOPTING the value that name already
-  /// holds — the answer to the "합칠까요?" [setLaneKeyName] raises.
-  void linkLaneKeyName({
-    required LayerId layerId,
-    required String laneId,
-    required int frameIndex,
-    required String name,
-  }) {
-    final layer = _laneVerbLayerFor(layerId);
-    if (layer == null) {
-      return;
-    }
-    final effectLane = parseEffectLaneId(laneId);
-    if (effectLane case (:final effectId, parameterId: final String id)) {
-      linkEffectKeyName(
-        layerId: layer.id,
-        effectId: effectId,
-        parameterId: id,
-        frameIndex: frameIndex,
-        name: name,
-      );
-      return;
-    }
-    final property = transformPropertyOfLaneId(laneId);
-    if (property == null) {
-      return;
-    }
-    final track = _laneTransformTrackOf(layer);
-    final holder = _laneTransformHoldingName(layer, property, name);
-    // Adopt BEFORE naming, so the write that follows carries a rename and
-    // nothing else — that is what stops the joining key imposing its own.
-    final adopted = holder == null
-        ? track
-        : transformTrackAdoptingName(
-            track,
-            holder,
-            property,
-            frameIndex,
-            name,
-          );
-    _commitLaneTransformTrack(
-      layer,
-      transformTrackWithKeyName(adopted, property, frameIndex, name),
-      description: 'Name key',
-    );
-  }
+  // The single-key lane naming verbs (`laneKeyName`, `laneHasKeyAt`,
+  // `currentLaneKeyAddress`, `setLaneKeyName`, `linkLaneKeyName`) retired
+  // when the RANGE form arrived: a single key is the one-frame span at the
+  // playhead, so `setLaneKeyNamesForSelection` covers both and leaving the
+  // narrow pair here would only invite a future fix to land on the copy
+  // nothing calls. The per-FAMILY verbs below (`setEffectKeyName`,
+  // `setTransformKeyName`) stay — the range walk builds on them.
 
   /// The transform track that ALREADY holds [name] in this lane's naming
   /// space, or null when the name is free there.
@@ -3080,13 +2909,21 @@ class EditorSessionManager extends ChangeNotifier {
   /// A LAYER row's space spans its 겸용 link group. A camera row's and a V
   /// row's do not: a camera track belongs to its cut and a V track is held
   /// once, so there is no second use site for a name to reach.
+  /// [excludeFrames] are the keys a RANGE rename is about to name: they are
+  /// the ones joining, so they must not be found as the holder.
   TransformTrack? _laneTransformHoldingName(
     Layer layer,
     TransformPropertyId property,
-    String name,
-  ) {
+    String name, {
+    Set<int> excludeFrames = const {},
+  }) {
     final track = _laneTransformTrackOf(layer);
-    if (transformLaneUsesName(track, property, name)) {
+    if (transformLaneUsesName(
+      track,
+      property,
+      name,
+      excludeFrames: excludeFrames,
+    )) {
       return track;
     }
     final cutId = _editingSession.activeCutId;
@@ -3100,6 +2937,7 @@ class EditorSessionManager extends ChangeNotifier {
       layerId: layer.id,
       property: property,
       name: name,
+      excludeFramesOnSource: excludeFrames,
     );
   }
 
@@ -8992,6 +8830,214 @@ class EditorSessionManager extends ChangeNotifier {
       _commitLaneTransformTrack(layer, track, description: 'Delete keys');
     }
     return changed;
+  }
+
+  /// The names the LANE RANGE's keys carry — one entry per key, null for an
+  /// unnamed one. Empty when the range holds no key at all.
+  ///
+  /// Both naming gates read this, so "can I name here" and "what do they
+  /// already say" cannot disagree about which keys the range covers.
+  Set<String?> _laneRangeKeyNames() {
+    final lane = _laneVerbRange;
+    if (lane == null) {
+      return const {};
+    }
+    final layer = _laneVerbLayerFor(lane.layerId);
+    if (layer == null || isAttachedLayer(layer)) {
+      return const {};
+    }
+    final targets = _laneVerbTargets(lane.spanLaneIds, effects: layer.effects);
+    final names = <String?>{};
+    if (targets.any((laneId) => parseEffectLaneId(laneId) != null)) {
+      for (final laneId in targets) {
+        final address = parseEffectLaneId(laneId);
+        final parameterId = address?.parameterId;
+        if (address == null || parameterId == null) {
+          continue;
+        }
+        for (final effect in layer.effects) {
+          if (effect.id != address.effectId) {
+            continue;
+          }
+          final track = effect.parameters[parameterId]?.track;
+          if (track == null) {
+            continue;
+          }
+          for (final entry in track.keys.entries) {
+            if (lane.contains(entry.key)) {
+              names.add(entry.value.name);
+            }
+          }
+        }
+      }
+      return names;
+    }
+    final track = _laneTransformTrackOf(layer);
+    for (final laneId in _laneVerbTargetsFor(layer, targets)) {
+      final property = transformPropertyOfLaneId(laneId);
+      if (property == null) {
+        continue;
+      }
+      for (final frame in transformLaneKeyFrames(track, laneId)) {
+        if (lane.contains(frame)) {
+          names.add(transformLaneKeyName(track, property, frame));
+        }
+      }
+    }
+    return names;
+  }
+
+  /// Whether the lane range has a key to name — Edit Instance's gate on a
+  /// property row.
+  bool get canNameLaneKeys => _laneRangeKeyNames().isNotEmpty;
+
+  /// The name the range's keys AGREE on, or null when they disagree (or
+  /// none is named) — what the rename dialog opens with.
+  ///
+  /// Same rule the group header shows (user 2026-07-30: "내부 이름이 전부
+  /// 같으면 그 이름, 다르면 …"), said once so the field and the header
+  /// cannot drift.
+  String? get laneKeyNameForSelection {
+    final names = _laneRangeKeyNames();
+    return names.length == 1 ? names.first : null;
+  }
+
+  /// Names every key the LANE RANGE covers, on every lane it spans — the
+  /// range form of [setLaneKeyName], committed as ONE undo step.
+  ///
+  /// Scope is [_laneVerbRange]'s, the same one Add and Delete Key take: a
+  /// live lane span, or the row you are STANDING on as a one-frame span at
+  /// the playhead. Expressing the single key as a one-frame span is what
+  /// makes this the ONLY naming path the UI needs (user 2026-08-10:
+  /// "선택범위로 통하는 조작이 모두 다른것들이랑 동일한 로직").
+  ///
+  /// ★The covered keys of ONE lane end up at ONE value, which is the point
+  /// rather than a side effect: a name MEANS "same value", so asking for
+  /// one name across five keys is asking for exactly that. Lanes stay
+  /// separate spaces, so a span across a whole pose leaves Position and
+  /// Rotation each with their own single value.
+  ///
+  /// Returns true when [name] is ALREADY taken OUTSIDE the range and
+  /// NOTHING was written — the caller asks ONCE for the whole range and
+  /// then calls [linkLaneKeyNamesForSelection].
+  bool setLaneKeyNamesForSelection(String? name) =>
+      _writeLaneKeyNamesForSelection(name, adopt: false);
+
+  /// Joins [name] across the range, ADOPTING the value it already holds —
+  /// the answer to the "합칠까요?" [setLaneKeyNamesForSelection] raises.
+  void linkLaneKeyNamesForSelection(String name) =>
+      _writeLaneKeyNamesForSelection(name, adopt: true);
+
+  /// The shared body: walks the spanned lanes, and stops at the FIRST lane
+  /// whose name is taken unless [adopt] says the user already agreed.
+  /// Stopping before any commit is what makes the confirmation honest —
+  /// nothing is half-written while the dialog is up.
+  bool _writeLaneKeyNamesForSelection(String? name, {required bool adopt}) {
+    final lane = _laneVerbRange;
+    if (lane == null) {
+      return false;
+    }
+    final layer = _laneVerbLayerFor(lane.layerId);
+    if (layer == null || isAttachedLayer(layer)) {
+      return false;
+    }
+    final cutId = _editingSession.activeCutId;
+    final targets = _laneVerbTargets(lane.spanLaneIds, effects: layer.effects);
+    final preferred = _laneVerbFrameFor(lane.layerId);
+    final why = name == null ? 'Unname keys' : 'Name keys';
+
+    if (targets.any((laneId) => parseEffectLaneId(laneId) != null)) {
+      var effects = layer.effects;
+      var changed = false;
+      for (final laneId in targets) {
+        final address = parseEffectLaneId(laneId);
+        final parameterId = address?.parameterId;
+        if (address == null || parameterId == null) {
+          continue;
+        }
+        final frames = effectLaneKeyFrames(
+          effects,
+          laneId,
+        ).where(lane.contains).toSet();
+        if (frames.isEmpty) {
+          continue;
+        }
+        double? adopted;
+        if (name != null && cutId != null) {
+          adopted = _cutCommandCoordinator.namedEffectKeyValueInSpace(
+            cutId: cutId,
+            layerId: layer.id,
+            effectId: address.effectId,
+            parameterId: parameterId,
+            name: name,
+            excludeFramesOnSource: frames,
+          );
+          if (adopted != null && !adopt) {
+            return true;
+          }
+        }
+        final next = effectsWithLaneRangeNamed(
+          effects,
+          laneId: laneId,
+          frames: frames,
+          name: name,
+          adopted: adopted,
+          preferredFrame: preferred,
+        );
+        if (next != null) {
+          effects = next;
+          changed = true;
+        }
+      }
+      if (changed) {
+        _commitLaneEffects(layer, effects, description: why);
+      }
+      return false;
+    }
+
+    var track = _laneTransformTrackOf(layer);
+    var changed = false;
+    for (final laneId in _laneVerbTargetsFor(layer, targets)) {
+      final property = transformPropertyOfLaneId(laneId);
+      if (property == null) {
+        continue;
+      }
+      final frames = transformLaneKeyFrames(
+        track,
+        laneId,
+      ).where(lane.contains).toSet();
+      if (frames.isEmpty) {
+        continue;
+      }
+      TransformTrack? holder;
+      if (name != null) {
+        holder = _laneTransformHoldingName(
+          layer,
+          property,
+          name,
+          excludeFrames: frames,
+        );
+        if (holder != null && !adopt) {
+          return true;
+        }
+      }
+      final next = transformTrackWithLaneRangeNamed(
+        track,
+        laneId: laneId,
+        frames: frames,
+        name: name,
+        adoptFrom: holder,
+        preferredFrame: preferred,
+      );
+      if (next != null) {
+        track = next;
+        changed = true;
+      }
+    }
+    if (changed) {
+      _commitLaneTransformTrack(layer, track, description: why);
+    }
+    return false;
   }
 
   /// AE's group Reset (R5, user 2026-08-09): puts a GROUP HEADER's members

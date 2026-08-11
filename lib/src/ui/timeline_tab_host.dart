@@ -1200,7 +1200,7 @@ class _SeekGatedTimelineToolbarState extends State<_SeekGatedTimelineToolbar> {
       // an enablement no layer kind can answer. The row you stand on
       // publishes through its OWN notifier without a session notify, which
       // is why this entry needs the listener in initState as well.
-      session.currentLaneKeyAddress != null,
+      session.canNameLaneKeys,
       // The layer pill's promoted verb.
       session.canDeleteActiveLayer,
       // ⛔The two project-axis values LEFT this token with the dropdowns
