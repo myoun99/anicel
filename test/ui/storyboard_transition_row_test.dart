@@ -7,10 +7,15 @@ import 'package:anicel/src/models/timeline_coverage.dart'
     show TimelineBlockEdge;
 import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/models/track.dart';
+import 'package:anicel/src/ui/dialogs/instruction_event_dialog.dart'
+    show InstructionEventDialog;
+import 'package:anicel/src/ui/editor_canvas_area.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/storyboard_panel.dart';
 import 'package:anicel/src/ui/storyboard_playhead_mapping.dart';
+import 'package:anicel/src/ui/timeline/timeline_action_toolbar.dart'
+    show TimelineActionToolbar;
 
 /// The GLOBAL surface authors transitions. The transition row is track-owned
 /// and its spans address the track's frame axis, so this panel — not the cut
@@ -383,6 +388,95 @@ void main() {
 
       session.undo();
       expect(session.activeTrack.transitionLayer.instructions.keys, [5]);
+    });
+  });
+
+  /// ③ Create, edit and delete are ONE verb, reached from this panel.
+  ///
+  /// 🚨The dispatch had to be the RAIL's standing row, not `activeLayer`: the
+  /// storyboard rail's row selection is separate state from the cut's drawing
+  /// target (user 2026-07-27, and `selectRow` says so out loud), so the shared
+  /// `editActiveInstance` cannot see this row at all. My first attempt routed
+  /// through it with a flag and reached nothing — `activeLayer` was still the
+  /// cut's animation layer.
+  ///
+  /// The cut view's half (it must still refuse) is in
+  /// `transition_row_in_cut_test.dart`; between them the fork is pinned from
+  /// both sides.
+  group('the instance-edit verb on the global axis', () {
+    /// The panel's own dispatch, read off the toolbar it mounts — so the test
+    /// cannot pass while the host wires the callback to something else.
+    void editInstance(WidgetTester tester) {
+      final toolbar = tester.widget<TimelineActionToolbar>(
+        find.byType(TimelineActionToolbar),
+      );
+      expect(
+        toolbar.resolveCanEditInstance?.call(),
+        isTrue,
+        reason: 'the pill has to be ENABLED, or the wiring is unreachable',
+      );
+      toolbar.onEditInstance!();
+    }
+
+    testWidgets('opens the span dialog when a span covers the playhead', (
+      tester,
+    ) async {
+      await _openStoryboard(tester);
+      final session = tester
+          .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
+          .session;
+      session.selectGlobalFrame(5);
+      session.createTransitionSpanAtPlayhead();
+      await tester.pumpAndSettle();
+      session.selectRow(LayerRowAddress(session.activeTrack.transitionLayer.id));
+      await tester.pumpAndSettle();
+
+      editInstance(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(InstructionEventDialog), findsOneWidget);
+      // The picker is the FILTERED vocabulary, and it offers no set editor —
+      // committing a filtered copy would drop every camera-work term.
+      final dialog = tester.widget<InstructionEventDialog>(
+        find.byType(InstructionEventDialog),
+      );
+      expect(dialog.instructionSet.defs, session.transitionInstructionDefs);
+      expect(dialog.onEditInstructionSet, isNull);
+      // Dismiss through the route so the test leaves no dialog standing.
+      Navigator.of(
+        tester.element(find.byType(InstructionEventDialog)),
+      ).pop();
+      await tester.pumpAndSettle();
+      expect(
+        session.activeTrack.transitionLayer.instructions.keys,
+        [5],
+        reason: 'cancelling changed nothing',
+      );
+    });
+
+    testWidgets('CREATES on an empty frame instead of opening anything — one '
+        'verb for both, so the rail needs no creation button of its own', (
+      tester,
+    ) async {
+      await _openStoryboard(tester);
+      final session = tester
+          .widget<EditorCanvasArea>(find.byType(EditorCanvasArea))
+          .session;
+      session.selectGlobalFrame(7);
+      session.selectRow(LayerRowAddress(session.activeTrack.transitionLayer.id));
+      await tester.pumpAndSettle();
+      expect(session.activeTrack.transitionLayer.instructions, isEmpty);
+      // ⚠️The rail is standing here while `activeLayer` is NOT this row — the
+      // separation that made the shared dispatch unusable.
+      expect(session.selectedRow, isA<LayerRowAddress>());
+      expect(session.activeLayer?.kind, isNot(LayerKind.transition));
+      expect(session.editingGlobalFrame, 7);
+
+      editInstance(tester);
+      await tester.pumpAndSettle();
+
+      expect(find.byType(InstructionEventDialog), findsNothing);
+      expect(session.transitionSpanAt(7), isNotNull);
     });
   });
 }

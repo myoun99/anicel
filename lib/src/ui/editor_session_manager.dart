@@ -1132,11 +1132,12 @@ class EditorSessionManager extends ChangeNotifier {
   /// The active track's transition spans on the GLOBAL frame axis — the one
   /// reader for every surface that has to answer a transition question
   /// (the sheet's のりしろ, the cut view's read-only marks, the compositor's
-  /// ramp). They are plain `{start, length}` records so nobody downstream
-  /// has to know a layer is behind them.
+  /// ramp). They are plain records so nobody downstream has to know a layer is
+  /// behind them — start, length and the TERM'S MARK, which is what says
+  /// whether the span moves both cuts or only its own.
   List<TransitionSpan> get activeTrackTransitionSpans => [
     for (final entry in activeTrack.transitionLayer.instructions.entries)
-      (start: entry.key, length: entry.value.length),
+      _transitionSpanOf(entry),
   ];
 
   /// The active cut's global start frame on its track (cumulative cut
@@ -1474,7 +1475,7 @@ class EditorSessionManager extends ChangeNotifier {
     final projected = SplayTreeMap<int, InstructionEvent>();
     for (final entry in source.instructions.entries) {
       final mark = transitionMarkInCut(
-        span: (start: entry.key, length: entry.value.length),
+        span: _transitionSpanOf(entry),
         cutStart: cutStart,
         cutEnd: cutStart + duration,
       );
@@ -1917,7 +1918,7 @@ class EditorSessionManager extends ChangeNotifier {
     final terms = <String>[];
     for (final entry in activeTrack.transitionLayer.instructions.entries) {
       if (!transitionSpanFires(
-        span: (start: entry.key, length: entry.value.length),
+        span: _transitionSpanOf(entry),
         cutStart: start,
         cutEnd: end,
       )) {
@@ -14477,12 +14478,27 @@ class EditorSessionManager extends ChangeNotifier {
       if (track.id == trackId) {
         return [
           for (final entry in track.transitionLayer.instructions.entries)
-            (start: entry.key, length: entry.value.length),
+            _transitionSpanOf(entry),
         ];
       }
     }
     return const [];
   }
+
+  /// One instruction event as a geometry span, WITH its term's mark.
+  ///
+  /// 🚨The mark is what tells O.L from F.O downstream. Dropping it here — which
+  /// this used to do — made `cutOpacityAt` treat every span as a symmetric
+  /// cross-dissolve, so an F.O faded the next cut IN and behaved as an O.L
+  /// (user 2026-08-11). An id the vocabulary no longer holds falls back to the
+  /// bowtie, which is the shape a file from another build most likely meant.
+  TransitionSpan _transitionSpanOf(MapEntry<int, InstructionEvent> entry) => (
+    start: entry.key,
+    length: entry.value.length,
+    mark:
+        cameraInstructionSet.defById(entry.value.instructionId)?.markType ??
+        CameraInstructionMarkType.ol,
+  );
 
   /// Deselects the active cut for a GAP landing (UI-R9 #3): standing in a
   /// gap means NO cut is selected — the timeline/timesheet show their

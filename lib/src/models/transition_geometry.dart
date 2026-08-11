@@ -10,13 +10,83 @@
 /// Everything here is derived. Nothing in this file is stored.
 library;
 
-/// A transition span on the track's GLOBAL frame axis: `[start, end)`.
+import 'camera_instruction.dart' show CameraInstructionMarkType;
+
+/// A transition span on the track's GLOBAL frame axis: `[start, end)`, plus
+/// WHICH transition it is.
 ///
-/// This is the shape [InstructionEvent] already has (a start key and a
-/// frame count); the geometry takes plain numbers so the sheet, the
-/// timeline and the compositor can all ask the same questions without
-/// agreeing on a layer type first.
-typedef TransitionSpan = ({int start, int length});
+/// This is the shape [InstructionEvent] already has (a start key and a frame
+/// count) with the term's mark carried alongside; the geometry takes plain
+/// values so the sheet, the timeline and the compositor can all ask the same
+/// questions without agreeing on a layer type first.
+///
+/// 🚨[mark] is load-bearing, not decoration: an O.L moves BOTH cuts and an
+/// F.I/F.O moves only its own (user 2026-08-11 — 「자기컷일때만 발동」). Dropping
+/// it — which the span reader did — made every span a symmetric cross-dissolve,
+/// so placing an F.O produced an O.L.
+typedef TransitionSpan = ({
+  int start,
+  int length,
+  CameraInstructionMarkType mark,
+});
+
+/// How many cuts a span's ramp touches.
+///
+/// ★Read off [CameraInstructionMarkType] rather than a new stored flag: the
+/// glyph a term wears ALREADY says this. The bowtie is two cuts crossing; a
+/// wedge is one screen clearing or covering. One handle, and the vocabulary
+/// stays as editable as it was.
+enum TransitionSides {
+  /// O.L: the cut whose end is crossed fades out while the cut whose start is
+  /// crossed fades in, over one span. The pair IS the cross-dissolve.
+  both,
+
+  /// F.O: this cut's own alpha falls to nothing. Nothing rises to meet it, so
+  /// what shows through is whatever is below — the backdrop, which is black.
+  fadesOut,
+
+  /// F.I: the mirror.
+  fadesIn,
+}
+
+/// Whether a ONE-SIDED span belongs to the cut `[cutStart, cutEnd)`.
+///
+/// 🚨"Overlaps this cut" is the wrong test and was my first answer: a straddling
+/// F.O overlaps the NEXT cut too, and using overlap faded that one out as well —
+/// the very coupling the sidedness exists to remove.
+///
+/// The anchor is where the ramp's MEANING lands. An F.O runs 1 → 0, which reads
+/// as "this picture leaves", and the picture leaving is the one on screen when
+/// the fade STARTS. An F.I runs 0 → 1 — "this picture arrives" — and the one
+/// arriving is on screen when the fade ENDS. So the two are mirror images about
+/// the span, exactly as their ramps are: first frame for out, last for in.
+bool oneSidedSpanOwnsCut({
+  required TransitionSpan span,
+  required int cutStart,
+  required int cutEnd,
+}) {
+  if (span.length <= 0) {
+    return false;
+  }
+  final anchor = switch (transitionSidesOf(span.mark)) {
+    TransitionSides.fadesOut => span.start,
+    TransitionSides.fadesIn => span.start + span.length - 1,
+    // Two-sided spans do not answer this question.
+    TransitionSides.both => null,
+  };
+  return anchor != null && anchor >= cutStart && anchor < cutEnd;
+}
+
+TransitionSides transitionSidesOf(CameraInstructionMarkType mark) =>
+    switch (mark) {
+      CameraInstructionMarkType.ol => TransitionSides.both,
+      CameraInstructionMarkType.fo => TransitionSides.fadesOut,
+      CameraInstructionMarkType.fi => TransitionSides.fadesIn,
+      // A `bar` term is camera work, not a 場面転換, and never reaches the
+      // transition row ([cameraInstructionIsTransition]). Treated as two-sided
+      // so a hand-edited file cannot make it silently invisible.
+      CameraInstructionMarkType.bar => TransitionSides.both,
+    };
 
 /// The frames a cut draws OUTSIDE its conte length, one side at a time.
 class CutTransitionHandles {
@@ -68,6 +138,17 @@ bool transitionSpanFires({
   required int cutEnd,
 }) {
   final spanEnd = span.start + span.length;
+  if (transitionSidesOf(span.mark) != TransitionSides.both) {
+    // 🚨A ONE-SIDED span needs no partner, so it needs no boundary — it fires
+    // for the cut it BELONGS to, straddling or not. Requiring a straddle is the
+    // O.L rule, and applied to an F.O it is actively wrong: an F.O sitting
+    // inside its own cut is where it belongs and used to do nothing at all.
+    return oneSidedSpanOwnsCut(
+      span: span,
+      cutStart: cutStart,
+      cutEnd: cutEnd,
+    );
+  }
   final crossesStart = span.start < cutStart && spanEnd > cutStart;
   final crossesEnd = span.start < cutEnd && spanEnd > cutEnd;
   return crossesStart || crossesEnd;
@@ -88,14 +169,29 @@ CutTransitionHandles cutTransitionHandles({
   var head = 0;
   var tail = 0;
   for (final span in spans) {
+    final sides = transitionSidesOf(span.mark);
     final spanEnd = span.start + span.length;
-    if (span.start < cutStart && spanEnd > cutStart) {
+    // A one-sided span only owes material to the cut it BELONGS to, and only on
+    // the side its own ramp reaches past: an F.O overhanging this cut's end is
+    // this cut fading out, and the cut after it takes no part, so it draws no
+    // のりしろ for it. (A two-sided O.L asks both questions, as it always did.)
+    final owns =
+        sides == TransitionSides.both ||
+        oneSidedSpanOwnsCut(span: span, cutStart: cutStart, cutEnd: cutEnd);
+    if (!owns) {
+      continue;
+    }
+    if (sides != TransitionSides.fadesOut &&
+        span.start < cutStart &&
+        spanEnd > cutStart) {
       final reach = cutStart - span.start;
       if (reach > head) {
         head = reach;
       }
     }
-    if (span.start < cutEnd && spanEnd > cutEnd) {
+    if (sides != TransitionSides.fadesIn &&
+        span.start < cutEnd &&
+        spanEnd > cutEnd) {
       final reach = spanEnd - cutEnd;
       if (reach > tail) {
         tail = reach;
@@ -187,11 +283,35 @@ double cutOpacityAt({
       continue;
     }
     final spanEnd = span.start + span.length;
-    if (span.start < cutEnd && spanEnd > cutEnd) {
-      alpha *= 1 - progress; // this cut is the outgoing side
-    }
-    if (span.start < cutStart && spanEnd > cutStart) {
-      alpha *= progress; // …and the incoming side of the one before it
+    switch (transitionSidesOf(span.mark)) {
+      case TransitionSides.both:
+        // O.L: the span asks each side the SAME question and the two answers
+        // are mirror images. Play both and you have the cross-dissolve.
+        if (span.start < cutEnd && spanEnd > cutEnd) {
+          alpha *= 1 - progress; // this cut is the outgoing side
+        }
+        if (span.start < cutStart && spanEnd > cutStart) {
+          alpha *= progress; // …and the incoming side of the one before it
+        }
+      case TransitionSides.fadesOut:
+        // F.O: only the cut this span BELONGS to moves. No mirror term, so
+        // nothing rises to meet it — the picture falls to whatever is below,
+        // which is black.
+        if (oneSidedSpanOwnsCut(
+          span: span,
+          cutStart: cutStart,
+          cutEnd: cutEnd,
+        )) {
+          alpha *= 1 - progress;
+        }
+      case TransitionSides.fadesIn:
+        if (oneSidedSpanOwnsCut(
+          span: span,
+          cutStart: cutStart,
+          cutEnd: cutEnd,
+        )) {
+          alpha *= progress;
+        }
     }
   }
   return alpha;

@@ -1,3 +1,4 @@
+import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -276,7 +277,7 @@ void main() {
   group('resolveTransitionContributions', () {
     // cut-a is [0, 4), cut-b is [4, 10). A 4-frame O.L centred on the
     // boundary runs [2, 6): each side owes 2 frames of のりしろ.
-    const ol = (start: 2, length: 4);
+    const ol = (start: 2, length: 4, mark: CameraInstructionMarkType.ol);
 
     List<TransitionContribution> at(int frame, {List<TransitionSpan> spans = const []}) =>
         resolveTransitionContributions(
@@ -349,8 +350,8 @@ void main() {
     });
 
     test('a span inside one cut leaves the frame alone', () {
-      expect(at(1, spans: const [(start: 0, length: 3)]), hasLength(1));
-      expect(at(1, spans: const [(start: 0, length: 3)]).single.opacity, 1.0);
+      expect(at(1, spans: const [(start: 0, length: 3, mark: CameraInstructionMarkType.ol)]), hasLength(1));
+      expect(at(1, spans: const [(start: 0, length: 3, mark: CameraInstructionMarkType.ol)]).single.opacity, 1.0);
     });
   });
 
@@ -472,7 +473,7 @@ void main() {
       final stack = resolveTrackStackContributions(
         layout: layout,
         spansOf: (trackId) => trackId == const TrackId('track-1')
-            ? const [(start: 2, length: 4)]
+            ? const [(start: 2, length: 4, mark: CameraInstructionMarkType.ol)]
             : const [],
         globalFrameIndex: 3,
       );
@@ -548,7 +549,7 @@ void main() {
       final stack = resolveTrackStackContributions(
         layout: buildStoryboardTimelineLayout(project),
         spansOf: (trackId) => trackId == const TrackId('t1')
-            ? const [(start: 2, length: 4)]
+            ? const [(start: 2, length: 4, mark: CameraInstructionMarkType.ol)]
             : const [],
         globalFrameIndex: 3,
       );

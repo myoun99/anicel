@@ -1,3 +1,4 @@
+import 'package:anicel/src/models/camera_instruction.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/models/transition_geometry.dart';
 
@@ -14,11 +15,11 @@ void main() {
   const c20End = 2 * fps; // 48 — the conte boundary
   const c21Start = c20End;
   const c21End = c21Start + 3 * fps; // 120
-  const ol = (start: 36, length: 24); // [36, 60), centred on 48
+  const ol = (start: 36, length: 24, mark: CameraInstructionMarkType.ol); // [36, 60), centred on 48
 
   group('firing', () {
     test('a span inside one cut does nothing at all', () {
-      const inside = (start: 10, length: 12); // [10, 22) — well within c20
+      const inside = (start: 10, length: 12, mark: CameraInstructionMarkType.ol); // [10, 22) — well within c20
 
       expect(
         transitionSpanFires(span: inside, cutStart: c20Start, cutEnd: c20End),
@@ -48,7 +49,7 @@ void main() {
     test('a span that merely touches a boundary does not cross it', () {
       // [24, 48): ends exactly where c20 ends, so it is inside c20 — there
       // is no frame of it on the other side to overlap with.
-      const upTo = (start: 24, length: 24);
+      const upTo = (start: 24, length: 24, mark: CameraInstructionMarkType.ol);
 
       expect(
         transitionSpanFires(span: upTo, cutStart: c20Start, cutEnd: c20End),
@@ -97,8 +98,8 @@ void main() {
     });
 
     test('a cut between two transitions owes material on both sides', () {
-      const before = (start: 36, length: 24); // crosses c21's start
-      const after = (start: 108, length: 24); // [108, 132) crosses c21's end
+      const before = (start: 36, length: 24, mark: CameraInstructionMarkType.ol); // crosses c21's start
+      const after = (start: 108, length: 24, mark: CameraInstructionMarkType.ol); // [108, 132) crosses c21's end
 
       expect(
         cutTransitionHandles(
@@ -111,8 +112,8 @@ void main() {
     });
 
     test('overlapping demands take the largest reach, not the sum', () {
-      const short = (start: 40, length: 16); // reaches 8 past the boundary
-      const long = (start: 36, length: 24); // reaches 12 past it
+      const short = (start: 40, length: 16, mark: CameraInstructionMarkType.ol); // reaches 8 past the boundary
+      const long = (start: 36, length: 24, mark: CameraInstructionMarkType.ol); // reaches 12 past it
 
       expect(
         cutTransitionHandles(
@@ -156,8 +157,8 @@ void main() {
     });
 
     test('a one-frame transition is over on its only frame', () {
-      expect(transitionProgressAt((start: 48, length: 1), 48), 1.0);
-      expect(transitionProgressAt((start: 48, length: 1), 49), isNull);
+      expect(transitionProgressAt((start: 48, length: 1, mark: CameraInstructionMarkType.ol), 48), 1.0);
+      expect(transitionProgressAt((start: 48, length: 1, mark: CameraInstructionMarkType.ol), 49), isNull);
     });
 
     test('both cuts read the SAME ramp — that is what makes it an O.L', () {
@@ -170,7 +171,171 @@ void main() {
     });
 
     test('a zero-length span has no ramp rather than dividing by zero', () {
-      expect(transitionProgressAt((start: 48, length: 0), 48), isNull);
+      expect(transitionProgressAt((start: 48, length: 0, mark: CameraInstructionMarkType.ol), 48), isNull);
+    });
+  });
+
+  /// ⑩ F.I and F.O move ONE cut (user 2026-08-11: 「자기컷일때만 발동」).
+  ///
+  /// The span reader used to drop the term's mark, so `cutOpacityAt` treated
+  /// every span as a symmetric cross-dissolve: an F.O faded the NEXT cut in and
+  /// was an O.L in all but name. The mark is carried now, and the sidedness is
+  /// read off it — the bowtie is two cuts crossing, a wedge is one screen.
+  group('sidedness', () {
+    const foAcross = (
+      start: 36,
+      length: 24,
+      mark: CameraInstructionMarkType.fo,
+    );
+    const foInside = (
+      start: 24,
+      length: 24,
+      mark: CameraInstructionMarkType.fo,
+    );
+
+    test('the mark decides how many cuts a span touches', () {
+      expect(transitionSidesOf(CameraInstructionMarkType.ol),
+          TransitionSides.both);
+      expect(transitionSidesOf(CameraInstructionMarkType.fo),
+          TransitionSides.fadesOut);
+      expect(transitionSidesOf(CameraInstructionMarkType.fi),
+          TransitionSides.fadesIn);
+    });
+
+    test('🚨an F.O across the boundary fades ITS cut out and leaves the next '
+        'one alone — the O.L would have faded it in', () {
+      // The leaving cut ramps down, exactly as under an O.L…
+      expect(cutOpacityAt(
+        cutStart: c20Start,
+        cutEnd: c20End,
+        spans: const [foAcross],
+        globalFrame: 36,
+      ), 1.0);
+      expect(cutOpacityAt(
+        cutStart: c20Start,
+        cutEnd: c20End,
+        spans: const [foAcross],
+        globalFrame: 59,
+      ), 0.0);
+
+      // …and the ARRIVING cut is untouched, which is the whole difference.
+      //
+      // ⚠️Frame 59 is deliberately NOT in the O.L comparison: the ramp reaches
+      // 1 ON the span's last frame, so an O.L has the arriving cut already
+      // whole there. Mid-ramp is where the two answers differ.
+      for (final frame in [48, 54, 59]) {
+        expect(
+          cutOpacityAt(
+            cutStart: c21Start,
+            cutEnd: c21End,
+            spans: const [foAcross],
+            globalFrame: frame,
+          ),
+          1.0,
+          reason: 'frame $frame: nothing rises to meet the fade',
+        );
+      }
+      for (final frame in [48, 54]) {
+        expect(
+          cutOpacityAt(
+            cutStart: c21Start,
+            cutEnd: c21End,
+            spans: const [ol],
+            globalFrame: frame,
+          ),
+          lessThan(1.0),
+          reason: 'frame $frame: under an O.L it would still be rising',
+        );
+      }
+    });
+
+    test('🚨an F.O INSIDE its cut fires — the placement that used to be a '
+        'no-op, and the only one that actually falls to black', () {
+      expect(
+        transitionSpanFires(
+          span: foInside,
+          cutStart: c20Start,
+          cutEnd: c20End,
+        ),
+        isTrue,
+        reason: '"must straddle" is the O.L rule; a wedge needs no partner',
+      );
+      expect(cutOpacityAt(
+        cutStart: c20Start,
+        cutEnd: c20End,
+        spans: const [foInside],
+        globalFrame: 47,
+      ), 0.0);
+      // An O.L in the same place still does nothing, so the straddle rule is
+      // relaxed for the wedges ONLY.
+      expect(
+        transitionSpanFires(
+          span: const (start: 24, length: 24, mark: CameraInstructionMarkType.ol),
+          cutStart: c20Start,
+          cutEnd: c20End,
+        ),
+        isFalse,
+      );
+    });
+
+    test('a one-sided span owes のりしろ on its OWN side only', () {
+      // F.O reaching past c20's end: c20 draws the tail, c21 draws nothing —
+      // it takes no part in this transition.
+      expect(
+        cutTransitionHandles(
+          cutStart: c20Start,
+          cutEnd: c20End,
+          spans: const [foAcross],
+        ),
+        const CutTransitionHandles(head: 0, tail: 12),
+      );
+      expect(
+        cutTransitionHandles(
+          cutStart: c21Start,
+          cutEnd: c21End,
+          spans: const [foAcross],
+        ),
+        CutTransitionHandles.none,
+      );
+      // The mirror: an F.I gives the arriving cut its head and the leaving cut
+      // nothing.
+      const fiAcross = (
+        start: 36,
+        length: 24,
+        mark: CameraInstructionMarkType.fi,
+      );
+      expect(
+        cutTransitionHandles(
+          cutStart: c21Start,
+          cutEnd: c21End,
+          spans: const [fiAcross],
+        ),
+        const CutTransitionHandles(head: 12, tail: 0),
+      );
+      expect(
+        cutTransitionHandles(
+          cutStart: c20Start,
+          cutEnd: c20End,
+          spans: const [fiAcross],
+        ),
+        CutTransitionHandles.none,
+      );
+    });
+
+    test('an F.I ramps its own cut UP', () {
+      const fi = (start: 48, length: 24, mark: CameraInstructionMarkType.fi);
+      expect(cutOpacityAt(
+        cutStart: c21Start,
+        cutEnd: c21End,
+        spans: const [fi],
+        globalFrame: 48,
+      ), 0.0);
+      expect(cutOpacityAt(
+        cutStart: c21Start,
+        cutEnd: c21End,
+        spans: const [fi],
+        globalFrame: 71,
+      ), 1.0);
     });
   });
 
@@ -178,7 +343,7 @@ void main() {
     test('does not appear for a span that stays inside the cut', () {
       expect(
         transitionMarkInCut(
-          span: const (start: 10, length: 12),
+          span: const (start: 10, length: 12, mark: CameraInstructionMarkType.ol),
           cutStart: c20Start,
           cutEnd: c20End,
         ),
@@ -286,7 +451,7 @@ void main() {
         cutOpacityAt(
           cutStart: c20Start,
           cutEnd: c20End,
-          spans: const [(start: 10, length: 12)],
+          spans: const [(start: 10, length: 12, mark: CameraInstructionMarkType.ol)],
           globalFrame: 16,
         ),
         1.0,
