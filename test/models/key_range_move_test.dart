@@ -174,4 +174,81 @@ void main() {
       );
     });
   });
+
+  // ㉚ (user, 2026-08-12): 「유니언 그룹 이름 규칙 — 해당 인덱스 멤버들
+  // 이름이 같으면 그 이름 그대로, 다르면 `...`」.
+  group('transformKeyNameUnion', () {
+    TransformTrack trackWith({
+      Map<int, String?> position = const {},
+      Map<int, String?> scale = const {},
+    }) => TransformTrack.properties(
+      anchorPoint: PropertyTrack.empty(),
+      position: PropertyTrack<CanvasPoint>(
+        keys: {
+          for (final entry in position.entries)
+            entry.key: PropertyKey<CanvasPoint>(
+              CanvasPoint(x: 0, y: 0),
+              name: entry.value,
+            ),
+        },
+      ),
+      scale: PropertyTrack<double>(
+        keys: {
+          for (final entry in scale.entries)
+            entry.key: PropertyKey<double>(1, name: entry.value),
+        },
+      ),
+      rotation: PropertyTrack.empty(),
+      opacity: PropertyTrack.empty(),
+    );
+
+    test('members that agree print that name', () {
+      expect(
+        transformKeyNameUnion(
+          trackWith(position: {3: 'Wall'}, scale: {3: 'Wall'}),
+        ),
+        {3: 'Wall'},
+      );
+    });
+
+    test('members that disagree print the mixed mark', () {
+      expect(
+        transformKeyNameUnion(
+          trackWith(position: {3: 'Wall'}, scale: {3: 'Floor'}),
+        ),
+        {3: unionMixedKeyName},
+      );
+    });
+
+    test('a lone named member does NOT speak for the group', () {
+      // It would otherwise claim a name only one lane carries.
+      expect(
+        transformKeyNameUnion(
+          trackWith(position: {3: 'Wall'}, scale: {3: null}),
+        ),
+        {3: unionMixedKeyName},
+      );
+    });
+
+    test('a lane with no key here has no vote', () {
+      // Scale is keyed at 5, not at 3 — so frame 3 is Wall alone and agrees
+      // with itself.
+      expect(
+        transformKeyNameUnion(
+          trackWith(position: {3: 'Wall'}, scale: {5: 'Floor'}),
+        ),
+        {3: 'Wall', 5: 'Floor'},
+      );
+    });
+
+    test('frames where nothing is named print nothing at all', () {
+      // NOT `...`: the mark means "several different names", and over a set
+      // with none it would be noise where the row used to print nothing.
+      expect(
+        transformKeyNameUnion(trackWith(position: {3: null}, scale: {3: null})),
+        isEmpty,
+      );
+      expect(transformKeyNameUnion(TransformTrack.empty()), isEmpty);
+    });
+  });
 }

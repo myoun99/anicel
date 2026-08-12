@@ -23,7 +23,11 @@ import 'layer_rail_columns.dart'
     show layerRailTrailingCells, layerRailTwirlIcon;
 import 'property_lane_model.dart';
 import 'transform_lane_policy.dart' show laneSelectionCoversBandRow;
-import 'timeline_cell_style.dart' show timelineDrawingStartColor;
+import 'timeline_cell_style.dart'
+    show
+        timelineDrawingInkColor,
+        timelineDrawingStartColor,
+        timelineFittedGlyphFontSize;
 import 'timeline_frame_range_gesture.dart'
     show TimelineLaneRangeCallbacks, TimelineLaneRangeGestureLayer;
 import 'timeline_grid_metrics.dart';
@@ -1003,7 +1007,16 @@ class TimelineLaneFrameRow extends StatelessWidget {
     final crossExtent = metrics.layerRowHeight;
     final visibleExtent =
         (frameEndIndexExclusive - frameStartIndex) * cellExtent;
-    final markerSize = (crossExtent * 0.32).clamp(6.0, 11.0).toDouble();
+    // ㉗ (user, 2026-08-12): 「fx(트랜스폼) 헤더의 유니언 마크를 카메라처럼
+    // 크게. 멤버 유니언들의 합이라는 느낌이 나야 한다」 — a summary mark
+    // stands for several keys at once, so drawing it the size of one of
+    // them said the opposite. Relational rather than a second literal: a
+    // union is HALF AGAIN a member's key, and it can never outgrow the row
+    // it sits in.
+    final memberMarkerSize = (crossExtent * 0.32).clamp(6.0, 11.0).toDouble();
+    final markerSize = lane.isGroupHeader
+        ? (memberMarkerSize * 1.5).clamp(6.0, crossExtent).toDouble()
+        : memberMarkerSize;
     final hitSize = (markerSize + 8).clamp(14.0, crossExtent).toDouble();
     final horizontal = axis == Axis.horizontal;
 
@@ -1078,19 +1091,48 @@ class TimelineLaneFrameRow extends StatelessWidget {
         for (final entry in lane.keyNames.entries)
           if (entry.key >= frameStartIndex &&
               entry.key < frameEndIndexExclusive)
-            Positioned(
-              left:
-                  (entry.key - frameStartIndex) * cellExtent +
-                  cellExtent / 2 +
-                  markerSize * 0.6,
-              top: (crossExtent / 2 - markerSize / 2 - _laneKeyNameExtent)
-                  .clamp(0.0, crossExtent),
-              width: nameRoom(entry.key),
-              height: _laneKeyNameExtent,
-              // Display only: the band's own gestures (stand, select, move)
-              // own this axis, and a label is not a second grammar.
-              child: IgnorePointer(child: _LaneKeyName(text: entry.value)),
-            ),
+            // ㉗: a UNION's name sits in the middle of its cell, printed on
+            // the mark the way a frame block prints its cel name — the mark
+            // is the paper. A member lane keeps the label beside its
+            // diamond, where a 6px mark leaves no room to print inside.
+            if (lane.isGroupHeader)
+              Positioned(
+                left: (entry.key - frameStartIndex) * cellExtent,
+                top: 0,
+                width: cellExtent,
+                height: crossExtent,
+                child: IgnorePointer(
+                  child: _LaneKeyName(
+                    text: entry.value,
+                    // The frame blocks' own type rule, so a change there
+                    // reaches this too (유저: 「프레임블록 쪽 텍스트 디자인을
+                    // 바꾸면 한 번에 적용되도록」).
+                    fontSize: timelineFittedGlyphFontSize(
+                      _laneKeyNameFontSize,
+                      cellExtent,
+                      crossExtent: markerSize,
+                    ),
+                    // Printed ON the paper-white mark, so it takes the
+                    // paper's ink rather than the band's.
+                    color: timelineDrawingInkColor,
+                    alignment: Alignment.center,
+                  ),
+                ),
+              )
+            else
+              Positioned(
+                left:
+                    (entry.key - frameStartIndex) * cellExtent +
+                    cellExtent / 2 +
+                    markerSize * 0.6,
+                top: (crossExtent / 2 - markerSize / 2 - _laneKeyNameExtent)
+                    .clamp(0.0, crossExtent),
+                width: nameRoom(entry.key),
+                height: _laneKeyNameExtent,
+                // Display only: the band's own gestures (stand, select,
+                // move) own this axis, and a label is not a second grammar.
+                child: IgnorePointer(child: _LaneKeyName(text: entry.value)),
+              ),
     ];
 
     final selectionListenable = laneRange?.selection;
@@ -1198,24 +1240,40 @@ const double _laneKeyNameFontSize = 8;
 /// name that outgrows it should be cut rather than turned into "Wal…" —
 /// the first letters are what tell two names apart at a glance.
 class _LaneKeyName extends StatelessWidget {
-  const _LaneKeyName({required this.text});
+  const _LaneKeyName({
+    required this.text,
+    this.fontSize = _laneKeyNameFontSize,
+    this.color,
+    this.alignment = Alignment.centerLeft,
+  });
 
   final String text;
+
+  /// ㉗: the union's name is set by the FRAME BLOCK's fit rule
+  /// ([timelineFittedGlyphFontSize]) so the two never drift; a member's
+  /// label keeps the band's own small type.
+  final double fontSize;
+
+  /// Null takes the band's ink. The union's name is printed on its
+  /// paper-white mark, so it passes the paper's.
+  final Color? color;
+
+  final Alignment alignment;
 
   @override
   Widget build(BuildContext context) {
     return ClipRect(
       child: Align(
-        alignment: Alignment.centerLeft,
+        alignment: alignment,
         child: Text(
           text,
           maxLines: 1,
           softWrap: false,
           overflow: TextOverflow.clip,
           style: TextStyle(
-            fontSize: _laneKeyNameFontSize,
+            fontSize: fontSize,
             height: 1,
-            color: Theme.of(context).colorScheme.onSurfaceVariant,
+            color: color ?? Theme.of(context).colorScheme.onSurfaceVariant,
           ),
         ),
       ),

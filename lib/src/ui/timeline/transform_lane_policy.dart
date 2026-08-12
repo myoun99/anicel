@@ -30,12 +30,16 @@ const PropertyLaneRow transformGroupHeaderLane = PropertyLaneRow(
 PropertyLaneRow transformGroupHeader({
   required bool expanded,
   Set<int> keyedFrames = const {},
+  Map<int, String> keyNames = const {},
   bool? enabled,
 }) {
   return PropertyLaneRow(
     laneId: transformGroupHeaderLane.laneId,
     label: transformGroupHeaderLane.label,
     keyedFrames: keyedFrames,
+    // ㉚: the members' name where they agree, `...` where they do not —
+    // see [transformKeyNameUnion].
+    keyNames: keyNames,
     showsKeyNavigator: false,
     isGroupHeader: true,
     groupExpanded: expanded,
