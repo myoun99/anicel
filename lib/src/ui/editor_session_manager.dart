@@ -10,6 +10,7 @@ import '../controllers/default_cut_helpers.dart'
     show createDefaultCut, defaultCutCanvasSize;
 import '../controllers/default_layer_helpers.dart';
 import '../models/import/cut_folder_parse.dart';
+import '../models/import/tvp_csv_parse.dart';
 import '../models/import/tvp_json_parse.dart';
 import '../services/commands/import_media_command.dart';
 import '../services/commands/reorder_track_command.dart';
@@ -6225,7 +6226,14 @@ class EditorSessionManager extends ChangeNotifier {
       _layerSequence += 1;
       return defaultLayerIdForSequence(_layerSequence);
     },
-    nextFrameId: (layerId) => FrameId(_nextFrameId(layerId)),
+    // Through the MINT, not the formatter. `_nextFrameId` reads
+    // `_frameSequence` and does not advance it, so calling it directly
+    // leaves the wall clock as the only thing telling two cels apart —
+    // and an import mints a whole layer inside one clock tick. Every cel
+    // of that layer came out with the SAME id, which is not "cels that
+    // look alike": it is one drawing exposed N times. A 10-drawing layer
+    // arrived as one drawing.
+    nextFrameId: _mintFrameId,
     nextCutId: () {
       _importCutSequence += 1;
       final usedIds = {
@@ -6773,6 +6781,44 @@ class EditorSessionManager extends ChangeNotifier {
   ///
   /// Returns the read-and-plan warnings, or null when the file is gone or
   /// is not a TVPaint export.
+  /// The CSV that names this export's cels, when one was exported beside
+  /// it — `343.json` is answered by `343.csv`.
+  ///
+  /// Asked for rather than picked: the TVPaint import already takes the
+  /// FOLDER (iOS grants exactly the item chosen, and the images are
+  /// siblings), so a CSV in that folder is already readable and asking
+  /// for it a second time would be a window with nothing to decide. The
+  /// same-stem file wins; failing that, a folder holding exactly one CSV
+  /// is unambiguous. Anything else, and the cels arrive unnamed — the
+  /// planner says so in its warnings, and a wrong name is worse than none.
+  TvpCsvNames? _tvpNamesBeside(String jsonPath) {
+    final normalized = jsonPath.replaceAll('\\', '/');
+    final slash = normalized.lastIndexOf('/');
+    final directory = slash <= 0 ? '.' : normalized.substring(0, slash);
+    final stem = normalized.substring(
+      slash + 1,
+      normalized.length - '.json'.length,
+    );
+    try {
+      final beside = File('$directory/$stem.csv');
+      final candidates = beside.existsSync()
+          ? [beside]
+          : [
+              for (final entity in Directory(directory).listSync())
+                if (entity is File &&
+                    entity.path.toLowerCase().endsWith('.csv'))
+                  entity,
+            ];
+      if (candidates.length != 1) {
+        return null;
+      }
+      return parseTvpCsv(candidates.single.readAsStringSync());
+    } on Object {
+      // Unreadable or not a TVPaint CSV: the import proceeds without it.
+      return null;
+    }
+  }
+
   Future<List<String>?> importTvpJson({
     required String jsonPath,
     MediaFitMode fit = MediaFitMode.none,
@@ -6799,6 +6845,7 @@ class EditorSessionManager extends ChangeNotifier {
       // The clip's own shooting frame becomes a zoom against THIS project's
       // frame — a cut import must not repoint the project's camera.
       cameraFrameSize: cameraFrameSize,
+      names: _tvpNamesBeside(jsonPath),
       fit: fit,
     );
 
@@ -9741,6 +9788,11 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// ⚠️Formats an id from the CURRENT sequence — it does not advance it.
+  /// Call [_mintFrameId] unless you have just incremented `_frameSequence`
+  /// yourself. The wall clock in here is decoration, not identity: its
+  /// resolution on Windows is coarser than a tight mint loop, so two ids
+  /// made in the same tick are equal, and equal frame ids are ONE drawing.
   String _nextFrameId(LayerId layerId) {
     final timestamp = DateTime.now().microsecondsSinceEpoch;
     return 'ui-frame-${layerId.value}-$timestamp-$_frameSequence';

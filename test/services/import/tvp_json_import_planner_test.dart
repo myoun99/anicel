@@ -1,9 +1,12 @@
 import 'dart:io';
 
 import 'package:anicel/src/models/canvas_size.dart';
+import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/import/tvp_csv_parse.dart';
 import 'package:anicel/src/models/import/tvp_json_parse.dart';
+import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -30,14 +33,20 @@ void main() {
   TvpJsonParseResult fixture(String name) =>
       parseTvpJson(File('test/fixtures/tvpaint/$name.json').readAsStringSync());
 
+  TvpCsvNames csvFixture(String name) => parseTvpCsv(
+    File('test/fixtures/tvpaint/$name.csv').readAsStringSync(),
+  );
+
   TvpJsonImportPlan planFixture(
     String name, {
     CanvasSize cameraFrameSize = defaultProjectCameraSize,
+    TvpCsvNames? names,
   }) => planTvpJsonImport(
     parsed: fixture(name),
     resolveFile: (relative) => '/export/$relative',
     mint: mint(),
     cameraFrameSize: cameraFrameSize,
+    names: names,
   );
 
   group('edge_behaviors.json', () {
@@ -98,7 +107,96 @@ void main() {
       expect(d.frames, hasLength(3));
       expect(d.timeline.keys, [0, 3, 6]);
       expect(d.timeline.values.map((entry) => entry.length), [3, 3, 3]);
-      expect(d.frames.map((frame) => frame.name), ['1', '2', '3']);
+      // Unnamed without a CSV — the JSON's `1, 2, 3` here is TVPaint's own
+      // counting and there is nothing in the file to tell it from names
+      // somebody typed. See the naming group below.
+      expect(d.frames.map((frame) => frame.name), [null, null, null]);
+    });
+
+    // The JSON's `instance-name` is never a name. TVPaint fills it with an
+    // ordinal when the animator left the instance alone, and writes what
+    // they typed when they did not — one field, no flag. Measured on three
+    // real exports: a clip with nothing named came through as `1..10` per
+    // layer, and in another the SAME layer holds five ordinals and one
+    // typed name that happen to collide on `5`.
+    //
+    // Since a shared name in a layer means a shared DRAWING here, copying
+    // that field in is how a layer of ten drawings becomes one. The CSV
+    // export is the only thing that separates them, and without it nothing
+    // is named at all.
+    group('cel names come from the CSV or from nowhere', () {
+      test('no CSV: every cel is unnamed, and the import says why', () {
+        final plan = planFixture('edge_behaviors');
+        for (final layer in plan.cut.layers) {
+          for (final frame in layer.frames) {
+            expect(frame.name, isNull, reason: layer.name);
+          }
+        }
+        expect(
+          plan.warnings.any((warning) => warning.contains('No CSV')),
+          isTrue,
+          reason: 'silently unnamed would read as a bug in the export',
+        );
+      });
+
+      test('with the CSV: named cels keep their name, unnamed stay '
+          'unnamed', () {
+        final plan = planFixture(
+          'edge_behaviors',
+          names: csvFixture('edge_behaviors'),
+        );
+        Layer layer(String name) =>
+            plan.cut.layers.firstWhere((layer) => layer.name == name);
+
+        // The CSV writes the LAYER's own name where an instance has none.
+        expect(layer('TAP').frames.single.name, isNull);
+        expect(layer('B').frames.single.name, isNull);
+        expect(layer('C').frames.map((frame) => frame.name), [
+          null,
+          null,
+          null,
+        ]);
+        // And the cel's name where it has one.
+        expect(layer('D').frames.map((frame) => frame.name), ['1', '2', '3']);
+        expect(layer('E').frames.single.name, '1');
+      });
+
+      test('one name on two DIFFERENT drawings is split, not merged', () {
+        // Layer A's first two drawings are both called `3` in the CSV —
+        // a real thing animators do. Left alone they would be one drawing
+        // under this app's law, so the second takes a suffix: the sheet
+        // still shows what was written and the drawings stay two.
+        final plan = planFixture(
+          'edge_behaviors',
+          names: csvFixture('edge_behaviors'),
+        );
+        final a = plan.cut.layers.firstWhere((layer) => layer.name == 'A');
+        expect(a.frames.map((frame) => frame.name), ['3', '3-1', '5']);
+        expect(
+          a.frames.map((frame) => frame.id).toSet(),
+          hasLength(3),
+          reason: 'three drawings, whatever they are called',
+        );
+      });
+
+      test('a CSV for another clip is refused, and names nothing', () {
+        // Two separate exports: nothing stops a stale CSV sitting beside a
+        // re-exported clip, and misnaming cels after somebody else's
+        // drawings is worse than leaving them blank.
+        final plan = planFixture(
+          'edge_behaviors',
+          names: csvFixture('named_and_unnamed'),
+        );
+        for (final layer in plan.cut.layers) {
+          for (final frame in layer.frames) {
+            expect(frame.name, isNull);
+          }
+        }
+        expect(
+          plan.warnings.any((warning) => warning.contains('not the same')),
+          isTrue,
+        );
+      });
     });
 
     test('edge behaviours become run behaviours anchored on the run', () {
@@ -122,6 +220,27 @@ void main() {
         isEmpty,
         reason: 'none is the ABSENCE of a behaviour, never a stored one',
       );
+    });
+
+    test('a plan carries the SPEC and derives no ghosts — filling the cells '
+        'is the repository door\'s job', () {
+      // Where this belongs is the whole lesson of the bug it fixes. A run
+      // behaviour does not cover anything by itself; the ghosts come from
+      // `rederiveRunBehaviors`, and the paths that bring a cut in from
+      // outside used not to run it — so an imported hold printed `H` on
+      // the property tag while the cells after it read empty.
+      //
+      // The fix went to `ProjectRepository.insertCut`, so a plan STILL
+      // has no ghosts and that is correct. Deriving here as well would
+      // put the same rule in two places and invite them to drift.
+      final plan = planFixture('edge_behaviors');
+      for (final layer in plan.cut.layers) {
+        expect(
+          layer.timeline.values.any((entry) => entry.ghost),
+          isFalse,
+          reason: '${layer.name} is a plan, not a placed cut',
+        );
+      }
     });
 
     test('a layer covering the whole clip still carries its hold — the '
@@ -161,8 +280,13 @@ void main() {
             reason: 'frame ${baked.frame} x');
         expect(resolved.center.y, closeTo(baked.y, 0.25),
             reason: 'frame ${baked.frame} y');
-        // The clip shoots the project's own frame, so scale IS the zoom.
-        expect(resolved.zoom, closeTo(baked.scale, 1e-4),
+        // The clip shoots the project's own frame, so the fit is 1 and
+        // the zoom is the scale INVERTED: `scale` resizes the camera
+        // rectangle, and a rectangle twice as wide sees twice as much at
+        // half the magnification. This used to read `closeTo(baked.scale)`
+        // — the implementation's belief restated as its own proof, which
+        // is why an inverted zoom move sat here unnoticed.
+        expect(resolved.zoom, closeTo(1 / baked.scale, 1e-4),
             reason: 'frame ${baked.frame} zoom');
         // NEGATED: TVPaint's negative angle is a clockwise camera, and
         // CameraPose turns the view clockwise on positive.
@@ -197,17 +321,20 @@ void main() {
       );
     });
 
-    test('a shaped curve keeps the keys it needs and no more', () {
+    test('a shaped curve keeps every frame it cannot straighten', () {
       final plan = planFixture('eased_camera');
-      // Eased, so most frames leave the straight line — but the three
-      // near-linear stretches between the authored keys still fold.
-      expect(
-        plan.cut.camera.keyframes.length,
-        13,
-        reason: 'the exact number is the point: it must not creep toward 24 '
-            '(the simplifier stopped working) nor toward 2 (the tolerance '
-            'got loose enough to flatten the easing)',
-      );
+      // 🚨This read 13 while the zoom was TVPaint's `scale` copied
+      // through. The zoom is `1 / scale` now — the correct reading, see
+      // `_cameraPoseFor` — and a reciprocal bends what used to be
+      // straight: the stretches that folded into one key no longer lie on
+      // a line within the tolerance, so this eased move keeps a key per
+      // frame.
+      //
+      // Correct, and worth knowing: an eased ZOOM lands denser on the
+      // timeline than an eased pan. Nothing else changes — a linear pan
+      // still folds to two keys (see the edge_behaviors group), which is
+      // what says the simplifier is alive.
+      expect(plan.cut.camera.keyframes.length, 24);
     });
 
     test('rotation and zoom follow the BAKED curve, not the authored key — '
@@ -226,7 +353,9 @@ void main() {
         frameIndex: 6,
       );
       expect(shown.rotationDegrees, closeTo(3.2856, 0.01));
-      expect(shown.zoom, closeTo(0.9193, 1e-3));
+      // The baked scale here is 0.9193 — a rectangle shrunk to 92%, which
+      // is a view magnified by its reciprocal.
+      expect(shown.zoom, closeTo(1 / 0.9193, 1e-3));
     });
   });
 
@@ -274,7 +403,9 @@ void main() {
         bg.frames.map((frame) => frame.id).toSet(),
         reason: 'every exposure points at one of the three cels',
       );
-      expect(bg.frames.map((frame) => frame.name), ['1', '2', '3']);
+      // Unnamed: this fixture is JSON-only, and the JSON's `1, 2, 3` is
+      // TVPaint's counting rather than anything the animator wrote.
+      expect(bg.frames.map((frame) => frame.name), [null, null, null]);
     });
 
     test('the bake list is one entry per exported image — 43, the file '
@@ -359,6 +490,74 @@ void main() {
     });
   });
 
+  // The one axis no fixture presses: a camera the animator RESIZED.
+  //
+  // Three fixtures carry `scale: 1.0`, where multiplying and dividing by
+  // it agree, and `eased_camera` only wanders between 0.80 and 1.05. The
+  // numbers here are from a real clip that broke: a 16:9 camera built at
+  // 960×540 and stretched out to a 2340×1654 layout sheet.
+  group('a camera the animator resized', () {
+    CutCamera cameraFrom({
+      required double sizeX,
+      required double sizeY,
+      required double scale,
+    }) {
+      final pose =
+          '{"frame":1,"x":1170.0,"y":827.0,"angle":0.0,"scale":$scale,'
+          '"sizeX":$sizeX,"sizeY":$sizeY}';
+      final json =
+          '{"version":{"major":5,"minor":1},"project":{"camera":'
+          '{"width":${sizeX.round()},"height":${sizeY.round()}},'
+          '"clip":{"name":"c","width":2340,"height":1654,"framerate":24.0,'
+          '"image-count":2,"camera":{"points":[$pose],'
+          '"positions":[$pose]},"layers":[]}}}';
+      return planTvpJsonImport(
+        parsed: parseTvpJson(json),
+        resolveFile: (relative) => relative,
+        mint: mint(),
+        cameraFrameSize: defaultProjectCameraSize,
+      ).cut.camera;
+    }
+
+    /// How much of the CLIP the camera sees, in clip pixels — the number
+    /// the animator can check against the frame they drew.
+    double framedWidth(CutCamera camera) =>
+        defaultProjectCameraSize.width / camera.keyframeAt(0)!.zoom;
+
+    test('a stretched camera frames what it was stretched to', () {
+      // 960 × 2.158795 = 2072.4 of a 2340-wide sheet: 89% of it, which is
+      // the frame drawn on the layout. Read as a 4.3× magnification it
+      // framed 445px — 19%, a thumbnail in the middle of the drawing.
+      final camera = cameraFrom(sizeX: 960, sizeY: 540, scale: 2.158795);
+      expect(framedWidth(camera), closeTo(960 * 2.158795, 0.5));
+      expect(
+        framedWidth(camera) / 2340,
+        closeTo(0.886, 0.005),
+        reason: 'the sheet is 2340 wide and the camera covers 89% of it',
+      );
+    });
+
+    test('scale moves the zoom the OTHER way', () {
+      // The direction on its own, so an inverted move cannot hide behind
+      // a right-looking magnitude: a bigger rectangle sees more.
+      final wide = cameraFrom(sizeX: 960, sizeY: 540, scale: 2.0);
+      final tight = cameraFrom(sizeX: 960, sizeY: 540, scale: 0.5);
+      final plain = cameraFrom(sizeX: 960, sizeY: 540, scale: 1.0);
+
+      expect(wide.keyframeAt(0)!.zoom, lessThan(plain.keyframeAt(0)!.zoom));
+      expect(tight.keyframeAt(0)!.zoom, greaterThan(plain.keyframeAt(0)!.zoom));
+      expect(framedWidth(wide), closeTo(framedWidth(plain) * 2, 0.5));
+      expect(framedWidth(tight), closeTo(framedWidth(plain) / 2, 0.5));
+    });
+
+    test('an untouched camera is unaffected — scale 1 is the identity', () {
+      // What every existing fixture exercises, kept explicit so the fix
+      // is visibly a no-op there.
+      final camera = cameraFrom(sizeX: 1920, sizeY: 1080, scale: 1.0);
+      expect(camera.keyframeAt(0)!.zoom, closeTo(1.0, 1e-9));
+    });
+  });
+
   group('synthetic clips', () {
     String clip(String layers) =>
         '{"version":{"major":5,"minor":1},"project":{"camera":{"width":10,'
@@ -373,6 +572,15 @@ void main() {
       cameraFrameSize: defaultProjectCameraSize,
     );
 
+    /// What a clip warned about, minus the standing notice that no CSV
+    /// came with it. Every clip here is JSON-only and each of these tests
+    /// is about something else — but they still say "and nothing ELSE",
+    /// which is the half worth keeping.
+    List<String> warningsOf(TvpJsonImportPlan result) => [
+      for (final warning in result.warnings)
+        if (!warning.startsWith('No CSV')) warning,
+    ];
+
     test('a layer whose link[] is empty keeps its row and names the export '
         'setting that would have filled it', () {
       final result = plan(
@@ -384,7 +592,7 @@ void main() {
       expect(se.frames, isEmpty);
       expect(se.timeline, isEmpty);
       expect(
-        result.warnings.single,
+        warningsOf(result).single,
         contains('빈 사진 포함'),
       );
     });
@@ -398,7 +606,7 @@ void main() {
       );
       final layer = result.cut.layers.firstWhere((layer) => layer.name == 'L');
       expect(layer.blendMode, LayerBlendMode.normal);
-      expect(result.warnings.single, contains('Shade'));
+      expect(warningsOf(result).single, contains('Shade'));
     });
 
     test('a named blending mode maps rather than falling back', () {
@@ -411,7 +619,7 @@ void main() {
       final layer = result.cut.layers.firstWhere((layer) => layer.name == 'L');
       expect(layer.blendMode, LayerBlendMode.multiply);
       expect(layer.opacity, closeTo(128 / 255, 1e-9));
-      expect(result.warnings, isEmpty);
+      expect(warningsOf(result), isEmpty);
     });
 
     test('a hidden layer stays hidden', () {

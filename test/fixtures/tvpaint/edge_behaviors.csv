@@ -1,0 +1,14 @@
+UTF-8, TVPaint, "CSV 1.1"
+Project Name, Width, Height, Frame Count, Layer Count, Frame Rate, Pixel Aspect Ratio, Field Mode
+"クリップ_001", 2150, 1518, 24, 6, 24.000000, 1.000000, Progressive
+
+#Layers,"TAP","E","D","C","B","A"
+#Folder,"X:\out\clip.layers\[001] TAP","X:\out\clip.layers\[002] E","X:\out\clip.layers\[003] D","X:\out\clip.layers\[004] C","X:\out\clip.layers\[005] B","X:\out\clip.layers\[006] A"
+#Density,1.000000,1.000000,1.000000,1.000000,1.000000,1.000000
+#Blending,"Color", "Color", "Color", "Color", "Color", "Color"
+#Visible,1, 1, 1, 1, 1, 1
+#00001, "[001][00001] TAP.png", "[003][00001] 1.png", "[004][00001] C.png", "[005][00001] B.png", "[006][00001] 3.png"
+#00002, "[001][00002] TAP.png", "[003][00002] 1.png", "[004][00002] C.png", "[005][00002] B.png", "[006][00002] 3.png"
+#00004, "[001][00004] TAP.png", "[003][00004] 2.png", "[004][00004] C.png", "[005][00004] B.png", "[006][00004] 3.png"
+#00007, "[001][00007] TAP.png", "[003][00007] 3.png", "[004][00007] C.png", "[005][00007] B.png", "[006][00007] 5.png"
+#00017, "[001][00017] TAP.png", "[002][00017] 1.png", "[003][00017] 3.png", "[004][00017] C.png", "[005][00017] B.png", "[006][00017] 5.png"
