@@ -2055,6 +2055,9 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                       activeKey: toolState.tool,
                       stateOf: () => _activePresetByTool[toolState.tool],
                       builder: (context) => ToolLibraryPanel(
+                        transformOptions: _transformOptions,
+                        onTransformOptionsChanged: (options) =>
+                            _transformOptions.value = options,
                         tool: toolState.tool,
                         onToolChanged: (tool) => _brushTool.value = _brushTool
                             .value

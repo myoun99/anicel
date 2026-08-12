@@ -173,17 +173,4 @@ void main() {
     );
   });
 
-  testWidgets('the Mesh Warp entrance stays enabled without a selection '
-      '(the whole picture is the target)', (tester) async {
-    final applied = <SelectionTransformValues>[];
-    await pumpMoveSettings(tester, applied: applied);
-
-    final button = tester.widget<OutlinedButton>(
-      find.ancestor(
-        of: find.text('Mesh Warp'),
-        matching: find.byType(OutlinedButton),
-      ),
-    );
-    expect(button.onPressed, isNotNull);
-  });
 }
