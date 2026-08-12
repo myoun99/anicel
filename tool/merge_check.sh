@@ -41,7 +41,14 @@ else
   exit 2
 fi
 
-REPO=$("$GH" repo view --json nameWithOwner --jq .nameWithOwner 2>/dev/null)
+# Every gh call is a process launch, and a process launch is not free on a
+# loaded machine: with the test suite running locally this box sat at 100%
+# CPU and `gh --version` — no network, no auth — took 20 SECONDS. So this
+# script is written to make three gh calls, not one per question. Read the
+# remote from git rather than asking gh for it; that is one launch saved of
+# something an order of magnitude cheaper to start.
+REPO=$(git remote get-url origin 2>/dev/null \
+  | sed -E 's#^.*github\.com[:/]+##; s#\.git$##; s#/+$##')
 if [ -z "$REPO" ]; then
   echo "could not resolve the repository — run this inside the checkout." >&2
   exit 2
@@ -56,42 +63,71 @@ if [ -z "$PR" ]; then
   fi
 fi
 
+# One call for everything this PR can tell us — state, checks, and the files
+# it touches — rather than one call per field.
 info=$("$GH" pr view "$PR" --repo "$REPO" \
-  --json headRefName,mergeStateStatus,statusCheckRollup \
-  --jq '"\(.headRefName)\t\(.mergeStateStatus)\t\([.statusCheckRollup[] | if (.conclusion // "") == "" then "PENDING" else .conclusion end] | join(","))"' 2>/dev/null)
+  --json state,headRefName,mergeStateStatus,statusCheckRollup,files \
+  --jq '"\(.state)\t\(.headRefName)\t\(.mergeStateStatus)\t\([.statusCheckRollup[] | if (.conclusion // "") == "" then "PENDING" else .conclusion end] | join(","))\t\([.files[].path] | join(","))"' 2>/dev/null)
 if [ -z "$info" ]; then
   echo "could not read PR #$PR from $REPO." >&2
   exit 2
 fi
 
-branch=$(printf '%s' "$info" | cut -f1)
-state=$(printf '%s' "$info" | cut -f2)
-checks=$(printf '%s' "$info" | cut -f3)
+prstate=$(printf '%s' "$info" | cut -f1)
+branch=$(printf '%s' "$info" | cut -f2)
+state=$(printf '%s' "$info" | cut -f3)
+checks=$(printf '%s' "$info" | cut -f4)
+myfiles=$(printf '%s' "$info" | cut -f5)
+
+# A merged or closed PR has nothing to decide, and its head branch is
+# usually deleted — which makes every question below meaningless rather
+# than alarming. Say so instead of reporting it as unmergeable.
+if [ "$prstate" != "OPEN" ]; then
+  echo "PR #$PR ($branch) is $prstate — nothing to merge."
+  exit 2
+fi
 
 total=$(printf '%s' "$checks" | tr ',' '\n' | grep -c .)
 bad=$(printf '%s' "$checks" | tr ',' '\n' | grep -cv '^SUCCESS$')
+# gh prints an API error BODY to stdout, so a 404 here arrives as JSON, not
+# as an empty string — and an unchecked `behind` would print that JSON where
+# a number belongs. Anything non-numeric is "we could not tell".
 behind=$("$GH" api "repos/$REPO/compare/master...$branch" --jq '.behind_by' 2>/dev/null)
-[ -z "$behind" ] && behind="?"
+case "$behind" in
+  '' | *[!0-9]*) behind="?" ;;
+esac
 
-# Files this PR touches, against every other open PR's files. A shared file
-# is not proof of a conflict — it is the only cheap signal that one is
-# possible, and it is the signal an author working in one branch cannot see.
-mine=$("$GH" pr view "$PR" --repo "$REPO" --json files --jq '.files[].path' 2>/dev/null | sort)
-overlaps=""
-for other in $("$GH" pr list --repo "$REPO" --state open --json number --jq '.[].number' 2>/dev/null); do
-  [ "$other" = "$PR" ] && continue
-  shared=$("$GH" pr view "$other" --repo "$REPO" --json files --jq '.files[].path' 2>/dev/null \
-    | sort | comm -12 - <(printf '%s\n' "$mine") | head -5)
-  [ -n "$shared" ] && overlaps="$overlaps\n  #$other shares:\n$(printf '%s' "$shared" | sed 's/^/    /')"
-done
+# Every other open PR's files, in ONE call rather than one call per PR. A
+# shared file is not proof of a conflict — it is the only cheap signal that
+# one is possible, and it is the signal an author working inside a single
+# branch cannot see.
+others=$("$GH" pr list --repo "$REPO" --state open --json number,files \
+  --jq '.[] | "\(.number)\t\([.files[].path] | join(","))"' 2>/dev/null)
+overlaps=$(printf '%s\n' "$others" | awk -F'\t' -v me="$PR" -v mine="$myfiles" '
+  BEGIN {
+    n = split(mine, m, ",")
+    for (i = 1; i <= n; i++) have[m[i]] = 1
+  }
+  $1 != "" && $1 != me {
+    c = split($2, f, ",")
+    shown = 0
+    for (i = 1; i <= c; i++) {
+      if (f[i] in have) {
+        if (shown == 0) printf "  #%s shares:\n", $1
+        shown++
+        if (shown <= 5) printf "    %s\n", f[i]
+      }
+    }
+    if (shown > 5) printf "    ...and %d more\n", shown - 5
+  }')
 
 echo "PR #$PR  ($branch)  in $REPO"
 echo "  mergeable state : $state"
 echo "  checks          : $total total, $bad not SUCCESS"
 echo "  behind master   : $behind commit(s)"
 if [ -n "$overlaps" ]; then
-  # shellcheck disable=SC2059
-  printf "  open PRs touching the same files:$overlaps\n"
+  echo "  open PRs touching the same files:"
+  printf '%s\n' "$overlaps"
 else
   echo "  open PRs touching the same files: none"
 fi
@@ -108,7 +144,19 @@ if [ "$state" = "CLEAN" ] && [ "$bad" -eq 0 ] && [ "$behind" = "0" ]; then
 fi
 
 echo "DO NOT MERGE:"
-[ "$state" != "CLEAN" ] && echo "  - GitHub says $state (DIRTY means it conflicts with master)."
+case "$state" in
+  CLEAN) ;;
+  DIRTY)
+    echo "  - GitHub says DIRTY: this branch conflicts with master."
+    ;;
+  UNKNOWN)
+    echo "  - GitHub has not finished working out whether this merges"
+    echo "    (UNKNOWN). Ask again in a moment rather than believing it."
+    ;;
+  *)
+    echo "  - GitHub says $state."
+    ;;
+esac
 [ "$bad" -ne 0 ] && echo "  - $bad check(s) are not SUCCESS."
 [ "$behind" != "0" ] && echo "  - $behind commit(s) behind master: the green above was earned against"
 [ "$behind" != "0" ] && echo "    a master that no longer exists. Rebase and let CI run again."
