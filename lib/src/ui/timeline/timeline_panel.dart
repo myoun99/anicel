@@ -88,6 +88,8 @@ class TimelinePanel extends StatefulWidget {
     this.laneRange,
     this.currentRowHooks,
     this.rowDragHooks,
+    this.onRowSelectionSpan,
+    this.selectedRowIds = const {},
     this.runEdit,
     this.isFrameCached,
     required this.orientation,
@@ -271,6 +273,13 @@ class TimelinePanel extends StatefulWidget {
   /// The row-order drag (P2b). The horizontal rail takes it today; the
   /// sheet's stood-up headers are the same widget and follow.
   final TimelineRowDragHooks? rowDragHooks;
+
+  /// ⑨: the row SELECT drag's span, in the rail's own display rows.
+  final void Function(List<TimelineDisplayRow> rows, int rowDelta)?
+  onRowSelectionSpan;
+
+  /// ⑨: the rows currently selected, as layer ids.
+  final Set<LayerId> selectedRowIds;
 
   /// The run-edge [+]/[↻] handle hooks (UI-R8), both orientations; null
   /// hides the handles.
@@ -549,6 +558,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     laneRange: widget.laneRange,
                     currentRowHooks: widget.currentRowHooks,
                     rowDragHooks: widget.rowDragHooks,
+                    onRowSelectionSpan: widget.onRowSelectionSpan,
+                    selectedRowIds: widget.selectedRowIds,
                     runEdit: widget.runEdit,
                     isFrameCached: widget.isFrameCached,
                     metrics: horizontalMetrics,
@@ -629,6 +640,8 @@ class _TimelinePanelState extends State<TimelinePanel> {
                     laneRange: widget.laneRange,
                     currentRowHooks: widget.currentRowHooks,
                     rowDragHooks: widget.rowDragHooks,
+                    onRowSelectionSpan: widget.onRowSelectionSpan,
+                    selectedRowIds: widget.selectedRowIds,
                     runEdit: widget.runEdit,
                     isFrameCached: widget.isFrameCached,
                     metrics: xsheetMetrics,

@@ -562,15 +562,19 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   // a V row promotes that track's playhead-index cut (gap =
                   // park, the same sentence).
                   selectedRow: _session.selectedRow,
+                  // A CLICK CLEARS (유저 확정) — this rail's taps too.
                   onSelectLayer: (layerId) {
+                    _session.clearAllSelections();
                     _session.selectRow(LayerRowAddress(layerId));
                     final frame = storyboardPlayheadFrame(_session);
                     if (frame != null) {
                       parkStoryboardGlobalFrame(_session, frame);
                     }
                   },
-                  onSelectTrack: (trackId) =>
-                      _session.selectRow(TrackRowAddress(trackId)),
+                  onSelectTrack: (trackId) {
+                    _session.clearAllSelections();
+                    _session.selectRow(TrackRowAddress(trackId));
+                  },
                   pixelsPerFrame: widget.pixelsPerFrame,
                   trackLaneHeight: widget.trackLaneHeight,
                   showSeconds: widget.showSeconds,

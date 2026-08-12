@@ -49,8 +49,54 @@ class HistoryManager extends ChangeNotifier {
     return total;
   }
 
+  /// Collects everything executed inside [body] into ONE undo entry.
+  ///
+  /// ⑨ needs it: deleting a row SELECTION is several coordinator verbs, and
+  /// each already knows how to compose its own cascade (a folder dissolves,
+  /// a base takes its riders with it). Asking them to hand commands back
+  /// instead of running them would mean rewriting every one of those
+  /// branches; wrapping the executor leaves them intact and still gives the
+  /// user what they did — one gesture, one undo.
+  ///
+  /// Nesting is a no-op (the outermost group wins), so a verb that groups
+  /// internally stays safe to call from inside one.
+  void runAsOneStep(String description, void Function() body) {
+    if (_group != null) {
+      body();
+      return;
+    }
+    final group = <Command>[];
+    _group = group;
+    try {
+      body();
+    } finally {
+      _group = null;
+    }
+    if (group.isEmpty) {
+      return;
+    }
+    // Already executed: this pushes them as one entry rather than running
+    // anything a second time.
+    _push(
+      group.length == 1
+          ? group.single
+          : CompositeCommand(description: description, commands: group),
+    );
+  }
+
+  List<Command>? _group;
+
   void execute(Command command) {
     command.execute();
+    final group = _group;
+    if (group != null) {
+      group.add(command);
+      return;
+    }
+    _push(command);
+  }
+
+  void _push(Command command) {
     _undoStack.add(command);
     if (_undoStack.length > maxEntries) {
       // The oldest commands fall off the deep end, PS-style.

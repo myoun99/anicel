@@ -23,7 +23,8 @@ import 'timeline/effect_lane_editing.dart';
 import 'timeline/effect_lane_policy.dart';
 import 'timeline/property_lane_model.dart';
 import 'timeline/timeline_lane_provider.dart';
-import 'timeline/layer_row_drag.dart' show TimelineRowDragHooks;
+import 'timeline/layer_row_drag.dart'
+    show LayerRowSubject, TimelineRowDragHooks;
 import 'timeline/timeline_cel_content_source.dart';
 import 'timeline/timeline_current_row.dart';
 import 'timeline/timeline_cut_end_handle.dart';
@@ -658,6 +659,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           // tint sat until an unrelated rebuild. Only EMPTY↔drawn crossings
           // bump this, so ordinary strokes cost nothing.
           _session.brushFrameStore.celContentRevision,
+          // ⑨: the row selection grows PER POINTER MOVE inside a gesture,
+          // which is exactly the contract the session's own notify does not
+          // have (a drag is silent until release). Its notifier is the
+          // channel, the same way the current row's is.
+          _session.rowSelection,
         ]),
         builder: (context, _) {
           // Zoom scoping (UI-R6 #4): the toolbar widget is built ONCE per
@@ -672,6 +678,11 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
           ) => TimelinePanel(
             layers: _displayLayers(),
             activeLayerId: _session.activeLayerId,
+            // ⑨: the rows the row verbs act on, washed on both surfaces.
+            selectedRowIds: {
+              for (final row in _session.rowSelection.value)
+                if (row is LayerRowAddress) row.layerId,
+            },
             // Edit drags (comma/trim) preview through the scoped channel: a
             // step rebuilds the dragged row's gate + the cursor overlay only,
             // never this host (the release commit is the one session notify).
@@ -692,7 +703,15 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             // their paper; the token keys the row memo (cel pixels live
             // outside the Layer value).
             celContent: _celContent,
-            onSelectLayer: _session.selectLayer,
+            // A CLICK CLEARS (유저 확정): both surfaces route their row taps
+            // AND their cell presses through here, so one wrapping covers
+            // 「다른 레이어 클릭」, 「다른곳 클릭」 and 「선택된 내 물건 클릭」.
+            // A claimed pan never reaches it, which is what keeps the
+            // move-from-inside drag working.
+            onSelectLayer: (layerId) {
+              _session.clearAllSelections();
+              _session.selectLayer(layerId);
+            },
             // Ruler scrubs during playback SEEK the playback clock instead of
             // moving the (hidden) editing playhead.
             onSelectFrame: (frameIndex) {
@@ -893,7 +912,21 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
               onEffectUpdate: _session.updateEffectRowDrag,
               onEnd: _session.endLayerRowDrag,
               onCancel: _session.cancelLayerRowDrag,
+              // ⑨: the first drag SELECTS, and a drag that starts INSIDE the
+              // selection moves it — the cells' grammar, transposed.
+              isInRowSelection: (subject) => subject is! LayerRowSubject
+                  // An fx header's drag re-orders a CHAIN — it is not a row
+                  // selection's business, so it keeps the old grammar.
+                  ? null
+                  : _session.rowIsSelected(LayerRowAddress(subject.layerId)),
+              onSelectBegin: (subject) {
+                if (subject is LayerRowSubject) {
+                  _session.beginRowSelection(LayerRowAddress(subject.layerId));
+                }
+              },
+              onSelectEnd: _session.endRowSelection,
             ),
+            onRowSelectionSpan: _session.updateRowSelection,
             // The TVP run-edge cluster (UI-R9 #10): [+] drags new one-frame
             // drawings onto a run; the property tag sets the edge's
             // None/Hold/Repeat mode (ghosts fill to the cut boundary).

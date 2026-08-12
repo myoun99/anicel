@@ -87,6 +87,7 @@ import '../models/timeline_coverage.dart';
 import '../models/flip_column_step.dart';
 import '../models/timeline_exposure.dart';
 import '../models/delete_subject.dart';
+import '../models/timeline_selection_kind.dart';
 import '../models/timeline_frame_range.dart';
 import '../models/timeline_repeat.dart';
 import '../models/timeline_row_address.dart';
@@ -195,7 +196,12 @@ import 'timeline/layer_row_drag.dart'
         LayerRowDragSubject,
         LayerRowSubject,
         TrackRowSubject;
-import 'timeline/property_lane_model.dart' show folderAggregateRuns;
+import 'timeline/property_lane_model.dart'
+    show TimelineDisplayRow, folderAggregateRuns;
+// ⑨: the row selection grows through the SAME span law the cell selection
+// uses — the rail's own drawn row list.
+import 'timeline/timeline_row_span_resolver.dart'
+    show resolveSelectionSpanRows;
 import 'timeline/timeline_current_row.dart' show currentRowIsInsideGroup;
 import 'timeline/layer_label_controls.dart' show layerKindShowsBlendControl;
 import 'timeline/layer_timeline_display_adapter.dart'
@@ -971,6 +977,137 @@ class EditorSessionManager extends ChangeNotifier {
   final ValueNotifier<TimelineRowAddress?> currentRowListenable =
       ValueNotifier<TimelineRowAddress?>(null);
 
+  /// ⑨ (user, 2026-08-12): 「레이어에도 선택 시스템 — 첫 드래그가 선택
+  /// (1개/여러 개), 그 다음이 드래그. 타임라인 프레임과 **완전히 같은 순서**」.
+  ///
+  /// The rail's ROW selection: what the row verbs act on. Separate from
+  /// [currentRow] on purpose — standing is where the frame verbs aim, this
+  /// is a set the row verbs sweep — and separate from the frame range,
+  /// whose rows are the cells the selection covers rather than the rows
+  /// themselves.
+  ///
+  /// Addresses, not layers, so every drawn row kind can be in it (뿌리 A):
+  /// what a row IS never decides whether it can be selected, only what the
+  /// edit then does to it.
+  final ValueNotifier<List<TimelineRowAddress>> rowSelection =
+      ValueNotifier<List<TimelineRowAddress>>(const []);
+
+  /// Where the live row-select drag started; null between drags.
+  TimelineRowAddress? _rowSelectionAnchor;
+
+  bool rowIsSelected(TimelineRowAddress row) =>
+      rowSelection.value.contains(row);
+
+  /// A press that lands OUTSIDE the current selection starts a fresh one —
+  /// the cells' rule, transposed (`suppressPointerDownSelect` there).
+  void beginRowSelection(TimelineRowAddress anchor) {
+    claimSelection(TimelineSelectionKind.rows);
+    _rowSelectionAnchor = anchor;
+    rowSelection.value = [anchor];
+  }
+
+  /// Grows the live selection to [rowDelta] rows from its anchor, through
+  /// the SAME law the cell span uses — the rail's own drawn row list, so a
+  /// row that is visible is selectable and a new row kind needs no wiring.
+  void updateRowSelection(List<TimelineDisplayRow> rows, int rowDelta) {
+    final anchor = _rowSelectionAnchor;
+    if (anchor == null) {
+      return;
+    }
+    final span = resolveSelectionSpanRows(
+      rows: rows,
+      anchor: anchor,
+      rowDelta: rowDelta,
+    );
+    if (span.isNotEmpty) {
+      rowSelection.value = span;
+    }
+  }
+
+  void endRowSelection() {
+    _rowSelectionAnchor = null;
+  }
+
+  /// The selected rows that name a LAYER this cut may delete (⑨).
+  ///
+  /// A row's kind decides what the edit DOES, never whether the row could
+  /// be selected (뿌리 A) — so lane rows, track rows and the floors' fixed
+  /// rows simply contribute nothing here instead of being kept out of the
+  /// selection.
+  List<LayerId> deletableSelectedLayerIds() {
+    final selection = rowSelection.value;
+    if (selection.isEmpty) {
+      return const [];
+    }
+    final byId = {for (final layer in layers) layer.id: layer};
+    final ids = <LayerId>[];
+    for (final row in selection) {
+      if (row is! LayerRowAddress) {
+        continue;
+      }
+      final layer = byId[row.layerId];
+      if (layer != null && !ids.contains(layer.id) && canDeleteLayer(layer)) {
+        ids.add(layer.id);
+      }
+    }
+    return ids;
+  }
+
+  void clearRowSelection() {
+    _rowSelectionAnchor = null;
+    if (rowSelection.value.isNotEmpty) {
+      rowSelection.value = const [];
+    }
+  }
+
+  /// 🚨A CLICK CLEARS (유저 확정 2026-08-12): 「어딘가 클릭하면 사라지도록.
+  /// 프레임셀처럼 다른곳 클릭하거나. 다른레이어 클릭하거나. **근데 선택된 내
+  /// 물건 클릭해도 사라지도록** 하고싶어. 선택레이어로 ABC선택하고, C 클릭하면
+  /// 사라지도록. **프레임셀쪽도 마찬가지**」.
+  ///
+  /// ★TAP clears, DRAG does not — the whole distinction, and the reason
+  /// this hangs off the surfaces' SELECT callbacks rather than off
+  /// pointer-down: a press the pan recognizer claims never reaches them, so
+  /// a drag starting inside a selection still MOVES it (⑨'s second phase)
+  /// while a tap on that same row lets it go.
+  ///
+  /// Clicking INSIDE the selection clears it too. That is the user's own
+  /// call, and it is written out here because it is the surprising half —
+  /// the ordinary desktop idiom keeps a selection you click into.
+  void clearAllSelections() {
+    clearFrameRangeSelection();
+    clearLaneRangeSelection();
+    clearStoryboardCutSelection();
+    clearRowSelection();
+  }
+
+  /// 🚨THE ONE-SELECTION LAW (유저 확정 2026-08-12): 「선택범위는 하나만
+  /// 작동하도록. 프레임셀 선택범위 작동시키고 레이어쪽 선택범위 작동하면
+  /// 기존 프레임셀쪽 사라지게. 반대도 마찬가지 (…) 즉 **선택한 상태라는건
+  /// 한 종류만 존재하도록**」.
+  ///
+  /// Whichever selection is STARTING, the others go.
+  ///
+  /// The rule already existed in pieces — the track axis cleared the
+  /// cut-local one, cells and lanes cleared each other — each stated at its
+  /// own call site with its own words. Three kinds is where pairwise still
+  /// reads; ⑨ made a fourth, and n² sentences is where it stops. Written
+  /// once, a fifth kind joins by being named in this switch.
+  void claimSelection(TimelineSelectionKind kind) {
+    if (kind != TimelineSelectionKind.cells) {
+      clearFrameRangeSelection();
+    }
+    if (kind != TimelineSelectionKind.lanes) {
+      clearLaneRangeSelection();
+    }
+    if (kind != TimelineSelectionKind.cuts) {
+      clearStoryboardCutSelection();
+    }
+    if (kind != TimelineSelectionKind.rows) {
+      clearRowSelection();
+    }
+  }
+
   /// Re-publishes [currentRow]. Idempotent and cheap: call it after
   /// anything that could move the answer rather than reasoning about which
   /// writer was the one that did.
@@ -1602,6 +1739,7 @@ class EditorSessionManager extends ChangeNotifier {
     brushInputActive.removeListener(_bumpCelTintRevision);
     celTintRevision.dispose();
     currentRowListenable.dispose();
+    rowSelection.dispose();
     laneRangeSelection.removeListener(_publishCutLocalLaneRange);
     cutLocalLaneRangeSelection.dispose();
     revealSelectionTick.dispose();
@@ -3764,9 +3902,16 @@ class EditorSessionManager extends ChangeNotifier {
 
   bool get canDeleteActiveLayer {
     final activeLayer = this.activeLayer;
-    if (activeLayer == null) {
-      return false;
-    }
+    return activeLayer != null && canDeleteLayer(activeLayer);
+  }
+
+  /// Whether [activeLayer] may be deleted at all — the FLOORS, asked of any
+  /// row rather than only of the active one (⑨ needs it per selected row).
+  ///
+  /// The parameter keeps its name so the body below reads unchanged: this
+  /// was [canDeleteActiveLayer]'s own text, lifted so two askers cannot
+  /// drift apart ([[predicates-before-new-kind]]).
+  bool canDeleteLayer(Layer activeLayer) {
     // Read-only where a cut can see it: the transition row is deleted (and
     // moved) on the global axis, never from inside a cut.
     if (layerKindIsReadOnlyInCut(activeLayer.kind)) {
@@ -4176,12 +4321,98 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// ⑨: deletes every selected row that names a deletable layer, as ONE
+  /// undo step — the gesture selected them together, so it undoes together.
+  ///
+  /// Deleting from the TOP down keeps each removal's own bookkeeping (the
+  /// stable next-active pick, an attach cascade) reading the stack it was
+  /// written against: taking a lower row out first would shift the ones
+  /// above it under the loop's feet.
+  void deleteSelectedLayers() {
+    final ids = deletableSelectedLayerIds();
+    if (ids.isEmpty) {
+      return;
+    }
+    final cut = activeCutOrNull;
+    if (cut == null) {
+      return;
+    }
+    final order = {
+      for (var index = 0; index < cut.layers.length; index += 1)
+        cut.layers[index].id: index,
+    };
+    final ordered = [...ids]
+      ..sort((a, b) => (order[b] ?? -1).compareTo(order[a] ?? -1));
+    final nextActiveLayerId = _stableLayerIdAfterDeleting(
+      beforeLayers: List<Layer>.of(cut.layers),
+      deletedLayerId: ordered.last,
+    );
+    _historyManager.runAsOneStep('Delete rows', () {
+      for (final layerId in ordered) {
+        _cutCommandCoordinator.deleteLayer(cutId: cut.id, layerId: layerId);
+      }
+    });
+    clearRowSelection();
+    _refreshAfterCutCommand(preferredActiveLayerId: nextActiveLayerId);
+    notifyListeners();
+  }
+
   void renameActiveLayer(String name) {
     final activeLayer = this.activeLayer;
     if (activeLayer == null) {
       return;
     }
     renameLayer(activeLayer.id, name);
+  }
+
+  /// ⑨: 「이름편집은 선택된 편집가능 레이어 전부를 같은 이름으로 일괄 변경」.
+  ///
+  /// One undo step, and the SAME name on every row — the user's words are
+  /// "all of them to the same name", not "a numbered series", so nothing
+  /// here invents suffixes.
+  void renameSelectedLayers(String name) {
+    final cut = activeCutOrNull;
+    final ids = renameableSelectedLayerIds();
+    if (cut == null || ids.isEmpty) {
+      return;
+    }
+    _historyManager.runAsOneStep('Rename rows', () {
+      for (final layerId in ids) {
+        _cutCommandCoordinator.renameLayer(
+          cutId: cut.id,
+          layerId: layerId,
+          name: name,
+        );
+      }
+    });
+    _refreshAfterCutCommand(preferredActiveLayerId: ids.first);
+    notifyListeners();
+  }
+
+  /// The selected rows whose NAME may be edited (⑨).
+  ///
+  /// Read-only-in-cut rows are the exception, and they are the same ones
+  /// [canDeleteLayer] refuses for the same reason: a track fixture seen from
+  /// inside a cut is not this cut's to edit.
+  List<LayerId> renameableSelectedLayerIds() {
+    final selection = rowSelection.value;
+    if (selection.isEmpty) {
+      return const [];
+    }
+    final byId = {for (final layer in layers) layer.id: layer};
+    final ids = <LayerId>[];
+    for (final row in selection) {
+      if (row is! LayerRowAddress) {
+        continue;
+      }
+      final layer = byId[row.layerId];
+      if (layer != null &&
+          !ids.contains(layer.id) &&
+          !layerKindIsReadOnlyInCut(layer.kind)) {
+        ids.add(layer.id);
+      }
+    }
+    return ids;
   }
 
   /// Renames any row by id — folders included, because a folder is a row.
@@ -10946,10 +11177,8 @@ class EditorSessionManager extends ChangeNotifier {
       trackFrameRangeSelection.value = null;
       return;
     }
-    // Starting a TRACK-axis selection clears the cut-local one: the two
-    // state the same thing in different axes, and only one may be on screen
-    // (the timeline's own frame ⊥ lane rule, one level up).
-    clearFrameRangeSelection();
+    // THE ONE-SELECTION LAW — see [claimSelection].
+    claimSelection(TimelineSelectionKind.cuts);
     trackFrameRangeSelection.value = TrackFrameRangeSelection(
       trackId: trackId,
       anchorRow: anchorRow,
@@ -11661,7 +11890,8 @@ class EditorSessionManager extends ChangeNotifier {
         selectLayer(layerId);
       }
     }
-    clearFrameRangeSelection();
+    // THE ONE-SELECTION LAW — see [claimSelection].
+    claimSelection(TimelineSelectionKind.lanes);
     final toGlobal = !framesAreGlobal && isTrackSeLayerId(layerId)
         ? activeCutGlobalStartFrame
         : 0;
@@ -12074,13 +12304,10 @@ class EditorSessionManager extends ChangeNotifier {
     final laneTail = headLaneId != null && (headLayerId ?? layerId) == layerId
         ? headLaneId
         : null;
-    // Starting a CELL selection clears the lane selection (mutual
-    // exclusion, UI-R23 #3 part 2) — unless THIS drag is the one
-    // producing it (the mixed span below re-sets it).
-    clearLaneRangeSelection();
-    // …and the TRACK-axis selection, for the same reason one level up: the
-    // two state a range in different axes and only one may be on screen.
-    clearStoryboardCutSelection();
+    // THE ONE-SELECTION LAW — see [claimSelection]. The lane clear is not
+    // final for THIS drag: a mixed span below re-sets it, which is the one
+    // case where a cell drag ends up owning lane state too.
+    claimSelection(TimelineSelectionKind.cells);
     final base = snapFrameRangeToBlocks(
       layer: layer,
       anchorIndex: anchorIndex,
@@ -14143,7 +14370,12 @@ class EditorSessionManager extends ChangeNotifier {
     if (trackFrameRangeSelection.value != null) {
       return DeleteSubject.cuts;
     }
-    // ⑨ will add DeleteSubject.layers here, ABOVE the cell rung.
+    // ⑨: rows outrank cells. A row selection is the more specific statement
+    // — you named the rows out loud — while the cell rung answers from where
+    // the playhead happens to stand.
+    if (deletableSelectedLayerIds().isNotEmpty) {
+      return DeleteSubject.layers;
+    }
     return canDeleteCellAtCurrentFrame
         ? DeleteSubject.cells
         : DeleteSubject.nothing;
@@ -14156,7 +14388,7 @@ class EditorSessionManager extends ChangeNotifier {
       case DeleteSubject.cuts:
         deleteActiveCut();
       case DeleteSubject.layers:
-        deleteActiveLayer();
+        deleteSelectedLayers();
       case DeleteSubject.cells:
         deleteCellAtCurrentFrame();
       case DeleteSubject.nothing:

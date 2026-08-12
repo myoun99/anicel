@@ -131,6 +131,8 @@ class XSheetTimelineGrid extends StatefulWidget {
     this.laneRange,
     this.currentRowHooks,
     this.rowDragHooks,
+    this.selectedRowIds = const {},
+    this.onRowSelectionSpan,
     this.runEdit,
     this.isFrameCached,
     this.metrics = defaultMetrics,
@@ -304,6 +306,15 @@ class XSheetTimelineGrid extends StatefulWidget {
   /// so the same handle rule applies along its own axis: grabbing a column
   /// header moves that layer, an fx header re-orders that chain.
   final TimelineRowDragHooks? rowDragHooks;
+
+  /// ⑨: the row SELECT drag's span, in this sheet's own display columns —
+  /// the rail's rule along the other axis, so the two surfaces select the
+  /// same way without either learning the other's order.
+  final void Function(List<TimelineDisplayRow> rows, int rowDelta)?
+  onRowSelectionSpan;
+
+  /// ⑨: the columns currently selected, as layer ids.
+  final Set<LayerId> selectedRowIds;
 
   /// The run-edge [+]/[↻] handle hooks (UI-R8); null hides the handles.
   final TimelineRunEditCallbacks? runEdit;
@@ -939,6 +950,11 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
           }
           hooks.onUpdate(widget.layers, slot);
         },
+        // ⑨: the SELECT half, counted in the sheet's own display columns.
+        onSelectCrossed: hooks.onSelectBegin == null
+            ? null
+            : (rowDelta) =>
+                  widget.onRowSelectionSpan?.call(_dragRows, rowDelta),
         child: child,
       );
     }
@@ -1745,6 +1761,14 @@ class _XSheetTimelineGridState extends State<XSheetTimelineGrid> {
                                                                             .id ==
                                                                         widget
                                                                             .activeLayerId,
+                                                                    // ⑨
+                                                                    selected: widget
+                                                                        .selectedRowIds
+                                                                        .contains(
+                                                                          entries[index]
+                                                                              .layer
+                                                                              .id,
+                                                                        ),
                                                                     metrics:
                                                                         _metrics,
                                                                     onSelectLayer:
@@ -2587,6 +2611,7 @@ class _LayerHeader extends StatelessWidget {
     required this.layer,
     this.depth = 0,
     required this.active,
+    this.selected = false,
     required this.onSelectLayer,
     required this.onToggleLayerVisibility,
     required this.onLayerOpacityChanged,
@@ -2637,6 +2662,11 @@ class _LayerHeader extends StatelessWidget {
   /// [_xsheetMaxNestingLevels].
   final int depth;
   final bool active;
+
+  /// ⑨: in the rail's ROW SELECTION — the same wash as [active], because
+  /// it is the same statement: this is what the verbs act on.
+  final bool selected;
+
   final ValueChanged<LayerId> onSelectLayer;
   final ValueChanged<LayerId> onToggleLayerVisibility;
   final void Function(LayerId layerId, double opacity) onLayerOpacityChanged;
@@ -2711,7 +2741,7 @@ class _LayerHeader extends StatelessWidget {
           // saturation — the sheet used to paint `secondaryContainer` at
           // full strength and read a shade louder than the rail for the
           // same state.
-          color: active
+          color: active || selected
               ? Color.alphaBlend(
                   railSelectedRowColor(colorScheme),
                   colorScheme.surfaceContainerHighest,

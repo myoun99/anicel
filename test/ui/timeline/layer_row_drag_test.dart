@@ -131,6 +131,17 @@ Future<void> _pump(WidgetTester tester, {Project? project}) async {
 Finder _railRow(String id) =>
     find.byKey(ValueKey<String>('timeline-layer-row-$id'));
 
+/// ⑨ (user, 2026-08-12): 「첫 드래그가 선택(1개/여러 개), 그 다음이 드래그」.
+///
+/// So every MOVE below selects its row first. The nudge goes SIDEWAYS: the
+/// pan has to clear the touch slop to start at all (20px, most of a row),
+/// while only the rail's own axis counts as travel — so a horizontal push
+/// selects exactly the row it began on and nothing else.
+Future<void> _selectRow(WidgetTester tester, Finder row) async {
+  await tester.drag(row, const Offset(30, 0));
+  await tester.pumpAndSettle();
+}
+
 /// A stack with an EMPTY folder on top — the case R5 #14 created and R5 #15
 /// exists to reach: a folder with no members has no gap that means "inside
 /// it", so a caret can never put anything there.
@@ -177,6 +188,7 @@ void main() {
     // boundary does both.)
     final row = _railRow('a');
     await tester.ensureVisible(row);
+    await _selectRow(tester, row);
     await tester.pumpAndSettle();
     await tester.drag(row, const Offset(0, -42));
     await tester.pumpAndSettle();
@@ -190,6 +202,7 @@ void main() {
     final session = _sessionOf(tester);
     final row = _railRow('a');
     await tester.ensureVisible(row);
+    await _selectRow(tester, row);
     await tester.pumpAndSettle();
 
     final gesture = await tester.startGesture(tester.getCenter(row));
@@ -240,6 +253,7 @@ void main() {
     // like the upward case, same distance, opposite sign.
     final row = _railRow('c');
     await tester.ensureVisible(row);
+    await _selectRow(tester, row);
     await tester.pumpAndSettle();
     await tester.drag(row, const Offset(0, 42));
     await tester.pumpAndSettle();
@@ -310,6 +324,9 @@ void main() {
     final header = find.byKey(const ValueKey<String>('xsheet-layer-header-a'));
     await tester.ensureVisible(header);
     await tester.pumpAndSettle();
+    // ⑨: the sheet runs the other way, so its select nudge does too.
+    await tester.drag(header, const Offset(0, 30));
+    await tester.pumpAndSettle();
     final width = tester.getSize(header).width;
     await tester.drag(header, Offset(width * 1.5, 0));
     await tester.pumpAndSettle();
@@ -328,6 +345,7 @@ void main() {
     final row = _railRow('c');
     await tester.ensureVisible(row);
     await tester.pumpAndSettle();
+    await _selectRow(tester, row);
     final gesture = await tester.startGesture(tester.getCenter(row));
     await tester.pump(const Duration(milliseconds: 16));
     await gesture.moveBy(const Offset(0, 28));
@@ -367,6 +385,7 @@ void main() {
     final row = _railRow('a');
     await tester.ensureVisible(row);
     await tester.pumpAndSettle();
+    await _selectRow(tester, row);
     final gesture = await tester.startGesture(tester.getCenter(row));
     await tester.pump(const Duration(milliseconds: 16));
     await gesture.moveBy(const Offset(0, -28 * 3));
@@ -414,6 +433,7 @@ void main() {
     final row = _railRow('a');
     await tester.ensureVisible(row);
     await tester.pumpAndSettle();
+    await _selectRow(tester, row);
     final gesture = await tester.startGesture(tester.getCenter(row));
     await tester.pump(const Duration(milliseconds: 16));
     await gesture.moveBy(const Offset(0, -28));
@@ -456,6 +476,7 @@ void main() {
     final row = _railRow('c');
     await tester.ensureVisible(row);
     await tester.pumpAndSettle();
+    await _selectRow(tester, row);
     final gesture = await tester.startGesture(tester.getCenter(row));
     await tester.pump(const Duration(milliseconds: 16));
     await gesture.moveBy(const Offset(0, 28));
@@ -487,6 +508,7 @@ void main() {
     final row = _railRow('over');
     await tester.ensureVisible(row);
     await tester.pumpAndSettle();
+    await _selectRow(tester, row);
     final gesture = await tester.startGesture(tester.getCenter(row));
     await tester.pump(const Duration(milliseconds: 16));
     await gesture.moveBy(const Offset(0, -42));
@@ -514,6 +536,7 @@ void main() {
     final row = _railRow('a');
     await tester.ensureVisible(row);
     await tester.pumpAndSettle();
+    await _selectRow(tester, row);
     await tester.drag(row, const Offset(0, -42));
     await tester.pumpAndSettle();
     expect(_order(session), ['b', 'a', 'c']);
