@@ -393,6 +393,88 @@ void main() {
     );
   });
 
+  testWidgets('a dropped TVPaint export FOLDER is read as the export, not '
+      'as a cut folder — and the knobs that have nothing to decide are '
+      'gone', (tester) async {
+    final s = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(s.dispose);
+
+    await tester.runAsync(() async {
+      await writePng('[001] A/[0001] A.png');
+      await File('${tempDir.path}/notes.json').writeAsString('{"a":1}');
+      await File('${tempDir.path}/C002.json').writeAsString(
+        '{"version":{"major":5,"minor":1},"project":{"camera":{"width":8,'
+        '"height":8},"clip":{"name":"C002","width":8,"height":8,'
+        '"framerate":24.0,"image-count":4,'
+        '"camera":{"points":[],"positions":[]},"layers":['
+        '{"name":"A","position":1,"visible":true,"opacity":255,"start":0,'
+        '"end":3,"pre-behavior":0,"post-behavior":0,'
+        '"blending-mode":"Color","link":[{"instance-index":0,'
+        '"instance-name":"1","file":"[001] A/[0001] A.png","images":[0]}],'
+        '"repeat":[]}]}}}',
+      );
+    });
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ImportDialog(session: s, initialPaths: [tempDir.path]),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(
+      find.textContaining('C002'),
+      findsWidgets,
+      reason: 'the folder was read as the TVPaint export it holds',
+    );
+    expect(
+      find.textContaining('drawing(s)'),
+      findsWidgets,
+      reason: 'the TVPaint interpretation table rendered',
+    );
+    expect(
+      find.textContaining('Cut folders always bake'),
+      findsNothing,
+      reason: 'the cut-folder branch must not have run on it',
+    );
+    expect(
+      find.textContaining('notes.json'),
+      findsOneWidget,
+      reason: 'the .json that was not the export is named, not dropped',
+    );
+    expect(
+      find.byKey(const ValueKey<String>('import-fit-contain')),
+      findsNothing,
+      reason: 'the cut is born at the clip size and the images ARE that '
+          'size — all three fit modes compute the same rect',
+    );
+    expect(
+      find.byKey(const ValueKey<String>('import-destination-cut')),
+      findsOneWidget,
+      reason: 'one destination today, shown so the row can grow later',
+    );
+
+    final cutsBefore = s.repository.requireProject().tracks.first.cuts.length;
+    await tester.tap(find.byKey(const ValueKey<String>('import-run-button')));
+    for (var tries = 0; tries < 200; tries += 1) {
+      if (s.repository.requireProject().tracks.first.cuts
+          .any((cut) => cut.name == 'C002')) {
+        break;
+      }
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 50)),
+      );
+      await tester.pump();
+    }
+    await tester.pumpAndSettle();
+
+    final track = s.repository.requireProject().tracks.first;
+    expect(track.cuts.length, cutsBefore + 1);
+    expect(track.cuts.firstWhere((cut) => cut.name == 'C002').duration, 4);
+  });
+
   testWidgets('a .json that is not a TVPaint export is refused by name and '
       'leaves the file list — never a decode failure later', (tester) async {
     final s = EditorSessionManager(initialProject: createDefaultProject());

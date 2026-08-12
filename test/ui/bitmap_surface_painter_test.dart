@@ -484,11 +484,17 @@ void main() {
       for (final tile in surface.tiles.values) {
         cache.ensureDecoded(tile);
       }
+      // Wait in real TIME, not in event-loop turns. A hundred zero-length
+      // delays can elapse in well under a millisecond while the engine's
+      // decode is still running, which is how this went red on CI's
+      // busiest job (the one that builds the native DLL alongside the
+      // suite) and nowhere else. Ten milliseconds a turn is what the
+      // sibling cache test already waits.
       for (var attempt = 0; attempt < 100; attempt += 1) {
         if (cache.allDecoded(surface.tiles.values)) {
           break;
         }
-        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 10));
       }
       expect(
         cache.allDecoded(surface.tiles.values),
