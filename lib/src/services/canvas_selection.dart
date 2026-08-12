@@ -979,7 +979,9 @@ SelectionLiftDabs? buildSelectionLiftDabs({
   // Pasteboard clip, not canvas — off-canvas artwork is selectable and
   // liftable (the whole point of moving things on and off the stage).
   final canvasSize = surface.canvasSize;
-  final regionBounds = region.bounds;
+  // Coverage, not the tight fold: the mask box must hold every pixel a
+  // step could have added, and `maskFor` zeroes what a 삭제 took back.
+  final regionBounds = region.coverageBounds;
   final minX = regionBounds.left;
   final minY = regionBounds.top;
   final maxX = regionBounds.right;

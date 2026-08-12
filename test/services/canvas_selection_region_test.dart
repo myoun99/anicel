@@ -156,7 +156,7 @@ void main() {
   });
 
   group('geometry', () {
-    test('bounds cover every ADDING step (subtract only shrinks)', () {
+    test('coverage bounds cover every ADDING step (subtract only shrinks)', () {
       var region = CanvasSelectionRegion.shape(rect(0, 0, 10, 10));
       region = region.combinedWith(
         rect(20, 30, 40, 50),
@@ -166,11 +166,71 @@ void main() {
         rect(-100, -100, 100, 100),
         SelectionCombineMode.subtract,
       )!;
-      final bounds = region.bounds;
+      final bounds = region.coverageBounds;
       expect(bounds.left, 0);
       expect(bounds.top, 0);
       expect(bounds.right, 40);
       expect(bounds.bottom, 50);
+    });
+
+    /// ㉝ — the two questions. Coverage answers "what must I allocate";
+    /// selected answers "where IS the selection". A 삭제 that takes an
+    /// edge band away moves the second and must not move the first.
+    test('선택 bounds shrink when 삭제 cuts an edge band off', () {
+      final region = CanvasSelectionRegion.shape(
+        rect(0, 0, 100, 100),
+      ).combinedWith(rect(50, -10, 110, 110), SelectionCombineMode.subtract)!;
+
+      final coverage = region.coverageBounds;
+      expect(coverage.right, 100, reason: 'the lift still allocates the rect');
+
+      final selected = region.selectedBounds;
+      expect(selected.left, 0);
+      expect(selected.top, 0);
+      expect(selected.right, 50, reason: 'the right half is gone');
+      expect(selected.bottom, 100);
+      // The box the chrome draws frames only selected pixels.
+      expectBoth(region, 25, 50, true);
+      expectBoth(region, 75, 50, false);
+    });
+
+    test('선택 bounds equal coverage when nothing shrinks the region', () {
+      final region = CanvasSelectionRegion.shape(
+        rect(0, 0, 10, 10),
+      ).combinedWith(rect(20, 30, 40, 50), SelectionCombineMode.add)!;
+      expect(region.selectedBounds, region.coverageBounds);
+    });
+
+    test('선택중 keeps only the overlap, and the box follows it', () {
+      final region = CanvasSelectionRegion.shape(
+        rect(0, 0, 100, 100),
+      ).combinedWith(rect(60, 60, 200, 200), SelectionCombineMode.intersect)!;
+      final selected = region.selectedBounds;
+      expect(selected.left, 60);
+      expect(selected.top, 60);
+      expect(selected.right, 100);
+      expect(selected.bottom, 100);
+    });
+
+    test('a fold that selects nothing keeps the coverage box', () {
+      // 삭제 can empty a region without `combine` returning null, and a
+      // box collapsed onto the origin would be worse than a stale one.
+      final region = CanvasSelectionRegion.shape(
+        rect(10, 10, 20, 20),
+      ).combinedWith(rect(0, 0, 100, 100), SelectionCombineMode.subtract)!;
+      expect(region.selectedBounds, region.coverageBounds);
+    });
+
+    test('선택 bounds survive a translate the same way membership does', () {
+      final region = CanvasSelectionRegion.shape(
+        rect(0, 0, 100, 100),
+      ).combinedWith(rect(50, -10, 110, 110), SelectionCombineMode.subtract)!;
+      final moved = region.translated(dx: 30, dy: 7);
+      final selected = moved.selectedBounds;
+      expect(selected.left, 30);
+      expect(selected.top, 7);
+      expect(selected.right, 80);
+      expect(selected.bottom, 107);
     });
 
     test('translate moves every step together', () {

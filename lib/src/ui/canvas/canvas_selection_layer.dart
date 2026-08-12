@@ -2516,10 +2516,14 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
 
   /// The region's axis-aligned bounds (box geometry for the transform
   /// chrome — R17-U always-on handles use it without opening a session).
+  ///
+  /// [CanvasSelectionRegion.selectedBounds], never the coverage superset:
+  /// the box has to frame what the ants trace, so a 삭제 that cuts an edge
+  /// band off the selection pulls the box in with it (유저 실기 ㉝).
   ({double width, double height, CanvasPoint center}) _regionBounds(
     CanvasSelectionRegion region,
   ) {
-    final bounds = region.bounds;
+    final bounds = region.selectedBounds;
     return (
       width: math.max(bounds.right - bounds.left, 1),
       height: math.max(bounds.bottom - bounds.top, 1),
@@ -2893,9 +2897,10 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
   }
 
   /// Confirm button anchor: just outside the selection bbox's top-right,
-  /// following the live drag offset.
+  /// following the live drag offset. Anchored to what is actually
+  /// selected — the button rides the same corner the box draws.
   Offset _confirmButtonOffset(CanvasSelectionRegion region) {
-    final bounds = region.bounds;
+    final bounds = region.selectedBounds;
     final mapped = _mapCanvasToViewportOffset(
       CanvasPoint(x: bounds.right, y: bounds.top),
     );
