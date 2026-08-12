@@ -69,7 +69,47 @@ class LayerDropPlan {
 /// whole group (R26 #36: the group is unsplittable), everything else takes
 /// itself. An attach ROW takes only itself, which is what keeps it inside
 /// its group.
+///
+/// ㊵ (유저 2026-08-12): 「선택범위로 레이어 여러개 선택하고 드래그하면 한
+/// 레이어만 이동된다」. [alsoMoving] is the row SELECTION, and a selection that
+/// contains [movingId] widens the run to span every selected row's own run —
+/// so "what travels" stays ONE question with one answer, and every rule below
+/// (what a slot may refuse, which side of a base, which folder is joined) goes
+/// on reading the same two numbers.
+///
+/// ⚠️It is a SPAN, not a set: a row sitting between two selected ones travels
+/// with them. That is the honest reading of a block move — the rows keep their
+/// relative order — and it can only happen when the selection has a hole in it
+/// (a filtered-out row), because a span is otherwise contiguous by
+/// construction.
 ({int start, int endExclusive})? layerDragRun(
+  List<Layer> stack,
+  LayerId movingId, {
+  Set<LayerId> alsoMoving = const {},
+}) {
+  final own = _ownDragRun(stack, movingId);
+  if (own == null || alsoMoving.length <= 1 || !alsoMoving.contains(movingId)) {
+    return own;
+  }
+  var start = own.start;
+  var endExclusive = own.endExclusive;
+  for (final id in alsoMoving) {
+    final other = id == movingId ? null : _ownDragRun(stack, id);
+    if (other == null) {
+      continue;
+    }
+    if (other.start < start) {
+      start = other.start;
+    }
+    if (other.endExclusive > endExclusive) {
+      endExclusive = other.endExclusive;
+    }
+  }
+  return (start: start, endExclusive: endExclusive);
+}
+
+/// What ONE row carries, before a selection has its say.
+({int start, int endExclusive})? _ownDragRun(
   List<Layer> stack,
   LayerId movingId,
 ) {
@@ -162,12 +202,15 @@ LayerDropPlan? resolveLayerDropOnRow({
   required List<Layer> stack,
   required LayerId movingId,
   required LayerId targetId,
+
+  /// ㊵: the row selection this drag carries, when [movingId] is in it.
+  Set<LayerId> alsoMoving = const {},
 }) {
   if (movingId == targetId) {
     return null;
   }
   final targetIndex = stack.indexWhere((layer) => layer.id == targetId);
-  final run = layerDragRun(stack, movingId);
+  final run = layerDragRun(stack, movingId, alsoMoving: alsoMoving);
   if (targetIndex < 0 || run == null) {
     return null;
   }
@@ -185,6 +228,7 @@ LayerDropPlan? resolveLayerDropOnRow({
       movingId: movingId,
       insertAt: targetIndex,
       forceJoinFolderId: targetId,
+      alsoMoving: alsoMoving,
     );
   }
   // ⑤ (user, 2026-08-12): 「어태치 장착 면은 두 행의 상대 위치가 정한다.
@@ -208,6 +252,7 @@ LayerDropPlan? resolveLayerDropOnRow({
     forceMountPlacement: fromBelow
         ? AttachedPlacement.below
         : AttachedPlacement.above,
+    alsoMoving: alsoMoving,
   );
 }
 
@@ -258,8 +303,11 @@ LayerDropPlan? resolveLayerDrop({
   /// rows' relative position — a gap says its own side ([_slotInsideGroup]),
   /// but a drop ON a row has no gap to ask.
   AttachedPlacement forceMountPlacement = AttachedPlacement.above,
+
+  /// ㊵: the row selection this drag carries, when [movingId] is in it.
+  Set<LayerId> alsoMoving = const {},
 }) {
-  final run = layerDragRun(stack, movingId);
+  final run = layerDragRun(stack, movingId, alsoMoving: alsoMoving);
   if (run == null || insertAt < 0 || insertAt > stack.length) {
     return null;
   }

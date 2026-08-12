@@ -4856,6 +4856,20 @@ class EditorSessionManager extends ChangeNotifier {
   List<LayerId>? _rowDragSeOrder;
   List<EffectId>? _rowDragEffectOrder;
 
+  /// ㊵: the rows a drag on [movingId] carries because they are SELECTED.
+  ///
+  /// Empty unless the pressed row is itself in the selection — a drag that
+  /// starts outside one is an ordinary single-row move, and ⑨ already made
+  /// that press a fresh SELECT rather than a move. Only layer rows count:
+  /// lanes and headers ride their layer, they do not re-order.
+  Set<LayerId> _rowSelectionCarriedBy(LayerId movingId) {
+    final ids = <LayerId>{
+      for (final row in rowSelection.value)
+        if (row is LayerRowAddress) row.layerId,
+    };
+    return ids.contains(movingId) ? ids : const <LayerId>{};
+  }
+
   void beginLayerRowDrag(LayerRowDragSubject subject) {
     _rowDragPlan = null;
     _rowDragSeOrder = null;
@@ -4982,6 +4996,7 @@ class EditorSessionManager extends ChangeNotifier {
             stack: cut.layers,
             movingId: subject.layerId,
             insertAt: insertAt,
+            alsoMoving: _rowSelectionCarriedBy(subject.layerId),
           );
     _rowDragPlan = plan;
     layerRowDrag.value = LayerRowDragState(
@@ -5034,6 +5049,7 @@ class EditorSessionManager extends ChangeNotifier {
       stack: cut.layers,
       movingId: subject.layerId,
       targetId: targetId,
+      alsoMoving: _rowSelectionCarriedBy(subject.layerId),
     );
     if (plan == null) {
       // Nothing there can swallow it — an SE row, a camera row, a base that

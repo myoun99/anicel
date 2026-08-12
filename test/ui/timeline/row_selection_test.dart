@@ -9,6 +9,10 @@ import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/timeline/layer_drop_policy.dart'
+    show layerDragRun;
+import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
+    show LayerRowSubject;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 
 /// ⑨ (user, 2026-08-12): 「레이어에도 선택 시스템 — 첫 드래그가 선택
@@ -276,6 +280,147 @@ void main() {
       ];
 
       expect(s.renameableSelectedLayerIds(), [camera.id]);
+    });
+  });
+
+  group('㊴ the selection RING, and the wash the ACTIVE row keeps', () {
+    testWidgets('a selected row rings, and does not take the wash', (
+      tester,
+    ) async {
+      // 유저: 「레이어의 선택범위가 액티브레이어랑 생긴게 똑같아서 이상함.
+      // 프레임셀처럼 외곽선으로 감싸자」.
+      await tester.binding.setSurfaceSize(const Size(1280, 1000));
+      addTearDown(() => tester.binding.setSurfaceSize(null));
+      await tester.pumpWidget(
+        MaterialApp(home: HomePage(initialProject: createDefaultProject())),
+      );
+      await tester.pumpAndSettle();
+      await tester.drag(
+        find.byKey(const ValueKey<String>('dock-resize-bottom')),
+        const Offset(0, -400),
+      );
+      await tester.pumpAndSettle();
+
+      final s = tester
+          .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+          .session;
+      final activeId = s.activeLayerId!;
+      final target = s.layers.firstWhere(
+        (layer) => layer.kind == LayerKind.animation && layer.id != activeId,
+        orElse: () => s.layers.firstWhere((layer) => layer.id != activeId),
+      );
+      Color groundOf(LayerId id) {
+        final container = tester.widget<Container>(
+          find
+              .descendant(
+                of: find.byKey(ValueKey<String>('timeline-layer-row-$id')),
+                matching: find.byType(Container),
+              )
+              .first,
+        );
+        return (container.decoration! as BoxDecoration).color!;
+      }
+
+      final row = find.byKey(
+        ValueKey<String>('timeline-layer-row-${target.id}'),
+      );
+      await tester.ensureVisible(row);
+      await tester.pumpAndSettle();
+      final ring = find.byKey(
+        const ValueKey<String>('timeline-row-selection-ring'),
+      );
+      expect(ring, findsNothing, reason: 'nothing is selected yet');
+
+      // The sideways nudge is the SELECT drag (only the rail's axis counts
+      // as travel), exactly as the click-clears test above drives it.
+      await tester.drag(row, const Offset(30, 0));
+      await tester.pumpAndSettle();
+      expect(s.rowSelection.value, isNotEmpty);
+
+      expect(ring, findsOneWidget, reason: '㊴: the selection is a ring');
+      expect(
+        groundOf(target.id),
+        isNot(groundOf(activeId)),
+        reason:
+            '㊴: the wash belongs to the ACTIVE row. While a selected row '
+            'shared it, the two states were indistinguishable — which is the '
+            'whole report',
+      );
+    });
+  });
+
+  group('㊵ a drag carries the whole selection', () {
+    test('the run widens to the selection SPAN', () {
+      final s = session();
+      s.addLayerOfKind(LayerKind.animation);
+      final stack = s.layers;
+      final lower = stack[0];
+      final upper = stack[1];
+
+      expect(
+        layerDragRun(stack, lower.id),
+        (start: 0, endExclusive: 1),
+        reason: 'alone, an ordinary row carries itself',
+      );
+      expect(
+        layerDragRun(stack, lower.id, alsoMoving: {lower.id, upper.id}),
+        (start: 0, endExclusive: 2),
+        reason: '㊵: the selection is what travels',
+      );
+      expect(
+        layerDragRun(stack, lower.id, alsoMoving: {upper.id}),
+        (start: 0, endExclusive: 1),
+        reason:
+            'a selection the pressed row is NOT in carries nothing extra — '
+            'that press is a fresh select, not a move (⑨)',
+      );
+    });
+
+    test('two selected rows land together, in order', () {
+      final s = session();
+      s.addLayerOfKind(LayerKind.animation);
+      s.addLayerOfKind(LayerKind.animation);
+      final drawings = [
+        for (final layer in s.layers)
+          if (layer.kind == LayerKind.animation) layer,
+      ];
+      expect(drawings.length, greaterThanOrEqualTo(3));
+      int indexOf(LayerId id) => s.layers.indexWhere((l) => l.id == id);
+      drawings.sort((a, b) => indexOf(a.id).compareTo(indexOf(b.id)));
+      final first = drawings[0];
+      final second = drawings[1];
+      final over = drawings[2];
+
+      s.rowSelection.value = [
+        LayerRowAddress(first.id),
+        LayerRowAddress(second.id),
+      ];
+      s.beginLayerRowDrag(LayerRowSubject(first.id));
+      s.updateLayerRowDrag(s.layers, indexOf(over.id) + 1);
+      expect(
+        s.layerRowDrag.value?.legal,
+        isTrue,
+        reason: 'the landing is a plain re-order inside one section',
+      );
+      s.endLayerRowDrag();
+
+      expect(
+        indexOf(first.id),
+        greaterThan(indexOf(over.id)),
+        reason: '㊵: the pressed row moved',
+      );
+      expect(
+        indexOf(second.id),
+        greaterThan(indexOf(over.id)),
+        reason:
+            '㊵: and so did the other selected row — 「선택한것들 드래그해야 '
+            '하는데 하나만 드래그됨」',
+      );
+      expect(
+        indexOf(first.id),
+        lessThan(indexOf(second.id)),
+        reason: 'a block move keeps the carried rows in their own order',
+      );
     });
   });
 }
