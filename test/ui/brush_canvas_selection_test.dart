@@ -20,6 +20,7 @@ import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
+import 'package:anicel/src/ui/canvas/selection_ants_painter.dart';
 
 import '../helpers/brush_canvas_fixture.dart';
 
@@ -252,6 +253,82 @@ void main() {
     await gesture.up();
     await tester.pump();
   }
+
+  /// The chrome the ants painter is ACTUALLY drawing — read off the
+  /// mounted painter, so a fix that only reaches the model cannot pass.
+  SelectionTransformChrome? chromeOnScreen(WidgetTester tester) {
+    final paints = tester.widgetList<CustomPaint>(
+      find.descendant(
+        of: find.byKey(layerKey),
+        matching: find.byType(CustomPaint),
+      ),
+    );
+    for (final paint in paints) {
+      final painter = paint.painter;
+      if (painter is SelectionAntsPainter) {
+        return painter.transformChrome;
+      }
+    }
+    return null;
+  }
+
+  /// Horizontal extent in VIEWPORT space, so the assertions never have to
+  /// know the zoom the panel settled on.
+  ({double left, double right, double width}) extentOf(List<Offset> points) {
+    var left = points.first.dx;
+    var right = points.first.dx;
+    for (final point in points) {
+      if (point.dx < left) left = point.dx;
+      if (point.dx > right) right = point.dx;
+    }
+    return (left: left, right: right, width: right - left);
+  }
+
+  testWidgets('㉝ 삭제 pulls the move box in with it — the chrome frames '
+      'what is selected NOW, not what was selected first', (tester) async {
+    final env = await pumpSelectionPanel(tester);
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(120, 120));
+
+    await env.setTool(CanvasTool.move);
+    final before = chromeOnScreen(tester);
+    expect(before, isNotNull, reason: 'the move tool shows the box at once');
+    final wide = extentOf(before!.box);
+    expect(wide.width, greaterThan(0));
+
+    // 삭제: a second drag cuts the right half back out.
+    await env.setTool(CanvasTool.selectRect);
+    env.commands.combineMode = SelectionCombineMode.subtract;
+    await tester.pump();
+    await dragOnLayer(tester, const Offset(70, 10), const Offset(140, 140));
+
+    final region = env.commands.region!;
+    expect(
+      region.selectedBounds.right,
+      lessThan(region.coverageBounds.right),
+      reason: 'precondition: the 삭제 really took an edge band off',
+    );
+
+    await env.setTool(CanvasTool.move);
+    final after = chromeOnScreen(tester)!;
+    final narrow = extentOf(after.box);
+
+    expect(
+      narrow.left,
+      moreOrLessEquals(wide.left, epsilon: 1),
+      reason: 'the untouched side stays put',
+    );
+    expect(
+      narrow.right,
+      lessThan(wide.right - wide.width / 4),
+      reason: 'the box gave up the subtracted half',
+    );
+    // The handles are the same box, so they have to come along; reading
+    // them separately is what catches a chrome built from two sources.
+    expect(
+      extentOf(after.handles).right,
+      moreOrLessEquals(narrow.right, epsilon: 1),
+    );
+  });
 
   testWidgets('P3a: the bytes the PREVIEW showed are the bytes Enter '
       'writes — the contract, tested at last', (tester) async {

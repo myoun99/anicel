@@ -2608,7 +2608,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // answer is the same and the work is the lift's size instead of the
     // drawing's.
     final size = preLift.tileSize;
-    final bounds = region.bounds;
+    // Coverage, not the tight fold: the sweep has to reach every tile the
+    // erase could have touched, and only an ADDING step can widen that.
+    final bounds = region.coverageBounds;
     final lastTx = floorDiv(bounds.right.ceil() - 1, size);
     final lastTy = floorDiv(bounds.bottom.ceil() - 1, size);
     final firstTx = floorDiv(bounds.left.floor(), size);

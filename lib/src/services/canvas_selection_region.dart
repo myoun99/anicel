@@ -171,7 +171,13 @@ class CanvasSelectionRegion {
 
   /// The bounding box of every step that can ADD coverage (replace/add) —
   /// a correct superset, since subtract and intersect only shrink.
-  ({double left, double top, double right, double bottom}) get bounds {
+  ///
+  /// This answers "what must I COVER": a lift mask, a stroke clip and a
+  /// piece rasterizer each allocate for every pixel a step could have
+  /// added, so a subtraction must not shrink the box they work over (the
+  /// fold then zeroes what is outside). What the user SEES asks the other
+  /// question — [selectedBounds].
+  ({double left, double top, double right, double bottom}) get coverageBounds {
     var minX = double.infinity, minY = double.infinity;
     var maxX = double.negativeInfinity, maxY = double.negativeInfinity;
     for (final step in steps) {
@@ -189,6 +195,52 @@ class CanvasSelectionRegion {
     // An intersect-only tail cannot happen (the first step replaces), so
     // the loop always saw at least one polygon.
     return (left: minX, top: minY, right: maxX, bottom: maxY);
+  }
+
+  ({double left, double top, double right, double bottom})? _selectedBounds;
+
+  /// The tight box around what is ACTUALLY selected — the fold, with
+  /// subtract and intersect applied.
+  ///
+  /// This answers "where IS the selection", which is the question every
+  /// piece of chrome asks: the always-on transform box, the pivot it
+  /// scales and rotates around, the confirm anchor. They must frame what
+  /// the marching ants trace, and the ants trace [pathIn]'s fold — so the
+  /// box is measured off that same path rather than off a second opinion.
+  ///
+  /// 유저 실기 ㉝ was exactly the two answers drifting apart: subtracting
+  /// the right half shrank the ants but left the move box on the
+  /// pre-subtraction rect, because chrome read the coverage superset.
+  ///
+  /// A fold that selects nothing has no box to draw at all, so it keeps
+  /// [coverageBounds] rather than collapsing the chrome onto the origin.
+  ({double left, double top, double right, double bottom}) get selectedBounds =>
+      _selectedBounds ??= _computeSelectedBounds();
+
+  ({double left, double top, double right, double bottom})
+  _computeSelectedBounds() {
+    final coverage = coverageBounds;
+    // Nothing here ever removes coverage ⇒ the superset IS tight, and the
+    // path booleans below would only spend time agreeing with it. This is
+    // the overwhelming case (one replace step).
+    final shrinks = steps.any(
+      (step) =>
+          step.mode == SelectionCombineMode.subtract ||
+          step.mode == SelectionCombineMode.intersect,
+    );
+    if (!shrinks) {
+      return coverage;
+    }
+    final folded = pathIn((point) => ui.Offset(point.x, point.y)).getBounds();
+    if (folded.isEmpty) {
+      return coverage;
+    }
+    return (
+      left: folded.left,
+      top: folded.top,
+      right: folded.right,
+      bottom: folded.bottom,
+    );
   }
 
   CanvasSelectionRegion mapped(CanvasPoint Function(CanvasPoint) map) =>

@@ -32,7 +32,9 @@ CutPiece? buildCutPiece({
   required String pieceId,
 }) {
   final canvasSize = surface.canvasSize;
-  final bounds = region.bounds;
+  // Coverage, not the tight fold: the piece's box has to hold every pixel
+  // a step could have added, and the mask zeroes what a 삭제 removed.
+  final bounds = region.coverageBounds;
   final left = math.max(canvasSize.pasteboardLeft, bounds.left.floor());
   final top = math.max(canvasSize.pasteboardTop, bounds.top.floor());
   final rightExclusive = math.min(
