@@ -83,6 +83,13 @@ import '../models/timeline_row_address.dart';
 import 'playback/canvas_playback_controller.dart' show PlaybackScope;
 import 'timeline/collapsed_row_overlay.dart';
 import 'timeline/timeline_grid_metrics.dart' show TimelineGridMetrics;
+import 'timeline/timeline_cel_content_source.dart'
+    show TimelineCelContentSource;
+import 'timeline/timeline_frame_cells_row.dart' show TimelineFrameCellsRow;
+import 'timeline/timeline_frame_cursor_layer.dart' show TimelineCursorLayer;
+import 'timeline/timeline_frame_geometry.dart'
+    show TimelineFrameGeometryHandle;
+import 'timeline/timeline_lane_rows.dart' show TimelineLaneFrameRow;
 import 'timeline/timeline_layer_controls_row.dart' show TimelineLayerControlsRow;
 import 'timeline/frame_panel_sill_controls.dart';
 import 'timeline/timeline_command_bar.dart' show TimelineCommandBar;
@@ -3665,6 +3672,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
         tabId != EditorWorkspace.storyboardTabId) {
       return const SizedBox.shrink();
     }
+    return ListenableBuilder(
+      listenable: _collapsedRowStructure,
+      builder: (context, _) => _collapsedRow(),
+    );
+  }
+
+  Widget _collapsedRow() {
     final rail = _railExtents[LayerRailId.timeline];
     return CollapsedRowOverlay(
       snapshot: _flipHudSnapshot(FlipHudAxis.frame),
@@ -3675,6 +3689,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       pixelsPerFrame: _timelinePixelsPerFrame.value,
       framesPerSecond: widget.session.projectFrameRate.countingBase,
       railChild: _collapsedRailRow(),
+      frameRowBuilder: _collapsedFrameRowBuilder(),
     );
   }
 
@@ -3722,6 +3737,145 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       onLayerOpacityChanged: (_, _) {},
       onToggleLayerTimesheet: (_) {},
       onLayerMarkSelected: (_, _) {},
+    );
+  }
+
+  /// ⑩ 구조 = 리빌드: everything that changes the collapsed row's SHAPE.
+  ///
+  /// The root of ⑩ was not a stale snapshot — `_flipHudSnapshot` rebuilds
+  /// correctly every pass. It was that nothing asked for a pass, so the
+  /// overlay went on showing the build it was born with.
+  ///
+  /// 🚨The session is in here ON PURPOSE and it is not the rejected shape:
+  /// a frame seek is NOT a session notify (see [selectFrameIndex]), so this
+  /// fires when the row LIST changes and stays quiet while the playhead
+  /// runs. 유저가 기각한 안은 「인덱스 옮길 때마다 위젯 싹 다시 만들기」이고
+  /// the index never comes through here — it is the cursor layer's value
+  /// channel, one layer down.
+  ///
+  /// Bound ONCE: a merge rebuilt per pass re-subscribes on every build.
+  late final Listenable _collapsedRowStructure = Listenable.merge([
+    widget.session,
+    _expandedLaneLayerIds,
+    _expandedLaneGroupKeys,
+    _hiddenTimelineSections,
+    _timelineRowFilter,
+    _collapsedAttachBaseIds,
+    _timelinePixelsPerFrame,
+    _railExtents[LayerRailId.timeline],
+  ]);
+
+  /// R26 #44's fact bundle for the collapsed row — bound ONCE, exactly like
+  /// the timeline tab's own: a fresh bundle per build re-subscribes the row
+  /// painters every pass and defeats the repaint gating it exists for.
+  late final TimelineCelContentSource _collapsedCelContent =
+      TimelineCelContentSource(
+        hasContent: widget.session.celHasContentForLayer,
+        revision: widget.session.celTintRevision,
+      );
+
+  /// The FRAME half of the collapsed row: the REAL row the timeline draws.
+  ///
+  /// ⑩ 뿌리 C — the overlay used to draw this half itself, and every symptom
+  /// reported against it was that copy falling behind the original: blocks
+  /// that did not move, names that never appeared, SE rows shaped
+  /// differently, an index that did not update. Mounting the row is the only
+  /// version of *그대로* that stays true when the row grows a column.
+  ///
+  /// ★It costs nothing per frame tick, which is what makes it allowed here:
+  /// `TimelineFrameCellsRow` is CURSOR-INDEPENDENT by design, so 구조는
+  /// 리빌드 · 인덱스는 리페인트 is what mounting it already does — no
+  /// overlay-wide `ListenableBuilder`, which is the shape the user rejected.
+  ///
+  /// Null for a row the timeline has no widget for — the gap's TRACK row,
+  /// whose blocks are cuts rather than exposures. That one still falls back
+  /// to the painter, and this is why it survives.
+  Widget Function(BuildContext, TimelineFrameGeometryHandle)?
+  _collapsedFrameRowBuilder() {
+    final session = widget.session;
+    final row = session.currentRow;
+    final layerId = switch (row) {
+      LayerRowAddress(:final layerId) => layerId,
+      LaneRowAddress(:final layerId) => layerId,
+      _ => null,
+    };
+    if (layerId == null) {
+      return null;
+    }
+    final layer = session.layers
+        .where((candidate) => candidate.id == layerId)
+        .firstOrNull;
+    if (layer == null) {
+      return null;
+    }
+    final metrics = TimelineGridMetrics(
+      frameCellWidth: _timelinePixelsPerFrame.value,
+      layerRowHeight: CollapsedRowOverlay.height,
+    );
+    final lane = row is LaneRowAddress
+        ? timelineLanesForLayer(
+            layer: layer,
+            session: session,
+            expandedGroupKeys: _expandedLaneGroupKeys.value,
+          ).where((candidate) => candidate.laneId == row.laneId).firstOrNull
+        : null;
+    if (row is LaneRowAddress && lane == null) {
+      return null;
+    }
+    final displayRow = lane == null
+        ? TimelineDisplayRow.layer(layer, layerIndex: 0)
+        : TimelineDisplayRow.lane(layer, lane, layerIndex: 0);
+    return (context, geometry) => Stack(
+      fit: StackFit.expand,
+      children: [
+        if (lane != null)
+          TimelineLaneFrameRow(
+            layer: layer,
+            lane: lane,
+            frameStartIndex: geometry.value.frameStartIndex,
+            frameEndIndexExclusive: geometry.value.frameEndIndexExclusive,
+            leadingFrameSpacerWidth: 0,
+            trailingFrameSpacerWidth: 0,
+            metrics: metrics,
+            // Display-only: the overlay is inside an `IgnorePointer`, so
+            // the band has nobody to answer.
+          )
+        else
+          TimelineFrameCellsRow(
+            layer: layer,
+            active: true,
+            playbackFrameCount: session.activeCutPlaybackFrameCount,
+            geometry: geometry,
+            crossAxisExtent: CollapsedRowOverlay.height,
+            exposureStateForLayer: session.exposureStateForLayer,
+            frameNameForLayer: session.frameNameForLayer,
+            celContent: _collapsedCelContent,
+            projectFrameRate: session.projectFrameRate,
+            // `commaDrag`/`rangeGesture` stay null — display-only, same
+            // reason.
+            onSelectLayer: (_) {},
+            onSelectFrame: (_) {},
+          ),
+        // 🚨WHERE YOU ARE is a separate layer on purpose, and it is the
+        // whole of "인덱스는 리페인트": the row above is CURSOR-INDEPENDENT
+        // by design, so the playhead cannot live in it — it lives here, on
+        // a value channel, and a frame tick repaints this and rebuilds
+        // nothing. That is also why the overlay needs no listener of its
+        // own: 문답 7's 「커서 = 스냅샷이 정본 / 그림 = 위젯이 정본」 is
+        // exactly these two children, in this order.
+        TimelineCursorLayer(
+          frameCursor: session.editingFrameCursor,
+          rows: [displayRow],
+          activeLayerId: layer.id,
+          currentRow: session.currentRowListenable,
+          frameStartIndex: geometry.value.frameStartIndex,
+          frameEndIndexExclusive: geometry.value.frameEndIndexExclusive,
+          leadingFrameSpacerWidth: 0,
+          metrics: metrics,
+          exposureStateForLayer: session.exposureStateForLayer,
+          crossAxisExtent: CollapsedRowOverlay.height,
+        ),
+      ],
     );
   }
 
