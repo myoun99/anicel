@@ -191,6 +191,85 @@ void main() {
     );
   });
 
+  test('a RECOVERED session does not snapshot over the file its own cels '
+      'live in', () async {
+    // The nastiest shape this design has. Recovery points every restored
+    // cel's ref INTO the overlay and clears the RAM tiers — and it clears
+    // the dirty set too, so a snapshot taken afterwards would carry no
+    // cels at all and rename that over the only copy. The live refs would
+    // then be reading past the end of a file holding a stamp and a
+    // project.json. No edit is needed to reach it: a recovered session
+    // arrives dirty, so one alt-tab is enough.
+    final s = session();
+    drawOnCurrentFrame(s);
+    await s.saveProjectToFile(projectPath);
+    s.createCut();
+    drawOnCurrentFrame(s);
+    await s.writeAutosaveSnapshot(overlayPath);
+    final overlayCels = celEntriesOf(overlayPath);
+    expect(overlayCels, hasLength(1));
+
+    final restored = session();
+    await restored.openProjectFromFile(projectPath, overlayPath: overlayPath);
+    // The lifecycle fires with no edits at all.
+    await restored.writeAutosaveSnapshot(overlayPath);
+
+    expect(
+      celEntriesOf(overlayPath),
+      overlayCels,
+      reason: 'the recovered work was overwritten by an empty snapshot',
+    );
+  });
+
+  test('a base that cannot be stamped writes NO overlay', () async {
+    // Both directions are worse than skipping. A null stamp on both sides
+    // compares equal, which merges a delta nobody checked; and a base that
+    // was merely unreadable at snapshot time would never match again,
+    // which makes the project refuse to open and then loses the overlay to
+    // the decline path.
+    final s = session();
+    drawOnCurrentFrame(s);
+    await s.saveProjectToFile(projectPath);
+    s.createCut();
+
+    File(projectPath).writeAsStringSync('not an archive any more');
+    expect(anicelBaseStamp(projectPath), isNull);
+
+    await s.writeAutosaveSnapshot(overlayPath);
+
+    expect(File(overlayPath).existsSync(), isFalse);
+  });
+
+  test('an overlay whose write finished after a manual save is discarded, '
+      'not renamed into place', () async {
+    // The save retires the snapshot on its way out. A write that was
+    // already in the isolate would otherwise land afterwards, recreating
+    // one for a cleanly saved project — stamped against the base as it was
+    // BEFORE the save, so the next open offers a recovery that then throws.
+    final s = session();
+    drawOnCurrentFrame(s);
+    await s.saveProjectToFile(projectPath);
+    s.createCut();
+    drawOnCurrentFrame(s);
+
+    await AnicelFileService().writeRecoveryOverlay(
+      project: s.repository.requireProject(),
+      brushFrameStore: s.brushFrameStore,
+      filePath: overlayPath,
+      baseFilePath: projectPath,
+      isStale: () => true,
+    );
+
+    expect(File(overlayPath).existsSync(), isFalse);
+    expect(
+      Directory(directory.path)
+          .listSync()
+          .where((e) => e.path.contains('.tmp-')),
+      isEmpty,
+      reason: 'a discarded write must not leave its temp behind',
+    );
+  });
+
   test('writing an overlay does NOT adopt refs, so the next manual save '
       'still knows what changed', () async {
     // This is the bug the timer had: adopting pointed the store at the
