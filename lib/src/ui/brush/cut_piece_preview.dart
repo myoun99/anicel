@@ -27,12 +27,7 @@ const int cutPiecePreviewGrid = 20;
 /// The scale is not: inside a fixed box a percentage cannot show, and the
 /// panel prints the number beside it. (The CURSOR preview is the opposite
 /// case and scales, because there the size is the whole point.)
-void paintCutPiece(
-  Canvas canvas,
-  Rect target,
-  CutPiece piece, {
-  double opacity = 1,
-}) {
+void paintCutPiece(Canvas canvas, Rect target, CutPiece piece) {
   final image = piece.flippedImage();
   final width = image.width;
   final height = image.height;
@@ -87,7 +82,7 @@ void paintCutPiece(
         (r / a).round().clamp(0, 255),
         (g / a).round().clamp(0, 255),
         (b / a).round().clamp(0, 255),
-      ).withValues(alpha: (a / count / 255) * opacity);
+      ).withValues(alpha: a / count / 255);
       canvas.drawRect(
         Rect.fromLTWH(
           left + col * cellWidth,
@@ -170,8 +165,12 @@ class _CutPiecePreviewPainter extends CustomPainter {
 /// the only way to find out where it goes is to drop it and undo.
 ///
 /// Unlike the panel thumbnail this DOES scale, because the footprint is the
-/// question being asked. It is drawn faded and outlined so it reads as a
-/// preview rather than as paint that already landed.
+/// question being asked.
+///
+/// ⛔It draws the piece and nothing else — no fade, no outline. Both were
+/// here briefly and the user removed them: *"그냥 심플하게 진짜 그냥
+/// 아무것도 안 하고 프리뷰만 띄워."* Same note as
+/// [[tool-settings-panel-convention]] — do not decorate this.
 class CutPieceCursorOverlay extends StatelessWidget {
   const CutPieceCursorOverlay({
     super.key,
@@ -208,10 +207,7 @@ class CutPieceCursorOverlay extends StatelessWidget {
         child: RepaintBoundary(
           child: CustomPaint(
             key: const ValueKey<String>('cut-piece-cursor-overlay'),
-            painter: _CutPieceCursorPainter(
-              piece: piece,
-              outlineColor: Theme.of(context).colorScheme.onSurfaceVariant,
-            ),
+            painter: _CutPieceCursorPainter(piece: piece),
             child: const SizedBox.expand(),
           ),
         ),
@@ -221,31 +217,15 @@ class CutPieceCursorOverlay extends StatelessWidget {
 }
 
 class _CutPieceCursorPainter extends CustomPainter {
-  const _CutPieceCursorPainter({
-    required this.piece,
-    required this.outlineColor,
-  });
+  const _CutPieceCursorPainter({required this.piece});
 
   final CutPiece piece;
-  final Color outlineColor;
 
   @override
-  void paint(Canvas canvas, Size size) {
-    final bounds = Offset.zero & size;
-    paintCutPiece(canvas, bounds, piece, opacity: 0.7);
-    // A hairline says where the piece ENDS, which matters when it is
-    // mostly transparent and its silhouette alone does not show the box.
-    canvas.drawRect(
-      bounds.deflate(0.5),
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1
-        ..color = outlineColor.withValues(alpha: 0.5),
-    );
-  }
+  void paint(Canvas canvas, Size size) =>
+      paintCutPiece(canvas, Offset.zero & size, piece);
 
   @override
   bool shouldRepaint(_CutPieceCursorPainter oldDelegate) =>
-      !identical(oldDelegate.piece, piece) ||
-      oldDelegate.outlineColor != outlineColor;
+      !identical(oldDelegate.piece, piece);
 }
