@@ -28,6 +28,8 @@ class BrushSettingsPanel extends StatelessWidget {
     required this.onChanged,
     this.tips = const <BrushTipEntry>[],
     this.onTipImportRequested,
+    this.onRenameTip,
+    this.onDeleteTip,
   });
 
   final BrushToolState state;
@@ -39,6 +41,11 @@ class BrushSettingsPanel extends StatelessWidget {
 
   /// Opens the add-a-tip-from-an-image flow.
   final VoidCallback? onTipImportRequested;
+
+  /// Manage the tip picked inside the library popup. Null leaves the
+  /// buttons out — the same shape [onTipImportRequested] already has.
+  final void Function(BrushTipEntry tip)? onRenameTip;
+  final void Function(BrushTipEntry tip)? onDeleteTip;
 
   // The `language` parameter left with the blend row: it existed only for
   // the blend labels (ja = CSP terms), and the rest of the panel reads its
@@ -97,6 +104,8 @@ class BrushSettingsPanel extends StatelessWidget {
               selected: state.tipMask,
               tips: tips,
               onImportRequested: onTipImportRequested,
+              onRenameTip: onRenameTip,
+              onDeleteTip: onDeleteTip,
               // The sampled tip REPLACES hardness and tip shape, so clearing
               // it is how a brush gets its parametric footprint back — which
               // is why this goes through withTipMask rather than copyWith.
@@ -278,6 +287,8 @@ class BrushSettingsPanel extends StatelessWidget {
               selected: state.dualMask,
               tips: tips,
               onImportRequested: onTipImportRequested,
+              onRenameTip: onRenameTip,
+              onDeleteTip: onDeleteTip,
               onPicked: (mask) =>
                   onChanged(state.withMask(BrushMaskSlot.dual, mask)),
             ),
@@ -299,6 +310,8 @@ class BrushSettingsPanel extends StatelessWidget {
               selected: state.textureMask,
               tips: tips,
               onImportRequested: onTipImportRequested,
+              onRenameTip: onRenameTip,
+              onDeleteTip: onDeleteTip,
               onPicked: (mask) =>
                   onChanged(state.withMask(BrushMaskSlot.texture, mask)),
             ),

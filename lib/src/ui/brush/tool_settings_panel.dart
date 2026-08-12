@@ -41,6 +41,8 @@ class ToolSettingsPanel extends StatelessWidget {
     this.onEyedropperSourceChanged,
     this.tips = const <BrushTipEntry>[],
     this.onTipImportRequested,
+    this.onRenameTip,
+    this.onDeleteTip,
     this.guides,
     this.selectedGuideId,
     this.onGuidesCommitted,
@@ -61,6 +63,11 @@ class ToolSettingsPanel extends StatelessWidget {
 
   /// Opens the add-a-tip-from-an-image flow.
   final VoidCallback? onTipImportRequested;
+
+  /// Manage a tip from inside the library popup. The pair of them is why
+  /// picking no longer dismisses that popup.
+  final void Function(BrushTipEntry tip)? onRenameTip;
+  final void Function(BrushTipEntry tip)? onDeleteTip;
 
   /// The program language (BB-2): the brush blend labels localize
   /// (ja = CSP terms); everything else keeps incremental coverage.
@@ -119,6 +126,8 @@ class ToolSettingsPanel extends StatelessWidget {
           onChanged: onChanged,
           tips: tips,
           onTipImportRequested: onTipImportRequested,
+          onRenameTip: onRenameTip,
+          onDeleteTip: onDeleteTip,
         ),
         CanvasTool.fill => _FillSettings(
           options: fillOptions,

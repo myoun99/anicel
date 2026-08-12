@@ -23,6 +23,7 @@ import '../services/brush_tip_library_service.dart';
 import '../services/canvas_color_sampler.dart' show CanvasColorSampleSource;
 import '../services/canvas_flood_fill.dart' show FloodFillOptions;
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
+import '../models/brush_tip_entry.dart';
 import '../services/cut_piece_slot.dart';
 import '../services/cut_piece_tip.dart';
 import '../services/resample/resample_kernel.dart' show ResampleMode;
@@ -527,6 +528,71 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   final CutPieceSlot _cutPieceSlot = CutPieceSlot();
 
   int _registeredCutTipSequence = 0;
+
+  /// Rename a library tip. The model has had this since the library
+  /// landed; what it never had was anywhere to be called from.
+  Future<void> _renameTip(BrushTipEntry tip) async {
+    final controller = TextEditingController(text: tip.name);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const ValueKey<String>('rename-tip-dialog'),
+        title: Text(AppText.strings.brRenameTip),
+        content: TextField(
+          key: const ValueKey<String>('rename-tip-name-field'),
+          controller: controller,
+          autofocus: true,
+          onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+            child: const Text('Rename'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    final trimmed = name?.trim();
+    if (trimmed != null && trimmed.isNotEmpty) {
+      _tipLibrary.rename(tip.id, trimmed);
+    }
+  }
+
+  /// Delete a library tip, behind a confirm.
+  ///
+  /// The confirm is not a general "are you sure" habit — this app's rule is
+  /// that explanatory notices are noise — but deleting is destructive and
+  /// unlike a stroke it has no undo behind it. Photoshop and Clip Studio
+  /// both ask here too.
+  Future<void> _deleteTip(BrushTipEntry tip) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const ValueKey<String>('delete-tip-dialog'),
+        title: Text(AppText.strings.brDeleteTip),
+        content: Text('“${tip.name}” will be removed from the library.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const ValueKey<String>('delete-tip-confirm'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed ?? false) {
+      await _tipLibrary.delete(tip.id);
+    }
+  }
 
   /// Promotes the held piece into the brush tip library.
   ///
@@ -1887,6 +1953,8 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                                                           ),
                                                   onRegisterCutPieceAsTip:
                                                       _registerCutPieceAsTip,
+                                                  onRenameTip: _renameTip,
+                                                  onDeleteTip: _deleteTip,
                                                   language: widget
                                                       .session
                                                       .languageSettings
