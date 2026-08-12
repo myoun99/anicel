@@ -22,9 +22,11 @@ void main() {
 
   group('picker filters carry both halves', () {
     test('every group sets extensions AND uniformTypeIdentifiers', () {
-      const groups = <String, dynamic>{
+      final groups = <String, dynamic>{
         'anicelProject': FileTypeGroups.anicelProject,
-        'brushes': FileTypeGroups.brushes,
+        // The iOS shape: that is the platform the identifiers are load
+        // bearing on, and the one whose picker throws without them.
+        'brushes': FileTypeGroups.brushesFor('ios'),
         'images': FileTypeGroups.images,
         'viewableMedia': FileTypeGroups.viewableMedia,
         'importableMedia': FileTypeGroups.importableMedia,
@@ -46,6 +48,35 @@ void main() {
               '${entry.key} needs uniformTypeIdentifiers — file_selector_ios '
               'throws ArgumentError on an extension-only group.',
         );
+      }
+    });
+
+    // The brush group is the one that differs by platform, and it differs
+    // because the two Apple pickers read the SAME two fields differently:
+    // iOS filters on identifiers alone, macOS unions them with the
+    // extensions. `public.data` is therefore the only thing that makes the
+    // iOS picker usable and the only thing that makes the macOS one
+    // useless.
+    test('brushes: every platform but macOS carries the umbrella type', () {
+      for (final os in const ['ios', 'windows', 'linux', 'android']) {
+        expect(
+          FileTypeGroups.brushesFor(os).uniformTypeIdentifiers,
+          ['public.data'],
+          reason: 'on $os the identifiers are either load-bearing or '
+              'ignored — never a filter that narrows',
+        );
+      }
+      expect(
+        FileTypeGroups.brushesFor('macos').uniformTypeIdentifiers,
+        isEmpty,
+        reason: 'macOS takes the UNION of the two fields, so the umbrella '
+            'would offer the whole disk instead of the brush packs',
+      );
+    });
+
+    test('brushes: the extensions are the filter on every platform', () {
+      for (final os in const ['ios', 'macos', 'windows', 'linux', 'android']) {
+        expect(FileTypeGroups.brushesFor(os).extensions, brushFileExtensions);
       }
     });
 

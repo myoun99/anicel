@@ -4,6 +4,7 @@ import 'dart:io';
 import 'package:anicel/src/models/app_language.dart';
 import 'package:anicel/src/services/persistence/app_documents.dart';
 import 'package:anicel/src/services/persistence/folder_grant.dart';
+import 'package:anicel/src/ui/dialogs/folder_pick_flow.dart';
 import 'package:anicel/src/ui/input/app_input_settings.dart';
 import 'package:anicel/src/ui/text/app_strings.dart';
 
@@ -36,6 +37,10 @@ Future<void> testExecutable(FutureOr<void> Function() testMain) async {
   // and forgets to remove it would hand its fake to every file after it.
   // Cleared here rather than trusted to each suite's tearDown.
   FolderPicker.debugFolderPicker = null;
+  // Same hazard, same fix: the flow's platform seam decides whether a pick
+  // has to clear Android's storage grant first.
+  debugOperatingSystemOverride = null;
+  AppStorage.debugAllFilesAccessOverride = null;
   try {
     await testMain();
   } finally {

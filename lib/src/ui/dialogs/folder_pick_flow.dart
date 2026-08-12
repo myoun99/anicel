@@ -26,6 +26,31 @@ Future<String?> pickFolderForUser(
     (await pickFolderGrantForUser(context, initialDirectory: initialDirectory))
         ?.path;
 
+/// Whether a folder pick has to clear a storage grant before it may even
+/// open the picker.
+///
+/// Android alone: everywhere else the OS either attaches no permission to
+/// a path (Windows, Linux) or grants one with the pick itself (iOS,
+/// macOS). Pure over the OS name so BOTH answers can be pinned from the
+/// Windows workstation this app is written on — the same seam
+/// `FolderPicker.scopedForPlatform` uses, and for the same reason: a test
+/// asserting `Platform.isAndroid` here would be asserting `false == false`.
+bool folderPickNeedsStorageGrant(String operatingSystem) =>
+    operatingSystem == 'android';
+
+/// Test seam for the OS the flow branches on.
+///
+/// The gate's whole job is to keep an Android user out of a picker that
+/// would refuse every folder, and the notice it raises had NO coverage
+/// after the in-app browser (its only test consumer) was deleted. Reset in
+/// `test/flutter_test_config.dart` — a top-level left set by one file
+/// would hand its answer to every file after it.
+@visibleForTesting
+String? debugOperatingSystemOverride;
+
+String get _operatingSystem =>
+    debugOperatingSystemOverride ?? Platform.operatingSystem;
+
 /// The same flow, keeping the whole grant.
 ///
 /// The project open and Save-As paths need the BOOKMARK as well as the path:
@@ -41,7 +66,8 @@ Future<FolderGrant?> pickFolderGrantForUser(
   // fails without the All-Files grant — which would surface as "this
   // location has no folder path" and send the user hunting for a different
   // folder when the folder was never the problem. Ask first.
-  if (Platform.isAndroid && !await AppStorage.isAllFilesAccessGranted()) {
+  if (folderPickNeedsStorageGrant(_operatingSystem) &&
+      !await AppStorage.isAllFilesAccessGranted()) {
     if (!context.mounted) {
       return null;
     }

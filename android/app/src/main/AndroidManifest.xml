@@ -12,9 +12,17 @@
         android:maxSdkVersion="32" />
     <!-- AUDIO-PRO R5: guide-voice recording. -->
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <!-- requestLegacyExternalStorage is Android 10 (API 29) ONLY, and
+         ignored from 30 up: on 29 there is no MANAGE_EXTERNAL_STORAGE to
+         ask for, and scoped storage hides the public Documents folder the
+         project model is built on — so an API-29 tablet cannot open its
+         own default folder without it. Anicel ships to old tablets on
+         purpose, so the answer is the compatibility flag rather than
+         raising minSdk. -->
     <application
         android:label="Anicel"
         android:name="${applicationName}"
+        android:requestLegacyExternalStorage="true"
         android:icon="@mipmap/ic_launcher">
         <activity
             android:name=".MainActivity"
