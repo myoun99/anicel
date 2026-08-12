@@ -1,0 +1,41 @@
+name: Run a test shard
+description: >
+  Runs the slice of test/**/*_test.dart that belongs to one shard. Splitting
+  the FILE LIST is what makes sharding pay here — see the comment above the
+  analyze-and-test job in ci.yml for why --total-shards does not.
+
+inputs:
+  total:
+    description: How many shards the suite is split into.
+    required: true
+  index:
+    description: Which shard this job runs (0-based, less than total).
+    required: true
+
+runs:
+  using: composite
+  steps:
+    - shell: bash
+      run: |
+        set -euo pipefail
+        find test -name '*_test.dart' | sort > "$RUNNER_TEMP/all_tests.txt"
+        total_files=$(wc -l < "$RUNNER_TEMP/all_tests.txt")
+        awk "NR % ${{ inputs.total }} == ${{ inputs.index }}" \
+          "$RUNNER_TEMP/all_tests.txt" > "$RUNNER_TEMP/shard_tests.txt"
+        shard_files=$(wc -l < "$RUNNER_TEMP/shard_tests.txt")
+        echo "shard ${{ inputs.index }} of ${{ inputs.total }}:" \
+          "$shard_files of $total_files files"
+        # A selector that matched nothing would otherwise sail through
+        # green — the one way sharding could silently drop coverage.
+        if [ "$shard_files" -eq 0 ]; then
+          echo "shard selected no test files"
+          exit 1
+        fi
+        # `flutter` is a .bat on Windows, so the whole invocation passes
+        # through cmd.exe's ~8191-character buffer whichever shell starts
+        # it. Measured: 182 paths / 8284 chars dies in 598ms with "command
+        # line too long"; 91 paths / 4105 chars is fine. xargs splits the
+        # list into batches that fit and exits non-zero if any batch fails,
+        # so the project's rule still holds — the exit code decides.
+        tr '\n' '\0' < "$RUNNER_TEMP/shard_tests.txt" \
+          | xargs -0 -s 4000 flutter test

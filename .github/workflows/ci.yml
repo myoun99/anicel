@@ -11,8 +11,15 @@ on:
   pull_request:
   workflow_dispatch:
 
+# A PR keeps ONE group, so pushing a fix supersedes the run it replaces —
+# that is the behaviour worth keeping. A master push must NOT: consecutive
+# merges land minutes apart and shared a single group, so each new merge
+# killed the previous one's run. Measured on 2026-08-12: 11 of 21 master
+# pushes were cancelled that way, burning 364 runner-minutes and leaving
+# master with a completed verdict on only 9 of 21 commits. Giving pushes a
+# per-commit group lets every merged commit finish and say something.
 concurrency:
-  group: ci-${{ github.ref }}
+  group: ci-${{ github.ref }}-${{ github.event_name == 'push' && github.sha || 'pr' }}
   cancel-in-progress: true
 
 env:
@@ -40,9 +47,41 @@ jobs:
       - name: Show artifacts
         run: ls -la build/ci-gcc build/ci-clang
 
+  # Sharded by FILE LIST, and the distinction is the whole point.
+  #
+  # Measured on run 31582250482: of this job's 752s test step, only 609
+  # slot-seconds are tests actually executing — the other 836 are per-file
+  # kernel compile and `flutter_tester` spawn, paid 728 times at 1.17s each
+  # (on Windows, 3.08s each). So the way to make the suite faster is to
+  # hand each runner FEWER FILES, not fewer tests.
+  #
+  # `flutter test --total-shards` does NOT do that: test_core's _shardSuite
+  # filters an already-LOADED suite by test index, so every shard still
+  # compiles and spawns all 728 files. Measured, it saturates at 1.20x no
+  # matter how many shards you buy (N=2 24m59s, N=8 23m05s, N=12 22m52s).
+  # Splitting the file list divides load AND work: a 1-in-8 file list ran
+  # at 0.142x of the full suite, 88% of linear. Do not "simplify" this back
+  # into --total-shards.
+  #
+  # Coverage is unchanged: `awk NR % N == index` partitions the sorted list,
+  # so every file runs in exactly one shard, and the step fails if a shard
+  # selects nothing.
   analyze-and-test:
-    name: analyze + full test suite
+    name: analyze + full test suite (shard ${{ matrix.shard }})
     runs-on: ubuntu-latest
+    strategy:
+      # Without this one red shard hides the others, and the point of
+      # splitting is to learn everything each run has to tell us.
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
+    # Job-wide rather than on the test step: the step is a composite action
+    # now, and an env that has to travel through one is an env that can go
+    # missing. QA_REQUIRE_NATIVE turns "engine not found" from a skip into
+    # a failure, which is the only reason a parity suite means anything.
+    env:
+      QA_ENGINE_PATH: ${{ github.workspace }}/build/native_standalone/libqa_engine.so
+      QA_REQUIRE_NATIVE: '1'
     steps:
       - uses: actions/checkout@v5
       - uses: subosito/flutter-action@v2
@@ -60,7 +99,12 @@ jobs:
           path: .dart_tool/hooks_runner/shared
           key: hooks-shared-${{ runner.os }}-${{ hashFiles('pubspec.lock') }}
       - run: flutter pub get
-      - run: flutter analyze
+      # Once, not once per shard — it reads the whole package either way.
+      # Kept INSIDE the matrix rather than split into its own job so that
+      # deleting the guard can only make it run three times (noisy), never
+      # zero (silent). 26s on one shard is the price of that asymmetry.
+      - if: matrix.shard == 0
+        run: flutter analyze
       # The parity suites resolve a locally built engine or SKIP. This job
       # used to run without one — the gcc build lives in a different job on
       # a different runner, so its artifacts were never here — which meant
@@ -69,27 +113,27 @@ jobs:
       # #614 is the standing lesson about what an unexercised parity suite
       # is worth: it stayed green for five rounds while Apple silicon
       # rendered different pixels.
-      - name: Build native engine (parity suites need a real binary)
-        run: |
-          cmake -S packages/qa_native/src -B build/native_standalone \
-            -DCMAKE_BUILD_TYPE=Release
-          cmake --build build/native_standalone --config Release
+      - uses: ./.github/actions/native-engine
       # The project's green rule: the exit code decides, never the tail.
       - name: Run tests against the gcc-built engine
-        env:
-          QA_ENGINE_PATH: ${{ github.workspace }}/build/native_standalone/libqa_engine.so
-          QA_REQUIRE_NATIVE: '1'
-        run: flutter test
+        uses: ./.github/actions/test-shard
+        with:
+          total: 3
+          index: ${{ matrix.shard }}
 
   android:
     name: Android build
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
+      # Gradle re-resolved every dependency on every run; setup-java already
+      # knows how to keep them, so this is one line rather than a hand-rolled
+      # cache step with a key to get wrong.
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
           java-version: '17'
+          cache: gradle
       - uses: subosito/flutter-action@v2
         with:
           flutter-version: ${{ env.FLUTTER_VERSION }}
@@ -131,9 +175,22 @@ jobs:
       - run: flutter pub get
       - run: flutter build windows --debug
 
+  # The critical path, and the reason this file was restructured: measured
+  # at 27m34s against every other job finishing by 13m44s. Windows is NOT
+  # slower at running tests (508s of in-file execution against Linux's 527s)
+  # — it is 2.6x slower at loading them, 3.08s per file against 1.17s, and
+  # it pays that 728 times. Four shards is where the measured round-robin
+  # imbalance (1.245x at N=4) still beats the per-job fixed cost.
   windows:
-    name: Windows + native DLL
+    name: Windows + native DLL (shard ${{ matrix.shard }})
     runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2, 3]
+    env:
+      QA_ENGINE_PATH: build/native_standalone/Release/qa_engine.dll
+      QA_REQUIRE_NATIVE: '1'
     steps:
       - uses: actions/checkout@v5
       - uses: subosito/flutter-action@v2
@@ -149,12 +206,9 @@ jobs:
       # The engine DLL the parity tests need; without it those tests skip
       # loudly rather than fail, so building it here is what actually
       # exercises the C implementation against the Dart reference.
-      - name: Build native engine (Release)
-        run: |
-          cmake -S packages/qa_native/src -B build/native_standalone
-          cmake --build build/native_standalone --config Release
+      - uses: ./.github/actions/native-engine
       - name: Run tests with the engine on PATH
-        env:
-          QA_ENGINE_PATH: build/native_standalone/Release/qa_engine.dll
-          QA_REQUIRE_NATIVE: '1'
-        run: flutter test
+        uses: ./.github/actions/test-shard
+        with:
+          total: 4
+          index: ${{ matrix.shard }}
