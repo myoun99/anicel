@@ -227,7 +227,7 @@ void main() {
         sampleRate: 48000,
         fingerprint: const ConformSourceFingerprint(
           sourceLength: 1,
-          sourceModifiedMicros: 2,
+          sourceCrc32: 2,
         ),
         speedNumerator: 1001,
         speedDenominator: 1000,
@@ -244,7 +244,7 @@ void main() {
           sampleRate: 48000,
           fingerprint: const ConformSourceFingerprint(
             sourceLength: 1,
-            sourceModifiedMicros: 2,
+            sourceCrc32: 2,
           ),
         ),
       );

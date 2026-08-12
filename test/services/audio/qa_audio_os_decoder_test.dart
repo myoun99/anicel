@@ -137,7 +137,7 @@ void main() {
       sampleRate: 44100,
       fingerprint: const ConformSourceFingerprint(
         sourceLength: 1,
-        sourceModifiedMicros: 1,
+        sourceCrc32: 1,
       ),
     );
     final decoded = decoder!.decode(wav);

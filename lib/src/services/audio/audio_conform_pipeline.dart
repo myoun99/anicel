@@ -30,6 +30,7 @@ library;
 import 'dart:io';
 import 'dart:typed_data';
 
+import '../persistence/anicel_incremental_writer.dart' show anicelCrc32;
 import 'audio_peaks_extractor.dart';
 import 'conform_wav_codec.dart';
 
@@ -173,22 +174,17 @@ class AudioConformPipeline {
   final int speedNumerator;
   final int speedDenominator;
 
-  /// The fingerprint [sourcePath] currently has, or null when it is gone.
-  static ConformSourceFingerprint? fingerprintOf(String sourcePath) {
-    try {
-      final file = File(sourcePath);
-      if (!file.existsSync()) {
-        return null;
-      }
-      final stat = file.statSync();
-      return ConformSourceFingerprint(
-        sourceLength: stat.size,
-        sourceModifiedMicros: stat.modified.microsecondsSinceEpoch,
+  /// The fingerprint [sourceBytes] carries.
+  ///
+  /// Takes BYTES rather than a path because the fingerprint is content
+  /// now — and because the caller reads the source anyway to decode it, so
+  /// this costs a pass over bytes already in hand rather than a second
+  /// visit to the disk.
+  static ConformSourceFingerprint fingerprintOf(Uint8List sourceBytes) =>
+      ConformSourceFingerprint(
+        sourceLength: sourceBytes.length,
+        sourceCrc32: anicelCrc32(sourceBytes),
       );
-    } on Object {
-      return null;
-    }
-  }
 
   /// A name inside [directory] that no existing file claims: `x.wav`,
   /// then `x-1.wav`, `x-2.wav`. Pro Tools does the same on import, and the
@@ -230,13 +226,20 @@ class AudioConformPipeline {
     required String sourcePath,
     required String? conformPath,
   }) {
-    final fingerprint = fingerprintOf(sourcePath);
-    if (fingerprint == null) {
-      return const ConformResult(
+    // The source is read BEFORE the reuse check, because the fingerprint is
+    // content: there is no way to ask "has this changed" without looking at
+    // it. The read is the cheap half — a reuse still skips the decode, the
+    // resample and the write, which is where a conform's cost actually is.
+    final Uint8List sourceBytes;
+    try {
+      sourceBytes = File(sourcePath).readAsBytesSync();
+    } on Object catch (error) {
+      return ConformResult(
         outcome: ConformOutcome.sourceMissing,
-        error: 'the source file is missing',
+        error: 'could not read the source: $error',
       );
     }
+    final fingerprint = fingerprintOf(sourceBytes);
 
     final existing = conformPath == null ? null : _readConform(conformPath);
     if (existing != null &&
@@ -264,16 +267,6 @@ class AudioConformPipeline {
         frames: existing.length,
         speedNumerator: speedNumerator,
         speedDenominator: speedDenominator,
-      );
-    }
-
-    final Uint8List sourceBytes;
-    try {
-      sourceBytes = File(sourcePath).readAsBytesSync();
-    } on Object catch (error) {
-      return ConformResult(
-        outcome: ConformOutcome.sourceMissing,
-        error: 'could not read the source: $error',
       );
     }
 
