@@ -523,25 +523,39 @@ class SePaperSpan extends StatelessWidget {
     super.key,
     required this.axis,
     required this.frameCellExtent,
+    this.paper = timelineDrawingHeldColor,
   });
 
   final Axis axis;
   final double frameCellExtent;
 
+  /// The block's own colour — its layer's mark (⑲). Defaulted, so a host
+  /// with no layer in hand still gets the paper.
+  final Color paper;
+
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      painter: _SePaperPainter(axis: axis, frameCellExtent: frameCellExtent),
+      painter: _SePaperPainter(
+        axis: axis,
+        frameCellExtent: frameCellExtent,
+        paper: paper,
+      ),
       child: const SizedBox.expand(),
     );
   }
 }
 
 class _SePaperPainter extends CustomPainter {
-  _SePaperPainter({required this.axis, required this.frameCellExtent});
+  _SePaperPainter({
+    required this.axis,
+    required this.frameCellExtent,
+    required this.paper,
+  });
 
   final Axis axis;
   final double frameCellExtent;
+  final Color paper;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -549,7 +563,7 @@ class _SePaperPainter extends CustomPainter {
       Offset.zero & size,
       const Radius.circular(4),
     );
-    canvas.drawRRect(rrect, Paint()..color = timelineDrawingHeldColor);
+    canvas.drawRRect(rrect, Paint()..color = paper);
 
     canvas.save();
     canvas.clipRRect(rrect);
@@ -583,6 +597,9 @@ class _SePaperPainter extends CustomPainter {
   @override
   bool shouldRepaint(_SePaperPainter oldDelegate) {
     return axis != oldDelegate.axis ||
-        frameCellExtent != oldDelegate.frameCellExtent;
+        frameCellExtent != oldDelegate.frameCellExtent ||
+        // A mark change repaints the block (⑲) — without this the row would
+        // keep the colour it was first painted with.
+        paper != oldDelegate.paper;
   }
 }

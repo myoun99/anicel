@@ -14,6 +14,8 @@ import '../text/app_strings.dart';
 import '../text/vertical_writing.dart'
     show verticalTextCapacityCells, verticalTextCells, verticalTextSpanCount;
 import '../text/vertical_writing_text.dart';
+// The default paper: [LayerMark.none] IS it (⑲/⑳).
+import 'timeline_cell_style.dart' show timelineDrawingHeldColor;
 
 /// Layer-label chip controls shared by both timeline orientations
 /// (horizontal rows and XSheet column headers): the timesheet-output toggle
@@ -642,10 +644,23 @@ String layerKindDisplayName(LayerKind kind) {
   };
 }
 
-/// Chip color of [mark]; null for [LayerMark.none].
-Color? layerMarkColor(LayerMark mark) {
+/// Chip colour of [mark] — and, since ⑲, the colour of that layer's frame
+/// BLOCKS as well.
+///
+/// ⑳ (user, 2026-08-12): 「레이어 색라벨 기본 = 흰색(지금은 프로그램
+/// 바탕색)」. It used to be null, drawn as a hole with a hairline round it,
+/// which is what made ⑲ read as a change at all: an unlabelled layer's
+/// blocks are [timelineDrawingHeldColor] and always have been, so saying
+/// 「none IS the paper」 makes the default label WHITE and leaves every
+/// unlabelled row painted by exactly the number it was painted by before.
+///
+/// The two items are one statement, and this is where it is written: a
+/// layer's mark is the colour of its paper. Nothing is lost by dropping the
+/// null — 「is there a mark」 is `mark == LayerMark.none`, which is what the
+/// question was always really asking.
+Color layerMarkColor(LayerMark mark) {
   return switch (mark) {
-    LayerMark.none => null,
+    LayerMark.none => timelineDrawingHeldColor,
     LayerMark.red => const Color(0xFFE05A4E),
     LayerMark.orange => const Color(0xFFE08D3C),
     LayerMark.yellow => const Color(0xFFE3C64B),
@@ -833,16 +848,15 @@ class _MarkSwatch extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final color = layerMarkColor(mark);
     return Container(
       width: layerMarkSlotWidth,
       height: layerMarkSlotWidth,
       decoration: BoxDecoration(
         shape: BoxShape.circle,
-        color: color,
-        border: color == null
-            ? Border.all(color: AppColors.hairlineStrong)
-            : null,
+        // ⑳: every mark is a filled swatch now, `none` included — it is the
+        // paper colour rather than a hole in the rail, so the ring that used
+        // to stand in for a missing fill has nothing left to describe.
+        color: layerMarkColor(mark),
       ),
     );
   }

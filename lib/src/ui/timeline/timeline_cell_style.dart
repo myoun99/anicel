@@ -16,6 +16,10 @@ class TimelineCellStyleColors {
 
 /// Drawing exposure blocks read like paper timesheet cells: near-white on
 /// the dark grid so held runs are unmistakable at a glance.
+///
+/// The DEFAULT paper — since ⑲/⑳ a block takes its layer's colour label
+/// instead, and [LayerMark.none] resolves to exactly this, so a row with no
+/// label is painted by the same number it always was.
 const Color timelineDrawingHeldColor = Color(0xFFE9E7E2);
 const Color timelineDrawingStartColor = timelineDrawingHeldColor;
 const Color timelineDrawingStartBorderColor = AppColors.hairlineStrong;
@@ -63,6 +67,15 @@ const Color timelineLaneInkColor = Color(0xFFF2F4F6);
 /// near-white 0xFFD7D5D0 never managed. Painting a translucent colour
 /// costs the same as an opaque one, so this stays free.
 const Color timelineEmptyCelBlockColor = Color(0x6EE9E7E2);
+
+/// The empty-cel look of an arbitrary [paper] — the alpha above, applied to
+/// whatever colour the row's block is made of (⑲).
+///
+/// One statement rather than two: "no picture yet" is a TRANSPARENCY of the
+/// paper, so it has to be derived from the paper and not be a second colour
+/// that happens to match it.
+Color timelineEmptyCelPaperColor(Color paper) =>
+    paper.withValues(alpha: timelineEmptyCelBlockColor.a);
 
 /// The PLAIN (non-block) frame grid's border alpha (UI-R14 #4): ONE
 /// faint value for every surface — the painterized drawing rows, the
@@ -197,6 +210,7 @@ TimelineCellStyleColors timelineCellStyleColors({
   required ColorScheme colorScheme,
   required TimelineCellExposureState exposureState,
   required bool selected,
+  Color paper = timelineDrawingHeldColor,
 }) {
   // UI-R21 #2: empty cells paint NOTHING — the row-level underlay owns
   // the paper (a surface base plus the active-row wash), so the cell
@@ -205,9 +219,13 @@ TimelineCellStyleColors timelineCellStyleColors({
   final exposureColor = switch (exposureState) {
     TimelineCellExposureState.uncovered ||
     TimelineCellExposureState.markUncovered => emptyBaseColor,
-    TimelineCellExposureState.drawingStart => timelineDrawingStartColor,
+    // ⑲ (user, 2026-08-12): 「블록 모드의 프레임블록은 레이어 색라벨 색을
+    // 그대로 따라간다 (…) 그냥 블록의 고정 하얀색을 레이어 색라벨
+    // 따라가도록」. START and HELD were two names for one number and stay
+    // that way — a run is one sheet of paper, and only its seams differ.
+    TimelineCellExposureState.drawingStart ||
     TimelineCellExposureState.held ||
-    TimelineCellExposureState.markHeld => timelineDrawingHeldColor,
+    TimelineCellExposureState.markHeld => paper,
   };
   // UI-R18 #8: the GRID OVERLAY owns every plain per-cell line now —
   // uncovered cells draw no border of their own, and the paper blocks'
