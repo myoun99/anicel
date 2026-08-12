@@ -1,10 +1,13 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/audio_clip.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
 import 'package:anicel/src/models/cut_id.dart';
+import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
@@ -34,6 +37,7 @@ Layer _layer(String id) => Layer(
 Project _project({
   List<Cut> cuts = const [],
   List<Layer> seLayers = const [],
+  List<MediaAsset> mediaAssets = const [],
 }) => Project(
   id: const ProjectId('p'),
   name: 'p',
@@ -41,7 +45,22 @@ Project _project({
   tracks: [
     Track(id: const TrackId('t'), name: 't', cuts: cuts, seLayers: seLayers),
   ],
+  mediaAssets: mediaAssets,
 );
+
+Layer _seLayer(String id, List<String> clipPaths) => Layer(
+  id: LayerId(id),
+  name: id,
+  frames: const [],
+  kind: LayerKind.se,
+  audioClips: [
+    for (final path in clipPaths)
+      AudioClip(filePath: path, frameId: FrameId('$id-frame')),
+  ],
+);
+
+MediaAsset _asset(String path, MediaAssetKind kind) =>
+    MediaAsset(path: path, name: path, kind: kind);
 
 void main() {
   group('project_lookup', () {
@@ -137,6 +156,52 @@ void main() {
         () => requireLayerAnywhere(project, const LayerId('missing')),
         throwsStateError,
       );
+    });
+  });
+
+  group('projectAudioSourcePaths', () {
+    // A conform reads the WHOLE source into memory before the decoder can
+    // reject it, so handing the pool over blind cost a full read of every
+    // movie and still on project open. One case per kind: the table is the
+    // contract, and adding a kind without deciding this is a failing test
+    // rather than a silent 3GB read.
+    for (final (kind, warmed) in const [
+      (MediaAssetKind.audio, true),
+      (MediaAssetKind.video, false),
+      (MediaAssetKind.image, false),
+      (MediaAssetKind.pdf, false),
+    ]) {
+      test('a ${kind.jsonValue} pool entry is '
+          '${warmed ? 'warmed' : 'left alone'}', () {
+        final project = _project(mediaAssets: [_asset('pool/file', kind)]);
+
+        expect(
+          projectAudioSourcePaths(project),
+          warmed ? {'pool/file'} : isEmpty,
+        );
+      });
+    }
+
+    test('SE clips are warmed whatever the pool holds, and a path in both '
+        'appears once', () {
+      final project = _project(
+        seLayers: [
+          _seLayer('se1', ['voice.wav', 'shared.wav']),
+          _seLayer('se2', ['footstep.wav']),
+        ],
+        mediaAssets: [
+          _asset('shared.wav', MediaAssetKind.audio),
+          _asset('bgm.wav', MediaAssetKind.audio),
+          _asset('reference.mp4', MediaAssetKind.video),
+        ],
+      );
+
+      expect(projectAudioSourcePaths(project), {
+        'voice.wav',
+        'shared.wav',
+        'footstep.wav',
+        'bgm.wav',
+      });
     });
   });
 }
