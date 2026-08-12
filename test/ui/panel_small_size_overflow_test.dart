@@ -81,6 +81,7 @@ void main() {
     onRenameAsset: (_, _) {},
     onRelinkAsset: (_, _) {},
     onRemoveAsset: (_) => true,
+    onPromoteAsset: (_) => true,
     fileExists: (_) => true,
   );
 

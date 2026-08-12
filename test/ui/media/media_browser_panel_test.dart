@@ -9,6 +9,8 @@ class _Callbacks {
   final renamed = <(String, String)>[];
   final relinked = <(String, String)>[];
   final removed = <String>[];
+  final promoted = <String>[];
+  var promoteResult = true;
   final opened = <MediaAsset>[];
   bool removeResult = true;
   Set<String> referencedPaths = {};
@@ -36,6 +38,10 @@ Future<void> _pump(
             onRemoveAsset: (path) {
               callbacks.removed.add(path);
               return callbacks.removeResult;
+            },
+            onPromoteAsset: (path) {
+              callbacks.promoted.add(path);
+              return callbacks.promoteResult;
             },
             onOpenAsset: callbacks.opened.add,
             audioFilePicker: picker,
@@ -208,5 +214,54 @@ void main() {
 
     expect(callbacks.removed, [foot]);
     expect(find.textContaining('Still linked'), findsOneWidget);
+  });
+
+  // The other half of importing by reference: the row where a user who
+  // referenced a file decides the project folder should own it after all.
+  group('register in project', () {
+    Future<void> tapPromote(WidgetTester tester) async {
+      await tester.tap(
+        find.byKey(const ValueKey<String>('media-asset-menu-$foot')),
+      );
+      await tester.pumpAndSettle();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('media-asset-menu-promote')),
+      );
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('hands the path to the host and says nothing on success', (
+      tester,
+    ) async {
+      final callbacks = _Callbacks();
+      await _pump(
+        tester,
+        callbacks,
+        assets: const [MediaAsset(path: foot, name: 'foot.wav')],
+      );
+
+      await tapPromote(tester);
+
+      expect(callbacks.promoted, [foot]);
+      expect(find.textContaining('Nothing to copy'), findsNothing);
+    });
+
+    testWidgets('a refusal explains itself rather than looking broken', (
+      tester,
+    ) async {
+      // Already inside the project, or a project with nowhere to copy to
+      // yet. A menu item that silently does nothing reads as a bug.
+      final callbacks = _Callbacks()..promoteResult = false;
+      await _pump(
+        tester,
+        callbacks,
+        assets: const [MediaAsset(path: foot, name: 'foot.wav')],
+      );
+
+      await tapPromote(tester);
+
+      expect(callbacks.promoted, [foot]);
+      expect(find.textContaining('Nothing to copy'), findsOneWidget);
+    });
   });
 }

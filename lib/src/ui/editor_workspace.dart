@@ -2032,6 +2032,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               onRenameAsset: widget.session.renameMediaAsset,
               onRelinkAsset: widget.session.relinkMediaAsset,
               onRemoveAsset: widget.session.removeMediaAsset,
+              onPromoteAsset: widget.session.promoteMediaAssetIntoProject,
               onOpenAsset: _openAssetInViewer,
             ),
           ),

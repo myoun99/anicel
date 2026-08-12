@@ -28,6 +28,7 @@ class MediaBrowserPanel extends StatelessWidget {
     required this.onRenameAsset,
     required this.onRelinkAsset,
     required this.onRemoveAsset,
+    required this.onPromoteAsset,
     this.onOpenAsset,
     this.audioFilePicker,
     this.fileExists,
@@ -50,6 +51,10 @@ class MediaBrowserPanel extends StatelessWidget {
 
   /// Returns false when the asset is still referenced (kept in the pool).
   final bool Function(String path) onRemoveAsset;
+
+  /// Copies a referenced file into the project's assets folder and points
+  /// the project at the copy. False when there was nothing to promote.
+  final bool Function(String path) onPromoteAsset;
 
   /// Opens the asset in the media viewer (double-click or the row menu);
   /// null hides both entrances.
@@ -85,6 +90,17 @@ class MediaBrowserPanel extends StatelessWidget {
       return;
     }
     onRenameAsset(asset.path, name);
+  }
+
+  void _promote(BuildContext context, MediaAsset asset) {
+    if (onPromoteAsset(asset.path)) {
+      return;
+    }
+    // Already inside, never-saved project, or the source is gone. Saying
+    // nothing would read as a menu item that does not work.
+    ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+      SnackBar(content: Text(AppText.strings.mediaAlreadyInProject)),
+    );
   }
 
   void _remove(BuildContext context, MediaAsset asset) {
@@ -291,6 +307,17 @@ class MediaBrowserPanel extends StatelessWidget {
                 keyValue: 'media-asset-menu-relink',
                 label: AppText.strings.mediaRelink,
                 onSelected: () => _relink(asset.path),
+              ),
+              // The other half of importing by reference: the moment the
+              // user decides the project folder should own this file
+              // after all. Offered on every row rather than only on
+              // references — a file already inside answers "nothing to
+              // do" honestly, and hiding it would mean the row's menu
+              // changes shape for a reason the user cannot see.
+              PanelFlyoutItem(
+                keyValue: 'media-asset-menu-promote',
+                label: AppText.strings.mediaRegisterInProject,
+                onSelected: () => _promote(context, asset),
               ),
               PanelFlyoutItem(
                 keyValue: 'media-asset-menu-remove',
