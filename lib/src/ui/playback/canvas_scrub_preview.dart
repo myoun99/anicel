@@ -147,14 +147,29 @@ class _CanvasScrubPreviewState extends State<CanvasScrubPreview> {
         key: ValueKey<String>('canvas-scrub-preview-gap-void'),
       );
     }
-    // Over-end cursors (the endless runway) display the cut's last frame.
-    final maxFrame = cut.duration > 0 ? cut.duration - 1 : 0;
-    final frameIndex = widget.frameCursor.value.clamp(0, maxFrame);
-    final composite = widget.compositeCache.validCompositeOrNull(
-      cut: cut,
-      frameIndex: frameIndex,
-      quality: widget.qualityOf(),
-    );
+    final cursor = widget.frameCursor.value;
+    final frameIndex = cursor < 0 ? 0 : cursor;
+    // ⑯: the over-end runway shows its OWN frame, which out there is blank
+    // paper. This used to clamp to the cut's last frame (UI-R9 #4's
+    // "clipped view"), and that is what made a drag show a picture the
+    // release then took away — the editing canvas reads the cursor
+    // literally and finds nothing out there.
+    //
+    // 🚨Removing the clamp is not enough on its own: the warm walks the
+    // CUT, so a runway lookup misses forever, and a miss means "still
+    // warming" to the held-frame policy below — it would go on showing
+    // whatever was last displayed. Past the end there is nothing to warm,
+    // so the miss is not "not yet", it is "nothing", and the paper says so.
+    // 「컷길이 넘은 부분이든 안쪽 부분이든 아무런 차이를 안 둔다」 (user
+    // 2026-08-13).
+    final pastCutEnd = frameIndex >= cut.duration;
+    final composite = pastCutEnd
+        ? null
+        : widget.compositeCache.validCompositeOrNull(
+            cut: cut,
+            frameIndex: frameIndex,
+            quality: widget.qualityOf(),
+          );
     if (composite != null && !identical(composite, _heldSource)) {
       _heldFrame?.dispose();
       _heldSource = composite;
@@ -164,7 +179,7 @@ class _CanvasScrubPreviewState extends State<CanvasScrubPreview> {
     return SizedBox.expand(
       child: CustomPaint(
         painter: PlaybackFramePainter(
-          image: _heldFrame,
+          image: pastCutEnd ? null : _heldFrame,
           canvasSize: cut.canvasSize,
           viewport: widget.viewport,
           paperBackground: widget.paperBackground,
