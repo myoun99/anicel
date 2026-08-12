@@ -386,11 +386,25 @@ class _HomePageState extends State<HomePage> {
         }
       case EditorActionIds.voiceRecordToggle:
         toggleVoiceRecordingWithFeedback(context, _session);
+      // While a polygon outline is open, undo/redo take its last vertex
+      // back and put it there again (유저 확정). They are NOT document
+      // history for that: a trace of twenty taps would otherwise bury the
+      // twenty real edits under it, and the undo cap is 200.
+      //
+      // The channel answers false once the trace is empty, so undo falls
+      // straight through to the document — undo never becomes a dead key
+      // just because a polygon was being drawn a moment ago.
       case EditorActionIds.undo:
+        if (_canvasSelectionCommands.undoPolygonPoint()) {
+          break;
+        }
         if (_session.canUndo) {
           _session.undo();
         }
       case EditorActionIds.redo:
+        if (_canvasSelectionCommands.redoPolygonPoint()) {
+          break;
+        }
         if (_session.canRedo) {
           _session.redo();
         }
@@ -475,9 +489,19 @@ class _HomePageState extends State<HomePage> {
         // the Move tool, so one code path (and one set of guards) owns
         // transforming.
         _brushTool.value = _brushTool.value.copyWith(tool: CanvasTool.move);
+      // CONFIRM. An open polygon outline is the newest thing this key can
+      // be closing, and it takes precedence: it is what the user is
+      // looking at (유저 확정 — 폴리곤 확정은 확정 버튼으로).
       case EditorActionIds.selectionTransformCommit:
+        if (_canvasSelectionCommands.closePolygon()) {
+          break;
+        }
         _canvasSelectionCommands.commitTransform();
       case EditorActionIds.selectionTransformCancel:
+        if (_canvasSelectionCommands.hasOpenPolygon) {
+          _canvasSelectionCommands.abandonPolygon();
+          break;
+        }
         _canvasSelectionCommands.cancelTransform();
       // The comma set row (UI-R17 #7): current block or whole selection.
       case EditorActionIds.timelineComma1:

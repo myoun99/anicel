@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/services/canvas_flood_fill.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
+import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/brush/tool_library_panel.dart';
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
 
@@ -76,6 +78,77 @@ void main() {
           );
         }
       }
+    });
+  });
+
+  group('the polygon confirm button', () {
+    const buttonKey = ValueKey<String>('selection-close-polygon-button');
+
+    Future<void> pumpSettings(
+      WidgetTester tester, {
+      required CanvasShapeKind shape,
+      required int points,
+      CanvasSelectionCommands? commands,
+    }) async {
+      final channel = commands ?? CanvasSelectionCommands();
+      for (var i = 0; i < points; i += 1) {
+        channel.addPolygonPoint(CanvasPoint(x: i * 10, y: i * 10));
+      }
+      await tester.pumpWidget(
+        app(
+          ToolSettingsPanel(
+            state: BrushToolState.defaults.withShapeKind(
+              shape,
+              forTool: CanvasTool.select,
+            ),
+            onChanged: (_) {},
+            fillOptions: const FloodFillOptions(),
+            onFillOptionsChanged: (_) {},
+            selectionCommands: channel,
+          ),
+        ),
+      );
+      await tester.pump();
+    }
+
+    testWidgets('is absent for the shapes that have no trace to close', (
+      tester,
+    ) async {
+      // Every shape but the polygon finishes on the release of one drag,
+      // so a confirm there would be a permanently dead row.
+      for (final shape in const [
+        CanvasShapeKind.rect,
+        CanvasShapeKind.ellipse,
+        CanvasShapeKind.lasso,
+      ]) {
+        await pumpSettings(tester, shape: shape, points: 0);
+        expect(find.byKey(buttonKey), findsNothing, reason: '$shape');
+      }
+    });
+
+    testWidgets('is dead until three vertices are down', (tester) async {
+      await pumpSettings(
+        tester,
+        shape: CanvasShapeKind.polygon,
+        points: 2,
+      );
+      expect(
+        tester.widget<FilledButton>(find.byKey(buttonKey)).onPressed,
+        isNull,
+      );
+    });
+
+    testWidgets('closes the trace when pressed', (tester) async {
+      final commands = CanvasSelectionCommands();
+      await pumpSettings(
+        tester,
+        shape: CanvasShapeKind.polygon,
+        points: 3,
+        commands: commands,
+      );
+      await tester.tap(find.byKey(buttonKey));
+      await tester.pump();
+      expect(commands.hasOpenPolygon, isFalse);
     });
   });
 

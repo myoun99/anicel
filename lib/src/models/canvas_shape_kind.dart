@@ -23,4 +23,12 @@ enum CanvasShapeKind {
 
   /// Freehand — the outline follows the pointer and closes on release.
   lasso,
+
+  /// Tapped out vertex by vertex, joined by straight lines, and closed by
+  /// tapping the first vertex again or pressing confirm.
+  ///
+  /// The only shape with no drag verb, and the only one whose outline
+  /// exists between gestures — which is why the open trace lives on the
+  /// selection channel rather than inside the layer that draws it.
+  polygon,
 }

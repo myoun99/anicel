@@ -173,6 +173,11 @@ class AppStrings {
   String get selectionMoveRevert => _s('selectionMoveRevert');
   String get selectionMoveApply => _s('selectionMoveApply');
 
+  /// Closes an open polygon outline. A tablet has no Enter key, so the
+  /// confirm has to be reachable as a button too (the same reason the
+  /// deselect button exists).
+  String get selectionClosePolygon => _s('selectionClosePolygon');
+
   // --- Shared window verbs (the AppWindow action row) ---
   String get commonSave => _s('commonSave');
   String get commonDelete => _s('commonDelete');
@@ -941,6 +946,7 @@ class AppStrings {
     'selectionMoveConfirmBody': 'Commit the selection move?',
     'selectionMoveRevert': 'Revert',
     'selectionMoveApply': 'Commit',
+    'selectionClosePolygon': 'Close shape',
     'commonSave': 'Save',
     'commonDelete': 'Delete',
     'commonRename': 'Rename',
@@ -1611,6 +1617,7 @@ class AppStrings {
     'selectionMoveConfirmBody': '選択範囲の移動を確定しますか？',
     'selectionMoveRevert': '元に戻す',
     'selectionMoveApply': '確定',
+    'selectionClosePolygon': '形を閉じる',
     'commonSave': '保存',
     'commonDelete': '削除',
     'commonRename': '名前を変更',
@@ -2360,6 +2367,7 @@ class AppStrings {
     'selectionMoveConfirmBody': '선택 영역 이동을 확정하시겠습니까?',
     'selectionMoveRevert': '되돌리기',
     'selectionMoveApply': '확정',
+    'selectionClosePolygon': '도형 닫기',
     'commonSave': '저장',
     'commonDelete': '삭제',
     'commonRename': '이름 변경',
@@ -3107,6 +3115,7 @@ class AppStrings {
     'selectionMoveConfirmBody': 'Valider le déplacement de la sélection ?',
     'selectionMoveRevert': 'Rétablir',
     'selectionMoveApply': 'Valider',
+    'selectionClosePolygon': 'Fermer la forme',
     'commonSave': 'Enregistrer',
     'commonDelete': 'Supprimer',
     'commonRename': 'Renommer',
@@ -3884,6 +3893,7 @@ class AppStrings {
     'selectionMoveConfirmBody': '要确认选区的移动吗？',
     'selectionMoveRevert': '还原',
     'selectionMoveApply': '确认',
+    'selectionClosePolygon': '闭合形状',
     'commonSave': '保存',
     'commonDelete': '删除',
     'commonRename': '重命名',

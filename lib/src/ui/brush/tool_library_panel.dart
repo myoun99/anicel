@@ -13,6 +13,11 @@ _shapeTiles = [
   (kind: CanvasShapeKind.rect, icon: Icons.crop_square, label: 'Rectangle'),
   (kind: CanvasShapeKind.ellipse, icon: Icons.circle_outlined, label: 'Ellipse'),
   (kind: CanvasShapeKind.lasso, icon: Icons.gesture, label: 'Lasso'),
+  (
+    kind: CanvasShapeKind.polygon,
+    icon: Icons.polyline_outlined,
+    label: 'Polygon',
+  ),
 ];
 
 /// The TOOL LIBRARY panel (R11-④, CSP's sub-tool palette): its content

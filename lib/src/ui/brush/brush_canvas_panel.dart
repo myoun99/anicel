@@ -1022,6 +1022,18 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       );
       widget.selectionCommands?.addListener(_handleSelectionChannelChanged);
     }
+    // 유저 확정: an open polygon trace survives a frame change and a CUT
+    // change, but putting the TOOL or the SHAPE down cancels it.
+    //
+    // Watched here rather than in the selection layer, which is where the
+    // trace is drawn: that layer does not mount for the painting tools, so
+    // on "polygon half-drawn, user picks the brush" it is being disposed
+    // rather than updated and a check inside it never runs.
+    if (oldWidget.brushToolState.tool != widget.brushToolState.tool ||
+        oldWidget.brushToolState.activeShapeKind !=
+            widget.brushToolState.activeShapeKind) {
+      widget.selectionCommands?.abandonPolygon();
+    }
     _bindSelectionHistoryRecorder();
     _syncIdleAnts();
     final request = widget.autoFrame;
@@ -1893,7 +1905,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                                     Offset.zero,
                                                                 marqueeShape:
                                                                     null,
-                                                                lassoTrail:
+                                                                // The IDLE
+                                                                // ants: no
+                                                                // tool is
+                                                                // drawing, so
+                                                                // there is no
+                                                                // outline in
+                                                                // progress.
+                                                                openTrail:
                                                                     const [],
                                                               ),
                                                           child:

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../models/app_language.dart';
 import '../../models/brush_tip_entry.dart';
+import '../../models/canvas_shape_kind.dart';
 import '../../models/drawing_guide.dart';
 import '../../services/canvas_color_sampler.dart' show CanvasColorSampleSource;
 import '../../services/canvas_flood_fill.dart';
@@ -149,8 +150,12 @@ class ToolSettingsPanel extends StatelessWidget {
         ),
         // The CUT grab: nothing to set whatever shape it is wearing (the
         // grab is hard-edged by law — 2치 보존 — and it makes no selection,
-        // so there is no combine mode either).
-        CanvasTool.cut => const _CutGrabSettings(),
+        // so there is no combine mode either) — except the polygon's
+        // confirm, which every drag-out verb needs while a trace is open.
+        CanvasTool.cut => _CutGrabSettings(
+          shapeKind: state.activeShapeKind,
+          selectionCommands: selectionCommands,
+        ),
         CanvasTool.cutStamp => _CutStampSettings(
           slot: cutPieceSlot,
           onPasteAbove: onCutPasteAbove,
@@ -181,7 +186,13 @@ class ToolSettingsPanel extends StatelessWidget {
 /// by a default someone could nudge. The soft-edge knobs that would
 /// otherwise belong here already live on the Select tool.
 class _CutGrabSettings extends StatelessWidget {
-  const _CutGrabSettings();
+  const _CutGrabSettings({
+    required this.shapeKind,
+    required this.selectionCommands,
+  });
+
+  final CanvasShapeKind? shapeKind;
+  final CanvasSelectionCommands? selectionCommands;
 
   @override
   Widget build(BuildContext context) {
@@ -189,14 +200,59 @@ class _CutGrabSettings extends StatelessWidget {
     return Padding(
       key: const ValueKey<String>('tool-settings-cut-grab'),
       padding: const EdgeInsets.all(12),
-      child: Align(
-        alignment: Alignment.topLeft,
-        child: Text(
-          'Cut copies the pixels under the drag — the original stays.\n'
-          'Pick Stamp to place the piece you are holding.',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Align(
+            alignment: Alignment.topLeft,
+            child: Text(
+              'Cut copies the pixels under the drag — the original stays.\n'
+              'Pick Stamp to place the piece you are holding.',
+              style: theme.textTheme.bodySmall?.copyWith(
+                color: theme.colorScheme.onSurfaceVariant,
+              ),
+            ),
           ),
+          _ClosePolygonButton(
+            shapeKind: shapeKind,
+            selectionCommands: selectionCommands,
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+/// The polygon's confirm, for hands with no Enter key.
+///
+/// Shows only while the polygon shape is armed, and only bites once three
+/// vertices are down — a button offering to close nothing would be lying
+/// about what a tap does. Nothing at all is rendered otherwise, so the
+/// panel does not grow a permanent dead row for the other shapes.
+class _ClosePolygonButton extends StatelessWidget {
+  const _ClosePolygonButton({
+    required this.shapeKind,
+    required this.selectionCommands,
+  });
+
+  final CanvasShapeKind? shapeKind;
+  final CanvasSelectionCommands? selectionCommands;
+
+  @override
+  Widget build(BuildContext context) {
+    final commands = selectionCommands;
+    if (shapeKind != CanvasShapeKind.polygon || commands == null) {
+      return const SizedBox.shrink();
+    }
+    return ListenableBuilder(
+      listenable: commands,
+      builder: (context, _) => Padding(
+        padding: const EdgeInsets.only(top: 12),
+        child: FilledButton.tonal(
+          key: const ValueKey<String>('selection-close-polygon-button'),
+          onPressed: commands.canClosePolygon ? commands.closePolygon : null,
+          child: Text(AppText.strings.selectionClosePolygon),
         ),
       ),
     );
@@ -395,6 +451,10 @@ class _SelectionSettings extends StatelessWidget {
         // (two tools there), so the settings panel no longer duplicates
         // it — only the mask knobs remain.
         Text(AppText.strings.toolSelect, style: theme.textTheme.titleSmall),
+        _ClosePolygonButton(
+          shapeKind: state.activeShapeKind,
+          selectionCommands: commands,
+        ),
         // R26 #16: 갱신 / 추가 / 삭제 / 선택중 — how the next drag folds
         // into the region already selected. Default 추가 (유저 원문).
         if (commands != null) ...[

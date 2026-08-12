@@ -259,6 +259,15 @@ void main() {
     await tester.pump();
   }
 
+  /// One polygon vertex tap: down where it aims, up to commit it.
+  Future<void> tapOnLayer(WidgetTester tester, Offset at) async {
+    final origin = tester.getTopLeft(find.byKey(layerKey));
+    final gesture = await tester.startGesture(origin + at);
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+  }
+
   /// The chrome the ants painter is ACTUALLY drawing — read off the
   /// mounted painter, so a fix that only reaches the model cannot pass.
   SelectionTransformChrome? chromeOnScreen(WidgetTester tester) {
@@ -2303,6 +2312,118 @@ void main() {
       isFalse,
       reason: 'the box corner is not — that is what makes it an ellipse',
     );
+  });
+
+  group('polygon', () {
+    testWidgets('taps place vertices and the first one closes the outline', (
+      tester,
+    ) async {
+      final env = await pumpSelectionPanel(
+        tester,
+        shapeKind: CanvasShapeKind.polygon,
+      );
+      // Nothing is selected while the outline is still open — an unclosed
+      // shape has not chosen anything yet.
+      await tapOnLayer(tester, const Offset(20, 20));
+      await tapOnLayer(tester, const Offset(80, 20));
+      await tapOnLayer(tester, const Offset(80, 80));
+      expect(env.commands.polygonPoints, hasLength(3));
+      expect(env.commands.region, isNull);
+
+      // Tapping the first vertex again closes it.
+      await tapOnLayer(tester, const Offset(20, 20));
+      expect(env.commands.hasOpenPolygon, isFalse);
+      final region = env.commands.region;
+      expect(region, isNotNull);
+      expect(region!.containsPoint(CanvasPoint(x: 60, y: 40)), isTrue);
+      expect(region.containsPoint(CanvasPoint(x: 30, y: 70)), isFalse);
+    });
+
+    testWidgets('the confirm closes it too — a tablet has no Enter key', (
+      tester,
+    ) async {
+      final env = await pumpSelectionPanel(
+        tester,
+        shapeKind: CanvasShapeKind.polygon,
+      );
+      await tapOnLayer(tester, const Offset(20, 20));
+      await tapOnLayer(tester, const Offset(80, 20));
+      await tapOnLayer(tester, const Offset(80, 80));
+
+      expect(env.commands.closePolygon(), isTrue);
+      await tester.pump();
+      expect(env.commands.hasOpenPolygon, isFalse);
+      expect(env.commands.region, isNotNull);
+    });
+
+    testWidgets('an undone vertex leaves the rest of the outline standing', (
+      tester,
+    ) async {
+      final env = await pumpSelectionPanel(
+        tester,
+        shapeKind: CanvasShapeKind.polygon,
+      );
+      await tapOnLayer(tester, const Offset(20, 20));
+      await tapOnLayer(tester, const Offset(80, 20));
+      await tapOnLayer(tester, const Offset(80, 80));
+
+      expect(env.commands.undoPolygonPoint(), isTrue);
+      await tester.pump();
+      expect(env.commands.polygonPoints, hasLength(2));
+      expect(
+        env.commands.region,
+        isNull,
+        reason: 'taking a vertex back is not a selection change',
+      );
+    });
+
+    testWidgets('changing tool drops the trace; the region it never made '
+        'is not affected', (tester) async {
+      final env = await pumpSelectionPanel(
+        tester,
+        shapeKind: CanvasShapeKind.polygon,
+      );
+      await tapOnLayer(tester, const Offset(20, 20));
+      await tapOnLayer(tester, const Offset(80, 20));
+      expect(env.commands.hasOpenPolygon, isTrue);
+
+      await env.setTool(CanvasTool.brush);
+      expect(env.commands.hasOpenPolygon, isFalse);
+      expect(env.commands.region, isNull);
+    });
+
+    testWidgets('the close ring appears only once closing is on offer', (
+      tester,
+    ) async {
+      // The ring is a promise about what a tap there would do, so it must
+      // not be up while such a tap would do nothing.
+      final env = await pumpSelectionPanel(
+        tester,
+        shapeKind: CanvasShapeKind.polygon,
+      );
+      CanvasPoint? ringAt() {
+        for (final paint in tester.widgetList<CustomPaint>(
+          find.descendant(
+            of: find.byKey(layerKey),
+            matching: find.byType(CustomPaint),
+          ),
+        )) {
+          final painter = paint.painter;
+          if (painter is SelectionAntsPainter) {
+            return painter.closeTarget;
+          }
+        }
+        return null;
+      }
+
+      await tapOnLayer(tester, const Offset(20, 20));
+      await tapOnLayer(tester, const Offset(80, 20));
+      expect(ringAt(), isNull, reason: 'two vertices enclose nothing');
+
+      await tapOnLayer(tester, const Offset(80, 80));
+      expect(ringAt(), CanvasPoint(x: 20, y: 20));
+      expect(env.commands.canClosePolygon, isTrue);
+    });
   });
 
   testWidgets('R26 #15: NO frame under the playhead still selects — the '
