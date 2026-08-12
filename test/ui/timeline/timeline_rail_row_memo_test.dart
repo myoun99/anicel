@@ -7,6 +7,7 @@ import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/layer_mark.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/timeline/timeline_layer_controls_row.dart';
 import 'package:anicel/src/ui/timeline/timeline_orientation.dart';
@@ -81,6 +82,58 @@ void main() {
             'rebuild the row',
       );
     });
+  });
+
+  testWidgets('㉞ the ROW SELECTION invalidates the memo', (tester) async {
+    tester.view.physicalSize = const Size(1400, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.reset);
+
+    final session = EditorSessionManager(initialProject: createDefaultProject());
+    addTearDown(session.dispose);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: ListenableBuilder(
+            listenable: session,
+            builder: (context, _) => TimelineTabHost(
+              session: session,
+              orientation: TimelineOrientation.horizontal,
+              onOrientationChanged: (_) {},
+              pixelsPerFrame: 24,
+              onPixelsPerFrameChanged: (_) {},
+              showSeconds: false,
+              onShowSecondsChanged: (_) {},
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+
+    final activeId = session.activeLayerId!;
+    TimelineLayerControlsRow rowFor(LayerId id) => tester
+        .widgetList<TimelineLayerControlsRow>(
+          find.byType(TimelineLayerControlsRow),
+        )
+        .firstWhere((row) => row.layer.id == id);
+
+    expect(rowFor(activeId).selected, isFalse);
+
+    // ⑨'s select drag, at its first step. The wash is SESSION state — the
+    // Layer never changes — so only the memo's own record can carry it.
+    session.beginRowSelection(LayerRowAddress(activeId));
+    await tester.pump();
+
+    expect(
+      rowFor(activeId).selected,
+      isTrue,
+      reason:
+          '㉞: the row selection must reach the rail. A memo that does not '
+          'compare `selected` hands back the unselected row and the wash '
+          'never appears — the state was right, the cache said "unchanged"',
+    );
   });
 
   testWidgets('a timesheet edit does NOT rebuild the rail row, a rename does',
