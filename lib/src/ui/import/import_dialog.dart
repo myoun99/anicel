@@ -9,6 +9,7 @@ import '../../models/media_asset.dart';
 import '../../services/import/media_import_planner.dart';
 import '../../services/pdf/pdf_render_service.dart';
 import '../../services/persistence/file_type_groups.dart';
+import '../../services/persistence/folder_grant.dart';
 import '../dialogs/folder_pick_flow.dart';
 import '../editor_session_manager.dart';
 import '../export/export_settings_modules.dart';
@@ -69,7 +70,16 @@ class _ImportDialogState extends State<ImportDialog> {
   /// they are. REFERENCE is the default: the pool used to copy whatever it
   /// was handed, which turned dropping a 3GB 참고영상 into a 3GB copy the
   /// user never asked for and could not decline.
-  bool _copyIntoProject = false;
+  ///
+  /// 🚨Except on iOS and macOS, where a reference is not yet safe to hand
+  /// anyone. A recorded path there stops working at the next launch unless
+  /// the app kept the grant that produced it, and references do not carry
+  /// one yet. Until they do, Apple starts on Copy — a copy lands inside
+  /// the project folder, which the project's own grant already covers.
+  /// Everything else about the window is unchanged: the user can still
+  /// pick Reference, and on iPad that is a deliberate choice rather than
+  /// the default handing them a link that dies overnight.
+  bool _copyIntoProject = FolderPicker.referencesExpire;
   MediaFitMode _fit = MediaFitMode.contain;
   CutFolderParseConfig _parseConfig = const CutFolderParseConfig();
   CutFolderParseResult? _parsed;

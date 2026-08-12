@@ -107,10 +107,36 @@ abstract final class FolderPicker {
   static Future<FolderGrant> Function({String? initialDirectory})?
   debugFolderPicker;
 
+  /// Test seam for the OS these rules are read from.
+  ///
+  /// ⚠️Reset in `test/flutter_test_config.dart`, like [debugFolderPicker].
+  @visibleForTesting
+  static String? debugOperatingSystem;
+
+  static String get _operatingSystem =>
+      debugOperatingSystem ?? Platform.operatingSystem;
+
   /// Whether this platform hands out a folder grant that must be held, as
   /// opposed to a path that simply works.
-  static bool get grantsAreScoped =>
-      scopedForPlatform(Platform.operatingSystem);
+  static bool get grantsAreScoped => scopedForPlatform(_operatingSystem);
+
+  /// Whether a path this app recorded stops working after a relaunch
+  /// unless the grant that produced it was kept.
+  ///
+  /// The three platforms of [scopedForPlatform] all hand out grants, but
+  /// only Apple's are attached to the ITEM: Android's is a permission over
+  /// real paths that outlives any one pick, so a path written down there
+  /// keeps working. That is the difference that decides whether importing
+  /// by REFERENCE is safe by default — a reference is a path written down
+  /// and nothing else.
+  static bool get referencesExpire => referencesExpireForPlatform(
+    _operatingSystem,
+  );
+
+  /// The decision as a pure function of the OS name.
+  @visibleForTesting
+  static bool referencesExpireForPlatform(String operatingSystem) =>
+      operatingSystem == 'ios' || operatingSystem == 'macos';
 
   /// The decision as a pure function of the OS name.
   ///

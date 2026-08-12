@@ -16,6 +16,35 @@ import 'package:anicel/src/services/persistence/folder_grant.dart';
 /// all: of eight injectable pickers in this app, tests use two. A seam
 /// nothing exercises is not a seam.
 void main() {
+  // Which platforms can be handed a REFERENCE and still read it tomorrow.
+  //
+  // Not the same question as `scopedForPlatform`, and the difference is
+  // the whole point: Android's grant is a permission over real paths that
+  // outlives the pick, so a path written down there keeps working, while
+  // Apple's is attached to the item that was picked. Reading them as one
+  // set would either hand iPad a link that dies overnight or make Android
+  // copy everything for no reason.
+  group('references expire on Apple and nowhere else', () {
+    test('the table', () {
+      expect(FolderPicker.referencesExpireForPlatform('ios'), isTrue);
+      expect(FolderPicker.referencesExpireForPlatform('macos'), isTrue);
+      for (final os in const ['android', 'windows', 'linux', 'fuchsia']) {
+        expect(
+          FolderPicker.referencesExpireForPlatform(os),
+          isFalse,
+          reason: '$os records a path that keeps working',
+        );
+      }
+    });
+
+    test('it is NOT the scoped-grant question', () {
+      // Android answers yes to one and no to the other. A single
+      // predicate for both would be wrong on exactly this row.
+      expect(FolderPicker.scopedForPlatform('android'), isTrue);
+      expect(FolderPicker.referencesExpireForPlatform('android'), isFalse);
+    });
+  });
+
   group('a native answer becomes a grant', () {
     test('granted carries the path and the bookmark', () {
       final grant = FolderPicker.decodeChannelAnswer({

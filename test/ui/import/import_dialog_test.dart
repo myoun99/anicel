@@ -10,6 +10,7 @@ import 'package:anicel/src/models/layer_kind.dart';
 import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/models/timeline_repeat.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
+import 'package:anicel/src/services/persistence/folder_grant.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/import/import_dialog.dart';
 
@@ -315,6 +316,39 @@ void main() {
       }
       await tester.pumpAndSettle();
     }
+
+    testWidgets('on iPad and macOS it starts on Copy instead — a reference '
+        'there does not survive the next launch', (tester) async {
+      // A recorded path on Apple stops working unless the app kept the
+      // grant that produced it, and references carry none yet. Until they
+      // do, the default cannot be the one that dies overnight. The chip
+      // is still there: Reference becomes a choice rather than a trap.
+      final (s, path) = await savedProjectWithPng(tester);
+      for (final os in const ['ios', 'macos']) {
+        FolderPicker.debugOperatingSystem = os;
+        addTearDown(() => FolderPicker.debugOperatingSystem = null);
+
+        await tester.pumpWidget(
+          MaterialApp(
+            home: Scaffold(
+              body: ImportDialog(
+                key: ValueKey<String>(os),
+                session: s,
+                initialPaths: [path],
+              ),
+            ),
+          ),
+        );
+        await tester.pump();
+
+        expect(
+          find.textContaining('assets folder'),
+          findsOneWidget,
+          reason: '$os starts on Copy',
+        );
+        expect(find.textContaining('stays where it is'), findsNothing);
+      }
+    });
 
     testWidgets('untouched, it references: the file stays where it is', (
       tester,
