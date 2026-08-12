@@ -15,6 +15,23 @@ inputs:
 runs:
   using: composite
   steps:
+    # `flutter test` seeds its resident compiler from a kernel it keeps in
+    # build/test_cache (flutter_tools passes it as initializeFromDill, and
+    # says in its own comment that the point is "to re-use as many packages
+    # as possible"). CI has never kept that file, so every test job in every
+    # run has compiled from cold — measured locally at +34.5% wall on a
+    # 31-file sample, with the first file taking 37.4s instead of 5.3s.
+    #
+    # It is a compile SEED and nothing else: a stale one costs a recompile,
+    # never a wrong answer. That is why an inexact restore-keys hit is
+    # welcome here in a way it would not be for a build artefact.
+    - id: kernel
+      uses: actions/cache/restore@v4
+      with:
+        path: build/test_cache
+        key: testkernel-${{ runner.os }}-${{ hashFiles('pubspec.lock', '.github/workflows/ci.yml') }}-${{ github.run_id }}
+        restore-keys: |
+          testkernel-${{ runner.os }}-${{ hashFiles('pubspec.lock', '.github/workflows/ci.yml') }}-
     - shell: bash
       run: |
         set -euo pipefail
@@ -84,3 +101,14 @@ runs:
         # duplicated work, and the flag says so out loud.
         tr '\n' '\0' < "$RUNNER_TEMP/shard_tests.txt" \
           | xargs -0 -s "$limit" flutter test --no-pub
+    # One writer per run per OS, and only from master: thirteen shards
+    # racing to save the same key would leave twelve "cache already exists"
+    # warnings, and a pull request has no business seeding the cache every
+    # branch will then restore from. The run id keeps the seed moving
+    # forward — restore-keys above matches the newest one with the same
+    # prefix, so it is always a recent master rather than a frozen one.
+    - if: github.event_name == 'push' && inputs.index == '0'
+      uses: actions/cache/save@v4
+      with:
+        path: build/test_cache
+        key: testkernel-${{ runner.os }}-${{ hashFiles('pubspec.lock', '.github/workflows/ci.yml') }}-${{ github.run_id }}
