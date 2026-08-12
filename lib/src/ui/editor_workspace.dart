@@ -2028,13 +2028,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             builder: (context, _) => MediaBrowserPanel(
               assets: widget.session.mediaAssets,
               isAssetReferenced: widget.session.isMediaAssetReferenced,
-              // The browser's ＋ has no window of its own yet, so it takes
-              // the app-wide default the import window offers: reference.
-              // Routing it through that window is the next step.
-              onImportPaths: (paths) => widget.session.importMediaFiles(
-                paths,
-                copyIntoProject: false,
-              ),
+              onImportRequested: () => _openImportWindow(poolOnly: true),
               onRenameAsset: widget.session.renameMediaAsset,
               onRelinkAsset: widget.session.relinkMediaAsset,
               onRemoveAsset: widget.session.removeMediaAsset,
@@ -3573,11 +3567,26 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     if (paths.isEmpty) {
       return;
     }
+    _openImportWindow(initialPaths: paths);
+  }
+
+  /// The one import window, from whichever entrance asked for it.
+  ///
+  /// [poolOnly] is the media browser's ＋: it starts on the pool because
+  /// registering for later is what that panel is for, and the other
+  /// destinations stay on offer because it is the same window.
+  void _openImportWindow({
+    List<String> initialPaths = const [],
+    bool poolOnly = false,
+  }) {
     unawaited(
       showDialog<void>(
         context: context,
-        builder: (context) =>
-            ImportDialog(session: widget.session, initialPaths: paths),
+        builder: (context) => ImportDialog(
+          session: widget.session,
+          initialPaths: initialPaths,
+          poolOnly: poolOnly,
+        ),
       ),
     );
   }

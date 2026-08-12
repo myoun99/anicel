@@ -28,6 +28,7 @@ class ImportDialog extends StatefulWidget {
     super.key,
     required this.session,
     this.initialPaths = const [],
+    this.poolOnly = false,
     this.filePicker,
     this.directoryPicker,
   });
@@ -36,6 +37,12 @@ class ImportDialog extends StatefulWidget {
 
   /// Sources handed in by drag-and-drop (files or one folder).
   final List<String> initialPaths;
+
+  /// Opened from the media browser, whose job is to REGISTER a file for
+  /// later rather than place it now — so the destination starts on the
+  /// pool. Only the starting point differs: the other destinations are
+  /// still there, which is what makes this one window instead of two.
+  final bool poolOnly;
 
   /// Injectable pickers (tests).
   final Future<List<String>> Function()? filePicker;
@@ -48,7 +55,14 @@ class ImportDialog extends StatefulWidget {
 class _ImportDialogState extends State<ImportDialog> {
   final List<String> _files = [];
   String? _folder;
-  ImportDestination _destination = ImportDestination.activeCutLayer;
+  /// Where the import lands, or null for the MEDIA POOL — registered and
+  /// nothing else.
+  ///
+  /// Null rather than a third [ImportDestination]: the planner's enum
+  /// answers "where does this placement go", and registering without
+  /// placing is not a place. A value there would be one every switch over
+  /// the enum had to learn to ignore.
+  ImportDestination? _destination = ImportDestination.activeCutLayer;
   bool _rasterize = false;
 
   /// Copy the files into `<project>.assets/Media/`, or point at them where
@@ -76,6 +90,9 @@ class _ImportDialogState extends State<ImportDialog> {
   @override
   void initState() {
     super.initState();
+    if (widget.poolOnly) {
+      _destination = null;
+    }
     for (final path in widget.initialPaths) {
       if (Directory(path).existsSync()) {
         if (_folder == null) {
@@ -245,8 +262,14 @@ class _ImportDialogState extends State<ImportDialog> {
     final picker =
         widget.filePicker ??
         () async {
+          // The POOL group, not the placeable one: this window is the
+          // media browser's entrance now, and the browser registers
+          // movies it cannot yet place. A movie picked while a placing
+          // destination is selected is refused BY NAME in the table
+          // below — which is the honest version of a picker that simply
+          // did not list it.
           final files = await openFiles(
-            acceptedTypeGroups: const [FileTypeGroups.importableMedia],
+            acceptedTypeGroups: const [FileTypeGroups.poolMedia],
           );
           return [for (final file in files) file.path];
         };
@@ -365,6 +388,7 @@ class _ImportDialogState extends State<ImportDialog> {
     try {
       final folder = _folder;
       final tvpJsonPath = _tvpJsonPath;
+      final destination = _destination;
       if (tvpJsonPath != null) {
         // 1:1 always — see the Fit note in the settings column.
         // A TVPaint export registers no pool asset of its own — its
@@ -393,6 +417,13 @@ class _ImportDialogState extends State<ImportDialog> {
           imported += 1;
           warnings.addAll(folderWarnings);
         }
+      } else if (destination == null) {
+        // The pool: every kind registers, movies included, in ONE undo.
+        // Nothing is placed, so nothing can be unplaceable — this is the
+        // browser's old behaviour, minus the copy it never asked about.
+        session.importMediaFiles(_files, copyIntoProject: _copyIntoProject);
+        imported += _files.length;
+        done.addAll(_files);
       } else {
         // Audio registers as ONE batch (one undo), whatever the count.
         final audioPaths = [
@@ -425,7 +456,7 @@ class _ImportDialogState extends State<ImportDialog> {
             ok = kind == MediaAssetKind.pdf
                 ? await session.importPdfFile(
                     path: path,
-                    destination: _destination,
+                    destination: destination,
                     rasterize: _rasterize,
                     fit: _fit,
                     copyIntoProject: _copyIntoProject,
@@ -443,7 +474,7 @@ class _ImportDialogState extends State<ImportDialog> {
                   )
                 : await session.importImageFile(
                     path: path,
-                    destination: _destination,
+                    destination: destination,
                     rasterize: _rasterize,
                     fit: _fit,
                     copyIntoProject: _copyIntoProject,
@@ -473,7 +504,7 @@ class _ImportDialogState extends State<ImportDialog> {
                       PdfRenderService.availability != true
                   ? '${mediaAssetDefaultName(path)}: no PDF renderer in '
                         'this build.'
-                  : _destination == ImportDestination.activeCutLayer &&
+                  : destination == ImportDestination.activeCutLayer &&
                         session.activeCutOrNull == null
                   ? 'No active cut — pick "New cut" or leave the gap.'
                   : 'Could not import ${mediaAssetDefaultName(path)}.',
@@ -721,7 +752,13 @@ class _ImportDialogState extends State<ImportDialog> {
     } else if (_files.isNotEmpty) {
       for (final path in _files) {
         final kind = mediaAssetKindForPath(path);
-        final unplaceable = kind != null && _unplaceableKinds.contains(kind);
+        // Only a PLACEMENT can be refused for its kind. Registering a
+        // movie in the pool is exactly what the media browser has always
+        // done, so pool-bound rows read as ordinary ones.
+        final unplaceable =
+            kind != null &&
+            _destination != null &&
+            _unplaceableKinds.contains(kind);
         addRow(
           kind?.jsonValue ?? 'file',
           unplaceable
@@ -806,6 +843,17 @@ class _ImportDialogState extends State<ImportDialog> {
               child: Wrap(
                 spacing: 4,
                 children: [
+                  // The media browser's own entrance, promoted into the
+                  // window that every other import already came through.
+                  // It is a destination like the others because from here
+                  // the user can change their mind — which is the whole
+                  // reason the browser stopped opening a bare OS picker.
+                  ExportChip(
+                    key: const ValueKey<String>('import-destination-pool'),
+                    label: 'Media pool',
+                    selected: _destination == null,
+                    onTap: () => setState(() => _destination = null),
+                  ),
                   ExportChip(
                     key: const ValueKey<String>('import-destination-layer'),
                     label: 'Layer in cut',
@@ -831,26 +879,33 @@ class _ImportDialogState extends State<ImportDialog> {
               ),
             ),
             const SizedBox(height: 6),
-            ExportToggleRow(
-              key: const ValueKey<String>('import-rasterize-toggle'),
-              label: 'Rasterize (bake pixels)',
-              value: _rasterize,
-              onChanged: (value) => setState(() => _rasterize = value),
-            ),
-            Text(
-              _rasterize
-                  ? 'Pixels absorb into cels; nothing registers.'
-                  // This used to read "keeps the source linked", which was
-                  // the one thing this branch did NOT do — it copied the
-                  // file in. Whether the source stays linked is the row
-                  // above's question now, and this one answers its own.
-                  : 'Places a layer that reads the file, and registers it '
-                        'in the media browser.',
-              style: Theme.of(context).textTheme.labelSmall!.copyWith(
-                color: Theme.of(context).colorScheme.outline,
+            // Rasterize is a question about a PLACED layer — bake the
+            // pixels into cels, or read the file. A pool registration
+            // places nothing, so the row would be a control with no
+            // effect, which is worse than an absent one.
+            if (_destination != null) ...[
+              ExportToggleRow(
+                key: const ValueKey<String>('import-rasterize-toggle'),
+                label: 'Rasterize (bake pixels)',
+                value: _rasterize,
+                onChanged: (value) => setState(() => _rasterize = value),
               ),
-            ),
-            const SizedBox(height: 6),
+              Text(
+                _rasterize
+                    ? 'Pixels absorb into cels; nothing registers.'
+                    // This used to read "keeps the source linked", which
+                    // was the one thing this branch did NOT do — it copied
+                    // the file in. Whether the source stays linked is the
+                    // Files row's question now, and this one answers its
+                    // own.
+                    : 'Places a layer that reads the file, and registers it '
+                          'in the media browser.',
+                style: Theme.of(context).textTheme.labelSmall!.copyWith(
+                  color: Theme.of(context).colorScheme.outline,
+                ),
+              ),
+              const SizedBox(height: 6),
+            ],
           ] else ...[
             if (isTvp) ...[
               // One destination today, shown rather than hidden: the row
@@ -895,7 +950,9 @@ class _ImportDialogState extends State<ImportDialog> {
           // born at the clip's size and every exported image IS that
           // size, so all three modes compute the same rect. The import
           // passes 1:1, which copies bytes instead of resampling them.
-          if (!isTvp)
+          // A pool registration has no rect at all — fit is a placement
+          // default the asset picks up when it is later placed.
+          if (!isTvp && (landsWholeCut || _destination != null))
             ExportModuleRow(
               label: 'Fit',
               child: Wrap(
