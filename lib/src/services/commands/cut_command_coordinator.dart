@@ -1543,31 +1543,32 @@ class CutCommandCoordinator {
       }
     }
 
-    final mount = attach.mount;
-    if (mount == null) {
-      return commands;
-    }
-    final uses = _mountUses(
-      project,
-      cutId: cutId,
-      rowId: mount.layerId,
-      baseId: mount.baseId,
-    );
-    final mode = _mountMode(uses);
-    for (final use in uses) {
-      commands.add(
-        SetLayerAttachmentCommand(
-          repository: repository,
-          layerId: use.rowId,
-          attachment: attachmentForMount(
-            standaloneRow: use.standalone,
-            base: use.base,
-            placement: mount.placement,
-            mode: mode,
-          ),
-          description: description,
-        ),
+    // ⑦: a folder drop mounts every row it carries, so this is a loop now.
+    // Each rider still decides its own MODE — the 겸용 scan is per relation,
+    // and two members of one folder can legitimately differ.
+    for (final mount in attach.mounts) {
+      final uses = _mountUses(
+        project,
+        cutId: cutId,
+        rowId: mount.layerId,
+        baseId: mount.baseId,
       );
+      final mode = _mountMode(uses);
+      for (final use in uses) {
+        commands.add(
+          SetLayerAttachmentCommand(
+            repository: repository,
+            layerId: use.rowId,
+            attachment: attachmentForMount(
+              standaloneRow: use.standalone,
+              base: use.base,
+              placement: mount.placement,
+              mode: mode,
+            ),
+            description: description,
+          ),
+        );
+      }
     }
     return commands;
   }
