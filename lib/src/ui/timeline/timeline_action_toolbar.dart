@@ -138,6 +138,7 @@ class TimelineActionToolbar extends StatelessWidget {
     required this.session,
     required this.onAddLayer,
     required this.onRenameLayer,
+    this.onDeleteRowSelection,
     required this.onDeleteLayer,
     this.onEditInstance,
     this.resolveCanEditInstance,
@@ -159,6 +160,10 @@ class TimelineActionToolbar extends StatelessWidget {
   final VoidCallback onAddLayer;
 
   final VoidCallback onRenameLayer;
+
+  /// F: the shared delete's ROW rung, with its confirmation. Null lets the
+  /// rung run unconfirmed (a host with no dialogs to show).
+  final VoidCallback? onDeleteRowSelection;
   final VoidCallback onDeleteLayer;
 
   /// Opens the unified instance-edit dialog for the active layer at the
@@ -656,19 +661,22 @@ class TimelineActionToolbar extends StatelessWidget {
           onPressed: () => session.addLayerOfKind(LayerKind.animation),
           entriesBuilder: _addLayerEntries,
         ),
-        // ⚠️THE LAYER DELETE STAYS HERE UNTIL ⑨ LANDS.
+        // ⚠️THE LAYER DELETE IS STILL HERE, AND THE CONDITION IT WAITED ON
+        // HAS PASSED — read this before deleting it.
         //
-        // ⑰ folds every delete into the shared pill, and that pill asks WHAT
-        // IS SELECTED — but rows have no selection yet (⑨ builds it), so
-        // `DeleteSubject.layers` is a rung nothing can reach. Removing this
-        // button on the strength of the unified one would leave layer deletion
-        // with NO entrance at all: the successor cannot yet do the
-        // predecessor's job, which is the one condition that makes deleting a
-        // predecessor wrong ([[duplication-program]]).
+        // It stood here because ⑰'s shared delete asks WHAT IS SELECTED, and
+        // `DeleteSubject.layers` was a rung nothing could reach while rows
+        // had no selection. ⑨ (#952) built that selection, so the successor
+        // CAN do this button's job now: select the row, press the one delete
+        // — with the same confirmation, which is why `onDeleteRowSelection`
+        // exists beside it.
         //
-        // ⛔The MENU copy is gone regardless (유저: 「밖에 딜리트레이어있으니
-        // 버튼내부에있는 딜리트레이어 삭제」) — that was a second door onto
-        // this same button, not a door of its own.
+        // What is left is not a code question but a TEST-CONTRACT one:
+        // `layer_delete_test.dart` writes the whole delete flow (enablement,
+        // dialog, cancel, confirm, undo/redo, the rail afterwards) against
+        // THIS key, and re-pointing it means re-stating each of those
+        // through a row selection. That is a change worth making on its own,
+        // not as a passenger.
         _iconButton(
           key: const ValueKey<String>('timeline-delete-layer-button'),
           tooltip: AppText.strings.tlDeleteLayer,
@@ -703,9 +711,16 @@ class TimelineActionToolbar extends StatelessWidget {
           tooltip: AppText.strings.tlDeleteCell,
           icon: Icons.delete_outline,
           danger: true,
-          onPressed: session.deleteSubject == DeleteSubject.nothing
-              ? null
-              : session.deleteSelectionSubject,
+          // F: the ROWS rung asks first. It inherited that from the loose
+          // layer button this round folded in — a delete that used to
+          // confirm must not stop confirming because its button moved. The
+          // cell rung goes straight through, as it always has.
+          onPressed: switch (session.deleteSubject) {
+            DeleteSubject.nothing => null,
+            DeleteSubject.layers when onDeleteRowSelection != null =>
+              onDeleteRowSelection,
+            _ => session.deleteSelectionSubject,
+          },
         ),
       ],
     ),
