@@ -63,9 +63,11 @@ jobs:
   # at 0.142x of the full suite, 88% of linear. Do not "simplify" this back
   # into --total-shards.
   #
-  # Coverage is unchanged: `awk NR % N == index` partitions the sorted list,
-  # so every file runs in exactly one shard, and the step fails if a shard
-  # selects nothing.
+  # Coverage is unchanged: the selector partitions the file list, so every
+  # file runs in exactly one shard, and the step fails if a shard selects
+  # nothing. It packs by weight rather than dealing round-robin — the
+  # reasoning is in .github/actions/test-shard/action.yml, next to the code
+  # that does it.
   analyze-and-test:
     name: analyze + full test suite (shard ${{ matrix.shard }})
     runs-on: ubuntu-latest
@@ -73,6 +75,10 @@ jobs:
       # Without this one red shard hides the others, and the point of
       # splitting is to learn everything each run has to tell us.
       fail-fast: false
+      # Three, because the job COUNT is now the thing that costs — see the
+      # note above the windows job. Linux shards are the cheap ones (33s of
+      # setup against Windows' 110s), so they are also the ones it costs
+      # least to give up.
       matrix:
         shard: [0, 1, 2]
     # Job-wide rather than on the test step: the step is a composite action
@@ -181,20 +187,36 @@ jobs:
   # — it is 2.6x slower at loading them, 3.08s per file against 1.17s, and
   # it pays that 728 times.
   #
-  # Eight rather than four, because four was measured and found lumpy: the
-  # first sharded run split 6m08s / 7m14s / 8m45s / 9m46s, a 1.6x spread
-  # that made the slowest shard the whole round. Round-robin over a sorted
-  # list balances by file COUNT, not by cost, so finer slices are how the
-  # heavy files stop deciding the wall clock. Eight also divides 728 evenly
-  # (91 files each) and puts a shard's command line at ~4.1k characters,
-  # inside one batch — see the .bat note in the test-shard action.
+  # Six, and the number came down rather than up, because shards stopped
+  # being free.
+  #
+  # Eight was right for a repository where one pull request runs at a time.
+  # This one had five CI runs in flight at once — several branches plus
+  # master — and at sixteen jobs a run that is eighty jobs against a
+  # twenty-job concurrency limit. Measured on 2026-08-12: the same suite
+  # that finished in 7m21s alone took 18m44s in that traffic, and the whole
+  # difference was queue — 259 to 377 seconds of it per job, against a p50
+  # of 3 seconds when nothing else was running.
+  #
+  # Under saturation the arithmetic inverts. Throughput is pinned at twenty
+  # slots, so sharding no longer divides the work, it ADDS to it: every
+  # extra Windows job pays ~110s of setup it did not have to. Eight shards
+  # is 880 runner-seconds of `subosito/flutter-action` per run before a
+  # single test runs.
+  #
+  # Six rather than five, which is what the eye would pick: at five, a
+  # shard's file list is 6751 characters and xargs splits it in two, so the
+  # job pays the resident compiler's cold start twice — the exact cost that
+  # was just taken off the Linux jobs. Measured on the live tree: N=4 8420
+  # chars, N=5 6751, N=6 5699, N=8 4248. Six is the smallest that still
+  # fits one batch, and it is the floor for that reason and no other.
   windows:
     name: Windows + native DLL (shard ${{ matrix.shard }})
     runs-on: windows-latest
     strategy:
       fail-fast: false
       matrix:
-        shard: [0, 1, 2, 3, 4, 5, 6, 7]
+        shard: [0, 1, 2, 3, 4, 5]
     env:
       QA_ENGINE_PATH: build/native_standalone/Release/qa_engine.dll
       QA_REQUIRE_NATIVE: '1'
@@ -217,5 +239,5 @@ jobs:
       - name: Run tests with the engine on PATH
         uses: ./.github/actions/test-shard
         with:
-          total: 8
+          total: 6
           index: ${{ matrix.shard }}

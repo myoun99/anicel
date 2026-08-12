@@ -169,6 +169,16 @@ class EditorTopStrip extends StatelessWidget {
     // written) — every candidate location is checked, newest wins.
     var openPath = path;
     String? recoverAs;
+    var declinedSidecar = false;
+    // Reopening the project that is ALREADY open and dirty. There is no
+    // unsaved-changes gate on the open flow, so this reload throws the
+    // live edits away on its own — and if a tick had written the sidecar,
+    // every cold cel's ref points inside it, which makes it the only copy.
+    // Retiring it here would remove the one way back (reopen, answer
+    // Recover). Captured before the open, because the open rewrites both
+    // of these.
+    final reopeningDirtySelf =
+        session.projectFilePath == path && session.hasUnsavedChanges;
     final sidecar = AppSave.newestExistingSidecarFor(path);
     if (sidecar != null &&
         ProjectAutosaveService.sidecarIsNewer(
@@ -203,6 +213,8 @@ class EditorTopStrip extends StatelessWidget {
       if (recover) {
         openPath = sidecar;
         recoverAs = path;
+      } else {
+        declinedSidecar = true;
       }
     }
     try {
@@ -214,6 +226,14 @@ class EditorTopStrip extends StatelessWidget {
       recordRecentProject(
         RecentProject(path: path, folderBookmark: pick.folderBookmark),
       );
+      if (declinedSidecar && !reopeningDirtySelf) {
+        // "Open the saved one" is an answer about THIS sidecar, not a
+        // deferral: leaving it alive re-asks the same question at every
+        // open until the next manual save. Retired only after the open
+        // SUCCEEDS — a file that fails to parse is exactly when the
+        // declined sidecar is the user's last copy.
+        ProjectAutosaveService.retireSidecarsFor(path);
+      }
     } catch (error) {
       if (context.mounted) {
         _showFileError(context, error);

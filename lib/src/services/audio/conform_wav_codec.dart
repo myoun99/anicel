@@ -26,26 +26,81 @@ import 'dart:typed_data';
 
 /// What a conformed file records about the source it came from, so a
 /// replaced original is detected rather than silently played stale.
+///
+/// CONTENT, not metadata. This used to be `{length, lastModified}`, which
+/// answers "is this the same file on this disk" — a question that goes
+/// wrong in both directions. Copying a project made every conform look
+/// stale and rebuilt the lot for nothing, and an original edited in place
+/// that kept its size and timestamp looked fresh. Neither survives being
+/// carried to another machine, which is the case that matters once a
+/// project is a single file you hand someone.
+///
+/// The hash is CRC-32, the same one ZIP stores for every entry, chosen so
+/// that moving audio INSIDE the `.anicel` makes this free: the container
+/// has already computed it and keeps it in the entry header, so the
+/// fingerprint becomes a header read instead of a pass over the bytes.
 class ConformSourceFingerprint {
   const ConformSourceFingerprint({
+    required this.sourceLength,
+    required this.sourceCrc32,
+  });
+
+  /// The original file's length in bytes. Kept alongside the hash as a
+  /// cheap disambiguator — CRC-32 is 32 bits, and this is cache
+  /// validation, not integrity.
+  final int sourceLength;
+
+  /// CRC-32 of the original's bytes.
+  final int sourceCrc32;
+
+  bool matches(ConformSourceFingerprint other) =>
+      sourceLength == other.sourceLength && sourceCrc32 == other.sourceCrc32;
+
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      other is ConformSourceFingerprint &&
+          other.sourceLength == sourceLength &&
+          other.sourceCrc32 == sourceCrc32;
+
+  @override
+  int get hashCode => Object.hash(sourceLength, sourceCrc32);
+
+  @override
+  String toString() =>
+      'ConformSourceFingerprint(length: $sourceLength, '
+      'crc32: $sourceCrc32)';
+}
+
+/// A decoded conform: interleaved samples plus what they mean.
+/// The CHEAP half of "has this source changed": what `stat` says.
+///
+/// Not an identity — that is [ConformSourceFingerprint], which reads the
+/// bytes. This is a hint that lets the common case skip that read: if the
+/// source still has the length and timestamp it had when the conform was
+/// written, nothing has touched it on this machine and the conform stands.
+///
+/// A miss means nothing on its own. A copied, restored or re-synced file
+/// gets a fresh timestamp with identical bytes, and that is exactly the
+/// case a timestamp identity used to answer wrong — so a miss falls
+/// through to the content hash rather than deciding anything.
+class ConformSourceStat {
+  const ConformSourceStat({
     required this.sourceLength,
     required this.sourceModifiedMicros,
   });
 
-  /// The original file's length in bytes.
   final int sourceLength;
-
-  /// The original file's last-modified time, microseconds since epoch.
   final int sourceModifiedMicros;
 
-  bool matches(ConformSourceFingerprint other) =>
+  bool matches(ConformSourceStat other) =>
       sourceLength == other.sourceLength &&
       sourceModifiedMicros == other.sourceModifiedMicros;
 
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
-      other is ConformSourceFingerprint &&
+      other is ConformSourceStat &&
           other.sourceLength == sourceLength &&
           other.sourceModifiedMicros == sourceModifiedMicros;
 
@@ -54,17 +109,17 @@ class ConformSourceFingerprint {
 
   @override
   String toString() =>
-      'ConformSourceFingerprint(length: $sourceLength, '
+      'ConformSourceStat(length: $sourceLength, '
       'modified: $sourceModifiedMicros)';
 }
 
-/// A decoded conform: interleaved samples plus what they mean.
 class ConformAudio {
   const ConformAudio({
     required this.samples,
     required this.channels,
     required this.sampleRate,
     this.fingerprint,
+    this.sourceStat,
     this.speedNumerator = 1,
     this.speedDenominator = 1,
   });
@@ -83,6 +138,11 @@ class ConformAudio {
   /// Null when the file carries no `qacf` chunk (hand-made WAV, or one
   /// written by another tool).
   final ConformSourceFingerprint? fingerprint;
+
+  /// What `stat` said about the source when this was written, so a reuse
+  /// can be decided without reading it. Null on conforms written before
+  /// the hint existed — which costs one read, not a rebuild.
+  final ConformSourceStat? sourceStat;
 
   /// The audio speed this conform was rendered at (EXPORT-AUDIO ④): 1001/
   /// 1000 is the NTSC pull that keeps frame alignment across a 23.976↔24
@@ -128,6 +188,7 @@ Uint8List encodeConformWav({
   required int channels,
   required int sampleRate,
   ConformSourceFingerprint? fingerprint,
+  ConformSourceStat? sourceStat,
   int speedNumerator = 1,
   int speedDenominator = 1,
 }) {
@@ -144,7 +205,9 @@ Uint8List encodeConformWav({
           utf8.encode(
             jsonEncode({
               'sourceLength': fingerprint.sourceLength,
-              'sourceModifiedMicros': fingerprint.sourceModifiedMicros,
+              'sourceCrc32': fingerprint.sourceCrc32,
+              if (sourceStat != null)
+                'sourceModifiedMicros': sourceStat.sourceModifiedMicros,
               // Unity speed stays out of the JSON: pre-④ conforms carry
               // no keys, and byte-identical output for the common case is
               // worth keeping.
@@ -237,6 +300,7 @@ ConformAudio decodeConformWav(Uint8List bytes) {
   int? dataStart;
   int? dataLength;
   ConformSourceFingerprint? fingerprint;
+  ConformSourceStat? sourceStat;
   var speedNumerator = 1;
   var speedDenominator = 1;
 
@@ -266,16 +330,33 @@ ConformAudio decodeConformWav(Uint8List bytes) {
           final decoded =
               jsonDecode(utf8.decode(bytes.sublist(body, body + size)))
                   as Map<String, dynamic>;
+          final length = decoded['sourceLength'] as int;
           fingerprint = ConformSourceFingerprint(
-            sourceLength: decoded['sourceLength'] as int,
-            sourceModifiedMicros: decoded['sourceModifiedMicros'] as int,
+            sourceLength: length,
+            // A conform written before the fingerprint became content-based
+            // carries only `sourceModifiedMicros`, and there is no way to
+            // derive a hash from a timestamp. The cast throws, which lands in
+            // the catch below as "unknown" — and unknown already means stale,
+            // so those conforms rebuild once and never again.
+            sourceCrc32: decoded['sourceCrc32'] as int,
           );
+          // The stat HINT is optional on purpose: absent it, the reuse check
+          // falls through to reading the source, which is a slow answer
+          // rather than a wrong one.
+          final modified = decoded['sourceModifiedMicros'] as int?;
+          sourceStat = modified == null
+              ? null
+              : ConformSourceStat(
+                  sourceLength: length,
+                  sourceModifiedMicros: modified,
+                );
           speedNumerator = (decoded['speedNumerator'] as int?) ?? 1;
           speedDenominator = (decoded['speedDenominator'] as int?) ?? 1;
         } on Object {
           // An unreadable provenance chunk means "unknown", never a
           // failed open: the audio is still perfectly good.
           fingerprint = null;
+          sourceStat = null;
         }
     }
     offset = body + size + (size.isOdd ? 1 : 0);
@@ -320,6 +401,7 @@ ConformAudio decodeConformWav(Uint8List bytes) {
     channels: channels,
     sampleRate: sampleRate,
     fingerprint: fingerprint,
+    sourceStat: sourceStat,
     speedNumerator: speedNumerator,
     speedDenominator: speedDenominator,
   );

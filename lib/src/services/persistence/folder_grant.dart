@@ -23,6 +23,7 @@ import 'package:flutter/foundation.dart';
 import 'package:file_selector/file_selector.dart' as file_selector;
 
 import 'app_documents.dart';
+import 'file_type_groups.dart';
 
 /// How a folder request ended.
 enum FolderPickStatus {
@@ -47,30 +48,72 @@ enum FolderPickStatus {
   unavailable,
 }
 
-/// A folder the app has been granted, and the token that reopens it later.
+/// Which picker produced a grant.
+///
+/// PICK-5: the one thing that genuinely differs between a file grant and a
+/// folder grant. Coverage does NOT differ — `covers` is a single expression
+/// for both, because a file grant is a subtree of size one and the prefix
+/// clause dies on its own. What differs is which picker to raise when a
+/// grant has to be re-established, and that is the whole of why this is
+/// recorded.
+enum GrantKind {
+  file('file'),
+  folder('folder');
+
+  const GrantKind(this.jsonValue);
+
+  final String jsonValue;
+
+  /// Unknown or absent decodes to [folder]: every grant written before
+  /// PICK-5 was a project folder.
+  static GrantKind fromJson(Object? json) {
+    for (final value in values) {
+      if (value.jsonValue == json) {
+        return value;
+      }
+    }
+    return folder;
+  }
+}
+
+/// A path the app has been granted, and the token that reopens it later.
 @immutable
 class FolderGrant {
-  const FolderGrant({required this.status, this.path, this.bookmark});
+  const FolderGrant({
+    required this.status,
+    this.path,
+    this.bookmark,
+    this.kind = GrantKind.folder,
+  });
 
   const FolderGrant.cancelled()
     : status = FolderPickStatus.cancelled,
       path = null,
-      bookmark = null;
+      bookmark = null,
+      kind = GrantKind.folder;
 
   const FolderGrant.noFilesystemPath()
     : status = FolderPickStatus.noFilesystemPath,
       path = null,
-      bookmark = null;
+      bookmark = null,
+      kind = GrantKind.folder;
 
   const FolderGrant.unavailable()
     : status = FolderPickStatus.unavailable,
       path = null,
-      bookmark = null;
+      bookmark = null,
+      kind = GrantKind.folder;
 
-  const FolderGrant.granted({required String this.path, this.bookmark})
-    : status = FolderPickStatus.granted;
+  const FolderGrant.granted({
+    required String this.path,
+    this.bookmark,
+    this.kind = GrantKind.folder,
+  }) : status = FolderPickStatus.granted;
 
   final FolderPickStatus status;
+
+  /// Whether this grant was taken over a file or over a folder.
+  final GrantKind kind;
 
   /// A real filesystem path `dart:io` can list and write. Non-null exactly
   /// when [status] is [FolderPickStatus.granted].
@@ -84,6 +127,20 @@ class FolderGrant {
   final String? bookmark;
 
   bool get isGranted => status == FolderPickStatus.granted;
+
+  /// Whether this grant opens [candidate].
+  ///
+  /// ONE expression for both kinds. A file grant is a subtree of size one,
+  /// so the prefix clause is simply never true for it — branching on [kind]
+  /// here would be a second law to keep in step with the first for no gain.
+  bool covers(String candidate) {
+    final granted = path;
+    if (granted == null) {
+      return false;
+    }
+    final normalized = candidate.replaceAll('\\', '/');
+    return normalized == granted || normalized.startsWith('$granted/');
+  }
 }
 
 /// The one place that asks for a writable directory.
@@ -106,6 +163,18 @@ abstract final class FolderPicker {
   @visibleForTesting
   static Future<FolderGrant> Function({String? initialDirectory})?
   debugFolderPicker;
+
+  /// The same seam for [pickFiles]. Separate rather than one overloaded hook
+  /// because a test that stubs the folder picker must not accidentally stub
+  /// the file picker into returning a folder.
+  ///
+  /// ⚠️Reset in `test/flutter_test_config.dart`, like the two below.
+  @visibleForTesting
+  static Future<List<FolderGrant>> Function({
+    required List<file_selector.XTypeGroup> acceptedTypeGroups,
+    required bool allowMultiple,
+  })?
+  debugFilePicker;
 
   /// Test seam for the OS these rules are read from.
   ///
@@ -176,7 +245,72 @@ abstract final class FolderPicker {
         return const FolderGrant.unavailable();
       }
     }
-    return _invoke('pickProjectFolder', {'initialDirectory': initialDirectory});
+    return (await _invoke('pickProjectFolder', {
+      'initialDirectory': initialDirectory,
+    }, GrantKind.folder)).first;
+  }
+
+  /// PICK-5: asks the user for FILES, in place, with a grant on each.
+  ///
+  /// This exists because `file_selector` cannot serve a REFERENCE on either
+  /// mobile platform. Both of its pickers copy:
+  ///
+  ///   - iOS opens the document picker in `.import` mode, which duplicates
+  ///     the chosen file into the app sandbox and returns the copy.
+  ///   - Android reads the `content://` document through
+  ///     `getPathFromCopyOfFileFromUri`, which writes into `getCacheDir()`
+  ///     with `deleteOnExit` on the directory.
+  ///
+  /// A media asset imported "by reference" therefore pointed at a temporary
+  /// duplicate: the original was never referenced, no bookmark could be
+  /// minted for it (the app never saw its URL), and the copy disappears on
+  /// the next cache sweep. Copy-on-import happened to hide this on Apple —
+  /// it copies the copy into the project, which survives — but a reference
+  /// was broken from the start.
+  ///
+  /// Windows and Linux keep using the plugin: they hand back real paths,
+  /// attach no permission, and copy nothing.
+  static Future<List<FolderGrant>> pickFiles({
+    required List<file_selector.XTypeGroup> acceptedTypeGroups,
+    bool allowMultiple = false,
+  }) async {
+    final override = debugFilePicker;
+    if (override != null) {
+      return override(
+        acceptedTypeGroups: acceptedTypeGroups,
+        allowMultiple: allowMultiple,
+      );
+    }
+    if (!grantsAreScoped) {
+      try {
+        final picked = allowMultiple
+            ? await file_selector.openFiles(
+                acceptedTypeGroups: acceptedTypeGroups,
+              )
+            : <file_selector.XFile?>[
+                await file_selector.openFile(
+                  acceptedTypeGroups: acceptedTypeGroups,
+                ),
+              ].whereType<file_selector.XFile>().toList();
+        if (picked.isEmpty) {
+          return const [FolderGrant.cancelled()];
+        }
+        return [
+          for (final file in picked)
+            FolderGrant.granted(
+              path: _normalize(file.path),
+              kind: GrantKind.file,
+            ),
+        ];
+      } on Object {
+        return const [FolderGrant.unavailable()];
+      }
+    }
+    return _invoke('pickFiles', {
+      'utis': FileTypeGroups.utisFor(acceptedTypeGroups),
+      'mimeTypes': FileTypeGroups.mimeTypesFor(acceptedTypeGroups),
+      'allowMultiple': allowMultiple,
+    }, GrantKind.file);
   }
 
   /// Reopens a folder from a stored [bookmark], re-acquiring the security
@@ -188,16 +322,22 @@ abstract final class FolderPicker {
   /// provider was reinstalled, the account changed, or the folder is gone.
   /// The caller keeps the row and offers to reconnect instead of deleting
   /// what the user may still want.
-  static Future<FolderGrant> resolveBookmark(String bookmark) async {
+  static Future<FolderGrant> resolveBookmark(
+    String bookmark, {
+    GrantKind kind = GrantKind.folder,
+  }) async {
     if (!grantsAreScoped) {
       return const FolderGrant.unavailable();
     }
-    return _invoke('resolveFolderBookmark', {'bookmark': bookmark});
+    return (await _invoke('resolveBookmark', {
+      'bookmark': bookmark,
+    }, kind)).first;
   }
 
-  static Future<FolderGrant> _invoke(
+  static Future<List<FolderGrant>> _invoke(
     String method,
     Map<String, Object?> arguments,
+    GrantKind kind,
   ) async {
     try {
       return decodeChannelAnswer(
@@ -205,9 +345,10 @@ abstract final class FolderPicker {
           method,
           arguments,
         ),
+        kind: kind,
       );
     } on Object {
-      return const FolderGrant.unavailable();
+      return const [FolderGrant.unavailable()];
     }
   }
 
@@ -225,28 +366,58 @@ abstract final class FolderPicker {
   /// becomes [FolderPickStatus.unavailable] rather than quietly a cancel, so
   /// a native that grows a case Dart has not learned yet is loud instead of
   /// looking like a user who changed their mind.
+  /// NEVER empty: a failure arrives as a single grant carrying the status,
+  /// so no caller has to decide what an empty list would have meant.
+  ///
+  /// The payload shape is `{status, items: [{path, bookmark}]}` for one item
+  /// and for many alike. A single-item dialect would have been smaller here
+  /// and a standing hazard there — the channel has no compiler to notice
+  /// when one of the three platform runners keeps speaking the old one.
   @visibleForTesting
-  static FolderGrant decodeChannelAnswer(Map<Object?, Object?>? answer) {
+  static List<FolderGrant> decodeChannelAnswer(
+    Map<Object?, Object?>? answer, {
+    GrantKind kind = GrantKind.folder,
+  }) {
     if (answer == null) {
-      return const FolderGrant.unavailable();
+      return const [FolderGrant.unavailable()];
     }
-    final path = answer['path'];
     switch (answer['status']) {
-      case 'granted' when path is String && path.isNotEmpty:
-        final bookmark = answer['bookmark'];
-        return FolderGrant.granted(
-          path: _normalize(path),
-          bookmark: bookmark is String && bookmark.isNotEmpty ? bookmark : null,
-        );
-      // A native that says "granted" and forgets the path is broken, not
-      // successful. Falls through to unavailable rather than producing a
-      // grant with a null path that every caller would then have to guard.
+      case 'granted':
+        final items = answer['items'];
+        if (items is! List) {
+          // A native that says "granted" and forgets the items is broken,
+          // not successful.
+          return const [FolderGrant.unavailable()];
+        }
+        final grants = <FolderGrant>[];
+        for (final item in items) {
+          if (item is! Map) {
+            continue;
+          }
+          final path = item['path'];
+          if (path is! String || path.isEmpty) {
+            // Same rule per item: a granted entry with no path is dropped
+            // rather than becoming a grant every caller would have to guard.
+            continue;
+          }
+          final bookmark = item['bookmark'];
+          grants.add(
+            FolderGrant.granted(
+              path: _normalize(path),
+              bookmark: bookmark is String && bookmark.isNotEmpty
+                  ? bookmark
+                  : null,
+              kind: kind,
+            ),
+          );
+        }
+        return grants.isEmpty ? const [FolderGrant.unavailable()] : grants;
       case 'cancelled':
-        return const FolderGrant.cancelled();
+        return const [FolderGrant.cancelled()];
       case 'noFilesystemPath':
-        return const FolderGrant.noFilesystemPath();
+        return const [FolderGrant.noFilesystemPath()];
       default:
-        return const FolderGrant.unavailable();
+        return const [FolderGrant.unavailable()];
     }
   }
 

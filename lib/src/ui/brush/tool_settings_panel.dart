@@ -15,6 +15,7 @@ import 'brush_settings_panel.dart';
 import 'brush_tool_state.dart';
 import 'guide_panels.dart';
 import 'canvas_selection_commands.dart';
+import 'transform_tool_options.dart';
 import '../../models/cut_piece.dart';
 import '../../services/cut_piece_slot.dart';
 import 'cut_piece_preview.dart';
@@ -35,8 +36,8 @@ class ToolSettingsPanel extends StatelessWidget {
     required this.onFillOptionsChanged,
     this.selectionMaskOptions = SelectionMaskOptions.none,
     this.onSelectionMaskOptionsChanged,
-    this.transformResampleMode = ResampleMode.blend,
-    this.onTransformResampleModeChanged,
+    this.transformOptions = TransformToolOptions.defaults,
+    this.onTransformOptionsChanged,
     this.selectionCommands,
     this.language = AppLanguage.en,
     this.eyedropperSource = CanvasColorSampleSource.display,
@@ -85,10 +86,11 @@ class ToolSettingsPanel extends StatelessWidget {
   final SelectionMaskOptions selectionMaskOptions;
   final ValueChanged<SelectionMaskOptions>? onSelectionMaskOptionsChanged;
 
-  /// P3a: the Move tool's resampler choice — the tent that smooths, or the
-  /// coverage argmax that keeps a two-value drawing two-valued.
-  final ResampleMode transformResampleMode;
-  final ValueChanged<ResampleMode>? onTransformResampleModeChanged;
+  /// The transform tool's knobs: mode, scale anchor, AA, mesh grid. A null
+  /// handler shows them disabled — the convention the eyedropper's source
+  /// picker uses for hosts that do not own the setting.
+  final TransformToolOptions transformOptions;
+  final ValueChanged<TransformToolOptions>? onTransformOptionsChanged;
 
   /// The mounted selection layer's imperative channel — the Move tool's
   /// numeric inputs read and write the live transform through it.
@@ -175,8 +177,8 @@ class ToolSettingsPanel extends StatelessWidget {
         ),
         CanvasTool.move => _MoveSettings(
           selectionCommands: selectionCommands,
-          resampleMode: transformResampleMode,
-          onResampleModeChanged: onTransformResampleModeChanged,
+          options: transformOptions,
+          onOptionsChanged: onTransformOptionsChanged,
         ),
         // Guides get their knobs HERE, like every other tool. There is no
         // guide panel of its own.
@@ -629,17 +631,17 @@ class _SelectionModeRow extends StatelessWidget {
 class _MoveSettings extends StatefulWidget {
   const _MoveSettings({
     required this.selectionCommands,
-    required this.resampleMode,
-    required this.onResampleModeChanged,
+    required this.options,
+    required this.onOptionsChanged,
   });
 
   final CanvasSelectionCommands? selectionCommands;
 
-  /// Which resampler a transform commit runs through. A null handler shows
-  /// the switch disabled — the convention the eyedropper's source picker
-  /// uses for hosts that do not own the setting.
-  final ResampleMode resampleMode;
-  final ValueChanged<ResampleMode>? onResampleModeChanged;
+  /// The transform tool's knobs. A null handler shows them disabled — the
+  /// convention the eyedropper's source picker uses for hosts that do not
+  /// own the setting.
+  final TransformToolOptions options;
+  final ValueChanged<TransformToolOptions>? onOptionsChanged;
 
   @override
   State<_MoveSettings> createState() => _MoveSettingsState();
@@ -726,11 +728,16 @@ class _MoveSettingsState extends State<_MoveSettings> {
           width: 56,
           child: Text(label, style: theme.textTheme.bodySmall),
         ),
+        // 유저 08-13: 수치값은 오른쪽 정렬. Scoped to this panel — the
+        // readout is shared with the canvas bar, the conte page field and
+        // the timesheet, and those are a UI-session decision, not this
+        // round's.
         DragValueLabel(
           keyValue: keyValue,
           text: text,
           tooltip: AppText.strings.viewDragDoubleTap,
           width: 72,
+          textAlign: TextAlign.right,
           textStyle: const TextStyle(fontSize: 12),
           onDragDelta: onDrag,
           onEditSubmit: (raw) {
@@ -746,26 +753,44 @@ class _MoveSettingsState extends State<_MoveSettings> {
     );
   }
 
+  /// The mesh grid's cell count on one axis.
+  Widget _gridChannel({
+    required String keyValue,
+    required String label,
+    required int value,
+    required ValueChanged<int> onChanged,
+  }) {
+    final handler = widget.onOptionsChanged;
+    return _channel(
+      keyValue: keyValue,
+      label: label,
+      text: '$value',
+      onDrag: handler == null
+          ? (_) {}
+          : (units) => onChanged(
+              TransformToolOptions.clampMeshCells(value + units.round()),
+            ),
+      onSubmit: handler == null
+          ? (_) {}
+          : (parsed) =>
+                onChanged(TransformToolOptions.clampMeshCells(parsed.round())),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final hasSelection = widget.selectionCommands?.hasSelection ?? false;
+    // The one gate for the whole panel. Choosing the tool is always
+    // allowed now; it is the EDIT that is refused, and it is refused
+    // quietly — flat controls rather than a notice per press (유저 08-13).
+    final canEdit = widget.selectionCommands?.canEditTransform ?? false;
+    final options = widget.options;
+    final onOptions = canEdit ? widget.onOptionsChanged : null;
     return ListView(
       key: const ValueKey<String>('tool-settings-move'),
       padding: const EdgeInsets.all(12),
       children: [
         Text(AppText.strings.toolMove, style: theme.textTheme.titleSmall),
-        const SizedBox(height: 4),
-        Text(
-          hasSelection
-              ? 'Values apply to the selection\'s transform box '
-                    '(Enter confirms, Esc reverts).'
-              : 'No selection: the box opens on the WHOLE picture '
-                    '(Enter confirms, Esc reverts).',
-          style: theme.textTheme.bodySmall?.copyWith(
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
         const SizedBox(height: 8),
         _channel(
           keyValue: 'move-x-field',
@@ -822,49 +847,124 @@ class _MoveSettingsState extends State<_MoveSettings> {
             _apply();
           },
         ),
+        // The mesh's density, shown as numbers because that is what it is
+        // (유저 08-13: "수치도 조절가능하게 값으로 드러내고"). Only in 메쉬
+        // — a grid size means nothing to the other two modes.
+        if (options.mode == TransformMode.mesh) ...[
+          const SizedBox(height: 4),
+          _gridChannel(
+            keyValue: 'move-mesh-columns-field',
+            label: AppText.strings.trMeshColumns,
+            value: options.meshColumns,
+            onChanged: (cells) => widget.onOptionsChanged?.call(
+              options.copyWith(meshColumns: cells),
+            ),
+          ),
+          const SizedBox(height: 4),
+          _gridChannel(
+            keyValue: 'move-mesh-rows-field',
+            label: AppText.strings.trMeshRows,
+            value: options.meshRows,
+            onChanged: (cells) => widget.onOptionsChanged?.call(
+              options.copyWith(meshRows: cells),
+            ),
+          ),
+        ],
         const SizedBox(height: 12),
-        // Held back for three rounds, because a control labelled "preserve
-        // original colours" that erases the drawing is worse than no
-        // control at all, and for three rounds it did erase the drawing.
-        // Each round the reason sat one level deeper: the argmax weighed
-        // taps with a reconstruction filter instead of measuring area;
-        // then it measured area over the preimage's BOUNDING BOX, which a
-        // rotation inflates by 1 + |sin 2θ|, so an ordinary rotate-and-
-        // shrink kept 16 ink pixels of 67; then three separate attempts to
-        // shrink that box onto the true parallelogram each traded the lost
-        // line art for transparent holes.
+        // 유저 08-13, in this order: 좌우반전 · 상하반전 · 리셋 · 적용.
+        Wrap(
+          spacing: 8,
+          runSpacing: 8,
+          children: [
+            OutlinedButton(
+              key: const ValueKey<String>('move-flip-horizontal-button'),
+              onPressed: canEdit
+                  ? () => widget.selectionCommands?.flipTransform(
+                      horizontal: true,
+                    )
+                  : null,
+              child: Text(AppText.strings.trFlipHorizontal),
+            ),
+            OutlinedButton(
+              key: const ValueKey<String>('move-flip-vertical-button'),
+              onPressed: canEdit
+                  ? () => widget.selectionCommands?.flipTransform(
+                      horizontal: false,
+                    )
+                  : null,
+              child: Text(AppText.strings.trFlipVertical),
+            ),
+            OutlinedButton(
+              key: const ValueKey<String>('move-reset-button'),
+              onPressed: canEdit
+                  ? () => widget.selectionCommands?.resetTransform()
+                  : null,
+              child: Text(AppText.strings.commonReset),
+            ),
+            FilledButton(
+              key: const ValueKey<String>('move-apply-button'),
+              onPressed: canEdit
+                  ? () => widget.selectionCommands?.applyTransform()
+                  : null,
+              child: Text(AppText.strings.commonApply),
+            ),
+          ],
+        ),
+        const SizedBox(height: 12),
+        // The scale anchor, as a persistent choice rather than a held key
+        // — a hold cannot be reached on a tablet while the pen is on the
+        // handle. Alt still inverts it for one drag.
+        Text(
+          AppText.strings.trAnchor,
+          style: theme.textTheme.labelSmall?.copyWith(
+            color: theme.colorScheme.onSurfaceVariant,
+          ),
+        ),
+        const SizedBox(height: 4),
+        SegmentedButton<TransformAnchor>(
+          key: const ValueKey<String>('move-anchor-segments'),
+          showSelectedIcon: false,
+          segments: [
+            ButtonSegment<TransformAnchor>(
+              value: TransformAnchor.oppositeCorner,
+              label: Text(AppText.strings.trAnchorOpposite),
+            ),
+            ButtonSegment<TransformAnchor>(
+              value: TransformAnchor.center,
+              label: Text(AppText.strings.trAnchorCenter),
+            ),
+          ],
+          selected: {options.anchor},
+          onSelectionChanged: onOptions == null
+              ? null
+              : (selection) =>
+                    onOptions(options.copyWith(anchor: selection.first)),
+        ),
+        const SizedBox(height: 12),
+        // AA, and nothing else.
         //
-        // What ships it is the kernel no longer having one box for every
-        // shape. Where the preimage really is an axis-aligned rectangle it
-        // measures the area exactly; everywhere else it supersamples and
-        // counts where the samples land. Measured against a 1024-sample
-        // oracle over a 0.4–1.0 scale grid at every fifth degree, it drops
-        // below 80% of the oracle's ink in 3 of 390 cases — all of them at
-        // EXACTLY half scale, where the two areas are equal and there is
-        // nothing to elect — against the boxed version's 110 of 390.
+        // It was "Preserve original colours" over a paragraph about
+        // in-between shades, which is the same switch described from the
+        // far side: the argmax preserves the source words BECAUSE it
+        // refuses to blend, and the blend anti-aliases BECAUSE it does.
+        // 유저 08-13 asked for the two letters and the polarity that goes
+        // with them — AA on is the smoothing default, AA off is the
+        // two-value copy.
         SwitchListTile(
-          key: const ValueKey<String>('move-preserve-colours-switch'),
+          key: const ValueKey<String>('move-antialias-switch'),
           dense: true,
           contentPadding: EdgeInsets.zero,
-          title: Text(AppText.strings.brPreserveColours),
-          subtitle: Text(AppText.strings.brPreserveColoursHint),
-          value: widget.resampleMode == ResampleMode.pick,
-          onChanged: widget.onResampleModeChanged == null
+          title: const Text('AA'),
+          value: options.resampleMode == ResampleMode.blend,
+          onChanged: onOptions == null
               ? null
-              : (value) => widget.onResampleModeChanged!(
-                  value ? ResampleMode.pick : ResampleMode.blend,
+              : (value) => onOptions(
+                  options.copyWith(
+                    resampleMode: value
+                        ? ResampleMode.blend
+                        : ResampleMode.pick,
+                  ),
                 ),
-        ),
-        const SizedBox(height: 8),
-        // R20-D3 mesh warp: opens the control grid on the selection —
-        // or, with none, on the whole picture (R26 #13). Enter commits
-        // the triangulated warp; Esc reverts. Perspective rides the
-        // Ctrl+corner gesture on the box itself (R20-D2).
-        OutlinedButton.icon(
-          key: const ValueKey<String>('move-mesh-warp-button'),
-          onPressed: () => widget.selectionCommands?.beginMeshTransform(),
-          icon: const Icon(Icons.grid_4x4, size: 16),
-          label: Text(AppText.strings.brMeshWarp),
         ),
       ],
     );

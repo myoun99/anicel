@@ -1,4 +1,5 @@
 import 'dart:ui' show ImageByteFormat, PictureRecorder;
+import 'package:flutter/gestures.dart' show PointerDeviceKind;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
@@ -20,6 +21,7 @@ import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/brush/brush_edit_cache_invalidation_sink.dart';
 import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
+import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 import 'package:anicel/src/ui/canvas/bitmap_surface_painter.dart';
 import 'package:anicel/src/ui/canvas/bitmap_tile_image_cache.dart';
 import 'package:anicel/src/ui/canvas/canvas_selection_layer.dart';
@@ -52,6 +54,7 @@ void main() {
       HistoryManager history,
       CanvasSelectionCommands commands,
       Future<void> Function(CanvasTool tool) setTool,
+      ValueNotifier<TransformToolOptions> transformOptions,
     })
   >
   pumpSelectionPanel(
@@ -59,6 +62,7 @@ void main() {
     CanvasTool tool = CanvasTool.select,
     CanvasShapeKind shapeKind = CanvasShapeKind.rect,
     BrushBlendMode blendMode = BrushBlendMode.color,
+    TransformMode transformMode = TransformMode.normal,
     // Extra committed ink, mounted with the fixture. `null` replaces the
     // in-canvas stroke entirely (a cel whose only ink is off-canvas).
     List<BrushDab>? sourceDabs,
@@ -73,10 +77,17 @@ void main() {
     );
     final history = HistoryManager();
     final commands = CanvasSelectionCommands();
-    // One committed stroke around canvas (30..60, 30..60).
-    coordinator.commitSourceStroke(
-      sourceDabs: sourceDabs ?? [dab(30, 30), dab(45, 45), dab(60, 60)],
+    final transformOptions = ValueNotifier(
+      TransformToolOptions(mode: transformMode),
     );
+    addTearDown(transformOptions.dispose);
+    // One committed stroke around canvas (30..60, 30..60). An EMPTY list
+    // means a blank cel — the coordinator refuses to commit nothing, and
+    // "nothing was committed" is exactly the state under test.
+    final dabs = sourceDabs ?? [dab(30, 30), dab(45, 45), dab(60, 60)];
+    if (dabs.isNotEmpty) {
+      coordinator.commitSourceStroke(sourceDabs: dabs);
+    }
 
     Future<void> pumpWith(CanvasTool tool) async {
       await tester.pumpWidget(
@@ -109,6 +120,7 @@ void main() {
                   antiAlias: false,
                 ),
               ),
+              transformOptions: transformOptions,
               ),
             ),
           ),
@@ -123,6 +135,7 @@ void main() {
       history: history,
       commands: commands,
       setTool: pumpWith,
+      transformOptions: transformOptions,
     );
   }
 
@@ -850,32 +863,27 @@ void main() {
     expect(env.history.undoCount, entriesBefore);
   });
 
-  testWidgets('Ctrl+corner opens the PERSPECTIVE quad (R20-D2): the '
-      'numeric channels blank out and Enter commits ONE resampled entry', (
-    tester,
-  ) async {
-    final env = await pumpSelectionPanel(tester);
+  testWidgets('퍼스 mode: a corner drag warps the quad with NO modifier, '
+      'and Enter commits ONE resampled entry', (tester) async {
+    final env = await pumpSelectionPanel(
+      tester,
+      transformMode: TransformMode.perspective,
+    );
     await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
     await env.setTool(CanvasTool.move);
-    final origin = tester.getTopLeft(find.byKey(layerKey));
     final entriesBefore = env.history.undoCount;
 
-    // Ctrl+grab the top-left corner handle of the always-on box and pinch
-    // it inward — the PS perspective gesture.
-    await tester.sendKeyDownEvent(LogicalKeyboardKey.controlLeft);
-    final gesture = await tester.startGesture(origin + const Offset(20, 20));
-    await tester.pump();
-    await gesture.moveTo(origin + const Offset(34, 24));
-    await tester.pump();
-    await gesture.up();
-    await tester.pump();
-    await tester.sendKeyUpEvent(LogicalKeyboardKey.controlLeft);
+    // Straight onto the top-left corner and inward. No Ctrl: the MODE is
+    // the door, which is what makes the gesture reachable on a tablet.
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(34, 24));
 
     expect(env.commands.transformActive, isTrue, reason: 'quad session open');
     expect(
       env.commands.transformValues,
-      isNull,
-      reason: 'a free quad has no affine channels — the fields blank out',
+      isNotNull,
+      reason:
+          'the affine lives UNDER the warp now, so the numeric channels '
+          'keep their meaning in every mode',
     );
 
     // Enter: resample through the homography + confirm as ONE entry.
@@ -890,17 +898,81 @@ void main() {
     expect(inkAt(env.coordinator, 30, 30), isNonZero);
   });
 
-  testWidgets('Mesh Warp (R20-D3): the control grid opens on the '
-      'selection, a dragged point + Enter commits ONE warped entry', (
-    tester,
-  ) async {
-    final env = await pumpSelectionPanel(tester);
+  testWidgets('퍼스 mode with every offset still zero resamples through the '
+      'AFFINE path — an untouched quad is not a warp', (tester) async {
+    final env = await pumpSelectionPanel(
+      tester,
+      transformMode: TransformMode.perspective,
+    );
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    await env.setTool(CanvasTool.move);
+
+    // Scale by an EDGE handle: in 퍼스 that is an affine drag, and with no
+    // corner touched the commit must take the affine path rather than a
+    // homography that only happens to agree with it.
+    await dragOnLayer(tester, const Offset(45, 20), const Offset(45, 12));
+    expect(env.commands.transformActive, isTrue);
+    final values = env.commands.transformValues;
+    expect(values, isNotNull);
+    expect(
+      values!.rotationDegrees,
+      0,
+      reason: 'an edge drag scales, it does not rotate',
+    );
+
+    env.commands.commitTransform();
+    await tester.pump();
+    expect(env.commands.movePending, isFalse);
+  });
+
+  testWidgets('mode switches carry the box: a 퍼스 warp survives a trip '
+      'through 일반 and back', (tester) async {
+    final env = await pumpSelectionPanel(
+      tester,
+      transformMode: TransformMode.perspective,
+    );
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    await env.setTool(CanvasTool.move);
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(34, 24));
+    expect(env.commands.transformActive, isTrue);
+
+    // Narrowing drops the warp on screen...
+    env.transformOptions.value = env.transformOptions.value.copyWith(
+      mode: TransformMode.normal,
+    );
+    await tester.pump();
+    expect(
+      env.commands.transformActive,
+      isTrue,
+      reason: 'a mode switch must not confirm or close the open box',
+    );
+
+    // ...and widening brings it back, because narrowing stashed it. The
+    // alternative — losing the warp on a mis-click — is the reason the
+    // offsets are held rather than baked.
+    env.transformOptions.value = env.transformOptions.value.copyWith(
+      mode: TransformMode.perspective,
+    );
+    await tester.pump();
+    env.commands.commitTransform();
+    await tester.pump();
+    expect(env.commands.movePending, isFalse);
+  });
+
+  testWidgets('메쉬 mode: the control grid comes up WITH the box, a dragged '
+      'point + Enter commits ONE warped entry', (tester) async {
+    final env = await pumpSelectionPanel(
+      tester,
+      transformMode: TransformMode.mesh,
+    );
     await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
     await env.setTool(CanvasTool.move);
     final entriesBefore = env.history.undoCount;
 
     await tester.runAsync(() async {
-      env.commands.beginMeshTransform();
+      // The mesh has no button any more — the mode is the door, and any
+      // ordinary open brings the grid with it.
+      env.commands.beginTransform();
       // Let the float decode land (drawVertices live warp preview, R21).
       await Future<void>.delayed(const Duration(milliseconds: 50));
     });
@@ -908,18 +980,25 @@ void main() {
     expect(env.commands.transformActive, isTrue);
     expect(
       env.commands.transformValues,
-      isNull,
-      reason: 'a mesh has no affine channels — the fields blank out',
+      isNotNull,
+      reason:
+          'the grid rides ON an affine, so X/Y/angle/scale still describe '
+          'something even here',
     );
-    expect(
-      find.byKey(const ValueKey<String>('transform-resample-preview')),
-      findsOneWidget,
-      reason: 'the live warp preview mounts once the float image decodes',
-    );
-
     // Drag an interior control point (stamp rect (20,20)-(71,71), 3×3
     // cells → pitch 17: the (1,1) point sits at (37,37)).
     await dragOnLayer(tester, const Offset(37, 37), const Offset(31, 42));
+    await tester.runAsync(
+      () => Future<void>.delayed(const Duration(milliseconds: 50)),
+    );
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey<String>('transform-resample-preview')),
+      findsOneWidget,
+      reason:
+          'the live warp preview mounts once there is a warp to show — an '
+          'all-zero grid resamples nothing, by design',
+    );
 
     env.commands.commitTransform();
     await tester.pump();
@@ -932,6 +1011,225 @@ void main() {
       inkAt(env.coordinator, 30, 30),
       isNonZero,
       reason: 'one undo restores the pre-lift picture',
+    );
+  });
+
+  testWidgets('an EMPTY cel takes the transform tool and refuses the EDIT: '
+      'quietly, and it says so through the channel', (tester) async {
+    // A cel whose only ink is off-canvas is still ink; `sourceDabs: []`
+    // is the empty one this needs.
+    final env = await pumpSelectionPanel(
+      tester,
+      tool: CanvasTool.move,
+      sourceDabs: const [],
+    );
+
+    expect(
+      env.commands.canEditTransform,
+      isFalse,
+      reason: 'nothing to transform — but the TOOL is armed regardless',
+    );
+
+    // Every edit entrance is inert, and none of them says anything: the
+    // refusal is the flat control, not a notice per tap.
+    env.commands.beginTransform();
+    await tester.pump();
+    expect(env.commands.transformActive, isFalse);
+
+    env.commands.setTransformValues(
+      tx: 10,
+      ty: 10,
+      rotationDegrees: 0,
+      scale: 1,
+    );
+    await tester.pump();
+    expect(env.commands.transformActive, isFalse);
+    expect(env.commands.hasSelection, isFalse);
+    expect(env.history.undoCount, 0);
+  });
+
+  testWidgets('the gate follows the CEL, not the tool switch: ink makes the '
+      'same tool editable', (tester) async {
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+    expect(
+      env.commands.canEditTransform,
+      isTrue,
+      reason: 'the fixture cel has a stroke in it',
+    );
+
+    // The old gate asked `celHasRenderableContent` — three map lookups
+    // that answer "does a cel exist", so a blank one passed and the lift
+    // then came back empty. The live predicate reads the INK bounds.
+    env.commands.beginTransform();
+    await tester.pump();
+    expect(env.commands.transformActive, isTrue);
+  });
+
+  testWidgets('flip mirrors the box, and 리셋 clears the numbers AND the '
+      'warp', (tester) async {
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+
+    env.commands.flipTransform(horizontal: true);
+    await tester.pump();
+    expect(
+      env.commands.transformActive,
+      isTrue,
+      reason: 'with no box open, a flip opens one — like the numeric fields',
+    );
+    expect(env.commands.transformValues?.scale, -1);
+
+    env.commands.setTransformValues(
+      tx: 12,
+      ty: 0,
+      rotationDegrees: 30,
+      scale: 2,
+    );
+    await tester.pump();
+    env.commands.resetTransform();
+    await tester.pump();
+    final values = env.commands.transformValues;
+    expect(values?.tx, 0);
+    expect(values?.rotationDegrees, 0);
+    expect(values?.scale, 1);
+  });
+
+  testWidgets('적용 with nothing transformed REPLAYS the last committed '
+      'values, and does not commit them until pressed again', (tester) async {
+    final env = await pumpSelectionPanel(tester, tool: CanvasTool.move);
+
+    // Commit something worth remembering.
+    env.commands.setTransformValues(
+      tx: 10,
+      ty: 4,
+      rotationDegrees: 0,
+      scale: 1,
+    );
+    await tester.pump();
+    env.commands.commitTransform();
+    await tester.pump();
+    final entriesAfterFirst = env.history.undoCount;
+
+    // Now an untouched box. 적용 recalls rather than committing — the
+    // values land where they can be seen, and history does not move.
+    env.commands.beginTransform();
+    await tester.pump();
+    env.commands.applyTransform();
+    await tester.pump();
+    expect(env.commands.transformValues?.tx, 10);
+    expect(env.commands.transformValues?.ty, 4);
+    expect(
+      env.history.undoCount,
+      entriesAfterFirst,
+      reason: '재현만 — the recall is not a commit',
+    );
+
+    // The second press is the one that applies.
+    env.commands.applyTransform();
+    await tester.pump();
+    expect(env.history.undoCount, entriesAfterFirst + 1);
+  });
+
+  testWidgets('the ANCHOR is a setting, and Alt inverts it for one drag', (
+    tester,
+  ) async {
+    // Centre-anchored: the box grows both ways, so the corner OPPOSITE the
+    // grabbed one moves too. With the default anchor it would stay put.
+    final env = await pumpSelectionPanel(tester);
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    await env.setTool(CanvasTool.move);
+    env.transformOptions.value = env.transformOptions.value.copyWith(
+      anchor: TransformAnchor.center,
+    );
+    await tester.pump();
+
+    // BR (70,70) out to (95,95) is 2× about the centre (45,45), so the
+    // stroke's ends map 30→15 and 60→75. Anchored at the opposite corner
+    // the same drag would be 1.5× about (20,20), putting them at 35 and 80.
+    await dragOnLayer(tester, const Offset(70, 70), const Offset(95, 95));
+    env.commands.commitTransform();
+    await tester.pump();
+    expect(
+      inkAt(env.coordinator, 75, 75),
+      isNonZero,
+      reason: 'the grabbed end went out to 75, not the 80 a corner anchor '
+          'would have given',
+    );
+    expect(
+      inkAt(env.coordinator, 15, 15),
+      isNonZero,
+      reason:
+          'and the far end came out to meet it — that is what "anchor at '
+          'the centre" means, and it used to need Alt held down',
+    );
+  });
+
+  testWidgets('a finger landing mid-transform is IGNORED: the drag survives '
+      'and the canvas does not pan', (tester) async {
+    final env = await pumpSelectionPanel(tester);
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    await env.setTool(CanvasTool.move);
+
+    final origin = tester.getTopLeft(find.byKey(layerKey));
+    // Grab the BR corner with the pen and start scaling...
+    final pen = await tester.startGesture(
+      origin + const Offset(70, 70),
+      kind: PointerDeviceKind.stylus,
+    );
+    await tester.pump();
+    await pen.moveTo(origin + const Offset(85, 85));
+    await tester.pump();
+    expect(env.commands.transformActive, isTrue);
+
+    // ...then rest a palm on the glass. This used to cancel the drag and
+    // hand the gesture to the viewport (유저: "변형 도중 터치 들어오면
+    // 변형 멈춰버리는데").
+    final palm = await tester.startGesture(
+      origin + const Offset(20, 200),
+      kind: PointerDeviceKind.touch,
+    );
+    await tester.pump();
+    await pen.moveTo(origin + const Offset(95, 95));
+    await tester.pump();
+    await palm.up();
+    await pen.up();
+    await tester.pump();
+
+    expect(
+      env.commands.transformActive,
+      isTrue,
+      reason: 'the transform is still open — the finger changed nothing',
+    );
+    env.commands.commitTransform();
+    await tester.pump();
+    expect(
+      inkAt(env.coordinator, 80, 80),
+      isNonZero,
+      reason: 'the scale the pen was drawing landed in full',
+    );
+  });
+
+  testWidgets('메쉬 mode keeps the affine: a scaled box that switches to '
+      '메쉬 stays scaled', (tester) async {
+    final env = await pumpSelectionPanel(tester);
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(70, 70));
+    await env.setTool(CanvasTool.move);
+
+    // Scale by a corner in 일반, then switch to 메쉬. The grid used to be
+    // seeded from the UNtransformed stamp rect, which threw the scale
+    // away; holding the warp as offsets on top of the affine cannot.
+    await dragOnLayer(tester, const Offset(20, 20), const Offset(10, 10));
+    final scaled = env.commands.transformValues;
+    expect(scaled, isNotNull);
+    expect(scaled!.scale, isNot(1.0));
+
+    env.transformOptions.value = env.transformOptions.value.copyWith(
+      mode: TransformMode.mesh,
+    );
+    await tester.pump();
+    expect(
+      env.commands.transformValues?.scale,
+      scaled.scale,
+      reason: 'switching modes must not silently undo the scale',
     );
   });
 

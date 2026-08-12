@@ -2742,6 +2742,42 @@ class EditorSessionManager extends ChangeNotifier {
     frameIndex: _timelineController.currentFrameIndex,
   );
 
+  /// The camera pose the canvas should FRAME right now — not always the
+  /// ACTIVE cut's (㊲).
+  ///
+  /// "Which cut am I editing" and "which cut is under the playhead" are two
+  /// questions, and a live scrub makes them disagree ON PURPOSE: crossing a
+  /// boundary parks per move and leaves the active cut alone, because
+  /// switching it per move rebuilt every panel ([scrubGlobalFrame]). The
+  /// camera frame read the active cut through that, so a T.U that ended
+  /// zoomed kept framing the NEXT cut's pictures at the size the cut being
+  /// left had finished on — and dragging the other way showed no camera
+  /// work at all.
+  ///
+  /// Only a LIVE scrub asks the parked question: a committed parking means
+  /// there is no cut here (a gap, or the V-row eye's hidden picture), and
+  /// then there is nothing to frame. Null says exactly that.
+  CameraPose? get displayedCameraPose {
+    final parked = frameScrubActive.value ? _gapGlobalFrame : null;
+    if (parked == null) {
+      return activeCutOrNull == null ? null : cameraPoseAtCurrentFrame;
+    }
+    // 🚨[TrackFrameAxis.ownerOf] hands a gap frame to the PRECEDING cut on
+    // purpose (its over-end runway) — it is an addressing rule, not a
+    // containment test. [TrackFrameAxis.isGap] is the containment test, and
+    // it is the same pair [selectGlobalFrame] asks, so what the drag frames
+    // and what the release lands cannot disagree.
+    final axis = trackFrameAxis();
+    final owner = axis.isGap(parked) ? null : axis.ownerOf(parked);
+    if (owner == null) {
+      return null;
+    }
+    // The RENDER route's resolver (fx bypass honoured), because the picture
+    // under this rectangle came through it too: preview and camera frame
+    // must not disagree about the same cut.
+    return cameraPoseForCut(owner.cut, parked - owner.startFrame);
+  }
+
   bool get hasCameraKeyframeAtCurrentFrame =>
       activeCutOrNull?.camera.keyframeAt(
         _timelineController.currentFrameIndex,
@@ -8647,6 +8683,59 @@ class EditorSessionManager extends ChangeNotifier {
   void relinkMediaAsset(String oldPath, String newPath) {
     audioConformStore.invalidate(newPath);
     _cutCommandCoordinator.relinkMediaAsset(oldPath: oldPath, newPath: newPath);
+    refreshMediaExistence();
+    notifyListeners();
+  }
+
+  /// RELINK-2: the batch form — the media browser's "find them all under
+  /// this folder" pass, in one undo step.
+  ///
+  /// Conforms are invalidated for every destination for the same reason the
+  /// single form does it: the file behind the path changed, so a conform
+  /// fingerprinted against the old one is stale even though the pool entry
+  /// now looks correct.
+  void relinkMediaAssets(Map<String, String> moves) {
+    if (moves.isEmpty) {
+      return;
+    }
+    for (final newPath in moves.values) {
+      audioConformStore.invalidate(newPath);
+    }
+    _cutCommandCoordinator.relinkMediaAssets(moves);
+    refreshMediaExistence();
+    notifyListeners();
+  }
+
+  /// RELINK-2: pool paths that were not on disk as of the last refresh.
+  ///
+  /// CACHED rather than probed per row. The media browser used to call
+  /// `File.existsSync()` while building every row, and the loss banner
+  /// would have multiplied that — a banner has to count the WHOLE pool, so
+  /// one repaint became one disk hit per asset.
+  ///
+  /// Nothing polls. This is refreshed when the project opens, after
+  /// anything that moves files, and when the user asks — the three moments
+  /// where the answer can actually have changed.
+  Set<String> get missingMediaPaths => _missingMediaPaths;
+  Set<String> _missingMediaPaths = const <String>{};
+
+  /// Test seam for the existence probe. Widget tests must not depend on
+  /// what happens to exist on the machine running them.
+  @visibleForTesting
+  bool Function(String path)? debugMediaFileExists;
+
+  /// Re-probes the pool. Notifies only when the answer changed, so calling
+  /// it after an import that touched nothing missing is free.
+  void refreshMediaExistence() {
+    final probe = debugMediaFileExists ?? (String path) => File(path).existsSync();
+    final missing = <String>{
+      for (final asset in mediaAssets)
+        if (!probe(asset.path)) asset.path,
+    };
+    if (setEquals(missing, _missingMediaPaths)) {
+      return;
+    }
+    _missingMediaPaths = missing;
     notifyListeners();
   }
 
@@ -8674,6 +8763,7 @@ class EditorSessionManager extends ChangeNotifier {
       sourceStamp: _mediaSourceStampFor(path),
       description: 'Register media in project',
     );
+    refreshMediaExistence();
     notifyListeners();
     return true;
   }
@@ -15298,10 +15388,14 @@ class EditorSessionManager extends ChangeNotifier {
   /// Moves the playhead to [globalFrame] and takes NO cut active — the
   /// parked state, whatever sits at that frame.
   ///
-  /// A gap has always landed here because there is no cut to take. The
-  /// storyboard's SE rows land here too (feedback #7): pressing a sound
-  /// says where you are, not which cut you are editing, and the active cut
-  /// is meant to answer only to picking a cut on the row that HAS cuts.
+  /// A gap lands here because there is no cut to take — that is the whole
+  /// of it now. The storyboard's SE rows used to land here too (feedback
+  /// #7: pressing a sound says where you are, not which cut you are
+  /// editing), on the reading that the active cut answers only to picking a
+  /// cut on the row that HAS cuts. ⑭ retired that: one track means the
+  /// index names one cut, so a row press seeks like any other and only a
+  /// GAP still parks. Callers that park a frame a cut covers are declaring
+  /// a preview, not a landing — the live scrub is the one such caller.
   void parkGlobalFrame(int globalFrame) {
     if (editingInteractionBusy) {
       return;
@@ -15533,8 +15627,35 @@ class EditorSessionManager extends ChangeNotifier {
   Future<void> saveProjectToFile(String filePath) async {
     // A text bake in flight must land before the store snapshots — the
     // archive's parameters and raster must never disagree.
+    // Raised for the WHOLE save, retirement included. An autosave tick that
+    // starts inside a save renames its own temp onto the sidecar path
+    // AFTER the retirement ran, and the session is clean by then — so the
+    // exit gate returns early, nothing retires it, and the next open offers
+    // recovery for a project that was closed cleanly. Making the delete
+    // synchronous did not close this: sync ordering settles delete-versus-
+    // write, and this is write-versus-delete, which is an isolate wide.
+    _saveInFlight = true;
+    try {
+      await _writeProjectToFile(filePath);
+    } finally {
+      _saveInFlight = false;
+    }
+  }
+
+  /// True while a manual save is running, so the autosave tick stands down
+  /// instead of racing it. Read through [autosaveShouldStandDown].
+  bool _saveInFlight = false;
+
+  /// Whether an autosave tick should do nothing right now — a save is
+  /// mid-flight, so anything the tick writes would land beside a
+  /// retirement that has already run.
+  bool get autosaveShouldStandDown => _saveInFlight;
+
+  Future<void> _writeProjectToFile(String filePath) async {
     await _flushTextCelBakes();
-    final previousSidecar = autosaveSidecarPath;
+    // Captured BEFORE the save moves the project path: a Save As has to
+    // retire the sidecars of the file it was saved FROM as well.
+    final previousPath = _projectFilePath;
     // Before serializing: the first save adopts the session's shelf
     // takes into Media/ so the .anicel carries the adopted paths.
     final adoptedTakePaths = _adoptShelfTakesForSave(filePath);
@@ -15546,6 +15667,9 @@ class EditorSessionManager extends ChangeNotifier {
     );
     _projectFilePath = filePath;
     _hasUnsavedChanges = false;
+    // The recovered work now lives in the project file, so the sidecar is
+    // ordinary again and the retirement below is free to take it.
+    _recoveredFromSidecar = null;
     if (adoptedTakePaths.isNotEmpty) {
       // With the project path set, conforms resolve into the new
       // `.assets` container — refresh the moved takes there.
@@ -15554,17 +15678,46 @@ class EditorSessionManager extends ChangeNotifier {
       }
       audioConformStore.warmPaths(adoptedTakePaths);
     }
-    // Awaited: a still-in-flight delete could otherwise race a following
-    // autosave tick and eat its fresh sidecar. EVERY candidate location
-    // retires (the sidecar-directory setting may have moved since the
-    // stale one was written).
-    if (previousSidecar != null) {
-      await ProjectAutosaveService.deleteSidecar(previousSidecar);
+    if (previousPath != null) {
+      ProjectAutosaveService.retireSidecarsFor(previousPath);
     }
-    for (final candidate in AppSave.sidecarCandidatesFor(filePath)) {
-      await ProjectAutosaveService.deleteSidecar(candidate);
-    }
+    ProjectAutosaveService.retireSidecarsFor(filePath);
     notifyListeners();
+  }
+
+  /// The sidecar this session was RECOVERED from, while its contents still
+  /// live nowhere else. Null in every ordinary session.
+  ///
+  /// Recovery loads the sidecar's bytes and mints every cel ref into it,
+  /// then clears the RAM tiers — so from that moment the sidecar is the
+  /// only home those pixels have. A manual save moves them into the
+  /// project file and clears this.
+  String? _recoveredFromSidecar;
+
+  /// The user threw this session's unsaved work away (closed without
+  /// saving). Its sidecar has to go with it: "저장 안 하고 닫기 = 버리기"
+  /// is only literally true if the next open cannot offer to resurrect
+  /// exactly what was discarded.
+  ///
+  /// A never-saved project has no sidecar to retire (its dirty ticks ask
+  /// for a real file instead of writing one).
+  ///
+  /// 🚨A RECOVERED session is the exception, and the reason is that the
+  /// sidecar is not this session's discard to make. It holds the PREVIOUS
+  /// session's crash work, it is the only copy of it (recovery drops every
+  /// RAM tier and points every ref inside it), and a recovered session
+  /// arrives already dirty with zero edits — so the exit gate fires and
+  /// offers Close as the primary button before the user has touched
+  /// anything. Retiring here deletes hours of crash work at one tap on a
+  /// prompt that says nothing about it. Keeping it means the next open
+  /// offers recovery again, which is what it did before this round; the
+  /// user discards it by saving, not by closing.
+  void discardAutosaveSidecar() {
+    final path = _projectFilePath;
+    if (path == null || _recoveredFromSidecar != null) {
+      return;
+    }
+    ProjectAutosaveService.retireSidecarsFor(path);
   }
 
   /// Opens a .anicel file, replacing the WHOLE session state: project,
@@ -15633,7 +15786,18 @@ class EditorSessionManager extends ChangeNotifier {
     _voiceRecordShelfPaths.clear();
     _voiceRecordShelfDirectory = null;
     _projectFilePath = recoverAs ?? filePath;
+    // Remembered because [filePath] IS the sidecar on a recovery, every ref
+    // now points inside it, and the RAM tiers were just cleared — so until
+    // a save moves those pixels into the project file, deleting it is
+    // deleting the work. Reset on an ordinary open so a later session never
+    // inherits another one's exception.
+    _recoveredFromSidecar = recoverAs == null ? null : filePath;
     _warmAudioConforms();
+    // RELINK-2: the first of the three refresh moments. A project opened
+    // on a machine that does not have its referenced media has to SAY so —
+    // that is the whole point of the banner, and it is the one moment the
+    // user has not done anything to prompt it.
+    refreshMediaExistence();
     // A recovered session stays dirty: its content differs from the real
     // file until the user saves.
     _hasUnsavedChanges = recoverAs != null;

@@ -1,5 +1,6 @@
 import Cocoa
 import FlutterMacOS
+import UniformTypeIdentifiers
 
 /// Anicel pen sidecar (pen program, PEN-4 — macOS).
 ///
@@ -60,15 +61,20 @@ class PenSidecarStreamHandler: NSObject, FlutterStreamHandler {
   }
 }
 
-/// PICK-2: folder grants on macOS.
+/// PICK-2/PICK-5: path grants on macOS.
 ///
 /// macOS looks like Windows and behaves like iPadOS. It runs sandboxed
 /// (`com.apple.security.app-sandbox` in both entitlement files), so a panel
 /// selection extends the sandbox to EXACTLY the item picked and to nothing
 /// beside it. A project is `<name>.anicel` plus a sibling `<name>.assets/`
 /// directory plus an autosave sidecar written every five minutes — so
-/// picking the file grants the one item that cannot be saved, and the folder
-/// is the unit of permission here exactly as it is on iPad.
+/// picking the project FILE grants the one item that cannot be saved, and
+/// the folder is the unit of permission for a PROJECT exactly as on iPad.
+///
+/// A referenced MEDIA file is the other case and it wants the opposite: the
+/// file is the whole of what the project needs, it is not written to, and
+/// asking the user to grant its containing folder would be asking for more
+/// than the job needs. Hence two modes over one grant vocabulary.
 ///
 /// The two entitlements this needs are `files.user-selected.read-write` (or
 /// the panel opens and every read of its result fails) and
@@ -76,24 +82,29 @@ class PenSidecarStreamHandler: NSObject, FlutterStreamHandler {
 ///
 /// UNVERIFIED-ON-DEVICE: authored on the Windows workstation like the pen
 /// sidecar above. Needs one macOS build.
-final class FolderGrantHandler {
-  /// Folders this process holds a scope on, keyed by path. Nothing removes
-  /// entries — see the iOS twin for why: stopping a scope mid-session would
-  /// pull the floor out from under an open project's autosave.
-  private var scopedFolders: [String: URL] = [:]
+final class PathGrantHandler {
+  /// Items this process holds a scope on, keyed by path — FILES as well as
+  /// folders since PICK-5. Nothing removes entries — see the iOS twin for
+  /// why: stopping a scope mid-session would pull the floor out from under
+  /// an open project's autosave.
+  private var scopedItems: [String: URL] = [:]
 
   func handle(
     _ call: FlutterMethodCall, host: NSWindow?, _ result: @escaping FlutterResult
   ) {
+    let arguments = call.arguments as? [String: Any]
     switch call.method {
     case "pickProjectFolder":
       pick(
-        initialDirectory: (call.arguments as? [String: Any])?["initialDirectory"]
-          as? String, host: host, result: result)
-    case "resolveFolderBookmark":
-      resolve(
-        base64: (call.arguments as? [String: Any])?["bookmark"] as? String,
+        initialDirectory: arguments?["initialDirectory"] as? String, host: host,
         result: result)
+    case "pickFiles":
+      pickFiles(
+        utis: arguments?["utis"] as? [String] ?? [],
+        allowMultiple: arguments?["allowMultiple"] as? Bool ?? false,
+        host: host, result: result)
+    case "resolveBookmark":
+      resolve(base64: arguments?["bookmark"] as? String, result: result)
     default:
       // Only the two folder-grant methods live here. The channel's other
       // methods are mobile-only on the Dart side — `ensureInitialized` early
@@ -115,10 +126,43 @@ final class FolderGrantHandler {
     if let initialDirectory, !initialDirectory.isEmpty {
       panel.directoryURL = URL(fileURLWithPath: initialDirectory)
     }
+    present(panel: panel, host: host, result: result)
+  }
+
+  /// PICK-5: files, in place, with a scope on each.
+  ///
+  /// macOS reaches this through `file_selector_macos` today and that works —
+  /// NSOpenPanel hands back the real URL, no copy involved. What it does NOT
+  /// hand back is a bookmark, so a reference recorded from it dies at the
+  /// next launch inside the sandbox. Same panel, one extra step.
+  func pickFiles(
+    utis: [String], allowMultiple: Bool, host: NSWindow?,
+    result: @escaping FlutterResult
+  ) {
+    let panel = NSOpenPanel()
+    panel.canChooseDirectories = false
+    panel.canChooseFiles = true
+    panel.allowsMultipleSelection = allowMultiple
+    panel.canCreateDirectories = false
+    // Left unset when the list is empty or none of it resolves — an empty
+    // `allowedContentTypes` would grey out every file in the panel, which
+    // reads as a broken dialog rather than as "no filter".
+    if #available(macOS 11.0, *), !utis.isEmpty {
+      let types = utis.compactMap { UTType($0) }
+      if !types.isEmpty {
+        panel.allowedContentTypes = types
+      }
+    }
+    present(panel: panel, host: host, result: result)
+  }
+
+  private func present(
+    panel: NSOpenPanel, host: NSWindow?, result: @escaping FlutterResult
+  ) {
     let complete: (NSApplication.ModalResponse) -> Void = { [weak self] response in
       // The cancel reply comes FIRST and does not need self — a dropped
       // reply is an unkillable hang on the Dart side, not a visible error.
-      guard response == .OK, let url = panel.url else {
+      guard response == .OK, !panel.urls.isEmpty else {
         result(["status": "cancelled"])
         return
       }
@@ -126,7 +170,7 @@ final class FolderGrantHandler {
         result(["status": "unavailable"])
         return
       }
-      result(self.grantPayload(for: url))
+      result(self.grantPayload(for: panel.urls))
     }
     // A SHEET, not `begin`'s modeless panel. Modeless, it leaves the canvas
     // fully clickable underneath and can be sent behind a full-screen drawing
@@ -173,9 +217,9 @@ final class FolderGrantHandler {
     // Recorded unconditionally. A URL handed back by NSOpenPanel is NOT a
     // security-scoped URL — Powerbox extends the sandbox to the process
     // directly and `startAccessingSecurityScopedResource` returns false for
-    // it — so keying the insert on that flag left `scopedFolders` empty after
+    // it — so keying the insert on that flag left `scopedItems` empty after
     // every fresh pick.
-    scopedFolders[url.path] = url
+    scopedItems[url.path] = url
     var bookmark: String?
     do {
       // `.withSecurityScope` is the macOS spelling — the iOS runner uses
@@ -187,7 +231,25 @@ final class FolderGrantHandler {
     } catch {
       bookmark = nil
     }
-    return ["status": "granted", "path": url.path, "bookmark": bookmark]
+    // One payload shape for one item and for many — see the iOS twin.
+    return ["status": "granted", "items": [["path": url.path, "bookmark": bookmark]]]
+  }
+
+  /// The same, for a pick that may have returned several URLs. A URL that
+  /// fails to grant is dropped rather than failing the batch.
+  private func grantPayload(for urls: [URL]) -> [String: Any?] {
+    if urls.isEmpty {
+      return ["status": "cancelled"]
+    }
+    var items: [[String: Any?]] = []
+    for url in urls {
+      let payload = grantPayload(for: url)
+      if let granted = payload["items"] as? [[String: Any?]] {
+        items.append(contentsOf: granted)
+      }
+    }
+    return items.isEmpty
+      ? ["status": "unavailable"] : ["status": "granted", "items": items]
   }
 }
 
@@ -197,7 +259,7 @@ class MainFlutterWindow: NSWindow {
   /// Held as a property for the same reason `penStreamHandler` is: the
   /// channel keeps no strong reference, and this object owns the open
   /// security scopes.
-  private let folderGrantHandler = FolderGrantHandler()
+  private let pathGrantHandler = PathGrantHandler()
 
   override func awakeFromNib() {
     let flutterViewController = FlutterViewController()
@@ -221,8 +283,8 @@ class MainFlutterWindow: NSWindow {
     // closed window (NSWindow.isReleasedWhenClosed defaults to true) would
     // return without ever invoking `result`, and a method call that is never
     // replied to leaves the Dart future pending for good — a hang, not an
-    // error. FolderGrantHandler holds no reference back, so there is no cycle.
-    let handler = folderGrantHandler
+    // error. PathGrantHandler holds no reference back, so there is no cycle.
+    let handler = pathGrantHandler
     storageChannel.setMethodCallHandler { [weak self] call, result in
       handler.handle(call, host: self, result)
     }

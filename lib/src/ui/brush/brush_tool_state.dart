@@ -123,6 +123,23 @@ bool canvasToolDragsShape(CanvasTool tool) =>
 bool canvasToolFills(CanvasTool tool) =>
     tool == CanvasTool.fill || tool == CanvasTool.fillShape;
 
+/// Whether [tool] is the TRANSFORM tool — the one whose library lists
+/// 일반/퍼스/메쉬 and whose settings panel shows the numeric channels.
+///
+/// Spelled as a predicate rather than `== CanvasTool.move` at each of its
+/// call sites for the reason the cut tool learned: the question "is the
+/// transform tool armed?" is asked by the rail, the library, the settings
+/// panel, the edit gate and the canvas layer, and every one of those had
+/// to be found and changed by hand the last time the answer grew.
+///
+/// The three transform MODES are deliberately not three tool values. A
+/// tool change confirms the open session on the way out
+/// (`canvas_selection_layer`'s didUpdateWidget), so a mode picked from the
+/// library would land the pixels and reopen — which is the opposite of the
+/// lossless promotion the modes are built on. The mode rides
+/// [TransformToolOptions] instead.
+bool canvasToolTransforms(CanvasTool tool) => tool == CanvasTool.move;
+
 /// Editor-session state for the active brush tool options.
 ///
 /// This is UI/tool state owned by the editor session. It is intentionally

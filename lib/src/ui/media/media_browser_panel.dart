@@ -1,12 +1,9 @@
-import 'dart:io';
-
-
-import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import '../../models/media_asset.dart';
 import '../../services/persistence/file_type_groups.dart';
 import '../dialogs/app_prompt_dialog.dart';
+import '../dialogs/folder_pick_flow.dart';
 import '../text/app_strings.dart';
 import '../theme/app_theme.dart' show AppColors;
 import '../widgets/panel_flyout.dart';
@@ -32,7 +29,8 @@ class MediaBrowserPanel extends StatelessWidget {
     this.onOpenAsset,
     this.onOpenAssetInSubViewer,
     this.audioFilePicker,
-    this.fileExists,
+    this.missingPaths = const <String>{},
+    this.onRelinkMissing,
   });
 
   final List<MediaAsset> assets;
@@ -72,18 +70,38 @@ class MediaBrowserPanel extends StatelessWidget {
   /// Injectable file dialog; defaults to the platform audio picker.
   final Future<String?> Function()? audioFilePicker;
 
-  /// Injectable existence probe; defaults to the real file system.
-  final bool Function(String path)? fileExists;
+  /// Starts the batch relink: pick a folder, match, preview, apply. Null
+  /// hides the banner's button (the banner itself still counts).
+  final VoidCallback? onRelinkMissing;
 
-  static Future<String?> _pickAudioFile() async {
-    final file = await openFile(
+  /// RELINK-2: pool paths the session found missing at its last refresh.
+  ///
+  /// Replaces the per-row `File.existsSync()` this panel used to call while
+  /// BUILDING each row. The loss banner counts the whole pool, so keeping
+  /// the probe here would have turned one repaint into one disk hit per
+  /// asset — and a panel is repainted for reasons that have nothing to do
+  /// with the file system.
+  ///
+  /// Counted against [assets] rather than trusted wholesale: an entry the
+  /// user removed can linger here until the next refresh, and a banner that
+  /// counts ghosts is worse than one that is a beat late.
+  final Set<String> missingPaths;
+
+  /// PICK-5: through the grant flow rather than `file_selector`, which
+  /// copies the chosen file into a temporary directory on both mobile
+  /// platforms — relinking to a copy that the next cache sweep deletes is
+  /// worse than not relinking at all.
+  static Future<String?> _pickAudioFile(BuildContext context) async {
+    final paths = await pickFilesForUser(
+      context,
       acceptedTypeGroups: const [FileTypeGroups.poolMedia],
     );
-    return file?.path;
+    return paths.isEmpty ? null : paths.first;
   }
 
-  Future<void> _relink(String path) async {
-    final next = await (audioFilePicker ?? _pickAudioFile)();
+  Future<void> _relink(BuildContext context, String path) async {
+    final picker = audioFilePicker ?? () => _pickAudioFile(context);
+    final next = await picker();
     if (next == null) {
       return;
     }
@@ -168,6 +186,64 @@ class MediaBrowserPanel extends StatelessWidget {
     );
   }
 
+  /// RELINK-2: the loss banner — one line, above the list, INSIDE this
+  /// panel. The user chose that over an app-wide strip: 「미디어 브라우저
+  /// 관련된거니까 미디어 브라우저에」.
+  ///
+  /// ONE kind, not two. An earlier draft counted "the reference broke" and
+  /// "the copy inside the project vanished" separately; the single-file
+  /// save format removes the second, because a copy then lives inside the
+  /// document and shares its fate.
+  ///
+  /// Counted against [assets] rather than against [missingPaths] wholesale
+  /// — an entry the user just removed can linger in the session's cache
+  /// until its next refresh, and a banner that counts ghosts is worse than
+  /// one that is a beat late.
+  Widget _missingBanner(ColorScheme colorScheme) {
+    final count = assets
+        .where((asset) => missingPaths.contains(asset.path))
+        .length;
+    if (count == 0) {
+      return const SizedBox.shrink();
+    }
+    final strings = AppText.strings;
+    return Container(
+      key: const ValueKey<String>('media-missing-banner'),
+      color: colorScheme.errorContainer,
+      padding: const EdgeInsets.symmetric(horizontal: 8),
+      height: 32,
+      child: Row(
+        children: [
+          Icon(
+            Icons.error_outline,
+            size: 16,
+            color: colorScheme.onErrorContainer,
+          ),
+          const SizedBox(width: 6),
+          Expanded(
+            child: Text(
+              // The count's position differs by language, so the string
+              // carries the slot rather than the call site carrying the
+              // word order.
+              strings.mediaMissingCount.replaceAll('{n}', '$count'),
+              style: TextStyle(
+                fontSize: 12,
+                color: colorScheme.onErrorContainer,
+              ),
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+          if (onRelinkMissing != null)
+            TextButton(
+              key: const ValueKey<String>('media-relink-missing'),
+              onPressed: onRelinkMissing,
+              child: Text(strings.mediaFindInFolder),
+            ),
+        ],
+      ),
+    );
+  }
+
   Widget _body(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     return Column(
@@ -195,6 +271,7 @@ class MediaBrowserPanel extends StatelessWidget {
           ),
         ),
         const Divider(height: 1),
+        _missingBanner(colorScheme),
         Expanded(
           child: assets.isEmpty
               ? const Center(
@@ -224,9 +301,7 @@ class MediaBrowserPanel extends StatelessWidget {
     ColorScheme colorScheme,
     MediaAsset asset,
   ) {
-    final exists = (fileExists ?? (path) => File(path).existsSync())(
-      asset.path,
-    );
+    final exists = !missingPaths.contains(asset.path);
     final referenced = isAssetReferenced(asset.path);
     final row = Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
@@ -321,7 +396,7 @@ class MediaBrowserPanel extends StatelessWidget {
               PanelFlyoutItem(
                 keyValue: 'media-asset-menu-relink',
                 label: AppText.strings.mediaRelink,
-                onSelected: () => _relink(asset.path),
+                onSelected: () => _relink(context, asset.path),
               ),
               // The other half of importing by reference: the moment the
               // user decides the project folder should own this file

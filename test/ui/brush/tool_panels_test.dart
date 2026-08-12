@@ -8,6 +8,7 @@ import 'package:anicel/src/ui/brush/brush_tool_state.dart';
 import 'package:anicel/src/ui/brush/canvas_selection_commands.dart';
 import 'package:anicel/src/ui/brush/tool_library_panel.dart';
 import 'package:anicel/src/ui/brush/tool_settings_panel.dart';
+import 'package:anicel/src/ui/brush/transform_tool_options.dart';
 
 /// R11-④: the Tool Library / Tool Settings panels follow the active tool.
 void main() {
@@ -384,6 +385,44 @@ void main() {
       );
       expect(rect == lasso, isFalse);
       expect(rect.hashCode == lasso.hashCode, isFalse);
+    });
+
+    testWidgets('the transform tool lists 일반/퍼스/메쉬 and picking one '
+        'writes the MODE, not the tool', (tester) async {
+      final options = ValueNotifier(TransformToolOptions.defaults);
+      addTearDown(options.dispose);
+      final switched = <CanvasTool>[];
+      await tester.pumpWidget(
+        app(
+          ToolLibraryPanel(
+            tool: CanvasTool.move,
+            onToolChanged: switched.add,
+            brushLibrary: const SizedBox.shrink(),
+            transformOptions: options,
+            onTransformOptionsChanged: (value) => options.value = value,
+          ),
+        ),
+      );
+      expect(
+        find.byKey(const ValueKey<String>('sub-tool-transform-normal')),
+        findsOneWidget,
+      );
+
+      // The mesh's only entrance. It used to be a button in Tool Settings
+      // that needed no selection to work; the tile inherits that — nothing
+      // here knows or cares whether anything is selected.
+      await tester.tap(
+        find.byKey(const ValueKey<String>('sub-tool-transform-mesh')),
+      );
+      await tester.pump();
+      expect(options.value.mode, TransformMode.mesh);
+      expect(
+        switched,
+        isEmpty,
+        reason:
+            'a mode is a setting — routing it through onToolChanged would '
+            'confirm the open box on the way past',
+      );
     });
   });
 

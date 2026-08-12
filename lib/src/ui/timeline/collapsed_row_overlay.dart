@@ -6,6 +6,7 @@ import '../canvas/flip_hud_model.dart';
 import '../theme/app_theme.dart';
 import 'layer_label_controls.dart' show layerKindIcon;
 import 'timeline_beat_lines.dart';
+import 'timeline_frame_geometry.dart';
 import 'timeline_grid_metrics.dart';
 
 /// The row you are standing on, drawn over the artwork with NO ground under
@@ -43,7 +44,7 @@ import 'timeline_grid_metrics.dart';
 /// every time the rail grew a column. Mounting the row means the overlay
 /// follows it by construction. [railChild] is null on a property lane, whose
 /// rail is a name and a value rather than a control cluster.
-class CollapsedRowOverlay extends StatelessWidget {
+class CollapsedRowOverlay extends StatefulWidget {
   const CollapsedRowOverlay({
     super.key,
     required this.snapshot,
@@ -51,11 +52,26 @@ class CollapsedRowOverlay extends StatelessWidget {
     required this.pixelsPerFrame,
     required this.framesPerSecond,
     this.railChild,
+    this.frameRowBuilder,
     this.laneValue,
   });
 
   /// The rail row itself, chromeless — see the class doc. Null on a lane row.
   final Widget? railChild;
+
+  /// ⑩ 뿌리 C: the FRAME half, built by the caller from the same row widget
+  /// the timeline draws — the other half of "the overlay owns no drawing
+  /// code of its own".
+  ///
+  /// It is a builder rather than a child because the row needs the live
+  /// [TimelineFrameGeometryHandle], and only this widget knows how much room
+  /// there is: the handle is owned here (its IDENTITY is the row memo's key,
+  /// so it must outlive the values it reports) and republished from the
+  /// layout below.
+  ///
+  /// Null falls back to the painter — see [_CollapsedStripPainter].
+  final Widget Function(BuildContext, TimelineFrameGeometryHandle)?
+  frameRowBuilder;
 
   final FlipHudSnapshot snapshot;
 
@@ -76,7 +92,33 @@ class CollapsedRowOverlay extends StatelessWidget {
   static const double height = timelineLayerRowHeight;
 
   @override
+  State<CollapsedRowOverlay> createState() => _CollapsedRowOverlayState();
+}
+
+class _CollapsedRowOverlayState extends State<CollapsedRowOverlay> {
+  /// 🚨Owned by the State, not rebuilt per pass: the row memo keys on this
+  /// handle's IDENTITY, so a fresh one each build would defeat the repaint
+  /// gating it exists for. Republished (value only) from the layout —
+  /// `timeline_frame_geometry.dart` spells out why publishing from build is
+  /// safe: every listener is a render object.
+  final TimelineFrameGeometryHandle _geometry = TimelineFrameGeometryHandle(
+    const TimelineFrameGeometry(
+      frameCellExtent: 8,
+      frameStartIndex: 0,
+      frameEndIndexExclusive: 0,
+    ),
+  );
+
+  @override
+  void dispose() {
+    _geometry.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final snapshot = widget.snapshot;
+    final railWidth = widget.railWidth;
     final row = snapshot.currentRow;
     if (row == null || snapshot.isEmpty) {
       return const SizedBox.shrink();
@@ -84,7 +126,7 @@ class CollapsedRowOverlay extends StatelessWidget {
     final colorScheme = Theme.of(context).colorScheme;
     return IgnorePointer(
       child: SizedBox(
-        height: height,
+        height: CollapsedRowOverlay.height,
         // ★The rail window is CLAMPED to the room that exists. The stored
         // width is the splitter's answer for a panel as wide as the region,
         // and the collapsed row is laid over a region that can be pulled
@@ -115,21 +157,39 @@ class CollapsedRowOverlay extends StatelessWidget {
                     // A layer row is the REAL row, chromeless. A property
                     // lane is its name and its value, which is what the rail
                     // shows there — so the caller hands null instead.
-                    railChild ?? _rail(row, colorScheme),
+                    widget.railChild ?? _rail(row, colorScheme),
                   ),
                 ),
               ),
             ),
             Expanded(
               child: ClipRect(
-                child: CustomPaint(
-                  painter: _CollapsedStripPainter(
-                    snapshot: snapshot,
-                    row: row,
-                    pixelsPerFrame: pixelsPerFrame,
-                    framesPerSecond: framesPerSecond,
-                    colorScheme: colorScheme,
-                  ),
+                child: LayoutBuilder(
+                  builder: (context, frameConstraints) {
+                    final build = widget.frameRowBuilder;
+                    if (build == null) {
+                      return CustomPaint(
+                        painter: _CollapsedStripPainter(
+                          snapshot: snapshot,
+                          row: row,
+                          pixelsPerFrame: widget.pixelsPerFrame,
+                          framesPerSecond: widget.framesPerSecond,
+                          colorScheme: colorScheme,
+                        ),
+                      );
+                    }
+                    // Republished per layout, value only — the handle's
+                    // identity is what the row memo keys on.
+                    _geometry.value = TimelineFrameGeometry(
+                      frameCellExtent: widget.pixelsPerFrame,
+                      frameStartIndex: 0,
+                      frameEndIndexExclusive: widget.pixelsPerFrame <= 0
+                          ? 0
+                          : (frameConstraints.maxWidth / widget.pixelsPerFrame)
+                                .ceil(),
+                    );
+                    return build(context, _geometry);
+                  },
                 ),
               ),
             ),
@@ -193,7 +253,7 @@ class CollapsedRowOverlay extends StatelessWidget {
               ),
             ),
           ),
-          if (laneValue case final value?) ...[
+          if (widget.laneValue case final value?) ...[
             const SizedBox(width: 8),
             Text(
               value,
@@ -385,7 +445,7 @@ class _CollapsedStripPainter extends CustomPainter {
           // ⑩: flat here too — see [_halo]. The frame half had its own copy
           // of the shadow, which is exactly how a look that was supposed to
           // be gone survives a deletion.
-          shadows: CollapsedRowOverlay._halo,
+          shadows: _CollapsedRowOverlayState._halo,
         ),
       ),
       textDirection: TextDirection.ltr,

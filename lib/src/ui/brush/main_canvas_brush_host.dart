@@ -18,7 +18,6 @@ import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/canvas_selection.dart'
     show CanvasSelectionShape, SelectionMaskOptions;
 import '../../services/cut_piece_slot.dart';
-import '../../services/resample/resample_kernel.dart' show ResampleMode;
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
 import '../canvas/active_stroke_overlay.dart';
@@ -28,6 +27,7 @@ import 'brush_canvas_panel.dart';
 import 'canvas_floor_insets.dart';
 import 'brush_editor_selection.dart';
 import 'canvas_selection_commands.dart';
+import 'transform_tool_options.dart';
 import 'canvas_view_commands.dart';
 import 'brush_tool_state.dart';
 import 'brush_edit_cache_invalidation_sink.dart';
@@ -79,7 +79,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.fillDabAt,
     this.shapeFillDabFor,
     this.selectionMaskOptions,
-    this.transformResampleMode,
+    this.transformOptions,
     this.viewCommands,
     this.selectionCommands,
     this.cutPieceSlot,
@@ -193,9 +193,9 @@ class MainCanvasBrushHost extends StatefulWidget {
   /// mask knobs.
   final ValueListenable<SelectionMaskOptions>? selectionMaskOptions;
 
-  /// Forwarded to [BrushCanvasPanel] (P3a): which resampler a transform
-  /// commit runs through.
-  final ValueListenable<ResampleMode>? transformResampleMode;
+  /// Forwarded to [BrushCanvasPanel]: the transform tool's settings (mode,
+  /// scale anchor, resampler, mesh grid).
+  final ValueListenable<TransformToolOptions>? transformOptions;
 
   /// Forwarded to [BrushCanvasPanel]: the P8 rotate/flip shortcut channel.
   final CanvasViewCommands? viewCommands;
@@ -387,7 +387,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       fillDabAt: widget.fillDabAt,
       shapeFillDabFor: widget.shapeFillDabFor,
       selectionMaskOptions: widget.selectionMaskOptions,
-      transformResampleMode: widget.transformResampleMode,
+      transformOptions: widget.transformOptions,
       viewCommands: widget.viewCommands,
       selectionCommands: widget.selectionCommands,
       cutPieceSlot: widget.cutPieceSlot,

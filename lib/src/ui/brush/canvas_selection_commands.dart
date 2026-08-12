@@ -6,6 +6,7 @@ import 'package:flutter/foundation.dart';
 import '../../models/canvas_point.dart';
 import '../../services/canvas_selection.dart';
 import '../../services/canvas_selection_region.dart';
+import 'transform_tool_options.dart';
 
 /// The live transform box's numeric state (R17-U tool settings inputs).
 typedef SelectionTransformValues = ({
@@ -165,7 +166,6 @@ class CanvasSelectionCommands extends ChangeNotifier {
   VoidCallback? _deselect;
   bool Function()? _transformActive;
   VoidCallback? _beginTransform;
-  VoidCallback? _beginMeshTransform;
   VoidCallback? _commitTransform;
   VoidCallback? _cancelTransform;
   void Function(CanvasSelectionRegion? region)? _applyRegion;
@@ -180,6 +180,10 @@ class CanvasSelectionCommands extends ChangeNotifier {
     required double scale,
   })?
   _setTransformValues;
+  void Function({required bool horizontal})? _flipTransform;
+  VoidCallback? _resetTransform;
+  VoidCallback? _applyTransform;
+  bool Function()? _canEditTransform;
 
   bool _notifyScheduled = false;
 
@@ -190,7 +194,6 @@ class CanvasSelectionCommands extends ChangeNotifier {
     bool Function()? closePolygon,
     bool Function()? transformActive,
     VoidCallback? beginTransform,
-    VoidCallback? beginMeshTransform,
     VoidCallback? commitTransform,
     VoidCallback? cancelTransform,
     void Function(CanvasSelectionRegion? region)? applyRegion,
@@ -205,14 +208,21 @@ class CanvasSelectionCommands extends ChangeNotifier {
       required double scale,
     })?
     setTransformValues,
+    void Function({required bool horizontal})? flipTransform,
+    VoidCallback? resetTransform,
+    VoidCallback? applyTransform,
+    bool Function()? canEditTransform,
   }) {
+    _flipTransform = flipTransform;
+    _resetTransform = resetTransform;
+    _applyTransform = applyTransform;
+    _canEditTransform = canEditTransform;
     _hasSelection = hasSelection;
     _nudge = nudge;
     _deselect = deselect;
     _closePolygon = closePolygon;
     _transformActive = transformActive;
     _beginTransform = beginTransform;
-    _beginMeshTransform = beginMeshTransform;
     _commitTransform = commitTransform;
     _cancelTransform = cancelTransform;
     _applyRegion = applyRegion;
@@ -231,7 +241,6 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _closePolygon = null;
     _transformActive = null;
     _beginTransform = null;
-    _beginMeshTransform = null;
     _commitTransform = null;
     _cancelTransform = null;
     _applyRegion = null;
@@ -240,6 +249,10 @@ class CanvasSelectionCommands extends ChangeNotifier {
     _revertPendingMove = null;
     _transformValues = null;
     _setTransformValues = null;
+    _flipTransform = null;
+    _resetTransform = null;
+    _applyTransform = null;
+    _canEditTransform = null;
     notifySessionChanged();
   }
 
@@ -311,10 +324,6 @@ class CanvasSelectionCommands extends ChangeNotifier {
   /// Ctrl+T: opens the free-transform box on the live selection.
   void beginTransform() => _beginTransform?.call();
 
-  /// Opens the MESH-warp session (R20-D3) on the live selection: a 3×3
-  /// control grid over the lifted pixels; Enter commits the triangulated
-  /// warp as one undo entry.
-  void beginMeshTransform() => _beginMeshTransform?.call();
 
   /// Enter: commits the open transform as one undo entry.
   void commitTransform() => _commitTransform?.call();
@@ -353,4 +362,45 @@ class CanvasSelectionCommands extends ChangeNotifier {
     rotationDegrees: rotationDegrees,
     scale: scale,
   );
+
+  /// Mirrors the open box about its centre — a sign flip on one scale
+  /// axis, not a new kind of transform. Works in every mode: 퍼스 and 메쉬
+  /// carry their offsets through the same affine, so the warp mirrors with
+  /// the picture instead of staying behind.
+  ///
+  /// With no box open this OPENS one, the way the numeric channels do.
+  void flipTransform({required bool horizontal}) =>
+      _flipTransform?.call(horizontal: horizontal);
+
+  /// 리셋: every value, not just the numbers — the affine AND the
+  /// perspective/mesh offsets (유저 확정 08-13: "리셋은 전부").
+  void resetTransform() => _resetTransform?.call();
+
+  /// 적용, and the system 확정 button's transform-tool meaning, which are
+  /// deliberately the same verb reached from two doors (유저 확정 08-13):
+  ///
+  /// - the box has been transformed → commit it, one undo entry;
+  /// - nothing has been transformed → **replay the last committed
+  ///   transform's values** into the box, in whatever mode is armed now.
+  ///   It does NOT commit: the recalled values land where they can be seen
+  ///   and adjusted, and a second press applies them.
+  void applyTransform() => _applyTransform?.call();
+
+  /// Whether the transform tool would accept an edit right now.
+  ///
+  /// 유저 확정 08-13: picking the tool is always allowed even with an empty
+  /// cel — the refusal moved from the tool switch to the edit itself, and
+  /// it refuses QUIETLY (the controls go flat; no snackbar, because a
+  /// snackbar per canvas tap on an empty layer is a nag, not an answer).
+  bool get canEditTransform => _canEditTransform?.call() ?? false;
+
+  /// The last committed transform, replayed by [applyTransform] when there
+  /// is nothing to commit.
+  ///
+  /// It lives HERE rather than in the canvas layer because the layer
+  /// unmounts on every tool switch (R28-S) — a recall that forgets itself
+  /// when you pick up the brush is not a recall. One slot for the whole
+  /// session, deliberately not per layer: 유저 확정 08-13 "전역 하나. 즉
+  /// 어떤 크기의 소재든 같은 값을 변형주도록".
+  TransformRecall? transformRecall;
 }

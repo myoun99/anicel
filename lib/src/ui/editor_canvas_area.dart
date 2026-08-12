@@ -11,12 +11,12 @@ import '../services/canvas_color_sampler.dart';
 import '../services/canvas_flood_fill.dart';
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
 import '../services/cut_piece_slot.dart';
-import '../services/resample/resample_kernel.dart' show ResampleMode;
 import '../services/se_name_tag_plan.dart';
 import 'brush/brush_tool_state.dart';
 import 'dev_profile.dart';
 import 'input/app_input_settings.dart' show AppInput;
 import 'brush/canvas_selection_commands.dart';
+import 'brush/transform_tool_options.dart';
 import 'brush/canvas_view_commands.dart';
 import 'canvas/viewport_canvas_transform.dart';
 import 'brush/main_canvas_brush_host.dart';
@@ -69,7 +69,7 @@ class EditorCanvasArea extends StatefulWidget {
     this.expandedLaneLayerIds,
     this.fillOptions,
     this.selectionMaskOptions,
-    this.transformResampleMode,
+    this.transformOptions,
     this.eyedropperSource,
     this.onInvokeAction,
     this.flipHud,
@@ -126,9 +126,9 @@ class EditorCanvasArea extends StatefulWidget {
   /// classic byte-preserving hard mask.
   final ValueListenable<SelectionMaskOptions>? selectionMaskOptions;
 
-  /// P3a: which resampler a transform commit runs through; null keeps the
-  /// smoothing default.
-  final ValueListenable<ResampleMode>? transformResampleMode;
+  /// The transform tool's settings (mode, scale anchor, resampler, mesh
+  /// grid); null keeps the defaults.
+  final ValueListenable<TransformToolOptions>? transformOptions;
 
   @override
   State<EditorCanvasArea> createState() => _EditorCanvasAreaState();
@@ -676,7 +676,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               // P6 fill: the flood region as ONE mask dab; the panel commits it
               // through the stroke funnel onto the active layer's frame.
               selectionMaskOptions: widget.selectionMaskOptions,
-              transformResampleMode: widget.transformResampleMode,
+              transformOptions: widget.transformOptions,
               fillDabAt: (point, color) => buildFillDab(
                 cut: session.requireActiveCut,
                 frameIndex: session.currentFrameIndex,
@@ -856,22 +856,43 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                             // The cursor subscription keeps the frame gliding
                             // along its animated pose during scrubs (and after
                             // committed seeks) without any wider rebuild.
+                            //
+                            // ㊲: the PARKING is the other half of "where am
+                            // I". A scrub that crosses a cut boundary moves
+                            // only that — the cursor stays put, by design —
+                            // so a pose read on the cursor alone stayed
+                            // frozen on the cut being left.
                             child: ListenableBuilder(
                               listenable: session.editingFrameCursor,
-                              builder: (context, _) => CameraFrameOverlay(
-                                pose: session.cameraPoseAtCurrentFrame,
-                                cameraFrameSize: session.cameraFrameSize,
-                                viewport: viewport,
-                                // Dim belongs to camera-view mode; plain
-                                // manipulation keeps the artwork undimmed.
-                                dimOpacity: widget.cameraViewEnabled.value
-                                    ? widget.cameraDimOpacity.value
-                                    : 0,
-                                interactive:
-                                    isCameraLayerActive && !isScrubbing,
-                                onPoseCommitted:
-                                    session.setCameraKeyframeAtCurrentFrame,
-                              ),
+                              builder: (context, _) =>
+                                  ValueListenableBuilder<int?>(
+                                    valueListenable:
+                                        session.gapParkingListenable,
+                                    builder: (context, _, _) {
+                                      final pose = session.displayedCameraPose;
+                                      // Nothing under the cursor to frame:
+                                      // the scrub is over a gap.
+                                      if (pose == null) {
+                                        return const SizedBox.shrink();
+                                      }
+                                      return CameraFrameOverlay(
+                                        pose: pose,
+                                        cameraFrameSize: session.cameraFrameSize,
+                                        viewport: viewport,
+                                        // Dim belongs to camera-view mode;
+                                        // plain manipulation keeps the
+                                        // artwork undimmed.
+                                        dimOpacity:
+                                            widget.cameraViewEnabled.value
+                                            ? widget.cameraDimOpacity.value
+                                            : 0,
+                                        interactive:
+                                            isCameraLayerActive && !isScrubbing,
+                                        onPoseCommitted: session
+                                            .setCameraKeyframeAtCurrentFrame,
+                                      );
+                                    },
+                                  ),
                             ),
                           ),
                         if (showPositionGizmo && transformBoxBounds != null)

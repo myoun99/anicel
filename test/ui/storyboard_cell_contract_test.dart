@@ -147,8 +147,8 @@ void main() {
     expect(_frameCounter(tester), startsWith('10 · '));
   });
 
-  testWidgets('pressing an S row takes the row AND the frame — but RELEASES '
-      'the cut, over an empty cell too', (tester) async {
+  testWidgets('pressing an S row takes the row AND the frame — and the cut '
+      'the INDEX names, over an empty cell too', (tester) async {
     await _openStoryboard(tester);
 
     await tester.tapAt(_seRowPoint(tester, 14));
@@ -170,10 +170,12 @@ void main() {
     );
     // The frame landed…
     expect(_frameCounter(tester), startsWith('15 · '));
-    // …and no cut was taken (feedback #7): an S row owns none, so pressing
-    // one says WHERE you are, not WHICH cut you are editing. The block
-    // under that very frame stays inactive.
-    expect(requireCutBlock(tester, 'cut-2').isActive, isFalse);
+    // …and the cut under it came with it (⑭). This used to assert the
+    // opposite (feedback #7: an S row owns no cuts, so pressing one said
+    // WHERE you are, not WHICH cut you edit) — a sentence that only had to
+    // exist while several tracks could cover one frame. The row you pressed
+    // never was the thing that chose the cut; the index is.
+    expect(requireCutBlock(tester, 'cut-2').isActive, isTrue);
   });
 
   testWidgets('pressing the cut row hands the row back to the V row after an '

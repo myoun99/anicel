@@ -30,6 +30,7 @@ library;
 import 'dart:io';
 import 'dart:typed_data';
 
+import '../persistence/anicel_incremental_writer.dart' show anicelCrc32;
 import 'audio_peaks_extractor.dart';
 import 'conform_wav_codec.dart';
 
@@ -60,8 +61,14 @@ enum ConformOutcome {
   /// An existing conform still matched the source, so nothing was redone.
   reused,
 
-  /// The source could not be read at all.
+  /// The source is not there.
   sourceMissing,
+
+  /// The source IS there but could not be read right now — a cloud
+  /// placeholder that has not hydrated, a handle held by something else.
+  /// Distinct from [sourceMissing] because it is TRANSIENT: retrying later
+  /// is the whole plan, so it must not spend the store's attempt budget.
+  sourceUnreadable,
 
   /// No decoder recognized the container.
   undecodable,
@@ -111,6 +118,14 @@ class ConformResult {
 
   bool get isUsable =>
       outcome == ConformOutcome.built || outcome == ConformOutcome.reused;
+
+  /// Whether this failure is worth retrying without cost — the store must
+  /// not count it against the attempt budget, or a file that is merely
+  /// still downloading goes permanently silent three ticks later.
+  ///
+  /// A PREDICATE rather than a check on the enum at the call site, so the
+  /// next transient reason joins here instead of in the store.
+  bool get isTransientFailure => outcome == ConformOutcome.sourceUnreadable;
 }
 
 /// Where a project's imported media and conforms live.
@@ -173,15 +188,35 @@ class AudioConformPipeline {
   final int speedNumerator;
   final int speedDenominator;
 
-  /// The fingerprint [sourcePath] currently has, or null when it is gone.
-  static ConformSourceFingerprint? fingerprintOf(String sourcePath) {
+  /// The fingerprint [sourceBytes] carries — the IDENTITY, content-derived
+  /// so it survives being copied to another machine.
+  ///
+  /// Takes BYTES rather than a path because the fingerprint is content, and
+  /// because the caller that needs one is about to decode those bytes
+  /// anyway: this costs a pass over what is already in hand.
+  static ConformSourceFingerprint fingerprintOf(Uint8List sourceBytes) =>
+      ConformSourceFingerprint(
+        sourceLength: sourceBytes.length,
+        sourceCrc32: anicelCrc32(sourceBytes),
+      );
+
+  /// What `stat` says about [sourcePath], or null when it is not there.
+  ///
+  /// The CHEAP half of the reuse question. A hit means "nothing on this
+  /// machine has touched it" and the conform stands without a read; a miss
+  /// means nothing on its own and falls through to [fingerprintOf].
+  /// Asks about the PATH rather than through `File`: `File(dir).existsSync()`
+  /// answers false for a directory, which would report "missing" for a path
+  /// that plainly has something at it. Null means nothing is there; anything
+  /// else is a thing we may or may not be able to read, and that difference
+  /// belongs to the caller.
+  static ConformSourceStat? statOf(String sourcePath) {
     try {
-      final file = File(sourcePath);
-      if (!file.existsSync()) {
+      final stat = FileStat.statSync(sourcePath);
+      if (stat.type == FileSystemEntityType.notFound) {
         return null;
       }
-      final stat = file.statSync();
-      return ConformSourceFingerprint(
+      return ConformSourceStat(
         sourceLength: stat.size,
         sourceModifiedMicros: stat.modified.microsecondsSinceEpoch,
       );
@@ -226,30 +261,11 @@ class AudioConformPipeline {
   /// `.assets` directory to write beside a file that does not exist yet,
   /// and a conform is derived data anyway: once the project is saved, the
   /// next ensure writes it beside the `.anicel` like any other.
-  ConformResult ensureConform({
-    required String sourcePath,
-    required String? conformPath,
-  }) {
-    final fingerprint = fingerprintOf(sourcePath);
-    if (fingerprint == null) {
-      return const ConformResult(
-        outcome: ConformOutcome.sourceMissing,
-        error: 'the source file is missing',
-      );
-    }
-
-    final existing = conformPath == null ? null : _readConform(conformPath);
-    if (existing != null &&
-        conformMatchesSource(existing, fingerprint) &&
-        // A conform at another rate is stale even with a matching source:
-        // the project's audio rate is a setting now (EXPORT-AUDIO ③), and
-        // playing 44.1k PCM on a 48k schedule would shift every clip. The
-        // same goes for the audio speed (④) — a pulled conform against an
-        // unpulled project is 0.1% of drift back in the door.
-        existing.sampleRate == projectSampleRate &&
-        existing.speedNumerator == speedNumerator &&
-        existing.speedDenominator == speedDenominator) {
-      return ConformResult(
+  /// The reuse answer, from an [existing] conform that has already been
+  /// judged current. One place so the fast (stat) and slow (content) paths
+  /// cannot drift into returning different shapes for the same decision.
+  ConformResult _reuse(ConformAudio existing, String? conformPath) =>
+      ConformResult(
         outcome: ConformOutcome.reused,
         conformPath: conformPath,
         peaks: peaksFromSamples(
@@ -265,16 +281,62 @@ class AudioConformPipeline {
         speedNumerator: speedNumerator,
         speedDenominator: speedDenominator,
       );
+
+  ConformResult ensureConform({
+    required String sourcePath,
+    required String? conformPath,
+  }) {
+    final stat = statOf(sourcePath);
+    if (stat == null) {
+      return const ConformResult(
+        outcome: ConformOutcome.sourceMissing,
+        error: 'the source file is missing',
+      );
     }
 
+    final existing = conformPath == null ? null : _readConform(conformPath);
+    // A conform at another rate is stale even with a matching source: the
+    // project's audio rate is a setting now (EXPORT-AUDIO ③), and playing
+    // 44.1k PCM on a 48k schedule would shift every clip. The same goes for
+    // the audio speed (④) — a pulled conform against an unpulled project is
+    // 0.1% of drift back in the door.
+    final settingsMatch =
+        existing != null &&
+        existing.sampleRate == projectSampleRate &&
+        existing.speedNumerator == speedNumerator &&
+        existing.speedDenominator == speedDenominator;
+
+    // FAST PATH: the source still has the length and timestamp it had when
+    // this conform was written, so nothing on this machine has touched it
+    // and the bytes need not be looked at. This is the common case on every
+    // open, and skipping it made every project pay a full read of every
+    // original before it could discover there was nothing to do — on the
+    // very devices where a big allocation gets the app killed.
+    if (settingsMatch && existing.sourceStat?.matches(stat) == true) {
+      return _reuse(existing, conformPath);
+    }
+
+    // SLOW PATH: the hint missed, which says nothing by itself — a copied,
+    // restored or re-synced project gets fresh timestamps with identical
+    // bytes, and that is exactly what a timestamp identity used to answer
+    // wrong. The content decides.
     final Uint8List sourceBytes;
     try {
       sourceBytes = File(sourcePath).readAsBytesSync();
     } on Object catch (error) {
+      // It EXISTS — statOf just said so — so this is transient: an
+      // unhydrated cloud placeholder, or a handle held elsewhere. Calling
+      // it "missing" spends one of three attempts on a file that is fine,
+      // and three of those silence the clip for the rest of the session.
       return ConformResult(
-        outcome: ConformOutcome.sourceMissing,
-        error: 'could not read the source: $error',
+        outcome: ConformOutcome.sourceUnreadable,
+        error: 'could not read the source (retrying): $error',
       );
+    }
+    final fingerprint = fingerprintOf(sourceBytes);
+
+    if (settingsMatch && conformMatchesSource(existing, fingerprint)) {
+      return _reuse(existing, conformPath);
     }
 
     final decoded = decode(sourceBytes);
@@ -316,6 +378,11 @@ class AudioConformPipeline {
             channels: decoded.channels,
             sampleRate: projectSampleRate,
             fingerprint: fingerprint,
+            // Recorded from the stat taken BEFORE the read, so the hint
+            // describes the file this conform actually came from. Re-statting
+            // now could catch a write that landed mid-build and bless a
+            // conform of the previous contents.
+            sourceStat: stat,
             speedNumerator: speedNumerator,
             speedDenominator: speedDenominator,
           ),

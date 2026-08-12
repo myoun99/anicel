@@ -105,7 +105,7 @@ void main() {
           sampleRate: 48000,
           fingerprint: const ConformSourceFingerprint(
             sourceLength: 4242,
-            sourceModifiedMicros: 1784000000000000,
+            sourceCrc32: 0x1784ABCD,
           ),
         ),
       )!;

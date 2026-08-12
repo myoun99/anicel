@@ -353,6 +353,14 @@ void main() {
     testWidgets('untouched, it references: the file stays where it is', (
       tester,
     ) async {
+      // PINNED to a platform where Reference is the default rather than
+      // left to whatever host runs the suite. #961 made Apple start on
+      // Copy, so on the macOS runner this window correctly says the
+      // opposite — and the assertion here is about what the window says
+      // while REFERENCING, not about which default the machine has. The
+      // Apple default has its own test directly above.
+      FolderPicker.debugOperatingSystem = 'windows';
+      addTearDown(() => FolderPicker.debugOperatingSystem = null);
       final (s, path) = await savedProjectWithPng(tester);
 
       await tester.pumpWidget(

@@ -81,7 +81,6 @@ class AppStrings {
   /// R27 #16: the refusal is about the LAYER, not the section — the CAM
   /// section is no longer uniformly undrawable in the user's model.
   String get noticeLayerNotDrawable => _s('noticeLayerNotDrawable');
-  String get noticeNothingToTransform => _s('noticeNothingToTransform');
 
   /// Synced attach rows look like blocks but own no timing — a grab
   /// redirects to the owner (the synced-block UI's cursor guidance).
@@ -600,6 +599,18 @@ class AppStrings {
   String get mediaImportAudio => _s('mediaImportAudio');
   String get mediaRename => _s('mediaRename');
   String get mediaRelink => _s('mediaRelink');
+
+  /// RELINK-2: the loss banner. `{n}` is replaced with the count rather
+  /// than concatenated at the call site, because the number sits in a
+  /// different place in each language ("3 files not found" vs "못 찾은
+  /// 파일 3개").
+  String get mediaMissingCount => _s('mediaMissingCount');
+  String get mediaFindInFolder => _s('mediaFindInFolder');
+
+  /// The batch-relink preview. `{m}` of `{n}` — shown BEFORE anything is
+  /// applied, because a folder that matches almost nothing is the signal
+  /// that the wrong folder was picked.
+  String get mediaRelinkFound => _s('mediaRelinkFound');
   String get mediaRemove => _s('mediaRemove');
   String get mediaRegisterInProject => _s('mediaRegisterInProject');
   String get mediaAlreadyInProject => _s('mediaAlreadyInProject');
@@ -795,8 +806,15 @@ class AppStrings {
   String get brResetLibrary => _s('brResetLibrary');
   String get brExpand => _s('brExpand');
   String get brMeshWarp => _s('brMeshWarp');
-  String get brPreserveColours => _s('brPreserveColours');
-  String get brPreserveColoursHint => _s('brPreserveColoursHint');
+  String get trModeNormal => _s('trModeNormal');
+  String get trModePerspective => _s('trModePerspective');
+  String get trFlipHorizontal => _s('trFlipHorizontal');
+  String get trFlipVertical => _s('trFlipVertical');
+  String get trAnchor => _s('trAnchor');
+  String get trAnchorOpposite => _s('trAnchorOpposite');
+  String get trAnchorCenter => _s('trAnchorCenter');
+  String get trMeshColumns => _s('trMeshColumns');
+  String get trMeshRows => _s('trMeshRows');
   String get commonReset => _s('commonReset');
   String get commonFill => _s('commonFill');
 
@@ -882,7 +900,6 @@ class AppStrings {
     'continuousLabel': 'Continuous',
     'noticeNoFrameHere': 'No frame here',
     'noticeLayerNotDrawable': 'This layer cannot be drawn on',
-    'noticeNothingToTransform': 'Nothing to transform',
     'noticeEditAttachOwner': 'Edit the owner layer',
     'commonCancel': 'Cancel',
     'commonApply': 'Apply',
@@ -1221,6 +1238,9 @@ class AppStrings {
     'mediaImportAudio': 'Import audio',
     'mediaRename': 'Rename media',
     'mediaRelink': 'Relink…',
+    'mediaMissingCount': '{n} media files not found',
+    'mediaFindInFolder': 'Find in folder…',
+    'mediaRelinkFound': 'Found {m} of {n}. Relink them?',
     'mediaRemove': 'Remove',
     'mediaRegisterInProject': 'Register in project',
     'mediaAlreadyInProject':
@@ -1400,8 +1420,15 @@ class AppStrings {
     'brResetLibrary': 'Reset brush library',
     'brExpand': 'Expand',
     'brMeshWarp': 'Mesh Warp',
-    'brPreserveColours': 'Preserve original colours',
-    'brPreserveColoursHint': 'No new in-between shades, but harder edges',
+    'trModeNormal': 'Transform',
+    'trModePerspective': 'Perspective',
+    'trFlipHorizontal': 'Flip Horizontal',
+    'trFlipVertical': 'Flip Vertical',
+    'trAnchor': 'Anchor',
+    'trAnchorOpposite': 'Opposite corner',
+    'trAnchorCenter': 'Center',
+    'trMeshColumns': 'Columns',
+    'trMeshRows': 'Rows',
     'commonReset': 'Reset',
     'commonFill': 'Fill',
     'viewZoomIn': 'Zoom In',
@@ -1556,7 +1583,6 @@ class AppStrings {
     'continuousLabel': '連続表示',
     'noticeNoFrameHere': 'フレームがありません',
     'noticeLayerNotDrawable': 'このレイヤーには描けません',
-    'noticeNothingToTransform': '変形する絵がありません',
     'noticeEditAttachOwner': '親レイヤーを編集してください',
     'commonCancel': 'キャンセル',
     'commonApply': '適用',
@@ -1974,6 +2000,9 @@ class AppStrings {
     'mediaImportAudio': '音声を読み込み',
     'mediaRename': 'メディア名を変更',
     'mediaRelink': '再リンク…',
+    'mediaMissingCount': '見つからないファイル {n} 個',
+    'mediaFindInFolder': 'フォルダーから探す…',
+    'mediaRelinkFound': '{n} 件中 {m} 件が見つかりました。再リンクしますか？',
     'mediaRemove': '削除',
     'mediaRegisterInProject': 'プロジェクトに取り込む',
     'mediaAlreadyInProject':
@@ -2152,8 +2181,15 @@ class AppStrings {
     'brResetLibrary': 'ブラシライブラリをリセット',
     'brExpand': '展開',
     'brMeshWarp': 'メッシュワープ',
-    'brPreserveColours': '元の色を保持',
-    'brPreserveColoursHint': '中間色は増えませんが、エッジは硬くなります',
+    'trModeNormal': '変形',
+    'trModePerspective': 'パース変形',
+    'trFlipHorizontal': '左右反転',
+    'trFlipVertical': '上下反転',
+    'trAnchor': '基準点',
+    'trAnchorOpposite': '対角',
+    'trAnchorCenter': '中心',
+    'trMeshColumns': '横のマス',
+    'trMeshRows': '縦のマス',
     'commonReset': 'リセット',
     'commonFill': '塗りつぶし',
     'viewZoomIn': 'ズームイン',
@@ -2306,7 +2342,6 @@ class AppStrings {
     'continuousLabel': '콘티너스',
     'noticeNoFrameHere': '프레임이 존재하지 않습니다',
     'noticeLayerNotDrawable': '드로잉이 허용되지 않은 레이어입니다',
-    'noticeNothingToTransform': '변형할 그림이 없습니다',
     'noticeEditAttachOwner': '주인 레이어를 편집하세요',
     'commonCancel': '취소',
     'commonApply': '적용',
@@ -2723,6 +2758,9 @@ class AppStrings {
     'mediaImportAudio': '오디오 불러오기',
     'mediaRename': '미디어 이름 변경',
     'mediaRelink': '다시 연결…',
+    'mediaMissingCount': '못 찾은 파일 {n}개',
+    'mediaFindInFolder': '폴더에서 찾기…',
+    'mediaRelinkFound': '{n}개 중 {m}개를 찾았습니다. 다시 연결할까요?',
     'mediaRemove': '제거',
     'mediaRegisterInProject': '에셋 폴더에 등록',
     'mediaAlreadyInProject': '복사할 것이 없습니다 — 이미 프로젝트 안에 있거나, 프로젝트가 아직 저장되지 않았습니다.',
@@ -2896,8 +2934,15 @@ class AppStrings {
     'brResetLibrary': '브러시 라이브러리 초기화',
     'brExpand': '펼치기',
     'brMeshWarp': '메시 워프',
-    'brPreserveColours': '원본 색 보존',
-    'brPreserveColoursHint': '중간색이 생기지 않고, 가장자리는 거칠어집니다',
+    'trModeNormal': '일반 변형',
+    'trModePerspective': '퍼스 변형',
+    'trFlipHorizontal': '좌우 반전',
+    'trFlipVertical': '상하 반전',
+    'trAnchor': '기준점',
+    'trAnchorOpposite': '반대 모서리',
+    'trAnchorCenter': '중심',
+    'trMeshColumns': '가로 칸',
+    'trMeshRows': '세로 칸',
     'commonReset': '초기화',
     'commonFill': '채우기',
     'viewZoomIn': '확대',
@@ -3050,7 +3095,6 @@ class AppStrings {
     'continuousLabel': 'Continu',
     'noticeNoFrameHere': 'Aucune image ici',
     'noticeLayerNotDrawable': 'Ce calque n\'accepte pas le dessin',
-    'noticeNothingToTransform': 'Rien a transformer',
     'noticeEditAttachOwner': 'Modifiez le calque parent',
     'commonCancel': 'Annuler',
     'commonApply': 'Appliquer',
@@ -3492,6 +3536,9 @@ class AppStrings {
     'mediaImportAudio': "Importer de l'audio",
     'mediaRename': 'Renommer le média',
     'mediaRelink': 'Relier…',
+    'mediaMissingCount': '{n} fichiers multimédias introuvables',
+    'mediaFindInFolder': 'Chercher dans un dossier…',
+    'mediaRelinkFound': '{m} sur {n} trouvés. Les relier ?',
     'mediaRemove': 'Retirer',
     'mediaRegisterInProject': 'Enregistrer dans le projet',
     'mediaAlreadyInProject':
@@ -3659,6 +3706,15 @@ class AppStrings {
     'brTransformPreserveColorsHint':
         'Transformer sans créer de couleurs '
         'intermédiaires',
+    'trModeNormal': 'Transformer',
+    'trModePerspective': 'Perspective',
+    'trFlipHorizontal': 'Miroir horizontal',
+    'trFlipVertical': 'Miroir vertical',
+    'trAnchor': 'Point de référence',
+    'trAnchorOpposite': 'Coin opposé',
+    'trAnchorCenter': 'Centre',
+    'trMeshColumns': 'Colonnes',
+    'trMeshRows': 'Lignes',
     'brFillBeyondCanvas': 'Remplir au-delà du canevas',
     'brOpenRegionsRefuse': 'Les zones ouvertes ne se remplissent pas',
     'brName': 'Nom',
@@ -3677,9 +3733,6 @@ class AppStrings {
     'brResetLibrary': 'Réinitialiser la bibliothèque',
     'brExpand': 'Déplier',
     'brMeshWarp': 'Déformation par grille',
-    'brPreserveColours': 'Conserver les couleurs d\'origine',
-    'brPreserveColoursHint':
-        'Aucune teinte intermédiaire, mais des bords plus durs',
     'commonReset': 'Réinitialiser',
     'commonFill': 'Remplir',
     'viewZoomIn': 'Zoom avant',
@@ -3834,7 +3887,6 @@ class AppStrings {
     'continuousLabel': '连续视图',
     'noticeNoFrameHere': '此处没有帧',
     'noticeLayerNotDrawable': '该图层不可绘制',
-    'noticeNothingToTransform': '没有可变形的内容',
     'noticeEditAttachOwner': '请编辑父图层',
     'commonCancel': '取消',
     'commonApply': '应用',
@@ -4227,6 +4279,9 @@ class AppStrings {
     'mediaImportAudio': '导入音频',
     'mediaRename': '重命名媒体',
     'mediaRelink': '重新链接…',
+    'mediaMissingCount': '找不到 {n} 个媒体文件',
+    'mediaFindInFolder': '在文件夹中查找…',
+    'mediaRelinkFound': '在 {n} 个中找到 {m} 个。要重新链接吗？',
     'mediaRemove': '移除',
     'mediaRegisterInProject': '登记到项目',
     'mediaAlreadyInProject': '没有可复制的内容 — 它已在项目中，或项目尚未保存。',
@@ -4398,8 +4453,15 @@ class AppStrings {
     'brResetLibrary': '重置画笔库',
     'brExpand': '展开',
     'brMeshWarp': '网格变形',
-    'brPreserveColours': '保留原始颜色',
-    'brPreserveColoursHint': '不产生中间色，但边缘更硬',
+    'trModeNormal': '变形',
+    'trModePerspective': '透视变形',
+    'trFlipHorizontal': '水平翻转',
+    'trFlipVertical': '垂直翻转',
+    'trAnchor': '基准点',
+    'trAnchorOpposite': '对角',
+    'trAnchorCenter': '中心',
+    'trMeshColumns': '列数',
+    'trMeshRows': '行数',
     'commonReset': '重置',
     'commonFill': '填充',
     'viewZoomIn': '放大',

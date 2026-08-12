@@ -27,6 +27,7 @@ class DragValueLabel extends StatefulWidget {
     this.tooltip,
     this.textStyle,
     this.inputKeyValue,
+    this.textAlign = TextAlign.center,
   });
 
   /// Stable widget key base (`keyValue` label / `keyValue`-input).
@@ -49,6 +50,12 @@ class DragValueLabel extends StatefulWidget {
   final double width;
   final String? tooltip;
   final TextStyle? textStyle;
+
+  /// How the resting readout sits in its box. Centre is the default every
+  /// caller had before the transform panel asked for right-aligned
+  /// numbers; whether the rest should follow is a UI-session question,
+  /// not this one's.
+  final TextAlign textAlign;
 
   @override
   State<DragValueLabel> createState() => _DragValueLabelState();
@@ -108,7 +115,7 @@ class _DragValueLabelState extends State<DragValueLabel> {
           width: widget.width,
           child: Text(
             widget.text,
-            textAlign: TextAlign.center,
+            textAlign: widget.textAlign,
             style: widget.textStyle ?? const TextStyle(fontSize: 12),
           ),
         ),

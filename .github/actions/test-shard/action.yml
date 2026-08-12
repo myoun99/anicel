@@ -15,13 +15,64 @@ inputs:
 runs:
   using: composite
   steps:
+    # `flutter test` seeds its resident compiler from a kernel it keeps in
+    # build/test_cache (flutter_tools passes it as initializeFromDill, and
+    # says in its own comment that the point is "to re-use as many packages
+    # as possible"). CI has never kept that file, so every test job in every
+    # run has compiled from cold — measured locally at +34.5% wall on a
+    # 31-file sample, with the first file taking 37.4s instead of 5.3s.
+    #
+    # It is a compile SEED and nothing else: a stale one costs a recompile,
+    # never a wrong answer. That is why an inexact restore-keys hit is
+    # welcome here in a way it would not be for a build artefact.
+    - id: kernel
+      uses: actions/cache/restore@v4
+      with:
+        path: build/test_cache
+        key: testkernel-${{ runner.os }}-${{ hashFiles('pubspec.lock', '.github/workflows/ci.yml') }}-${{ github.run_id }}
+        restore-keys: |
+          testkernel-${{ runner.os }}-${{ hashFiles('pubspec.lock', '.github/workflows/ci.yml') }}-
     - shell: bash
       run: |
         set -euo pipefail
-        find test -name '*_test.dart' | sort > "$RUNNER_TEMP/all_tests.txt"
-        total_files=$(wc -l < "$RUNNER_TEMP/all_tests.txt")
-        awk "NR % ${{ inputs.total }} == ${{ inputs.index }}" \
-          "$RUNNER_TEMP/all_tests.txt" > "$RUNNER_TEMP/shard_tests.txt"
+        # Dealing the files out round-robin balanced the shards by COUNT,
+        # and cost is not distributed like count: at eight Windows shards
+        # the measured spread was still 1.64x (224s to 362s), so one
+        # unlucky shard decided the round while the others sat finished.
+        #
+        # So weight each file and pack longest-first into the lightest
+        # shard. The weight is the file's SIZE, not a recorded duration:
+        # a checked-in timings table is more accurate on the day it is
+        # generated and wrong every day after, and it goes stale silently
+        # — the failure mode is a slow shard, which looks exactly like
+        # normal. Size is 86% as good and cannot rot, because it is
+        # measured from the tree being tested.
+        #
+        # Every shard job runs this same computation over the same commit
+        # and takes only its own slice, so the deal MUST be deterministic:
+        # hence the explicit sort (size descending, then path) under
+        # LC_ALL=C. If two jobs disagreed, files would silently run twice
+        # or not at all.
+        find test -name '*_test.dart' -printf '%s\t%p\n' \
+          | LC_ALL=C sort -k1,1nr -k2,2 > "$RUNNER_TEMP/weighted.txt"
+        total_files=$(wc -l < "$RUNNER_TEMP/weighted.txt")
+        # `want`, not `index` — index() is a gawk builtin and awk dies with
+        # "cannot use gawk builtin as variable name", which on CI would be
+        # every shard failing at once.
+        awk -v total="${{ inputs.total }}" -v want="${{ inputs.index }}" '
+          BEGIN { for (i = 0; i < total; i++) load[i] = 0 }
+          {
+            lightest = 0
+            for (i = 1; i < total; i++) {
+              if (load[i] < load[lightest]) lightest = i
+            }
+            load[lightest] += $1
+            if (lightest == want) {
+              sub(/^[0-9]+\t/, "")
+              print
+            }
+          }
+        ' "$RUNNER_TEMP/weighted.txt" > "$RUNNER_TEMP/shard_tests.txt"
         shard_files=$(wc -l < "$RUNNER_TEMP/shard_tests.txt")
         echo "shard ${{ inputs.index }} of ${{ inputs.total }}:" \
           "$shard_files of $total_files files"
@@ -34,14 +85,30 @@ runs:
         # `flutter` is a .bat on Windows, so the whole invocation passes
         # through cmd.exe's ~8191-character buffer whichever shell starts
         # it. Measured: 182 paths / 8284 chars dies in 598ms with "command
-        # line too long"; 91 paths / 4105 chars is fine. xargs splits the
-        # list into batches that fit and exits non-zero if any batch fails,
-        # so the project's rule still holds — the exit code decides.
+        # line too long"; 91 paths / 4105 chars is fine.
         #
-        # 6000 rather than something nearer the ceiling: today's widest
-        # shard is ~4.2k characters, so one batch and no repeated `flutter
-        # test` startup, with room for the suite to grow by half before a
-        # split costs anything and 2.2k of daylight before the real limit.
-        # Raise this only against a measurement, never to "make it fit".
+        # That ceiling is Windows' alone, and applying it everywhere cost
+        # real time: a Linux shard's list was ~11k characters, so xargs
+        # split it in two and the job paid the resident compiler's cold
+        # start TWICE — visible in the logs as two "N tests passed"
+        # summaries where a Windows shard prints one. Elsewhere ARG_MAX is
+        # megabytes, so elsewhere the limit is nominal.
+        limit=6000
+        [ "${RUNNER_OS:-}" = "Windows" ] || limit=100000
+        # --no-pub because ci.yml already ran `flutter pub get` as its own
+        # step; without it `flutter test` resolves a second time. Worth
+        # only ~0.3s measured — pub is nearly a no-op warm — but it is
+        # duplicated work, and the flag says so out loud.
         tr '\n' '\0' < "$RUNNER_TEMP/shard_tests.txt" \
-          | xargs -0 -s 6000 flutter test
+          | xargs -0 -s "$limit" flutter test --no-pub
+    # One writer per run per OS, and only from master: thirteen shards
+    # racing to save the same key would leave twelve "cache already exists"
+    # warnings, and a pull request has no business seeding the cache every
+    # branch will then restore from. The run id keeps the seed moving
+    # forward — restore-keys above matches the newest one with the same
+    # prefix, so it is always a recent master rather than a frozen one.
+    - if: github.event_name == 'push' && inputs.index == '0'
+      uses: actions/cache/save@v4
+      with:
+        path: build/test_cache
+        key: testkernel-${{ runner.os }}-${{ hashFiles('pubspec.lock', '.github/workflows/ci.yml') }}-${{ github.run_id }}
