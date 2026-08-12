@@ -1,9 +1,14 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
+
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
 import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
+import 'package:anicel/src/ui/widgets/color_swatch_button.dart';
+
+import '../../helpers/canvas_pill.dart';
 
 /// The canvas panel's view bars — the scrollbars and the zoom/rotate/fit
 /// buttons — must survive a flip. They show viewport geometry and nothing
@@ -22,13 +27,29 @@ import 'package:anicel/src/ui/home_page.dart';
 /// was rebuilt on every single flip step. Do not read the fixture's
 /// narrowness as the defect's.
 void main() {
-  testWidgets('…but a colour the pill SHOWS does rebuild it', (tester) async {
-    // The other half of the same rule. The token was trimmed to what the
-    // bars actually display — and the two surface swatches the pill carries
-    // were never in it, so the pill went on painting yesterday's paper
-    // colour until an unrelated pan or resize happened to invalidate the
-    // memo. Tapping the stale swatch even reopened the picker seeded with
-    // the old value.
+  testWidgets('…and a colour the pill no longer shows still breaks its memo', (
+    tester,
+  ) async {
+    // The other half of the same rule, restated for where the swatches live
+    // now (유저 확정 2026-08-13: 색은 ⚙ 안으로).
+    //
+    // 🐛The token was trimmed to what the bars display, and the surface
+    // swatches were never put back in it — so the pill went on painting
+    // yesterday's paper colour until an unrelated pan or resize happened to
+    // invalidate the memo, and tapping the stale swatch reopened the picker
+    // seeded with the old value.
+    //
+    // Moving the swatches behind the gear did NOT retire that bug, it only
+    // moved where the stale value shows up. The settings list is an overlay
+    // route built from a closure the BAR captured, so a bar the memo served
+    // stale hands the list a stale colour. The rule survives the move with
+    // one word changed: the token carries what the bar CAPTURES — and a
+    // colour is captured, because it arrives as a widget field rather than
+    // through a signal the list can listen to.
+    //
+    // ⚠️Only the NEXT open can be fresh. An open list is a `showMenu` route
+    // holding entries it has already built, and nothing here reaches into
+    // it — which is why this test closes the list before changing anything.
     await tester.binding.setSurfaceSize(const Size(1600, 900));
     addTearDown(() => tester.binding.setSurfaceSize(null));
     await tester.pumpWidget(const MaterialApp(home: HomePage()));
@@ -37,20 +58,40 @@ void main() {
     final session = tester
         .widget<EditorWorkspace>(find.byType(EditorWorkspace))
         .session;
-    final swatch = find.descendant(
-      of: find.byKey(const ValueKey<String>('main-canvas-brush-host')),
-      matching: find.byKey(const ValueKey<String>('canvas-paper-color-button')),
+    // Scoped to the MAIN canvas: the timesheet mounts a canvas panel of its
+    // own, so the app has more than one gear.
+    final mainCanvas = find.byKey(
+      const ValueKey<String>('main-canvas-brush-host'),
     );
-    expect(swatch, findsOneWidget, reason: 'the pill is wide enough here');
-    final before = tester.widget(swatch);
+    // The key sits on the swatch's InkWell; the colour is on the control
+    // around it.
+    int paperSwatch() => tester
+        .widget<ColorSwatchButton>(
+          find.ancestor(
+            of: find.byKey(
+              const ValueKey<String>('canvas-paper-color-button'),
+            ),
+            matching: find.byType(ColorSwatchButton),
+          ),
+        )
+        .color;
+
+    await openViewSettings(tester, of: mainCanvas);
+    final before = paperSwatch();
+    await tester.sendKeyEvent(LogicalKeyboardKey.escape);
+    await tester.pumpAndSettle();
 
     session.setProjectBackground(const ProjectBackground.color(0xFF123456));
     await tester.pumpAndSettle();
 
+    await openViewSettings(tester, of: mainCanvas);
+    // LIVENESS — a fixture that started on the target colour would pass the
+    // assertion below without the memo having broken at all.
+    expect(before, isNot(0xFF123456));
     expect(
-      identical(tester.widget(swatch), before),
-      isFalse,
-      reason: 'the pill shows this colour, so the memo may not serve it stale',
+      paperSwatch(),
+      0xFF123456,
+      reason: 'the list shows this colour, so the memo may not serve it stale',
     );
     session.prerenderScheduler.cancel();
   });

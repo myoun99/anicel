@@ -359,6 +359,25 @@ void main() {
       // measured and rejected — 22px is enough to make the timesheet shed
       // its own page cluster at the default rail width.)
       await pumpApp(tester);
+      // NARROW as well as short. The pill is CENTRED and the bar rides the
+      // right edge, so the two meet only where the pill nearly fills the
+      // panel — and 유저 확정 2026-08-13 took the zoom steps, 1:1, rotate,
+      // flip and the swatches out of the pill, so it no longer does at the
+      // default rail width (measured: they miss by 18px there).
+      //
+      // ⚠️MEASURED and thin: at 220px the two overlap by 2px, and the pill
+      // sheds its host controls below 218px, so the band this fixture lives
+      // in is a handful of pixels wide. That is a property of the geometry
+      // — a centred capsule and an edge-riding bar only meet at the edge of
+      // shedding — not of this drag. If a constant moves, the liveness
+      // check below fails LOUDLY with "must actually reach the overlapping
+      // case" rather than passing on a case it never reached; re-measure
+      // and move the number.
+      await tester.drag(
+        find.byKey(const ValueKey<String>('dock-resize-rail-R2')),
+        const Offset(40, 0),
+      );
+      await tester.pumpAndSettle();
       await tester.drag(
         find.byKey(const ValueKey<String>('dock-resize-rail-R2-height')),
         const Offset(0, -400),

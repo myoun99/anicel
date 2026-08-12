@@ -4,6 +4,8 @@ import 'dart:ui' show ImageByteFormat;
 import 'package:flutter/material.dart';
 import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
+
+import '../helpers/canvas_pill.dart';
 import 'package:anicel/src/models/canvas_viewport.dart';
 import 'package:anicel/src/models/project_background.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
@@ -264,21 +266,19 @@ void main() {
     final pasteboardButton = find.byKey(
       const ValueKey<String>('canvas-pasteboard-color-button'),
     );
+    // 유저 확정 2026-08-13: the swatches are no longer IN the pill. They
+    // are the clearest case of "한 프로젝트에 한 번 만지는 것" — the rule
+    // that decides what the pill shows — so they moved behind the gear
+    // with the rest of the settings.
+    expect(paperButton, findsNothing);
+    await openViewSettings(tester);
     expect(paperButton, findsOneWidget);
     expect(pasteboardButton, findsOneWidget);
     expect(find.byType(ColorSwatchButton), findsNWidgets(2));
 
-    // The original wording — "가로스크롤바의 바로오른쪽에" — described the
-    // swatches' place in a bottom BAR that ran the width of the panel with
-    // the panbar stretched through its middle. The floor has no such bar:
-    // the panbar is its own capsule on the top edge and the view controls
-    // are a cluster in the corner. What survives is the ORDER the user
-    // asked for — the swatches come after the view controls, at the far
-    // end, because they are the thing you touch once a project.
-    final zoomRight = tester
-        .getRect(find.byKey(const ValueKey<String>('canvas-viewport-zoom-in')))
-        .right;
-    expect(tester.getRect(paperButton).left, greaterThanOrEqualTo(zoomRight));
+    // The ORDER the user asked for survives the move: paper first, then
+    // the pasteboard around it, reading outwards from the paper in the
+    // same order the two are stacked on screen.
     expect(
       tester.getRect(pasteboardButton).left,
       greaterThanOrEqualTo(tester.getRect(paperButton).right),
@@ -316,10 +316,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    await tester.tap(
-      find.byKey(const ValueKey<String>('canvas-paper-color-button')),
-    );
-    await tester.pumpAndSettle();
+    // One tap more than it used to take: the swatch lives in the pill's
+    // settings list now, and the picker opens from there.
+    await tapInViewSettings(tester, 'canvas-paper-color-button');
 
     expect(
       find.byKey(const ValueKey<String>('color-picker-wheel')),

@@ -22,7 +22,6 @@ import 'package:anicel/src/ui/conte/conte_sheet_builder.dart';
 import 'package:anicel/src/ui/conte/conte_tab_host.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 import 'package:anicel/src/ui/storyboard_layer_policy.dart';
-import 'package:anicel/src/ui/widgets/drag_value_label.dart';
 
 /// The conte panel IS the sheet: it draws the renderer the export draws, a
 /// cell press picks that cut and frame, and the ACTION text lands on the
@@ -118,26 +117,24 @@ void main() {
     expect(source.cuts.last.cumulativeEndFrames, 22);
   });
 
-  testWidgets('the panel draws a page inside the canvas shell and reports '
-      'its pages', (tester) async {
+  testWidgets('the panel draws a page inside the canvas shell, and a '
+      'ONE-page conte offers nothing to turn', (tester) async {
     await _pumpConte(tester);
 
     expect(find.byKey(const ValueKey<String>('conte-page')), findsOneWidget);
+    // Three cells over two cuts: one page.
+    //
+    // 유저 확정 ⑥ (2026-08-13): the page cluster left the pill for a capsule
+    // on the left edge, and that capsule appears only where there is a page
+    // to turn TO. It used to read "1 / 1" — a control that could do nothing,
+    // standing in a row that was shedding controls that could.
+    expect(
+      find.byKey(const ValueKey<String>('canvas-page-strip')),
+      findsNothing,
+    );
     expect(
       find.byKey(const ValueKey<String>('conte-page-readout')),
-      findsOneWidget,
-    );
-    // Three cells over two cuts: one page.
-    expect(
-      tester
-          .widget<DragValueLabel>(
-            find.ancestor(
-              of: find.byKey(const ValueKey<String>('conte-page-readout')),
-              matching: find.byType(DragValueLabel),
-            ),
-          )
-          .text,
-      '1 / 1',
+      findsNothing,
     );
   });
 

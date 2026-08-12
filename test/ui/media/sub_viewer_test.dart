@@ -10,6 +10,7 @@ import 'package:anicel/src/ui/media/media_viewer_tab_host.dart';
 import 'package:anicel/src/services/pdf/pdf_render_service.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
+import '../../helpers/canvas_pill.dart';
 import '../../helpers/fake_pdf_document.dart';
 
 /// The SECOND viewer (유저 확정 2026-08-12): the same panel docked like
@@ -33,9 +34,14 @@ const _layout = MediaAsset(
 Project _projectWithAssets() =>
     createDefaultProject().copyWith(mediaAssets: const [_conte, _layout]);
 
-/// What a viewer with nothing in it reads — the pill is always there,
-/// counting a document of no pages.
-const _emptyReadout = '0 / 0';
+/// What a viewer with nothing in it reads.
+///
+/// It used to be '0 / 0': the page cluster lived in the pill, and the pill
+/// is always there, so an empty viewer counted a document of no pages at
+/// you. 유저 확정 ⑥ (2026-08-13) moved the cluster to its own left-edge
+/// capsule and gave it a condition — more than one page — so nothing to
+/// turn now shows as nothing at all.
+const _emptyReadout = '';
 
 Finder _mainViewer() =>
     find.byKey(const ValueKey<String>('media-viewer-panel'));
@@ -80,11 +86,10 @@ Future<void> _openSubViewer(WidgetTester tester) => _openRail(tester, 5);
 
 /// Presses a control in a viewer's PILL.
 ///
-/// The pill is a measured, scrolling bar (`_CanvasViewportBottomBar`): it
-/// budgets for the host's own controls and scrolls rather than overflow,
-/// and this viewer now puts four of them in there. In a rail-width panel
-/// the tail of that row is scrolled out of view, so a plain tap lands on
-/// the canvas behind it and quietly does nothing.
+/// ⚠️The pill does NOT scroll — it SHEDS (`띠는 스크롤하지 않는다`). What
+/// `ensureVisible` moves here is the RAIL, which scrolls the whole panel;
+/// without it a tap can land on the canvas behind the pill and quietly do
+/// nothing.
 Future<void> _tapPill(WidgetTester tester, String keyValue) async {
   final control = find.byKey(ValueKey<String>(keyValue));
   await tester.ensureVisible(control);
@@ -245,7 +250,13 @@ void main() {
     // ...then ask for it large. 유저 확정 ⑰: the page travels WITH the
     // file, or "show me this bigger" would land on page 1 and the trip
     // would be wasted.
-    await _tapPill(tester, 'media-viewer-sub-swap-button');
+    // 유저 확정 ⑤: swapping is a settings command now, not a pill button —
+    // scoped to THIS viewer, because two viewers mean two gears.
+    await tapInViewSettings(
+      tester,
+      'media-viewer-sub-swap-button',
+      of: _subViewer(),
+    );
 
     // 유저 확정 ⑳: the receiving viewer is REVEALED — the floor was
     // showing the canvas, and a swap into a panel nobody can see reads as
@@ -311,17 +322,24 @@ void main() {
     );
     await tester.pump();
 
-    // Asserted by PRESSING rather than by reading the widget's enabled
-    // flag: what matters is whether an import happens, and the pill's
-    // button is the app's own control rather than a Material IconButton.
+    // Asserted by PRESSING rather than by reading the entry's enabled flag:
+    // what matters is whether an import happens.
+    //
+    // 유저 확정 ⑤ made this a command in the pill's settings list, so a
+    // press is open-then-tap. ⚠️A command that RAN closes the list itself;
+    // a disabled one takes no tap and leaves it open, so this dismisses it
+    // rather than letting the next press toggle the gear shut.
     Future<void> press() async {
-      final button = find.byKey(
+      await openViewSettings(tester);
+      final entry = find.byKey(
         const ValueKey<String>('media-viewer-sub-register-asset-button'),
       );
-      await tester.ensureVisible(button);
+      await tester.tap(entry, warnIfMissed: false);
       await tester.pumpAndSettle();
-      await tester.tap(button, warnIfMissed: false);
-      await tester.pumpAndSettle();
+      if (tester.any(entry)) {
+        await tester.tapAt(const Offset(4, 4));
+        await tester.pumpAndSettle();
+      }
     }
 
     // Nothing on screen: there is nothing to add.
