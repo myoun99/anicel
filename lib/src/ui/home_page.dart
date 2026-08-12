@@ -682,6 +682,12 @@ class _HomePageState extends State<HomePage> {
         case null || _ExitChoice.cancel:
           return false;
         case _ExitChoice.close:
+          // Discarding the work discards its sidecar too. Left alive it
+          // outlives the session that made it, and the next open offers
+          // to restore precisely what the user just chose to throw away
+          // — with recovery reading a surviving sidecar as "the app
+          // crashed", keeping one here makes that signal lie.
+          _session.discardAutosaveSidecar();
           return true;
         case _ExitChoice.save:
         case _ExitChoice.saveAs:

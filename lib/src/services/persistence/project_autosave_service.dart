@@ -1,10 +1,15 @@
 import 'dart:async';
 import 'dart:io';
 
+import 'app_save_settings.dart';
+
 /// Autosave (P3): a periodic tick snapshots a DIRTY session into a sidecar
-/// `<path>.autosave` next to the saved file. A successful MANUAL save
-/// deletes the sidecar; opening a file with a newer sidecar offers
-/// recovery (the menu's open flow).
+/// `<path>.autosave` next to the saved file. Opening a file with a newer
+/// sidecar offers recovery (the menu's open flow).
+///
+/// A sidecar holds unsaved work, so it dies the moment that work stops
+/// existing — see [retireSidecarsFor] for the three moments and why a
+/// surviving sidecar has to mean something.
 ///
 /// PEN-12 #8: a NEVER-SAVED project autosaves nowhere — instead of piling
 /// sidecars into hidden app-data folders, a dirty tick fires
@@ -77,13 +82,38 @@ class ProjectAutosaveService {
     }
   }
 
-  /// The app-data folder holding autosaves of never-saved projects.
-  /// Deletes [sidecarPath] if present (after a successful manual save).
-  static Future<void> deleteSidecar(String sidecarPath) async {
+  /// Retires EVERY sidecar that could hold unsaved work for
+  /// [projectFilePath] — the sidecar-location setting may have changed
+  /// since one was written, so both candidate locations go.
+  ///
+  /// Called at each of the three moments the unsaved work stops existing:
+  /// a successful manual save (it landed in the file), a close WITHOUT
+  /// saving (the user threw it away), and a DECLINED recovery (the user
+  /// picked the saved file over it). Retiring at all three is what lets a
+  /// surviving sidecar mean "this session died without one of them" —
+  /// i.e. a crash — which is the entire signal recovery reads. Skip one
+  /// and the prompt starts firing over work the user already discarded,
+  /// and (for the declined case) keeps firing at every open until the
+  /// next manual save.
+  ///
+  /// SYNC on purpose. An in-flight async delete can be overtaken by the
+  /// next autosave tick and eat the sidecar it just wrote; finishing
+  /// before anything else runs on the isolate removes that window rather
+  /// than narrowing it. It also keeps the exit and open flows testable —
+  /// async `dart:io` inside `testWidgets` never completes (fake zone), and
+  /// the neighbouring reads ([sidecarIsNewer], `newestExistingSidecarFor`)
+  /// are sync for the same reason. One small file, at save or exit.
+  static void retireSidecarsFor(String projectFilePath) {
+    for (final candidate in AppSave.sidecarCandidatesFor(projectFilePath)) {
+      _deleteSidecar(candidate);
+    }
+  }
+
+  static void _deleteSidecar(String sidecarPath) {
     try {
       final file = File(sidecarPath);
-      if (await file.exists()) {
-        await file.delete();
+      if (file.existsSync()) {
+        file.deleteSync();
       }
     } catch (_) {
       // A locked sidecar (cloud sync mid-upload) is harmless — recovery
