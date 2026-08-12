@@ -408,6 +408,12 @@ class LayerTimelineGrid extends StatefulWidget {
 typedef _RailRowMemoInputs = ({
   Layer layer,
   bool active,
+  // ㉞: the row selection wash. SESSION state like [active] and invisible to
+  // the Layer comparison — ⑨ passed `selected` to the row without giving the
+  // memo a way to see it change, so the wash never appeared until some other
+  // fact happened to invalidate the entry. The state was right the whole
+  // time; the cache answered "unchanged" (the ㉘ shape).
+  bool selected,
   bool hasLanes,
   bool lanesExpanded,
   int depth,
@@ -1103,6 +1109,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     final inputs = (
       layer: row.layer,
       active: _layerRowIsActive(row.layer),
+      selected: widget.selectedRowIds.contains(row.layer.id),
       hasLanes: _lanesFor(row.layer).isNotEmpty,
       lanesExpanded: widget.expandedLaneLayerIds.contains(row.layer.id),
       depth: row.depth,
@@ -1241,6 +1248,7 @@ class _LayerTimelineGridState extends State<LayerTimelineGrid> {
     // [timelineLayerControlsRowShowsSameState]).
     return timelineLayerControlsRowShowsSameState(a.layer, b.layer) &&
         a.active == b.active &&
+        a.selected == b.selected &&
         a.hasLanes == b.hasLanes &&
         a.lanesExpanded == b.lanesExpanded &&
         a.depth == b.depth &&

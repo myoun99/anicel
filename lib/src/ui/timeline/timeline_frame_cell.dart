@@ -133,8 +133,8 @@ class TimelineFrameCell extends StatelessWidget {
 
     final cell = InkWell(
       key: ValueKey<String>('$cellKeyPrefix-${layer.id}-$frameIndex'),
-      // Deliberate NO-OP: pointer selection rides the raw pointer-down
-      // below. Selecting here replayed LATE — with onDoubleTap registered
+      // Deliberate NO-OP: the pick rides the raw pointer stream below (㉟:
+      // on the RELEASE). Selecting here replayed LATE — with onDoubleTap registered
       // the arena resolves ~300ms after a quick tap, so tapping cell B
       // right after cell A fired A's deferred tap AFTER B's selection (the
       // selection visibly jumped B → A → B). The recognizer itself must
@@ -211,13 +211,13 @@ class TimelineFrameCell extends StatelessWidget {
       ),
     );
 
-    // Selection must not wait out the double-tap window: with onDoubleTap
+    // The pick must not wait out the double-tap window: with onDoubleTap
     // registered, InkWell's onTap only fires once the gesture arena
-    // resolves (~300ms after a quick tap). [InstantTapRegion] takes the
-    // press off the arena — pen/mouse on the DOWN, a finger on the release
-    // if it did not travel (PEN-12 #6: scroll owns finger drags, but a
-    // clean finger tap still selects) — under the timeline's own device
-    // gate (UI-R23 feedback #2).
+    // resolves (~300ms after a quick tap). [InstantTapRegion] takes the pick
+    // off the arena and — ㉟ — lands it on the RELEASE for every device: a
+    // press that travels is a drag and picks nothing, a press that does not
+    // is a tap and picks here. [AppInput.timelineCellPressSeeks] carries the
+    // why (it used to be pen/mouse on the DOWN, touch on the release).
     //
     // R10 lifted that policy out of here: it is the app's answer for every
     // control that carries a double tap, and it was written twice inside
@@ -226,7 +226,11 @@ class TimelineFrameCell extends StatelessWidget {
       pressSeeksFor: AppInput.timelineCellPressSeeks,
       onTap: (_) {
         // A press INSIDE the frame-range selection initiates a MOVE — it
-        // must not re-seek the playhead first (UI-R10 #12).
+        // must not re-seek the playhead first (UI-R10 #12). ⚠️A tap that
+        // travelled far enough to BE a move no longer reaches here at all
+        // (㉟), so this now only holds back the still tap inside a
+        // selection — 「선택 안을 클릭해도 사라진다」 vs UI-R10 #12 is a
+        // collision only the user can settle, and #12 is the older law.
         if (!(suppressPointerDownSelect?.call(frameIndex) ?? false)) {
           select();
         }

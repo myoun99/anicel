@@ -532,11 +532,25 @@ abstract final class AppInput {
     if (!touchTimelineScroll) PointerDeviceKind.touch,
   };
 
-  /// Whether a CELL press of [kind] may SEEK the playhead (UI-R23
-  /// feedback #2): with touch-scroll ON a finger on the grid is pure
-  /// scroll — its press-down must not move the frame index (the first
-  /// scroll touch kept re-seeking). Pen/mouse always seek; with the
-  /// toggle OFF touch seeks like a pen (the R17-⑥ contract).
-  static bool timelineCellPressSeeks(PointerDeviceKind kind) =>
-      kind != PointerDeviceKind.touch || !touchTimelineScroll;
+  /// Whether a CELL press of [kind] may SEEK the playhead — **nothing does
+  /// anymore**: a cell is picked on the RELEASE, like the rail row beside it.
+  ///
+  /// 유저 2026-08-12 (㉟): 「그냥 프레임셀도 레이어쪽도 선택범위 그런거 바꾸자.
+  /// 둘 다 선택하려면 탭. 즉 손 떼야 선택됨. 이렇게하면 드래그도 만들기 편하고
+  /// 놓는것도 만들기 편한거같은데」 — the rail row has always picked on its tap,
+  /// so the cells were the odd surface out.
+  ///
+  /// ★What this REPLACES is a two-branch device rule: pen/mouse acted on the
+  /// down and touch was carved out of it, because a scrolling finger kept
+  /// re-seeking (UI-R23 #2 / the R17-⑥ contract). "Nobody acts on the press"
+  /// answers that case too — one rule instead of two — and a press that turns
+  /// into a drag can no longer have made a pick the drag would want back
+  /// (the standing 먼저 옮기고 되돌리기 금지 rule).
+  ///
+  /// ⚠️Constant ON PURPOSE, and not the ⑮ smell (a predicate that never
+  /// answers the question its name asks): the shape is an adapter to
+  /// [InstantTapRegion.pressSeeksFor], and it stays a NAMED gate so the grid
+  /// and the sheet cannot drift apart again — they wrote this policy twice
+  /// before it had a name.
+  static bool timelineCellPressSeeks(PointerDeviceKind kind) => false;
 }

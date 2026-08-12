@@ -369,6 +369,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
             ),
           );
         case CanvasActiveLayerNode(
+          :final opacity,
           :final pose,
           :final anchorPoint,
           :final effects,
@@ -378,6 +379,7 @@ class _CanvasLayerStackViewState extends State<CanvasLayerStackView> {
           }
           out.add(
             _PaintActiveSurface(
+              opacity: opacity,
               pose: pose,
               anchorPoint: anchorPoint,
               effects: effects,
@@ -465,11 +467,16 @@ final class _PaintImage extends _PaintNode {
 
 final class _PaintActiveSurface extends _PaintNode {
   const _PaintActiveSurface({
+    required this.opacity,
     required this.pose,
     required this.anchorPoint,
     required this.effects,
   });
 
+  /// ㊱: the active row's display opacity. It reached the node all along and
+  /// stopped here — the field did not exist, so the live surface drew at full
+  /// strength while every OTHER row honoured its slider.
+  final double opacity;
   final TransformPose? pose;
   final CanvasPoint? anchorPoint;
   final List<ResolvedLayerEffect> effects;
@@ -633,7 +640,7 @@ class _LayerStackPainter extends CustomPainter {
                 if (pass.crossfades) {
                   canvas.restore();
                 }
-              case _PaintActiveSurface(:final effects):
+              case _PaintActiveSurface(:final opacity, :final effects):
                 // The live surface, drawn by the SAME painter the standalone
                 // interactive view uses — the canvas is already
                 // viewport-transformed, so only the content body runs.
@@ -641,9 +648,20 @@ class _LayerStackPainter extends CustomPainter {
                 // R6: the row's own effects need a buffer here, because the
                 // surface painter draws MANY tiles and a filter must see the
                 // assembled picture (a per-tile blur would show seams).
+                //
+                // ㊱: the OPACITY rides that same buffer — one alpha over the
+                // assembled picture, exactly as a group node applies its own
+                // (`Color.fromRGBO(0, 0, 0, opacity)` is an alpha-only paint).
+                // The panel's content-opacity wrap cannot do this job in
+                // merged mode: there the interactive view is input-only, so
+                // the wrap dims a widget that paints nothing and the layer
+                // you are drawing on stayed at full strength.
                 final activeEffects = resolveCompositeEffectPaint(effects);
-                if (activeEffects.isNotEmpty) {
-                  final activePaint = Paint();
+                final activeAlpha = opacity.clamp(0.0, 1.0).toDouble();
+                final needsBuffer = activeEffects.isNotEmpty || activeAlpha < 1;
+                if (needsBuffer) {
+                  final activePaint = Paint()
+                    ..color = Color.fromRGBO(0, 0, 0, activeAlpha);
                   activeEffects.applyTo(activePaint);
                   canvas.saveLayer(
                     effectBufferBounds(
@@ -657,7 +675,7 @@ class _LayerStackPainter extends CustomPainter {
                 canvas.clipRect(activeSurfacePainter!.pasteboardRect);
                 activeSurfacePainter!.paintContentInto(canvas);
                 canvas.restore();
-                if (activeEffects.isNotEmpty) {
+                if (needsBuffer) {
                   canvas.restore();
                 }
               case _PaintImage(
@@ -736,7 +754,12 @@ class _LayerStackPainter extends CustomPainter {
         case (_PaintActiveSurface(), _PaintActiveSurface()):
           x as _PaintActiveSurface;
           y as _PaintActiveSurface;
-          if (x.pose != y.pose ||
+          // ㊱: the alpha belongs in the repaint gate too — a slider drag
+          // changes NOTHING else about this node, so leaving it out would
+          // paint the new value only when some unrelated fact moved (the
+          // ㉘/㉞ shape: the value is right and the gate says "unchanged").
+          if (x.opacity != y.opacity ||
+              x.pose != y.pose ||
               x.anchorPoint != y.anchorPoint ||
               !listEquals(x.effects, y.effects)) {
             return false;
