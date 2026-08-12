@@ -847,22 +847,43 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
                             // The cursor subscription keeps the frame gliding
                             // along its animated pose during scrubs (and after
                             // committed seeks) without any wider rebuild.
+                            //
+                            // ㊲: the PARKING is the other half of "where am
+                            // I". A scrub that crosses a cut boundary moves
+                            // only that — the cursor stays put, by design —
+                            // so a pose read on the cursor alone stayed
+                            // frozen on the cut being left.
                             child: ListenableBuilder(
                               listenable: session.editingFrameCursor,
-                              builder: (context, _) => CameraFrameOverlay(
-                                pose: session.cameraPoseAtCurrentFrame,
-                                cameraFrameSize: session.cameraFrameSize,
-                                viewport: viewport,
-                                // Dim belongs to camera-view mode; plain
-                                // manipulation keeps the artwork undimmed.
-                                dimOpacity: widget.cameraViewEnabled.value
-                                    ? widget.cameraDimOpacity.value
-                                    : 0,
-                                interactive:
-                                    isCameraLayerActive && !isScrubbing,
-                                onPoseCommitted:
-                                    session.setCameraKeyframeAtCurrentFrame,
-                              ),
+                              builder: (context, _) =>
+                                  ValueListenableBuilder<int?>(
+                                    valueListenable:
+                                        session.gapParkingListenable,
+                                    builder: (context, _, _) {
+                                      final pose = session.displayedCameraPose;
+                                      // Nothing under the cursor to frame:
+                                      // the scrub is over a gap.
+                                      if (pose == null) {
+                                        return const SizedBox.shrink();
+                                      }
+                                      return CameraFrameOverlay(
+                                        pose: pose,
+                                        cameraFrameSize: session.cameraFrameSize,
+                                        viewport: viewport,
+                                        // Dim belongs to camera-view mode;
+                                        // plain manipulation keeps the
+                                        // artwork undimmed.
+                                        dimOpacity:
+                                            widget.cameraViewEnabled.value
+                                            ? widget.cameraDimOpacity.value
+                                            : 0,
+                                        interactive:
+                                            isCameraLayerActive && !isScrubbing,
+                                        onPoseCommitted: session
+                                            .setCameraKeyframeAtCurrentFrame,
+                                      );
+                                    },
+                                  ),
                             ),
                           ),
                         if (showPositionGizmo && transformBoxBounds != null)

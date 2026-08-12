@@ -147,9 +147,25 @@ class _CanvasScrubPreviewState extends State<CanvasScrubPreview> {
         key: ValueKey<String>('canvas-scrub-preview-gap-void'),
       );
     }
-    // Over-end cursors (the endless runway) display the cut's last frame.
-    final maxFrame = cut.duration > 0 ? cut.duration - 1 : 0;
-    final frameIndex = widget.frameCursor.value.clamp(0, maxFrame);
+    final cursor = widget.frameCursor.value;
+    final frameIndex = cursor < 0 ? 0 : cursor;
+    // ⑯: the over-end runway shows its OWN frame, which out there is blank
+    // paper. This used to clamp to the cut's last frame (UI-R9 #4's
+    // "clipped view"), and that is what made a drag show a picture the
+    // release then took away — the editing canvas reads the cursor
+    // literally and finds nothing out there.
+    //
+    // 🚨Removing the clamp is not enough on its own. The held-frame policy
+    // below reads a cache MISS as "still warming" and goes on painting the
+    // last image — the same lie through a different door. Out past the end
+    // a miss means "nothing is there", so the paper is the answer.
+    // 「컷길이 넘은 부분이든 안쪽 부분이든 아무런 차이를 안 둔다」 (user
+    // 2026-08-13).
+    //
+    // A HIT out there is a real drawing on the runway and paints like any
+    // other frame — the warm reaches the authored extent, not just the
+    // duration, exactly so this lookup can succeed.
+    final pastCutEnd = frameIndex >= cut.duration;
     final composite = widget.compositeCache.validCompositeOrNull(
       cut: cut,
       frameIndex: frameIndex,
@@ -164,7 +180,7 @@ class _CanvasScrubPreviewState extends State<CanvasScrubPreview> {
     return SizedBox.expand(
       child: CustomPaint(
         painter: PlaybackFramePainter(
-          image: _heldFrame,
+          image: pastCutEnd && composite == null ? null : _heldFrame,
           canvasSize: cut.canvasSize,
           viewport: widget.viewport,
           paperBackground: widget.paperBackground,

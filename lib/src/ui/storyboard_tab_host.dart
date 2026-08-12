@@ -538,19 +538,21 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     switch (row) {
                       case LayerRowAddress():
                         _session.selectRow(row);
-                        // An SE row owns no cuts, so pressing one says where
-                        // you ARE without saying which cut you are editing
-                        // (feedback #7): the playhead lands and the active
-                        // cut is RELEASED, even where the V row has one. The
-                        // canvas then shows the parked composite. Taking a
-                        // cut active is the cut row's own verb.
-                        parkStoryboardGlobalFrame(_session, globalFrame);
+                        // ⑭: the INDEX decides the active cut, whichever row
+                        // was pressed. This used to park — an SE row owns no
+                        // cuts, so pressing one said where you ARE without
+                        // saying which cut you edit (feedback #7) — but that
+                        // sentence was written while SEVERAL tracks could
+                        // cover one frame and "which cut did you mean" had no
+                        // answer. One track later there is exactly one cut
+                        // under the press, so every row lands the same seek
+                        // and a gap still parks (the seek's own gap branch).
+                        seekStoryboardGlobalFrame(_session, globalFrame);
                       case LaneRowAddress():
-                        // A property strip owns no cuts either, so it lands
-                        // the same way an S row does — where you are, not
-                        // which cut you edit.
+                        // A property strip lands the way its layer row does:
+                        // the row you pressed was never what chose the cut.
                         _session.selectRow(row);
-                        parkStoryboardGlobalFrame(_session, globalFrame);
+                        seekStoryboardGlobalFrame(_session, globalFrame);
                       case TrackRowAddress(:final trackId):
                         _session.selectTrackRow(trackId);
                         seekStoryboardGlobalFrame(_session, globalFrame);
@@ -559,11 +561,11 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                   activeLayerId: _session.activeLayerId,
                   // The rail speaks ROW ADDRESSES, and selecting one lands
                   // the editing focus on it (user 2026-07-29, superseding
-                  // #741's "row picks never move the focus"): an S row
-                  // releases the active cut and PARKS where the playhead
-                  // stands — the same landing its own cell press makes — and
-                  // a V row promotes that track's playhead-index cut (gap =
-                  // park, the same sentence).
+                  // #741's "row picks never move the focus"): the row lands
+                  // where the playhead already stands — the same landing its
+                  // own cell press makes — and ⑭ then reads the INDEX for the
+                  // cut, so an S row and a V row agree about which cut is
+                  // active (a gap still parks, on either).
                   selectedRow: _session.selectedRow,
                   // A CLICK CLEARS (유저 확정) — this rail's taps too.
                   onSelectLayer: (layerId) {
@@ -571,7 +573,7 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                     _session.selectRow(LayerRowAddress(layerId));
                     final frame = storyboardPlayheadFrame(_session);
                     if (frame != null) {
-                      parkStoryboardGlobalFrame(_session, frame);
+                      seekStoryboardGlobalFrame(_session, frame);
                     }
                   },
                   onSelectTrack: (trackId) {

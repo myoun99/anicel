@@ -141,16 +141,19 @@ void main() {
     );
 
     // The pick LANDS the editing focus (user 2026-07-29, superseding
-    // #741's "row picks never move it"): the active cut is RELEASED and
-    // the playhead parks in place — so the timeline, a cut-scoped panel,
-    // has no selected cel row to show until a cut is taken again.
+    // #741's "row picks never move it") — and ⑭ decides WHICH cut that
+    // focus is in: the playhead stands on frame 0, a cut covers it, so the
+    // cut stays taken. This used to assert the opposite (the pick released
+    // the cut and the timeline had no cel row to show), which was the
+    // multitrack reading of the same tap.
     await tester.tap(
       find.byKey(const ValueKey<String>('timeline-mode-timeline-button')),
     );
     await tester.pumpAndSettle();
     expect(
       find.byKey(const ValueKey<String>('timeline-selected-layer')),
-      findsNothing,
+      findsOneWidget,
+      reason: 'the cut is still active, so its rail has a selected row',
     );
   });
 
