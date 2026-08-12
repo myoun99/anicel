@@ -139,7 +139,7 @@ class ToolSettingsPanel extends StatelessWidget {
           source: eyedropperSource,
           onChanged: onEyedropperSourceChanged,
         ),
-        CanvasTool.selectRect || CanvasTool.lasso => _SelectionSettings(
+        CanvasTool.select => _SelectionSettings(
           state: state,
           onChanged: onChanged,
           maskOptions: selectionMaskOptions,
@@ -147,11 +147,10 @@ class ToolSettingsPanel extends StatelessWidget {
           selectionCommands: selectionCommands,
           language: language,
         ),
-        // The CUT variants: the two grab tiles have nothing to set (the
+        // The CUT grab: nothing to set whatever shape it is wearing (the
         // grab is hard-edged by law — 2치 보존 — and it makes no selection,
-        // so there is no combine mode either), and the stamp tile's knobs
-        // land here in the next slice.
-        CanvasTool.cutRect || CanvasTool.cutLasso => const _CutGrabSettings(),
+        // so there is no combine mode either).
+        CanvasTool.cut => const _CutGrabSettings(),
         CanvasTool.cutStamp => _CutStampSettings(
           slot: cutPieceSlot,
           onPasteAbove: onCutPasteAbove,

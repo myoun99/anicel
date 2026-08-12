@@ -1,24 +1,75 @@
 import 'package:flutter/material.dart';
 
+import '../../models/canvas_shape_kind.dart';
 import 'brush_tool_state.dart';
+
+/// One shape tile, in rail order.
+///
+/// ONE list feeds every drag-out verb, so a new [CanvasShapeKind] shows up
+/// under select and cut (and later fill) from a single entry here rather
+/// than from one hand-written tile per verb.
+const List<({CanvasShapeKind kind, IconData icon, String label})>
+_shapeTiles = [
+  (kind: CanvasShapeKind.rect, icon: Icons.crop_square, label: 'Rectangle'),
+  (kind: CanvasShapeKind.lasso, icon: Icons.gesture, label: 'Lasso'),
+];
 
 /// The TOOL LIBRARY panel (R11-④, CSP's sub-tool palette): its content
 /// follows the active tool. The brush and the eraser show the brush
 /// preset library (each remembers its own selection —
-/// PaintToolStateNotifier), the selection tools list their variants
-/// (rectangle / lasso), and the single-action tools show a short usage
-/// note. Detailed knobs live in the TOOL SETTINGS panel.
+/// PaintToolStateNotifier), the drag-out tools list the SHAPES they can
+/// trace, and the single-action tools show a short usage note. Detailed
+/// knobs live in the TOOL SETTINGS panel.
 class ToolLibraryPanel extends StatelessWidget {
   const ToolLibraryPanel({
     super.key,
     required this.tool,
     required this.onToolChanged,
     required this.brushLibrary,
+    this.shapeKind = CanvasShapeKind.rect,
+    this.onShapeKindChanged,
     this.guideLibrary,
   });
 
   final CanvasTool tool;
   final ValueChanged<CanvasTool> onToolChanged;
+
+  /// The shape the ACTIVE verb is set to trace — which tile reads as
+  /// selected. Meaningless for tools that trace nothing.
+  final CanvasShapeKind shapeKind;
+
+  /// Picking a shape tile: the VERB the tile belongs to and the outline it
+  /// names. The verb travels with it because a shape tile is also how its
+  /// verb is entered — tapping "Rectangle Cut" while the stamp is armed
+  /// means both, and the host must be able to do it in one write. Null
+  /// leaves the tiles inert (hosts with no tool state behind them).
+  final void Function(CanvasTool verb, CanvasShapeKind kind)?
+  onShapeKindChanged;
+
+  /// The shape tiles for one verb. [verbLabel] trails each shape name so
+  /// the lists never read as the same tiles twice, and [keyPrefix] keeps
+  /// the widget keys addressable per verb.
+  List<Widget> _shapeTileWidgets({
+    required CanvasTool verb,
+    required String keyPrefix,
+    required String verbLabel,
+  }) {
+    return [
+      for (final tile in _shapeTiles)
+        _SubToolTile(
+          keyValue: '$keyPrefix-${tile.kind.name}',
+          icon: tile.icon,
+          label: '${tile.label} $verbLabel',
+          // A shape tile reads as current only while ITS verb is the
+          // active one — with the stamp armed no outline is being traced,
+          // so none of the cut shapes is selected.
+          selected: tool == verb && shapeKind == tile.kind,
+          onTap: onShapeKindChanged == null
+              ? null
+              : () => onShapeKindChanged!(verb, tile.kind),
+        ),
+    ];
+  }
 
   /// The brush preset library content (built by the workspace, which owns
   /// the preset state) — shown for the painting tools.
@@ -35,53 +86,33 @@ class ToolLibraryPanel extends StatelessWidget {
       case CanvasTool.brush:
       case CanvasTool.eraser:
         return brushLibrary;
-      case CanvasTool.selectRect:
-      case CanvasTool.lasso:
+      case CanvasTool.select:
         return ListView(
           key: const ValueKey<String>('tool-library-selection'),
           padding: const EdgeInsets.symmetric(vertical: 4),
-          children: [
-            _SubToolTile(
-              keyValue: 'sub-tool-select-rect',
-              icon: Icons.highlight_alt_outlined,
-              label: 'Rectangle Select',
-              selected: tool == CanvasTool.selectRect,
-              onTap: () => onToolChanged(CanvasTool.selectRect),
-            ),
-            _SubToolTile(
-              keyValue: 'sub-tool-lasso',
-              icon: Icons.gesture,
-              label: 'Lasso Select',
-              selected: tool == CanvasTool.lasso,
-              onTap: () => onToolChanged(CanvasTool.lasso),
-            ),
-          ],
+          children: _shapeTileWidgets(
+            verb: CanvasTool.select,
+            keyPrefix: 'sub-tool-select',
+            verbLabel: 'Select',
+          ),
         );
-      // The CUT tool's three tiles. Same grammar as the selection tool
-      // above (one rail button, variants as tiles) — and here it does more
-      // than tidy the rail: with grabbing and stamping on separate tiles, a
-      // drag means exactly one thing inside each, so the tool needs no
-      // modifier key and works on a tablet.
-      case CanvasTool.cutRect:
-      case CanvasTool.cutLasso:
+      // The CUT tool's tiles: every shape, then the stamp. Same grammar as
+      // the selection tool above — and the stamp tile does more than tidy
+      // the rail: with grabbing and stamping separated, a drag means
+      // exactly one thing inside each, so the tool needs no modifier key
+      // and works on a tablet. That is why the stamp stays a TOOL while
+      // rectangle and lasso became shapes: it is a different verb, not a
+      // different outline.
+      case CanvasTool.cut:
       case CanvasTool.cutStamp:
         return ListView(
           key: const ValueKey<String>('tool-library-cut'),
           padding: const EdgeInsets.symmetric(vertical: 4),
           children: [
-            _SubToolTile(
-              keyValue: 'sub-tool-cut-rect',
-              icon: Icons.crop_square,
-              label: 'Rectangle Cut',
-              selected: tool == CanvasTool.cutRect,
-              onTap: () => onToolChanged(CanvasTool.cutRect),
-            ),
-            _SubToolTile(
-              keyValue: 'sub-tool-cut-lasso',
-              icon: Icons.gesture,
-              label: 'Lasso Cut',
-              selected: tool == CanvasTool.cutLasso,
-              onTap: () => onToolChanged(CanvasTool.cutLasso),
+            ..._shapeTileWidgets(
+              verb: CanvasTool.cut,
+              keyPrefix: 'sub-tool-cut',
+              verbLabel: 'Cut',
             ),
             _SubToolTile(
               keyValue: 'sub-tool-cut-stamp',
@@ -143,7 +174,10 @@ class _SubToolTile extends StatelessWidget {
   final IconData icon;
   final String label;
   final bool selected;
-  final VoidCallback onTap;
+
+  /// Null disables the tile (ListTile greys itself out) — for hosts that
+  /// mount the panel with no tool state to write back to.
+  final VoidCallback? onTap;
 
   @override
   Widget build(BuildContext context) {

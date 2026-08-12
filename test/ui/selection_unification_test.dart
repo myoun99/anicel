@@ -51,7 +51,7 @@ void main() {
       Future<void> Function(CanvasTool tool) setTool,
     })
   >
-  pumpPanel(WidgetTester tester, {CanvasTool tool = CanvasTool.selectRect}) async {
+  pumpPanel(WidgetTester tester, {CanvasTool tool = CanvasTool.select}) async {
     final frameKeys = BrushCanvasFixture.createFrameKeys();
     final coordinator = BrushCanvasFixture.createCoordinator(
       frameKeys: frameKeys,
@@ -136,7 +136,7 @@ void main() {
     expect(find.byKey(idleAntsKey), findsOneWidget);
 
     // And coming back finds it again.
-    await env.setTool(CanvasTool.selectRect);
+    await env.setTool(CanvasTool.select);
     expect(find.byKey(idleAntsKey), findsNothing);
     expect(env.commands.region, isNotNull);
   });

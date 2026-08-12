@@ -67,7 +67,7 @@ void main() {
   ) async {
     // The grab makes no selection and its mask is hard by law, so there is
     // genuinely nothing to set — the empty panel is the design.
-    await pump(tester, tool: CanvasTool.cutRect, slot: CutPieceSlot());
+    await pump(tester, tool: CanvasTool.cut, slot: CutPieceSlot());
     expect(find.byKey(grabKey), findsOneWidget);
     expect(find.byKey(stampKey), findsNothing);
   });

@@ -5,22 +5,31 @@ import '../../models/brush_shape.dart';
 import '../../models/brush_tip_mask.dart';
 import '../../models/brush_tip_rotation_mode.dart';
 import '../../models/brush_tip_shape.dart';
+import '../../models/canvas_shape_kind.dart';
 import '../canvas/brush_edit_canvas_input_settings.dart';
 
-/// Which canvas tool the pointer drives. The eraser reuses every brush
-/// option (size, hardness, tip) but its dabs remove alpha instead of
-/// painting color; the eyedropper samples the composite (P5), the fill
-/// commits one region-mask dab (P6), the selection tools (P9: rect
-/// marquee / freehand lasso) drag out a region, and the MOVE tool
-/// (R11-⑧: selection ≠ move) drags the selected content — none of them
-/// start strokes.
+/// Which canvas tool the pointer drives — the VERB only.
+///
+/// The eraser reuses every brush option (size, hardness, tip) but its dabs
+/// remove alpha instead of painting color; the eyedropper samples the
+/// composite (P5), the fill commits one region-mask dab (P6), SELECT (P9)
+/// drags out a region, and the MOVE tool (R11-⑧: selection ≠ move) drags
+/// the selected content — none of them start strokes.
+///
+/// The SHAPE a drag-out verb traces is NOT encoded here: it is
+/// [CanvasShapeKind], carried beside the tool (see
+/// [BrushToolState.selectShape] / [BrushToolState.cutShape]). Select and
+/// cut used to spell their rectangle and lasso variants out as tool values
+/// — a cross product that doubles every time either axis grows.
 enum CanvasTool {
   brush,
   eraser,
   eyedropper,
   fill,
-  selectRect,
-  lasso,
+
+  /// Drags out a region and folds it into the selection. Which outline it
+  /// drags is [BrushToolState.selectShape].
+  select,
   move,
 
   /// Edits the cut's drawing guides (symmetry, perspective). It marks
@@ -28,29 +37,25 @@ enum CanvasTool {
   /// keep doing so while this one is not selected.
   guide,
 
-  /// The CUT tool's rectangle variant: drag out a box and the pixels under
-  /// it are COPIED into the held piece. The source is never removed
-  /// (유저 확정: "잘라내기는 원본 남기는 복사").
-  cutRect,
-
-  /// The CUT tool's lasso variant. Same verb, freehand outline.
-  cutLasso,
+  /// Drags out a region and COPIES the pixels under it into the held
+  /// piece; the source is never removed (유저 확정: "잘라내기는 원본 남기는
+  /// 복사"). Which outline it drags is [BrushToolState.cutShape].
+  cut,
 
   /// The CUT tool's stamp variant: click to drop the held piece, drag to
   /// draw with it.
   ///
-  /// Splitting grab and stamp into two variants is what makes the gesture
-  /// question disappear — inside one variant a drag means exactly one
-  /// thing, so no modifier is needed and the tool works on a tablet with no
-  /// keyboard. TVPaint solves the same problem with two separate tools
-  /// (Cutting tool / Custom Brush); we solve it with tiles, the way this app
-  /// already splits rectangle/lasso (R17-U).
+  /// Grab and stamp stay two tools — unlike rectangle/lasso, which are one
+  /// tool wearing two shapes. That split is what makes the gesture question
+  /// disappear: within the grab tool a drag means exactly one thing and
+  /// within the stamp tool it means exactly one other, so no modifier is
+  /// needed and both work on a tablet with no keyboard. TVPaint solves the
+  /// same problem with two separate tools (Cutting tool / Custom Brush).
   cutStamp,
 }
 
 /// Whether [tool] lifts a piece into the cut slot.
-bool canvasToolCuts(CanvasTool tool) =>
-    tool == CanvasTool.cutRect || tool == CanvasTool.cutLasso;
+bool canvasToolCuts(CanvasTool tool) => tool == CanvasTool.cut;
 
 /// Whether [tool] stamps the held piece onto the cel.
 bool canvasToolStamps(CanvasTool tool) => tool == CanvasTool.cutStamp;
@@ -83,17 +88,22 @@ bool canvasToolMarksCel(CanvasTool tool) =>
 /// Whether [tool] mounts the selection interaction layer (the P9
 /// marquee/lasso tools and the move tool that drags their region).
 ///
-/// The CUT variants mount it too — they need the very same marquee/lasso
-/// drag, and rebuilding that geometry beside it would be a second copy of
-/// the trickiest input code in the app. What differs is only what a finished
-/// drag DOES: the select tools commit a region, the cut tools fill the slot
-/// and leave the region alone (유저 확정: "잘라내기는 잘라내기만이야. 그러니
-/// 선택으로 남지 않아"). The stamp variant does not mount it — it paints.
+/// The CUT tool mounts it too — it needs the very same marquee/lasso drag,
+/// and rebuilding that geometry beside it would be a second copy of the
+/// trickiest input code in the app. What differs is only what a finished
+/// drag DOES: select commits a region, cut fills the slot and leaves the
+/// region alone (유저 확정: "잘라내기는 잘라내기만이야. 그러니 선택으로 남지
+/// 않아"). The stamp variant does not mount it — it paints.
 bool canvasToolSelects(CanvasTool tool) =>
-    tool == CanvasTool.selectRect ||
-    tool == CanvasTool.lasso ||
+    tool == CanvasTool.select ||
     tool == CanvasTool.move ||
     canvasToolCuts(tool);
+
+/// Whether [tool] drags an outline out of the canvas — the verbs that wear
+/// a [CanvasShapeKind]. MOVE does not: it drags a region that already
+/// exists rather than tracing a new one.
+bool canvasToolDragsShape(CanvasTool tool) =>
+    tool == CanvasTool.select || canvasToolCuts(tool);
 
 /// Editor-session state for the active brush tool options.
 ///
@@ -138,6 +148,8 @@ class BrushToolState {
     double textureScale = 1.0,
     double textureDensity = 1.0,
     CanvasTool tool = CanvasTool.brush,
+    CanvasShapeKind selectShape = CanvasShapeKind.rect,
+    CanvasShapeKind cutShape = CanvasShapeKind.rect,
     double stabilizerStrength = 0.0,
     BrushBlendMode brushBlendMode = BrushBlendMode.color,
   }) {
@@ -171,6 +183,8 @@ class BrushToolState {
       textureScale: textureScale,
       textureDensity: textureDensity,
       tool: tool,
+      selectShape: selectShape,
+      cutShape: cutShape,
       stabilizerStrength: stabilizerStrength,
       brushBlendMode: brushBlendMode,
     );
@@ -179,6 +193,8 @@ class BrushToolState {
   const BrushToolState._raw({
     required this.shape,
     this.tool = CanvasTool.brush,
+    this.selectShape = CanvasShapeKind.rect,
+    this.cutShape = CanvasShapeKind.rect,
     this.stabilizerStrength = 0.0,
     this.brushBlendMode = BrushBlendMode.color,
   });
@@ -191,12 +207,16 @@ class BrushToolState {
   factory BrushToolState.fromShape(
     BrushShape shape, {
     CanvasTool tool = CanvasTool.brush,
+    CanvasShapeKind selectShape = CanvasShapeKind.rect,
+    CanvasShapeKind cutShape = CanvasShapeKind.rect,
     double stabilizerStrength = 0.0,
     BrushBlendMode brushBlendMode = BrushBlendMode.color,
   }) {
     return BrushToolState._raw(
       shape: _clampShape(shape),
       tool: tool,
+      selectShape: selectShape,
+      cutShape: cutShape,
       stabilizerStrength: clampStabilizerStrength(stabilizerStrength),
       brushBlendMode: brushBlendMode,
     );
@@ -236,6 +256,8 @@ class BrushToolState {
     double? paintDensity,
     double? colorStretch,
     CanvasTool? tool,
+    CanvasShapeKind? selectShape,
+    CanvasShapeKind? cutShape,
     double? stabilizerStrength,
     BrushBlendMode? brushBlendMode,
   }) {
@@ -275,6 +297,8 @@ class BrushToolState {
         colorStretch: colorStretch ?? 0.0,
       ),
       tool: tool ?? CanvasTool.brush,
+      selectShape: selectShape ?? CanvasShapeKind.rect,
+      cutShape: cutShape ?? CanvasShapeKind.rect,
       stabilizerStrength: stabilizerStrength ?? 0.0,
       brushBlendMode: brushBlendMode ?? BrushBlendMode.color,
     );
@@ -407,6 +431,47 @@ class BrushToolState {
   /// it); applying a preset returns to the brush, CSP-style.
   final CanvasTool tool;
 
+  /// The outline SELECT drags out, remembered separately from the one CUT
+  /// drags (유저 확정: 도형은 동사별로 기억). "The shape vocabulary is
+  /// shared" is not "the shape value is shared" — wanting the lasso for
+  /// selecting and the box for cutting is an ordinary combination, and one
+  /// field would make picking either one silently retune the other.
+  ///
+  /// This is also what the rail's single Select button re-activates: with
+  /// the shape held here, "restore the variant I last used" is just
+  /// `tool: select` — no last-variant bookkeeping beside it.
+  final CanvasShapeKind selectShape;
+
+  /// The outline CUT drags out. See [selectShape].
+  final CanvasShapeKind cutShape;
+
+  /// The outline the ACTIVE tool drags, or null for tools that do not drag
+  /// one out (every painting tool, plus MOVE — it drags a region that
+  /// already exists rather than tracing a new one).
+  CanvasShapeKind? get activeShapeKind => switch (tool) {
+    CanvasTool.select => selectShape,
+    CanvasTool.cut => cutShape,
+    _ => null,
+  };
+
+  /// This state with [forTool]'s remembered outline set to [kind], and
+  /// [forTool] made active.
+  ///
+  /// One write, not two: the shape tiles are also how a verb is entered
+  /// (tapping "Rectangle Cut" while the stamp is armed means both), and
+  /// splitting that into a tool change and a shape change would leave a
+  /// state in between where the shape is being written for the wrong verb.
+  /// Verbs that trace nothing are returned unchanged rather than silently
+  /// storing an outline they will never use.
+  BrushToolState withShapeKind(
+    CanvasShapeKind kind, {
+    required CanvasTool forTool,
+  }) => switch (forTool) {
+    CanvasTool.select => copyWith(tool: forTool, selectShape: kind),
+    CanvasTool.cut => copyWith(tool: forTool, cutShape: kind),
+    _ => this,
+  };
+
   /// Pull-string stabilization strength (P7), 0..100 screen px of rope.
   /// A HAND-FEEL setting, deliberately outside brush presets — preset
   /// application carries it over unchanged.
@@ -435,12 +500,19 @@ class BrushToolState {
   ///   imported faithfully, and most of the roster's presets carry the
   ///   default black — so before this rule, every brush swap silently
   ///   repainted the palette black.
+  ///
+  /// The remembered SHAPE KINDS ride along for the same reason: a preset is
+  /// a brush, and which outline the select and cut tools drag is not part
+  /// of one. Rebuilding from settings alone would quietly snap both back to
+  /// the rectangle every time a brush was picked.
   BrushToolState withPresetSettings(
     BrushSettings settings, {
     required CanvasTool tool,
   }) {
     return BrushToolState.fromBrushSettings(settings).copyWith(
       tool: tool,
+      selectShape: selectShape,
+      cutShape: cutShape,
       stabilizerStrength: stabilizerStrength,
       size: size,
       brushBlendMode: brushBlendMode,
@@ -512,6 +584,8 @@ class BrushToolState {
     bool clearBlendLock = false,
     BrushBlendMode? lockedBlendMode,
     CanvasTool? tool,
+    CanvasShapeKind? selectShape,
+    CanvasShapeKind? cutShape,
     double? stabilizerStrength,
     BrushBlendMode? brushBlendMode,
   }) {
@@ -555,6 +629,8 @@ class BrushToolState {
         ),
       ),
       tool: tool ?? this.tool,
+      selectShape: selectShape ?? this.selectShape,
+      cutShape: cutShape ?? this.cutShape,
       stabilizerStrength: clampStabilizerStrength(
         stabilizerStrength ?? this.stabilizerStrength,
       ),
@@ -680,6 +756,12 @@ class BrushToolState {
       other is BrushToolState &&
           other.shape == shape &&
           other.tool == tool &&
+          // The shape kinds ride here for the same reason blend does
+          // below: a state differing only in the remembered outline must
+          // not compare equal, or the tool library's tiles keep painting
+          // the old one as selected.
+          other.selectShape == selectShape &&
+          other.cutShape == cutShape &&
           other.stabilizerStrength == stabilizerStrength &&
           // BB-3 audit fix: brushBlendMode was MISSING from ==/hashCode
           // since BB-1 — two states differing only in blend compared
@@ -687,6 +769,12 @@ class BrushToolState {
           other.brushBlendMode == brushBlendMode;
 
   @override
-  int get hashCode =>
-      Object.hash(shape, tool, stabilizerStrength, brushBlendMode);
+  int get hashCode => Object.hash(
+    shape,
+    tool,
+    selectShape,
+    cutShape,
+    stabilizerStrength,
+    brushBlendMode,
+  );
 }

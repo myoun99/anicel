@@ -1410,7 +1410,7 @@ void main() {
     ) async {
       for (final tool in [
         CanvasTool.fill,
-        CanvasTool.selectRect,
+        CanvasTool.select,
         CanvasTool.move,
       ]) {
         await pumpWithTool(tester, tool);

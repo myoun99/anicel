@@ -10,6 +10,7 @@ import '../../models/bitmap_tile.dart';
 import '../../models/brush_dab.dart';
 import '../../models/brush_dab_sequence.dart';
 import '../../models/canvas_point.dart';
+import '../../models/canvas_shape_kind.dart';
 import '../../models/canvas_size.dart';
 import '../../models/canvas_viewport.dart';
 import '../../models/tile_coord.dart';
@@ -50,6 +51,7 @@ class CanvasSelectionLayer extends StatefulWidget {
   const CanvasSelectionLayer({
     super.key,
     required this.tool,
+    this.shapeKind = CanvasShapeKind.rect,
     required this.viewport,
     required this.canvasSize,
     required this.frameToken,
@@ -142,8 +144,12 @@ class CanvasSelectionLayer extends StatefulWidget {
   /// interaction, never on mere display). Ctrl+T still works everywhere.
   final bool alwaysShowTransformBox;
 
-  /// Which selection tool draws new regions (selectRect or lasso).
+  /// What a finished drag DOES with its outline — select, move, or cut.
   final CanvasSelectionTool tool;
+
+  /// Which outline a drag traces. Ignored by [CanvasSelectionTool.move],
+  /// which drags an existing region rather than tracing a new one.
+  final CanvasShapeKind shapeKind;
 
   final CanvasViewport viewport;
   final CanvasSize canvasSize;
@@ -224,39 +230,29 @@ class CanvasSelectionLayer extends StatefulWidget {
   State<CanvasSelectionLayer> createState() => _CanvasSelectionLayerState();
 }
 
-/// The layer's interaction mode: the marquee tools DRAW regions, the MOVE
-/// tool drags the selected content (R11-⑧: selection and move are
-/// separate tools — a marquee drag never moves strokes anymore).
+/// What the layer DOES with a finished drag — the verb, never the shape.
+///
+/// Which outline the drag traces is [CanvasSelectionLayer.shapeKind], a
+/// separate axis: [select] and [cut] each draw every shape, and they differ
+/// only in where the outline goes afterwards.
 enum CanvasSelectionTool {
-  rect,
-  lasso,
+  /// Folds the finished outline into the selection region.
+  select,
+
+  /// Drags the selected content (R11-⑧: selection and move are separate
+  /// tools — a marquee drag never moves strokes anymore). It traces no
+  /// outline, so it wears no shape.
   move,
 
-  /// The CUT tool's rectangle variant. It draws the same marquee as [rect]
-  /// and then does something else with it entirely: the outline is handed
-  /// to [CanvasSelectionLayer.onCutShape] and the committed region is left
-  /// exactly as the drag found it.
+  /// Hands the finished outline to [CanvasSelectionLayer.onCutShape] and
+  /// leaves the committed region exactly as the drag found it.
   ///
   /// Riding this layer rather than a second one of its own is deliberate —
   /// the marquee/lasso geometry, the viewport mapping and the pointer
   /// arbitration here are the trickiest input code in the app, and a
   /// parallel copy would be the kind that drifts.
-  cutRect,
-
-  /// The CUT tool's lasso variant.
-  cutLasso,
+  cut,
 }
-
-/// Whether [tool] draws a freehand outline rather than a box.
-bool canvasSelectionToolIsLasso(CanvasSelectionTool tool) =>
-    tool == CanvasSelectionTool.lasso ||
-    tool == CanvasSelectionTool.cutLasso;
-
-/// Whether [tool] hands its finished outline to the cut slot instead of
-/// folding it into the selection.
-bool canvasSelectionToolCuts(CanvasSelectionTool tool) =>
-    tool == CanvasSelectionTool.cutRect ||
-    tool == CanvasSelectionTool.cutLasso;
 
 enum _DragMode { none, marquee, move, transform }
 
@@ -2040,7 +2036,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         _dragMode = _DragMode.marquee;
         // Nothing to stash while cutting: the drag never touches the
         // region, so there is nothing for a cancel to put back.
-        _shapeBeforeMarquee = canvasSelectionToolCuts(widget.tool)
+        _shapeBeforeMarquee = widget.tool == CanvasSelectionTool.cut
             ? null
             : _region;
         _marqueeStart = canvasPoint;
@@ -2063,7 +2059,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
         setState(() {
           final canvasPoint = _toCanvas(event.localPosition);
           _marqueeCurrent = canvasPoint;
-          if (canvasSelectionToolIsLasso(widget.tool)) {
+          if (_tracesPointerPath) {
             _lassoPoints = [..._lassoPoints, canvasPoint];
           }
         });
@@ -2329,7 +2325,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     // 선택으로 남지 않아" — so there is no combine mode to apply, no
     // history entry to record (a cut is not a selection change), and no
     // stashed shape to consume.
-    if (canvasSelectionToolCuts(widget.tool)) {
+    if (widget.tool == CanvasSelectionTool.cut) {
       _shapeBeforeMarquee = null;
       final drawn = _marqueeShape();
       if (drawn != null) {
@@ -2381,28 +2377,44 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
     _syncAnts();
   }
 
+  /// Whether the active shape IS the pointer's path (points accumulate as
+  /// the drag runs) rather than being derived from its two corners.
+  ///
+  /// Exhaustive on purpose: a new [CanvasShapeKind] fails to compile here
+  /// until it has said which kind of drag it is.
+  bool get _tracesPointerPath => switch (widget.shapeKind) {
+    CanvasShapeKind.rect => false,
+    CanvasShapeKind.lasso => true,
+  };
+
   /// The in-progress or final marquee polygon; null while degenerate.
+  ///
+  /// This is the one place a shape kind turns into geometry — every other
+  /// site asks a predicate rather than branching on the kind itself.
   CanvasSelectionShape? _marqueeShape() {
-    if (canvasSelectionToolIsLasso(widget.tool)) {
-      if (_lassoPoints.length < 3) {
-        return null;
-      }
-      return CanvasSelectionShape(_lassoPoints);
+    switch (widget.shapeKind) {
+      case CanvasShapeKind.lasso:
+        if (_lassoPoints.length < 3) {
+          return null;
+        }
+        return CanvasSelectionShape(_lassoPoints);
+      case CanvasShapeKind.rect:
+        final start = _marqueeStart;
+        final current = _marqueeCurrent;
+        if (start == null || current == null) {
+          return null;
+        }
+        if ((current.x - start.x).abs() < 2 &&
+            (current.y - start.y).abs() < 2) {
+          return null;
+        }
+        return CanvasSelectionShape.rect(
+          left: start.x,
+          top: start.y,
+          right: current.x,
+          bottom: current.y,
+        );
     }
-    final start = _marqueeStart;
-    final current = _marqueeCurrent;
-    if (start == null || current == null) {
-      return null;
-    }
-    if ((current.x - start.x).abs() < 2 && (current.y - start.y).abs() < 2) {
-      return null;
-    }
-    return CanvasSelectionShape.rect(
-      left: start.x,
-      top: start.y,
-      right: current.x,
-      bottom: current.y,
-    );
   }
 
   void _finishMove() {
@@ -2833,8 +2845,7 @@ class _CanvasSelectionLayerState extends State<CanvasSelectionLayer>
                       ? _marqueeShape()
                       : null,
                   lassoTrail:
-                      _dragMode == _DragMode.marquee &&
-                          canvasSelectionToolIsLasso(widget.tool)
+                      _dragMode == _DragMode.marquee && _tracesPointerPath
                       ? _lassoPoints
                       : const [],
                   transformChrome: chrome,

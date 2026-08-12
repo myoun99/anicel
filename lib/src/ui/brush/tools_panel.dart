@@ -16,8 +16,6 @@ class ToolsPanel extends StatelessWidget {
     super.key,
     required this.tool,
     required this.onToolChanged,
-    this.selectionVariant = CanvasTool.selectRect,
-    this.cutVariant = CanvasTool.cutRect,
     this.historyControls,
   });
 
@@ -32,16 +30,6 @@ class ToolsPanel extends StatelessWidget {
   /// host owns the history manager these listen to. Null keeps the rail
   /// tools-only (passive hosts and the panel's own tests).
   final Widget? historyControls;
-
-  /// Which selection VARIANT the single Select button activates (R17-U:
-  /// rectangle/lasso are one toolbar tool — the variant lives in the tool
-  /// settings; the host remembers the last-used one).
-  final CanvasTool selectionVariant;
-
-  /// Which cut VARIANT the single Cut button activates — the same rule the
-  /// selection button follows, for the same reason: the variants are tiles
-  /// in the tool library, not separate rail entries.
-  final CanvasTool cutVariant;
 
   /// The edge dock width this panel is designed for.
   ///
@@ -145,17 +133,16 @@ class ToolsPanel extends StatelessWidget {
             const SizedBox(height: 4),
             // R17-U: ONE selection tool — the rectangle/lasso variant is a
             // tool SETTING, not a separate toolbar entry (유저 채택 설계).
+            //
+            // The button no longer has to be told which variant to restore:
+            // the shape lives beside the tool now, so "select" already
+            // means "select, with the outline I last used".
             RailButton(
               keyValue: 'tool-select-button',
               tooltip: AppText.strings.toolSelectTip,
               icon: Icons.highlight_alt_outlined,
-              selected:
-                  tool == CanvasTool.selectRect || tool == CanvasTool.lasso,
-              onPressed: () => onToolChanged(
-                tool == CanvasTool.selectRect || tool == CanvasTool.lasso
-                    ? tool
-                    : selectionVariant,
-              ),
+              selected: tool == CanvasTool.select,
+              onPressed: () => onToolChanged(CanvasTool.select),
             ),
             const SizedBox(height: 4),
             RailButton(
@@ -177,8 +164,11 @@ class ToolsPanel extends StatelessWidget {
               // the glyph should say that even though the source survives.
               icon: Icons.content_cut,
               selected: canvasToolUsesCutPiece(tool),
+              // Already on one of the cut tiles: stay there (the stamp must
+              // not be knocked back to the grab). Otherwise land on the
+              // grab, wearing whatever outline it last wore.
               onPressed: () => onToolChanged(
-                canvasToolUsesCutPiece(tool) ? tool : cutVariant,
+                canvasToolUsesCutPiece(tool) ? tool : CanvasTool.cut,
               ),
             ),
             // 유저 확정 (rail-and-strip): 「컬러 스와치는 레일에서 빠진다」 —

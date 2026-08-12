@@ -9,6 +9,7 @@ import 'package:flutter/services.dart' show SystemNavigator;
 import 'dialogs/app_confirm_dialog.dart';
 import 'widgets/app_window.dart';
 import '../controllers/default_project_helpers.dart';
+import '../models/canvas_shape_kind.dart';
 import '../models/project.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/app_accent_settings_store.dart';
@@ -432,12 +433,18 @@ class _HomePageState extends State<HomePage> {
         _canvasViewCommands.rotateBy(15);
       case EditorActionIds.canvasFlipHorizontal:
         _canvasViewCommands.toggleFlipHorizontal();
+      // M and L still mean "rectangle select" and "lasso select" — the two
+      // shortcuts survive the shape/verb split by setting both halves.
       case EditorActionIds.toolSelectRect:
-        _brushTool.value = _brushTool.value.copyWith(
-          tool: CanvasTool.selectRect,
+        _brushTool.value = _brushTool.value.withShapeKind(
+          CanvasShapeKind.rect,
+          forTool: CanvasTool.select,
         );
       case EditorActionIds.toolLasso:
-        _brushTool.value = _brushTool.value.copyWith(tool: CanvasTool.lasso);
+        _brushTool.value = _brushTool.value.withShapeKind(
+          CanvasShapeKind.lasso,
+          forTool: CanvasTool.select,
+        );
       case EditorActionIds.toolMove:
         _brushTool.value = _brushTool.value.copyWith(tool: CanvasTool.move);
       case EditorActionIds.selectionDeselect:

@@ -18,6 +18,7 @@ import '../../services/canvas_selection_paint_clip.dart';
 import '../../services/canvas_selection_region.dart';
 import '../../services/resample/resample_kernel.dart';
 import '../../models/canvas_point.dart';
+import '../../models/canvas_shape_kind.dart';
 import '../../models/canvas_size.dart';
 import '../../models/drawing_guide.dart';
 import '../../models/canvas_viewport.dart';
@@ -1739,25 +1740,29 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                             tool: switch (widget
                                                                 .brushToolState
                                                                 .tool) {
-                                                              CanvasTool
-                                                                  .lasso =>
-                                                                CanvasSelectionTool
-                                                                    .lasso,
                                                               CanvasTool.move =>
                                                                 CanvasSelectionTool
                                                                     .move,
-                                                              CanvasTool
-                                                                  .cutRect =>
+                                                              CanvasTool.cut =>
                                                                 CanvasSelectionTool
-                                                                    .cutRect,
-                                                              CanvasTool
-                                                                  .cutLasso =>
-                                                                CanvasSelectionTool
-                                                                    .cutLasso,
+                                                                    .cut,
                                                               _ =>
                                                                 CanvasSelectionTool
-                                                                    .rect,
+                                                                    .select,
                                                             },
+                                                            // The verb picks
+                                                            // the branch above;
+                                                            // the SHAPE rides
+                                                            // beside it, so
+                                                            // neither axis has
+                                                            // to enumerate the
+                                                            // other.
+                                                            shapeKind:
+                                                                widget
+                                                                    .brushToolState
+                                                                    .activeShapeKind ??
+                                                                CanvasShapeKind
+                                                                    .rect,
                                                             // R17-U: Move = 이동+변형 통합 툴
                                                             // — 핸들 상시.
                                                             alwaysShowTransformBox:
@@ -2225,11 +2230,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // layer. The CUT variants ride that same layer (canvasToolSelects),
       // and the STAMP variant paints, so none of them want a tap handler
       // here either.
-      case CanvasTool.selectRect:
-      case CanvasTool.lasso:
+      case CanvasTool.select:
       case CanvasTool.move:
-      case CanvasTool.cutRect:
-      case CanvasTool.cutLasso:
+      case CanvasTool.cut:
         return null;
       case CanvasTool.cutStamp:
         // Click = drop the held piece, centred here, committed at once.

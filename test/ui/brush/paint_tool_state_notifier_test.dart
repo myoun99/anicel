@@ -69,7 +69,7 @@ void main() {
     addTearDown(notifier.dispose);
     notifier.value = notifier.value.copyWith(tool: CanvasTool.fill);
     expect(notifier.value.size, 30);
-    notifier.value = notifier.value.copyWith(tool: CanvasTool.selectRect);
+    notifier.value = notifier.value.copyWith(tool: CanvasTool.select);
     expect(notifier.value.size, 30);
   });
 }

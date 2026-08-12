@@ -7,6 +7,7 @@ import 'package:anicel/src/models/bitmap_surface.dart';
 import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
+import 'package:anicel/src/models/canvas_shape_kind.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/pasteboard_bounds.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
@@ -53,7 +54,8 @@ void main() {
   >
   pumpSelectionPanel(
     WidgetTester tester, {
-    CanvasTool tool = CanvasTool.selectRect,
+    CanvasTool tool = CanvasTool.select,
+    CanvasShapeKind shapeKind = CanvasShapeKind.rect,
     // Extra committed ink, mounted with the fixture. `null` replaces the
     // in-canvas stroke entirely (a cel whose only ink is off-canvas).
     List<BrushDab>? sourceDabs,
@@ -89,7 +91,10 @@ void main() {
               availableFrameKeys: frameKeys,
               cacheInvalidationSink: BrushEditCacheInvalidationSink(),
               historyManager: history,
-              brushToolState: BrushToolState.defaults.copyWith(tool: tool),
+              brushToolState: BrushToolState.defaults.copyWith(
+                tool: tool,
+                selectShape: shapeKind,
+              ),
               selectionCommands: commands,
               ),
             ),
@@ -296,7 +301,7 @@ void main() {
     expect(wide.width, greaterThan(0));
 
     // 삭제: a second drag cuts the right half back out.
-    await env.setTool(CanvasTool.selectRect);
+    await env.setTool(CanvasTool.select);
     env.commands.combineMode = SelectionCombineMode.subtract;
     await tester.pump();
     await dragOnLayer(tester, const Offset(70, 10), const Offset(140, 140));
@@ -2244,7 +2249,10 @@ void main() {
   });
 
   testWidgets('the lasso tool selects with a freehand region', (tester) async {
-    final env = await pumpSelectionPanel(tester, tool: CanvasTool.lasso);
+    final env = await pumpSelectionPanel(
+      tester,
+      shapeKind: CanvasShapeKind.lasso,
+    );
 
     // A rough triangle around the stroke.
     final origin = tester.getTopLeft(find.byKey(layerKey));
@@ -2284,7 +2292,7 @@ void main() {
             cacheInvalidationSink: BrushEditCacheInvalidationSink(),
             historyManager: HistoryManager(),
             brushToolState: BrushToolState.defaults.copyWith(
-              tool: CanvasTool.selectRect,
+              tool: CanvasTool.select,
             ),
             selectionCommands: commands,
             // The production no-frame configuration: the blank-canvas

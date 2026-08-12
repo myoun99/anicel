@@ -5,16 +5,12 @@ import 'package:anicel/src/ui/brush/tools_panel.dart';
 
 Widget _panel({
   CanvasTool tool = CanvasTool.brush,
-  CanvasTool selectionVariant = CanvasTool.selectRect,
-  CanvasTool cutVariant = CanvasTool.cutRect,
   ValueChanged<CanvasTool>? onToolChanged,
 }) {
   return MaterialApp(
     home: Scaffold(
       body: ToolsPanel(
         tool: tool,
-        selectionVariant: selectionVariant,
-        cutVariant: cutVariant,
         onToolChanged: onToolChanged ?? (_) {},
       ),
     ),
@@ -32,15 +28,11 @@ void main() {
       expect(find.byTooltip('Cut Tool'), findsOneWidget);
     });
 
-    testWidgets('it lights up for every cut variant', (tester) async {
-      // One button, three tiles: the rail must not go dark just because the
-      // user is on the stamp tile rather than a grab tile.
-      for (final variant in [
-        CanvasTool.cutRect,
-        CanvasTool.cutLasso,
-        CanvasTool.cutStamp,
-      ]) {
-        await tester.pumpWidget(_panel(tool: variant));
+    testWidgets('it lights up for both cut verbs', (tester) async {
+      // One button, several tiles: the rail must not go dark just because
+      // the user is on the stamp tile rather than the grab.
+      for (final verb in [CanvasTool.cut, CanvasTool.cutStamp]) {
+        await tester.pumpWidget(_panel(tool: verb));
         expect(
           tester
               .widget<IconButton>(
@@ -48,47 +40,42 @@ void main() {
               )
               .isSelected,
           isTrue,
-          reason: '$variant',
+          reason: '$verb',
         );
       }
     });
 
-    testWidgets('pressing it from another tool activates the remembered '
-        'variant', (tester) async {
+    testWidgets('pressing it from another tool lands on the grab verb', (
+      tester,
+    ) async {
+      // Which OUTLINE the grab then wears is the tool state's memory, not
+      // the button's — the button no longer has to be told.
       final picked = <CanvasTool>[];
       await tester.pumpWidget(
-        _panel(
-          tool: CanvasTool.brush,
-          cutVariant: CanvasTool.cutLasso,
-          onToolChanged: picked.add,
-        ),
+        _panel(tool: CanvasTool.brush, onToolChanged: picked.add),
       );
       await tester.tap(find.byKey(const ValueKey<String>('tool-cut-button')));
-      expect(picked, [CanvasTool.cutLasso]);
+      expect(picked, [CanvasTool.cut]);
     });
 
     testWidgets('pressing it while already cutting keeps the current tile', (
       tester,
     ) async {
-      // Re-pressing must not throw the user back to the rectangle — the
-      // button re-activates the tool, it does not reset the variant.
+      // Re-pressing must not throw the user off the stamp and back onto the
+      // grab — the button re-activates the tool, it does not reset the tile.
       final picked = <CanvasTool>[];
       await tester.pumpWidget(
-        _panel(
-          tool: CanvasTool.cutStamp,
-          cutVariant: CanvasTool.cutRect,
-          onToolChanged: picked.add,
-        ),
+        _panel(tool: CanvasTool.cutStamp, onToolChanged: picked.add),
       );
       await tester.tap(find.byKey(const ValueKey<String>('tool-cut-button')));
       expect(picked, [CanvasTool.cutStamp]);
     });
 
-    testWidgets('the Select button stays dark while a cut variant is armed', (
+    testWidgets('the Select button stays dark while the cut tool is armed', (
       tester,
     ) async {
       // The two buttons share a grammar; they must not share a highlight.
-      await tester.pumpWidget(_panel(tool: CanvasTool.cutRect));
+      await tester.pumpWidget(_panel(tool: CanvasTool.cut));
       expect(
         tester
             .widget<IconButton>(
@@ -171,12 +158,10 @@ void main() {
       expect(brush.isSelected, isFalse);
     });
 
-    testWidgets('ONE Select button (R17-U): activates the remembered '
-        'variant and highlights for both variants', (tester) async {
+    testWidgets('ONE Select button (R17-U): emits the select VERB, whatever '
+        'outline it is wearing', (tester) async {
       final selected = <CanvasTool>[];
-      await tester.pumpWidget(
-        _panel(selectionVariant: CanvasTool.lasso, onToolChanged: selected.add),
-      );
+      await tester.pumpWidget(_panel(onToolChanged: selected.add));
 
       // The old per-variant buttons are gone.
       expect(
@@ -191,10 +176,9 @@ void main() {
       await tester.tap(
         find.byKey(const ValueKey<String>('tool-select-button')),
       );
-      expect(selected, [CanvasTool.lasso], reason: 'remembered variant');
+      expect(selected, [CanvasTool.select]);
 
-      // Selected state covers BOTH variants.
-      await tester.pumpWidget(_panel(tool: CanvasTool.lasso));
+      await tester.pumpWidget(_panel(tool: CanvasTool.select));
       expect(
         tester
             .widget<IconButton>(
@@ -205,23 +189,20 @@ void main() {
       );
     });
 
-    testWidgets('pressing Select while a variant is ACTIVE keeps it', (
-      tester,
-    ) async {
+    testWidgets('the rail never names a SHAPE', (tester) async {
+      // The whole point of the split: the rail speaks verbs, and a new
+      // outline must never have to add a rail button. Whatever the tool
+      // state is wearing, pressing Select emits exactly one value.
       final selected = <CanvasTool>[];
       await tester.pumpWidget(
-        _panel(
-          tool: CanvasTool.lasso,
-          selectionVariant: CanvasTool.selectRect,
-          onToolChanged: selected.add,
-        ),
+        _panel(tool: CanvasTool.select, onToolChanged: selected.add),
       );
 
       await tester.tap(
         find.byKey(const ValueKey<String>('tool-select-button')),
       );
 
-      expect(selected, [CanvasTool.lasso]);
+      expect(selected, [CanvasTool.select]);
     });
   });
 }
