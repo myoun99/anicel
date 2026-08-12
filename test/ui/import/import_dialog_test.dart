@@ -101,6 +101,12 @@ void main() {
       reason: 'folder imports ALWAYS bake (§6-z22) — no toggle to mislead',
     );
     expect(
+      find.byKey(const ValueKey<String>('import-media-reference')),
+      findsOneWidget,
+      reason: 'a folder still REGISTERS its references (the 참고영상 among '
+          'them), so copy-or-reference has something to decide',
+    );
+    expect(
       find.textContaining('always bake'),
       findsOneWidget,
       reason: 'and the window says so',
@@ -169,6 +175,108 @@ void main() {
       isTrue,
       reason: 'the default is reference mode',
     );
+  });
+
+  /// Copy-or-reference, end to end through the window.
+  ///
+  /// The session verb is pinned in `audio_import_media_copy_test.dart`;
+  /// what fails apart from it is the WIRING — a window whose chips do not
+  /// reach `copyIntoProject`, or whose default silently flipped, leaves
+  /// those tests green while every import copies again. So this drives the
+  /// real chips and reads the path the project ended up with.
+  group('the import window decides copy or reference', () {
+    /// A png beside a SAVED project — saved, because an unsaved one has
+    /// nowhere to copy to and would pass either way.
+    Future<(EditorSessionManager, String)> savedProjectWithPng(
+      WidgetTester tester,
+    ) async {
+      final s = EditorSessionManager(initialProject: createDefaultProject());
+      addTearDown(s.dispose);
+      final path = await tester.runAsync(() async {
+        final png = await writePng('ref.png');
+        await s.saveProjectToFile(
+          '${tempDir.path}${Platform.pathSeparator}scene.anicel',
+        );
+        return png;
+      });
+      return (s, path!);
+    }
+
+    Future<void> runImport(WidgetTester tester, EditorSessionManager s) async {
+      await tester.tap(
+        find.byKey(const ValueKey<String>('import-run-button')),
+      );
+      for (var tries = 0; tries < 100; tries += 1) {
+        if (s.mediaAssets.isNotEmpty) {
+          break;
+        }
+        await tester.runAsync(
+          () => Future<void>.delayed(const Duration(milliseconds: 50)),
+        );
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
+    }
+
+    testWidgets('untouched, it references: the file stays where it is', (
+      tester,
+    ) async {
+      final (s, path) = await savedProjectWithPng(tester);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: ImportDialog(session: s, initialPaths: [path])),
+        ),
+      );
+      await tester.pump();
+      expect(
+        find.textContaining('stays where it is'),
+        findsOneWidget,
+        reason: 'the window says which of the two it is on',
+      );
+
+      await runImport(tester, s);
+
+      expect(s.mediaAssets.single.path, path.replaceAll('\\', '/'));
+      expect(
+        Directory(
+          '${tempDir.path}${Platform.pathSeparator}scene.assets',
+        ).existsSync(),
+        isFalse,
+        reason: 'the reference default costs zero bytes — the point of it',
+      );
+    });
+
+    testWidgets('on Copy in, the file lands in the project assets folder', (
+      tester,
+    ) async {
+      final (s, path) = await savedProjectWithPng(tester);
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(body: ImportDialog(session: s, initialPaths: [path])),
+        ),
+      );
+      await tester.pump();
+      await tester.tap(
+        find.byKey(const ValueKey<String>('import-media-copy')),
+      );
+      await tester.pump();
+      expect(find.textContaining('assets folder'), findsOneWidget);
+
+      await runImport(tester, s);
+
+      final media =
+          '${tempDir.path.replaceAll('\\', '/')}/scene.assets/Media/ref.png';
+      expect(s.mediaAssets.single.path, media);
+      expect(File(media).existsSync(), isTrue);
+      expect(
+        s.mediaAssets.single.sourcePath,
+        path.replaceAll('\\', '/'),
+        reason: 'a copy remembers where it came from; a reference has no '
+            'second place to point at',
+      );
+    });
   });
 
   testWidgets('a PDF places through the window (R4): the fake renderer '

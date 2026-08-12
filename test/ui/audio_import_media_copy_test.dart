@@ -2,14 +2,19 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
+import 'package:anicel/src/models/media_asset.dart';
 import 'package:anicel/src/services/audio/audio_conform_pipeline.dart';
 import 'package:anicel/src/ui/audio/audio_conform_store.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
 
-/// Copy-on-import (audio program wiring): an imported sound is copied into
-/// `<project>.assets/Media/` so the project folder owns its sounds — with
+/// The import's copy-or-reference choice, at the file level.
+///
+/// COPY is the Pro Tools/Logic rule — the project folder owns its sounds,
+/// so a Drive folder opened on another machine has them — with
 /// byte-identical re-imports REUSED and name collisions unique-suffixed,
-/// never overwritten.
+/// never overwritten. REFERENCE is the default the import window offers:
+/// nothing is duplicated and the project points at the file where the user
+/// keeps it.
 void main() {
   late Directory directory;
 
@@ -36,7 +41,12 @@ void main() {
     final session = sessionWithFakeConforms();
     final source = File('${directory.path}/voice.wav')
       ..writeAsBytesSync([1, 2, 3]);
-    expect(session.importAudioFile(source.path), source.path);
+    // Same file, spelled the one way the pool spells paths — a degraded
+    // copy is a reference, and references normalize like everything else.
+    expect(
+      session.importAudioFile(source.path, copyIntoProject: true),
+      source.path.replaceAll('\\', '/'),
+    );
     session.dispose();
   });
 
@@ -53,38 +63,84 @@ void main() {
     final source = File('${external.path}/발소리.wav')
       ..writeAsBytesSync([1, 2, 3, 4]);
 
-    final imported = session.importAudioFile(source.path);
+    final imported = session.importAudioFile(
+      source.path,
+      copyIntoProject: true,
+    );
     expect(imported, '$mediaDirectory/발소리.wav');
     expect(File(imported).readAsBytesSync(), [1, 2, 3, 4]);
 
     // Re-importing the same bytes reuses the copy — no -1 stacking.
-    expect(session.importAudioFile(source.path), imported);
+    expect(
+      session.importAudioFile(source.path, copyIntoProject: true),
+      imported,
+    );
 
     // A DIFFERENT sound with the same name walks to a unique name.
     final rival = Directory('${directory.path}/다른폴더')
       ..createSync(recursive: true);
     final clashing = File('${rival.path}/발소리.wav')
       ..writeAsBytesSync([9, 9, 9, 9]);
-    final importedRival = session.importAudioFile(clashing.path);
+    final importedRival = session.importAudioFile(
+      clashing.path,
+      copyIntoProject: true,
+    );
     expect(importedRival, '$mediaDirectory/발소리-1.wav');
     expect(File(imported).readAsBytesSync(), [1, 2, 3, 4]); // untouched
 
     // Importing a path already under Media/ (the browser re-offering a
     // pool entry) is a no-op copy.
-    expect(session.importAudioFile(imported), imported);
+    expect(session.importAudioFile(imported, copyIntoProject: true), imported);
     session.dispose();
   });
 
-  test('the media browser import registers the COPY in the pool', () async {
+  test('REFERENCE leaves the file where it is, even with somewhere to copy '
+      'it to', () async {
     final session = sessionWithFakeConforms();
     await session.saveProjectToFile('${directory.path}/scene.anicel');
-    final source = File('${directory.path}/bgm.wav')
-      ..writeAsBytesSync([5, 6, 7]);
+    final mediaDirectory = Directory(
+      '${directory.path.replaceAll('\\', '/')}/scene.assets/Media',
+    );
 
-    session.importMediaFiles([source.path]);
+    final external = Directory('${directory.path}/외부소재')
+      ..createSync(recursive: true);
+    final source = File('${external.path}/발소리.wav')
+      ..writeAsBytesSync([1, 2, 3, 4]);
+
     expect(
-      session.mediaAssets.map((asset) => asset.path),
-      ['${directory.path.replaceAll('\\', '/')}/scene.assets/Media/bgm.wav'],
+      session.importAudioFile(source.path, copyIntoProject: false),
+      source.path.replaceAll('\\', '/'),
+    );
+    // Nothing was written beside the project: the whole point of the
+    // reference default is that a 3GB source costs 0 bytes to import.
+    expect(mediaDirectory.existsSync(), isFalse);
+    session.dispose();
+  });
+
+  test('the media browser import registers the COPY in the pool, and the '
+      'REFERENCE keeps the original path', () async {
+    final session = sessionWithFakeConforms();
+    await session.saveProjectToFile('${directory.path}/scene.anicel');
+    final root = directory.path.replaceAll('\\', '/');
+    final copied = File('${directory.path}/bgm.wav')
+      ..writeAsBytesSync([5, 6, 7]);
+    final referenced = File('${directory.path}/guide.wav')
+      ..writeAsBytesSync([8, 9]);
+
+    session.importMediaFiles([copied.path], copyIntoProject: true);
+    session.importMediaFiles([referenced.path], copyIntoProject: false);
+
+    expect(session.mediaAssets.map((asset) => asset.path), [
+      '$root/scene.assets/Media/bgm.wav',
+      '$root/guide.wav',
+    ]);
+    // Source tracking is what a COPY carries so the "original changed"
+    // badge has two paths to compare; a reference is its own original.
+    expect(
+      session.mediaAssets.map((asset) => asset.sourcePath),
+      [copied.path.replaceAll('\\', '/'), null],
+      reason: 'both ends of the comparison in the recorded spelling — '
+          'otherwise every reference on Windows looks like a copy',
     );
     session.dispose();
   });
@@ -94,7 +150,28 @@ void main() {
     final session = sessionWithFakeConforms();
     await session.saveProjectToFile('${directory.path}/scene.anicel');
     final missing = '${directory.path}/없는파일.wav';
-    expect(session.importAudioFile(missing), missing);
+    expect(
+      session.importAudioFile(missing, copyIntoProject: true),
+      missing.replaceAll('\\', '/'),
+    );
+    session.dispose();
+  });
+
+  test('the pool kind is detected either way — a referenced movie is still '
+      'a movie', () async {
+    final session = sessionWithFakeConforms();
+    await session.saveProjectToFile('${directory.path}/scene.anicel');
+    final movie = File('${directory.path}/reference.mp4')
+      ..writeAsBytesSync([0, 0, 0, 24]);
+
+    session.importMediaFiles([movie.path], copyIntoProject: false);
+
+    expect(session.mediaAssets.single.kind, MediaAssetKind.video);
+    expect(
+      session.mediaAssets.single.path,
+      movie.path.replaceAll('\\', '/'),
+      reason: 'the 3GB case: a referenced movie is not copied anywhere',
+    );
     session.dispose();
   });
 }

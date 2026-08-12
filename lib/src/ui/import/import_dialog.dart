@@ -50,6 +50,12 @@ class _ImportDialogState extends State<ImportDialog> {
   String? _folder;
   ImportDestination _destination = ImportDestination.activeCutLayer;
   bool _rasterize = false;
+
+  /// Copy the files into `<project>.assets/Media/`, or point at them where
+  /// they are. REFERENCE is the default: the pool used to copy whatever it
+  /// was handed, which turned dropping a 3GB 참고영상 into a 3GB copy the
+  /// user never asked for and could not decline.
+  bool _copyIntoProject = false;
   MediaFitMode _fit = MediaFitMode.contain;
   CutFolderParseConfig _parseConfig = const CutFolderParseConfig();
   CutFolderParseResult? _parsed;
@@ -361,6 +367,8 @@ class _ImportDialogState extends State<ImportDialog> {
       final tvpJsonPath = _tvpJsonPath;
       if (tvpJsonPath != null) {
         // 1:1 always — see the Fit note in the settings column.
+        // A TVPaint export registers no pool asset of its own — its
+        // drawings become cels — so it has no copy-or-reference to make.
         final tvpWarnings = await session.importTvpJson(
           jsonPath: tvpJsonPath,
           fit: MediaFitMode.none,
@@ -377,6 +385,7 @@ class _ImportDialogState extends State<ImportDialog> {
           folderPath: folder,
           config: _parseConfig,
           fit: _fit,
+          copyIntoProject: _copyIntoProject,
         );
         if (folderWarnings == null) {
           warnings.add('Could not read that folder.');
@@ -391,7 +400,10 @@ class _ImportDialogState extends State<ImportDialog> {
             if (mediaAssetKindForPath(path) == MediaAssetKind.audio) path,
         ];
         if (audioPaths.isNotEmpty) {
-          session.importMediaFiles(audioPaths);
+          session.importMediaFiles(
+            audioPaths,
+            copyIntoProject: _copyIntoProject,
+          );
           imported += audioPaths.length;
           done.addAll(audioPaths);
         }
@@ -416,6 +428,7 @@ class _ImportDialogState extends State<ImportDialog> {
                     destination: _destination,
                     rasterize: _rasterize,
                     fit: _fit,
+                    copyIntoProject: _copyIntoProject,
                     // A 100-page conte renders for seconds — the footer
                     // says where it is instead of looking hung.
                     onRenderProgress: (rendered, total) {
@@ -433,6 +446,7 @@ class _ImportDialogState extends State<ImportDialog> {
                     destination: _destination,
                     rasterize: _rasterize,
                     fit: _fit,
+                    copyIntoProject: _copyIntoProject,
                   );
           } on Object {
             // A corrupt/locked file must not abort the rest of the batch —
@@ -745,6 +759,47 @@ class _ImportDialogState extends State<ImportDialog> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
+          // Copy-or-reference applies wherever a file is REGISTERED: the
+          // loose files, and the reference rows a cut folder brings with
+          // it. A TVPaint export registers nothing of its own — its
+          // drawings become cels — so it has nothing to decide here.
+          //
+          // Two chips rather than a switch: this is one-of-two named
+          // states, and in this app a choice is shown by colour while a
+          // checkbox means on/off.
+          if (!isTvp) ...[
+            ExportModuleRow(
+              label: 'Files',
+              child: Wrap(
+                spacing: 4,
+                children: [
+                  ExportChip(
+                    key: const ValueKey<String>('import-media-reference'),
+                    label: 'Reference',
+                    selected: !_copyIntoProject,
+                    onTap: () => setState(() => _copyIntoProject = false),
+                  ),
+                  ExportChip(
+                    key: const ValueKey<String>('import-media-copy'),
+                    label: 'Copy in',
+                    selected: _copyIntoProject,
+                    onTap: () => setState(() => _copyIntoProject = true),
+                  ),
+                ],
+              ),
+            ),
+            Text(
+              _copyIntoProject
+                  ? 'A copy lands in the project’s assets folder; the '
+                        'original is left alone.'
+                  : 'The file stays where it is and the project points at '
+                        'it.',
+              style: Theme.of(context).textTheme.labelSmall!.copyWith(
+                color: Theme.of(context).colorScheme.outline,
+              ),
+            ),
+            const SizedBox(height: 6),
+          ],
           if (!landsWholeCut) ...[
             ExportModuleRow(
               label: 'Place as',
@@ -785,8 +840,12 @@ class _ImportDialogState extends State<ImportDialog> {
             Text(
               _rasterize
                   ? 'Pixels absorb into cels; nothing registers.'
-                  : 'Keeps the source linked and registers it in the media '
-                        'browser.',
+                  // This used to read "keeps the source linked", which was
+                  // the one thing this branch did NOT do — it copied the
+                  // file in. Whether the source stays linked is the row
+                  // above's question now, and this one answers its own.
+                  : 'Places a layer that reads the file, and registers it '
+                        'in the media browser.',
               style: Theme.of(context).textTheme.labelSmall!.copyWith(
                 color: Theme.of(context).colorScheme.outline,
               ),
