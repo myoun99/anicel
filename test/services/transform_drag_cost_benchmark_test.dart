@@ -72,6 +72,58 @@ void main() {
     );
   }
 
+  /// A LINE ART stamp: mostly transparent, with thin opaque strokes.
+  ///
+  /// The other fixture gives every pixel a different word, which is the
+  /// worst case for Pick and a case no drawing produces. Pick's kernel has
+  /// a flat-support probe — where every source pixel in reach holds the
+  /// same word, both modes must return that word, so it returns it without
+  /// sampling — and on a drawing that probe carries most of the frame.
+  /// Measuring only the noise fixture would send a fix at a cost the real
+  /// work never pays.
+  BrushDab lineArtDab(int width, int height) {
+    final rgba = Uint8List(width * height * 4);
+    void plot(int x, int y) {
+      if (x < 0 || y < 0 || x >= width || y >= height) {
+        return;
+      }
+      final offset = (y * width + x) * 4;
+      rgba[offset + 3] = 255; // opaque black
+    }
+
+    // A loose grid of strokes plus two diagonals: enough edge to keep the
+    // flat probe honest, sparse enough to look like a drawing.
+    for (var y = 0; y < height; y += 1) {
+      for (var x = 0; x < width; x += 1) {
+        if (x % 97 < 2 || y % 89 < 2) {
+          plot(x, y);
+        }
+      }
+    }
+    for (var t = 0; t < width && t < height; t += 1) {
+      plot(t, t);
+      plot(t, height - 1 - t);
+      plot(t + 1, t);
+    }
+    return BrushDab(
+      center: CanvasPoint(x: width / 2, y: height / 2),
+      color: 0xFF000000,
+      size: 1,
+      opacity: 1,
+      flow: 1,
+      hardness: 1,
+      tipShape: BrushTipShape.square,
+      pressure: 1,
+      sequence: 0,
+      stamp: BrushStampImage(
+        id: 'lineart-$width-$height',
+        width: width,
+        height: height,
+        rgba: rgba,
+      ),
+    );
+  }
+
   double millisPer(int rounds, void Function() body) {
     for (var i = 0; i < math.max(1, rounds ~/ 4); i += 1) {
       body(); // warmup, discarded
@@ -165,6 +217,47 @@ void main() {
         '(${(rgba.length / 1e6).toStringAsFixed(1)} MB)',
       );
       expect(ms, greaterThanOrEqualTo(0));
+    }
+  });
+
+  test('the same drag on LINE ART, which is what the tool is for', () {
+    if (dllPath == null) {
+      markTestSkipped(nativeEngineMissingSkipReason);
+      return;
+    }
+    QaNativeEngine.debugResetForTests();
+    debugQaEngineLibraryPathOverride = dllPath;
+    QaNativeEngine.debugForceDartFallback = false;
+
+    for (final mode in ResampleMode.values) {
+      for (final (label, width, height) in const <(String, int, int)>[
+        ('selection 512²', 512, 512),
+        ('whole picture 2340×1654', 2340, 1654),
+      ]) {
+        final noise = stampDab(width, height);
+        final art = lineArtDab(width, height);
+        final affine = SelectionAffine(
+          pivot: CanvasPoint(x: width / 2, y: height / 2),
+          sx: 1.25,
+          sy: 1.25,
+          rotationDegrees: 12,
+        );
+        final noiseMs = millisPer(
+          3,
+          () => transformStampDab(noise, affine, mode: mode),
+        );
+        final artMs = millisPer(
+          3,
+          () => transformStampDab(art, affine, mode: mode),
+        );
+        debugPrint(
+          '[line art ${mode.name}] $label ×1.25  '
+          'noise ${noiseMs.toStringAsFixed(1)} ms  '
+          'line art ${artMs.toStringAsFixed(1)} ms  '
+          '→ ${(noiseMs / artMs).toStringAsFixed(1)}× cheaper on a drawing',
+        );
+        expect(artMs, greaterThan(0));
+      }
     }
   });
 
