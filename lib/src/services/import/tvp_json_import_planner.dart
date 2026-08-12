@@ -31,6 +31,7 @@ import '../../models/cut.dart';
 import '../../models/cut_camera.dart';
 import '../../models/frame.dart';
 import '../../models/frame_id.dart';
+import '../../models/import/tvp_csv_parse.dart';
 import '../../models/import/tvp_json_parse.dart';
 import '../../models/layer.dart';
 import '../../models/layer_blend_mode.dart';
@@ -70,10 +71,12 @@ TvpJsonImportPlan planTvpJsonImport({
   required String Function(String relativePath) resolveFile,
   required ImportIdMint mint,
   required CanvasSize cameraFrameSize,
+  TvpCsvNames? names,
   MediaFitMode fit = MediaFitMode.none,
   String? cutName,
 }) {
   final warnings = [...parsed.warnings];
+  final csv = _namesForClip(names, parsed, warnings);
   final cutId = mint.nextCutId();
   final canvasSize = CanvasSize(width: parsed.width, height: parsed.height);
   final duration = parsed.frameCount;
@@ -91,6 +94,9 @@ TvpJsonImportPlan planTvpJsonImport({
     // The drawing a block shows, keyed by the instance that owns it —
     // this map is what makes a repeat re-expose instead of duplicate.
     final celByInstance = <int, FrameId>{};
+    // How many DRAWINGS have taken each name on this layer, so the second
+    // one can be told from the first. See [_celNameFor].
+    final takenNames = <String, int>{};
 
     for (final block in source.blocks) {
       var frameId = celByInstance[block.sourceIndex];
@@ -102,10 +108,12 @@ TvpJsonImportPlan planTvpJsonImport({
             id: frameId,
             duration: 1,
             strokes: const [],
-            // The instance name is the cel number ("1", "1.5", "15a") —
-            // or, on rows with no pixels, the label itself ("PAN",
-            // "arisu,おはよ"). Both belong on the timesheet verbatim.
-            name: block.name.isEmpty ? null : block.name,
+            name: _celNameFor(
+              csv: csv,
+              layerPosition: source.position,
+              instanceIndex: block.sourceIndex,
+              taken: takenNames,
+            ),
           ),
         );
         if (block.file.isEmpty) {
@@ -183,6 +191,84 @@ TvpJsonImportPlan planTvpJsonImport({
   );
 
   return TvpJsonImportPlan(cut: cut, bakes: bakes, warnings: warnings);
+}
+
+/// The CSV to name cels from, or null to name none of them.
+///
+/// The two exports are separate files and nothing stops a stale CSV being
+/// kept beside a re-exported clip, so the pair is checked before a single
+/// cel is renamed after somebody else's drawings. A mismatch is loud and
+/// then ignored: importing with the wrong names is worse than importing
+/// with none.
+TvpCsvNames? _namesForClip(
+  TvpCsvNames? names,
+  TvpJsonParseResult parsed,
+  List<String> warnings,
+) {
+  if (names == null) {
+    warnings.add(
+      'No CSV beside this export, so the cels arrive unnamed. TVPaint '
+      'writes its own counting into the JSON when an instance has no '
+      'name, and nothing there tells the two apart — exporting the CSV as '
+      'well is what makes the real names come through.',
+    );
+    return null;
+  }
+  if (!names.describesSameClipAs(
+    clipName: parsed.clipName,
+    width: parsed.width,
+    height: parsed.height,
+    frameCount: parsed.frameCount,
+    layerCount: parsed.layers.length,
+  )) {
+    warnings.add(
+      'The CSV describes "${names.clipName}" '
+      '(${names.width}×${names.height}, ${names.frameCount} frames, '
+      '${names.layerCount} layers) and this export is "${parsed.clipName}" '
+      '(${parsed.width}×${parsed.height}, ${parsed.frameCount} frames, '
+      '${parsed.layers.length} layers) — the two are not the same export, '
+      'so the cels arrive unnamed rather than misnamed.',
+    );
+    return null;
+  }
+  return names;
+}
+
+/// What to call the cel a drawing becomes.
+///
+/// 🚨The JSON's `instance-name` is NOT used, at all. TVPaint writes its
+/// own counting there for an unnamed instance and a typed name for a
+/// named one, in one field with nothing to tell them apart — and this
+/// app's law is that two cels sharing a name in a layer are one drawing.
+/// Copying that counting in is how a layer of ten drawings becomes ten
+/// exposures of one. The CSV knows which is which; without it, nothing
+/// gets a name.
+///
+/// [taken] disambiguates the case the CSV cannot make go away: a real
+/// name the animator used twice for DIFFERENT drawings. The second one
+/// becomes `3-1`, so the sheet still shows what they wrote and the two
+/// drawings stay two. A drawing shown twice never reaches here — the
+/// caller only names a cel it is minting.
+String? _celNameFor({
+  required TvpCsvNames? csv,
+  required int layerPosition,
+  required int instanceIndex,
+  required Map<String, int> taken,
+}) {
+  if (csv == null) {
+    return null;
+  }
+  final name = csv.nameAt(
+    layerNumber: layerPosition,
+    // The CSV counts frames from 1; an instance index is the 0-based
+    // frame its drawing starts on.
+    frameNumber: instanceIndex + 1,
+  );
+  if (name == null) {
+    return null;
+  }
+  final already = taken.update(name, (count) => count + 1, ifAbsent: () => 0);
+  return already == 0 ? name : '$name-$already';
 }
 
 /// TVPaint's edge behaviour as a live run edge. `none` stores nothing —

@@ -4,7 +4,9 @@ import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut_camera.dart';
 import 'package:anicel/src/models/cut_id.dart';
 import 'package:anicel/src/models/frame_id.dart';
+import 'package:anicel/src/models/import/tvp_csv_parse.dart';
 import 'package:anicel/src/models/import/tvp_json_parse.dart';
+import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_blend_mode.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
@@ -31,14 +33,20 @@ void main() {
   TvpJsonParseResult fixture(String name) =>
       parseTvpJson(File('test/fixtures/tvpaint/$name.json').readAsStringSync());
 
+  TvpCsvNames csvFixture(String name) => parseTvpCsv(
+    File('test/fixtures/tvpaint/$name.csv').readAsStringSync(),
+  );
+
   TvpJsonImportPlan planFixture(
     String name, {
     CanvasSize cameraFrameSize = defaultProjectCameraSize,
+    TvpCsvNames? names,
   }) => planTvpJsonImport(
     parsed: fixture(name),
     resolveFile: (relative) => '/export/$relative',
     mint: mint(),
     cameraFrameSize: cameraFrameSize,
+    names: names,
   );
 
   group('edge_behaviors.json', () {
@@ -99,7 +107,96 @@ void main() {
       expect(d.frames, hasLength(3));
       expect(d.timeline.keys, [0, 3, 6]);
       expect(d.timeline.values.map((entry) => entry.length), [3, 3, 3]);
-      expect(d.frames.map((frame) => frame.name), ['1', '2', '3']);
+      // Unnamed without a CSV — the JSON's `1, 2, 3` here is TVPaint's own
+      // counting and there is nothing in the file to tell it from names
+      // somebody typed. See the naming group below.
+      expect(d.frames.map((frame) => frame.name), [null, null, null]);
+    });
+
+    // The JSON's `instance-name` is never a name. TVPaint fills it with an
+    // ordinal when the animator left the instance alone, and writes what
+    // they typed when they did not — one field, no flag. Measured on three
+    // real exports: a clip with nothing named came through as `1..10` per
+    // layer, and in another the SAME layer holds five ordinals and one
+    // typed name that happen to collide on `5`.
+    //
+    // Since a shared name in a layer means a shared DRAWING here, copying
+    // that field in is how a layer of ten drawings becomes one. The CSV
+    // export is the only thing that separates them, and without it nothing
+    // is named at all.
+    group('cel names come from the CSV or from nowhere', () {
+      test('no CSV: every cel is unnamed, and the import says why', () {
+        final plan = planFixture('edge_behaviors');
+        for (final layer in plan.cut.layers) {
+          for (final frame in layer.frames) {
+            expect(frame.name, isNull, reason: layer.name);
+          }
+        }
+        expect(
+          plan.warnings.any((warning) => warning.contains('No CSV')),
+          isTrue,
+          reason: 'silently unnamed would read as a bug in the export',
+        );
+      });
+
+      test('with the CSV: named cels keep their name, unnamed stay '
+          'unnamed', () {
+        final plan = planFixture(
+          'edge_behaviors',
+          names: csvFixture('edge_behaviors'),
+        );
+        Layer layer(String name) =>
+            plan.cut.layers.firstWhere((layer) => layer.name == name);
+
+        // The CSV writes the LAYER's own name where an instance has none.
+        expect(layer('TAP').frames.single.name, isNull);
+        expect(layer('B').frames.single.name, isNull);
+        expect(layer('C').frames.map((frame) => frame.name), [
+          null,
+          null,
+          null,
+        ]);
+        // And the cel's name where it has one.
+        expect(layer('D').frames.map((frame) => frame.name), ['1', '2', '3']);
+        expect(layer('E').frames.single.name, '1');
+      });
+
+      test('one name on two DIFFERENT drawings is split, not merged', () {
+        // Layer A's first two drawings are both called `3` in the CSV —
+        // a real thing animators do. Left alone they would be one drawing
+        // under this app's law, so the second takes a suffix: the sheet
+        // still shows what was written and the drawings stay two.
+        final plan = planFixture(
+          'edge_behaviors',
+          names: csvFixture('edge_behaviors'),
+        );
+        final a = plan.cut.layers.firstWhere((layer) => layer.name == 'A');
+        expect(a.frames.map((frame) => frame.name), ['3', '3-1', '5']);
+        expect(
+          a.frames.map((frame) => frame.id).toSet(),
+          hasLength(3),
+          reason: 'three drawings, whatever they are called',
+        );
+      });
+
+      test('a CSV for another clip is refused, and names nothing', () {
+        // Two separate exports: nothing stops a stale CSV sitting beside a
+        // re-exported clip, and misnaming cels after somebody else's
+        // drawings is worse than leaving them blank.
+        final plan = planFixture(
+          'edge_behaviors',
+          names: csvFixture('named_and_unnamed'),
+        );
+        for (final layer in plan.cut.layers) {
+          for (final frame in layer.frames) {
+            expect(frame.name, isNull);
+          }
+        }
+        expect(
+          plan.warnings.any((warning) => warning.contains('not the same')),
+          isTrue,
+        );
+      });
     });
 
     test('edge behaviours become run behaviours anchored on the run', () {
@@ -306,7 +403,9 @@ void main() {
         bg.frames.map((frame) => frame.id).toSet(),
         reason: 'every exposure points at one of the three cels',
       );
-      expect(bg.frames.map((frame) => frame.name), ['1', '2', '3']);
+      // Unnamed: this fixture is JSON-only, and the JSON's `1, 2, 3` is
+      // TVPaint's counting rather than anything the animator wrote.
+      expect(bg.frames.map((frame) => frame.name), [null, null, null]);
     });
 
     test('the bake list is one entry per exported image — 43, the file '
@@ -473,6 +572,15 @@ void main() {
       cameraFrameSize: defaultProjectCameraSize,
     );
 
+    /// What a clip warned about, minus the standing notice that no CSV
+    /// came with it. Every clip here is JSON-only and each of these tests
+    /// is about something else — but they still say "and nothing ELSE",
+    /// which is the half worth keeping.
+    List<String> warningsOf(TvpJsonImportPlan result) => [
+      for (final warning in result.warnings)
+        if (!warning.startsWith('No CSV')) warning,
+    ];
+
     test('a layer whose link[] is empty keeps its row and names the export '
         'setting that would have filled it', () {
       final result = plan(
@@ -484,7 +592,7 @@ void main() {
       expect(se.frames, isEmpty);
       expect(se.timeline, isEmpty);
       expect(
-        result.warnings.single,
+        warningsOf(result).single,
         contains('빈 사진 포함'),
       );
     });
@@ -498,7 +606,7 @@ void main() {
       );
       final layer = result.cut.layers.firstWhere((layer) => layer.name == 'L');
       expect(layer.blendMode, LayerBlendMode.normal);
-      expect(result.warnings.single, contains('Shade'));
+      expect(warningsOf(result).single, contains('Shade'));
     });
 
     test('a named blending mode maps rather than falling back', () {
@@ -511,7 +619,7 @@ void main() {
       final layer = result.cut.layers.firstWhere((layer) => layer.name == 'L');
       expect(layer.blendMode, LayerBlendMode.multiply);
       expect(layer.opacity, closeTo(128 / 255, 1e-9));
-      expect(result.warnings, isEmpty);
+      expect(warningsOf(result), isEmpty);
     });
 
     test('a hidden layer stays hidden', () {

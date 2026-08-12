@@ -543,6 +543,19 @@ void main() {
   ]}}}''';
       final file = File('${tempDir.path}/C001.json');
       await file.writeAsString(json);
+      // The CSV that names the cels, exported beside the JSON and found
+      // by stem — the JSON's own `instance-name` is TVPaint's counting
+      // and is never read as a name. Layer A is named `1`/`2` here, and
+      // SE's blank instance carries the label that IS its whole content.
+      await File('${tempDir.path}/C001.csv').writeAsString(
+        'UTF-8, TVPaint, "CSV 1.1"\n'
+        'Project Name, Width, Height, Frame Count, Layer Count\n'
+        '"C001", 8, 8, 8, 2\n'
+        '\n'
+        '#Layers,"SE","A"\n'
+        '#00001, "[001][00001] arisu,おはよ.png", "[002][00001] 1.png"\n'
+        '#00004, "[002][00004] 2.png"\n',
+      );
       return file.path;
     });
 
