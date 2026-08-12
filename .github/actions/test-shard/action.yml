@@ -37,5 +37,11 @@ runs:
         # line too long"; 91 paths / 4105 chars is fine. xargs splits the
         # list into batches that fit and exits non-zero if any batch fails,
         # so the project's rule still holds — the exit code decides.
+        #
+        # 6000 rather than something nearer the ceiling: today's widest
+        # shard is ~4.2k characters, so one batch and no repeated `flutter
+        # test` startup, with room for the suite to grow by half before a
+        # split costs anything and 2.2k of daylight before the real limit.
+        # Raise this only against a measurement, never to "make it fit".
         tr '\n' '\0' < "$RUNNER_TEMP/shard_tests.txt" \
-          | xargs -0 -s 4000 flutter test
+          | xargs -0 -s 6000 flutter test
