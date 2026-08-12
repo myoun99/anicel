@@ -63,9 +63,11 @@ jobs:
   # at 0.142x of the full suite, 88% of linear. Do not "simplify" this back
   # into --total-shards.
   #
-  # Coverage is unchanged: `awk NR % N == index` partitions the sorted list,
-  # so every file runs in exactly one shard, and the step fails if a shard
-  # selects nothing.
+  # Coverage is unchanged: the selector partitions the file list, so every
+  # file runs in exactly one shard, and the step fails if a shard selects
+  # nothing. It packs by weight rather than dealing round-robin — the
+  # reasoning is in .github/actions/test-shard/action.yml, next to the code
+  # that does it.
   analyze-and-test:
     name: analyze + full test suite (shard ${{ matrix.shard }})
     runs-on: ubuntu-latest
@@ -73,8 +75,13 @@ jobs:
       # Without this one red shard hides the others, and the point of
       # splitting is to learn everything each run has to tell us.
       fail-fast: false
+      # Five, and Windows stays at eight: the two platforms are tuned
+      # independently because they are not equally slow per file, and this
+      # is the side that now finishes last. Windows was the critical path
+      # when it ran a whole suite per shard; after cost-balanced packing
+      # it is these jobs that decide the round.
       matrix:
-        shard: [0, 1, 2]
+        shard: [0, 1, 2, 3, 4]
     # Job-wide rather than on the test step: the step is a composite action
     # now, and an env that has to travel through one is an env that can go
     # missing. QA_REQUIRE_NATIVE turns "engine not found" from a skip into
@@ -118,7 +125,7 @@ jobs:
       - name: Run tests against the gcc-built engine
         uses: ./.github/actions/test-shard
         with:
-          total: 3
+          total: 5
           index: ${{ matrix.shard }}
 
   android:
@@ -182,12 +189,11 @@ jobs:
   # it pays that 728 times.
   #
   # Eight rather than four, because four was measured and found lumpy: the
-  # first sharded run split 6m08s / 7m14s / 8m45s / 9m46s, a 1.6x spread
-  # that made the slowest shard the whole round. Round-robin over a sorted
-  # list balances by file COUNT, not by cost, so finer slices are how the
-  # heavy files stop deciding the wall clock. Eight also divides 728 evenly
-  # (91 files each) and puts a shard's command line at ~4.1k characters,
-  # inside one batch — see the .bat note in the test-shard action.
+  # first sharded run split 6m08s / 7m14s / 8m45s / 9m46s. Going to eight
+  # narrowed that but did not fix it — the deal was round-robin, which
+  # balances by file COUNT — so the shards are now packed by weight and
+  # eight is simply where a shard's command line (~4.2k characters) still
+  # fits one batch under the .bat ceiling the test-shard action explains.
   windows:
     name: Windows + native DLL (shard ${{ matrix.shard }})
     runs-on: windows-latest
