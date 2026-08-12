@@ -11,10 +11,13 @@ import 'package:anicel/src/models/frame_id.dart';
 import 'package:anicel/src/models/layer.dart';
 import 'package:anicel/src/models/layer_id.dart';
 import 'package:anicel/src/models/layer_kind.dart';
+import 'package:anicel/src/models/layer_mark.dart';
 import 'package:anicel/src/models/tile_coord.dart';
 import 'package:anicel/src/models/timeline_coverage.dart';
 import 'package:anicel/src/models/timeline_exposure.dart';
 import 'package:anicel/src/ui/editor_session_manager.dart';
+import 'package:anicel/src/ui/timeline/layer_label_controls.dart'
+    show layerMarkColor;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_exposure_state.dart';
 import 'package:anicel/src/ui/timeline/timeline_cell_style.dart';
@@ -110,6 +113,65 @@ void main() {
       final painter = painterFor(twoBlockLayer());
       expect(painter.resolvedCellStyleFor(0).background,
           timelineDrawingStartColor);
+    });
+  });
+
+  // ⑲/⑳ (user, 2026-08-12): 「블록 모드의 프레임블록은 레이어 색라벨 색을
+  // 그대로 따라간다 (…) 그냥 블록의 고정 하얀색을 레이어 색라벨 따라가도록」
+  // + 「레이어 색라벨 기본 = 흰색」. The two are one statement: a layer's
+  // mark IS the colour of its paper.
+  group('a block is its layer\'s colour label', () {
+    test('the DEFAULT label is the paper, so an unlabelled row is painted '
+        'by exactly the number it always was', () {
+      expect(layerMarkColor(LayerMark.none), timelineDrawingHeldColor);
+    });
+
+    test('a marked layer\'s blocks take the mark', () {
+      final painter = painterFor(
+        twoBlockLayer().copyWith(mark: LayerMark.red),
+      );
+
+      expect(painter.resolvedCellStyleFor(0).background,
+          layerMarkColor(LayerMark.red));
+      expect(
+        painter.resolvedCellStyleFor(1).background,
+        layerMarkColor(LayerMark.red),
+        reason: 'a run is one sheet of paper — held cells too',
+      );
+      expect(
+        painter.resolvedCellStyleFor(5).background,
+        Colors.transparent,
+        reason: 'and an uncovered cell is still no paper at all',
+      );
+    });
+
+    test('the unworked-cel tint is the MARK at low opacity, not the old '
+        'grey', () {
+      final painter = painterFor(
+        twoBlockLayer().copyWith(mark: LayerMark.blue),
+        celHasContentForLayer: (layer, frameIndex) => frameIndex >= 2,
+      );
+
+      final tinted = painter.resolvedCellStyleFor(0).background;
+      expect(tinted, timelineEmptyCelPaperColor(layerMarkColor(LayerMark.blue)));
+      // Derived from the paper, not a second colour beside it: same hue,
+      // the transparency is the only difference.
+      expect(tinted.r, layerMarkColor(LayerMark.blue).r);
+      expect(tinted.a, lessThan(1));
+      expect(
+        painter.resolvedCellStyleFor(2).background,
+        layerMarkColor(LayerMark.blue),
+        reason: 'a worked block keeps the full mark',
+      );
+    });
+
+    test('and the unmarked row\'s tint is still the old constant', () {
+      // The regression the pair has to keep: nothing about an unlabelled
+      // layer moved.
+      expect(
+        timelineEmptyCelPaperColor(layerMarkColor(LayerMark.none)),
+        timelineEmptyCelBlockColor,
+      );
     });
   });
 

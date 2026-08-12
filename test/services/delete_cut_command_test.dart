@@ -1,4 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:anicel/src/controllers/cut_deletion_helpers.dart'
+    show projectContentEndFrame;
 import 'package:anicel/src/controllers/editing_session_state.dart';
 import 'package:anicel/src/models/canvas_size.dart';
 import 'package:anicel/src/models/cut.dart';
@@ -14,6 +16,15 @@ import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/services/project_repository.dart';
 
 void main() {
+  // ⑱ (2026-08-12) changed what "the surviving cuts" means: a deletion
+  // hands its frames to the next cut's leading gap, so the neighbour is no
+  // longer the same VALUE it was. These oracles are about WHICH cuts
+  // survive, so they ask for ids; the gap itself has its own group below.
+  List<String> cutIdsOf(ProjectRepository repository) => [
+    for (final cut in repository.requireProject().tracks.single.cuts)
+      cut.id.value,
+  ];
+
   group('DeleteCutCommand', () {
     test('execute deletes the target cut by CutId', () {
       final cutA = _cut(id: 'cut-a', name: 'Cut A');
@@ -55,7 +66,7 @@ void main() {
         cutId: targetCut.id,
       ).execute();
 
-      expect(repository.requireProject().tracks.single.cuts, [sameNameCut]);
+      expect(cutIdsOf(repository), ['same-name-cut']);
       expect(editingSession.activeCutId, sameNameCut.id);
     });
 
@@ -78,11 +89,8 @@ void main() {
         cutId: cutB.id,
       ).execute();
 
-      expect(repository.requireProject().tracks.single.cuts, [cutA, cutC]);
-      expect(
-        repository.requireProject().tracks.single.cuts,
-        isNot(contains(cutB)),
-      );
+      expect(cutIdsOf(repository), ['cut-a', 'cut-c']);
+      expect(cutIdsOf(repository), isNot(contains('cut-b')));
     });
 
     test('deleting an active middle cut falls back to previous cut', () {
@@ -105,7 +113,7 @@ void main() {
       ).execute();
 
       expect(editingSession.activeCutId, cutA.id);
-      expect(repository.requireProject().tracks.single.cuts, [cutA, cutC]);
+      expect(cutIdsOf(repository), ['cut-a', 'cut-c']);
     });
 
     test('deleting the first active cut falls back to next cut', () {
@@ -127,7 +135,7 @@ void main() {
       ).execute();
 
       expect(editingSession.activeCutId, cutB.id);
-      expect(repository.requireProject().tracks.single.cuts, [cutB]);
+      expect(cutIdsOf(repository), ['cut-b']);
     });
 
     test('deleting the last active cut falls back to previous cut', () {
@@ -302,7 +310,7 @@ void main() {
       historyManager.undo();
       historyManager.redo();
 
-      expect(repository.requireProject().tracks.single.cuts, [cutA, cutC]);
+      expect(cutIdsOf(repository), ['cut-a', 'cut-c']);
       expect(editingSession.activeCutId, cutA.id);
     });
 
@@ -335,6 +343,123 @@ void main() {
       historyManager.redo();
       expect(repository.requireProject().tracks.single.cuts, isEmpty);
       expect(editingSession.activeCutId, isNull);
+    });
+
+    // ⑱ (user, 2026-08-12): 「컷 삭제는 그 자리에서 컷 하나를 지울 뿐이다.
+    // 앞으로 재정렬하지 않고 스토리보드 엔드라인도 안 건드린다」.
+    group('a deletion leaves a HOLE — nothing after it moves', () {
+      List<int> startFramesOf(ProjectRepository repository) {
+        final starts = <int>[];
+        var next = 0;
+        for (final cut in repository.requireProject().tracks.single.cuts) {
+          starts.add(next + cut.leadingGapFrames);
+          next = starts.last + cut.duration;
+        }
+        return starts;
+      }
+
+      test('the next cut keeps the frame it started on', () {
+        final repository = ProjectRepository(
+          initialProject: _project(
+            tracks: [
+              _track(
+                id: 'track-1',
+                cuts: [
+                  _cut(id: 'cut-a', name: 'A', duration: 4),
+                  _cut(id: 'cut-b', name: 'B', duration: 6, leadingGap: 2),
+                  _cut(id: 'cut-c', name: 'C', duration: 3),
+                ],
+              ),
+            ],
+          ),
+        );
+        expect(startFramesOf(repository), [0, 6, 12]);
+
+        DeleteCutCommand(
+          repository: repository,
+          editingSession: EditingSessionState(activeCutId: const CutId('cut-a')),
+          cutId: const CutId('cut-b'),
+        ).execute();
+
+        // B held frames 4..11 (its 2-frame gap included) and C still starts
+        // at 12 — the whole point of the item.
+        expect(cutIdsOf(repository), ['cut-a', 'cut-c']);
+        expect(startFramesOf(repository), [0, 12]);
+        expect(
+          repository.requireProject().tracks.single.cuts.last.leadingGapFrames,
+          8,
+          reason: 'C absorbed B\'s gap AND B\'s duration',
+        );
+      });
+
+      test('deleting the LAST cut holds the movie end line still', () {
+        final repository = ProjectRepository(
+          initialProject: _project(
+            tracks: [
+              _track(
+                id: 'track-1',
+                cuts: [
+                  _cut(id: 'cut-a', name: 'A', duration: 4),
+                  _cut(id: 'cut-b', name: 'B', duration: 6, leadingGap: 2),
+                ],
+              ),
+            ],
+          ),
+        );
+        // Content ends at 12; the movie ends at 15.
+        final before = repository.requireProject();
+        expect(projectContentEndFrame(before), 12);
+
+        DeleteCutCommand(
+          repository: repository,
+          editingSession: EditingSessionState(activeCutId: const CutId('cut-a')),
+          cutId: const CutId('cut-b'),
+        ).execute();
+
+        final after = repository.requireProject();
+        expect(projectContentEndFrame(after), 4);
+        expect(
+          after.trailingFrames,
+          8,
+          reason: 'the tail gap took what the track lost, so the end line — '
+              'content end plus trailing — is still 12',
+        );
+        expect(projectContentEndFrame(after) + after.trailingFrames, 12);
+      });
+
+      test('undo puts the hole back where it came from', () {
+        final repository = ProjectRepository(
+          initialProject: _project(
+            tracks: [
+              _track(
+                id: 'track-1',
+                cuts: [
+                  _cut(id: 'cut-a', name: 'A', duration: 4),
+                  _cut(id: 'cut-b', name: 'B', duration: 6, leadingGap: 2),
+                  _cut(id: 'cut-c', name: 'C', duration: 3, leadingGap: 1),
+                ],
+              ),
+            ],
+          ),
+        );
+        final before = repository.requireProject();
+        final historyManager = HistoryManager();
+
+        historyManager.execute(
+          DeleteCutCommand(
+            repository: repository,
+            editingSession: EditingSessionState(
+              activeCutId: const CutId('cut-a'),
+            ),
+            cutId: const CutId('cut-b'),
+          ),
+        );
+        historyManager.undo();
+
+        // Not "the cuts are back" — the GAPS are back, which is the part a
+        // subtract-it-again undo would get wrong.
+        expect(repository.requireProject(), before);
+      });
     });
 
     test('missing target CutId causes execute to throw StateError', () {
@@ -439,7 +564,12 @@ Track _track({required String id, required List<Cut> cuts}) {
   return Track(id: TrackId(id), name: id, cuts: cuts);
 }
 
-Cut _cut({required String id, required String name}) {
+Cut _cut({
+  required String id,
+  required String name,
+  int duration = 1,
+  int leadingGap = 0,
+}) {
   return Cut(
     id: CutId(id),
     name: name,
@@ -451,7 +581,8 @@ Cut _cut({required String id, required String name}) {
         timeline: const {},
       ),
     ],
-    duration: 1,
+    duration: duration,
+    leadingGapFrames: leadingGap,
     canvasSize: const CanvasSize(width: 1280, height: 720),
   );
 }

@@ -6,6 +6,7 @@ import '../../models/layer_id.dart';
 import '../../models/layer_kind.dart';
 import '../input/app_input_settings.dart' show AppInput;
 import '../theme/app_theme.dart';
+import 'layer_label_controls.dart' show layerMarkColor;
 import 'timeline_cell_exposure_state.dart';
 import 'timeline_cell_style.dart';
 import 'timeline_exposure_block_visual.dart';
@@ -97,6 +98,8 @@ class TimelineFrameCell extends StatelessWidget {
       colorScheme: colorScheme,
       exposureState: effectiveExposureState,
       selected: false,
+      // ⑲: the row's blocks are its layer's colour label.
+      paper: layerMarkColor(layer.mark),
     );
     // Ghost repeat instances dim like out-of-range cells (UI-R8).
     final dimmed = outsidePlaybackRange || ghost;

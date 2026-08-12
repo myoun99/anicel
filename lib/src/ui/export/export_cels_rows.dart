@@ -104,10 +104,10 @@ class ExportLayerRow extends StatelessWidget {
               width: 3.5,
               height: 11,
               decoration: BoxDecoration(
-                color: markColor ?? Colors.transparent,
-                border: markColor == null
-                    ? Border.all(color: theme.dividerColor, width: 0.5)
-                    : null,
+                // ⑳: every mark fills, `none` included — it is the paper
+                // colour now rather than an absence, so the hairline that
+                // used to outline the empty bar has nothing to outline.
+                color: markColor,
                 borderRadius: BorderRadius.circular(1),
               ),
             ),

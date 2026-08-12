@@ -10,6 +10,7 @@ import '../../models/layer_kind.dart';
 import '../../models/timeline_repeat.dart';
 import '../input/app_input_settings.dart' show AppInput;
 import '../widgets/instant_tap_region.dart';
+import 'layer_label_controls.dart' show layerMarkColor;
 import 'timeline_cell_double_tap.dart';
 import 'timeline_cel_content_source.dart';
 import 'timeline_cell_exposure_state.dart';
@@ -357,12 +358,15 @@ class TimelineRowCellsPainter extends CustomPainter {
     // empty paper and only the dimmed glyph marks the derived exposure.
     // A camera summary cell is empty-styled for the same reason — its
     // coverage is a key marker, not paper.
+    final paper = layerMarkColor(layer.mark);
     final styleColors = timelineCellStyleColors(
       colorScheme: colorScheme,
       exposureState: model.ghost || _cameraSummaryRow
           ? TimelineCellExposureState.uncovered
           : model.exposureState,
       selected: false,
+      // ⑲: the row's blocks are its layer's colour label.
+      paper: paper,
     );
     // R26 #44: a block whose cel has no picture yet grays its paper
     // slightly — the whole covered run, ACTION-section rows only (the
@@ -373,7 +377,7 @@ class TimelineRowCellsPainter extends CustomPainter {
             !_cameraSummaryRow &&
             model.exposureState.isCovered &&
             !(celHasContentForLayer?.call(layer, frameIndex) ?? true)
-        ? timelineEmptyCelBlockColor
+        ? timelineEmptyCelPaperColor(paper)
         : styleColors.background;
     // Blocks keep their chrome (start edge strong, held seams faint per
     // UI-R18 #8); the PLAIN grid draws NOTHING here — the grid-wide
