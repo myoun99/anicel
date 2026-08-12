@@ -12,6 +12,7 @@ import '../widgets/field_slider.dart';
 import 'layer_label_controls.dart';
 import 'layer_rail_columns.dart';
 import 'timeline_grid_metrics.dart';
+import 'timeline_selected_exposure_outline.dart' show TimelineSelectionRing;
 
 /// Whether two [Layer] snapshots would make [TimelineLayerControlsRow] look
 /// EXACTLY the same — the rail memo's gate.
@@ -91,11 +92,13 @@ class TimelineLayerControlsRow extends StatelessWidget {
   final Layer layer;
   final bool active;
 
-  /// ⑨: this row is in the rail's ROW SELECTION — what the row verbs act
-  /// on. It wears the SAME wash as [active] on purpose: both say "this is
-  /// what the verbs act on", which is the one statement colour has always
-  /// made here, and two rows already wear it at once (a layer plus the
-  /// property lane inside it).
+  /// ⑨: this row is in the rail's ROW SELECTION — what the row verbs act on.
+  ///
+  /// ㊴ (유저 08-12): it wears the accent RING, not the wash. Sharing the wash
+  /// with [active] was defensible on paper — both mean "the verbs act here" —
+  /// and wrong on screen, where it left nothing to tell the two apart. The
+  /// wash answers "where am I standing", the ring answers "what is selected",
+  /// and a row can honestly be both.
   final bool selected;
 
   final TimelineGridMetrics metrics;
@@ -237,7 +240,11 @@ class TimelineLayerControlsRow extends StatelessWidget {
         decoration: chromeless
             ? null
             : BoxDecoration(
-                color: active || selected ? activeColor : colorScheme.surface,
+                // ㊴: the wash is the ACTIVE row's alone. `selected` used to
+                // share it, and on screen that made the two states one —
+                // the selection now speaks through the ring below, the way
+                // a selected frame run always has.
+                color: active ? activeColor : colorScheme.surface,
                 border: Border(
                   left: BorderSide(color: borderColor),
                   right: BorderSide(color: borderColor),
@@ -527,7 +534,23 @@ class TimelineLayerControlsRow extends StatelessWidget {
     // layer, so it was always a second door to the same dialog; dissolve
     // is waiting on the layer-label drag system, and Delete on a folder
     // row already dissolves it.
-    return row;
+    if (!selected) {
+      return row;
+    }
+    // ㊴: the selection RING, over the row's own ground. Sized by the row
+    // (the Stack takes its one unpositioned child's size), so it traces the
+    // same box the wash would have filled — and an ACTIVE row inside the
+    // selection wears both, which is the point: they answer two questions.
+    return Stack(
+      children: [
+        row,
+        const Positioned.fill(
+          child: TimelineSelectionRing(
+            key: ValueKey<String>('timeline-row-selection-ring'),
+          ),
+        ),
+      ],
+    );
   }
 
   /// The row's opacity slider, live-following the session's drag preview

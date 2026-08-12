@@ -1001,7 +1001,7 @@ class EditorSessionManager extends ChangeNotifier {
       rowSelection.value.contains(row);
 
   /// A press that lands OUTSIDE the current selection starts a fresh one —
-  /// the cells' rule, transposed (`suppressPointerDownSelect` there).
+  /// the cells' rule, transposed (their range gesture's `isInSelection`).
   void beginRowSelection(TimelineRowAddress anchor) {
     claimSelection(TimelineSelectionKind.rows);
     _rowSelectionAnchor = anchor;
@@ -4084,7 +4084,59 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The selected rows that may be DUPLICATED (⑨'s 복사).
+  ///
+  /// The stand-downs are [duplicateActiveLayer]'s, read off the same three
+  /// predicates rather than restated: a track-owned SE row has no clipboard
+  /// shape, a per-cut singleton cannot have a second, and an attach row's
+  /// copy would double-link its base's cels.
+  List<LayerId> duplicatableSelectedLayerIds() {
+    final byId = {for (final layer in layers) layer.id: layer};
+    final ids = <LayerId>[];
+    for (final row in rowSelection.value) {
+      if (row is! LayerRowAddress) {
+        continue;
+      }
+      final layer = byId[row.layerId];
+      if (layer != null &&
+          !ids.contains(layer.id) &&
+          layerKindIsClipboardCopyable(layer.kind) &&
+          !layerKindIsSingletonPerCut(layer.kind) &&
+          !isAttachedLayer(layer)) {
+        ids.add(layer.id);
+      }
+    }
+    return ids;
+  }
+
+  /// ⑨: every selected row duplicated, in ONE undo — the rename's twin.
+  void duplicateSelectedLayers() {
+    final cut = activeCutOrNull;
+    final ids = duplicatableSelectedLayerIds();
+    if (cut == null || ids.isEmpty) {
+      return;
+    }
+    LayerId? landed;
+    _historyManager.runAsOneStep('Duplicate rows', () {
+      for (final layerId in ids) {
+        landed = _cutCommandCoordinator.duplicateLayer(
+          cutId: cut.id,
+          sourceLayerId: layerId,
+        );
+      }
+    });
+    _refreshAfterCutCommand(preferredActiveLayerId: landed);
+    notifyListeners();
+  }
+
+  /// ⑰'s law, applied to 복사: the verb asks WHAT IS SELECTED first and
+  /// falls back to the row you are standing on. Every caller — the pill
+  /// button, a shortcut — inherits that without asking twice.
   void duplicateActiveLayer() {
+    if (duplicatableSelectedLayerIds().isNotEmpty) {
+      duplicateSelectedLayers();
+      return;
+    }
     final activeLayer = this.activeLayer;
     // Track-owned SE rows: duplication stands down (same clipboard-shape
     // reason as copyActiveLayer); attach rows too (v1 — a duplicate would
@@ -4856,6 +4908,20 @@ class EditorSessionManager extends ChangeNotifier {
   List<LayerId>? _rowDragSeOrder;
   List<EffectId>? _rowDragEffectOrder;
 
+  /// ㊵: the rows a drag on [movingId] carries because they are SELECTED.
+  ///
+  /// Empty unless the pressed row is itself in the selection — a drag that
+  /// starts outside one is an ordinary single-row move, and ⑨ already made
+  /// that press a fresh SELECT rather than a move. Only layer rows count:
+  /// lanes and headers ride their layer, they do not re-order.
+  Set<LayerId> _rowSelectionCarriedBy(LayerId movingId) {
+    final ids = <LayerId>{
+      for (final row in rowSelection.value)
+        if (row is LayerRowAddress) row.layerId,
+    };
+    return ids.contains(movingId) ? ids : const <LayerId>{};
+  }
+
   void beginLayerRowDrag(LayerRowDragSubject subject) {
     _rowDragPlan = null;
     _rowDragSeOrder = null;
@@ -4982,6 +5048,7 @@ class EditorSessionManager extends ChangeNotifier {
             stack: cut.layers,
             movingId: subject.layerId,
             insertAt: insertAt,
+            alsoMoving: _rowSelectionCarriedBy(subject.layerId),
           );
     _rowDragPlan = plan;
     layerRowDrag.value = LayerRowDragState(
@@ -5034,6 +5101,7 @@ class EditorSessionManager extends ChangeNotifier {
       stack: cut.layers,
       movingId: subject.layerId,
       targetId: targetId,
+      alsoMoving: _rowSelectionCarriedBy(subject.layerId),
     );
     if (plan == null) {
       // Nothing there can swallow it — an SE row, a camera row, a base that

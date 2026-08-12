@@ -786,7 +786,6 @@ Widget timelineRowCellsPaintArea({
   required ValueChanged<LayerId> onSelectLayer,
   required ValueChanged<int> onSelectFrame,
   void Function(LayerId layerId, int frameIndex)? onActivateCell,
-  bool Function(int frameIndex)? suppressPointerDownSelect,
   ValueListenable<int>? windowBucket,
   double viewportMainExtent = 0,
   Object? coverageIdentity,
@@ -837,11 +836,12 @@ Widget timelineRowCellsPaintArea({
       if (!inWindow(frameIndex)) {
         return;
       }
-      // A press INSIDE the frame-range selection initiates a MOVE — it
-      // must not re-seek the playhead first (UI-R10 #12).
-      if (!(suppressPointerDownSelect?.call(frameIndex) ?? false)) {
-        select(frameIndex);
-      }
+      // ㉟-a: a tap picks, including a tap inside the selection. The
+      // "don't re-seek, this press is a move" guard that used to stand here
+      // (UI-R10 #12) has nothing left to catch — ㉟ moved the pick to the
+      // release, which a drag never reaches — and the still tap it did
+      // catch is the one 「선택 안을 클릭해도 사라진다」 asks to clear.
+      select(frameIndex);
     },
     child: GestureDetector(
       behavior: HitTestBehavior.opaque,

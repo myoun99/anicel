@@ -1134,6 +1134,10 @@ class _TimelineTabHostState extends State<TimelineTabHost> {
             unawaited(renameActiveLayerWithDialog(context, _session)),
         onDeleteLayer: () =>
             unawaited(deleteActiveLayerWithDialog(context, _session)),
+        // F: the shared delete's ROW rung keeps the confirmation the loose
+        // layer button used to carry.
+        onDeleteRowSelection: () =>
+            unawaited(deleteRowSelectionWithDialog(context, _session)),
         onEditInstance: _editActiveInstance,
         onCreateInstance: _createActiveInstance,
         hiddenSections: widget.hiddenSections,

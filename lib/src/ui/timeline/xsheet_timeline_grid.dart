@@ -32,6 +32,7 @@ import 'timeline_exposure_comma_drag_policy.dart';
 import '../../models/project_frame_rate.dart';
 import '../../models/timeline_row_address.dart';
 import 'timeline_row_cross_offset.dart';
+import 'timeline_selected_exposure_outline.dart' show TimelineSelectionRing;
 import 'effect_lane_policy.dart' show parseEffectLaneId;
 import 'layer_drop_policy.dart'
     show effectHeaderRowsOf, effectStepsBetween, slotForSteps;
@@ -2741,7 +2742,11 @@ class _LayerHeader extends StatelessWidget {
           // saturation — the sheet used to paint `secondaryContainer` at
           // full strength and read a shade louder than the rail for the
           // same state.
-          color: active || selected
+          //
+          // ㊴: the wash belongs to the ACTIVE column alone. A SELECTED one
+          // takes the ring instead (below) — the sheet is the rail turned on
+          // its side, so it splits the two states the same way.
+          color: active
               ? Color.alphaBlend(
                   railSelectedRowColor(colorScheme),
                   colorScheme.surfaceContainerHighest,
@@ -3011,7 +3016,21 @@ class _LayerHeader extends StatelessWidget {
     // Section boundaries draw ONE shared hairline like every column
     // boundary (R3 feedback #6) — the extra 2px overlay double-lined them;
     // the band above carries the section identity.
-    return header;
+    if (!selected) {
+      return header;
+    }
+    // ㊴, transposed: the selection ring traces the column the wash would
+    // have filled, so a column can read as ACTIVE and SELECTED at once.
+    return Stack(
+      children: [
+        header,
+        const Positioned.fill(
+          child: TimelineSelectionRing(
+            key: ValueKey<String>('xsheet-column-selection-ring'),
+          ),
+        ),
+      ],
+    );
   }
 
   /// The header's opacity slider, live-following the session's drag preview

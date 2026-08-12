@@ -423,6 +423,9 @@ class _StoryboardTabHostState extends State<StoryboardTabHost> {
                 unawaited(renameActiveLayerWithDialog(context, _session)),
             onDeleteLayer: () =>
                 unawaited(deleteActiveLayerWithDialog(context, _session)),
+            // F: the shared delete's ROW rung, confirmation included.
+            onDeleteRowSelection: () =>
+                unawaited(deleteRowSelectionWithDialog(context, _session)),
             // ⑬: the same dispatch Edit Instance takes. Standing on the
             // transition row, `＋` makes a span — that row's only creation
             // verb, and the one the rail's own `＋` carried before #926

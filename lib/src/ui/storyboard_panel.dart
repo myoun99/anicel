@@ -61,6 +61,8 @@ import 'timeline/transform_lane_policy.dart'
         transformGroupHeader,
         transformGroupHeaderLane,
         transformPropertyLanes;
+import 'input/app_input_settings.dart' show AppInput;
+import 'widgets/instant_tap_region.dart' show InstantTapRegion;
 import 'timeline/timeline_drag_preview.dart';
 import 'timeline/timeline_cell_style.dart'
     show
@@ -4238,19 +4240,22 @@ class _StoryboardTransitionRow extends StatelessWidget {
                     }
                     onEditSpan(frame);
                   },
-            child: Listener(
+            // ㉟-b: the strip PICKS ON THE RELEASE, like every other cell in
+            // the app (유저 08-12: 「스토리보드 띠도 탭으로 맞춰줘」). It used
+            // to be a raw pointer-down of its own — the third hand-written
+            // copy of a policy the timeline had already named — so it takes
+            // the shared region instead of a fourth.
+            child: InstantTapRegion(
               behavior: HitTestBehavior.translucent,
-              onPointerDown: (event) {
-                if (event.buttons != 0 &&
-                    (event.buttons & kPrimaryButton) == 0) {
-                  return;
-                }
-                final frame = frameAt(event.localPosition);
+              pressSeeksFor: AppInput.timelineCellPressSeeks,
+              onTap: (localPosition) {
+                final frame = frameAt(localPosition);
                 if (frame == null) {
                   return;
                 }
                 onRowFramePress?.call(LayerRowAddress(layer.id), frame);
               },
+              child: const SizedBox.expand(),
             ),
           ),
         ),
@@ -4571,22 +4576,20 @@ class _StoryboardSeRow extends StatelessWidget {
         spans.add(
           Positioned.fill(
             key: ValueKey<String>('storyboard-se-press-${layer.id}'),
-            child: Listener(
+            // ㉟-b, the SE strip's half — same shared region, same reason.
+            child: InstantTapRegion(
               behavior: HitTestBehavior.translucent,
-              onPointerDown: (event) {
-                if (event.buttons != 0 &&
-                    (event.buttons & kPrimaryButton) == 0) {
-                  return;
-                }
+              pressSeeksFor: AppInput.timelineCellPressSeeks,
+              onTap: (localPosition) {
                 if (timelineScale.pixelsPerFrame <= 0) {
                   return;
                 }
                 onRowFramePress!(
                   LayerRowAddress(layer.id),
-                  (event.localPosition.dx / timelineScale.pixelsPerFrame)
-                      .floor(),
+                  (localPosition.dx / timelineScale.pixelsPerFrame).floor(),
                 );
               },
+              child: const SizedBox.expand(),
             ),
           ),
         );

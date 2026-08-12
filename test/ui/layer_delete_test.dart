@@ -13,17 +13,23 @@ import 'package:anicel/src/models/project.dart';
 import 'package:anicel/src/models/project_id.dart';
 import 'package:anicel/src/models/track.dart';
 import 'package:anicel/src/models/track_id.dart';
+import 'package:anicel/src/models/timeline_row_address.dart';
 import 'package:anicel/src/services/project_repository.dart';
+import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/text/vertical_writing_text.dart';
 
 import 'flyout_test_helpers.dart';
 
-// ⑰ (2026-08-12): Delete Layer left the Layer FLYOUT — 유저: 「밖에
-// 딜리트레이어있으니 버튼내부에있는 딜리트레이어 삭제」. The verb did not
-// change and neither did anything below; only the door did, from a menu entry
-// to the bar button that was already beside it.
-const _deleteButtonKey = ValueKey<String>('timeline-delete-layer-button');
+// ⑰ (2026-08-12): Delete Layer left the Layer FLYOUT, then left its own
+// button too. 유저: 「딜리트 = 버튼 하나 … 레이어를 선택했으면 레이어 삭제」.
+//
+// The verb never changed and nothing below it did either — only the door,
+// twice: a menu entry, then the bar button beside the `＋`, and now the ONE
+// delete in the shared pill, which asks what is selected. Everything this
+// file pins (enablement, the dialog, cancel, confirm, undo/redo, the rail
+// afterwards) is the same flow through that door.
+const _deleteButtonKey = ValueKey<String>('shared-delete-button');
 const _dialogKey = ValueKey<String>('delete-layer-dialog');
 const _cancelButtonKey = ValueKey<String>('delete-layer-cancel-button');
 const _confirmButtonKey = ValueKey<String>('delete-layer-confirm-button');
@@ -48,25 +54,32 @@ bool _barButtonEnabled(WidgetTester tester, ValueKey<String> key) =>
     tester.widget<IconButton>(find.byKey(key)).onPressed != null;
 
 void main() {
-  testWidgets('Delete Layer is ON the bar and NOT in the Layer flyout — one '
-      'door, not two', (tester) async {
+  testWidgets('ONE delete: no layer button of its own, and no menu entry '
+      'either', (tester) async {
     await tester.pumpWidget(const AnicelApp());
 
+    // The shared pill's delete is the only door left.
     expect(find.byKey(_deleteButtonKey), findsOneWidget);
-    // The menu entry beside it is gone: it was a second way to the same verb,
-    // which is the shape ⑰ removes everywhere.
+    // ⑰ removed the menu entry first…
     expect(
       find.byKey(const ValueKey<String>('delete-layer-button')),
       findsNothing,
     );
+    // …and then the loose bar button, once ⑨ gave the shared verb a way to
+    // name a layer at all.
+    expect(
+      find.byKey(const ValueKey<String>('timeline-delete-layer-button')),
+      findsNothing,
+    );
   });
 
-  testWidgets('R28 #14: Delete Layer is ENABLED with one layer — the cut '
+  testWidgets('R28 #14: deleting is ENABLED with one layer — the cut '
       'may end up empty', (tester) async {
     await _pumpHome(
       tester,
       project: _project(layers: [_layerModel(_layerAId, 'A')]),
     );
+    await _selectActiveRow(tester);
 
     expect(
       _barButtonEnabled(tester, _deleteButtonKey),
@@ -75,10 +88,9 @@ void main() {
     );
   });
 
-  testWidgets('Delete Layer is enabled with two or more layers', (
-    tester,
-  ) async {
+  testWidgets('deleting is enabled with two or more layers', (tester) async {
     await _pumpHome(tester);
+    await _selectActiveRow(tester);
 
     expect(_barButtonEnabled(tester, _deleteButtonKey), isTrue);
   });
@@ -88,6 +100,10 @@ void main() {
   ) async {
     late ProjectRepository repository;
     await _pumpHome(tester, onRepositoryCreated: (repo) => repository = repo);
+    // Name the row first: with nothing selected the one delete answers a
+    // lower rung (the frame block under the playhead), which is a different
+    // verb and asks nothing.
+    await _selectActiveRow(tester);
 
     await _tapKey(tester, _deleteButtonKey);
 
@@ -235,7 +251,27 @@ Future<void> _selectLayer(WidgetTester tester, LayerId layerId) async {
   await tester.pumpAndSettle();
 }
 
+/// ⑰/F: deleting a layer is now SELECT THE ROW, then press the one delete.
+///
+/// Standing on a row is not selecting it — ⑨ made those two states
+/// independent on purpose — so the flow has a step the old loose button did
+/// not. The selection is set through the session rather than nudged through
+/// the rail here: how a row GETS selected is `row_selection_test`'s subject
+/// (and it drives the real drag), while this file's subject is what the
+/// delete then does.
+Future<void> _selectActiveRow(WidgetTester tester) async {
+  final session = tester
+      .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+      .session;
+  // The real verb, not the notifier: `beginRowSelection` is what the rail's
+  // select drag calls, and it claims the selection domain as well as filling
+  // it — poking the notifier alone leaves the rest of the session behind.
+  session.beginRowSelection(LayerRowAddress(session.activeLayerId!));
+  await tester.pumpAndSettle();
+}
+
 Future<void> _deleteActiveLayer(WidgetTester tester) async {
+  await _selectActiveRow(tester);
   await _tapKey(tester, _deleteButtonKey);
   await _tapKey(tester, _confirmButtonKey);
 }

@@ -11,6 +11,8 @@ import 'package:anicel/src/ui/timeline/timeline_grid_metrics.dart';
 import 'package:anicel/src/ui/timeline/timeline_row_cells_painter.dart';
 import 'package:anicel/src/ui/widgets/field_slider.dart';
 
+import 'package:anicel/src/ui/editor_workspace.dart';
+
 import 'helpers/vertical_text_finder.dart';
 import 'ui/storyboard_cut_block_probe.dart';
 import 'ui/timeline/timeline_cell_probe.dart';
@@ -2777,9 +2779,16 @@ Line 8''';
 
     expect(find.text('Pasted'), findsWidgets);
 
+    // ⑰/F: the ONE delete asks what is selected, so the row is named first.
+    // Standing on it is not naming it — ⑨ made those two states independent.
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+    session.beginRowSelection(LayerRowAddress(session.activeLayerId!));
+    await tester.pumpAndSettle();
     await _tapToolbarButton(
       tester,
-      const ValueKey<String>('timeline-delete-layer-button'),
+      const ValueKey<String>('shared-delete-button'),
     );
     await _tapToolbarButton(
       tester,
@@ -2845,9 +2854,15 @@ Line 8''';
 
     expect(find.text('Dup'), findsWidgets);
 
+    // ⑰/F: name the row, then press the ONE delete.
+    final session = tester
+        .widget<EditorWorkspace>(find.byType(EditorWorkspace))
+        .session;
+    session.beginRowSelection(LayerRowAddress(session.activeLayerId!));
+    await tester.pumpAndSettle();
     await _tapToolbarButton(
       tester,
-      const ValueKey<String>('timeline-delete-layer-button'),
+      const ValueKey<String>('shared-delete-button'),
     );
     await _tapToolbarButton(
       tester,

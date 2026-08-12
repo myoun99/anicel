@@ -138,6 +138,7 @@ class TimelineActionToolbar extends StatelessWidget {
     required this.session,
     required this.onAddLayer,
     required this.onRenameLayer,
+    this.onDeleteRowSelection,
     required this.onDeleteLayer,
     this.onEditInstance,
     this.resolveCanEditInstance,
@@ -159,6 +160,10 @@ class TimelineActionToolbar extends StatelessWidget {
   final VoidCallback onAddLayer;
 
   final VoidCallback onRenameLayer;
+
+  /// F: the shared delete's ROW rung, with its confirmation. Null lets the
+  /// rung run unconfirmed (a host with no dialogs to show).
+  final VoidCallback? onDeleteRowSelection;
   final VoidCallback onDeleteLayer;
 
   /// Opens the unified instance-edit dialog for the active layer at the
@@ -656,26 +661,23 @@ class TimelineActionToolbar extends StatelessWidget {
           onPressed: () => session.addLayerOfKind(LayerKind.animation),
           entriesBuilder: _addLayerEntries,
         ),
-        // ⚠️THE LAYER DELETE STAYS HERE UNTIL ⑨ LANDS.
+        // ⛔THE LAYER DELETE IS GONE FROM HERE — ⑰ is finished.
         //
-        // ⑰ folds every delete into the shared pill, and that pill asks WHAT
-        // IS SELECTED — but rows have no selection yet (⑨ builds it), so
-        // `DeleteSubject.layers` is a rung nothing can reach. Removing this
-        // button on the strength of the unified one would leave layer deletion
-        // with NO entrance at all: the successor cannot yet do the
-        // predecessor's job, which is the one condition that makes deleting a
-        // predecessor wrong ([[duplication-program]]).
+        // It stood beside this `＋` on ONE stated condition: the shared
+        // delete asks WHAT IS SELECTED, and `DeleteSubject.layers` was a rung
+        // nothing could reach while rows had no selection. ⑨ (#952) built
+        // that selection and F carried the confirmation across
+        // (`onDeleteRowSelection`), so the successor does this button's whole
+        // job — including asking first. Deleting the predecessor is
+        // [[duplication-program]]'s last step, and it waited for the one
+        // condition that makes it safe rather than for nobody to notice.
         //
-        // ⛔The MENU copy is gone regardless (유저: 「밖에 딜리트레이어있으니
-        // 버튼내부에있는 딜리트레이어 삭제」) — that was a second door onto
-        // this same button, not a door of its own.
-        _iconButton(
-          key: const ValueKey<String>('timeline-delete-layer-button'),
-          tooltip: AppText.strings.tlDeleteLayer,
-          icon: Icons.delete_outline,
-          danger: true,
-          onPressed: session.canDeleteActiveLayer ? onDeleteLayer : null,
-        ),
+        // Deleting a layer is now: select the row, press the one delete —
+        // 「딜리트 = 버튼 하나 … 레이어를 선택했으면 레이어 삭제」 (⑰).
+        //
+        // ⛔The CUT delete keeps its own button for the reason this one no
+        // longer needs one: cut SELECTION exists only on the storyboard's
+        // axis, so from here the shared pill can never be handed a cut.
       ],
     ),
   );
@@ -693,7 +695,21 @@ class TimelineActionToolbar extends StatelessWidget {
   /// noun, which is why the same word did different things depending on where
   /// you reached for it — and why nothing on the bar could delete a CUT while
   /// the cut menu was closed.
-  Widget _sharedPill() => _StaticCommandGroup(
+  /// ⚠️Subscribed to the ROW SELECTION, and it has to be.
+  ///
+  /// The subject this pill asks for is mostly session state that arrives with
+  /// a notify — but ⑨'s row selection is a [ValueNotifier] on purpose (it
+  /// grows per pointer move, and a notify per move would rebuild every panel).
+  /// Without this the pill's `deleteSubject` was only re-read when something
+  /// ELSE happened to notify, so selecting rows left the one delete greyed
+  /// out — the state was right and the button had not looked again (㉞'s
+  /// shape, one floor up).
+  Widget _sharedPill() => ValueListenableBuilder<List<TimelineRowAddress>>(
+    valueListenable: session.rowSelection,
+    builder: (context, _, _) => _sharedPillBody(),
+  );
+
+  Widget _sharedPillBody() => _StaticCommandGroup(
     rebuildKey: (session.deleteSubject, AppText.settings.value.programLanguage),
     builder: (context) => CommandPill(
       key: const ValueKey<String>('timeline-toolbar-shared-group'),
@@ -703,9 +719,16 @@ class TimelineActionToolbar extends StatelessWidget {
           tooltip: AppText.strings.tlDeleteCell,
           icon: Icons.delete_outline,
           danger: true,
-          onPressed: session.deleteSubject == DeleteSubject.nothing
-              ? null
-              : session.deleteSelectionSubject,
+          // F: the ROWS rung asks first. It inherited that from the loose
+          // layer button this round folded in — a delete that used to
+          // confirm must not stop confirming because its button moved. The
+          // cell rung goes straight through, as it always has.
+          onPressed: switch (session.deleteSubject) {
+            DeleteSubject.nothing => null,
+            DeleteSubject.layers when onDeleteRowSelection != null =>
+              onDeleteRowSelection,
+            _ => session.deleteSelectionSubject,
+          },
         ),
       ],
     ),

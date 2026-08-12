@@ -537,8 +537,8 @@ void main() {
     expect(ended, 1, reason: 'the release commits exactly once');
   });
 
-  testWidgets('a press INSIDE the selection never seeks — sparse rows '
-      'follow the painter rule now (UI-R22 #2)', (tester) async {
+  testWidgets('a TAP inside the selection picks; a DRAG from inside it '
+      'still picks nothing (㉟-a rewrites UI-R22 #2)', (tester) async {
     final cursor = ValueNotifier<int>(0);
     final selection = ValueNotifier<TimelineFrameRangeSelection?>(
       const TimelineFrameRangeSelection(
@@ -580,14 +580,31 @@ void main() {
     final gestureLayer = find.byKey(
       const ValueKey<String>('timeline-range-gesture-se-1'),
     );
-    // Press INSIDE the selected span (cell 1): no seek.
+    // A TAP inside the selected span (cell 1) now picks it. UI-R22 #2 used
+    // to refuse this so that a press inside a selection could start a MOVE
+    // without the playhead jumping first — but 유저 08-12 asks the opposite
+    // of a TAP: 「선택 안을 클릭해도 사라진다」, and the host clears from the
+    // very callback this seek rides.
+    final inside = tester.getTopLeft(gestureLayer) + const Offset(24 + 48, 26);
     var gesture = await tester.startGesture(
-      tester.getTopLeft(gestureLayer) + const Offset(24 + 48, 26),
+      inside,
       kind: PointerDeviceKind.mouse,
     );
     await gesture.up();
     await tester.pump();
-    expect(seeks, isEmpty, reason: 'inside the selection = a move press');
+    expect(seeks, [1], reason: 'a tap picks, wherever it lands');
+
+    // ...and the half of UI-R22 #2 that SURVIVES, which is the half that
+    // made deleting the old guard safe: a drag from inside the selection is
+    // the move, and it picks nothing. Travel is what tells them apart now,
+    // so no caller has to declare its intent up front.
+    seeks.clear();
+    gesture = await tester.startGesture(inside, kind: PointerDeviceKind.mouse);
+    await gesture.moveBy(const Offset(60, 0));
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+    expect(seeks, isEmpty, reason: 'a move drag never became a pick');
 
     // Press OUTSIDE (cell 6): seeks as always.
     gesture = await tester.startGesture(

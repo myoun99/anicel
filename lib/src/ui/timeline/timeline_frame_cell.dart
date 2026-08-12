@@ -32,7 +32,6 @@ class TimelineFrameCell extends StatelessWidget {
     required this.onSelectLayer,
     required this.onSelectFrame,
     this.onActivateCell,
-    this.suppressPointerDownSelect,
     this.axis = Axis.horizontal,
     this.width,
     this.height,
@@ -63,11 +62,12 @@ class TimelineFrameCell extends StatelessWidget {
   /// double-tap recognizer would delay single-tap selection otherwise.
   final void Function(LayerId layerId, int frameIndex)? onActivateCell;
 
-  /// A press INSIDE the frame-range selection initiates a MOVE — it must
-  /// not re-seek the playhead first (UI-R22 #2, the painter rows'
-  /// UI-R10 #12 rule unified onto the sparse cells). True suppresses the
-  /// pointer-down select for this cell.
-  final bool Function(int frameIndex)? suppressPointerDownSelect;
+  /// ⛔`suppressPointerDownSelect` is GONE (㉟-a). It existed so a press
+  /// inside the frame-range selection could start a move without the
+  /// playhead jumping first (UI-R10 #12 / UI-R22 #2) — a job ㉟ took over
+  /// wholesale by picking on the RELEASE, where a drag never arrives. What
+  /// was left of it was suppressing the still tap inside a selection, and
+  /// that tap is supposed to clear (유저 08-12).
 
   /// The frame axis direction: horizontal in the layer timeline, vertical
   /// in the X-sheet. Controls which edges of an exposure block round.
@@ -224,17 +224,15 @@ class TimelineFrameCell extends StatelessWidget {
     // the timeline alone before it had a name.
     return InstantTapRegion(
       pressSeeksFor: AppInput.timelineCellPressSeeks,
-      onTap: (_) {
-        // A press INSIDE the frame-range selection initiates a MOVE — it
-        // must not re-seek the playhead first (UI-R10 #12). ⚠️A tap that
-        // travelled far enough to BE a move no longer reaches here at all
-        // (㉟), so this now only holds back the still tap inside a
-        // selection — 「선택 안을 클릭해도 사라진다」 vs UI-R10 #12 is a
-        // collision only the user can settle, and #12 is the older law.
-        if (!(suppressPointerDownSelect?.call(frameIndex) ?? false)) {
-          select();
-        }
-      },
+      // ㉟-a: a tap picks, including a tap INSIDE the selection.
+      //
+      // UI-R10 #12 used to hold this back so that pressing inside a
+      // selection could start a MOVE without the playhead jumping first.
+      // ㉟ retired that job: a press that travels never reaches this
+      // callback at all, so the only thing the guard still caught was a
+      // STILL tap inside a selection — and 「선택 안을 클릭해도 사라진다」
+      // (유저 08-12) says that one clears, exactly as it does on a rail row.
+      onTap: (_) => select(),
       child: cell,
     );
   }

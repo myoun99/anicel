@@ -47,19 +47,17 @@ void main() {
       find.byKey(const ValueKey<String>('shared-delete-button')),
       findsOneWidget,
     );
-    // ⚠️And the two row-level deletes are still reachable, deliberately.
-    //
-    // ⑰ wants them folded in as well, and they will be — but the shared verb
-    // reaches a LAYER through a row selection ⑨ has not built yet, and a CUT
-    // through a cut selection that only exists on the storyboard's axis.
-    // Removing them on the strength of the unified button would have left
-    // layer deletion with no entrance at all and cut deletion unreachable from
-    // the timeline. Both tests below existed before this round and caught
-    // exactly that.
+    // ⚠️The LAYER delete has since been folded in too (F). It stayed only
+    // until the shared verb could name a layer at all — ⑨ built that row
+    // selection, and the confirmation moved across with it — so the loose
+    // button held nothing this one cannot do.
     expect(
       find.byKey(const ValueKey<String>('timeline-delete-layer-button')),
-      findsOneWidget,
+      findsNothing,
     );
+    // ⛔The CUT delete stays, and for the reason the layer button no longer
+    // has: cut selection lives on the storyboard's axis alone, so from the
+    // timeline the shared verb can never be handed a cut.
     expect(
       find.byKey(const ValueKey<String>('delete-cut-button')),
       findsOneWidget,

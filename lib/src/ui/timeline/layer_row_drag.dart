@@ -385,8 +385,8 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
         ? ((widget.grabOffsetWithinRun + main) / extent).clamp(0.0, 1.0)
         : 0.5;
     // ⑨: which of the two drags this is, decided ONCE at the press and not
-    // re-asked — the same reason the cells decide it at pointer-down
-    // (`suppressPointerDownSelect`). A drag that changed its mind halfway
+    // re-asked — the same reason the cells decide it at the press too
+    // (their range gesture's `isInSelection`). A drag that changed its mind halfway
     // would be a row moving because the selection happened to grow under it.
     final inSelection = widget.hooks.isInRowSelection?.call(widget.subject);
     _selecting = inSelection == false;
