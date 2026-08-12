@@ -58,7 +58,7 @@ fi
 
 info=$("$GH" pr view "$PR" --repo "$REPO" \
   --json headRefName,mergeStateStatus,statusCheckRollup \
-  --jq '"\(.headRefName)\t\(.mergeStateStatus)\t\([.statusCheckRollup[] | .conclusion // "PENDING"] | join(","))"' 2>/dev/null)
+  --jq '"\(.headRefName)\t\(.mergeStateStatus)\t\([.statusCheckRollup[] | if (.conclusion // "") == "" then "PENDING" else .conclusion end] | join(","))"' 2>/dev/null)
 if [ -z "$info" ]; then
   echo "could not read PR #$PR from $REPO." >&2
   exit 2
