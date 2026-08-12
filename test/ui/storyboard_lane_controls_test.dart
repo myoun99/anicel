@@ -330,11 +330,17 @@ void main() {
 
     // The rail lists slots TOP-DOWN, so 'lane-se2' (the higher slot) is the
     // first display row and downward is toward 'lane-se'.
+    //
+    // ④: the landing is the gap the POINTER is nearest, so WHERE in the row
+    // the drag began counts — and this one begins on the visibility button,
+    // not in the row's middle. The travel therefore clears the next
+    // boundary from anywhere in the row's upper half rather than being
+    // exactly one row.
     await tester.drag(
       find.byKey(
         const ValueKey<String>('storyboard-layer-visibility-lane-se2'),
       ),
-      const Offset(0, 30),
+      const Offset(0, 50),
     );
     await tester.pumpAndSettle();
 

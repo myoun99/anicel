@@ -187,11 +187,27 @@ LayerDropPlan? resolveLayerDropOnRow({
       forceJoinFolderId: targetId,
     );
   }
+  // ⑤ (user, 2026-08-12): 「어태치 장착 면은 두 행의 상대 위치가 정한다.
+  // 아래에서 위로 붙이면 아래쪽 어태치여야 하는데 지금은 무조건 위쪽
+  // 어태치가 된다」.
+  //
+  // A rider's side is a fact about the PICTURE — which of the two composites
+  // over the other — so it has to be the side the row was already on. It was
+  // written here as a constant `above`, which meant carrying a row up onto
+  // its new base silently flipped it over that base.
+  //
+  // The stack position follows the same answer rather than being decided
+  // separately: a below rider sits under its base, an above one over it, so
+  // one comparison settles both and they cannot disagree.
+  final fromBelow = run.start < targetIndex;
   return resolveLayerDrop(
     stack: stack,
     movingId: movingId,
-    insertAt: targetIndex + 1,
+    insertAt: fromBelow ? targetIndex : targetIndex + 1,
     forceMountBaseId: targetId,
+    forceMountPlacement: fromBelow
+        ? AttachedPlacement.below
+        : AttachedPlacement.above,
   );
 }
 
@@ -208,6 +224,12 @@ LayerDropPlan? resolveLayerDrop({
   /// R5 #15: the base the run mounts on, for the same reason — a base with
   /// no riders yet has no inside for a caret to land in.
   LayerId? forceMountBaseId,
+
+  /// ⑤: which side of that base's picture the rider takes. Only
+  /// [resolveLayerDropOnRow] passes it, and it reads the answer off the two
+  /// rows' relative position — a gap says its own side ([_slotInsideGroup]),
+  /// but a drop ON a row has no gap to ask.
+  AttachedPlacement forceMountPlacement = AttachedPlacement.above,
 }) {
   final run = layerDragRun(stack, movingId);
   if (run == null || insertAt < 0 || insertAt > stack.length) {
@@ -215,6 +237,22 @@ LayerDropPlan? resolveLayerDrop({
   }
   if (insertAt > run.start && insertAt < run.endExclusive) {
     return null; // Inside itself.
+  }
+  // ④ (user, 2026-08-12): 「드래그 시작 시 자기 행 위에 뜨는 강조선 삭제 —
+  // 위치가 실제로 바뀌는 상황에서만 뜬다」.
+  //
+  // A run owns the gaps at BOTH its ends, and lifting it out to put it back
+  // there is not a landing. It used to resolve to a plan whose order was
+  // the order it started with, so the caret was drawn the instant a drag
+  // began — announcing a move nobody had made yet.
+  //
+  // The forced intents are exempt: dropping ON a row says something a gap
+  // cannot ("ride this base", "go inside this folder"), and that intent is
+  // real even when the row lands exactly where it already sat.
+  if (forceJoinFolderId == null &&
+      forceMountBaseId == null &&
+      (insertAt == run.start || insertAt == run.endExclusive)) {
+    return null;
   }
   final moving = stack.firstWhere((layer) => layer.id == movingId);
   final movingSection = timelineSectionForLayerKind(moving.kind);
@@ -292,7 +330,7 @@ LayerDropPlan? resolveLayerDrop({
   final target = insideGroup ??
       (forceMountBaseId == null
           ? null
-          : (baseId: forceMountBaseId, placement: AttachedPlacement.above));
+          : (baseId: forceMountBaseId, placement: forceMountPlacement));
 
   ({LayerId layerId, LayerId baseId, AttachedPlacement placement})? mount;
   if (target != null) {

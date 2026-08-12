@@ -217,6 +217,7 @@ class LayerRowDragTarget extends StatelessWidget {
     required this.onCrossed,
     required this.child,
     this.isLastRow = false,
+    this.grabOffsetWithinRun = 0,
   });
 
   /// What this row would move if it were grabbed.
@@ -231,6 +232,21 @@ class LayerRowDragTarget extends StatelessWidget {
   /// width on the sheet) — the drag counts rows in these, never in an
   /// assumed pitch.
   final double rowExtent;
+
+  /// How much of [rowExtent] lies BEFORE this widget's own box.
+  ///
+  /// Zero everywhere the handle IS the run — every timeline rail row. The
+  /// storyboard's V row is the exception and the reason this exists: its
+  /// pitch is the whole track GROUP (S rows, the transition row, open
+  /// lanes) while the widget the pointer grabs is the V label row sitting
+  /// near that group's end. Measured, 2026-08-12: a press in the V row's
+  /// middle reported 32 of a 154px run — a fifth of the way in, when the
+  /// pointer was really four fifths down.
+  ///
+  /// It did not matter while the caret was a count of TRAVEL. Since ④ the
+  /// caret is where the pointer IS, so the two boxes have to be the same
+  /// box or the answer is off by most of a row.
+  final double grabOffsetWithinRun;
 
   /// The rail's own direction.
   final Axis axis;
@@ -271,6 +287,7 @@ class LayerRowDragTarget extends StatelessWidget {
       hooks: hooks,
       onCrossed: onCrossed,
       isLastRow: isLastRow,
+      grabOffsetWithinRun: grabOffsetWithinRun,
       child: child,
     );
   }
@@ -281,6 +298,7 @@ class _LayerRowDragBody extends StatefulWidget {
     required this.subject,
     required this.slotBefore,
     required this.rowExtent,
+    required this.grabOffsetWithinRun,
     required this.axis,
     required this.hooks,
     required this.onCrossed,
@@ -291,6 +309,7 @@ class _LayerRowDragBody extends StatefulWidget {
   final LayerRowDragSubject subject;
   final int slotBefore;
   final double rowExtent;
+  final double grabOffsetWithinRun;
   final Axis axis;
   final TimelineRowDragHooks hooks;
   final void Function(int crossedRows, int? onRow) onCrossed;
@@ -318,13 +337,26 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     final main = widget.axis == Axis.horizontal
         ? localPosition.dy
         : localPosition.dx;
-    _grabFraction = extent > 0 ? (main / extent).clamp(0.0, 1.0) : 0.5;
+    // Measured in the RUN, not in the grabbed widget — see
+    // [LayerRowDragTarget.grabOffsetWithinRun]. The two are the same box
+    // everywhere except the storyboard's V row.
+    _grabFraction = extent > 0
+        ? ((widget.grabOffsetWithinRun + main) / extent).clamp(0.0, 1.0)
+        : 0.5;
     widget.hooks.onBegin(widget.subject);
     widget.onCrossed(0, null);
   }
 
   /// The row the pointer sits in and how far through it, measured from this
   /// row's leading edge.
+  ///
+  /// This and the caret's gap are the SAME measurement read at two
+  /// resolutions, and since ④ they cannot disagree: inside a boundary band
+  /// the nearest gap IS that boundary (`within < 0.3` rounds to this row's
+  /// own edge, `> 0.7` to the next one), and in the middle band the on-row
+  /// drop answers instead so the gap is never consulted. They used to
+  /// disagree — travel said "one place down" while the pointer was still in
+  /// the middle band — and which one you got depended on which path ran.
   int? _rowUnderPointer(double travelled) {
     final at = _grabFraction + travelled;
     final row = at.floor();
@@ -381,21 +413,26 @@ class _LayerRowDragBodyState extends State<_LayerRowDragBody> {
     if (widget.rowExtent <= 0) {
       return;
     }
-    // STEPS, not a raw row count, and symmetric in both directions.
+    // ④ (user, 2026-08-12): 「드롭은 커서 위치에 정확히 맞는다 — 아래 A / 위
+    // B에서 B를 잡고 살짝 내리면 A 아래에 강조선이 떠서는 안 된다. 커서가 A
+    // 아래에 가야 A 아래로 간다」.
     //
-    // A row sits between two gaps and BOTH of them are where it already is,
-    // so "one row of travel" is not one step: measured as `index +
-    // crossed`, dragging DOWN by a row lands on the gap directly under the
-    // row and moves nothing, while dragging up by the same distance moves
-    // one. Half a row commits a step either way now, and the surface adds
-    // the row's own gap back on the down side.
+    // The caret is the gap the POINTER is nearest, not a count of travel.
+    // Travel alone cannot answer it: half a row of travel used to commit a
+    // step, so nudging a row down claimed the gap under its neighbour while
+    // the pointer was still inside its own row.
+    //
+    // `at` is the pointer in ROWS from the dragged row's top edge, so the
+    // gap it is nearest is simply its round. A row owns TWO of those gaps —
+    // 0 above it and 1 below it — and neither is a move, which is the
+    // asymmetry [slotForSteps] documents; it is absorbed here instead of
+    // being carried in the caller's arithmetic.
     final travelled = _travelled / widget.rowExtent;
-    final magnitude = travelled.abs();
-    final steps = magnitude < 0.5 ? 0 : (magnitude + 0.5).floor();
-    widget.onCrossed(
-      travelled.isNegative ? -steps : steps,
-      _rowUnderPointer(travelled),
-    );
+    final nearestGap = (_grabFraction + travelled).round();
+    final steps = nearestGap > 1
+        ? nearestGap - 1
+        : (nearestGap < 0 ? nearestGap : 0);
+    widget.onCrossed(steps, _rowUnderPointer(travelled));
   }
 
   @override

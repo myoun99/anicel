@@ -1713,6 +1713,22 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
     return extent;
   }
 
+  /// How much of [_trackGroupExtent] stands ABOVE the V row — the rail draws
+  /// the transition row and then the S rows before it (④).
+  ///
+  /// The V row is the handle but the GROUP is the pitch, so the drag has to
+  /// be told where the handle sits inside the run; see
+  /// [LayerRowDragTarget.grabOffsetWithinRun]. Written as the same sum
+  /// [_trackGroupExtent] makes, minus the parts that come after, so the two
+  /// cannot drift apart.
+  double _trackGroupExtentAboveVRow(Track track) {
+    var extent = _transitionRowHeight;
+    for (var slot = 0; slot < _seSlotCount(track); slot += 1) {
+      extent += _seRowGroupExtent(track, slot);
+    }
+    return extent;
+  }
+
   /// The V row, made draggable to re-order the project's TRACKS (R5 #9).
   ///
   /// The rail lists tracks in the project's own order (the caller walks
@@ -1735,6 +1751,9 @@ class _StoryboardPanelState extends State<StoryboardPanel> {
       subject: TrackRowSubject(track.id),
       slotBefore: index,
       rowExtent: _trackGroupExtent(track),
+      // ④: the handle is the V row, the pitch is the whole group — so the
+      // drag is told how far into the group the handle starts.
+      grabOffsetWithinRun: _trackGroupExtentAboveVRow(track),
       axis: Axis.horizontal,
       hooks: hooks,
       isLastRow: index == trackCount - 1,
