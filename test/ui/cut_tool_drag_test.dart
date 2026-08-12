@@ -5,6 +5,7 @@ import 'package:anicel/src/models/brush_dab.dart';
 import 'package:anicel/src/models/brush_tip_shape.dart';
 import 'package:anicel/src/models/canvas_point.dart';
 import 'package:anicel/src/services/brush_frame_editing_coordinator.dart';
+import 'package:anicel/src/services/canvas_color_sampler.dart';
 import 'package:anicel/src/services/cut_piece_slot.dart';
 import 'package:anicel/src/services/history_manager.dart';
 import 'package:anicel/src/ui/brush/brush_canvas_panel.dart';
@@ -200,6 +201,53 @@ void main() {
     await env.setTool(CanvasTool.brush);
     await env.setTool(CanvasTool.cutStamp);
     expect(env.slot.piece, same(piece));
+  });
+
+  testWidgets('clicking with the stamp tile drops the piece, at once', (
+    tester,
+  ) async {
+    final env = await pumpPanel(tester, tool: CanvasTool.cutRect);
+    // Cut the painted bar.
+    await dragOnLayer(tester, const Offset(10, 30), const Offset(90, 50));
+    expect(env.slot.isNotEmpty, isTrue);
+
+    await env.setTool(CanvasTool.cutStamp);
+    final before = surfacePixelRgba(
+      env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
+      30,
+      140,
+    );
+    expect(before ?? 0, 0, reason: 'blank before the stamp');
+
+    // A tap far below the bar, on empty cel.
+    final canvas = find.byType(BrushCanvasPanel);
+    await tester.tapAt(tester.getTopLeft(canvas) + const Offset(30, 140));
+    await tester.pump();
+
+    final after = surfacePixelRgba(
+      env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
+      30,
+      140,
+    );
+    // Committed immediately — no confirm step, nothing floating.
+    expect(after ?? 0, isNot(0));
+  });
+
+  testWidgets('clicking with an EMPTY slot does nothing', (tester) async {
+    final env = await pumpPanel(tester, tool: CanvasTool.cutStamp);
+    expect(env.slot.isEmpty, isTrue);
+    final canvas = find.byType(BrushCanvasPanel);
+    await tester.tapAt(tester.getTopLeft(canvas) + const Offset(30, 140));
+    await tester.pump();
+    expect(
+      surfacePixelRgba(
+            env.coordinator.currentSurfaceOf(env.coordinator.activeFrameKey),
+            30,
+            140,
+          ) ??
+          0,
+      0,
+    );
   });
 
   testWidgets('a cut over blank cel leaves the held piece alone', (

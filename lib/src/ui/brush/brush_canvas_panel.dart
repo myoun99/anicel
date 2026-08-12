@@ -37,6 +37,7 @@ import '../canvas/flip_hud_overlay.dart';
 import 'canvas_floor_insets.dart';
 import '../../services/cut_piece_lift.dart';
 import '../../services/cut_piece_slot.dart';
+import '../../services/cut_piece_stamp.dart';
 import '../../models/project.dart'
     show defaultProjectBackdropArgb, defaultProjectPasteboardMargin;
 import '../../models/project_background.dart';
@@ -2145,8 +2146,28 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       case CanvasTool.move:
       case CanvasTool.cutRect:
       case CanvasTool.cutLasso:
-      case CanvasTool.cutStamp:
         return null;
+      case CanvasTool.cutStamp:
+        // Click = drop the held piece, centred here, committed at once.
+        // Photoshop, Clip Studio and TVPaint agree on the immediate part:
+        // none of them float a pasted or stamped piece behind a confirm
+        // step. That is also what keeps this tool out of the confirm
+        // button's state machine.
+        final slot = widget.cutPieceSlot;
+        if (slot == null || widget._editableCoordinator == null) {
+          return null;
+        }
+        return (point) {
+          final piece = slot.piece;
+          if (piece == null) {
+            return;
+          }
+          _commitSourceStroke(
+            BrushStrokeCommitData(
+              sourceDabs: [buildCutStampDab(piece: piece, center: point)],
+            ),
+          );
+        };
       case CanvasTool.eyedropper:
         final sample = widget.sampleColorAt;
         final pick = widget.onEyedropperPick;
