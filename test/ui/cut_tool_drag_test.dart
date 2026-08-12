@@ -251,6 +251,62 @@ void main() {
     );
   });
 
+  testWidgets('dragging with the stamp tile draws a trail of stamps', (
+    tester,
+  ) async {
+    final env = await pumpPanel(tester, tool: CanvasTool.cutRect);
+    await dragOnLayer(tester, const Offset(10, 30), const Offset(90, 50));
+    expect(env.slot.isNotEmpty, isTrue);
+
+    await env.setTool(CanvasTool.cutStamp);
+    final origin = tester.getTopLeft(find.byType(BrushCanvasPanel));
+    final gesture = await tester.startGesture(
+      origin + const Offset(20, 150),
+      kind: PointerDeviceKind.mouse,
+      buttons: kPrimaryButton,
+    );
+    await tester.pump();
+    // Far enough to demand several stamps.
+    for (var x = 40; x <= 200; x += 20) {
+      await gesture.moveTo(origin + Offset(x.toDouble(), 150));
+      await tester.pump();
+    }
+    await gesture.up();
+    await tester.pump();
+
+    final surface = env.coordinator.currentSurfaceOf(
+      env.coordinator.activeFrameKey,
+    );
+    // The far end of the drag is painted, which the press alone could not
+    // have done.
+    expect(surfacePixelRgba(surface, 190, 150) ?? 0, isNot(0));
+  });
+
+  testWidgets('a stamp drag stops when the pointer lifts', (tester) async {
+    final env = await pumpPanel(tester, tool: CanvasTool.cutRect);
+    await dragOnLayer(tester, const Offset(10, 30), const Offset(90, 50));
+    await env.setTool(CanvasTool.cutStamp);
+
+    final origin = tester.getTopLeft(find.byType(BrushCanvasPanel));
+    final gesture = await tester.startGesture(
+      origin + const Offset(20, 150),
+      kind: PointerDeviceKind.mouse,
+      buttons: kPrimaryButton,
+    );
+    await tester.pump();
+    await gesture.up();
+    await tester.pump();
+
+    // A move after the lift must not keep laying stamps: the drag's
+    // anchor is cleared on release.
+    await gesture.moveTo(origin + const Offset(200, 150));
+    await tester.pump();
+    final surface = env.coordinator.currentSurfaceOf(
+      env.coordinator.activeFrameKey,
+    );
+    expect(surfacePixelRgba(surface, 195, 150) ?? 0, 0);
+  });
+
   testWidgets('paste at origin puts the piece back where it was cut', (
     tester,
   ) async {

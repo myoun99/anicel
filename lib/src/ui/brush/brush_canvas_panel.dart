@@ -1555,6 +1555,27 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                           ),
                                                         );
                                                       },
+                                                      // Drag = draw with the held
+                                                      // piece. Only the stamp tile
+                                                      // wants this; the other tap
+                                                      // tools act once per press.
+                                                      onPointerMove: (event) =>
+                                                          _dragStampTo(
+                                                            _viewport.viewportToCanvas(
+                                                              ViewportPoint(
+                                                                x: event
+                                                                    .localPosition
+                                                                    .dx,
+                                                                y: event
+                                                                    .localPosition
+                                                                    .dy,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                      onPointerUp: (_) =>
+                                                          _lastStampCenter = null,
+                                                      onPointerCancel: (_) =>
+                                                          _lastStampCenter = null,
                                                     ),
                                                   ),
                                                 // Eyedropper cursor (R11-②): crosshair +
@@ -2190,6 +2211,9 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
               sourceDabs: [buildCutStampDab(piece: piece, center: point)],
             ),
           );
+          // A press is also the start of a possible drag, and the drag
+          // measures its spacing from the stamp that just landed.
+          _lastStampCenter = point;
         };
       case CanvasTool.eyedropper:
         final sample = widget.sampleColorAt;
@@ -2287,6 +2311,42 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
   }
 
   int _cutPieceSequence = 0;
+
+  /// Where the last stamp of the current drag landed. Null between drags.
+  CanvasPoint? _lastStampCenter;
+
+  /// Continues a stamp drag up to [point].
+  ///
+  /// Stamps go down one whole piece apart, so they touch without
+  /// overlapping — which is why there is no spacing knob to get wrong, and
+  /// why a soft edge cannot accumulate where two stamps stack.
+  ///
+  /// The remainder of the travel is deliberately NOT carried: the next
+  /// move continues from the last stamp that actually landed, so a slow
+  /// drag and a fast one lay the same number of stamps over the same
+  /// distance.
+  void _dragStampTo(CanvasPoint point) {
+    if (!canvasToolStamps(widget.brushToolState.tool)) {
+      return;
+    }
+    final piece = widget.cutPieceSlot?.piece;
+    final from = _lastStampCenter;
+    if (piece == null || from == null) {
+      return;
+    }
+    final centers = cutStampCentersAlong(piece: piece, from: from, to: point);
+    if (centers.isEmpty) {
+      return;
+    }
+    for (final center in centers) {
+      _commitSourceStroke(
+        BrushStrokeCommitData(
+          sourceDabs: [buildCutStampDab(piece: piece, center: center)],
+        ),
+      );
+    }
+    _lastStampCenter = centers.last;
+  }
 
   /// Drop the held piece back where it was cut from.
   ///
