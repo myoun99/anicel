@@ -216,6 +216,22 @@ LayerDropPlan? resolveLayerDrop({
   if (insertAt > run.start && insertAt < run.endExclusive) {
     return null; // Inside itself.
   }
+  // ④ (user, 2026-08-12): 「드래그 시작 시 자기 행 위에 뜨는 강조선 삭제 —
+  // 위치가 실제로 바뀌는 상황에서만 뜬다」.
+  //
+  // A run owns the gaps at BOTH its ends, and lifting it out to put it back
+  // there is not a landing. It used to resolve to a plan whose order was
+  // the order it started with, so the caret was drawn the instant a drag
+  // began — announcing a move nobody had made yet.
+  //
+  // The forced intents are exempt: dropping ON a row says something a gap
+  // cannot ("ride this base", "go inside this folder"), and that intent is
+  // real even when the row lands exactly where it already sat.
+  if (forceJoinFolderId == null &&
+      forceMountBaseId == null &&
+      (insertAt == run.start || insertAt == run.endExclusive)) {
+    return null;
+  }
   final moving = stack.firstWhere((layer) => layer.id == movingId);
   final movingSection = timelineSectionForLayerKind(moving.kind);
 

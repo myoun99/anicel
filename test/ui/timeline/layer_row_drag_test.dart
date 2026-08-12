@@ -170,13 +170,15 @@ void main() {
     expect(_order(session), ['a', 'b', 'c']);
 
     // The rail renders the stack reversed, so the row for 'a' sits at the
-    // BOTTOM. HALF a row height upward puts the pointer on the boundary
-    // above it, which is the gap 'a' would land in — R5 #15 gave a row's
-    // MIDDLE to the structural drop, so repositioning aims between rows.
+    // BOTTOM. ④: the caret is the gap the POINTER is nearest, so one place
+    // means putting the pointer ON the next boundary up — one and a half
+    // rows from a grab in this row's middle. (It also has to clear the
+    // middle band, which belongs to the on-row drop; landing exactly on the
+    // boundary does both.)
     final row = _railRow('a');
     await tester.ensureVisible(row);
     await tester.pumpAndSettle();
-    await tester.drag(row, const Offset(0, -21));
+    await tester.drag(row, const Offset(0, -42));
     await tester.pumpAndSettle();
 
     expect(_order(session), ['b', 'a', 'c']);
@@ -192,7 +194,23 @@ void main() {
 
     final gesture = await tester.startGesture(tester.getCenter(row));
     await tester.pump(const Duration(milliseconds: 16));
-    await gesture.moveBy(const Offset(0, -21));
+
+    // ④: nothing yet — the press alone must not draw a caret over the row's
+    // own gap, and a NUDGE that leaves the pointer inside its own row must
+    // not either.
+    expect(
+      find.byKey(const ValueKey<String>('timeline-row-caret-before-b')),
+      findsNothing,
+    );
+    await gesture.moveBy(const Offset(0, -12));
+    await tester.pump();
+    expect(
+      find.byKey(const ValueKey<String>('timeline-row-caret-before-b')),
+      findsNothing,
+      reason: 'the pointer has not reached the middle of the row above',
+    );
+
+    await gesture.moveBy(const Offset(0, -30));
     await tester.pump();
 
     expect(
@@ -202,7 +220,7 @@ void main() {
     );
 
     // Back to where it started: no move, so no caret and no command.
-    await gesture.moveBy(const Offset(0, 21));
+    await gesture.moveBy(const Offset(0, 42));
     await tester.pump();
     expect(find.byType(EditorWorkspace), findsOneWidget);
     await gesture.up();
@@ -217,12 +235,13 @@ void main() {
     final session = _sessionOf(tester);
     expect(_order(session), ['a', 'b', 'c']);
 
-    // 'c' is the TOP row of the rail; half a row downward is the boundary
-    // under it, which is the gap toward 'b'.
+    // 'c' is the TOP row of the rail. ④ made the two directions the same
+    // question — "which gap is the pointer nearest" — so this reads exactly
+    // like the upward case, same distance, opposite sign.
     final row = _railRow('c');
     await tester.ensureVisible(row);
     await tester.pumpAndSettle();
-    await tester.drag(row, const Offset(0, 21));
+    await tester.drag(row, const Offset(0, 42));
     await tester.pumpAndSettle();
 
     expect(_order(session), ['a', 'c', 'b']);
@@ -429,7 +448,7 @@ void main() {
     await tester.pumpAndSettle();
     final gesture = await tester.startGesture(tester.getCenter(row));
     await tester.pump(const Duration(milliseconds: 16));
-    await gesture.moveBy(const Offset(0, -21));
+    await gesture.moveBy(const Offset(0, -42));
     await tester.pump();
     expect(find.text(AppText.strings.tlDropDetachAttach), findsOneWidget);
     await gesture.up();
@@ -454,7 +473,7 @@ void main() {
     final row = _railRow('a');
     await tester.ensureVisible(row);
     await tester.pumpAndSettle();
-    await tester.drag(row, const Offset(0, -21));
+    await tester.drag(row, const Offset(0, -42));
     await tester.pumpAndSettle();
     expect(_order(session), ['b', 'a', 'c']);
 

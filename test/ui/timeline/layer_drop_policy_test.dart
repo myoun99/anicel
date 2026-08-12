@@ -221,10 +221,15 @@ void main() {
 
     test('a row that cannot join a group may not land INSIDE one either — '
         'the group is unsplittable', () {
+      // 'F' sits clear of the group on purpose: since ④ a row's own two gaps
+      // are not landings, so a mover parked on the edge it is meant to prove
+      // reachable would answer null for a reason that has nothing to do with
+      // the group.
       final stack = [
         _row('under'),
         _row('base'),
         _row('over', attachedTo: 'base'),
+        _row('spare'),
         _row('F', kind: LayerKind.folder),
         _row('se', kind: LayerKind.se),
       ];
@@ -489,11 +494,17 @@ void main() {
       return out.toString();
     }
 
-    test('a plain row mounts only in the two INNER slots', () {
+    test('a plain row mounts only in the two INNER slots, and never lands '
+        'on its own two gaps', () {
       // slots:      0    1    2    3    4    5
       // rows:     x    u    base o    y
-      expect(sweep('y'), '..BA..');
-      expect(sweep('x'), '..BA..');
+      //
+      // ④: a row owns the gap above it AND the gap below it, and neither is
+      // a landing — the X pair in each sweep is the moving row itself. It
+      // used to read '.' there: a plan whose order was the order it started
+      // with, which is what drew a caret the instant a drag began.
+      expect(sweep('y'), '..BAXX');
+      expect(sweep('x'), 'XXBA..');
     });
 
     test('an attach row stays while it touches the group, and says which '
@@ -501,10 +512,10 @@ void main() {
       // 'o' rides ABOVE. The group's run starts at 'u', so slot 1 is the
       // group's bottom EDGE — an attach row keeps its base there and simply
       // changes sides; only slots 0 and 5 are clear of the group.
-      expect(sweep('o'), 'Dbb..D');
+      expect(sweep('o'), 'DbbXXD');
       // 'u' rides BELOW and its own gaps are slots 1/2 — crossing the base
       // makes it an above row.
-      expect(sweep('u'), 'D..aaD');
+      expect(sweep('u'), 'DXXaaD');
     });
 
     test('a row that cannot ride anything is refused in the inner slots, '
@@ -520,7 +531,9 @@ void main() {
               ? 'X'
               : '.',
       ].join();
-      expect(answers, '..XX...');
+      // The folder sits LAST, so its own two gaps are the final pair — X for
+      // the same reason as above (④), not because a folder is refused there.
+      expect(answers, '..XX.XX');
     });
   });
 
