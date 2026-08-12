@@ -81,7 +81,8 @@ class _ImportDialogState extends State<ImportDialog> {
         _files.add(path);
       }
     }
-    if (_folder != null) {
+    final dropped = _folder;
+    if (dropped != null) {
       // §6-z22: folder imports always BAKE (cels are for drawing on) —
       // the toggle is not offered in folder mode.
       _rasterize = true;
@@ -89,7 +90,15 @@ class _ImportDialogState extends State<ImportDialog> {
       // files are listed as ignored (one window, one source shape).
       _ignoredSources.addAll(_files);
       _files.clear();
-      _reparseFolder();
+      // A TVPaint export is a folder too. Reading one with the cut-folder
+      // parser produces nonsense out of `[001] TAP/` and friends, so the
+      // contents decide which import this is — not which button was used.
+      if (_looksLikeTvpExport(dropped)) {
+        _folder = null;
+        _adoptTvpExportFolder(dropped);
+      } else {
+        _reparseFolder();
+      }
     } else {
       _adoptTvpJsonFromFiles();
     }
@@ -136,28 +145,93 @@ class _ImportDialogState extends State<ImportDialog> {
     _files.clear();
   }
 
-  Future<void> _pickTvpJson() async {
-    final picker =
-        widget.filePicker ??
-        () async {
-          final file = await openFile(
-            acceptedTypeGroups: const [FileTypeGroups.tvpaintJson],
-          );
-          return [if (file != null) file.path];
-        };
-    final paths = await picker();
-    if (paths.isEmpty || !mounted) {
+  /// Adopts a TVPaint export FOLDER: the `.json` plus the per-instance
+  /// image folders that sit beside it.
+  ///
+  /// 🚨 The folder — not the `.json` — is what gets picked, and that is
+  /// the whole point. On iOS and macOS a security scope lands on exactly
+  /// the item the user chose and nowhere else, so picking `clip.json`
+  /// grants that one file and leaves `[001] TAP/` unreadable: the cut
+  /// imports with every cel empty. The project picker learned this the
+  /// same way (its sidecars sit beside the file it used to pick).
+  void _adoptTvpExportFolder(String folderPath) {
+    _tvpJsonPath = null;
+    _tvpJson = null;
+    final List<String> jsonPaths;
+    try {
+      jsonPaths = [
+        for (final entity in Directory(folderPath).listSync())
+          if (entity is File && entity.path.toLowerCase().endsWith('.json'))
+            entity.path,
+      ]..sort();
+    } on FileSystemException catch (error) {
+      _status = 'Could not read that folder: ${error.message}';
+      return;
+    }
+    if (jsonPaths.isEmpty) {
+      _status =
+          '${mediaAssetDefaultName(folderPath)}: no .json in this folder — '
+          'pick the folder TVPaint exported, the one holding the image '
+          'folders.';
+      return;
+    }
+    for (final path in jsonPaths) {
+      try {
+        _tvpJson = parseTvpJson(File(path).readAsStringSync());
+        _tvpJsonPath = path;
+        break;
+      } on TvpJsonParseException {
+        continue;
+      } on FileSystemException {
+        continue;
+      }
+    }
+    if (_tvpJsonPath == null) {
+      _status =
+          '${mediaAssetDefaultName(folderPath)}: none of its '
+          '${jsonPaths.length} .json file(s) is a TVPaint export.';
+      return;
+    }
+    // Nothing exits silently: the ones that were not the export are named.
+    _ignoredSources.addAll(jsonPaths.where((path) => path != _tvpJsonPath));
+  }
+
+  /// Whether [folderPath] is a TVPaint export rather than a cut folder —
+  /// a dropped export folder must not go down the cut-folder parser and
+  /// come out as nonsense.
+  bool _looksLikeTvpExport(String folderPath) {
+    try {
+      for (final entity in Directory(folderPath).listSync()) {
+        if (entity is! File || !entity.path.toLowerCase().endsWith('.json')) {
+          continue;
+        }
+        try {
+          parseTvpJson(File(entity.path).readAsStringSync());
+          return true;
+        } on Object {
+          continue;
+        }
+      }
+    } on FileSystemException {
+      return false;
+    }
+    return false;
+  }
+
+  Future<void> _pickTvpExport() async {
+    final path = widget.directoryPicker != null
+        ? await widget.directoryPicker!()
+        : await pickFolderForUser(context);
+    if (path == null || !mounted) {
       return;
     }
     setState(() {
       _folder = null;
       _parsed = null;
       _status = '';
+      _files.clear();
       _ignoredSources.clear();
-      _files
-        ..clear()
-        ..addAll(paths);
-      _adoptTvpJsonFromFiles();
+      _adoptTvpExportFolder(path);
     });
   }
 
@@ -286,9 +360,10 @@ class _ImportDialogState extends State<ImportDialog> {
       final folder = _folder;
       final tvpJsonPath = _tvpJsonPath;
       if (tvpJsonPath != null) {
+        // 1:1 always — see the Fit note in the settings column.
         final tvpWarnings = await session.importTvpJson(
           jsonPath: tvpJsonPath,
-          fit: _fit,
+          fit: MediaFitMode.none,
         );
         if (tvpWarnings == null) {
           warnings.add('Could not read that TVPaint export.');
@@ -510,8 +585,8 @@ class _ImportDialogState extends State<ImportDialog> {
           const SizedBox(width: 6),
           OutlinedButton(
             key: const ValueKey<String>('import-browse-tvpaint-button'),
-            onPressed: _running ? null : _pickTvpJson,
-            child: const Text('TVPaint JSON…'),
+            onPressed: _running ? null : _pickTvpExport,
+            child: const Text('TVPaint export…'),
           ),
         ],
       ),
@@ -718,6 +793,28 @@ class _ImportDialogState extends State<ImportDialog> {
             ),
             const SizedBox(height: 6),
           ] else ...[
+            if (isTvp) ...[
+              // One destination today, shown rather than hidden: the row
+              // is where "into the cut I am in" joins it later, and an
+              // absent control cannot say that it is coming.
+              ExportModuleRow(
+                label: 'Place as',
+                child: Wrap(
+                  spacing: 4,
+                  children: [
+                    ExportChip(
+                      key: const ValueKey<String>('import-destination-cut'),
+                      label: 'New cut',
+                      selected: true,
+                      onTap: () => setState(
+                        () => _destination = ImportDestination.newCut,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 6),
+            ],
             // §6-z22: a cut folder's cels are what you draw on next, so
             // the folder import always bakes — no toggle to mislead. A
             // TVPaint export is the same shape.
@@ -725,7 +822,7 @@ class _ImportDialogState extends State<ImportDialog> {
               isTvp
                   ? 'A TVPaint export always bakes its cels. Export it with '
                         '「빈 사진 포함」 on — with it off, TVPaint omits every '
-                        'instance whose image is blank and their labels and '
+                        'instance with no pixels, and their labels and '
                         'timing come through empty.'
                   : 'Cut folders always bake their cels; scans and movies '
                         'stay references.',
@@ -735,25 +832,30 @@ class _ImportDialogState extends State<ImportDialog> {
             ),
             const SizedBox(height: 6),
           ],
-          ExportModuleRow(
-            label: 'Fit',
-            child: Wrap(
-              spacing: 4,
-              children: [
-                for (final fit in MediaFitMode.values)
-                  ExportChip(
-                    key: ValueKey<String>('import-fit-${fit.jsonValue}'),
-                    label: switch (fit) {
-                      MediaFitMode.stretch => 'Stretch',
-                      MediaFitMode.contain => 'Keep aspect',
-                      MediaFitMode.none => '1:1',
-                    },
-                    selected: _fit == fit,
-                    onTap: () => setState(() => _fit = fit),
-                  ),
-              ],
+          // Fit has nothing to decide for a TVPaint export: the cut is
+          // born at the clip's size and every exported image IS that
+          // size, so all three modes compute the same rect. The import
+          // passes 1:1, which copies bytes instead of resampling them.
+          if (!isTvp)
+            ExportModuleRow(
+              label: 'Fit',
+              child: Wrap(
+                spacing: 4,
+                children: [
+                  for (final fit in MediaFitMode.values)
+                    ExportChip(
+                      key: ValueKey<String>('import-fit-${fit.jsonValue}'),
+                      label: switch (fit) {
+                        MediaFitMode.stretch => 'Stretch',
+                        MediaFitMode.contain => 'Keep aspect',
+                        MediaFitMode.none => '1:1',
+                      },
+                      selected: _fit == fit,
+                      onTap: () => setState(() => _fit = fit),
+                    ),
+                ],
+              ),
             ),
-          ),
           if (isFolder) ...[
             const SizedBox(height: 10),
             ExportToggleRow(
