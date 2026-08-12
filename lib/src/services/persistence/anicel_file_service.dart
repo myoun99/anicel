@@ -4,6 +4,7 @@ import 'dart:isolate';
 
 import '../../models/bitmap_surface.dart';
 import '../../models/brush_frame_key.dart';
+import '../../models/canvas_size.dart';
 import '../../models/project.dart';
 import '../brush_frame_store.dart';
 import 'brush_drawing_binary_codec.dart';
@@ -315,32 +316,58 @@ class AnicelFileService {
       }
     }
 
-    final (bytes, refs) = await Isolate.run(() {
-      final blobs = <(BrushFrameKey, AnicelCelBlob)>[
-        for (final work in works) (work.key, work.resolveBlob()),
-      ];
-      final archiveBytes = buildAnicelArchiveBytes(
-        project: project,
-        cels: [for (final (_, blob) in blobs) blob],
-        saveDirectory: saveDirectory,
-      );
-      final layout = parseAnicelZipLayout(archiveBytes);
-      final refs = <BrushFrameKey, AnicelCelFileRef>{
-        for (final (key, blob) in blobs)
-          key: AnicelCelFileRef(
-            filePath: filePath,
-            dataOffset: layout.entryNamed(anicelCelEntryName(key))!.dataOffset,
-            length: blob.bytes.length,
-            canvasSize: blob.canvasSize,
-            tileSize: blob.tileSize,
-          ),
-      };
-      return (archiveBytes, refs);
-    });
-
     final temp = File('$filePath.tmp-${DateTime.now().microsecondsSinceEpoch}');
     await temp.parent.create(recursive: true);
-    await temp.writeAsBytes(bytes, flush: true);
+    final tempPath = temp.path;
+
+    // The isolate writes STRAIGHT to the temp file, one entry at a time,
+    // and hands back only the refs. Building a whole-project `Uint8List`
+    // here and returning it held the project twice — once built, once
+    // copied across the port — before anything reached the disk, and the
+    // full-save path is exactly what a backgrounding tablet runs when it
+    // has the least headroom to spare.
+    final refs = await Isolate.run(() {
+      // Scalars only. Holding the BLOB here to read its geometry later
+      // would keep every cel resident and give back exactly the memory
+      // this streams to avoid.
+      final geometry =
+          <BrushFrameKey, ({String name, CanvasSize canvasSize, int tileSize, int length})>{};
+      final layout = writeAnicelArchiveFile(
+        path: tempPath,
+        entries: () sync* {
+          yield (
+            name: 'project.json',
+            bytes: buildAnicelProjectJsonBytes(
+              project: project,
+              saveDirectory: saveDirectory,
+            ),
+          );
+          for (final work in works) {
+            // Resolved HERE rather than up front: the generator is pulled
+            // lazily, so exactly one cel is resident at a time.
+            final blob = work.resolveBlob();
+            geometry[work.key] = (
+              name: work.name,
+              canvasSize: blob.canvasSize,
+              tileSize: blob.tileSize,
+              length: blob.bytes.length,
+            );
+            yield (name: work.name, bytes: blob.bytes);
+          }
+        }(),
+      );
+      return <BrushFrameKey, AnicelCelFileRef>{
+        for (final entry in geometry.entries)
+          entry.key: AnicelCelFileRef(
+            filePath: filePath,
+            dataOffset: layout.entryNamed(entry.value.name)!.dataOffset,
+            length: entry.value.length,
+            canvasSize: entry.value.canvasSize,
+            tileSize: entry.value.tileSize,
+          ),
+      };
+    });
+
     // SYNC rename: existing refs into the replaced file carry offsets of
     // the OLD layout, so no event may run between the swap and the
     // caller's adoptSavedFile — sync-to-return is microtask-tight.
