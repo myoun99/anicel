@@ -1,3 +1,5 @@
+import 'dart:async' show unawaited;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:anicel/src/controllers/default_project_helpers.dart';
@@ -11,6 +13,8 @@ import 'package:anicel/src/ui/editor_workspace.dart';
 import 'package:anicel/src/ui/home_page.dart';
 import 'package:anicel/src/ui/timeline/layer_drop_policy.dart'
     show layerDragRun;
+import 'package:anicel/src/ui/timeline/layer_name_commands.dart'
+    show renameActiveLayerWithDialog;
 import 'package:anicel/src/ui/timeline/layer_row_drag.dart'
     show LayerRowSubject;
 import 'package:anicel/src/ui/timeline/property_lane_model.dart';
@@ -310,6 +314,84 @@ void main() {
       s.undo();
       for (final layer in drawings) {
         expect(_nameOf(s, layer.id), layer.name, reason: 'one undo, again');
+      }
+    });
+
+    test('B: duplicate takes the whole selection, in ONE undo', () {
+      final s = session();
+      s.addLayerOfKind(LayerKind.animation);
+      final drawings = [
+        for (final layer in s.layers)
+          if (layer.kind == LayerKind.animation) layer,
+      ];
+      expect(drawings.length, greaterThanOrEqualTo(2));
+      final chosen = drawings.take(2).toList();
+
+      s.rowSelection.value = [
+        for (final layer in chosen) LayerRowAddress(layer.id),
+      ];
+      final before = s.layers.length;
+      // The ORDINARY verb — ⑰'s law says it asks the selection first, so the
+      // pill button and any shortcut inherit this without a second door.
+      s.duplicateActiveLayer();
+
+      expect(s.layers.length, before + chosen.length);
+      s.undo();
+      expect(s.layers.length, before, reason: 'one gesture, one undo');
+    });
+
+    testWidgets('B: the rename DIALOG renames the whole selection', (
+      tester,
+    ) async {
+      // ⑨ shipped `renameSelectedLayers` with no door — this is the door,
+      // and the door is what a user actually presses.
+      final s = session();
+      s.addLayerOfKind(LayerKind.animation);
+      final drawings = [
+        for (final layer in s.layers)
+          if (layer.kind == LayerKind.animation) layer,
+      ];
+      final chosen = drawings.take(2).toList();
+      s.rowSelection.value = [
+        for (final layer in chosen) LayerRowAddress(layer.id),
+      ];
+
+      await tester.pumpWidget(
+        MaterialApp(
+          home: Scaffold(
+            body: Builder(
+              builder: (context) => TextButton(
+                onPressed: () =>
+                    unawaited(renameActiveLayerWithDialog(context, s)),
+                child: const Text('rename'),
+              ),
+            ),
+          ),
+        ),
+      );
+      await tester.tap(find.text('rename'));
+      await tester.pumpAndSettle();
+
+      final field = find.byKey(
+        const ValueKey<String>('rename-layer-text-field'),
+      );
+      expect(field, findsOneWidget, reason: 'the dialog opened');
+      expect(
+        tester.widget<TextField>(field).controller?.text,
+        isEmpty,
+        reason:
+            'several rows share no name yet, so the field proposes none — '
+            'seeding one of them would quietly propose renaming the others '
+            'to it',
+      );
+      await tester.enterText(field, 'BG');
+      await tester.tap(
+        find.byKey(const ValueKey<String>('rename-layer-ok-button')),
+      );
+      await tester.pumpAndSettle();
+
+      for (final layer in chosen) {
+        expect(_nameOf(s, layer.id), 'BG');
       }
     });
 

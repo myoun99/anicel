@@ -4084,7 +4084,59 @@ class EditorSessionManager extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// The selected rows that may be DUPLICATED (⑨'s 복사).
+  ///
+  /// The stand-downs are [duplicateActiveLayer]'s, read off the same three
+  /// predicates rather than restated: a track-owned SE row has no clipboard
+  /// shape, a per-cut singleton cannot have a second, and an attach row's
+  /// copy would double-link its base's cels.
+  List<LayerId> duplicatableSelectedLayerIds() {
+    final byId = {for (final layer in layers) layer.id: layer};
+    final ids = <LayerId>[];
+    for (final row in rowSelection.value) {
+      if (row is! LayerRowAddress) {
+        continue;
+      }
+      final layer = byId[row.layerId];
+      if (layer != null &&
+          !ids.contains(layer.id) &&
+          layerKindIsClipboardCopyable(layer.kind) &&
+          !layerKindIsSingletonPerCut(layer.kind) &&
+          !isAttachedLayer(layer)) {
+        ids.add(layer.id);
+      }
+    }
+    return ids;
+  }
+
+  /// ⑨: every selected row duplicated, in ONE undo — the rename's twin.
+  void duplicateSelectedLayers() {
+    final cut = activeCutOrNull;
+    final ids = duplicatableSelectedLayerIds();
+    if (cut == null || ids.isEmpty) {
+      return;
+    }
+    LayerId? landed;
+    _historyManager.runAsOneStep('Duplicate rows', () {
+      for (final layerId in ids) {
+        landed = _cutCommandCoordinator.duplicateLayer(
+          cutId: cut.id,
+          sourceLayerId: layerId,
+        );
+      }
+    });
+    _refreshAfterCutCommand(preferredActiveLayerId: landed);
+    notifyListeners();
+  }
+
+  /// ⑰'s law, applied to 복사: the verb asks WHAT IS SELECTED first and
+  /// falls back to the row you are standing on. Every caller — the pill
+  /// button, a shortcut — inherits that without asking twice.
   void duplicateActiveLayer() {
+    if (duplicatableSelectedLayerIds().isNotEmpty) {
+      duplicateSelectedLayers();
+      return;
+    }
     final activeLayer = this.activeLayer;
     // Track-owned SE rows: duplication stands down (same clipboard-shape
     // reason as copyActiveLayer); attach rows too (v1 — a duplicate would
