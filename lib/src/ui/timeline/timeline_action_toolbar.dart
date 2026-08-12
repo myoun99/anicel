@@ -333,10 +333,16 @@ class TimelineActionToolbar extends StatelessWidget {
       // Layer menu has — own cels riding the base's FX. FREE authors its
       // own timeline; SYNCED mirrors the base's exposures (ghost rows).
       const PanelFlyoutDivider(),
+      // ① (유저 확정): the SAME glyph the rail draws on an attached row
+      // ([LayerAttachArrowCell]), flipped the same way for the above
+      // placement. These used to be `north_east`/`south_east` — a second
+      // vocabulary for attachment, so the menu that MAKES the row and the
+      // row it makes did not look like the same idea.
       PanelFlyoutItem(
         keyValue: 'add-layer-attach-free-above',
         label: AppText.strings.tlAttachFreeAbove,
-        icon: Icons.north_east,
+        icon: Icons.subdirectory_arrow_right,
+        iconFlipY: true,
         enabled: session.canAddAttachedLayerToActive,
         onSelected: () => session.addAttachedLayer(
           AttachedPlacement.above,
@@ -346,7 +352,7 @@ class TimelineActionToolbar extends StatelessWidget {
       PanelFlyoutItem(
         keyValue: 'add-layer-attach-free-below',
         label: AppText.strings.tlAttachFreeBelow,
-        icon: Icons.south_east,
+        icon: Icons.subdirectory_arrow_right,
         enabled: session.canAddAttachedLayerToActive,
         onSelected: () => session.addAttachedLayer(
           AttachedPlacement.below,
@@ -356,14 +362,15 @@ class TimelineActionToolbar extends StatelessWidget {
       PanelFlyoutItem(
         keyValue: 'add-layer-attach-above',
         label: AppText.strings.tlAttachSyncedAbove,
-        icon: Icons.north_east,
+        icon: Icons.subdirectory_arrow_right,
+        iconFlipY: true,
         enabled: session.canAddAttachedLayerToActive,
         onSelected: () => session.addAttachedLayer(AttachedPlacement.above),
       ),
       PanelFlyoutItem(
         keyValue: 'add-layer-attach-below',
         label: AppText.strings.tlAttachSyncedBelow,
-        icon: Icons.south_east,
+        icon: Icons.subdirectory_arrow_right,
         enabled: session.canAddAttachedLayerToActive,
         onSelected: () => session.addAttachedLayer(AttachedPlacement.below),
       ),
@@ -406,20 +413,27 @@ class TimelineActionToolbar extends StatelessWidget {
     ];
   }
 
+  /// A row the cut may only READ takes no verb from here — the transition
+  /// row is authored on the global axis ("컷 타임라인은 보여주기만"), so
+  /// selecting it must not light up rename/duplicate/delete.
+  ///
+  /// A getter because ① moved rename OUT of the menu: the pill's button and
+  /// the entries that stayed behind have to answer the same question, and
+  /// two copies of this line would eventually stop agreeing.
+  bool get _canEditActiveLayer {
+    final active = session.activeLayer;
+    return active != null && !layerKindIsReadOnlyInCut(active.kind);
+  }
+
   List<PanelFlyoutEntry> _layerEntries(BuildContext context) {
     final active = session.activeLayer;
-    // A row the cut may only READ takes no verb from here — the transition
-    // row is authored on the global axis ("컷 타임라인은 보여주기만"), so
-    // selecting it must not light up rename/duplicate/delete.
-    final editable = active != null && !layerKindIsReadOnlyInCut(active.kind);
+    final editable = _canEditActiveLayer;
     return [
-      PanelFlyoutItem(
-        keyValue: 'rename-layer-button',
-        label: AppText.strings.tlRenameLayer,
-        icon: Icons.drive_file_rename_outline,
-        enabled: editable,
-        onSelected: onRenameLayer,
-      ),
+      // ⛔RENAME IS NOT HERE — ① moved it onto the pill itself (유저 확정:
+      // 「레이어 알약 밖으로: 레이어 이름변경」). "밖으로" means out of the
+      // MENU and onto that pill, which is where 컷 삭제 went for the same
+      // sentence; it does not mean the shared pill, whose residents 확정 #11
+      // fixes at four.
       PanelFlyoutItem(
         keyValue: 'duplicate-layer-button',
         label: AppText.strings.tlDuplicateLayer,
@@ -528,15 +542,10 @@ class TimelineActionToolbar extends StatelessWidget {
 
   List<PanelFlyoutEntry> _frameEntries() {
     return [
-      PanelFlyoutItem(
-        keyValue: 'rename-frame-button',
-        label: AppText.strings.tlEditInstance,
-        icon: Icons.edit_outlined,
-        // A host with no dispatch to offer greys the entry out — the same
-        // answer the enablement gate gives, from a different cause.
-        enabled: onEditInstance != null && _canEditInstance,
-        onSelected: onEditInstance,
-      ),
+      // ⛔EDIT INSTANCE IS NOT HERE — ① moved it onto the frame pill (유저
+      // 확정: 「프레임 알약 밖으로: 딜리트 · Edit Instance」). The delete half
+      // of that sentence went further, to the shared pill, but ⑰ sent it
+      // there — 「밖으로」 on its own means out of the menu.
       PanelFlyoutItem(
         keyValue: 'copy-frame-button',
         label: AppText.strings.tlCopyFrame,
@@ -638,6 +647,9 @@ class TimelineActionToolbar extends StatelessWidget {
       ),
       AppText.settings.value.programLanguage,
       session.canDeleteActiveLayer,
+      // ①: the rename button lives here now, so its gate has to be part of
+      // what wakes this group up.
+      _canEditActiveLayer,
     ),
     builder: (context) => CommandPill(
       key: const ValueKey<String>('timeline-toolbar-layer-group'),
@@ -660,6 +672,15 @@ class TimelineActionToolbar extends StatelessWidget {
           // the top of the action section when that is not a legal home).
           onPressed: () => session.addLayerOfKind(LayerKind.animation),
           entriesBuilder: _addLayerEntries,
+        ),
+        // ① 유저 확정: 「레이어 알약 밖으로: 레이어 이름변경」. Out of the
+        // menu and onto the pill, beside the ＋ and the 🗑 that were already
+        // out here.
+        _iconButton(
+          key: const ValueKey<String>('rename-layer-button'),
+          tooltip: AppText.strings.tlRenameLayer,
+          icon: Icons.drive_file_rename_outline,
+          onPressed: _canEditActiveLayer ? onRenameLayer : null,
         ),
         // ⛔THE LAYER DELETE IS GONE FROM HERE — ⑰ is finished.
         //
@@ -753,6 +774,8 @@ class TimelineActionToolbar extends StatelessWidget {
           session.canCutExposureAtCurrentFrame,
           session.canToggleMarkAtCurrentFrame,
           session.languageSettings.value,
+          // ①: Edit Instance is one of these buttons now.
+          onEditInstance != null && _canEditInstance,
         ),
         builder: (context) => Row(
           mainAxisSize: MainAxisSize.min,
@@ -781,6 +804,17 @@ class TimelineActionToolbar extends StatelessWidget {
               icon: Icons.circle,
               onPressed: session.canToggleMarkAtCurrentFrame
                   ? session.toggleMarkAtCurrentFrame
+                  : null,
+            ),
+            // ① 유저 확정: 「프레임 알약 밖으로 … Edit Instance」. A host with
+            // no dispatch to offer greys it out — the same answer the
+            // enablement gate gives, from a different cause.
+            _iconButton(
+              key: const ValueKey<String>('rename-frame-button'),
+              tooltip: AppText.strings.tlEditInstance,
+              icon: Icons.edit_outlined,
+              onPressed: onEditInstance != null && _canEditInstance
+                  ? onEditInstance
                   : null,
             ),
           ],

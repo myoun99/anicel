@@ -73,6 +73,7 @@ class PanelFlyoutItem extends PanelFlyoutEntry {
     required this.keyValue,
     required this.label,
     this.icon,
+    this.iconFlipY = false,
     this.swatch,
     this.checked,
     this.selected = false,
@@ -90,6 +91,14 @@ class PanelFlyoutItem extends PanelFlyoutEntry {
 
   final String label;
   final IconData? icon;
+
+  /// Mirrors [icon] vertically.
+  ///
+  /// For the ONE case the rail already solved this way: an attach arrow
+  /// points down-right natively, and the above-placement one is that same
+  /// glyph flipped ([LayerAttachArrowCell]). A separate up-arrow glyph would
+  /// be a second vocabulary for a distinction the rail makes by flipping.
+  final bool iconFlipY;
 
   /// A filled circle in the leading slot, in ITS OWN colour — for rows whose
   /// subject IS a colour (the layer mark picker).
@@ -260,7 +269,10 @@ Future<void> showPanelFlyout(
                   ),
                   const SizedBox(width: 8),
                 ] else if (entry.icon != null) ...[
-                  Icon(entry.icon, size: 16, color: _inkFor(entry)),
+                  Transform.flip(
+                    flipY: entry.iconFlipY,
+                    child: Icon(entry.icon, size: 16, color: _inkFor(entry)),
+                  ),
                   const SizedBox(width: 8),
                 ],
                 Expanded(
