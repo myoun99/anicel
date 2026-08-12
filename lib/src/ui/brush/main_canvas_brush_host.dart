@@ -16,6 +16,7 @@ import '../../services/brush_frame_edit_session_store.dart';
 import '../../services/brush_frame_store.dart';
 import '../../services/brush_frame_editing_coordinator.dart';
 import '../../services/canvas_selection.dart' show SelectionMaskOptions;
+import '../../services/cut_piece_slot.dart';
 import '../../services/resample/resample_kernel.dart' show ResampleMode;
 import '../../services/cache_invalidation_executor.dart';
 import '../../services/history_manager.dart';
@@ -79,6 +80,7 @@ class MainCanvasBrushHost extends StatefulWidget {
     this.transformResampleMode,
     this.viewCommands,
     this.selectionCommands,
+    this.cutPieceSlot,
     this.onStrokeInputActiveChanged,
     this.onSelectionInteractionChanged,
     this.onDrawRefused,
@@ -193,6 +195,9 @@ class MainCanvasBrushHost extends StatefulWidget {
 
   /// Forwarded to [BrushCanvasPanel]: the P9 selection shortcut channel.
   final CanvasSelectionCommands? selectionCommands;
+
+  /// Where a finished cut lands — threaded down to the canvas panel.
+  final CutPieceSlot? cutPieceSlot;
 
   /// Forwarded to [BrushCanvasPanel]: stroke lifecycle (R13-3 warm hold).
   final ValueChanged<bool>? onStrokeInputActiveChanged;
@@ -374,6 +379,7 @@ class _MainCanvasBrushHostState extends State<MainCanvasBrushHost> {
       transformResampleMode: widget.transformResampleMode,
       viewCommands: widget.viewCommands,
       selectionCommands: widget.selectionCommands,
+      cutPieceSlot: widget.cutPieceSlot,
       onStrokeInputActiveChanged: widget.onStrokeInputActiveChanged,
       onSelectionInteractionChanged: widget.onSelectionInteractionChanged,
     );

@@ -23,6 +23,9 @@ import '../services/brush_tip_library_service.dart';
 import '../services/canvas_color_sampler.dart' show CanvasColorSampleSource;
 import '../services/canvas_flood_fill.dart' show FloodFillOptions;
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
+import '../models/brush_tip_entry.dart';
+import '../services/cut_piece_slot.dart';
+import '../services/cut_piece_tip.dart';
 import '../services/resample/resample_kernel.dart' show ResampleMode;
 import '../services/color_palette_file_service.dart' show ColorPaletteState;
 import 'brush/brush_preset_library.dart';
@@ -512,10 +515,153 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// toolbar tool; the single Select button re-activates this).
   CanvasTool _lastSelectionVariant = CanvasTool.selectRect;
 
+  /// The last CUT variant used — the rail's single Cut button re-activates
+  /// this, exactly as the Select button does with its own.
+  CanvasTool _lastCutVariant = CanvasTool.cutRect;
+
+  /// The one piece the cut tool is holding.
+  ///
+  /// Owned here rather than by the session because the piece has to
+  /// outlive a project change (유저: "다른 프로젝트에 붙여넣고 싶을 수 있으니")
+  /// — it holds a raw pixel copy, so nothing about it belongs to the
+  /// project it was taken from. Only quitting loses it.
+  final CutPieceSlot _cutPieceSlot = CutPieceSlot();
+
+  int _registeredCutTipSequence = 0;
+
+  /// Rename a library tip. The model has had this since the library
+  /// landed; what it never had was anywhere to be called from.
+  Future<void> _renameTip(BrushTipEntry tip) async {
+    final controller = TextEditingController(text: tip.name);
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const ValueKey<String>('rename-tip-dialog'),
+        title: Text(AppText.strings.brRenameTip),
+        content: TextField(
+          key: const ValueKey<String>('rename-tip-name-field'),
+          controller: controller,
+          autofocus: true,
+          onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+            child: const Text('Rename'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    final trimmed = name?.trim();
+    if (trimmed != null && trimmed.isNotEmpty) {
+      _tipLibrary.rename(tip.id, trimmed);
+    }
+  }
+
+  /// Delete a library tip, behind a confirm.
+  ///
+  /// The confirm is not a general "are you sure" habit — this app's rule is
+  /// that explanatory notices are noise — but deleting is destructive and
+  /// unlike a stroke it has no undo behind it. Photoshop and Clip Studio
+  /// both ask here too.
+  Future<void> _deleteTip(BrushTipEntry tip) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const ValueKey<String>('delete-tip-dialog'),
+        title: Text(AppText.strings.brDeleteTip),
+        content: Text('“${tip.name}” will be removed from the library.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(false),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const ValueKey<String>('delete-tip-confirm'),
+            onPressed: () => Navigator.of(dialogContext).pop(true),
+            child: const Text('Delete'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed ?? false) {
+      await _tipLibrary.delete(tip.id);
+    }
+  }
+
+  /// Promotes the held piece into the brush tip library.
+  ///
+  /// Explicit, and it asks for a name — which is the whole reason cutting
+  /// does NOT do this by itself. Photoshop and Clip Studio both make
+  /// library registration a separate named command, and TVPaint's Tool
+  /// History is the counter-example: it accumulates unnamed near-duplicates
+  /// automatically and its own users gave up on it as a store. The user's
+  /// objection to the first design was exactly that ("잘라낼 때마다 팁
+  /// 라이브러리 늘리는 거 딱히 마음에 안 드는데").
+  ///
+  /// One field, like Photoshop's. Our tip library has no groups to file
+  /// into — that is the preset library — so a second field would be asking
+  /// about a place that does not exist.
+  Future<void> _registerCutPieceAsTip() async {
+    final piece = _cutPieceSlot.piece;
+    if (piece == null) {
+      return;
+    }
+    _registeredCutTipSequence += 1;
+    final controller = TextEditingController(
+      text: 'Cut $_registeredCutTipSequence',
+    );
+    final name = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        key: const ValueKey<String>('register-cut-tip-dialog'),
+        title: const Text('Register as Tip'),
+        content: TextField(
+          key: const ValueKey<String>('register-cut-tip-name-field'),
+          controller: controller,
+          autofocus: true,
+          decoration: const InputDecoration(labelText: 'Name'),
+          onSubmitted: (value) => Navigator.of(dialogContext).pop(value),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('Cancel'),
+          ),
+          FilledButton(
+            key: const ValueKey<String>('register-cut-tip-confirm'),
+            onPressed: () => Navigator.of(dialogContext).pop(controller.text),
+            child: const Text('Register'),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    final trimmed = name?.trim();
+    if (trimmed == null || trimmed.isEmpty) {
+      return;
+    }
+    final id = sanitizeBrushTipId(
+      nextUserBrushTipId(sequence: _registeredCutTipSequence),
+    );
+    await _tipLibrary.register(
+      cutPieceToTipMask(piece, id: id),
+      name: trimmed,
+    );
+  }
+
   void _rememberSelectionVariant() {
     final tool = _brushTool.value.tool;
     if (tool == CanvasTool.selectRect || tool == CanvasTool.lasso) {
       _lastSelectionVariant = tool;
+    }
+    if (canvasToolUsesCutPiece(tool)) {
+      _lastCutVariant = tool;
     }
   }
 
@@ -1538,6 +1684,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                 builder: (context, toolState) => ToolsPanel(
                   tool: toolState.tool,
                   selectionVariant: _lastSelectionVariant,
+                  cutVariant: _lastCutVariant,
                   onToolChanged: (tool) =>
                       _brushTool.value = _brushTool.value.copyWith(tool: tool),
                   // The between-strokes group. Its own listeners, so undoing
@@ -1592,6 +1739,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
             onBrushToolStateChanged: (state) => _brushTool.value = state,
             canvasViewCommands: widget.canvasViewCommands,
             canvasSelectionCommands: widget.canvasSelectionCommands,
+            cutPieceSlot: _cutPieceSlot,
             cameraViewEnabled: _cameraViewEnabled,
             cameraDimOpacity: _cameraDimOpacity,
             expandedLaneLayerIds: _expandedLaneLayerIds,
@@ -1792,6 +1940,21 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
                                                               mode,
                                                   selectionCommands: widget
                                                       .canvasSelectionCommands,
+                                                  cutPieceSlot: _cutPieceSlot,
+                                                  onCutPasteAbove: () =>
+                                                      _cutPieceSlot
+                                                          .pasteAtOrigin(
+                                                            behind: false,
+                                                          ),
+                                                  onCutPasteBelow: () =>
+                                                      _cutPieceSlot
+                                                          .pasteAtOrigin(
+                                                            behind: true,
+                                                          ),
+                                                  onRegisterCutPieceAsTip:
+                                                      _registerCutPieceAsTip,
+                                                  onRenameTip: _renameTip,
+                                                  onDeleteTip: _deleteTip,
                                                   language: widget
                                                       .session
                                                       .languageSettings

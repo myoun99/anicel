@@ -6,6 +6,7 @@ import 'package:anicel/src/ui/brush/tools_panel.dart';
 Widget _panel({
   CanvasTool tool = CanvasTool.brush,
   CanvasTool selectionVariant = CanvasTool.selectRect,
+  CanvasTool cutVariant = CanvasTool.cutRect,
   ValueChanged<CanvasTool>? onToolChanged,
 }) {
   return MaterialApp(
@@ -13,6 +14,7 @@ Widget _panel({
       body: ToolsPanel(
         tool: tool,
         selectionVariant: selectionVariant,
+        cutVariant: cutVariant,
         onToolChanged: onToolChanged ?? (_) {},
       ),
     ),
@@ -20,6 +22,84 @@ Widget _panel({
 }
 
 void main() {
+  group('ToolsPanel cut button', () {
+    testWidgets('the rail carries one Cut button', (tester) async {
+      await tester.pumpWidget(_panel());
+      expect(
+        find.byKey(const ValueKey<String>('tool-cut-button')),
+        findsOneWidget,
+      );
+      expect(find.byTooltip('Cut Tool'), findsOneWidget);
+    });
+
+    testWidgets('it lights up for every cut variant', (tester) async {
+      // One button, three tiles: the rail must not go dark just because the
+      // user is on the stamp tile rather than a grab tile.
+      for (final variant in [
+        CanvasTool.cutRect,
+        CanvasTool.cutLasso,
+        CanvasTool.cutStamp,
+      ]) {
+        await tester.pumpWidget(_panel(tool: variant));
+        expect(
+          tester
+              .widget<IconButton>(
+                find.byKey(const ValueKey<String>('tool-cut-button')),
+              )
+              .isSelected,
+          isTrue,
+          reason: '$variant',
+        );
+      }
+    });
+
+    testWidgets('pressing it from another tool activates the remembered '
+        'variant', (tester) async {
+      final picked = <CanvasTool>[];
+      await tester.pumpWidget(
+        _panel(
+          tool: CanvasTool.brush,
+          cutVariant: CanvasTool.cutLasso,
+          onToolChanged: picked.add,
+        ),
+      );
+      await tester.tap(find.byKey(const ValueKey<String>('tool-cut-button')));
+      expect(picked, [CanvasTool.cutLasso]);
+    });
+
+    testWidgets('pressing it while already cutting keeps the current tile', (
+      tester,
+    ) async {
+      // Re-pressing must not throw the user back to the rectangle — the
+      // button re-activates the tool, it does not reset the variant.
+      final picked = <CanvasTool>[];
+      await tester.pumpWidget(
+        _panel(
+          tool: CanvasTool.cutStamp,
+          cutVariant: CanvasTool.cutRect,
+          onToolChanged: picked.add,
+        ),
+      );
+      await tester.tap(find.byKey(const ValueKey<String>('tool-cut-button')));
+      expect(picked, [CanvasTool.cutStamp]);
+    });
+
+    testWidgets('the Select button stays dark while a cut variant is armed', (
+      tester,
+    ) async {
+      // The two buttons share a grammar; they must not share a highlight.
+      await tester.pumpWidget(_panel(tool: CanvasTool.cutRect));
+      expect(
+        tester
+            .widget<IconButton>(
+              find.byKey(const ValueKey<String>('tool-select-button')),
+            )
+            .isSelected,
+        isFalse,
+      );
+    });
+  });
+
   group('ToolsPanel', () {
     testWidgets('exposes brush and eraser buttons with tooltips', (
       tester,

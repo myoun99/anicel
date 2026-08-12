@@ -27,7 +27,38 @@ enum CanvasTool {
   /// nothing itself — the guides it edits steer the OTHER tools, and they
   /// keep doing so while this one is not selected.
   guide,
+
+  /// The CUT tool's rectangle variant: drag out a box and the pixels under
+  /// it are COPIED into the held piece. The source is never removed
+  /// (유저 확정: "잘라내기는 원본 남기는 복사").
+  cutRect,
+
+  /// The CUT tool's lasso variant. Same verb, freehand outline.
+  cutLasso,
+
+  /// The CUT tool's stamp variant: click to drop the held piece, drag to
+  /// draw with it.
+  ///
+  /// Splitting grab and stamp into two variants is what makes the gesture
+  /// question disappear — inside one variant a drag means exactly one
+  /// thing, so no modifier is needed and the tool works on a tablet with no
+  /// keyboard. TVPaint solves the same problem with two separate tools
+  /// (Cutting tool / Custom Brush); we solve it with tiles, the way this app
+  /// already splits rectangle/lasso (R17-U).
+  cutStamp,
 }
+
+/// Whether [tool] lifts a piece into the cut slot.
+bool canvasToolCuts(CanvasTool tool) =>
+    tool == CanvasTool.cutRect || tool == CanvasTool.cutLasso;
+
+/// Whether [tool] stamps the held piece onto the cel.
+bool canvasToolStamps(CanvasTool tool) => tool == CanvasTool.cutStamp;
+
+/// Whether [tool] is one of the cut tool's variants — what the rail button
+/// lights up for, and what the tool library lists tiles for.
+bool canvasToolUsesCutPiece(CanvasTool tool) =>
+    canvasToolCuts(tool) || canvasToolStamps(tool);
 
 /// Whether [tool] paints strokes through the interactive canvas (the
 /// non-painting tools mount a tool overlay instead).
@@ -42,14 +73,27 @@ bool canvasToolPaints(CanvasTool tool) =>
 /// the guide tool edits the guides, the eyedropper reads a colour, and the
 /// selection tools mark nothing.
 bool canvasToolMarksCel(CanvasTool tool) =>
-    canvasToolPaints(tool) || tool == CanvasTool.fill;
+    canvasToolPaints(tool) ||
+    tool == CanvasTool.fill ||
+    // The stamp drops pixels on the cel, so a press with it armed has to
+    // count as drawing — the empty-cel guard this predicate feeds must not
+    // let a stamp land on nothing.
+    canvasToolStamps(tool);
 
 /// Whether [tool] mounts the selection interaction layer (the P9
 /// marquee/lasso tools and the move tool that drags their region).
+///
+/// The CUT variants mount it too — they need the very same marquee/lasso
+/// drag, and rebuilding that geometry beside it would be a second copy of
+/// the trickiest input code in the app. What differs is only what a finished
+/// drag DOES: the select tools commit a region, the cut tools fill the slot
+/// and leave the region alone (유저 확정: "잘라내기는 잘라내기만이야. 그러니
+/// 선택으로 남지 않아"). The stamp variant does not mount it — it paints.
 bool canvasToolSelects(CanvasTool tool) =>
     tool == CanvasTool.selectRect ||
     tool == CanvasTool.lasso ||
-    tool == CanvasTool.move;
+    tool == CanvasTool.move ||
+    canvasToolCuts(tool);
 
 /// Editor-session state for the active brush tool options.
 ///

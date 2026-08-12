@@ -718,6 +718,7 @@ class AppStrings {
   String get toolFillTip => _s('toolFillTip');
   String get toolSelectTip => _s('toolSelectTip');
   String get toolMoveTip => _s('toolMoveTip');
+  String get toolCutTip => _s('toolCutTip');
   String get brSize => _s('brSize');
   String get brOpacity => _s('brOpacity');
   String get brFlow => _s('brFlow');
@@ -744,6 +745,8 @@ class AppStrings {
   String get brTexture => _s('brTexture');
   String get brTextureDensity => _s('brTextureDensity');
   String get brAddTipImage => _s('brAddTipImage');
+  String get brRenameTip => _s('brRenameTip');
+  String get brDeleteTip => _s('brDeleteTip');
   String get brTipRotation => _s('brTipRotation');
   String get brRotationFixed => _s('brRotationFixed');
   String get brRotationDirection => _s('brRotationDirection');
@@ -1310,6 +1313,7 @@ class AppStrings {
     'toolFillTip': 'Fill Tool',
     'toolSelectTip': 'Select Tool',
     'toolMoveTip': 'Move / Transform Tool',
+    'toolCutTip': 'Cut Tool',
     'brSize': 'Size',
     'brOpacity': 'Opacity',
     'brFlow': 'Flow',
@@ -1339,6 +1343,8 @@ class AppStrings {
     'brTexture': 'Texture',
     'brTextureDensity': 'Density',
     'brAddTipImage': 'Add a tip from an image',
+    'brRenameTip': 'Rename tip',
+    'brDeleteTip': 'Delete tip',
     'brStabilizer': 'Stabilizer',
     'brBlend': 'Blend',
     'brBlendMode': 'Brush blend mode',
@@ -2051,6 +2057,8 @@ class AppStrings {
     'toolFillTip': '塗りつぶしツール',
     'toolSelectTip': '選択ツール',
     'toolMoveTip': '移動 / 変形ツール',
+    // TVPaint's own term for this verb in Japanese studios.
+    'toolCutTip': '切り抜きツール',
     'brSize': 'サイズ',
     'brOpacity': '不透明度',
     'brFlow': '流量',
@@ -2080,6 +2088,8 @@ class AppStrings {
     'brTexture': '質感',
     'brTextureDensity': '濃度',
     'brAddTipImage': '画像から先端を追加',
+    'brRenameTip': '先端の名前を変更',
+    'brDeleteTip': '先端を削除',
     'brStabilizer': '手ブレ補正',
     'brBlend': '合成',
     'brBlendMode': 'ブラシの合成モード',
@@ -2785,6 +2795,7 @@ class AppStrings {
     'toolFillTip': '채우기 도구',
     'toolSelectTip': '선택 도구',
     'toolMoveTip': '이동 / 변형 도구',
+    'toolCutTip': '잘라내기 도구',
     'brSize': '크기',
     'brOpacity': '불투명도',
     'brFlow': '흐름',
@@ -2814,6 +2825,8 @@ class AppStrings {
     'brTexture': '질감',
     'brTextureDensity': '농도',
     'brAddTipImage': '이미지에서 끝 추가',
+    'brRenameTip': '끝 이름 변경',
+    'brDeleteTip': '끝 삭제',
     'brStabilizer': '손떨림 보정',
     'brBlend': '합성',
     'brBlendMode': '브러시 합성 모드',
@@ -3552,6 +3565,7 @@ class AppStrings {
     'toolFillTip': 'Outil remplissage',
     'toolSelectTip': 'Outil sélection',
     'toolMoveTip': 'Outil déplacer / transformer',
+    'toolCutTip': 'Outil découpe',
     'brSize': 'Taille',
     'brOpacity': 'Opacité',
     'brFlow': 'Débit',
@@ -3581,6 +3595,8 @@ class AppStrings {
     'brTexture': 'Texture',
     'brTextureDensity': 'Densité',
     'brAddTipImage': 'Ajouter une pointe depuis une image',
+    'brRenameTip': 'Renommer la pointe',
+    'brDeleteTip': 'Supprimer la pointe',
     'brStabilizer': 'Stabilisateur',
     'brBlend': 'Fusion',
     'brBlendMode': 'Mode de fusion du pinceau',
@@ -4265,6 +4281,7 @@ class AppStrings {
     'toolFillTip': '填充工具',
     'toolSelectTip': '选择工具',
     'toolMoveTip': '移动 / 变换工具',
+    'toolCutTip': '裁剪工具',
     'brSize': '大小',
     'brOpacity': '不透明度',
     'brFlow': '流量',
@@ -4294,6 +4311,8 @@ class AppStrings {
     'brTexture': '纹理',
     'brTextureDensity': '浓度',
     'brAddTipImage': '从图像添加笔尖',
+    'brRenameTip': '重命名笔尖',
+    'brDeleteTip': '删除笔尖',
     'brStabilizer': '防抖',
     'brBlend': '混合',
     'brBlendMode': '画笔混合模式',

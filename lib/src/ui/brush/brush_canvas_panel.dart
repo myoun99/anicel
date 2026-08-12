@@ -35,6 +35,11 @@ import '../canvas/canvas_viewport_gesture_layer.dart';
 import '../canvas/flip_hud_controller.dart';
 import '../canvas/flip_hud_overlay.dart';
 import 'canvas_floor_insets.dart';
+import '../../models/brush_blend_mode.dart';
+import '../../services/cut_piece_lift.dart';
+import '../../services/cut_piece_slot.dart';
+import '../../services/cut_piece_stamp.dart';
+import 'cut_piece_preview.dart';
 import '../../models/project.dart'
     show defaultProjectBackdropArgb, defaultProjectPasteboardMargin;
 import '../../models/project_background.dart';
@@ -144,6 +149,7 @@ class BrushCanvasPanel extends StatefulWidget {
     this.transformResampleMode,
     this.viewCommands,
     this.selectionCommands,
+    this.cutPieceSlot,
     this.onStrokeInputActiveChanged,
     this.onSelectionInteractionChanged,
     this.allowViewRotation = true,
@@ -396,6 +402,10 @@ class BrushCanvasPanel extends StatefulWidget {
   /// the selection layer while a selection tool is active.
   final CanvasSelectionCommands? selectionCommands;
 
+  /// Where a finished cut lands. Null in hosts that do not offer the tool
+  /// (the cut variants are then inert rather than crashing).
+  final CutPieceSlot? cutPieceSlot;
+
   /// Stroke lifecycle for the host (R13-3): true at pen-down, false at
   /// stroke end/cancel — the session holds prerender warming while a
   /// stroke is live.
@@ -546,8 +556,22 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     HardwareKeyboard.instance.addHandler(_handleKeyEvent);
     widget.selectionCommands?.addListener(_handleSelectionChannelChanged);
     _bindSelectionHistoryRecorder();
+    _bindCutPasteHandler();
     _syncIdleAnts();
   }
+
+  /// The tool settings panel lives in another subtree, so the slot carries
+  /// the verb and this panel — the only thing here that can reach a cel —
+  /// fills it in while it is mounted.
+  void _bindCutPasteHandler() {
+    // Held in a field rather than compared as a tear-off: two tear-offs of
+    // the same method are not reliably identical, and getting that wrong
+    // silently leaves a verb pointing at a disposed State.
+    _installedCutPasteHandler = pasteCutPieceAtOrigin;
+    widget.cutPieceSlot?.pasteAtOriginHandler = _installedCutPasteHandler;
+  }
+
+  void Function({required bool behind})? _installedCutPasteHandler;
 
   @override
   void didChangeDependencies() {
@@ -634,6 +658,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     HardwareKeyboard.instance.removeHandler(_handleKeyEvent);
     widget.selectionCommands?.removeListener(_handleSelectionChannelChanged);
     widget.selectionCommands?.regionHistoryRecorder = null;
+    // Leave no verb pointing at a dead State: the buttons must go dead
+    // with the canvas rather than throw when pressed after it is gone.
+    if (identical(
+      widget.cutPieceSlot?.pasteAtOriginHandler,
+      _installedCutPasteHandler,
+    )) {
+      widget.cutPieceSlot?.pasteAtOriginHandler = null;
+    }
     _idleAnts.dispose();
     _eyedropperHover.dispose();
     _toolCursorHover.dispose();
@@ -716,7 +748,11 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     // disagreed, so this is hygiene rather than a fix — but it leaves ONE
     // sentence as the contract: the always-mounted census WRITES, everything
     // else READS.
-    if (_brushCursorActive || _fillCursorActive) {
+    if (_brushCursorActive ||
+        _fillCursorActive ||
+        // The stamp's piece preview reads the same census — one writer,
+        // every cursor a reader.
+        canvasToolStamps(widget.brushToolState.tool)) {
       // The frame this schedules is the one the whole raster program is
       // about: the pen moves over the canvas and, before the bakes, every
       // open panel was re-rastered for it. Naming it here is what lets
@@ -866,6 +902,34 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       // `BrushCursorOverlay` already has the right shape inside
       // (`Positioned > IgnorePointer > RepaintBoundary > CustomPaint`), so
       // there is nothing to add here.
+      // The stamp wears the PIECE, for the same reason the brush wears its
+      // footprint: without it the only way to learn where a stamp lands is
+      // to drop it and undo. It matters more here — a stamp puts down a
+      // whole drawing, not a dot.
+      if (canvasToolStamps(widget.brushToolState.tool) &&
+          widget.cutPieceSlot != null)
+        ListenableBuilder(
+          listenable: widget.cutPieceSlot!,
+          builder: (context, _) {
+            final piece = widget.cutPieceSlot!.piece;
+            if (piece == null) {
+              return const SizedBox.shrink();
+            }
+            return ValueListenableBuilder<Offset?>(
+              valueListenable: _toolCursorHover,
+              builder: (context, position, _) {
+                if (position == null) {
+                  return const SizedBox.shrink();
+                }
+                return CutPieceCursorOverlay(
+                  position: position,
+                  viewport: _viewport,
+                  piece: piece,
+                );
+              },
+            );
+          },
+        ),
       if (_brushCursorActive)
         ValueListenableBuilder<Offset?>(
           valueListenable: _toolCursorHover,
@@ -1524,6 +1588,27 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                           ),
                                                         );
                                                       },
+                                                      // Drag = draw with the held
+                                                      // piece. Only the stamp tile
+                                                      // wants this; the other tap
+                                                      // tools act once per press.
+                                                      onPointerMove: (event) =>
+                                                          _dragStampTo(
+                                                            _viewport.viewportToCanvas(
+                                                              ViewportPoint(
+                                                                x: event
+                                                                    .localPosition
+                                                                    .dx,
+                                                                y: event
+                                                                    .localPosition
+                                                                    .dy,
+                                                              ),
+                                                            ),
+                                                          ),
+                                                      onPointerUp: (_) =>
+                                                          _lastStampCenter = null,
+                                                      onPointerCancel: (_) =>
+                                                          _lastStampCenter = null,
                                                     ),
                                                   ),
                                                 // Eyedropper cursor (R11-②): crosshair +
@@ -1654,6 +1739,14 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                               CanvasTool.move =>
                                                                 CanvasSelectionTool
                                                                     .move,
+                                                              CanvasTool
+                                                                  .cutRect =>
+                                                                CanvasSelectionTool
+                                                                    .cutRect,
+                                                              CanvasTool
+                                                                  .cutLasso =>
+                                                                CanvasSelectionTool
+                                                                    .cutLasso,
                                                               _ =>
                                                                 CanvasSelectionTool
                                                                     .rect,
@@ -1667,6 +1760,8 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
                                                                 CanvasTool.move,
                                                             onShapeCommitted:
                                                                 _recordSelectionChange,
+                                                            onCutShape:
+                                                                _cutPieceFromShape,
                                                             viewport: _viewport,
                                                             canvasSize: widget
                                                                 .canvasSize,
@@ -2120,11 +2215,39 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
       case CanvasTool.brush:
       case CanvasTool.eraser:
       // The selection/move tools mount their own drag layer, not the tap
-      // layer.
+      // layer. The CUT variants ride that same layer (canvasToolSelects),
+      // and the STAMP variant paints, so none of them want a tap handler
+      // here either.
       case CanvasTool.selectRect:
       case CanvasTool.lasso:
       case CanvasTool.move:
+      case CanvasTool.cutRect:
+      case CanvasTool.cutLasso:
         return null;
+      case CanvasTool.cutStamp:
+        // Click = drop the held piece, centred here, committed at once.
+        // Photoshop, Clip Studio and TVPaint agree on the immediate part:
+        // none of them float a pasted or stamped piece behind a confirm
+        // step. That is also what keeps this tool out of the confirm
+        // button's state machine.
+        final slot = widget.cutPieceSlot;
+        if (slot == null || widget._editableCoordinator == null) {
+          return null;
+        }
+        return (point) {
+          final piece = slot.piece;
+          if (piece == null) {
+            return;
+          }
+          _commitSourceStroke(
+            BrushStrokeCommitData(
+              sourceDabs: [buildCutStampDab(piece: piece, center: point)],
+            ),
+          );
+          // A press is also the start of a possible drag, and the drag
+          // measures its spacing from the stamp that just landed.
+          _lastStampCenter = point;
+        };
       case CanvasTool.eyedropper:
         final sample = widget.sampleColorAt;
         final pick = widget.onEyedropperPick;
@@ -2190,6 +2313,90 @@ class _BrushCanvasPanelState extends State<BrushCanvasPanel>
     _contentBoundsSurface = surface;
     _contentBoundsCached = bounds;
     return bounds;
+  }
+
+  /// A finished cut outline: lift the pixels under it into the slot.
+  ///
+  /// Reads the ACTIVE LAYER's committed surface and nothing else — no
+  /// composite, no layer transform, no effects (유저 확정: "트랜스폼이나 이런
+  /// 거 반영 안 한 진짜 순수 픽셀"). That is also why the piece can carry
+  /// plain cel coordinates: the read and the eventual write are in the same
+  /// space, so a posed layer cannot make them disagree.
+  ///
+  /// The surface is never written here. Cutting copies.
+  void _cutPieceFromShape(CanvasSelectionShape shape) {
+    final slot = widget.cutPieceSlot;
+    final coordinator = widget._editableCoordinator;
+    if (slot == null || coordinator == null) {
+      return;
+    }
+    final piece = buildCutPiece(
+      region: CanvasSelectionRegion.shape(shape),
+      surface: coordinator.currentSurfaceOf(coordinator.activeFrameKey),
+      pieceId: 'cut-${_cutPieceSequence += 1}',
+    );
+    // Null = the outline covered no paint. Leave the slot alone rather
+    // than blanking it: it survives frames, cuts and projects, so one
+    // stray scrape must not be able to throw away what is in it.
+    if (piece != null) {
+      slot.hold(piece);
+    }
+  }
+
+  int _cutPieceSequence = 0;
+
+  /// Where the last stamp of the current drag landed. Null between drags.
+  CanvasPoint? _lastStampCenter;
+
+  /// Continues a stamp drag up to [point].
+  ///
+  /// Stamps go down one whole piece apart, so they touch without
+  /// overlapping — which is why there is no spacing knob to get wrong, and
+  /// why a soft edge cannot accumulate where two stamps stack.
+  ///
+  /// The remainder of the travel is deliberately NOT carried: the next
+  /// move continues from the last stamp that actually landed, so a slow
+  /// drag and a fast one lay the same number of stamps over the same
+  /// distance.
+  void _dragStampTo(CanvasPoint point) {
+    if (!canvasToolStamps(widget.brushToolState.tool)) {
+      return;
+    }
+    final piece = widget.cutPieceSlot?.piece;
+    final from = _lastStampCenter;
+    if (piece == null || from == null) {
+      return;
+    }
+    final centers = cutStampCentersAlong(piece: piece, from: from, to: point);
+    if (centers.isEmpty) {
+      return;
+    }
+    for (final center in centers) {
+      _commitSourceStroke(
+        BrushStrokeCommitData(
+          sourceDabs: [buildCutStampDab(piece: piece, center: center)],
+        ),
+      );
+    }
+    _lastStampCenter = centers.last;
+  }
+
+  /// Drop the held piece back where it was cut from.
+  ///
+  /// [behind] is the "아래에 붙여넣기" half: 위/아래 is COMPOSITE ORDER, not
+  /// a layer row (유저 확정) — the pixels land in the same cel either way,
+  /// over what is there or under it.
+  void pasteCutPieceAtOrigin({required bool behind}) {
+    final piece = widget.cutPieceSlot?.piece;
+    if (piece == null || widget._editableCoordinator == null) {
+      return;
+    }
+    _commitSourceStroke(
+      BrushStrokeCommitData(
+        sourceDabs: [buildCutPasteDab(piece)],
+        blendMode: behind ? BrushBlendMode.behind : BrushBlendMode.color,
+      ),
+    );
   }
 
   BitmapSurface? _contentBoundsSurface;

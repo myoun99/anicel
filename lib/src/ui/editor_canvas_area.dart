@@ -10,6 +10,7 @@ import '../models/project_background.dart';
 import '../services/canvas_color_sampler.dart';
 import '../services/canvas_flood_fill.dart';
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
+import '../services/cut_piece_slot.dart';
 import '../services/resample/resample_kernel.dart' show ResampleMode;
 import '../services/se_name_tag_plan.dart';
 import 'brush/brush_tool_state.dart';
@@ -64,6 +65,7 @@ class EditorCanvasArea extends StatefulWidget {
     this.onBrushToolStateChanged,
     this.canvasViewCommands,
     this.canvasSelectionCommands,
+    this.cutPieceSlot,
     this.expandedLaneLayerIds,
     this.fillOptions,
     this.selectionMaskOptions,
@@ -98,6 +100,10 @@ class EditorCanvasArea extends StatefulWidget {
   /// The app-level selection shortcut channel (P9: Ctrl+D, nudges),
   /// forwarded the same way.
   final CanvasSelectionCommands? canvasSelectionCommands;
+
+  /// Where a finished cut lands — owned by the workspace so the piece
+  /// outlives every project the canvas shows.
+  final CutPieceSlot? cutPieceSlot;
 
   /// Camera view mode: overlay shown with the outside dimmed.
   final ValueListenable<bool> cameraViewEnabled;
@@ -568,6 +574,7 @@ class _EditorCanvasAreaState extends State<EditorCanvasArea> {
               fitFocusRect: fitFocusRect,
               viewCommands: widget.canvasViewCommands,
               selectionCommands: widget.canvasSelectionCommands,
+              cutPieceSlot: widget.cutPieceSlot,
               // R13-3: a live stroke holds the prerender warmer — composite
               // warming never shares the UI/raster threads with drawing.
               onStrokeInputActiveChanged: session.setBrushInputActive,
