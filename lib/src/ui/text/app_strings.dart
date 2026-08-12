@@ -466,6 +466,16 @@ class AppStrings {
   String get tlKindAdjustment => _s('tlKindAdjustment');
   String get tlKindFolder => _s('tlKindFolder');
   String get tlKindSe => _s('tlKindSe');
+  String get tlKindTransition => _s('tlKindTransition');
+  String get tlKindCamera => _s('tlKindCamera');
+
+  /// A row's kind said as a SCREEN-READER label: '{kind}' is the kind name.
+  ///
+  /// ⚠️A template rather than a suffix, because the suffix is not a suffix
+  /// in every language — fr puts the noun first and ja/zh take no space.
+  /// Building this by appending ' layer' was the reason the rail's labels
+  /// could never be translated at all.
+  String get tlKindSemanticTemplate => _s('tlKindSemanticTemplate');
 
   // --- The text cel editor (R5) ---
   String get textCelNewTitle => _s('textCelNewTitle');
@@ -1488,6 +1498,9 @@ class AppStrings {
     'tlKindAdjustment': 'Adjustment',
     'tlKindFolder': 'Folder',
     'tlKindSe': 'SE',
+    'tlKindTransition': 'Transition',
+    'tlKindCamera': 'Camera',
+    'tlKindSemanticTemplate': '{kind} layer',
     'tlKindInstruction': 'Direction',
     'tlNoriShiro': 'MARGIN',
     'textCelNewTitle': 'New Text',
@@ -2248,6 +2261,9 @@ class AppStrings {
     'tlKindAdjustment': '調整レイヤー',
     'tlKindFolder': 'フォルダー',
     'tlKindSe': 'SE',
+    'tlKindTransition': 'トランジション',
+    'tlKindCamera': 'カメラ',
+    'tlKindSemanticTemplate': '{kind}レイヤー',
     'textCelNewTitle': '新規テキスト',
     'textCelEditTitle': 'テキストを編集',
     'textCelTextLabel': 'テキスト',
@@ -3000,6 +3016,9 @@ class AppStrings {
     'tlKindAdjustment': '조정 레이어',
     'tlKindFolder': '폴더',
     'tlKindSe': 'SE',
+    'tlKindTransition': '트랜지션',
+    'tlKindCamera': '카메라',
+    'tlKindSemanticTemplate': '{kind} 레이어',
     'textCelNewTitle': '새 텍스트',
     'textCelEditTitle': '텍스트 편집',
     'textCelTextLabel': '텍스트',
@@ -3789,6 +3808,9 @@ class AppStrings {
     'tlKindAdjustment': 'Calque de réglage',
     'tlKindFolder': 'Dossier',
     'tlKindSe': 'SE',
+    'tlKindTransition': 'Transition',
+    'tlKindCamera': 'Camera',
+    'tlKindSemanticTemplate': 'Calque {kind}',
     'tlKindInstruction': 'Direction',
     'tlNoriShiro': 'MARGE',
     'textCelNewTitle': 'Nouveau texte',
@@ -4517,6 +4539,9 @@ class AppStrings {
     'tlKindAdjustment': '调整图层',
     'tlKindFolder': '文件夹',
     'tlKindSe': 'SE',
+    'tlKindTransition': 'Transition',
+    'tlKindCamera': 'Camera',
+    'tlKindSemanticTemplate': '{kind}图层',
     'textCelNewTitle': '新建文本',
     'textCelEditTitle': '编辑文本',
     'textCelTextLabel': '文本',
@@ -4543,7 +4568,11 @@ class AppStrings {
     'seNameTagSampleName': '名称',
     'seNameTagSampleLine': '台词',
     'seNameTagReset': '恢复默认',
-    'tlKindInstruction': '指示',
+    // 🚨A TRADE TERM, not a general word (user 2026-08-12: 「현장용어만
+    // 원어/영어로 두기로 하자」). ja/ko already transliterate it rather than
+    // translate it — ディレクション / 디렉션 — so zh standing alone with 指示
+    // was the odd one out, not the rule.
+    'tlKindInstruction': 'Direction',
     'tlNoriShiro': '留白',
     'tlAttachFreeAbove': '在上方添加自由附属图层',
     'tlAttachFreeBelow': '在下方添加自由附属图层',

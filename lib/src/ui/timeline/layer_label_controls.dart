@@ -629,18 +629,30 @@ IconData layerKindIcon(LayerKind kind) {
 }
 
 /// The kind's display name for the legend's kind-solo flyout.
+/// A row kind's name, in the program's language.
+///
+/// It used to be ten hardcoded English literals living beside a `tlKind*`
+/// table that had eight of the same names translated, so the SAME row read
+/// 「디렉션」 in the toolbar and `Direction` in the kind flyout. The table
+/// was not missing a translator — it was missing two KINDS (`transition`,
+/// `camera`), and this switch was where they had quietly gone instead.
+///
+/// ⚠️Trade terms stay in their own script or in English (user 2026-08-12:
+/// 「현장용어만 원어/영어로 두기로 하자」): SE, Transition, Direction. That
+/// is a decision about the WORDS and it lives in the tables, not here.
 String layerKindDisplayName(LayerKind kind) {
+  final strings = AppText.strings;
   return switch (kind) {
-    LayerKind.animation => 'Animation',
-    LayerKind.storyboard => 'Storyboard',
-    LayerKind.image => 'Image',
-    LayerKind.text => 'Text',
-    LayerKind.se => 'SE',
-    LayerKind.instruction => 'Direction',
-    LayerKind.transition => 'Transition',
-    LayerKind.camera => 'Camera',
-    LayerKind.folder => 'Folder',
-    LayerKind.adjustment => 'Adjustment',
+    LayerKind.animation => strings.tlKindAnimation,
+    LayerKind.storyboard => strings.tlKindStoryboard,
+    LayerKind.image => strings.tlKindImage,
+    LayerKind.text => strings.tlKindText,
+    LayerKind.se => strings.tlKindSe,
+    LayerKind.instruction => strings.tlKindInstruction,
+    LayerKind.transition => strings.tlKindTransition,
+    LayerKind.camera => strings.tlKindCamera,
+    LayerKind.folder => strings.tlKindFolder,
+    LayerKind.adjustment => strings.tlKindAdjustment,
   };
 }
 
