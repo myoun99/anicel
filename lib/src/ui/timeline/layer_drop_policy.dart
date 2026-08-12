@@ -211,6 +211,34 @@ LayerDropPlan? resolveLayerDropOnRow({
   );
 }
 
+/// Whether dropping [movingId] on [targetId] is refused for the ONE reason
+/// ⑦ names — the folder carries a folder, and an organizer folder is flat.
+///
+/// Separate from [resolveLayerDropOnRow] because a refusal is a null there,
+/// and "why" is what the user asked to be told. Everything else that refuses
+/// an on-row drop is a row that was never going to attach (an SE row, a
+/// camera row, a base that already carries riders): those need no notice,
+/// because nothing about them looked like it should have worked.
+bool layerDropRefusedForNestedFolder({
+  required List<Layer> stack,
+  required LayerId movingId,
+  required LayerId targetId,
+}) {
+  final moving = stack.where((layer) => layer.id == movingId).firstOrNull;
+  final target = stack.where((layer) => layer.id == targetId).firstOrNull;
+  final run = layerDragRun(stack, movingId);
+  if (moving == null ||
+      target == null ||
+      run == null ||
+      !layerKindGroupsLayers(moving.kind) ||
+      !canCarryAttachedLayers(target)) {
+    return false;
+  }
+  return stack
+      .sublist(run.start, run.endExclusive)
+      .any((layer) => layer.id != moving.id && layerKindGroupsLayers(layer.kind));
+}
+
 LayerDropPlan? resolveLayerDrop({
   required List<Layer> stack,
   required LayerId movingId,
@@ -332,29 +360,55 @@ LayerDropPlan? resolveLayerDrop({
           ? null
           : (baseId: forceMountBaseId, placement: forceMountPlacement));
 
-  ({LayerId layerId, LayerId baseId, AttachedPlacement placement})? mount;
+  var mounts =
+      const <({LayerId layerId, LayerId baseId, AttachedPlacement placement})>[];
   if (target != null) {
     final insideGroup = target;
     final base = stack.firstWhere((layer) => layer.id == insideGroup.baseId);
-    final single = run.endExclusive - run.start == 1;
-    // No nesting: a row that carries attaches of its own is a base, and a
+    // ⑦ (user, 2026-08-12): 「폴더도 드래그 드롭으로 어태치 장착 가능(동일
+    // 규칙). 불가능한 경우는 「어태치 폴더 안에 폴더」 구조뿐이고 그때는
+    // 안내문을 낸다」.
+    //
+    // A folder never becomes a rider itself — an organizer folder IS its
+    // members riding one base ([attachOrganizerBaseOf]) — so a folder run
+    // mounts the rows it carries and the folder follows by derivation. That
+    // is why this asks for a LIST of riders rather than "the moved row".
+    final riders = layerKindGroupsLayers(moving.kind)
+        ? [
+            for (final layer in carried)
+              if (!layerKindGroupsLayers(layer.kind)) layer,
+          ]
+        : (run.endExclusive - run.start == 1 ? [moving] : const <Layer>[]);
+    // The one shape ⑦ excludes: an organizer folder is FLAT, so a folder
+    // carrying a folder has no legal landing inside a group. Counted off
+    // the run rather than off `riders`, which has already dropped them.
+    final carriesFolder =
+        layerKindGroupsLayers(moving.kind) &&
+        carried.any(
+          (layer) => layer.id != moving.id && layerKindGroupsLayers(layer.kind),
+        );
+    // No chaining: a row that carries attaches of its own is a base, and a
     // base inside another group would make the relation chain.
     final carriesAttaches = stack.any(
-      (other) => other.attachedToLayerId == moving.id,
+      (other) => carriedIds.contains(other.attachedToLayerId),
     );
-    if (!single ||
+    if (riders.isEmpty ||
+        carriesFolder ||
         carriesAttaches ||
-        !canMountLayerOnBase(row: moving, base: base)) {
+        riders.any((row) => !canMountLayerOnBase(row: row, base: base))) {
       // The slice cannot join this group, and letting it land there anyway
       // would split a group that is unsplittable (R26 #36). The edges of the
       // group are still open, so "next to it" stays reachable.
       return null;
     }
-    mount = (
-      layerId: moving.id,
-      baseId: insideGroup.baseId,
-      placement: insideGroup.placement,
-    );
+    mounts = [
+      for (final row in riders)
+        (
+          layerId: row.id,
+          baseId: insideGroup.baseId,
+          placement: insideGroup.placement,
+        ),
+    ];
   }
 
   // DETACH is the same question asked of every attach row that TRAVELS: its
@@ -362,25 +416,28 @@ LayerDropPlan? resolveLayerDrop({
   // (user 2026-08-07: dragging an attach row out detaches it rather than
   // refusing the drag). One rule covers the row the pointer held and the
   // rows carried inside an organizer folder.
+  final mountedIds = {for (final mount in mounts) mount.layerId};
   final detachIds = <LayerId>{
     for (final layer in carried)
       if (layer.attachedToLayerId != null &&
           !carriedIds.contains(layer.attachedToLayerId) &&
-          mount?.layerId != layer.id &&
+          !mountedIds.contains(layer.id) &&
           !_slotTouchesGroup(rest, restInsertAt, layer.attachedToLayerId!))
         layer.id,
   };
 
   final attach = LayerAttachDrop(
-    mount: mount,
+    mounts: mounts,
     sideChange: sideChange,
     detachIds: detachIds,
   );
+  final mountById = {for (final mount in mounts) mount.layerId: mount};
   Layer settled(Layer layer) {
     var next = folderIds.containsKey(layer.id)
         ? layer.copyWith(folderId: folderIds[layer.id])
         : layer;
-    if (mount != null && layer.id == mount.layerId) {
+    final mount = mountById[layer.id];
+    if (mount != null) {
       next = next.copyWith(
         attachedToLayerId: mount.baseId,
         attachedPlacement: mount.placement,

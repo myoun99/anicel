@@ -182,6 +182,7 @@ import 'timeline/layer_drop_policy.dart'
         LayerDropPlan,
         detachLandingIndex,
         layerDragRun,
+        layerDropRefusedForNestedFolder,
         modelInsertionForSlot,
         resolveEffectDrop,
         resolveLayerDrop,
@@ -4707,7 +4708,15 @@ class EditorSessionManager extends ChangeNotifier {
   /// The caret moved to [slot] of [displayLayers] — the list the SURFACE
   /// renders, which is what lets the model insertion be resolved without
   /// this verb knowing which way that rail runs.
-  void updateLayerRowDrag(List<Layer> displayLayers, int slot) {
+  ///
+  /// [noticeLabel] overrides what the caret SAYS (⑦): the landing is an
+  /// ordinary move, but something the pointer just passed over refused for a
+  /// reason worth naming.
+  void updateLayerRowDrag(
+    List<Layer> displayLayers,
+    int slot, {
+    String? noticeLabel,
+  }) {
     final state = layerRowDrag.value;
     final subject = state?.subject;
     if (state == null || subject is! LayerRowSubject) {
@@ -4751,7 +4760,9 @@ class EditorSessionManager extends ChangeNotifier {
       subject: subject,
       caretSlot: slot,
       legal: plan != null,
-      joinLabel: _rowDropLabel(cut.id, cut.layers, subject.layerId, plan),
+      joinLabel:
+          noticeLabel ??
+          _rowDropLabel(cut.id, cut.layers, subject.layerId, plan),
     );
   }
 
@@ -4798,10 +4809,25 @@ class EditorSessionManager extends ChangeNotifier {
     );
     if (plan == null) {
       // Nothing there can swallow it — an SE row, a camera row, a base that
-      // already carries riders, a folder dropped on a drawing row. The gap
-      // under the pointer is still a perfectly good landing, so the caret
-      // comes back rather than the drag going dead.
-      updateLayerRowDrag(displayLayers, slot);
+      // already carries riders. The gap under the pointer is still a
+      // perfectly good landing, so the caret comes back rather than the drag
+      // going dead.
+      //
+      // ⑦: with ONE exception the user asked to be told about — a folder
+      // that carries a folder. The drag stays useful (the caret is still
+      // the fallback), but it says why the attach did not happen, because
+      // that landing is the only one that looks like it should have worked.
+      updateLayerRowDrag(
+        displayLayers,
+        slot,
+        noticeLabel: layerDropRefusedForNestedFolder(
+              stack: cut.layers,
+              movingId: subject.layerId,
+              targetId: targetId,
+            )
+            ? uiStrings.tlDropFolderInAttachFolder
+            : null,
+      );
       return;
     }
     _rowDragPlan = plan;
@@ -4828,7 +4854,9 @@ class EditorSessionManager extends ChangeNotifier {
     if (plan == null) {
       return null;
     }
-    final mount = plan.attach.mount;
+    // ⑦: a folder drop carries several mounts, but they share a base and a
+    // side — the caret names the base, so the first one speaks for all.
+    final mount = plan.attach.mounts.firstOrNull;
     if (mount != null) {
       final base = stack.byId(mount.baseId);
       final mode = _cutCommandCoordinator.mountModeFor(

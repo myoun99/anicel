@@ -133,11 +133,15 @@ _Fixture _fixture({
 
 LayerAttachDrop _mount(String row, String base, [AttachedPlacement? side]) =>
     LayerAttachDrop(
-      mount: (
-        layerId: LayerId(row),
-        baseId: LayerId(base),
-        placement: side ?? AttachedPlacement.above,
-      ),
+      // ⑦ made this a list — a folder drop mounts every member it carries.
+      // One rider is still the ordinary case.
+      mounts: [
+        (
+          layerId: LayerId(row),
+          baseId: LayerId(base),
+          placement: side ?? AttachedPlacement.above,
+        ),
+      ],
     );
 
 void main() {

@@ -283,16 +283,22 @@ LayerAttachment attachmentForMount({
 /// case (a move that only re-orders).
 class LayerAttachDrop {
   const LayerAttachDrop({
-    this.mount,
+    this.mounts = const [],
     this.sideChange,
     this.detachIds = const {},
   });
 
-  /// The row that becomes an attach row, and what it lands on. The MODE is
+  /// The rows that become attach rows, and what they land on. The MODE is
   /// not here: it is decided across the whole 겸용 link group, which only
   /// the command layer can see.
-  final ({LayerId layerId, LayerId baseId, AttachedPlacement placement})?
-  mount;
+  ///
+  /// A LIST since ⑦: dropping a FOLDER on a base attaches the folder's
+  /// MEMBERS, not the folder. An organizer folder is derived from its
+  /// members all riding one base ([attachOrganizerBaseOf]) — so "the folder
+  /// attaches" is several mounts that share a base and a side, and an
+  /// ordinary row drop is the one-element case of the same thing.
+  final List<({LayerId layerId, LayerId baseId, AttachedPlacement placement})>
+  mounts;
 
   /// A row that KEEPS its base but crossed its picture — above became below.
   /// Only the side changes: the timing contract, the links and the cels are
@@ -305,5 +311,5 @@ class LayerAttachDrop {
   final Set<LayerId> detachIds;
 
   bool get isEmpty =>
-      mount == null && sideChange == null && detachIds.isEmpty;
+      mounts.isEmpty && sideChange == null && detachIds.isEmpty;
 }

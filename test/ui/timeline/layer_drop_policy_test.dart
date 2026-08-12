@@ -282,7 +282,7 @@ void main() {
         movingId: const LayerId('top'),
         insertAt: 2, // between base and over
       )!;
-      expect(plan.attach.mount, (
+      expect(plan.attach.mounts.firstOrNull, (
         layerId: const LayerId('top'),
         baseId: const LayerId('base'),
         placement: AttachedPlacement.above,
@@ -303,7 +303,7 @@ void main() {
         movingId: const LayerId('top'),
         insertAt: 2, // between under and base
       )!;
-      expect(plan.attach.mount?.placement, AttachedPlacement.below);
+      expect(plan.attach.mounts.firstOrNull?.placement, AttachedPlacement.below);
     });
 
     test('NOT at the group\'s outer edges — passing above or below a group '
@@ -315,7 +315,7 @@ void main() {
           insertAt: slot,
         );
         expect(
-          plan?.attach.mount,
+          plan?.attach.mounts.firstOrNull,
           isNull,
           reason: 'slot $slot touches the group but is not inside it',
         );
@@ -331,7 +331,7 @@ void main() {
             stack: stack,
             movingId: const LayerId('c'),
             insertAt: slot,
-          )?.attach.mount,
+          )?.attach.mounts.firstOrNull,
           isNull,
           reason: 'slot $slot',
         );
@@ -352,7 +352,7 @@ void main() {
         movingId: const LayerId('loose'),
         insertAt: 2,
       )!;
-      expect(plan.attach.mount?.baseId, const LayerId('base'));
+      expect(plan.attach.mounts.firstOrNull?.baseId, const LayerId('base'));
       expect(plan.folderIds, {const LayerId('loose'): const LayerId('ORG')});
     });
   });
@@ -371,7 +371,7 @@ void main() {
         insertAt: 4,
       )!;
       expect(plan.attach.detachIds, {const LayerId('over')});
-      expect(plan.attach.mount, isNull);
+      expect(plan.attach.mounts.firstOrNull, isNull);
     });
 
     test('but re-ordering INSIDE the group does not — either direction, and '
@@ -479,7 +479,7 @@ void main() {
           out.write('X');
           continue;
         }
-        final mount = plan.attach.mount;
+        final mount = plan.attach.mounts.firstOrNull;
         final side = plan.attach.sideChange;
         if (mount != null) {
           out.write(mount.placement == AttachedPlacement.above ? 'A' : 'B');
@@ -690,9 +690,9 @@ void main() {
       );
 
       expect(plan, isNotNull);
-      expect(plan!.attach.mount?.layerId, const LayerId('rider'));
-      expect(plan.attach.mount?.baseId, const LayerId('base'));
-      expect(plan.attach.mount?.placement, AttachedPlacement.above);
+      expect(plan!.attach.mounts.firstOrNull?.layerId, const LayerId('rider'));
+      expect(plan.attach.mounts.firstOrNull?.baseId, const LayerId('base'));
+      expect(plan.attach.mounts.firstOrNull?.placement, AttachedPlacement.above);
       expect(_ids(plan.order), ['base', 'rider']);
     });
 
@@ -714,8 +714,111 @@ void main() {
       );
     });
 
-    test('a folder cannot be mounted on a drawing row', () {
-      final stack = [_row('base'), _row('m', folderId: 'f'), folder('f')];
+    // ⑦ (user, 2026-08-12): 「폴더도 드래그 드롭으로 어태치 장착 가능(동일
+    // 규칙). 불가능한 경우는 「어태치 폴더 안에 폴더」 구조뿐」.
+    test('a folder dropped on a drawing row mounts its MEMBERS — the folder '
+        'becomes that base\'s organizer', () {
+      final stack = [
+        _row('base'),
+        _row('m1', folderId: 'f'),
+        _row('m2', folderId: 'f'),
+        folder('f'),
+      ];
+      final plan = resolveLayerDropOnRow(
+        stack: stack,
+        movingId: const LayerId('f'),
+        targetId: const LayerId('base'),
+      );
+
+      expect(plan, isNotNull);
+      // The folder itself never becomes a rider: an organizer folder IS its
+      // members riding one base, so the folder follows by derivation.
+      expect(
+        [for (final mount in plan!.attach.mounts) mount.layerId.value],
+        ['m1', 'm2'],
+      );
+      expect(
+        plan.attach.mounts.map((mount) => mount.baseId).toSet(),
+        {const LayerId('base')},
+      );
+      expect(
+        plan.attach.mounts.map((mount) => mount.placement).toSet(),
+        {AttachedPlacement.above},
+        reason: '⑤: the folder came from above the base, so it rides above',
+      );
+    });
+
+    test('a folder carrying a FOLDER is the one landing ⑦ excludes', () {
+      // An organizer folder is FLAT (attached_layer_resolve), so this
+      // structure has no legal home inside a group — the case the user
+      // named, and the only one.
+      final stack = [
+        _row('base'),
+        _row('deep', folderId: 'inner'),
+        folder('inner', parent: 'outer'),
+        folder('outer'),
+      ];
+      expect(
+        resolveLayerDropOnRow(
+          stack: stack,
+          movingId: const LayerId('outer'),
+          targetId: const LayerId('base'),
+        ),
+        isNull,
+      );
+    });
+
+    test('and THAT refusal is the one that gets a notice', () {
+      // The predicate the drag reads to say why (⑦). Everything else that
+      // refuses an on-row drop was never going to attach, so it stays
+      // silent — a notice on those would be noise.
+      final stack = [
+        _row('base'),
+        _row('deep', folderId: 'inner'),
+        folder('inner', parent: 'outer'),
+        folder('outer'),
+        _row('plain'),
+        _row('se', kind: LayerKind.se),
+      ];
+      expect(
+        layerDropRefusedForNestedFolder(
+          stack: stack,
+          movingId: const LayerId('outer'),
+          targetId: const LayerId('base'),
+        ),
+        isTrue,
+      );
+      expect(
+        layerDropRefusedForNestedFolder(
+          stack: stack,
+          movingId: const LayerId('inner'),
+          targetId: const LayerId('base'),
+        ),
+        isFalse,
+        reason: 'the inner folder carries no folder — it simply attaches',
+      );
+      expect(
+        layerDropRefusedForNestedFolder(
+          stack: stack,
+          movingId: const LayerId('plain'),
+          targetId: const LayerId('base'),
+        ),
+        isFalse,
+        reason: 'an ordinary row attaches, so there is nothing to explain',
+      );
+      expect(
+        layerDropRefusedForNestedFolder(
+          stack: stack,
+          movingId: const LayerId('outer'),
+          targetId: const LayerId('se'),
+        ),
+        isFalse,
+        reason: 'an SE row was never a base; that refusal needs no notice',
+      );
+    });
+
+    test('an EMPTY folder has no members to mount, so it does not', () {
+      final stack = [_row('base'), folder('f')];
       expect(
         resolveLayerDropOnRow(
           stack: stack,
@@ -723,6 +826,7 @@ void main() {
           targetId: const LayerId('base'),
         ),
         isNull,
+        reason: 'nothing would ride, so there is no attach to make',
       );
     });
 
