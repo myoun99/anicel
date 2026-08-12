@@ -4830,14 +4830,9 @@ class _StoryboardTrackLabel extends StatelessWidget {
   /// columns of the same row and share no scaffolding to enforce it.
   final double laneHeight;
 
-  /// Whether there is room for the track NAME under the V label. The bold
-  /// label and the 11pt name stack to about 36px, so the floor height (28)
-  /// fits exactly one of them.
-  bool get _showsSecondLine => laneHeight >= _twoLineLaneHeight;
-
-  /// The height two stacked label lines need. Below it the rail prints the
-  /// V label alone.
-  static const double _twoLineLaneHeight = 40;
+  // ⛔The two-line gate went with the track NAME it guarded (⑭). A rail that
+  // prints one label needs no threshold for a second — and leaving the gate
+  // behind is how dead conditions accumulate into "this looked deliberate".
 
   final bool laneExpanded;
   final VoidCallback? onToggleLane;
@@ -4962,23 +4957,20 @@ class _StoryboardTrackLabel extends StatelessWidget {
                       softWrap: false,
                       style: const TextStyle(fontWeight: FontWeight.bold),
                     ),
-                    // The NAME stands down on a short row (feedback #8): two
-                    // stacked lines need more than the floor height gives,
-                    // and the row used to overflow its bottom by 9px there.
-                    // The same grammar as the cut block's bands folding —
-                    // a height threshold drops the detail, never the label
-                    // that says which row this is.
-                    if (track.name.isNotEmpty && _showsSecondLine)
-                      Text(
-                        track.name,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        softWrap: false,
-                        style: TextStyle(
-                          fontSize: 11,
-                          color: colorScheme.onSurfaceVariant,
-                        ),
-                      ),
+                    // ⛔NO SECOND LINE (⑭ 유저 2026-08-12: 「v행에 있는
+                    // Track 1 이거 삭제. 그냥 V1이라고만 존재하도록. **다시는
+                    // 안 쓸 텍스트임.**」)
+                    //
+                    // `Track.name` was a leftover from the multi-track era.
+                    // The app is single-track by the user's own decision (the
+                    // V-track add/remove UI was deliberately never built —
+                    // 전제 8), so every row printed the same manufactured
+                    // "Track 1" underneath its real label. A row's identity IS
+                    // `V1`; the line beneath it said nothing a second row
+                    // could have contradicted.
+                    //
+                    // The height-threshold fold that used to guard it went too
+                    // (there is no detail left to drop on a short row).
                   ],
                 ),
               ),
