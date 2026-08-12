@@ -1,5 +1,6 @@
 import 'dart:io';
 
+import 'package:file_selector/file_selector.dart';
 import 'package:flutter/material.dart';
 
 import '../../services/persistence/app_documents.dart';
@@ -92,6 +93,59 @@ Future<FolderGrant?> pickFolderGrantForUser(
         SnackBar(content: Text(AppText.strings.folderPickUnavailable)),
       );
       return null;
+  }
+}
+
+/// PICK-5: the same flow for FILES.
+///
+/// Every caller here used to reach `file_selector` directly, and on both
+/// mobile platforms that plugin COPIES the chosen file — into the iOS
+/// sandbox (`.import` mode) or into `getCacheDir()` on Android — and hands
+/// back the copy. An asset imported "by reference" therefore referenced a
+/// temporary duplicate that the next cache sweep removes. Routing through
+/// [FolderPicker.pickFiles] is what makes a reference reference the file
+/// the user actually chose.
+///
+/// Returns the chosen paths; empty when the user backed out or was told why
+/// they cannot use what they chose.
+Future<List<String>> pickFilesForUser(
+  BuildContext context, {
+  required List<XTypeGroup> acceptedTypeGroups,
+  bool allowMultiple = false,
+}) async {
+  // The same gate as the folder flow, for the same reason: Android resolves
+  // the system document back to a real path, and that probe fails without
+  // the All-Files grant.
+  if (folderPickNeedsStorageGrant(_operatingSystem) &&
+      !await AppStorage.isAllFilesAccessGranted()) {
+    if (!context.mounted) {
+      return const [];
+    }
+    await _showStorageGrantNotice(context);
+    return const [];
+  }
+  final grants = await FolderPicker.pickFiles(
+    acceptedTypeGroups: acceptedTypeGroups,
+    allowMultiple: allowMultiple,
+  );
+  if (!context.mounted) {
+    return const [];
+  }
+  // Never empty, and a failure arrives as one grant carrying the status —
+  // so the first entry answers for the batch.
+  switch (grants.first.status) {
+    case FolderPickStatus.granted:
+      return [for (final grant in grants) ?grant.path];
+    case FolderPickStatus.cancelled:
+      return const [];
+    case FolderPickStatus.noFilesystemPath:
+      await _showNoFilesystemPathNotice(context);
+      return const [];
+    case FolderPickStatus.unavailable:
+      ScaffoldMessenger.maybeOf(context)?.showSnackBar(
+        SnackBar(content: Text(AppText.strings.folderPickUnavailable)),
+      );
+      return const [];
   }
 }
 

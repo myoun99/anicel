@@ -37,22 +37,31 @@ class MainActivity : FlutterActivity() {
                 "requestMicrophone" -> requestMicrophone(result)
                 "pickProjectFolder" ->
                     pickProjectFolder(call.argument<String>("initialDirectory"), result)
+                "pickFiles" ->
+                    pickFiles(
+                        call.argument<List<String>>("mimeTypes") ?: emptyList(),
+                        call.argument<Boolean>("allowMultiple") ?: false,
+                        result,
+                    )
                 // Android hands out durable real paths, so there is no
-                // bookmark to resolve and no scope to re-acquire. Both
-                // answer honestly rather than pretending.
-                "resolveFolderBookmark" ->
+                // bookmark to resolve and no scope to re-acquire. It
+                // answers honestly rather than pretending.
+                "resolveBookmark" ->
                     result.success(mapOf("status" to "unavailable"))
                 else -> result.notImplemented()
             }
         }
     }
 
-    // PICK-2: the folder grant. The Result waits here the same way the mic
-    // grant does - the answer arrives in onActivityResult.
-    private var pendingFolderResult: MethodChannel.Result? = null
+    // PICK-2: the path grant. The Result waits here the same way the mic
+    // grant does - the answer arrives in onActivityResult. ONE waiter for
+    // both modes: only one picker can be on screen, and the request code
+    // says which one came back.
+    private var pendingPickResult: MethodChannel.Result? = null
 
     // 4801 and 4802 are taken by the two permission requests below.
     private val folderPickRequestCode = 4803
+    private val filePickRequestCode = 4804
 
     // PICK-2: asks the system for a folder, then converts what it hands back
     // into a REAL PATH.
@@ -75,11 +84,11 @@ class MainActivity : FlutterActivity() {
         // result to its request - so picker #1's answer would be handed to
         // picker #2's caller and picker #2's own answer dropped. The user
         // would receive the folder they chose in the OTHER dialog.
-        if (pendingFolderResult != null) {
+        if (pendingPickResult != null) {
             result.success(mapOf("status" to "cancelled"))
             return
         }
-        pendingFolderResult = result
+        pendingPickResult = result
         val intent = Intent(Intent.ACTION_OPEN_DOCUMENT_TREE).apply {
             addFlags(
                 Intent.FLAG_GRANT_READ_URI_PERMISSION or
@@ -93,10 +102,52 @@ class MainActivity : FlutterActivity() {
                 putExtra(android.provider.DocumentsContract.EXTRA_INITIAL_URI, it)
             }
         }
+        launch(intent, folderPickRequestCode, result)
+    }
+
+    // PICK-5: files, by REAL PATH.
+    //
+    // file_selector reaches ACTION_OPEN_DOCUMENT too, but then copies the
+    // document into getCacheDir() and returns the copy's path (its
+    // FileUtils.getPathFromCopyOfFileFromUri, with deleteOnExit on the
+    // directory). A media asset imported "by reference" therefore pointed at
+    // a temporary duplicate that the next cache sweep removes - the original
+    // was never referenced at all.
+    //
+    // This resolves the document Uri to the real file the way the folder
+    // path already does, so a reference is a reference. MANAGE_EXTERNAL_STORAGE
+    // is what makes that path readable afterwards; a provider with no
+    // filesystem behind it (Drive) is reported rather than papered over.
+    private fun pickFiles(
+        mimeTypes: List<String>,
+        allowMultiple: Boolean,
+        result: MethodChannel.Result,
+    ) {
+        if (pendingPickResult != null) {
+            result.success(mapOf("status" to "cancelled"))
+            return
+        }
+        pendingPickResult = result
+        val intent = Intent(Intent.ACTION_OPEN_DOCUMENT).apply {
+            addCategory(Intent.CATEGORY_OPENABLE)
+            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            // A single "*/*" with no EXTRA_MIME_TYPES is the "everything"
+            // spelling; DocumentsUI greys out every file when the extra is
+            // present but empty.
+            type = if (mimeTypes.size == 1) mimeTypes.first() else "*/*"
+            if (mimeTypes.size > 1) {
+                putExtra(Intent.EXTRA_MIME_TYPES, mimeTypes.toTypedArray())
+            }
+            putExtra(Intent.EXTRA_ALLOW_MULTIPLE, allowMultiple)
+        }
+        launch(intent, filePickRequestCode, result)
+    }
+
+    private fun launch(intent: Intent, requestCode: Int, result: MethodChannel.Result) {
         try {
-            startActivityForResult(intent, folderPickRequestCode)
+            startActivityForResult(intent, requestCode)
         } catch (_: Exception) {
-            pendingFolderResult = null
+            pendingPickResult = null
             result.success(mapOf("status" to "unavailable"))
         }
     }
@@ -129,44 +180,75 @@ class MainActivity : FlutterActivity() {
         // plugin delegate here, and every plugin that opens an activity -
         // file_selector above all - stops returning if this is shadowed.
         super.onActivityResult(requestCode, resultCode, data)
-        if (requestCode != folderPickRequestCode) {
+        val isFolder = requestCode == folderPickRequestCode
+        val isFile = requestCode == filePickRequestCode
+        if (!isFolder && !isFile) {
             return
         }
-        val waiting = pendingFolderResult
-        pendingFolderResult = null
+        val waiting = pendingPickResult
+        pendingPickResult = null
         if (waiting == null) {
             return
         }
-        val tree = data?.data
-        if (resultCode != RESULT_OK || tree == null) {
+        val uris = if (resultCode == RESULT_OK && data != null) {
+            if (isFolder) listOfNotNull(data.data) else pickedDocumentUris(data)
+        } else {
+            emptyList()
+        }
+        if (uris.isEmpty()) {
             waiting.success(mapOf("status" to "cancelled"))
             return
         }
-        // Keep the tree grant across restarts. It buys nothing TODAY - the
-        // app uses the real path below and never touches the Uri again - and
-        // is taken only so a future content:// fallback has something to
-        // resume from. It is not, as an earlier comment here claimed, shown
-        // to the user anywhere in Settings.
-        try {
-            contentResolver.takePersistableUriPermission(
-                tree,
-                Intent.FLAG_GRANT_READ_URI_PERMISSION or
-                    Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
-            )
-        } catch (_: Exception) {
-            // Not every provider offers a persistable grant.
+        val items = mutableListOf<Map<String, Any?>>()
+        for (uri in uris) {
+            takePersistable(uri, writable = isFolder)
+            // No bookmark: an Android path is durable on its own, which is
+            // exactly what the Apple runners have to mint a token for.
+            realPathFor(uri, isFolder)?.let {
+                items.add(mapOf("path" to it, "bookmark" to null))
+            }
         }
-        val path = realPathForTree(tree)
-        if (path == null) {
+        if (items.isEmpty()) {
             waiting.success(mapOf("status" to "noFilesystemPath"))
         } else {
-            // No bookmark: an Android path is durable on its own.
-            waiting.success(mapOf("status" to "granted", "path" to path))
+            waiting.success(mapOf("status" to "granted", "items" to items))
         }
     }
 
-    // Resolves a SAF tree Uri to a filesystem path, or null when none
-    // exists.
+    // Multi-select answers in getClipData; a single pick answers in getData.
+    // Reading only the latter silently imported one file out of ten.
+    private fun pickedDocumentUris(data: Intent): List<Uri> {
+        val clip = data.clipData ?: return listOfNotNull(data.data)
+        return (0 until clip.itemCount).mapNotNull { clip.getItemAt(it)?.uri }
+    }
+
+    // Keep the grant across restarts. It buys nothing TODAY - the app uses
+    // the real path and never touches the Uri again - and is taken only so a
+    // future content:// fallback has something to resume from. It is not, as
+    // an earlier comment here claimed, shown to the user anywhere in
+    // Settings.
+    //
+    // Read-only for files: ACTION_OPEN_DOCUMENT was not asked for write
+    // access, and persisting a flag the grant does not carry throws.
+    private fun takePersistable(uri: Uri, writable: Boolean) {
+        val flags = if (writable) {
+            Intent.FLAG_GRANT_READ_URI_PERMISSION or
+                Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+        } else {
+            Intent.FLAG_GRANT_READ_URI_PERMISSION
+        }
+        try {
+            contentResolver.takePersistableUriPermission(uri, flags)
+        } catch (_: Exception) {
+            // Not every provider offers a persistable grant.
+        }
+    }
+
+    // Resolves a SAF Uri to a filesystem path, or null when none exists.
+    // [isTree] tells the two shapes apart: a tree from
+    // ACTION_OPEN_DOCUMENT_TREE must land on a directory, a document from
+    // ACTION_OPEN_DOCUMENT on a file. The id lives under a different accessor
+    // for each, and reading the wrong one throws.
     //
     // A document id looks like "<volume>:<relative>". The volume is asked of
     // the SYSTEM rather than guessed, because guessing gets three cases
@@ -184,12 +266,16 @@ class MainActivity : FlutterActivity() {
     //
     // A Drive or Dropbox provider does not use this authority at all, and
     // that is the case that genuinely has no path.
-    private fun realPathForTree(tree: Uri): String? {
-        if (tree.authority != "com.android.externalstorage.documents") {
+    private fun realPathFor(uri: Uri, isTree: Boolean): String? {
+        if (uri.authority != "com.android.externalstorage.documents") {
             return null
         }
         val documentId = try {
-            android.provider.DocumentsContract.getTreeDocumentId(tree)
+            if (isTree) {
+                android.provider.DocumentsContract.getTreeDocumentId(uri)
+            } else {
+                android.provider.DocumentsContract.getDocumentId(uri)
+            }
         } catch (_: Exception) {
             return null
         }
@@ -201,9 +287,10 @@ class MainActivity : FlutterActivity() {
         val relative = documentId.substring(separator + 1)
         val root = rootForVolume(volume) ?: return null
         val resolved = if (relative.isEmpty()) root else java.io.File(root, relative)
-        // The grant is what makes this readable; if it is missing the
-        // directory probe fails here rather than at save time.
-        return if (resolved.isDirectory) resolved.absolutePath else null
+        // The grant is what makes this readable; if it is missing the probe
+        // fails here rather than at save (or at first decode) time.
+        val matches = if (isTree) resolved.isDirectory else resolved.isFile
+        return if (matches) resolved.absolutePath else null
     }
 
     private fun rootForVolume(volume: String): java.io.File? {

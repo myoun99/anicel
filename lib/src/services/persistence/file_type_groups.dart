@@ -76,8 +76,69 @@ const List<String> videoFileExtensions = ['mp4', 'mov', 'avi', 'mkv', 'webm'];
 /// Brush packs Anicel can import.
 const List<String> brushFileExtensions = ['abr', 'sut', 'sutg'];
 
+/// What each identifier means to Android, which filters by MIME and has
+/// never heard of a uniform type identifier.
+///
+/// PICK-5: the native file picker takes both lists and each platform reads
+/// its own, so the translation belongs beside the identifiers rather than at
+/// a call site that would have to remember. A type with no sensible MIME
+/// (the project's own) maps to `*/*` — the picker is a location chooser
+/// there and the importer is what actually judges the file.
+///
+/// ⚠️A test fails if an identifier below gains no entry here: an unmapped
+/// one silently narrows the Android picker to nothing, and the symptom
+/// ("the picker shows no files") points nowhere near this map.
+@visibleForTesting
+const Map<String, String> mimeForUti = {
+  _utiImage: 'image/*',
+  _utiAudio: 'audio/*',
+  _utiMovie: 'video/*',
+  _utiPdf: 'application/pdf',
+  _utiJson: 'application/json',
+  _utiData: '*/*',
+  anicelProjectUti: '*/*',
+};
+
+/// Every identifier this file hands to a picker. Public so the test can
+/// assert the mapping covers all of them.
+@visibleForTesting
+const List<String> allPickerUtis = [
+  _utiImage,
+  _utiAudio,
+  _utiMovie,
+  _utiPdf,
+  _utiJson,
+  _utiData,
+  anicelProjectUti,
+];
+
 /// The picker filters, one per surface that opens a file dialog.
 abstract final class FileTypeGroups {
+  /// The identifiers [groups] accept, flattened and de-duplicated.
+  static List<String> utisFor(List<XTypeGroup> groups) {
+    final seen = <String>{};
+    for (final group in groups) {
+      seen.addAll(group.uniformTypeIdentifiers ?? const []);
+    }
+    return seen.toList();
+  }
+
+  /// The MIME types [groups] accept. An identifier with no mapping is
+  /// DROPPED rather than guessed — a wrong MIME filters out the very files
+  /// the user came for, and `*/*` from the fallback below is the safer miss.
+  static List<String> mimeTypesFor(List<XTypeGroup> groups) {
+    final seen = <String>{};
+    for (final uti in utisFor(groups)) {
+      final mime = mimeForUti[uti];
+      if (mime != null) {
+        seen.add(mime);
+      }
+    }
+    // A picker asked for nothing shows nothing on some providers; asked for
+    // everything it at least lets the importer do the judging.
+    return seen.isEmpty ? const ['*/*'] : seen.toList();
+  }
+
   /// Project files. The only type this app OWNS, hence a private identifier
   /// rather than an umbrella.
   static const XTypeGroup anicelProject = XTypeGroup(
