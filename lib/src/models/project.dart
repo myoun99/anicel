@@ -5,6 +5,7 @@ import 'export_overrides.dart';
 import 'layer.dart';
 import 'layer_link_registry.dart';
 import 'media_asset.dart';
+import 'media_viewer_bookmark.dart';
 import 'project_background.dart';
 import 'project_frame_rate.dart';
 import 'project_id.dart';
@@ -81,7 +82,9 @@ class Project {
     int audioSpeedNumerator = 1,
     int audioSpeedDenominator = 1,
     ExportProjectOverrides? exportOverrides,
-  }) : backdropArgb = 0xFF000000 | backdropArgb,
+    MediaViewerBookmarks mediaViewerBookmarks = const {},
+  }) : mediaViewerBookmarks = Map.unmodifiable(mediaViewerBookmarks),
+       backdropArgb = 0xFF000000 | backdropArgb,
        pasteboardMargin = pasteboardMargin.isFinite && pasteboardMargin >= 0
            ? pasteboardMargin
            : defaultProjectPasteboardMargin,
@@ -180,6 +183,11 @@ class Project {
   /// the film; written through the repository with no history entry.
   final ExportProjectOverrides exportOverrides;
 
+  /// What each viewer was looking at, keyed by its panel id (유저 확정 ⑤
+  /// ㉑) — see [MediaViewerBookmark] for why it lives here and why
+  /// writing it is not a document edit.
+  final MediaViewerBookmarks mediaViewerBookmarks;
+
   MediaAsset? mediaAssetByPath(String path) {
     for (final asset in mediaAssets) {
       if (asset.path == path) {
@@ -203,6 +211,7 @@ class Project {
     TimesheetInfo? timesheetInfo,
     CameraInstructionSet? cameraInstructions,
     List<MediaAsset>? mediaAssets,
+    MediaViewerBookmarks? mediaViewerBookmarks,
     int? trailingFrames,
     LayerLinkRegistry? linkRegistry,
     int? audioSampleRate,
@@ -231,6 +240,8 @@ class Project {
       audioSpeedDenominator:
           audioSpeedDenominator ?? this.audioSpeedDenominator,
       exportOverrides: exportOverrides ?? this.exportOverrides,
+      mediaViewerBookmarks:
+          mediaViewerBookmarks ?? this.mediaViewerBookmarks,
     );
   }
 
@@ -270,6 +281,13 @@ class Project {
     // Omitted when empty: projects that never touched the export scope
     // keep their exact legacy JSON.
     if (exportOverrides.isNotEmpty) 'exportOverrides': exportOverrides.toJson(),
+    // Omitted when empty: a project nobody opened a reference in keeps
+    // its exact legacy JSON.
+    if (mediaViewerBookmarks.isNotEmpty)
+      'mediaViewerBookmarks': {
+        for (final entry in mediaViewerBookmarks.entries)
+          entry.key: entry.value.toJson(),
+      },
   };
 
   factory Project.fromJson(Map<String, dynamic> json) {
@@ -334,6 +352,9 @@ class Project {
           : ExportProjectOverrides.fromJson(
               json['exportOverrides'] as Map<String, dynamic>,
             ),
+      mediaViewerBookmarks: mediaViewerBookmarksFromJson(
+        json['mediaViewerBookmarks'],
+      ),
     );
   }
 
@@ -356,7 +377,8 @@ class Project {
           other.audioSampleRate == audioSampleRate &&
           other.audioSpeedNumerator == audioSpeedNumerator &&
           other.audioSpeedDenominator == audioSpeedDenominator &&
-          other.exportOverrides == exportOverrides;
+          other.exportOverrides == exportOverrides &&
+          mapEquals(other.mediaViewerBookmarks, mediaViewerBookmarks);
 
   @override
   int get hashCode => Object.hash(
@@ -376,6 +398,9 @@ class Project {
     audioSpeedNumerator,
     audioSpeedDenominator,
     exportOverrides,
+    Object.hashAll([
+      for (final entry in mediaViewerBookmarks.entries) (entry.key, entry.value),
+    ]),
   );
 
   @override

@@ -20,25 +20,43 @@ import '../../helpers/fake_pdf_document.dart';
 /// flutter_tester never touches the FFI plugin.
 void main() {
   late EditorSessionManager session;
-  late ValueNotifier<MediaViewerRequest?> request;
+  late MediaViewerSlot slot;
+
 
   setUp(() {
     session = EditorSessionManager(initialProject: createDefaultProject());
-    request = ValueNotifier<MediaViewerRequest?>(null);
+    slot = MediaViewerSlot();
   });
 
   tearDown(() {
     PdfRenderService.debugResetForTests();
-    request.dispose();
+    slot.dispose();
     session.dispose();
   });
 
-  Future<void> pumpViewer(WidgetTester tester) async {
+  /// The position lives ABOVE the panel in the app (the workspace owns
+  /// it, so a folded-away rail cannot lose the page you were on), so the
+  /// harness has to hold it too — a host with nowhere to put the answer
+  /// simply never turns a page.
+  Widget hostIn(MediaViewerSlot slot, {required String viewerId}) =>
+      ValueListenableBuilder<int>(
+        valueListenable: slot.position,
+        builder: (context, position, _) => MediaViewerTabHost(
+          viewerId: viewerId,
+          session: session,
+          request: slot.request,
+          position: position,
+          onPositionChanged: (next) => slot.position.value = next,
+        ),
+      );
+
+  Future<void> pumpViewer(
+    WidgetTester tester, {
+    String viewerId = 'media-viewer',
+  }) async {
     await tester.pumpWidget(
       MaterialApp(
-        home: Scaffold(
-          body: MediaViewerTabHost(session: session, request: request),
-        ),
+        home: Scaffold(body: hostIn(slot, viewerId: viewerId)),
       ),
     );
     await tester.pump();
@@ -78,7 +96,7 @@ void main() {
     PdfRenderService.debugOpenerOverride = (path) async => fake;
     await pumpViewer(tester);
 
-    request.value = const MediaViewerRequest(
+    slot.request.value = const MediaViewerRequest(
       path: 'C:/work/conte.pdf',
       kind: MediaAssetKind.pdf,
       name: 'conte',
@@ -107,7 +125,7 @@ void main() {
   testWidgets('a PDF request with NO renderer states the absence instead '
       'of a blank page', (tester) async {
     await pumpViewer(tester);
-    request.value = const MediaViewerRequest(
+    slot.request.value = const MediaViewerRequest(
       path: 'C:/work/conte.pdf',
       kind: MediaAssetKind.pdf,
     );
@@ -121,12 +139,86 @@ void main() {
 
   testWidgets('an audio request states the kind has no viewer', (tester) async {
     await pumpViewer(tester);
-    request.value = const MediaViewerRequest(
+    slot.request.value = const MediaViewerRequest(
       path: 'C:/work/foot.wav',
       kind: MediaAssetKind.audio,
     );
     await tester.pumpAndSettle();
     expect(find.text(AppText.strings.mediaViewerCannotDisplay), findsOneWidget);
+  });
+
+  testWidgets('two viewers mounted at once keep separate keys and separate '
+      'documents', (tester) async {
+    // The app mounts two of these (the floor's viewer and the sub viewer
+    // beside the drawing). Before the keys carried a per-viewer prefix,
+    // every `find.byKey` in this file matched BOTH — a test could not say
+    // which viewer it meant, and this whole file would have started
+    // failing with "found 2 widgets".
+    final mainSlot = MediaViewerSlot();
+    final subSlot = MediaViewerSlot();
+    addTearDown(mainSlot.dispose);
+    addTearDown(subSlot.dispose);
+
+    // Two documents of DIFFERENT lengths, so the readouts cannot be
+    // confused for one another.
+    final mainPdf = FakePdfDocument(
+      pageSizes: const [ui.Size(595, 842), ui.Size(595, 842)],
+    );
+    final subPdf = FakePdfDocument(
+      pageSizes: const [
+        ui.Size(595, 842),
+        ui.Size(595, 842),
+        ui.Size(595, 842),
+      ],
+    );
+    PdfRenderService.debugOpenerOverride = (path) async =>
+        path.endsWith('sub.pdf') ? subPdf : mainPdf;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Column(
+            children: [
+              Expanded(child: hostIn(mainSlot, viewerId: 'media-viewer')),
+              Expanded(child: hostIn(subSlot, viewerId: 'media-viewer-sub')),
+            ],
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    // Each panel answers to its own key, and to ONLY its own.
+    expect(
+      find.byKey(const ValueKey<String>('media-viewer-panel')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const ValueKey<String>('media-viewer-sub-panel')),
+      findsOneWidget,
+    );
+
+    mainSlot.request.value = const MediaViewerRequest(
+      path: 'C:/work/main.pdf',
+      kind: MediaAssetKind.pdf,
+    );
+    subSlot.request.value = const MediaViewerRequest(
+      path: 'C:/work/sub.pdf',
+      kind: MediaAssetKind.pdf,
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.text('1 / 2'), findsOneWidget, reason: 'the main viewer');
+    expect(find.text('1 / 3'), findsOneWidget, reason: 'the sub viewer');
+
+    // Stepping ONE viewer moves that one only — the two share a widget
+    // class and nothing else.
+    await tester.tap(
+      find.byKey(const ValueKey<String>('media-viewer-sub-next-page-button')),
+    );
+    await tester.pumpAndSettle();
+    expect(find.text('2 / 3'), findsOneWidget);
+    expect(find.text('1 / 2'), findsOneWidget, reason: 'the main did not move');
   });
 
   testWidgets('an image request decodes through the import codec and '
@@ -167,13 +259,13 @@ void main() {
       return file.path;
     });
 
-    request.value = MediaViewerRequest(path: path!, kind: MediaAssetKind.image);
+    slot.request.value = MediaViewerRequest(path: path!, kind: MediaAssetKind.image);
     await settleAsync(
       tester,
       () => tester.any(find.byKey(const ValueKey<String>('media-viewer-page'))),
     );
 
-    request.value = MediaViewerRequest(
+    slot.request.value = MediaViewerRequest(
       path: '${tempDir.path}${Platform.pathSeparator}gone.png',
       kind: MediaAssetKind.image,
     );

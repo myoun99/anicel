@@ -1,5 +1,5 @@
 import 'dart:async';
-import 'dart:io' show Platform;
+import 'dart:io' show File, Platform;
 import 'dart:math' as math;
 import 'dart:ui' as ui;
 
@@ -11,11 +11,14 @@ import '../models/brush_preset.dart';
 import '../models/brush_preset_id.dart';
 import '../models/canvas_size.dart';
 import '../models/cut.dart';
+import '../models/media_viewer_bookmark.dart' show MediaViewerBookmark;
 import '../models/project.dart'
     show
+        Project,
         defaultProjectBackdropArgb,
         defaultProjectPasteboardArgb,
         defaultProjectPasteboardMargin;
+import '../models/project_id.dart' show ProjectId;
 import '../models/layer_id.dart';
 import '../models/media_asset.dart' show MediaAsset;
 import '../services/brush_preset_file_service.dart';
@@ -23,6 +26,7 @@ import '../services/brush_tip_library_service.dart';
 import '../services/canvas_color_sampler.dart' show CanvasColorSampleSource;
 import '../services/canvas_flood_fill.dart' show FloodFillOptions;
 import '../services/canvas_selection.dart' show SelectionMaskOptions;
+import '../services/persistence/folder_grant.dart' show FolderPicker;
 import '../models/brush_tip_entry.dart';
 import '../services/cut_piece_slot.dart';
 import '../services/cut_piece_tip.dart';
@@ -50,6 +54,7 @@ import 'shortcuts/editor_action_registry.dart';
 import 'export/export_frame_renderer.dart';
 import 'export/export_plan.dart';
 import 'import/import_dialog.dart';
+import 'media/media_asset_drag_data.dart';
 import 'media/media_browser_panel.dart';
 import 'media/media_viewer_tab_host.dart';
 import 'panels/editor_dock_host.dart';
@@ -262,6 +267,13 @@ class EditorWorkspace extends StatefulWidget {
   static const String timesheetTabId = 'timesheet';
   static const String mediaViewerTabId = 'media-viewer';
 
+  /// The SECOND viewer (유저 확정 ⑧, 2026-08-12): the same panel, docked
+  /// like any other so it can sit narrow beside the drawing while the
+  /// first one lies on the floor to be looked at large. Exactly two —
+  /// a third would need panel ids the user can create at runtime, which
+  /// this registry is not.
+  static const String mediaViewerSubTabId = 'media-viewer-sub';
+
   /// Every tab id `_tabFor` can build — the registry, not the layout.
   ///
   /// 🚨 The default dock layout is NOT this list. A test that walks the
@@ -285,6 +297,7 @@ class EditorWorkspace extends StatefulWidget {
     onionSkinTabId,
     mediaTabId,
     mediaViewerTabId,
+    mediaViewerSubTabId,
     timelineTabId,
     storyboardTabId,
     conteTabId,
@@ -370,6 +383,12 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     EditorWorkspace.railGroupId(right: true, slot: 4): DockGroup(
       tabs: [EditorWorkspace.onionSkinTabId],
     ),
+    // 서브 뷰어 (유저 확정 ⑥): right under the media browser it is opened
+    // from, and its group ships CLOSED — a reference panel earns its
+    // height only once there is a reference in it.
+    EditorWorkspace.railGroupId(right: true, slot: 5): DockGroup(
+      tabs: [EditorWorkspace.mediaViewerSubTabId],
+    ),
     // THE FLOOR (유저 확정): the bottom layer everything else is drawn on.
     // The canvas and the media viewer are the two panels that can be it —
     // they are both full-page surfaces you look AT rather than read beside
@@ -389,12 +408,37 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     ),
   };
 
-  /// The panels that may lie on the floor, in the order the top strip's
-  /// switch offers them.
-  static const List<String> _floorTabIds = [
+  /// The panels that BELONG on the floor — the two full-page surfaces you
+  /// look at rather than read beside the drawing. They lead the top
+  /// strip's switch and stay on it even when docked elsewhere, because
+  /// pressing their button fetches them back ([_selectFloorTab]).
+  static const List<String> _floorHomeTabIds = [
     EditorWorkspace.canvasTabId,
     EditorWorkspace.mediaViewerTabId,
   ];
+
+  /// What the top strip's floor switch offers, in strip order: the two
+  /// homes, then anything else actually lying down there.
+  ///
+  /// 🚨 That tail is not a nicety, it closes a trap. The floor has NO tab
+  /// strip ([_buildCenterDock] builds it `chromeless`), so a panel
+  /// dragged onto the center dock has no button anywhere — and the Panels
+  /// menu reports it as OPEN, so the only thing that menu offers for it is
+  /// CLOSING it. Listing whatever is down there is what makes it reachable
+  /// again, for every panel and not just the viewers.
+  ///
+  /// Deliberately NOT a static list with the sub viewer added to it: that
+  /// spelling would give the sub viewer a permanent button meaning "pull
+  /// me off the rail and onto the floor", which is the opposite of what a
+  /// panel that exists to sit beside the drawing is for.
+  List<String> _floorTabIds() {
+    final onTheFloor = _layout.tabsIn(EditorWorkspace.centerGroupId);
+    return [
+      ..._floorHomeTabIds,
+      for (final tabId in onTheFloor)
+        if (!_floorHomeTabIds.contains(tabId)) tabId,
+    ];
+  }
 
   /// Only narrow-fit panels may live in the slim edge docks.
   static const Set<String> _edgeDockTabIds = {EditorWorkspace.toolsTabId};
@@ -961,14 +1005,103 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     CutEnvelopePresets.analogId,
   );
 
-  /// Media viewer state (R4, §6-h): what it looks at and its zoom/pan —
-  /// owned here so both survive tab switches and re-docking.
-  final ValueNotifier<MediaViewerRequest?> _mediaViewerRequest = ValueNotifier(
-    null,
-  );
-  final ValueNotifier<CanvasViewport?> _mediaViewerViewport = ValueNotifier(
-    null,
-  );
+  /// The TWO viewers (R4 §6-h, second one 유저 확정 2026-08-12): the one
+  /// that lies on the floor to be looked at large, and the one that sits
+  /// on a rail beside the drawing. Same panel, same code, separate state
+  /// — a reference opened in one never disturbs the other.
+  ///
+  /// Owned here rather than in the panels so all three of what/where/how
+  /// far survive a tab switch, a re-dock, and a folded-away rail.
+  final MediaViewerSlot _mainViewer = MediaViewerSlot();
+  final MediaViewerSlot _subViewer = MediaViewerSlot();
+
+  MediaViewerSlot _viewerSlot(String tabId) =>
+      tabId == EditorWorkspace.mediaViewerSubTabId ? _subViewer : _mainViewer;
+
+  Map<String, MediaViewerSlot> get _viewerSlots => {
+    EditorWorkspace.mediaViewerTabId: _mainViewer,
+    EditorWorkspace.mediaViewerSubTabId: _subViewer,
+  };
+
+  /// Which project the viewers were last filled from. A File ▸ Open
+  /// replaces the project under this widget, and the references belong to
+  /// the FILM — so the panels have to follow it rather than keep showing
+  /// the last one's conte.
+  ProjectId? _viewersSeededFrom;
+
+  /// Puts each viewer back where the project left it (유저 확정 ⑤㉑).
+  void _syncViewersWithProject() {
+    final project = widget.session.repository.currentProject;
+    if (project == null || project.id == _viewersSeededFrom) {
+      return;
+    }
+    _viewersSeededFrom = project.id;
+    for (final entry in _viewerSlots.entries) {
+      final bookmark = project.mediaViewerBookmarks[entry.key];
+      entry.value.restore(
+        _requestForBookmark(bookmark, project),
+        position: bookmark?.position ?? 0,
+      );
+    }
+  }
+
+  /// A remembered reference, or null when the app can no longer reach it.
+  ///
+  /// 유저 확정 ⑭: BOTH kinds come back — a pooled asset by its pool key
+  /// (its name and kind are the pool's, which may have been renamed since)
+  /// and a loose file by the absolute path it was opened from. A path
+  /// that is neither is simply gone: the viewer comes back empty and says
+  /// nothing, because a reference is not the work and losing one must not
+  /// greet anybody with a dialog.
+  MediaViewerRequest? _requestForBookmark(
+    MediaViewerBookmark? bookmark,
+    Project project,
+  ) {
+    if (bookmark == null) {
+      return null;
+    }
+    final asset = project.mediaAssetByPath(bookmark.path);
+    if (asset != null) {
+      return MediaViewerRequest(
+        path: asset.path,
+        kind: asset.kind,
+        name: asset.name,
+      );
+    }
+    // Sync on purpose: this runs inside a notify, and a widget test's
+    // fake-async zone never completes an awaited dart:io future.
+    if (!File(bookmark.path).existsSync()) {
+      return null;
+    }
+    return MediaViewerRequest(
+      path: bookmark.path,
+      kind: bookmark.kind,
+      name: bookmark.name,
+    );
+  }
+
+  /// Writes both viewers back into the project — no command, so no undo
+  /// entry and no dirty flag (see [MediaViewerBookmark]).
+  void _writeViewerBookmarks() {
+    if (_viewersSeededFrom == null ||
+        !widget.session.repository.hasProject) {
+      // Before the first seed there is nothing to write, and writing
+      // would erase what we are about to read.
+      return;
+    }
+    widget.session.repository.updateMediaViewerBookmarks(
+      (_) => {
+        for (final entry in _viewerSlots.entries)
+          if (entry.value.request.value case final request?)
+            entry.key: MediaViewerBookmark(
+              path: request.path,
+              kind: request.kind,
+              name: request.name,
+              position: entry.value.position.value,
+            ),
+      },
+    );
+  }
 
   /// The cel stores are the SESSION's (R5): the archive saves and loads
   /// them with the project; this controller owns only the edit sessions.
@@ -1027,7 +1160,7 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       toolRailMover: _setToolRailOnRight,
       floorTabId: _activeFloorTabId,
       floorTabs: () => [
-        for (final tabId in _EditorWorkspaceState._floorTabIds)
+        for (final tabId in _floorTabIds())
           (
             tabId: tabId,
             label: _tabFor(tabId).label,
@@ -1046,6 +1179,14 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     );
     widget.layerNav?.bind(_stepDisplayedLayer);
     widget.flipHud?.bind(_flipHudSnapshot);
+    // The viewers follow the PROJECT: seed them from it now, and again
+    // whenever a different one is opened under us.
+    _syncViewersWithProject();
+    widget.session.addListener(_syncViewersWithProject);
+    for (final slot in _viewerSlots.values) {
+      slot.request.addListener(_writeViewerBookmarks);
+      slot.position.addListener(_writeViewerBookmarks);
+    }
   }
 
   /// What the flip HUD draws: the rows the timeline is DISPLAYING, in its
@@ -1351,16 +1492,115 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
   /// into their default dock; an already-open panel fronts its tab and
   /// FLASHES so the user sees where it lives. Every non-Window "open
   /// panel" affordance should route here.
-  /// A browser "open" (double-click or the row menu): point the viewer at
-  /// the asset and reveal its panel — the common reveal verb, so an
-  /// already-open viewer fronts and flashes instead of duplicating.
-  void _openAssetInViewer(MediaAsset asset) {
-    _mediaViewerRequest.value = MediaViewerRequest(
-      path: asset.path,
-      kind: asset.kind,
-      name: asset.name,
+  /// A browser "open" — point ONE viewer at the asset and reveal that
+  /// viewer's panel, through the common reveal verb so an already-open
+  /// one fronts and flashes instead of duplicating.
+  ///
+  /// 유저 확정 ①: the DOUBLE-CLICK keeps going to the main viewer even
+  /// though the main viewer is the floor, so a double-click still swaps
+  /// the drawing away. The row menu's second entry is what opens beside
+  /// the drawing instead.
+  void _openAssetInViewer(MediaAsset asset, {required String tabId}) {
+    _openInViewer(
+      MediaViewerRequest(path: asset.path, kind: asset.kind, name: asset.name),
+      tabId: tabId,
     );
-    _revealPanel(EditorWorkspace.mediaViewerTabId);
+  }
+
+  void _openInViewer(MediaViewerRequest request, {required String tabId}) {
+    _viewerSlot(tabId).open(request);
+    _revealPanel(tabId);
+  }
+
+  /// 유저 확정 ②⑪⑯⑰⑳: the two viewers trade documents, and the one that
+  /// receives is REVEALED. Without the reveal, pressing swap while the
+  /// other viewer is closed reads as "my file just vanished" — the whole
+  /// point of the button is to look at the thing somewhere else.
+  void _swapViewers({required String fromTabId}) {
+    _mainViewer.swapWith(_subViewer);
+    _revealPanel(
+      fromTabId == EditorWorkspace.mediaViewerSubTabId
+          ? EditorWorkspace.mediaViewerTabId
+          : EditorWorkspace.mediaViewerSubTabId,
+    );
+  }
+
+  /// A media-browser row dropped ON a viewer (유저 확정 ⑬): the panel the
+  /// row landed on is the one that opens it, so which viewer is chosen by
+  /// where the hand went rather than by a menu entry.
+  void _openDroppedAsset(MediaAssetDragData data, {required String tabId}) {
+    final asset = widget.session.repository.currentProject?.mediaAssetByPath(
+      data.path,
+    );
+    if (asset == null) {
+      return;
+    }
+    // 유저 확정 ㉒: no kind filter. A sound dropped here lands on the
+    // viewer's own "this kind has no viewer yet", which is exactly what
+    // the row menu's open already does — refusing the drop instead would
+    // make the same asset openable one way and not the other.
+    _openAssetInViewer(asset, tabId: tabId);
+  }
+
+  /// Both viewers, built from one place: same panel, same code, different
+  /// [MediaViewerSlot]. Anything that reads as "the main one does X"
+  /// belongs in the slot or in the callbacks, never in a second copy of
+  /// this builder.
+  EditorPanelTab _mediaViewerTab({
+    required String tabId,
+    required String label,
+    required IconData icon,
+    required bool locked,
+  }) {
+    final slot = _viewerSlot(tabId);
+    return EditorPanelTab(
+      id: tabId,
+      label: label,
+      icon: icon,
+      locked: locked,
+      // Keeps its decoded pages/PDF document across tab switches.
+      keepAlive: true,
+      builder: (context) => PanelAwareListenableBuilder(
+        // The request is the HOST's own subscription; the position and
+        // the viewport are read as VALUES here, so they rebuild from
+        // this side.
+        listenable: Listenable.merge([
+          slot.viewport,
+          slot.position,
+          widget.session.languageSettings,
+        ]),
+        builder: (context) => MediaViewerTabHost(
+          viewerId: tabId,
+          session: widget.session,
+          request: slot.request,
+          position: slot.position.value,
+          onPositionChanged: (position) => slot.position.value = position,
+          onRequestPicked: slot.open,
+          viewport: slot.viewport.value,
+          onViewportChanged: (viewport) => slot.viewport.value = viewport,
+          onSwapViewers: () => _swapViewers(fromTabId: tabId),
+          // 유저 확정 ⑱: the promote button calls the SAME import every
+          // other entrance calls, and takes the SAME copy-or-reference
+          // default the import window opens on — a viewer-only policy
+          // here would be a third import surface nobody remembers to fix.
+          //
+          // ⚠️That default is the platform's, not a preference: where a
+          // reference does not survive a restart (Apple's grants) it
+          // copies, and elsewhere it references. #957/#961 own that rule;
+          // this reads it rather than restating it.
+          onRegisterAsset: (path) => widget.session.importMediaFiles(
+            [path],
+            copyIntoProject: FolderPicker.referencesExpire,
+          ),
+          isPathRegistered: (path) =>
+              widget.session.repository.currentProject?.mediaAssetByPath(
+                path,
+              ) !=
+              null,
+          onAssetDropped: (data) => _openDroppedAsset(data, tabId: tabId),
+        ),
+      ),
+    );
   }
 
   void _revealPanel(String tabId) {
@@ -1524,8 +1764,13 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
     _envelopeInkEnabled.dispose();
     _envelopeFormId.dispose();
     _envelopeInk.dispose();
-    _mediaViewerRequest.dispose();
-    _mediaViewerViewport.dispose();
+    widget.session.removeListener(_syncViewersWithProject);
+    for (final slot in _viewerSlots.values) {
+      slot.request.removeListener(_writeViewerBookmarks);
+      slot.position.removeListener(_writeViewerBookmarks);
+    }
+    _mainViewer.dispose();
+    _subViewer.dispose();
     _draggingTab.dispose();
     widget.layerNav?.unbind();
     widget.flipHud?.unbind();
@@ -2033,34 +2278,34 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
               onRelinkAsset: widget.session.relinkMediaAsset,
               onRemoveAsset: widget.session.removeMediaAsset,
               onPromoteAsset: widget.session.promoteMediaAssetIntoProject,
-              onOpenAsset: _openAssetInViewer,
+              onOpenAsset: (asset) => _openAssetInViewer(
+                asset,
+                tabId: EditorWorkspace.mediaViewerTabId,
+              ),
+              onOpenAssetInSubViewer: (asset) => _openAssetInViewer(
+                asset,
+                tabId: EditorWorkspace.mediaViewerSubTabId,
+              ),
             ),
           ),
         );
       case EditorWorkspace.mediaViewerTabId:
-        return EditorPanelTab(
-          id: tabId,
+        return _mediaViewerTab(
+          tabId: tabId,
           label: AppText.strings.panelMediaViewer,
           icon: Icons.preview_outlined,
           locked: locked,
-          // Keeps its decoded pages/PDF document across tab switches.
-          keepAlive: true,
-          builder: (context) => PanelAwareListenableBuilder(
-            // The request is the HOST's own subscription; only the
-            // viewport value and the locale chrome rebuild from here.
-            listenable: Listenable.merge([
-              _mediaViewerViewport,
-              widget.session.languageSettings,
-            ]),
-            builder: (context) => MediaViewerTabHost(
-              session: widget.session,
-              request: _mediaViewerRequest,
-              viewport: _mediaViewerViewport.value,
-              onViewportChanged: (viewport) {
-                _mediaViewerViewport.value = viewport;
-              },
-            ),
-          ),
+        );
+      case EditorWorkspace.mediaViewerSubTabId:
+        return _mediaViewerTab(
+          tabId: tabId,
+          label: AppText.strings.panelMediaViewerSub,
+          // A DIFFERENT glyph on purpose: a rail button is an icon and
+          // nothing else, so two viewers sharing `preview_outlined` would
+          // be two buttons a person cannot tell apart. The frame-inside-a
+          // -frame is what this panel is — the small one beside the big.
+          icon: Icons.picture_in_picture_alt_outlined,
+          locked: locked,
         );
       case EditorWorkspace.timelineTabId:
         return EditorPanelTab(
@@ -3527,11 +3772,22 @@ class _EditorWorkspaceState extends State<EditorWorkspace> {
       return;
     }
     _mutatingLayout(() {
-      _layout.moveTab(
-        tabId: tabId,
-        toDockId: EditorWorkspace.centerGroupId,
-        insertIndex: tabs.length,
-      );
+      // A panel CLOSED from the Panels list is in no dock at all, and
+      // `moveTab` moves only what it can already locate — so pressing
+      // 캔버스 after closing the canvas did nothing whatsoever, and the
+      // Panels list was the only way back to the app's own floor. Adding
+      // it is the same answer `_revealPanel` already gives, and `addTab`
+      // does not front what it appends, so say which one is showing.
+      if (_layout.locateTab(tabId) == null) {
+        _layout.addTab(tabId, toDockId: EditorWorkspace.centerGroupId);
+      } else {
+        _layout.moveTab(
+          tabId: tabId,
+          toDockId: EditorWorkspace.centerGroupId,
+          insertIndex: tabs.length,
+        );
+      }
+      _layout.selectTab(EditorWorkspace.centerGroupId, tabId);
     });
   }
 

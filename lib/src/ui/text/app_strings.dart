@@ -600,6 +600,7 @@ class AppStrings {
   String get mediaAlreadyInProject => _s('mediaAlreadyInProject');
   String get mediaStillLinked => _s('mediaStillLinked');
   String get mediaOpenInViewer => _s('mediaOpenInViewer');
+  String get mediaOpenInSubViewer => _s('mediaOpenInSubViewer');
 
   // --- The media viewer (R4, §6-h) ---
   String get mediaViewerEmpty => _s('mediaViewerEmpty');
@@ -607,6 +608,8 @@ class AppStrings {
   String get mediaViewerLoadFailed => _s('mediaViewerLoadFailed');
   String get mediaViewerCannotDisplay => _s('mediaViewerCannotDisplay');
   String get mediaViewerNoPdfRenderer => _s('mediaViewerNoPdfRenderer');
+  String get mediaViewerSwap => _s('mediaViewerSwap');
+  String get mediaViewerRegisterAsset => _s('mediaViewerRegisterAsset');
 
   // --- Workspace panel names ---
   String get panelCanvas => _s('panelCanvas');
@@ -615,6 +618,7 @@ class AppStrings {
   String get panelColorPalette => _s('panelColorPalette');
   String get panelMedia => _s('panelMedia');
   String get panelMediaViewer => _s('panelMediaViewer');
+  String get panelMediaViewerSub => _s('panelMediaViewerSub');
   String get panelOnionSkin => _s('panelOnionSkin');
   String get panelStoryboard => _s('panelStoryboard');
   String get panelTimeline => _s('panelTimeline');
@@ -1218,6 +1222,7 @@ class AppStrings {
         'has not been saved anywhere yet.',
     'mediaStillLinked': 'Still linked on SE rows — remove its sounds first.',
     'mediaOpenInViewer': 'Open in Viewer',
+    'mediaOpenInSubViewer': 'Open in Sub Viewer',
     'mediaViewerEmpty':
         'Nothing to view yet.\nDouble-click a file in the media browser, '
         'or open one with the folder button above.',
@@ -1226,7 +1231,10 @@ class AppStrings {
     'mediaViewerCannotDisplay': 'This media kind has no viewer yet.',
     'mediaViewerNoPdfRenderer':
         'No PDF renderer in this build — PDF pages cannot be shown.',
+    'mediaViewerSwap': 'Swap with the other viewer',
+    'mediaViewerRegisterAsset': 'Add to Media',
     'panelMediaViewer': 'Viewer',
+    'panelMediaViewerSub': 'Sub Viewer',
     'panelCanvas': 'Canvas',
     'panelColorWheel': 'Colour wheel',
     'panelColorRgb': 'RGB',
@@ -1966,6 +1974,7 @@ class AppStrings {
         'プロジェクトがまだ保存されていません。',
     'mediaStillLinked': 'SE行でまだ使われています — 先に音を外してください。',
     'mediaOpenInViewer': 'ビューアで開く',
+    'mediaOpenInSubViewer': 'サブビューアで開く',
     'mediaViewerEmpty':
         '表示するものがありません。\nメディアブラウザのファイルをダブルクリックするか、'
         '上のボタンからファイルを開いてください。',
@@ -1973,7 +1982,10 @@ class AppStrings {
     'mediaViewerLoadFailed': 'このファイルを読み込めませんでした。',
     'mediaViewerCannotDisplay': 'この種類のメディアはまだ表示できません。',
     'mediaViewerNoPdfRenderer': 'このビルドにはPDFレンダラーがありません — PDFページを表示できません。',
+    'mediaViewerSwap': 'もう一方のビューアと入れ替え',
+    'mediaViewerRegisterAsset': 'メディアに登録',
     'panelMediaViewer': 'ビューア',
+    'panelMediaViewerSub': 'サブビューア',
     'panelCanvas': 'カンバス',
     'panelColorWheel': 'カラーホイール',
     'panelColorRgb': 'RGB',
@@ -2708,6 +2720,7 @@ class AppStrings {
     'mediaAlreadyInProject': '복사할 것이 없습니다 — 이미 프로젝트 안에 있거나, 프로젝트가 아직 저장되지 않았습니다.',
     'mediaStillLinked': 'SE 행에서 아직 쓰이고 있습니다 — 소리를 먼저 빼세요.',
     'mediaOpenInViewer': '뷰어에서 열기',
+    'mediaOpenInSubViewer': '서브 뷰어에서 열기',
     'mediaViewerEmpty':
         '표시할 것이 없습니다.\n미디어 브라우저의 파일을 더블클릭하거나 '
         '위 버튼으로 파일을 여세요.',
@@ -2715,7 +2728,10 @@ class AppStrings {
     'mediaViewerLoadFailed': '이 파일을 읽지 못했습니다.',
     'mediaViewerCannotDisplay': '이 종류의 미디어는 아직 표시할 수 없습니다.',
     'mediaViewerNoPdfRenderer': '이 빌드에는 PDF 렌더러가 없습니다 — PDF 페이지를 표시할 수 없습니다.',
+    'mediaViewerSwap': '반대쪽 뷰어와 맞바꾸기',
+    'mediaViewerRegisterAsset': '미디어에 등록',
     'panelMediaViewer': '뷰어',
+    'panelMediaViewerSub': '서브 뷰어',
     'panelCanvas': '캔버스',
     'panelColorWheel': '컬러 휠',
     'panelColorRgb': 'RGB',
@@ -3473,6 +3489,7 @@ class AppStrings {
         "Rien à copier — le fichier est déjà dans le projet, ou le projet "
         "n'a pas encore été enregistré.",
     'mediaOpenInViewer': 'Ouvrir dans la visionneuse',
+    'mediaOpenInSubViewer': 'Ouvrir dans la visionneuse secondaire',
     'mediaViewerEmpty':
         'Rien à afficher.\nDouble-cliquez un fichier du navigateur de '
         'médias, ou ouvrez-en un avec le bouton ci-dessus.',
@@ -3483,7 +3500,10 @@ class AppStrings {
     'mediaViewerNoPdfRenderer':
         'Pas de moteur PDF dans cette version — les pages PDF ne peuvent '
         'pas être affichées.',
+    'mediaViewerSwap': "Échanger avec l'autre visionneuse",
+    'mediaViewerRegisterAsset': 'Ajouter aux médias',
     'panelMediaViewer': 'Visionneuse',
+    'panelMediaViewerSub': 'Visionneuse secondaire',
     'mediaStillLinked':
         "Encore lié sur des lignes SE — retirez d'abord ses sons.",
     'panelCanvas': 'Canevas',
@@ -4202,12 +4222,16 @@ class AppStrings {
     'mediaAlreadyInProject': '没有可复制的内容 — 它已在项目中，或项目尚未保存。',
     'mediaStillLinked': 'SE 行仍在使用 — 请先移除它的声音。',
     'mediaOpenInViewer': '在查看器中打开',
+    'mediaOpenInSubViewer': '在副查看器中打开',
     'mediaViewerEmpty': '暂无可查看的内容。\n双击媒体浏览器中的文件，或用上方按钮打开文件。',
     'mediaViewerOpenFile': '打开文件…',
     'mediaViewerLoadFailed': '无法读取此文件。',
     'mediaViewerCannotDisplay': '此类媒体暂时无法查看。',
     'mediaViewerNoPdfRenderer': '此版本没有 PDF 渲染器 — 无法显示 PDF 页面。',
+    'mediaViewerSwap': '与另一个查看器互换',
+    'mediaViewerRegisterAsset': '添加到媒体',
     'panelMediaViewer': '查看器',
+    'panelMediaViewerSub': '副查看器',
     'panelCanvas': '画布',
     'panelColorWheel': '色轮',
     'panelColorRgb': 'RGB',

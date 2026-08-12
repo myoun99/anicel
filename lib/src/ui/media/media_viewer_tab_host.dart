@@ -15,6 +15,7 @@ import '../brush/brush_canvas_panel.dart';
 import '../brush/brush_edit_cache_invalidation_sink.dart';
 import '../editor_session_manager.dart';
 import '../text/app_strings.dart';
+import 'media_asset_drag_data.dart';
 import '../widgets/app_icon_button.dart';
 import '../widgets/drag_value_label.dart';
 import '../widgets/static_raster.dart';
@@ -34,6 +35,65 @@ class MediaViewerRequest {
   String get displayName => name ?? mediaAssetDefaultName(path);
 }
 
+/// ONE viewer's whole state, owned by the workspace: what it looks at,
+/// how far into that document, and where the view sits.
+///
+/// Two of these exist — the floor's viewer and the sub viewer beside the
+/// drawing — and they share NOTHING. Opening a reference in one must
+/// never change what the other is showing, which is the entire reason
+/// there are two.
+class MediaViewerSlot {
+  final ValueNotifier<MediaViewerRequest?> request = ValueNotifier(null);
+
+  /// See [MediaViewerTabHost.position] — one slot, whatever the kind.
+  final ValueNotifier<int> position = ValueNotifier(0);
+
+  final ValueNotifier<CanvasViewport?> viewport = ValueNotifier(null);
+
+  /// Points this viewer at a document. The position goes back to the
+  /// start, because "page 37" of the file you just left means nothing in
+  /// the one you just opened.
+  ///
+  /// A SWAP deliberately does not come through here — it carries each
+  /// file's own page across with it (see [swapWith]).
+  void open(MediaViewerRequest? next) {
+    request.value = next;
+    position.value = 0;
+  }
+
+  /// Puts back a document the project remembered, at the page it
+  /// remembered — the one path that sets a request WITHOUT going back to
+  /// the start. Null empties the viewer, which is what a reference the
+  /// app can no longer reach comes back as (유저 확정 ⑭: quietly).
+  void restore(MediaViewerRequest? request, {int position = 0}) {
+    this.request.value = request;
+    this.position.value = request == null || position < 0 ? 0 : position;
+  }
+
+  /// Trades documents with the other viewer: 유저 확정 ⑪⑯⑰ — the verb is
+  /// SWAP and it has no special cases, so trading with an empty viewer
+  /// leaves this one empty. A button whose result depends on what the
+  /// other side happens to hold is a button nobody can predict.
+  ///
+  /// The page travels WITH its file (page 37 of the conte is still page
+  /// 37 when it lands on the floor). The viewport does not: the two
+  /// panels are different widths, so each re-frames what arrives.
+  void swapWith(MediaViewerSlot other) {
+    final request = this.request.value;
+    final position = this.position.value;
+    this.request.value = other.request.value;
+    this.position.value = other.position.value;
+    other.request.value = request;
+    other.position.value = position;
+  }
+
+  void dispose() {
+    request.dispose();
+    position.dispose();
+    viewport.dispose();
+  }
+}
+
 /// The media viewer PANEL (§6-h, absorbing backlog 11's image viewer):
 /// any browsable file — registered asset or one picked on the spot —
 /// inside the canvas panel shell, so navigation is the drawing canvas's
@@ -45,18 +105,74 @@ class MediaViewerRequest {
 class MediaViewerTabHost extends StatefulWidget {
   const MediaViewerTabHost({
     super.key,
+    required this.viewerId,
     required this.session,
     required this.request,
+    this.position = 0,
+    this.onPositionChanged,
+    this.onRequestPicked,
+    this.onSwapViewers,
+    this.onRegisterAsset,
+    this.isPathRegistered,
+    this.onAssetDropped,
     this.viewport,
     this.onViewportChanged,
     this.filePicker,
   });
 
+  /// WHICH viewer this is — the panel's tab id, and the prefix every
+  /// widget key in here is built from.
+  ///
+  /// 🚨 Required, and never spell a key literally below. The app mounts
+  /// more than one of these at once (the floor's viewer and the sub
+  /// viewer beside the drawing), and a hardcoded key would have both
+  /// instances answering the same `find.byKey` — one test finding two
+  /// widgets, and no way to say which viewer a test means.
+  final String viewerId;
+
   final EditorSessionManager session;
 
-  /// The workspace-owned "what to view" signal (media browser opens land
-  /// here).
+  /// The workspace-owned "what to view" signal. EVERY open lands here —
+  /// a browser double-click, a dropped row, a swap, and the panel's own
+  /// file button through [onRequestPicked]. The panel used to keep a
+  /// loose file in its own State and prefer it over this one; that made
+  /// the panel's own choice the one thing the workspace could neither
+  /// remember across a rebuild nor hand to the other viewer.
   final ValueListenable<MediaViewerRequest?> request;
+
+  /// How far into the document — the page of a PDF, the frame of an
+  /// animated image. ONE slot, deliberately: a video's paused position
+  /// belongs in this same field when video arrives, with only its unit
+  /// (a tick rather than a page) decided then. The KIND already says how
+  /// to read it.
+  ///
+  /// Owned above the panel, like the viewport, because a rail group the
+  /// user folds away unmounts the panel inside it — and coming back to
+  /// page 1 of a hundred-page conte is not "where I was".
+  final int position;
+  final ValueChanged<int>? onPositionChanged;
+
+  /// Where the panel's own file button puts its answer. Null hides that
+  /// button: a viewer with nowhere to put the reply should not ask.
+  final ValueChanged<MediaViewerRequest>? onRequestPicked;
+
+  /// Trades documents with the OTHER viewer (유저 확정 ⑪): same button on
+  /// both sides, because swapping is symmetric.
+  final VoidCallback? onSwapViewers;
+
+  /// Adds the file being viewed to the media pool (유저 확정 ⑱), through
+  /// whatever the app's one import does. Offered only for a file that is
+  /// not in the pool yet — [isPathRegistered] answers that.
+  ///
+  /// The point of the button: a loose path is remembered as an absolute
+  /// path and breaks on another machine, while a pooled one travels with
+  /// the project. This is how a person promotes the first into the
+  /// second without going back to the browser to find the file again.
+  final ValueChanged<String>? onRegisterAsset;
+  final bool Function(String path)? isPathRegistered;
+
+  /// A media-browser row dropped on this panel (유저 확정 ⑬).
+  final ValueChanged<MediaAssetDragData>? onAssetDropped;
 
   /// Owned above the tab group so zoom/pan survive tab switches.
   final CanvasViewport? viewport;
@@ -85,12 +201,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
   final BrushEditCacheInvalidationSink _cacheInvalidationSink =
       BrushEditCacheInvalidationSink();
 
-  /// A loose file opened from the panel itself — wins until the next
-  /// browser open replaces it.
-  MediaViewerRequest? _localRequest;
-
-  MediaViewerRequest? get _currentRequest =>
-      _localRequest ?? widget.request.value;
+  MediaViewerRequest? get _currentRequest => widget.request.value;
 
   // Loaded content: exactly one of these families is live.
   List<DecodedImageFrame>? _frames;
@@ -98,7 +209,9 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
   final Map<int, _RenderedPdfPage> _pdfPageCache = {};
   String? _message;
 
-  int _page = 0;
+  /// Read-only here — the workspace holds it (see
+  /// [MediaViewerTabHost.position]) and [_turnToPage] asks it to move.
+  int get _page => widget.position;
 
   /// Guards every async landing against a newer load.
   int _generation = 0;
@@ -137,11 +250,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
     super.dispose();
   }
 
-  void _onRequestChanged() {
-    // A browser open replaces a loose file — latest intent wins.
-    _localRequest = null;
-    _load(widget.request.value);
-  }
+  void _onRequestChanged() => _load(widget.request.value);
 
   void _disposeContent() {
     final frames = _frames;
@@ -165,10 +274,13 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
   Future<void> _load(MediaViewerRequest? request) async {
     _generation += 1;
     final generation = _generation;
-    setState(() {
-      _disposeContent();
-      _page = 0;
-    });
+    // The position is NOT reset here. Whoever changes the request decides
+    // whether this is a new document (page 1) or the same one arriving
+    // again — a swap hands the other viewer's page over with the file,
+    // and a remount after a folded-away rail must land where it left.
+    // A position past the end of a shorter document reads clamped
+    // ([_turnToPage] and the build both clamp), never out of range.
+    setState(_disposeContent);
     if (request == null) {
       return; // The empty state reads from _currentRequest == null.
     }
@@ -320,7 +432,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
     final count = _pageCount;
     final next = count <= 0 ? 0 : page.clamp(0, count - 1);
     if (next != _page) {
-      setState(() => _page = next);
+      widget.onPositionChanged?.call(next);
     }
   }
 
@@ -338,18 +450,46 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
       return;
     }
     final kind = mediaAssetKindForPath(path) ?? MediaAssetKind.image;
-    _localRequest = MediaViewerRequest(path: path, kind: kind);
-    await _load(_localRequest);
+    widget.onRequestPicked?.call(
+      MediaViewerRequest(path: path, kind: kind),
+    );
+  }
+
+  /// Whether the file on screen can still be added to the media pool —
+  /// false for one already in it, and for nothing at all.
+  bool get _canRegister {
+    final path = _currentRequest?.path;
+    return path != null &&
+        widget.onRegisterAsset != null &&
+        !(widget.isPathRegistered?.call(path) ?? true);
+  }
+
+  void _registerCurrent() {
+    final path = _currentRequest?.path;
+    if (path == null) {
+      return;
+    }
+    widget.onRegisterAsset?.call(path);
+    // The import lands synchronously and this panel does not listen to
+    // the session (a viewer that rebuilt on every session notify would
+    // be the expensive kind of panel). Ask again ourselves, so the
+    // button goes quiet the moment its work is done.
+    setState(() {});
   }
 
   static void _noDrag(double units) {}
+
+  /// Every widget key in this panel, built from [MediaViewerTabHost.viewerId]
+  /// — the ONE place the prefix is applied, so a second viewer cannot end
+  /// up sharing a key with the first.
+  String _key(String suffix) => '${widget.viewerId}-$suffix';
 
   List<Widget> _bottomBarLeading(int pageIndex, int pageCount) {
     final strings = AppText.strings;
     final paged = pageCount > 1;
     return [
       AppIconButton(
-        keyValue: 'media-viewer-previous-page-button',
+        keyValue: _key('previous-page-button'),
         tooltip: strings.cnPreviousPage,
         icon: const Icon(Icons.chevron_left),
         onPressed: paged && pageIndex > 0
@@ -357,8 +497,8 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
             : null,
       ),
       DragValueLabel(
-        keyValue: 'media-viewer-page-readout',
-        inputKeyValue: 'media-viewer-page-input',
+        keyValue: _key('page-readout'),
+        inputKeyValue: _key('page-input'),
         text: '${pageCount == 0 ? 0 : pageIndex + 1} / $pageCount',
         tooltip: strings.sheetPageDrag,
         width: 48,
@@ -378,7 +518,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
         },
       ),
       AppIconButton(
-        keyValue: 'media-viewer-next-page-button',
+        keyValue: _key('next-page-button'),
         tooltip: strings.cnNextPage,
         icon: const Icon(Icons.chevron_right),
         onPressed: paged && pageIndex < pageCount - 1
@@ -447,16 +587,36 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
             )
           : null,
       bottomBarLeading: [
-        AppIconButton(
-          keyValue: 'media-viewer-open-file-button',
-          tooltip: strings.mediaViewerOpenFile,
-          icon: const Icon(Icons.file_open_outlined),
-          size: AppIconButtonSize.strip,
-          onPressed: _pickLooseFile,
-        ),
+        if (widget.onRequestPicked != null)
+          AppIconButton(
+            keyValue: _key('open-file-button'),
+            tooltip: strings.mediaViewerOpenFile,
+            icon: const Icon(Icons.file_open_outlined),
+            size: AppIconButtonSize.strip,
+            onPressed: _pickLooseFile,
+          ),
+        if (widget.onRegisterAsset != null)
+          AppIconButton(
+            keyValue: _key('register-asset-button'),
+            tooltip: strings.mediaViewerRegisterAsset,
+            icon: const Icon(Icons.playlist_add_outlined),
+            size: AppIconButtonSize.strip,
+            onPressed: _canRegister ? _registerCurrent : null,
+          ),
+        if (widget.onSwapViewers != null)
+          AppIconButton(
+            keyValue: _key('swap-button'),
+            tooltip: strings.mediaViewerSwap,
+            icon: const Icon(Icons.swap_horiz),
+            size: AppIconButtonSize.strip,
+            onPressed: widget.onSwapViewers,
+          ),
         ..._bottomBarLeading(pageIndex, pageCount),
       ],
-      bottomBarLeadingToken: (pageIndex, pageCount),
+      // The register button's enabled state rides this token too — it
+      // changes with the file, which is exactly when the answer to "is
+      // this one in the pool" can change.
+      bottomBarLeadingToken: (pageIndex, pageCount, _canRegister),
       fitFocusRect: message == null
           ? Rect.fromLTWH(0, 0, docSize.width, docSize.height)
           : null,
@@ -474,7 +634,7 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
                   padding: const EdgeInsets.all(24),
                   child: Text(
                     message,
-                    key: const ValueKey<String>('media-viewer-message'),
+                    key: ValueKey<String>(_key('message')),
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodySmall,
                   ),
@@ -488,9 +648,9 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
               // and not otherwise, which was being re-rastered on every
               // frame the app produced for any reason at all.
               child: StaticRaster(
-                debugLabel: 'media-viewer-page',
+                debugLabel: _key('page'),
                 child: CustomPaint(
-                  key: const ValueKey<String>('media-viewer-page'),
+                  key: ValueKey<String>(_key('page')),
                   painter: _MediaPagePainter(
                     image: pageImage,
                     docSize: docSize,
@@ -508,10 +668,45 @@ class _MediaViewerTabHostState extends State<MediaViewerTabHost> {
       ),
     );
 
-    return ColoredBox(
-      key: const ValueKey<String>('media-viewer-panel'),
+    final surface = ColoredBox(
+      key: ValueKey<String>(_key('panel')),
       color: Theme.of(context).colorScheme.surfaceContainerHighest,
       child: panel,
+    );
+    final onAssetDropped = widget.onAssetDropped;
+    if (onAssetDropped == null) {
+      return surface;
+    }
+    // 유저 확정 ⑬: a browser row dropped here opens HERE. The rows are
+    // already `Draggable<MediaAssetDragData>` for the SE blocks, so this
+    // is a second destination for a drag people already do — and it says
+    // which viewer with the hand instead of with a menu entry.
+    return DragTarget<MediaAssetDragData>(
+      onAcceptWithDetails: (details) => onAssetDropped(details.data),
+      // ⚠️`surface` is the Stack's UNPOSITIONED child and the highlight is
+      // the positioned one, never the other way round: a Stack whose
+      // children are ALL positioned takes the smallest size its
+      // constraints allow, which in a rail collapsed this whole panel and
+      // left its pill sitting on top of its own canvas, unhittable.
+      builder: (context, candidate, rejected) => Stack(
+        fit: StackFit.expand,
+        children: [
+          surface,
+          if (candidate.isNotEmpty)
+            Positioned.fill(
+              child: IgnorePointer(
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    border: Border.all(
+                      color: Theme.of(context).colorScheme.primary,
+                      width: 2,
+                    ),
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
     );
   }
 }
