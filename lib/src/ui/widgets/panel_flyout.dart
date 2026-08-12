@@ -24,6 +24,49 @@ class PanelFlyoutDivider extends PanelFlyoutEntry {
   const PanelFlyoutDivider();
 }
 
+/// A row of CONTROLS rather than a command — the knobs a panel keeps out
+/// of its pill (rotate, flip, the surface colours).
+///
+/// It is deliberately part of THIS vocabulary rather than a popover of its
+/// own: R6 spent a round pulling every hand-rolled popup back into this
+/// one shell, and a panel that grew its own settings surface would undo
+/// that on the day it was written.
+///
+/// A row is never selectable, so turning a knob does not close the flyout
+/// — choosing a command is what closes it, and a knob is not a choice.
+class PanelFlyoutRow extends PanelFlyoutEntry {
+  const PanelFlyoutRow({
+    required this.keyValue,
+    required this.builder,
+    this.listenable,
+    this.label,
+    this.height = 32,
+  });
+
+  final String keyValue;
+
+  /// Optional caption to the left of the controls, for a knob whose own
+  /// glyph does not say what it is.
+  final String? label;
+
+  /// Built LAZILY and rebuilt on [listenable], which is the whole reason
+  /// this is a builder and not a widget.
+  ///
+  /// 🚨 A flyout is an overlay route: its entries are built once, when it
+  /// opens, and nothing in the host's own rebuilds reaches them. That is
+  /// fine for a command — a command has no state to show — but a knob
+  /// that cannot show its own state is a knob nobody can read. Rotate the
+  /// view from inside the list and the accent would still sit on the
+  /// button it was on when the list opened.
+  final WidgetBuilder builder;
+
+  /// What the controls in this row are ABOUT. Null for a row whose
+  /// contents cannot change while the list is open.
+  final Listenable? listenable;
+
+  final double height;
+}
+
 /// A selectable command.
 class PanelFlyoutItem extends PanelFlyoutEntry {
   const PanelFlyoutItem({
@@ -111,6 +154,7 @@ Future<void> showPanelFlyout(
     estimatedHeight += switch (entry) {
       PanelFlyoutHeader() => 24.0,
       PanelFlyoutDivider() => 6.0,
+      PanelFlyoutRow(:final height) => height,
       PanelFlyoutItem() => 32.0,
     };
   }
@@ -157,6 +201,44 @@ Future<void> showPanelFlyout(
           PanelFlyoutDivider() =>
             const PopupMenuDivider(height: 6)
                 as PopupMenuEntry<PanelFlyoutItem>,
+          // `enabled: false` is what keeps a knob from doubling as a
+          // command: the row itself takes no tap and never closes the
+          // list. The CHILD still gets the pointer — a disabled
+          // PopupMenuItem only drops its own handler, and its
+          // GestureDetector hit-tests children before itself.
+          PanelFlyoutRow(
+            :final label,
+            :final builder,
+            :final listenable,
+            :final height,
+          ) =>
+            PopupMenuItem<PanelFlyoutItem>(
+              key: ValueKey<String>(entry.keyValue),
+              enabled: false,
+              height: height,
+              child: Row(
+                children: [
+                  if (label != null) ...[
+                    Text(
+                      label,
+                      style: const TextStyle(
+                        fontSize: 11,
+                        color: AppColors.textDim,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  Flexible(
+                    child: listenable == null
+                        ? Builder(builder: builder)
+                        : ListenableBuilder(
+                            listenable: listenable,
+                            builder: (context, _) => builder(context),
+                          ),
+                  ),
+                ],
+              ),
+            ),
           PanelFlyoutItem() => PopupMenuItem<PanelFlyoutItem>(
             key: ValueKey<String>(entry.keyValue),
             value: entry,
