@@ -363,7 +363,18 @@ class _EditorPanelTabsState extends State<EditorPanelTabs> {
                 Row(
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    Flexible(
+                    // ⑪ 유저 2026-08-12: 「타임라인 문턱에 있는 재생이나
+                    // 설정버튼 왜 우측정렬안했지? 말한것들좀 지키자.」
+                    //
+                    // `Expanded`, not `Flexible`. A loose `Flexible` is only
+                    // as wide as the tabs inside it, so the trailing group sat
+                    // immediately after them — reading as left-aligned, and
+                    // sliding sideways every time a tab was added. Taking all
+                    // the room pins the trailing group to the right edge,
+                    // which is the entire reason it was put there (유저
+                    // 2026-08-10: 「왼쪽 정렬이면 패널을 추가할 때 재생 버튼이
+                    // 밀린다」).
+                    Expanded(
                       child: LayoutBuilder(
                         builder: (context, constraints) {
                           // How many fit. The overflow button costs one slot,

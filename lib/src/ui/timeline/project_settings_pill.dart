@@ -9,7 +9,7 @@ import '../editor_session_manager.dart';
 import '../playback/playback_transport_controls.dart'
     show PlaybackTransportControls;
 import '../text/app_strings.dart';
-import '../widgets/command_pill.dart';
+import '../widgets/app_icon_button.dart';
 import '../widgets/panel_flyout.dart';
 import 'timeline_action_toolbar.dart' show showTimelineFpsDialog;
 
@@ -17,10 +17,12 @@ import 'timeline_action_toolbar.dart' show showTimelineFpsDialog;
 /// rather than a command — project frame rate, project audio sample rate,
 /// playback quality.
 ///
-/// It is the grammar's other end: a [CommandPill] whose noun has no verbs
-/// outside its own menu. That is not an exception to 「알약 = 명사 + 그 명사의
-/// 동사들」 — it is the same shape with the list empty, which is why the rule
-/// needs no clause for it.
+/// ⚠️It is NOT a pill any more (⑪, 유저 2026-08-12: 「설정버튼은 알약 테두리
+/// 없애고 그냥 일반버튼으로」). It was one — the grammar's other end, a noun
+/// with no verbs outside its menu — but it lives on the SILL, among the
+/// transport icons, and there a bare row already means 「a state machine」.
+/// A border around a single button on that strip said the opposite of what
+/// every control beside it says.
 ///
 /// The three used to be scattered: two dropdowns wedged between the frame
 /// verbs (where they printed project values a rough pass never touches) and
@@ -129,12 +131,18 @@ class _ProjectSettingsPillState extends State<ProjectSettingsPill> {
   }
 
   @override
-  Widget build(BuildContext context) => CommandPill(
-    head: PillNameCell(
-      keyValue: 'project-settings-button',
-      icon: Icons.settings_outlined,
-      tooltip: AppText.strings.projectFpsTitle,
-      entriesBuilder: () => _entries(context),
-    ),
+  Widget build(BuildContext context) => AppIconButton(
+    // ⑪ 유저 2026-08-12: 「설정버튼은 알약 테두리 없애고 그냥 일반버튼으로」.
+    //
+    // ★And the grammar agrees, which makes this a simplification rather than
+    // an exception. A pill's border says 「a noun and its verbs」; this one had
+    // a noun and NO verbs, standing on the SILL among the transport icons —
+    // where a bare row of icons already means 「a state machine」. The border
+    // was drawing a boundary around a single button, on the one strip whose
+    // other controls deliberately wear none.
+    keyValue: 'project-settings-button',
+    tooltip: AppText.strings.projectFpsTitle,
+    icon: const Icon(Icons.settings_outlined),
+    onPressed: () => showPanelFlyout(context, entries: _entries(context)),
   );
 }
