@@ -1,5 +1,6 @@
 import '../../models/attached_layer_resolve.dart';
-import '../../models/key_range_move.dart' show transformKeyFrameUnion;
+import '../../models/key_range_move.dart'
+    show transformKeyFrameUnion, transformKeyNameUnion;
 import '../../models/layer.dart';
 import '../../models/layer_kind.dart';
 import '../../models/se_name_tag.dart' show SeNameTag;
@@ -71,6 +72,8 @@ List<PropertyLaneRow> timelineLanesForLayer({
       transformGroupHeader(
         expanded: expanded,
         keyedFrames: transformKeyFrameUnion(laneTrackOf(layer)),
+        // ㉚: and what those keys are CALLED, where the members agree.
+        keyNames: transformKeyNameUnion(laneTrackOf(layer)),
         // R8: the group's own switch — on every row that owns a transform.
         // The camera's lives on the cut's track, so its header shows none
         // and the row-level master covers it.
