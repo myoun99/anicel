@@ -15574,7 +15574,9 @@ class EditorSessionManager extends ChangeNotifier {
     // A text bake in flight must land before the store snapshots — the
     // archive's parameters and raster must never disagree.
     await _flushTextCelBakes();
-    final previousSidecar = autosaveSidecarPath;
+    // Captured BEFORE the save moves the project path: a Save As has to
+    // retire the sidecars of the file it was saved FROM as well.
+    final previousPath = _projectFilePath;
     // Before serializing: the first save adopts the session's shelf
     // takes into Media/ so the .anicel carries the adopted paths.
     final adoptedTakePaths = _adoptShelfTakesForSave(filePath);
@@ -15594,17 +15596,26 @@ class EditorSessionManager extends ChangeNotifier {
       }
       audioConformStore.warmPaths(adoptedTakePaths);
     }
-    // Awaited: a still-in-flight delete could otherwise race a following
-    // autosave tick and eat its fresh sidecar. EVERY candidate location
-    // retires (the sidecar-directory setting may have moved since the
-    // stale one was written).
-    if (previousSidecar != null) {
-      await ProjectAutosaveService.deleteSidecar(previousSidecar);
+    if (previousPath != null) {
+      ProjectAutosaveService.retireSidecarsFor(previousPath);
     }
-    for (final candidate in AppSave.sidecarCandidatesFor(filePath)) {
-      await ProjectAutosaveService.deleteSidecar(candidate);
-    }
+    ProjectAutosaveService.retireSidecarsFor(filePath);
     notifyListeners();
+  }
+
+  /// The user threw this session's unsaved work away (closed without
+  /// saving). Its sidecar has to go with it: "저장 안 하고 닫기 = 버리기"
+  /// is only literally true if the next open cannot offer to resurrect
+  /// exactly what was discarded.
+  ///
+  /// A never-saved project has no sidecar to retire (its dirty ticks ask
+  /// for a real file instead of writing one).
+  void discardAutosaveSidecar() {
+    final path = _projectFilePath;
+    if (path == null) {
+      return;
+    }
+    ProjectAutosaveService.retireSidecarsFor(path);
   }
 
   /// Opens a .anicel file, replacing the WHOLE session state: project,

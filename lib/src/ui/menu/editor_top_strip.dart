@@ -169,6 +169,7 @@ class EditorTopStrip extends StatelessWidget {
     // written) — every candidate location is checked, newest wins.
     var openPath = path;
     String? recoverAs;
+    var declinedSidecar = false;
     final sidecar = AppSave.newestExistingSidecarFor(path);
     if (sidecar != null &&
         ProjectAutosaveService.sidecarIsNewer(
@@ -203,6 +204,8 @@ class EditorTopStrip extends StatelessWidget {
       if (recover) {
         openPath = sidecar;
         recoverAs = path;
+      } else {
+        declinedSidecar = true;
       }
     }
     try {
@@ -214,6 +217,14 @@ class EditorTopStrip extends StatelessWidget {
       recordRecentProject(
         RecentProject(path: path, folderBookmark: pick.folderBookmark),
       );
+      if (declinedSidecar) {
+        // "Open the saved one" is an answer about THIS sidecar, not a
+        // deferral: leaving it alive re-asks the same question at every
+        // open until the next manual save. Retired only after the open
+        // SUCCEEDS — a file that fails to parse is exactly when the
+        // declined sidecar is the user's last copy.
+        ProjectAutosaveService.retireSidecarsFor(path);
+      }
     } catch (error) {
       if (context.mounted) {
         _showFileError(context, error);
