@@ -1,0 +1,36 @@
+name: Build (or restore) the native engine
+description: >
+  Produces build/native_standalone so the parity suites have a real binary
+  to compare the Dart reference against. The build takes 44s on Windows and
+  24s on Linux and is paid by every shard, while only 3 of the last 262
+  commits touched packages/qa_native/src — so it is cached on the source
+  hash and skipped outright when nothing changed.
+
+runs:
+  using: composite
+  steps:
+    # The runner image is part of the key because the compiler ships with
+    # it: same sources built by a different MSVC or gcc is a different
+    # binary, and a parity suite comparing against a stale one is the
+    # #614 failure mode wearing a cache. Read from the machine rather than
+    # written as an expression — `env.ImageVersion` resolves to empty in a
+    # workflow expression and would silently pin the key forever.
+    - id: image
+      shell: bash
+      run: echo "version=${ImageVersion:-unknown}" >> "$GITHUB_OUTPUT"
+    # Shards of the same job race to save this on a miss; the losers log
+    # "unable to reserve cache" and carry on. A warning, not a failure.
+    - id: cache
+      uses: actions/cache@v4
+      with:
+        path: build/native_standalone
+        key: native-engine-${{ runner.os }}-${{ steps.image.outputs.version }}-${{ hashFiles('packages/qa_native/src/**') }}
+    # -DCMAKE_BUILD_TYPE is what a single-config generator (Makefiles on
+    # Linux) reads; --config is what a multi-config one (Visual Studio)
+    # reads. Passing both is how one step serves both runners.
+    - if: steps.cache.outputs.cache-hit != 'true'
+      shell: bash
+      run: |
+        cmake -S packages/qa_native/src -B build/native_standalone \
+          -DCMAKE_BUILD_TYPE=Release
+        cmake --build build/native_standalone --config Release
