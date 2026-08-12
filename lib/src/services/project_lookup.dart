@@ -2,6 +2,7 @@ import '../models/cut.dart';
 import '../models/cut_id.dart';
 import '../models/layer.dart';
 import '../models/layer_id.dart';
+import '../models/media_asset.dart';
 import '../models/project.dart';
 import '../models/track.dart';
 
@@ -98,3 +99,22 @@ Layer requireLayerAnywhere(Project project, LayerId layerId) {
 
   throw StateError('Layer not found: $layerId');
 }
+
+/// Every path in [project] the audio conform can serve: the SE clips, which
+/// are sound by construction, plus the media pool entries whose kind says
+/// they are.
+///
+/// The kind filter is the whole point. The pool registers movies, stills and
+/// PDFs too, and a conform request reads the WHOLE file into a `Uint8List`
+/// before the decoder is handed anything to look at
+/// (`audio_conform_pipeline.dart`'s `readAsBytesSync`) — so warming a pool
+/// blind meant a 3GB reference video was read into memory on every project
+/// open, and again on every frame-rate or sample-rate change, only to be
+/// rejected for a reason its extension already gave away.
+Set<String> projectAudioSourcePaths(Project project) => {
+  for (final track in project.tracks)
+    for (final layer in track.seLayers)
+      for (final clip in layer.audioClips) clip.filePath,
+  for (final asset in project.mediaAssets)
+    if (asset.kind == MediaAssetKind.audio) asset.path,
+};

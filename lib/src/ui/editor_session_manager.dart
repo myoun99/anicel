@@ -18,7 +18,8 @@ import '../services/import/raster_cel_import.dart';
 import '../services/import/tvp_json_import_planner.dart';
 import '../services/input/wintab_pen_service.dart';
 import '../services/pdf/pdf_render_service.dart';
-import '../services/project_lookup.dart' show cutIdOfLayer;
+import '../services/project_lookup.dart'
+    show cutIdOfLayer, projectAudioSourcePaths;
 import '../models/app_language.dart';
 import '../services/persistence/app_language_settings_store.dart';
 import '../services/persistence/app_accent_settings_store.dart';
@@ -1825,18 +1826,13 @@ class EditorSessionManager extends ChangeNotifier {
         : ProjectAssetLayout(path).conformPathFor(sourcePath);
   }
 
-  /// Every audio path the project references (SE clips + the media pool) —
-  /// what a project open warms so waveforms and playback PCM are ready
-  /// before the first play.
+  /// Every audio path the project references (SE clips + the SOUND entries
+  /// of the media pool) — what a project open warms so waveforms and
+  /// playback PCM are ready before the first play.
   void _warmAudioConforms() {
-    final project = _repository.requireProject();
-    final paths = <String>{
-      for (final track in project.tracks)
-        for (final layer in track.seLayers)
-          for (final clip in layer.audioClips) clip.filePath,
-      for (final asset in project.mediaAssets) asset.path,
-    };
-    audioConformStore.warmPaths(paths);
+    audioConformStore.warmPaths(
+      projectAudioSourcePaths(_repository.requireProject()),
+    );
   }
 
   bool _activeCutHasLayer(LayerId? layerId) {
